@@ -1,0 +1,9 @@
+{
+  "name": "context-pi-extensions",
+  "version": "0.1.0",
+  "description": "Personal collection of pi extensions, skills, and configurations",
+  "keywords": ["pi-package"],
+  "pi": {
+    "extensions": ["./extensions"]
+  }
+}
