@@ -9,7 +9,7 @@
  *  - Autocomplete menu floats above the editor
  *  - OUTER-char margin on left + right of the editor
  */
-import { CustomEditor, type ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { CustomEditor, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const BG = "\x1b[48;5;236m"; // Elevated dark gray background
 const RESET = "\x1b[0m";
