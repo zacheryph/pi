@@ -118,18 +118,22 @@ export function renderTodoLines(
       + theme.fg("border", " " + "─".repeat(width - visibleWidth(label) - visibleWidth(progress) - 1) + " ")
       + theme.fg(done === state.tasks.length && done > 0 ? "success" : "muted", progress)
     : theme.fg(labelColor, truncateToWidth("Todos", width, ""));
+  // Inset body rows from full-width chrome, including after narrow resizes.
+  const bodyWidth = Math.max(0, width - 2);
+  const bodyRow = (text: string) => width <= 2 ? " ".repeat(width)
+    : ` ${truncateToWidth(text, bodyWidth, "")} `;
   const lines = [top];
   if (!tasks.length && rows > 1) {
-    lines.push(theme.fg("muted", truncateToWidth(state.tasks.length ? "No unfinished tasks" : "No tasks", width, "")));
+    lines.push(bodyRow(theme.fg("muted", state.tasks.length ? "No unfinished tasks" : "No tasks")));
     return lines;
   }
   // Reserve overflow row only when needed. Hidden completed tasks don't count.
   const available = Math.max(0, rows - 1);
   const count = Math.min(tasks.length, maxVisible, available);
   const visible = tasks.length > count ? Math.max(0, Math.min(count, available - 1)) : count;
-  for (const task of tasks.slice(0, visible)) lines.push(taskRow(task, state, width, theme));
+  for (const task of tasks.slice(0, visible)) lines.push(bodyRow(taskRow(task, state, bodyWidth, theme)));
   if (tasks.length > visible && lines.length < rows) {
-    lines.push(theme.fg("dim", truncateToWidth(`+${tasks.length - visible} more`, width, "")));
+    lines.push(bodyRow(theme.fg("dim", `+${tasks.length - visible} more`)));
   }
   return lines;
 }

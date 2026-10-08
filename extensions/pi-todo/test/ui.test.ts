@@ -20,10 +20,10 @@ describe("todo rendering", () => {
     const lines = render(s);
     expect(lines[0]).toMatch(/^── Todos ─+ 1\/4$/);
     expect(lines.slice(1)).toEqual([
-      expect.stringMatching(/^active: Task active +▸ in_progress$/),
-      expect.stringMatching(/^ready: Task ready +○ pending$/),
-      expect.stringMatching(/^wait: Task wait ← ready +○ blocked$/),
-      expect.stringMatching(/^done: Task done +✓ completed$/),
+      expect.stringMatching(/^ active: Task active +▸ in_progress $/),
+      expect.stringMatching(/^ ready: Task ready +○ pending $/),
+      expect.stringMatching(/^ wait: Task wait ← ready +○ blocked $/),
+      expect.stringMatching(/^ done: Task done +✓ completed $/),
     ]);
     expect(render(s)).toEqual(lines);
   });
@@ -35,11 +35,11 @@ describe("todo rendering", () => {
     expect(lines).toHaveLength(4);
     expect(lines[1]).toContain("active:");
     expect(lines[2]).toContain("r2:");
-    expect(lines[3]).toBe("+2 more");
+    expect(lines[3]).toBe(" +2 more ");
     expect(lines.join("\n")).not.toContain("done:");
     expect(lines[0]).toContain("1/5");
     expect(JSON.stringify(s)).toBe(before);
-    expect(render(state([task("done", "completed")]), { ...config, showCompleted: false })[1]).toBe("No unfinished tasks");
+    expect(render(state([task("done", "completed")]), { ...config, showCompleted: false })[1]).toBe(" No unfinished tasks ");
   });
 
   it("defaults/clamps task budget and bounds rows, preserving overflow", () => {
@@ -48,9 +48,9 @@ describe("todo rendering", () => {
       expect(render(s, { ...config, maxVisible: limit }).length).toBe(expected + 1 + Number(expected < s.tasks.length));
     }
     for (let rows = 0; rows <= 15; rows++) expect(render(s, config, 80, rows).length).toBeLessThanOrEqual(rows);
-    expect(render(s, config, 80, 3).at(-1)).toBe("+19 more");
+    expect(render(s, config, 80, 3).at(-1)).toBe(" +19 more ");
     expect(render(s, config, 0)).toEqual([]);
-    expect(render(state([]))[1]).toBe("No tasks");
+    expect(render(state([]))[1]).toBe(" No tasks ");
   });
 
   it("plain config matches priority, filtering, task limit and overflow without slicing rows", () => {
@@ -109,6 +109,28 @@ describe("todo rendering", () => {
           expect(visibleWidth(line)).toBeLessThanOrEqual(width);
           expect(line).not.toMatch(/[\n\r\u202e]/);
         }
+      }
+    }
+  });
+
+  it.each([1, 2, 3, 8, 30, 80])("insets all body rows at width %i without moving header chrome", width => {
+    const colored = { fg: (_token: string, text: string) => `\x1b[32m${text}\x1b[0m` } as Theme;
+    const cases = [
+      state([{ ...task("wide"), subject: "日本語 👩‍💻 e\u0301".repeat(20) }]),
+      state(Array.from({ length: 6 }, (_, i) => task(`k${i}`))),
+      state([]),
+      state([task("done", "completed")]),
+    ];
+    for (const s of cases) {
+      for (const t of [theme, colored]) {
+        const lines = renderTodoLines(s, { ...config, showCompleted: false }, width, t);
+        for (const row of lines.slice(1)) {
+          expect(row.startsWith(" ")).toBe(true);
+          expect(row.endsWith(" ")).toBe(true);
+          expect(visibleWidth(row)).toBeLessThanOrEqual(width);
+          if (width <= 2) expect(row).toBe(" ".repeat(width));
+        }
+        if (width >= 30) expect(lines[0]).toContain("── ");
       }
     }
   });
