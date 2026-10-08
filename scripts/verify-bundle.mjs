@@ -41,7 +41,7 @@ try {
   assert.ok(flags.includes("agent"), "Missing flag: --agent");
   assert.equal(new Set(tools).size, tools.length, "Tool names must be unique");
   assert.equal(new Set(commands).size, commands.length, "Command names must be unique");
-  for (const name of ["subagent", "get_subagent_result", "steer_subagent"]) {
+  for (const name of ["subagent", "get_subagent_result", "steer_subagent", "todo"]) {
     assert.ok(tools.includes(name), `Missing tool: ${name}`);
   }
   for (const name of [
@@ -52,6 +52,13 @@ try {
     "system:prompt",
     "system:tools",
     "system:skills",
+    "todos",
+    "todos:list",
+    "todos:add",
+    "todos:update",
+    "todos:remove",
+    "todos:clear",
+    "todos:settings",
   ]) {
     assert.ok(commands.includes(name), `Missing command: ${name}`);
   }
