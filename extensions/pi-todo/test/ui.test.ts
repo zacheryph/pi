@@ -18,7 +18,7 @@ describe("todo rendering", () => {
   it("keeps top rule static with labeled progress; status right and key left", () => {
     const s = state([task("ready"), task("active", "in_progress"), task("done", "completed"), task("wait", "pending", ["ready"])]);
     const lines = render(s);
-    expect(lines[0]).toMatch(/^──   Todos ─+ 1\/4$/);
+    expect(lines[0]).toMatch(/^──   Todos ─+ 1\/4 ──$/);
     expect(visibleWidth(lines[0])).toBe(100);
     expect(lines.slice(1)).toEqual([
       expect.stringMatching(/^ active: Task active +▸ in_progress $/),
@@ -34,14 +34,27 @@ describe("todo rendering", () => {
       const calls: string[] = [];
       const t = { fg: (token: string, text: string) => { calls.push(`${token}:${text}`); return text; } } as Theme;
       const s = state([task("one", status)]);
-      const lines = renderTodoLines(s, config, 16, t);
-      expect(lines[0]).toBe(`──   Todos  ${status === "completed" ? "1/1" : "0/1"}`);
-      expect(visibleWidth(lines[0])).toBe(16);
-      expect(render(s, config, 15)[0]).toBe("  Todos");
+      const lines = renderTodoLines(s, config, 19, t);
+      expect(lines[0]).toBe(`──   Todos  ${status === "completed" ? "1/1" : "0/1"} ──`);
+      expect(visibleWidth(lines[0])).toBe(19);
+      expect(calls).toContain("border: ──");
+      expect(render(s, config, 18)[0]).toBe("  Todos");
       expect(calls).toContain(`${color}:  Todos`);
       expect(render(s, config, 8)[0]).toBe("  Todos");
       expect(renderTodoText(s)[0]).not.toContain("");
     }
+  });
+
+  it("reserves trailing border columns for multi-digit progress with ANSI styling", () => {
+    const s = state(Array.from({ length: 50 }, (_, i) => task(`k${i}`, "completed")));
+    const colored = { fg: (_token: string, text: string) => `\x1b[32m${text}\x1b[0m` } as Theme;
+    for (const width of [21, 22, 30, 80]) {
+      const header = render(s, config, width)[0];
+      expect(header).toMatch(/^──   Todos ─* 50\/50 ──$/);
+      expect(visibleWidth(header)).toBe(width);
+      expect(visibleWidth(renderTodoLines(s, config, width, colored)[0])).toBe(width);
+    }
+    expect(render(s, config, 20)[0]).toBe("  Todos");
   });
 
   it("orders stably and hides completed without changing state or overflow counts", () => {

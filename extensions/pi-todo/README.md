@@ -115,7 +115,7 @@ visible; overflow becomes `+N more`. Completed tasks remain in state until
 explicitly cleared; hiding them affects display only.
 
 ```text
-──   Todos ─────────────────────────────────────────── 1/3
+──   Todos ──────────────────────────────────────── 1/3 ──
 ▸ build Build change ← inspect                  in progress
 ○ verify Verify change ← build                     blocked
 ✓ inspect Inspect implementation                  completed

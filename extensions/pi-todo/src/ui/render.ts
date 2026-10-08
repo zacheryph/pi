@@ -115,11 +115,13 @@ export function renderTodoLines(
   const done = state.tasks.filter(task => task.status === "completed").length;
   const progress = `${done}/${state.tasks.length}`;
   const label = `── ${TODO_TITLE} `;
+  const tail = " ──";
   const labelColor = state.tasks.some(task => task.status === "in_progress") ? "accent" : "dim";
-  const top = width >= visibleWidth(label) + visibleWidth(progress) + 1
+  const top = width >= visibleWidth(label) + visibleWidth(progress) + 1 + visibleWidth(tail)
     ? theme.fg("border", "── ") + theme.fg(labelColor, TODO_TITLE)
-      + theme.fg("border", " " + "─".repeat(width - visibleWidth(label) - visibleWidth(progress) - 1) + " ")
+      + theme.fg("border", " " + "─".repeat(width - visibleWidth(label) - visibleWidth(progress) - 1 - visibleWidth(tail)) + " ")
       + theme.fg(done === state.tasks.length && done > 0 ? "success" : "muted", progress)
+      + theme.fg("border", tail)
     : theme.fg(labelColor, truncateToWidth(TODO_TITLE, width, ""));
   // Inset body rows from full-width chrome, including after narrow resizes.
   const bodyWidth = Math.max(0, width - 2);
