@@ -30,6 +30,21 @@ Install the root bundle; do not separately install the published upstream extens
 
 No upstream runtime behavior was intentionally changed during import.
 
+## Personal widget changes
+
+- Replaced the two-line running-agent tree with a static `── ● Subagents ──`
+  header rule and one line per agent. No enclosing box or bottom border.
+- Layout inspired by `maplezzk/pi-extensions/packages/pi-interactive-subagents`,
+  but implemented locally using Pi themes and terminal-cell width utilities.
+- Elapsed time and agent type/task on the left; activity or outcome on the right.
+  Model/token/turn stats remain in tool results, not the widget.
+- Queued agents have individual rows and no ticking elapsed clock. Existing
+  background-only filtering, completion linger, animation cadence, and viewport
+  safeguards remain unchanged. Running/queued/finished order determines priority.
+- Rendering honors the width passed by Pi, rather than always using terminal width.
+- Renderer tests now cover the single-line layout, static header, ANSI/Unicode,
+  narrow screens, queued/finished outcomes, and exact overflow counts.
+
 ## Development
 
 Run from this repository's root:

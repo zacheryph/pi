@@ -1,7 +1,7 @@
 /**
  * agent-widget.ts — Persistent widget showing running/completed agents above the editor.
  *
- * Displays a tree of agents with animated spinners, live stats, and activity descriptions.
+ * Displays a static header rule and one compact row per background agent.
  * Uses the callback form of setWidget for themed rendering.
  */
 
@@ -66,7 +66,7 @@ export type UICtx = {
   setStatus(key: string, text: string | undefined): void;
   setWidget(
     key: string,
-    content: undefined | ((tui: TuiSurface, theme: Theme) => { render(): string[]; invalidate(): void }),
+    content: undefined | ((tui: TuiSurface, theme: Theme) => { render(width?: number): string[]; invalidate(): void }),
     options?: { placement?: "aboveEditor" | "belowEditor" },
   ): void;
 };
@@ -236,12 +236,12 @@ export class AgentWidget implements SubagentManagerObserver {
   }
 
   /** Delegate rendering to the pure widget-renderer module. */
-  private renderWidget(tui: TuiSurface, theme: Theme): string[] {
+  private renderWidget(tui: TuiSurface, theme: Theme, width = tui.terminal.columns): string[] {
     return renderWidgetLines({
       agents: this.listBackgroundAgents().map(r => this.toWidgetAgent(r)),
       registry: this.registry,
       spinnerFrame: this.widgetFrame,
-      terminalWidth: tui.terminal.columns,
+      terminalWidth: width,
       terminalHeight: tui.terminal.rows,
       theme,
       shouldShowFinished: (id, status) => this.shouldShowFinished(id, status),
@@ -325,7 +325,7 @@ export class AgentWidget implements SubagentManagerObserver {
       this.uiCtx.setWidget("agents", (tui, theme) => {
         this.tui = tui;
         return {
-          render: () => this.renderWidget(tui, theme),
+          render: (width) => this.renderWidget(tui, theme, width),
           invalidate: () => {
             // Theme changed — force re-registration so factory captures fresh theme.
             this.widgetRegistered = false;
@@ -340,7 +340,7 @@ export class AgentWidget implements SubagentManagerObserver {
     }
 
     // Only a running agent has content that changes between ticks: a finished
-    // line's duration is fixed and the queued line is a count, so animating
+    // line's duration is fixed and queued rows have no running clock, so animating
     // either would ask Pi to re-render its whole component tree for a
     // byte-identical result. Armed after registration, so the next tick's
     // interval can read the TUI the factory just captured.

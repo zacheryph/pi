@@ -81,6 +81,20 @@ Personal copy of [`gotgenes/pi-packages/packages/pi-subagents`](https://github.c
 Provides `subagent`, `get_subagent_result`, and `steer_subagent`, plus
 `/subagents:settings` and `/subagents:sessions`.
 
+Background agents use a compact widget above Pi's editor:
+
+```text
+── ● Subagents ────────────────────────────────────────────
+01:23  Explore: Find auth files                  ⠋ reading…
+00:45  Agent (twin): Add tests                   ⠙ thinking…
+--:--  Explore: Review changes                     ◦ queued
+```
+
+Only a top rule is drawn; Pi's own Working border, editor, and footer stay intact.
+Each agent occupies one row, with task identity left and activity/outcome right.
+Model/token/turn stats remain in tool results, not the widget. Finished agents keep
+upstream linger behavior. Short terminals collapse overflow into a `+N more` row.
+
 Custom agents are read from `.pi/agents/<name>.md` in the project where Pi runs, or
 `~/.pi/agent/agents/<name>.md`; they are not definitions inside this bundle.
 See [upstream README](extensions/pi-subagents/README.md),

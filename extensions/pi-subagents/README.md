@@ -21,7 +21,7 @@ Run them in foreground or background, steer them mid-run, resume completed sessi
 
 - **In-process & native** — agents run inside the same pi runtime (no spawned subprocesses), sharing tool names, calling conventions, and UI patterns (`subagent`, `get_subagent_result`, `steer_subagent`) — feels native
 - **Parallel background agents** — spawn multiple agents that run concurrently with automatic queuing (configurable concurrency limit, default 4) and individual completion notifications
-- **Live widget UI** — persistent above-editor widget with animated spinners, live tool activity, token counts, and colored status icons
+- **Live widget UI** — compact above-editor widget with a static Subagents header rule and one line per agent: elapsed time, task, and live activity or outcome
 - **Session transcripts** — open any subagent's full session transcript (running or with its session released) in pi's native read-only viewer via `/subagents:sessions`
 - **Custom agent types** — define agents in `.pi/agents/<name>.md` with YAML frontmatter: custom system prompts, model selection, thinking levels, tool restrictions
 - **Mid-run steering** — inject messages into running agents to redirect their work without restarting
@@ -71,25 +71,23 @@ Background agents return an ID immediately and notify you on completion.
 The extension renders a persistent widget above the editor showing active background agents (foreground runs are rendered inline by the `subagent` tool's progress stream):
 
 ```text
-● Agents
-├─ ⠹ Agent [anthropic/claude-sonnet-5]  Refactor auth module · ↻5≤30 · 5 tool uses · 33.8k token (62%) · 12.3s
-│    ⎿  editing 2 files…
-├─ ⠹ Explore [anthropic/claude-haiku-5]  Find auth files · ↻3 · 3 tool uses · 12.4k token (8%) · 4.1s
-│    ⎿  searching…
-├─ ⠹ Agent [openai/gpt-6]  Long-running task · ↻42 · 38 tool uses · 91.0k token (84% · ⇊2) · 2m17s
-│    ⎿  reading…
-└─ 2 queued
+── ● Subagents ────────────────────────────────────────────
+00:12  Agent (twin): Refactor auth module         ⠹ editing…
+00:04  Explore: Find auth files                ⠹ searching…
+--:--  Explore: Review tests                       ◦ queued
 ```
 
-Each agent line names the provider and model the agent is running, read from its live session, so a model switched mid-run shows as the one actually in use.
-The tag is omitted until the model is known.
+This personal fork uses only a top rule, without side walls or a bottom border.
+Pi's own Working border, editor, and footer below it are unchanged.
+The header icon is static; each running agent's activity indicator animates.
+Queued agents get individual rows. Finished agents show their outcome briefly,
+with a fixed elapsed duration and the original linger policy.
 
-The token field is annotated with two optional signals inside parens:
-
-- **`NN%`** — context-window utilization (color-coded: <70% dim, 70–85% warning, ≥85% error).
-  Omitted when the model has no declared `contextWindow`, or briefly right after compaction.
-- **`⇊N`** — number of times the session has compacted, when > 0.
-  Stays dim; the percent's color carries urgency.
+Task and status columns are truncated by terminal-cell width, including ANSI and
+wide Unicode text. Narrow terminals omit elapsed time and the prompt-mode tag.
+A height cap prioritizes running, then queued, then finished agents; overflow is
+reported as `+N more`. Model, token, context, and turn statistics remain available
+in tool results instead of occupying widget space.
 
 Individual agent results render inline in the conversation:
 

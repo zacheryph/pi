@@ -137,7 +137,7 @@ describe("AgentWidget under Pi's regular-mode renderer", () => {
 			ticks: 1,
 		});
 
-		expect(widgetLines).toBe(12);
+		expect(widgetLines).toBe(7);
 	});
 
 	it("renders fewer lines in a short terminal than a tall one for the same agents", () => {
@@ -145,7 +145,7 @@ describe("AgentWidget under Pi's regular-mode renderer", () => {
 		const tall = animateUnderRealRenderer({ rows: 40, transcriptLines: 400, agents: 6, ticks: 1 });
 
 		expect(short.widgetLines).toBe(6);
-		expect(tall.widgetLines).toBe(12);
+		expect(tall.widgetLines).toBe(7);
 	});
 });
 

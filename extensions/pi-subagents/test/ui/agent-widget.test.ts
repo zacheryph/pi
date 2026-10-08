@@ -1,4 +1,4 @@
-import type { TuiMode } from "@earendil-works/pi-tui";
+import { type TuiMode, visibleWidth } from "@earendil-works/pi-tui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import type { Subagent } from "#src/lifecycle/subagent";
@@ -228,7 +228,23 @@ describe("assembleWidgetState", () => {
 });
 
 describe("AgentWidget — projection reads activity off Subagent records", () => {
-	it("surfaces the turn budget, activeTools, and responseText from the record via renderWidget", () => {
+	it("uses the width Pi allocates to the component rather than terminal columns", () => {
+		const record = createTestSubagent({ status: "running", completedAt: undefined, isBackground: true });
+		const manager = { listAgents: () => [record] } as unknown as SubagentManager;
+		const widget = new AgentWidget(manager, new AgentTypeRegistry(() => new Map()));
+		let component: { render(width?: number): string[] } | undefined;
+		widget.setUICtx({
+			setStatus: () => {},
+			setWidget: (_key, content) => { component = content?.(stubTui({ columns: 200 }), stubTheme()); },
+		});
+		widget.update();
+		const lines = component!.render(40);
+		expect(lines).toHaveLength(2);
+		for (const line of lines) expect(visibleWidth(line)).toBeLessThanOrEqual(40);
+		widget.dispose();
+	});
+
+	it("surfaces live activity without turn statistics via renderWidget", () => {
 		const record = createTestSubagent({
 			status: "running",
 			completedAt: undefined,
@@ -254,13 +270,13 @@ describe("AgentWidget — projection reads activity off Subagent records", () =>
 		expect(renderFn).toBeDefined();
 		const lines = renderFn!(stubTui(), stubTheme()).render();
 		const allText = lines.join("\n");
-		// The record's turn budget should appear
-		expect(allText).toContain("↻3≤10");
+		// Compact widget leaves turn statistics to the tool result.
+		expect(allText).not.toContain("↻3≤10");
 		// Active tool "read" → "reading…"
 		expect(allText).toContain("reading");
 	});
 
-	it("surfaces the record's model via renderWidget", () => {
+	it("keeps the record's model out of the compact widget", () => {
 		const record = createTestSubagent({
 			status: "running",
 			completedAt: undefined,
@@ -281,7 +297,7 @@ describe("AgentWidget — projection reads activity off Subagent records", () =>
 		widget.update();
 
 		expect(renderFn).toBeDefined();
-		expect(renderFn!(stubTui(), stubTheme()).render().join("\n")).toContain("anthropic/claude-sonnet-5");
+		expect(renderFn!(stubTui(), stubTheme()).render().join("\n")).not.toContain("anthropic/claude-sonnet-5");
 	});
 
 	it("surfaces the record's turn budget as a turn-limit wrap-up via renderWidget", () => {
