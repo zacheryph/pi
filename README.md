@@ -30,8 +30,10 @@ pi update git:github.com/zacheryph/pi
 
 Use `pi list` to inspect installed sources. When switching from Git to local, remove
 that Git source first with `pi remove git:github.com/zacheryph/pi`. Do not load both
-copies, or another subagents extension, alongside this bundle: duplicate tools and
-commands can conflict.
+copies, another subagents extension, or another `todo` extension alongside this
+bundle: duplicate tools and commands can conflict. When migrating from
+`@juicesharp/rpiv-todo`, remove it with `pi remove npm:@juicesharp/rpiv-todo` before
+loading the bundle's tasks extension. Existing rpiv plans are not auto-imported.
 
 Install commands above configure personal scope. Add `--local` to install for one
 project instead; project resources load after project trust is granted.
@@ -54,6 +56,11 @@ pi-personal/
 ├── tsconfig.base.json
 └── extensions/
     ├── opencode-editor.ts
+    ├── pi-todo/
+    │   ├── src/index.ts                 # todo tool + /todos:* commands
+    │   ├── test/
+    │   ├── docs/comparison.md           # base-selection report
+    │   └── UPSTREAM.md
     ├── pi-system-insights/
     │   ├── package.json                 # independent insights workspace
     │   ├── src/index.ts                 # /system:* entry point
@@ -132,6 +139,25 @@ footer explains colors. Esc returns from details to list, then closes.
 Viewers never load skill instructions or change tools/settings. See
 [package README](extensions/pi-system-insights/README.md) for controls and evidence limits.
 
+### pi-todo
+
+Dependency-aware task tracking built on
+[`@99percentpeople/pi-todo`](extensions/pi-todo/UPSTREAM.md). One atomic `todo`
+tool: additive `upsert` preserves omitted tasks; `replace`, `remove`, and `clear`
+make deletion explicit. Stable keys, cycle checks, optional revision guards, and
+branch-scoped persistence work with direct and nested codemode calls.
+
+Above-editor widget matches subagents' compact top-rule/identity/status layout.
+`/todos` or `/todos:list` opens a searchable browser matching insights. Commands:
+`/todos:add`, `/todos:update`, `/todos:remove`, `/todos:clear`, `/todos:settings`.
+Settings layer global `todos.json` with project `.pi/todos.json`.
+
+User additions never start/steer a turn. Changed state syncs to the next model
+request by default; no auto-removal, auto-completion, or implicit subagent dispatch.
+Multiple active tasks remain possible for parallel work. See
+[usage/settings](extensions/pi-todo/README.md) and
+[comparison/decision report](extensions/pi-todo/docs/comparison.md).
+
 ## Development
 
 Runtime loading needs no build. Install development dependencies only for checks
@@ -177,3 +203,4 @@ Nested manifests alone do not expose another extension through the root bundle.
 ## License
 
 Vendored subagents code retains its upstream [MIT license](extensions/pi-subagents/LICENSE).
+Vendored todo engine retains its upstream [MIT license](extensions/pi-todo/LICENSE).
