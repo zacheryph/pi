@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { type OverlayWidth, OVERLAY_WIDTH_PRESETS } from "#src/settings";
 import { SubagentsSettingsHandler } from "#src/ui/subagents-settings";
 import { makeMenuUI } from "#test/helpers/ui-stubs";
 
@@ -34,6 +35,16 @@ function makeSettings() {
       message: "Abort all subagents on ESC: off",
       level: "info",
     })),
+    overlayWidth: "third" as OverlayWidth,
+    overlayDefaultOpen: false,
+    applyOverlayWidth: vi.fn((width: OverlayWidth): { message: string; level: "info" | "warning" } => ({
+      message: `Overlay width set to ${width}`,
+      level: "info",
+    })),
+    toggleOverlayDefaultOpen: vi.fn((): { message: string; level: "info" | "warning" } => ({
+      message: "Overlay default visibility: shown (before explicit show/hide this session)",
+      level: "info",
+    })),
     midRunUpdates: true,
     toggleMidRunUpdates: vi.fn((): { message: string; level: "info" | "warning" } => ({
       message: "Mid-run updates from background subagents: off",
@@ -57,7 +68,7 @@ describe("SubagentsSettingsHandler", () => {
     expect(handler).toBeInstanceOf(SubagentsSettingsHandler);
   });
 
-  it("shows the seven settings options with current values", async () => {
+  it("shows the nine settings options with current values", async () => {
     const { handler } = makeHandler();
     const ui = makeMenuUI([undefined]); // cancel immediately
     await handler.handle({ ui });
@@ -70,6 +81,8 @@ describe("SubagentsSettingsHandler", () => {
       "Unconsumed-session retention (current: 720 min)",
       "Abort all subagents on ESC (current: on)",
       "Mid-run updates from background subagents (current: on)",
+      "Overlay width (current: third)",
+      "Overlay default visibility (before explicit show/hide this session) (current: hidden)",
     ]);
   });
 
@@ -104,7 +117,85 @@ describe("SubagentsSettingsHandler", () => {
     expect(settings.applyMaxConcurrent).not.toHaveBeenCalled();
     expect(settings.applyDefaultMaxTurns).not.toHaveBeenCalled();
     expect(settings.applyWrapUpTurns).not.toHaveBeenCalled();
+    expect(settings.applyOverlayWidth).not.toHaveBeenCalled();
+    expect(settings.toggleOverlayDefaultOpen).not.toHaveBeenCalled();
     expect(ui.input).not.toHaveBeenCalled();
+  });
+});
+
+describe("SubagentsSettingsHandler — overlay settings", () => {
+  it.each<OverlayWidth>(["quarter", "third", "half", "two-thirds"])(
+    "selects width preset %s without freeform input",
+    async (width) => {
+      const { handler, settings } = makeHandler();
+      const ui = makeMenuUI(["Overlay width (current: third)", OVERLAY_WIDTH_PRESETS[width].label]);
+      await handler.handle({ ui });
+      expect(ui.select).toHaveBeenNthCalledWith(
+        2,
+        "Overlay width (fraction of terminal width)",
+        ["Quarter (1/4)", "Third (1/3)", "Half (1/2)", "Two-thirds (2/3)"],
+      );
+      expect(settings.applyOverlayWidth).toHaveBeenCalledExactlyOnceWith(width);
+      expect(ui.input).not.toHaveBeenCalled();
+      expect(ui.notify).toHaveBeenCalledWith(`Overlay width set to ${width}`, "info");
+    },
+  );
+
+  it("does not change width or notify when preset selection is cancelled", async () => {
+    const { handler, settings } = makeHandler();
+    const ui = makeMenuUI(["Overlay width (current: third)", undefined]);
+    await handler.handle({ ui });
+    expect(settings.applyOverlayWidth).not.toHaveBeenCalled();
+    expect(ui.input).not.toHaveBeenCalled();
+    expect(ui.notify).not.toHaveBeenCalled();
+  });
+
+  it("ignores a selection outside the fixed preset list", async () => {
+    const { handler, settings } = makeHandler();
+    const ui = makeMenuUI(["Overlay width (current: third)", "0.75"]);
+    await handler.handle({ ui });
+    expect(settings.applyOverlayWidth).not.toHaveBeenCalled();
+    expect(ui.notify).not.toHaveBeenCalled();
+  });
+
+  it("renders the current width and default visibility", async () => {
+    const settings = makeSettings();
+    settings.overlayWidth = "half";
+    settings.overlayDefaultOpen = true;
+    const { handler } = makeHandler(settings);
+    const ui = makeMenuUI([undefined]);
+    await handler.handle({ ui });
+    expect(ui.select.mock.calls[0][1]).toContain("Overlay width (current: half)");
+    expect(ui.select.mock.calls[0][1]).toContain(
+      "Overlay default visibility (before explicit show/hide this session) (current: shown)",
+    );
+  });
+
+  it("toggles default visibility directly and states explicit session choice takes precedence", async () => {
+    const { handler, settings } = makeHandler();
+    const ui = makeMenuUI([
+      "Overlay default visibility (before explicit show/hide this session) (current: hidden)",
+    ]);
+    await handler.handle({ ui });
+    expect(settings.toggleOverlayDefaultOpen).toHaveBeenCalledOnce();
+    expect(ui.input).not.toHaveBeenCalled();
+    expect(ui.select).toHaveBeenCalledOnce();
+    expect(ui.notify).toHaveBeenCalledWith(
+      "Overlay default visibility: shown (before explicit show/hide this session)", "info",
+    );
+  });
+
+  it("forwards persistence warning from the width mutation", async () => {
+    const { handler, settings } = makeHandler();
+    settings.applyOverlayWidth.mockReturnValue({
+      message: "Overlay width set to half (session only; failed to persist)",
+      level: "warning",
+    });
+    const ui = makeMenuUI(["Overlay width (current: third)", "Half (1/2)"]);
+    await handler.handle({ ui });
+    expect(ui.notify).toHaveBeenCalledWith(
+      "Overlay width set to half (session only; failed to persist)", "warning",
+    );
   });
 });
 

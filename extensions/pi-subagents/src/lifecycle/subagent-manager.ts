@@ -141,6 +141,8 @@ export function resolveRetentionWindow(
 /** Observer interface for agent lifecycle notifications. */
 export interface SubagentManagerObserver {
   onSubagentStarted(record: Subagent): void;
+  /** Session ready, before first prompt: live viewers can subscribe without polling. */
+  onSubagentSessionCreated?(record: Subagent): void;
   onSubagentCompleted(record: Subagent): void;
   /**
    * Fires when a resume starts, from whichever front door asked for it.
@@ -264,9 +266,11 @@ export class SubagentManager {
       onStarted: (agent) => {
         this.observer?.onSubagentStarted(agent);
       },
-      onSessionCreated: options.observer?.onSessionCreated
-        ? (agent) => options.observer!.onSessionCreated!(agent)
-        : undefined,
+      onSessionCreated: (agent) => {
+        // Viewer faults must not suppress the per-spawn observer or fail the run.
+        try { this.observer?.onSubagentSessionCreated?.(agent); } catch (err) { debugLog("onSubagentSessionCreated observer", err); }
+        options.observer?.onSessionCreated?.(agent);
+      },
       // Terminal transitions are reported for every agent. Whether the parent
       // needs telling is the notification layer's decision, made from the
       // carrier claim; suppressing the observer here would also suppress the

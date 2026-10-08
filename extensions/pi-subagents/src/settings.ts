@@ -7,7 +7,34 @@ import { dirname, join } from "node:path";
 import { type LayeredSettingsSource, loadLayeredSettings } from "#src/layered-settings";
 import { isBelowMinimumTurns, MIN_MAX_TURNS } from "#src/lifecycle/turn-limits";
 import type { PromptInheritance } from "#src/types";
+
+export type OverlayWidth = "quarter" | "third" | "half" | "two-thirds";
+
+/** Shared settings choices and exact terminal-width fractions for the overlay. */
+export const OVERLAY_WIDTH_PRESETS = {
+  quarter: { label: "Quarter (1/4)", fraction: 1 / 4 },
+  third: { label: "Third (1/3)", fraction: 1 / 3 },
+  half: { label: "Half (1/2)", fraction: 1 / 2 },
+  "two-thirds": { label: "Two-thirds (2/3)", fraction: 2 / 3 },
+} as const satisfies Record<OverlayWidth, { label: string; fraction: number }>;
+
+/** Pi overlay sizing percentages, shared with the overlay controller. */
+export const OVERLAY_WIDTH_PERCENT = {
+  quarter: "25%",
+  third: "33.333%",
+  half: "50%",
+  "two-thirds": "66.667%",
+} as const satisfies Record<OverlayWidth, `${number}%`>;
+
+function isOverlayWidth(value: unknown): value is OverlayWidth {
+  return typeof value === "string" && Object.hasOwn(OVERLAY_WIDTH_PRESETS, value);
+}
+
 export interface SubagentsSettings {
+  /** Overlay width as a fraction of the terminal width. */
+  overlayWidth?: OverlayWidth;
+  /** Fullscreen default visibility only before an explicit show/hide in the current session. */
+  overlayDefaultOpen?: boolean;
   maxConcurrent?: number;
   /**
    * 0 = unlimited — the extension's single source of truth for that convention:
@@ -59,6 +86,8 @@ export interface SubagentsSettings {
  * that must survive a `/subagents:settings` edit has to appear here.
  */
 export interface SettingsSnapshot {
+  overlayWidth: OverlayWidth;
+  overlayDefaultOpen: boolean;
   maxConcurrent: number;
   defaultMaxTurns: number;
   wrapUpTurns: number;
@@ -86,12 +115,16 @@ const DEFAULT_CONSUMED_RETENTION_MINUTES = 10;
 const DEFAULT_UNCONSUMED_RETENTION_MINUTES = 720;
 const DEFAULT_ABORT_ALL_ON_INTERRUPT = true;
 const DEFAULT_MID_RUN_UPDATES = true;
+const DEFAULT_OVERLAY_WIDTH: OverlayWidth = "third";
+const DEFAULT_OVERLAY_DEFAULT_OPEN = false;
 
 /**
- * Owns all three in-memory settings values and their load/save/persist cycle.
+ * Owns in-memory settings values and their load/save/persist cycle.
  * Replaces the scattered free-function + SettingsAppliers callback pattern.
  */
 export class SettingsManager {
+  private _overlayWidth: OverlayWidth = DEFAULT_OVERLAY_WIDTH;
+  private _overlayDefaultOpen: boolean = DEFAULT_OVERLAY_DEFAULT_OPEN;
   private _defaultMaxTurns: number | undefined = undefined;
   private _wrapUpTurns: number = DEFAULT_WRAP_UP_TURNS;
   private _maxConcurrent: number = DEFAULT_MAX_CONCURRENT;
@@ -112,6 +145,15 @@ export class SettingsManager {
     this.cwd = deps.cwd;
     this.agentDir = deps.agentDir;
     this.onMaxConcurrentChanged = deps.onMaxConcurrentChanged;
+  }
+
+  get overlayWidth(): OverlayWidth {
+    return this._overlayWidth;
+  }
+
+  /** Applies in fullscreen only, before an explicit show/hide in the current session. */
+  get overlayDefaultOpen(): boolean {
+    return this._overlayDefaultOpen;
   }
 
   // ── defaultMaxTurns: 0 or undefined → unlimited (undefined); else at least MIN_MAX_TURNS ──
@@ -201,6 +243,9 @@ export class SettingsManager {
   load(): SubagentsSettings {
     const { legacyGraceTurns, ...settings } = loadSettings(this.agentDir, this.cwd);
     warnAboutRetiredSettings(settings, legacyGraceTurns === true);
+    if (settings.overlayWidth !== undefined) this._overlayWidth = settings.overlayWidth;
+    if (typeof settings.overlayDefaultOpen === "boolean")
+      this._overlayDefaultOpen = settings.overlayDefaultOpen;
     if (typeof settings.maxConcurrent === "number") this.maxConcurrent = settings.maxConcurrent;
     if (typeof settings.defaultMaxTurns === "number") this.defaultMaxTurns = settings.defaultMaxTurns;
     if (typeof settings.wrapUpTurns === "number") this.wrapUpTurns = settings.wrapUpTurns;
@@ -224,6 +269,8 @@ export class SettingsManager {
    */
   snapshot(): SettingsSnapshot {
     const snapshot: SettingsSnapshot = {
+      overlayWidth: this._overlayWidth,
+      overlayDefaultOpen: this._overlayDefaultOpen,
       maxConcurrent: this._maxConcurrent,
       defaultMaxTurns: this._defaultMaxTurns ?? 0,
       wrapUpTurns: this._wrapUpTurns,
@@ -239,6 +286,20 @@ export class SettingsManager {
       snapshot.promptInheritance = { ...this._promptInheritance };
     }
     return snapshot;
+  }
+
+  /** Set the overlay width preset, persist, and return the toast. */
+  applyOverlayWidth(width: OverlayWidth): { message: string; level: "info" | "warning" } {
+    this._overlayWidth = width;
+    return this.saveAndNotify(`Overlay width set to ${width}`);
+  }
+
+  /** Flip default visibility; explicit session show/hide still takes precedence. */
+  toggleOverlayDefaultOpen(): { message: string; level: "info" | "warning" } {
+    this._overlayDefaultOpen = !this._overlayDefaultOpen;
+    return this.saveAndNotify(
+      `Overlay default visibility: ${this._overlayDefaultOpen ? "shown" : "hidden"} (before explicit show/hide this session)`,
+    );
   }
 
   /**
@@ -360,6 +421,8 @@ function sanitize(raw: unknown): SubagentsSettings {
   if (!raw || typeof raw !== "object") return {};
   const r = raw as Record<string, unknown>;
   const out: SubagentsSettings = {};
+  if (isOverlayWidth(r.overlayWidth)) out.overlayWidth = r.overlayWidth;
+  if (typeof r.overlayDefaultOpen === "boolean") out.overlayDefaultOpen = r.overlayDefaultOpen;
   if (
     Number.isInteger(r.maxConcurrent) &&
     (r.maxConcurrent as number) >= 1 &&

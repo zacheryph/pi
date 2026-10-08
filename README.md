@@ -79,7 +79,7 @@ manifest. It does not load. To re-enable it, add that entry point to `pi.extensi
 
 Personal copy of [`gotgenes/pi-packages/packages/pi-subagents`](https://github.com/gotgenes/pi-packages/tree/main/packages/pi-subagents).
 Provides `subagent`, `get_subagent_result`, and `steer_subagent`, plus
-`/subagents:settings` and `/subagents:sessions`.
+`/subagents:settings`, `/subagents:sessions`, and `/subagents:watch`.
 
 Background agents use a compact widget above Pi's editor:
 
@@ -94,6 +94,14 @@ Only a top rule is drawn; Pi's own Working border, editor, and footer stay intac
 Each agent occupies one row, with task identity left and activity/outcome right.
 Model/token/turn stats remain in tool results, not the widget. Finished agents keep
 upstream linger behavior. Short terminals collapse overflow into a `+N more` row.
+
+In Pi fullscreen mode, `Ctrl+Alt+S` or `/subagents:watch` toggles a passive
+right-side watch overlay. It tails assistant text and compact tool summaries in
+stacked agent sections, without taking editor focus or changing agent execution.
+It starts closed. `/subagents:settings` selects quarter, third (default), half, or
+two-thirds width and default visibility. Explicit show/hide wins for the current
+session, including later agent runs. Regular mode keeps the compact widget only:
+Pi 1.1.0 overlays can contaminate terminal scrollback there.
 
 Custom agents are read from `.pi/agents/<name>.md` in the project where Pi runs, or
 `~/.pi/agent/agents/<name>.md`; they are not definitions inside this bundle.

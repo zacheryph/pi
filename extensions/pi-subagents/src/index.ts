@@ -23,6 +23,7 @@ import {
   SettingsManager as SdkSettingsManager,
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
+import { Key } from "@earendil-works/pi-tui";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import { loadCustomAgents } from "#src/config/custom-agents";
 import { InterruptHandler, SessionLifecycleHandler, WidgetEventsHandler } from "#src/handlers/index";
@@ -61,6 +62,7 @@ import { SteerTool } from "#src/tools/steer-tool";
 import { AgentWidget } from "#src/ui/agent-widget";
 import { SessionNavigatorHandler } from "#src/ui/session-navigator";
 import { SubagentsSettingsHandler } from "#src/ui/subagents-settings";
+import { WatchOverlay } from "#src/ui/watch-overlay";
 
 export default function (pi: ExtensionAPI) {
   // ---- Register custom notification renderer ----
@@ -216,6 +218,10 @@ export default function (pi: ExtensionAPI) {
   const widget = new AgentWidget(manager, registry);
   observer.add(widget);
 
+  const watch = new WatchOverlay(manager, registry, settings);
+  observer.add(watch);
+  const unsubscribeWatchSettings = pi.events.on("subagents:settings_changed", () => watch.settingsChanged());
+
   // Give the widget its UI context and its turn ticks. Pi fans an event out to
   // every handler an extension registers for it, so these take their own
   // registrations rather than sharing a lambda with an unrelated concern.
@@ -223,12 +229,17 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("session_start", (event, ctx) => lifecycle.handleSessionStart(event, ctx));
   pi.on("session_start", (event, ctx) => widgetEvents.handleSessionStart(event, ctx));
+  pi.on("session_start", (_event, ctx) => watch.setContext(ctx));
   pi.on("session_before_switch", () => lifecycle.handleSessionBeforeSwitch());
   pi.on("session_shutdown", () => lifecycle.handleSessionShutdown());
   // Registered after the lifecycle handler on purpose. Pi awaits an extension's
   // handlers for an event in registration order, so the widget is torn down once
   // `abortAll()` and the awaited `manager.dispose()` have finished — no terminal
   // transition is left to drive an `update()` at a half-disposed widget.
+  pi.on("session_shutdown", () => {
+    watch.dispose();
+    unsubscribeWatchSettings();
+  });
   pi.on("session_shutdown", () => widgetEvents.handleSessionShutdown());
 
   // Capture the prompt parts Pi assembled for the parent's turn. This is the
@@ -257,12 +268,29 @@ export default function (pi: ExtensionAPI) {
 
   pi.registerTool(new SteerTool(manager, pi.events).toToolDefinition());
 
+  // ---- Passive background-agent watch overlay ----
+
+  pi.registerShortcut(Key.ctrlAlt("s"), {
+    description: "Show/hide the subagent watch overlay",
+    handler: () => watch.toggle(),
+  });
+  pi.registerCommand("subagents:watch", {
+    description: "Show/hide the tailing subagent watch overlay",
+    handler: async (_args, ctx) => {
+      if (ctx.mode !== "tui" || !ctx.hasUI) {
+        ctx.ui.notify("Subagent watch overlay requires interactive terminal mode.", "warning");
+        return;
+      }
+      watch.toggle();
+    },
+  });
+
   // ---- /subagents:settings command ----
 
   const subagentsSettings = new SubagentsSettingsHandler(settings);
 
   pi.registerCommand("subagents:settings", {
-    description: "Configure subagent settings (concurrency, turn limits, retention, interrupt policy)",
+    description: "Configure subagent settings (concurrency, turn limits, retention, watch overlay)",
     handler: async (_args, ctx) => {
       await subagentsSettings.handle({ ui: ctx.ui });
     },

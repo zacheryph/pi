@@ -167,12 +167,41 @@ The message interrupts after the current tool execution.
 | --------------------- | ----------------------------------------------------------------------------------- |
 | `/subagents:settings` | Configure subagent settings (concurrency, turn limits, retention, interrupt policy) |
 | `/subagents:sessions` | View a subagent's session transcript (read-only)                                    |
+| `/subagents:watch` | Toggle the passive, tailing watch overlay (Pi fullscreen mode only) |
 
 ### `/subagents:settings`
 
 Interactive list to tune runtime settings — max concurrency, default max turns, wrap-up turns, the two session-retention windows, and whether ESC aborts every subagent.
 The numeric settings open an input prompt; the abort-on-ESC entry is a direct flip.
+Watch-overlay width uses a preset selector (quarter, third, half, two-thirds);
+its default visibility is a toggle. The overlay starts closed at third width.
 Changes persist across pi restarts (see [Persistent Settings](./docs/configuration.md#persistent-settings)).
+
+### `/subagents:watch`
+
+`Ctrl+Alt+S` or `/subagents:watch` toggles a read-only overlay anchored at the right
+of Pi's **fullscreen** display. It leaves keyboard focus with the editor and
+covers content underneath rather than reflowing Pi into a sidebar. Six bottom
+rows are left for Pi's dock; tiny terminals suppress the overlay.
+
+Each background agent has a header and an always-tailing output section.
+Assistant text streams live; tool calls show one concise argument and a short
+result/update summary. Inherited conversation, thinking text, images, and full
+tool payloads are omitted. Sections share the height; short terminals show an
+exact `+N more agents` count, prioritizing running agents, then queued, then
+finished. Finished sections linger for eight seconds. No scrolling or agent
+control is provided.
+
+The default is **closed**, with **third** width. Use `/subagents:settings` to
+change width or default visibility. The last explicit show/hide choice wins
+within the current session: hiding while agents run keeps later runs hidden,
+even when the default is open. Automatic hiding after completion does not change
+that preference. Session replacement/reload resets it. Hiding never stops agents.
+
+Regular mode retains the existing widget and transcript viewer. The watch command
+warns there instead of mounting an overlay: Pi 1.1.0 can bake overlay pixels into
+scrollback when parent output grows. A one- or two-row top margin does not prevent
+this during output bursts. See [watch-overlay decision](./docs/decisions/0013-passive-watch-overlay.md).
 
 ### `/subagents:sessions`
 

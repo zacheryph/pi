@@ -303,7 +303,7 @@ Two files, merged on load:
   Written by `/subagents:settings`.
 
 **Precedence:** project overrides global on any field present in both.
-Missing fields fall back to the hardcoded defaults (max concurrency `4`, default max turns unlimited, wrap-up turns `2`, consumed-session retention `10` minutes, unconsumed-session retention `720` minutes, abort-all-on-interrupt `true`, mid-run updates `true`).
+Missing fields fall back to the hardcoded defaults (max concurrency `4`, default max turns unlimited, wrap-up turns `2`, consumed-session retention `10` minutes, unconsumed-session retention `720` minutes, abort-all-on-interrupt `true`, mid-run updates `true`, watch-overlay width `third`, watch-overlay default visibility `false`).
 
 **Example — global defaults for a beefy machine:**
 
@@ -328,6 +328,34 @@ It replaced `graceTurns`, which allowed extra turns past `max_turns`: a file tha
 A `defaultMaxTurns` of `1` runs with `2`, the minimum, and logs a warning.
 
 **Failure behavior:** missing file is silent; malformed JSON logs a `[pi-subagents] Ignoring malformed settings at …` warning to stderr; invalid/out-of-range field values are dropped per-field; write failures downgrade the `/subagents:settings` toast to a warning with `(session only; failed to persist)`.
+
+### Watch overlay
+
+The personal fork adds a passive watch overlay in Pi fullscreen mode, toggled by
+`Ctrl+Alt+S` or `/subagents:watch`. Configure both settings in `/subagents:settings`
+or the layered `subagents.json` files:
+
+```json
+{
+  "overlayWidth": "third",
+  "overlayDefaultOpen": false
+}
+```
+
+| Setting | Default | Accepted values |
+| --- | --- | --- |
+| `overlayWidth` | `third` | `quarter` (25%), `third` (~33%), `half` (50%), `two-thirds` (~67%) |
+| `overlayDefaultOpen` | `false` | Boolean: show automatically while agents are active, before any explicit session choice |
+
+Explicit show/hide takes precedence for the current session, including subsequent
+agent runs; changing the default does not override it. Automatic hiding after all
+finished sections expire does not count as an explicit hide. Width changes apply
+immediately, including after reopening. Hiding the overlay never aborts agents.
+
+The watch panel only tails compact activity; `/subagents:sessions` remains the
+full transcript viewer. It does not mount in regular mode because Pi's regular
+compositor can leave overlay fragments in terminal scrollback. Short terminals
+suppress it without changing the session preference.
 
 ### Excluding package extensions from children
 

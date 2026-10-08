@@ -1,3 +1,5 @@
+import { type OverlayWidth, OVERLAY_WIDTH_PRESETS } from "#src/settings";
+
 // ---- Narrow interfaces ----
 
 /** The toast a settings mutation returns for the UI to display. */
@@ -15,6 +17,10 @@ export interface SubagentsSettingsManager {
   readonly unconsumedSessionRetentionMinutes: number;
   readonly abortAllOnInterrupt: boolean;
   readonly midRunUpdates: boolean;
+  readonly overlayWidth: OverlayWidth;
+  readonly overlayDefaultOpen: boolean;
+  applyOverlayWidth(width: OverlayWidth): SettingsToast;
+  toggleOverlayDefaultOpen(): SettingsToast;
   applyMaxConcurrent(n: number): SettingsToast;
   applyDefaultMaxTurns(n: number): SettingsToast;
   applyWrapUpTurns(n: number): SettingsToast;
@@ -63,7 +69,15 @@ interface ToggleSettingDescriptor extends SettingDescriptorBase {
   toggle: (settings: SubagentsSettingsManager) => SettingsToast;
 }
 
-type SettingDescriptor = NumericSettingDescriptor | ToggleSettingDescriptor;
+/** Describes an enum setting selected from a fixed list, never freeform input. */
+interface EnumSettingDescriptor extends SettingDescriptorBase {
+  kind: "enum";
+  selectTitle: string;
+  choices: readonly { value: OverlayWidth; label: string }[];
+  apply: (settings: SubagentsSettingsManager, value: OverlayWidth) => SettingsToast;
+}
+
+type SettingDescriptor = NumericSettingDescriptor | ToggleSettingDescriptor | EnumSettingDescriptor;
 
 const SETTINGS: readonly SettingDescriptor[] = [
   {
@@ -128,6 +142,23 @@ const SETTINGS: readonly SettingDescriptor[] = [
     currentDisplay: (settings) => (settings.midRunUpdates ? "on" : "off"),
     toggle: (settings) => settings.toggleMidRunUpdates(),
   },
+  {
+    kind: "enum",
+    label: "Overlay width",
+    currentDisplay: (settings) => settings.overlayWidth,
+    selectTitle: "Overlay width (fraction of terminal width)",
+    choices: Object.entries(OVERLAY_WIDTH_PRESETS).map(([value, preset]) => ({
+      value: value as OverlayWidth,
+      label: preset.label,
+    })),
+    apply: (settings, value) => settings.applyOverlayWidth(value),
+  },
+  {
+    kind: "toggle",
+    label: "Overlay default visibility (before explicit show/hide this session)",
+    currentDisplay: (settings) => (settings.overlayDefaultOpen ? "shown" : "hidden"),
+    toggle: (settings) => settings.toggleOverlayDefaultOpen(),
+  },
 ];
 
 // ---- Class ----
@@ -153,6 +184,15 @@ export class SubagentsSettingsHandler {
 
     if (descriptor.kind === "toggle") {
       const toast = descriptor.toggle(this.settings);
+      ui.notify(toast.message, toast.level);
+      return;
+    }
+
+    if (descriptor.kind === "enum") {
+      const choice = await ui.select(descriptor.selectTitle, descriptor.choices.map((c) => c.label));
+      const selected = descriptor.choices.find((c) => c.label === choice);
+      if (!selected) return;
+      const toast = descriptor.apply(this.settings, selected.value);
       ui.notify(toast.message, toast.level);
       return;
     }

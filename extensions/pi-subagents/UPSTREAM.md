@@ -45,6 +45,20 @@ No upstream runtime behavior was intentionally changed during import.
 - Renderer tests now cover the single-line layout, static header, ANSI/Unicode,
   narrow screens, queued/finished outcomes, and exact overflow counts.
 
+## Personal watch overlay
+
+- Added fullscreen-only `/subagents:watch` and `Ctrl+Alt+S`, with a passive right
+  overlay showing always-tailing background-agent text and compact tool activity.
+- Added persisted width presets (`quarter`, `third`, `half`, `two-thirds`) and
+  default visibility (closed). Explicit session visibility overrides that default.
+- Agents still execute in-process. Internal session-ready observer wiring allows
+  live subscription before the first child event without widening the public API.
+- Output buffers and repaint cadence are bounded; no transcript scrolling or
+  inherited context is shown. Session shutdown/replacement releases subscriptions,
+  timers, and only the overlay this fork owns.
+- Regular mode remains overlay-free: Pi 1.1.0 still exhibits the scrollback defect
+  documented in ADR 0007, including with one- or two-row top margins on bursts.
+
 ## Development
 
 Run from this repository's root:

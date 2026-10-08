@@ -26,6 +26,7 @@ function makePi() {
         tools.set(tool.name, tool);
       }),
       registerCommand: vi.fn(),
+      registerShortcut: vi.fn(),
       on: vi.fn((event: string, handler: any) => {
         const registered = handlers.get(event);
         if (registered) registered.push(handler);

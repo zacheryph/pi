@@ -140,6 +140,14 @@ describe("CompositeSubagentObserver", () => {
 	});
 
 	describe("an optional hook only some delegates implement", () => {
+		it("forwards session readiness without requiring every delegate to implement it", () => {
+			const listening = { ...makeDelegate(), onSubagentSessionCreated: vi.fn() };
+			const composite = new CompositeSubagentObserver([makeDelegate(), listening]);
+			const record = createTestSubagent();
+			composite.onSubagentSessionCreated(record);
+			expect(listening.onSubagentSessionCreated).toHaveBeenCalledExactlyOnceWith(record);
+		});
+
 		it("forwards onSubagentUpdate to the delegates that implement it", () => {
 			const a = { ...makeDelegate(), onSubagentUpdate: vi.fn() };
 			const b = { ...makeDelegate(), onSubagentUpdate: vi.fn() };

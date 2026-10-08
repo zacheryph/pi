@@ -1,4 +1,6 @@
 {
+  "overlayWidth": "half",
+  "overlayDefaultOpen": false,
   "maxConcurrent": 4,
   "defaultMaxTurns": 0,
   "wrapUpTurns": 4,
