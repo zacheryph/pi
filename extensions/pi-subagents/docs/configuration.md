@@ -287,6 +287,20 @@ The pattern expands when the agent spawns, to the matching tools **your session*
 - A child running in another directory (a worktree) expands against your session's servers, even when that directory's `.pi/mcp.json` configures different ones.
 - Tools a server adds after the child started do not reach that child.
 
+## Main-session profile defaults
+
+`pi --agent <name>` uses the same winning agent definition for the initial main
+session. Its model, thinking, and tools are startup defaults, not locks; manual
+changes remain allowed. The profile body is saved as a branch-relative snapshot
+and injected into the system prompt on subsequent runs. Resume/reload preserves
+manual settings; `/new` does not inherit the invocation's profile.
+
+Project profiles require Pi project trust. Delegation tools remain available;
+child settings and prompt construction are unchanged. `locked`, `max_turns`,
+`run_in_background`, and `inherit_context` retain their child meanings rather
+than imposing main-session restrictions. See [main-session profile usage](../README.md#main-session-profile---agent)
+for validation, tool-access, and automation limitations.
+
 ## Persistent Settings
 
 Runtime tuning values set via `/subagents:settings` (max concurrency, default max turns, wrap-up turns, the two session-retention windows, the abort-on-interrupt policy, and the mid-run update channel) persist across pi restarts.
@@ -303,7 +317,7 @@ Two files, merged on load:
   Written by `/subagents:settings`.
 
 **Precedence:** project overrides global on any field present in both.
-Missing fields fall back to the hardcoded defaults (max concurrency `4`, default max turns unlimited, wrap-up turns `2`, consumed-session retention `10` minutes, unconsumed-session retention `720` minutes, abort-all-on-interrupt `true`, mid-run updates `true`, watch-overlay width `third`, watch-overlay default visibility `false`).
+Missing fields fall back to the hardcoded defaults (max concurrency `4`, default max turns unlimited, wrap-up turns `2`, consumed-session retention `10` minutes, unconsumed-session retention `720` minutes, abort-all-on-interrupt `true`, mid-run updates `true`, watch-overlay width `third`, watch-overlay default visibility `false`, watch-overlay thinking visibility `true`).
 
 **Example — global defaults for a beefy machine:**
 
@@ -332,13 +346,14 @@ A `defaultMaxTurns` of `1` runs with `2`, the minimum, and logs a warning.
 ### Watch overlay
 
 The personal fork adds a passive watch overlay in Pi fullscreen mode, toggled by
-`Ctrl+Alt+S` or `/subagents:watch`. Configure both settings in `/subagents:settings`
+`Ctrl+Alt+S` or `/subagents:watch`. Configure overlay settings in `/subagents:settings`
 or the layered `subagents.json` files:
 
 ```json
 {
   "overlayWidth": "third",
-  "overlayDefaultOpen": false
+  "overlayDefaultOpen": false,
+  "overlayShowThinking": true
 }
 ```
 
@@ -346,11 +361,19 @@ or the layered `subagents.json` files:
 | --- | --- | --- |
 | `overlayWidth` | `third` | `quarter` (25%), `third` (~33%), `half` (50%), `two-thirds` (~67%) |
 | `overlayDefaultOpen` | `false` | Boolean: show automatically while agents are active, before any explicit session choice |
+| `overlayShowThinking` | `true` | Boolean: display provider-emitted thinking in the watch feed |
 
 Explicit show/hide takes precedence for the current session, including subsequent
 agent runs; changing the default does not override it. Automatic hiding after all
 finished sections expire does not count as an explicit hide. Width changes apply
-immediately, including after reopening. Hiding the overlay never aborts agents.
+immediately, including after reopening. Thinking visibility also updates immediately;
+recent buffered thinking can reappear when enabled. This controls display only,
+not the child's thinking level, and cannot expose reasoning the provider does not
+emit. Hiding the overlay never aborts agents.
+
+Feed entries use semantic theme colors and compact Think / Tool / Skill labels.
+Assistant text remains unlabelled. Skill reads show pending, successful, or failed
+loading; a pending or failed read is not reported as a loaded skill.
 
 The watch panel only tails compact activity; `/subagents:sessions` remains the
 full transcript viewer. It does not mount in regular mode because Pi's regular

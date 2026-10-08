@@ -1,5 +1,9 @@
 # Vendored pi-subagents
 
+This personal fork was imported from
+[`gotgenes/pi-packages/packages/pi-subagents`](https://github.com/gotgenes/pi-packages/tree/main/packages/pi-subagents),
+which was itself forked from [`tintinweb/pi-subagents`](https://github.com/tintinweb/pi-subagents).
+
 - Source: https://github.com/gotgenes/pi-packages
 - Directory: `packages/pi-subagents`
 - Commit: `29bfbfe605d726c78f6120977b08666716e048f2`
@@ -42,15 +46,20 @@ No upstream runtime behavior was intentionally changed during import.
   background-only filtering, completion linger, animation cadence, and viewport
   safeguards remain unchanged. Running/queued/finished order determines priority.
 - Rendering honors the width passed by Pi, rather than always using terminal width.
-- Renderer tests now cover the single-line layout, static header, ANSI/Unicode,
-  narrow screens, queued/finished outcomes, and exact overflow counts.
+- Agent rows now reserve one space at each edge, before elapsed time and after
+  activity/outcome; header remains full-width.
+- Renderer tests cover the single-line layout, static header, ANSI/Unicode,
+  edge spacing, narrow screens, queued/finished outcomes, and exact overflow counts.
 
 ## Personal watch overlay
 
 - Added fullscreen-only `/subagents:watch` and `Ctrl+Alt+S`, with a passive right
   overlay showing always-tailing background-agent text and compact tool activity.
-- Added persisted width presets (`quarter`, `third`, `half`, `two-thirds`) and
-  default visibility (closed). Explicit session visibility overrides that default.
+- Added persisted width presets (`quarter`, `third`, `half`, `two-thirds`),
+  default visibility (closed), and thinking visibility (shown). Explicit session
+  visibility overrides the open/closed default.
+- Feed entries retain provider-emitted thinking, with themed Think / Tool / Skill
+  labels and error coloring; thinking visibility changes update live overlays.
 - Agents still execute in-process. Internal session-ready observer wiring allows
   live subscription before the first child event without widening the public API.
 - Output buffers and repaint cadence are bounded; no transcript scrolling or
@@ -58,6 +67,20 @@ No upstream runtime behavior was intentionally changed during import.
   timers, and only the overlay this fork owns.
 - Regular mode remains overlay-free: Pi 1.1.0 still exhibits the scrollback defect
   documented in ADR 0007, including with one- or two-row top margins on bursts.
+
+## Personal profile UX
+
+- Added `/subagents:agents`: searchable read-only definitions, disabled status,
+  effective fields/source paths/locks, description, then full-width Body content.
+- Adapted the `pi-system-insights` viewer locally to keep standalone installs
+  independent: padded rounded frame, contextual help, bounded regular screen,
+  centered fullscreen overlay, keyboard navigation and fullscreen wheel scrolling.
+- Added `--agent <profile>` for the initial main session only. Applies profile
+  model/thinking/tools as defaults, preserves manual choices on resume/reload,
+  and restores the exact saved profile body as system instructions.
+- Main profile selection requires project trust for project definitions and keeps
+  delegation tools available. Child behavior is unchanged; main profile body is
+  excluded from both full and portable child prompt inheritance.
 
 ## Development
 

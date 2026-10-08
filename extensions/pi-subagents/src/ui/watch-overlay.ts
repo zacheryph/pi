@@ -8,11 +8,21 @@ import type { Subagent } from "#src/lifecycle/subagent";
 import { OVERLAY_WIDTH_PERCENT, type OverlayWidth } from "#src/settings";
 import { getDisplayName } from "#src/ui/display";
 import { renderWatchOverlay, watchHeight, type WatchSection } from "#src/ui/watch-renderer";
-import { WatchTail } from "#src/ui/watch-tail";
+import { WatchTail, type WatchResources } from "#src/ui/watch-tail";
 
 export type WatchAgent = Pick<Subagent, "id" | "type" | "description" | "isBackground" | "status" | "responseText"
-  | "result" | "error" | "subscribeToUpdates">;
-export interface WatchSettings { readonly overlayWidth: OverlayWidth; readonly overlayDefaultOpen: boolean }
+  | "result" | "error" | "subscribeToUpdates"> & {
+    /** Resource metadata only; never inspect session messages or skill contents. */
+    readonly subagentSession?: { readonly session: {
+      readonly resourceLoader: { getSkills(): { skills: WatchResources["skills"] } };
+      readonly sessionManager: { getCwd(): string };
+    } };
+  };
+export interface WatchSettings {
+  readonly overlayWidth: OverlayWidth;
+  readonly overlayDefaultOpen: boolean;
+  readonly overlayShowThinking?: boolean;
+}
 type WatchContext = Pick<ExtensionContext, "mode" | "hasUI"> & {
   ui: Pick<ExtensionUIContext, "setWidget" | "theme" | "notify">;
 };
@@ -62,7 +72,7 @@ export class WatchOverlay implements SubagentManagerObserver {
     for (const record of this.manager.listAgents()) {
       if (record.isBackground && (record.status === "running" || record.status === "queued")) {
         const watched = this.track(record);
-        if (watched && record.responseText) watched.tail.note(record.responseText);
+        if (watched && record.responseText) watched.tail.note(record.responseText, "text");
         this.subscribe(record);
       }
     }
@@ -112,6 +122,17 @@ export class WatchOverlay implements SubagentManagerObserver {
   private subscribe(record: WatchAgent): void {
     const watched = this.track(record);
     if (!watched || watched.unsubscribe) return;
+    // No inherited history: use child resources only to recognize live read evidence.
+    try {
+      const session = record.subagentSession?.session;
+      if (session) watched.tail.setResources({
+        cwd: session.sessionManager.getCwd(), skills: session.resourceLoader.getSkills().skills,
+      });
+    } catch (error) {
+      debugLog("WatchOverlay.resources", error);
+      // Metadata failure must not break observation or produce stale skill evidence.
+      watched.tail.setResources({ cwd: process.cwd(), skills: [] });
+    }
     watched.unsubscribe = record.subscribeToUpdates(event => {
       if (watched.tail.apply(event)) this.requestRepaint();
     });
@@ -123,8 +144,8 @@ export class WatchOverlay implements SubagentManagerObserver {
     watched.unsubscribe?.();
     watched.unsubscribe = undefined;
     watched.finishedAt = Date.now();
-    if (record.error) watched.tail.note(`Error: ${record.error}`);
-    else if (record.result && watched.tail.blocks.length === 0) watched.tail.note(record.result);
+    if (record.error) watched.tail.note(`Error: ${record.error}`, "error");
+    else if (record.result && !watched.tail.blocks.some(block => block.kind === "text")) watched.tail.note(record.result, "text");
     this.scheduleExpiry();
     this.refresh();
   }
@@ -136,7 +157,7 @@ export class WatchOverlay implements SubagentManagerObserver {
         id: record.id,
         label: `${getDisplayName(record.type, this.registry)}: ${record.description}`,
         status: record.status,
-        blocks: tail.blocks,
+        blocks: tail.visibleBlocks(this.settings.overlayShowThinking ?? true),
       }));
   }
 

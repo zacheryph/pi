@@ -44,6 +44,7 @@ import {
   createWorkspaceNoticeRenderer,
 } from "#src/observation/renderer";
 import { SubagentEventsObserver } from "#src/observation/subagent-events-observer";
+import { registerMainAgentProfile } from "#src/main-agent-profile";
 import { createSubagentRuntime } from "#src/runtime";
 import { publishSubagentsService, unpublishSubagentsService } from "#src/service/service";
 import { SubagentsServiceAdapter } from "#src/service/service-adapter";
@@ -60,6 +61,7 @@ import { AgentTool } from "#src/tools/agent-tool";
 import { GetResultTool } from "#src/tools/get-result-tool";
 import { SteerTool } from "#src/tools/steer-tool";
 import { AgentWidget } from "#src/ui/agent-widget";
+import { showAgentsBrowser } from "#src/ui/agents-browser";
 import { SessionNavigatorHandler } from "#src/ui/session-navigator";
 import { SubagentsSettingsHandler } from "#src/ui/subagents-settings";
 import { WatchOverlay } from "#src/ui/watch-overlay";
@@ -268,6 +270,10 @@ export default function (pi: ExtensionAPI) {
 
   pi.registerTool(new SteerTool(manager, pi.events).toToolDefinition());
 
+  // Main-only profile hooks register after the orchestration tools exist. Child
+  // sessions load fresh extension runtimes without this session's flag/snapshot.
+  registerMainAgentProfile(pi);
+
   // ---- Passive background-agent watch overlay ----
 
   pi.registerShortcut(Key.ctrlAlt("s"), {
@@ -293,6 +299,17 @@ export default function (pi: ExtensionAPI) {
     description: "Configure subagent settings (concurrency, turn limits, retention, watch overlay)",
     handler: async (_args, ctx) => {
       await subagentsSettings.handle({ ui: ctx.ui });
+    },
+  });
+
+  // ---- /subagents:agents command ----
+
+  pi.registerCommand("subagents:agents", {
+    description: "Browse agent definitions, effective settings, and instructions (read-only)",
+    handler: async (_args, ctx) => {
+      // Fresh definitions for this cwd; never mutate the registry of running children.
+      const definitions = new AgentTypeRegistry(() => loadCustomAgents(ctx.cwd));
+      await showAgentsBrowser(ctx, definitions, { defaultMaxTurns: settings.defaultMaxTurns });
     },
   });
 

@@ -4,6 +4,7 @@
 
 import type { Model } from "@earendil-works/pi-ai";
 import { buildParentContext } from "#src/session/context";
+import { MAIN_AGENT_SECTION, withoutMainAgentSection } from "#src/session/main-profile-prompt";
 import type { ModelRegistry } from "#src/session/model-resolver";
 import type { SessionContext } from "#src/types";
 
@@ -20,13 +21,17 @@ import type { SessionContext } from "#src/types";
  * the tools actually in the registry, so inheriting the parent's would assert
  * guidance for tools the child may not hold — the defect ADR 0008 removed with
  * the `<sub_agent_context>` block. `selectedTools` and `toolSnippets` are
- * excluded because the tool surface is node-local prose.
+ * excluded because the tool surface is node-local prose. The section map is
+ * carried solely to subtract main-profile instructions from full inheritance;
+ * it never contributes to the portable identity.
  */
 export interface ParentPromptOptions {
   /** Custom system prompt (`--system-prompt`), when the parent runs one. */
   customPrompt?: string;
   /** Appended system prompt text (`--append-system-prompt`). */
   appendSystemPrompt?: string;
+  /** Captured sections used only to exclude exact main-profile instructions. */
+  sections?: Readonly<Record<string, string>>;
 }
 
 /**
@@ -36,7 +41,7 @@ export interface ParentPromptOptions {
 export interface ParentSnapshot {
   /** Parent working directory. */
   cwd: string;
-  /** Parent's effective system prompt (for append-mode agents). */
+  /** Parent prompt for child inheritance, excluding exact main-only profile instructions. */
   systemPrompt: string;
   /** Parent's current model instance (fallback when agent config has no model). */
   model: Model<any> | undefined;
@@ -69,7 +74,7 @@ export function buildParentSnapshot(
   const parentContext = inheritContext ? buildParentContext(ctx) : undefined;
   return {
     cwd: ctx.cwd,
-    systemPrompt: ctx.getSystemPrompt(),
+    systemPrompt: withoutMainAgentSection(ctx.getSystemPrompt(), promptOptions?.sections?.[MAIN_AGENT_SECTION]),
     model: ctx.model,
     modelRegistry: ctx.modelRegistry,
     // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- || intentional: converts empty string to undefined as well as null/undefined

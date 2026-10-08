@@ -36,6 +36,9 @@ try {
   );
   const tools = extensions.flatMap((extension) => [...extension.tools.keys()]);
   const commands = extensions.flatMap((extension) => [...extension.commands.keys()]);
+  const flags = extensions.flatMap((extension) => [...extension.flags.keys()]);
+  assert.equal(new Set(flags).size, flags.length, "Flag names must be unique");
+  assert.ok(flags.includes("agent"), "Missing flag: --agent");
   assert.equal(new Set(tools).size, tools.length, "Tool names must be unique");
   assert.equal(new Set(commands).size, commands.length, "Command names must be unique");
   for (const name of ["subagent", "get_subagent_result", "steer_subagent"]) {
@@ -45,6 +48,7 @@ try {
     "subagents:settings",
     "subagents:sessions",
     "subagents:watch",
+    "subagents:agents",
     "system:prompt",
     "system:tools",
     "system:skills",

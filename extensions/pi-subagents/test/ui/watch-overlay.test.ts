@@ -54,7 +54,7 @@ function fixture(initial: WatchAgent[] = [], mode: "tui" | "rpc" | "print" = "tu
     }),
   };
   const context = { mode, hasUI: mode !== "print", ui: ui as unknown as ExtensionUIContext };
-  const settings: Mutable<WatchSettings> = { overlayWidth: "third", overlayDefaultOpen: true };
+  const settings: Mutable<WatchSettings> = { overlayWidth: "third", overlayDefaultOpen: true, overlayShowThinking: true };
   const watch = new WatchOverlay({ listAgents: () => initial }, new AgentTypeRegistry(() => new Map()), settings);
   watch.setContext(context);
   return { watch, context, settings, ui, tui, overlays, hosts, text: () => overlays.at(-1)!.component.render(40).join("\n") };
@@ -91,6 +91,71 @@ describe("WatchOverlay lifecycle and visibility", () => {
     expect(f.text()).toContain("auth.ts");
     expect(f.text()).toContain("Found middleware");
     expect(a.record.subscribeToUpdates).toHaveBeenCalledTimes(1);
+    f.watch.dispose();
+  });
+
+  it("shows thinking by default, filters live, and re-shows recent thinking retained while hidden", () => {
+    const f = fixture();
+    const a = agent();
+    a.ready();
+    f.watch.onSubagentSessionCreated(a.record);
+    a.emit({ type: "message_update", message: { role: "assistant", content: [
+      { type: "thinking", thinking: "provider reasoning" }, { type: "text", text: "normal output" },
+    ] } } as AgentSessionEvent);
+    expect(f.text()).toContain("Think provider reasoning");
+    expect(f.text()).toContain("normal output");
+    vi.advanceTimersByTime(100);
+    const paints = f.tui.requestRender.mock.calls.length;
+    f.settings.overlayShowThinking = false;
+    f.watch.settingsChanged();
+    expect(f.text()).not.toContain("provider reasoning");
+    expect(f.text()).toContain("normal output");
+    vi.advanceTimersByTime(100);
+    expect(f.tui.requestRender).toHaveBeenCalledTimes(paints + 1);
+    f.watch.toggle(); // panel hidden; feed still retained
+    a.emit({ type: "message_end", message: { role: "assistant", content: [
+      { type: "thinking", thinking: "recent hidden reasoning" }, { type: "text", text: "normal output" },
+    ] } } as AgentSessionEvent);
+    f.settings.overlayShowThinking = true;
+    f.watch.settingsChanged();
+    expect(f.overlays).toHaveLength(1);
+    expect(f.overlays[0].handle.isHidden()).toBe(true);
+    f.watch.toggle();
+    expect(f.text()).toContain("Think recent hidden reasoning");
+    expect(f.text()).not.toContain("provider reasoning");
+    f.watch.dispose();
+  });
+
+  it("recognizes live nested skill reads using child resources and cwd, never inherited history", () => {
+    const f = fixture();
+    const skills = [{ name: "deploy", filePath: "/child/skills/deploy/SKILL.md" }];
+    const session = {
+      resourceLoader: { getSkills: vi.fn(() => ({ skills })) },
+      sessionManager: { getCwd: vi.fn(() => "/child") },
+      get messages(): never { throw new Error("Must not read inherited transcript"); },
+    };
+    const a = agent({ subagentSession: { session } });
+    a.ready();
+    f.watch.onSubagentSessionCreated(a.record);
+    expect(f.text()).not.toContain("Skill deploy");
+    a.emit({ type: "tool_execution_start", toolCallId: "p/1", parentToolCallId: "p", toolName: "read", args: { path: "skills/deploy/SKILL.md" } });
+    expect(f.text()).toContain("Skill deploy · loading…");
+    expect(f.text()).not.toContain("loaded");
+    a.emit({ type: "tool_execution_end", toolCallId: "p/1", parentToolCallId: "p", toolName: "read", result: { content: [{ type: "text", text: "private instructions" }] }, isError: false });
+    expect(f.text()).toContain("Skill deploy · loaded");
+    expect(f.text()).not.toContain("private instructions");
+    expect(session.resourceLoader.getSkills).toHaveBeenCalledOnce();
+    expect(session.sessionManager.getCwd).toHaveBeenCalledOnce();
+    f.watch.dispose();
+  });
+
+  it("colors final agent errors with error theme token", () => {
+    const f = fixture();
+    const fg = vi.fn((_color: string, text: string) => text);
+    f.ui.theme.fg = fg;
+    f.watch.onSubagentCompleted(agent({ status: "error", error: "Oops" }).record);
+    f.text();
+    expect(fg).toHaveBeenCalledWith("error", "Error: Oops");
     f.watch.dispose();
   });
 

@@ -35,6 +35,8 @@ export interface SubagentsSettings {
   overlayWidth?: OverlayWidth;
   /** Fullscreen default visibility only before an explicit show/hide in the current session. */
   overlayDefaultOpen?: boolean;
+  /** Show provider-emitted thinking in the watch feed; hidden thinking remains bounded and retained. */
+  overlayShowThinking?: boolean;
   maxConcurrent?: number;
   /**
    * 0 = unlimited — the extension's single source of truth for that convention:
@@ -88,6 +90,7 @@ export interface SubagentsSettings {
 export interface SettingsSnapshot {
   overlayWidth: OverlayWidth;
   overlayDefaultOpen: boolean;
+  overlayShowThinking: boolean;
   maxConcurrent: number;
   defaultMaxTurns: number;
   wrapUpTurns: number;
@@ -125,6 +128,7 @@ const DEFAULT_OVERLAY_DEFAULT_OPEN = false;
 export class SettingsManager {
   private _overlayWidth: OverlayWidth = DEFAULT_OVERLAY_WIDTH;
   private _overlayDefaultOpen: boolean = DEFAULT_OVERLAY_DEFAULT_OPEN;
+  private _overlayShowThinking = true;
   private _defaultMaxTurns: number | undefined = undefined;
   private _wrapUpTurns: number = DEFAULT_WRAP_UP_TURNS;
   private _maxConcurrent: number = DEFAULT_MAX_CONCURRENT;
@@ -154,6 +158,10 @@ export class SettingsManager {
   /** Applies in fullscreen only, before an explicit show/hide in the current session. */
   get overlayDefaultOpen(): boolean {
     return this._overlayDefaultOpen;
+  }
+
+  get overlayShowThinking(): boolean {
+    return this._overlayShowThinking;
   }
 
   // ── defaultMaxTurns: 0 or undefined → unlimited (undefined); else at least MIN_MAX_TURNS ──
@@ -246,6 +254,8 @@ export class SettingsManager {
     if (settings.overlayWidth !== undefined) this._overlayWidth = settings.overlayWidth;
     if (typeof settings.overlayDefaultOpen === "boolean")
       this._overlayDefaultOpen = settings.overlayDefaultOpen;
+    if (typeof settings.overlayShowThinking === "boolean")
+      this._overlayShowThinking = settings.overlayShowThinking;
     if (typeof settings.maxConcurrent === "number") this.maxConcurrent = settings.maxConcurrent;
     if (typeof settings.defaultMaxTurns === "number") this.defaultMaxTurns = settings.defaultMaxTurns;
     if (typeof settings.wrapUpTurns === "number") this.wrapUpTurns = settings.wrapUpTurns;
@@ -271,6 +281,7 @@ export class SettingsManager {
     const snapshot: SettingsSnapshot = {
       overlayWidth: this._overlayWidth,
       overlayDefaultOpen: this._overlayDefaultOpen,
+      overlayShowThinking: this._overlayShowThinking,
       maxConcurrent: this._maxConcurrent,
       defaultMaxTurns: this._defaultMaxTurns ?? 0,
       wrapUpTurns: this._wrapUpTurns,
@@ -292,6 +303,12 @@ export class SettingsManager {
   applyOverlayWidth(width: OverlayWidth): { message: string; level: "info" | "warning" } {
     this._overlayWidth = width;
     return this.saveAndNotify(`Overlay width set to ${width}`);
+  }
+
+  /** Filter live without discarding retained thinking; existing settings event repaints the overlay. */
+  toggleOverlayShowThinking(): { message: string; level: "info" | "warning" } {
+    this._overlayShowThinking = !this._overlayShowThinking;
+    return this.saveAndNotify(`Overlay thinking: ${this._overlayShowThinking ? "shown" : "hidden"}`);
   }
 
   /** Flip default visibility; explicit session show/hide still takes precedence. */
@@ -423,6 +440,7 @@ function sanitize(raw: unknown): SubagentsSettings {
   const out: SubagentsSettings = {};
   if (isOverlayWidth(r.overlayWidth)) out.overlayWidth = r.overlayWidth;
   if (typeof r.overlayDefaultOpen === "boolean") out.overlayDefaultOpen = r.overlayDefaultOpen;
+  if (typeof r.overlayShowThinking === "boolean") out.overlayShowThinking = r.overlayShowThinking;
   if (
     Number.isInteger(r.maxConcurrent) &&
     (r.maxConcurrent as number) >= 1 &&

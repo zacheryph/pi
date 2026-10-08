@@ -88,6 +88,9 @@ function renderAgentRow(
 	width: number,
 	now: number,
 ): string {
+	// Keep agent rows inset from Pi's full-width chrome, including after resize.
+	if (width <= 2) return " ".repeat(width);
+	width -= 2;
 	const active = isActiveStatus(agent.status);
 	const name = singleLine(getDisplayName(agent.type, registry));
 	const mode = width >= 60 ? getPromptModeLabel(agent.type, registry) : undefined;
@@ -96,7 +99,7 @@ function renderAgentRow(
 	const identity = active ? theme.bold(name) : theme.fg("dim", name);
 	const description = theme.fg(active ? "muted" : "dim", singleLine(agent.description));
 	const left = `${elapsed}${identity}${tag}: ${description}`;
-	return alignColumns(left, renderStatus(agent, spinnerFrame, theme), width);
+	return ` ${alignColumns(left, renderStatus(agent, spinnerFrame, theme), width)} `;
 }
 
 /** Header icon stays static, even while individual agent status spinners animate. */

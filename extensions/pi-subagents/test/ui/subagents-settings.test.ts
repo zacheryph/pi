@@ -37,6 +37,8 @@ function makeSettings() {
     })),
     overlayWidth: "third" as OverlayWidth,
     overlayDefaultOpen: false,
+    overlayShowThinking: true,
+    toggleOverlayShowThinking: vi.fn((): { message: string; level: "info" | "warning" } => ({ message: "Overlay thinking: hidden", level: "info" })),
     applyOverlayWidth: vi.fn((width: OverlayWidth): { message: string; level: "info" | "warning" } => ({
       message: `Overlay width set to ${width}`,
       level: "info",
@@ -68,7 +70,7 @@ describe("SubagentsSettingsHandler", () => {
     expect(handler).toBeInstanceOf(SubagentsSettingsHandler);
   });
 
-  it("shows the nine settings options with current values", async () => {
+  it("shows all settings options with current values", async () => {
     const { handler } = makeHandler();
     const ui = makeMenuUI([undefined]); // cancel immediately
     await handler.handle({ ui });
@@ -83,6 +85,7 @@ describe("SubagentsSettingsHandler", () => {
       "Mid-run updates from background subagents (current: on)",
       "Overlay width (current: third)",
       "Overlay default visibility (before explicit show/hide this session) (current: hidden)",
+      "Overlay thinking (current: shown)",
     ]);
   });
 
@@ -119,11 +122,33 @@ describe("SubagentsSettingsHandler", () => {
     expect(settings.applyWrapUpTurns).not.toHaveBeenCalled();
     expect(settings.applyOverlayWidth).not.toHaveBeenCalled();
     expect(settings.toggleOverlayDefaultOpen).not.toHaveBeenCalled();
+    expect(settings.toggleOverlayShowThinking).not.toHaveBeenCalled();
     expect(ui.input).not.toHaveBeenCalled();
   });
 });
 
 describe("SubagentsSettingsHandler — overlay settings", () => {
+  it.each([true, false])("shows thinking visibility %s and toggles without input", async shown => {
+    const { handler, settings } = makeHandler();
+    settings.overlayShowThinking = shown;
+    const choice = `Overlay thinking (current: ${shown ? "shown" : "hidden"})`;
+    const ui = makeMenuUI([choice]);
+    await handler.handle({ ui });
+    expect(ui.select.mock.calls[0][1]).toContain(choice);
+    expect(settings.toggleOverlayShowThinking).toHaveBeenCalledOnce();
+    expect(ui.input).not.toHaveBeenCalled();
+    expect(ui.notify).toHaveBeenCalledWith("Overlay thinking: hidden", "info");
+  });
+
+  it("forwards thinking persistence warnings", async () => {
+    const { handler, settings } = makeHandler();
+    settings.toggleOverlayShowThinking.mockReturnValue({
+      message: "Overlay thinking: hidden (session only; failed to persist)", level: "warning",
+    });
+    const ui = makeMenuUI(["Overlay thinking (current: shown)"]);
+    await handler.handle({ ui });
+    expect(ui.notify).toHaveBeenCalledWith("Overlay thinking: hidden (session only; failed to persist)", "warning");
+  });
   it.each<OverlayWidth>(["quarter", "third", "half", "two-thirds"])(
     "selects width preset %s without freeform input",
     async (width) => {

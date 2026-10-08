@@ -2,13 +2,13 @@
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import type { SubagentStatus } from "#src/lifecycle/subagent-state";
 import type { Theme } from "#src/ui/display";
-import { watchText } from "#src/ui/watch-tail";
+import { watchText, type WatchBlock } from "#src/ui/watch-tail";
 
 export interface WatchSection {
   id: string;
   label: string;
   status: SubagentStatus;
-  blocks: readonly string[];
+  blocks: readonly WatchBlock[];
 }
 
 export function watchHeight(rows: number): number { return Math.max(0, Math.floor(rows) - 6); }
@@ -43,19 +43,35 @@ export function renderWatchOverlay(sections: readonly WatchSection[], width: num
       const allocation = Math.floor(body / count) + (index < body % count ? 1 : 0);
       const icon = section.status === "running" ? "●" : section.status === "queued" ? "◦"
         : section.status === "completed" ? "✓" : "✗";
-      const color = section.status === "error" ? "error" : section.status === "completed" ? "success" : "accent";
+      const color = section.status === "error" || section.status === "aborted" || section.status === "stopped"
+        ? "error" : section.status === "completed" ? "success" : "accent";
       const label = watchText(section.label).replace(/\s+/g, " ").trim();
       lines.push(row(theme.fg(color, truncateToWidth(`── ${icon} ${label} · ${section.status}`, inner, "…"))));
       const tailRows = allocation - 1;
-      const blocks = section.blocks.length ? section.blocks : [section.status === "queued" ? "Queued…" : section.status === "running" ? "Thinking…" : "No text output."];
+      const blocks: readonly WatchBlock[] = section.blocks.length ? section.blocks : [{ kind: "note",
+        text: section.status === "queued" ? "Queued…" : section.status === "running" ? "Working…" : "No text output." }];
       let tail: string[] = [];
       for (let block = blocks.length - 1; block >= 0 && tail.length < tailRows; block--) {
-        const wrapped = wrapTextWithAnsi(watchText(blocks[block]), inner);
-        tail = [...wrapped.slice(-tailRows), ...tail].slice(-tailRows);
+        const activity = blocks[block];
+        const label = activity.kind === "thinking" ? "Think" : activity.kind === "tool" ? "Tool" : activity.kind === "skill" ? "Skill" : "";
+        const color = activity.kind === "error" || activity.status === "error" ? "error"
+          : activity.kind === "thinking" ? "thinkingText" : activity.kind === "tool" ? "toolOutput"
+          : activity.kind === "skill" ? activity.status === "success" ? "success" : "warning"
+          : activity.kind === "note" ? "muted" : "text";
+        // Reserve label columns while wrapping; put label on FIRST VISIBLE row,
+        // not the offscreen start of a long block. Clip label safely on tiny panels.
+        const prefix = label ? truncateToWidth(`${label} `, inner - 1, "…") : "";
+        const prefixWidth = visibleWidth(prefix);
+        const indent = " ".repeat(prefixWidth);
+        // Sanitize before trusted theme escapes; reapply color on every wrapped row.
+        const wrapped = wrapTextWithAnsi(watchText(activity.text), inner - prefixWidth)
+          .slice(-(tailRows - tail.length))
+          .map((line, index) => theme.fg(color, (index === 0 ? prefix : indent) + line));
+        tail = [...wrapped, ...tail];
       }
       // Bottom-align each tail; no scrollbar, input handling, or inherited history.
       while (tail.length < tailRows) tail.unshift("");
-      lines.push(...tail.map(text => row(theme.fg("muted", text))));
+      lines.push(...tail.map(row));
     }
     if (count < sections.length) lines.push(row(theme.fg("dim", `+${sections.length - count} more agents`)));
   }

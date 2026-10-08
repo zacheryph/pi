@@ -2,7 +2,8 @@
 
 > Vendored personal copy. Install this repository as one bundle; do not install
 > the npm package alongside it. See [local setup and provenance](./UPSTREAM.md)
-> and [bundle instructions](../../README.md). Remaining instructions describe upstream.
+> and [bundle instructions](../../README.md). Local UI/profile additions are documented below;
+> published npm installation instructions refer to upstream.
 
 [![npm version](https://img.shields.io/npm/v/@gotgenes/pi-subagents?style=flat&logo=npm&logoColor=white)](https://www.npmjs.com/package/@gotgenes/pi-subagents) [![CI](https://img.shields.io/github/actions/workflow/status/gotgenes/pi-packages/ci.yml?style=flat&logo=github&label=CI)](https://github.com/gotgenes/pi-packages/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat)](https://opensource.org/licenses/MIT) [![TypeScript](https://img.shields.io/badge/TypeScript-6.x-3178C6?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/) [![pnpm](https://img.shields.io/badge/pnpm-%3E%3D11-F69220?style=flat&logo=pnpm&logoColor=white)](https://pnpm.io/) [![Pi Package](https://img.shields.io/badge/Pi-Package-6366F1?style=flat)](https://pi.mariozechner.at/)
 
@@ -10,8 +11,9 @@ A [pi](https://pi.dev) extension that gives pi **a focused, in-process sub-agent
 Spawn specialized agents that run in isolated sessions — each with its own tools, system prompt, model, and thinking level.
 Run them in foreground or background, steer them mid-run, resume completed sessions, and define your own custom agent types.
 
-> Originally forked from [`tintinweb/pi-subagents`](https://github.com/tintinweb/pi-subagents) by [@tintinweb](https://github.com/tintinweb), now an independently maintained hard fork.
-> See [Comparison with upstream](./docs/comparison-with-upstream.md) for a feature-by-feature comparison and guidance on which to choose.
+> This personal fork is based on [`gotgenes/pi-packages/packages/pi-subagents`](https://github.com/gotgenes/pi-packages/tree/main/packages/pi-subagents),
+> itself an independently maintained hard fork of [`tintinweb/pi-subagents`](https://github.com/tintinweb/pi-subagents) by [@tintinweb](https://github.com/tintinweb).
+> See [local provenance](./UPSTREAM.md) for the imported revision and [Comparison with upstream](./docs/comparison-with-upstream.md) for the gotgenes–tintinweb comparison.
 
 <img width="600" alt="pi-subagents screenshot" src="https://github.com/gotgenes/pi-subagents/raw/main/media/screenshot.png" />
 
@@ -80,6 +82,8 @@ The extension renders a persistent widget above the editor showing active backgr
 This personal fork uses only a top rule, without side walls or a bottom border.
 Pi's own Working border, editor, and footer below it are unchanged.
 The header icon is static; each running agent's activity indicator animates.
+Agent rows reserve one leading space before elapsed time and one trailing space
+after the activity/outcome indicator. The header rule remains full-width.
 Queued agents get individual rows. Finished agents show their outcome briefly,
 with a fixed elapsed duration and the original linger policy.
 
@@ -112,6 +116,51 @@ Background agent completion notifications render as styled boxes:
 ```
 
 The LLM receives structured `<task-notification>` XML for parsing, while the user sees the themed visual.
+
+## Main-session profile: `--agent`
+
+```bash
+pi --agent Explore
+pi --agent my-profile "Review the authentication flow"
+```
+
+The local fork can run Pi's **main session** as an agent profile. Profile
+frontmatter supplies **startup defaults** for model, thinking, and active tools;
+manual changes remain allowed. The Markdown body becomes a named **system-prompt
+section**, not text prepended to the initial user task. Normal Pi/project/skill
+instructions remain intact. `prompt_mode: append` wraps the body in
+`<agent_instructions>`; `replace` omits that wrapper, matching existing child
+semantics rather than erasing Pi's prompt.
+
+Defaults apply only to an explicit `--agent` at CLI startup, including CLI resume.
+Omitted values use Pi's current choices; selecting a different model may adjust
+thinking to that model's supported level. Ordinary resume/reload preserves manual
+settings and restores the saved profile body;
+`/new` starts ordinary Pi, even if this process originally used `--agent`.
+A branch-relative snapshot preserves exact profile instructions across source
+file edits. An explicit `--agent` on a new invocation selects a new snapshot.
+
+Unknown/disabled profiles, unavailable required settings, and untrusted project
+profiles produce a diagnostic rather than silently selecting another profile.
+Incompatible opaque system-prompt overrides are rejected rather than dropping
+the saved profile instructions.
+Construction-time tool exclusions cannot be undone; avoid conflicting `--tools`,
+`--exclude-tools`, or `--no-tools` flags. Startup errors prevent ordinary model
+runs, but Pi's public extension API cannot guarantee a nonzero print/JSON exit
+status for a handled startup failure; automation must check diagnostics too.
+
+`subagent`, `get_subagent_result`, and `steer_subagent` remain active alongside the
+main profile's initial tool list. Children keep existing profile settings and
+prompt construction; the main profile body is not inherited. Normal child
+defaults that inherit the current parent model or thinking still work as before.
+`max_turns`, `run_in_background`, and `inherit_context` are child-only and reported
+as skipped for the main session. `locked` controls child caller overrides, not
+manual main-session changes.
+
+These are defaults, **not permission enforcement or an OS sandbox**. Active tools
+control model declarations; registered codemode/deferred tools may still be
+callable indirectly. No main-profile tool deny gate constrains later changes,
+child agents, trusted extensions, or nested/virtual model routing.
 
 ## Tools
 
@@ -167,6 +216,7 @@ The message interrupts after the current tool execution.
 | --------------------- | ----------------------------------------------------------------------------------- |
 | `/subagents:settings` | Configure subagent settings (concurrency, turn limits, retention, interrupt policy) |
 | `/subagents:sessions` | View a subagent's session transcript (read-only)                                    |
+| `/subagents:agents` | Browse agent profiles and inspect effective settings and instructions (read-only) |
 | `/subagents:watch` | Toggle the passive, tailing watch overlay (Pi fullscreen mode only) |
 
 ### `/subagents:settings`
@@ -174,8 +224,24 @@ The message interrupts after the current tool execution.
 Interactive list to tune runtime settings — max concurrency, default max turns, wrap-up turns, the two session-retention windows, and whether ESC aborts every subagent.
 The numeric settings open an input prompt; the abort-on-ESC entry is a direct flip.
 Watch-overlay width uses a preset selector (quarter, third, half, two-thirds);
-its default visibility is a toggle. The overlay starts closed at third width.
+default visibility and thinking visibility are toggles. The overlay starts closed
+at third width, with thinking enabled.
 Changes persist across pi restarts (see [Persistent Settings](./docs/configuration.md#persistent-settings)).
+
+### `/subagents:agents`
+
+Search agent names, status, and descriptions; Enter opens details. All effective
+profiles are listed, including disabled profiles, with project overrides taking
+precedence over global and built-in definitions. Details show name, effective
+fields and source, description, then a separate **Body** heading followed by the
+full multiline instructions. Browsing never launches an agent or changes settings.
+
+The viewer follows `pi-system-insights`: centered rounded frame with padding,
+contextual footer help, an 80% fullscreen overlay, and a bounded custom screen in
+regular mode. Arrow keys navigate; PageUp/PageDown and Home/End page or jump;
+fullscreen mouse wheel scrolls. Esc returns from details, clears an active filter,
+or closes; Ctrl+C closes from either view. Non-TUI modes do not open the browser.
+Reopen to refresh the snapshot.
 
 ### `/subagents:watch`
 
@@ -185,9 +251,16 @@ covers content underneath rather than reflowing Pi into a sidebar. Six bottom
 rows are left for Pi's dock; tiny terminals suppress the overlay.
 
 Each background agent has a header and an always-tailing output section.
-Assistant text streams live; tool calls show one concise argument and a short
-result/update summary. Inherited conversation, thinking text, images, and full
-tool payloads are omitted. Sections share the height; short terminals show an
+Assistant text and provider-emitted thinking stream live. Compact **Think**,
+**Tool**, and **Skill** labels use distinct semantic theme colors; failures use
+the error color. Tool calls show one concise argument and a short result/update
+summary. Skill reads distinguish loading, successful loading, partial reads, and errors.
+Labels describe observed reads, not proof instructions were forwarded or retained;
+invocations without an observable read produce no loading evidence.
+Inherited conversation, images, and full tool payloads are omitted.
+Use `/subagents:settings` to hide thinking; the setting defaults to visible and
+updates an open overlay immediately. It cannot reveal reasoning a provider does
+not emit. Sections share the height; short terminals show an
 exact `+N more agents` count, prioritizing running agents, then queued, then
 finished. Finished sections linger for eight seconds. No scrolling or agent
 control is provided.

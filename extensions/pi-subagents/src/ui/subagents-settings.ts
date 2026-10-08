@@ -19,8 +19,10 @@ export interface SubagentsSettingsManager {
   readonly midRunUpdates: boolean;
   readonly overlayWidth: OverlayWidth;
   readonly overlayDefaultOpen: boolean;
+  readonly overlayShowThinking: boolean;
   applyOverlayWidth(width: OverlayWidth): SettingsToast;
   toggleOverlayDefaultOpen(): SettingsToast;
+  toggleOverlayShowThinking(): SettingsToast;
   applyMaxConcurrent(n: number): SettingsToast;
   applyDefaultMaxTurns(n: number): SettingsToast;
   applyWrapUpTurns(n: number): SettingsToast;
@@ -158,6 +160,12 @@ const SETTINGS: readonly SettingDescriptor[] = [
     label: "Overlay default visibility (before explicit show/hide this session)",
     currentDisplay: (settings) => (settings.overlayDefaultOpen ? "shown" : "hidden"),
     toggle: (settings) => settings.toggleOverlayDefaultOpen(),
+  },
+  {
+    kind: "toggle",
+    label: "Overlay thinking",
+    currentDisplay: (settings) => (settings.overlayShowThinking ? "shown" : "hidden"),
+    toggle: (settings) => settings.toggleOverlayShowThinking(),
   },
 ];
 

@@ -66,7 +66,7 @@ describe("compact widget heading and rows", () => {
 	it("right-aligns status without wrapping", () => {
 		const row = render()[1];
 		expect(row).toHaveLength(80);
-		expect(row).toMatch(/test task\s{2,}⠋ thinking…$/);
+		expect(row).toMatch(/^ 01:23.*test task\s{2,}⠋ thinking… $/);
 	});
 
 	it("shows active tools, or streamed response text when no tools run", () => {
@@ -95,7 +95,7 @@ describe("compact widget heading and rows", () => {
 		expect(first).toHaveLength(3);
 		expect(first[1]).toContain("--:--  Agent (twin): first queued task");
 		expect(first[2]).toContain("second queued task");
-		expect(first.slice(1).every(line => line.endsWith("◦ queued"))).toBe(true);
+		expect(first.slice(1).every(line => line.startsWith(" ") && line.endsWith("◦ queued "))).toBe(true);
 		vi.advanceTimersByTime(60_000);
 		expect(render({ agents })).toEqual(first);
 	});
@@ -131,7 +131,7 @@ describe("finished outcomes and linger filtering", () => {
 		["error", "✗ error"],
 	] as const)("shows %s outcome", (status, label) => {
 		const row = render({ agents: [makeAgent({ status, completedAt: NOW })] })[1];
-		expect(row.endsWith(label)).toBe(true);
+		expect(row.endsWith(`${label} `)).toBe(true);
 	});
 
 	it("preserves budget-warning outcome", () => {
@@ -194,6 +194,13 @@ describe("terminal layout safety", () => {
 		if (terminalWidth === 0) expect(lines).toEqual([]);
 	});
 
+	it.each([1, 2, 8, 30, 80])("reserves leading and trailing spaces at width %i", terminalWidth => {
+		const row = render({ terminalWidth })[1];
+		expect(row.startsWith(" ")).toBe(true);
+		expect(row.endsWith(" ")).toBe(true);
+		expect(visibleWidth(row)).toBeLessThanOrEqual(terminalWidth);
+	});
+
 	it("keeps agent identity and status visible when task/activity text is long", () => {
 		const row = render({ agents: [makeAgent({ description: "Long task ".repeat(100), responseText: "Streaming ".repeat(100) })] })[1];
 		expect(row).toContain("Agent");
@@ -204,7 +211,7 @@ describe("terminal layout safety", () => {
 
 	it("drops elapsed time and prompt mode on narrow screens, keeping task and status", () => {
 		const row = render({ terminalWidth: 30 })[1];
-		expect(row).toContain("Agent: test task");
+		expect(row).toContain("Agent: test");
 		expect(row).toContain("thinking…");
 		expect(row).not.toContain("01:23");
 		expect(row).not.toContain("twin");

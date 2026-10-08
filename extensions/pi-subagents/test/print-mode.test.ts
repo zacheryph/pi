@@ -22,6 +22,9 @@ function makePi() {
   return {
     pi: {
       registerMessageRenderer: vi.fn(),
+      registerFlag: vi.fn(),
+      getFlag: vi.fn(),
+      getActiveTools: vi.fn(() => []),
       registerTool: vi.fn((tool: any) => {
         tools.set(tool.name, tool);
       }),
