@@ -1,7 +1,10 @@
 # Dependencies
 node_modules/
-package-lock.json
 npm-debug.log*
+
+# Generated declarations and test output
+extensions/*/dist/
+coverage/
 
 # OS files
 .DS_Store

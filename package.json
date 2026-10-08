@@ -1,9 +1,29 @@
 {
   "name": "context-pi-extensions",
   "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "extensions/pi-subagents"
+  ],
+  "scripts": {
+    "check": "npm run check --workspace=@gotgenes/pi-subagents",
+    "test": "npm run test --workspace=@gotgenes/pi-subagents",
+    "verify:bundle": "node scripts/verify-bundle.mjs",
+    "build:types": "npm run build:types --workspace=@gotgenes/pi-subagents"
+  },
   "description": "Personal collection of pi extensions, skills, and configurations",
-  "keywords": ["pi-package"],
+  "keywords": [
+    "pi-package"
+  ],
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  },
   "pi": {
-    "extensions": ["./extensions"]
+    "extensions": [
+      "./extensions/pi-subagents/src/index.ts"
+    ]
   }
 }
