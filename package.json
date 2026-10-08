@@ -3,11 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "workspaces": [
-    "extensions/pi-subagents"
+    "extensions/pi-subagents",
+    "extensions/pi-system-insights"
   ],
   "scripts": {
-    "check": "npm run check --workspace=@gotgenes/pi-subagents",
-    "test": "npm run test --workspace=@gotgenes/pi-subagents",
+    "check": "npm run check --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
     "verify:bundle": "node scripts/verify-bundle.mjs",
     "build:types": "npm run build:types --workspace=@gotgenes/pi-subagents"
   },
@@ -23,7 +24,8 @@
   },
   "pi": {
     "extensions": [
-      "./extensions/pi-subagents/src/index.ts"
+      "./extensions/pi-subagents/src/index.ts",
+      "./extensions/pi-system-insights/src/index.ts"
     ]
   }
 }

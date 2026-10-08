@@ -54,6 +54,10 @@ pi-personal/
 ├── tsconfig.base.json
 └── extensions/
     ├── opencode-editor.ts
+    ├── pi-system-insights/
+    │   ├── package.json                 # independent insights workspace
+    │   ├── src/index.ts                 # /system:* entry point
+    │   └── test/
     └── pi-subagents/
         ├── package.json                 # upstream import aliases + dev tooling
         ├── src/index.ts                 # extension entry point
@@ -64,8 +68,8 @@ pi-personal/
 ```
 
 Root `pi.extensions` lists entry points explicitly. Pi loads each as its own
-extension; helper files and tests are not loaded as extensions. The npm workspace
-exists only to make development commands convenient. Both manifests are private;
+extension; helper files and tests are not loaded as extensions. Workspaces simplify
+development commands. All manifests are private;
 nothing needs publishing.
 
 ## Extensions
@@ -109,6 +113,25 @@ See [upstream README](extensions/pi-subagents/README.md),
 [configuration](extensions/pi-subagents/docs/configuration.md), and
 [provenance/local changes](extensions/pi-subagents/UPSTREAM.md).
 
+### pi-system-insights
+
+Read-only session inspectors:
+
+- `/system:prompt` — current Pi system prompt; tool/skill catalogs folded into redaction markers.
+- `/system:tools` — accessible tools; Enter shows declaration/schema and prompt metadata.
+- `/system:skills` — discovered skills; Enter shows description and loading evidence.
+
+Fullscreen viewers use a centered 80% width/height overlay; regular mode uses a
+custom screen to avoid overlay scrollback contamination. Each view has a title,
+rounded border, padded content, and help footer. Indexes omit descriptions;
+details align fields and show one full tool schema.
+
+Skill loading tracks the current branch and becomes dirty after compaction.
+Badges are green for fresh loading evidence, grey for unobserved/dirty state;
+footer explains colors. Esc returns from details to list, then closes.
+Viewers never load skill instructions or change tools/settings. See
+[package README](extensions/pi-system-insights/README.md) for controls and evidence limits.
+
 ## Development
 
 Runtime loading needs no build. Install development dependencies only for checks
@@ -124,7 +147,7 @@ npm run verify:bundle
 `verify:bundle` checks root-package discovery and tool registration in temporary
 settings, without model calls or changes to your Pi configuration.
 
-These check/test commands target the vendored subagents implementation. Pi modules
+These check/test commands cover every development workspace. Pi modules
 are dev dependencies for testing and peer dependencies for runtime; Pi supplies its
 own modules when loading extensions.
 

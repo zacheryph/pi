@@ -41,7 +41,14 @@ try {
   for (const name of ["subagent", "get_subagent_result", "steer_subagent"]) {
     assert.ok(tools.includes(name), `Missing tool: ${name}`);
   }
-  for (const name of ["subagents:settings", "subagents:sessions"]) {
+  for (const name of [
+    "subagents:settings",
+    "subagents:sessions",
+    "subagents:watch",
+    "system:prompt",
+    "system:tools",
+    "system:skills",
+  ]) {
     assert.ok(commands.includes(name), `Missing command: ${name}`);
   }
   console.log(`Bundle loaded: ${extensions.length} extensions; ${tools.join(", ")}`);
