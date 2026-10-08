@@ -106,14 +106,16 @@ explicit and does not open a dialog.
 
 ## UI
 
-Above-editor widget uses a static top rule, one physical row per task, identity
-left and lifecycle status right. Theme tokens match subagents. Active work appears
+Above-editor widget uses a static top rule with the Nerd Font tasks icon
+(`nf-fa-tasks`, U+F0AE); use a patched Nerd Font, preferably its Mono variant.
+Each task occupies one physical row, with identity left and lifecycle status
+right. Body rows reserve one space on each side. Theme tokens match subagents. Active work appears
 first, then ready tasks, blocked tasks, and completed tasks. Dependency keys stay
 visible; overflow becomes `+N more`. Completed tasks remain in state until
 explicitly cleared; hiding them affects display only.
 
 ```text
-── Todos ─────────────────────────────────────── 1/3 done ──
+──   Todos ─────────────────────────────────────────── 1/3
 ▸ build Build change ← inspect                  in progress
 ○ verify Verify change ← build                     blocked
 ✓ inspect Inspect implementation                  completed

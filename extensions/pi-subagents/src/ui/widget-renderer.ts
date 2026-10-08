@@ -104,7 +104,7 @@ function renderAgentRow(
 
 /** Header icon stays static, even while individual agent status spinners animate. */
 function renderHeading(width: number, hasActive: boolean, theme: Theme): string {
-	const label = theme.fg(hasActive ? "accent" : "dim", `${GLYPHS.agentsActive} Subagents`);
+	const label = theme.fg(hasActive ? "accent" : "dim", `${GLYPHS.agentsHeading}  Subagents`);
 	const prefix = `${theme.fg("border", "──")} ${label} `;
 	const rule = theme.fg("border", "─".repeat(Math.max(0, width - visibleWidth(prefix))));
 	return truncateToWidth(prefix + rule, width, "…");

@@ -18,7 +18,8 @@ describe("todo rendering", () => {
   it("keeps top rule static with labeled progress; status right and key left", () => {
     const s = state([task("ready"), task("active", "in_progress"), task("done", "completed"), task("wait", "pending", ["ready"])]);
     const lines = render(s);
-    expect(lines[0]).toMatch(/^── Todos ─+ 1\/4$/);
+    expect(lines[0]).toMatch(/^──   Todos ─+ 1\/4$/);
+    expect(visibleWidth(lines[0])).toBe(100);
     expect(lines.slice(1)).toEqual([
       expect.stringMatching(/^ active: Task active +▸ in_progress $/),
       expect.stringMatching(/^ ready: Task ready +○ pending $/),
@@ -26,6 +27,21 @@ describe("todo rendering", () => {
       expect.stringMatching(/^ done: Task done +✓ completed $/),
     ]);
     expect(render(s)).toEqual(lines);
+  });
+
+  it("uses a static checklist title with lifecycle colors and icon-aware width", () => {
+    for (const [status, color] of [["pending", "dim"], ["in_progress", "accent"], ["completed", "dim"]] as const) {
+      const calls: string[] = [];
+      const t = { fg: (token: string, text: string) => { calls.push(`${token}:${text}`); return text; } } as Theme;
+      const s = state([task("one", status)]);
+      const lines = renderTodoLines(s, config, 16, t);
+      expect(lines[0]).toBe(`──   Todos  ${status === "completed" ? "1/1" : "0/1"}`);
+      expect(visibleWidth(lines[0])).toBe(16);
+      expect(render(s, config, 15)[0]).toBe("  Todos");
+      expect(calls).toContain(`${color}:  Todos`);
+      expect(render(s, config, 8)[0]).toBe("  Todos");
+      expect(renderTodoText(s)[0]).not.toContain("");
+    }
   });
 
   it("orders stably and hides completed without changing state or overflow counts", () => {

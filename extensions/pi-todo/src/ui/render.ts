@@ -3,6 +3,9 @@ import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { isTaskBlocked, type TodoState, type TodoTask } from "../state.js";
 import { safeTodoLine, sanitizeTodoText } from "./text.js";
 
+/** nf-fa-tasks (U+F0AE); themed titles require a patched Nerd Font. */
+const TODO_TITLE = "  Todos";
+
 export interface TodoRenderConfig {
   maxVisible: number;
   showCompleted: boolean;
@@ -111,13 +114,13 @@ export function renderTodoLines(
   const { tasks, maxVisible } = renderSelection(state, config);
   const done = state.tasks.filter(task => task.status === "completed").length;
   const progress = `${done}/${state.tasks.length}`;
-  const label = "── Todos ";
+  const label = `── ${TODO_TITLE} `;
   const labelColor = state.tasks.some(task => task.status === "in_progress") ? "accent" : "dim";
   const top = width >= visibleWidth(label) + visibleWidth(progress) + 1
-    ? theme.fg("border", "── ") + theme.fg(labelColor, "Todos")
+    ? theme.fg("border", "── ") + theme.fg(labelColor, TODO_TITLE)
       + theme.fg("border", " " + "─".repeat(width - visibleWidth(label) - visibleWidth(progress) - 1) + " ")
       + theme.fg(done === state.tasks.length && done > 0 ? "success" : "muted", progress)
-    : theme.fg(labelColor, truncateToWidth("Todos", width, ""));
+    : theme.fg(labelColor, truncateToWidth(TODO_TITLE, width, ""));
   // Inset body rows from full-width chrome, including after narrow resizes.
   const bodyWidth = Math.max(0, width - 2);
   const bodyRow = (text: string) => width <= 2 ? " ".repeat(width)

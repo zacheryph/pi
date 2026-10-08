@@ -49,7 +49,7 @@ describe("compact widget heading and rows", () => {
 	it("renders a top rule and exactly one row per agent, without a box or bottom rule", () => {
 		const lines = render({ agents: [makeAgent(), makeAgent({ id: "second", type: "Explore" })] });
 		expect(lines).toHaveLength(3);
-		expect(lines[0]).toBe(`── ● Subagents ${"─".repeat(65)}`);
+		expect(lines[0]).toBe(`──   Subagents ${"─".repeat(64)}`);
 		expect(lines[1]).toContain("01:23  Agent (twin): test task");
 		expect(lines[2]).toContain("Explore: test task");
 		expect(lines.join("\n")).not.toMatch(/[╭╮╰╯│├└⎿]/);
@@ -61,6 +61,15 @@ describe("compact widget heading and rows", () => {
 		expect(first[0]).toBe(next[0]);
 		expect(first[1]).toContain("⠋ thinking…");
 		expect(next[1]).toContain("⠙ thinking…");
+	});
+
+	it("colors the robot title accent for running and queued agents", () => {
+		for (const status of ["running", "queued"] as const) {
+			const colors: string[] = [];
+			const recordingTheme = { ...theme, fg: (color: string, text: string) => { colors.push(`${color}:${text}`); return text; } };
+			render({ agents: [makeAgent({ status })], theme: recordingTheme });
+			expect(colors).toContain("accent:  Subagents");
+		}
 	});
 
 	it("right-aligns status without wrapping", () => {
@@ -159,7 +168,7 @@ describe("finished outcomes and linger filtering", () => {
 		const colors: string[] = [];
 		const recordingTheme = { ...theme, fg: (color: string, text: string) => { colors.push(`${color}:${text}`); return text; } };
 		render({ agents: [makeAgent({ status: "completed", completedAt: NOW })], theme: recordingTheme });
-		expect(colors).toContain("dim:● Subagents");
+		expect(colors).toContain("dim:  Subagents");
 	});
 
 	it("filters expired finished agents and agents without a completion timestamp", () => {
@@ -181,7 +190,7 @@ describe("finished outcomes and linger filtering", () => {
 });
 
 describe("terminal layout safety", () => {
-	it.each([0, 1, 2, 8, 12, 20, 39, 40, 60, 80, 200])("fits every row in %i terminal cells", terminalWidth => {
+	it.each([0, 1, 2, 3, 8, 12, 14, 15, 16, 20, 39, 40, 60, 80, 200])("fits every row in %i terminal cells", terminalWidth => {
 		const ansiTheme: Theme = { fg: (_color, text) => `\x1b[36m${text}\x1b[39m`, bold: text => `\x1b[1m${text}\x1b[22m` };
 		const lines = render({ terminalWidth, theme: ansiTheme, agents: [makeAgent({
 			description: "界面 🧪 café ".repeat(30),

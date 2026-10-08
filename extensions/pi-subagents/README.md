@@ -73,7 +73,7 @@ Background agents return an ID immediately and notify you on completion.
 The extension renders a persistent widget above the editor showing active background agents (foreground runs are rendered inline by the `subagent` tool's progress stream):
 
 ```text
-── ● Subagents ────────────────────────────────────────────
+──   Subagents ────────────────────────────────────────────
 00:12  Agent (twin): Refactor auth module         ⠹ editing…
 00:04  Explore: Find auth files                ⠹ searching…
 --:--  Explore: Review tests                       ◦ queued
@@ -81,7 +81,9 @@ The extension renders a persistent widget above the editor showing active backgr
 
 This personal fork uses only a top rule, without side walls or a bottom border.
 Pi's own Working border, editor, and footer below it are unchanged.
-The header icon is static; each running agent's activity indicator animates.
+The header uses the static Nerd Font robot icon (`nf-fa-robot`, U+EE0D);
+use a patched Nerd Font, preferably its Mono variant. Each running agent's
+activity indicator animates.
 Agent rows reserve one leading space before elapsed time and one trailing space
 after the activity/outcome indicator. The header rule remains full-width.
 Queued agents get individual rows. Finished agents show their outcome briefly,

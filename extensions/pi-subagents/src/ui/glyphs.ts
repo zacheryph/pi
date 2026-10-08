@@ -11,6 +11,10 @@
  *
  *   fc-list ":charset=<codepoint>:spacing=100" family | cut -d, -f1 | sort -u | grep -v LastResort
  *
+ * Widget titles intentionally require a patched Nerd Font (prefer its Mono
+ * variant for single-cell advances); other indicators retain ordinary monospace
+ * coverage. Nerd Font title icons: nf-fa-robot U+EE0D (2 local monospace families).
+ *
  * Coverage on macOS 15, counted in families:
  *
  *   ↻ U+21BB turns          1  (Menlo)
@@ -52,7 +56,9 @@ export const GLYPHS = {
   streaming: "◍",
   /** Queued-agents marker in the widget. */
   queued: "◦",
-  /** Widget heading while agents are active. */
+  /** Static widget title: nf-fa-robot (U+EE0D), requires a Nerd Font. */
+  agentsHeading: "",
+  /** Active-agent update marker. */
   agentsActive: "●",
   /** Widget heading while no agents are active. */
   agentsIdle: "○",
