@@ -158,9 +158,13 @@ export function registerMainAgentProfile(pi: ExtensionAPI, overrides: Partial<Ma
       }
     }
     const configured = pi.getAllTools();
-    const expanded = expandMcpToolPatterns(profile.toolNames ?? BUILTIN_TOOL_NAMES, configured.map(t => t.name));
+    // MCP servers connect in the background. A wildcard may match nothing at
+    // startup; it selects available tools, not a required connection. Hidden
+    // tools are not available matches. Literal missing/hidden names still fail.
+    const expanded = expandMcpToolPatterns(profile.toolNames ?? BUILTIN_TOOL_NAMES,
+      configured.filter(t => t.exposure !== "hidden").map(t => t.name));
     const tools = [...new Set([...expanded.toolNames, ...MAIN_AGENT_REQUIRED_TOOLS])];
-    const missing = [...expanded.unmatchedPatterns, ...tools.filter(name => !configured.some(t => t.name === name && t.exposure !== "hidden"))];
+    const missing = tools.filter(name => !configured.some(t => t.name === name && t.exposure !== "hidden"));
     if (missing.length) throw new Error(`Unavailable profile tools (check --tools/--exclude-tools): ${missing.join(", ")}.`);
     if (profile.model && model && (ctx.model?.provider !== model.provider || ctx.model.id !== model.id)) {
       if (!await pi.setModel(model)) throw new Error(`Cannot authenticate profile model: ${model.provider}/${model.id}.`);
@@ -173,7 +177,10 @@ export function registerMainAgentProfile(pi: ExtensionAPI, overrides: Partial<Ma
     pi.setActiveTools(tools);
     const active = pi.getActiveTools();
     if (active.length !== tools.length || tools.some(t => !active.includes(t))) throw new Error("Cannot apply profile tool defaults.");
-    return `${ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "current model"} · thinking ${pi.getThinkingLevel()} · ${tools.length} active tools`;
+    const pending = expanded.unmatchedPatterns.length
+      ? `\nMCP patterns matched no available tools at startup (servers may still be connecting): ${expanded.unmatchedPatterns.join(", ")}`
+      : "";
+    return `${ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "current model"} · thinking ${pi.getThinkingLevel()} · ${tools.length} active tools${pending}`;
   }
 
   async function restore(ctx: ExtensionContext, explicit: boolean): Promise<void> {

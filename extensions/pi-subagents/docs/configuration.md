@@ -358,6 +358,13 @@ changes remain allowed. The profile body is saved as a branch-relative snapshot
 and injected into the system prompt on subsequent runs. Resume/reload preserves
 manual settings; `/new` does not inherit the invocation's profile.
 
+MCP wildcard entries select non-hidden tools available at startup. A wildcard
+that matches nothing does not block selection: the startup notice reports it,
+since MCP servers connect in the background. Missing or hidden **literal** tool
+names still block selection. Deferred/codemode MCP tools that register later
+remain callable through codemode; this does not wait for or guarantee a server
+connection, and it does not continuously reapply profile tool defaults.
+
 Override only the main profile's model startup default with:
 
 ```bash

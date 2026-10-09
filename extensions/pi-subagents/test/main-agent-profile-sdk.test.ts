@@ -109,6 +109,50 @@ async function fixture(options: {
 }
 
 describe("main profile / installed SDK", () => {
+  it.each(["tui", "print", "rpc", "json"] as const)("real request starts with zero registered MCP tools (%s)", async mode => {
+    const h = await fixture({
+      mode,
+      profileContent: "---\ntools: [read, codemode, 'mcp__*']\nfragments: [aws]\n---\nPROFILE WITH MCP WILDCARD",
+      fragmentFiles: { aws: "FROZEN AWS INSTRUCTIONS" },
+    });
+    expect(h.pi.getAllTools().some(tool => tool.name.startsWith("mcp__"))).toBe(false);
+    await h.session.prompt("hello");
+    expect(h.calls).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(h.calls.mock.calls[0]![1])).toContain("PROFILE WITH MCP WILDCARD");
+    expect(JSON.stringify(h.calls.mock.calls[0]![1])).toContain("FROZEN AWS INSTRUCTIONS");
+    expect(h.session.getActiveToolNames()).toEqual(["read", "codemode", ...MAIN_AGENT_REQUIRED_TOOLS]);
+    expect(h.shutdown).not.toHaveBeenCalled();
+    expect(h.errors).not.toHaveBeenCalled();
+  });
+
+  it("MCP tool registering after profile startup remains callable through codemode", async () => {
+    const h = await fixture({
+      toolNames: ["read", "codemode", "mcp__*"],
+      responses: [
+        fauxAssistantMessage(fauxToolCall("codemode", { code: "return await tools.mcp__late__read({});" }), { stopReason: "toolUse" }),
+        fauxAssistantMessage("done"),
+      ],
+    });
+    const execute = vi.fn(async () => ({ content: [{ type: "text" as const, text: "LATE MCP RESULT" }], details: undefined }));
+    h.pi.registerTool({
+      name: "mcp__late__read", label: "Late MCP", description: "Simulated asynchronous MCP connection",
+      exposure: "deferred", parameters: Type.Object({}), execute,
+    });
+    await h.session.prompt("use late MCP tool");
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(h.calls).toHaveBeenCalledTimes(2);
+    expect(h.shutdown).not.toHaveBeenCalled();
+    expect(JSON.stringify(h.session.messages)).toContain("LATE MCP RESULT");
+  }, 20_000);
+
+  it("exact missing MCP tool still blocks real provider dispatch", async () => {
+    const h = await fixture({ toolNames: ["read", "codemode", "mcp__*", "mcp__required__read"] });
+    await h.session.prompt("hello");
+    expect(h.calls).not.toHaveBeenCalled();
+    expect(h.shutdown).toHaveBeenCalled();
+    expect(h.diagnostic).toHaveBeenCalledWith("Main agent blocked: Unavailable profile tools (check --tools/--exclude-tools): mcp__required__read.");
+  });
+
   it.each(["main-profile-test/first", "missing/profile-model"])("explicit override reaches provider and effective snapshot, not registry (%s)", async profileModel => {
     const h = await fixture({ profileModel, profileThinking: "high", modelOverride: "main-profile-test/other" });
     expect(h.session.model?.id).toBe("other");

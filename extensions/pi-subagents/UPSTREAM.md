@@ -82,6 +82,9 @@ No upstream runtime behavior was intentionally changed during import.
   Overrides the effective snapshot's model default without mutating definitions,
   reapplying on restoration, or forwarding a child override. Launchers pair it
   with core `--model` because native `getFlag` cannot read core CLI flags.
+- Main MCP wildcards expand only to non-hidden tools available at startup; empty
+  matches are reported in the startup notice, not treated as missing required
+  tools. MCP connects asynchronously. Literal missing/hidden tools still block.
 - Main profile selection requires project trust for project definitions and keeps
   delegation tools available. Child behavior is unchanged; main profile body is
   excluded from both full and portable child prompt inheritance.

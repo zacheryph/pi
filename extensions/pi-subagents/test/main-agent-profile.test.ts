@@ -77,6 +77,51 @@ describe("main profile defaults and persistent body", () => {
     expect(mode === "tui" || mode === "rpc" ? h.ctx.ui.notify : h.diagnostic).toHaveBeenCalledTimes(1);
   });
 
+  it.each(["tui", "print", "rpc", "json"] as const)("unmatched MCP wildcard warns without blocking startup (%s)", async mode => {
+    const h = harness(mode);
+    h.state.profile.toolNames = ["read", "codemode", "mcp__*"];
+    await h.start();
+    expect(h.state.active).toEqual(["read", "codemode", ...MAIN_AGENT_REQUIRED_TOOLS]);
+    expect(h.state.branch[0].data.profile.toolNames).toEqual(["read", "codemode", "mcp__*"]);
+    expect(h.ctx.shutdown).not.toHaveBeenCalled();
+    expect(await h.fire("input")).toBeUndefined();
+    expect((await h.prompt()).sections[MAIN_AGENT_SECTION]).toContain("ONLY MAIN");
+    const message = expect.stringContaining("MCP patterns matched no available tools at startup");
+    if (mode === "tui" || mode === "rpc") expect(h.ctx.ui.notify).toHaveBeenCalledWith(message, "info");
+    else expect(h.diagnostic).toHaveBeenCalledWith(message);
+  });
+
+  it("MCP wildcard activates available matches only, never hidden tools", async () => {
+    const h = harness();
+    h.state.profile.toolNames = ["read", "mcp__*", "mcp__ready__*"];
+    h.state.all.push({ name: "mcp__ready__read", exposure: "deferred" }, { name: "mcp__disabled__read", exposure: "hidden" });
+    await h.start();
+    expect(h.state.active).toEqual(["read", "mcp__ready__read", ...MAIN_AGENT_REQUIRED_TOOLS]);
+    expect(h.ctx.shutdown).not.toHaveBeenCalled();
+    expect(h.ctx.ui.notify).not.toHaveBeenCalledWith(expect.stringContaining("matched no available"), expect.anything());
+  });
+
+  it("hidden-only MCP wildcard is an empty selection, not an activation failure", async () => {
+    const h = harness();
+    h.state.profile.toolNames = ["read", "mcp__*"];
+    h.state.all.push({ name: "mcp__disabled__read", exposure: "hidden" });
+    await h.start();
+    expect(h.state.active).toEqual(["read", ...MAIN_AGENT_REQUIRED_TOOLS]);
+    expect(h.ctx.shutdown).not.toHaveBeenCalled();
+    expect(h.ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("matched no available"), "info");
+  });
+
+  it.each(["mcp__missing__read", "mcp__disabled__read", "unknown", "custom_*"])("literal missing/hidden tool remains required: %s", async name => {
+    const h = harness("print");
+    h.state.all.push({ name: "mcp__disabled__read", exposure: "hidden" });
+    h.state.profile.toolNames = ["read", "mcp__*", name];
+    await h.start();
+    expect(h.diagnostic).toHaveBeenCalledWith(`Main agent blocked: Unavailable profile tools (check --tools/--exclude-tools): ${name}.`);
+    expect(h.ctx.shutdown).toHaveBeenCalled();
+    expect(h.pi.setActiveTools).not.toHaveBeenCalled();
+    expect(h.pi.appendEntry).not.toHaveBeenCalled();
+  });
+
   it.each([undefined, "anthropic/test-model", "anthropic/missing"])("explicit model replaces profile default %s in snapshot only", async profileModel => {
     const h = harness();
     Object.assign(h.state.profile, { model: profileModel, thinking: "high" });
