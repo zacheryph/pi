@@ -78,6 +78,10 @@ No upstream runtime behavior was intentionally changed during import.
 - Added `--agent <profile>` for the initial main session only. Applies profile
   model/thinking/tools as defaults, preserves manual choices on resume/reload,
   and restores the exact saved profile body as system instructions.
+- Added main-only `--agent-model <model>` for explicit initial `--agent` selection.
+  Overrides the effective snapshot's model default without mutating definitions,
+  reapplying on restoration, or forwarding a child override. Launchers pair it
+  with core `--model` because native `getFlag` cannot read core CLI flags.
 - Main profile selection requires project trust for project definitions and keeps
   delegation tools available. Child behavior is unchanged; main profile body is
   excluded from both full and portable child prompt inheritance.

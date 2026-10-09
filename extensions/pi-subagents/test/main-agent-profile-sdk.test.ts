@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
 import {
   createAgentSession, createCodemodeExtension, DefaultResourceLoader, ModelRuntime,
-  SessionManager, SettingsManager, type ExtensionAPI, type ExtensionContext,
+  SessionManager, SettingsManager, type ExtensionAPI, type ExtensionContext, type SessionStartEvent,
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -18,6 +18,10 @@ async function fixture(options: {
   mode?: ExtensionContext["mode"];
   failure?: "startup" | "turn" | "context";
   flag?: string | null;
+  modelOverride?: string;
+  profileModel?: string;
+  profileThinking?: AgentConfig["thinking"];
+  sessionStartReason?: SessionStartEvent["reason"];
   snapshot?: { version: 1; profile: AgentConfig };
   toolNames?: string[];
   tools?: string[];
@@ -52,6 +56,7 @@ async function fixture(options: {
   const profile: AgentConfig = {
     name: "reader", description: "main", promptMode: "replace", systemPrompt: "ONLY MAIN",
     toolNames: options.toolNames ?? ["read"], source: options.source,
+    model: options.profileModel, thinking: options.profileThinking,
   };
   let extensionPi: ExtensionAPI;
   const loader = new DefaultResourceLoader({
@@ -86,6 +91,7 @@ async function fixture(options: {
   });
   await loader.reload();
   if (options.flag !== null) loader.getExtensions().runtime.flagValues.set("agent", options.flag ?? "reader");
+  if (options.modelOverride !== undefined) loader.getExtensions().runtime.flagValues.set("agent-model", options.modelOverride);
   const settingsManager = SettingsManager.inMemory({ compaction: { enabled: false, ...(options.summaryHistory ? { keepRecentTokens: 1 } : {}) }, retry: { enabled: false } }, { projectTrusted: options.trusted ?? true });
   const sessionManager = SessionManager.inMemory(dir);
   if (options.summaryHistory) {
@@ -95,14 +101,91 @@ async function fixture(options: {
     sessionManager.appendMessage(fauxAssistantMessage("Recent answer", { timestamp: 4 }));
   }
   if (options.snapshot) sessionManager.appendCustomEntry(MAIN_AGENT_ENTRY, options.snapshot);
-  const { session } = await createAgentSession({ cwd: dir, agentDir: dir, modelRuntime, model: faux.getModel(), thinkingLevel: "medium", resourceLoader: loader, settingsManager, sessionManager, tools: options.tools });
+  const { session } = await createAgentSession({ cwd: dir, agentDir: dir, modelRuntime, model: faux.getModel(), thinkingLevel: "medium", resourceLoader: loader, settingsManager, sessionManager, tools: options.tools, sessionStartEvent: { type: "session_start", reason: options.sessionStartReason ?? "startup" } });
   cleanups.push(() => session.dispose());
   await session.bindExtensions({ mode: options.mode ?? "print", shutdownHandler: shutdown, onError: errors });
   faux.setResponses(options.responses ?? [fauxAssistantMessage("done")]);
-  return { dir, session, faux, calls, secret, shutdown, errors, diagnostic, signals, pi: extensionPi!, loader };
+  return { dir, session, faux, calls, secret, shutdown, errors, diagnostic, signals, profile, pi: extensionPi!, loader };
 }
 
 describe("main profile / installed SDK", () => {
+  it.each(["main-profile-test/first", "missing/profile-model"])("explicit override reaches provider and effective snapshot, not registry (%s)", async profileModel => {
+    const h = await fixture({ profileModel, profileThinking: "high", modelOverride: "main-profile-test/other" });
+    expect(h.session.model?.id).toBe("other");
+    expect(h.session.thinkingLevel).toBe("high");
+    expect(h.session.getActiveToolNames()).toEqual(["read", ...MAIN_AGENT_REQUIRED_TOOLS]);
+    await h.session.prompt("chosen config");
+    expect(h.calls.mock.calls[0]![0]).toMatchObject({ provider: "main-profile-test", id: "other" });
+    expect(h.calls.mock.calls[0]![2]?.reasoning).toBe("high");
+    const saved = h.session.sessionManager.getBranch().find(e => e.type === "custom" && e.customType === MAIN_AGENT_ENTRY)!;
+    expect(saved).toMatchObject({ data: { profile: { model: "main-profile-test/other", thinking: "high", toolNames: ["read"] } } });
+    expect(h.profile.model).toBe(profileModel);
+    expect(h.shutdown).not.toHaveBeenCalled();
+    expect(h.errors).not.toHaveBeenCalled();
+
+    // Turn-time manual selection remains authoritative, snapshot stays frozen.
+    await h.session.setModel(h.faux.getModel("first")!);
+    h.session.setThinkingLevel("off");
+    h.session.setActiveToolsByName(["write"]);
+    h.faux.setResponses([fauxAssistantMessage("manual done")]);
+    await h.session.prompt("manual config");
+    expect(h.calls.mock.calls[1]![0].id).toBe("first");
+    expect(h.calls.mock.calls[1]![2]?.reasoning).toBeUndefined();
+    expect(h.session.getActiveToolNames()).toEqual(["write"]);
+    expect(JSON.stringify(h.calls.mock.calls[1]![1])).toContain("ONLY MAIN");
+    expect(h.session.sessionManager.getBranch().filter(e => e.type === "custom" && e.customType === MAIN_AGENT_ENTRY)).toEqual([saved]);
+  });
+
+  it.each(["", "  ", "main-profile-test/missing"])("invalid explicit override blocks actual provider dispatch (%j)", async modelOverride => {
+    const h = await fixture({ profileModel: "main-profile-test/other", profileThinking: "high", modelOverride });
+    expect(h.session.model?.id).toBe("first");
+    expect(h.session.thinkingLevel).toBe("medium");
+    expect(h.session.getActiveToolNames()).toContain("write");
+    await h.session.prompt("blocked");
+    expect(h.calls).not.toHaveBeenCalled();
+    expect(h.shutdown).toHaveBeenCalled();
+    expect(h.diagnostic).toHaveBeenCalledWith(modelOverride.trim()
+      ? "Main agent blocked: Unavailable profile model: main-profile-test/missing."
+      : "Main agent blocked: --agent-model requires a non-empty model.");
+    expect(h.session.sessionManager.getBranch().some(e => e.type === "custom" && e.customType === MAIN_AGENT_ENTRY)).toBe(false);
+  });
+
+  it.each(["", "main-profile-test/missing", "main-profile-test/other"])("standalone model flag does not select profile or model (%j)", async modelOverride => {
+    const h = await fixture({ flag: null, modelOverride });
+    await h.session.prompt("ordinary main");
+    expect(h.calls.mock.calls[0]![0].id).toBe("first");
+    expect(JSON.stringify(h.calls.mock.calls[0]![1])).not.toContain(MAIN_AGENT_SECTION);
+    expect(h.session.getActiveToolNames()).toContain("write");
+    expect(h.session.sessionManager.getBranch().some(e => e.type === "custom" && e.customType === MAIN_AGENT_ENTRY)).toBe(false);
+    expect(h.shutdown).not.toHaveBeenCalled();
+  });
+
+  it.each(["reload", "resume", "fork"] as const)("retained flags restore effective snapshot without model/default reapplication (%s)", async sessionStartReason => {
+    const first = await fixture({ profileModel: "missing/profile", profileThinking: "high", modelOverride: "main-profile-test/other" });
+    const saved = first.session.sessionManager.getBranch().find(e => e.type === "custom" && e.customType === MAIN_AGENT_ENTRY)!;
+    if (saved.type !== "custom") throw new Error("Missing main profile snapshot");
+    const restored = await fixture({
+      sessionStartReason, snapshot: saved.data as MainAgentSnapshot,
+      modelOverride: "", profileModel: "missing/new-definition",
+    });
+    await restored.session.prompt("restore");
+    expect(restored.calls.mock.calls[0]![0].id).toBe("first");
+    expect(restored.calls.mock.calls[0]![2]?.reasoning).toBe("medium");
+    expect(restored.session.getActiveToolNames()).toContain("write");
+    expect(JSON.stringify(restored.calls.mock.calls[0]![1])).toContain("ONLY MAIN");
+    expect(restored.session.sessionManager.getBranch().filter(e => e.type === "custom" && e.customType === MAIN_AGENT_ENTRY)).toEqual([expect.objectContaining({ data: saved.data })]);
+    expect(restored.shutdown).not.toHaveBeenCalled();
+    expect(restored.errors).not.toHaveBeenCalled();
+  });
+
+  it("retained agent/model flags do not apply to new SDK session", async () => {
+    const h = await fixture({ sessionStartReason: "new", modelOverride: "main-profile-test/other", profileModel: "missing/profile" });
+    await h.session.prompt("new");
+    expect(h.calls.mock.calls[0]![0].id).toBe("first");
+    expect(JSON.stringify(h.calls.mock.calls[0]![1])).not.toContain(MAIN_AGENT_SECTION);
+    expect(h.shutdown).not.toHaveBeenCalled();
+  });
+
   it.each(["tui", "print", "rpc", "json"] as const)("preserves structured profile body while manual selection reaches real request (%s)", async mode => {
     const h = await fixture({ mode });
     await h.session.setModel(h.faux.getModel("other")!);

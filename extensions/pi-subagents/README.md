@@ -124,6 +124,7 @@ The LLM receives structured `<task-notification>` XML for parsing, while the use
 ```bash
 pi --agent Explore
 pi --agent my-profile "Review the authentication flow"
+pi --agent my-profile --agent-model anthropic/claude-opus-4-6
 ```
 
 The local fork can run Pi's **main session** as an agent profile. Profile
@@ -133,6 +134,21 @@ section**, not text prepended to the initial user task. Normal Pi/project/skill
 instructions remain intact. `prompt_mode: append` wraps the body in
 `<agent_instructions>`; `replace` omits that wrapper, matching existing child
 semantics rather than erasing Pi's prompt.
+
+Use `--agent-model <provider/id>` to override the profile's model startup default
+(fuzzy model names also use the existing resolver). Profile thinking and tools
+stay unchanged; thinking must be supported by the chosen model. The effective
+snapshot records this override without changing the agent definition. An empty
+or unavailable override blocks model dispatch, but an unavailable profile model
+does not block a valid override.
+
+Core `--model` is not exposed through Pi's extension `getFlag` API. With
+`--agent`, core `--model` alone can therefore be replaced by the profile default.
+Launchers preserve their explicit model precedence by passing the same model to
+both `--model` and `--agent-model`; direct native CLI use needs `--agent-model`
+as shown above. This flag has no effect without explicit initial `--agent`, is
+never reapplied on `/new`, resume, reload, or tree navigation, and is not passed
+to children. Normal child inheritance of the current parent model is unchanged.
 
 Defaults apply only to an explicit `--agent` at CLI startup, including CLI resume.
 Omitted values use Pi's current choices; selecting a different model may adjust

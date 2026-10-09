@@ -358,6 +358,26 @@ changes remain allowed. The profile body is saved as a branch-relative snapshot
 and injected into the system prompt on subsequent runs. Resume/reload preserves
 manual settings; `/new` does not inherit the invocation's profile.
 
+Override only the main profile's model startup default with:
+
+```bash
+pi --agent auditor --agent-model anthropic/claude-opus-4-6
+```
+
+`--agent-model` accepts the existing exact/fuzzy model syntax. It replaces
+`profile.model` in the effective durable snapshot, not the registry definition;
+profile tools and thinking are unchanged, and thinking is validated against the
+chosen model. A valid override bypasses an unavailable profile model. Empty or
+unavailable overrides block dispatch before defaults apply.
+
+Core `--model` alone does not override a main profile's model default: extensions
+cannot read core flags via `getFlag`. Launchers mirror their explicit `--model`
+value into `--agent-model` to preserve launcher precedence. Without explicit
+initial `--agent`, `--agent-model` does nothing, including when restoring a saved
+snapshot. It is not reapplied on `/new`, resume, reload, or tree navigation and
+never propagates as a child override. Children can still inherit the current
+parent model normally.
+
 Project profiles require Pi project trust. Delegation tools remain available;
 child settings and prompt construction are unchanged. `locked`, `max_turns`,
 `run_in_background`, and `inherit_context` retain their child meanings rather

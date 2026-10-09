@@ -19,6 +19,7 @@ function harness(mode: ExtensionContext["mode"] = "tui") {
   const other = makeModel({ id: "other", reasoning: true });
   const state = {
     flag: "reader" as string | undefined,
+    modelOverride: undefined as string | undefined,
     profile: { name: "reader", description: "read", systemPrompt: "ONLY MAIN", promptMode: "append", toolNames: ["read"] } as AgentConfig,
     model, thinking: "medium", active: ["read", "write", ...MAIN_AGENT_REQUIRED_TOOLS] as string[],
     all: ["read", "write", "codemode", "tool_search", "secret", ...MAIN_AGENT_REQUIRED_TOOLS].map(name => ({ name, exposure: name === "secret" ? "deferred" : "direct" })),
@@ -35,7 +36,7 @@ function harness(mode: ExtensionContext["mode"] = "tui") {
   } as unknown as ExtensionContext;
   const pi = {
     on: (name: string, fn: Function) => { handlers.set(name, [...handlers.get(name) ?? [], fn]); },
-    registerFlag: vi.fn(), getFlag: () => state.flag,
+    registerFlag: vi.fn(), getFlag: (name: string) => name === "agent" ? state.flag : name === "agent-model" ? state.modelOverride : undefined,
     getActiveTools: () => [...state.active], getAllTools: () => state.all,
     getThinkingLevel: () => state.thinking,
     setThinkingLevel: vi.fn((level: string) => { state.thinking = state.clamp ? "off" : level; }),
@@ -74,6 +75,118 @@ describe("main profile defaults and persistent body", () => {
     expect(options.selectedTools).toEqual(["write", "tool_search"]); expect(options.sections[MAIN_AGENT_SECTION]).toContain("ONLY MAIN");
     expect(h.pi.setActiveTools).toHaveBeenCalledTimes(1); expect(h.pi.setModel).toHaveBeenCalledTimes(1);
     expect(mode === "tui" || mode === "rpc" ? h.ctx.ui.notify : h.diagnostic).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([undefined, "anthropic/test-model", "anthropic/missing"])("explicit model replaces profile default %s in snapshot only", async profileModel => {
+    const h = harness();
+    Object.assign(h.state.profile, { model: profileModel, thinking: "high" });
+    const original = structuredClone(h.state.profile);
+    h.state.modelOverride = "  anthropic/other  ";
+    await h.start();
+    expect(h.pi.registerFlag).toHaveBeenCalledWith("agent-model", expect.objectContaining({ type: "string" }));
+    expect(h.pi.setModel).toHaveBeenCalledWith(h.other);
+    expect(h.state.model.id).toBe("other");
+    expect(h.state.thinking).toBe("high");
+    expect(h.state.active).toEqual(["read", ...MAIN_AGENT_REQUIRED_TOOLS]);
+    expect(h.state.branch[0].data.profile).toEqual({ ...original, model: "anthropic/other" });
+    expect(h.state.profile).toEqual(original);
+    expect(h.ctx.shutdown).not.toHaveBeenCalled();
+  });
+
+  it("model override uses existing fuzzy resolution and preserves omitted thinking", async () => {
+    const h = harness(); h.state.modelOverride = "other";
+    await h.start();
+    expect(h.state.model.id).toBe("other");
+    expect(h.state.thinking).toBe("off");
+    expect(h.pi.setThinkingLevel).not.toHaveBeenCalled();
+    expect(h.state.branch[0].data.profile.model).toBe("other");
+  });
+
+  it("override matching current model still replaces unavailable profile default", async () => {
+    const h = harness(); h.state.profile.model = "anthropic/missing";
+    h.state.modelOverride = "anthropic/test-model";
+    await h.start();
+    expect(h.pi.setModel).not.toHaveBeenCalled();
+    expect(h.state.thinking).toBe("medium");
+    expect(h.state.branch[0].data.profile.model).toBe("anthropic/test-model");
+    expect(h.ctx.shutdown).not.toHaveBeenCalled();
+  });
+
+  it.each(["", "  ", "anthropic/missing", "missing"])("invalid override fails before any defaults mutate: %j", async modelOverride => {
+    const h = harness("print"); h.state.modelOverride = modelOverride;
+    Object.assign(h.state.profile, { model: "anthropic/other", thinking: "high" });
+    await h.start();
+    expect(h.ctx.shutdown).toHaveBeenCalled();
+    expect(await h.fire("input")).toEqual({ action: "handled" });
+    expect(h.pi.setModel).not.toHaveBeenCalled();
+    expect(h.pi.setThinkingLevel).not.toHaveBeenCalled();
+    expect(h.pi.setActiveTools).not.toHaveBeenCalled();
+    expect(h.pi.appendEntry).not.toHaveBeenCalled();
+    expect(h.diagnostic).toHaveBeenCalledWith(modelOverride.trim()
+      ? `Main agent blocked: Unavailable profile model: ${modelOverride}.`
+      : "Main agent blocked: --agent-model requires a non-empty model.");
+  });
+
+  it("thinking validation checks override model before defaults mutate", async () => {
+    const h = harness("print");
+    h.state.available = [h.state.model, makeModel({ id: "other", reasoning: false })];
+    Object.assign(h.state.profile, { model: "anthropic/test-model", thinking: "high" });
+    h.state.modelOverride = "anthropic/other";
+    await h.start();
+    expect(h.diagnostic).toHaveBeenCalledWith("Main agent blocked: Thinking level high is unavailable for anthropic/other.");
+    expect(h.pi.setModel).not.toHaveBeenCalled();
+    expect(h.pi.setThinkingLevel).not.toHaveBeenCalled();
+    expect(h.pi.setActiveTools).not.toHaveBeenCalled();
+  });
+
+  it("override authentication failure blocks selection", async () => {
+    const h = harness("print"); h.state.modelOverride = "anthropic/other"; h.state.auth = false;
+    await h.start();
+    expect(h.pi.setModel).toHaveBeenCalledWith(h.other);
+    expect(h.diagnostic).toHaveBeenCalledWith("Main agent blocked: Cannot authenticate profile model: anthropic/other.");
+    expect(await h.fire("input")).toEqual({ action: "handled" });
+    expect(h.pi.setActiveTools).not.toHaveBeenCalled();
+    expect(h.pi.appendEntry).not.toHaveBeenCalled();
+  });
+
+  it.each(["", "anthropic/missing", "anthropic/other"])("model override has no effect without explicit agent: %j", async modelOverride => {
+    const h = harness(); h.state.flag = undefined; h.state.modelOverride = modelOverride;
+    await h.start();
+    expect(h.resolve).not.toHaveBeenCalled();
+    expect(h.pi.setModel).not.toHaveBeenCalled();
+    expect(h.pi.setThinkingLevel).not.toHaveBeenCalled();
+    expect(h.pi.setActiveTools).not.toHaveBeenCalled();
+    expect(h.pi.appendEntry).not.toHaveBeenCalled();
+    expect(h.ctx.shutdown).not.toHaveBeenCalled();
+  });
+
+  it("retained override never reapplies on turns, new, resume, reload, fork or tree", async () => {
+    const h = harness(); h.state.modelOverride = "anthropic/other";
+    Object.assign(h.state.profile, { model: "anthropic/missing", thinking: "high" });
+    await h.start();
+    const saved = structuredClone(h.state.branch);
+    h.manual(); h.state.model = makeModel(); h.state.thinking = "off";
+    // Even a now-invalid flag is ignored on every restoration path.
+    h.state.modelOverride = ""; h.state.available = [];
+    await h.fire("input"); await h.prompt();
+    for (const reason of ["reload", "resume", "fork"]) await h.start(reason);
+    await h.fire("session_tree");
+    expect(h.state.branch).toEqual(saved);
+    expect((await h.prompt()).sections[MAIN_AGENT_SECTION]).toContain("ONLY MAIN");
+    h.state.branch = [];
+    await h.start("new");
+    expect((await h.prompt()).sections[MAIN_AGENT_SECTION]).toBeUndefined();
+    h.state.branch = saved; await h.start("resume"); await h.fire("session_tree");
+    expect((await h.prompt()).sections[MAIN_AGENT_SECTION]).toContain("ONLY MAIN");
+    expect(h.state.model.id).toBe("test-model");
+    expect(h.state.thinking).toBe("off");
+    expect(h.state.active).toEqual(["write", "tool_search"]);
+    expect(h.resolve).toHaveBeenCalledTimes(1);
+    expect(h.pi.setModel).toHaveBeenCalledTimes(1);
+    expect(h.pi.setThinkingLevel).toHaveBeenCalledTimes(1);
+    expect(h.pi.setActiveTools).toHaveBeenCalledTimes(1);
+    expect(h.pi.appendEntry).toHaveBeenCalledTimes(1);
+    expect(h.ctx.shutdown).not.toHaveBeenCalled();
   });
 
   it("omitted model/thinking leaves current choices alone, model-only lets Pi choose thinking", async () => {

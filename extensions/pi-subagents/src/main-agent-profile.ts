@@ -109,6 +109,7 @@ export function registerMainAgentProfile(pi: ExtensionAPI, overrides: Partial<Ma
   let runPromptOptions: BuildSystemPromptOptions | undefined;
 
   pi.registerFlag("agent", { type: "string", description: "Use a main-session agent profile: startup defaults and persistent SYSTEM instructions" });
+  pi.registerFlag("agent-model", { type: "string", description: "Override the initial --agent profile's model default (main session only)" });
 
   function notice(ctx: ExtensionContext, message: string, error = false): void {
     if (lastNotice === message) return;
@@ -189,6 +190,15 @@ export function registerMainAgentProfile(pi: ExtensionAPI, overrides: Partial<Ma
         try { saved = branchSnapshot(ctx); } catch { /* explicit selection supersedes it */ }
       } else saved = branchSnapshot(ctx);
       selected = override ? { version: 1, profile: structuredClone(io.resolveProfile(flag.trim(), ctx)) } : saved;
+      if (override && selected) {
+        // Core --model is not an extension flag. Launchers mirror their explicit
+        // model here; replace only the effective snapshot, never the registry.
+        const modelOverride = pi.getFlag("agent-model");
+        if (typeof modelOverride === "string") {
+          if (!modelOverride.trim()) throw new Error("--agent-model requires a non-empty model.");
+          selected.profile.model = modelOverride.trim();
+        }
+      }
       if (!selected) { ctx.ui.setStatus("main-agent", undefined); return; }
       validateTrust(selected.profile, ctx);
       const defaults = override ? await applyDefaults(selected.profile, ctx) : undefined;
