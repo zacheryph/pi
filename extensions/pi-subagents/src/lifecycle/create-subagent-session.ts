@@ -32,6 +32,7 @@ import type { ModelRegistry } from "#src/session/model-resolver";
 import { NotifyParentTool, type UpdateAnnouncer } from "#src/session/notify-parent-tool";
 import { type AssemblerIO, assembleSessionConfig } from "#src/session/session-config";
 import type {
+  AgentConfig,
   ParentSessionInfo,
   PromptInheritance,
   ShellExec,
@@ -169,6 +170,8 @@ export interface SubagentSessionDeps {
 export interface CreateSubagentSessionParams {
   snapshot: ParentSnapshot;
   type: SubagentType;
+  /** Composed config from the spawn boundary; no fragment IO occurs here. */
+  agentConfig?: AgentConfig;
   /** Resolved workspace cwd; undefined → parent cwd. */
   cwd?: string;
   /** Parent session identity (file path + session ID). */
@@ -231,6 +234,7 @@ export async function createSubagentSession(
       resolvePromptInheritance: deps.resolvePromptInheritance,
     },
     {
+      agentConfig: params.agentConfig,
       cwd: params.cwd,
       model: params.model,
       thinkingLevel: params.thinkingLevel,

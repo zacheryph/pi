@@ -11,12 +11,13 @@
  */
 
 import type { Model } from "@earendil-works/pi-ai";
-import type { AgentConfigLookup } from "#src/config/agent-types";
+import { type AgentConfigLookup, BUILTIN_TOOL_NAMES } from "#src/config/agent-types";
 import type { EnvInfo } from "#src/session/env";
 import type { ModelRegistry } from "#src/session/model-resolver";
 import type { ProjectContextLoader } from "#src/session/project-context";
 import type { InheritedPrompt } from "#src/session/prompts";
 import type {
+  AgentConfig,
   AgentPromptConfig,
   PromptInheritance,
   SubagentType,
@@ -80,6 +81,8 @@ export interface AssemblerContext {
  * All fields are optional — callers pass only what they have.
  */
 export interface AssemblerOptions {
+  /** Prepared spawn-time config; bypasses live registry lookup when present. */
+  agentConfig?: AgentConfig;
   /** Override working directory (e.g. for worktree isolation). */
   cwd?: string;
   /** Explicit model override — wins over agentConfig.model and parent model. */
@@ -169,11 +172,18 @@ export function assembleSessionConfig(
   registry: AgentConfigLookup,
   io: AssemblerIO,
 ): SessionConfig {
-  const agentConfig = registry.resolveAgentConfig(type);
+  const agentConfig = options.agentConfig ?? registry.resolveAgentConfig(type);
+  // A legacy/no-fragment queued spawn may see a registry reload at run-start.
+  // Never silently omit newly declared fragments or read them in this assembler.
+  if (!options.agentConfig && (agentConfig.fragmentError || agentConfig.fragments?.length)) {
+    throw new Error(`Agent "${agentConfig.name}": fragment instructions were not prepared at spawn; start a new agent`);
+  }
 
   const effectiveCwd = options.cwd ?? ctx.cwd;
 
-  const toolNames = registry.getToolNamesForType(type);
+  const toolNames = options.agentConfig
+    ? [...(agentConfig.toolNames ?? BUILTIN_TOOL_NAMES)]
+    : registry.getToolNamesForType(type);
 
   // Model resolution: explicit option > config model string > parent model.
   // Resolved before the prompt because the child's provider is what selects a

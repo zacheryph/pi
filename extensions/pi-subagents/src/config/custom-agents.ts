@@ -8,6 +8,7 @@ import { getAgentDir, parseFrontmatter } from "@earendil-works/pi-coding-agent";
 import { BUILTIN_TOOL_NAMES } from "#src/config/agent-types";
 import { isLockableField, type LockDeclaration } from "#src/config/invocation-config";
 import { parseThinkingLevel, thinkingLevelError } from "#src/config/thinking-level";
+import { parseFragments } from "#src/config/prompt-fragments";
 import { debugLog } from "#src/debug";
 import type { AgentConfig } from "#src/types";
 
@@ -64,6 +65,7 @@ function loadFromDir(dir: string, agents: Map<string, AgentConfig>, source: "pro
       thinking: thinkingLevel(fm.thinking, name),
       maxTurns: nonNegativeInt(fm.max_turns),
       systemPrompt: body.trim(),
+      ...parseFragments(fm.fragments),
       promptMode: fm.prompt_mode === "replace" ? "replace" : "append",
       inheritContext: fm.inherit_context != null ? fm.inherit_context === true : undefined,
       runInBackground: fm.run_in_background != null ? fm.run_in_background === true : undefined,

@@ -82,6 +82,17 @@ No upstream runtime behavior was intentionally changed during import.
   delegation tools available. Child behavior is unchanged; main profile body is
   excluded from both full and portable child prompt inheritance.
 
+## Personal prompt fragments
+
+- Added `fragments: [name, ...]` to custom agent definitions.
+- Resolve names only in the winning profile's `agents/fragments/<name>.md`;
+  plain Markdown fragments precede the profile body in declaration order.
+- Main and child profiles share composition; selected execution retains expanded
+  text across resume and background queueing.
+- Discovery stays lazy, project fragment reads require trust, and invalid/missing
+  references fail selected execution rather than dropping instructions.
+- Read-only `/subagents:agents` details show fragment sources and composition.
+
 ## Development
 
 Run from this repository's root:

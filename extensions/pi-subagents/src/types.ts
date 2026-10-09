@@ -90,6 +90,10 @@ export interface AgentConfig extends AgentIdentity, AgentPromptConfig {
   source?: "default" | "project" | "global";
   /** Path of the winning custom-agent definition, when loaded from a file. */
   sourcePath?: string;
+  /** Ordered fragment names in the winning profile's agents/fragments directory. */
+  fragments?: string[];
+  /** Invalid fragment declaration: discoverable, but refused at execution/preview. */
+  fragmentError?: string;
 }
 
 export interface AgentInvocation {
@@ -112,6 +116,8 @@ export interface SessionContext {
   readonly model: Model<any> | undefined;
   readonly modelRegistry: ModelRegistry;
   getSystemPrompt(): string;
+  /** Trust captured at spawn; absent means not trusted for project fragment reads. */
+  isProjectTrusted?(): boolean;
   readonly sessionManager: {
     getSessionFile(): string | undefined;
     getSessionId(): string;

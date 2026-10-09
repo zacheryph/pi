@@ -9,6 +9,7 @@ import { MAIN_AGENT_ENTRY, MAIN_AGENT_REQUIRED_TOOLS, MAIN_AGENT_SECTION, regist
 import { buildParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import { buildAgentPrompt } from "#src/session/prompts";
 import { loadCustomAgents } from "#src/config/custom-agents";
+import { AgentTypeRegistry } from "#src/config/agent-types";
 import type { AgentConfig } from "#src/types";
 import { makeModel } from "#test/helpers/make-model";
 
@@ -194,7 +195,8 @@ describe("main profile discovery", () => {
   function project(content: string) {
     const cwd = mkdtempSync(join(tmpdir(), "main-profile-")); dirs.push(cwd);
     mkdirSync(join(cwd, ".pi", "agents"), { recursive: true }); writeFileSync(join(cwd, ".pi", "agents", "unique-main-reader.md"), content);
-    const h = harness(); return { cwd, ctx: { ...h.ctx, cwd } as ExtensionContext };
+    const h = harness(); Object.assign(h.ctx, { cwd });
+    return { cwd, ctx: h.ctx, h };
   }
   it("resolves ctx.cwd, requires Pi trust and rejects unknown without fallback", () => {
     const { ctx } = project("---\ntools: none\n---\nSESSION PROJECT");
@@ -202,6 +204,105 @@ describe("main profile discovery", () => {
     expect(() => resolveMainAgentProfile("does-not-exist-unique", ctx)).toThrow("Unknown");
     expect(() => resolveMainAgentProfile("unique-main-reader", { ...ctx, isProjectTrusted: () => false })).toThrow("requires Pi project trust");
   });
+  it("composes ordered, deduplicated source-local fragments with fresh body last", () => {
+    const { cwd, ctx } = project("---\nfragments: [aws, audit, aws]\n---\nPROFILE BODY");
+    const fragments = join(cwd, ".pi", "agents", "fragments");
+    mkdirSync(fragments);
+    writeFileSync(join(fragments, "aws.md"), "  AWS INSTRUCTIONS\n");
+    writeFileSync(join(fragments, "audit.md"), "AUDIT INSTRUCTIONS");
+    const profile = resolveMainAgentProfile("unique-main-reader", ctx);
+    expect(profile.fragments).toEqual(["aws", "audit"]);
+    expect(profile.systemPrompt).toBe("AWS INSTRUCTIONS\n\n---\n\nAUDIT INSTRUCTIONS\n\n---\n\nPROFILE BODY");
+    expect(loadCustomAgents(cwd).get("unique-main-reader")?.systemPrompt).toBe("PROFILE BODY");
+  });
+
+  it.each(["[aws]", "[]"])("rereads body and fragments together, clearing stale discovery errors (%s)", declaration => {
+    const { cwd, ctx } = project(`---\nfragments: ${declaration}\n---\nFRESH BODY`);
+    const agents = join(cwd, ".pi", "agents");
+    mkdirSync(join(agents, "fragments"));
+    writeFileSync(join(agents, "fragments", "aws.md"), "FRESH AWS");
+    const stale: AgentConfig = {
+      name: "unique-main-reader", description: "read", source: "project", sourcePath: join(agents, "unique-main-reader.md"),
+      systemPrompt: "STALE BODY", promptMode: "append", fragments: ["missing"], fragmentError: "Stale invalid schema",
+    };
+    const read = vi.spyOn(AgentTypeRegistry.prototype, "resolveAgentConfig").mockReturnValueOnce(stale);
+    try {
+      const profile = resolveMainAgentProfile("unique-main-reader", ctx);
+      expect(profile.systemPrompt).toBe(declaration === "[]" ? "FRESH BODY" : "FRESH AWS\n\n---\n\nFRESH BODY");
+      expect(profile.fragmentError).toBeUndefined();
+      expect(stale.systemPrompt).toBe("STALE BODY");
+      expect(stale.fragmentError).toBe("Stale invalid schema");
+    } finally { read.mockRestore(); }
+  });
+
+  it.each(["[missing]", "[../aws]", "[aws.md]", "aws", "[42]"])("blocks missing/invalid fragments on explicit selection: %s", async declaration => {
+    const { ctx, h } = project(`---\nfragments: ${declaration}\n---\nPROFILE BODY`);
+    h.resolve.mockImplementation(() => resolveMainAgentProfile("unique-main-reader", ctx));
+    await h.start();
+    expect(h.ctx.shutdown).toHaveBeenCalled();
+    expect(h.pi.appendEntry).not.toHaveBeenCalled();
+    expect(h.pi.setActiveTools).not.toHaveBeenCalled();
+    expect(await h.fire("input")).toEqual({ action: "handled" });
+    expect(h.ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("fragment"), "error");
+  });
+
+  it("rejects untrusted project before looking for missing fragments", () => {
+    const { ctx } = project("---\nfragments: [missing]\n---\nBODY");
+    expect(() => resolveMainAgentProfile("unique-main-reader", { ...ctx, isProjectTrusted: () => false }))
+      .toThrow("requires Pi project trust");
+  });
+
+  it("looks only beside winning global/project profile, never falls back across scopes", () => {
+    const { cwd, ctx } = project("---\nfragments: [aws]\n---\nPROJECT BODY");
+    const previous = process.env.PI_CODING_AGENT_DIR;
+    const global = join(cwd, "global");
+    process.env.PI_CODING_AGENT_DIR = global;
+    try {
+      const globalAgents = join(global, "agents");
+      const projectAgents = join(cwd, ".pi", "agents");
+      mkdirSync(join(globalAgents, "fragments"), { recursive: true });
+      writeFileSync(join(globalAgents, "unique-main-reader.md"), "---\nfragments: [aws]\n---\nGLOBAL BODY");
+      writeFileSync(join(globalAgents, "fragments", "aws.md"), "GLOBAL AWS");
+      expect(() => resolveMainAgentProfile("unique-main-reader", ctx)).toThrow(join(projectAgents, "fragments", "aws.md"));
+      mkdirSync(join(projectAgents, "fragments"));
+      writeFileSync(join(projectAgents, "fragments", "aws.md"), "PROJECT AWS");
+      expect(resolveMainAgentProfile("unique-main-reader", ctx).systemPrompt).toBe("PROJECT AWS\n\n---\n\nPROJECT BODY");
+      rmSync(join(projectAgents, "unique-main-reader.md"));
+      expect(resolveMainAgentProfile("unique-main-reader", { ...ctx, isProjectTrusted: () => false }).systemPrompt)
+        .toBe("GLOBAL AWS\n\n---\n\nGLOBAL BODY");
+    } finally {
+      if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR;
+      else process.env.PI_CODING_AGENT_DIR = previous;
+    }
+  });
+
+  it("restores frozen expanded instructions after fragment edits/deletion, without resolving again", async () => {
+    const { cwd, ctx, h } = project("---\ntools: none\nfragments: [aws]\n---\nFROZEN BODY");
+    const fragments = join(cwd, ".pi", "agents", "fragments");
+    mkdirSync(fragments);
+    const path = join(fragments, "aws.md");
+    writeFileSync(path, "FROZEN AWS");
+    h.resolve.mockImplementation(() => resolveMainAgentProfile("unique-main-reader", ctx));
+    await h.start();
+    const frozen = "FROZEN AWS\n\n---\n\nFROZEN BODY";
+    expect(h.state.branch[0].data.profile.systemPrompt).toBe(frozen);
+    h.manual();
+    for (const reason of ["reload", "resume", "fork"]) {
+      writeFileSync(path, "EDITED AWS");
+      if (reason !== "reload") rmSync(path);
+      await h.start(reason);
+      expect((await h.prompt()).sections[MAIN_AGENT_SECTION]).toContain(frozen);
+      expect((await h.prompt()).sections[MAIN_AGENT_SECTION]).not.toContain("EDITED AWS");
+    }
+    rmSync(join(cwd, ".pi", "agents", "unique-main-reader.md"));
+    await h.fire("session_tree");
+    expect((await h.prompt()).sections[MAIN_AGENT_SECTION]).toContain(frozen);
+    expect(h.resolve).toHaveBeenCalledTimes(1);
+    expect(h.pi.appendEntry).toHaveBeenCalledTimes(1);
+    expect(h.pi.setActiveTools).toHaveBeenCalledTimes(1);
+    expect(h.ctx.shutdown).not.toHaveBeenCalled();
+  });
+
   it("strict main thinking does not change tolerant child loader", () => {
     const { ctx, cwd } = project("---\nthinking: banana\n---\nBODY");
     expect(() => resolveMainAgentProfile("unique-main-reader", ctx)).toThrow("Invalid thinking level"); expect(loadCustomAgents(cwd).get("unique-main-reader")?.thinking).toBeUndefined();

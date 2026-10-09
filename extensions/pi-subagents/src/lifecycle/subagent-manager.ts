@@ -9,6 +9,7 @@
 import { randomUUID } from "node:crypto";
 import type { Model } from "@earendil-works/pi-ai";
 import { type BackgroundRequest, resolveBackgroundMode } from "#src/config/invocation-config";
+import { composeAgentInstructions } from "#src/config/prompt-fragments";
 import { debugLog } from "#src/debug";
 import type { ConcurrencyLimiter } from "#src/lifecycle/concurrency-limiter";
 import type { CreateSubagentSessionParams } from "#src/lifecycle/create-subagent-session";
@@ -76,6 +77,8 @@ export interface ResumeCallOptions {
 interface ResolvedSpawn {
   type: SubagentType;
   isBackground: boolean;
+  /** Fragment-bearing configuration captured before queue admission. */
+  agentConfig?: AgentConfig;
 }
 
 /**
@@ -309,7 +312,7 @@ export class SubagentManager {
     prompt: string,
     options: AgentSpawnConfig,
   ): string {
-    return this.create(snapshot, this.resolveSpawn(type, options.background), prompt, options);
+    return this.create(snapshot, this.resolveSpawn(type, options.background, snapshot), prompt, options);
   }
 
   /**
@@ -328,7 +331,7 @@ export class SubagentManager {
     options: Omit<AgentSpawnConfig, "background">,
   ): Promise<Subagent> {
     const foreground: BackgroundRequest = { kind: "explicit", isBackground: false };
-    const id = this.create(snapshot, this.resolveSpawn(type, foreground), prompt, {
+    const id = this.create(snapshot, this.resolveSpawn(type, foreground, snapshot), prompt, {
       ...options,
       background: foreground,
     });
@@ -344,14 +347,30 @@ export class SubagentManager {
    * Stamp the invariants every front door shares: a canonical agent type, a
    * rejection for a disabled one, and the effective background mode.
    */
-  private resolveSpawn(type: string, background: BackgroundRequest): ResolvedSpawn {
+  private resolveSpawn(type: string, background: BackgroundRequest, snapshot: ParentSnapshot): ResolvedSpawn {
     const canonical = this.registry.resolveType(type);
     if (canonical !== undefined && !this.registry.isValidType(canonical)) {
       throw new Error(`Agent type "${canonical}" is disabled`);
     }
     const resolvedType = canonical ?? "general-purpose";
-    const agentConfig = this.registry.resolveAgentConfig(resolvedType);
-    return { type: resolvedType, isBackground: resolveBackgroundMode(agentConfig, background) };
+    // Validate every selected declaration now. Resolve fragments while the
+    // request is made, not when a queue slot opens; later edits/reloads cannot
+    // change a fragment-bearing child. Profiles without fragments keep their
+    // existing run-start registry resolution.
+    const profile = this.registry.resolveAgentConfig(resolvedType);
+    const instructions = composeAgentInstructions(profile, {
+      projectTrusted: snapshot.projectTrusted,
+    });
+    let agentConfig: AgentConfig | undefined;
+    if (instructions.fragments.length > 0) {
+      agentConfig = structuredClone(profile);
+      agentConfig.systemPrompt = instructions.systemPrompt;
+      if (agentConfig.toolNames) Object.freeze(agentConfig.toolNames);
+      if (agentConfig.fragments) Object.freeze(agentConfig.fragments);
+      if (Array.isArray(agentConfig.locked)) Object.freeze(agentConfig.locked);
+      Object.freeze(agentConfig);
+    }
+    return { type: resolvedType, isBackground: resolveBackgroundMode(profile, background), agentConfig };
   }
 
   /** Create, register, and start (or queue) a record for an already-resolved spawn. */
@@ -375,6 +394,7 @@ export class SubagentManager {
       execution: {
         createSubagentSession: this.createSubagentSession,
         snapshot,
+        agentConfig: resolved.agentConfig,
         prompt,
         baseCwd: this.baseCwd,
         observer: this.buildObserver(options),

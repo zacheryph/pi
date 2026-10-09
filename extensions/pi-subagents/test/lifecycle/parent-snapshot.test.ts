@@ -31,6 +31,19 @@ describe("buildParentSnapshot", () => {
     expect(snapshot.cwd).toBe("/custom/path");
   });
 
+  it("captures project trust once, without retaining the mutable context", () => {
+    let trusted = true;
+    const isProjectTrusted = vi.fn(() => trusted);
+    const snapshot = buildParentSnapshot(makeCtx({ isProjectTrusted }));
+    trusted = false;
+    expect(snapshot.projectTrusted).toBe(true);
+    expect(isProjectTrusted).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves project trust unknown on older contexts without the method", () => {
+    expect(buildParentSnapshot(makeCtx()).projectTrusted).toBeUndefined();
+  });
+
   it("captures systemPrompt from ctx.getSystemPrompt()", () => {
     const snapshot = buildParentSnapshot(makeCtx({ getSystemPrompt: () => "my prompt" }));
     expect(snapshot.systemPrompt).toBe("my prompt");

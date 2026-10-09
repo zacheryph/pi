@@ -12,6 +12,7 @@ import {
 import { AgentTypeRegistry, BUILTIN_TOOL_NAMES } from "#src/config/agent-types";
 import { loadCustomAgents } from "#src/config/custom-agents";
 import { parseThinkingLevel, thinkingLevelError } from "#src/config/thinking-level";
+import { composeAgentInstructions, parseFragments } from "#src/config/prompt-fragments";
 import { MAIN_AGENT_SECTION } from "#src/session/main-profile-prompt";
 import { expandMcpToolPatterns } from "#src/session/mcp-tool-patterns";
 import { resolveModel } from "#src/session/model-resolver";
@@ -45,13 +46,22 @@ export function resolveMainAgentProfile(name: string, ctx: ExtensionContext): Ag
   // defaults must reject it; preserve the existing child-loader policy unchanged.
   if (profile.source === "project" || profile.source === "global") {
     const dir = profile.source === "project" ? join(ctx.cwd, ".pi", "agents") : join(getAgentDir(), "agents");
-    const { frontmatter, body } = parseFrontmatter(readFileSync(profile.sourcePath ?? join(dir, `${key}.md`), "utf8"));
+    profile.sourcePath ??= join(dir, `${key}.md`);
+    const { frontmatter, body } = parseFrontmatter(readFileSync(profile.sourcePath, "utf8"));
     if (frontmatter.thinking != null && !parseThinkingLevel(frontmatter.thinking)) {
       throw new Error(thinkingLevelError(frontmatter.thinking));
     }
     profile.systemPrompt = body.trim();
     profile.thinking = parseThinkingLevel(frontmatter.thinking);
+    // Body and fragment schema must come from the same fresh file. Clear stale
+    // discovery errors when frontmatter changed since registry loading.
+    const fragments = parseFragments(frontmatter.fragments);
+    profile.fragments = fragments.fragments;
+    profile.fragmentError = fragments.fragmentError;
   }
+  // Explicit selection freezes expanded instructions in the durable snapshot.
+  // Restoration consumes that string only, never mutable fragment files.
+  profile.systemPrompt = composeAgentInstructions(profile, { projectTrusted: ctx.isProjectTrusted() }).systemPrompt;
   return profile;
 }
 

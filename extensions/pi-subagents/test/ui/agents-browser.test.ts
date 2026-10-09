@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import { AgentTypeRegistry, BUILTIN_TOOL_NAMES } from "#src/config/agent-types";
 import { loadCustomAgents } from "#src/config/custom-agents";
 import type { AgentConfig } from "#src/types";
-import { buildAgentsView, showAgentsBrowser } from "#src/ui/agents-browser";
+import { buildAgentsView, showAgentsBrowser, type AgentsBrowserOptions } from "#src/ui/agents-browser";
 import { ReadOnlyBrowser } from "#src/ui/read-only-browser";
 
 function agent(overrides: Partial<AgentConfig> = {}): AgentConfig {
@@ -17,7 +17,8 @@ function agent(overrides: Partial<AgentConfig> = {}): AgentConfig {
   };
 }
 const registry = (config = agent()) => new AgentTypeRegistry(() => new Map([[config.name, config]]));
-const detail = (config = agent(), defaults = {}) => buildAgentsView(registry(config), defaults).items.at(-1)!.detail;
+const detail = (config = agent(), defaults = {}, options: AgentsBrowserOptions = {}) =>
+  buildAgentsView(registry(config), defaults, options).items.at(-1)!.detail;
 const field = (text: string, label: string) => new RegExp(`^${label}: +(.+)$`, "m").exec(text)?.[1];
 
 describe("effective agent definitions", () => {
@@ -118,6 +119,67 @@ describe("effective agent definitions", () => {
     expect(text.endsWith("\nBody\n  instruction\n\n```text\n    Keep literal.\n```")).toBe(true);
   });
 
+  it("shows raw Body, ordered source-local provenance and composed instructions without mutating config", () => {
+    const config = agent({ source: "global", sourcePath: "/global/agents/auditor.md", fragments: ["aws", "audit", "aws"], systemPrompt: "RAW BODY" });
+    const readFile = vi.fn((path: string) => path.endsWith("aws.md") ? "AWS\x1b[31m" : "AUDIT\x1b]52;c;payload\x07");
+    const text = detail(config, {}, { readFile });
+    expect(text).toContain("\nBody\nRAW BODY\n\nFragments\n1. aws\n   /global/agents/fragments/aws.md\n2. audit\n   /global/agents/fragments/audit.md");
+    expect(text).toContain("\nComposed instructions\nAWS\n\n---\n\nAUDIT\n\n---\n\nRAW BODY");
+    expect(text).not.toMatch(/[\x1b\x07]/);
+    expect(readFile.mock.calls.map(([path]) => path)).toEqual(["/global/agents/fragments/aws.md", "/global/agents/fragments/audit.md"]);
+    expect(config.systemPrompt).toBe("RAW BODY");
+    expect(config.fragments).toEqual(["aws", "audit", "aws"]);
+  });
+
+  it("keeps provenance and Body when missing fragment blocks composition; sanitizes error", () => {
+    const readFile = vi.fn(() => { throw new Error("ENOENT\x1b]0;fake title\x07"); });
+    const text = detail(agent({ fragments: ["missing"], sourcePath: "/project/.pi/agents/auditor.md", systemPrompt: "RAW BODY" }), {}, { readFile });
+    expect(text).toContain("\nBody\nRAW BODY");
+    expect(text).toContain("1. missing\n   /project/.pi/agents/fragments/missing.md");
+    expect(text).toContain("Composed instructions\nError:");
+    expect(text).toContain("ENOENT");
+    expect(text).not.toMatch(/[\x1b\x07]/);
+    expect(readFile).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([false, undefined])("blocks untrusted project preview without fragment IO (%s)", projectTrusted => {
+    const readFile = vi.fn(() => "SECRET");
+    const config = agent({ source: "project", sourcePath: "/project/.pi/agents/auditor.md", fragments: ["aws"], systemPrompt: "RAW BODY" });
+    const text = detail(config, {}, { projectTrusted, readFile });
+    expect(text).toContain("\nBody\nRAW BODY");
+    expect(text).toContain("1. aws\n   /project/.pi/agents/fragments/aws.md");
+    expect(text).toContain("Composed instructions\nError:");
+    expect(text).toContain("require Pi project trust");
+    expect(text).not.toContain("SECRET");
+    expect(readFile).not.toHaveBeenCalled();
+    expect(detail(config, {}, { projectTrusted: true, readFile })).toContain("SECRET\n\n---\n\nRAW BODY");
+  });
+
+  it("shows invalid declarations/errors without fragment IO and leaves no-fragment view unchanged", () => {
+    const readFile = vi.fn(() => "UNEXPECTED");
+    for (const overrides of [{ fragmentError: "Invalid fragment declaration" }, { fragments: ["../aws"] }]) {
+      const text = detail(agent(overrides), {}, { projectTrusted: true, readFile });
+      expect(text).toContain("Composed instructions\nError:");
+      expect(text).toContain("Invalid fragment");
+      expect(text).not.toContain("UNEXPECTED");
+    }
+    const config = agent({ fragments: [], source: "project" });
+    const text = detail(config, {}, { projectTrusted: false, readFile });
+    expect(text).toBe(detail(agent({ source: "project" })));
+    expect(text).not.toContain("Composed instructions");
+    expect(readFile).not.toHaveBeenCalled();
+  });
+
+  it("snapshots composed preview even if fragment reader later changes", () => {
+    const config = agent({ sourcePath: "/global/agents/auditor.md", fragments: ["aws"] });
+    const readFile = vi.fn(() => "ORIGINAL");
+    const view = buildAgentsView(registry(config), {}, { readFile });
+    readFile.mockReturnValue("EDITED");
+    expect(view.items.at(-1)!.detail).toContain("ORIGINAL");
+    expect(view.items.at(-1)!.detail).not.toContain("EDITED");
+    expect(readFile).toHaveBeenCalledTimes(1);
+  });
+
   it("loader captures winning path; new registry reflects edits and cwd without mutating old registry", () => {
     const root = mkdtempSync(join(tmpdir(), "pi-agents-browser-"));
     const previous = process.env.PI_CODING_AGENT_DIR;
@@ -159,6 +221,38 @@ describe("showAgentsBrowser", () => {
     expect(read).not.toHaveBeenCalled();
     expect(ui.custom).not.toHaveBeenCalled();
     expect(ui.notify).toHaveBeenCalledWith("Agent definitions browser requires TUI mode.", "warning");
+  });
+
+  it.each([false, true])("uses live project trust for composed browser preview (%s)", async trusted => {
+    const root = mkdtempSync(join(tmpdir(), "pi-browser-trust-"));
+    try {
+      mkdirSync(join(root, "fragments"));
+      writeFileSync(join(root, "fragments", "aws.md"), "TRUSTED FRAGMENT CONTENT");
+      const r = registry(agent({ source: "project", sourcePath: join(root, "auditor.md"), fragments: ["aws"], systemPrompt: "RAW BODY" }));
+      type Factory = Parameters<ExtensionContext["ui"]["custom"]>[0];
+      const { KeybindingsManager, TUI_KEYBINDINGS } = await import("@earendil-works/pi-tui");
+      const components: Awaited<ReturnType<Factory>>[] = [];
+      const ui = { notify: vi.fn(), custom: vi.fn(async (factory: Factory) => {
+        let result: unknown;
+        components.push(await factory({ mode: "regular", terminal: { rows: 100, columns: 160 }, requestRender() {} } as Parameters<Factory>[0], {
+          fg: (_token: string, text: string) => text, bold: (text: string) => text,
+        } as Parameters<Factory>[1], new KeybindingsManager(TUI_KEYBINDINGS) as Parameters<Factory>[2], value => { result = value; }));
+        return result;
+      }) };
+      const isProjectTrusted = vi.fn(() => trusted);
+      await showAgentsBrowser({ mode: "tui", hasUI: true, ui: ui as unknown as ExtensionContext["ui"], isProjectTrusted }, r);
+      const browser = components[1] as ReadOnlyBrowser;
+      browser.handleInput("auditor");
+      browser.handleInput("\r");
+      const text = browser.render(160).join("\n");
+      expect(isProjectTrusted).toHaveBeenCalledTimes(1);
+      expect(text).toContain("Composed instructions");
+      if (trusted) expect(text).toContain("TRUSTED FRAGMENT CONTENT");
+      else {
+        expect(text).toContain("require Pi project trust");
+        expect(text).not.toContain("TRUSTED FRAGMENT CONTENT");
+      }
+    } finally { rmSync(root, { recursive: true, force: true }); }
   });
 
   it("handles no UI and passes effective snapshot to actual browser factory", async () => {

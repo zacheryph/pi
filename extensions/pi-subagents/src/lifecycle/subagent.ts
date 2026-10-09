@@ -101,6 +101,8 @@ export interface SubagentExecution {
 	createSubagentSession: (params: CreateSubagentSessionParams) => Promise<SubagentSession>;
 	/** Immutable spawn-time parent snapshot handed to the session factory. */
 	snapshot: ParentSnapshot;
+	/** Prepared spawn-time config for fragment profiles; others use live lookup. */
+	agentConfig?: CreateSubagentSessionParams["agentConfig"];
 	/** Initial prompt for the turn loop. */
 	prompt: string;
 	/** Parent working directory handed to a workspace provider's prepare(). */
@@ -380,6 +382,7 @@ export class Subagent {
 		try {
 			this.subagentSession = await this.execution.createSubagentSession({
 				snapshot: this.execution.snapshot,
+				agentConfig: this.execution.agentConfig,
 				type: this.type,
 				cwd,
 				parentSession: this.execution.parentSession,

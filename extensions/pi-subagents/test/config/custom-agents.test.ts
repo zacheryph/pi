@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { BUILTIN_TOOL_NAMES } from "#src/config/agent-types";
 import { loadCustomAgents } from "#src/config/custom-agents";
+import { composeAgentInstructions } from "#src/config/prompt-fragments";
 
 describe("loadCustomAgents", () => {
   let tmpDir: string;
@@ -421,6 +422,43 @@ Agent prompt.`);
 
     const result = loadCustomAgents(tmpDir);
     expect(result.get("myagent")!.displayName).toBe("MyAgent");
+  });
+
+  it("discovers fragments lazily, deduplicates names and keeps invalid definitions visible", () => {
+    writeAgent("with-fragments", "---\nfragments: [aws, git, aws]\n---\nPROFILE BODY");
+    writeAgent("invalid-fragments", "---\nfragments: [../secret]\n---\nINVALID BODY");
+    const fragmentsDir = join(tmpDir, ".pi", "agents", "fragments");
+    mkdirSync(fragmentsDir);
+    writeFileSync(join(fragmentsDir, "aws.md"), "AWS");
+    const agents = loadCustomAgents(tmpDir);
+    expect(agents.get("with-fragments")!.fragments).toEqual(["aws", "git"]);
+    expect(agents.get("with-fragments")!.systemPrompt).toBe("PROFILE BODY");
+    expect(agents.get("invalid-fragments")!.fragmentError).toContain("Invalid fragment name");
+    expect(agents.has("aws")).toBe(false);
+    expect(() => composeAgentInstructions(agents.get("with-fragments")!, { projectTrusted: true })).toThrow("fragment \"git\"");
+  });
+
+  it("keeps fragment lookup local to winning profile scope without cross-scope fallback", () => {
+    const originalEnv = process.env.PI_CODING_AGENT_DIR;
+    process.env.PI_CODING_AGENT_DIR = join(tmpDir, "personal");
+    try {
+      const globalAgents = join(tmpDir, "personal", "agents");
+      mkdirSync(join(globalAgents, "fragments"), { recursive: true });
+      writeFileSync(join(globalAgents, "scoped.md"), "---\nfragments: [aws]\n---\nGLOBAL BODY");
+      writeFileSync(join(globalAgents, "only-global.md"), "---\nfragments: [aws]\n---\nGLOBAL ONLY");
+      writeFileSync(join(globalAgents, "fragments", "aws.md"), "GLOBAL AWS");
+      writeAgent("scoped", "---\nfragments: [aws]\n---\nPROJECT BODY");
+      const agents = loadCustomAgents(tmpDir);
+      expect(agents.get("scoped")!.source).toBe("project");
+      expect(() => composeAgentInstructions(agents.get("scoped")!, { projectTrusted: true })).toThrow(join(tmpDir, ".pi", "agents", "fragments", "aws.md"));
+      expect(composeAgentInstructions(agents.get("only-global")!).systemPrompt).toBe("GLOBAL AWS\n\n---\n\nGLOBAL ONLY");
+      mkdirSync(join(tmpDir, ".pi", "agents", "fragments"));
+      writeFileSync(join(tmpDir, ".pi", "agents", "fragments", "aws.md"), "PROJECT AWS");
+      expect(composeAgentInstructions(agents.get("scoped")!, { projectTrusted: true }).systemPrompt).toBe("PROJECT AWS\n\n---\n\nPROJECT BODY");
+    } finally {
+      if (originalEnv == null) delete process.env.PI_CODING_AGENT_DIR;
+      else process.env.PI_CODING_AGENT_DIR = originalEnv;
+    }
   });
 
   it("honors PI_CODING_AGENT_DIR for global custom agent discovery", () => {

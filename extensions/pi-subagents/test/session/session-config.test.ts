@@ -124,6 +124,30 @@ describe("assembleSessionConfig — default agent shape", () => {
   });
 });
 
+describe("assembleSessionConfig — prepared fragment configuration", () => {
+  it.each([{ fragments: ["aws"] }, { fragmentError: "Invalid declaration" }])(
+    "refuses raw fragment config without composing or creating a prompt (%s)", (declaration) => {
+      mockResolveAgentConfig.mockReturnValueOnce(exploreConfig(declaration));
+
+      expect(() => assembleSessionConfig("Explore", ctx, {}, mockEnv, mockAgentLookup, mockIO))
+        .toThrow("fragment instructions were not prepared at spawn; start a new agent");
+      expect(mockBuildAgentPrompt).not.toHaveBeenCalled();
+      expect(mockLoadProjectContext).not.toHaveBeenCalled();
+      expect(mockGetToolNamesForType).not.toHaveBeenCalled();
+    },
+  );
+
+  it("consumes prepared config without live registry lookup", () => {
+    const agentConfig = exploreConfig({ fragments: ["aws"], systemPrompt: "Composed AWS instructions", toolNames: [] });
+
+    assembleSessionConfig("Explore", ctx, { agentConfig }, mockEnv, mockAgentLookup, mockIO);
+
+    expect(mockResolveAgentConfig).not.toHaveBeenCalled();
+    expect(mockGetToolNamesForType).not.toHaveBeenCalled();
+    expect(mockBuildAgentPrompt.mock.calls[0][0]).toBe(agentConfig);
+  });
+});
+
 describe("assembleSessionConfig — model resolution", () => {
   it("returns undefined model when no option, no config model, no parent", () => {
     const result = assembleSessionConfig("Explore", ctx, {}, mockEnv, mockAgentLookup, mockIO);

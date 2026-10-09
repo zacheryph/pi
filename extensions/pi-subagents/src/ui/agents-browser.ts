@@ -1,6 +1,8 @@
+import { dirname, join } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AgentTypeRegistry } from "#src/config/agent-types";
 import { LOCKABLE_FIELDS, type LockableField } from "#src/config/invocation-config";
+import { composeAgentInstructions, parseFragments } from "#src/config/prompt-fragments";
 import { normalizeMaxTurns } from "#src/lifecycle/turn-limits";
 import type { AgentConfig } from "#src/types";
 import { type BrowserView, sanitizeBrowserText, showReadOnlyBrowser } from "#src/ui/read-only-browser";
@@ -11,7 +13,13 @@ export interface AgentsBrowserDefaults {
   readonly defaultMaxTurns?: number;
 }
 
-type BrowserContext = Pick<ExtensionContext, "mode" | "hasUI" | "ui">;
+export interface AgentsBrowserOptions {
+  readonly projectTrusted?: boolean;
+  readonly readFile?: (path: string) => string;
+}
+
+type BrowserContext = Pick<ExtensionContext, "mode" | "hasUI" | "ui"> &
+  Partial<Pick<ExtensionContext, "isProjectTrusted">>;
 
 /** Command entry point. Reads the current registry once; never reloads or mutates it. */
 export async function showAgentsBrowser(
@@ -23,13 +31,16 @@ export async function showAgentsBrowser(
     ctx.ui.notify("Agent definitions browser requires TUI mode.", "warning");
     return;
   }
-  await showReadOnlyBrowser(ctx, buildAgentsView(registry, defaults));
+  await showReadOnlyBrowser(ctx, buildAgentsView(registry, defaults, {
+    projectTrusted: ctx.isProjectTrusted?.() === true,
+  }));
 }
 
 /** Registry already contains winning definitions, including disabled overrides. */
 export function buildAgentsView(
   registry: AgentsBrowserRegistry,
   defaults: AgentsBrowserDefaults = {},
+  options: AgentsBrowserOptions = {},
 ): BrowserView {
   return {
     title: "Subagents · Agents",
@@ -43,7 +54,7 @@ export function buildAgentsView(
         status: enabled ? "enabled" : "disabled",
         badge: { label: enabled ? "[enabled]" : "[disabled]", color: enabled ? "success" : "dim" },
         description: config.description,
-        detail: agentDetail(config, registry.getToolNamesForType(name), defaults),
+        detail: agentDetail(config, registry.getToolNamesForType(name), defaults, options),
       };
     }),
   };
@@ -84,7 +95,12 @@ function maxTurnsSummary(config: AgentConfig, defaults: AgentsBrowserDefaults): 
   return label;
 }
 
-function agentDetail(config: AgentConfig, tools: readonly string[], defaults: AgentsBrowserDefaults): string {
+function agentDetail(
+  config: AgentConfig,
+  tools: readonly string[],
+  defaults: AgentsBrowserDefaults,
+  options: AgentsBrowserOptions,
+): string {
   const fields: [string, string][] = [
     ["Name", config.name],
     ["Display name", config.displayName ?? config.name],
@@ -103,5 +119,22 @@ function agentDetail(config: AgentConfig, tools: readonly string[], defaults: Ag
     ["Description", config.description],
   ];
   const body = sanitizeBrowserText(config.systemPrompt);
-  return [...detailFields(fields), "", "Body", body || "(empty)"].join("\n");
+  const sections = [...detailFields(fields), "", "Body", body || "(empty)"];
+  if (config.fragmentError || config.fragments?.length) {
+    // Provenance stays visible even when a fragment is missing or project trust
+    // blocks preview. Validate names before deriving paths; never expand paths.
+    const parsed = parseFragments(config.fragments);
+    const names = parsed.fragments ?? [];
+    const provenance = names.map((name, index) => `${index + 1}. ${name}\n   ${config.sourcePath
+      ? join(dirname(config.sourcePath), "fragments", `${name}.md`)
+      : "(source path unavailable)"}`).join("\n");
+    sections.push("", "Fragments", sanitizeBrowserText(provenance) || "(invalid)", "", "Composed instructions");
+    try {
+      const composed = composeAgentInstructions(config, options);
+      sections.push(sanitizeBrowserText(composed.systemPrompt) || "(empty)");
+    } catch (error) {
+      sections.push(`Error: ${sanitizeBrowserText(error instanceof Error ? error.message : String(error))}`);
+    }
+  }
+  return sections.join("\n");
 }

@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
@@ -8,7 +8,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { MAIN_AGENT_ENTRY, MAIN_AGENT_REQUIRED_TOOLS, MAIN_AGENT_SECTION, registerMainAgentProfile } from "#src/main-agent-profile";
+import { MAIN_AGENT_ENTRY, MAIN_AGENT_REQUIRED_TOOLS, MAIN_AGENT_SECTION, registerMainAgentProfile, resolveMainAgentProfile, type MainAgentSnapshot } from "#src/main-agent-profile";
 import type { AgentConfig } from "#src/types";
 
 const cleanups: Array<() => void> = [];
@@ -25,9 +25,19 @@ async function fixture(options: {
   trusted?: boolean;
   source?: AgentConfig["source"];
   summaryHistory?: boolean;
+  profileContent?: string;
+  fragmentFiles?: Record<string, string>;
 } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "main-profile-sdk-"));
   cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+  if (options.profileContent !== undefined) {
+    const agents = join(dir, ".pi", "agents");
+    mkdirSync(join(agents, "fragments"), { recursive: true });
+    writeFileSync(join(agents, "reader.md"), options.profileContent);
+    for (const [name, content] of Object.entries(options.fragmentFiles ?? {})) {
+      writeFileSync(join(agents, "fragments", `${name}.md`), content);
+    }
+  }
   const faux = createFauxCore({ provider: "main-profile-test", models: [{ id: "first", reasoning: true }, { id: "other", reasoning: true }] });
   const calls = vi.fn(faux.streamSimple);
   const modelRuntime = await ModelRuntime.create({ authPath: join(dir, "auth.json"), modelsPath: null, modelsStorePath: join(dir, "cache"), refreshOnCreate: false });
@@ -56,8 +66,9 @@ async function fixture(options: {
         if (options.failure === "context") {
           pi.on("context_with_system", async () => { await pi.setModel(faux.getModel("other")!); });
         }
-        registerMainAgentProfile(pi, { resolveProfile: () => {
+        registerMainAgentProfile(pi, { resolveProfile: (_name, ctx) => {
           if (options.failure === "startup") throw new Error("Unknown profile");
+          if (options.profileContent !== undefined) return resolveMainAgentProfile("reader", ctx);
           return profile;
         }, diagnostic });
       },
@@ -88,7 +99,7 @@ async function fixture(options: {
   cleanups.push(() => session.dispose());
   await session.bindExtensions({ mode: options.mode ?? "print", shutdownHandler: shutdown, onError: errors });
   faux.setResponses(options.responses ?? [fauxAssistantMessage("done")]);
-  return { session, faux, calls, secret, shutdown, errors, diagnostic, signals, pi: extensionPi!, loader };
+  return { dir, session, faux, calls, secret, shutdown, errors, diagnostic, signals, pi: extensionPi!, loader };
 }
 
 describe("main profile / installed SDK", () => {
@@ -109,6 +120,53 @@ describe("main profile / installed SDK", () => {
     expect(h.session.sessionManager.getBranch().filter(e => e.type === "custom" && e.customType === MAIN_AGENT_ENTRY)).toHaveLength(1);
     expect(h.shutdown).not.toHaveBeenCalled();
     expect(h.errors).not.toHaveBeenCalled();
+  });
+
+  it("real requests receive ordered fragment snapshot despite source edits before first prompt", async () => {
+    const h = await fixture({
+      profileContent: "---\ntools: [read]\nfragments: [aws, git, aws]\n---\nSDK PROFILE BODY",
+      fragmentFiles: { aws: "SDK AWS", git: "SDK GIT" },
+    });
+    writeFileSync(join(h.dir, ".pi", "agents", "fragments", "aws.md"), "EDITED FRAGMENT");
+    rmSync(join(h.dir, ".pi", "agents", "fragments", "git.md"));
+    await h.session.prompt("hello");
+    expect(h.calls).toHaveBeenCalledTimes(1);
+    const request = JSON.stringify(h.calls.mock.calls[0]![1]);
+    expect(request).toContain("SDK AWS");
+    expect(request).toContain("SDK GIT");
+    expect(request.indexOf("SDK AWS")).toBeLessThan(request.indexOf("SDK GIT"));
+    expect(request.indexOf("SDK GIT")).toBeLessThan(request.indexOf("SDK PROFILE BODY"));
+    expect(request).not.toContain("EDITED FRAGMENT");
+    const saved = h.session.sessionManager.getBranch().find(entry => entry.type === "custom" && entry.customType === MAIN_AGENT_ENTRY);
+    expect(saved).toMatchObject({ data: { profile: { systemPrompt: "SDK AWS\n\n---\n\nSDK GIT\n\n---\n\nSDK PROFILE BODY" } } });
+    expect(h.shutdown).not.toHaveBeenCalled();
+    expect(h.errors).not.toHaveBeenCalled();
+  });
+
+  it("saved fragment snapshot restores in another SDK session after all source files disappear", async () => {
+    const first = await fixture({
+      profileContent: "---\ntools: [read]\nfragments: [aws]\n---\nSDK SAVED BODY",
+      fragmentFiles: { aws: "SDK SAVED AWS" },
+    });
+    const saved = first.session.sessionManager.getBranch().find(entry => entry.type === "custom" && entry.customType === MAIN_AGENT_ENTRY)!;
+    if (saved.type !== "custom") throw new Error("Missing main profile snapshot");
+    rmSync(join(first.dir, ".pi"), { recursive: true });
+    const resumed = await fixture({ flag: null, snapshot: saved.data as MainAgentSnapshot });
+    await resumed.session.prompt("resume");
+    expect(resumed.calls).toHaveBeenCalledTimes(1);
+    const request = JSON.stringify(resumed.calls.mock.calls[0]![1]);
+    expect(request).toContain("SDK SAVED AWS");
+    expect(request).toContain("SDK SAVED BODY");
+    expect(resumed.shutdown).not.toHaveBeenCalled();
+  });
+
+  it("missing fragments block actual SDK provider dispatch", async () => {
+    const h = await fixture({ profileContent: "---\ntools: [read]\nfragments: [missing]\n---\nSDK BODY" });
+    await h.session.prompt("hello");
+    expect(h.calls).not.toHaveBeenCalled();
+    expect(h.shutdown).toHaveBeenCalled();
+    expect(h.diagnostic).toHaveBeenCalledWith(expect.stringContaining('fragment "missing"'));
+    expect(h.session.sessionManager.getBranch().some(entry => entry.type === "custom" && entry.customType === MAIN_AGENT_ENTRY)).toBe(false);
   });
 
   it("startup failure handles every input, no provider call even when SDK shutdown callback is inert", async () => {

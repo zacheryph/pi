@@ -41,6 +41,8 @@ export interface ParentPromptOptions {
 export interface ParentSnapshot {
   /** Parent working directory. */
   cwd: string;
+  /** Project trust captured from the parent before fragment resolution. */
+  projectTrusted?: boolean;
   /** Parent prompt for child inheritance, excluding exact main-only profile instructions. */
   systemPrompt: string;
   /** Parent's current model instance (fallback when agent config has no model). */
@@ -74,6 +76,7 @@ export function buildParentSnapshot(
   const parentContext = inheritContext ? buildParentContext(ctx) : undefined;
   return {
     cwd: ctx.cwd,
+    projectTrusted: ctx.isProjectTrusted?.(),
     systemPrompt: withoutMainAgentSection(ctx.getSystemPrompt(), promptOptions?.sections?.[MAIN_AGENT_SECTION]),
     model: ctx.model,
     modelRegistry: ctx.modelRegistry,

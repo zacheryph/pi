@@ -164,6 +164,28 @@ control model declarations; registered codemode/deferred tools may still be
 callable indirectly. No main-profile tool deny gate constrains later changes,
 child agents, trusted extensions, or nested/virtual model routing.
 
+## Prompt fragments
+
+Profiles can share unconditional system instructions by name:
+
+```yaml
+---
+fragments: [aws, git]
+---
+```
+
+Put those files in `agents/fragments/aws.md` and `agents/fragments/git.md`,
+beside the winning profile's agents directory (project `.pi/agents` or global
+`~/.pi/agent/agents`). Fragments compose in declaration order, then the profile
+body, for both `pi --agent <name>` and child agents. No paths or `.md` suffix
+in declarations; no cross-scope fallback. Invalid/missing fragments block the
+selected profile rather than silently dropping instructions.
+
+`/subagents:agents` previews source paths and composed instructions.
+Execution snapshots keep existing content across queueing and resume; new
+selection/spawn reads current fragments. See [configuration](./docs/configuration.md#prompt-fragments)
+for naming, trust and snapshot rules. Fragments grant no tools or permissions.
+
 ## Tools
 
 ### `subagent`

@@ -142,6 +142,7 @@ All fields are optional — sensible defaults for everything.
 
 | Field               | Default        | Description                                                                                                                                                                                                                                   |
 | ------------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fragments`         | —              | Ordered fragment names from the winning profile's `agents/fragments/<name>.md`; combined before the profile body. See [Prompt fragments](#prompt-fragments). |
 | `description`       | filename       | Agent description shown in tool listings                                                                                                                                                                                                      |
 | `display_name`      | —              | Display name for UI (e.g. widget, agent list)                                                                                                                                                                                                 |
 | `tools`             | all 7          | The agent's complete tool allowlist — built-in or extension-registered names. `none` for no tools. See [Tool selection](#tool-selection)                                                                                                      |
@@ -186,6 +187,68 @@ A lock is never silent: when a caller passes a value for a locked field, the too
 
 A lock binds the `subagent` tool only.
 [`SubagentsService.spawn`](../README.md#for-extension-authors) is a programmatic caller rather than a model guessing at harness settings, so its options win regardless.
+
+### Prompt fragments
+
+Reuse unconditional system instructions without repeating them in every profile:
+
+```text
+.pi/agents/
+├── terraform-engineer.md
+└── fragments/
+    ├── aws.md
+    └── git.md
+```
+
+```markdown
+---
+description: Terraform engineering
+fragments: [aws, git]
+---
+
+Maintain Terraform modules and state.
+```
+
+The same definition works with `pi --agent terraform-engineer` and
+`subagent({ subagent_type: "terraform-engineer", prompt: "Review this module" })`.
+The composed profile instructions are the AWS fragment, then the git fragment,
+then the profile body, separated by `\n\n---\n\n`. Existing append/replace
+wrapping applies to that composed text, not to each fragment separately.
+
+Rules:
+
+- `fragments` is a YAML array. Names start with a letter/digit and contain only
+  letters, digits, underscores or hyphens. Use `aws`, not `aws.md` or a path.
+- Resolve beside the **winning profile**, not the session cwd:
+  project definitions use `.pi/agents/fragments/<name>.md`; global definitions
+  use `$PI_CODING_AGENT_DIR/agents/fragments/<name>.md`
+  (default `~/.pi/agent/agents/fragments/<name>.md`).
+- There is no project/global fragment fallback or merge. A project profile that
+  overrides a global one must have its own referenced fragment files.
+- Preserve declaration order; include repeated names once. Trim each section;
+  empty sections add no separators.
+- Fragments are literal Markdown. Their frontmatter, if any, is text—not agent
+  settings. No nested inclusion, globs, variable expansion or executable content.
+- Discovery records declarations without reading fragment files. Missing,
+  unreadable or malformed fragments block the selected profile with an error
+  naming the profile, fragment and source path; other profiles remain discoverable.
+- Project fragment reads require Pi project trust. Files are read by the Pi
+  process under its existing filesystem/sandbox restrictions; no host-side bypass.
+- Main selection and child spawn capture expanded instructions. A queued child
+  retains its spawn-time content; running/resumed agents do not reread fragments.
+  Explicit new main selection or a new child spawn reads current fragment files.
+- No `fragments` key, or `fragments: []`, preserves existing behavior.
+  Files under `agents/fragments/` are not discovered as agent types.
+
+`/subagents:agents` shows the profile body, ordered fragment source paths and
+composed instructions (or a composition/trust error). This previews current
+definitions, not a running session's saved snapshot. `/system:prompt`, when
+pi-system-insights is installed, inspects the effective main-session prompt.
+
+Fragments supply instructions only. They do not enable tools, extensions, skills,
+credentials, sandbox concessions, or permissions. Each child uses its own
+profile fragments; the main profile's instructions remain excluded from child
+prompt inheritance.
 
 ### Tool selection
 
