@@ -55,7 +55,6 @@ pi-personal/
 ├── package.json                         # bundle manifest + private dev workspace
 ├── tsconfig.base.json
 └── extensions/
-    ├── opencode-editor.ts
     ├── pi-todo/
     │   ├── src/index.ts                 # todo tool + /todos:* commands
     │   ├── test/
@@ -80,11 +79,6 @@ development commands. All manifests are private;
 nothing needs publishing.
 
 ## Extensions
-
-### opencode-editor (inactive)
-
-Source retained at `extensions/opencode-editor.ts`, but not listed in the bundle
-manifest. It does not load. To re-enable it, add that entry point to `pi.extensions`.
 
 ### pi-subagents
 
