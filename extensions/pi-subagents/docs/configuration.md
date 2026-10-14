@@ -9,7 +9,7 @@ For the tools, commands, events, and service API, see the [README](../README.md)
 
 | Type              | Tools                      | Model                         | Prompt Mode            | Description                                                                                      |
 | ----------------- | -------------------------- | ----------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------ |
-| `general-purpose` | all 7                      | inherit                       | `append` (parent twin) | Inherits the parent's prompt identity — same rules, CLAUDE.md, project conventions               |
+| `general-purpose` | all available                      | inherit                       | `append` (parent twin) | Inherits the parent's prompt identity — same rules, CLAUDE.md, project conventions               |
 | `Explore`         | read, bash, grep, find, ls | haiku (falls back to inherit) | `replace`              | Fast codebase exploration (read-only); inherits the parent prompt as a base                      |
 | `Plan`            | read, bash, grep, find, ls | inherit                       | `replace`              | Software architect for implementation planning (read-only); inherits the parent prompt as a base |
 
@@ -145,7 +145,7 @@ All fields are optional — sensible defaults for everything.
 | `fragments`         | —              | Ordered fragment names from the winning profile's `agents/fragments/<name>.md`; combined before the profile body. See [Prompt fragments](#prompt-fragments). |
 | `description`       | filename       | Agent description shown in tool listings                                                                                                                                                                                                      |
 | `display_name`      | —              | Display name for UI (e.g. widget, agent list)                                                                                                                                                                                                 |
-| `tools`             | all 7          | The agent's complete tool allowlist — built-in or extension-registered names. `none` for no tools. See [Tool selection](#tool-selection)                                                                                                      |
+| `tools`             | all available  | `all` for registered tools; explicit names restrict; `-name` removes; `none` disables tools. See [Tool selection](#tool-selection)                                                                                                      |
 | `model`             | inherit parent | Model — `provider/modelId` or fuzzy name (`"haiku"`, `"sonnet"`)                                                                                                                                                                              |
 | `thinking`          | inherit        | off, minimal, low, medium, high, xhigh, max. An unrecognized value is dropped, and the agent inherits the parent's level                                                                                                                      |
 | `max_turns`         | unlimited      | Turn ceiling: the harness stops the agent after this many turns (minimum 2). `0` or omit for unlimited                                                                                                                                        |
@@ -252,8 +252,7 @@ prompt inheritance.
 
 ### Tool selection
 
-`tools` is the agent's **complete allowlist** of capability tools, not a filter over the built-ins.
-No tool that touches the filesystem, the shell, or the network reaches a child unless the agent names it — whoever registered it.
+`tools` selects capabilities for both child subagents and `--agent` main-session profiles. Omitting the field is equivalent to `tools: all`: every currently registered, non-hidden built-in, extension, and MCP tool. Explicit positive names form an allowlist; minus-prefixed names remove tools from that selection.
 
 Entries may name built-in tools (`read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`) or tools registered by any extension:
 
@@ -264,10 +263,7 @@ tools: read, grep, find, agent_browser
 ---
 ```
 
-Naming an extension's tool is the supported way to give a child access to it.
-This matters because a child loads the parent's extensions and runs their setup functions, so an extension **does** call `registerTool` inside the child — and Pi then drops that tool, because the allowlist is applied before the child's tool registry is built.
-The registration reports no error; the tool simply is not there.
-List the tool by name and it is admitted the moment its extension registers it.
+An explicit allowlist must still name an extension's tool to admit it. Children load the parent's extensions, but the SDK filters those tools against the resolved selection when their registrations arrive.
 
 Three names are always removed from a child, even when an agent lists them: `subagent`, `get_subagent_result`, and `steer_subagent`.
 This is the recursion guard — without it, an agent could spawn agents of its own without bound.
@@ -283,19 +279,18 @@ It arrives as its own message when you are idle and the agent is still running �
 Otherwise it rides that agent's outcome, under "Updates this agent sent while it worked": the foreground call, the resume, the `get_subagent_result` report, or the completion notice, whichever delivers that run.
 Either way you see it once.
 
-Accepted forms, all equivalent:
+Examples (comma-separated scalars, YAML flow sequences and block sequences all work):
 
 ```yaml
-tools: read, grep, find      # comma-separated
-tools: [read, grep, find]    # YAML flow sequence
-tools:                       # YAML block sequence
-  - read
-  - grep
-  - find
-tools: none                  # no tools at all
+tools: all                            # same as omitting tools
+tools: all, -bash, -mcp__github__*    # all except shell and GitHub MCP
+tools: [-bash, -write]                # negative-only implicitly selects all
+tools: [read, grep, find]            # explicit restricted allowlist
+tools: read, codemode, mcp__github__* # explicit allowlist with MCP wildcard
+tools: none                           # no capability tools
 ```
 
-Omitting `tools` entirely gives the agent all seven built-ins and no extension tools.
+Exclusions take precedence regardless of ordering. A `-name` removes an exact tool; `-mcp__server__*` removes a server's currently registered tools. An explicit `all` or a negative-only declaration starts with all available names. Expansion is a spawn/startup snapshot, not an ongoing subscription to later registrations.
 
 Two other settings interact with this list:
 
@@ -306,7 +301,7 @@ Two other settings interact with this list:
 #### Codemode, `tool_search`, and MCP tools
 
 Pi supplies `codemode`, `tool_search`, and MCP tools through built-in extensions.
-A child loads one only when its `tools` list names a tool that extension supplies:
+A child loads one when the resolved tools list includes a tool it supplies; `all` includes those already registered in the parent:
 
 | Name in `tools`                                                                                          | Built-in the child loads |
 | -------------------------------------------------------------------------------------------------------- | ------------------------ |
@@ -385,7 +380,7 @@ snapshot. It is not reapplied on `/new`, resume, reload, or tree navigation and
 never propagates as a child override. Children can still inherit the current
 parent model normally.
 
-Project profiles require Pi project trust. Delegation tools remain available;
+Project profiles require Pi project trust. Delegation tools are included by default, unless a profile explicitly excludes them (`-subagent`, `-get_subagent_result`, or `-steer_subagent`);
 child settings and prompt construction are unchanged. `locked`, `max_turns`,
 `run_in_background`, and `inherit_context` retain their child meanings rather
 than imposing main-session restrictions. See [main-session profile usage](../README.md#main-session-profile---agent)

@@ -93,12 +93,12 @@ export class AgentTypeRegistry implements AgentConfigLookup {
   /**
    * Get the capability tool names for a type (case-insensitive).
    *
-   * An agent that declares no `tools:` key gets the built-ins; one that declares
+   * An agent that declares no `tools:` key gets all available tools; one that declares
    * `tools: none` gets nothing. Resolution goes through `resolveAgentConfig` so
    * the two cannot disagree about which config a type names.
    */
   getToolNamesForType(type: string): string[] {
-    return this.resolveAgentConfig(type).toolNames ?? [...BUILTIN_TOOL_NAMES];
+    return this.resolveAgentConfig(type).toolNames ?? ["all"];
   }
 
   /** Resolve agent config with guaranteed non-null return. Falls back: unknown → general-purpose → absolute fallback. */
@@ -115,7 +115,7 @@ export class AgentTypeRegistry implements AgentConfigLookup {
       name: type,
       displayName: "Agent",
       description: "General-purpose agent for complex, multi-step tasks",
-      toolNames: BUILTIN_TOOL_NAMES,
+      toolNames: ["all"],
       systemPrompt: "",
       promptMode: "append",
     };

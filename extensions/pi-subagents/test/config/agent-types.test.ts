@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AgentTypeRegistry, BUILTIN_TOOL_NAMES } from "#src/config/agent-types";
+import { AgentTypeRegistry } from "#src/config/agent-types";
 import type { AgentConfig } from "#src/types";
 
 function makeAgentConfig(overrides: Partial<AgentConfig> = {}): AgentConfig {
@@ -211,10 +211,10 @@ describe("AgentTypeRegistry", () => {
   });
 
   describe("getToolNamesForType", () => {
-    it("returns all built-in tools for general-purpose", () => {
+    it("selects all available tools for general-purpose", () => {
       const registry = makeRegistry();
       const names = registry.getToolNamesForType("general-purpose");
-      expect(names).toEqual(BUILTIN_TOOL_NAMES);
+      expect(names).toEqual(["all"]);
     });
 
     it("returns restricted tools for Explore", () => {
@@ -233,7 +233,7 @@ describe("AgentTypeRegistry", () => {
     it("returns BUILTIN_TOOL_NAMES for unknown type", () => {
       const registry = makeRegistry();
       const names = registry.getToolNamesForType("nonexistent");
-      expect(names).toEqual(BUILTIN_TOOL_NAMES);
+      expect(names).toEqual(["all"]);
     });
 
     it("returns an empty list for an agent that declared tools: none", () => {
@@ -243,11 +243,11 @@ describe("AgentTypeRegistry", () => {
       expect(registry.getToolNamesForType("silent")).toEqual([]);
     });
 
-    it("returns the built-ins for a user agent that declared no tools key", () => {
+    it("selects all available tools for a user agent with no tools key", () => {
       const registry = makeRegistry(
         new Map([["unrestricted", makeAgentConfig({ name: "unrestricted", toolNames: undefined })]])
       );
-      expect(registry.getToolNamesForType("unrestricted")).toEqual(BUILTIN_TOOL_NAMES);
+      expect(registry.getToolNamesForType("unrestricted")).toEqual(["all"]);
     });
 
     it("returns a disabled agent's own list rather than the built-ins", () => {

@@ -5,7 +5,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { getAgentDir, parseFrontmatter } from "@earendil-works/pi-coding-agent";
-import { BUILTIN_TOOL_NAMES } from "#src/config/agent-types";
 import { isLockableField, type LockDeclaration } from "#src/config/invocation-config";
 import { parseThinkingLevel, thinkingLevelError } from "#src/config/thinking-level";
 import { parseFragments } from "#src/config/prompt-fragments";
@@ -60,7 +59,7 @@ function loadFromDir(dir: string, agents: Map<string, AgentConfig>, source: "pro
       name,
       displayName: str(fm.display_name),
       description: str(fm.description) ?? name,
-      toolNames: listField(fm.tools, BUILTIN_TOOL_NAMES),
+      toolNames: listField(fm.tools, ["all"]),
       model: str(fm.model),
       thinking: thinkingLevel(fm.thinking, name),
       maxTurns: nonNegativeInt(fm.max_turns),

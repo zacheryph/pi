@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
-import { AgentTypeRegistry, BUILTIN_TOOL_NAMES } from "#src/config/agent-types";
+import { AgentTypeRegistry } from "#src/config/agent-types";
 import { loadCustomAgents } from "#src/config/custom-agents";
 import type { AgentConfig } from "#src/types";
 import { buildAgentsView, showAgentsBrowser, type AgentsBrowserOptions } from "#src/ui/agents-browser";
@@ -71,7 +71,7 @@ describe("effective agent definitions", () => {
   it("shows inherited/default fields honestly, normalized limits and empty Body", () => {
     const text = detail(agent({ systemPrompt: "", displayName: undefined }));
     expect(field(text, "Display name")).toBe("auditor");
-    expect(field(text, "Tools")).toBe(BUILTIN_TOOL_NAMES.join(", "));
+    expect(field(text, "Tools")).toBe("all");
     expect(field(text, "Model")).toBe("(inherit parent)");
     expect(field(text, "Thinking")).toBe("(inherit parent)");
     expect(field(text, "Max turns")).toBe("unlimited");

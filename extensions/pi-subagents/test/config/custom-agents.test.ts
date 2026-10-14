@@ -2,7 +2,6 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { BUILTIN_TOOL_NAMES } from "#src/config/agent-types";
 import { loadCustomAgents } from "#src/config/custom-agents";
 import { composeAgentInstructions } from "#src/config/prompt-fragments";
 
@@ -74,7 +73,7 @@ Just a prompt.`);
 
     expect(agent.name).toBe("minimal");
     expect(agent.description).toBe("minimal"); // defaults to filename
-    expect(agent.toolNames).toEqual(BUILTIN_TOOL_NAMES); // all tools
+    expect(agent.toolNames).toEqual(["all"]); // all tools
     expect(agent.model).toBeUndefined();
     expect(agent.thinking).toBeUndefined();
     expect(agent.maxTurns).toBeUndefined();
@@ -92,9 +91,20 @@ Just a prompt.`);
 
     expect(agent.name).toBe("bare");
     expect(agent.description).toBe("bare");
-    expect(agent.toolNames).toEqual(BUILTIN_TOOL_NAMES);
+    expect(agent.toolNames).toEqual(["all"]);
     expect(agent.promptMode).toBe("append");
     expect(agent.systemPrompt).toBe("Just a system prompt, no frontmatter.");
+  });
+
+  it("parses all with negative literal and MCP selectors", () => {
+    writeAgent("all-minus", "---\ntools: [all, -bash, '-mcp__github__*']\n---\nTools.");
+    expect(loadCustomAgents(tmpDir).get("all-minus")!.toolNames)
+      .toEqual(["all", "-bash", "-mcp__github__*"]);
+  });
+
+  it("parses negative-only tools to be resolved against all", () => {
+    writeAgent("minus-only", "---\ntools: -bash\n---\nTools.");
+    expect(loadCustomAgents(tmpDir).get("minus-only")!.toolNames).toEqual(["-bash"]);
   });
 
   it("handles tools: none → empty array", () => {

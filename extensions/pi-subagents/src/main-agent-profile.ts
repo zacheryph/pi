@@ -9,12 +9,12 @@ import {
   type ExtensionAPI,
   type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { AgentTypeRegistry, BUILTIN_TOOL_NAMES } from "#src/config/agent-types";
+import { AgentTypeRegistry } from "#src/config/agent-types";
 import { loadCustomAgents } from "#src/config/custom-agents";
 import { parseThinkingLevel, thinkingLevelError } from "#src/config/thinking-level";
 import { composeAgentInstructions, parseFragments } from "#src/config/prompt-fragments";
 import { MAIN_AGENT_SECTION } from "#src/session/main-profile-prompt";
-import { expandMcpToolPatterns } from "#src/session/mcp-tool-patterns";
+import { resolveToolSelection } from "#src/session/tool-selection";
 import { resolveModel } from "#src/session/model-resolver";
 import type { AgentConfig } from "#src/types";
 import { sanitizeBrowserText } from "#src/ui/read-only-browser";
@@ -161,9 +161,11 @@ export function registerMainAgentProfile(pi: ExtensionAPI, overrides: Partial<Ma
     // MCP servers connect in the background. A wildcard may match nothing at
     // startup; it selects available tools, not a required connection. Hidden
     // tools are not available matches. Literal missing/hidden names still fail.
-    const expanded = expandMcpToolPatterns(profile.toolNames ?? BUILTIN_TOOL_NAMES,
+    const expanded = resolveToolSelection(profile.toolNames,
       configured.filter(t => t.exposure !== "hidden").map(t => t.name));
-    const tools = [...new Set([...expanded.toolNames, ...MAIN_AGENT_REQUIRED_TOOLS])];
+    // Explicit exclusions also apply to otherwise mandatory orchestration defaults.
+    const tools = [...new Set([...expanded.toolNames, ...MAIN_AGENT_REQUIRED_TOOLS])]
+      .filter(name => !expanded.excludedToolNames.includes(name));
     const missing = tools.filter(name => !configured.some(t => t.name === name && t.exposure !== "hidden"));
     if (missing.length) throw new Error(`Unavailable profile tools (check --tools/--exclude-tools): ${missing.join(", ")}.`);
     if (profile.model && model && (ctx.model?.provider !== model.provider || ctx.model.id !== model.id)) {

@@ -61,6 +61,49 @@ function harness(mode: ExtensionContext["mode"] = "tui") {
 }
 
 describe("main profile defaults and persistent body", () => {
+  it("inherits available extension tools when tools is omitted, excluding hidden tools", async () => {
+    const h = harness();
+    delete h.state.profile.toolNames;
+    h.state.all.push({ name: "hidden", exposure: "hidden" });
+    await h.start();
+    expect(h.state.active).toEqual([
+      "read", "write", "codemode", "tool_search", "secret", ...MAIN_AGENT_REQUIRED_TOOLS,
+    ]);
+    expect(h.ctx.shutdown).not.toHaveBeenCalled();
+  });
+
+  it("supports all with exact and MCP server exclusions", async () => {
+    const h = harness();
+    h.state.profile.toolNames = ["all", "-write", "-mcp__github__*"];
+    h.state.all.push({ name: "mcp__github__read", exposure: "deferred" });
+    h.state.all.push({ name: "mcp__gitlab__read", exposure: "deferred" });
+    await h.start();
+    expect(h.state.active).toEqual([
+      "read", "codemode", "tool_search", "secret", ...MAIN_AGENT_REQUIRED_TOOLS,
+      "mcp__gitlab__read",
+    ]);
+    expect(h.ctx.shutdown).not.toHaveBeenCalled();
+  });
+
+  it("honors explicit exclusions for default orchestration tools", async () => {
+    const h = harness();
+    h.state.profile.toolNames = ["all", "-subagent", "-get_subagent_result"];
+    await h.start();
+    expect(h.state.active).toEqual([
+      "read", "write", "codemode", "tool_search", "secret", "steer_subagent",
+    ]);
+    expect(h.ctx.shutdown).not.toHaveBeenCalled();
+  });
+
+  it("negative-only selectors imply all", async () => {
+    const h = harness();
+    h.state.profile.toolNames = ["-write", "-tool_search"];
+    await h.start();
+    expect(h.state.active).toEqual([
+      "read", "codemode", "secret", ...MAIN_AGENT_REQUIRED_TOOLS,
+    ]);
+  });
+
   it.each(["tui", "print", "rpc", "json"] as const)("applies explicit startup defaults once; manual settings remain (%s)", async mode => {
     const h = harness(mode); Object.assign(h.state.profile, { model: "anthropic/other", thinking: "high" });
     await h.start();
