@@ -15,17 +15,17 @@ concurrency:
 jobs:
   select-extensions:
     name: Select extensions
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     outputs:
       matrix: ${{ steps.select.outputs.matrix }}
       has-extensions: ${{ steps.select.outputs.has-extensions }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '24'
       - name: Test matrix selection
         run: node --test scripts/select-test-extensions.test.mjs
       - name: Select extensions
@@ -36,17 +36,17 @@ jobs:
     name: Check and test (${{ matrix.extension }})
     needs: select-extensions
     if: needs.select-extensions.outputs.has-extensions == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     env:
       EXTENSION: ${{ matrix.extension }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.select-extensions.outputs.matrix) }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '24'
           cache: npm
       - name: Install dependencies
         id: install

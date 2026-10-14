@@ -1,7 +1,7 @@
 # Personal Pi Extensions
 
 Personal Pi bundle: one install, multiple independent extensions. No npm publication
-or TypeScript build required. Requires Pi 1.1.0+ and Node.js 22.19+.
+or TypeScript build required. Requires Pi 1.1.0+ and Node.js 24+.
 
 ## Install
 
