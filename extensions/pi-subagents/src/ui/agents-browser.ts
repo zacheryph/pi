@@ -45,7 +45,7 @@ export function buildAgentsView(
   return {
     title: "Subagents · Agents",
     note: "Read-only effective definitions · unlocked fields may be overridden by callers",
-    items: registry.getAllTypes().map((name) => {
+    items: [...registry.getAllTypes()].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" })).map((name) => {
       const config = registry.resolveAgentConfig(name);
       const enabled = config.enabled !== false;
       return {
