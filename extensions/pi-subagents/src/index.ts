@@ -186,7 +186,7 @@ export default function (pi: ExtensionAPI) {
     resolvePromptInheritance: (provider) => settings.promptInheritanceFor(provider),
     // Read per child rather than once: an MCP server connects in the
     // background, so its tools register after this extension loads.
-    listParentToolNames: () => pi.getAllTools().map((tool) => tool.name),
+    listParentToolNames: () => pi.getAllTools().filter((tool) => tool.exposure !== "hidden").map((tool) => tool.name),
   };
 
   // ConcurrencyLimiter: schedules background run thunks FIFO against the limit.

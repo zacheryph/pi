@@ -11,7 +11,7 @@
  */
 
 import type { Model } from "@earendil-works/pi-ai";
-import { type AgentConfigLookup, BUILTIN_TOOL_NAMES } from "#src/config/agent-types";
+import type { AgentConfigLookup } from "#src/config/agent-types";
 import type { EnvInfo } from "#src/session/env";
 import type { ModelRegistry } from "#src/session/model-resolver";
 import type { ProjectContextLoader } from "#src/session/project-context";
@@ -101,7 +101,7 @@ export interface SessionConfig {
   effectiveCwd: string;
   /** Fully-assembled system prompt string (ready for `systemPromptOverride`). */
   systemPrompt: string;
-  /** Built-in tool name allowlist for this agent type. */
+  /** Tool selectors resolved against registered parent tools at child creation. */
   toolNames: string[];
   /**
    * Resolved model instance (undefined → use parent model as passed to SDK).
@@ -182,7 +182,7 @@ export function assembleSessionConfig(
   const effectiveCwd = options.cwd ?? ctx.cwd;
 
   const toolNames = options.agentConfig
-    ? [...(agentConfig.toolNames ?? BUILTIN_TOOL_NAMES)]
+    ? [...(agentConfig.toolNames ?? ["all"])]
     : registry.getToolNamesForType(type);
 
   // Model resolution: explicit option > config model string > parent model.

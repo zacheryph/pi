@@ -606,8 +606,8 @@ Anything attaching to the core either subscribes to a lifecycle event, or regist
   Scheduling, cross-extension RPC, model-scope enforcement, and a built-in tool denylist belong to upstream — see [Relationship to upstream](#relationship-to-upstream).
 - _Policy about what a child may do._
   Tool restriction is allow/ask/deny in a permission layer, not a binary hide in a spawner — see [Migrating from `disallowed_tools`](#migrating-from-disallowed_tools).
-- _Widening a child's tool allowlist with **capability** tools on the agent's behalf._
-  An agent's `tools:` frontmatter is the only thing that admits a capability tool, and no settings key may name one, because a settings-level list would hand a read-only `Explore` agent write-capable tools from a file its author never saw.
+- _Settings-level overrides of an agent's tool selection._
+  An agent's `tools:` frontmatter chooses its capabilities: omitted or `all` includes currently registered built-in and extension tools; explicit names restrict them; `-name` excludes. A global setting that widens a read-only `Explore` agent's declared tools would violate its contract.
   The core does install its own protocol in every child — the `<active_agent>` tag, the parent-context prefix, and the `ask_parent` / `notify_parent` tools — none of which reaches the filesystem, the shell, or the network.
 - _A global run-mode default._
   Foreground or background is a per-invocation argument and a per-agent frontmatter key; a global flip changes every existing agent file at once.

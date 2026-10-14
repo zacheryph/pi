@@ -499,7 +499,56 @@ describe("createSubagentSession — Pi built-in extensions", () => {
   });
 });
 
-describe("createSubagentSession — MCP tool patterns", () => {
+describe("createSubagentSession — all tools and MCP patterns", () => {
+  it("inherits all available parent tools for a profile without a tools declaration", async () => {
+    arrangeFactory();
+    await createSubagentSession(
+      { snapshot: STUB_SNAPSHOT, type: "general-purpose" },
+      createSubagentSessionDeps({
+        io, exec, registry: createAgentLookup({ toolNames: undefined }),
+        listParentToolNames: () => [
+          "read", "bash", "edit", "codemode", "tool_search", "mcp__github__get_issue", "my_extension",
+        ],
+      }),
+    );
+    expect(io.createSession).toHaveBeenCalledWith(expect.objectContaining({
+      tools: ["read", "bash", "edit", "codemode", "tool_search", "mcp__github__get_issue", "my_extension"],
+      excludeTools: ["subagent", "get_subagent_result", "steer_subagent"],
+    }));
+    expect(loadedBuiltinNames()).toEqual(["codemode", "tool-search", "mcp"]);
+  });
+
+  it("subtracts exact and MCP tools from all and retains other extensions", async () => {
+    arrangeFactory();
+    await createSubagentSession(
+      { snapshot: STUB_SNAPSHOT, type: "general-purpose" },
+      createSubagentSessionDeps({
+        io, exec, registry: createAgentLookup({ toolNames: ["all", "-bash", "-mcp__github__*"] }),
+        listParentToolNames: () => [
+          "read", "bash", "codemode", "mcp__github__a", "mcp__gitlab__b", "my_extension",
+        ],
+      }),
+    );
+    expect(io.createSession).toHaveBeenCalledWith(expect.objectContaining({
+      tools: ["read", "codemode", "mcp__gitlab__b", "my_extension"],
+    }));
+    expect(loadedBuiltinNames()).toEqual(["codemode", "mcp"]);
+  });
+
+  it("does not expose subagent spawning tools even when all includes them", async () => {
+    arrangeFactory();
+    await createSubagentSession(
+      { snapshot: STUB_SNAPSHOT, type: "general-purpose" },
+      createSubagentSessionDeps({
+        io, exec, registry: createAgentLookup({ toolNames: ["all"] }),
+        listParentToolNames: () => ["read", "subagent", "steer_subagent", "get_subagent_result"],
+      }),
+    );
+    expect(io.createSession).toHaveBeenCalledWith(expect.objectContaining({
+      excludeTools: ["subagent", "get_subagent_result", "steer_subagent"],
+    }));
+  });
+
   const PARENT_TOOLS = ["read", "mcp__github__a", "mcp__github__b", "mcp__gitlab__c"];
 
   function depsDeclaring(toolNames: string[], parentTools: string[]) {

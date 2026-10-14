@@ -27,7 +27,7 @@ import { SubagentSession } from "#src/lifecycle/subagent-session";
 import { AskParentTool, type QuestionRecorder } from "#src/session/ask-parent-tool";
 import { builtinExtensionsFor } from "#src/session/builtin-extensions";
 import type { EnvInfo } from "#src/session/env";
-import { expandMcpToolPatterns } from "#src/session/mcp-tool-patterns";
+import { resolveToolSelection } from "#src/session/tool-selection";
 import type { ModelRegistry } from "#src/session/model-resolver";
 import { NotifyParentTool, type UpdateAnnouncer } from "#src/session/notify-parent-tool";
 import { type AssemblerIO, assembleSessionConfig } from "#src/session/session-config";
@@ -244,7 +244,7 @@ export async function createSubagentSession(
     deps.io.assemblerIO,
   );
 
-  const { toolNames, unmatchedPatterns } = expandMcpToolPatterns(
+  const { toolNames, unmatchedPatterns } = resolveToolSelection(
     cfg.toolNames,
     deps.listParentToolNames(),
   );
