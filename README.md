@@ -171,6 +171,13 @@ These check/test commands cover every development workspace. Pi modules
 are dev dependencies for testing and peer dependencies for runtime; Pi supplies its
 own modules when loading extensions.
 
+GitHub Actions runs `check` and `test` in parallel jobs per extension workspace.
+Pull requests select extensions with changes under their directory; changes to
+root manifests/lockfiles, shared TypeScript settings, workflows, or scripts select
+all extensions. Pushes to `main` always check and test all extensions. Unrelated
+PR changes skip the extension matrix. Matrix selection is tested with
+`node --test scripts/select-test-extensions.test.mjs`.
+
 Optional public API declaration generation (not needed for extension loading):
 
 ```bash

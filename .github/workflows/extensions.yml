@@ -1,0 +1,58 @@
+name: Extension checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: extension-checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  select-extensions:
+    name: Select extensions
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.select.outputs.matrix }}
+      has-extensions: ${{ steps.select.outputs.has-extensions }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test matrix selection
+        run: node --test scripts/select-test-extensions.test.mjs
+      - name: Select extensions
+        id: select
+        run: node scripts/select-test-extensions.mjs
+
+  test-extensions:
+    name: Check and test (${{ matrix.extension }})
+    needs: select-extensions
+    if: needs.select-extensions.outputs.has-extensions == 'true'
+    runs-on: ubuntu-latest
+    env:
+      EXTENSION: ${{ matrix.extension }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.select-extensions.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        id: install
+        run: npm ci --ignore-scripts
+      - name: Typecheck
+        run: npm run check --workspace="$EXTENSION"
+      - name: Test
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test --workspace="$EXTENSION"
