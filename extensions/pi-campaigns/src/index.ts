@@ -27,7 +27,7 @@ const Parameters = Type.Object({
   facts: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
 });
 
-const message = (text: string) => ({ content: [{ type: "text" as const, text }] });
+const message = (text: string) => ({ content: [{ type: "text" as const, text }], details: undefined });
 
 function mutate(id: string, fn: (plan: CampaignPlan, state: CampaignState) => CampaignState, expected?: number): CampaignState {
   const { plan, state } = loadCampaign(id);
@@ -103,7 +103,7 @@ export default function campaignsExtension(pi: ExtensionAPI): void {
     description: "Manage local multi-week YAML infrastructure campaigns. Never assume work is complete: record evidence and pass required gates. Reconciliation runs deterministic allowlisted commands, not an LLM. Creation starts PAUSED until user reviews the plan.",
     parameters: Parameters,
     async execute(_id, args, signal) {
-      if (signal.aborted) throw new Error("Cancelled");
+      if (signal?.aborted) throw new Error("Cancelled");
       try {
         const id = args.id;
         if (args.action === "list") return message(listCampaigns().join("\n") || "No campaigns.");
