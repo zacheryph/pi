@@ -3,7 +3,7 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { parse, stringify } from "yaml";
 import {
-  changePause, describe, recordGate, recordWork, retryGate,
+  changePause, describe, recordGate, recordWork, retryGate, setFacts,
   type CampaignPlan, type CampaignState
 } from "./engine.ts";
 import {
@@ -16,7 +16,7 @@ import {
 
 const widgetKey = "pi-personal:campaigns";
 const Parameters = Type.Object({
-  action: StringEnum(["list", "create", "status", "revise", "start", "pause", "work_done", "approve", "retry_gate", "reconcile"] as const),
+  action: StringEnum(["list", "create", "status", "revise", "start", "pause", "work_done", "approve", "retry_gate", "set_facts", "reconcile"] as const),
   id: Type.Optional(Type.String({ description: "Campaign id" })),
   yaml: Type.Optional(Type.String({ description: "Full YAML campaign plan for create/revise" })),
   expected_revision: Type.Optional(Type.Integer({ minimum: 0 })),
@@ -130,6 +130,12 @@ export default function campaignsExtension(pi: ExtensionAPI): void {
           const result = await reconcileCampaign(id, undefined, signal);
           refresh();
           return message(describe(result.plan, result.state));
+        }
+        if (args.action === "set_facts") {
+          if (!args.step || !args.facts) throw new Error("step and facts required");
+          mutate(id, (plan, state) => setFacts(plan, state, args.step!, args.facts!), args.expected_revision);
+          refresh();
+          return message(display(id));
         }
         if (args.action === "work_done") {
           if (!args.step || !args.facts) throw new Error("step and facts required");
