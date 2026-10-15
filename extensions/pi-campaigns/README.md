@@ -89,6 +89,8 @@ Scripts receive \`PI_CAMPAIGN_ID\`, \`PI_CAMPAIGN_STEP_ID\`,
 \`PI_CAMPAIGN_GATE_ID\`, \`PI_CAMPAIGN_FACTS_JSON\`. Facts can be added through
 \`campaign(action:"work_done", step:"create-draft", facts:{pr_number:123})\`,
 including PR numbers or Spacelift run identifiers gathered by an agent.
+For gates already waiting, use `campaign(action:"set_facts", step:"apply-canary",
+facts:{spacelift_run_id:"run-123"})`. This updates evidence, not gate status.
 
 ### Command check contract
 
