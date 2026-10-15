@@ -100,7 +100,7 @@ successful exit to waiting/blocked, but **cannot turn a failing exit into succes
 Output is capped at 8 KiB and timeouts are bounded.
 
 A passed result is recorded and not polled again; a blocked result requires an
-operator to resolve it or revise the plan (not automatic retry in this MVP).
+operator to resolve it, retry via `/campaigns:retry`, or revise the plan (not automatic retry in this MVP).
 This is intentionally fail-closed. Checks are independently scheduled when the
 Pi process is active; the process never uses idle LLM turns.
 
