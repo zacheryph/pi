@@ -65,7 +65,7 @@ export class TldrViewer implements Component, Focusable {
 
   setError(message: string): void {
     if (this.closed) return;
-    this.error = message.replace(/[\\x00-\\x1f\\x7f-\\x9f]/g, " ").slice(0, 360);
+    this.error = message.replace(/[\\u0000-\\u001f\\u007f-\\u009f]/g, " ").slice(0, 360);
     this.tui.requestRender();
   }
 
