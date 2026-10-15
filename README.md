@@ -174,6 +174,24 @@ Configure globally in `~/.pi/agent/tldr.json`, with a project override in
 Set `setSessionName` to `false` to keep summaries while disabling extension-driven
 session naming. See [extension docs](extensions/pi-tldr/README.md).
 
+## pi-campaigns (local YAML workflow manager)
+
+The **pi-campaigns** extension stores versioned YAML plans and execution state under
+`~/.pi/agent/campaigns/<id>/`. It supports an interactive campaign interview,
+model-visible `campaign` tool, dependency graph validation, command and human
+gates, local scheduled reconciliation (once a minute, with per-gate intervals),
+pause/resume, and a compact progress widget. **No webhooks, hosted services, or
+idle LLM polling.** Command gates are opt-in and use argv arrays, not a shell.
+
+Commands: `/campaigns`, `/campaigns:new`, `/campaigns:reconcile <id>`,
+`/campaigns:pause <id>`, `/campaigns:resume <id>`,
+`/campaigns:approve <id> <step> <gate>`.
+
+See [the extension guide](extensions/pi-campaigns/README.md) for YAML schema,
+script exit codes, safety limits, plan revision rules, examples, and current gaps.
+See [the engineering design](extensions/pi-campaigns/docs/design.html) for the
+architecture, projected UI, and phased roadmap.
+
 ## Development
 
 Runtime loading needs no build. Install development dependencies only for checks
