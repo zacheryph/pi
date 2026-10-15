@@ -95,29 +95,42 @@ describe("compact widget heading and rows", () => {
 		}
 	});
 
-	it("renders queued agents individually with static labels and no running clock", () => {
+	it("counts queued agents on the title bar, right-aligned, with no per-agent rows", () => {
 		const agents = [
 			makeAgent({ id: "q1", status: "queued", description: "first queued task" }),
 			makeAgent({ id: "q2", status: "queued", description: "second queued task" }),
 		];
-		const first = render({ agents });
-		expect(first).toHaveLength(3);
-		expect(first[1]).toContain("--:--  Agent (twin): first queued task");
-		expect(first[2]).toContain("second queued task");
-		expect(first.slice(1).every(line => line.startsWith(" ") && line.endsWith("◦ queued "))).toBe(true);
+		const lines = render({ agents });
+		expect(lines).toHaveLength(1);
+		expect(lines[0]).toMatch(/^── \S {2}Subagents ─+ 2 queued ──$/u);
+		expect(visibleWidth(lines[0])).toBe(80);
+		expect(lines.join("\n")).not.toContain("queued task");
 		vi.advanceTimersByTime(60_000);
-		expect(render({ agents })).toEqual(first);
+		expect(render({ agents })).toEqual(lines);
 	});
 
-	it("orders running, queued, and then lingering finished agents", () => {
+	it("shows running and finished rows with the queued count only on the title", () => {
 		const lines = render({ agents: [
 			makeAgent({ id: "f", status: "completed", completedAt: NOW, description: "finished task" }),
 			makeAgent({ id: "q", status: "queued", description: "queued task" }),
 			makeAgent({ id: "r", description: "running task" }),
 		] });
+		expect(lines).toHaveLength(3);
+		expect(lines[0]).toMatch(/ 1 queued ──$/);
 		expect(lines[1]).toContain("running task");
-		expect(lines[2]).toContain("queued task");
-		expect(lines[3]).toContain("finished task");
+		expect(lines[2]).toContain("finished task");
+	});
+
+	it("omits the queued count when none are queued and drops it rather than crowd the title when narrow", () => {
+		expect(render()[0]).not.toContain("queued");
+		for (const width of [1, 2, 8, 12, 16]) {
+			const [heading] = render({ agents: [makeAgent({ status: "queued" })], terminalWidth: width });
+			expect(visibleWidth(heading)).toBeLessThanOrEqual(width);
+			expect(heading).not.toContain("queued");
+		}
+		const wide = render({ agents: [makeAgent({ status: "queued" })], terminalWidth: 40 })[0];
+		expect(wide).toContain("1 queued");
+		expect(visibleWidth(wide)).toBe(40);
 	});
 
 	it("advances elapsed time for running agents, clamping future start times", () => {
@@ -246,7 +259,7 @@ describe("terminal layout safety", () => {
 		expect(render({ agents })).toHaveLength(7);
 	});
 
-	it("caps height and counts hidden running/queued/finished agents exactly", () => {
+	it("caps height and counts hidden running/finished agents exactly; queued stay on the title", () => {
 		const agents = [
 			...Array.from({ length: 12 }, (_, index) => makeAgent({ id: `r${index}` })),
 			makeAgent({ id: "q", status: "queued" }),
@@ -254,17 +267,20 @@ describe("terminal layout safety", () => {
 		];
 		const lines = render({ agents });
 		expect(lines).toHaveLength(12);
-		expect(lines.at(-1)).toBe("+4 more (2 running, 1 queued, 1 finished)");
+		expect(lines[0]).toMatch(/ 1 queued ──$/);
+		expect(lines.at(-1)).toBe(" +3 more (2 running, 1 finished) ");
 	});
 
-	it("prioritizes running over queued over finished on short terminals", () => {
+	it("prioritizes running over finished on short terminals", () => {
 		const lines = render({ terminalHeight: 9, agents: [
-			makeAgent({ id: "f", status: "completed", completedAt: NOW }),
+			makeAgent({ id: "f1", status: "completed", completedAt: NOW }),
+			makeAgent({ id: "f2", status: "completed", completedAt: NOW }),
 			...Array.from({ length: 3 }, (_, index) => makeAgent({ id: `q${index}`, status: "queued" })),
 			makeAgent({ id: "r", description: "live task" }),
 		] });
 		expect(lines).toHaveLength(3);
+		expect(lines[0]).toMatch(/ 3 queued ──$/);
 		expect(lines[1]).toContain("live task");
-		expect(lines[2]).toBe("+4 more (3 queued, 1 finished)");
+		expect(lines[2]).toBe(" +2 more (2 finished) ");
 	});
 });

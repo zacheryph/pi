@@ -11,17 +11,43 @@ const render = (sections: WatchSection[] = [section()], width = 40, height = 14,
   renderWatchOverlay(sections, width, height, colors);
 
 describe("watch overlay renderer", () => {
-  it("stacks agent sections with headers, separators and equal bounded height", () => {
-    const lines = render([section(), section("b", { status: "queued", blocks: [] })]);
+  it("stacks non-queued sections; queued agents get no section, only a right-aligned border count", () => {
+    const lines = render([section(), section("b", { status: "queued", blocks: [] }), section("c", { status: "queued", blocks: [] })], 60);
     expect(lines).toHaveLength(14);
     const text = lines.join("\n");
-    expect(text).toContain("Subagents");
     expect(text).toContain("Ctrl+Alt+S");
     expect(text).toContain("── ● Agent: task a · running");
-    expect(text).toContain("── ◦ Agent: task b · queued");
     expect(text).toContain("latest output");
-    expect(text).toContain("Queued…");
-    expect(lines.every(line => visibleWidth(line) === 40)).toBe(true);
+    expect(text).not.toContain("task b");
+    expect(text).not.toContain("Queued…");
+    expect(lines[0]).toMatch(/^┌── \S+ {2}Subagents · Ctrl\+Alt\+S ─+ 2 queued ──┐$/);
+    expect(lines.every(line => visibleWidth(line) === 60)).toBe(true);
+  });
+
+  it("gives the freed rows to the running agent and omits the count when nothing is queued", () => {
+    const lines = render([section()], 60);
+    expect(lines[0]).not.toContain("queued");
+    expect(lines[0]).toMatch(/^┌── .*─{2}┐$/);
+  });
+
+  it("drops the queued count rather than crowding the title on narrow panels", () => {
+    const lines = render([section(), section("b", { status: "queued", blocks: [] })], 36);
+    expect(lines[0]).not.toContain("queued");
+    expect(lines.every(line => visibleWidth(line) === 36)).toBe(true);
+  });
+
+  it("shows a waiting row when every agent is queued", () => {
+    const lines = render([section("a", { status: "queued", blocks: [] })], 60);
+    expect(lines[0]).toContain("1 queued");
+    expect(lines.join("\n")).toContain("Waiting for a free slot…");
+    expect(lines.every(line => visibleWidth(line) === 60)).toBe(true);
+  });
+
+  it("does not count queued agents in the hidden-agent overflow", () => {
+    const sections = [...Array.from({ length: 8 }, (_, i) => section(String(i))), section("q", { status: "queued", blocks: [] })];
+    const lines = render(sections, 60, 8);
+    expect(lines.join("\n")).toContain("+6 more agents");
+    expect(lines[0]).toContain("1 queued");
   });
 
   it("always tails newest wrapped rows; no scrolling chrome", () => {

@@ -2,6 +2,7 @@
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import type { SubagentStatus } from "#src/lifecycle/subagent-state";
 import type { Theme } from "#src/ui/display";
+import { GLYPHS } from "#src/ui/glyphs";
 import { watchText, type WatchBlock } from "#src/ui/watch-tail";
 
 export interface WatchSection {
@@ -13,7 +14,13 @@ export interface WatchSection {
 
 export function watchHeight(rows: number): number { return Math.max(0, Math.floor(rows) - 6); }
 
-export function renderWatchOverlay(sections: readonly WatchSection[], width: number, height: number, theme: Theme): string[] {
+/**
+ * Queued agents have nothing to tail, so they take no section; the top border
+ * carries their count right-aligned instead.
+ */
+export function renderWatchOverlay(allSections: readonly WatchSection[], width: number, height: number, theme: Theme): string[] {
+  const sections = allSections.filter(section => section.status !== "queued");
+  const queuedCount = allSections.length - sections.length;
   width = Math.max(0, Math.floor(width));
   height = Math.max(0, Math.floor(height));
   if (width < 4 || height < 4) return [];
@@ -23,15 +30,23 @@ export function renderWatchOverlay(sections: readonly WatchSection[], width: num
     return clipped + " ".repeat(Math.max(0, inner - visibleWidth(clipped)));
   };
   const row = (text: string) => theme.fg("border", "│") + fit(text) + theme.fg("border", "│");
-  const rule = (text: string, left: string, right: string) => {
-    const label = truncateToWidth(text, inner, "…");
-    return theme.fg("border", left) + label
-      + theme.fg("border", "─".repeat(Math.max(0, inner - visibleWidth(label))) + right);
+  // Corners plus a "──" cap on each side; the title and count sit inside the caps.
+  const rule = (text: string, left: string, right: string, rightText = "") => {
+    const cap = inner >= 6 ? "──" : "";
+    const room = inner - 2 * cap.length;
+    const label = truncateToWidth(text, room, "…");
+    // Drop the right label rather than crowd or truncate the title.
+    const tail = visibleWidth(label) + visibleWidth(rightText) + 1 <= room ? rightText : "";
+    return theme.fg("border", left + cap) + label
+      + theme.fg("border", "─".repeat(Math.max(0, room - visibleWidth(label) - visibleWidth(tail)))) + tail
+      + theme.fg("border", cap + right);
   };
-  const lines = [rule(theme.fg("accent", " Subagents · Ctrl+Alt+S "), "┌", "┐")];
+  const queuedLabel = queuedCount > 0 ? theme.fg("dim", ` ${queuedCount} queued `) : "";
+  const title = theme.fg("accent", ` ${GLYPHS.agentsHeading}  Subagents · Ctrl+Alt+S `);
+  const lines = [rule(title, "┌", "┐", queuedLabel)];
   const budget = height - 2;
   if (sections.length === 0) {
-    lines.push(row(theme.fg("dim", "Waiting for background agents…")));
+    lines.push(row(theme.fg("dim", queuedCount > 0 ? "Waiting for a free slot…" : "Waiting for background agents…")));
   } else {
     // Reserve at least a header and one tail row per visible agent.
     let count = Math.min(sections.length, Math.floor(budget / 2));

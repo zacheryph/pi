@@ -102,12 +102,20 @@ function renderAgentRow(
 	return ` ${alignColumns(left, renderStatus(agent, spinnerFrame, theme), width)} `;
 }
 
-/** Header icon stays static, even while individual agent status spinners animate. */
-function renderHeading(width: number, hasActive: boolean, theme: Theme): string {
+/**
+ * Header icon stays static, even while individual agent status spinners animate.
+ * Queued agents take no rows; their count rides the title bar, right-aligned.
+ */
+function renderHeading(width: number, hasActive: boolean, queuedCount: number, theme: Theme): string {
 	const label = theme.fg(hasActive ? "accent" : "dim", `${GLYPHS.agentsHeading}  Subagents`);
 	const prefix = `${theme.fg("border", "──")} ${label} `;
-	const rule = theme.fg("border", "─".repeat(Math.max(0, width - visibleWidth(prefix))));
-	return truncateToWidth(prefix + rule, width, "…");
+	const queued = queuedCount > 0 ? theme.fg("dim", ` ${queuedCount} queued `) : "";
+	const suffix = queued ? queued + theme.fg("border", "──") : "";
+	// Drop the count rather than crowd or truncate the title on narrow terminals.
+	const showQueued = visibleWidth(prefix) + visibleWidth(suffix) + 1 <= width;
+	const tail = showQueued ? suffix : "";
+	const rule = theme.fg("border", "─".repeat(Math.max(0, width - visibleWidth(prefix) - visibleWidth(tail))));
+	return truncateToWidth(prefix + rule + tail, width, "…");
 }
 
 // Keep the viewport guard: Pi's regular renderer full-clears scrollback when the
@@ -120,7 +128,16 @@ export function widgetLineBudget(terminalRows: number): number {
 	return Math.max(MIN_WIDGET_LINES, Math.min(MAX_WIDGET_LINES, terminalRows - DOCK_LINES_BELOW_WIDGET));
 }
 
-/** Pure widget rendering. Running > queued > lingering finished, all one row each. */
+/** Inset footer row; blank when the width cannot fit both padding spaces plus content. */
+function renderFooter(text: string, width: number): string {
+	if (width <= 2) return " ".repeat(width);
+	return ` ${truncateToWidth(text, width - 2, "…")} `;
+}
+
+/**
+ * Pure widget rendering. Running > lingering finished, one row each. Queued
+ * agents get no rows; they are counted on the title bar.
+ */
 export function renderWidgetLines(params: {
 	agents: readonly WidgetAgent[];
 	registry: AgentConfigLookup;
@@ -135,13 +152,13 @@ export function renderWidgetLines(params: {
 	if (width === 0) return [];
 
 	const running = agents.filter(agent => agent.status === "running");
-	const queued = agents.filter(agent => agent.status === "queued");
+	const queuedCount = agents.filter(agent => agent.status === "queued").length;
 	const finished = agents.filter(agent => !isActiveStatus(agent.status)
 		&& agent.completedAt != null && shouldShowFinished(agent.id, agent.status));
-	const ordered = [...running, ...queued, ...finished];
-	if (ordered.length === 0) return [];
+	const ordered = [...running, ...finished];
+	if (ordered.length === 0 && queuedCount === 0) return [];
 
-	const lines = [renderHeading(width, running.length + queued.length > 0, theme)];
+	const lines = [renderHeading(width, running.length + queuedCount > 0, queuedCount, theme)];
 	const bodyBudget = widgetLineBudget(terminalHeight) - 1;
 	const overflow = ordered.length > bodyBudget;
 	const shown = ordered.slice(0, overflow ? bodyBudget - 1 : bodyBudget);
@@ -154,11 +171,10 @@ export function renderWidgetLines(params: {
 		const hidden = ordered.slice(shown.length);
 		const counts = [
 			["running", hidden.filter(agent => agent.status === "running").length],
-			["queued", hidden.filter(agent => agent.status === "queued").length],
 			["finished", hidden.filter(agent => !isActiveStatus(agent.status)).length],
 		] as const;
 		const summary = counts.filter(([, count]) => count > 0).map(([label, count]) => `${count} ${label}`).join(", ");
-		lines.push(truncateToWidth(theme.fg("dim", `+${hidden.length} more (${summary})`), width, "…"));
+		lines.push(theme.fg("dim", renderFooter(`+${hidden.length} more (${summary})`, width)));
 	}
 	return lines;
 }

@@ -76,7 +76,7 @@ The extension renders a persistent widget above the editor showing active backgr
 ──   Subagents ────────────────────────────────────────────
 00:12  Agent (twin): Refactor auth module         ⠹ editing…
 00:04  Explore: Find auth files                ⠹ searching…
---:--  Explore: Review tests                       ◦ queued
+ ◦ 1 queued
 ```
 
 This personal fork uses only a top rule, without side walls or a bottom border.
@@ -86,13 +86,13 @@ use a patched Nerd Font, preferably its Mono variant. Each running agent's
 activity indicator animates.
 Agent rows reserve one leading space before elapsed time and one trailing space
 after the activity/outcome indicator. The header rule remains full-width.
-Queued agents get individual rows. Finished agents show their outcome briefly,
+Queued agents take no rows; their count is right-aligned on the title bar. Finished agents show their outcome briefly,
 with a fixed elapsed duration and the original linger policy.
 
 Task and status columns are truncated by terminal-cell width, including ANSI and
 wide Unicode text. Narrow terminals omit elapsed time and the prompt-mode tag.
-A height cap prioritizes running, then queued, then finished agents; overflow is
-reported as `+N more`. Model, token, context, and turn statistics remain available
+A height cap prioritizes running, then finished agents; overflow is
+reported as a `+N more` footer line. Model, token, context, and turn statistics remain available
 in tool results instead of occupying widget space.
 
 Individual agent results render inline in the conversation:
@@ -300,9 +300,9 @@ invocations without an observable read produce no loading evidence.
 Inherited conversation, images, and full tool payloads are omitted.
 Use `/subagents:settings` to hide thinking; the setting defaults to visible and
 updates an open overlay immediately. It cannot reveal reasoning a provider does
-not emit. Sections share the height; short terminals show an
-exact `+N more agents` count, prioritizing running agents, then queued, then
-finished. Finished sections linger for eight seconds. No scrolling or agent
+not emit. Sections share the height; queued agents get no section and are
+counted as `N queued`, right-aligned on the top border (`┌──  Subagents · Ctrl+Alt+S ─── 4 queued ──┐`). Short terminals show an
+exact `+N more agents` count, prioritizing running agents, then finished. Finished sections linger for eight seconds. No scrolling or agent
 control is provided.
 
 The default is **closed**, with **third** width. Use `/subagents:settings` to
