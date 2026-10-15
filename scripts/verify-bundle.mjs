@@ -49,6 +49,7 @@ try {
     "subagents:sessions",
     "subagents:watch",
     "subagents:agents",
+    "tldr",
     "system:prompt",
     "system:tools",
     "system:skills",
