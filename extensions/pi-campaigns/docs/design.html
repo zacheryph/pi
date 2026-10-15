@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pi Campaigns · Local Workflow Design</title>
+<style>
+:root{color-scheme:dark;--bg:#0a1018;--panel:#121e2c;--panel2:#192a3c;--text:#e5eff8;--muted:#a4b6c6;--teal:#5ce4c9;--blue:#80b8fa;--amber:#f6be77;--red:#fb9498;--line:#304458}*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.65 system-ui,-apple-system,Segoe UI,sans-serif}a{color:var(--teal)}code,pre,.mono{font-family:ui-monospace,Menlo,Consolas,monospace}code{color:#b9d8ff}pre{white-space:pre-wrap;border:1px solid var(--line);background:#07111d;border-radius:10px;padding:16px;overflow:auto;color:#cee0f1;font-size:12px}h1,h2,h3{line-height:1.2;letter-spacing:-.04em}h1{font-size:clamp(40px,5vw,70px);margin:9px 0}h2{font-size:32px;margin:0 0 16px}h3{font-size:19px}p{color:var(--muted)}.shell{display:grid;grid-template-columns:240px minmax(0,1fr);min-height:100vh}aside{position:sticky;top:0;height:100vh;border-right:1px solid var(--line);padding:25px 17px;background:#0d1723;overflow:auto}aside a{display:block;padding:8px 10px;text-decoration:none;color:var(--muted);border-radius:5px;font-size:13px}aside a:hover{background:var(--panel2);color:var(--text)}main{max-width:1550px;padding:45px clamp(20px,5vw,85px) 140px}section{border-bottom:1px solid var(--line);padding:35px 0 62px;scroll-margin-top:12px}.eyebrow{color:var(--teal);letter-spacing:.13em;text-transform:uppercase;font:11px/1.4 monospace}.lead{font-size:20px;max-width:870px}.chips{display:flex;flex-wrap:wrap;gap:8px}.chip{border:1px solid var(--line);border-radius:25px;padding:5px 11px;font-size:11px;font-family:monospace}.ok{color:var(--teal)}.wait{color:var(--amber)}.stop{color:var(--red)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:13px}.card,.canvas{border:1px solid var(--line);border-radius:11px;background:var(--panel);padding:19px}.canvas{background:#101b29}.card h3{margin:2px 0 8px}.card p{font-size:13px}.stat{font-size:28px;font-weight:700}.muted{color:var(--muted)}.flow{display:flex;gap:9px;flex-wrap:wrap;align-items:center}.node{padding:14px 18px;border-radius:8px;border:1px solid #496176;background:#1b2f41;min-width:132px;text-align:center}.node small{display:block;color:var(--muted);font:11px monospace}.arrow{color:var(--teal);font-size:24px}.columns{display:grid;grid-template-columns:1fr 1fr;gap:13px}.step{display:flex;align-items:center;gap:10px;padding:11px 8px;border-bottom:1px solid var(--line)}.step:last-child{border:0}.tag{font:10px monospace;padding:4px 7px;border:1px solid var(--line);border-radius:4px;white-space:nowrap}.status-done{color:var(--teal)}.status-wait{color:var(--amber)}.status-blocked{color:var(--red)}.status-ready{color:var(--blue)}button{background:#183e43;color:#d5fff5;border:1px solid #367d73;border-radius:7px;padding:9px 13px;cursor:pointer;margin:3px;font:13px monospace}button:hover{background:#26575a}button:focus-visible{outline:2px solid var(--teal);outline-offset:2px}table{width:100%;border-collapse:collapse;font-size:13px}th,td{border-bottom:1px solid var(--line);padding:10px;text-align:left;vertical-align:top}th{color:var(--teal)}.notice{border-left:3px solid var(--amber);padding:7px 18px;background:#3b2c1c33}.mono{font-size:12px}.spaced>*+*{margin-top:16px}@media(max-width:850px){.shell{display:block}aside{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line)}aside nav{display:flex;flex-wrap:wrap}main{padding:25px 18px 60px}.columns{grid-template-columns:1fr}} 
+</style>
+</head>
+<body><div class="shell"><aside>
+<div class="eyebrow">zacheryph/pi · RFC 01</div><h3>Pi Campaigns</h3><p>Local workflow orchestration</p>
+<nav>
+<a href="#principles">00 / Principles</a><a href="#ui">01 / Operations console</a><a href="#interview">02 / Planning interview</a>
+<a href="#architecture">03 / Architecture</a><a href="#workflow">04 / PR workflow</a><a href="#data">05 / YAML state</a>
+<a href="#reconcile">06 / Checks &amp; gates</a><a href="#interrupt">07 / Pause &amp; recovery</a><a href="#agents">08 / Agent boundaries</a>
+<a href="#notifications">09 / Notifications</a><a href="#reuse">10 / Build vs reuse</a><a href="#roadmap">11 / Delivery</a>
+</nav><div class="mono muted" style="margin-top:30px">RFC · October 2026<br>No webhooks · No hosted DB<br>No idle model polling</div></aside>
+<main>
+<section id="principles"><div class="eyebrow">00 · North star</div>
+<h1>Manage the migration.<br><span style="color:var(--teal)">Not an endless agent.</span></h1>
+<p class="lead">A campaign is a durable, editable plan whose steps advance only when evidence, scripted checks, and human gates say they can. Pi is your management console; subagents work on bounded implementation tasks.</p>
+<div class="chips"><span class="chip ok">LOCAL ONLY</span><span class="chip">YAML FIRST</span><span class="chip">SCRIPTED RECONCILE</span><span class="chip">SCHEDULED WHILE PI RUNS</span><span class="chip">HUMAN AUTHORITY</span></div>
+<div class="grid" style="margin-top:20px">
+<div class="card"><h3>LLM does meaningful work</h3><p>Interview, investigate, plan, write modules and scripts, prepare draft PRs, interpret unexpected failures, revise a campaign.</p></div>
+<div class="card"><h3>Code does routine work</h3><p>Schedule checks, collect check outputs, correlate IDs, evaluate the graph, enforce gates, notify and journal every transition.</p></div>
+<div class="card"><h3>Operator keeps control</h3><p>Change strategy, stop checks, approve the plan, mark PR ready, authorize merges and halt a wave independently of the model.</p></div>
+</div>
+</section>
+
+<section id="ui"><div class="eyebrow">01 · Target operator UI</div><h2>One management session. Many campaigns.</h2>
+<p>The compact above-editor widget shows live checks and blockers (like subagents). <code>/campaigns</code> opens a full-screen graph; the main chat remains a command-and-control workspace.</p>
+<div class="grid"><div class="card"><div class="eyebrow">Campaigns / 3 active</div><div class="stat">21 / 38 steps</div><p>5 gates checking · 2 decisions needed</p><div id="simsteps"></div></div>
+<div class="card"><div class="eyebrow">Simulate transitions</div><p>This mock dashboard shows the sequence; it does not connect to GitHub or execute changes.</p>
+<button onclick="advance()">Advance next gate</button><button onclick="pauseSim()">Pause / resume</button><button onclick="resetSim()">Reset</button><p id="simnote" class="mono muted">Waiting for PR review.</p><pre id="simlog">[simulation] initialized</pre></div></div>
+<h3>Terminal summary</h3><pre>── Campaigns · 3
+  ⟳ routing-migration     7/12  checking 2 gates
+  ! crossplane-upgrade    4/9   blocked: reviewer question
+  ◦ account-migration     2/17  waiting: planned change window
+
+/campaigns routing-migration    /campaigns:pause routing-migration
+/campaigns:reconcile routing-migration</pre>
+</section>
+
+<section id="interview"><div class="eyebrow">02 · Plan creation</div><h2>Interview first. Commit to evidence.</h2>
+<div class="grid">
+<div class="card"><h3>1 / Scope &amp; destination</h3><p>Goal, current state, impacted repositories/stacks, AWS/network boundaries, owners, maintenance windows and rollback expectations.</p></div>
+<div class="card"><h3>2 / Decompose</h3><p>Discovery, prerequisite module changes, multiple PRs per stack, canaries, waves, cleanup, explicit hard and soft dependencies.</p></div>
+<div class="card"><h3>3 / Choose checks</h3><p>How does Pi know comments are resolved, review is approved, Spacelift applied, connectivity recovered? Generate candidate scripts, then review.</p></div>
+<div class="card"><h3>4 / Approve execution policy</h3><p>Review-round cap, draft→ready responsibility, auto-merge setting, production gates, notification target and reconcile frequency.</p></div>
+</div>
+<div class="notice"><p><b>Interview output:</b> Paused YAML draft, DAG view, first eligible work, risks, open unknowns, a testable gate specification, and next decision. Unknown IDs become runtime facts filled by checks or short agent tasks—not fake values.</p></div>
+</section>
+
+<section id="architecture"><div class="eyebrow">03 · Components</div><h2>Pi owns the runtime.</h2>
+<div class="flow">
+<div class="node">Pi session<small>chat + commands + TUI</small></div><span class="arrow">→</span>
+<div class="node">Campaign engine<small>DAG + policies</small></div><span class="arrow">↔</span>
+<div class="node">YAML files<small>plan + state + journal</small></div>
+</div><div class="flow" style="margin-top:12px">
+<div class="node">Subagents / worktrees<small>one-shot implementation</small></div><span class="arrow">←</span>
+<div class="node">Ready task dispatch<small>guarded, bounded</small></div><span class="arrow">←</span>
+<div class="node">Local reconciler<small>scheduled commands</small></div><span class="arrow">→</span>
+<div class="node">Platform scripts<small>GitHub, Spacelift, etc.</small></div>
+</div>
+<div class="grid" style="margin-top:18px">
+<div class="card"><h3>Runtime</h3><p>Single Pi process schedules due checks. Timer is transport, not the source of truth. Restart re-evaluates due checks from persisted timestamps.</p></div>
+<div class="card"><h3>Storage</h3><p>Plan and operational state as separate YAML files; atomic replacement. Add SQLite or an append-only journal if multi-process coordination or larger histories demand it.</p></div>
+<div class="card"><h3>Portability</h3><p>Every check uses a user-supplied argv/script. Platforms can be heterogeneous; adapters supply convenient templates only, never a closed platform registry.</p></div>
+</div>
+</section>
+
+<section id="workflow"><div class="eyebrow">04 · Example PR workflow</div><h2>Multi-step, revisable, human-gated.</h2>
+<div class="flow"><div class="node">Prepare draft<small>agent + worktree</small></div><span class="arrow">→</span><div class="node">Checks + comments<small>script, max N rounds</small></div><span class="arrow">→</span><div class="node">Notify user<small>Pi + Slack</small></div><span class="arrow">→</span><div class="node">Mark ready<small>human</small></div></div>
+<div class="flow" style="margin-top:12px"><div class="node">Team approval<small>scripted gate</small></div><span class="arrow">→</span><div class="node">Merge<small>policy-gated action</small></div><span class="arrow">→</span><div class="node">Spacelift apply<small>script polls exact run</small></div><span class="arrow">→</span><div class="node">Validate &amp; advance<small>script and wave gate</small></div></div>
+<p>Comment handling invokes an agent only when there is actionable review feedback. Ordinary CI status polling and waiting for teammates remains code-only. After N review cycles or ambiguity, block and ask the operator. Merge must re-check head SHA and approvals immediately before execution; the setting is not an override of branch protection.</p>
+</section>
+
+<section id="data"><div class="eyebrow">05 · Data contract</div><h2>Intention ≠ observation.</h2>
+<div class="columns"><div><h3>campaign.yaml / desired workflow</h3><pre>id: routing-migration
+title: Regional route migration
+goal: Routes migrated, connectivity healthy
+settings:
+  reconcile_minutes: 15
+  allow_commands: true
+  auto_merge: false
+  max_review_rounds: 3
+steps:
+  - id: draft-canary
+    title: Prepare canary PR
+    work: { kind: agent }
+    gates:
+      - id: user-ready
+        kind: human
+  - id: canary-apply
+    title: Validate Spacelift apply
+    depends_on: [draft-canary]
+    work: { kind: none }
+    gates:
+      - id: applied
+        kind: command
+        command: [node, scripts/check-apply.mjs]</pre></div><div><h3>state.yaml / observed truth</h3><pre>revision: 8
+paused: false
+steps:
+  draft-canary:
+    status: done
+    work_complete: true
+    facts:
+      pr_number: 431
+      head_sha: abc123
+    gates:
+      user-ready:
+        status: passed
+        at: 2026-10-15T12:00:00Z
+  canary-apply:
+    status: waiting
+    work_complete: true
+    facts:
+      stack: core-network
+    gates: {}
+history:
+  - kind: work_recorded
+    step: draft-canary
+    detail: "pr_number, head_sha"</pre></div></div>
+<p>Step IDs are stable. Revision changes are validated and audited. Previously verified outcomes are not silently deleted. Future revisions should explicitly invalidate affected descendants when a passed prerequisite changes, with human review before proceeding.</p>
+</section>
+
+<section id="reconcile"><div class="eyebrow">06 · Gates / schedule</div><h2>A check is a program, not a prompt.</h2>
+<div class="grid">
+<div class="card"><h3><span class="ok">PASS</span> · exit 0</h3><p>Valid evidence recorded. Advance only when all required gates have passed. Script may emit JSON evidence.</p></div>
+<div class="card"><h3><span class="wait">WAIT</span> · exit 3</h3><p>Still pending. Persist observation. Check again on configured schedule; no model invocation.</p></div>
+<div class="card"><h3><span class="stop">BLOCK</span> · any other exit</h3><p>Unexpected error, unsafe change or missing authorization. Pause the affected path, raise a human question, and require remediation.</p></div>
+</div><pre># Script environment:
+PI_CAMPAIGN_ID=routing-migration
+PI_CAMPAIGN_STEP_ID=canary-apply
+PI_CAMPAIGN_GATE_ID=applied
+PI_CAMPAIGN_FACTS_JSON='{"pr_number":431,"stack":"core-network"}'
+
+# Structured response on stdout:
+{"status":"waiting","detail":"run 9984 pending","evidence":{"run_id":"9984"}}
+# Exit code 3 keeps this gate waiting.</pre>
+<p>Run commands directly (no implicit shell), set timeouts and concurrency caps, bound output, and never parse a vague success text as an approved apply. Agent may discover missing IDs once and update durable facts before the next script check.</p>
+</section>
+
+<section id="interrupt"><div class="eyebrow">07 · Recovery and controls</div><h2>Pause is not cancellation. Cancel is not rollback.</h2>
+<table><thead><tr><th>Action</th><th>Effect</th><th>On resume</th></tr></thead><tbody>
+<tr><td>Pause campaign</td><td>No new actions; cancel local active checks</td><td>Rebuild eligible steps from YAML</td></tr>
+<tr><td>Cancel one worker</td><td>Stops bounded Pi task; preserves artifacts</td><td>Inspect branch before retry</td></tr>
+<tr><td>Block gate</td><td>Record evidence/question; downstream waits</td><td>Operator corrects input or revises gate</td></tr>
+<tr><td>Revise campaign</td><td>Validate DAG; retain prior evidence</td><td>Evaluate changed dependencies</td></tr>
+<tr><td>External action already started</td><td>Not automatically undone</td><td>Reconcile observed state; don't duplicate mutation</td></tr>
+</tbody></table>
+<p>Completed actions must be correlated to their external identity: repository, PR number, commit SHA, Spacelift stack and run. Eventual consistency means a merged PR is not proof of a successful apply. Restart reconciliation is mandatory.</p>
+</section>
+
+<section id="agents"><div class="eyebrow">08 · Execution boundaries</div><h2>Ask models to think, not to sleep.</h2>
+<table><thead><tr><th>Responsibility</th><th>Owner</th></tr></thead><tbody>
+<tr><td>Interview; derive dependency graph and validation criteria</td><td>Management agent</td></tr>
+<tr><td>Write Terraform/Bun/Rust changes and draft PR</td><td>Subagent + worktree + LSP</td></tr>
+<tr><td>Poll reviews, CI, merge state and apply run</td><td>Deterministic scripts</td></tr>
+<tr><td>Interpret unexpected logs or propose remediation</td><td>Bounded investigation agent</td></tr>
+<tr><td>Mark ready, approve a gate, select merge policy</td><td>Human operator</td></tr>
+<tr><td>Optional low-stakes issue triage</td><td>Jev advisory classification</td></tr>
+<tr><td>Enforce permissions, script timeout, fact correlation</td><td>Code / external IAM</td></tr>
+</tbody></table>
+</section>
+
+<section id="notifications"><div class="eyebrow">09 · Notifications</div><h2>State transitions, not spam.</h2>
+<div class="grid"><div class="card"><h3>Pi</h3><p>Above-editor summary, warnings and review-request inbox in main management session. Show what changed and which gate needs attention.</p></div>
+<div class="card"><h3>Slack adapter</h3><p>Optional outbound notification, configured via environment-based secret reference, only on state changes and stale-gate escalation. Never a webhook receiver.</p></div>
+<div class="card"><h3>Dedup</h3><p>Notify once per campaign / step / gate / state revision. Acknowledge, snooze and escalation settings can be layered later.</p></div></div>
+</section>
+
+<section id="reuse"><div class="eyebrow">10 · Ecosystem</div><h2>Borrow patterns, retain your runtime.</h2>
+<table><thead><tr><th>Source</th><th>Reuse</th><th>Why not wholesale</th></tr></thead><tbody>
+<tr><td><a href="https://github.com/gscode1/pi-taskflow">pi-taskflow</a></td><td>DAG validation, resumable checkpoints, gate display</td><td>Own runner and JSON DSL overlap with existing subagents</td></tr>
+<tr><td><a href="https://github.com/vekexasia/pi-extensible-workflows">pi-extensible-workflows</a></td><td>Checkpoint / recovery lessons</td><td>Script-centric pipelines are not a multi-week external-state coordinator</td></tr>
+<tr><td><a href="https://github.com/harms-haus/pi-subagent-tasks">pi-subagent-tasks</a></td><td>Task pools and worktree lifecycle lessons</td><td>Duplicates delegated worker engine</td></tr>
+<tr><td><a href="https://github.com/gotgenes/pi-packages/tree/main/packages/pi-github-tools">pi-github-tools</a></td><td>Deterministic CI wait for one repository</td><td>Not a heterogeneous cross-repo campaign state layer</td></tr>
+<tr><td><a href="https://github.com/zacheryph/pi">Existing pi-subagents</a></td><td>Agent execution, profiles, watch</td><td>Keep as worker substrate, not campaign DB</td></tr>
+</tbody></table>
+</section>
+
+<section id="roadmap"><div class="eyebrow">11 · Delivery plan</div><h2>First reliable check. Then autonomy.</h2>
+<div class="grid">
+<div class="card"><div class="eyebrow ok">Implemented in MVP</div><h3>YAML + checks + Pi UI</h3><p>Plan schema and validation, persisted state, paused default, per-gate command reconciliation, human approval command, interview scaffold, compact widget, tests.</p></div>
+<div class="card"><div class="eyebrow wait">Next</div><h3>Draft PR lifecycle</h3><p>Bounded worker dispatch, review comment handling cap, ready/approved gates, policy-gated merge, fact collection, Spacelift script templates.</p></div>
+<div class="card"><div class="eyebrow wait">Later</div><h3>Hardening + UX</h3><p>Interactive DAG browser, complete interview, process locks, robust crash recovery, notification adapters, explicit reopen and invalidation semantics.</p></div>
+</div>
+<div class="notice"><p><b>Important:</b> This is an engineering target plus a tested foundation. The initial implementation does not yet create PRs, merge PRs, invoke workers automatically, send Slack messages, or offer a fully interactive graph browser. The settings document these extension points without claiming they work.</p></div>
+<p class="mono muted">Design version 2 · Local Pi only · No webhook infrastructure · Scripts are untrusted until reviewed</p>
+</section>
+</main></div>
+<script>
+const sequence=["draft PR prepared","review comments resolved","user marks PR ready","teammate approves","merge authorized","Spacelift applies","connectivity verified"];
+let n=0, paused=false;
+function render(){
+ const nodes=["Draft PR","Comments &amp; CI","User ready","Team approval","Merge","Apply","Connectivity"];
+ document.getElementById("simsteps").innerHTML=nodes.map((name,i)=>'<div class="step"><span class="tag '+(i<n?'status-done':i===n?'status-wait':'')+'">'+(i<n?"PASS":i===n?"WAIT":"LOCK")+'</span><span>'+name+'</span></div>').join("");
+ document.getElementById("simnote").textContent=paused?"Campaign paused":n===sequence.length?"All gates verified": "Next: "+sequence[n];
+}
+function advance(){if(paused || n>=sequence.length)return;n++;document.getElementById("simlog").textContent+="\n"+new Date().toLocaleTimeString()+" "+sequence[n-1];render()}
+function pauseSim(){paused=!paused;render()}
+function resetSim(){n=0;paused=false;document.getElementById("simlog").textContent="[simulation] initialized";render()}
+render();
+</script></body></html>
