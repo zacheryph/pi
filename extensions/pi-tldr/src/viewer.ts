@@ -89,18 +89,20 @@ export class TldrViewer implements Component, Focusable {
     const { theme } = this;
     const w = Math.max(0, Math.floor(width));
     const maxH = Math.max(1, Math.floor(this.tui.terminal.rows * 0.8));
-    const framed = w >= 6 && maxH >= 7;
+    // Framed rows need margin + border + pad on each side (6 cols) plus at least one content column.
+    const framed = w >= 7 && maxH >= 7;
     const contentW = Math.max(1, w - (framed ? 6 : 2));
     const margin = framed ? " " : "";
     const row = (content: string): string => {
-      if (!framed && w < 2) return " ".repeat(w);
+      // Unframed rows need a pad on each side plus one content column; otherwise render blank.
+      if (!framed && w < 3) return " ".repeat(w);
       const text = truncateToWidth(content, contentW, "", true);
       if (framed)
         return `${margin}${theme.fg("border", "│")} ${text}${" ".repeat(Math.max(0, contentW - visibleWidth(text)))} ${theme.fg("border", "│")}${margin}`;
       return " " + text + " ".repeat(Math.max(0, w - visibleWidth(text) - 1));
     };
     const wrap = (text: string) => wrapTextWithAnsi(text, contentW);
-    const findings = this.summary?.findings.split(/\\s*;\\s*/).filter(Boolean) ?? [];
+    const findings = this.summary?.findings.split(/\s*;\s*/).filter(Boolean) ?? [];
     const inner = this.error
       ? [theme.fg("accent", theme.bold("Could not summarize")), ...wrap(this.error)]
       : this.summary
