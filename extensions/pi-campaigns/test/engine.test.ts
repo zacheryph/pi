@@ -1,7 +1,7 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 import {
-  changePause, describe, initialState, reconcileGraph, recordGate, recordWork, validatePlan,
+  changePause, describe, initialState, reconcileGraph, recordGate, recordWork, retryGate, validatePlan,
   type CampaignPlan
 } from "../src/engine.ts";
 
@@ -82,4 +82,16 @@ test("pause blocks mutations and leaves persisted evidence intact", () => {
   s = changePause(s, true);
   assert.throws(() => recordWork(p, s, "module", { pr:1 }), /paused/);
   assert.equal(s.steps.module.work_complete, false);
+});
+
+test("operator retry clears blocked observation without granting success", () => {
+  const p = plan();
+  let s = reconcileGraph(p, changePause(initialState(p), false));
+  s = recordWork(p, s, "module", { pr: 32 });
+  s = recordGate(p, s, "module", "human-review", result("blocked"), "human");
+  s = retryGate(p, s, "module", "human-review", "Question answered");
+  assert.equal(s.steps.module.status, "waiting");
+  assert.equal(s.steps.module.gates["human-review"], undefined);
+  assert.equal(s.steps.canary.status, "pending");
+  assert.equal(s.history.at(-1)?.kind, "gate_retry_requested");
 });
