@@ -138,7 +138,6 @@ export function reconcileGraph(plan: CampaignPlan, current: CampaignState): Camp
     for (const g of s.gates ?? []) {
       if (st.gates[g.id] && st.gates[g.id].definition_hash !== gateHash(g)) delete st.gates[g.id];
     }
-    if (st.status === "done" && (s.gates ?? []).every(g => st.gates[g.id]?.status === "passed")) continue;
     if (!(s.depends_on ?? []).every(d => state.steps[d]?.status === "done")) {
       st.status = "pending";
     } else if (!st.work_complete) {
@@ -148,8 +147,7 @@ export function reconcileGraph(plan: CampaignPlan, current: CampaignState): Camp
       st.status = gates.includes("blocked") ? "blocked" : gates.every(g => g === "passed") ? "done" : "waiting";
     }
   }
-  // Retained completed steps are intentionally not invalidated by a plan revision.
-  // Reopening an affected step is an explicit operator action, not a side effect.
+  // Recorded work and gate evidence remains, but an invalidated gate also suspends dependents.
   return state;
 }
 

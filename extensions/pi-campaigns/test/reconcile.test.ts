@@ -104,7 +104,9 @@ test("changed command definition invalidates a recorded pass", async () => {
   assert.throws(() => replacePlan(p.id, stringify(changed), revision), /active command gates/);
   // Direct operator edits are picked up too, and stale evidence cannot pass a changed gate.
   writeFileSync(join(folder, p.id, "campaign.yaml"), stringify(changed));
-  assert.equal(loadCampaign(p.id).state.steps.pr.status, "waiting");
+  const reopened = loadCampaign(p.id).state;
+  assert.equal(reopened.steps.pr.status, "waiting");
+  assert.equal(reopened.steps.apply.status, "pending");
 });
 
 test("a completed check cannot overwrite a concurrent human decision", async () => {
