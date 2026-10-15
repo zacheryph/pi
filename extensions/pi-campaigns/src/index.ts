@@ -3,7 +3,7 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { parse, stringify } from "yaml";
 import {
-  changePause, describe, recordGate, recordWork,
+  changePause, describe, recordGate, recordWork, retryGate,
   type CampaignPlan, type CampaignState
 } from "./engine.ts";
 import {
@@ -16,7 +16,7 @@ import {
 
 const widgetKey = "pi-personal:campaigns";
 const Parameters = Type.Object({
-  action: StringEnum(["list", "create", "status", "revise", "start", "pause", "work_done", "approve", "reconcile"] as const),
+  action: StringEnum(["list", "create", "status", "revise", "start", "pause", "work_done", "approve", "retry_gate", "reconcile"] as const),
   id: Type.Optional(Type.String({ description: "Campaign id" })),
   yaml: Type.Optional(Type.String({ description: "Full YAML campaign plan for create/revise" })),
   expected_revision: Type.Optional(Type.Integer({ minimum: 0 })),
@@ -137,6 +137,12 @@ export default function campaignsExtension(pi: ExtensionAPI): void {
           refresh();
           return message(display(id));
         }
+        if (args.action === "retry_gate") {
+          if (!args.step || !args.gate || !args.detail) throw new Error("step, gate, and retry reason required");
+          mutate(id, (plan, state) => retryGate(plan, state, args.step!, args.gate!, args.detail!), args.expected_revision);
+          refresh();
+          return message(display(id));
+        }
         if (args.action === "approve") {
           if (!args.step || !args.gate || !args.decision || !args.detail) throw new Error("step, gate, decision, and detail required");
           if (args.decision === "passed") throw new Error("Model tool cannot approve human gates; use /campaigns:approve in TUI.");
@@ -206,6 +212,12 @@ export default function campaignsExtension(pi: ExtensionAPI): void {
   command("campaigns:resume", "Resume campaign scheduling", (id, ctx) => {
     if (!id) throw new Error("Provide campaign id");
     setCampaignPaused(id, false); refresh(); ctx.ui.notify(id + " resumed", "info");
+  });
+  command("campaigns:retry", "Retry blocked check: /campaigns:retry <id> <step> <gate>", (args, ctx) => {
+    const [id, step, gate] = args.split(/\s+/);
+    if (!id || !step || !gate) throw new Error("Usage: /campaigns:retry <id> <step> <gate>");
+    mutate(id, (plan, state) => retryGate(plan, state, step, gate, "Retry requested by local operator"));
+    refresh(); ctx.ui.notify("Queued gate for recheck: " + step + "/" + gate, "info");
   });
   command("campaigns:approve", "Pass a human gate: /campaigns:approve <id> <step> <gate>", async (args, ctx) => {
     const [id, step, gate] = args.split(/\s+/);
