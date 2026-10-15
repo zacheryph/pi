@@ -13,6 +13,7 @@ import {
 import {
   checkingIds, reconcileCampaign, setCampaignPaused, stopCampaignChecks
 } from "./reconcile.ts";
+import { type CampaignRow, renderCampaignWidget } from "./widget.ts";
 
 const widgetKey = "pi-personal:campaigns";
 const Parameters = Type.Object({
@@ -50,20 +51,39 @@ export default function campaignsExtension(pi: ExtensionAPI): void {
   let context: ExtensionContext | undefined;
   let timer: ReturnType<typeof setInterval> | undefined;
 
+  // Rows are gathered on refresh; the registered component lays them out at render width.
+  let rows: CampaignRow[] = [];
+  let widgetTui: { requestRender(): void } | undefined;
   const refresh = () => {
     if (!context?.hasUI) return;
-    const lines: string[] = [];
-    for (const id of listCampaigns().slice(0, 8)) {
+    const next: CampaignRow[] = [];
+    for (const id of listCampaigns()) {
       try {
         const { plan, state } = loadCampaign(id);
-        const done = plan.steps.filter(s => state.steps[s.id]?.status === "done").length;
-        const blockers = plan.steps.filter(s => state.steps[s.id]?.status === "blocked").length;
-        const running = checkingIds().includes(id);
-        lines.push(" " + (running ? "⟳" : state.paused ? "Ⅱ" : "◦") + " " + id + "  " + done + "/" + plan.steps.length +
-          (blockers ? "  ! " + blockers + " blocked" : "") + (state.paused ? "  paused" : ""));
+        next.push({
+          id, total: plan.steps.length, paused: state.paused, checking: checkingIds().includes(id),
+          done: plan.steps.filter(s => state.steps[s.id]?.status === "done").length,
+          blocked: plan.steps.filter(s => state.steps[s.id]?.status === "blocked").length,
+        });
       } catch { /* bad campaign never crashes the TUI */ }
     }
-    context.ui.setWidget(widgetKey, lines.length ? ["── Campaigns", ...lines] : undefined, { placement: "aboveEditor" });
+    rows = next;
+    if (!rows.length) {
+      context.ui.setWidget(widgetKey, undefined);
+      widgetTui = undefined;
+    } else if (widgetTui) {
+      widgetTui.requestRender();
+    } else {
+      context.ui.setWidget(widgetKey, (tui, theme) => {
+        widgetTui = tui;
+        return {
+          render: (width: number) => renderCampaignWidget(rows, width, theme),
+          // Theme changed: re-register on the next refresh so the factory captures it.
+          invalidate: () => { if (widgetTui === tui) widgetTui = undefined; },
+          dispose: () => { if (widgetTui === tui) widgetTui = undefined; },
+        };
+      }, { placement: "aboveEditor" });
+    }
   };
 
   const reconcileAll = async () => {
@@ -97,6 +117,7 @@ export default function campaignsExtension(pi: ExtensionAPI): void {
     timer = undefined;
     for (const id of checkingIds()) stopCampaignChecks(id);
     if (context?.hasUI) context.ui.setWidget(widgetKey, undefined);
+    widgetTui = undefined;
     context = undefined;
   });
 
