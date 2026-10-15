@@ -198,3 +198,16 @@ export function retryGate(plan: CampaignPlan, current: CampaignState, step: stri
   state.history.push({at: stamp(), kind: "gate_retry_requested", step, detail: gate + ": " + reason});
   return reconcileGraph(plan, state);
 }
+
+/** Attach discovered external identifiers to a still-open step. Never marks a gate passed. */
+export function setFacts(plan: CampaignPlan, current: CampaignState, step: string, facts: Record<string, unknown>): CampaignState {
+  if (!plan.steps.some(s => s.id === step)) throw new Error("Unknown step: " + step);
+  if (!facts || typeof facts !== "object" || Array.isArray(facts) || !Object.keys(facts).length) throw new Error("Nonempty facts object required");
+  const state = structuredClone(current);
+  const target = state.steps[step];
+  if (target.status === "done") throw new Error("Cannot change facts on completed step");
+  target.facts = { ...target.facts, ...facts };
+  state.revision++;
+  state.history.push({at: stamp(), kind: "facts_updated", step, detail: Object.keys(facts).join(", ")});
+  return reconcileGraph(plan, state);
+}
