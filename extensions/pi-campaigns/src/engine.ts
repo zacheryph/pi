@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 export type Gate = {
   id: string;
   title?: string;
@@ -26,6 +28,7 @@ export type CampaignPlan = {
     auto_merge?: boolean;
     max_review_rounds?: number;
     notifications?: { pi?: boolean; slack_webhook_env?: string };
+    command_env?: string[];
   };
 };
 
@@ -35,6 +38,9 @@ export type GateResult = {
   detail?: string;
   evidence?: unknown;
   consecutive_errors?: number;
+  transient_error?: boolean;
+  definition_hash?: string;
+  actor?: "script" | "human" | "model";
 };
 
 export type StepState = {
@@ -54,6 +60,9 @@ export type CampaignState = {
 
 const slug = /^[a-z][a-z0-9-]{0,63}$/;
 const stamp = () => new Date().toISOString();
+export const gateHash = (gate: Gate): string => createHash("sha256").update(JSON.stringify(gate)).digest("hex");
+const factsObject = (facts: unknown): facts is Record<string, unknown> =>
+  !!facts && typeof facts === "object" && !Array.isArray(facts) && Object.keys(facts).length > 0;
 
 export function validatePlan(plan: CampaignPlan): void {
   if (!plan || typeof plan !== "object" || !slug.test(plan.id ?? "") || !plan.title?.trim() || !plan.goal?.trim()) {
@@ -64,11 +73,12 @@ export function validatePlan(plan: CampaignPlan): void {
   }
   const nodes = new Map<string, Step>();
   for (const s of plan.steps) {
-    if (!slug.test(s.id ?? "") || !s.title?.trim() || nodes.has(s.id)) throw new Error("Invalid or duplicate step id: " + s.id);
-    if (s.work && !["agent", "manual", "none"].includes(s.work.kind)) throw new Error("Invalid work kind on " + s.id);
+    if (!s || typeof s !== "object" || !slug.test(s.id ?? "") || typeof s.title !== "string" || !s.title.trim() || nodes.has(s.id)) throw new Error("Invalid or duplicate step id: " + s?.id);
+    if (s.work && (!s.work || typeof s.work !== "object" || !["agent", "manual", "none"].includes(s.work.kind))) throw new Error("Invalid work kind on " + s.id);
+    if (s.gates !== undefined && !Array.isArray(s.gates)) throw new Error("Invalid gates on " + s.id);
     const gates = new Set<string>();
     for (const g of s.gates ?? []) {
-      if (!slug.test(g.id ?? "") || gates.has(g.id)) throw new Error("Invalid or duplicate gate id: " + g.id);
+      if (!g || typeof g !== "object" || !slug.test(g.id ?? "") || gates.has(g.id)) throw new Error("Invalid or duplicate gate id: " + g?.id);
       gates.add(g.id);
       if (!["command", "human"].includes(g.kind)) throw new Error("Invalid gate kind: " + g.id);
       if (g.kind === "command" && (!Array.isArray(g.command) || g.command.length === 0 || g.command.some(c => typeof c !== "string" || !c.trim()))) {
@@ -95,6 +105,8 @@ export function validatePlan(plan: CampaignPlan): void {
   const opts = plan.settings;
   if (opts?.reconcile_minutes !== undefined && (!Number.isInteger(opts.reconcile_minutes) || opts.reconcile_minutes < 1)) throw new Error("Invalid reconcile interval");
   if (opts?.max_review_rounds !== undefined && (!Number.isInteger(opts.max_review_rounds) || opts.max_review_rounds < 1)) throw new Error("Invalid review limit");
+  if (opts?.allow_commands !== undefined && typeof opts.allow_commands !== "boolean") throw new Error("Invalid allow_commands setting");
+  if (opts?.command_env !== undefined && (!Array.isArray(opts.command_env) || opts.command_env.some(name => typeof name !== "string" || !/^[A-Z_][A-Z0-9_]*$/.test(name) || name.startsWith("PI_CAMPAIGN_")))) throw new Error("Invalid command_env setting");
 }
 
 export function initialState(plan: CampaignPlan): CampaignState {
@@ -115,9 +127,18 @@ export function reconcileGraph(plan: CampaignPlan, current: CampaignState): Camp
     const old = state.steps[s.id];
     if (!old) { state.steps[s.id] = {status:"pending", work_complete: s.work?.kind === "none" || !s.work, facts: {}, gates: {}}; }
   }
-  for (const s of plan.steps) {
+  // Dependencies may appear after their dependents in YAML.
+  const ordered: Step[] = [];
+  const seen = new Set<string>();
+  const byId = new Map(plan.steps.map(s => [s.id, s]));
+  const visit = (s: Step) => { if (seen.has(s.id)) return; seen.add(s.id); for (const d of s.depends_on ?? []) visit(byId.get(d)!); ordered.push(s); };
+  for (const s of plan.steps) visit(s);
+  for (const s of ordered) {
     const st = state.steps[s.id];
-    if (st.status === "done") continue;
+    for (const g of s.gates ?? []) {
+      if (st.gates[g.id] && st.gates[g.id].definition_hash !== gateHash(g)) delete st.gates[g.id];
+    }
+    if (st.status === "done" && (s.gates ?? []).every(g => st.gates[g.id]?.status === "passed")) continue;
     if (!(s.depends_on ?? []).every(d => state.steps[d]?.status === "done")) {
       st.status = "pending";
     } else if (!st.work_complete) {
@@ -138,7 +159,7 @@ export function recordWork(plan: CampaignPlan, current: CampaignState, step: str
   const state = structuredClone(current);
   const target = state.steps[step];
   if (target.status !== "ready") throw new Error("Step is not ready: " + step);
-  if (!facts || typeof facts !== "object" || !Object.keys(facts).length) throw new Error("Require evidence facts for completed work");
+  if (!factsObject(facts)) throw new Error("Require evidence facts object for completed work");
   target.facts = { ...target.facts, ...facts };
   target.work_complete = true;
   state.revision++;
@@ -146,20 +167,19 @@ export function recordWork(plan: CampaignPlan, current: CampaignState, step: str
   return reconcileGraph(plan, state);
 }
 
-export function recordGate(plan: CampaignPlan, current: CampaignState, step: string, gate: string, result: GateResult, actor: "script" | "human"): CampaignState {
+export function recordGate(plan: CampaignPlan, current: CampaignState, step: string, gate: string, result: GateResult, actor: "script" | "human" | "model"): CampaignState {
   const def = plan.steps.find(s => s.id === step);
   const check = def?.gates?.find(g => g.id === gate);
   if (!check) throw new Error("Unknown gate: " + step + "/" + gate);
-  if (check.kind === "human" && actor !== "human" || check.kind === "command" && actor !== "script") throw new Error("Gate actor mismatch");
+  if (check.kind === "human" && actor === "script" || check.kind === "command" && actor !== "script" || actor === "model" && result.status === "passed") throw new Error("Gate actor mismatch");
   const state = structuredClone(current);
   if (state.paused) throw new Error("Campaign paused");
   const st = state.steps[step];
   if (!st.work_complete || !["waiting", "blocked"].includes(st.status)) throw new Error("Step is not waiting for gates");
-  if (st.status === "done") throw new Error("Step already complete");
-  st.gates[gate] = result;
+  st.gates[gate] = { ...result, definition_hash: gateHash(check), actor };
   st.question = result.status === "blocked" ? result.detail : undefined;
   state.revision++;
-  state.history.push({ at: result.at, kind: "gate_" + result.status, step, detail: gate + ": " + (result.detail ?? "") });
+  state.history.push({ at: result.at, kind: "gate_" + result.status, step, detail: actor + " " + gate + ": " + (result.detail ?? "") });
   return reconcileGraph(plan, state);
 }
 
@@ -178,31 +198,33 @@ export function describe(plan: CampaignPlan, state: CampaignState): string {
   for (const s of plan.steps) {
     const st = state.steps[s.id];
     const remaining = (s.gates ?? []).filter(g => st.gates[g.id]?.status !== "passed").map(g => g.id);
-    lines.push("[" + (st.status ?? "pending").padEnd(7) + "] " + s.id + " - " + s.title + (remaining.length ? " | gates: " + remaining.join(", ") : ""));
+    const disabled = !plan.settings?.allow_commands && (s.gates ?? []).some(g => g.kind === "command" && st.gates[g.id]?.status !== "passed");
+    lines.push("[" + (st.status ?? "pending").padEnd(7) + "] " + s.id + " - " + s.title + (remaining.length ? " | gates: " + remaining.join(", ") : "") + (disabled ? " | commands disabled" : ""));
     if (st.question) lines.push("  blocked: " + st.question);
   }
   return lines.join("\n");
 }
 
 /** Clear an unresolved gate's observation without granting an approval. */
-export function retryGate(plan: CampaignPlan, current: CampaignState, step: string, gate: string, reason: string): CampaignState {
+export function retryGate(plan: CampaignPlan, current: CampaignState, step: string, gate: string, reason: string, actor: "human" | "model" = "human"): CampaignState {
   const def = plan.steps.find(s => s.id === step);
   if (!def?.gates?.some(g => g.id === gate)) throw new Error("Unknown gate: " + step + "/" + gate);
   const state = structuredClone(current);
   const target = state.steps[step];
   if (!["waiting", "blocked"].includes(target.status)) throw new Error("Only unresolved gates may be retried");
   if (!reason.trim()) throw new Error("Retry requires a reason");
+  if (actor === "model" && (target.gates[gate]?.actor === "human" || def.gates.find(g => g.id === gate)?.kind === "human")) throw new Error("Operator must retry a human gate");
   delete target.gates[gate];
   target.question = undefined;
   state.revision++;
-  state.history.push({at: stamp(), kind: "gate_retry_requested", step, detail: gate + ": " + reason});
+  state.history.push({at: stamp(), kind: "gate_retry_requested", step, detail: actor + " " + gate + ": " + reason});
   return reconcileGraph(plan, state);
 }
 
 /** Attach discovered external identifiers to a still-open step. Never marks a gate passed. */
 export function setFacts(plan: CampaignPlan, current: CampaignState, step: string, facts: Record<string, unknown>): CampaignState {
   if (!plan.steps.some(s => s.id === step)) throw new Error("Unknown step: " + step);
-  if (!facts || typeof facts !== "object" || Array.isArray(facts) || !Object.keys(facts).length) throw new Error("Nonempty facts object required");
+  if (!factsObject(facts)) throw new Error("Nonempty facts object required");
   const state = structuredClone(current);
   const target = state.steps[step];
   if (target.status === "done") throw new Error("Cannot change facts on completed step");

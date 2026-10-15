@@ -185,6 +185,7 @@ idle LLM polling.** Command gates are opt-in and use argv arrays, not a shell.
 
 Commands: `/campaigns`, `/campaigns:new`, `/campaigns:reconcile <id>`,
 `/campaigns:pause <id>`, `/campaigns:resume <id>`,
+`/campaigns:enable-commands <id>`, `/campaigns:retry <id> <step> <gate>`,
 `/campaigns:approve <id> <step> <gate>`.
 
 See [the extension guide](extensions/pi-campaigns/README.md) for YAML schema,

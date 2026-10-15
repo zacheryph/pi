@@ -28,6 +28,10 @@ const Parameters = Type.Object({
 });
 
 const message = (text: string) => ({ content: [{ type: "text" as const, text }], details: undefined });
+export const campaignSlug = (title: string): string => {
+  const value = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 50).replace(/-+$/g, "");
+  return /^[a-z]/.test(value) ? value : "campaign-" + (value || "draft");
+};
 
 function mutate(id: string, fn: (plan: CampaignPlan, state: CampaignState) => CampaignState, expected?: number): CampaignState {
   const { plan, state } = loadCampaign(id);
@@ -102,14 +106,14 @@ export default function campaignsExtension(pi: ExtensionAPI): void {
     executionMode: "sequential",
     description: "Manage local multi-week YAML infrastructure campaigns. Never assume work is complete: record evidence and pass required gates. Reconciliation runs deterministic allowlisted commands, not an LLM. Creation starts PAUSED until user reviews the plan.",
     parameters: Parameters,
-    async execute(_id, args, signal) {
+    async execute(_id, args, signal, _onUpdate, ctx) {
       if (signal?.aborted) throw new Error("Cancelled");
       try {
         const id = args.id;
         if (args.action === "list") return message(listCampaigns().join("\n") || "No campaigns.");
         if (args.action === "create") {
           if (!args.yaml) throw new Error("yaml required");
-          const plan = createCampaign(args.yaml, process.cwd());
+          const plan = createCampaign(args.yaml, ctx.cwd);
           refresh();
           return message(display(plan.id));
         }
@@ -121,8 +125,9 @@ export default function campaignsExtension(pi: ExtensionAPI): void {
           refresh();
           return message(display(id));
         }
-        if (args.action === "start" || args.action === "pause") {
-          const state = setCampaignPaused(id, args.action === "pause");
+        if (args.action === "start") throw new Error("Operator must resume a campaign with /campaigns:resume after reviewing its plan");
+        if (args.action === "pause") {
+          const state = setCampaignPaused(id, true);
           refresh();
           return message("Campaign " + id + (state.paused ? " paused." : " resumed.") + "\n" + display(id));
         }
@@ -145,7 +150,7 @@ export default function campaignsExtension(pi: ExtensionAPI): void {
         }
         if (args.action === "retry_gate") {
           if (!args.step || !args.gate || !args.detail) throw new Error("step, gate, and retry reason required");
-          mutate(id, (plan, state) => retryGate(plan, state, args.step!, args.gate!, args.detail!), args.expected_revision);
+          mutate(id, (plan, state) => retryGate(plan, state, args.step!, args.gate!, args.detail!, "model"), args.expected_revision);
           refresh();
           return message(display(id));
         }
@@ -154,7 +159,7 @@ export default function campaignsExtension(pi: ExtensionAPI): void {
           if (args.decision === "passed") throw new Error("Model tool cannot approve human gates; use /campaigns:approve in TUI.");
           mutate(id, (plan, state) => recordGate(plan, state, args.step!, args.gate!, {
             status: args.decision!, at: new Date().toISOString(), detail: args.detail
-          }, "human"), args.expected_revision);
+          }, "model"), args.expected_revision);
           refresh();
           return message(display(id));
         }
@@ -172,7 +177,9 @@ export default function campaignsExtension(pi: ExtensionAPI): void {
     }});
 
   command("campaigns", "Show durable campaign progress: /campaigns [id]", (id, ctx) => {
-    ctx.ui.notify(id ? display(id) : listCampaigns().map(display).join("\n\n") || "No campaigns", "info");
+    if (id) { ctx.ui.notify(display(id), "info"); return; }
+    const entries = listCampaigns().map(name => { try { return display(name); } catch (err) { return name + ": " + String(err); } });
+    ctx.ui.notify(entries.join("\n\n") || "No campaigns", "info");
   });
 
   command("campaigns:new", "Interview to scaffold a paused campaign", async (_args, ctx) => {
@@ -189,7 +196,7 @@ export default function campaignsExtension(pi: ExtensionAPI): void {
     if (risk === undefined) return;
     const first = await ctx.ui.input("First concrete action or discovery task");
     if (!first?.trim()) return;
-    const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 50) || "campaign";
+    const slug = campaignSlug(title);
     const plan: CampaignPlan = {
       id: slug, title, goal,
       settings: { reconcile_minutes: 15, allow_commands: false, auto_merge: false, max_review_rounds: 3, notifications: { pi: true } },
@@ -200,7 +207,7 @@ export default function campaignsExtension(pi: ExtensionAPI): void {
           gates: [{ id: "plan-approved", kind: "human", title: "Human approves detailed plan" }] }
       ]
     };
-    createCampaign(stringify(plan), ctx.cwd);
+    createCampaign(stringify(plan), ctx.cwd, "operator");
     refresh();
     ctx.ui.notify("Created paused campaign " + slug + ". Continue discussing scope and edit campaign.yaml; start after plan review.", "info");
   });
@@ -215,9 +222,19 @@ export default function campaignsExtension(pi: ExtensionAPI): void {
     if (!id) throw new Error("Provide campaign id");
     setCampaignPaused(id, true); refresh(); ctx.ui.notify(id + " paused", "info");
   });
-  command("campaigns:resume", "Resume campaign scheduling", (id, ctx) => {
+  command("campaigns:resume", "Resume campaign scheduling", async (id, ctx) => {
     if (!id) throw new Error("Provide campaign id");
+    if (!ctx.hasUI || !(await ctx.ui.confirm("Resume campaign?", display(id) + "\n\nChecks will run on their schedule."))) return;
     setCampaignPaused(id, false); refresh(); ctx.ui.notify(id + " resumed", "info");
+  });
+  command("campaigns:enable-commands", "Enable reviewed command checks", async (id, ctx) => {
+    if (!id) throw new Error("Provide campaign id");
+    const { plan, state } = loadCampaign(id);
+    if (!ctx.hasUI || !(await ctx.ui.confirm("Enable campaign commands?", "Review " + campaignDir(id) + "/campaign.yaml and its command gates first. Scripts run in " + (plan.workspace ?? ctx.cwd)))) return;
+    const next = structuredClone(plan);
+    next.settings = { ...next.settings, allow_commands: true };
+    replacePlan(id, stringify(next), state.revision, "operator");
+    refresh(); ctx.ui.notify(id + " command checks enabled", "info");
   });
   command("campaigns:retry", "Retry blocked check: /campaigns:retry <id> <step> <gate>", (args, ctx) => {
     const [id, step, gate] = args.split(/\s+/);

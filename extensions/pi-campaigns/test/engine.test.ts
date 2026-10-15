@@ -107,3 +107,30 @@ test("discovered run IDs update waiting gates without granting passage", () => {
   assert.equal(s.steps.canary.facts.spacelift_run_id, "run-123");
   assert.equal(s.steps.canary.gates.apply, undefined);
 });
+
+test("dependency order in YAML does not delay downstream steps", () => {
+  const p: CampaignPlan = { id: "reverse", title: "Reverse", goal: "Finish", steps: [
+    { id: "last", title: "Last", depends_on: ["first"], work: { kind: "none" } },
+    { id: "first", title: "First", work: { kind: "none" } }
+  ] };
+  const state = reconcileGraph(p, changePause(initialState(p), false));
+  assert.equal(state.steps.first.status, "done");
+  assert.equal(state.steps.last.status, "done");
+});
+
+test("model observations are attributed and cannot pass or retry human gates", () => {
+  const p = plan();
+  let state = reconcileGraph(p, changePause(initialState(p), false));
+  state = recordWork(p, state, "module", { pr: 32 });
+  assert.throws(() => recordGate(p, state, "module", "human-review", result("passed"), "model"), /actor mismatch/);
+  state = recordGate(p, state, "module", "human-review", result("blocked"), "model");
+  assert.equal(state.steps.module.gates["human-review"].actor, "model");
+  assert.match(state.history.at(-1)!.detail, /^model /);
+  assert.throws(() => retryGate(p, state, "module", "human-review", "clear", "model"), /Operator/);
+});
+
+test("facts for completed work must be a mapping", () => {
+  const p = plan();
+  const state = reconcileGraph(p, changePause(initialState(p), false));
+  assert.throws(() => recordWork(p, state, "module", [] as any), /facts object/);
+});

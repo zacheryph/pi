@@ -28,15 +28,17 @@ and start it only after reviewing the steps and scripts.
 | --- | --- |
 | \`/campaigns\` or \`/campaigns <id>\` | List or inspect progress and blockers |
 | \`/campaigns:new\` | Guided initial interview and paused draft |
-| \`/campaigns:resume <id>\` | Enable reconciliation |
+| \`/campaigns:resume <id>\` | Confirm and enable reconciliation |
+| \`/campaigns:enable-commands <id>\` | Confirm and enable reviewed command gates |
 | \`/campaigns:pause <id>\` | Pause and abort checks active in this Pi session |
 | \`/campaigns:reconcile <id>\` | Run eligible deterministic checks once |
 | \`/campaigns:approve <id> <step> <gate>\` | Operator-confirmed human gate |
+| \`/campaigns:retry <id> <step> <gate>\` | Operator retry of a blocked gate |
 
 The model-facing \`campaign\` tool supports \`list\`, \`create\`, \`status\`,
-\`revise\` (optimistic \`expected_revision\`), \`start\`, \`pause\`, \`work_done\`,
+\`revise\` (optimistic \`expected_revision\`), \`pause\`, \`work_done\`,
 \`approve\` (only blocked/waiting), and \`reconcile\`. A model **cannot pass
-a human approval gate**: \`/campaigns:approve\` requires confirmation.
+a human approval gate** through the campaign tool: \`/campaigns:approve\` requires confirmation. The tool also cannot resume a campaign, enable command execution, remove or change a human gate, change existing step dependencies or work kind, or change command gates and workspace after commands are enabled. The model can use other Pi file/shell tools if those are available; treat this boundary as an extension API guard, not a sandbox for an untrusted model. Direct edits to \`campaign.yaml\` are operator actions and should be reviewed before resuming.
 
 ## Plan format
 
@@ -48,6 +50,7 @@ workspace: /home/engineer/repos/infrastructure
 settings:
   reconcile_minutes: 15
   allow_commands: false  # explicit opt-in after script review
+  # command_env: [GH_TOKEN] # explicitly expose extra environment names to checks
   auto_merge: false       # reserved policy; merges not implemented
   max_review_rounds: 3    # reserved for review-loop implementation
   notifications:
@@ -86,7 +89,7 @@ steps:
 \`\`\`
 
 Scripts receive \`PI_CAMPAIGN_ID\`, \`PI_CAMPAIGN_STEP_ID\`,
-\`PI_CAMPAIGN_GATE_ID\`, \`PI_CAMPAIGN_FACTS_JSON\`. Facts can be added through
+\`PI_CAMPAIGN_GATE_ID\`, \`PI_CAMPAIGN_FACTS_JSON\`. They also receive only PATH, HOME, TMPDIR, LANG, and the explicitly listed \`settings.command_env\` variables; all other parent environment values are excluded. Facts can be added through
 \`campaign(action:"work_done", step:"create-draft", facts:{pr_number:123})\`,
 including PR numbers or Spacelift run identifiers gathered by an agent.
 For gates already waiting, use `campaign(action:"set_facts", step:"apply-canary",
@@ -101,15 +104,15 @@ any other exit => blocked. Optional stdout JSON
 successful exit to waiting/blocked, but **cannot turn a failing exit into success**.
 Output is capped at 8 KiB and timeouts are bounded.
 
-A passed result is recorded and not polled again; a blocked result requires an
+A passed result is recorded and not polled again. Changing a gate definition invalidates its prior result, including approval, and requires a fresh check. A blocked result requires an
 operator to resolve it, retry via `/campaigns:retry`, or revise the plan (not automatic retry in this MVP).
-This is intentionally fail-closed. Checks are independently scheduled when the
+Spawn errors and timeouts retry on the normal interval and block after three consecutive failures; other nonzero exits block immediately. This is intentionally fail-closed. Checks are independently scheduled when the
 Pi process is active; the process never uses idle LLM turns.
 
 ## State and interruption
 
 Each campaign has \`campaign.yaml\` and \`state.yaml\`, atomically replaced per
-write. History is retained in \`state.yaml\`. The manager reconstructs current
+write. A \`revision.yaml\` journal recovers an interrupted plan revision. History is retained in \`state.yaml\`. The manager reconstructs current
 eligibility from the plan and persisted evidence when a session starts or the
 campaign is read; resume does **not** require preserving a multi-week agent
 transcript. A draft starts paused. Pausing stops future scheduling and aborts
@@ -121,8 +124,7 @@ a completed step's contract needs changing, **create a new remediation step**
 (or use a future explicit, audited reopen/invalidating-descendants action).
 Don't silently rewrite history.
 
-**Caveats:** Multiple independent Pi processes aren't coordinated by a global
-lock. Only run one active campaign manager for a given local state directory.
+**Caveats:** A per-campaign process lock prevents duplicate check runs in two Pi windows. State updates in separate processes are not fully transactional; use one active manager for the same campaign when changing state.
 External YAML edits should be followed by \`/campaigns\` or
 \`/campaigns:reconcile\`. A command gate's exact execution state is not a durable
 process across restart; rerun is safe only if checks are side-effect-free.
@@ -155,8 +157,7 @@ process across restart; rerun is safe only if checks are side-effect-free.
 5. Notifications: Pi and Slack adapters; deduplicated state transitions only.
 6. Better interactive TUI: graph browser, active checks/gates, decisions and
    evidence, campaign pause/retry/remediation controls.
-7. Scheduled reconciliation and local process recovery improvements, per-campaign
-   audit journal, file locks, safe worker leases, and reasoned failure escalation.
+7. Local process recovery improvements, per-campaign audit journal, safe worker leases, and stronger cross-process state transactions.
 
 ## Verification
 
