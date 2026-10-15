@@ -6,11 +6,12 @@
     "extensions/pi-subagents",
     "extensions/pi-system-insights",
     "extensions/pi-todo",
-    "extensions/pi-tldr"
+    "extensions/pi-tldr",
+    "extensions/pi-campaigns"
   ],
   "scripts": {
     "check": "npm run check --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present && npm run test:campaigns",
+    "test": "npm run test --workspaces --if-present",
     "verify:bundle": "node scripts/verify-bundle.mjs",
     "build:types": "npm run build:types --workspace=@gotgenes/pi-subagents",
     "test:campaigns": "node --experimental-strip-types --test extensions/pi-campaigns/test/*.test.ts"
