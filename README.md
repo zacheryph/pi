@@ -174,7 +174,7 @@ Configure globally in `~/.pi/agent/tldr.json`, with a project override in
 Set `setSessionName` to `false` to keep summaries while disabling extension-driven
 session naming. See [extension docs](extensions/pi-tldr/README.md).
 
-## pi-campaigns (local YAML workflow manager)
+### pi-campaigns
 
 The **pi-campaigns** extension stores versioned YAML plans and execution state under
 `~/.pi/agent/campaigns/<id>/`. It supports an interactive campaign interview,
