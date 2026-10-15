@@ -106,7 +106,8 @@ function summarizeMessage(message: Message): string | undefined {
 export function sessionSnapshot(ctx: Pick<ExtensionContext, "sessionManager">): string {
   const branch = ctx.sessionManager.getBranch();
   const first = branch.find((entry) => entry.type === "message" && entry.message.role === "user");
-  const initial = first?.type === "message" ? extractText(first.message.content).slice(0, 3500) : "";
+  const initial = first?.type === "message" && first.message.role === "user"
+    ? extractText(first.message.content).slice(0, 3500) : "";
   const messages = ctx.sessionManager.buildSessionProjection().messages;
   const body = messages.map(summarizeMessage).filter((value): value is string => !!value).join("\n\n");
   const clipped = body.length <= 30_000 ? body : `${body.slice(0, 4500)}\n\n[OLDER DETAILS OMITTED]\n\n${body.slice(-25_000)}`;

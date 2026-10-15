@@ -44,8 +44,8 @@ export class TldrViewer implements Component, Focusable {
     }
     if (matchesKey(data, "down") || matchesKey(data, "j")) this.offset++;
     if (matchesKey(data, "up") || matchesKey(data, "k")) this.offset--;
-    if (matchesKey(data, "pagedown")) this.offset += this.height;
-    if (matchesKey(data, "pageup")) this.offset -= this.height;
+    if (matchesKey(data, "pageDown")) this.offset += this.height;
+    if (matchesKey(data, "pageUp")) this.offset -= this.height;
     this.offset = Math.max(0, Math.min(this.offset, this.maxOffset));
     this.tui.requestRender();
   }

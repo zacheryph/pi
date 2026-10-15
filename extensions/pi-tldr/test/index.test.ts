@@ -53,6 +53,9 @@ describe("pi-tldr integration", () => {
   it("registers /tldr and auto-names after the first prompt without blocking", async () => {
     const h = harness(true);
     h.emit("session_start");
+    // Custom-turn events must not trigger the initial naming model.
+    h.emit("before_agent_start", { messageType: "custom", message: { content: "Synthetic turn" } });
+    expect(vi.mocked(runTldrModel)).not.toHaveBeenCalled();
     const outcome = h.emit("before_agent_start", { messageType: "user", prompt: "Migrate network routes" });
     expect(outcome).toBeUndefined();
     await tick();

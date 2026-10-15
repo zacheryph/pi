@@ -54,7 +54,7 @@ export default function piTldr(pi: ExtensionAPI): void {
   pi.on("session_shutdown", () => { cancelPendingTitle(); generation++; });
 
   pi.on("before_agent_start", (event, ctx) => {
-    if (event.messageType !== "user" || initialNamingAttempted) return;
+    if (!("prompt" in event) || typeof event.prompt !== "string" || initialNamingAttempted) return;
     initialNamingAttempted = true;
     if (!config.setSessionName || pi.getSessionName()) return;
     const prompt = event.prompt?.trim();
