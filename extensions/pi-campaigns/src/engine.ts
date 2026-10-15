@@ -183,3 +183,18 @@ export function describe(plan: CampaignPlan, state: CampaignState): string {
   }
   return lines.join("\n");
 }
+
+/** Clear an unresolved gate's observation without granting an approval. */
+export function retryGate(plan: CampaignPlan, current: CampaignState, step: string, gate: string, reason: string): CampaignState {
+  const def = plan.steps.find(s => s.id === step);
+  if (!def?.gates?.some(g => g.id === gate)) throw new Error("Unknown gate: " + step + "/" + gate);
+  const state = structuredClone(current);
+  const target = state.steps[step];
+  if (!["waiting", "blocked"].includes(target.status)) throw new Error("Only unresolved gates may be retried");
+  if (!reason.trim()) throw new Error("Retry requires a reason");
+  delete target.gates[gate];
+  target.question = undefined;
+  state.revision++;
+  state.history.push({at: stamp(), kind: "gate_retry_requested", step, detail: gate + ": " + reason});
+  return reconcileGraph(plan, state);
+}
