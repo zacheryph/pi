@@ -10,9 +10,10 @@
   ],
   "scripts": {
     "check": "npm run check --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present && npm run test:campaigns",
     "verify:bundle": "node scripts/verify-bundle.mjs",
-    "build:types": "npm run build:types --workspace=@gotgenes/pi-subagents"
+    "build:types": "npm run build:types --workspace=@gotgenes/pi-subagents",
+    "test:campaigns": "node --experimental-strip-types --test extensions/pi-campaigns/test/*.test.ts"
   },
   "description": "Personal collection of pi extensions, skills, and configurations",
   "keywords": [
@@ -29,7 +30,11 @@
       "./extensions/pi-subagents/src/index.ts",
       "./extensions/pi-system-insights/src/index.ts",
       "./extensions/pi-todo/src/index.ts",
-      "./extensions/pi-tldr/src/index.ts"
+      "./extensions/pi-tldr/src/index.ts",
+      "./extensions/pi-campaigns/src/index.ts"
     ]
+  },
+  "dependencies": {
+    "yaml": "^2.9.0"
   }
 }
