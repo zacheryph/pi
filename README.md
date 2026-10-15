@@ -152,6 +152,26 @@ Multiple active tasks remain possible for parallel work. See
 [usage/settings](extensions/pi-todo/README.md) and
 [comparison/decision report](extensions/pi-todo/docs/comparison.md).
 
+### pi-tldr
+
+`/tldr` displays a concise model-generated recap of the current session: initial
+premise, major findings/turning points, and current status. It uses a centered
+modal in fullscreen TUI, or a separate screen in regular TUI.
+
+After the first user prompt of a new session, it asynchronously generates a short
+hyphen-separated session/tab name (2–4 words). `/tldr` refreshes the title using
+its recap. Model selection prefers the latest available Haiku or Luna.
+
+Configure globally in `~/.pi/agent/tldr.json`, with a project override in
+`.pi/tldr.json`:
+
+```json
+{ "model": "auto", "setSessionName": true }
+```
+
+Set `setSessionName` to `false` to keep summaries while disabling session and
+terminal-tab naming. See [extension docs](extensions/pi-tldr/README.md).
+
 ## Development
 
 Runtime loading needs no build. Install development dependencies only for checks

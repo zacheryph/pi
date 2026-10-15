@@ -5,7 +5,8 @@
   "workspaces": [
     "extensions/pi-subagents",
     "extensions/pi-system-insights",
-    "extensions/pi-todo"
+    "extensions/pi-todo",
+    "extensions/pi-tldr"
   ],
   "scripts": {
     "check": "npm run check --workspaces --if-present",
@@ -27,7 +28,8 @@
     "extensions": [
       "./extensions/pi-subagents/src/index.ts",
       "./extensions/pi-system-insights/src/index.ts",
-      "./extensions/pi-todo/src/index.ts"
+      "./extensions/pi-todo/src/index.ts",
+      "./extensions/pi-tldr/src/index.ts"
     ]
   }
 }
