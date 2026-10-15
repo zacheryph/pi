@@ -1,0 +1,38 @@
+{
+  "name": "pi-campaigns",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local YAML-first long-horizon campaign manager for Pi",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "workflow"
+  ],
+  "engines": {
+    "node": ">=22.19"
+  },
+  "dependencies": {
+    "yaml": "^2.9.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "1.1.0",
+    "@earendil-works/pi-coding-agent": "1.1.0",
+    "@types/node": "^22.15.3",
+    "typescript": "^6.0.3"
+  },
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test test/*.test.ts"
+  },
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  }
+}
