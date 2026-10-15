@@ -124,7 +124,7 @@ a completed step's contract needs changing, **create a new remediation step**
 (or use a future explicit, audited reopen/invalidating-descendants action).
 Don't silently rewrite history.
 
-**Caveats:** A per-campaign process lock prevents duplicate check runs in two Pi windows. State updates in separate processes are not fully transactional; use one active manager for the same campaign when changing state.
+**Caveats:** A per-campaign process lock prevents duplicate check runs in two Pi windows. The owner refreshes it before each check; a lock whose process has exited, or that has gone untouched for 11 minutes (longer than any gate timeout), is reclaimed automatically. A check result is discarded only if its own step, gate definition, workspace, command settings or pause state changed while it ran. State updates in separate processes are not fully transactional; use one active manager for the same campaign when changing state.
 External YAML edits should be followed by \`/campaigns\` or
 \`/campaigns:reconcile\`. A command gate's exact execution state is not a durable
 process across restart; rerun is safe only if checks are side-effect-free.

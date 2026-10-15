@@ -1,12 +1,13 @@
 import { strict as assert } from "node:assert";
 import { after, before, test } from "node:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { stringify } from "yaml";
-import { commandReview, recordGate, reconcileGraph, type CampaignPlan } from "../src/engine.ts";
+import { commandReview, recordGate, reconcileGraph, retryGate, setFacts, type CampaignPlan } from "../src/engine.ts";
 import { createCampaign, loadCampaign, replacePlan, saveState } from "../src/storage.ts";
-import { reconcileCampaign, runCommandGate, setCampaignPaused } from "../src/reconcile.ts";
+import { LOCK_STALE_MS, reconcileCampaign, runCommandGate, setCampaignPaused } from "../src/reconcile.ts";
 
 const folder = mkdtempSync(join(tmpdir(), "pi-campaign-test-"));
 before(() => { process.env.PI_CAMPAIGNS_DIR = folder; });
@@ -142,7 +143,7 @@ test("changed command definition invalidates a recorded pass", async () => {
   assert.equal(reopened.steps.apply.status, "pending");
 });
 
-test("a completed check cannot overwrite a concurrent human decision", async () => {
+test("a completed check keeps a concurrent human decision and its own result", async () => {
   const p = plan("concurrent");
   p.steps.push({id:"review",title:"Review",work:{kind:"none"},gates:[{id:"approval",kind:"human"}]});
   createCampaign(stringify(p), folder, "operator");
@@ -159,8 +160,60 @@ test("a completed check cannot overwrite a concurrent human decision", async () 
   await running;
   const fresh = loadCampaign(p.id).state;
   assert.equal(fresh.steps.review.status, "done");
-  assert.equal(fresh.steps.pr.gates.check, undefined);
-  assert.equal(fresh.history.at(-1)?.kind, "gate_passed");
+  assert.equal(fresh.steps.review.gates.approval?.actor, "human");
+  // The unrelated approval no longer forces the check to be discarded and rerun.
+  assert.equal(fresh.steps.pr.gates.check?.status, "waiting");
+  assert.deepEqual(fresh.history.slice(-2).map(h => h.kind), ["gate_passed", "gate_waiting"]);
+});
+
+test("a check result is discarded when its own step changes while it runs", async () => {
+  const p = plan("same-step");
+  createCampaign(stringify(p), folder, "operator");
+  setCampaignPaused(p.id, false);
+  let started!: () => void;
+  const began = new Promise<void>(resolve => { started = resolve; });
+  let finish!: (value: any) => void;
+  const running = reconcileCampaign(p.id, async () => { started(); return new Promise(resolve => { finish = resolve; }); });
+  await began;
+  const { plan: current, state } = loadCampaign(p.id);
+  saveState(p.id, setFacts(current, state, "pr", { pr_number: 42 }));
+  finish({ status: "passed", at: new Date().toISOString() });
+  await running;
+  const fresh = loadCampaign(p.id).state;
+  assert.equal(fresh.steps.pr.gates.check, undefined, "result was for facts that have since changed");
+  assert.equal(fresh.steps.pr.facts.pr_number, 42);
+});
+
+test("a live lock blocks checks; dead owners, recycled pids and empty locks expire", async () => {
+  const p = plan("locks");
+  createCampaign(stringify(p), folder, "operator");
+  setCampaignPaused(p.id, false);
+  const lock = join(folder, p.id, "reconcile.lock");
+  const runner = async () => ({ status: "waiting" as const, at: new Date().toISOString() });
+  const age = (ms: number) => { const t = new Date(Date.now() - ms); utimesSync(lock, t, t); };
+  const retry = () => {
+    const { plan: current, state } = loadCampaign(p.id);
+    if (state.steps.pr.gates.check) saveState(p.id, retryGate(current, state, "pr", "check", "test", "human"));
+  };
+
+  writeFileSync(lock, String(process.ppid)); // a live process that is not us
+  await assert.rejects(reconcileCampaign(p.id, runner), new RegExp("process " + process.ppid + ".*remove .*reconcile\\.lock"));
+  age(LOCK_STALE_MS + 1000); // untouched past any gate timeout: treat the pid as recycled
+  await reconcileCampaign(p.id, runner);
+  assert.equal(existsSync(lock), false);
+
+  retry();
+  const dead = spawnSync(process.execPath, ["-e", ""]).pid!;
+  writeFileSync(lock, String(dead));
+  await reconcileCampaign(p.id, runner);
+  assert.equal(existsSync(lock), false);
+
+  retry();
+  writeFileSync(lock, "");
+  await assert.rejects(reconcileCampaign(p.id, runner), /being created/);
+  age(2 * 60 * 1000);
+  await reconcileCampaign(p.id, runner);
+  assert.equal(loadCampaign(p.id).state.steps.pr.gates.check?.status, "waiting");
 });
 
 test("invalid state reports a validation error", () => {

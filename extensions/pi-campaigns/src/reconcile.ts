@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { closeSync, openSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { closeSync, openSync, readFileSync, statSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import {
   type CampaignPlan, type CampaignState, type Gate, type GateResult,
@@ -68,24 +68,73 @@ export const runCommandGate: GateRunner = (gate, context, signal) => new Promise
 });
 
 const active = new Map<string, AbortController>();
-function acquireCheckLock(id: string): () => void {
-  const path = campaignDir(id) + "/reconcile.lock";
-  let fd: number;
-  try { fd = openSync(path, "wx", 0o600); }
-  catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
-    let owner = 0;
-    try { owner = Number(readFileSync(path, "utf8")); } catch { /* stale or incomplete lock */ }
-    if (owner <= 0) throw new Error("Campaign reconciliation lock is present but has no valid owner: " + path);
-    try { process.kill(owner, 0); throw new Error("Campaign already reconciling in process " + owner); }
-    catch (probe) { if ((probe as NodeJS.ErrnoException).code !== "ESRCH") throw probe; }
-    unlinkSync(path);
-    fd = openSync(path, "wx", 0o600);
-  }
-  writeFileSync(fd, String(process.pid));
-  closeSync(fd);
-  return () => { try { if (readFileSync(path, "utf8") === String(process.pid)) unlinkSync(path); } catch { /* cleanup best effort */ } };
+
+/** Longest a live owner can go without touching its lock: the max gate timeout plus margin. */
+export const LOCK_STALE_MS = (600 + 60) * 1000;
+/** Grace for a lock whose owner has not yet written its pid. */
+const LOCK_CREATE_GRACE_MS = 60 * 1000;
+
+function pidAlive(pid: number): boolean {
+  try { process.kill(pid, 0); return true; }
+  catch (err) { return (err as NodeJS.ErrnoException).code === "EPERM"; }
 }
+
+type CheckLock = { release(): void; heartbeat(): void };
+
+/**
+ * One reconciler per campaign across Pi processes. The owner touches the lock before
+ * each gate, so a lock is stale when its owner is gone or it has gone untouched for
+ * longer than any gate may run (which also covers a recycled pid).
+ */
+function acquireCheckLock(id: string): CheckLock {
+  const path = campaignDir(id) + "/reconcile.lock";
+  const claim = (): CheckLock => {
+    const fd = openSync(path, "wx", 0o600);
+    writeFileSync(fd, String(process.pid));
+    closeSync(fd);
+    return {
+      release: () => { try { if (readFileSync(path, "utf8") === String(process.pid)) unlinkSync(path); } catch { /* cleanup best effort */ } },
+      heartbeat: () => { try { const now = new Date(); utimesSync(path, now, now); } catch { /* next acquire decides */ } },
+    };
+  };
+  try { return claim(); }
+  catch (err) { if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err; }
+  let age: number;
+  let owner = 0;
+  try {
+    age = Date.now() - statSync(path).mtimeMs;
+    owner = Number(readFileSync(path, "utf8").trim());
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+    return claim(); // released between our attempts
+  }
+  const hint = " (remove " + path + " if no Pi process is checking this campaign)";
+  if (Number.isInteger(owner) && owner > 0) {
+    if (owner !== process.pid && pidAlive(owner) && age < LOCK_STALE_MS) throw new Error("Campaign already reconciling in process " + owner + hint);
+  } else if (age < LOCK_CREATE_GRACE_MS) {
+    throw new Error("Campaign reconciliation lock is being created" + hint);
+  }
+  try { unlinkSync(path); } catch (err) { if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err; }
+  try { return claim(); }
+  catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "EEXIST") throw new Error("Campaign already reconciling in another process" + hint);
+    throw err;
+  }
+}
+
+/** Everything a check result depends on; a change to any of it makes the result stale. */
+function checkInputs(plan: CampaignPlan & { workspace?: string }, state: CampaignState, step: string, gate: Gate): string {
+  const st = state.steps[step];
+  return JSON.stringify({
+    paused: state.paused,
+    allow: !!plan.settings?.allow_commands,
+    env: plan.settings?.command_env ?? [],
+    workspace: plan.workspace ?? null,
+    gate: gateHash(gate),
+    status: st?.status, work: st?.work_complete, facts: st?.facts, prior: st?.gates[gate.id] ?? null,
+  });
+}
+
 export function stopCampaignChecks(id: string): void { active.get(id)?.abort(); }
 export function checkingIds(): string[] { return [...active.keys()]; }
 
@@ -93,7 +142,7 @@ export async function reconcileCampaign(
   id: string, runner: GateRunner = runCommandGate, signal?: AbortSignal
 ): Promise<{ plan: CampaignPlan; state: CampaignState; changed: boolean }> {
   if (active.has(id)) throw new Error("Campaign already reconciling: " + id);
-  const release = acquireCheckLock(id);
+  const lock = acquireCheckLock(id);
   const controller = new AbortController();
   active.set(id, controller);
   const abort = () => controller.abort();
@@ -119,7 +168,8 @@ export async function reconcileCampaign(
         if (prior?.status === "passed") continue;
         const age = prior ? Date.now() - Date.parse(prior.at) : Infinity;
         if (age < (gate.every_minutes ?? plan.settings?.reconcile_minutes ?? 15) * 60000) continue;
-        const observedRevision = state.revision;
+        const observed = checkInputs(plan, state, step.id, gate);
+        lock.heartbeat();
         const result = await runner(gate, {
           campaign: plan.id, step: step.id,
           workspace: loaded.plan.workspace ?? process.cwd(), facts: st.facts,
@@ -130,7 +180,8 @@ export async function reconcileCampaign(
         plan = loaded.plan;
         state = loaded.state;
         const freshGate = plan.steps.find(s => s.id === step.id)?.gates?.find(g => g.id === gate.id);
-        if (state.revision !== observedRevision || state.paused || !freshGate || gateHash(freshGate) !== gateHash(gate) || state.steps[step.id]?.status !== "waiting") continue;
+        // Unrelated changes (other steps, history) keep the result; it is applied to fresh state.
+        if (!freshGate || checkInputs(plan, state, step.id, freshGate) !== observed) continue;
         if (result.transient_error) {
           result.consecutive_errors = (prior?.consecutive_errors ?? 0) + 1;
           if (result.consecutive_errors >= 3) result.status = "blocked";
@@ -143,7 +194,7 @@ export async function reconcileCampaign(
   } finally {
     signal?.removeEventListener("abort", abort);
     active.delete(id);
-    release();
+    lock.release();
   }
 }
 

@@ -74,7 +74,7 @@ export function validatePlan(plan: CampaignPlan): void {
   const nodes = new Map<string, Step>();
   for (const s of plan.steps) {
     if (!s || typeof s !== "object" || !slug.test(s.id ?? "") || typeof s.title !== "string" || !s.title.trim() || nodes.has(s.id)) throw new Error("Invalid or duplicate step id: " + s?.id);
-    if (s.work && (!s.work || typeof s.work !== "object" || !["agent", "manual", "none"].includes(s.work.kind))) throw new Error("Invalid work kind on " + s.id);
+    if (s.work && (typeof s.work !== "object" || !["agent", "manual", "none"].includes(s.work.kind))) throw new Error("Invalid work kind on " + s.id);
     if (s.gates !== undefined && !Array.isArray(s.gates)) throw new Error("Invalid gates on " + s.id);
     const gates = new Set<string>();
     for (const g of s.gates ?? []) {
