@@ -1,7 +1,7 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 import {
-  changePause, describe, initialState, reconcileGraph, recordGate, recordWork, retryGate, validatePlan,
+  changePause, describe, initialState, reconcileGraph, recordGate, recordWork, retryGate, setFacts, validatePlan,
   type CampaignPlan
 } from "../src/engine.ts";
 
@@ -94,4 +94,16 @@ test("operator retry clears blocked observation without granting success", () =>
   assert.equal(s.steps.module.gates["human-review"], undefined);
   assert.equal(s.steps.canary.status, "pending");
   assert.equal(s.history.at(-1)?.kind, "gate_retry_requested");
+});
+
+test("discovered run IDs update waiting gates without granting passage", () => {
+  const p = plan();
+  let s = reconcileGraph(p, changePause(initialState(p), false));
+  s = recordWork(p, s, "module", {pr:32});
+  s = recordGate(p, s, "module", "human-review", result("passed"), "human");
+  assert.equal(s.steps.canary.status, "waiting");
+  s = setFacts(p, s, "canary", { spacelift_run_id: "run-123" });
+  assert.equal(s.steps.canary.status, "waiting");
+  assert.equal(s.steps.canary.facts.spacelift_run_id, "run-123");
+  assert.equal(s.steps.canary.gates.apply, undefined);
 });
