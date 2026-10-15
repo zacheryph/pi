@@ -3,9 +3,9 @@ import { join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 
 export interface TldrConfig {
-  /** auto prefers the most recent available Haiku, then Luna, then the active model. */
+  /** auto prefers the most recent available Haiku, then Luna. */
   model: string;
-  /** Controls BOTH automatic Pi session naming and terminal tab title updates. */
+  /** Controls automatic session naming (Pi manages the terminal title). */
   setSessionName: boolean;
 }
 
@@ -22,7 +22,12 @@ function readConfig(path: string): Partial<TldrConfig> {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return {};
     throw error;
   }
-  const data: unknown = JSON.parse(raw);
+  let data: unknown;
+  try {
+    data = JSON.parse(raw);
+  } catch (error) {
+    throw new Error(`${path}: invalid JSON: ${String(error)}`);
+  }
   if (!data || typeof data !== "object" || Array.isArray(data)) {
     throw new Error(`${path} must contain a JSON object`);
   }

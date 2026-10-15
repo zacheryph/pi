@@ -10,11 +10,24 @@ export default function piTldr(pi: ExtensionAPI): void {
   let initialNamingAttempted = false;
   let currentSessionId: string | undefined;
   let autoAbort: AbortController | undefined;
+  let summaryAbort: AbortController | undefined;
+  let summaryInProgress = false;
+  let firstRawInput: string | undefined;
+  /** Only names applied during this session may be refreshed; resumed names are treated as manual. */
+  let lastAutoTitle: string | undefined;
 
   const cancelPendingTitle = () => { autoAbort?.abort(); autoAbort = undefined; };
+  const cancelPendingSummary = () => {
+    summaryAbort?.abort();
+    summaryAbort = undefined;
+    summaryInProgress = false;
+  };
 
   const restore = (ctx: ExtensionContext): void => {
     cancelPendingTitle();
+    cancelPendingSummary();
+    firstRawInput = undefined;
+    lastAutoTitle = undefined;
     generation++;
     currentSessionId = ctx.sessionManager.getSessionId();
     // Do not auto-rename an existing/previously worked session on reload or resume.
@@ -22,8 +35,6 @@ export default function piTldr(pi: ExtensionAPI): void {
       e.type === "message" && e.message.role === "user");
     try {
       config = loadTldrConfig(ctx.cwd);
-      const name = pi.getSessionName();
-      if (config.setSessionName && name && ctx.hasUI) ctx.ui.setTitle(titleSlug(name) ?? name);
     }
     catch (error) {
       config = { ...DEFAULT_CONFIG, setSessionName: false };
@@ -31,33 +42,51 @@ export default function piTldr(pi: ExtensionAPI): void {
     }
   };
 
-  const canRename = (ctx: ExtensionContext, token: number, sessionId: string): boolean =>
-    config.setSessionName && generation === token && currentSessionId === sessionId &&
+  const isCurrent = (ctx: ExtensionContext, token: number, sessionId: string): boolean =>
+    generation === token && currentSessionId === sessionId &&
     ctx.sessionManager.getSessionId() === sessionId;
 
-  const applyTitle = (title: string, ctx: ExtensionContext): void => {
+  const mayRename = (ctx: ExtensionContext, token: number, sessionId: string): boolean =>
+    config.setSessionName && isCurrent(ctx, token, sessionId);
+
+  /** Never replace a name that was set manually, even when /tldr is run. */
+  const applyTitle = (title: string): void => {
     const safeTitle = titleSlug(title);
     if (!safeTitle || !config.setSessionName) return;
-    if (pi.getSessionName() !== safeTitle) pi.setSessionName(safeTitle);
-    if (ctx.hasUI) ctx.ui.setTitle(safeTitle);
+    const existing = pi.getSessionName();
+    if (existing && existing !== lastAutoTitle) return;
+    if (existing !== safeTitle) pi.setSessionName(safeTitle);
+    lastAutoTitle = safeTitle;
   };
+
+  // Input is captured before skill/template expansion. Fallback below supports other prompt sources.
+  pi.on("input", (event, ctx) => {
+    if (event.source === "interactive" && ctx.mode === "tui" && ctx.hasUI &&
+        !initialNamingAttempted && firstRawInput === undefined) {
+      firstRawInput = event.text.trim();
+    }
+  });
 
   pi.on("session_start", (_event, ctx) => restore(ctx));
   pi.on("session_tree", (_event, ctx) => {
     cancelPendingTitle();
+    cancelPendingSummary();
+    firstRawInput = undefined;
+    lastAutoTitle = undefined;
     generation++;
     currentSessionId = ctx.sessionManager.getSessionId();
     initialNamingAttempted = ctx.sessionManager.getBranch().some((e) =>
       e.type === "message" && e.message.role === "user");
   });
-  pi.on("session_before_switch", () => { cancelPendingTitle(); generation++; });
-  pi.on("session_shutdown", () => { cancelPendingTitle(); generation++; });
+  pi.on("session_before_switch", () => { cancelPendingTitle(); cancelPendingSummary(); firstRawInput = undefined; lastAutoTitle = undefined; generation++; });
+  pi.on("session_shutdown", () => { cancelPendingTitle(); cancelPendingSummary(); firstRawInput = undefined; lastAutoTitle = undefined; generation++; });
 
   pi.on("before_agent_start", (event, ctx) => {
-    if (!("prompt" in event) || typeof event.prompt !== "string" || initialNamingAttempted) return;
+    if (event.messageType !== "user" || initialNamingAttempted) return;
     initialNamingAttempted = true;
-    if (!config.setSessionName || pi.getSessionName()) return;
-    const prompt = event.prompt?.trim();
+    if (ctx.mode !== "tui" || !ctx.hasUI || !config.setSessionName || pi.getSessionName()) return;
+    const prompt = (firstRawInput ?? event.prompt).trim();
+    firstRawInput = undefined;
     if (!prompt) return;
     const token = generation;
     const sessionId = ctx.sessionManager.getSessionId();
@@ -68,9 +97,9 @@ export default function piTldr(pi: ExtensionAPI): void {
       const model = selectTldrModel(ctx, config.model);
       const title = titleSlug(await runTldrModel(ctx, model, prompt.slice(0, 3000), "title", controller.signal));
       // Never clobber a title the user set during generation.
-      if (title && canRename(ctx, token, sessionId) && !pi.getSessionName()) applyTitle(title, ctx);
+      if (title && mayRename(ctx, token, sessionId) && !pi.getSessionName()) applyTitle(title);
     })().catch((error) => {
-      if (!controller.signal.aborted && canRename(ctx, token, sessionId) && ctx.hasUI) {
+      if (!controller.signal.aborted && isCurrent(ctx, token, sessionId) && ctx.hasUI) {
         ctx.ui.notify(`pi-tldr could not name session: ${String(error)}`, "warning");
       }
     }).finally(() => { if (autoAbort === controller) autoAbort = undefined; });
@@ -88,19 +117,35 @@ export default function piTldr(pi: ExtensionAPI): void {
         ctx.ui.notify("No session messages to summarize yet.", "info");
         return;
       }
+      if (summaryInProgress) {
+        ctx.ui.notify("/tldr is already summarizing this session.", "info");
+        return;
+      }
       const token = generation;
       const sessionId = ctx.sessionManager.getSessionId();
-      ctx.ui.setStatus("pi-tldr", "Summarizing session…");
+      const controller = new AbortController();
+      summaryAbort = controller;
+      summaryInProgress = true;
       try {
-        const model = selectTldrModel(ctx, config.model);
-        const result = parseTldrResponse(await runTldrModel(ctx, model, content, "summary"));
-        if (!canRename(ctx, token, sessionId) && generation !== token) return;
-        if (canRename(ctx, token, sessionId) && result.title) applyTitle(result.title, ctx);
-        await showTldr(ctx, result);
+        // Open the modal immediately; its body handles loading and errors.
+        await showTldr(ctx, async (modalSignal) => {
+          const signal = AbortSignal.any([modalSignal, controller.signal]);
+          if (signal.aborted) throw new Error("Summarization cancelled");
+          const model = selectTldrModel(ctx, config.model);
+          const result = parseTldrResponse(await runTldrModel(ctx, model, content, "summary", signal));
+          if (!isCurrent(ctx, token, sessionId) || signal.aborted) throw new Error("Summarization cancelled");
+          if (mayRename(ctx, token, sessionId) && result.title) applyTitle(result.title);
+          return result;
+        });
       } catch (error) {
-        if (generation === token) ctx.ui.notify(`pi-tldr: ${String(error)}`, "error");
+        if (!controller.signal.aborted && isCurrent(ctx, token, sessionId))
+          ctx.ui.notify(`pi-tldr: ${String(error)}`, "error");
       } finally {
-        if (generation === token) ctx.ui.setStatus("pi-tldr", undefined);
+        controller.abort();
+        if (summaryAbort === controller) {
+          summaryAbort = undefined;
+          summaryInProgress = false;
+        }
       }
     },
   });

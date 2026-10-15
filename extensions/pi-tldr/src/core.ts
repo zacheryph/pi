@@ -33,9 +33,7 @@ export function selectTldrModel(ctx: ModelCatalog, configured: string): Model<an
   const chat = available.filter((m) => !((m as { type?: string }).type) || (m as { type?: string }).type === "chat");
   return newest(chat.filter((m) => /haiku/i.test(m.id) || /haiku/i.test(m.name)))
     ?? newest(chat.filter((m) => /luna/i.test(m.id) || /luna/i.test(m.name)))
-    ?? (ctx.model && chat.find((m) => m.provider === ctx.model!.provider && m.id === ctx.model!.id))
-    ?? chat[0]
-    ?? (() => { throw new Error("No available chat model for pi-tldr. Configure a model in tldr.json."); })();
+    ?? (() => { throw new Error("No available Haiku or Luna model for pi-tldr. Set model in tldr.json."); })();
 }
 
 export function titleSlug(value: string): string | undefined {
@@ -131,6 +129,7 @@ export async function runTldrModel(
     messages: [input],
   }, { maxTokens: task === "title" ? 60 : 450, signal });
   const response = await stream.result();
+  if (response.stopReason === "length") throw new Error(`TLDR ${task} response truncated: increase maxTokens or configure a smaller model.`);
   if (response.stopReason === "error" || response.stopReason === "aborted") {
     throw new Error(`TLDR ${task} request ${response.stopReason}`);
   }

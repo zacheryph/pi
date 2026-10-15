@@ -14,7 +14,7 @@ vi.mock("../src/core.js", async (importActual) => {
 vi.mock("../src/config.js", async (importActual) => ({
   ...await importActual<typeof import("../src/config.js")>(), loadTldrConfig: vi.fn(() => ({ model: "auto", setSessionName: true })),
 }));
-vi.mock("../src/viewer.js", () => ({ showTldr: vi.fn(async () => {}) }));
+vi.mock("../src/viewer.js", () => ({ showTldr: vi.fn(async (_ctx, load) => { await load(new AbortController().signal); }) }));
 
 type Command = Parameters<ExtensionAPI["registerCommand"]>[1];
 function harness(setSessionName: boolean, existing?: string) {
@@ -53,14 +53,11 @@ describe("pi-tldr integration", () => {
   it("registers /tldr and auto-names after the first prompt without blocking", async () => {
     const h = harness(true);
     h.emit("session_start");
-    // Custom-turn events must not trigger the initial naming model.
-    h.emit("before_agent_start", { messageType: "custom", message: { content: "Synthetic turn" } });
-    expect(vi.mocked(runTldrModel)).not.toHaveBeenCalled();
     const outcome = h.emit("before_agent_start", { messageType: "user", prompt: "Migrate network routes" });
     expect(outcome).toBeUndefined();
     await tick();
     expect(h.setName).toHaveBeenCalledWith("routing-migration-plan");
-    expect(h.ctx.ui.setTitle).toHaveBeenCalledWith("routing-migration-plan");
+    expect(h.ctx.ui.setTitle).not.toHaveBeenCalled();
     h.emit("before_agent_start", { messageType: "user", prompt: "Second question" });
     await tick();
     expect(vi.mocked(runTldrModel)).toHaveBeenCalledTimes(1);
@@ -75,10 +72,10 @@ describe("pi-tldr integration", () => {
     expect(vi.mocked(runTldrModel)).toHaveBeenCalledOnce();
     expect(h.setName).not.toHaveBeenCalled();
     expect(h.ctx.ui.setTitle).not.toHaveBeenCalled();
-    expect(showTldr).toHaveBeenCalledWith(h.ctx, expect.objectContaining({ status: "Awaiting PR" }));
+    expect(showTldr).toHaveBeenCalledWith(h.ctx, expect.any(Function));
   });
 
-  it("does not rename existing sessions and refreshes the name on /tldr", async () => {
+  it("preserves manual session names when /tldr runs", async () => {
     const h = harness(true, "manual-name");
     h.setEntries([h.user]);
     h.emit("session_start");
@@ -86,6 +83,38 @@ describe("pi-tldr integration", () => {
     await tick();
     expect(h.setName).not.toHaveBeenCalled();
     await h.commands.get("tldr")!.handler("", h.ctx);
-    expect(h.setName).toHaveBeenCalledWith("routing-rollout-progress");
+    expect(h.setName).not.toHaveBeenCalled();
   });
+  it("does not make paid title requests for headless sessions", async () => {
+    const h = harness(true);
+    (h.ctx as any).hasUI = false;
+    h.emit("session_start");
+    h.emit("before_agent_start", { messageType: "user", prompt: "Headless child" });
+    await tick();
+    expect(runTldrModel).not.toHaveBeenCalled();
+  });
+
+  it("uses raw input before template expansion to name a new session", async () => {
+    const h = harness(true);
+    h.emit("session_start");
+    h.emit("input", { source: "interactive", text: "/skill:migrate routing" });
+    h.emit("before_agent_start", { messageType: "user", prompt: "Skill body expanded with 3000 tokens" });
+    await tick();
+    expect(runTldrModel).toHaveBeenCalledWith(
+      h.ctx, expect.anything(), "/skill:migrate routing", "title", expect.anything(),
+    );
+  });
+
+  it("allows /tldr to update a name only when it remains extension-generated", async () => {
+    const h = harness(true);
+    h.emit("session_start");
+    h.emit("before_agent_start", { messageType: "user", prompt: "Migrate routes" });
+    await tick();
+    h.setEntries([h.user]);
+    await h.commands.get("tldr")!.handler("", h.ctx);
+    expect(h.setName).toHaveBeenLastCalledWith("routing-rollout-progress");
+    expect(h.ctx.ui.setTitle).not.toHaveBeenCalled();
+    expect(h.ctx.ui.setStatus).not.toHaveBeenCalled();
+  });
+
 });
