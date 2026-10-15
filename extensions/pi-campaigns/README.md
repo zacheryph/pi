@@ -29,7 +29,7 @@ and start it only after reviewing the steps and scripts.
 | \`/campaigns\` or \`/campaigns <id>\` | List or inspect progress and blockers |
 | \`/campaigns:new\` | Guided initial interview and paused draft |
 | \`/campaigns:resume <id>\` | Confirm and enable reconciliation |
-| \`/campaigns:enable-commands <id>\` | Confirm and enable reviewed command gates |
+| \`/campaigns:enable-commands <id>\` | Confirm and enable command gates; the dialog lists each argv, the workspace, and extra env names |
 | \`/campaigns:pause <id>\` | Pause and abort checks active in this Pi session |
 | \`/campaigns:reconcile <id>\` | Run eligible deterministic checks once |
 | \`/campaigns:approve <id> <step> <gate>\` | Operator-confirmed human gate |
@@ -38,7 +38,7 @@ and start it only after reviewing the steps and scripts.
 The model-facing \`campaign\` tool supports \`list\`, \`create\`, \`status\`,
 \`revise\` (optimistic \`expected_revision\`), \`pause\`, \`work_done\`,
 \`approve\` (only blocked/waiting), and \`reconcile\`. A model **cannot pass
-a human approval gate** through the campaign tool: \`/campaigns:approve\` requires confirmation. The tool also cannot resume a campaign, enable command execution, remove or change a human gate, change existing step dependencies or work kind, or change command gates and workspace after commands are enabled. The model can use other Pi file/shell tools if those are available; treat this boundary as an extension API guard, not a sandbox for an untrusted model. Direct edits to \`campaign.yaml\` are operator actions and should be reviewed before resuming.
+a human approval gate** through the campaign tool: \`/campaigns:approve\` requires confirmation. The tool also cannot resume a campaign, enable command execution, remove or change a human gate, remove any existing gate, change existing step dependencies or work kind, or change command gates and workspace after commands are enabled. The model can use other Pi file/shell tools if those are available; treat this boundary as an extension API guard, not a sandbox for an untrusted model. Direct edits to \`campaign.yaml\` are operator actions and should be reviewed before resuming.
 
 ## Plan format
 

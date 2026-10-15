@@ -3,7 +3,7 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { parse, stringify } from "yaml";
 import {
-  changePause, describe, recordGate, recordWork, retryGate, setFacts,
+  changePause, commandReview, describe, recordGate, recordWork, retryGate, setFacts,
   type CampaignPlan, type CampaignState
 } from "./engine.ts";
 import {
@@ -230,7 +230,8 @@ export default function campaignsExtension(pi: ExtensionAPI): void {
   command("campaigns:enable-commands", "Enable reviewed command checks", async (id, ctx) => {
     if (!id) throw new Error("Provide campaign id");
     const { plan, state } = loadCampaign(id);
-    if (!ctx.hasUI || !(await ctx.ui.confirm("Enable campaign commands?", "Review " + campaignDir(id) + "/campaign.yaml and its command gates first. Scripts run in " + (plan.workspace ?? ctx.cwd)))) return;
+    const review = commandReview(plan, plan.workspace ?? ctx.cwd) + "\n\nPlan: " + campaignDir(id) + "/campaign.yaml";
+    if (!ctx.hasUI || !(await ctx.ui.confirm("Enable campaign commands?", review))) return;
     const next = structuredClone(plan);
     next.settings = { ...next.settings, allow_commands: true };
     replacePlan(id, stringify(next), state.revision, "operator");

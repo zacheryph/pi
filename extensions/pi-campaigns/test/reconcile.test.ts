@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { stringify } from "yaml";
-import { recordGate, reconcileGraph, type CampaignPlan } from "../src/engine.ts";
+import { commandReview, recordGate, reconcileGraph, type CampaignPlan } from "../src/engine.ts";
 import { createCampaign, loadCampaign, replacePlan, saveState } from "../src/storage.ts";
 import { reconcileCampaign, runCommandGate, setCampaignPaused } from "../src/reconcile.ts";
 
@@ -90,6 +90,39 @@ test("model cannot create enabled commands or remove approval in a revision", ()
   const changedCommand = structuredClone(enabled);
   changedCommand.steps[0].gates![0].command = ["/bin/false"];
   assert.throws(() => replacePlan("permissions", stringify(changedCommand), 1), /active command gates/);
+});
+
+test("model cannot remove an existing check while commands are disabled", () => {
+  const p = plan("removal");
+  p.settings!.allow_commands = false;
+  createCampaign(stringify(p), folder);
+  setCampaignPaused(p.id, false);
+  const noCheck = structuredClone(p);
+  noCheck.steps[0].gates = [];
+  assert.throws(() => replacePlan(p.id, stringify(noCheck), 1), /remove existing gate: pr\/check/);
+  assert.equal(loadCampaign(p.id).state.steps.pr.status, "waiting");
+  const edited = structuredClone(p);
+  edited.steps[0].gates![0].command = ["/bin/true"];
+  edited.steps[0].gates!.push({ id: "extra", kind: "command", command: ["/bin/true"] });
+  replacePlan(p.id, stringify(edited), 1);
+  assert.deepEqual(loadCampaign(p.id).plan.steps[0].gates!.map(g => g.id), ["check", "extra"]);
+  replacePlan(p.id, stringify(noCheck), 2, "operator");
+  assert.equal(loadCampaign(p.id).state.steps.pr.status, "done");
+});
+
+test("command review lists every argv, the workspace and extra env names", () => {
+  const p = plan("review");
+  p.settings!.command_env = ["GH_TOKEN"];
+  const text = commandReview(p, "/work/infra");
+  assert.match(text, /Workspace: \/work\/infra/);
+  assert.match(text, /Extra environment: GH_TOKEN/);
+  assert.match(text, /Command gates \(1\):/);
+  assert.ok(text.includes("pr/check: " + JSON.stringify(p.steps[0].gates![0].command)));
+  assert.doesNotMatch(text, /apply\/check/);
+  const none = plan("review-none");
+  none.steps[0].gates = [];
+  assert.match(commandReview(none, "/w"), /Command gates: none/);
+  assert.match(commandReview(none, "/w"), /Extra environment: none/);
 });
 
 test("changed command definition invalidates a recorded pass", async () => {

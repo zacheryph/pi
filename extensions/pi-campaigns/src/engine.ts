@@ -203,6 +203,20 @@ export function describe(plan: CampaignPlan, state: CampaignState): string {
   return lines.join("\n");
 }
 
+/** Everything an operator approves when enabling command gates: each argv, where it runs, and extra env names. */
+export function commandReview(plan: CampaignPlan, workspace: string): string {
+  const commands = plan.steps.flatMap(s => (s.gates ?? [])
+    .filter(g => g.kind === "command")
+    .map(g => "  " + s.id + "/" + g.id + ": " + JSON.stringify(g.command)));
+  const env = plan.settings?.command_env ?? [];
+  return [
+    "Workspace: " + workspace,
+    "Extra environment: " + (env.length ? env.join(", ") : "none (PATH, HOME, TMPDIR, LANG only)"),
+    commands.length ? "Command gates (" + commands.length + "):" : "Command gates: none",
+    ...commands
+  ].join("\n");
+}
+
 /** Clear an unresolved gate's observation without granting an approval. */
 export function retryGate(plan: CampaignPlan, current: CampaignState, step: string, gate: string, reason: string, actor: "human" | "model" = "human"): CampaignState {
   const def = plan.steps.find(s => s.id === step);

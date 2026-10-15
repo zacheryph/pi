@@ -105,6 +105,8 @@ export function replacePlan(id: string, text: string, expectedRevision: number, 
       for (const gate of old.gates ?? []) {
         const replacement = next.gates?.find(g => g.id === gate.id);
         if (gate.kind === "human" && JSON.stringify(gate) !== JSON.stringify(replacement)) throw new Error("Operator must change human gate: " + old.id + "/" + gate.id);
+        // Removing a check leaves nothing for the operator to review when commands are enabled later.
+        if (!replacement) throw new Error("Operator must remove existing gate: " + old.id + "/" + gate.id);
       }
     }
     if (previous.settings?.allow_commands) {
