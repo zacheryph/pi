@@ -40,8 +40,8 @@ describe("createToolDeps", () => {
 			expect(createToolDeps().settings.defaultMaxTurns).toBeUndefined();
 		});
 
-		it("settings.maxConcurrent is 4 by default", () => {
-			expect(createToolDeps().settings.maxConcurrent).toBe(4);
+		it("settings.concurrencyLimitFor is 4 by default", () => {
+			expect(createToolDeps().settings.concurrencyLimitFor(undefined)).toBe(4);
 		});
 
 		it("registry accepts agent type lookups without throwing", () => {
@@ -66,9 +66,9 @@ describe("createToolDeps", () => {
 		});
 
 		it("replaces settings when overridden", () => {
-			const deps = createToolDeps({ settings: { defaultMaxTurns: 10, maxConcurrent: 2 } });
+			const deps = createToolDeps({ settings: { ...createToolDeps().settings, defaultMaxTurns: 10, concurrencyLimitFor: () => 2 } });
 			expect(deps.settings.defaultMaxTurns).toBe(10);
-			expect(deps.settings.maxConcurrent).toBe(2);
+			expect(deps.settings.concurrencyLimitFor(undefined)).toBe(2);
 		});
 	});
 

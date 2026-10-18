@@ -2,8 +2,8 @@
  * subagent-manager.ts - Tracks subagents, background execution, resume support.
  *
  * Background agents are subject to a configurable concurrency limit (default: 4).
- * Excess agents are scheduled on a ConcurrencyLimiter and auto-started as running
- * agents complete. Foreground agents bypass the limiter (they block the parent anyway).
+ * Excess agents are scheduled per concurrency pool and auto-started as running
+ * agents in the same pool complete. Foreground agents bypass the limiter (they block the parent anyway).
  */
 
 import { randomUUID } from "node:crypto";
@@ -11,7 +11,6 @@ import type { Model } from "@earendil-works/pi-ai";
 import { type BackgroundRequest, resolveBackgroundMode } from "#src/config/invocation-config";
 import { composeAgentInstructions } from "#src/config/prompt-fragments";
 import { debugLog } from "#src/debug";
-import type { ConcurrencyLimiter } from "#src/lifecycle/concurrency-limiter";
 import type { CreateSubagentSessionParams } from "#src/lifecycle/create-subagent-session";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import { type ResumeRefusal, Subagent, type SubagentLifecycleObserver } from "#src/lifecycle/subagent";
@@ -21,6 +20,15 @@ import type { WorkspaceProvider } from "#src/lifecycle/workspace";
 
 import type { RunConfig } from "#src/runtime";
 import type { AgentConfig, CompactionInfo, ParentSessionInfo, SubagentType, ThinkingLevel } from "#src/types";
+
+/**
+ * Schedules background run thunks against a concurrency limit. `pool` names
+ * the agent's resolved pool; a single-pool scheduler may ignore it.
+ */
+export interface BackgroundScheduler {
+  schedule(task: () => Promise<void>, pool?: string): Promise<void>;
+  clear(): void;
+}
 
 /**
  * The agent-registry slice the manager needs to resolve a spawn. Deliberately
@@ -79,6 +87,8 @@ interface ResolvedSpawn {
   isBackground: boolean;
   /** Fragment-bearing configuration captured before queue admission. */
   agentConfig?: AgentConfig;
+  /** The concurrency pool a background spawn is scheduled in; undefined when pools are not wired. */
+  pool?: string;
 }
 
 /**
@@ -176,8 +186,13 @@ export interface SubagentManagerObserver {
 export interface SubagentManagerOptions {
   /** Assembly factory that produces a born-complete SubagentSession per spawn. */
   createSubagentSession: (params: CreateSubagentSessionParams) => Promise<SubagentSession>;
-  /** Concurrency limiter — schedules background run thunks FIFO against the limit. */
-  limiter: ConcurrencyLimiter;
+  /** Concurrency limiter — schedules background run thunks FIFO against their pool's limit. */
+  limiter: BackgroundScheduler;
+  /**
+   * Maps an agent's declared `pool` to the pool it runs in. Absent, every
+   * agent shares one pool and `pool` frontmatter has no effect.
+   */
+  resolvePool?: (pool: string | undefined) => string;
   /** Base working directory handed to a workspace provider (the parent cwd). */
   baseCwd: string;
   getRunConfig?: () => RunConfig;
@@ -206,6 +221,12 @@ export interface AgentSpawnConfig {
    * callers (e.g. cross-extension RPC) that must not be deferred by the queue.
    */
   bypassQueue?: boolean;
+  /**
+   * Concurrency pool to schedule a background run in, overriding the agent's
+   * `pool` frontmatter. Resolved against the configured pools like that value:
+   * an unconfigured name runs in the default pool.
+   */
+  pool?: string;
   /** Parent abort signal - when aborted, the subagent is also stopped. */
   signal?: AbortSignal;
   /** Per-subagent lifecycle observer — replaces onSessionCreated callback. */
@@ -219,7 +240,8 @@ export class SubagentManager {
   private sweepInterval: ReturnType<typeof setInterval>;
   private readonly observer?: SubagentManagerObserver;
   private readonly createSubagentSession: (params: CreateSubagentSessionParams) => Promise<SubagentSession>;
-  private readonly limiter: ConcurrencyLimiter;
+  private readonly limiter: BackgroundScheduler;
+  private readonly resolvePool?: (pool: string | undefined) => string;
   private readonly baseCwd: string;
   private getRunConfig?: () => RunConfig;
   private getRetentionPolicy?: () => RetentionPolicy;
@@ -234,6 +256,7 @@ export class SubagentManager {
   constructor(options: SubagentManagerOptions) {
     this.createSubagentSession = options.createSubagentSession;
     this.limiter = options.limiter;
+    this.resolvePool = options.resolvePool;
     this.baseCwd = options.baseCwd;
     this.observer = options.observer;
     this.getRunConfig = options.getRunConfig;
@@ -312,7 +335,7 @@ export class SubagentManager {
     prompt: string,
     options: AgentSpawnConfig,
   ): string {
-    return this.create(snapshot, this.resolveSpawn(type, options.background, snapshot), prompt, options);
+    return this.create(snapshot, this.resolveSpawn(type, options.background, snapshot, options.pool), prompt, options);
   }
 
   /**
@@ -347,7 +370,12 @@ export class SubagentManager {
    * Stamp the invariants every front door shares: a canonical agent type, a
    * rejection for a disabled one, and the effective background mode.
    */
-  private resolveSpawn(type: string, background: BackgroundRequest, snapshot: ParentSnapshot): ResolvedSpawn {
+  private resolveSpawn(
+    type: string,
+    background: BackgroundRequest,
+    snapshot: ParentSnapshot,
+    requestedPool?: string,
+  ): ResolvedSpawn {
     const canonical = this.registry.resolveType(type);
     if (canonical !== undefined && !this.registry.isValidType(canonical)) {
       throw new Error(`Agent type "${canonical}" is disabled`);
@@ -370,7 +398,12 @@ export class SubagentManager {
       if (Array.isArray(agentConfig.locked)) Object.freeze(agentConfig.locked);
       Object.freeze(agentConfig);
     }
-    return { type: resolvedType, isBackground: resolveBackgroundMode(profile, background), agentConfig };
+    return {
+      type: resolvedType,
+      isBackground: resolveBackgroundMode(profile, background),
+      agentConfig,
+      pool: this.resolvePool?.(requestedPool ?? profile.pool),
+    };
   }
 
   /** Create, register, and start (or queue) a record for an already-resolved spawn. */
@@ -380,13 +413,14 @@ export class SubagentManager {
     prompt: string,
     options: AgentSpawnConfig,
   ): string {
-    const { type, isBackground } = resolved;
+    const { type, isBackground, pool } = resolved;
     const id = randomUUID().slice(0, 17);
     const record = new Subagent({
       id,
       type,
       description: options.description,
       isBackground,
+      pool,
       state: new SubagentState({
         status: isBackground ? "queued" : "running",
         startedAt: Date.now(),
@@ -417,7 +451,7 @@ export class SubagentManager {
       // Schedule on the limiter — scheduleVia captures the limiter promise
       // eagerly, so a queued agent is awaitable from spawn; guardedRun guards
       // against abort-while-queued when the slot frees.
-      record.scheduleVia((thunk) => this.limiter.schedule(thunk));
+      record.scheduleVia((thunk) => this.limiter.schedule(thunk, pool));
       return id;
     }
 

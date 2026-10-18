@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { ConcurrencyLimiter } from "#src/lifecycle/concurrency-limiter";
+import { ConcurrencyLimiter, ConcurrencyPools } from "#src/lifecycle/concurrency-limiter";
 
 /** A controllable task: a thunk plus its resolve handle, for gating completion. */
 function makeTask() {
@@ -197,5 +197,77 @@ describe("ConcurrencyLimiter", () => {
 
 			await expect(scheduled).resolves.toBeUndefined();
 		});
+	});
+});
+
+describe("ConcurrencyPools", () => {
+	const limits: Record<string, number> = { default: 1, slow: 1 };
+	const makePools = () => new ConcurrencyPools((pool) => limits[pool] ?? 1, "default");
+
+	it("gates each pool against its own limit", () => {
+		const pools = makePools();
+		const a = makeTask();
+		const b = makeTask();
+		const slow = makeTask();
+
+		void pools.schedule(a.task);
+		void pools.schedule(b.task, "default");
+		void pools.schedule(slow.task, "slow");
+
+		expect(a.task).toHaveBeenCalledOnce();
+		expect(b.task).not.toHaveBeenCalled();
+		expect(slow.task).toHaveBeenCalledOnce();
+	});
+
+	it("frees a slot only in the pool whose task settled", async () => {
+		const pools = makePools();
+		const a = makeTask();
+		const b = makeTask();
+		const slowA = makeTask();
+		const slowB = makeTask();
+		void pools.schedule(a.task);
+		void pools.schedule(b.task);
+		void pools.schedule(slowA.task, "slow");
+		void pools.schedule(slowB.task, "slow");
+
+		slowA.resolve();
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(slowB.task).toHaveBeenCalledOnce();
+		expect(b.task).not.toHaveBeenCalled();
+	});
+
+	it("recheck() admits pending tasks in every pool after limits grow", () => {
+		const live: Record<string, number> = { default: 1, slow: 1 };
+		const pools = new ConcurrencyPools((pool) => live[pool], "default");
+		const tasks = [makeTask(), makeTask(), makeTask(), makeTask()];
+		void pools.schedule(tasks[0].task);
+		void pools.schedule(tasks[1].task);
+		void pools.schedule(tasks[2].task, "slow");
+		void pools.schedule(tasks[3].task, "slow");
+
+		live.default = 2;
+		live.slow = 2;
+		pools.recheck();
+
+		for (const { task } of tasks) expect(task).toHaveBeenCalledOnce();
+	});
+
+	it("clear() drops pending tasks in every pool, resolving their promises", async () => {
+		const pools = makePools();
+		void pools.schedule(makeTask().task);
+		void pools.schedule(makeTask().task, "slow");
+		const pending = makeTask();
+		const pendingSlow = makeTask();
+		const dropped = pools.schedule(pending.task);
+		const droppedSlow = pools.schedule(pendingSlow.task, "slow");
+
+		pools.clear();
+
+		await expect(dropped).resolves.toBeUndefined();
+		await expect(droppedSlow).resolves.toBeUndefined();
+		expect(pending.task).not.toHaveBeenCalled();
+		expect(pendingSlow.task).not.toHaveBeenCalled();
 	});
 });

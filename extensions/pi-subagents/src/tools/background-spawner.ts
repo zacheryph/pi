@@ -1,5 +1,6 @@
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import type { AgentSpawnConfig } from "#src/lifecycle/subagent-manager";
+import { DEFAULT_POOL } from "#src/settings";
 import { renderSpawnNotes, textResult } from "#src/tools/helpers";
 import type { ResolvedSpawnConfig, SpawnPresentation } from "#src/tools/spawn-config";
 import type { ParentSessionInfo, Subagent } from "#src/types";
@@ -16,7 +17,7 @@ export interface BackgroundParams {
   config: ResolvedSpawnConfig;
   snapshot: ParentSnapshot;
   parentSession: ParentSessionInfo;
-  settings: { readonly maxConcurrent: number };
+  settings: { concurrencyLimitFor(pool: string | undefined): number };
 }
 
 /** What a background launch reports: one shape for every door that returns before the run ends. */
@@ -31,7 +32,7 @@ export interface BackgroundLaunch {
   notes?: readonly string[];
   outputFile?: string;
   /** Present only when the launch is waiting for a concurrency slot. */
-  queuePosition?: { maxConcurrent: number };
+  queuePosition?: { maxConcurrent: number; pool?: string };
 }
 
 /**
@@ -53,6 +54,7 @@ export function spawnBackground(
       maxTurns: execution.effectiveMaxTurns,
       inheritContext: execution.inheritContext,
       thinkingLevel: execution.thinking,
+      pool: execution.pool,
       // resolveSpawnConfig already merged the agent's frontmatter and AgentTool
       // routed here on the result, so this door has committed.
       background: { kind: "explicit", isBackground: true },
@@ -71,7 +73,9 @@ export function spawnBackground(
     detailBase: presentation.detailBase,
     notes,
     outputFile: record?.outputFile,
-    queuePosition: isQueued ? { maxConcurrent: params.settings.maxConcurrent } : undefined,
+    queuePosition: isQueued
+      ? { maxConcurrent: params.settings.concurrencyLimitFor(record.pool), pool: record.pool }
+      : undefined,
   });
 }
 
@@ -99,12 +103,16 @@ export function renderBackgroundLaunch(launch: BackgroundLaunch) {
       `Type: ${launch.displayName}\n` +
       `Description: ${launch.description}\n` +
       (launch.outputFile ? `Output file: ${launch.outputFile}\n` : "") +
-      (launch.queuePosition
-        ? `Position: queued (max ${launch.queuePosition.maxConcurrent} concurrent)\n`
-        : "") +
+      (launch.queuePosition ? renderQueuePosition(launch.queuePosition) : "") +
       `\nYou will be notified when this agent completes.\n` +
       `Use get_subagent_result to retrieve full results, or steer_subagent to send it messages.\n` +
       `Do not duplicate this agent's work.`,
     details,
   );
+}
+
+/** The queue line; the default pool goes unnamed so single-pool setups read as before. */
+function renderQueuePosition(position: { maxConcurrent: number; pool?: string }): string {
+  const pool = position.pool !== undefined && position.pool !== DEFAULT_POOL ? ` in pool "${position.pool}"` : "";
+  return `Position: queued${pool} (max ${position.maxConcurrent} concurrent)\n`;
 }

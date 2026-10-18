@@ -125,6 +125,8 @@ export interface SubagentInit {
 	description: string;
 	/** The mode SubagentManager resolved for this spawn; drives scheduling and announcement. */
 	isBackground: boolean;
+	/** The concurrency pool SubagentManager resolved for this spawn, when pools are wired. */
+	pool?: string;
 
 	/** Execution machinery — always supplied; construct-complete, no test fallbacks. */
 	execution: SubagentExecution;
@@ -144,6 +146,8 @@ export class Subagent {
 	 * a per-call display snapshot only the tool door ever built (#724).
 	 */
 	readonly isBackground: boolean;
+	/** The concurrency pool this agent was scheduled in; undefined when pools are not wired. */
+	readonly pool: string | undefined;
 
 	// Lifecycle status and metrics — owned by a private value object; getters and
 	// mutation methods below delegate to it one line.
@@ -328,6 +332,7 @@ export class Subagent {
 		this.type = init.type;
 		this.description = init.description;
 		this.isBackground = init.isBackground;
+		this.pool = init.pool;
 
 		// Lifecycle status and metrics — fresh queued state unless one is supplied
 		this.state = init.state ?? new SubagentState();

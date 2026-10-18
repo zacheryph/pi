@@ -152,11 +152,12 @@ All fields are optional — sensible defaults for everything.
 | `prompt_mode`       | `append`       | `replace`: parent prompt is the cacheable base; body is appended last with full control and no `<agent_instructions>` wrapper. `append`: parent prompt is the base; body is wrapped in `<agent_instructions>` (agent acts as a "parent twin") |
 | `inherit_context`   | `false`        | Fork parent conversation into agent                                                                                                                                                                                                           |
 | `run_in_background` | `false`        | Run in background by default                                                                                                                                                                                                                  |
+| `pool`              | `default`      | Concurrency pool for background runs. Must name a pool configured under `pools` in `subagents.json`; any other name runs in the default pool. See [Concurrency pools](#concurrency-pools)                                                    |
 | `enabled`           | `true`         | Set to `false` to disable an agent (useful for hiding a default agent per-project)                                                                                                                                                            |
 | `locked`            | —              | Fields a `subagent` tool caller may not override. `true` or a list of field names. See [Locking fields against callers](#locking-fields-against-callers)                                                                                      |
 
 The caller decides, and the agent file fills the gaps.
-A `subagent` tool parameter wins over the agent file's value for `model`, `thinking`, `max_turns`, `inherit_context`, and `run_in_background`; the agent file supplies whichever of those the caller left unset.
+A `subagent` tool parameter wins over the agent file's value for `model`, `thinking`, `max_turns`, `inherit_context`, `run_in_background`, and `pool`; the agent file supplies whichever of those the caller left unset.
 
 ### Locking fields against callers
 
@@ -170,7 +171,7 @@ locked: true
 ---
 ```
 
-`locked: true` withholds every field this file sets — here `model` and `max_turns`, while `thinking`, `inherit_context`, and `run_in_background` stay open because the file names no value for them.
+`locked: true` withholds every field this file sets — here `model` and `max_turns`, while `thinking`, `inherit_context`, `run_in_background`, and `pool` stay open because the file names no value for them.
 This is the behavior every agent file had before locking became opt-in, so it is the one-line way to keep an existing file working unchanged.
 
 A list withholds exactly the fields it names, in either YAML spelling:
@@ -181,7 +182,7 @@ locked: [model, max_turns]         # flow sequence
 ```
 
 The list form also withholds a field this file leaves unset — `locked: [model]` with no `model:` denies the caller a model override and lets the child inherit the parent's.
-An entry naming anything other than `model`, `thinking`, `max_turns`, `inherit_context`, or `run_in_background` is ignored.
+An entry naming anything other than `model`, `thinking`, `max_turns`, `inherit_context`, `run_in_background`, or `pool` is ignored.
 
 A lock is never silent: when a caller passes a value for a locked field, the tool result says which agent locked which parameters.
 
@@ -402,7 +403,7 @@ Two files, merged on load:
   Written by `/subagents:settings`.
 
 **Precedence:** project overrides global on any field present in both.
-Missing fields fall back to the hardcoded defaults (max concurrency `4`, default max turns unlimited, wrap-up turns `2`, consumed-session retention `10` minutes, unconsumed-session retention `720` minutes, abort-all-on-interrupt `true`, mid-run updates `true`, watch-overlay width `third`, watch-overlay default visibility `false`, watch-overlay thinking visibility `true`).
+Missing fields fall back to the hardcoded defaults (max concurrency `4` with no additional [concurrency pools](#concurrency-pools), default max turns unlimited, wrap-up turns `2`, consumed-session retention `10` minutes, unconsumed-session retention `720` minutes, abort-all-on-interrupt `true`, mid-run updates `true`, watch-overlay width `third`, watch-overlay default visibility `false`, watch-overlay thinking visibility `true`).
 
 **Example — global defaults for a beefy machine:**
 
@@ -427,6 +428,46 @@ It replaced `graceTurns`, which allowed extra turns past `max_turns`: a file tha
 A `defaultMaxTurns` of `1` runs with `2`, the minimum, and logs a warning.
 
 **Failure behavior:** missing file is silent; malformed JSON logs a `[pi-subagents] Ignoring malformed settings at …` warning to stderr; invalid/out-of-range field values are dropped per-field; write failures downgrade the `/subagents:settings` toast to a warning with `(session only; failed to persist)`.
+
+### Concurrency pools
+
+`maxConcurrent` limits the **default pool**, which every background agent joins unless its file says otherwise.
+Name additional pools under `pools`, each with its own independent limit, and point an agent at one with `pool:` frontmatter:
+
+```json
+{
+  "maxConcurrent": 4,
+  "pools": {
+    "slow": { "maxConcurrent": 1 }
+  }
+}
+```
+
+```markdown
+---
+description: Runs the full integration suite
+pool: slow
+run_in_background: true
+---
+```
+
+A `subagent` call can also pick the pool itself with the `pool` parameter, which wins over the agent's `pool:` like any other overridable field — including `pool: "default"` to pull a `slow` agent back into the default pool.
+An agent that must stay in its pool can say so with `locked: [pool]`.
+The tool's `pool` parameter lists the configured pool names, so the model knows what it may pass.
+
+With this configuration up to four default-pool agents and one `slow` agent run at once; a second `slow` agent queues behind the first without holding up the default pool, and default-pool agents never wait on `slow` ones.
+Each pool admits its queue in FIFO order.
+
+- A pool name that is not configured — a typo, or a pool removed from `subagents.json` — runs the agent in the default pool rather than creating an unlimited pool.
+  When the name came from the `subagent` call, the result carries a note saying so; a foreground call that names a pool gets a note that the pool was ignored.
+- `default` is reserved for the default pool; a `pools.default` entry is ignored, so set `maxConcurrent` instead.
+- Each pool's `maxConcurrent` follows the same rules as the top-level one (an integer from 1 to 1024); an invalid entry is dropped.
+- `pools` is hand-edited only. `/subagents:settings` keeps it when it rewrites the project file but offers no editor for it.
+- Like every key, a project `pools` replaces the global one wholesale rather than merging pool by pool.
+- Foreground agents bypass every pool, as they bypass the default one.
+- The default pool is not special-cased by the scheduler: every pool, `default` included, is its own FIFO queue gated by its own limit. Only its configuration differs — its limit is `maxConcurrent`, it is the fallback for unconfigured names, and `/subagents:settings` can edit it.
+
+The pool is resolved when the agent is spawned, and a queued launch reports it: `Position: queued in pool "slow" (max 1 concurrent)`.
 
 ### Watch overlay
 
