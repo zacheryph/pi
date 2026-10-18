@@ -155,8 +155,9 @@ describe("liveSource", () => {
 
   it("streaming returns activity state only while running", () => {
     const activeTools = new Map([["k", "read"]]);
-    const running = makeNavigable({ status: "running", activeTools, responseText: "working" });
-    expect(liveSource(running).streaming()).toEqual({ activeTools, responseText: "working" });
+    const toolActivities = new Map([["k", "Reading remote file"]]);
+    const running = makeNavigable({ status: "running", activeTools, toolActivities, responseText: "working" });
+    expect(liveSource(running).streaming()).toEqual({ activeTools, toolActivities, responseText: "working" });
 
     const completed = makeNavigable({ status: "completed" });
     expect(liveSource(completed).streaming()).toBeUndefined();

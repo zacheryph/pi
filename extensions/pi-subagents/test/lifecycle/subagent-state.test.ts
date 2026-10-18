@@ -592,6 +592,23 @@ describe("SubagentState — carrier claim", () => {
 });
 
 describe("SubagentState — activeTools", () => {
+	it.each(["completed", "aborted", "error", "stopped", "resumed"])("clears live activity when %s", transition => {
+		const state = new SubagentState({ status: "running", responseText: "old response" });
+		state.addActiveTool("ci_watch", "ci");
+		state.setToolActivity("ci", "Awaiting CI");
+		switch (transition) {
+			case "completed": state.markCompleted("done"); break;
+			case "aborted": state.markAborted("partial"); break;
+			case "error": state.markError("failed"); break;
+			case "stopped": state.markStopped(); break;
+			case "resumed": state.resetForResume(2000); break;
+		}
+		state.setToolActivity("ci", "late update");
+		expect(state.activeTools.size).toBe(0);
+		expect(state.toolActivities.size).toBe(0);
+		expect(state.responseText).toBe("");
+	});
+
 	it("defaults to an empty map", () => {
 		const state = new SubagentState();
 		expect(state.activeTools.size).toBe(0);

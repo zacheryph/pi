@@ -158,7 +158,7 @@ export class TranscriptContent {
     const rows = [...this.inFlightRendered(width)];
     const streaming = this.options.source.streaming();
     if (streaming) {
-      const activity = `${GLYPHS.streaming} ${describeActivity(streaming.activeTools, streaming.responseText)}`;
+      const activity = `${GLYPHS.streaming} ${describeActivity(streaming.activeTools, streaming.responseText, streaming.toolActivities)}`;
       rows.push("", truncateToWidth(activity, width));
     }
     return rows;

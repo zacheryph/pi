@@ -66,6 +66,7 @@ export async function runForeground(
       activity: describeActivity(
         recordRef?.activeTools ?? new Map(),
         recordRef?.responseText ?? "",
+        recordRef?.toolActivities,
       ),
       spinnerFrame: spinnerFrame % SPINNER.length,
     };

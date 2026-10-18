@@ -83,6 +83,18 @@ describe("compact widget heading and rows", () => {
 		expect(render({ agents: [makeAgent({ responseText: "Found auth middleware" })] })[1]).toContain("Found auth middleware");
 	});
 
+	it("shows tool-provided activity, while terminal outcomes take precedence", () => {
+		const agent = makeAgent({
+			activeTools: new Map([["ci", "ci_watch"]]),
+			toolActivities: new Map([["ci", "Awaiting CI: deploy (2/5)"]]),
+		});
+		expect(render({ agents: [agent] })[1]).toContain("Awaiting CI: deploy (2/5)");
+		for (const status of ["completed", "error", "stopped", "aborted"] as const) {
+			const row = render({ agents: [{ ...agent, status, completedAt: NOW }] })[1];
+			expect(row).not.toContain("Awaiting CI");
+		}
+	});
+
 	it("omits model, turns, tool counts, tokens and context stats", () => {
 		const text = render({ agents: [makeAgent({
 			model: { provider: "anthropic", id: "claude-sonnet-5" },
@@ -208,6 +220,7 @@ describe("terminal layout safety", () => {
 		const lines = render({ terminalWidth, theme: ansiTheme, agents: [makeAgent({
 			description: "界面 🧪 café ".repeat(30),
 			activeTools: new Map([["tool", "界面工具".repeat(20)]]),
+			toolActivities: new Map([["tool", "Awaiting 界面 🧪 ".repeat(20)]]),
 		})] });
 		for (const line of lines) {
 			expect(visibleWidth(line)).toBeLessThanOrEqual(terminalWidth);

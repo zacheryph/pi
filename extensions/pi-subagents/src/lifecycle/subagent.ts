@@ -172,6 +172,7 @@ export class Subagent {
 	get lifetimeUsage(): Readonly<LifetimeUsage> { return this.state.lifetimeUsage; }
 	get compactionCount(): number { return this.state.compactionCount; }
 	get activeTools(): ReadonlyMap<string, string> { return this.state.activeTools; }
+	get toolActivities(): ReadonlyMap<string, string> { return this.state.toolActivities; }
 	get responseText(): string { return this.state.responseText; }
 	isActive(): boolean { return this.state.isActive(); }
 	isTerminalError(): boolean { return this.state.isTerminalError(); }

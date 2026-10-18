@@ -1,12 +1,15 @@
 import { type TuiMode, visibleWidth } from "@earendil-works/pi-tui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
-import type { Subagent } from "#src/lifecycle/subagent";
+import { Subagent } from "#src/lifecycle/subagent";
+import { SubagentState } from "#src/lifecycle/subagent-state";
 import type { SubagentManager } from "#src/lifecycle/subagent-manager";
+import { subscribeSubagentObserver } from "#src/observation/record-observer";
 import type { CompactionInfo } from "#src/types";
 import { AgentWidget, assembleWidgetState, type UICtx } from "#src/ui/agent-widget";
 import { makeModel } from "#test/helpers/make-model";
 import { createTestSubagent, makeStubExecution } from "#test/helpers/make-subagent";
+import { createMockSession } from "#test/helpers/mock-session";
 
 // Minimal agent fixture — only the three fields AgentSummary requires.
 function makeAgent(overrides: { id?: string; status?: string; completedAt?: number } = {}) {
@@ -228,6 +231,41 @@ describe("assembleWidgetState", () => {
 });
 
 describe("AgentWidget — projection reads activity off Subagent records", () => {
+	it("projects streamed child-tool progress into the widget and clears it on completion", () => {
+		const state = new SubagentState({ status: "running" });
+		const record = new Subagent({
+			id: "waiting-agent", type: "general-purpose", description: "Watch CI",
+			isBackground: true, execution: makeStubExecution(), state,
+		});
+		const session = createMockSession();
+		subscribeSubagentObserver(session, state);
+		const widget = new AgentWidget(
+			{ listAgents: () => [record] } as unknown as SubagentManager,
+			new AgentTypeRegistry(() => new Map()),
+		);
+		let component: { render(width?: number): string[] } | undefined;
+		widget.setUICtx({
+			setStatus: () => {},
+			setWidget: (_key, content) => { component = content?.(stubTui(), stubTheme()); },
+		});
+		try {
+			session.emit({ type: "tool_execution_start", toolName: "ci_watch", toolCallId: "ci" });
+			widget.update();
+			expect(component!.render().join("\n")).toContain("ci_watch…");
+			session.emit({
+				type: "tool_execution_update", toolName: "ci_watch", toolCallId: "ci",
+				partialResult: { content: [], details: { activity: { label: "Awaiting CI: deploy (2/5)" } } },
+			});
+			expect(component!.render().join("\n")).toContain("Awaiting CI: deploy (2/5)");
+			record.markCompleted("done");
+			widget.update();
+			expect(component!.render().join("\n")).toContain("✓ done");
+			expect(component!.render().join("\n")).not.toContain("Awaiting CI");
+		} finally {
+			widget.dispose();
+		}
+	});
+
 	it("uses the width Pi allocates to the component rather than terminal columns", () => {
 		const record = createTestSubagent({ status: "running", completedAt: undefined, isBackground: true });
 		const manager = { listAgents: () => [record] } as unknown as SubagentManager;

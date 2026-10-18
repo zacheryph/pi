@@ -31,6 +31,7 @@ export interface NavigableSubagent {
   readonly completedAt: number | undefined;
   readonly toolUses: number;
   readonly activeTools: ReadonlyMap<string, string>;
+  readonly toolActivities?: ReadonlyMap<string, string>;
   readonly responseText: string;
   readonly agentMessages: readonly SessionMessage[];
   /** Persisted transcript path, retained after the live session is released. */
@@ -82,6 +83,7 @@ export interface SessionModel {
 /** Running-agent streaming state, surfaced by a live source. */
 export interface StreamingState {
   readonly activeTools: ReadonlyMap<string, string>;
+  readonly toolActivities?: ReadonlyMap<string, string>;
   readonly responseText: string;
 }
 
@@ -176,7 +178,7 @@ export function liveSource(record: NavigableSubagent): TranscriptSource {
     subscribe: (onChange) => record.subscribeToUpdates(onChange),
     streaming: () =>
       isRunningStatus(record.status)
-        ? { activeTools: record.activeTools, responseText: record.responseText }
+        ? { activeTools: record.activeTools, toolActivities: record.toolActivities, responseText: record.responseText }
         : undefined,
     getToolDefinition: (name) => record.getToolDefinition(name),
     sessionModel: () => ({ model: record.model, thinkingLevel: record.thinkingLevel }),

@@ -140,6 +140,18 @@ describe("TranscriptContent", () => {
   });
 
   describe("live tail", () => {
+    it("shows the tool's custom activity in the live transcript tail", () => {
+      const source = fakeSource({
+        streaming: () => ({
+          activeTools: new Map([["ci", "ci_watch"]]),
+          toolActivities: new Map([["ci", "Awaiting CI"]]),
+          responseText: "",
+        }),
+      });
+      expect(rendered(makeContent(source))).toContain("Awaiting CI");
+      expect(rendered(makeContent(source))).not.toContain("ci_watch…");
+    });
+
     it("appends the streaming-activity row while the agent is running", () => {
       const source = fakeSource({
         streaming: () => ({ activeTools: new Map([["k", "read"]]), responseText: "" }),

@@ -229,6 +229,7 @@ export class AgentWidget implements SubagentManagerObserver {
       compactionCount: record.compactionCount,
       turnBudget: record.turnBudget,
       activeTools: record.activeTools,
+      toolActivities: record.toolActivities,
       responseText: record.responseText,
       contextPercent: record.getContextPercent(),
       model: record.model,

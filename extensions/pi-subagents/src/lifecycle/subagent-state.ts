@@ -3,7 +3,7 @@
  *
  * Owns the passive, readable state of a subagent — status, result, error,
  * timestamps, stats (toolUses, lifetimeUsage, compactionCount), and live-activity
- * fields (activeTools, responseText) and the live turn budget — together with the transition
+ * fields (activeTools, toolActivities, responseText) and the live turn budget — together with the transition
  * methods (markRunning, markCompleted, …), accumulation methods
  * (incrementToolUses, addUsage, incrementCompactions), and live-activity
  * transition methods (setTurnBudget, addActiveTool, removeActiveTool,
@@ -200,6 +200,9 @@ export class SubagentState {
 	private _activeTools = new Map<string, string>();
 	get activeTools(): ReadonlyMap<string, string> { return this._activeTools; }
 
+	private _toolActivities = new Map<string, string>();
+	get toolActivities(): ReadonlyMap<string, string> { return this._toolActivities; }
+
 	private _toolKeySeq = 0;
 
 	private _responseText: string;
@@ -263,19 +266,38 @@ export class SubagentState {
 		this._compactionCount++;
 	}
 
-	/** Record a tool starting. Called by record-observer on tool_execution_start. */
-	addActiveTool(toolName: string): void {
-		this._activeTools.set(toolName + "_" + (++this._toolKeySeq), toolName);
+	/** Record a tool by call ID; generated keys support name-only seeded activity. */
+	addActiveTool(toolName: string, toolCallId?: string): void {
+		const key = toolCallId ?? toolName + "_" + (++this._toolKeySeq);
+		this._activeTools.set(key, toolName);
+		this._toolActivities.delete(key);
 	}
 
-	/** Remove one active tool by name (first match). Called by record-observer on tool_execution_end. */
-	removeActiveTool(toolName: string): void {
+	/** Ignore late updates for calls that have already ended (or a stopped run). */
+	setToolActivity(toolCallId: string, label: string): void {
+		if (this._activeTools.has(toolCallId)) this._toolActivities.set(toolCallId, label);
+	}
+
+	/** Remove the exact call; name-only removal supports seeded activity. */
+	removeActiveTool(toolName: string, toolCallId?: string): void {
+		if (toolCallId !== undefined) {
+			this._activeTools.delete(toolCallId);
+			this._toolActivities.delete(toolCallId);
+			return;
+		}
 		for (const [key, name] of this._activeTools) {
 			if (name === toolName) {
 				this._activeTools.delete(key);
+				this._toolActivities.delete(key);
 				break;
 			}
 		}
+	}
+
+	private clearActivity(): void {
+		this._activeTools.clear();
+		this._toolActivities.clear();
+		this._responseText = "";
 	}
 
 	/** Reset the current response text. Called by record-observer on message_start. */
@@ -320,6 +342,7 @@ export class SubagentState {
 	 * Always sets result and completedAt (??=). Only changes status if not stopped.
 	 */
 	markCompleted(result: string, completedAt?: number): void {
+		this.clearActivity();
 		this._result = result;
 		this._completedAt ??= completedAt ?? Date.now();
 		if (this._status !== "stopped") {
@@ -332,6 +355,7 @@ export class SubagentState {
 	 * Always sets result and completedAt (??=). Only changes status if not stopped.
 	 */
 	markAborted(result: string, completedAt?: number): void {
+		this.clearActivity();
 		this._result = result;
 		this._completedAt ??= completedAt ?? Date.now();
 		if (this._status !== "stopped") {
@@ -344,6 +368,7 @@ export class SubagentState {
 	 * Always sets error (formatted) and completedAt (??=). Only changes status if not stopped.
 	 */
 	markError(error: unknown, completedAt?: number): void {
+		this.clearActivity();
 		this._error = error instanceof Error ? error.message : String(error);
 		this._completedAt ??= completedAt ?? Date.now();
 		if (this._status !== "stopped") {
@@ -386,6 +411,7 @@ export class SubagentState {
 
 	/** Transition to stopped state. Always valid — no guard. */
 	markStopped(completedAt?: number): void {
+		this.clearActivity();
 		this._status = "stopped";
 		this._completedAt = completedAt ?? Date.now();
 	}
@@ -413,6 +439,7 @@ export class SubagentState {
 	 * on that run can still deliver what it ended with (see supersededOutcome).
 	 */
 	resetForResume(startedAt: number): void {
+		this.clearActivity();
 		this._superseded = { run: this._run, outcome: this.currentOutcome() };
 		this._run++;
 		this._status = "running";

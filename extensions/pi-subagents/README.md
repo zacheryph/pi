@@ -95,6 +95,31 @@ A height cap prioritizes running, then finished agents; overflow is
 reported as a `+N more` footer line. Model, token, context, and turn statistics remain available
 in tool results instead of occupying widget space.
 
+### Tool progress in activity labels
+
+Running agents display progress from Pi's standard `tool_execution_update`
+events. Tools can publish a custom label through their `execute()` callback:
+
+```ts
+onUpdate?.({
+  content: [{ type: "text", text: progressLine }],
+  details: { activity: { label: "Awaiting CI: deploy (2/5)" } },
+});
+```
+
+The display prefers a non-empty `details.activity.label`, then the last non-empty
+line of streamed text. Tools such as `@gotgenes/pi-github-tools`'s `ci_watch`
+therefore work without modification. Until a tool reports progress, its usual
+tool-name activity is shown. Empty or non-text updates retain the previous label.
+Labels are plain text, normalized to one line and capped at 240 terminal cells;
+each UI may truncate further to fit its available width.
+
+Progress is tracked by tool call ID, so concurrent calls to the same tool retain
+independent labels. Each label clears when its call ends; live activity clears
+when the agent settles, stops, or resumes. Background widget, foreground tool,
+and live transcript activity use the same labels. The agent remains `running`
+during a tool wait, including its concurrency slot. No adapters are required.
+
 Individual agent results render inline in the conversation:
 
 | State          | Example                                                                                      |

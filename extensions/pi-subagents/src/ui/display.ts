@@ -165,10 +165,20 @@ function truncateLine(text: string, len = 60): string {
 }
 
 /** Build a human-readable activity string from currently-running tools or response text. */
-export function describeActivity(activeTools: ReadonlyMap<string, string>, responseText?: string): string {
+export function describeActivity(
+  activeTools: ReadonlyMap<string, string>,
+  responseText?: string,
+  toolActivities?: ReadonlyMap<string, string>,
+): string {
   if (activeTools.size > 0) {
     const groups = new Map<string, number>();
-    for (const toolName of activeTools.values()) {
+    const labels: string[] = [];
+    for (const [callId, toolName] of activeTools) {
+      const label = toolActivities?.get(callId);
+      if (label) {
+        labels.push(label);
+        continue;
+      }
       const action = TOOL_DISPLAY[toolName] ?? toolName;
       groups.set(action, (groups.get(action) ?? 0) + 1);
     }
@@ -181,7 +191,8 @@ export function describeActivity(activeTools: ReadonlyMap<string, string>, respo
         parts.push(action);
       }
     }
-    return parts.join(", ") + "…";
+    if (parts.length > 0) labels.push(parts.join(", ") + "…");
+    return labels.join(", ");
   }
 
   // No tools active — show truncated response text if available

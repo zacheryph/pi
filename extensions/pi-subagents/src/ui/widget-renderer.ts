@@ -32,6 +32,7 @@ export interface WidgetAgent {
 	readonly compactionCount: number;
 	readonly turnBudget?: TurnBudget;
 	readonly activeTools: ReadonlyMap<string, string>;
+	readonly toolActivities?: ReadonlyMap<string, string>;
 	readonly responseText: string;
 	readonly contextPercent: number | null;
 	readonly model?: ModelIdentity;
@@ -53,7 +54,7 @@ function elapsedLabel(agent: WidgetAgent, now: number): string {
 function renderStatus(agent: WidgetAgent, spinnerFrame: number, theme: Theme): string {
 	if (agent.status === "running") {
 		const spinner = SPINNER[spinnerFrame % SPINNER.length];
-		const activity = singleLine(describeActivity(agent.activeTools, agent.responseText));
+		const activity = singleLine(describeActivity(agent.activeTools, agent.responseText, agent.toolActivities));
 		return `${theme.fg("accent", spinner)} ${theme.fg("muted", activity)}`;
 	}
 	if (agent.status === "queued") return theme.fg("dim", `${GLYPHS.queued} queued`);

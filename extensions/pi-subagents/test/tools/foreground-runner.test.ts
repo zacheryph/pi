@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type ForegroundParams, runForeground } from "#src/tools/foreground-runner";
-import type { Subagent } from "#src/types";
+import { Subagent } from "#src/types";
+import { SubagentState } from "#src/lifecycle/subagent-state";
 import { createToolDeps } from "#test/helpers/make-deps";
 import { makeModel } from "#test/helpers/make-model";
 import { createResolvedSpawnConfig } from "#test/helpers/make-spawn-config";
@@ -23,6 +24,34 @@ describe("runForeground", () => {
 
 	afterEach(() => {
 		vi.useRealTimers();
+	});
+
+	it("streams custom tool activity through the foreground result", async () => {
+		const state = new SubagentState({ status: "running" });
+		state.addActiveTool("ci_watch", "ci");
+		state.setToolActivity("ci", "Awaiting CI");
+		const running = new Subagent({
+			id: "waiting-agent", type: "general-purpose", description: "Watch CI",
+			isBackground: false, execution: makeStubExecution(), state,
+		});
+		const { promise, resolve } = Promise.withResolvers<Subagent>();
+		const { manager } = createToolDeps();
+		manager.spawnAndWait = vi.fn((_snapshot, _type, _prompt, options) => {
+			options.observer?.onSessionCreated?.(running);
+			return promise;
+		});
+		const onUpdate = vi.fn();
+		const runPromise = runForeground(manager, makeParams(), undefined, onUpdate);
+		try {
+			await vi.advanceTimersByTimeAsync(100);
+			expect(onUpdate).toHaveBeenLastCalledWith(expect.objectContaining({
+				details: expect.objectContaining({ status: "running", activity: "Awaiting CI" }),
+			}));
+		} finally {
+			running.markCompleted("done");
+			resolve(running);
+			await runPromise;
+		}
 	});
 
 	it("returns completion message with tool use count on success", async () => {

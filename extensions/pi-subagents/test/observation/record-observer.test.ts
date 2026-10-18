@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { SubagentState } from "#src/lifecycle/subagent-state";
 import { subscribeSubagentObserver } from "#src/observation/record-observer";
+import { describeActivity } from "#src/ui/display";
 import { createMockSession } from "#test/helpers/mock-session";
 
 function makeState() {
@@ -147,6 +148,73 @@ describe("subscribeSubagentObserver", () => {
 
     session.emit({ type: "turn_end" });
     expect(state.turnBudget).toBeUndefined();
+  });
+
+  it("shows changing progress from an unmodified ci_watch tool without changing lifecycle status", () => {
+    const session = createMockSession();
+    const state = makeState();
+    subscribeSubagentObserver(session, state);
+    session.emit({ type: "tool_execution_start", toolName: "ci_watch", toolCallId: "ci-1" });
+    const activity = () => describeActivity(state.activeTools, state.responseText, state.toolActivities);
+    expect(activity()).toBe("ci_watch…");
+
+    for (const text of ["[1/5] build — in_progress (15s)", "[2/5] deploy — in_progress (120s)"]) {
+      session.emit({
+        type: "tool_execution_update", toolName: "ci_watch", toolCallId: "ci-1",
+        partialResult: { content: [{ type: "text", text }], details: undefined },
+      });
+      expect(activity()).toBe(text);
+      expect(state.status).toBe("running");
+      expect(state.toolUses).toBe(0);
+    }
+    session.emit({ type: "tool_execution_end", toolName: "ci_watch", toolCallId: "ci-1" });
+    expect(activity()).toBe("thinking…");
+    expect(state.toolActivities.size).toBe(0);
+    expect(state.toolUses).toBe(1);
+  });
+
+  it("keeps concurrent same-name calls separate when they complete out of order", () => {
+    const session = createMockSession();
+    const state = makeState();
+    subscribeSubagentObserver(session, state);
+    for (const id of ["first", "second"]) {
+      session.emit({ type: "tool_execution_start", toolName: "ci_watch", toolCallId: id });
+      session.emit({
+        type: "tool_execution_update", toolName: "ci_watch", toolCallId: id,
+        partialResult: { content: [], details: { activity: { label: `Waiting for ${id}` } } },
+      });
+    }
+    session.emit({ type: "tool_execution_end", toolName: "ci_watch", toolCallId: "second" });
+    expect([...state.activeTools.keys()]).toEqual(["first"]);
+    expect([...state.toolActivities]).toEqual([["first", "Waiting for first"]]);
+
+    // A delayed update/end must not change or remove the remaining same-name call.
+    session.emit({
+      type: "tool_execution_update", toolName: "ci_watch", toolCallId: "second",
+      partialResult: { content: [{ type: "text", text: "stale" }], details: undefined },
+    });
+    session.emit({ type: "tool_execution_end", toolName: "ci_watch", toolCallId: "second" });
+    expect([...state.activeTools.keys()]).toEqual(["first"]);
+    expect([...state.toolActivities]).toEqual([["first", "Waiting for first"]]);
+  });
+
+  it("retains a custom label through an empty update and restores normal tool activity afterwards", () => {
+    const session = createMockSession();
+    const state = makeState();
+    subscribeSubagentObserver(session, state);
+    session.emit({ type: "tool_execution_start", toolName: "ci_watch", toolCallId: "ci" });
+    session.emit({ type: "tool_execution_start", toolName: "read", toolCallId: "read" });
+    session.emit({
+      type: "tool_execution_update", toolName: "ci_watch", toolCallId: "ci",
+      partialResult: { content: [], details: { activity: { label: "Awaiting CI" } } },
+    });
+    session.emit({
+      type: "tool_execution_update", toolName: "ci_watch", toolCallId: "ci",
+      partialResult: { content: [], details: undefined },
+    });
+    expect(describeActivity(state.activeTools, "", state.toolActivities)).toBe("Awaiting CI, reading…");
+    session.emit({ type: "tool_execution_end", toolName: "ci_watch", toolCallId: "ci" });
+    expect(describeActivity(state.activeTools, "", state.toolActivities)).toBe("reading…");
   });
 
   it("resets responseText on message_start", () => {
