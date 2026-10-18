@@ -228,6 +228,11 @@ export class SettingsManager {
     return pool !== undefined && Object.hasOwn(this._pools, pool) ? pool : DEFAULT_POOL;
   }
 
+  /** Every pool a spawn may name, the default pool first. */
+  poolNames(): string[] {
+    return [DEFAULT_POOL, ...Object.keys(this._pools)];
+  }
+
   /** The concurrency limit of `pool`, resolved as `resolvePool` does. */
   concurrencyLimitFor(pool: string | undefined): number {
     const resolved = this.resolvePool(pool);

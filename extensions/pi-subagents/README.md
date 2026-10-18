@@ -219,8 +219,9 @@ Launch a sub-agent.
 | `run_in_background` | boolean      | no       | Run without blocking                                             |
 | `resume`            | string       | no       | Agent ID to resume a previous session                            |
 | `inherit_context`   | boolean      | no       | Fork parent conversation into agent                              |
+| `pool`              | string       | no       | [Concurrency pool](./docs/configuration.md#concurrency-pools) for a background run |
 
-These five parameters win over the agent file's own values, which fill whichever the call leaves unset.
+These six parameters win over the agent file's own values, which fill whichever the call leaves unset.
 An agent file can withhold one with [`locked`](./docs/configuration.md#locking-fields-against-callers); the result then names the agent and the parameters it ignored.
 
 A call with `resume` and `run_in_background: true` resumes the agent without waiting: it returns the agent ID at once, and you are notified when the resumed run finishes.
@@ -370,7 +371,7 @@ Excess agents are automatically queued and start as running agents complete.
 The widget shows queued agents as a collapsed count.
 It also bounds its own height to the terminal's, collapsing the agents that do not fit into a `+N more` summary, so a short pane keeps its conversation visible.
 
-Agents that should not compete with the rest — a slow integration run, a rate-limited provider — can declare `pool: <name>` in their frontmatter to queue against a separately configured limit instead.
+Agents that should not compete with the rest — a slow integration run, a rate-limited provider — can declare `pool: <name>` in their frontmatter, or be given `pool` on the `subagent` call, to queue against a separately configured limit instead.
 See [Concurrency pools](docs/configuration.md#concurrency-pools).
 
 Foreground agents bypass the queue — they block the parent anyway.

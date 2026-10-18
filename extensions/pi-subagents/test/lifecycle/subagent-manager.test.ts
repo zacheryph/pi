@@ -1839,6 +1839,26 @@ describe("SubagentManager concurrency pools", () => {
     manager.abortAll();
   });
 
+  it("schedules a spawn in the pool its options name, overriding frontmatter", () => {
+    const manager = createPooledManager();
+    const general = manager.spawn(STUB_SNAPSHOT, "general-purpose", "p", {
+      description: "general in slow",
+      background: { kind: "explicit", isBackground: true },
+      pool: "slow",
+    });
+    const slow = manager.spawn(STUB_SNAPSHOT, "Slow", "p", {
+      description: "slow in default",
+      background: { kind: "explicit", isBackground: true },
+      pool: "default",
+    });
+
+    expect(manager.getRecord(general)!.pool).toBe("slow");
+    expect(manager.getRecord(slow)!.pool).toBe("default");
+    expect(manager.getRecord(general)!.status).toBe("running");
+    expect(manager.getRecord(slow)!.status).toBe("running");
+    manager.abortAll();
+  });
+
   it("schedules an agent naming an unconfigured pool in the default pool", () => {
     const manager = createPooledManager(registryWith("Typo", { pool: "sloow" }));
     const general = spawnType(manager, "general-purpose");

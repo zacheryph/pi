@@ -282,3 +282,30 @@ describe("resolveAgentInvocationConfig", () => {
     });
   });
 });
+
+describe("resolveAgentInvocationConfig — pool", () => {
+  it("lets the caller's pool win over the agent's", () => {
+    const resolved = resolveAgentInvocationConfig(makeConfig({ pool: "slow" }), { pool: "fast" });
+    expect(resolved.pool).toBe("fast");
+    expect(resolved.poolFromParams).toBe(true);
+  });
+
+  it("falls back to the agent's pool when the caller omits one", () => {
+    const resolved = resolveAgentInvocationConfig(makeConfig({ pool: "slow" }), {});
+    expect(resolved.pool).toBe("slow");
+    expect(resolved.poolFromParams).toBe(false);
+  });
+
+  it("keeps a locked pool and reports the discarded override", () => {
+    const resolved = resolveAgentInvocationConfig(makeConfig({ pool: "slow", locked: ["pool"] }), { pool: "fast" });
+    expect(resolved.pool).toBe("slow");
+    expect(resolved.discarded).toEqual(["pool"]);
+  });
+
+  it("denies a pool override when the list locks pool without a value", () => {
+    const resolved = resolveAgentInvocationConfig(makeConfig({ locked: ["pool"] }), { pool: "fast" });
+    expect(resolved.pool).toBeUndefined();
+    expect(resolved.discarded).toEqual(["pool"]);
+  });
+});
+

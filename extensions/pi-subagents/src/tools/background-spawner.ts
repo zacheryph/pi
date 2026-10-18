@@ -54,6 +54,7 @@ export function spawnBackground(
       maxTurns: execution.effectiveMaxTurns,
       inheritContext: execution.inheritContext,
       thinkingLevel: execution.thinking,
+      pool: execution.pool,
       // resolveSpawnConfig already merged the agent's frontmatter and AgentTool
       // routed here on the result, so this door has committed.
       background: { kind: "explicit", isBackground: true },

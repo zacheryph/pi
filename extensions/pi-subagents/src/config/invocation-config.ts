@@ -10,6 +10,7 @@ export const LOCKABLE_FIELDS = [
   "max_turns",
   "inherit_context",
   "run_in_background",
+  "pool",
 ] as const;
 
 /** One field an agent file may withhold from its callers. */
@@ -58,6 +59,7 @@ interface AgentInvocationParams {
   max_turns?: number;
   run_in_background?: boolean;
   inherit_context?: boolean;
+  pool?: string;
 }
 
 /** The per-call values the Agent tool door resolved from its caller and the agent file. */
@@ -75,6 +77,10 @@ export interface AgentInvocationConfig {
   maxTurns?: number;
   inheritContext: boolean;
   runInBackground: boolean;
+  /** The pool name requested by the caller or the agent file, before settings resolve it. */
+  pool?: string;
+  /** True when the winning pool name came from the caller. */
+  poolFromParams: boolean;
   /**
    * Locked fields whose caller value was thrown away, in `LOCKABLE_FIELDS` order.
    *
@@ -111,6 +117,7 @@ export function resolveAgentInvocationConfig(
     params.run_in_background,
     locked,
   );
+  const pool = resolveField("pool", agentConfig.pool, params.pool, locked);
 
   return {
     modelInput: model.value,
@@ -119,7 +126,9 @@ export function resolveAgentInvocationConfig(
     maxTurns: maxTurns.value,
     inheritContext: inheritContext.value ?? false,
     runInBackground: runInBackground.value ?? false,
-    discarded: [model, thinking, maxTurns, inheritContext, runInBackground]
+    pool: pool.value,
+    poolFromParams: pool.source === "caller",
+    discarded: [model, thinking, maxTurns, inheritContext, runInBackground, pool]
       .filter((resolution) => resolution.discarded)
       .map((resolution) => resolution.field),
   };

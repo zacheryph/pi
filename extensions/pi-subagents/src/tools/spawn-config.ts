@@ -13,6 +13,7 @@ import { parseThinkingLevel, thinkingLevelError } from "#src/config/thinking-lev
 import { isBelowMinimumTurns, MIN_MAX_TURNS, normalizeMaxTurns } from "#src/lifecycle/turn-limits";
 import type { ModelRegistry } from "#src/session/model-resolver";
 import { resolveInvocationModel } from "#src/session/model-resolver";
+import { DEFAULT_POOL } from "#src/settings";
 import type { AgentInvocation, SubagentType, ThinkingLevel } from "#src/types";
 import {
   type AgentDetails,
@@ -45,6 +46,8 @@ export interface SpawnExecution {
   thinking: ThinkingLevel | undefined;
   inheritContext: boolean;
   runInBackground: boolean;
+  /** The resolved concurrency pool; meaningful only for a background run. */
+  pool: string;
   agentInvocation: AgentInvocation;
 }
 
@@ -78,8 +81,14 @@ export function resolveSpawnConfig(
   params: Record<string, unknown>,
   registry: AgentTypeRegistry,
   modelInfo: ModelInfo,
-  settings: { readonly defaultMaxTurns: number | undefined },
+  settings: SpawnConfigSettings,
 ): ResolvedSpawnConfig | SpawnConfigError {
+  const poolParam = params.pool;
+  if (poolParam != null && typeof poolParam !== "string") {
+    return { error: `Invalid pool ${JSON.stringify(poolParam)}: expected a pool name.` };
+  }
+  const requestedPool = typeof poolParam === "string" && poolParam.trim() ? poolParam.trim() : undefined;
+
   // Validated at the door, so the merge below and every layer past it receive a
   // level the SDK recognizes rather than one it would clamp to "off" (Refs #834).
   const thinkingParam = params.thinking;
@@ -103,7 +112,9 @@ export function resolveSpawnConfig(
   const resolvedConfig = resolveAgentInvocationConfig(customConfig, {
     ...params,
     thinking: thinkingFromParams,
+    pool: requestedPool,
   });
+  const pool = settings.resolvePool(resolvedConfig.pool);
 
   // Resolve model
   const resolution = resolveInvocationModel(
@@ -130,6 +141,7 @@ export function resolveSpawnConfig(
     maxTurns: normalizeMaxTurns(resolvedConfig.maxTurns),
     inheritContext,
     runInBackground,
+    pool: runInBackground && pool !== DEFAULT_POOL ? pool : undefined,
   };
 
   const modeLabel = getPromptModeLabel(subagentType, registry);
@@ -150,6 +162,7 @@ export function resolveSpawnConfig(
       ...buildFallbackNote(rawType, fellBack),
       ...buildLockNote(subagentType, resolvedConfig.discarded),
       ...buildMinimumTurnsNote(resolvedConfig.maxTurns),
+      ...buildPoolNote(resolvedConfig, pool, runInBackground),
     ],
     execution: {
       prompt: params.prompt as string,
@@ -159,10 +172,40 @@ export function resolveSpawnConfig(
       thinking,
       inheritContext,
       runInBackground,
+      pool,
       agentInvocation,
     },
     presentation: { agentTags, detailBase },
   };
+}
+
+/** The settings slice spawn resolution reads. */
+export interface SpawnConfigSettings {
+  readonly defaultMaxTurns: number | undefined;
+  /** Map a requested pool name to the pool it runs in; unconfigured names map to the default pool. */
+  resolvePool(pool: string | undefined): string;
+}
+
+/**
+ * Advise when a pool this call named does not apply: it is not configured, so the
+ * default pool runs it, or the run is foreground, which no pool gates.
+ *
+ * Only the caller's own value is reported — an agent file's author is not present
+ * to read a note, the same split the model fallback draws.
+ */
+function buildPoolNote(
+  resolved: { pool?: string; poolFromParams: boolean },
+  pool: string,
+  runInBackground: boolean,
+): string[] {
+  if (!resolved.poolFromParams || resolved.pool === undefined) return [];
+  if (pool !== resolved.pool) {
+    return [`Note: Unknown pool "${resolved.pool}" — using ${DEFAULT_POOL}.`];
+  }
+  if (!runInBackground) {
+    return [`Note: pool "${resolved.pool}" was ignored because foreground agents bypass concurrency pools.`];
+  }
+  return [];
 }
 
 /** Advise that the named type does not exist, so general-purpose ran instead. */

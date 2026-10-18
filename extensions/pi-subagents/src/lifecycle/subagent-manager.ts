@@ -221,6 +221,12 @@ export interface AgentSpawnConfig {
    * callers (e.g. cross-extension RPC) that must not be deferred by the queue.
    */
   bypassQueue?: boolean;
+  /**
+   * Concurrency pool to schedule a background run in, overriding the agent's
+   * `pool` frontmatter. Resolved against the configured pools like that value:
+   * an unconfigured name runs in the default pool.
+   */
+  pool?: string;
   /** Parent abort signal - when aborted, the subagent is also stopped. */
   signal?: AbortSignal;
   /** Per-subagent lifecycle observer — replaces onSessionCreated callback. */
@@ -329,7 +335,7 @@ export class SubagentManager {
     prompt: string,
     options: AgentSpawnConfig,
   ): string {
-    return this.create(snapshot, this.resolveSpawn(type, options.background, snapshot), prompt, options);
+    return this.create(snapshot, this.resolveSpawn(type, options.background, snapshot, options.pool), prompt, options);
   }
 
   /**
@@ -364,7 +370,12 @@ export class SubagentManager {
    * Stamp the invariants every front door shares: a canonical agent type, a
    * rejection for a disabled one, and the effective background mode.
    */
-  private resolveSpawn(type: string, background: BackgroundRequest, snapshot: ParentSnapshot): ResolvedSpawn {
+  private resolveSpawn(
+    type: string,
+    background: BackgroundRequest,
+    snapshot: ParentSnapshot,
+    requestedPool?: string,
+  ): ResolvedSpawn {
     const canonical = this.registry.resolveType(type);
     if (canonical !== undefined && !this.registry.isValidType(canonical)) {
       throw new Error(`Agent type "${canonical}" is disabled`);
@@ -391,7 +402,7 @@ export class SubagentManager {
       type: resolvedType,
       isBackground: resolveBackgroundMode(profile, background),
       agentConfig,
-      pool: this.resolvePool?.(profile.pool),
+      pool: this.resolvePool?.(requestedPool ?? profile.pool),
     };
   }
 

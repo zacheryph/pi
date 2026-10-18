@@ -53,6 +53,10 @@ export type AgentToolSettings = {
 	readonly defaultMaxTurns: number | undefined;
 	/** The concurrency limit of the pool an agent declaring `pool` runs in. */
 	concurrencyLimitFor(pool: string | undefined): number;
+	/** Map a requested pool name to the pool it runs in. */
+	resolvePool(pool: string | undefined): string;
+	/** Every pool a caller may name, the default pool first. */
+	poolNames(): readonly string[];
 };
 
 // ---- Class ----
@@ -183,6 +187,7 @@ export class AgentTool {
 		const availableTypesText = this.availableTypesText;
 		const agentDir = this.agentDir;
 		const registry = this.registry;
+		const poolNamesText = this.settings.poolNames().join(", ");
 
 		const guidelines = [
 			"- For parallel work, use run_in_background: true on each agent. Foreground calls run sequentially — only one executes at a time.",
@@ -250,6 +255,11 @@ ${guidelines}
 					Type.String({
 						description:
 							"Optional agent ID to resume from. Continues from previous context. Combine with run_in_background: true to resume without waiting.",
+					}),
+				),
+				pool: Type.Optional(
+					Type.String({
+						description: `Concurrency pool to queue a background run in, each with its own limit. Configured pools: ${poolNamesText}. Omit to use the agent's own pool, or default when it declares none. Ignored for foreground runs.`,
 					}),
 				),
 				inherit_context: Type.Optional(

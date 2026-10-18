@@ -77,6 +77,7 @@ const lockValues = (config: AgentConfig): Record<LockableField, unknown> => ({
   max_turns: config.maxTurns,
   inherit_context: config.inheritContext,
   run_in_background: config.runInBackground,
+  pool: config.pool,
 });
 
 function lockSummary(config: AgentConfig): string {
@@ -114,6 +115,7 @@ function agentDetail(
     ["Prompt mode", config.promptMode],
     ["Inherit context", config.inheritContext === undefined ? "false (tool default; caller decides)" : String(config.inheritContext)],
     ["Run in background", config.runInBackground === undefined ? "false (tool default; caller decides)" : String(config.runInBackground)],
+    ["Pool", config.pool ?? "default"],
     ["Locked", lockSummary(config)],
     ["Tool guideline", config.toolGuideline ?? "(none)"],
     ["Description", config.description],

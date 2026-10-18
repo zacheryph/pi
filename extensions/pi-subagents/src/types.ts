@@ -103,6 +103,8 @@ export interface AgentInvocation {
   maxTurns?: number;
   inheritContext?: boolean;
   runInBackground?: boolean;
+  /** A non-default concurrency pool a background run is scheduled in. */
+  pool?: string;
 }
 
 /**

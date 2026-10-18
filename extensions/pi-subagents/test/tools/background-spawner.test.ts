@@ -236,6 +236,21 @@ describe("spawnBackground", () => {
     });
   });
 
+  it("passes the resolved pool to the manager", () => {
+    const deps = createToolDeps();
+    const config = makeConfig();
+    config.execution.pool = "slow";
+
+    spawnBackground(deps.manager, makeParams({ config }));
+
+    expect(deps.manager.spawn).toHaveBeenCalledWith(
+      STUB_SNAPSHOT,
+      "general-purpose",
+      "do something",
+      expect.objectContaining({ pool: "slow" }),
+    );
+  });
+
   it("names a non-default pool and its limit in the queue position", () => {
     const deps = createToolDeps({
       manager: {
