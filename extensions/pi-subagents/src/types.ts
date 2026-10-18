@@ -78,6 +78,8 @@ export interface AgentConfig extends AgentIdentity, AgentPromptConfig {
   inheritContext?: boolean;
   /** Default for spawn: run in background. undefined = caller decides. */
   runInBackground?: boolean;
+  /** Concurrency pool for background runs, configured under `pools` in settings. undefined = default pool. */
+  pool?: string;
   /** Fields a `subagent` tool caller may not override. Omitted — every field is overridable. */
   locked?: LockDeclaration;
   /** One-line usage guideline for the subagent tool's Guidelines: block. Omitted — no guideline line. */

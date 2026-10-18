@@ -30,6 +30,14 @@ function isOverlayWidth(value: unknown): value is OverlayWidth {
   return typeof value === "string" && Object.hasOwn(OVERLAY_WIDTH_PRESETS, value);
 }
 
+/** Settings for one named concurrency pool. */
+export interface ConcurrencyPoolSettings {
+  maxConcurrent: number;
+}
+
+/** The pool an agent runs in when it names none, or names one not configured. */
+export const DEFAULT_POOL = "default";
+
 export interface SubagentsSettings {
   /** Overlay width as a fraction of the terminal width. */
   overlayWidth?: OverlayWidth;
@@ -37,7 +45,15 @@ export interface SubagentsSettings {
   overlayDefaultOpen?: boolean;
   /** Show provider-emitted thinking in the watch feed; hidden thinking remains bounded and retained. */
   overlayShowThinking?: boolean;
+  /** Concurrency limit for background agents in the default pool. */
   maxConcurrent?: number;
+  /**
+   * Named concurrency pools, each with its own limit independent of the
+   * default pool's `maxConcurrent`. An agent joins one through its `pool:`
+   * frontmatter; an agent naming a pool not listed here runs in the default
+   * pool. The name `default` is reserved for that pool and dropped here.
+   */
+  pools?: Record<string, ConcurrencyPoolSettings>;
   /**
    * 0 = unlimited — the extension's single source of truth for that convention:
    * `normalizeMaxTurns()` in turn-limits.ts treats 0 → `undefined`, and the
@@ -106,6 +122,8 @@ export interface SettingsSnapshot {
   excludedExtensionPackages?: string[];
   /** Present only when non-empty, and round-tripped for the same reason. */
   promptInheritance?: Record<string, PromptInheritance>;
+  /** Present only when non-empty, and round-tripped for the same reason. */
+  pools?: Record<string, ConcurrencyPoolSettings>;
 }
 
 
@@ -138,6 +156,7 @@ export class SettingsManager {
   private _midRunUpdates: boolean = DEFAULT_MID_RUN_UPDATES;
   private _excludedExtensionPackages: string[] = [];
   private _promptInheritance: Record<string, PromptInheritance> = {};
+  private _pools: Record<string, ConcurrencyPoolSettings> = {};
 
   private readonly emit: SettingsEmit;
   private readonly cwd: string;
@@ -196,6 +215,23 @@ export class SettingsManager {
 
   set maxConcurrent(n: number) {
     this._maxConcurrent = Math.max(1, n);
+  }
+
+  // ── pools: hand-edited only; no /subagents:settings affordance ──
+
+  /**
+   * The pool a spawn naming `pool` runs in: the name itself when configured,
+   * else the default pool. Falling back rather than inventing a pool keeps a
+   * misspelled or unconfigured name from silently raising total concurrency.
+   */
+  resolvePool(pool: string | undefined): string {
+    return pool !== undefined && Object.hasOwn(this._pools, pool) ? pool : DEFAULT_POOL;
+  }
+
+  /** The concurrency limit of `pool`, resolved as `resolvePool` does. */
+  concurrencyLimitFor(pool: string | undefined): number {
+    const resolved = this.resolvePool(pool);
+    return resolved === DEFAULT_POOL ? this._maxConcurrent : this._pools[resolved].maxConcurrent;
   }
 
   // ── retention windows: clamped to [1, RETENTION_MINUTES_CEILING] minutes ──
@@ -269,6 +305,7 @@ export class SettingsManager {
     // Assigned unconditionally: removing the key from disk must clear the value.
     this._excludedExtensionPackages = [...(settings.excludedExtensionPackages ?? [])];
     this._promptInheritance = { ...settings.promptInheritance };
+    this._pools = structuredClone(settings.pools ?? {});
     this.emit("subagents:settings_loaded", { settings });
     return settings;
   }
@@ -295,6 +332,9 @@ export class SettingsManager {
     }
     if (Object.keys(this._promptInheritance).length > 0) {
       snapshot.promptInheritance = { ...this._promptInheritance };
+    }
+    if (Object.keys(this._pools).length > 0) {
+      snapshot.pools = structuredClone(this._pools);
     }
     return snapshot;
   }
@@ -441,12 +481,8 @@ function sanitize(raw: unknown): SubagentsSettings {
   if (isOverlayWidth(r.overlayWidth)) out.overlayWidth = r.overlayWidth;
   if (typeof r.overlayDefaultOpen === "boolean") out.overlayDefaultOpen = r.overlayDefaultOpen;
   if (typeof r.overlayShowThinking === "boolean") out.overlayShowThinking = r.overlayShowThinking;
-  if (
-    Number.isInteger(r.maxConcurrent) &&
-    (r.maxConcurrent as number) >= 1 &&
-    (r.maxConcurrent as number) <= MAX_CONCURRENT_CEILING
-  ) {
-    out.maxConcurrent = r.maxConcurrent as number;
+  if (isConcurrencyLimit(r.maxConcurrent)) {
+    out.maxConcurrent = r.maxConcurrent;
   }
   if (
     Number.isInteger(r.defaultMaxTurns) &&
@@ -484,11 +520,37 @@ function sanitize(raw: unknown): SubagentsSettings {
       .filter(Boolean);
     out.excludedExtensionPackages = [...new Set(sources)];
   }
+  const pools = sanitizePools(r.pools);
+  if (pools) {
+    out.pools = pools;
+  }
   const promptInheritance = sanitizePromptInheritance(r.promptInheritance);
   if (promptInheritance) {
     out.promptInheritance = promptInheritance;
   }
   return out;
+}
+
+/** True when a value is an integer concurrency limit within the accepted range. */
+function isConcurrencyLimit(n: unknown): n is number {
+  return Number.isInteger(n) && (n as number) >= 1 && (n as number) <= MAX_CONCURRENT_CEILING;
+}
+
+/**
+ * Keep only pool entries with a valid limit, absent when none survive.
+ * The reserved `default` name is dropped: that pool's limit is `maxConcurrent`.
+ */
+function sanitizePools(raw: unknown): Record<string, ConcurrencyPoolSettings> | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const pools: Record<string, ConcurrencyPoolSettings> = {};
+  for (const [name, pool] of Object.entries(raw as Record<string, unknown>)) {
+    const trimmed = name.trim();
+    if (!trimmed || trimmed === DEFAULT_POOL) continue;
+    if (!pool || typeof pool !== "object") continue;
+    const limit = (pool as Record<string, unknown>).maxConcurrent;
+    if (isConcurrencyLimit(limit)) pools[trimmed] = { maxConcurrent: limit };
+  }
+  return Object.keys(pools).length > 0 ? pools : undefined;
 }
 
 /**

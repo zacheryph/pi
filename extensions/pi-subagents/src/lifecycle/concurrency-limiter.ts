@@ -53,3 +53,37 @@ export class ConcurrencyLimiter {
 		for (const task of dropped) task.settle();
 	}
 }
+
+/**
+ * A set of independent FIFO limiters keyed by pool name, each against its own
+ * dynamic limit. Pools are created on first use, so the set knows nothing about
+ * which names are configured — the caller resolves a name before scheduling.
+ */
+export class ConcurrencyPools {
+	private readonly limiters = new Map<string, ConcurrencyLimiter>();
+
+	constructor(
+		private readonly getLimit: (pool: string) => number,
+		private readonly defaultPool: string,
+	) {}
+
+	/** Schedule a task FIFO within `pool`; omitted, it joins the default pool. */
+	schedule(task: () => Promise<void>, pool: string = this.defaultPool): Promise<void> {
+		let limiter = this.limiters.get(pool);
+		if (!limiter) {
+			limiter = new ConcurrencyLimiter(() => this.getLimit(pool));
+			this.limiters.set(pool, limiter);
+		}
+		return limiter.schedule(task);
+	}
+
+	/** Start pending tasks in every pool. Call when any limit may have grown. */
+	recheck(): void {
+		for (const limiter of this.limiters.values()) limiter.recheck();
+	}
+
+	/** Drop pending tasks in every pool, resolving their promises without running them. */
+	clear(): void {
+		for (const limiter of this.limiters.values()) limiter.clear();
+	}
+}

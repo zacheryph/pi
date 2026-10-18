@@ -21,7 +21,7 @@ function makeParams(overrides: Partial<BackgroundParams> = {}): BackgroundParams
     config: makeConfig(),
     snapshot: STUB_SNAPSHOT,
     parentSession: { parentSessionFile: "/sessions/parent.jsonl", parentSessionId: "session-1", toolCallId: "tc-1" },
-    settings: { maxConcurrent: 4 },
+    settings: { concurrencyLimitFor: () => 4 },
     ...overrides,
   };
 }
@@ -136,7 +136,7 @@ describe("spawnBackground", () => {
         getRecord: vi.fn().mockReturnValue(createTestSubagent({ status: "queued" })),
       },
     });
-    const result = spawnBackground(deps.manager, makeParams({ settings: { maxConcurrent: 4 } }));
+    const result = spawnBackground(deps.manager, makeParams({ settings: { concurrencyLimitFor: () => 4 } }));
     expect(result.content[0].text).toContain("queued");
     expect(result.content[0].text).toContain("max 4 concurrent");
   });
@@ -221,7 +221,7 @@ describe("spawnBackground", () => {
         },
       });
 
-      const result = spawnBackground(deps.manager, makeParams({ settings: { maxConcurrent: 4 } }));
+      const result = spawnBackground(deps.manager, makeParams({ settings: { concurrencyLimitFor: () => 4 } }));
 
       expect(result.content[0].text).toBe(
         "Agent queued in background.\n" +
@@ -234,6 +234,22 @@ describe("spawnBackground", () => {
           "Do not duplicate this agent's work.",
       );
     });
+  });
+
+  it("names a non-default pool and its limit in the queue position", () => {
+    const deps = createToolDeps({
+      manager: {
+        ...createToolDeps().manager,
+        spawn: vi.fn().mockReturnValue("bg-4"),
+        getRecord: vi.fn().mockReturnValue(createTestSubagent({ status: "queued", pool: "slow" })),
+      },
+    });
+    const concurrencyLimitFor = vi.fn((pool: string | undefined) => (pool === "slow" ? 1 : 4));
+
+    const result = spawnBackground(deps.manager, makeParams({ settings: { concurrencyLimitFor } }));
+
+    expect(result.content[0].text).toContain('Position: queued in pool "slow" (max 1 concurrent)\n');
+    expect(concurrencyLimitFor).toHaveBeenCalledWith("slow");
   });
 
   it("returns error text when manager.spawn throws", () => {

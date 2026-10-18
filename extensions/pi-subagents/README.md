@@ -370,6 +370,9 @@ Excess agents are automatically queued and start as running agents complete.
 The widget shows queued agents as a collapsed count.
 It also bounds its own height to the terminal's, collapsing the agents that do not fit into a `+N more` summary, so a short pane keeps its conversation visible.
 
+Agents that should not compete with the rest — a slow integration run, a rate-limited provider — can declare `pool: <name>` in their frontmatter to queue against a separately configured limit instead.
+See [Concurrency pools](docs/configuration.md#concurrency-pools).
+
 Foreground agents bypass the queue — they block the parent anyway.
 
 Stopping a still-queued agent produces the same completion notification a running agent's stop does.

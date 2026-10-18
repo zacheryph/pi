@@ -51,7 +51,8 @@ export interface AgentToolRuntime {
 /** Narrow settings accessor — only the fields the Agent tool reads. */
 export type AgentToolSettings = {
 	readonly defaultMaxTurns: number | undefined;
-	readonly maxConcurrent: number;
+	/** The concurrency limit of the pool an agent declaring `pool` runs in. */
+	concurrencyLimitFor(pool: string | undefined): number;
 };
 
 // ---- Class ----
