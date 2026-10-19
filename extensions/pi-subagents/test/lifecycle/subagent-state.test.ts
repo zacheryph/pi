@@ -592,7 +592,7 @@ describe("SubagentState — carrier claim", () => {
 });
 
 describe("SubagentState — activeTools", () => {
-	it.each(["completed", "aborted", "error", "stopped", "resumed"])("clears live activity when %s", transition => {
+	it.each(["completed", "aborted", "error", "stopped", "resumed"])("clears tool activity when %s and preserves response text until resume", transition => {
 		const state = new SubagentState({ status: "running", responseText: "old response" });
 		state.addActiveTool("ci_watch", "ci");
 		state.setToolActivity("ci", "Awaiting CI");
@@ -606,7 +606,7 @@ describe("SubagentState — activeTools", () => {
 		state.setToolActivity("ci", "late update");
 		expect(state.activeTools.size).toBe(0);
 		expect(state.toolActivities.size).toBe(0);
-		expect(state.responseText).toBe("");
+		expect(state.responseText).toBe(transition === "resumed" ? "" : "old response");
 	});
 
 	it("defaults to an empty map", () => {

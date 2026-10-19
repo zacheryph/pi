@@ -6,6 +6,7 @@
  * Consumed by the renderResult hook in agent-tool.ts.
  */
 
+import { truncateToWidth } from "@earendil-works/pi-tui";
 import type { SubagentStatus } from "#src/lifecycle/subagent-state";
 import { type TurnBudget, wrappedUpAtTurnLimit } from "#src/lifecycle/turn-limits";
 import type { AgentDetails, Theme } from "#src/ui/display";
@@ -21,8 +22,9 @@ export function renderAgentResult(
 	expanded: boolean,
 	isPartial: boolean,
 	theme: Theme,
+	width?: number,
 ): string {
-	if (isPartial || details.status === "running") return renderRunning(details, theme);
+	if (isPartial || details.status === "running") return renderRunning(details, theme, width);
 	if (details.status === "background") return renderBackground(details, theme);
 	if (details.status === "completed")
 		return renderCompleted(details, resultText, expanded, theme);
@@ -33,11 +35,17 @@ export function renderAgentResult(
 // ---- Per-status renderers ----
 
 /** Render running/partial status: spinner + stats + activity line. */
-export function renderRunning(details: AgentDetails, theme: Theme): string {
+export function renderRunning(details: AgentDetails, theme: Theme, width?: number): string {
 	const frame = SPINNER[details.spinnerFrame ?? 0];
 	const s = renderStats(details, theme);
 	let line = theme.fg("accent", frame) + (s ? " " + s : "");
-	line += "\n" + theme.fg("dim", `  ${GLYPHS.subLine}  ${details.activity ?? "thinking\u2026"}`);
+	const activity = (details.activity ?? "thinking\u2026").replace(/[\r\n]+/g, " ");
+	const status = theme.fg("dim", `${GLYPHS.subLine}  ${activity}`);
+	// Reserve the existing left inset plus one trailing space. Status never wraps.
+	const row = width === undefined ? theme.fg("dim", `  ${GLYPHS.subLine}  ${activity}`)
+		: width <= 3 ? " ".repeat(Math.max(0, width))
+		: `  ${truncateToWidth(status, width - 3, "…")} `;
+	line += "\n" + row;
 	return line;
 }
 

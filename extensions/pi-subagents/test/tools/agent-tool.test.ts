@@ -1,7 +1,9 @@
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionContext, Theme as SdkTheme } from "@earendil-works/pi-coding-agent";
+import { stripTerminalSequences, visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import { AgentTool } from "#src/tools/agent-tool";
+import { describeActivity } from "#src/ui/display";
 import {
 	createToolDeps,
 	createToolDepsWithDisabledBuiltInAgents,
@@ -38,6 +40,40 @@ async function execute(
 }
 
 describe("AgentTool", () => {
+	it("truncates concurrent foreground activity to one row at the allocated width, including after resize", () => {
+		const def = makeTool(createToolDeps()).toToolDefinition();
+		const activity = describeActivity(
+			new Map([["ci", "ci_watch"], ["deploy", "deployment_watch"]]),
+			"",
+			new Map([["ci", "ci_watch: 界🧪 ".repeat(30)], ["deploy", "deployment_watch: 🧪界 ".repeat(30)]]),
+		);
+		const details = {
+			displayName: "Agent", description: "Watch CI", subagentType: "general-purpose",
+			toolUses: 0, tokens: "", durationMs: 0, status: "running" as const, activity,
+		};
+		const theme = {
+			fg: (_color: string, text: string) => `\x1b[36m${text}\x1b[0m`,
+			bold: (text: string) => text,
+		};
+		const component = def.renderResult!(
+			{ content: [], details }, { expanded: false, isPartial: true },
+			theme as unknown as SdkTheme, {} as Parameters<NonNullable<typeof def.renderResult>>[3],
+		);
+		for (const width of [1, 2, 3, 4, 8, 20, 40, 80, 120, 20, 80]) {
+			const rows = component.render(width);
+			expect(rows).toHaveLength(2); // Spinner/stats row plus exactly one activity row.
+			for (const row of rows) {
+				expect(row).not.toMatch(/[\r\n]/);
+				expect(visibleWidth(row)).toBeLessThanOrEqual(width);
+			}
+			const status = stripTerminalSequences(rows[1]);
+			expect(status.startsWith(" ")).toBe(true);
+			expect(status.endsWith(" ")).toBe(true);
+			if (width > 3) expect(status).toContain("…");
+		}
+		expect(details.activity).toBe(activity);
+	});
+
 	it("returns tool definition with correct name and label", () => {
 		const def = makeTool(createToolDeps()).toToolDefinition();
 		expect(def.name).toBe("subagent");

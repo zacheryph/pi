@@ -286,11 +286,14 @@ ${guidelines}
 					return new Text(text, 0, 0);
 				}
 				const resultText = result.content[0]?.type === "text" ? result.content[0].text : "";
-				return new Text(
-					renderAgentResult(details, resultText, expanded, isPartial, theme),
-					0,
-					0,
-				);
+				const text = new Text("", 0, 0);
+				return {
+					render(width: number) {
+						text.setText(renderAgentResult(details, resultText, expanded, isPartial, theme, width));
+						return text.render(width);
+					},
+					invalidate() { text.invalidate(); },
+				};
 			},
 
 			execute: (

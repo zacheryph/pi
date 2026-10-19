@@ -297,7 +297,6 @@ export class SubagentState {
 	private clearActivity(): void {
 		this._activeTools.clear();
 		this._toolActivities.clear();
-		this._responseText = "";
 	}
 
 	/** Reset the current response text. Called by record-observer on message_start. */
@@ -440,6 +439,7 @@ export class SubagentState {
 	 */
 	resetForResume(startedAt: number): void {
 		this.clearActivity();
+		this.resetResponseText();
 		this._superseded = { run: this._run, outcome: this.currentOutcome() };
 		this._run++;
 		this._status = "running";

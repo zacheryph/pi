@@ -40,7 +40,7 @@ export function subscribeSubagentObserver(
     }
 
     if (event.type === "tool_execution_update") {
-      const label = toolActivity(event.partialResult);
+      const label = toolActivity(event.toolName, event.partialResult);
       if (label) state.setToolActivity(event.toolCallId, label);
     }
 

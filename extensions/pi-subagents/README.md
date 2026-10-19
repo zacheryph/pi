@@ -108,17 +108,27 @@ onUpdate?.({
 ```
 
 The display prefers a non-empty `details.activity.label`, then the last non-empty
-line of streamed text. Tools such as `@gotgenes/pi-github-tools`'s `ci_watch`
+line of streamed text, prefixed with the tool name (for example,
+`ci_watch: [2/5] deploy — in_progress (120s)`). Explicit labels are shown as supplied.
+Tools such as `@gotgenes/pi-github-tools`'s `ci_watch`
 therefore work without modification. Until a tool reports progress, its usual
 tool-name activity is shown. Empty or non-text updates retain the previous label.
-Labels are plain text, normalized to one line and capped at 240 terminal cells;
-each UI may truncate further to fit its available width.
+Labels are plain text, normalized to one line and capped at 240 terminal cells.
+Status text is truncated to its available width and never wraps, in both the
+background widget and foreground progress display.
 
 Progress is tracked by tool call ID, so concurrent calls to the same tool retain
-independent labels. Each label clears when its call ends; live activity clears
-when the agent settles, stops, or resumes. Background widget, foreground tool,
+independent labels. Each label clears when its call ends; tool activity clears
+when the agent settles, stops, or resumes. The last response text is preserved
+on terminal transitions and reset on resume. Background widget, foreground tool,
 and live transcript activity use the same labels. The agent remains `running`
 during a tool wait, including its concurrency slot. No adapters are required.
+
+Progress labels update on tool events, not on a polling interval. The widget's
+animation timer redraws the cached label and spinner. Built-in `bash` does not
+provide `details.activity.label`; its status uses the text fallback from its
+streamed stdout/stderr. Extracting the last non-empty line processes the payload
+of each update, which may contain cumulative output.
 
 Individual agent results render inline in the conversation:
 

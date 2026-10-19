@@ -163,7 +163,7 @@ describe("subscribeSubagentObserver", () => {
         type: "tool_execution_update", toolName: "ci_watch", toolCallId: "ci-1",
         partialResult: { content: [{ type: "text", text }], details: undefined },
       });
-      expect(activity()).toBe(text);
+      expect(activity()).toBe(`ci_watch: ${text}`);
       expect(state.status).toBe("running");
       expect(state.toolUses).toBe(0);
     }

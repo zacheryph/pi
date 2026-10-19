@@ -16,7 +16,7 @@ function activityLabel(text: string): string {
  * Partial results may contain one progress line or cumulative output; neither
  * is retained here. Non-text/empty updates leave the previous activity intact.
  */
-export function toolActivity(result: AgentToolResult<unknown>): string | undefined {
+export function toolActivity(toolName: string, result: AgentToolResult<unknown>): string | undefined {
   const details = result.details;
   if (details && typeof details === "object" && "activity" in details) {
     const activity = details.activity;
@@ -32,7 +32,7 @@ export function toolActivity(result: AgentToolResult<unknown>): string | undefin
     const lines = stripTerminalSequences(block.text).split(/\r\n?|\n/);
     for (let j = lines.length - 1; j >= 0; j--) {
       const label = activityLabel(lines[j]);
-      if (label) return label;
+      if (label) return activityLabel(`${toolName}: ${label}`);
     }
   }
   return undefined;
