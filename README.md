@@ -141,9 +141,16 @@ tool: additive `upsert` preserves omitted tasks; `replace`, `remove`, and `clear
 make deletion explicit. Stable keys, cycle checks, optional revision guards, and
 branch-scoped persistence work with direct and nested codemode calls.
 
+Updates can carry a `message` (completion summary, findings, handoff). It is
+recorded in task history and flagged until reviewed, so outcomes survive later
+subagent or tool output. The widget counts unreviewed messages, shows excerpts, and
+puts those tasks first.
+
 Above-editor widget matches subagents' compact top-rule/identity/status layout.
-`/todos` or `/todos:list` opens a searchable browser matching insights. Commands:
-`/todos:add`, `/todos:update`, `/todos:remove`, `/todos:clear`, `/todos:settings`.
+`/todos` or `/todos:list` opens a searchable browser matching insights, with All,
+Unreviewed and Recent views plus per-task activity timelines. `/todos:review` opens
+unreviewed messages. Commands: `/todos:add`, `/todos:update`, `/todos:remove`,
+`/todos:clear`, `/todos:settings`.
 Settings layer global `todos.json` with project `.pi/todos.json`.
 
 User additions never start/steer a turn. Changed state syncs to the next model
