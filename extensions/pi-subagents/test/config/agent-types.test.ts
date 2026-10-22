@@ -24,6 +24,7 @@ describe("AgentTypeRegistry", () => {
     it("loads default agents on construction", () => {
       const registry = makeRegistry();
       expect(registry.isValidType("general-purpose")).toBe(true);
+      expect(registry.isValidType("orchestrator")).toBe(true);
       expect(registry.isValidType("Explore")).toBe(true);
       expect(registry.isValidType("Plan")).toBe(true);
     });
@@ -265,8 +266,8 @@ describe("AgentTypeRegistry", () => {
       expect(AgentTypeRegistry.DEFAULT_AGENT_NAMES).toBeDefined();
     });
 
-    it("contains the three built-in default names", () => {
-      expect(AgentTypeRegistry.DEFAULT_AGENT_NAMES).toEqual(["general-purpose", "Explore", "Plan"]);
+    it("contains the built-in default names", () => {
+      expect(AgentTypeRegistry.DEFAULT_AGENT_NAMES).toEqual(["general-purpose", "orchestrator", "Explore", "Plan"]);
     });
 
     it("is no longer exported from types.ts", async () => {
@@ -274,6 +275,27 @@ describe("AgentTypeRegistry", () => {
       // as a named export from types.ts anymore.
       const typesModule = await import("#src/types");
       expect((typesModule as Record<string, unknown>).DEFAULT_AGENT_NAMES).toBeUndefined();
+    });
+  });
+
+  describe("orchestrator profile", () => {
+    it("is discoverable case-insensitively with explicit delegation and todo tools", () => {
+      const registry = makeRegistry();
+      expect(registry.resolveType("Orchestrator")).toBe("orchestrator");
+      expect(registry.getDefaultAgentNames()).toContain("orchestrator");
+      expect(registry.resolveAgentConfig("orchestrator")).toMatchObject({
+        name: "orchestrator", displayName: "Orchestrator", isDefault: true,
+        promptMode: "replace",
+        toolNames: ["all", "todo", "subagent", "get_subagent_result", "steer_subagent"],
+      });
+    });
+
+    it("can be overridden or disabled like every other built-in", () => {
+      const custom = makeAgentConfig({ name: "orchestrator", systemPrompt: "Custom PM", enabled: false });
+      const registry = makeRegistry(new Map([["orchestrator", custom]]));
+      expect(registry.resolveAgentConfig("orchestrator")).toBe(custom);
+      expect(registry.isValidType("orchestrator")).toBe(false);
+      expect(registry.getAvailableTypes()).not.toContain("orchestrator");
     });
   });
 

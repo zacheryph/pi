@@ -41,8 +41,8 @@ import type {
 } from "#src/types";
 
 /**
- * Recursion guard: names of tools registered by this extension that subagents
- * must NOT inherit. Passed to the SDK as a denylist, which it applies whenever
+ * Recursion guard: delegation tools are denied unless the profile explicitly
+ * names them (`all` alone does not opt in). The SDK applies the denylist whenever
  * it rebuilds the child's tool registry — including the rebuild triggered by a
  * child extension registering a tool of its own. Filtering the active set once
  * after `bindExtensions` would be undone by that rebuild (#725).
@@ -296,7 +296,9 @@ export async function createSubagentSession(
     model: cfg.model,
     tools: [...toolNames, ...childTools.map((tool) => tool.name)],
     customTools: childTools,
-    excludeTools: EXCLUDED_TOOL_NAMES,
+    excludeTools: EXCLUDED_TOOL_NAMES.filter(
+      (name) => !cfg.toolNames.includes(name) || !toolNames.includes(name),
+    ),
     resourceLoader: loader,
     thinkingLevel: cfg.thinkingLevel,
   });

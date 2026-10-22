@@ -61,6 +61,32 @@ function harness(mode: ExtensionContext["mode"] = "tui") {
 }
 
 describe("main profile defaults and persistent body", () => {
+  it("selects the built-in orchestrator and restores its instructions without resetting tools", async () => {
+    const h = harness();
+    h.state.flag = "orchestrator";
+    h.state.all.push({ name: "todo", exposure: "direct" });
+    h.resolve.mockImplementation(() => resolveMainAgentProfile("orchestrator", h.ctx));
+    await h.start();
+    const selected = h.state.branch.at(-1).data.profile;
+    expect(selected.name).toBe("orchestrator");
+    expect(h.state.active).toContain("todo");
+    expect(h.state.active).toEqual(expect.arrayContaining([...MAIN_AGENT_REQUIRED_TOOLS]));
+    expect((await h.prompt()).sections[MAIN_AGENT_SECTION]).toContain(selected.systemPrompt);
+    h.manual();
+    await h.start("reload");
+    expect(h.state.active).toEqual(["write", "tool_search"]);
+    expect((await h.prompt()).sections[MAIN_AGENT_SECTION]).toContain(selected.systemPrompt);
+    expect(h.ctx.shutdown).not.toHaveBeenCalled();
+  });
+
+  it("reports missing todo when selecting the orchestrator without pi-todo", async () => {
+    const h = harness("print");
+    h.resolve.mockImplementation(() => resolveMainAgentProfile("orchestrator", h.ctx));
+    await h.start();
+    expect(h.diagnostic).toHaveBeenCalledWith("Main agent blocked: Unavailable profile tools (check --tools/--exclude-tools): todo.");
+    expect(h.pi.appendEntry).not.toHaveBeenCalled();
+  });
+
   it("inherits available extension tools when tools is omitted, excluding hidden tools", async () => {
     const h = harness();
     delete h.state.profile.toolNames;
