@@ -4,6 +4,7 @@ import type {
   ResourceLoaderOptions,
 } from "#src/lifecycle/create-subagent-session";
 import { createSubagentSession } from "#src/lifecycle/create-subagent-session";
+import { AgentTypeRegistry } from "#src/config/agent-types";
 import { SubagentSession } from "#src/lifecycle/subagent-session";
 import { STUB_CTX, STUB_SNAPSHOT } from "#test/helpers/stub-ctx";
 import {
@@ -338,6 +339,39 @@ describe("createSubagentSession — recursion guard", () => {
     await createSubagentSession({ snapshot: STUB_SNAPSHOT, type: "Explore" }, defaultDeps());
 
     expect(session.setActiveToolsByName).not.toHaveBeenCalled();
+  });
+
+  it("lets the orchestrator delegate and retain worker capabilities and todo", async () => {
+    arrangeFactory();
+    await createSubagentSession(
+      { snapshot: STUB_SNAPSHOT, type: "orchestrator" },
+      createSubagentSessionDeps({
+        io, exec, registry: new AgentTypeRegistry(() => new Map()),
+        listParentToolNames: () => ["read", "bash", "edit", "write", "todo", "subagent", "get_subagent_result", "steer_subagent", "specialist"],
+      }),
+    );
+    expect(io.createSession).toHaveBeenCalledWith(expect.objectContaining({
+      tools: ["read", "bash", "edit", "write", "todo", "subagent", "get_subagent_result", "steer_subagent", "specialist"],
+      excludeTools: [],
+    }));
+  });
+
+  it("admits only explicitly named delegation tools and honors exclusions in the captured profile", async () => {
+    arrangeFactory();
+    await createSubagentSession(
+      {
+        snapshot: STUB_SNAPSHOT, type: "orchestrator",
+        agentConfig: {
+          ...new AgentTypeRegistry(() => new Map()).resolveAgentConfig("orchestrator"),
+          toolNames: ["all", "subagent", "steer_subagent", "-steer_subagent"],
+        },
+      },
+      defaultDeps(),
+    );
+    expect(io.createSession).toHaveBeenCalledWith(expect.objectContaining({
+      tools: ["subagent"],
+      excludeTools: ["get_subagent_result", "steer_subagent"],
+    }));
   });
 });
 

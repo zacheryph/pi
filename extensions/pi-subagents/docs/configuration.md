@@ -10,6 +10,7 @@ For the tools, commands, events, and service API, see the [README](../README.md)
 | Type              | Tools                      | Model                         | Prompt Mode            | Description                                                                                      |
 | ----------------- | -------------------------- | ----------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------ |
 | `general-purpose` | all available                      | inherit                       | `append` (parent twin) | Inherits the parent's prompt identity — same rules, CLAUDE.md, project conventions               |
+| `orchestrator`    | all available; explicit todo and delegation tools | inherit | `replace` | Project manager: categorizes tasks, delegates work, tracks open items, and recalls prior workers |
 | `Explore`         | read, bash, grep, find, ls | haiku (falls back to inherit) | `replace`              | Fast codebase exploration (read-only); inherits the parent prompt as a base                      |
 | `Plan`            | read, bash, grep, find, ls | inherit                       | `replace`              | Software architect for implementation planning (read-only); inherits the parent prompt as a base |
 
@@ -17,6 +18,59 @@ The `general-purpose` agent is a **parent twin** — it receives the parent's in
 Explore and Plan use `replace` mode: the parent prompt is the cacheable base and their specialist read-only instructions are appended last, giving them the final say.
 
 Default agents can be **overridden** by creating a `.md` file with the same name (e.g. `.pi/agents/general-purpose.md`), or **disabled** per-project with `enabled: false` frontmatter.
+
+### Orchestrator
+
+Use the bundled `orchestrator` for projects that need sustained coordination.
+It uses the existing `todo`, `subagent`, `get_subagent_result`, and
+`steer_subagent` tools; the root bundle includes all of them. When loading
+pi-subagents separately, also load pi-todo. Model, thinking, context inheritance,
+background execution, and turn limits follow the existing caller/runtime defaults.
+
+Run the main session as the project manager:
+
+```bash
+pi --agent orchestrator "Coordinate the authentication migration"
+```
+
+Or delegate a bounded project or workstream to it:
+
+```json
+{
+  "subagent_type": "orchestrator",
+  "description": "Coordinate authentication migration",
+  "prompt": "Plan and coordinate the authentication migration. Track implementation, verification, decisions, and follow-ups with todo. Return outcomes, open items, and next actions.",
+  "run_in_background": true
+}
+```
+
+The profile's instructions establish this working loop:
+
+1. Recover the goal, constraints, and existing todo state. Categorize work by
+   workstream, keep stable task keys, and record dependencies and acceptance criteria.
+2. Delegate focused assignments to the available specialists. Keep owners,
+   worker IDs, transcript/artifact references, decisions, blockers, and next actions
+   in task descriptions. Keep raw implementation detail in the worker sessions.
+3. Collect results and verify acceptance criteria before completing todos.
+   Record questions and follow-ups immediately. Waiting items stay `pending`
+   with a described blocker; todo has no separate waiting/blocked status.
+4. Steer running workers; resume settled workers by their original agent IDs for
+   rationale, clarification, or follow-up work. Reuse their context instead of
+   restarting the investigation. Checkpoint project state before yielding.
+
+This is a profile-driven workflow using existing session persistence, not a
+separate scheduler or memory store. Todo lists are session-local: an orchestrator
+subagent owns its own ledger, and the parent receives its status through normal
+results and updates. The profile rereads todo after compaction/reload and records
+concise recovery notes. Live worker sessions remain subject to retention and
+runtime lifetime; reload does not reconnect live agent IDs. If resume is refused,
+the orchestrator uses saved task notes, results, transcripts, and artifacts to
+brief a replacement. Required work stays open until verified or explicitly rescoped.
+
+All available tools remain selected so the orchestrator can pass specialist
+capabilities to its workers. Delegating implementation and avoiding recursive
+orchestrator chains are profile instructions, not additional capability locks.
+Override `.pi/agents/orchestrator.md` to customize the profile.
 
 ## What a child inherits from the parent's prompt
 
@@ -265,8 +319,20 @@ tools: read, grep, find, agent_browser
 
 An explicit allowlist must still name an extension's tool to admit it. Children load the parent's extensions, but the SDK filters those tools against the resolved selection when their registrations arrive.
 
-Three names are always removed from a child, even when an agent lists them: `subagent`, `get_subagent_result`, and `steer_subagent`.
-This is the recursion guard — without it, an agent could spawn agents of its own without bound.
+Three names are removed from a child by default: `subagent`,
+`get_subagent_result`, and `steer_subagent`. To opt a coordinating profile into
+delegation, name each required tool explicitly. `all`, omitted tools, and
+negative-only selections do not opt in; explicit exclusions still win.
+The denylist remains enforced by the SDK across tool-registry refreshes.
+
+```yaml
+tools: [all, todo, subagent, get_subagent_result, steer_subagent]
+```
+
+The built-in orchestrator uses this selection. Ordinary general-purpose,
+Explore, and Plan workers retain the recursion guard. Custom profiles opting in
+are responsible for limiting further delegation; there is no global depth limit
+or shared concurrency pool across managers.
 
 Two names are always **added**, whatever an agent lists: `ask_parent` and `notify_parent`.
 These are the child's channel back to the agent that delegated to it — protocol the core installs in every child, like the `<active_agent>` tag and the parent-context prefix.

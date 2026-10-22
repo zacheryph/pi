@@ -26,6 +26,7 @@ Run them in foreground or background, steer them mid-run, resume completed sessi
 - **Live widget UI** — compact above-editor widget with a static Subagents header rule and one line per agent: elapsed time, task, and live activity or outcome
 - **Session transcripts** — open any subagent's full session transcript (running or with its session released) in pi's native read-only viewer via `/subagents:sessions`
 - **Custom agent types** — define agents in `.pi/agents/<name>.md` with YAML frontmatter: custom system prompts, model selection, thinking levels, tool restrictions
+- **Orchestrator profile** — coordinate long-running projects with categorized todos, delegated work, and follow-ups in prior workers' sessions; available as a subagent or with `pi --agent orchestrator` ([usage and continuity](docs/configuration.md#orchestrator))
 - **Mid-run steering** — inject messages into running agents to redirect their work without restarting
 - **Session resume** — pick up where an agent left off, preserving full conversation context.
   An agent given an isolated workspace by a `WorkspaceProvider` is resumable while that workspace is live — which, for an agent that ended its turn with a question, lasts until you answer it
@@ -123,6 +124,7 @@ The LLM receives structured `<task-notification>` XML for parsing, while the use
 
 ```bash
 pi --agent Explore
+pi --agent orchestrator "Coordinate the authentication migration"
 pi --agent my-profile "Review the authentication flow"
 pi --agent my-profile --agent-model anthropic/claude-opus-4-6
 ```

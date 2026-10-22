@@ -82,6 +82,10 @@ nothing needs publishing.
 
 ### pi-subagents
 
+The built-in `orchestrator` profile manages long-running projects with categorized
+todos, specialist delegation, and follow-ups in prior workers' sessions. Use
+`pi --agent orchestrator` or delegate with `subagent_type: "orchestrator"`.
+
 Personal copy of [`gotgenes/pi-packages/packages/pi-subagents`](https://github.com/gotgenes/pi-packages/tree/main/packages/pi-subagents).
 Provides `subagent`, `get_subagent_result`, and `steer_subagent`, plus
 `/subagents:settings`, `/subagents:sessions`, and `/subagents:watch`.

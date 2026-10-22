@@ -30,7 +30,7 @@ describe("effective agent definitions", () => {
     vi.spyOn(r, "getAllTypes").mockReturnValue(names);
 
     expect(buildAgentsView(r).items.map(item => item.label)).toEqual([
-      "Alpha", "beta", "Explore", "general-purpose", "Plan", "zebra",
+      "Alpha", "beta", "Explore", "general-purpose", "orchestrator", "Plan", "zebra",
     ]);
     expect(names).toEqual(originalOrder);
   });
@@ -38,7 +38,7 @@ describe("effective agent definitions", () => {
   it("lists defaults and disabled overrides without description rows", () => {
     const r = registry(agent({ name: "Explore", enabled: false, source: "project", toolNames: [] }));
     const view = buildAgentsView(r);
-    expect(view.items.map(item => item.label)).toEqual(["Explore", "general-purpose", "Plan"]);
+    expect(view.items.map(item => item.label)).toEqual(["Explore", "general-purpose", "orchestrator", "Plan"]);
     expect(view.items.find(item => item.label === "Explore")).toMatchObject({
       status: "disabled", badge: { label: "[disabled]", color: "dim" }, description: "First line\nSecond line",
     });
