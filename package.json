@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "workspaces": [
+    "extensions/pi-jobs",
     "extensions/pi-subagents",
     "extensions/pi-system-insights",
     "extensions/pi-todo",
@@ -26,6 +27,7 @@
   },
   "pi": {
     "extensions": [
+      "./extensions/pi-jobs/src/extension.ts",
       "./extensions/pi-subagents/src/index.ts",
       "./extensions/pi-system-insights/src/index.ts",
       "./extensions/pi-todo/src/index.ts",

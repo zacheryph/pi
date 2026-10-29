@@ -1,6 +1,6 @@
 # pi-system-insights
 
-Read-only inspectors for Pi 1.1.0+ sessions. No model calls, tool activation,
+Read-only inspectors for Pi 1.4.0+ sessions. No model calls, tool activation,
 settings changes, external editor, or skill-file loading.
 
 ## Commands

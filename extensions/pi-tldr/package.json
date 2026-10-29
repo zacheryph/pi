@@ -14,9 +14,9 @@
   "engines": { "node": ">=22.19" },
   "scripts": { "check": "tsc --noEmit", "test": "vitest run", "test:watch": "vitest" },
   "devDependencies": {
-    "@earendil-works/pi-ai": "1.1.0",
-    "@earendil-works/pi-coding-agent": "1.1.0",
-    "@earendil-works/pi-tui": "1.1.0",
+    "@earendil-works/pi-ai": "1.4.0",
+    "@earendil-works/pi-coding-agent": "1.4.0",
+    "@earendil-works/pi-tui": "1.4.0",
     "@types/node": "^22.15.3",
     "typescript": "^6.0.3",
     "vitest": "^4.1.11"

@@ -1,6 +1,6 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
-  CURSOR_MARKER, KeybindingsManager, TUI_KEYBINDINGS, type TuiMouseEvent, visibleWidth,
+  CURSOR_MARKER, KeybindingsManager, renderFakeCursor, TUI_KEYBINDINGS, type TuiMouseEvent, visibleWidth,
 } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -18,7 +18,10 @@ const view: BrowserView = {
     description: "hidden searchable description", detail: `Name: Agent${i}\n${body}`,
   })),
 };
-const plain = (text: string) => text.replaceAll(CURSOR_MARKER, "").replace(/\x1b\[[0-9;]*m/g, "");
+// Pi's Input wraps its cursor cell in zero-width markers that the TUI resolves to reverse video.
+const [FAKE_CURSOR_START, FAKE_CURSOR_END] = renderFakeCursor("|").split("|");
+const plain = (text: string) => text.replaceAll(CURSOR_MARKER, "").replaceAll(FAKE_CURSOR_START, "")
+  .replaceAll(FAKE_CURSOR_END, "").replace(/\x1b\[[0-9;]*m/g, "");
 function setup(input = view, rows = 40, overrides: Partial<ReadOnlyBrowserOptions> = {}) {
   const tui = {
     mode: "fullscreen" as ReadOnlyBrowserOptions["tui"]["mode"],
