@@ -49,7 +49,8 @@ Manifest only; this step changed no file under `src/`, `test/`, or `e2e/`.
 Upstream never typechecks; it relies on its tests. Added `tsconfig.json`
 (extending the bundle's strict `tsconfig.base.json`) and made `check` run
 `tsc --noEmit`, plus `node --check` for the plain-JavaScript `e2e/*.mjs`. Added
-`typescript` and `@types/node` dev dependencies like the other workspaces.
+`typescript` and `@types/node` dev dependencies like the other workspaces
+(`@types/node` follows the bundle's Node.js 24 floor).
 
 Five typing fixes; runtime behaviour is unchanged:
 
