@@ -56,27 +56,31 @@ pi-personal/
 ├── package.json                         # bundle manifest + private dev workspace
 ├── tsconfig.base.json
 └── extensions/
-    ├── pi-jobs/
+    ├── pi-jobs/                         # vendored
     │   ├── src/extension.ts             # job_* tools + /jobs command
     │   ├── test/
     │   └── UPSTREAM.md
-    ├── pi-todo/
-    │   ├── src/index.ts                 # todo tool + /todos:* commands
+    ├── pi-subagents/                    # vendored fork
+    │   ├── src/index.ts                 # subagent tools + /subagents:* commands
     │   ├── test/
-    │   ├── docs/comparison.md           # base-selection report
+    │   ├── docs/
+    │   ├── LICENSE
     │   └── UPSTREAM.md
     ├── pi-system-insights/
-    │   ├── package.json                 # independent insights workspace
-    │   ├── src/index.ts                 # /system:* entry point
+    │   ├── src/index.ts                 # /system:* commands
     │   └── test/
-    └── pi-subagents/
-        ├── package.json                 # upstream import aliases + dev tooling
-        ├── src/index.ts                 # extension entry point
+    ├── pi-tldr/
+    │   ├── src/index.ts                 # /tldr command + session naming
+    │   └── test/
+    └── pi-todo/                         # vendored engine, local UI
+        ├── src/index.ts                 # todo tool + /todos:* commands
         ├── test/
-        ├── docs/
-        ├── LICENSE
+        ├── docs/comparison.md           # base-selection report
         └── UPSTREAM.md
 ```
+
+Each extension directory is an npm workspace with its own `package.json`,
+`tsconfig.json` (extending the root base), and `check`/`test` scripts.
 
 Root `pi.extensions` lists entry points explicitly. Pi loads each as its own
 extension; helper files and tests are not loaded as extensions. Workspaces simplify
@@ -105,7 +109,8 @@ todos, specialist delegation, and follow-ups in prior workers' sessions. Use
 
 Personal copy of [`gotgenes/pi-packages/packages/pi-subagents`](https://github.com/gotgenes/pi-packages/tree/main/packages/pi-subagents).
 Provides `subagent`, `get_subagent_result`, and `steer_subagent`, plus
-`/subagents:settings`, `/subagents:sessions`, and `/subagents:watch`.
+`/subagents:settings`, `/subagents:sessions`, `/subagents:watch`, and
+`/subagents:agents` (read-only browser for agent definitions).
 
 Background agents use a compact widget above Pi's editor:
 
@@ -217,7 +222,8 @@ npm run verify:bundle
 `verify:bundle` checks root-package discovery and tool registration in temporary
 settings, without model calls or changes to your Pi configuration.
 
-These check/test commands cover every development workspace. Pi modules
+These check/test commands cover every development workspace. To run one
+workspace, pass it with `-w`, e.g. `npm test -w extensions/pi-todo`. Pi modules
 are dev dependencies for testing and peer dependencies for runtime; Pi supplies its
 own modules when loading extensions.
 
@@ -244,9 +250,15 @@ pi --no-extensions -e ./extensions/pi-subagents/src/index.ts
 
 ### Add another extension
 
-1. Add `extensions/<name>.ts`, or `extensions/<name>/index.ts` for multiple files.
-2. Add its entry point to root `package.json` under `pi.extensions`.
-3. Run `/reload` (or restart Pi). No reinstall needed for a local checkout.
+1. Create `extensions/<name>/` with `src/index.ts`, `test/`, a private
+   `package.json` with `check` (`tsc --noEmit`) and `test` scripts, and a
+   `tsconfig.json` extending `../../tsconfig.base.json`. `extensions/pi-tldr/` is
+   the smallest example. CI runs both scripts without `--if-present`.
+2. In root `package.json`, add the directory to `workspaces` and its entry point
+   to `pi.extensions`, then run `npm install --ignore-scripts` to update the
+   lockfile.
+3. Assert its tools and commands in `scripts/verify-bundle.mjs`.
+4. Run `/reload` (or restart Pi). No reinstall needed for a local checkout.
 
 Keep helper modules beside their entry point, not registered separately. Add
 third-party runtime dependencies to the bundle's root `dependencies` so Git installs
