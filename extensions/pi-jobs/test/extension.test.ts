@@ -391,7 +391,7 @@ test("tool schemas enforce the bounds through pi's own argument validation", { s
 	const { validateToolArguments } = await import(PI_AI!);
 	const { tools } = setup(t, {}, { production: true });
 	const ok = (name: string, args: object) => validateToolArguments(tools.get(name), { type: "toolCall", id: "x", name, arguments: args });
-	const bad = (name: string, args: object) => assert.throws(() => ok(name, args), undefined, `${name} ${JSON.stringify(args)} must be rejected`);
+	const bad = (name: string, args: object) => assert.throws(() => ok(name, args), () => true, `${name} ${JSON.stringify(args)} must be rejected`);
 	ok("job_start", { command: "true", timeoutSeconds: 14400 });
 	bad("job_start", { command: "true", timeoutSeconds: 0 });
 	bad("job_start", { command: "true", timeoutSeconds: 14401 });

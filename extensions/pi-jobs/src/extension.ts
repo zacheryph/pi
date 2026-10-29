@@ -245,8 +245,8 @@ export function createJobsExtension(options: JobsExtensionOptions = {}) {
 			remember(ctx);
 			delivery.onAgentSettled();
 		});
-		pi.on("message_end", async (e: { message?: { role?: string; customType?: string; details?: { deliveryId?: unknown } } }) => {
-			const m = e?.message;
+		pi.on("message_end", async (e: unknown) => {
+			const m = (e as { message?: { role?: string; customType?: string; details?: { deliveryId?: unknown } } } | undefined)?.message;
 			if (m?.role === "custom" && m.customType === CUSTOM_TYPE && typeof m.details?.deliveryId === "string") delivery.confirm(m.details.deliveryId);
 		});
 		// End of non-agent busy work. session_compact and session_tree fire before pi clears its

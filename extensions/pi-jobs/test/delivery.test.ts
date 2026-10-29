@@ -249,7 +249,7 @@ test("reload suspends stale API calls and rebinds held and unconfirmed completio
 	d.onAgentSettled();
 	d.onBusyEnd(true);
 	assert.equal(state.sends.length, 1);
-	assert.equal(d.disposed, false);
+	assert.equal((d as unknown as { disposed: boolean }).disposed, false);
 	const received: string[][] = [];
 	d.rebind({ isIdle: () => true, aborted: () => false, send: (_id, items) => { received.push(items.map(i => i.completionId)); } });
 	assert.deepEqual(received, []); // Other session_start handlers run before this drain.

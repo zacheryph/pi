@@ -106,7 +106,7 @@ export class SupervisedRun {
 			stdio: ["ignore", "pipe", "pipe", "pipe"],
 		});
 		this.pid = this.child.pid;
-		const [, out, err, status] = this.child.stdio as [unknown, Readable, Readable, Readable];
+		const [, out, err, status] = this.child.stdio as unknown as [unknown, Readable, Readable, Readable];
 		for (const stream of [out, err, status]) {
 			this.open.add(stream);
 			stream.on("close", () => {

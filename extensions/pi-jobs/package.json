@@ -28,7 +28,7 @@
   ],
   "type": "module",
   "scripts": {
-    "check": "for f in src/*.ts test/*.ts e2e/*.mjs; do node --check \"$f\" || exit 1; done",
+    "check": "tsc --noEmit && for f in e2e/*.mjs; do node --check \"$f\" || exit 1; done",
     "test": "node --test --test-timeout=30000 'test/*.test.ts'"
   },
   "peerDependencies": {
@@ -36,7 +36,9 @@
   },
   "devDependencies": {
     "@earendil-works/pi-ai": "1.4.0",
-    "@earendil-works/pi-coding-agent": "1.4.0"
+    "@earendil-works/pi-coding-agent": "1.4.0",
+    "@types/node": "^22.15.3",
+    "typescript": "^6.0.3"
   },
   "pi": {
     "extensions": [

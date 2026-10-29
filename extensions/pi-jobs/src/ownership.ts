@@ -48,7 +48,7 @@ export async function takeReloadOwner(sessionId: string): Promise<{ owner?: Owne
 	clearTimeout(owner.reloadTimer);
 	if (compatibleOwner(owner)) return { owner };
 	const dropped = typeof owner.manager?.list === "function" ? owner.manager.list().filter((job: JobSnapshot) => job.status === "running") : [];
-	source.delete(sessionId);
+	source?.delete(sessionId);
 	await stopOwner(owner);
 	return { incompatible: true, dropped };
 }

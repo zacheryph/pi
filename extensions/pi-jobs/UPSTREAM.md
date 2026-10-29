@@ -24,40 +24,49 @@ except `.github/` (upstream CI and npm publish workflows) with
 `git ls-files | tar`. The first commit on the import branch is that copy alone;
 `diff -r` against the clone showed no differences.
 
-Kept as upstream wrote them: `src/`, `test/`, `e2e/`, `README.md`, `CHANGELOG.md`,
+Still byte-for-byte with upstream: `e2e/`, `README.md`, `CHANGELOG.md`,
 `UPSTREAM-ISSUES.md` (upstream's own notes on Pi-side limitations, unrelated to
-this file), `LICENSE`, `.gitignore`.
+this file), `LICENSE`, `.gitignore`, and every file under `src/` and `test/`
+except the five listed under **Typecheck** below.
 
 ## Local changes
 
 ### Integration (import PR)
 
-Manifest only. No file under `src/`, `test/`, or `e2e/` differs from upstream.
+Manifest only; this step changed no file under `src/`, `test/`, or `e2e/`.
 
 - `package.json`: marked `private`, removed `publishConfig`.
-- `package.json`: added a `check` script that runs `node --check` on every source,
-  test, and e2e file. CI runs `npm run check` for each changed workspace and
-  upstream has none. This is a syntax gate through Node's type stripping, not a
-  typecheck.
+- `package.json`: added a `check` script, since CI runs `npm run check` for each
+  changed workspace and upstream has none (now a typecheck; see below).
 - `package.json`: added `@earendil-works/pi-ai` and `@earendil-works/pi-coding-agent`
   dev dependencies, matching the bundle's Pi pin (now 1.4.0), so upstream's
   `test/runtime.ts` resolves a local runtime instead of a user installation.
 - Root `package.json`: added the workspace and the `pi.extensions` entry.
 - `scripts/verify-bundle.mjs`: asserts the `job_*` tools and `/jobs` command.
 
+### Typecheck
+
+Upstream never typechecks; it relies on its tests. Added `tsconfig.json`
+(extending the bundle's strict `tsconfig.base.json`) and made `check` run
+`tsc --noEmit`, plus `node --check` for the plain-JavaScript `e2e/*.mjs`. Added
+`typescript` and `@types/node` dev dependencies like the other workspaces.
+
+Five typing fixes; runtime behaviour is unchanged:
+
+- `src/extension.ts`: the `message_end` handler takes `unknown` and narrows inside,
+  like upstream's other handlers. Its narrower parameter type matched no `pi.on`
+  overload.
+- `src/ownership.ts` (`takeReloadOwner`): `source?.delete(…)`. `source` is always
+  defined there because `owner` came from it, but TypeScript cannot infer that.
+- `src/supervisor.ts`: casts `child.stdio` through `unknown` to the four streams it
+  uses. Node types it as a five-entry tuple.
+- `test/delivery.test.ts`: reads the private `Delivery.disposed` through a cast.
+- `test/extension.test.ts`: `assert.throws` gets a validator that accepts any
+  thrown value, instead of `undefined`, which Node's types reject when a message
+  follows.
+
 ## Known gaps
 
-- **No strict typecheck.** `tsc --noEmit` with the bundle's strict settings and
-  Pi 1.1.0 types reports five errors in upstream code. Upstream never typechecks;
-  it relies on its tests. Fixing them means editing upstream source, so it waits
-  for the first behavioural change. The errors:
-  - `src/extension.ts`: the `message_end` handler's parameter type is narrower
-    than `MessageEndEvent`, so no `pi.on` overload matches. The event exists in
-    Pi 1.1.0; this is typing only.
-  - `src/ownership.ts`: `source` possibly `undefined`.
-  - `src/supervisor.ts`: casting `child.stdio` (five entries) to a four-entry tuple.
-  - `test/delivery.test.ts`: reads the private `Delivery.disposed`.
-  - `test/extension.test.ts`: passes `undefined` as an `assert` predicate.
 - **UI.** pi-jobs registers no widgets or custom tool renderers, so the
   `AGENTS.md` spacing rules do not apply yet. Recheck when adding UI.
 - **Persistence.** Jobs survive `/reload` in the same process, not a Pi restart.
