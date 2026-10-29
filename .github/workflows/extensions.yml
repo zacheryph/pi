@@ -16,6 +16,7 @@ jobs:
   select-extensions:
     name: Select extensions
     runs-on: ubuntu-26.04
+    timeout-minutes: 5
     outputs:
       matrix: ${{ steps.select.outputs.matrix }}
       has-extensions: ${{ steps.select.outputs.has-extensions }}
@@ -25,7 +26,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v7
         with:
-          node-version: '24'
+          node-version-file: .nvmrc
       - name: Test matrix selection
         run: node --test scripts/select-test-extensions.test.mjs
       - name: Select extensions
@@ -37,6 +38,7 @@ jobs:
     needs: select-extensions
     if: needs.select-extensions.outputs.has-extensions == 'true'
     runs-on: ubuntu-26.04
+    timeout-minutes: 15
     env:
       EXTENSION: ${{ matrix.extension }}
     strategy:
@@ -46,7 +48,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version: '24'
+          node-version-file: .nvmrc
           cache: npm
       - name: Install dependencies
         id: install
@@ -56,3 +58,20 @@ jobs:
       - name: Test
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test --workspace="$EXTENSION"
+
+  verify-bundle:
+    name: Verify bundle
+    needs: select-extensions
+    if: needs.select-extensions.outputs.has-extensions == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: Load the root bundle
+        run: npm run verify:bundle
