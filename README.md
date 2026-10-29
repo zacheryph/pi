@@ -30,8 +30,9 @@ pi update git:github.com/zacheryph/pi
 
 Use `pi list` to inspect installed sources. When switching from Git to local, remove
 that Git source first with `pi remove git:github.com/zacheryph/pi`. Do not load both
-copies, another subagents extension, or another `todo` extension alongside this
-bundle: duplicate tools and commands can conflict. When migrating from
+copies, another subagents extension, another `todo` extension, or another
+background-jobs extension alongside this bundle: duplicate tools and commands can
+conflict. When migrating from
 `@juicesharp/rpiv-todo`, remove it with `pi remove npm:@juicesharp/rpiv-todo` before
 loading the bundle's tasks extension. Existing rpiv plans are not auto-imported.
 
@@ -55,6 +56,10 @@ pi-personal/
 ├── package.json                         # bundle manifest + private dev workspace
 ├── tsconfig.base.json
 └── extensions/
+    ├── pi-jobs/
+    │   ├── src/extension.ts             # job_* tools + /jobs command
+    │   ├── test/
+    │   └── UPSTREAM.md
     ├── pi-todo/
     │   ├── src/index.ts                 # todo tool + /todos:* commands
     │   ├── test/
@@ -79,6 +84,18 @@ development commands. All manifests are private;
 nothing needs publishing.
 
 ## Extensions
+
+### pi-jobs
+
+Background shell jobs and watches that wake the agent when they finish, vendored
+unchanged from [`woksin/pi-jobs`](extensions/pi-jobs/UPSTREAM.md). `job_start` runs
+a command in its own process group and returns immediately; `job_watch` re-runs a
+shell check until it succeeds, fails, or its output changes. The agent ends its
+turn instead of polling, and completions arrive as one batched follow-up message.
+`job_list`, `job_output`, and `job_kill` inspect and stop work; `/jobs` lists or
+kills jobs for the user. POSIX only. Logs live under `~/.pi/agent/jobs/` for seven
+days. Do not also install `npm:@woksin/pi-jobs`. See the
+[upstream README](extensions/pi-jobs/README.md) for delivery guarantees and limits.
 
 ### pi-subagents
 
@@ -234,7 +251,13 @@ third-party runtime dependencies to the bundle's root `dependencies` so Git inst
 can install them; for local installs run `npm install --ignore-scripts` yourself.
 Nested manifests alone do not expose another extension through the root bundle.
 
+To copy a third-party extension into the repository, follow the
+[`vendor-extension` skill](.agents/skills/vendor-extension/SKILL.md): a verbatim
+import commit, then integration, with provenance and local changes tracked in the
+extension's `UPSTREAM.md`.
+
 ## License
 
 Vendored subagents code retains its upstream [MIT license](extensions/pi-subagents/LICENSE).
 Vendored todo engine retains its upstream [MIT license](extensions/pi-todo/LICENSE).
+Vendored jobs code retains its upstream [MIT license](extensions/pi-jobs/LICENSE).
