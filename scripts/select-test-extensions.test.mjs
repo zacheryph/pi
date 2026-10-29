@@ -30,7 +30,7 @@ test("unrelated, removed, and similarly prefixed extensions do not match", () =>
 
 test("shared dependency, compiler, and CI changes select all extensions", () => {
   for (const path of [
-    "package.json", "package-lock.json", "tsconfig.base.json",
+    ".nvmrc", "package.json", "package-lock.json", "tsconfig.base.json",
     ".github/workflows/extensions.yml", "scripts/select-test-extensions.mjs",
   ]) {
     assert.deepEqual(selectExtensions(workspaces, [path]), all, path);

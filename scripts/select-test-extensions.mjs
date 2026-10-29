@@ -3,7 +3,7 @@ import { appendFileSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const sharedFiles = new Set(["package.json", "package-lock.json", "tsconfig.base.json"]);
+const sharedFiles = new Set([".nvmrc", "package.json", "package-lock.json", "tsconfig.base.json"]);
 
 export function selectExtensions(workspaces, changedFiles, all = false) {
   const runAll = all || changedFiles.some((path) =>
