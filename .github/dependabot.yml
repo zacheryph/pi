@@ -1,0 +1,40 @@
+version: 2
+updates:
+  # One npm entry covers the root and every workspace through the shared lockfile.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore(deps)
+    groups:
+      # Pi packages are pinned together and bumped as one.
+      pi:
+        patterns:
+          - "@earendil-works/*"
+      dev-tooling:
+        dependency-type: development
+        exclude-patterns:
+          - "@earendil-works/*"
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # typebox is pinned to the exact version Pi bundles; bump it with Pi, by hand.
+      - dependency-name: typebox
+      # @types/node tracks the supported Node.js major (see README), not the latest.
+      - dependency-name: "@types/node"
+        update-types:
+          - version-update:semver-major
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        patterns:
+          - "*"
