@@ -107,6 +107,7 @@ No upstream runtime behavior was intentionally changed during import.
   so tests exercise the schema library extensions receive at runtime.
 - `engines.node` raised from `>=22` to `>=24` and `@types/node` to `^24`, matching
   the bundle's supported Node.js version.
+- `vitest` dev dependency raised from `^4.1.11` to `^5.0.5`; no test changes needed.
 - `test/ui/read-only-browser.test.ts`: the `plain()` helper also strips Pi's
   fake-cursor markers. pi-tui 1.4.0's `Input` wraps its cursor cell in zero-width
   APC markers that the TUI resolves to the same reverse video 1.1.0 emitted

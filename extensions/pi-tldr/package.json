@@ -19,7 +19,7 @@
     "@earendil-works/pi-tui": "1.4.0",
     "@types/node": "^24.19.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.5"
   },
   "pi": { "extensions": ["./src/index.ts"] }
 }
