@@ -2,6 +2,7 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   CURSOR_MARKER,
   KeybindingsManager,
+  renderFakeCursor,
   TUI_KEYBINDINGS,
   type KeybindingsConfig,
   type TuiMouseEvent,
@@ -14,7 +15,10 @@ import { InsightViewer, type InsightViewerOptions, sanitizeInsightText, showInsi
 
 const UP = "\x1b[A", DOWN = "\x1b[B", ESC = "\x1b", ENTER = "\r";
 const PAGE_UP = "\x1b[5~", PAGE_DOWN = "\x1b[6~", HOME = "\x1b[H", END = "\x1b[F";
-const plain = (text: string) => text.replaceAll(CURSOR_MARKER, "").replace(/\x1b\[[0-9;]*m/g, "");
+// Pi's Input wraps its cursor cell in zero-width markers that the TUI resolves to reverse video.
+const [FAKE_CURSOR_START, FAKE_CURSOR_END] = renderFakeCursor("|").split("|");
+const plain = (text: string) => text.replaceAll(CURSOR_MARKER, "").replaceAll(FAKE_CURSOR_START, "")
+  .replaceAll(FAKE_CURSOR_END, "").replace(/\x1b\[[0-9;]*m/g, "");
 const rows = (n: number) => Array.from({ length: n }, (_, i) => `row${String(i).padStart(3, "0")}`).join("\n");
 const items = (n = 40) => Array.from({ length: n }, (_, i) => ({
   id: `id${i}`, label: `Tool${i}`, status: i % 2 ? "inactive" : "active",

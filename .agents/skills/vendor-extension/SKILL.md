@@ -84,7 +84,7 @@ In `extensions/<name>/package.json`:
     Known gaps:
     `for f in src/*.ts test/*.ts; do node --check "$f" || exit 1; done`
 - Keep Pi packages as `"*"` peer dependencies. Pin dev dependencies to the Pi
-  version the other workspaces use (currently `1.1.0`).
+  version the other workspaces use (currently `1.4.0`).
 - Replace monorepo-only settings such as `catalog:` versions or shared lint
   configs with plain equivalents, and note each one.
 

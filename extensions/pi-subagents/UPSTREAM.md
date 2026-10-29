@@ -100,6 +100,14 @@ No upstream runtime behavior was intentionally changed during import.
   references fail selected execution rather than dropping instructions.
 - Read-only `/subagents:agents` details show fragment sources and composition.
 
+## Pi 1.4.0 dev pin
+
+- Pi dev dependencies bumped from 1.1.0 to 1.4.0 (2026-10-29).
+- `test/ui/read-only-browser.test.ts`: the `plain()` helper also strips Pi's
+  fake-cursor markers. pi-tui 1.4.0's `Input` wraps its cursor cell in zero-width
+  APC markers that the TUI resolves to the same reverse video 1.1.0 emitted
+  directly, so the rendered output is unchanged.
+
 ## Development
 
 Run from this repository's root:

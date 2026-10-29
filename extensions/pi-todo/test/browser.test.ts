@@ -1,5 +1,7 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { CURSOR_MARKER, KeybindingsManager, TUI_KEYBINDINGS, type TuiMouseEvent, visibleWidth } from "@earendil-works/pi-tui";
+import {
+  CURSOR_MARKER, KeybindingsManager, renderFakeCursor, TUI_KEYBINDINGS, type TuiMouseEvent, visibleWidth,
+} from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 import { type TodoState } from "../src/state.js";
 import { ReadOnlyBrowser, type ReadOnlyBrowserOptions, showTodoBrowser, type TodoBrowserOptions } from "../src/ui/browser.js";
@@ -36,7 +38,11 @@ async function open(state = snapshot, rows = 40, renderer: "fullscreen" | "regul
   browser.focused = true;
   return { ...env, browser };
 }
-const plain = (text: string) => text.replaceAll(CURSOR_MARKER, "").replace(/\x1b\[[0-9;]*m/g, "");
+// Pi's Input wraps its cursor cell in zero-width markers that the TUI resolves to reverse video.
+const [FAKE_CURSOR_START, FAKE_CURSOR_END] = renderFakeCursor("|").split("|");
+const withoutPiMarkers = (text: string) =>
+  text.replaceAll(CURSOR_MARKER, "").replaceAll(FAKE_CURSOR_START, "").replaceAll(FAKE_CURSOR_END, "");
+const plain = (text: string) => withoutPiMarkers(text).replace(/\x1b\[[0-9;]*m/g, "");
 const output = (browser: ReadOnlyBrowser, width = 100) => browser.render(width).map(plain).join("\n");
 const selected = (browser: ReadOnlyBrowser) => /→ (t\d+):/.exec(output(browser))?.[1];
 
@@ -303,7 +309,7 @@ describe("todo browser history views and review", () => {
         for (let width = 1; width <= 30; width++) {
           for (const line of browser.render(width)) {
             expect(visibleWidth(line)).toBe(width);
-            expect(line.replaceAll(CURSOR_MARKER, "")).not.toMatch(/[\x07\u202e]/);
+            expect(withoutPiMarkers(line)).not.toMatch(/[\x07\u202e]/);
           }
         }
       }

@@ -40,7 +40,7 @@ Manifest only. No file under `src/`, `test/`, or `e2e/` differs from upstream.
   upstream has none. This is a syntax gate through Node's type stripping, not a
   typecheck.
 - `package.json`: added `@earendil-works/pi-ai` and `@earendil-works/pi-coding-agent`
-  `1.1.0` dev dependencies, matching the bundle's Pi pin, so upstream's
+  dev dependencies, matching the bundle's Pi pin (now 1.4.0), so upstream's
   `test/runtime.ts` resolves a local runtime instead of a user installation.
 - Root `package.json`: added the workspace and the `pi.extensions` entry.
 - `scripts/verify-bundle.mjs`: asserts the `job_*` tools and `/jobs` command.
@@ -58,8 +58,6 @@ Manifest only. No file under `src/`, `test/`, or `e2e/` differs from upstream.
   - `src/supervisor.ts`: casting `child.stdio` (five entries) to a four-entry tuple.
   - `test/delivery.test.ts`: reads the private `Delivery.disposed`.
   - `test/extension.test.ts`: passes `undefined` as an `assert` predicate.
-- **Pi version.** Upstream is tested with Pi 1.3.0; the bundle pins 1.1.0 for
-  development. CI runs the upstream tests against 1.1.0.
 - **UI.** pi-jobs registers no widgets or custom tool renderers, so the
   `AGENTS.md` spacing rules do not apply yet. Recheck when adding UI.
 - **Persistence.** Jobs survive `/reload` in the same process, not a Pi restart.
