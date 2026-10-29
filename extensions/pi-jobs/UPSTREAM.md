@@ -52,6 +52,11 @@ Upstream never typechecks; it relies on its tests. Added `tsconfig.json`
 `typescript` and `@types/node` dev dependencies like the other workspaces
 (`@types/node` follows the bundle's Node.js 24 floor).
 
+The shared base enables `noUnusedLocals`; `tsconfig.json` turns it off here
+because upstream's `test/manager.test.ts` destructures an unused `done`, and
+fixing that would edit an otherwise byte-for-byte test file. The base's
+`allowImportingTsExtensions` replaces the copy this `tsconfig.json` used to set.
+
 Five typing fixes; runtime behaviour is unchanged:
 
 - `src/extension.ts`: the `message_end` handler takes `unknown` and narrows inside,
