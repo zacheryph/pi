@@ -1,12 +1,18 @@
+import { latestTodoMessage, type TodoActivity, type TodoUpdate } from "./activity.ts";
 import {
   type TodoDetails, type TodoState, type TodoTaskInput,
   TodoValidationError, removeCompletedTasks, writeTodoSnapshot,
 } from "./state.ts";
 
+/** Upstream input plus an optional history message; upstream ignores the extra field. */
+export interface TodoTaskPatch extends TodoTaskInput {
+  message?: string;
+}
+
 export type TodoAction = "list" | "upsert" | "replace" | "remove" | "clear";
 export interface TodoRequest {
   action: TodoAction;
-  tasks?: TodoTaskInput[];
+  tasks?: TodoTaskPatch[];
   keys?: string[];
   key?: string;
   baseRevision?: number;
@@ -90,12 +96,32 @@ function requireFields(request: TodoRequest, allowed: string[]): void {
   }
 }
 
-/** Bounded model output; list(key) returns an individual task's full details. */
-export function formatTodoState(state: TodoState, key?: string): string {
+function formatUpdate(update: TodoUpdate) {
+  return { ...update, at: new Date(update.at).toISOString() };
+}
+
+/**
+ * Bounded model output; list(key) returns an individual task's full details and
+ * update history. Never depends on review state: viewing must not change it.
+ */
+export function formatTodoState(state: TodoState, key?: string, activity: TodoActivity = new Map()): string {
   const tasks = key ? state.tasks.filter((task) => task.key === key) : state.tasks;
-  const payload = JSON.stringify({ revision: state.revision, tasks: tasks.map((task) => ({
-    ...task, ...(!key && task.description ? { description: task.description.slice(0, 120) } : {}),
-  })) });
+  const payload = JSON.stringify({ revision: state.revision, tasks: tasks.map((task) => {
+    const history = activity.get(task.key);
+    if (key) {
+      return {
+        ...task,
+        ...(history?.createdAt !== undefined ? { createdAt: new Date(history.createdAt).toISOString() } : {}),
+        ...(history?.updates.length ? { updates: history.updates.map(formatUpdate) } : {}),
+      };
+    }
+    const message = latestTodoMessage(task.key, activity)?.message;
+    return {
+      ...task,
+      ...(task.description ? { description: task.description.slice(0, 120) } : {}),
+      ...(message ? { lastMessage: message.slice(0, 120) } : {}),
+    };
+  }) });
   if (payload.length <= 30_000 && Buffer.byteLength(payload, "utf8") <= 48_000) return payload;
   let excerpt = payload.slice(0, 29_800);
   if (Buffer.byteLength(excerpt, "utf8") > 47_800) {

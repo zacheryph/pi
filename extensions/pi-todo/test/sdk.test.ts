@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import todoExtension from "#src/index";
 import { loadTodoConfig } from "#src/config";
 import { replayTodoState } from "#src/state";
-import { replayTaskState, TODO_JOURNAL_TYPE } from "#src/replay";
+import { replayTaskState, replayTodoSession, TODO_JOURNAL_TYPE, TODO_REVIEW_TYPE } from "#src/replay";
 
 const cleanups: Array<() => void> = [];
 afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });
@@ -76,7 +76,7 @@ describe("real Pi SDK integration (offline faux provider)", () => {
     expect(extensions).toHaveLength(1);
     expect([...extensions[0].tools.keys()]).toEqual(["todo"]);
     expect([...extensions[0].commands.keys()]).toEqual([
-      "todos", "todos:list", "todos:add", "todos:update", "todos:remove", "todos:clear", "todos:settings",
+      "todos", "todos:list", "todos:review", "todos:add", "todos:update", "todos:remove", "todos:clear", "todos:settings",
     ]);
   });
 
@@ -192,6 +192,30 @@ describe("real Pi SDK integration (offline faux provider)", () => {
     expect(request).toContain("parent-work");
     expect(request).not.toContain("child-work");
   });
+
+  it("model messages pass schema validation, persist, and review commands never call the provider or alter model context", async () => {
+    const h = await fixture({ responses: [
+      fauxAssistantMessage(fauxToolCall("todo", { action: "upsert", tasks: [
+        { key: "audit", subject: "Audit", status: "completed", message: "Found 2 issues in token refresh" },
+      ] }), { stopReason: "toolUse" }),
+      fauxAssistantMessage("done"),
+    ] });
+    await h.session.prompt("Work");
+    expect(h.errors).not.toHaveBeenCalled();
+    expect(h.calls).toHaveBeenCalledTimes(2);
+    expect(JSON.stringify(h.calls.mock.calls[1][1])).toContain("lastMessage");
+    expect(replayTodoSession({ sessionManager: h.manager }).activity.get("audit")?.updates)
+      .toEqual([expect.objectContaining({ revision: 1, status: "completed", message: "Found 2 issues in token refresh" })]);
+    await h.session.prompt("/todos:review all");
+    expect(h.calls).toHaveBeenCalledTimes(2);
+    expect(h.manager.getBranch().filter(entry => entry.type === "custom" && entry.customType === TODO_REVIEW_TYPE)).toHaveLength(1);
+    const reloaded = await fixture({ manager: h.manager, responses: [fauxAssistantMessage("ok")] });
+    const restored = replayTodoSession({ sessionManager: reloaded.manager });
+    expect(restored.review.tasks.get("audit")?.revision).toBe(1);
+    await reloaded.session.prompt("Next");
+    // The direct result is still the current baseline; review added no snapshot.
+    expect(JSON.stringify(reloaded.calls.mock.calls[0][1])).not.toContain("Current task list");
+  }, 20_000);
 
   it("restores exact keys/dependencies after compaction omits task history", async () => {
     const h = await fixture({ responses: [nestedWrite(), fauxAssistantMessage("done")] });

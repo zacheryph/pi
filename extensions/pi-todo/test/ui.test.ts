@@ -2,7 +2,9 @@ import type { Theme } from "@earendil-works/pi-coding-agent";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it } from "vitest";
 import { type TodoState, type TodoTask } from "../src/state.js";
-import { renderTodoLines, renderTodoText, todoTaskDetail } from "../src/ui/render.js";
+import {
+  formatTodoAge, formatTodoClock, renderTodoLines, renderTodoText, todoTaskDetail, type TodoRenderConfig,
+} from "../src/ui/render.js";
 import { sanitizeTodoText } from "../src/ui/text.js";
 
 const theme = { fg: (_token: string, text: string) => text } as Theme;
@@ -11,7 +13,7 @@ const task = (key: string, status: TodoTask["status"] = "pending", dependsOn?: s
 });
 const state = (tasks: TodoTask[]): TodoState => ({ schemaVersion: 2, revision: 4, tasks });
 const config = { maxVisible: 5, showCompleted: true };
-const render = (s: TodoState, c = config, width = 100, rows = Infinity) => renderTodoLines(s, c, width, theme, rows);
+const render = (s: TodoState, c: TodoRenderConfig = config, width = 100, rows = Infinity) => renderTodoLines(s, c, width, theme, rows);
 const unsafe = "safe\x1b[2J\x1b]52;c;evil\x07\x1b_Pi:c\x07\x1bPpayload\x1b\\\x9b31m\x08\r\u202e\u2066\u200e\u061cend";
 
 describe("todo rendering", () => {
@@ -172,5 +174,112 @@ describe("todo rendering", () => {
     expect(tokens).toEqual(expect.arrayContaining(["border", "muted", "success", "accent", "warning", "dim"]));
     expect(render(s, { ...config, showCompleted: false }).join(" ")).toContain("○ pending");
     expect(renderTodoText(s).join(" ")).toContain("✓ done:");
+  });
+});
+
+describe("unreviewed message rendering", () => {
+  const s = state([task("active", "in_progress"), task("ready"), task("done", "completed"), task("old", "completed")]);
+  const unreviewed = new Map([["done", "Found 3 bugs\nin auth"], ["ready", "Queued for subagent"]]);
+  const c = { ...config, unreviewed };
+
+  it("counts new messages in the header, falling back to progress then title on narrow widths", () => {
+    expect(render(s, c)[0]).toMatch(/^──   Todos ─+ ● 2 new · 2\/4 ──$/);
+    expect(visibleWidth(render(s, c)[0])).toBe(100);
+    const colored = { fg: (_token: string, text: string) => `\x1b[32m${text}\x1b[0m` } as Theme;
+    for (let width = 1; width <= 40; width++) {
+      const header = render(s, c, width)[0];
+      expect(visibleWidth(header)).toBeLessThanOrEqual(width);
+      expect(visibleWidth(renderTodoLines(s, c, width, colored)[0])).toBeLessThanOrEqual(width);
+      if (header.includes("new")) expect(header).toMatch(/^──   Todos [─ ]+● 2 new · 2\/4 ──$/);
+    }
+    expect(render(s, c, 29)[0]).toBe("──   Todos  ● 2 new · 2/4 ──");
+    expect(render(s, c, 28)[0]).toMatch(/^──   Todos ─+ 2\/4 ──$/);
+    expect(render(s, c, 19)[0]).toBe("──   Todos  2/4 ──");
+    expect(render(s, c, 18)[0]).toBe("  Todos");
+    expect(render(s)[0]).not.toContain("new");
+  });
+
+  it("orders unreviewed first by recency, keeps them when completed are hidden, and aligns a gutter", () => {
+    const lines = render(s, { ...c, showCompleted: false });
+    expect(lines.slice(1)).toEqual([
+      expect.stringMatching(/^ ● done: Task done — Found 3 bugs in auth +✓ completed $/),
+      expect.stringMatching(/^ ● ready: Task ready — Queued for subagent +○ pending $/),
+      expect.stringMatching(/^ {3}active: Task active +▸ in_progress $/),
+    ]);
+    for (const line of lines) expect(visibleWidth(line)).toBe(100);
+    // Overflow beyond the task budget still prefers unreviewed rows.
+    expect(render(s, { ...c, maxVisible: 1 }).slice(1)).toEqual([expect.stringContaining("● done:"), " +3 more "]);
+    // No gutter unless a shown row is unreviewed.
+    expect(render(s, { ...config, unreviewed: new Map() })[1]).toMatch(/^ active:/);
+  });
+
+  it("colors marker accent and excerpt dim while unreviewed completed identity stays readable", () => {
+    const calls: string[] = [];
+    const t = { fg: (token: string, text: string) => { calls.push(`${token}:${text}`); return text; } } as Theme;
+    renderTodoLines(state([task("done", "completed")]), { ...config, unreviewed: new Map([["done", "Note"]]) }, 80, t);
+    expect(calls).toEqual(expect.arrayContaining(["accent:● ", "text:done: Task done", "dim: — Note", "accent:● 1 new"]));
+    expect(calls).not.toContain("muted:done: Task done");
+  });
+
+  it("plain widget text marks new messages with bounded one-line excerpts", () => {
+    const text = renderTodoText(s, { ...c, unreviewed: new Map([...unreviewed, ["active", `${"x".repeat(200)}\nmore`]]) });
+    expect(text[0]).toBe("Todos 2/4 completed · 3 new");
+    expect(text[1]).toBe("● ✓ done: Task done [completed] · new: Found 3 bugs in auth");
+    expect(text.find(line => line.includes("active:"))).toBe(`● ▸ active: Task active [in_progress] · new: ${"x".repeat(159)}…`);
+    expect(text.find(line => line.includes("old:"))).toBe("✓ old: Task old [completed]");
+  });
+
+  it.each([1, 2, 3, 8, 30, 80])("insets and bounds unreviewed rows with hostile, wide and ANSI text at width %i", width => {
+    const colored = { fg: (_token: string, text: string) => `\x1b[32m${text}\x1b[0m` } as Theme;
+    const hostile = new Map([["wide", `${unsafe}\n日本語 👩‍💻 e\u0301 🦀`.repeat(5)], ["k1", unsafe]]);
+    const s2 = state([{ ...task("wide", "completed"), subject: "日本語 👩‍💻".repeat(10) }, task("k1"), task("k2")]);
+    for (const t of [theme, colored]) {
+      const lines = renderTodoLines(s2, { ...config, showCompleted: false, unreviewed: hostile }, width, t);
+      expect(lines).toHaveLength(4);
+      for (const row of lines.slice(1)) {
+        expect(row.startsWith(" ")).toBe(true);
+        expect(visibleWidth(row)).toBeLessThanOrEqual(width);
+        expect(row.replace(/\x1b\[[0-9;]*m/g, "")).not.toMatch(/[\x00-\x1f\x7f-\x9f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069\u2028\u2029]/);
+        if (width <= 2) expect(row).toBe(" ".repeat(width));
+        else expect(row.endsWith(" ")).toBe(true);
+      }
+    }
+  });
+});
+
+describe("task detail history", () => {
+  const now = Date.UTC(2026, 9, 22, 12);
+  const s = state([task("build", "completed")]);
+  const activity = new Map([["build", { createdAt: now - 7_200_000, updates: [
+    { revision: 2, at: now - 3_600_000, status: "in_progress" as const, from: "pending" as const },
+    { revision: 3, at: now - 600_000, status: "completed" as const, from: "in_progress" as const, message: `Built\n${unsafe}` },
+    { revision: 4, at: now - 20_000, status: "completed" as const, message: "Hand check", by: "user" as const },
+  ] }]]);
+
+  it("adds times, review state and a newest-first timeline marking unreviewed messages", () => {
+    const lines = todoTaskDetail(s.tasks[0], s, { activity, review: { tasks: new Map() }, now });
+    expect(lines).toEqual(expect.arrayContaining([
+      expect.stringMatching(/^Created: 2h ago \(\d\d:\d\d:\d\d\)$/),
+      expect.stringMatching(/^Updated: just now \(\d\d:\d\d:\d\d\)$/),
+      "Reviewed: never",
+      "Activity (newest first; ● = unreviewed):",
+    ]));
+    const timeline = lines.slice(lines.indexOf("Activity (newest first; ● = unreviewed):") + 1);
+    expect(timeline).toEqual([
+      expect.stringMatching(/^ {2}just now \(.+\) · r4 · note \(completed\) · you$/), "    Hand check",
+      expect.stringMatching(/^● 10m ago \(.+\) · r3 · in_progress → completed$/), "    Built", "    safeend",
+      expect.stringMatching(/^ {2}1h ago \(.+\) · r2 · pending → in_progress$/),
+    ]);
+    const reviewed = todoTaskDetail(s.tasks[0], s, { activity, review: { at: now - 60_000, tasks: new Map([["build", { revision: 3, at: now - 60_000 }]]) }, now });
+    expect(reviewed).toContainEqual(expect.stringMatching(/^Reviewed: 1m ago \(\d\d:\d\d:\d\d\) through r3$/));
+    expect(reviewed.join("\n")).not.toContain("●");
+    expect(todoTaskDetail(s.tasks[0], s)).not.toContain("Reviewed: never");
+  });
+
+  it("formats ages and clocks deterministically", () => {
+    expect([0, 44_000, 45_000, 3_599_000, 3_600_000, 86_399_000, 86_400_000, -5_000].map(ago => formatTodoAge(now - ago, now)))
+      .toEqual(["just now", "just now", "1m ago", "60m ago", "1h ago", "23h ago", "1d ago", "just now"]);
+    expect(formatTodoClock(now, now)).toMatch(/^\d\d:\d\d:\d\d$/);
+    expect(formatTodoClock(now - 3 * 86_400_000, now)).toMatch(/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/);
   });
 });

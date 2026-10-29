@@ -20,6 +20,10 @@ cleanup runs.
 
 Upstream extension entry/settings/UI are replaced locally:
 
+- `src/activity.ts`: per-task status/message history and user review watermarks,
+  kept as a sidecar beside upstream snapshots so `src/state.ts` stays unchanged.
+  Message-only patches advance the revision here. See
+  [plan 0001](docs/plans/0001-task-messages-and-review.md).
 - `src/actions.ts`: explicit list/upsert/replace/remove/clear operations. Upsert
   preserves omitted keys and defaults new tasks to pending. Optional single-active
   policy never demotes another task implicitly.
@@ -28,9 +32,10 @@ Upstream extension entry/settings/UI are replaced locally:
   model history lacks a current full result, independent rendering lifecycle.
   No forced continuation or steering messages.
 - `src/replay.ts`: validated local `pi-personal:todo-state` journals take precedence
-  over potentially delayed direct results. Upstream snapshots remain a fallback
+  over potentially delayed direct results; their `activity` restores leniently, and
+  `pi-personal:todo-review` entries restore review watermarks. Upstream snapshots remain a fallback
   until a branch has a local checkpoint; pure engine remains unchanged.
-- `src/commands.ts`: browser/add/update/remove/clear/settings commands; revision
+- `src/commands.ts`: browser/review/add/update/remove/clear/settings commands; revision
   and session/branch-generation guards around asynchronous dialogs; no prompt
   submission.
 - `src/config.ts`: independent global/project layered settings, no shared-settings

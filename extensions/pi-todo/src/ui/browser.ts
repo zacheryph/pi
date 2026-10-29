@@ -1,4 +1,7 @@
-import { todoTaskDetail, orderedTodoTasks, todoTaskPresentation } from "./render.js";
+import { formatTodoAge, todoTaskDetail, orderedTodoTasks, todoTaskPresentation } from "./render.js";
+import {
+  createTodoReviewState, lastTodoActivityAt, type TodoActivity, type TodoReviewState, unreviewedTodoTasks,
+} from "../activity.js";
 import type { TodoState } from "../state.js";
 import { sanitizeTodoText } from "./text.js";
 import type { ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
@@ -20,7 +23,8 @@ import {
  * Adapted from repository-local pi-subagents/src/ui/read-only-browser.ts,
  * itself adapted from pi-system-insights/src/viewer.ts. Own copy for standalone
  * installs; no sibling runtime imports. Local changes: todo snapshot, semantic
- * status colors, command footer, task detail, shared sanitization.
+ * status colors, command footer, task detail, shared sanitization, view tabs,
+ * unreviewed markers and review callbacks.
  *
  * MIT License
  *
@@ -49,16 +53,35 @@ export interface BrowserItem {
   label: string;
   status?: string;
   badge?: { label: string; color: "success" | "dim" | "accent" | "warning" };
+  /** Unreviewed marker; any marked item reserves a marker column for every row. */
+  marker?: boolean;
   /** Search metadata, not displayed in list rows. */
   description: string;
   detail: string;
+}
+
+export interface BrowserTab {
+  label: string;
+  /** Ordered subset of item ids. */
+  ids: readonly string[];
+  /** Shown when the view itself has no items. */
+  empty?: string;
 }
 
 export interface BrowserView {
   title: string;
   note: string;
   items: readonly BrowserItem[];
+  /** Tab/Shift+Tab cycle these; absent means one view of every item. */
+  views?: readonly BrowserTab[];
+  initialView?: number;
+  /** Enter opened an item's details; its marker clears locally. */
+  onOpen?: (id: string) => void;
+  /** Ctrl+R: marked items in the current filtered list; markers clear locally. */
+  onReview?: (ids: string[]) => void;
 }
+
+const MARKER = "●";
 
 const NOTHING: Component = { render: () => [], invalidate() {} };
 
@@ -74,6 +97,7 @@ export async function showReadOnlyBrowser(ctx: ViewerContext, view: BrowserView)
   const snapshot: BrowserView = {
     ...view,
     items: view.items.map((item) => ({ ...item, badge: item.badge && { ...item.badge } })),
+    views: view.views?.map((tab) => ({ ...tab, ids: [...tab.ids] })),
   };
   const mode = await ctx.ui.custom<TUI["mode"] | undefined>((tui, _theme, _keys, done) => {
     done(tui.mode);
@@ -101,6 +125,9 @@ export class ReadOnlyBrowser implements Component, Focusable {
   private readonly input: Input;
   private readonly view: Pick<BrowserView, "title" | "note">;
   private readonly items: BrowserItem[];
+  private readonly tabs: BrowserTab[] | undefined;
+  private readonly markers: boolean;
+  private tab: number;
   private filtered: BrowserItem[];
   private selected = 0;
   private detail: BrowserItem | undefined;
@@ -120,10 +147,16 @@ export class ReadOnlyBrowser implements Component, Focusable {
       label: cleanLine(item.label),
       status: item.status === undefined ? undefined : cleanLine(item.status),
       badge: item.badge && { label: cleanLine(item.badge.label), color: item.badge.color },
+      marker: item.marker,
       description: cleanLine(item.description),
       detail: sanitizeTodoText(item.detail),
     }));
-    this.filtered = this.items;
+    this.markers = this.items.some((item) => item.marker);
+    this.tabs = options.view.views?.length ? options.view.views.map((tab) => ({
+      label: cleanLine(tab.label), ids: tab.ids.map(cleanLine), ...(tab.empty ? { empty: cleanLine(tab.empty) } : {}),
+    })) : undefined;
+    this.tab = Math.max(0, Math.min((this.tabs?.length ?? 1) - 1, Math.floor(options.view.initialView ?? 0) || 0));
+    this.filtered = this.tabItems();
     this.width = options.tui.terminal.columns;
     this.input = new Input({
       prompt: "Filter: ",
@@ -183,8 +216,12 @@ export class ReadOnlyBrowser implements Component, Focusable {
     const innerY = frame && take(2, 2) ? 1 : 0;
     const outerY = frame && take(2, 2) ? 1 : 0;
     const note = !!this.view.note && take(1, 2);
+    const actions = this.isList ? [
+      ...((this.tabs?.length ?? 0) > 1 ? ["Tab view"] : []),
+      ...(this.markers && this.options.view.onReview ? ["Ctrl+R mark reviewed"] : []),
+    ] : [];
     const navigation = wrapTextWithAnsi(
-      `↑↓ ${this.isList ? "select" : "scroll"} · ${this.pageHints()} · Ctrl+C close`, contentWidth,
+      `↑↓ ${this.isList ? "select" : "scroll"} · ${[...actions, this.pageHints()].join(" · ")} · Ctrl+C close`, contentWidth,
     );
     const commands = wrapTextWithAnsi("Edit: /todos:add · /todos:clear", contentWidth);
     const commandRows = take(commands.length, 2) ? commands.length : 0;
@@ -244,9 +281,23 @@ export class ReadOnlyBrowser implements Component, Focusable {
       this.move(-Infinity);
     } else if (matchesKey(data, "end") || keys.matches(data, "tui.altScreen.bottom")) {
       this.move(Infinity);
+    } else if (this.isList && this.tabs && this.tabs.length > 1 && (matchesKey(data, "tab") || matchesKey(data, "shift+tab"))) {
+      const step = matchesKey(data, "tab") ? 1 : -1;
+      this.tab = (this.tab + step + this.tabs.length) % this.tabs.length;
+      this.filter();
+    } else if (this.isList && matchesKey(data, "ctrl+r")) {
+      const marked = this.filtered.filter((item) => item.marker);
+      if (marked.length && this.options.view.onReview) {
+        this.options.view.onReview(marked.map((item) => item.id));
+        for (const item of marked) item.marker = false;
+      }
     } else if (this.isList && matchesKey(data, "enter")) {
       this.detail = this.filtered[this.selected];
       this.offset = 0;
+      if (this.detail) {
+        this.options.view.onOpen?.(this.detail.id);
+        if (this.detail.marker) this.detail.marker = false;
+      }
     } else if (this.isList) {
       const before = this.input.getValue();
       this.input.handleInput(data);
@@ -259,9 +310,16 @@ export class ReadOnlyBrowser implements Component, Focusable {
     this.options.tui.requestRender();
   }
 
+  private tabItems(): BrowserItem[] {
+    const tab = this.tabs?.[this.tab];
+    if (!tab) return this.items;
+    const byId = new Map(this.items.map((item) => [item.id, item]));
+    return tab.ids.flatMap((id) => byId.get(id) ?? []);
+  }
+
   private filter(): void {
     const query = this.input.getValue().toLocaleLowerCase();
-    this.filtered = this.items.filter((item) =>
+    this.filtered = this.tabItems().filter((item) =>
       `${item.label} ${item.status ?? ""} ${item.description}`.toLocaleLowerCase().includes(query),
     );
     this.selected = 0;
@@ -316,24 +374,34 @@ export class ReadOnlyBrowser implements Component, Focusable {
         + theme.fg("border", `${"─".repeat(spare - left)}╮`) + margin);
     }
     if (g.innerY) lines.push(row());
-    if (g.note) lines.push(row(theme.fg("muted", this.view.note)));
+    if (g.note) {
+      const unreviewed = this.items.filter((item) => item.marker).length;
+      const note = this.markers ? `${this.view.note} · ${unreviewed ? `${unreviewed} unreviewed` : "all reviewed"}` : this.view.note;
+      lines.push(row(theme.fg("muted", note)));
+    }
     if (g.filter) lines.push(row(this.input.render(g.contentWidth)[0] ?? ""));
     let position: string;
+    const tab = this.tabs?.[this.tab];
     if (this.isList) {
       this.selected = Math.max(0, Math.min(this.selected, this.filtered.length - 1));
       const start = Math.max(0, Math.min(
         this.selected - Math.floor(g.body / 2), this.filtered.length - g.body,
       ));
+      const empty = tab?.empty && !this.tabItems().length ? tab.empty : "No matching tasks.";
       for (let i = 0; i < g.body; i++) {
         const index = start + i;
         const item = this.filtered[index];
         const prefix = index === this.selected ? "→ " : "  ";
+        // Selected rows are accent as a whole; others color only the marker.
+        const mark = !this.markers || !item ? "" : !item.marker ? "  "
+          : index === this.selected ? `${MARKER} ` : `${theme.fg("accent", MARKER)} `;
         const text = item
-          ? this.itemRow(`${prefix}${item.label}`, item, g.contentWidth, index === this.selected)
-          : (!i && !this.filtered.length ? theme.fg("muted", "No matching tasks.") : "");
+          ? this.itemRow(`${prefix}${mark}${item.label}`, item, g.contentWidth, index === this.selected)
+          : (!i && !this.filtered.length ? theme.fg("muted", empty) : "");
         lines.push(row(text));
       }
-      position = `${this.filtered.length ? this.selected + 1 : 0}/${this.filtered.length} tasks · ${this.items.length} total`;
+      position = `${tab ? `${tab.label} · ` : ""}`
+        + `${this.filtered.length ? this.selected + 1 : 0}/${this.filtered.length} tasks · ${this.items.length} total`;
     } else {
       const content = this.textLines();
       this.offset = Math.min(this.offset, Math.max(0, content.length - g.body));
@@ -382,18 +450,71 @@ export class ReadOnlyBrowser implements Component, Focusable {
   }
 }
 
-/** Read-only task snapshot. Mutations belong exclusively to explicit commands/tools. */
-export async function showTodoBrowser(ctx: ExtensionContext, state: TodoState): Promise<void> {
+export type TodoBrowserView = "all" | "unreviewed" | "recent";
+const TODO_VIEWS: readonly TodoBrowserView[] = ["all", "unreviewed", "recent"];
+
+export interface TodoBrowserOptions {
+  /** Enables history details, unreviewed markers and view tabs. */
+  activity?: TodoActivity;
+  review?: TodoReviewState;
+  now?: number;
+  view?: TodoBrowserView;
+  /** Review watermarks (key → revision) for messages this snapshot showed. */
+  onReview?: (marks: ReadonlyMap<string, number>) => void;
+}
+
+/**
+ * Task snapshot. Task mutations belong exclusively to explicit commands/tools;
+ * the only write is review state, through onReview.
+ */
+export async function showTodoBrowser(ctx: ExtensionContext, state: TodoState, options: TodoBrowserOptions = {}): Promise<void> {
+  const now = options.now ?? Date.now();
+  const history = options.activity && { activity: options.activity, review: options.review ?? createTodoReviewState(), now };
+  const unreviewed = history ? unreviewedTodoTasks(state, history.activity, history.review) : new Map();
   const items = orderedTodoTasks(state).map((task): BrowserItem => {
     const presentation = todoTaskPresentation(task, state);
+    const messages = history?.activity.get(task.key)?.updates.flatMap((update) => update.message ?? []) ?? [];
     return {
       id: task.key,
       label: `${task.key}: ${task.subject}${task.dependsOn?.length ? ` ← ${task.dependsOn.join(", ")}` : ""}`,
       status: presentation.label,
       badge: { label: `${presentation.glyph} ${presentation.label}`, color: presentation.color },
-      description: `${task.description ?? ""} ${task.status} ${(task.dependsOn ?? []).join(" ")}`,
-      detail: todoTaskDetail(task, state).join("\n"),
+      ...(history ? { marker: unreviewed.has(task.key) } : {}),
+      description: `${task.description ?? ""} ${task.status} ${(task.dependsOn ?? []).join(" ")} ${messages.join(" ")}`,
+      detail: todoTaskDetail(task, state, history).join("\n"),
     };
   });
-  await showReadOnlyBrowser(ctx, { title: "Todos", note: "Read-only task snapshot", items });
+  if (!history) {
+    await showReadOnlyBrowser(ctx, { title: "Todos", note: "Read-only task snapshot", items });
+    return;
+  }
+  const order = new Map(state.tasks.map((task, index) => [task.key, index]));
+  const recent = state.tasks.map((task) => task.key).sort((a, b) =>
+    (lastTodoActivityAt(b, history.activity) ?? -1) - (lastTodoActivityAt(a, history.activity) ?? -1)
+    || order.get(a)! - order.get(b)!);
+  // Each shown message is reviewed once, at the revision this snapshot displayed.
+  const pending = new Map(unreviewed);
+  const review = (keys: string[]) => {
+    const marks = new Map<string, number>();
+    for (const key of keys) {
+      const update = pending.get(key);
+      if (update) marks.set(key, update.revision);
+      pending.delete(key);
+    }
+    if (marks.size) options.onReview?.(marks);
+  };
+  const reviewed = history.review.at;
+  await showReadOnlyBrowser(ctx, {
+    title: "Todos",
+    note: `Read-only task snapshot · last reviewed ${reviewed === undefined ? "never" : formatTodoAge(reviewed, now)}`,
+    items,
+    views: [
+      { label: "All", ids: items.map((item) => item.id) },
+      { label: "Unreviewed", ids: [...unreviewed.keys()], empty: "No unreviewed messages. Tab for other views." },
+      { label: "Recent", ids: recent },
+    ],
+    initialView: Math.max(0, TODO_VIEWS.indexOf(options.view ?? "all")),
+    onOpen: (key) => review([key]),
+    onReview: review,
+  });
 }
