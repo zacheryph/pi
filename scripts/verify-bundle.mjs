@@ -66,6 +66,7 @@ try {
     "system:skills",
     "todos",
     "todos:list",
+    "todos:review",
     "todos:add",
     "todos:update",
     "todos:remove",
