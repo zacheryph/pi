@@ -13,7 +13,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { InsightView } from "../src/types.js";
 import { InsightViewer, type InsightViewerOptions, sanitizeInsightText, showInsightView } from "../src/viewer.js";
 
-const UP = "\x1b[A", DOWN = "\x1b[B", ESC = "\x1b", ENTER = "\r";
+const DOWN = "\x1b[B", ESC = "\x1b", ENTER = "\r";
 const PAGE_UP = "\x1b[5~", PAGE_DOWN = "\x1b[6~", HOME = "\x1b[H", END = "\x1b[F";
 // Pi's Input wraps its cursor cell in zero-width markers that the TUI resolves to reverse video.
 const [FAKE_CURSOR_START, FAKE_CURSOR_END] = renderFakeCursor("|").split("|");

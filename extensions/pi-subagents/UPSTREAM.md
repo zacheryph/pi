@@ -108,6 +108,15 @@ No upstream runtime behavior was intentionally changed during import.
   APC markers that the TUI resolves to the same reverse video 1.1.0 emitted
   directly, so the rendered output is unchanged.
 
+## Shared compiler and test config
+
+- `vitest.config.ts`: dropped the `#src`/`#test` resolve aliases. Vite resolves
+  the package.json `imports` map itself; `tsconfig.json` keeps its `paths`
+  because TypeScript does not add file extensions to extensionless `imports`.
+- Root `tsconfig.base.json` now also enables `verbatimModuleSyntax`,
+  `noImplicitOverride`, `noImplicitReturns`, `noFallthroughCasesInSwitch`,
+  `noUnusedLocals`, and `noUnusedParameters`; this source needed no changes.
+
 ## Development
 
 Run from this repository's root:
