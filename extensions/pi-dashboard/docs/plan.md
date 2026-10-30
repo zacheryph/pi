@@ -1,7 +1,8 @@
 # pi-dashboard: research and implementation plan
 
-Status: proposal, nothing implemented yet. Wireframes are in the companion
-artifact linked from the PR/session; ASCII versions are at the end of this file.
+Status: planned, decisions recorded below; nothing implemented yet. Wireframes
+are in the companion artifact linked from the PR/session; ASCII versions of the
+chosen layout are at the end of this file.
 
 ## Goal
 
@@ -30,7 +31,7 @@ A local web UI showing every running interactive Pi session:
 | Tokens / cost | Sum `usage` on assistant entries in `getBranch()` | Yes |
 | Todos | In-repo `pi-todo`; branch journal replay (`replayTodoSession`) | Yes; add a small publish hook in pi-todo instead of re-parsing |
 | Subagents (bonus) | `getSubagentsService().listAgents()` on `globalThis` | Yes |
-| Blackhole | No public API. Persists `om.observations.recorded`, `om.reflections.recorded`, `om.observations.dropped`, `om.folded` custom entries plus compaction entries | Partial: counts, last compaction, tokens since compaction are derivable. Live worker phase and gauges live in its runtime and are not reachable. Fragile across upstream versions; ask upstream for a `pi.events` snapshot |
+| Blackhole | No public API. Persists `om.observations.recorded`, `om.reflections.recorded`, `om.observations.dropped`, `om.folded` custom entries plus compaction entries | Partial: counts, last compaction, tokens since compaction are derivable. Live worker phase and gauges live in its runtime and are not reachable. Fragile across upstream versions; parse defensively and hide the section on unknown shapes (upstream hook deferred) |
 | Stash | In-repo `pi-stash`. Index: `pi-personal:stash-index` custom entries on the branch (`put` + `checkpoint`), replayed by `replayStashIndex` / `currentEntries`. Content: hash-addressed blobs under `$PI_STASH_DIR` or `~/.pi/agent/stash/` | Yes: name, handle, bytes, lines, mime, description, source, creator session, age, version count, store usage vs `maxStoreBytes`. Content preview on demand only (see Security) |
 | Focus session | cmux: capture `CMUX_WORKSPACE_ID`, `CMUX_SURFACE_ID`, `CMUX_SOCKET_PATH` at startup, then `cmux select-workspace` + focus the surface/panel | Yes, with a spike to confirm verbs and socket access mode |
 
@@ -151,31 +152,37 @@ tmux, Ghostty, or iTerm adapters can follow without touching the hub.
    warning when over `maxStoreBytes`.
 4. **Actions (opt-in).** Abort, steer/send message, compact. Off by default.
 
-## Open questions
+## Decisions
 
-- Stash scope: current branch only (what `stash_list` shows), or also handles
-  subagents stored in their own sessions? (Proposed: current branch only.)
-- Fixed port (bookmarkable) or random port with `/dashboard` as the only way in?
-- Should `pi -p` print-mode runs appear? (Proposed: no.)
-- Which wireframe layout (A table + drawer, B card grid, C split view)?
+| Question | Decision |
+|---|---|
+| Layout | **B, card grid** grouped by directory; a card opens the full detail page (`#<session-id>`) |
+| Port | Fixed **7317** on `127.0.0.1`, overridable in `~/.pi/agent/dashboard.json` |
+| Print mode | `pi -p` / json / rpc runs are **not shown**; interactive (`tui`) main sessions only |
+| Stash scope | **Current branch only**, matching `stash_list` |
+| Blackhole | **Show what is derivable** from saved entries: observations, reflections, dropped, compactions, last compaction, tokens since compaction. No live gauges and no upstream ask for now |
 
-## ASCII wireframes
+## Next steps
 
-### A. Table + drawer
+1. **Spike on the Mac** (phase 0) and record results here: the cmux focus verb
+   and flags, whether `cmux` works from a Pi `!` shell, and the Node version
+   Pi runs under (type stripping for the hub).
+2. **PR 1, phase 1 MVP:** new `extensions/pi-dashboard` workspace; hub
+   (socket lock, spawn, 15s idle exit, HTTP + SSE on 7317); reporter with
+   main-session detection and core fields; card-grid index; `/dashboard`
+   command; tests; `verify-bundle` assertion. Uses a no-op terminal adapter,
+   so it does not depend on the spike.
+3. **PR 2, publish hooks:** read-only snapshot accessors and change events in
+   pi-todo and pi-stash. Independent of PR 1; can land in parallel.
+4. **PR 3, phase 2:** detail page with todos, stash index, subagents,
+   tokens/cost, blackhole counts; cmux adapter and Focus button using the
+   spike results.
+5. **PR 4, phase 3:** stash previews, todo timelines, recent activity,
+   filtering, notifications, store usage warning.
 
-```text
-┌ pi dashboard ───────────────────────────────── 4 sessions · ● live ┐
-│ Filter [________]   Group: none ▾                                   │
-│ STATUS     SESSION            AGENT         DIRECTORY        CTX    │
-│ ● working  fix-auth-retry     orchestrator  ~/src/api        62%    │
-│ ◐ waiting  dashboard-plan     —             ~/src/pi         31%    │
-│ ○ idle     release-notes      —             ~/src/site        8%    │
-│ ⠋ compact  vendor-jobs        —             ~/src/pi         91%    │
-└─────────────────────────────────────────────────────────────────────┘
-                     click a row → right drawer with detail sections
-```
+## ASCII wireframes (chosen layout)
 
-### B. Card grid
+### B. Card grid (index)
 
 ```text
 ┌──────────────────────────┐ ┌──────────────────────────┐
@@ -188,16 +195,20 @@ tmux, Ghostty, or iTerm adapters can follow without touching the hub.
 └──────────────────────────┘ └──────────────────────────┘
 ```
 
-### C. Split view
+### Detail page (opened from a card)
 
 ```text
-┌ Sessions ─────────────┬ fix-auth-retry ─────────────────── [Focus] ┐
-│ ~/src/api             │ ~/src/api · orchestrator                    │
-│  ● fix-auth-retry  ◀  │ Model opus-5.5 · Thinking high · ● working  │
-│ ~/src/pi              │ Context ██████░░░░ 124k / 200k (62%)        │
-│  ◐ dashboard-plan     │ ┌ Todos 3/7 ┐ ┌ Blackhole ┐ ┌ Stash 3 ┐     │
-│  ⠋ vendor-jobs        │ │ …         │ │ …         │ │ …       │     │
-│ ~/src/site            │ └───────────┘ └───────────┘ └─────────┘     │
-│  ○ release-notes      │ Subagents · Recent activity                 │
-└───────────────────────┴─────────────────────────────────────────────┘
+┌ ← All sessions ──────────────────────────────────── [Focus in cmux] ┐
+│ fix-auth-retry · ~/src/api · agent orchestrator                      │
+│ MODEL opus-5.5 │ THINKING high │ STATUS ● bash │ CTX 62% │ $1.84     │
+│ ┌ Todos 3/7 ─────────────────┐ ┌ Blackhole ─────────────────────┐    │
+│ │ ✓ Reproduce 401 loop       │ │ observations 38  reflections 6 │    │
+│ │ ◐ Add retry backoff  (msg) │ │ dropped 11  compactions 3      │    │
+│ │ ○ Write regression test    │ │ since last compaction 41k      │    │
+│ └────────────────────────────┘ └────────────────────────────────┘    │
+│ ┌ Subagents 2 running ───────┐ ┌ Stash 3 · 214 MB / 1 GB ───────┐    │
+│ │ Explore: find call sites   │ │ auth-findings 18 KB [Preview]  │    │
+│ │ Agent (twin): add tests    │ │ retry-diff     4 KB [Preview]  │    │
+│ └────────────────────────────┘ └────────────────────────────────┘    │
+└──────────────────────────────────────────────────────────────────────┘
 ```
