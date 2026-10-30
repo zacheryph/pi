@@ -216,7 +216,10 @@ test("until change detects a change outside the retained output tail", async t =
 	assert.equal(done[0].status, "matched");
 });
 
-test("a log file that cannot be opened rolls the job back", async t => {
+// root ignores directory permission bits, so the unwritable-dir setup cannot provoke EACCES.
+const isRoot = process.getuid?.() === 0;
+
+test("a log file that cannot be opened rolls the job back", { skip: isRoot && "root bypasses file permissions" }, async t => {
 	const { dir, manager } = setup(t, { maxRunning: 1 });
 	const dayDir = join(dir, "logs", today());
 	mkdirSync(dayDir, { recursive: true });
