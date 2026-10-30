@@ -13,6 +13,7 @@ import type { TodoRequest } from "../src/actions.ts";
 import { TODO_STATE_CUSTOM_TYPE, type TodoDetails, type TodoState } from "../src/state.ts";
 import { TODO_JOURNAL_TYPE, TODO_REVIEW_TYPE } from "#src/replay.ts";
 import { showTodoBrowser } from "../src/ui/browser.ts";
+import { TODO_SNAPSHOT_EVENT, type TodoSnapshotEvent } from "#src/events.ts";
 
 // Browser interaction has its own component tests. Here test command routing,
 // branch snapshots, and headless behavior independently of terminal input.
@@ -49,6 +50,7 @@ function harness(options: {
     }),
     appendEntry: vi.fn((type: string, data: unknown) => { session.appendCustomEntry(type, data); }),
     sendMessage: vi.fn(), sendUserMessage: vi.fn(),
+    events: { emit: vi.fn(), on: vi.fn(() => () => {}) },
   };
   const loadConfig = vi.fn(() => ({ ...DEFAULT_CONFIG, ...options.config }));
   const saveConfig = vi.fn();
@@ -833,4 +835,60 @@ it("result renderer ignores malformed persisted message details", async () => {
   const malformed = { ...result, details: { ...result.details, messages: [null, { key: 1, message: "x" }, { key: "a", message: "ok" }] } };
   const lines = tool.renderResult!(malformed as typeof result, { expanded: false, isPartial: false }, theme, {} as Parameters<NonNullable<typeof tool.renderCall>>[2]).render(80);
   expect(lines).toEqual(["0/1 completed · revision 1", " ○ a: ok "]);
+});
+
+describe("snapshot events", () => {
+  const published = (env: Awaited<ReturnType<typeof started>>) => env.pi.events.emit.mock.calls
+    .filter(([channel]) => channel === TODO_SNAPSHOT_EVENT).map(([, data]) => data as TodoSnapshotEvent);
+
+  it("publishes the task list on start, on each change, and on review, but not for rejected or no-op requests", async () => {
+    const env = await started();
+    expect(published(env)).toEqual([{ version: 1, revision: 0, tasks: [] }]);
+
+    await env.execute({ action: "upsert", tasks: [
+      { key: "a", subject: "A" }, { key: "b", subject: "B", description: "after a", dependsOn: ["a"] },
+    ] });
+    env.clock.now += 1_000;
+    await env.execute({ action: "upsert", tasks: [{ key: "a", status: "completed", message: "done" }] });
+    expect(published(env).at(-1)).toEqual({ version: 1, revision: 2, tasks: [
+      { key: "a", subject: "A", status: "completed", blocked: false, createdAt: T0, unreviewed: 1,
+        updates: [{ revision: 2, at: T0 + 1_000, status: "completed", from: "pending", message: "done" }] },
+      { key: "b", subject: "B", description: "after a", status: "pending", dependsOn: ["a"], blocked: false, createdAt: T0, unreviewed: 0, updates: [] },
+    ] });
+
+    const count = published(env).length;
+    await env.execute({ action: "list" });
+    await expect(env.execute({ action: "upsert", tasks: [{ key: "c", subject: "C", dependsOn: ["missing"] }] })).rejects.toThrow();
+    expect(published(env)).toHaveLength(count);
+
+    await env.command("todos:review", "all");
+    expect(published(env)).toHaveLength(count + 1);
+    expect(published(env).at(-1)?.tasks[0]?.unreviewed).toBe(0);
+  });
+
+  it("marks tasks waiting on unfinished prerequisites as blocked", async () => {
+    const env = await started();
+    await env.execute({ action: "upsert", tasks: [{ key: "a", subject: "A" }, { key: "b", subject: "B", dependsOn: ["a"] }] });
+    expect(published(env).at(-1)?.tasks.map((task) => [task.key, task.blocked])).toEqual([["a", false], ["b", true]]);
+  });
+
+  it("emits independent copies that listeners cannot use to change tasks", async () => {
+    const env = await started();
+    await env.execute(add("a"));
+    const event = published(env).at(-1)!;
+    event.tasks[0]!.subject = "changed by a listener";
+    event.tasks[0]!.updates.push({ revision: 99, at: 0, status: "completed" });
+    const listed = JSON.parse(((await env.execute({ action: "list", key: "a" })).content[0] as { text: string }).text);
+    expect(listed.tasks[0]).toMatchObject({ subject: "Task a" });
+    expect(listed.tasks[0].updates ?? []).toEqual([]);
+  });
+
+  it("republishes the branch's tasks after tree navigation", async () => {
+    const env = await started();
+    await env.execute(add("a"));
+    const count = published(env).length;
+    await env.emit("session_tree");
+    expect(published(env)).toHaveLength(count + 1);
+    expect(published(env).at(-1)?.tasks.map((task) => task.key)).toEqual(["a"]);
+  });
 });

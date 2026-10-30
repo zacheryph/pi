@@ -2,11 +2,12 @@ import { defineTool, type ExtensionAPI, type ExtensionContext } from "@earendil-
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { DEFAULT_CONFIG, loadStashConfig, type StashConfig } from "./config.ts";
+import { STASH_SNAPSHOT_EVENT, stashEntryJson, stashSnapshotEvent } from "./events.ts";
 import { DEFAULT_GET_BYTES, HARD_MAX_BYTES, HARD_MAX_LINES, headLines, previewOf, sliceText, type SliceResult } from "./slice.ts";
 import { literalContent, readCwdFile, readToolResult, type SourceText } from "./sources.ts";
 import {
   countLines, createEmptyIndex, currentEntries, handleFor, NAME_PATTERN, replayStashIndex, resolveRef,
-  STASH_INDEX_TYPE, STASH_SCHEMA_VERSION, versionsOf, type StashIndex, type StashJournal, type StashRecord,
+  STASH_INDEX_TYPE, STASH_SCHEMA_VERSION, type StashIndex, type StashJournal, type StashRecord,
 } from "./state.ts";
 import { BlobStore, defaultStashRoot } from "./store.ts";
 import { showStashBrowser } from "./ui/browser.ts";
@@ -73,15 +74,6 @@ export interface StashExtensionDependencies {
   loadConfig?: () => StashConfig;
 }
 
-function entryJson(record: StashRecord, index: StashIndex) {
-  return {
-    handle: handleFor(record), name: record.name, hash: record.hash, bytes: record.bytes, lines: record.lines,
-    mime: record.mime, ...(record.description ? { description: record.description } : {}),
-    createdAt: record.createdAt, createdBy: record.createdBy, source: record.source,
-    versions: versionsOf(index, record.name).length,
-  };
-}
-
 function listText(entries: StashRecord[], total: number, now = Date.now()): string {
   if (!entries.length) return total ? "No stash entries match." : "No stash entries on this branch.";
   const rows = entries.map((record) => `${handleFor(record)} · ${entrySummary(record)} · by ${shortSession(record.createdBy)} · ${formatAge(record.createdAt, now)} ago`
@@ -119,6 +111,7 @@ export default function stashExtension(pi: ExtensionAPI, dependencies: StashExte
   let showCard = false;
 
   const getStore = () => store ??= new BlobStore(defaultStashRoot());
+  const publish = () => pi.events.emit(STASH_SNAPSHOT_EVENT, stashSnapshotEvent(index));
 
   const record = (ctx: ExtensionContext, name: string, description: string | undefined, source: SourceText): StashRecord => {
     const { hash, bytes } = getStore().put(source.text);
@@ -130,6 +123,7 @@ export default function stashExtension(pi: ExtensionAPI, dependencies: StashExte
     // Journal before publishing in memory; nested codemode calls keep no result.
     pi.appendEntry<StashJournal>(STASH_INDEX_TYPE, { schemaVersion: STASH_SCHEMA_VERSION, op: "put", record: entry });
     index = { records: [...index.records, entry] };
+    publish();
     return entry;
   };
 
@@ -243,7 +237,7 @@ export default function stashExtension(pi: ExtensionAPI, dependencies: StashExte
       const shown = all.slice(0, LIST_LIMIT);
       return {
         content: [{ type: "text", text: listText(shown, all.length) }],
-        structuredContent: { total: all.length, entries: shown.map((entry) => entryJson(entry, index)) },
+        structuredContent: { total: all.length, entries: shown.map((entry) => stashEntryJson(entry, index)) },
         details: { entries: shown.slice(0, 50), total: all.length },
       };
     },
@@ -302,6 +296,7 @@ export default function stashExtension(pi: ExtensionAPI, dependencies: StashExte
   const restore = (ctx: ExtensionContext) => {
     index = replayStashIndex(ctx);
     showCard = currentEntries(index).length > 0;
+    publish();
   };
 
   pi.on("session_start", async (_event, ctx) => {

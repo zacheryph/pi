@@ -31,6 +31,9 @@ Upstream extension entry/settings/UI are replaced locally:
   and user commands, branch restoration, context-only current-state sync while
   model history lacks a current full result, independent rendering lifecycle.
   No forced continuation or steering messages.
+- `src/events.ts`: read-only `pi-todo:snapshot` emission on the session's
+  `pi.events` bus after start, branch changes, plan changes, and reviews, for
+  other extensions such as pi-dashboard.
 - `src/replay.ts`: validated local `pi-personal:todo-state` journals take precedence
   over potentially delayed direct results; their `activity` restores leniently, and
   `pi-personal:todo-review` entries restore review watermarks. Upstream snapshots remain a fallback

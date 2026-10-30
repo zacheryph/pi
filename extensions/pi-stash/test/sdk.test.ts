@@ -11,6 +11,7 @@ import stashExtension from "#src/index";
 import { currentEntries, replayStashIndex, STASH_INDEX_TYPE } from "#src/state";
 import { BlobStore } from "#src/store";
 import { DEFAULT_CONFIG } from "#src/config";
+import { STASH_SNAPSHOT_EVENT, type StashSnapshotEvent } from "#src/events";
 
 const cleanups: Array<() => void> = [];
 afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });
@@ -22,6 +23,7 @@ function tempDir(prefix: string): string {
 }
 
 async function fixture(options: { manager?: SessionManager; store: BlobStore; responses?: ReturnType<typeof fauxAssistantMessage>[]; keepRecentTokens?: number }) {
+  const snapshots: StashSnapshotEvent[] = [];
   const dir = tempDir("pi-stash-sdk-");
   const faux = createFauxCore({ provider: "stash-test", models: [{ id: "test" }] });
   const calls = vi.fn(faux.streamSimple);
@@ -33,6 +35,8 @@ async function fixture(options: { manager?: SessionManager; store: BlobStore; re
     extensionFactories: [
       pi => stashExtension(pi, { store: options.store, loadConfig: () => ({ ...DEFAULT_CONFIG }) }),
       createCodemodeExtension(),
+      // Another extension on the same session bus, as pi-dashboard listens.
+      pi => { pi.events.on(STASH_SNAPSHOT_EVENT, data => snapshots.push(data as StashSnapshotEvent)); },
     ],
   });
   await loader.reload();
@@ -46,7 +50,7 @@ async function fixture(options: { manager?: SessionManager; store: BlobStore; re
   const errors = vi.fn();
   await session.bindExtensions({ mode: "print", onError: errors });
   faux.setResponses(options.responses ?? [fauxAssistantMessage("done")]);
-  return { session, manager, faux, calls, errors, dir };
+  return { session, manager, faux, calls, errors, dir, snapshots };
 }
 
 const call = (name: string, args: Parameters<typeof fauxToolCall>[1], id?: string) =>
@@ -167,6 +171,28 @@ describe("pi-stash in a real AgentSession (offline faux provider)", () => {
     const [byHandle, byName] = toolResults(child.manager, "stash_get");
     expect(byHandle).toMatchObject({ isError: false, content: [{ text: expect.stringContaining("1\tfrom parent") }] });
     expect(byName).toMatchObject({ isError: true, content: [{ text: expect.stringContaining('No stash entry named "shared"') }] });
+  }, 20_000);
+
+  it("publishes the branch index to other extensions on start, on each put (codemode included), and on /tree", async () => {
+    const store = new BlobStore(tempDir("pi-stash-root-"));
+    const h = await fixture({ store, responses: [
+      call("stash_put", { name: "notes", description: "first", content: "one\n" }),
+      call("codemode", { code: `await tools.stash_put({ name: "notes", content: "two\\nlines\\n" }); return "ok";` }),
+      fauxAssistantMessage("done"),
+    ] });
+    expect(h.snapshots).toEqual([{ version: 1, entries: [] }]);
+    await h.session.prompt("Work");
+    expect(h.snapshots).toHaveLength(3);
+    expect(h.snapshots.at(-1)).toEqual({ version: 1, entries: [{
+      handle: expect.stringMatching(/^stash:notes@[0-9a-f]{12}$/), name: "notes", hash: expect.stringMatching(/^[0-9a-f]{64}$/),
+      bytes: 10, lines: 2, mime: "text/plain", createdAt: expect.any(Number), createdBy: h.manager.getSessionId(),
+      source: "content", versions: 2,
+    }] });
+    expect(JSON.stringify(h.snapshots)).not.toContain("lines\\n");
+
+    const first = h.manager.getBranch().find(entry => entry.type === "message" && entry.message.role === "user")!;
+    await h.session.navigateTree(first.id, { summarize: false });
+    expect(h.snapshots.at(-1)).toEqual({ version: 1, entries: [] });
   }, 20_000);
 
   it("rejects bad sources and oversized entries as tool errors", async () => {

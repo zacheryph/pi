@@ -106,6 +106,16 @@ function card(session) {
     : "context unknown";
   ctx.append(meter, el("span", "mono muted num", used));
   node.append(ctx);
+  const work = [];
+  const tasks = session.todos && Array.isArray(session.todos.tasks) ? session.todos.tasks : [];
+  if (tasks.length) {
+    const done = tasks.filter((task) => task.status === "completed").length;
+    const fresh = tasks.reduce((sum, task) => sum + (Number(task.unreviewed) || 0), 0);
+    work.push("todos " + done + "/" + (Number(session.todos.total) || tasks.length) + (fresh ? " · " + fresh + " new" : ""));
+  }
+  const stashed = session.stash ? Number(session.stash.total) || 0 : 0;
+  if (stashed) work.push("stash " + stashed);
+  if (work.length) node.append(el("span", "clip", work.join(" · ")));
   node.append(el("span", "mono muted", "up " + ago(session.startedAt) + " · " + statusLabel(session) + " " + ago(session.status.since)));
   return node;
 }

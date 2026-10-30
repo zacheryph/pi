@@ -240,6 +240,14 @@ notifications: successful child exit is not proof that parent verification passe
 No subagent spawning, event subscriptions, or process-global task store. Matching
 UX and explicit model control keep extensions composable and independently loadable.
 
+Other extensions read tasks without coupling to the journal format: on session
+start, branch changes, every plan change, and every review, pi-todo emits
+`pi-todo:snapshot` on the session's `pi.events` bus (`src/events.ts`). The payload
+is a fresh copy: `{ version: 1, revision, tasks }`, where each task adds `blocked`,
+`createdAt`, its bounded `updates` history, and an `unreviewed` message count.
+Each subagent has its own bus, so listeners see only their own session's tasks.
+pi-dashboard uses it for its task counts.
+
 ## Develop
 
 ```bash
