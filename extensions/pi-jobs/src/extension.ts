@@ -11,9 +11,11 @@ import { randomUUID } from "node:crypto";
 import { isAbsolute, resolve } from "node:path";
 import { CUSTOM_TYPE, dedupeCompletions, Delivery, type DeliveryHost, type Completion } from "./delivery.ts";
 import { formatBatch, formatJobList, formatJobLine, jobTitle } from "./format.ts";
-import { JobManager, type JobSnapshot } from "./jobs.ts";
+import { envLimit, JobManager, type JobSnapshot } from "./jobs.ts";
 import { defaultLogRoot, pruneLogs } from "./logs.ts";
 import { expireReloadOwner, highestJobId, historicalRunningJobs, sessionOwners, stopOrphans, takeReloadOwner, type Owner } from "./ownership.ts";
+import type { WatchProbe } from "./probe.ts";
+import { assertWatchable, createToolProbe, DEFAULT_MAX_CHECK_ERRORS, parseAllowList, parseToolCheck, toolCheckTitle, type ExecuteTool } from "./toolcheck.ts";
 import type { WatchUntil } from "./watch.ts";
 
 export { CUSTOM_TYPE };
@@ -64,7 +66,32 @@ export function watchParams(minInterval = MIN_INTERVAL_SECONDS) {
 	return {
 		type: "object",
 		properties: {
-			check: { type: "string", minLength: 1, description: "Check command (bash -c), run repeatedly." },
+			check: { type: "string", minLength: 1, description: "Check command (bash -c), run repeatedly. Give exactly one of check or toolCheck." },
+			toolCheck: {
+				type: "object",
+				description:
+					"Instead of check: call one Pi tool (e.g. an MCP tool) each interval, with no model involved. Only tools marked read-only, or allowed by PI_JOBS_WATCH_TOOLS, qualify. " +
+					"Succeeds when the call succeeds and match (if given) holds. A failed call is inconclusive; 3 in a row end the watch. until: success or change only.",
+				properties: {
+					tool: { type: "string", minLength: 1, description: "Exact tool name." },
+					args: { type: "object", description: "Arguments for the tool.", additionalProperties: true },
+					match: {
+						type: "object",
+						description:
+							"Condition on the result (structured content, or the text parsed as JSON). The check's output becomes the selected value, so until:change compares only that value.",
+						properties: {
+							path: { type: "string", description: "Dot path, e.g. `check_runs.0.status`; empty string for the whole result." },
+							equals: { description: "Holds when the value equals this (deep, key order ignored)." },
+							in: { type: "array", description: "Holds when the value equals one of these." },
+							contains: { type: "string", description: "Holds when the value (as text) contains this." },
+						},
+						required: ["path"],
+						additionalProperties: false,
+					},
+				},
+				required: ["tool"],
+				additionalProperties: false,
+			},
 			intervalSeconds: { type: "number", minimum: minInterval, maximum: MAX_INTERVAL_SECONDS, description: `Delay between checks in seconds (${minInterval}–${MAX_INTERVAL_SECONDS}).` },
 			timeoutSeconds: timeoutSchema(`Give up after this many seconds (1–${MAX_TIMEOUT_SECONDS}).`),
 			until: {
@@ -78,7 +105,7 @@ export function watchParams(minInterval = MIN_INTERVAL_SECONDS) {
 			cwd: { type: "string", description: "Working directory (default: session cwd)." },
 			label: { type: "string", description: "Short name shown in the notification." },
 		},
-		required: ["check", "intervalSeconds", "timeoutSeconds"],
+		required: ["intervalSeconds", "timeoutSeconds"],
 		additionalProperties: false,
 	};
 }
@@ -352,15 +379,30 @@ export function createJobsExtension(options: JobsExtensionOptions = {}) {
 			description:
 				"Re-run a check command in the background every intervalSeconds until a condition holds or timeoutSeconds passes, with no model involvement. " +
 				"Use when no blocking watcher exists (prefer job_start with e.g. `gh run watch <run-id> --exit-status` when one does). " +
+				"With toolCheck it polls a read-only tool instead of a command, e.g. an MCP tool that reports CI status. " +
 				`You are woken with the result and the last check's output. ${WAKE_NOTE}`,
 			parameters: watchParams(minInterval) as any,
-			async execute(_id: string, params: any, _signal: unknown, _onUpdate: unknown, ctx: { cwd: string }) {
+			async execute(_id: string, params: any, _signal: unknown, _onUpdate: unknown, ctx: { cwd: string; executeTool?: ExecuteTool }) {
 				remember(ctx);
 				const timeoutSeconds = seconds(params.timeoutSeconds, "timeoutSeconds", 1, MAX_TIMEOUT_SECONDS);
 				const until: WatchUntil = params.until ?? "success";
 				if (!["success", "failure", "change"].includes(until)) throw new Error("until must be success, failure or change.");
+				if ((params.check == null) === (params.toolCheck == null)) throw new Error("Give exactly one of check or toolCheck.");
+				let check: string;
+				let probe: WatchProbe | undefined;
+				if (params.toolCheck != null) {
+					if (until === "failure") throw new Error("toolCheck supports until success or change; invert match instead of until failure.");
+					const spec = parseToolCheck(params.toolCheck);
+					if (typeof ctx.executeTool !== "function") throw new Error("toolCheck needs a Pi version whose tool context provides executeTool.");
+					assertWatchable(spec.tool, typeof pi.getAllTools === "function" ? pi.getAllTools() : [], parseAllowList(process.env.PI_JOBS_WATCH_TOOLS));
+					probe = createToolProbe(spec, ctx.executeTool.bind(ctx), envLimit(process.env, "PI_JOBS_MAX_CHECK_ERRORS") ?? DEFAULT_MAX_CHECK_ERRORS);
+					check = toolCheckTitle(spec);
+				} else {
+					check = text(params.check, "check");
+				}
 				const job = manager.watch({
-					check: text(params.check, "check"),
+					check,
+					probe,
 					intervalSeconds: seconds(params.intervalSeconds, "intervalSeconds", minInterval, MAX_INTERVAL_SECONDS),
 					timeoutSeconds,
 					checkTimeoutSeconds:
