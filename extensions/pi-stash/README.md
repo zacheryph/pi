@@ -104,8 +104,10 @@ handles. See [`../pi-subagents/UPSTREAM.md`](../pi-subagents/UPSTREAM.md).
 
 ## Commands
 
-- `/stash` opens a browser: list → Enter shows a numbered preview (up to 2,000
-  lines / 50 KB). Warns when the store is over its size cap.
+- `/stash` opens a modal in the fullscreen TUI: list → Enter shows the name,
+  full hash, description, then a numbered content preview (up to 2,000 lines /
+  50 KB). The regular TUI displays the same browser inline. Warns when the
+  store is over its size cap.
 - `/stash:gc` deletes content not read or written for `retentionDays` and reports
   what it freed.
 

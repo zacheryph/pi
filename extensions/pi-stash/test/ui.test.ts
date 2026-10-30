@@ -1,9 +1,9 @@
-import type { ExtensionAPI, Theme, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, Theme, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 import stashExtension from "#src/index";
 import type { StashRecord } from "#src/state";
-import { StashBrowser, type StashPreview } from "#src/ui/browser";
+import { StashBrowser, showStashBrowser, type StashPreview } from "#src/ui/browser";
 import { bodyRow, entryRow, formatAge, formatBytes, headerRule, previewRows } from "#src/ui/render";
 
 const plain = { fg: (_token: string, text: string) => text } as Theme;
@@ -73,23 +73,24 @@ describe("StashBrowser", () => {
 
   it("lists entries, previews with line numbers, and goes back and closes with Esc", () => {
     const load = vi.fn(() => ({ lines: [`${WIDE} line`, "\x1b]52;c;evil\x07second"], note: "Preview stops here" }));
-    const { browser, done } = make([record(), record({ name: "second", hash: "b".repeat(64) })], 12, load);
+    const { browser, done } = make([record(), record({ name: "second", hash: "b".repeat(64) })], 30, load);
     const list = browser.render(80).map(strip);
-    expect(list[0]).toMatch(/^── Stash ─+ 2 · 24 KB ──$/);
-    expect(list[1]).toMatch(/^ Store is over the cap +$/);
-    expect(list[2]).toMatch(/^ → stash:auth-findings@3f9a1c2b7d01/);
-    expect(list.at(-1)).toMatch(/^ ↑↓ select · Enter preview · Esc close +$/);
+    expect(list[0]).toMatch(/^ ╭─+ Stash ─+╮ $/);
+    expect(list[1]).toContain("Store is over the cap");
+    expect(list[2]).toContain("2 entries · 24 KB");
+    expect(list[3]).toContain("→ stash:auth-findings@3f9a1c2b7d01");
+    expect(list.at(-2)).toContain("Enter details · Esc close");
     browser.handleInput("\x1b[B");
     browser.handleInput("\r");
     expect(load).toHaveBeenCalledWith(expect.objectContaining({ name: "second" }));
     const preview = browser.render(80).map(strip);
-    expect(preview[0]).toMatch(/^── stash:second@bbbbbbbbbbbb ─+ 12 KB · 340 lines ──$/);
-    expect(preview.slice(2, 6)).toEqual([
-      expect.stringMatching(/^ 1  検索結果😀データ line +$/),
-      expect.stringMatching(/^ 2  second +$/),
-      expect.stringMatching(/^ +$/),
-      expect.stringMatching(/^ Preview stops here +$/),
-    ]);
+    expect(preview[0]).toMatch(/^ ╭─+ Stash \/ second ─+╮ $/);
+    expect(preview.join("\n")).toContain("Name: second");
+    expect(preview.join("\n")).toContain(`Hash: ${"b".repeat(64)}`);
+    expect(preview.join("\n")).toContain("Description: 検索結果😀データ description");
+    expect(preview.join("\n")).toMatch(/Contents:[^\n]*\n[^\n]*1  検索結果😀データ line/);
+    expect(preview.join("\n")).toContain("2  second");
+    expect(preview.join("\n")).toContain("Preview stops here");
     browser.handleInput("\x1b");
     expect(strip(browser.render(80)[0])).toMatch(/Stash/);
     browser.handleInput("\x1b");
@@ -119,15 +120,40 @@ describe("StashBrowser", () => {
     const first = browser.render(40);
     expect(first.length).toBe(8);
     browser.handleInput("\x1b[6~");
-    expect(strip(browser.render(40)[2])).toMatch(/^ +\d+ +row \d+/);
-    expect(strip(browser.render(40)[2])).not.toMatch(/ 1  row 1 /);
+    expect(browser.render(40).map(strip).join("\n")).toContain("Description:");
+    browser.handleInput("\x1b[F");
+    expect(browser.render(40).map(strip).join("\n")).toContain("row 100");
   });
 
   it("shows an empty state and read errors", () => {
     expect(make([]).browser.render(60).map(strip)).toContainEqual(expect.stringMatching(/No stash entries on this branch/));
-    const { browser } = make([record()], 12, vi.fn(() => { throw new Error("missing blob"); }));
+    const { browser } = make([record()], 30, vi.fn(() => { throw new Error("missing blob"); }));
     browser.handleInput("\r");
     expect(browser.render(60).map(strip)).toContainEqual(expect.stringMatching(/Unable to read: missing blob/));
+  });
+
+  it.each(["fullscreen", "regular"] as const)("opens in the %s renderer like /todo", async (mode) => {
+    const components: { render: (width: number) => string[] }[] = [];
+    type Factory = Parameters<ExtensionContext["ui"]["custom"]>[0];
+    const custom = vi.fn(async (factory: Factory) => {
+      let result: unknown;
+      const component = await factory(
+        { mode, terminal: { rows: 30 }, requestRender: vi.fn() } as unknown as Parameters<Factory>[0],
+        plain as Parameters<Factory>[1],
+        {} as Parameters<Factory>[2],
+        (value) => { result = value; },
+      );
+      components.push(component);
+      return result;
+    });
+    const ctx = { ui: { custom } } as unknown as ExtensionContext;
+    await showStashBrowser(ctx, [record()], () => ({ lines: ["content"] }));
+    expect(custom).toHaveBeenCalledTimes(2);
+    expect(components[0].render(80)).toEqual([]);
+    expect(custom).toHaveBeenLastCalledWith(expect.any(Function), mode === "fullscreen"
+      ? { overlay: true, overlayOptions: { anchor: "center", width: "80%", maxHeight: "80%" } }
+      : { overlay: false });
+    expect(components[1].render(80).map(strip).join("\n")).toContain("╭");
   });
 });
 
