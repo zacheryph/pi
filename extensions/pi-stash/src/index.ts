@@ -257,7 +257,7 @@ export default function stashExtension(pi: ExtensionAPI, dependencies: StashExte
   }));
 
   pi.registerCommand("stash", {
-    description: "Browse this branch's stash entries (Enter previews with line numbers)",
+    description: "Browse this branch's stash entries (Enter shows details and a numbered content preview)",
     handler: async (_args, ctx) => {
       const entries = currentEntries(index);
       let warning: string | undefined;
