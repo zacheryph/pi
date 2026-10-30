@@ -26,8 +26,10 @@ except `.github/` (upstream CI and npm publish workflows) with
 
 Still byte-for-byte with upstream: `e2e/`, `README.md`, `CHANGELOG.md`,
 `UPSTREAM-ISSUES.md` (upstream's own notes on Pi-side limitations, unrelated to
-this file), `LICENSE`, `.gitignore`, and every file under `src/` and `test/`
-except the five listed under **Typecheck** below.
+this file), `LICENSE`, `.gitignore`, and every upstream file under `src/` and
+`test/` except those named under **Local changes** below (`src/extension.ts`,
+`src/format.ts`, `src/jobs.ts`, `src/ownership.ts`, `src/supervisor.ts`,
+`src/watch.ts`, `test/delivery.test.ts`, `test/extension.test.ts`).
 
 ## Local changes
 
@@ -84,6 +86,37 @@ Five typing fixes; runtime behaviour is unchanged:
 
   `codemode` is `model-only`, so `executeTool` cannot run it.
 
+### Tool checks (#9)
+
+`job_watch` accepts `toolCheck` instead of `check`: one Pi tool call per interval
+through the kept `ctx.executeTool`, with an optional `match` on the result. Usage,
+allowlist, and lifecycle are in [TOOL-CHECKS.md](TOOL-CHECKS.md). Codemode
+script checks are not supported (see above).
+
+New files, so upstream syncs do not touch them:
+
+- `src/probe.ts`: runs an async check with the contract `runCheck` expects from a
+  `SupervisedRun` (one outcome, `terminate()` wins over a late result).
+- `src/toolcheck.ts`: spec validation, the allowlist, `match`, canonical JSON, and
+  the consecutive-error limit.
+- `test/toolcheck.test.ts` (unit) and `test/toolcheck-session.test.ts` (real
+  `AgentSession`, faux provider).
+- `TOOL-CHECKS.md`.
+
+Edits to upstream files, kept small:
+
+- `src/watch.ts`: `CheckResult.inconclusive`; `evaluateWatch` treats it like a
+  timed-out check (no match, no baseline).
+- `src/jobs.ts`: `WatchOptions.probe`; `runCheck` starts the probe instead of a
+  shell run when one is given, logs `inconclusive` checks, and settles the watch
+  `failed` on a probe's final error. `Job.run` is typed as the shared `CheckRun`
+  interface; `envLimit` is exported for reuse.
+- `src/extension.ts`: `toolCheck` in the `job_watch` schema (`check` is no
+  longer required by the schema; exactly one of the two is enforced in
+  `execute`) and the wiring to `ctx.executeTool`, `pi.getAllTools()`,
+  `PI_JOBS_WATCH_TOOLS`, and `PI_JOBS_MAX_CHECK_ERRORS`.
+- `src/format.ts`: "last check inconclusive" in notifications.
+
 ## Known gaps
 
 - **UI.** pi-jobs registers no widgets or custom tool renderers, so the
@@ -92,8 +125,8 @@ Five typing fixes; runtime behaviour is unchanged:
 
 ## Planned changes
 
-- [#9](https://github.com/zacheryph/pi/issues/9): tool and codemode checks for
-  `job_watch`.
+- Codemode script checks for `job_watch` (#9), if Pi gains a way for extensions
+  to run codemode scripts.
 
 ## Sync history
 

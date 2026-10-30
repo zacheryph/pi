@@ -48,7 +48,7 @@ export function formatNotification(job: JobSnapshot, tail: Tail, now = Date.now(
 		facts.push(`until ${job.until}`, `${job.checks ?? 0} check${job.checks === 1 ? "" : "s"}`);
 		const last = job.lastCheck;
 		if (last) {
-			const status = last.timedOut ? "last check timed out" : `last check ${exitText(last.exitCode, last.signal)}`;
+			const status = last.timedOut ? "last check timed out" : last.inconclusive ? "last check inconclusive" : `last check ${exitText(last.exitCode, last.signal)}`;
 			facts.push(status);
 		}
 	} else {

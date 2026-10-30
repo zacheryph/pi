@@ -10,6 +10,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { mkdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { DEFAULT_LOG_CAP_BYTES, LogWriter } from "./logwriter.ts";
+import { startProbe, type CheckRun, type ProbeOutcome, type WatchProbe } from "./probe.ts";
 import { SupervisedRun, type RunOutcome } from "./supervisor.ts";
 import { readTail, tailBuffer, TailSink, type Tail } from "./tail.ts";
 import { evaluateWatch, type CheckResult, type WatchUntil } from "./watch.ts";
@@ -55,7 +56,10 @@ export interface StartOptions {
 }
 
 export interface WatchOptions {
+	/** Shell check, or the display title of `probe` when one is given. */
 	check: string;
+	/** A non-shell check (e.g. a tool check) run instead of `check`. */
+	probe?: WatchProbe;
 	cwd: string;
 	intervalSeconds: number;
 	timeoutSeconds: number;
@@ -119,7 +123,7 @@ export const DEFAULT_MAX_RUNNING = 8;
 export const DEFAULT_MAX_RUNNING_WATCHES = 32;
 
 /** A positive integer from the environment, or undefined. */
-function envLimit(env: NodeJS.ProcessEnv, name: string): number | undefined {
+export function envLimit(env: NodeJS.ProcessEnv, name: string): number | undefined {
 	const raw = env[name];
 	if (raw === undefined || raw.trim() === "") return undefined;
 	const n = Number(raw);
@@ -154,7 +158,7 @@ type Pending = "timeout" | "kill";
 interface Job {
 	snap: JobSnapshot;
 	/** The command's run, or the currently running check of a watch. */
-	run?: SupervisedRun;
+	run?: CheckRun;
 	log?: LogWriter;
 	pending?: Pending;
 	notify: boolean;
@@ -395,8 +399,8 @@ export class JobManager {
 		const errHash = createHash("sha256");
 		let timedOut = false;
 		let checkTimer: NodeJS.Timeout | undefined;
-		let run: SupervisedRun | undefined;
-		const finish = (outcome: RunOutcome): void => {
+		let run: CheckRun | undefined;
+		const finish = (outcome: ProbeOutcome): void => {
 			if (checkTimer) {
 				clearTimeout(checkTimer);
 				job.timers.delete(checkTimer);
@@ -408,7 +412,8 @@ export class JobManager {
 			const outputHash = `${outHash.digest("hex")}:${errHash.digest("hex")}`;
 			// A check stopped by the watch's own timeout or kill is inconclusive too.
 			const result: CheckResult = { exitCode: outcome.exitCode, signal: outcome.signal, timedOut: timedOut || job.pending !== undefined, output, outputHash };
-			const status = result.timedOut ? "timed out" : outcome.signal ? `signal ${outcome.signal}` : `exit ${outcome.exitCode}`;
+			if (outcome.inconclusive) result.inconclusive = true;
+			const status = result.timedOut ? "timed out" : result.inconclusive ? "inconclusive" : outcome.signal ? `signal ${outcome.signal}` : `exit ${outcome.exitCode}`;
 			job.log?.write(`--- check ${n} · ${new Date().toISOString()} · ${status} ---\n`);
 			job.log?.write(raw);
 			if (raw.length && raw[raw.length - 1] !== 10) job.log?.write("\n");
@@ -418,21 +423,18 @@ export class JobManager {
 			if (job.pending === undefined || !job.snap.lastCheck) job.snap.lastCheck = result;
 			if (job.pending === "kill") return void this.settle(job, "killed");
 			if (job.pending === "timeout") return void this.settle(job, "timed_out");
+			if (outcome.final) return void this.settle(job, "failed", { error: outcome.error });
 			const verdict = evaluateWatch(options.until, result, job.baseline);
 			job.baseline = verdict.baseline;
 			if (verdict.matched) return void this.settle(job, "matched", { exitCode: outcome.exitCode, signal: outcome.signal });
 			this.addTimer(job, options.intervalSeconds * 1000, () => this.runCheck(job, options));
 		};
+		const onOutput = (chunk: Buffer, stream: "out" | "err"): void => {
+			(stream === "err" ? errHash : outHash).update(chunk);
+			sink.push(chunk);
+		};
 		try {
-			run = this.launch(
-				options.check,
-				options.cwd,
-				(chunk, stream) => {
-					(stream === "err" ? errHash : outHash).update(chunk);
-					sink.push(chunk);
-				},
-				finish,
-			);
+			run = options.probe ? startProbe(options.probe, onOutput, finish) : this.launch(options.check, options.cwd, onOutput, finish);
 		} catch (err) {
 			// The first check failing synchronously means the check can never run: let watch() reject.
 			if (n === 1) throw err;

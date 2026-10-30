@@ -116,10 +116,13 @@ cmux Focus button.
 ### pi-jobs
 
 Background shell jobs and watches that wake the agent when they finish, vendored
-unchanged from [`woksin/pi-jobs`](extensions/pi-jobs/UPSTREAM.md). `job_start` runs
-a command in its own process group and returns immediately; `job_watch` re-runs a
-shell check until it succeeds, fails, or its output changes. The agent ends its
-turn instead of polling, and completions arrive as one batched follow-up message.
+from [`woksin/pi-jobs`](extensions/pi-jobs/UPSTREAM.md) with local additions.
+`job_start` runs a command in its own process group and returns immediately;
+`job_watch` re-runs a shell check until it succeeds, fails, or its output changes.
+With `toolCheck` it instead polls a read-only Pi tool, such as an MCP tool, until a
+condition on its result holds ([tool checks](extensions/pi-jobs/TOOL-CHECKS.md)).
+The agent ends its turn instead of polling, and completions arrive as one batched
+follow-up message.
 `job_list`, `job_output`, and `job_kill` inspect and stop work; `/jobs` lists or
 kills jobs for the user. POSIX only. Logs live under `~/.pi/agent/jobs/` for seven
 days. Do not also install `npm:@woksin/pi-jobs`. See the
