@@ -4,7 +4,7 @@ import { join } from "node:path";
 // Keep this file free of Pi imports and of TypeScript syntax Node cannot strip.
 
 /** Bump when the hub must be replaced to understand newer reporters. */
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 export const DEFAULT_PORT = 7317;
 /** How long the hub waits with no sessions, or keeps a restarting session's card. */
 export const IDLE_GRACE_MS = 15_000;
@@ -60,6 +60,57 @@ export interface StashSection {
   }>;
 }
 
+/** Token and cost totals for the whole session, as Pi's /session reports them. */
+export interface UsageSection {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  /** USD. */
+  cost: number;
+}
+
+/** Compaction history on the branch, plus pi-blackhole's memory ledger when present. */
+export interface MemorySection {
+  compactions: number;
+  lastCompactionAt?: number;
+  blackhole?: {
+    /** Observations recorded on the branch. */
+    observations: number;
+    /** Recorded observations not dropped since. */
+    kept: number;
+    dropped: number;
+    reflections: number;
+    /** Tokens held by the kept observations. */
+    keptTokens: number;
+  };
+}
+
+export type SubagentState = "queued" | "running" | "completed" | "failed" | "stopped";
+
+/** Subagents seen on this session's bus while the dashboard was loaded, newest first. */
+export interface SubagentsSection {
+  agents: Array<{
+    id: string;
+    type: string;
+    description: string;
+    state: SubagentState;
+    /** When the dashboard first saw it. */
+    since: number;
+    durationMs?: number;
+    toolUses?: number;
+    tokens?: number;
+    /** Latest progress message, or the error for a failed run. */
+    note?: string;
+  }>;
+}
+
+/** Where Focus goes; present only when a terminal adapter recognized the session. */
+export interface TerminalInfo {
+  kind: string;
+  label: string;
+}
+
 export interface SessionSnapshot {
   /** Stable for the Pi process, across /new, /resume and /reload. */
   id: string;
@@ -78,13 +129,22 @@ export interface SessionSnapshot {
   todos?: TodoSection;
   /** Absent when pi-stash is not loaded. */
   stash?: StashSection;
+  usage?: UsageSection;
+  memory?: MemorySection;
+  /** Absent when pi-subagents is not loaded or nothing has run yet. */
+  subagents?: SubagentsSection;
+  terminal?: TerminalInfo;
 }
 
 export type ReporterMessage =
   | { type: "hello"; version: number; snapshot: SessionSnapshot }
   | { type: "update"; snapshot: SessionSnapshot }
   /** `replace`: /new, /resume, /fork or /reload; the same process reconnects shortly. */
-  | { type: "bye"; reason: "quit" | "replace" };
+  | { type: "bye"; reason: "quit" | "replace" }
+  | { type: "result"; id: number; ok: boolean; error?: string };
+
+/** Hub to reporter. */
+export type HubCommand = { type: "command"; id: number; command: "focus" };
 
 export interface HubPaths {
   dir: string;
@@ -96,7 +156,7 @@ export function hubPaths(dir: string): HubPaths {
   return { dir, socket: join(dir, "hub.sock"), log: join(dir, "hub.log") };
 }
 
-export function encode(message: ReporterMessage): string {
+export function encode(message: ReporterMessage | HubCommand): string {
   return `${JSON.stringify(message)}\n`;
 }
 

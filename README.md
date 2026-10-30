@@ -103,17 +103,19 @@ Local web dashboard of running interactive Pi sessions at
 `http://127.0.0.1:7317/`; `/dashboard` opens it. Cards are grouped by working
 directory and show session name, `--agent` profile, model and thinking level,
 context usage, live status (idle, working, running a tool, compacting, or
-waiting on a dialog, which sorts first), and task and stash counts. pi-todo and
-pi-stash publish their state as `pi-todo:snapshot` / `pi-stash:snapshot` events
-on the session's `pi.events` bus for this and other extensions.
+waiting on a dialog, which sorts first), and task, subagent and stash counts.
+A card opens a detail page with the task list, subagents, stash index, usage
+and cost, and pi-blackhole memory counts. **Focus** jumps to the session's cmux
+panel and raises cmux. pi-todo and pi-stash publish their state as
+`pi-todo:snapshot` / `pi-stash:snapshot` events on the session's `pi.events`
+bus for this and other extensions.
 
 The first interactive session starts a detached hub; sessions connect to it
 over a unix socket in `~/.pi/agent/dashboard/`, and it exits 15 seconds after
 the last one quits. Print-mode runs and subagent children are not shown. Port
 and Node binary are set in `~/.pi/agent/dashboard.json`. Loopback only. See
 [extension docs](extensions/pi-dashboard/README.md) and the
-[plan](extensions/pi-dashboard/docs/plan.md) for the upcoming detail page and
-cmux Focus button.
+[plan](extensions/pi-dashboard/docs/plan.md).
 
 ### pi-jobs
 
