@@ -19,6 +19,7 @@ describe("createResolvedSpawnConfig", () => {
         thinking: undefined,
         inheritContext: false,
         runInBackground: false,
+        pool: "default",
         agentInvocation: {
           thinking: undefined,
           maxTurns: undefined,

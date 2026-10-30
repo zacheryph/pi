@@ -153,6 +153,7 @@ export function buildInvocationTags(
   if (invocation.thinking) tags.push(`thinking: ${invocation.thinking}`);
   if (invocation.inheritContext) tags.push("inherit context");
   if (invocation.runInBackground) tags.push("background");
+  if (invocation.pool) tags.push(`pool: ${invocation.pool}`);
   if (invocation.maxTurns != null) tags.push(`max turns: ${invocation.maxTurns}`);
   return { tags };
 }

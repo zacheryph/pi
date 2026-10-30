@@ -68,6 +68,7 @@ function loadFromDir(dir: string, agents: Map<string, AgentConfig>, source: "pro
       promptMode: fm.prompt_mode === "replace" ? "replace" : "append",
       inheritContext: fm.inherit_context != null ? fm.inherit_context === true : undefined,
       runInBackground: fm.run_in_background != null ? fm.run_in_background === true : undefined,
+      pool: nonEmptyStr(fm.pool),
       locked: lockDeclaration(fm.locked, name),
       enabled: fm.enabled !== false,  // default true; explicitly false disables
       source,
@@ -82,6 +83,11 @@ function loadFromDir(dir: string, agents: Map<string, AgentConfig>, source: "pro
 /** Extract a string or undefined. */
 function str(val: unknown): string | undefined {
   return typeof val === "string" ? val : undefined;
+}
+
+/** Extract a trimmed, non-empty string or undefined. */
+function nonEmptyStr(val: unknown): string | undefined {
+  return typeof val === "string" && val.trim() ? val.trim() : undefined;
 }
 
 /**

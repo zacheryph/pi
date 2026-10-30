@@ -42,6 +42,7 @@ export function createResolvedSpawnConfig(
       thinking: undefined,
       inheritContext: false,
       runInBackground,
+      pool: "default",
       agentInvocation: {
         thinking: undefined,
         maxTurns: undefined,

@@ -90,6 +90,8 @@ describe("effective agent definitions", () => {
     expect(field(text, "Max turns")).toBe("unlimited");
     expect(field(text, "Inherit context")).toBe("false (tool default; caller decides)");
     expect(field(text, "Run in background")).toBe("false (tool default; caller decides)");
+    expect(field(text, "Pool")).toBe("default");
+    expect(field(detail(agent({ pool: "slow" })), "Pool")).toBe("slow");
     expect(field(text, "Locked")).toBe("(none)");
     expect(field(text, "Source path")).toBe("(not available)");
     expect(text.endsWith("\n\nBody\n(empty)")).toBe(true);

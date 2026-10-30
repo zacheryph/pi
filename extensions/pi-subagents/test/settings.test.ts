@@ -353,6 +353,43 @@ describe("settings persistence", () => {
         expect(loadSettings(globalDir, projectDir)).toEqual({});
       });
     });
+
+    describe("pools", () => {
+      it("keeps pools with a valid maxConcurrent", () => {
+        writeProject({ pools: { slow: { maxConcurrent: 1 }, wide: { maxConcurrent: 8 } } });
+        expect(loadSettings(globalDir, projectDir)).toEqual({
+          pools: { slow: { maxConcurrent: 1 }, wide: { maxConcurrent: 8 } },
+        });
+      });
+
+      it("drops pools with an invalid limit, the reserved default name, and blank names", () => {
+        writeProject({
+          pools: {
+            slow: { maxConcurrent: 1 },
+            zero: { maxConcurrent: 0 },
+            float: { maxConcurrent: 1.5 },
+            huge: { maxConcurrent: 1025 },
+            bare: 3,
+            default: { maxConcurrent: 2 },
+            "  ": { maxConcurrent: 2 },
+          },
+        });
+        expect(loadSettings(globalDir, projectDir)).toEqual({ pools: { slow: { maxConcurrent: 1 } } });
+      });
+
+      it("drops the key entirely when no pool survives or the value is not an object", () => {
+        writeProject({ pools: { zero: { maxConcurrent: 0 } } });
+        expect(loadSettings(globalDir, projectDir)).toEqual({});
+        writeProject({ pools: [{ maxConcurrent: 1 }] });
+        expect(loadSettings(globalDir, projectDir)).toEqual({});
+      });
+
+      it("project pools replace global pools wholesale (shallow merge)", () => {
+        writeGlobal({ pools: { slow: { maxConcurrent: 1 }, wide: { maxConcurrent: 8 } } });
+        writeProject({ pools: { slow: { maxConcurrent: 2 } } });
+        expect(loadSettings(globalDir, projectDir)).toEqual({ pools: { slow: { maxConcurrent: 2 } } });
+      });
+    });
   });
 
   describe("save result + corrupt-file warning", () => {
@@ -466,6 +503,53 @@ describe("SettingsManager", () => {
     it("defaults every provider to full prompt inheritance", () => {
       const sm = new SettingsManager({ emit: vi.fn(), cwd: "/tmp", agentDir: "/nonexistent" });
       expect(sm.promptInheritanceFor("claude-bridge")).toBe("full");
+    });
+
+    it("defaults every agent to the default pool at maxConcurrent", () => {
+      const sm = new SettingsManager({ emit: vi.fn(), cwd: "/tmp", agentDir: "/nonexistent" });
+      expect(sm.resolvePool(undefined)).toBe("default");
+      expect(sm.resolvePool("slow")).toBe("default");
+      expect(sm.concurrencyLimitFor("slow")).toBe(4);
+    });
+  });
+
+  describe("pools", () => {
+    function managerWithPools(pools: unknown, extra: Record<string, unknown> = {}) {
+      const projectDir = mkdtempSync(join(tmpdir(), "pi-sm-pools-"));
+      mkdirSync(join(projectDir, ".pi"), { recursive: true });
+      writeFileSync(join(projectDir, ".pi", "subagents.json"), JSON.stringify({ pools, ...extra }));
+      const sm = new SettingsManager({ emit: vi.fn(), cwd: projectDir, agentDir: "/nonexistent" });
+      sm.load();
+      return sm;
+    }
+
+    it("resolves a configured pool to itself and its own limit", () => {
+      const sm = managerWithPools({ slow: { maxConcurrent: 1 } }, { maxConcurrent: 6 });
+      expect(sm.resolvePool("slow")).toBe("slow");
+      expect(sm.concurrencyLimitFor("slow")).toBe(1);
+      expect(sm.concurrencyLimitFor(undefined)).toBe(6);
+      expect(sm.concurrencyLimitFor("default")).toBe(6);
+    });
+
+    it("routes an unconfigured pool name to the default pool", () => {
+      const sm = managerWithPools({ slow: { maxConcurrent: 1 } });
+      expect(sm.resolvePool("sloow")).toBe("default");
+      expect(sm.concurrencyLimitFor("sloow")).toBe(4);
+    });
+
+    it("does not treat inherited object keys as pools", () => {
+      const sm = managerWithPools({ slow: { maxConcurrent: 1 } });
+      expect(sm.resolvePool("toString")).toBe("default");
+    });
+
+    it("preserves hand-edited pools across an unrelated edit", () => {
+      const sm = managerWithPools({ slow: { maxConcurrent: 1 } });
+      expect(sm.snapshot().pools).toEqual({ slow: { maxConcurrent: 1 } });
+    });
+
+    it("omits pools from the snapshot when none are configured", () => {
+      const sm = new SettingsManager({ emit: vi.fn(), cwd: "/tmp", agentDir: "/nonexistent" });
+      expect(sm.snapshot()).not.toHaveProperty("pools");
     });
   });
 

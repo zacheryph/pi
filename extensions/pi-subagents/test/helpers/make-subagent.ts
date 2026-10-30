@@ -70,10 +70,12 @@ export interface TestSubagentOptions {
 	 * `sessionReady` is set — a record with no session has no transcript.
 	 */
 	outputFile?: string;
+	/** Concurrency pool the record was scheduled in. */
+	pool?: string;
 }
 
 export function createTestSubagent(overrides: TestSubagentOptions = {}): Subagent {
-	const { id, type, description, isBackground, execution, toolCallId, toolUses, lifetimeUsage, compactionCount, activeTools, responseText, runUpdates, sessionReady, outputFile, ...stateOverrides } =
+	const { id, type, description, isBackground, pool, execution, toolCallId, toolUses, lifetimeUsage, compactionCount, activeTools, responseText, runUpdates, sessionReady, outputFile, ...stateOverrides } =
 		overrides;
 	const state = new SubagentState({
 		status: "completed",
@@ -93,6 +95,7 @@ export function createTestSubagent(overrides: TestSubagentOptions = {}): Subagen
 		type: type ?? "general-purpose",
 		description: description ?? "Test task",
 		isBackground: isBackground ?? true,
+		pool,
 		execution: execution ?? makeStubExecution({
 			...(toolCallId ? { parentSession: { toolCallId } } : {}),
 		}),

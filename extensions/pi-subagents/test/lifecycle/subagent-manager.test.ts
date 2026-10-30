@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
-import { ConcurrencyLimiter } from "#src/lifecycle/concurrency-limiter";
+import { ConcurrencyLimiter, ConcurrencyPools } from "#src/lifecycle/concurrency-limiter";
 import type { CreateSubagentSessionParams } from "#src/lifecycle/create-subagent-session";
 import type { AgentSpawnConfig } from "#src/lifecycle/subagent-manager";
 import { resolveRetentionWindow, SubagentManager, type SubagentManagerObserver } from "#src/lifecycle/subagent-manager";
@@ -1789,5 +1789,84 @@ describe("resolveRetentionWindow", () => {
         ),
       ).toEqual({ referenceAt: 9_000, windowMinutes: 720 });
     });
+  });
+});
+
+describe("SubagentManager concurrency pools", () => {
+  /** Default pool limit 1 and a configured `slow` pool limit 1; `Slow` declares the slow pool. */
+  function createPooledManager(registry = registryWith("Slow", { pool: "slow" })) {
+    const limits: Record<string, number> = { default: 1, slow: 1 };
+    const manager = new SubagentManager({
+      createSubagentSession: createBlockingFactory(),
+      limiter: new ConcurrencyPools((pool) => limits[pool], "default"),
+      resolvePool: (pool) => (pool !== undefined && Object.hasOwn(limits, pool) ? pool : "default"),
+      baseCwd: "/repo",
+      registry,
+    });
+    return manager;
+  }
+
+  function spawnType(manager: SubagentManager, type: string) {
+    return manager.spawn(STUB_SNAPSHOT, type, "p", {
+      description: type,
+      background: { kind: "explicit", isBackground: true },
+    });
+  }
+
+  it("runs an agent in its own pool while the default pool is full", () => {
+    const manager = createPooledManager();
+    const first = spawnType(manager, "general-purpose");
+    const second = spawnType(manager, "general-purpose");
+    const slow = spawnType(manager, "Slow");
+
+    expect(manager.getRecord(first)!.status).toBe("running");
+    expect(manager.getRecord(second)!.status).toBe("queued");
+    expect(manager.getRecord(slow)!.status).toBe("running");
+    expect(manager.getRecord(slow)!.pool).toBe("slow");
+    expect(manager.getRecord(first)!.pool).toBe("default");
+    manager.abortAll();
+  });
+
+  it("queues an agent behind its own pool's limit, not the default pool's", () => {
+    const manager = createPooledManager();
+    const slowA = spawnType(manager, "Slow");
+    const slowB = spawnType(manager, "Slow");
+    const general = spawnType(manager, "general-purpose");
+
+    expect(manager.getRecord(slowA)!.status).toBe("running");
+    expect(manager.getRecord(slowB)!.status).toBe("queued");
+    expect(manager.getRecord(general)!.status).toBe("running");
+    manager.abortAll();
+  });
+
+  it("schedules a spawn in the pool its options name, overriding frontmatter", () => {
+    const manager = createPooledManager();
+    const general = manager.spawn(STUB_SNAPSHOT, "general-purpose", "p", {
+      description: "general in slow",
+      background: { kind: "explicit", isBackground: true },
+      pool: "slow",
+    });
+    const slow = manager.spawn(STUB_SNAPSHOT, "Slow", "p", {
+      description: "slow in default",
+      background: { kind: "explicit", isBackground: true },
+      pool: "default",
+    });
+
+    expect(manager.getRecord(general)!.pool).toBe("slow");
+    expect(manager.getRecord(slow)!.pool).toBe("default");
+    expect(manager.getRecord(general)!.status).toBe("running");
+    expect(manager.getRecord(slow)!.status).toBe("running");
+    manager.abortAll();
+  });
+
+  it("schedules an agent naming an unconfigured pool in the default pool", () => {
+    const manager = createPooledManager(registryWith("Typo", { pool: "sloow" }));
+    const general = spawnType(manager, "general-purpose");
+    const typo = spawnType(manager, "Typo");
+
+    expect(manager.getRecord(general)!.status).toBe("running");
+    expect(manager.getRecord(typo)!.status).toBe("queued");
+    expect(manager.getRecord(typo)!.pool).toBe("default");
+    manager.abortAll();
   });
 });

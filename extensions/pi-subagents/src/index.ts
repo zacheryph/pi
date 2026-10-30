@@ -28,7 +28,7 @@ import { AgentTypeRegistry } from "#src/config/agent-types";
 import { loadCustomAgents } from "#src/config/custom-agents";
 import { InterruptHandler, SessionLifecycleHandler, WidgetEventsHandler } from "#src/handlers/index";
 import { createChildLifecyclePublisher } from "#src/lifecycle/child-lifecycle";
-import { ConcurrencyLimiter } from "#src/lifecycle/concurrency-limiter";
+import { ConcurrencyPools } from "#src/lifecycle/concurrency-limiter";
 import { createSubagentSession, type SubagentSessionDeps } from "#src/lifecycle/create-subagent-session";
 import { SubagentManager } from "#src/lifecycle/subagent-manager";
 import { CompositeSubagentObserver } from "#src/observation/composite-subagent-observer";
@@ -56,7 +56,7 @@ import { createProjectContextLoader } from "#src/session/project-context";
 import { buildAgentPrompt } from "#src/session/prompts";
 import { inheritRegisteredProviders } from "#src/session/provider-inheritance";
 import { deriveSubagentSessionDir } from "#src/session/session-dir";
-import { SettingsManager } from "#src/settings";
+import { DEFAULT_POOL, SettingsManager } from "#src/settings";
 import { AgentTool } from "#src/tools/agent-tool";
 import { GetResultTool } from "#src/tools/get-result-tool";
 import { SteerTool } from "#src/tools/steer-tool";
@@ -189,15 +189,16 @@ export default function (pi: ExtensionAPI) {
     listParentToolNames: () => pi.getAllTools().filter((tool) => tool.exposure !== "hidden").map((tool) => tool.name),
   };
 
-  // ConcurrencyLimiter: schedules background run thunks FIFO against the limit.
+  // ConcurrencyPools: schedules background run thunks FIFO against each pool's limit.
   // It knows nothing about agents or the manager — dependency direction is strictly manager → limiter.
-  const limiter = new ConcurrencyLimiter(() => settings.maxConcurrent);
+  const limiter = new ConcurrencyPools((pool) => settings.concurrencyLimitFor(pool), DEFAULT_POOL);
 
   const manager = new SubagentManager({
     createSubagentSession: (params) => createSubagentSession(params, subagentSessionDeps),
     baseCwd: process.cwd(),
     observer,
     limiter,
+    resolvePool: (pool) => settings.resolvePool(pool),
     getRunConfig: () => settings,
     getRetentionPolicy: () => settings,
     registry,

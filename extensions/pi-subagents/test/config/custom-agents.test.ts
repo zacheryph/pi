@@ -32,6 +32,17 @@ describe("loadCustomAgents", () => {
     expect(result.size).toBe(0);
   });
 
+  it("reads pool: as a trimmed name, omitted when absent or blank", () => {
+    writeAgent("slow", `---\npool: "  slow  "\n---\n\nSlow.`);
+    writeAgent("blank", `---\npool: ""\n---\n\nBlank.`);
+    writeAgent("none", `---\ndescription: none\n---\n\nNone.`);
+
+    const result = loadCustomAgents(tmpDir);
+    expect(result.get("slow")!.pool).toBe("slow");
+    expect(result.get("blank")!.pool).toBeUndefined();
+    expect(result.get("none")!.pool).toBeUndefined();
+  });
+
   it("loads a basic agent with all frontmatter fields", () => {
     writeAgent("auditor", `---
 description: Security Auditor

@@ -15,7 +15,10 @@ function makeModelInfo(overrides: Partial<Parameters<typeof resolveSpawnConfig>[
   };
 }
 
-const defaultSettings = { defaultMaxTurns: undefined as number | undefined };
+const defaultSettings = {
+  defaultMaxTurns: undefined as number | undefined,
+  resolvePool: (_pool: string | undefined) => "default",
+};
 
 describe("resolveSpawnConfig — type resolution", () => {
   it("resolves a known agent type", () => {
@@ -144,7 +147,7 @@ describe("resolveSpawnConfig — max turns normalization", () => {
       { subagent_type: "general-purpose", prompt: "test", description: "d" },
       testRegistry,
       makeModelInfo(),
-      { defaultMaxTurns: 25 },
+      { ...defaultSettings, defaultMaxTurns: 25 },
     );
     if ("error" in result) return;
     expect(result.execution.effectiveMaxTurns).toBe(25);
@@ -458,3 +461,83 @@ describe("resolveSpawnConfig — prompt and rawType passthrough", () => {
     expect(result.identity.rawType).toBe("Explore");
   });
 });
+
+describe("resolveSpawnConfig — pool", () => {
+  const pooledSettings = {
+    defaultMaxTurns: undefined,
+    resolvePool: (pool: string | undefined) => (pool === "slow" ? "slow" : "default"),
+  };
+  const slowRegistry = new AgentTypeRegistry(
+    () =>
+      new Map([
+        [
+          "Slow",
+          {
+            name: "Slow",
+            description: "Slow",
+            systemPrompt: "",
+            promptMode: "append" as const,
+            pool: "slow",
+          },
+        ],
+      ]),
+  );
+
+  function resolve(params: Record<string, unknown>, registry = testRegistry) {
+    const result = resolveSpawnConfig(
+      { subagent_type: "general-purpose", prompt: "p", description: "d", run_in_background: true, ...params },
+      registry,
+      makeModelInfo(),
+      pooledSettings,
+    );
+    if ("error" in result) throw new Error(result.error);
+    return result;
+  }
+
+  it("runs in the default pool when neither caller nor agent names one", () => {
+    const result = resolve({});
+    expect(result.execution.pool).toBe("default");
+    expect(result.notes).toEqual([]);
+    expect(result.execution.agentInvocation.pool).toBeUndefined();
+  });
+
+  it("places a background run in the caller's configured pool and tags it", () => {
+    const result = resolve({ pool: "slow" });
+    expect(result.execution.pool).toBe("slow");
+    expect(result.notes).toEqual([]);
+    expect(result.presentation.agentTags).toContain("pool: slow");
+  });
+
+  it("uses the agent's own pool when the caller omits one", () => {
+    expect(resolve({ subagent_type: "Slow" }, slowRegistry).execution.pool).toBe("slow");
+  });
+
+  it("lets the caller move an agent back to the default pool", () => {
+    expect(resolve({ subagent_type: "Slow", pool: "default" }, slowRegistry).execution.pool).toBe("default");
+  });
+
+  it("falls back to the default pool with a note for an unknown caller pool", () => {
+    const result = resolve({ pool: "sloow" });
+    expect(result.execution.pool).toBe("default");
+    expect(result.notes).toEqual(['Note: Unknown pool "sloow" — using default.']);
+  });
+
+  it("notes that a foreground run ignores the caller's pool", () => {
+    const result = resolve({ pool: "slow", run_in_background: false });
+    expect(result.notes).toEqual([
+      'Note: pool "slow" was ignored because foreground agents bypass concurrency pools.',
+    ]);
+    expect(result.presentation.agentTags).not.toContain("pool: slow");
+  });
+
+  it("rejects a non-string pool", () => {
+    const result = resolveSpawnConfig(
+      { subagent_type: "general-purpose", prompt: "p", description: "d", pool: 3 },
+      testRegistry,
+      makeModelInfo(),
+      pooledSettings,
+    );
+    expect("error" in result && result.error).toBe("Invalid pool 3: expected a pool name.");
+  });
+});
+
