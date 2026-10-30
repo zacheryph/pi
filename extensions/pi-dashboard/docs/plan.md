@@ -31,7 +31,7 @@ A local web UI showing every running interactive Pi session:
 | Todos | In-repo `pi-todo`; branch journal replay (`replayTodoSession`) | Yes; add a small publish hook in pi-todo instead of re-parsing |
 | Subagents (bonus) | `getSubagentsService().listAgents()` on `globalThis` | Yes |
 | Blackhole | No public API. Persists `om.observations.recorded`, `om.reflections.recorded`, `om.observations.dropped`, `om.folded` custom entries plus compaction entries | Partial: counts, last compaction, tokens since compaction are derivable. Live worker phase and gauges live in its runtime and are not reachable. Fragile across upstream versions; ask upstream for a `pi.events` snapshot |
-| Stash | Depends on the package: at least six "pi-stash" packages store differently (session custom entries, `~/.pi/agent/prompt-stash.json`, `.pi/stash.md`, in-memory only) | Unknown until the package is confirmed; one adapter per package; in-memory-only stashes are not reachable |
+| Stash | In-repo `pi-stash`. Index: `pi-personal:stash-index` custom entries on the branch (`put` + `checkpoint`), replayed by `replayStashIndex` / `currentEntries`. Content: hash-addressed blobs under `$PI_STASH_DIR` or `~/.pi/agent/stash/` | Yes: name, handle, bytes, lines, mime, description, source, creator session, age, version count, store usage vs `maxStoreBytes`. Content preview on demand only (see Security) |
 | Focus session | cmux: capture `CMUX_WORKSPACE_ID`, `CMUX_SURFACE_ID`, `CMUX_SOCKET_PATH` at startup, then `cmux select-workspace` + focus the surface/panel | Yes, with a spike to confirm verbs and socket access mode |
 
 ### Constraints found in research
@@ -53,6 +53,11 @@ A local web UI showing every running interactive Pi session:
   Run focus commands inside the reporter (a real cmux descendant with the
   right env), routed from the hub over the reporter's connection.
 - **cmux focus is user-affecting.** Only call focus verbs on an explicit click.
+- **Stash content can hold secrets.** pi-stash stores plaintext tool output
+  (env dumps, tokens in logs) with no redaction. Snapshots carry only index
+  metadata; a preview is fetched on explicit click, through the reporter (which
+  owns the `BlobStore` and its hash check), bounded to ~200 lines / 16 KB.
+  The hub cannot read blobs itself anyway: `store.ts` imports from Pi.
 - **No build step.** The repo loads TypeScript through Pi's jiti. The hub runs
   under plain Node 24 (outside Pi), so it must use erasable-only TypeScript
   (Node type stripping) or `.mjs`, and must not import Pi packages.
@@ -77,9 +82,17 @@ pi (cmux surface C) ─ reporter ─┘  ~/.pi/agent/       ▲
   (~250ms) patches after. Do not forward streaming deltas.
 - Collect data through **section providers**:
   `{ id, collect(ctx, pi): Json | undefined, triggers: EventName[] }`.
-  Core, todos, subagents, blackhole, and stash are providers; stash gets one
-  provider per supported package.
-- Handle hub commands: `focus` (via the terminal adapter). Later phases can add
+  Core, todos, stash, subagents, and blackhole are providers.
+- Prefer publish hooks over re-parsing for in-repo extensions. pi-subagents
+  already exposes a `globalThis` service; give pi-todo and pi-stash the same:
+  a read-only accessor (`getTodoSnapshot()`, `getStashSnapshot()`) plus a
+  `pi.events` change signal (`todos:changed`, `stash:changed`). Until then,
+  the providers replay branch entries with the extensions' own exported
+  replay functions (`replayTodoSession`, `replayStashIndex`), refreshing on
+  `tool_execution_end` for `todo`/`stash_put`, `session_tree`, and
+  `session_compact`.
+- Handle hub commands: `focus` (via the terminal adapter) and `stash_preview`
+  (bounded `stash_get`-style head or line range). Later phases can add
   abort/steer.
 - `/dashboard` command: show the URL and open it (`open <url>` on macOS).
   Optional footer status via `ctx.ui.setStatus("dashboard", …)`.
@@ -98,8 +111,10 @@ pi (cmux surface C) ─ reporter ─┘  ~/.pi/agent/       ▲
   - `GET /api/sessions`, `GET /api/sessions/:id`
   - `GET /events` SSE: `session-added`, `session-updated`, `session-removed`
   - `POST /api/sessions/:id/focus`
+  - `POST /api/sessions/:id/stash/:name/preview` (POST so the token check applies)
 - Security: loopback only, `Host` header check (DNS rebinding), per-hub token
-  required on POST with `Origin` check, socket in a `0700` directory.
+  required on POST with `Origin` check, socket in a `0700` directory. This
+  matters more now that stash previews can expose tool output.
 
 ### Terminal adapters
 
@@ -122,21 +137,24 @@ tmux, Ghostty, or iTerm adapters can follow without touching the hub.
 
 0. **Spike (½ day).** On the Mac: confirm the cmux focus verbs and the socket
    access mode from a process spawned by Pi; confirm Node 24 runs the hub `.ts`
-   via `process.execPath`; confirm which stash package is installed.
+   via `process.execPath`.
 1. **MVP.** Hub lifecycle (spawn, socket mutex, grace shutdown), reporter core
    fields (cwd, name, agent, model, thinking, status, context), index page
    with live SSE updates, `/dashboard`. Tests: hub lifecycle in a temp dir,
    two concurrent spawns, reporter snapshot builder, main-session detection.
-2. **Detail view and focus.** Todos (with pi-todo publish hook), subagents,
-   tokens/cost, blackhole stats, cmux focus button.
-3. **Stash and polish.** Stash adapter for the confirmed package, recent
-   activity (last tool calls), grouping/filtering by directory, browser
-   notifications when a session waits on you.
+2. **Detail view and focus.** Todos and stash index (with publish hooks in
+   pi-todo and pi-stash), subagents, tokens/cost, blackhole stats, cmux focus
+   button.
+3. **Previews and polish.** Stash content preview on click, todo activity
+   timelines, recent activity (last tool calls), grouping/filtering by
+   directory, browser notifications when a session waits on you, store usage
+   warning when over `maxStoreBytes`.
 4. **Actions (opt-in).** Abort, steer/send message, compact. Off by default.
 
 ## Open questions
 
-- Which stash package is installed?
+- Stash scope: current branch only (what `stash_list` shows), or also handles
+  subagents stored in their own sessions? (Proposed: current branch only.)
 - Fixed port (bookmarkable) or random port with `/dashboard` as the only way in?
 - Should `pi -p` print-mode runs appear? (Proposed: no.)
 - Which wireframe layout (A table + drawer, B card grid, C split view)?
@@ -177,7 +195,7 @@ tmux, Ghostty, or iTerm adapters can follow without touching the hub.
 │ ~/src/api             │ ~/src/api · orchestrator                    │
 │  ● fix-auth-retry  ◀  │ Model opus-5.5 · Thinking high · ● working  │
 │ ~/src/pi              │ Context ██████░░░░ 124k / 200k (62%)        │
-│  ◐ dashboard-plan     │ ┌ Todos 3/7 ┐ ┌ Blackhole ┐ ┌ Stash 2 ┐     │
+│  ◐ dashboard-plan     │ ┌ Todos 3/7 ┐ ┌ Blackhole ┐ ┌ Stash 3 ┐     │
 │  ⠋ vendor-jobs        │ │ …         │ │ …         │ │ …       │     │
 │ ~/src/site            │ └───────────┘ └───────────┘ └─────────┘     │
 │  ○ release-notes      │ Subagents · Recent activity                 │
