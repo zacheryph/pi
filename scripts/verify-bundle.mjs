@@ -51,6 +51,9 @@ try {
     "job_list",
     "job_output",
     "job_kill",
+    "stash_put",
+    "stash_get",
+    "stash_list",
   ]) {
     assert.ok(tools.includes(name), `Missing tool: ${name}`);
   }
@@ -72,6 +75,8 @@ try {
     "todos:remove",
     "todos:clear",
     "todos:settings",
+    "stash",
+    "stash:gc",
   ]) {
     assert.ok(commands.includes(name), `Missing command: ${name}`);
   }

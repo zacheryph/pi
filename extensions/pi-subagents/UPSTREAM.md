@@ -122,6 +122,23 @@ No upstream runtime behavior was intentionally changed during import.
   `noImplicitOverride`, `noImplicitReturns`, `noFallthroughCasesInSwitch`,
   `noUnusedLocals`, and `noUnusedParameters`; this source needed no changes.
 
+## Personal pi-stash integration
+
+- `READ_ONLY_TOOLS` in `src/config/default-agents.ts` gains `stash_get` and
+  `stash_list`, so Explore and Plan can read `stash:<name>@<hash>` handles from the
+  bundled `pi-stash` extension. Both tools only read.
+- Explore's `toolNames` additionally include `stash_put` (not the shared list), so it
+  can return large findings as a handle. `stash_put` writes only to Pi's data
+  directory, never the project. Explore's read-only prompt names it as the single
+  exception to "no files" and asks for large findings to be stashed.
+- Plan stays read-only: `stash_get` and `stash_list` only.
+- The orchestrator prompt gains one bullet: brief workers with stash handles for
+  shared material and ask for large results as handles.
+- Children load the parent's extensions, so the tools exist there when the bundle
+  is installed; without pi-stash the extra names simply match no tool.
+- `test/stash-sdk.test.ts` covers Explore writing and reading, and Plan being
+  refused `stash_put`, in real SDK child sessions.
+
 ## Development
 
 Run from this repository's root:
