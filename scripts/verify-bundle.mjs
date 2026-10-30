@@ -19,7 +19,6 @@ try {
     cwd: sandbox,
     agentDir: sandbox,
     settingsManager: SettingsManager.inMemory({ packages: [root] }),
-    noSkills: true,
     noPromptTemplates: true,
     noThemes: true,
     noContextFiles: true,
@@ -81,7 +80,14 @@ try {
   ]) {
     assert.ok(commands.includes(name), `Missing command: ${name}`);
   }
-  console.log(`Bundle loaded: ${extensions.length} extensions; ${tools.join(", ")}`);
+  const { skills, diagnostics } = loader.getSkills();
+  assert.deepEqual(diagnostics, [], "Bundle skills must load without diagnostics");
+  const skillNames = skills.map((skill) => skill.name);
+  assert.equal(new Set(skillNames).size, skillNames.length, "Skill names must be unique");
+  for (const name of ["make-it-easy"]) {
+    assert.ok(skillNames.includes(name), `Missing skill: ${name}`);
+  }
+  console.log(`Bundle loaded: ${extensions.length} extensions; ${tools.join(", ")}; skills: ${skillNames.join(", ")}`);
 } finally {
   process.chdir(originalCwd);
   if (originalAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;

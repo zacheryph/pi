@@ -36,6 +36,9 @@
       "./extensions/pi-todo/src/index.ts",
       "./extensions/pi-tldr/src/index.ts",
       "./extensions/pi-dashboard/src/index.ts"
+    ],
+    "skills": [
+      "./skills"
     ]
   },
   "engines": {
