@@ -1,8 +1,8 @@
 # pi-dashboard: research and implementation plan
 
-Status: planned, decisions recorded below; nothing implemented yet. Wireframes
-are in the companion artifact linked from the PR/session; ASCII versions of the
-chosen layout are at the end of this file.
+Status: phase 1 (MVP) implemented; phases 2–4 planned. Wireframes are in the
+companion artifact linked from the PR/session; ASCII versions of the chosen
+layout are at the end of this file. Usage docs: [README](../README.md).
 
 ## Goal
 
@@ -129,17 +129,41 @@ interface TerminalAdapter {
 ```
 
 The first adapter whose `detect` matches wins. cmux detects on
-`CMUX_SURFACE_ID`; focus runs `cmux select-workspace --workspace <id>` then the
-surface/panel focus verb (confirm the exact verb with `cmux --help` during the
-spike; docs list both `focus-surface` and `focus-panel`), and raises the app.
+`CMUX_SURFACE_ID` and focuses with:
+
+```bash
+cmux workspace select --workspace "$CMUX_WORKSPACE_ID"   # legacy alias: select-workspace
+cmux focus-panel --panel "$CMUX_SURFACE_ID" --workspace "$CMUX_WORKSPACE_ID"
+open -b "$CMUX_BUNDLE_ID"                                # raise cmux above the browser
+```
+
 tmux, Ghostty, or iTerm adapters can follow without touching the hub.
+
+### Spike results (phase 0, done)
+
+From a Pi session in cmux on the Mac:
+
+- Env: `CMUX_WORKSPACE_ID`, `CMUX_SURFACE_ID` (equal to `CMUX_PANEL_ID`),
+  `CMUX_SOCKET_PATH`, `CMUX_BUNDLE_ID=com.cmuxterm.app`, plus a per-surface
+  `CMUX_SOCKET_CAPABILITY` token. Running focus inside the reporter keeps that
+  token in scope; a detached hub should not rely on it.
+- Verbs: `focus-panel --panel <id> [--workspace <id>]`, `focus-pane`,
+  `focus-window --window <id>`. `select-workspace` works and prints a notice
+  that it is now `cmux workspace select`; use the new form (or `CMUX_QUIET=1`).
+- `select-workspace` switches cmux's visible workspace but is not expected to
+  bring cmux in front of a focused browser; macOS app activation is a separate
+  step (`open -b "$CMUX_BUNDLE_ID"`). Verify when building phase 2.
+- Pi reports its process title as `pi` under both Node and Bun builds. Node
+  v26.10.0 on PATH strips types. The launcher uses `process.execPath` under
+  Node and falls back to `node` on PATH under Bun (`node` in
+  `~/.pi/agent/dashboard.json` overrides).
 
 ## Phases
 
-0. **Spike (½ day).** On the Mac: confirm the cmux focus verbs and the socket
+0. **Spike (½ day, done; see above).** On the Mac: confirm the cmux focus verbs and the socket
    access mode from a process spawned by Pi; confirm Node 24 runs the hub `.ts`
    via `process.execPath`.
-1. **MVP.** Hub lifecycle (spawn, socket mutex, grace shutdown), reporter core
+1. **MVP (implemented).** Hub lifecycle (spawn, socket mutex, grace shutdown), reporter core
    fields (cwd, name, agent, model, thinking, status, context), index page
    with live SSE updates, `/dashboard`. Tests: hub lifecycle in a temp dir,
    two concurrent spawns, reporter snapshot builder, main-session detection.
@@ -164,10 +188,8 @@ tmux, Ghostty, or iTerm adapters can follow without touching the hub.
 
 ## Next steps
 
-1. **Spike on the Mac** (phase 0) and record results here: the cmux focus verb
-   and flags, whether `cmux` works from a Pi `!` shell, and the Node version
-   Pi runs under (type stripping for the hub).
-2. **PR 1, phase 1 MVP:** new `extensions/pi-dashboard` workspace; hub
+1. **Spike on the Mac** (phase 0): done, results above.
+2. **PR 1, phase 1 MVP (this PR):** new `extensions/pi-dashboard` workspace; hub
    (socket lock, spawn, 15s idle exit, HTTP + SSE on 7317); reporter with
    main-session detection and core fields; card-grid index; `/dashboard`
    command; tests; `verify-bundle` assertion. Uses a no-op terminal adapter,
