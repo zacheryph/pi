@@ -4,7 +4,7 @@ import { join } from "node:path";
 // Keep this file free of Pi imports and of TypeScript syntax Node cannot strip.
 
 /** Bump when the hub must be replaced to understand newer reporters. */
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 export const DEFAULT_PORT = 7317;
 /** How long the hub waits with no sessions, or keeps a restarting session's card. */
 export const IDLE_GRACE_MS = 15_000;
@@ -58,6 +58,8 @@ export interface StashSection {
     createdBy: string;
     versions: number;
   }>;
+  /** Size of pi-stash's shared content store and its configured cap. */
+  store?: { bytes: number; maxBytes: number };
 }
 
 /** Token and cost totals for the whole session, as Pi's /session reports them. */
@@ -105,6 +107,18 @@ export interface SubagentsSection {
   }>;
 }
 
+/** Recent top-level tool calls, newest first. */
+export type ActivitySection = Array<{
+  tool: string;
+  /** Path for file tools, or the first line of a bash command; clipped. */
+  summary?: string;
+  at: number;
+  durationMs?: number;
+  /** Still running. */
+  running?: boolean;
+  error?: boolean;
+}>;
+
 /** Where Focus goes; present only when a terminal adapter recognized the session. */
 export interface TerminalInfo {
   kind: string;
@@ -134,6 +148,7 @@ export interface SessionSnapshot {
   /** Absent when pi-subagents is not loaded or nothing has run yet. */
   subagents?: SubagentsSection;
   terminal?: TerminalInfo;
+  activity?: ActivitySection;
 }
 
 export type ReporterMessage =
@@ -141,10 +156,34 @@ export type ReporterMessage =
   | { type: "update"; snapshot: SessionSnapshot }
   /** `replace`: /new, /resume, /fork or /reload; the same process reconnects shortly. */
   | { type: "bye"; reason: "quit" | "replace" }
-  | { type: "result"; id: number; ok: boolean; error?: string };
+  | { type: "result"; id: number; ok: boolean; error?: string; data?: unknown };
+
+/**
+ * Requests the page makes of one session. Content requests (stash previews,
+ * task history) are answered only to the page that asked, never broadcast.
+ */
+export type CommandRequest =
+  | { command: "focus" }
+  | { command: "stash-preview"; name: string }
+  | { command: "todo-history"; key: string };
 
 /** Hub to reporter. */
-export type HubCommand = { type: "command"; id: number; command: "focus" };
+export type HubCommand = { type: "command"; id: number } & CommandRequest;
+
+/** A task's status and message history, as `todo-history` returns it. */
+export interface TodoHistory {
+  key: string;
+  createdAt?: number;
+  updates: Array<{ revision: number; at: number; status: TodoStatus; from?: TodoStatus; message?: string; byUser?: boolean }>;
+}
+
+/** The head of a stash entry, as `stash-preview` returns it. */
+export interface StashPreview {
+  handle: string;
+  lines: string[];
+  total: number;
+  complete: boolean;
+}
 
 export interface HubPaths {
   dir: string;

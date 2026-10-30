@@ -175,6 +175,58 @@ describe("pi-dashboard extension", () => {
     });
   });
 
+  it("answers stash preview and task history requests, and lists recent tool calls", async () => {
+    const env = setup({ detectTerminal: () => undefined });
+    const fake = load(env.deps);
+    const ctx = fakeCtx();
+    onCleanup(() => quit(fake, ctx));
+    // Stand-in for pi-stash's synchronous responder on the same bus.
+    fake.pi.events.on("pi-stash:preview", (data) => {
+      const request = data as { name: string; respond(value: unknown): void };
+      request.respond(request.name === "notes"
+        ? { ok: true, handle: "stash:notes@0123456789ab", lines: ["first", "second"], total: 40, complete: false }
+        : { ok: false, error: `No stash entry named "${request.name}" on this branch.` });
+    });
+    fake.publish("pi-todo:snapshot", { version: 1, revision: 2, tasks: [{
+      key: "fix", subject: "Fix", status: "completed", blocked: false, unreviewed: 0, createdAt: 5,
+      updates: [{ revision: 2, at: 9, status: "completed", from: "pending", message: "done" }],
+    }] });
+    await fake.emit("session_start", { reason: "startup" }, ctx);
+    await waitFor(async () => (await env.sessions()).length === 1);
+    const hub = env.hubs.at(-1)!;
+    const ask = (path: string) => post(hub.httpPort!, `/api/sessions/4242/${path}`, { "x-dashboard-token": hub.token });
+
+    expect(JSON.parse((await ask("stash/notes/preview")).body)).toEqual({ ok: true, data: { handle: "stash:notes@0123456789ab", lines: ["first", "second"], total: 40, complete: false } });
+    const missing = await ask("stash/gone/preview");
+    expect(missing.status).toBe(502);
+    expect(JSON.parse(missing.body).error).toBe('No stash entry named "gone" on this branch.');
+    expect(JSON.parse((await ask("todos/fix/history")).body)).toEqual({ ok: true, data: {
+      key: "fix", createdAt: 5, updates: [{ revision: 2, at: 9, status: "completed", from: "pending", message: "done" }],
+    } });
+    expect(JSON.parse((await ask("todos/nope/history")).body).error).toBe('No task "nope" on this branch.');
+    // Content requests never reach the broadcast session list.
+    expect((await get(hub.httpPort!, "/api/sessions")).body).not.toContain("second");
+
+    await fake.emit("tool_execution_start", { toolCallId: "t1", toolName: "bash", args: { command: "npm test" } }, ctx);
+    await fake.emit("tool_execution_end", { toolCallId: "t1", toolName: "bash", result: {}, isError: true }, ctx);
+    await waitFor(async () => {
+      const activity = (await env.sessions())[0]?.activity as Array<{ tool: string; summary?: string; error?: boolean }> | undefined;
+      return activity?.[0]?.summary === "npm test" && activity[0].error === true;
+    });
+  });
+
+  it("says when pi-stash is not loaded to answer a preview", async () => {
+    const env = setup({ detectTerminal: () => undefined });
+    const fake = load(env.deps);
+    const ctx = fakeCtx();
+    onCleanup(() => quit(fake, ctx));
+    await fake.emit("session_start", { reason: "startup" }, ctx);
+    await waitFor(async () => (await env.sessions()).length === 1);
+    const hub = env.hubs.at(-1)!;
+    const response = await post(hub.httpPort!, "/api/sessions/4242/stash/notes/preview", { "x-dashboard-token": hub.token });
+    expect(JSON.parse(response.body).error).toBe("pi-stash did not answer; is it loaded?");
+  });
+
   it("does not report print-mode runs", async () => {
     const env = setup();
     const fake = load(env.deps);

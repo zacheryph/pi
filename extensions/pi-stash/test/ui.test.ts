@@ -161,7 +161,7 @@ describe("tool renderers", () => {
   const tools = new Map<string, ToolDefinition>();
   stashExtension({
     registerTool: (tool: ToolDefinition) => tools.set(tool.name, tool),
-    registerCommand: () => {}, on: () => {}, appendEntry: () => {},
+    registerCommand: () => {}, on: () => {}, appendEntry: () => {}, events: { on: () => () => {}, emit: () => {} },
   } as unknown as ExtensionAPI);
   const options = (expanded: boolean) => ({ expanded, isPartial: false }) as never;
 
