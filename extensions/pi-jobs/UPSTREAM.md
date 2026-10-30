@@ -71,6 +71,19 @@ Five typing fixes; runtime behaviour is unchanged:
   thrown value, instead of `undefined`, which Node's types reject when a message
   follows.
 
+### Pi `executeTool` contract (#9 spike)
+
+- `test/pi-execute-tool.contract.test.ts` (new, local): pins the Pi behaviour
+  that `job_watch` tool checks will rely on. Calls through a tool's kept
+  `ExtensionToolContext` after that call returned:
+  - work while idle, during another streaming run, and after compaction;
+  - leave no nested-call record on any saved message;
+  - run `tool_call` hooks, which can block them; ids are `<caller id>/<n>`;
+  - fail without running after `/tree` to a point with no assistant message;
+  - throw a stale-context error after reload.
+
+  `codemode` is `model-only`, so `executeTool` cannot run it.
+
 ## Known gaps
 
 - **UI.** pi-jobs registers no widgets or custom tool renderers, so the
