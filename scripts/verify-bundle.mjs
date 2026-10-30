@@ -77,6 +77,7 @@ try {
     "todos:settings",
     "stash",
     "stash:gc",
+    "dashboard",
   ]) {
     assert.ok(commands.includes(name), `Missing command: ${name}`);
   }

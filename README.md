@@ -56,6 +56,11 @@ pi-personal/
 ├── package.json                         # bundle manifest + private dev workspace
 ├── tsconfig.base.json
 └── extensions/
+    ├── pi-dashboard/
+    │   ├── src/index.ts                 # session reporter + /dashboard command
+    │   ├── src/hub/server.ts            # web hub (plain Node, not a Pi extension)
+    │   ├── test/
+    │   └── docs/plan.md                 # research and phased plan
     ├── pi-jobs/                         # vendored
     │   ├── src/extension.ts             # job_* tools + /jobs command
     │   ├── test/
@@ -91,6 +96,22 @@ development commands. All manifests are private;
 nothing needs publishing.
 
 ## Extensions
+
+### pi-dashboard
+
+Local web dashboard of running interactive Pi sessions at
+`http://127.0.0.1:7317/`; `/dashboard` opens it. Cards are grouped by working
+directory and show session name, `--agent` profile, model and thinking level,
+context usage, and live status (idle, working, running a tool, compacting, or
+waiting on a dialog, which sorts first).
+
+The first interactive session starts a detached hub; sessions connect to it
+over a unix socket in `~/.pi/agent/dashboard/`, and it exits 15 seconds after
+the last one quits. Print-mode runs and subagent children are not shown. Port
+and Node binary are set in `~/.pi/agent/dashboard.json`. Loopback only. See
+[extension docs](extensions/pi-dashboard/README.md) and the
+[plan](extensions/pi-dashboard/docs/plan.md) for the upcoming detail page and
+cmux Focus button.
 
 ### pi-jobs
 

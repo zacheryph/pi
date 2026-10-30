@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "erasableSyntaxOnly": true,
+    "paths": {
+      "#src/*": [
+        "./src/*"
+      ],
+      "#test/*": [
+        "./test/*"
+      ]
+    }
+  },
+  "include": [
+    "src",
+    "test"
+  ]
+}
