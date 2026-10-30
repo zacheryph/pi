@@ -247,6 +247,30 @@ describe("Hub", () => {
       expect(JSON.parse(closed.body).error).toContain("closed");
     });
 
+    it("relays stash preview and task history requests with their data, to the caller only", async () => {
+      const hub = await startHub();
+      const reporter = await fakeReporter(hub.paths.socket);
+      const decoder = new LineDecoder();
+      const asked: unknown[] = [];
+      reporter.socket.setEncoding("utf8");
+      reporter.socket.on("data", (chunk: string) => {
+        for (const message of decoder.push(chunk) as Array<Record<string, unknown>>) {
+          asked.push(message);
+          reporter.send({ type: "result", id: message.id, ok: true, data: { echo: message.command, name: message.name ?? message.key } });
+        }
+      });
+      reporter.send(hello());
+      await waitFor(async () => (await sessions(hub)).length === 1);
+      const preview = await post(hub.httpPort!, "/api/sessions/101/stash/auth%20notes/preview", auth(hub));
+      expect(JSON.parse(preview.body)).toEqual({ ok: true, data: { echo: "stash-preview", name: "auth notes" } });
+      const history = await post(hub.httpPort!, "/api/sessions/101/todos/fix-auth/history", auth(hub));
+      expect(JSON.parse(history.body)).toEqual({ ok: true, data: { echo: "todo-history", name: "fix-auth" } });
+      expect(asked).toMatchObject([{ type: "command", command: "stash-preview", name: "auth notes" }, { type: "command", command: "todo-history", key: "fix-auth" }]);
+      expect((await post(hub.httpPort!, "/api/sessions/101/stash/x/preview")).status).toBe(403);
+      expect((await post(hub.httpPort!, "/api/sessions/101/unknown", auth(hub))).status).toBe(404);
+      expect((await get(hub.httpPort!, "/api/sessions")).body).not.toContain("echo");
+    });
+
     it("ignores results from a different session's connection", async () => {
       const hub = new Hub({ dir: tempDir(), port: 0, commandTimeoutMs: 300 });
       expect(await hub.start()).toBe("started");

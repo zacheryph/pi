@@ -18,7 +18,17 @@ const STYLE = `
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
 a { color: var(--accent); }
-header { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 12px; padding: 10px 20px; background: var(--surface); border-bottom: 1px solid var(--line); }
+header { position: sticky; top: 0; z-index: 1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 20px; background: var(--surface); border-bottom: 1px solid var(--line); }
+#filter { font: 13px var(--mono); padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); width: 220px; max-width: 100%; min-width: 0; }
+button.toggle, button.small { font: 500 12px var(--mono); border: 1px solid var(--line); background: transparent; color: var(--muted); border-radius: 6px; padding: 3px 8px; cursor: pointer; white-space: nowrap; }
+button.toggle[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
+button.small { font-size: 11px; padding: 1px 7px; color: var(--accent); }
+pre.preview { margin: 4px 0 0; padding: 8px 10px; background: var(--wire); border-radius: 6px; font: 12px/1.45 var(--mono); max-height: 360px; overflow: auto; white-space: pre; }
+pre.preview .ln { color: var(--muted); user-select: none; display: inline-block; min-width: 4ch; text-align: right; margin-right: 1.5ch; }
+.timeline { list-style: none; margin: 4px 0 0; padding: 0 0 0 10px; border-left: 2px solid var(--line); display: grid; gap: 6px; }
+.timeline li { display: grid; gap: 2px; }
+.warn { color: var(--warn); font-size: 12px; }
+.bad { color: var(--bad); }
 header h1 { margin: 0; font: 600 15px var(--mono); }
 header h1 a { color: inherit; text-decoration: none; }
 header .count { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -101,6 +111,15 @@ let rendered = "";
 const expanded = new Set();
 const notices = new Map();
 const busy = new Set();
+/** Content fetched on request: stash previews and task histories, keyed so a new version refetches. */
+const previews = new Map();
+const histories = new Map();
+const filterInput = document.getElementById("filter");
+const notifyButton = document.getElementById("notify");
+const stored = (key) => { try { return localStorage.getItem(key) || ""; } catch { return ""; } };
+const store = (key, value) => { try { localStorage.setItem(key, value); } catch {} };
+let filter = stored("pi-dashboard:filter");
+let notifyOn = stored("pi-dashboard:notify") === "on" && "Notification" in window && Notification.permission === "granted";
 
 const ORDER = { waiting: 0, tool: 1, working: 1, compacting: 1, idle: 2 };
 const TODO_GLYPH = { completed: "✓", in_progress: "◐", pending: "○" };
@@ -120,7 +139,7 @@ const ago = (ms) => {
 };
 const duration = (ms) => ms < 1000 ? "<1s" : ago(Date.now() - ms);
 const tokens = (n) => n >= 1e6 ? +(n / 1e6).toFixed(1) + "M" : n >= 1000 ? Math.round(n / 1000) + "k" : String(Math.round(n));
-const bytes = (n) => n >= 1048576 ? (n / 1048576).toFixed(1) + " MB" : n >= 1024 ? Math.round(n / 1024) + " KB" : n + " B";
+const bytes = (n) => n >= 1073741824 ? +(n / 1073741824).toFixed(2) + " GB" : n >= 1048576 ? (n / 1048576).toFixed(1) + " MB" : n >= 1024 ? Math.round(n / 1024) + " KB" : n + " B";
 const money = (n) => "$" + (n >= 100 ? Math.round(n) : n.toFixed(2));
 const title = (session) => session.name || "untitled …" + session.sessionId.slice(-6);
 const statusLabel = (session) => {
@@ -149,19 +168,37 @@ function meter(context) {
   return wrap;
 }
 
+/** A request to one session, answered to this page only. */
+async function ask(session, path) {
+  let response;
+  try {
+    response = await fetch("/api/sessions/" + encodeURIComponent(session.id) + "/" + path, { method: "POST", headers: { "X-Dashboard-Token": token } });
+  } catch {
+    throw new Error("The dashboard is not reachable.");
+  }
+  const body = await response.json().catch(() => ({}));
+  if (!body.ok) throw new Error(body.error || "Request failed (" + response.status + ").");
+  return body.data;
+}
+
+/** Runs a request into one of the content maps, re-rendering as it starts and ends. */
+async function fetchInto(map, key, session, path) {
+  map.set(key, { loading: true });
+  render(true);
+  try { map.set(key, { data: await ask(session, path) }); } catch (error) { map.set(key, { error: error.message }); }
+  render(true);
+}
+
 async function focusSession(session) {
   busy.add(session.id);
   notices.delete(session.id);
   render(true);
   let notice;
   try {
-    const response = await fetch("/api/sessions/" + encodeURIComponent(session.id) + "/focus", {
-      method: "POST", headers: { "X-Dashboard-Token": token },
-    });
-    const body = await response.json().catch(() => ({}));
-    notice = body.ok ? { ok: true, text: "Focused in " + session.terminal.label } : { ok: false, text: body.error || "Focus failed (" + response.status + ")." };
-  } catch {
-    notice = { ok: false, text: "The dashboard is not reachable." };
+    await ask(session, "focus");
+    notice = { ok: true, text: "Focused in " + session.terminal.label };
+  } catch (error) {
+    notice = { ok: false, text: error.message };
   }
   busy.delete(session.id);
   notices.set(session.id, notice);
@@ -227,12 +264,24 @@ function card(session) {
   return node;
 }
 
+/** Every whitespace-separated term must appear in the name, directory, agent, model or status. */
+function matches(session) {
+  const terms = filter.toLowerCase().split(/\\s+/).filter(Boolean);
+  if (!terms.length) return true;
+  const text = [title(session), tilde(session.cwd), session.agent, session.model && session.model.id, statusLabel(session)].filter(Boolean).join(" ").toLowerCase();
+  return terms.every((term) => text.includes(term));
+}
+
 function renderIndex() {
-  const sessions = state.sessions;
-  if (!sessions.length) {
+  if (!state.sessions.length) {
     main.append(el("p", "empty", connected
       ? "No interactive Pi sessions are running."
       : "Not connected. The dashboard stops when the last Pi session exits; run /dashboard in Pi to start it again."));
+    return;
+  }
+  const sessions = state.sessions.filter(matches);
+  if (!sessions.length) {
+    main.append(el("p", "empty", "No sessions match “" + filter.trim() + "”."));
     return;
   }
   const groups = new Map();
@@ -276,7 +325,11 @@ function todoPanel(session) {
     const key = session.id + ":" + task.key;
     const details = el("details");
     details.open = expanded.has(key);
-    details.addEventListener("toggle", () => { if (details.open) expanded.add(key); else expanded.delete(key); });
+    const historyKey = key + ":" + (task.updatedAt || 0);
+    details.addEventListener("toggle", () => {
+      if (details.open) expanded.add(key); else expanded.delete(key);
+      if (details.open && !histories.has(historyKey)) fetchInto(histories, historyKey, session, "todos/" + encodeURIComponent(task.key) + "/history");
+    });
     const summary = el("summary");
     summary.dataset.key = "todo:" + key;
     const glyph = task.blocked ? "⊘" : TODO_GLYPH[task.status] || "○";
@@ -290,9 +343,54 @@ function todoPanel(session) {
     more.append(el("span", "mono muted", task.key + " · " + task.status.replace("_", " ") + (task.blocked ? " · blocked" : "") + (task.updatedAt ? " · " + ago(task.updatedAt) + " ago" : "")));
     if (task.description) more.append(el("span", "wrap", task.description));
     if (list(task.dependsOn).length) more.append(el("span", "muted", "after: " + task.dependsOn.join(", ")));
-    if (task.message) more.append(el("span", "wrap", "“" + task.message.text + "”" + (task.message.at ? " · " + ago(task.message.at) + " ago" : "")));
-    if (more.childNodes.length) details.append(more);
+    const history = histories.get(historyKey);
+    if (history && history.data) more.append(timeline(history.data));
+    else if (history && history.error) more.append(el("span", "bad", history.error));
+    else if (task.message) more.append(el("span", "wrap", "“" + task.message.text + "”" + (task.message.at ? " · " + ago(task.message.at) + " ago" : "")));
+    if (history && history.loading) more.append(el("span", "muted", "Loading history…"));
+    details.append(more);
     li.append(details);
+    ul.append(li);
+  }
+  node.append(ul);
+  return node;
+}
+
+const STATUS_WORDS = { pending: "pending", in_progress: "in progress", completed: "completed" };
+
+/** A task's status and message history, newest first. */
+function timeline(history) {
+  const updates = list(history.updates).slice().reverse();
+  const ol = el("ol", "timeline");
+  for (const update of updates) {
+    const li = el("li");
+    const change = update.from && update.from !== update.status ? STATUS_WORDS[update.from] + " → " + STATUS_WORDS[update.status] : STATUS_WORDS[update.status];
+    li.append(el("span", "mono muted", ago(update.at) + " ago · " + change + (update.byUser ? " · you" : "")));
+    if (update.message) li.append(el("span", "wrap", update.message));
+    ol.append(li);
+  }
+  if (history.createdAt) {
+    const li = el("li");
+    li.append(el("span", "mono muted", ago(history.createdAt) + " ago · created"));
+    ol.append(li);
+  }
+  if (!ol.childNodes.length) return el("span", "muted", "No history recorded.");
+  return ol;
+}
+
+function activityPanel(session) {
+  const items = list(session.activity);
+  const node = panel("Recent activity", items.length ? items.length + " calls" : "");
+  if (!items.length) { node.append(el("span", "muted", "No tool calls yet.")); return node; }
+  const ul = el("ul", "items");
+  for (const item of items) {
+    const li = el("li");
+    const row = el("div", "row");
+    const what = el("span", "clip");
+    what.append(el("span", "mono", item.tool), el("span", "mono muted", item.summary ? "  " + item.summary : ""));
+    const outcome = item.running ? "running" : item.error ? "failed" : item.durationMs !== undefined ? duration(item.durationMs) : "";
+    row.append(what, el("span", "mono num " + (item.error ? "bad" : "muted"), [outcome, ago(item.at) + " ago"].filter(Boolean).join(" · ")));
+    li.append(row);
     ul.append(li);
   }
   node.append(ul);
@@ -339,18 +437,40 @@ function memoryPanel(session) {
 
 function stashPanel(session) {
   const entries = list(session.stash.entries);
-  const node = panel("Stash", entries.length ? session.stash.total + (session.stash.total === 1 ? " entry" : " entries") : "");
+  const size = session.stash.store;
+  const summary = [entries.length ? session.stash.total + (session.stash.total === 1 ? " entry" : " entries") : "", size ? "store " + bytes(size.bytes) + " / " + bytes(size.maxBytes) : ""].filter(Boolean).join(" · ");
+  const node = panel("Stash", summary);
+  if (size && size.bytes > size.maxBytes) node.append(el("span", "warn", "The stash store is over its " + bytes(size.maxBytes) + " cap. Run /stash:gc or lower retentionDays."));
   if (!entries.length) { node.append(el("span", "muted", "Nothing stashed on this branch.")); return node; }
   const ul = el("ul", "items");
   for (const entry of entries) {
     const li = el("li");
     const row = el("div", "row");
-    row.append(el("span", "mono clip", entry.name), el("span", "mono muted num", bytes(entry.bytes)));
+    const key = session.id + ":" + entry.handle;
+    const shown = previews.get(key);
+    const toggle = el("button", "small", shown ? "Hide" : "Preview");
+    toggle.type = "button";
+    toggle.dataset.key = "preview:" + key;
+    toggle.addEventListener("click", () => {
+      if (previews.has(key)) { previews.delete(key); render(true); }
+      else fetchInto(previews, key, session, "stash/" + encodeURIComponent(entry.name) + "/preview");
+    });
+    const right = el("span", "row");
+    right.append(el("span", "mono muted num", bytes(entry.bytes)), toggle);
+    row.append(el("span", "mono clip", entry.name), right);
     li.append(row);
     if (entry.description) li.append(el("span", "clip", entry.description));
     const by = entry.createdBy === session.sessionId ? "this session" : "subagent …" + entry.createdBy.slice(-6);
     li.append(el("span", "mono muted clip", entry.lines + " lines · " + entry.source + " · " + by + " · " + ago(entry.createdAt) + " ago" + (entry.versions > 1 ? " · v" + entry.versions : "")));
     li.append(el("span", "mono muted clip", entry.handle));
+    if (shown && shown.loading) li.append(el("span", "muted", "Loading preview…"));
+    if (shown && shown.error) li.append(el("span", "bad", shown.error));
+    if (shown && shown.data) {
+      const pre = el("pre", "preview");
+      shown.data.lines.forEach((line, index) => { pre.append(el("span", "ln", index + 1), line, "\\n"); });
+      li.append(pre);
+      if (!shown.data.complete) li.append(el("span", "mono muted", "First " + shown.data.lines.length + " of " + shown.data.total + " lines. Read the rest in Pi with stash_get."));
+    }
     ul.append(li);
   }
   node.append(ul);
@@ -413,6 +533,7 @@ function renderDetail(id) {
   const right = el("div", "col");
   if (session.todos) left.append(todoPanel(session));
   if (session.subagents) left.append(subagentPanel(session));
+  if (session.activity) left.append(activityPanel(session));
   if (session.memory) right.append(memoryPanel(session));
   if (session.stash) right.append(stashPanel(session));
   if (session.usage) right.append(usagePanel(session));
@@ -429,11 +550,14 @@ function selected() {
 function render(force) {
   const id = selected();
   const view = id ? state.sessions.find((session) => session.id === id) || null : state.sessions;
-  const key = JSON.stringify([id, connected, view]);
+  const key = JSON.stringify([id, connected, filter, view]);
   if (!force && key === rendered) return;
   rendered = key;
   const focused = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.key : undefined;
-  count.textContent = state.sessions.length === 1 ? "1 session" : state.sessions.length + " sessions";
+  const total = state.sessions.length;
+  const shown = id ? total : state.sessions.filter(matches).length;
+  count.textContent = (shown !== total ? shown + " of " : "") + total + (total === 1 ? " session" : " sessions");
+  filterInput.hidden = !!id;
   main.replaceChildren();
   if (id) renderDetail(id); else { document.title = "pi dashboard"; renderIndex(); }
   if (focused) {
@@ -442,8 +566,50 @@ function render(force) {
   }
 }
 
+/** Notifies when a session starts waiting on a dialog, or finishes its work, while this page is in the background. */
+function announce(before, after) {
+  if (!notifyOn || document.hasFocus()) return;
+  const previous = new Map(before.map((session) => [session.id, session]));
+  for (const session of after) {
+    const old = previous.get(session.id);
+    if (!old || old.restarting || session.restarting) continue;
+    const was = old.status.kind;
+    const now = session.status.kind;
+    let body;
+    if (now === "waiting" && was !== "waiting") body = "Waiting on you" + (session.status.title ? ": " + session.status.title : "");
+    else if (now === "idle" && was !== "idle" && was !== "waiting") body = "Finished; ready for your next prompt";
+    if (!body) continue;
+    const note = new Notification(title(session) + " · " + tilde(session.cwd), { body, tag: "pi-dashboard:" + session.id });
+    note.onclick = () => { window.focus(); location.hash = encodeURIComponent(session.id); note.close(); };
+  }
+}
+
+function showNotify() {
+  notifyButton.textContent = notifyOn ? "Notifications on" : "Notifications off";
+  notifyButton.setAttribute("aria-pressed", String(notifyOn));
+}
+
+notifyButton.addEventListener("click", async () => {
+  if (!("Notification" in window)) { notifyButton.textContent = "Notifications unavailable"; return; }
+  if (notifyOn) { notifyOn = false; store("pi-dashboard:notify", "off"); showNotify(); return; }
+  const permission = Notification.permission === "default" ? await Notification.requestPermission() : Notification.permission;
+  notifyOn = permission === "granted";
+  notifyButton.title = permission === "denied" ? "Notifications are blocked for this page in your browser's settings." : "";
+  store("pi-dashboard:notify", notifyOn ? "on" : "off");
+  showNotify();
+});
+showNotify();
+
+filterInput.value = filter;
+filterInput.addEventListener("input", () => { filter = filterInput.value; store("pi-dashboard:filter", filter); render(true); });
+
 const events = new EventSource("/events");
-events.addEventListener("sessions", (event) => { state = JSON.parse(event.data); render(); });
+events.addEventListener("sessions", (event) => {
+  const next = JSON.parse(event.data);
+  announce(state.sessions, list(next.sessions));
+  state = next;
+  render();
+});
 events.onopen = () => { connected = true; conn.textContent = "● live"; conn.classList.add("live"); render(); };
 // Cards from a lost hub would go stale; the full list returns on reconnect.
 events.onerror = () => { connected = false; state = { ...state, sessions: [] }; conn.textContent = "reconnecting…"; conn.classList.remove("live"); render(); };
@@ -464,7 +630,7 @@ export function renderPage(token: string): string {
 <style>${STYLE}</style>
 </head>
 <body>
-<header><h1><a href="#">pi dashboard</a></h1><span class="count"></span><span class="conn" aria-live="polite">connecting…</span></header>
+<header><h1><a href="#">pi dashboard</a></h1><input id="filter" type="search" placeholder="Filter sessions" aria-label="Filter sessions" autocomplete="off" spellcheck="false"><span class="count"></span><button id="notify" class="toggle" type="button" aria-pressed="false">Notifications off</button><span class="conn" aria-live="polite">connecting…</span></header>
 <main></main>
 <script>${SCRIPT}</script>
 </body>

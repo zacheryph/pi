@@ -1,4 +1,4 @@
-import type { StashSection, TodoSection, TodoStatus } from "./protocol.ts";
+import type { StashPreview, StashSection, TodoHistory, TodoSection, TodoStatus } from "./protocol.ts";
 
 // Other extensions publish their state on the session's pi.events bus. The
 // payloads are parsed defensively and bounded, so a large or malformed
@@ -8,6 +8,10 @@ import type { StashSection, TodoSection, TodoStatus } from "./protocol.ts";
 export const TODO_SNAPSHOT_EVENT = "pi-todo:snapshot";
 /** pi-stash: `src/events.ts`. */
 export const STASH_SNAPSHOT_EVENT = "pi-stash:snapshot";
+/** pi-stash: synchronous request for the head of one entry on this branch. */
+export const STASH_PREVIEW_REQUEST = "pi-stash:preview";
+const MAX_MESSAGE = 2_000;
+const MAX_UPDATES = 20;
 
 const MAX_TASKS = 100;
 const MAX_STASH_ENTRIES = 100;
@@ -82,5 +86,40 @@ export function readStash(data: unknown): StashSection | undefined {
       ...(description ? { description } : {}),
     });
   }
-  return { total: data.entries.length, entries };
+  const store = isRecord(data.store) ? data.store : undefined;
+  const bytes = count(store?.bytes);
+  const maxBytes = count(store?.maxBytes);
+  return { total: data.entries.length, entries, ...(bytes !== undefined && maxBytes ? { store: { bytes, maxBytes } } : {}) };
+}
+
+/** One task's history from pi-todo's latest snapshot event. */
+export function readTodoHistory(data: unknown, key: string): TodoHistory | undefined {
+  if (!isRecord(data) || data.version !== 1 || !Array.isArray(data.tasks)) return undefined;
+  const task = data.tasks.find((candidate) => isRecord(candidate) && candidate.key === key);
+  if (!isRecord(task)) return undefined;
+  const updates: TodoHistory["updates"] = [];
+  for (const raw of (Array.isArray(task.updates) ? task.updates : []).slice(-MAX_UPDATES)) {
+    if (!isRecord(raw) || !STATUSES.has(raw.status)) continue;
+    const at = time(raw.at);
+    if (!at) continue;
+    const message = clip(raw.message, MAX_MESSAGE);
+    updates.push({
+      revision: count(raw.revision) ?? 0, at, status: raw.status as TodoStatus,
+      ...(STATUSES.has(raw.from) ? { from: raw.from as TodoStatus } : {}),
+      ...(message ? { message } : {}),
+      ...(raw.by === "user" ? { byUser: true } : {}),
+    });
+  }
+  const createdAt = time(task.createdAt);
+  return { key, ...(createdAt ? { createdAt } : {}), updates };
+}
+
+/** Validates pi-stash's preview answer before it leaves the process. */
+export function readPreview(data: unknown): StashPreview | string {
+  if (!isRecord(data)) return "pi-stash did not answer; is it loaded?";
+  if (data.ok !== true) return typeof data.error === "string" ? data.error.slice(0, 500) : "Preview failed.";
+  if (typeof data.handle !== "string" || !Array.isArray(data.lines)) return "pi-stash sent an unreadable preview.";
+  // pi-stash bounds this at 200 lines / 16 KB; keep a hard ceiling here too.
+  const lines = data.lines.slice(0, 200).map((line) => typeof line === "string" ? line.slice(0, 2_000) : "");
+  return { handle: data.handle, lines, total: count(data.total) ?? lines.length, complete: data.complete === true };
 }

@@ -1,12 +1,12 @@
 import { connect as netConnect, type Socket } from "node:net";
-import { encode, LineDecoder, PROTOCOL_VERSION, type HubCommand, type ReporterMessage, type SessionSnapshot } from "./protocol.ts";
+import { encode, LineDecoder, PROTOCOL_VERSION, type CommandRequest, type ReporterMessage, type SessionSnapshot } from "./protocol.ts";
 
 export interface ReporterOptions {
   socketPath: string;
   /** Starts a hub; called when nothing listens on the socket. */
   spawnHub: () => void;
-  /** Runs a command the hub forwarded from the page; resolves with an error message on failure. */
-  onCommand?: (command: HubCommand["command"]) => Promise<string | undefined>;
+  /** Runs a request the hub forwarded from the page; rejects with a message the page shows. */
+  onCommand?: (request: CommandRequest) => Promise<unknown>;
   /** Called once when the hub stays unreachable after `unavailableAfter` attempts. */
   onUnavailable?: () => void;
   unavailableAfter?: number;
@@ -18,6 +18,14 @@ export interface ReporterOptions {
 }
 
 const NO_LISTENER = new Set(["ENOENT", "ECONNREFUSED"]);
+
+function parseRequest(message: unknown): CommandRequest | undefined {
+  const raw = message as { command?: unknown; name?: unknown; key?: unknown };
+  if (raw.command === "focus") return { command: "focus" };
+  if (raw.command === "stash-preview" && typeof raw.name === "string") return { command: "stash-preview", name: raw.name };
+  if (raw.command === "todo-history" && typeof raw.key === "string") return { command: "todo-history", key: raw.key };
+  return undefined;
+}
 
 /**
  * Keeps one Pi session connected to the hub. The connection is the session's
@@ -89,17 +97,22 @@ export class Reporter {
   }
 
   private receive(socket: Socket, message: unknown): void {
-    const raw = message as Partial<HubCommand> | null;
-    if (raw?.type !== "command" || typeof raw.id !== "number" || raw.command !== "focus") return;
+    const raw = message as { type?: unknown; id?: unknown } | null;
+    if (raw?.type !== "command" || typeof raw.id !== "number") return;
     const id = raw.id;
-    const reply = (error?: string) => {
-      if (socket === this.socket && !socket.destroyed) {
-        socket.write(encode({ type: "result", id, ok: !error, ...(error ? { error } : {}) }));
-      }
+    const reply = (result: { error: string } | { data: unknown }) => {
+      if (socket !== this.socket || socket.destroyed) return;
+      socket.write(encode("error" in result
+        ? { type: "result", id, ok: false, error: result.error }
+        : { type: "result", id, ok: true, ...(result.data === undefined ? {} : { data: result.data }) }));
     };
+    const request = parseRequest(message);
     const handler = this.options.onCommand;
-    if (!handler) return reply("This session cannot do that.");
-    handler(raw.command).then(reply, (error: unknown) => reply(error instanceof Error ? error.message : String(error)));
+    if (!request || !handler) return reply({ error: "This session cannot do that." });
+    handler(request).then(
+      (data) => reply({ data }),
+      (error: unknown) => reply({ error: error instanceof Error ? error.message : String(error) }),
+    );
   }
 
   private scheduleRetry(failure: string | undefined): void {

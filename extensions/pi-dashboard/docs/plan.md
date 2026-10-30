@@ -1,6 +1,6 @@
 # pi-dashboard: research and implementation plan
 
-Status: phases 1 and 2 implemented (MVP, publish hooks, detail page, Focus); phases 3–4 planned. Wireframes are in the
+Status: phases 1–3 implemented (MVP, publish hooks, detail page, Focus, previews and polish); phase 4 planned. Wireframes are in the
 companion artifact linked from the PR/session; ASCII versions of the chosen
 layout are at the end of this file. Usage docs: [README](../README.md).
 
@@ -170,7 +170,7 @@ From a Pi session in cmux on the Mac:
    button. Subagents come from pi-subagents' `subagents:*` events on the
    session bus, not its `globalThis` service, which in-process children
    replace.
-3. **Previews and polish.** Stash content preview on click, todo activity
+3. **Previews and polish (implemented).** Stash content preview on click, todo activity
    timelines, recent activity (last tool calls), grouping/filtering by
    directory, browser notifications when a session waits on you, store usage
    warning when over `maxStoreBytes`.
@@ -198,12 +198,15 @@ From a Pi session in cmux on the Mac:
    `pi-stash:snapshot` events; the dashboard carries bounded task and stash
    metadata in its snapshot (protocol 2, so a running protocol 1 hub steps
    aside) and shows `todos 3/7 · 1 new · stash 2` on cards.
-4. **PR 3, phase 2 (this PR):** detail page (`#<pid>`) with todos, stash
+4. **PR 3, phase 2 (merged):** detail page (`#<pid>`) with todos, stash
    index, subagents, usage/cost, blackhole counts; cmux adapter and Focus via
    a token-protected `POST /api/sessions/<id>/focus`, forwarded to the
    session's reporter (protocol 3).
-5. **PR 4, phase 3:** stash previews, todo timelines, recent activity,
-   filtering, notifications, store usage warning.
+5. **PR 4, phase 3 (this PR):** stash previews through pi-stash's
+   `pi-stash:preview` request and todo history, both fetched on demand and
+   returned only to the asking page; recent tool activity; filter box;
+   background-tab notifications for waiting and finished sessions; store size
+   and over-cap warning (protocol 4). Grouping stays by directory.
 
 ## ASCII wireframes (chosen layout)
 

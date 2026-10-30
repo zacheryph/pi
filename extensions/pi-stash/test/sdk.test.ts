@@ -11,7 +11,8 @@ import stashExtension from "#src/index";
 import { currentEntries, replayStashIndex, STASH_INDEX_TYPE } from "#src/state";
 import { BlobStore } from "#src/store";
 import { DEFAULT_CONFIG } from "#src/config";
-import { STASH_SNAPSHOT_EVENT, type StashSnapshotEvent } from "#src/events";
+import { STASH_PREVIEW_REQUEST, STASH_SNAPSHOT_EVENT, type StashPreviewResult, type StashSnapshotEvent } from "#src/events";
+import type { EventBus } from "@earendil-works/pi-coding-agent";
 
 const cleanups: Array<() => void> = [];
 afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });
@@ -24,6 +25,7 @@ function tempDir(prefix: string): string {
 
 async function fixture(options: { manager?: SessionManager; store: BlobStore; responses?: ReturnType<typeof fauxAssistantMessage>[]; keepRecentTokens?: number }) {
   const snapshots: StashSnapshotEvent[] = [];
+  let bus: EventBus | undefined;
   const dir = tempDir("pi-stash-sdk-");
   const faux = createFauxCore({ provider: "stash-test", models: [{ id: "test" }] });
   const calls = vi.fn(faux.streamSimple);
@@ -36,7 +38,7 @@ async function fixture(options: { manager?: SessionManager; store: BlobStore; re
       pi => stashExtension(pi, { store: options.store, loadConfig: () => ({ ...DEFAULT_CONFIG }) }),
       createCodemodeExtension(),
       // Another extension on the same session bus, as pi-dashboard listens.
-      pi => { pi.events.on(STASH_SNAPSHOT_EVENT, data => snapshots.push(data as StashSnapshotEvent)); },
+      pi => { bus = pi.events; pi.events.on(STASH_SNAPSHOT_EVENT, data => snapshots.push(data as StashSnapshotEvent)); },
     ],
   });
   await loader.reload();
@@ -50,7 +52,13 @@ async function fixture(options: { manager?: SessionManager; store: BlobStore; re
   const errors = vi.fn();
   await session.bindExtensions({ mode: "print", onError: errors });
   faux.setResponses(options.responses ?? [fauxAssistantMessage("done")]);
-  return { session, manager, faux, calls, errors, dir, snapshots };
+  /** Asks pi-stash for a preview the way pi-dashboard does. */
+  const preview = (request: Record<string, unknown>) => {
+    let result: StashPreviewResult | undefined;
+    bus!.emit(STASH_PREVIEW_REQUEST, { ...request, respond: (value: StashPreviewResult) => { result = value; } });
+    return result;
+  };
+  return { session, manager, faux, calls, errors, dir, snapshots, preview };
 }
 
 const call = (name: string, args: Parameters<typeof fauxToolCall>[1], id?: string) =>
@@ -180,19 +188,35 @@ describe("pi-stash in a real AgentSession (offline faux provider)", () => {
       call("codemode", { code: `await tools.stash_put({ name: "notes", content: "two\\nlines\\n" }); return "ok";` }),
       fauxAssistantMessage("done"),
     ] });
-    expect(h.snapshots).toEqual([{ version: 1, entries: [] }]);
+    const size = { bytes: expect.any(Number), maxBytes: DEFAULT_CONFIG.maxStoreBytes };
+    expect(h.snapshots).toEqual([{ version: 1, entries: [], store: size }]);
     await h.session.prompt("Work");
     expect(h.snapshots).toHaveLength(3);
     expect(h.snapshots.at(-1)).toEqual({ version: 1, entries: [{
       handle: expect.stringMatching(/^stash:notes@[0-9a-f]{12}$/), name: "notes", hash: expect.stringMatching(/^[0-9a-f]{64}$/),
       bytes: 10, lines: 2, mime: "text/plain", createdAt: expect.any(Number), createdBy: h.manager.getSessionId(),
       source: "content", versions: 2,
-    }] });
+    }], store: { bytes: 14, maxBytes: DEFAULT_CONFIG.maxStoreBytes } });
     expect(JSON.stringify(h.snapshots)).not.toContain("lines\\n");
 
     const first = h.manager.getBranch().find(entry => entry.type === "message" && entry.message.role === "user")!;
     await h.session.navigateTree(first.id, { summarize: false });
-    expect(h.snapshots.at(-1)).toEqual({ version: 1, entries: [] });
+    expect(h.snapshots.at(-1)).toEqual({ version: 1, entries: [], store: size });
+  }, 20_000);
+
+  it("answers preview requests for this branch's entries only, bounded", async () => {
+    const store = new BlobStore(tempDir("pi-stash-root-"));
+    const content = Array.from({ length: 300 }, (_, index) => `line ${index + 1}`).join("\n") + "\n";
+    const h = await fixture({ store, responses: [call("stash_put", { name: "log", content }), fauxAssistantMessage("done")] });
+    await h.session.prompt("Work");
+    const head = h.preview({ name: "log", maxLines: 3 });
+    expect(head).toEqual({ ok: true, handle: expect.stringMatching(/^stash:log@[0-9a-f]{12}$/), lines: ["line 1", "line 2", "line 3"], total: 300, complete: false });
+    const capped = h.preview({ name: "log", maxLines: 10_000 });
+    expect(capped?.ok && capped.lines).toHaveLength(200);
+    expect(h.preview({ name: "missing" })).toEqual({ ok: false, error: 'No stash entry named "missing" on this branch.' });
+    const handle = head?.ok ? head.handle : "";
+    expect(h.preview({ name: handle })).toEqual({ ok: false, error: "Invalid stash entry name." });
+    expect(h.preview({ name: "../../etc/passwd" })).toEqual({ ok: false, error: "Invalid stash entry name." });
   }, 20_000);
 
   it("rejects bad sources and oversized entries as tool errors", async () => {

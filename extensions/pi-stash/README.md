@@ -90,10 +90,17 @@ description). It is never written to the transcript or shown as a message.
 Other extensions can follow the index without parsing journal entries. On
 session start, branch changes, and every `stash_put` (codemode calls included),
 pi-stash emits `pi-stash:snapshot` on the session's `pi.events` bus
-(`src/events.ts`): `{ version: 1, entries }`, the latest version per name, newest
-first, in the same shape `stash_list` returns. Metadata only; content never
-leaves the store. Each subagent has its own bus. pi-dashboard uses it for its
-stash counts.
+(`src/events.ts`): `{ version: 1, entries, store }`, the latest version per
+name, newest first, in the same shape `stash_list` returns, plus the shared
+store's size and `maxStoreBytes` cap when they can be measured. Metadata only.
+Each subagent has its own bus.
+
+For a user who opens an entry, another extension can emit `pi-stash:preview`
+with `{ name, maxLines?, maxBytes?, respond }`. pi-stash answers synchronously
+through `respond` with the head of that entry (at most 200 lines / 16 KB) read
+through the hash-checked store, or `{ ok: false, error }`. Only bare names of
+this branch's entries are accepted, not full handles. pi-dashboard uses both
+for its stash panel and previews.
 
 ## Subagents
 

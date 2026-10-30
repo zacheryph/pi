@@ -20,16 +20,28 @@ new`), running subagents and stash entries. Click a card for its detail page
 - **Strip**: model and provider, thinking level, status and how long it has
   held, context usage, session cost.
 - **Todos**: every task with status, blocked state and unreviewed messages;
-  expand one for its description, prerequisites and latest message.
+  expand one for its description, prerequisites and its full status and
+  message history (fetched when you expand it).
 - **Subagents**: agents seen since the session's runtime loaded, with state,
   duration, tool uses, tokens and the latest progress note or error.
 - **Blackhole**: observations kept of recorded (and their tokens), dropped,
   reflections, compactions and the last one. Without pi-blackhole entries the
   panel shows compactions only.
 - **Stash**: this branch's entries with size, lines, source, whether this
-  session or a subagent stored them, age, versions and handle. No content.
+  session or a subagent stored them, age, versions and handle, plus the shared
+  store's size against its cap (with a warning when over). **Preview** shows
+  the first 200 lines / 16 KB of an entry.
+- **Recent activity**: the last 12 tool calls with duration, failures, and
+  what they touched: a file tool's path, or a bash command's first line.
 - **Usage**: input, output and cache tokens and cost for the whole session
   file, matching `/session`.
+
+The index has a filter box (every word must match the name, directory, agent,
+model or status) and a **Notifications** toggle. With notifications on, the
+browser notifies you when a session starts waiting on a dialog, or finishes its
+work and goes idle, while the dashboard tab is open but not focused. Clicking a
+notification opens that session. The filter and toggle are remembered per
+browser.
 
 `/dashboard` shows the URL and opens it in your browser.
 
@@ -48,14 +60,16 @@ added as adapters in `src/terminal.ts`.
 
 | Section | Source |
 |---|---|
-| Todos | `pi-todo:snapshot` on the session's `pi.events` bus |
-| Stash | `pi-stash:snapshot` on the session's `pi.events` bus |
+| Todos | `pi-todo:snapshot` on the session's `pi.events` bus (history from the same event) |
+| Stash | `pi-stash:snapshot` on the session's `pi.events` bus; previews through pi-stash's `pi-stash:preview` request on the same bus |
 | Subagents | pi-subagents' `subagents:*` lifecycle events on the same bus. Its `globalThis` service is not used: subagent children load the extension in-process and replace it. Agents started before a `/reload` are not listed. |
 | Blackhole | `om.observations.*` and `om.reflections.recorded` entries pi-blackhole saves on the branch (no public API; unknown shapes are skipped) |
 | Usage | Usage on every entry in the session file, as Pi's `/session` sums it |
+| Activity | Pi's `tool_execution_start` / `_end` for top-level calls (codemode's nested calls are left out) |
 
-Payloads are parsed defensively and bounded before they reach the hub: task
-text is capped, and stash content never leaves pi-stash.
+Payloads are parsed defensively and bounded before they reach the hub. Stash
+content and task history are never part of the live session list; they are
+fetched only when you open them, and returned only to the page that asked.
 
 ## How it works
 
@@ -97,21 +111,25 @@ A port change takes effect when the hub next starts (after every session exits).
 
 The hub listens on `127.0.0.1` only and rejects requests whose `Host` header is
 not `127.0.0.1:<port>` or `localhost:<port>`, which blocks DNS-rebinding pages.
-The socket lives in a `0700` directory. The page shows directories, session
-names, model names, dialog titles, task text, subagent descriptions and stash
-entry names and descriptions, but no transcript or stash content.
+The socket lives in a `0700` directory. The live session list shows
+directories, session names, model names, dialog titles, task text, subagent
+descriptions, stash entry names and descriptions, and recent tool calls
+(including the first line of bash commands, clipped to 80 characters). It
+carries no transcript or stash content.
 
-Focus is the only action. Its `POST /api/sessions/<id>/focus` requires a
-random per-hub token that is embedded in the page and sent as
-`X-Dashboard-Token`, and an `Origin` of the dashboard itself when the browser
-sends one. Other sites cannot read the page to learn the token. The hub accepts
-a Focus result only from the connection of the session it asked.
+Requests the page makes of a session (`POST /api/sessions/<id>/focus`,
+`/stash/<name>/preview`, `/todos/<key>/history`) require a random per-hub
+token that is embedded in the page and sent as `X-Dashboard-Token`, and an
+`Origin` of the dashboard itself when the browser sends one. Other sites cannot
+read the page to learn the token. The hub accepts an answer only from the
+connection of the session it asked, and returns it to that request alone.
+Stash previews are read by pi-stash itself (hash-checked, this branch's entries
+only, bare names only) and capped at 200 lines / 16 KB. Stashed text can hold
+secrets from tool output; a preview shows what is stored.
 
 ## Planned
 
-Stash content previews, todo activity timelines, recent tool activity,
-filtering, and browser notifications when a session waits on you. See the
-[plan](docs/plan.md).
+Opt-in actions (abort, steer, compact). See the [plan](docs/plan.md).
 
 ## Development
 

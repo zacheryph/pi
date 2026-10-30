@@ -3,7 +3,9 @@ import { chmodSync, mkdirSync, unlinkSync } from "node:fs";
 import { createServer as createHttpServer, type IncomingMessage, type Server as HttpServer, type ServerResponse } from "node:http";
 import { connect, createServer as createNetServer, type AddressInfo, type Server as NetServer, type Socket } from "node:net";
 import { homedir } from "node:os";
-import { encode, hubPaths, IDLE_GRACE_MS, isSnapshot, LineDecoder, PROTOCOL_VERSION, type HubPaths, type SessionSnapshot } from "../protocol.ts";
+import {
+  encode, hubPaths, IDLE_GRACE_MS, isSnapshot, LineDecoder, PROTOCOL_VERSION, type CommandRequest, type HubPaths, type SessionSnapshot,
+} from "../protocol.ts";
 import { renderPage } from "./page.ts";
 
 export interface HubOptions {
@@ -21,7 +23,17 @@ export interface CommandOutcome {
   status: number;
   ok: boolean;
   error?: string;
+  data?: unknown;
 }
+
+type Answer = { ok: boolean; error?: string; data?: unknown; timedOut?: boolean };
+
+/** Page routes for session requests: POST /api/sessions/<id>/<route>. */
+const ROUTES: Array<[RegExp, (match: string[]) => CommandRequest]> = [
+  [/^focus$/, () => ({ command: "focus" })],
+  [/^stash\/([^/]+)\/preview$/, (match) => ({ command: "stash-preview", name: match[1]! })],
+  [/^todos\/([^/]+)\/history$/, (match) => ({ command: "todo-history", key: match[1]! })],
+];
 
 export interface SessionView extends SessionSnapshot {
   /** The session is restarting its runtime (/new, /resume, /fork, /reload). */
@@ -70,7 +82,7 @@ export class Hub {
   private readonly httpRetryMs: number;
   private readonly commandTimeoutMs: number;
   /** Focus requests awaiting an answer, with the connection that must give it. */
-  private readonly pending = new Map<number, { socket: Socket; finish: (result: { ok: boolean; error?: string }) => void }>();
+  private readonly pending = new Map<number, { socket: Socket; finish: (result: Answer) => void }>();
   private nextCommand = 1;
   private readonly log: (line: string) => void;
   private readonly sessions = new Map<string, Entry>();
@@ -181,7 +193,11 @@ export class Hub {
           const result = message as { id?: unknown; ok?: unknown; error?: unknown };
           const waiting = typeof result.id === "number" ? this.pending.get(result.id) : undefined;
           if (waiting?.socket === socket) {
-            waiting.finish({ ok: result.ok === true, ...(typeof result.error === "string" ? { error: result.error.slice(0, 500) } : {}) });
+            waiting.finish({
+              ok: result.ok === true,
+              ...(typeof result.error === "string" ? { error: result.error.slice(0, 500) } : {}),
+              ...("data" in result ? { data: (result as { data?: unknown }).data } : {}),
+            });
           }
         }
       }
@@ -205,17 +221,22 @@ export class Hub {
   }
 
   /** Asks a session to bring its terminal to the front. */
-  async focus(sessionId: string): Promise<CommandOutcome> {
+  focus(sessionId: string): Promise<CommandOutcome> {
+    return this.command(sessionId, { command: "focus" });
+  }
+
+  /** Relays one request to a session and returns its answer to the caller only. */
+  async command(sessionId: string, request: CommandRequest): Promise<CommandOutcome> {
     const entry = this.sessions.get(sessionId);
     if (!entry) return { status: 404, ok: false, error: "That session is no longer running." };
     if (!entry.socket) return { status: 409, ok: false, error: "That session is restarting; try again in a moment." };
-    if (!entry.snapshot.terminal) return { status: 409, ok: false, error: "This session's terminal does not support Focus." };
+    if (request.command === "focus" && !entry.snapshot.terminal) return { status: 409, ok: false, error: "This session's terminal does not support Focus." };
     const id = this.nextCommand++;
     const socket = entry.socket;
-    const result = await new Promise<{ ok: boolean; error?: string; timedOut?: boolean }>((resolve) => {
+    const result = await new Promise<Answer>((resolve) => {
       const timer = setTimeout(() => finish({ ok: false, error: "The session did not answer.", timedOut: true }), this.commandTimeoutMs);
       const onClose = () => finish({ ok: false, error: "The session closed before answering." });
-      const finish = (value: { ok: boolean; error?: string; timedOut?: boolean }) => {
+      const finish = (value: Answer) => {
         clearTimeout(timer);
         socket.off("close", onClose);
         this.pending.delete(id);
@@ -223,9 +244,9 @@ export class Hub {
       };
       this.pending.set(id, { socket, finish });
       socket.once("close", onClose);
-      socket.write(encode({ type: "command", id, command: "focus" }));
+      socket.write(encode({ type: "command", id, ...request }));
     });
-    if (result.ok) return { status: 200, ok: true };
+    if (result.ok) return { status: 200, ok: true, ...(result.data === undefined ? {} : { data: result.data }) };
     return { status: result.timedOut ? 504 : 502, ok: false, ...(result.error ? { error: result.error } : {}) };
   }
 
@@ -282,16 +303,26 @@ export class Hub {
     // Rejecting foreign Host headers blocks DNS-rebinding pages from reading the API.
     if (!this.allowedHost(request.headers.host)) return text(response, 403, "Forbidden host\n");
     const { pathname } = new URL(request.url ?? "/", "http://127.0.0.1");
-    const focus = /^\/api\/sessions\/([^/]+)\/focus$/.exec(pathname);
-    if (request.method === "POST" && focus) {
+    const session = /^\/api\/sessions\/([^/]+)\/(.+)$/.exec(pathname);
+    if (request.method === "POST" && session) {
       if (!this.authorized(request)) return text(response, 403, "Forbidden\n");
       let size = 0;
       // The body is unused; drain a small one and refuse anything larger.
       request.on("data", (chunk: Buffer) => { size += chunk.length; if (size > MAX_BODY_BYTES) request.destroy(); });
       request.on("end", () => {
         let id: string;
-        try { id = decodeURIComponent(focus[1]!); } catch { return text(response, 400, "Bad session id\n"); }
-        void this.focus(id).then(({ status, ...body }) => json(response, body, status));
+        let command: CommandRequest | undefined;
+        try {
+          id = decodeURIComponent(session[1]!);
+          for (const [pattern, build] of ROUTES) {
+            const match = pattern.exec(session[2]!);
+            if (match) { command = build(match.map((part) => decodeURIComponent(part))); break; }
+          }
+        } catch {
+          return text(response, 400, "Bad request path\n");
+        }
+        if (!command) return text(response, 404, "Not found\n");
+        void this.command(id, command).then(({ status, ...body }) => json(response, body, status));
       });
       return;
     }

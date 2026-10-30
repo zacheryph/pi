@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clip, readStash, readTodos } from "#src/sections";
+import { clip, readPreview, readStash, readTodoHistory, readTodos } from "#src/sections";
 
 const task = (overrides: Record<string, unknown> = {}) => ({
   key: "a", subject: "Add retry backoff", status: "in_progress", blocked: false, unreviewed: 0, updates: [], ...overrides,
@@ -70,5 +70,49 @@ describe("readStash", () => {
     expect(result?.entries).toHaveLength(1);
     expect(JSON.stringify(result)).not.toContain("secret");
     expect(readStash({ version: 3, entries: [] })).toBeUndefined();
+  });
+});
+
+describe("readStash store size", () => {
+  it("passes the store size and cap through, and drops malformed ones", () => {
+    expect(readStash({ version: 1, entries: [], store: { bytes: 5, maxBytes: 10 } })?.store).toEqual({ bytes: 5, maxBytes: 10 });
+    expect(readStash({ version: 1, entries: [], store: { bytes: -1, maxBytes: 10 } })?.store).toBeUndefined();
+    expect(readStash({ version: 1, entries: [] })?.store).toBeUndefined();
+  });
+});
+
+describe("readTodoHistory", () => {
+  const event = { version: 1, revision: 3, tasks: [task({ key: "a", createdAt: 5, updates: [
+    { revision: 1, at: 10, status: "in_progress", from: "pending", by: "user" },
+    { revision: 2, at: 20, status: "completed", from: "in_progress", message: "x".repeat(3_000) },
+    { revision: 3, at: 0, status: "completed" },
+    { revision: 4, at: 30, status: "done" },
+  ] })] };
+
+  it("returns one task's history with validated updates", () => {
+    const history = readTodoHistory(event, "a")!;
+    expect(history.createdAt).toBe(5);
+    expect(history.updates).toHaveLength(2);
+    expect(history.updates[0]).toEqual({ revision: 1, at: 10, status: "in_progress", from: "pending", byUser: true });
+    expect(history.updates[1]?.message).toHaveLength(2_000);
+  });
+
+  it("is undefined for unknown tasks and payloads", () => {
+    expect(readTodoHistory(event, "missing")).toBeUndefined();
+    expect(readTodoHistory(undefined, "a")).toBeUndefined();
+    expect(readTodoHistory({ version: 2, tasks: [] }, "a")).toBeUndefined();
+  });
+});
+
+describe("readPreview", () => {
+  it("passes a valid preview, capped, and turns failures into messages", () => {
+    expect(readPreview({ ok: true, handle: "stash:a@0123456789ab", lines: ["one", 2, "three"], total: 9, complete: false }))
+      .toEqual({ handle: "stash:a@0123456789ab", lines: ["one", "", "three"], total: 9, complete: false });
+    const long = readPreview({ ok: true, handle: "h", lines: Array.from({ length: 500 }, () => "y".repeat(5_000)), total: 500, complete: false });
+    expect(typeof long !== "string" && long.lines).toHaveLength(200);
+    expect(typeof long !== "string" && long.lines[0]).toHaveLength(2_000);
+    expect(readPreview({ ok: false, error: "No stash entry named \"x\" on this branch." })).toBe("No stash entry named \"x\" on this branch.");
+    expect(readPreview(undefined)).toBe("pi-stash did not answer; is it loaded?");
+    expect(readPreview({ ok: true, lines: "nope" })).toBe("pi-stash sent an unreadable preview.");
   });
 });

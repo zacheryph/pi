@@ -1,5 +1,5 @@
 import type {
-  MemorySection, SessionSnapshot, SessionStatus, StashSection, SubagentsSection, TerminalInfo, TodoSection, UsageSection,
+  ActivitySection, MemorySection, SessionSnapshot, SessionStatus, StashSection, SubagentsSection, TerminalInfo, TodoSection, UsageSection,
 } from "./protocol.ts";
 
 /** Written by pi-subagents when a session starts with `--agent`. */
@@ -28,6 +28,7 @@ export interface SnapshotInput {
   memory?: MemorySection;
   subagents?: SubagentsSection;
   terminal?: TerminalInfo;
+  activity?: ActivitySection;
 }
 
 /** Collapses whitespace and caps length; names and titles are user and model text. */
@@ -76,5 +77,6 @@ export function buildSnapshot(input: SnapshotInput): SessionSnapshot {
     ...(input.memory ? { memory: input.memory } : {}),
     ...(input.subagents ? { subagents: input.subagents } : {}),
     ...(input.terminal ? { terminal: input.terminal } : {}),
+    ...(input.activity ? { activity: input.activity } : {}),
   };
 }

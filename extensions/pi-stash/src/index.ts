@@ -2,7 +2,10 @@ import { defineTool, type ExtensionAPI, type ExtensionContext } from "@earendil-
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { DEFAULT_CONFIG, loadStashConfig, type StashConfig } from "./config.ts";
-import { STASH_SNAPSHOT_EVENT, stashEntryJson, stashSnapshotEvent } from "./events.ts";
+import {
+  PREVIEW_MAX_BYTES, PREVIEW_MAX_LINES, STASH_PREVIEW_REQUEST, STASH_SNAPSHOT_EVENT, stashEntryJson, stashSnapshotEvent,
+  type StashPreviewRequest, type StashPreviewResult, type StashSnapshotEvent,
+} from "./events.ts";
 import { DEFAULT_GET_BYTES, HARD_MAX_BYTES, HARD_MAX_LINES, headLines, previewOf, sliceText, type SliceResult } from "./slice.ts";
 import { literalContent, readCwdFile, readToolResult, type SourceText } from "./sources.ts";
 import {
@@ -111,7 +114,32 @@ export default function stashExtension(pi: ExtensionAPI, dependencies: StashExte
   let showCard = false;
 
   const getStore = () => store ??= new BlobStore(defaultStashRoot());
-  const publish = () => pi.events.emit(STASH_SNAPSHOT_EVENT, stashSnapshotEvent(index));
+  const storeSize = (): StashSnapshotEvent["store"] => {
+    try {
+      return { bytes: getStore().usage().bytes, maxBytes: config.maxStoreBytes };
+    } catch {
+      return undefined;
+    }
+  };
+  const publish = () => pi.events.emit(STASH_SNAPSHOT_EVENT, stashSnapshotEvent(index, storeSize()));
+  const preview = (request: Partial<StashPreviewRequest>): StashPreviewResult => {
+    const name = typeof request.name === "string" ? request.name : "";
+    // Bare names only: the request may read this branch's entries, not arbitrary handles.
+    if (!NAME_PATTERN.test(name)) return { ok: false, error: "Invalid stash entry name." };
+    const record = currentEntries(index).find((entry) => entry.name === name);
+    if (!record) return { ok: false, error: `No stash entry named "${name}" on this branch.` };
+    const limit = (value: unknown, max: number) => typeof value === "number" && Number.isInteger(value) && value > 0 ? Math.min(value, max) : max;
+    try {
+      const head = headLines(getStore().read(record.hash), limit(request.maxLines, PREVIEW_MAX_LINES), limit(request.maxBytes, PREVIEW_MAX_BYTES));
+      return { ok: true, handle: handleFor(record), lines: head.lines, total: head.total, complete: head.complete };
+    } catch (error) {
+      return { ok: false, error: sanitizeStashText(error instanceof Error ? error.message : String(error)) };
+    }
+  };
+  pi.events.on(STASH_PREVIEW_REQUEST, (data) => {
+    const request = data as Partial<StashPreviewRequest> | null;
+    if (typeof request?.respond === "function") request.respond(preview(request));
+  });
 
   const record = (ctx: ExtensionContext, name: string, description: string | undefined, source: SourceText): StashRecord => {
     const { hash, bytes } = getStore().put(source.text);

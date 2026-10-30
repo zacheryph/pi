@@ -1,11 +1,16 @@
 import { join } from "node:path";
 import { getAgentDir, VERSION, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { ActivityTracker } from "./activity.ts";
 import { loadDashboardConfig, type DashboardConfig } from "./config.ts";
 import { nodeRuntime, spawnHub } from "./launch.ts";
 import { memoryStats } from "./memory.ts";
-import { hubPaths, type HubPaths, type MemorySection, type StashSection, type TodoSection, type UsageSection } from "./protocol.ts";
+import {
+  hubPaths, type CommandRequest, type HubPaths, type MemorySection, type StashSection, type TodoSection, type UsageSection,
+} from "./protocol.ts";
 import { Reporter } from "./reporter.ts";
-import { readStash, readTodos, STASH_SNAPSHOT_EVENT, TODO_SNAPSHOT_EVENT } from "./sections.ts";
+import {
+  readPreview, readStash, readTodoHistory, readTodos, STASH_PREVIEW_REQUEST, STASH_SNAPSHOT_EVENT, TODO_SNAPSHOT_EVENT,
+} from "./sections.ts";
 import { buildSnapshot } from "./snapshot.ts";
 import { StatusTracker } from "./status.ts";
 import { SUBAGENT_CHANNELS, SubagentTracker } from "./subagents.ts";
@@ -51,8 +56,11 @@ export default function dashboardExtension(pi: ExtensionAPI, dependencies: Dashb
   let timer: ReturnType<typeof setTimeout> | undefined;
   // Latest state other extensions published on this session's bus.
   let todos: TodoSection | undefined;
+  /** pi-todo's latest event as sent, for task history requests; never sent whole. */
+  let todoEvent: unknown;
   let stash: StashSection | undefined;
   let subagents = new SubagentTracker();
+  let activity = new ActivityTracker();
   // Usage and memory scan the session file, so they refresh only after events that change them.
   let usage: UsageSection | undefined;
   let memory: MemorySection | undefined;
@@ -71,7 +79,7 @@ export default function dashboardExtension(pi: ExtensionAPI, dependencies: Dashb
     return buildSnapshot({
       id: String(pid), pid, startedAt, piVersion: VERSION, ctx,
       sessionName: pi.getSessionName(), thinking: pi.getThinkingLevel(), status: status.current(),
-      todos, stash, usage, memory, subagents: subagents.section(), terminal: terminal?.info,
+      todos, stash, usage, memory, subagents: subagents.section(), terminal: terminal?.info, activity: activity.section(),
     });
   };
 
@@ -99,8 +107,10 @@ export default function dashboardExtension(pi: ExtensionAPI, dependencies: Dashb
     reporter = undefined;
     current = undefined;
     todos = undefined;
+    todoEvent = undefined;
     stash = undefined;
     subagents = new SubagentTracker();
+    activity = new ActivityTracker();
     usage = undefined;
     memory = undefined;
     ledgerStale = true;
@@ -110,7 +120,30 @@ export default function dashboardExtension(pi: ExtensionAPI, dependencies: Dashb
 
   // pi-todo and pi-stash publish on session start (before this extension's,
   // which loads last), so the first snapshot already carries their state.
-  pi.events.on(TODO_SNAPSHOT_EVENT, (data) => { todos = readTodos(data); schedule(); });
+  pi.events.on(TODO_SNAPSHOT_EVENT, (data) => { todoEvent = data; todos = readTodos(data); schedule(); });
+
+  /** Requests from the page, answered to that page only. Throw to report a failure. */
+  const answer = async (request: CommandRequest): Promise<unknown> => {
+    switch (request.command) {
+      case "focus":
+        if (!terminal) throw new Error("This session's terminal does not support Focus.");
+        await terminal.focus();
+        return undefined;
+      case "stash-preview": {
+        // pi-stash answers synchronously, through its hash-checked store.
+        let reply: unknown;
+        pi.events.emit(STASH_PREVIEW_REQUEST, { name: request.name, respond: (value: unknown) => { reply = value; } });
+        const preview = readPreview(reply);
+        if (typeof preview === "string") throw new Error(preview);
+        return preview;
+      }
+      case "todo-history": {
+        const history = readTodoHistory(todoEvent, request.key);
+        if (!history) throw new Error(`No task "${request.key}" on this branch.`);
+        return history;
+      }
+    }
+  };
   pi.events.on(STASH_SNAPSHOT_EVENT, (data) => { stash = readStash(data); schedule(); });
   for (const channel of SUBAGENT_CHANNELS) pi.events.on(channel, (data) => { if (subagents.apply(channel, data)) schedule(); });
 
@@ -128,11 +161,7 @@ export default function dashboardExtension(pi: ExtensionAPI, dependencies: Dashb
       socketPath: hub.socket,
       spawnHub: () => (dependencies.spawnHub ?? ((target, settings) => spawnHub({ paths: target, port: settings.port, node: nodeRuntime(settings.node) })))(hub, config),
       onUnavailable: () => current?.ui.notify(`Session dashboard did not start; see ${hub.log}`, "warning"),
-      onCommand: async () => {
-        if (!terminal) return "This session's terminal does not support Focus.";
-        await terminal.focus();
-        return undefined;
-      },
+      onCommand: answer,
     });
     reporter.start(snapshot(ctx));
   });
@@ -146,16 +175,18 @@ export default function dashboardExtension(pi: ExtensionAPI, dependencies: Dashb
   pi.on("turn_end", (_event, ctx) => schedule(ctx));
   pi.on("message_end", (_event, ctx) => ledger(ctx));
   pi.on("agent_start", (_event, ctx) => { status.agentStart(); schedule(ctx); });
-  pi.on("agent_settled", (_event, ctx) => { status.settled(); status.compactEnd(); schedule(ctx); });
+  pi.on("agent_settled", (_event, ctx) => { status.settled(); status.compactEnd(); activity.settle(); schedule(ctx); });
   pi.on("tool_execution_start", (event, ctx) => {
     // Calls made by another tool (codemode scripts) stay under their parent.
     if (event.parentToolCallId) return;
     status.toolStart(event.toolCallId, event.toolName);
+    activity.start(event.toolCallId, event.toolName, event.args);
     schedule(ctx);
   });
   pi.on("tool_execution_end", (event, ctx) => {
     if (event.parentToolCallId) return;
     status.toolEnd(event.toolCallId);
+    activity.end(event.toolCallId, event.isError);
     schedule(ctx);
   });
   pi.on("session_before_compact", (_event, ctx) => { status.compactStart(); schedule(ctx); });
