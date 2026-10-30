@@ -55,6 +55,10 @@ Use `pi config` to enable or disable individual extensions within the bundle.
 pi-personal/
 ├── package.json                         # bundle manifest + private dev workspace
 ├── tsconfig.base.json
+├── skills/
+│   └── make-it-easy/                    # roadmap-planning skill
+│       ├── SKILL.md
+│       └── references/                  # one file per phase, template, worked example
 └── extensions/
     ├── pi-dashboard/
     │   ├── src/index.ts                 # session reporter + /dashboard command
@@ -257,6 +261,37 @@ Configure globally in `~/.pi/agent/tldr.json`, with a project override in
 Set `setSessionName` to `false` to keep summaries while disabling extension-driven
 session naming. See [extension docs](extensions/pi-tldr/README.md).
 
+## Skills
+
+Root `pi.skills` loads `skills/`, so a bundle install provides these. Force one
+with `/skill:<name>`. Skills for working on this repository itself live in
+`.agents/skills/` and are not part of the bundle.
+
+### make-it-easy
+
+Turns a project or goal into implementation roadmap options, following Kent
+Beck's "make the change easy (warning: this may be hard), then make the easy
+change". The work is staged, and each stage has a gate:
+
+1. **True goal:** separates the request from the outcome it serves; produces a
+   goal brief with success criteria, non-goals, and what existing things may change.
+2. **Inputs:** lists what the new work must know or receive (placement,
+   identity, config, dependencies, policy) and designs how each is supplied so
+   producer and consumer stay decoupled, for example discovery by tag instead of
+   hardcoded IDs.
+3. **What exists:** researches prior art, conventions, and friction, and decides
+   per item whether to fix first, work around, or leave.
+4. **Options:** two or three different strategies (always including a
+   least-preparation baseline) with a recommendation.
+5. **Roadmap:** ordered, independently shippable steps that keep tidying
+   separate from behavior change and end with a small, easy change.
+
+It plans and writes `docs/roadmaps/<slug>.md`; it does not implement. It overlaps
+with [`@firstpick/pi-extension-grill-me`](https://www.npmjs.com/package/@firstpick/pi-extension-grill-me)
+only in stage 1. If its `questionnaire` tool is installed the skill uses it to
+batch questions, and it reuses an existing `GRILL-ME.md` instead of re-asking.
+Nothing here depends on it.
+
 ## Development
 
 Runtime loading needs no build. Install development dependencies only for checks
@@ -269,7 +304,7 @@ npm test
 npm run verify:bundle
 ```
 
-`verify:bundle` checks root-package discovery and tool registration in temporary
+`verify:bundle` checks root-package discovery and tool and skill registration in temporary
 settings, without model calls or changes to your Pi configuration.
 
 These check/test commands cover every development workspace. To run one
