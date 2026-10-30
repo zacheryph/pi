@@ -1,10 +1,12 @@
 import { connect as netConnect, type Socket } from "node:net";
-import { encode, PROTOCOL_VERSION, type ReporterMessage, type SessionSnapshot } from "./protocol.ts";
+import { encode, LineDecoder, PROTOCOL_VERSION, type HubCommand, type ReporterMessage, type SessionSnapshot } from "./protocol.ts";
 
 export interface ReporterOptions {
   socketPath: string;
   /** Starts a hub; called when nothing listens on the socket. */
   spawnHub: () => void;
+  /** Runs a command the hub forwarded from the page; resolves with an error message on failure. */
+  onCommand?: (command: HubCommand["command"]) => Promise<string | undefined>;
   /** Called once when the hub stays unreachable after `unavailableAfter` attempts. */
   onUnavailable?: () => void;
   unavailableAfter?: number;
@@ -74,13 +76,30 @@ export class Reporter {
       this.socket = socket;
       if (this.snapshot) this.send({ type: "hello", version: PROTOCOL_VERSION, snapshot: this.snapshot });
     });
-    // The hub sends nothing yet; drain so a future message cannot stall the socket.
-    socket.on("data", () => {});
+    const decoder = new LineDecoder();
+    socket.setEncoding("utf8");
+    socket.on("data", (chunk: string) => {
+      for (const message of decoder.push(chunk)) this.receive(socket, message);
+    });
     socket.on("error", (error: NodeJS.ErrnoException) => { failure = error.code; });
     socket.once("close", () => {
       if (this.socket === socket) this.socket = undefined;
       if (!this.closed) this.scheduleRetry(failure);
     });
+  }
+
+  private receive(socket: Socket, message: unknown): void {
+    const raw = message as Partial<HubCommand> | null;
+    if (raw?.type !== "command" || typeof raw.id !== "number" || raw.command !== "focus") return;
+    const id = raw.id;
+    const reply = (error?: string) => {
+      if (socket === this.socket && !socket.destroyed) {
+        socket.write(encode({ type: "result", id, ok: !error, ...(error ? { error } : {}) }));
+      }
+    };
+    const handler = this.options.onCommand;
+    if (!handler) return reply("This session cannot do that.");
+    handler(raw.command).then(reply, (error: unknown) => reply(error instanceof Error ? error.message : String(error)));
   }
 
   private scheduleRetry(failure: string | undefined): void {

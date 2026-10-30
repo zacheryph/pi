@@ -2,11 +2,15 @@ import { join } from "node:path";
 import { getAgentDir, VERSION, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { loadDashboardConfig, type DashboardConfig } from "./config.ts";
 import { nodeRuntime, spawnHub } from "./launch.ts";
-import { hubPaths, type HubPaths, type StashSection, type TodoSection } from "./protocol.ts";
+import { memoryStats } from "./memory.ts";
+import { hubPaths, type HubPaths, type MemorySection, type StashSection, type TodoSection, type UsageSection } from "./protocol.ts";
 import { Reporter } from "./reporter.ts";
 import { readStash, readTodos, STASH_SNAPSHOT_EVENT, TODO_SNAPSHOT_EVENT } from "./sections.ts";
 import { buildSnapshot } from "./snapshot.ts";
 import { StatusTracker } from "./status.ts";
+import { SUBAGENT_CHANNELS, SubagentTracker } from "./subagents.ts";
+import { detectTerminal, type TerminalAdapter } from "./terminal.ts";
+import { sessionUsage } from "./usage.ts";
 
 /** One reporter per process: subagent children and other embedded sessions stay off the dashboard. */
 const SLOT = Symbol.for("pi-dashboard:reporter");
@@ -21,6 +25,8 @@ export interface DashboardDependencies {
   isHubReachable?: (url: string) => Promise<boolean>;
   publishDelayMs?: number;
   pid?: number;
+  /** Finds the terminal Focus brings forward; defaults to the cmux adapter. */
+  detectTerminal?: () => TerminalAdapter | undefined;
 }
 
 async function hubReachable(url: string): Promise<boolean> {
@@ -46,14 +52,31 @@ export default function dashboardExtension(pi: ExtensionAPI, dependencies: Dashb
   // Latest state other extensions published on this session's bus.
   let todos: TodoSection | undefined;
   let stash: StashSection | undefined;
+  let subagents = new SubagentTracker();
+  // Usage and memory scan the session file, so they refresh only after events that change them.
+  let usage: UsageSection | undefined;
+  let memory: MemorySection | undefined;
+  let ledgerStale = true;
+  let terminal: TerminalAdapter | undefined;
 
   const paths = () => hubPaths(dependencies.dir ?? join(getAgentDir(), "dashboard"));
   const loadConfig = () => (dependencies.loadConfig ?? loadDashboardConfig)();
 
-  const snapshot = (ctx: ExtensionContext) => buildSnapshot({
-    id: String(pid), pid, startedAt, piVersion: VERSION, ctx,
-    sessionName: pi.getSessionName(), thinking: pi.getThinkingLevel(), status: status.current(), todos, stash,
-  });
+  const snapshot = (ctx: ExtensionContext) => {
+    if (ledgerStale) {
+      usage = sessionUsage(ctx.sessionManager.getEntries());
+      memory = memoryStats(ctx.sessionManager.getBranch());
+      ledgerStale = false;
+    }
+    return buildSnapshot({
+      id: String(pid), pid, startedAt, piVersion: VERSION, ctx,
+      sessionName: pi.getSessionName(), thinking: pi.getThinkingLevel(), status: status.current(),
+      todos, stash, usage, memory, subagents: subagents.section(), terminal: terminal?.info,
+    });
+  };
+
+  /** The session file changed: usage, compactions or memory entries may have moved. */
+  const ledger = (ctx: ExtensionContext) => { ledgerStale = true; schedule(ctx); };
 
   const publish = () => {
     timer = undefined;
@@ -77,6 +100,11 @@ export default function dashboardExtension(pi: ExtensionAPI, dependencies: Dashb
     current = undefined;
     todos = undefined;
     stash = undefined;
+    subagents = new SubagentTracker();
+    usage = undefined;
+    memory = undefined;
+    ledgerStale = true;
+    terminal = undefined;
     if (slots[SLOT] === token) delete slots[SLOT];
   };
 
@@ -84,6 +112,7 @@ export default function dashboardExtension(pi: ExtensionAPI, dependencies: Dashb
   // which loads last), so the first snapshot already carries their state.
   pi.events.on(TODO_SNAPSHOT_EVENT, (data) => { todos = readTodos(data); schedule(); });
   pi.events.on(STASH_SNAPSHOT_EVENT, (data) => { stash = readStash(data); schedule(); });
+  for (const channel of SUBAGENT_CHANNELS) pi.events.on(channel, (data) => { if (subagents.apply(channel, data)) schedule(); });
 
   pi.on("session_start", (_event, ctx) => {
     // Interactive sessions only; print, json and rpc runs (and subagent children, which run in print mode) are not shown.
@@ -92,12 +121,18 @@ export default function dashboardExtension(pi: ExtensionAPI, dependencies: Dashb
     slots[SLOT] = token;
     current = ctx;
     status = new StatusTracker();
+    terminal = (dependencies.detectTerminal ?? detectTerminal)();
     const config = loadConfig();
     const hub = paths();
     reporter = new Reporter({
       socketPath: hub.socket,
       spawnHub: () => (dependencies.spawnHub ?? ((target, settings) => spawnHub({ paths: target, port: settings.port, node: nodeRuntime(settings.node) })))(hub, config),
       onUnavailable: () => current?.ui.notify(`Session dashboard did not start; see ${hub.log}`, "warning"),
+      onCommand: async () => {
+        if (!terminal) return "This session's terminal does not support Focus.";
+        await terminal.focus();
+        return undefined;
+      },
     });
     reporter.start(snapshot(ctx));
   });
@@ -105,11 +140,11 @@ export default function dashboardExtension(pi: ExtensionAPI, dependencies: Dashb
   pi.on("session_shutdown", (event) => stop(event.reason === "quit" ? "quit" : "replace"));
 
   pi.on("session_info_changed", (_event, ctx) => schedule(ctx));
-  pi.on("session_tree", (_event, ctx) => schedule(ctx));
+  pi.on("session_tree", (_event, ctx) => ledger(ctx));
   pi.on("model_select", (_event, ctx) => schedule(ctx));
   pi.on("thinking_level_select", (_event, ctx) => schedule(ctx));
   pi.on("turn_end", (_event, ctx) => schedule(ctx));
-  pi.on("message_end", (_event, ctx) => schedule(ctx));
+  pi.on("message_end", (_event, ctx) => ledger(ctx));
   pi.on("agent_start", (_event, ctx) => { status.agentStart(); schedule(ctx); });
   pi.on("agent_settled", (_event, ctx) => { status.settled(); status.compactEnd(); schedule(ctx); });
   pi.on("tool_execution_start", (event, ctx) => {
@@ -124,7 +159,7 @@ export default function dashboardExtension(pi: ExtensionAPI, dependencies: Dashb
     schedule(ctx);
   });
   pi.on("session_before_compact", (_event, ctx) => { status.compactStart(); schedule(ctx); });
-  pi.on("session_compact", (_event, ctx) => { status.compactEnd(); schedule(ctx); });
+  pi.on("session_compact", (_event, ctx) => { status.compactEnd(); ledger(ctx); });
   pi.on("session_compact_failed", (_event, ctx) => { status.compactEnd(); schedule(ctx); });
   pi.on("ui_prompt_start", (event, ctx) => { status.promptStart(event.title); schedule(ctx); });
   pi.on("ui_prompt_end", (_event, ctx) => { status.promptEnd(); schedule(ctx); });

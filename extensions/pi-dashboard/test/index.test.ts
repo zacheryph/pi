@@ -2,7 +2,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
 import { Hub } from "#src/hub/hub";
 import dashboardExtension, { type DashboardDependencies } from "#src/index";
-import { get, onCleanup, tempDir, waitFor } from "#test/helpers";
+import { get, onCleanup, post, tempDir, waitFor } from "#test/helpers";
 
 type Handler = (event: Record<string, unknown>, ctx: unknown) => unknown;
 
@@ -28,10 +28,10 @@ function fakePi() {
   return { pi, emit, commands, rename: (next: string) => { name = next; }, publish: (channel: string, data: unknown) => pi.events.emit(channel, data) };
 }
 
-function fakeCtx(mode = "tui") {
+function fakeCtx(mode = "tui", entries: unknown[] = []) {
   return {
     mode, cwd: "/work/api", hasUI: mode !== "print", ui: { notify: vi.fn() },
-    sessionManager: { getSessionId: () => "session-a", getBranch: () => [] },
+    sessionManager: { getSessionId: () => "session-a", getBranch: () => entries, getEntries: () => entries },
     model: { provider: "anthropic", id: "claude-opus" },
     getContextUsage: () => ({ tokens: 5000, contextWindow: 200_000, percent: 2.5 }),
     isIdle: () => true,
@@ -52,7 +52,11 @@ function setup(overrides: Partial<DashboardDependencies> = {}) {
     const hub = hubs.at(-1);
     return hub?.httpPort ? JSON.parse((await get(hub.httpPort, "/api/sessions")).body).sessions as Array<Record<string, unknown>> : [];
   };
-  return { deps, spawnHub, sessions, hubs };
+  const focus = async (id: string) => {
+    const hub = hubs.at(-1)!;
+    return post(hub.httpPort!, `/api/sessions/${id}/focus`, { "x-dashboard-token": hub.token });
+  };
+  return { deps, spawnHub, sessions, hubs, focus };
 }
 
 function load(deps: DashboardDependencies, pid = 4242) {
@@ -116,6 +120,58 @@ describe("pi-dashboard extension", () => {
       const todos = current?.todos as { revision: number } | undefined;
       const stash = current?.stash as { total: number } | undefined;
       return todos?.revision === 2 && stash?.total === 1;
+    });
+  });
+
+  it("Focus from the page runs the session's terminal adapter and reports failures", async () => {
+    const adapter = { info: { kind: "cmux", label: "cmux" }, focus: vi.fn(async () => {}) };
+    const env = setup({ detectTerminal: () => adapter });
+    const fake = load(env.deps);
+    const ctx = fakeCtx();
+    onCleanup(() => quit(fake, ctx));
+    await fake.emit("session_start", { reason: "startup" }, ctx);
+    const [card] = await waitFor(async () => { const list = await env.sessions(); return list.length ? list : undefined; });
+    expect(card?.terminal).toEqual({ kind: "cmux", label: "cmux" });
+    expect(await env.focus("4242")).toEqual({ status: 200, body: JSON.stringify({ ok: true }) });
+    expect(adapter.focus).toHaveBeenCalledTimes(1);
+
+    adapter.focus.mockRejectedValueOnce(new Error("cmux focus-panel: panel not found"));
+    const failed = await env.focus("4242");
+    expect(failed.status).toBe(502);
+    expect(JSON.parse(failed.body).error).toBe("cmux focus-panel: panel not found");
+  });
+
+  it("omits the terminal outside cmux, so the page offers no Focus", async () => {
+    const env = setup({ detectTerminal: () => undefined });
+    const fake = load(env.deps);
+    const ctx = fakeCtx();
+    onCleanup(() => quit(fake, ctx));
+    await fake.emit("session_start", { reason: "startup" }, ctx);
+    const [card] = await waitFor(async () => { const list = await env.sessions(); return list.length ? list : undefined; });
+    expect(card?.terminal).toBeUndefined();
+    expect((await env.focus("4242")).status).toBe(409);
+  });
+
+  it("reports usage, compactions and subagents", async () => {
+    const env = setup({ detectTerminal: () => undefined });
+    const fake = load(env.deps);
+    const entries: unknown[] = [{ type: "message", message: { role: "assistant", usage: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, cost: { total: 0.25 } } } }];
+    const ctx = fakeCtx("tui", entries);
+    onCleanup(() => quit(fake, ctx));
+    await fake.emit("session_start", { reason: "startup" }, ctx);
+    const [card] = await waitFor(async () => { const list = await env.sessions(); return list.length ? list : undefined; });
+    expect(card?.usage).toEqual({ input: 10, output: 5, cacheRead: 0, cacheWrite: 0, cost: 0.25 });
+    expect(card?.memory).toEqual({ compactions: 0 });
+    expect(card?.subagents).toBeUndefined();
+
+    entries.push({ type: "compaction", timestamp: "2026-10-30T02:00:00.000Z", usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, cost: { total: 0.05 } } });
+    await fake.emit("session_compact", {}, ctx);
+    fake.publish("subagents:started", { id: "agent-1", type: "Explore", description: "Find auth files" });
+    await waitFor(async () => {
+      const [current] = await env.sessions();
+      const memory = current?.memory as { compactions: number } | undefined;
+      const agents = (current?.subagents as { agents: Array<{ state: string }> } | undefined)?.agents;
+      return memory?.compactions === 1 && agents?.[0]?.state === "running" && (current?.usage as { cost: number }).cost === 0.3;
     });
   });
 

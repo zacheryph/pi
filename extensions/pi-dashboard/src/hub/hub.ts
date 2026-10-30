@@ -1,8 +1,9 @@
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { chmodSync, mkdirSync, unlinkSync } from "node:fs";
 import { createServer as createHttpServer, type IncomingMessage, type Server as HttpServer, type ServerResponse } from "node:http";
 import { connect, createServer as createNetServer, type AddressInfo, type Server as NetServer, type Socket } from "node:net";
 import { homedir } from "node:os";
-import { hubPaths, IDLE_GRACE_MS, isSnapshot, LineDecoder, PROTOCOL_VERSION, type HubPaths, type SessionSnapshot } from "../protocol.ts";
+import { encode, hubPaths, IDLE_GRACE_MS, isSnapshot, LineDecoder, PROTOCOL_VERSION, type HubPaths, type SessionSnapshot } from "../protocol.ts";
 import { renderPage } from "./page.ts";
 
 export interface HubOptions {
@@ -11,7 +12,15 @@ export interface HubOptions {
   port: number;
   idleGraceMs?: number;
   httpRetryMs?: number;
+  /** How long a Focus request waits for the session to answer. */
+  commandTimeoutMs?: number;
   log?: (line: string) => void;
+}
+
+export interface CommandOutcome {
+  status: number;
+  ok: boolean;
+  error?: string;
 }
 
 export interface SessionView extends SessionSnapshot {
@@ -31,6 +40,7 @@ interface Entry {
 }
 
 const HEARTBEAT_MS = 25_000;
+const MAX_BODY_BYTES = 1024;
 const BROADCAST_DELAY_MS = 50;
 
 const PAGE_HEADERS = {
@@ -48,6 +58,8 @@ const PAGE_HEADERS = {
  */
 export class Hub {
   readonly paths: HubPaths;
+  /** Required on state-changing requests; only the page served by this hub knows it. */
+  readonly token = randomBytes(24).toString("base64url");
   httpPort?: number;
   httpError?: string;
   /** Resolves once the hub has stopped, by idle shutdown or stop(). */
@@ -56,6 +68,10 @@ export class Hub {
   private readonly port: number;
   private readonly idleGraceMs: number;
   private readonly httpRetryMs: number;
+  private readonly commandTimeoutMs: number;
+  /** Focus requests awaiting an answer, with the connection that must give it. */
+  private readonly pending = new Map<number, { socket: Socket; finish: (result: { ok: boolean; error?: string }) => void }>();
+  private nextCommand = 1;
   private readonly log: (line: string) => void;
   private readonly sessions = new Map<string, Entry>();
   private readonly connections = new Set<Socket>();
@@ -75,6 +91,7 @@ export class Hub {
     this.port = options.port;
     this.idleGraceMs = options.idleGraceMs ?? IDLE_GRACE_MS;
     this.httpRetryMs = options.httpRetryMs ?? 5_000;
+    this.commandTimeoutMs = options.commandTimeoutMs ?? 12_000;
     this.log = options.log ?? (() => {});
     this.closed = new Promise((resolve) => { this.resolveClosed = resolve; });
   }
@@ -97,6 +114,8 @@ export class Hub {
       for (const timer of [this.idleTimer, this.httpRetry, this.broadcastTimer]) clearTimeout(timer);
       clearInterval(this.heartbeat);
       for (const entry of this.sessions.values()) clearTimeout(entry.expiry);
+      for (const { finish } of this.pending.values()) finish({ ok: false, error: "The dashboard is shutting down." });
+      this.pending.clear();
       for (const stream of this.streams) stream.end();
       this.streams.clear();
       for (const socket of this.connections) socket.destroy();
@@ -158,6 +177,12 @@ export class Hub {
           if (entry?.socket === socket) { entry.snapshot = raw.snapshot; this.scheduleBroadcast(); }
         } else if (raw.type === "bye" && (raw.reason === "quit" || raw.reason === "replace")) {
           farewell = raw.reason;
+        } else if (raw.type === "result" && id) {
+          const result = message as { id?: unknown; ok?: unknown; error?: unknown };
+          const waiting = typeof result.id === "number" ? this.pending.get(result.id) : undefined;
+          if (waiting?.socket === socket) {
+            waiting.finish({ ok: result.ok === true, ...(typeof result.error === "string" ? { error: result.error.slice(0, 500) } : {}) });
+          }
         }
       }
     });
@@ -177,6 +202,31 @@ export class Hub {
       }
       if (!this.reporters.size) this.armIdle();
     });
+  }
+
+  /** Asks a session to bring its terminal to the front. */
+  async focus(sessionId: string): Promise<CommandOutcome> {
+    const entry = this.sessions.get(sessionId);
+    if (!entry) return { status: 404, ok: false, error: "That session is no longer running." };
+    if (!entry.socket) return { status: 409, ok: false, error: "That session is restarting; try again in a moment." };
+    if (!entry.snapshot.terminal) return { status: 409, ok: false, error: "This session's terminal does not support Focus." };
+    const id = this.nextCommand++;
+    const socket = entry.socket;
+    const result = await new Promise<{ ok: boolean; error?: string; timedOut?: boolean }>((resolve) => {
+      const timer = setTimeout(() => finish({ ok: false, error: "The session did not answer.", timedOut: true }), this.commandTimeoutMs);
+      const onClose = () => finish({ ok: false, error: "The session closed before answering." });
+      const finish = (value: { ok: boolean; error?: string; timedOut?: boolean }) => {
+        clearTimeout(timer);
+        socket.off("close", onClose);
+        this.pending.delete(id);
+        resolve(value);
+      };
+      this.pending.set(id, { socket, finish });
+      socket.once("close", onClose);
+      socket.write(encode({ type: "command", id, command: "focus" }));
+    });
+    if (result.ok) return { status: 200, ok: true };
+    return { status: result.timedOut ? 504 : 502, ok: false, ...(result.error ? { error: result.error } : {}) };
   }
 
   private register(id: string, snapshot: SessionSnapshot, socket: Socket): void {
@@ -219,13 +269,35 @@ export class Hub {
     return [`127.0.0.1:${this.httpPort}`, `localhost:${this.httpPort}`].includes(value);
   }
 
+  /** Same-origin requests carrying this hub's token; other sites cannot read the page to learn it. */
+  private authorized(request: IncomingMessage): boolean {
+    const origin = request.headers.origin;
+    if (origin !== undefined && origin !== `http://127.0.0.1:${this.httpPort}` && origin !== `http://localhost:${this.httpPort}`) return false;
+    const given = Buffer.from(String(request.headers["x-dashboard-token"] ?? ""));
+    const expected = Buffer.from(this.token);
+    return given.length === expected.length && timingSafeEqual(given, expected);
+  }
+
   private handle(request: IncomingMessage, response: ServerResponse): void {
     // Rejecting foreign Host headers blocks DNS-rebinding pages from reading the API.
     if (!this.allowedHost(request.headers.host)) return text(response, 403, "Forbidden host\n");
-    if (request.method !== "GET") return text(response, 405, "Method not allowed\n");
     const { pathname } = new URL(request.url ?? "/", "http://127.0.0.1");
+    const focus = /^\/api\/sessions\/([^/]+)\/focus$/.exec(pathname);
+    if (request.method === "POST" && focus) {
+      if (!this.authorized(request)) return text(response, 403, "Forbidden\n");
+      let size = 0;
+      // The body is unused; drain a small one and refuse anything larger.
+      request.on("data", (chunk: Buffer) => { size += chunk.length; if (size > MAX_BODY_BYTES) request.destroy(); });
+      request.on("end", () => {
+        let id: string;
+        try { id = decodeURIComponent(focus[1]!); } catch { return text(response, 400, "Bad session id\n"); }
+        void this.focus(id).then(({ status, ...body }) => json(response, body, status));
+      });
+      return;
+    }
+    if (request.method !== "GET") return text(response, 405, "Method not allowed\n");
     if (pathname === "/") {
-      response.writeHead(200, PAGE_HEADERS).end(renderPage());
+      response.writeHead(200, PAGE_HEADERS).end(renderPage(this.token));
     } else if (pathname === "/api/sessions") {
       json(response, this.list());
     } else if (pathname === "/api/health") {
@@ -245,8 +317,8 @@ function sseFrame(payload: SessionsPayload): string {
   return `event: sessions\ndata: ${JSON.stringify(payload)}\n\n`;
 }
 
-function json(response: ServerResponse, body: unknown): void {
-  response.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" }).end(JSON.stringify(body));
+function json(response: ServerResponse, body: unknown, status = 200): void {
+  response.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" }).end(JSON.stringify(body));
 }
 
 function text(response: ServerResponse, status: number, body: string): void {

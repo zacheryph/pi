@@ -12,13 +12,50 @@ when one is active, model and thinking level, context usage, and status:
 `idle`, `working`, `tool: <name>`, `compacting`, or `waiting` when Pi is
 blocked on a dialog. Waiting sessions sort first and get a highlighted edge.
 
-When pi-todo and pi-stash are loaded, a card also shows `todos <done>/<total>`
-(with unreviewed messages as `N new`) and `stash <entries>`. They come from the
-`pi-todo:snapshot` and `pi-stash:snapshot` events on the session's `pi.events`
-bus; the dashboard parses them defensively and sends bounded metadata to the
-hub (task text capped, stash content never).
+Cards also count todos (`todos <done>/<total>`, unreviewed messages as `N
+new`), running subagents and stash entries. Click a card for its detail page
+(`#<pid>`):
+
+- **Header**: directory, agent, session id, pid, uptime, and **Focus**.
+- **Strip**: model and provider, thinking level, status and how long it has
+  held, context usage, session cost.
+- **Todos**: every task with status, blocked state and unreviewed messages;
+  expand one for its description, prerequisites and latest message.
+- **Subagents**: agents seen since the session's runtime loaded, with state,
+  duration, tool uses, tokens and the latest progress note or error.
+- **Blackhole**: observations kept of recorded (and their tokens), dropped,
+  reflections, compactions and the last one. Without pi-blackhole entries the
+  panel shows compactions only.
+- **Stash**: this branch's entries with size, lines, source, whether this
+  session or a subagent stored them, age, versions and handle. No content.
+- **Usage**: input, output and cache tokens and cost for the whole session
+  file, matching `/session`.
 
 `/dashboard` shows the URL and opens it in your browser.
+
+## Focus
+
+In cmux, **Focus** runs `cmux focus-panel --panel "$CMUX_PANEL_ID"`, which
+selects the session's workspace, surface and tab, then `open -b
+"$CMUX_BUNDLE_ID"` on macOS to bring cmux in front of the browser. It runs
+inside the Pi process (the hub forwards the click over the session's socket),
+because the cmux CLI authenticates with the socket capability cmux put in that
+process's environment. `CMUX_BUNDLED_CLI_PATH` is preferred over `cmux` on
+`PATH`. Sessions outside cmux show no Focus button; other terminals can be
+added as adapters in `src/terminal.ts`.
+
+## Data sources
+
+| Section | Source |
+|---|---|
+| Todos | `pi-todo:snapshot` on the session's `pi.events` bus |
+| Stash | `pi-stash:snapshot` on the session's `pi.events` bus |
+| Subagents | pi-subagents' `subagents:*` lifecycle events on the same bus. Its `globalThis` service is not used: subagent children load the extension in-process and replace it. Agents started before a `/reload` are not listed. |
+| Blackhole | `om.observations.*` and `om.reflections.recorded` entries pi-blackhole saves on the branch (no public API; unknown shapes are skipped) |
+| Usage | Usage on every entry in the session file, as Pi's `/session` sums it |
+
+Payloads are parsed defensively and bounded before they reach the hub: task
+text is capped, and stash content never leaves pi-stash.
 
 ## How it works
 
@@ -60,16 +97,21 @@ A port change takes effect when the hub next starts (after every session exits).
 
 The hub listens on `127.0.0.1` only and rejects requests whose `Host` header is
 not `127.0.0.1:<port>` or `localhost:<port>`, which blocks DNS-rebinding pages.
-The socket lives in a `0700` directory. The page is read-only: it shows
-directories, session names, model names, dialog titles, task subjects and
-messages, and stash entry names and descriptions, but no transcript or stash
-content.
+The socket lives in a `0700` directory. The page shows directories, session
+names, model names, dialog titles, task text, subagent descriptions and stash
+entry names and descriptions, but no transcript or stash content.
+
+Focus is the only action. Its `POST /api/sessions/<id>/focus` requires a
+random per-hub token that is embedded in the page and sent as
+`X-Dashboard-Token`, and an `Origin` of the dashboard itself when the browser
+sends one. Other sites cannot read the page to learn the token. The hub accepts
+a Focus result only from the connection of the session it asked.
 
 ## Planned
 
-Detail page (task list, stash index, subagents, usage, blackhole counts), a
-Focus button that jumps to the session's cmux surface, then stash previews and
-notifications. See the [plan](docs/plan.md).
+Stash content previews, todo activity timelines, recent tool activity,
+filtering, and browser notifications when a session waits on you. See the
+[plan](docs/plan.md).
 
 ## Development
 

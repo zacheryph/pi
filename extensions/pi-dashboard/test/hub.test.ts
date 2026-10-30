@@ -2,8 +2,8 @@ import { existsSync, writeFileSync } from "node:fs";
 import { request } from "node:http";
 import { describe, expect, it } from "vitest";
 import { Hub } from "#src/hub/hub";
-import { PROTOCOL_VERSION } from "#src/protocol";
-import { fakeReporter, get, onCleanup, snapshot, tempDir, waitFor } from "#test/helpers";
+import { LineDecoder, PROTOCOL_VERSION } from "#src/protocol";
+import { fakeReporter, get, onCleanup, post, snapshot, tempDir, waitFor, type FakeReporter } from "#test/helpers";
 
 async function startHub(options: { dir?: string; idleGraceMs?: number } = {}) {
   const hub = new Hub({ dir: options.dir ?? tempDir(), port: 0, idleGraceMs: options.idleGraceMs ?? 5_000 });
@@ -160,5 +160,104 @@ describe("Hub", () => {
     await holder.stop();
     await waitFor(() => hub.httpPort === port);
     expect(hub.httpError).toBeUndefined();
+  });
+
+  describe("Focus", () => {
+    const terminal = { kind: "cmux", label: "cmux" };
+
+    /** A reporter that answers each command with `answer`, recording what it was asked. */
+    function commands(reporter: FakeReporter, answer?: (id: number) => Record<string, unknown> | undefined) {
+      const seen: Array<{ id: number; command: string }> = [];
+      const decoder = new LineDecoder();
+      reporter.socket.setEncoding("utf8");
+      reporter.socket.on("data", (chunk: string) => {
+        for (const message of decoder.push(chunk) as Array<{ type: string; id: number; command: string }>) {
+          if (message.type !== "command") continue;
+          seen.push({ id: message.id, command: message.command });
+          const reply = answer?.(message.id);
+          if (reply) reporter.send(reply);
+        }
+      });
+      return seen;
+    }
+
+    async function focusable(hub: Hub, answer?: (id: number) => Record<string, unknown> | undefined, overrides = {}) {
+      const reporter = await fakeReporter(hub.paths.socket);
+      const seen = commands(reporter, answer);
+      reporter.send(hello({ terminal, ...overrides }));
+      await waitFor(async () => (await sessions(hub)).length === 1);
+      return { reporter, seen };
+    }
+
+    const auth = (hub: Hub) => ({ "x-dashboard-token": hub.token, origin: `http://127.0.0.1:${hub.httpPort}` });
+
+    it("forwards a focus command to the session and returns its answer", async () => {
+      const hub = await startHub();
+      const { seen } = await focusable(hub, (id) => ({ type: "result", id, ok: true }));
+      const response = await post(hub.httpPort!, "/api/sessions/101/focus", auth(hub));
+      expect(response).toEqual({ status: 200, body: JSON.stringify({ ok: true }) });
+      expect(seen).toEqual([{ id: 1, command: "focus" }]);
+    });
+
+    it("passes a session's failure back to the page", async () => {
+      const hub = await startHub();
+      await focusable(hub, (id) => ({ type: "result", id, ok: false, error: "cmux focus-panel: panel not found" }));
+      const response = await post(hub.httpPort!, "/api/sessions/101/focus", auth(hub));
+      expect(response.status).toBe(502);
+      expect(JSON.parse(response.body)).toEqual({ ok: false, error: "cmux focus-panel: panel not found" });
+    });
+
+    it("requires the page's token and a same-origin request", async () => {
+      const hub = await startHub();
+      const { seen } = await focusable(hub, (id) => ({ type: "result", id, ok: true }));
+      const port = hub.httpPort!;
+      expect((await post(port, "/api/sessions/101/focus")).status).toBe(403);
+      expect((await post(port, "/api/sessions/101/focus", { "x-dashboard-token": "wrong" })).status).toBe(403);
+      expect((await post(port, "/api/sessions/101/focus", { ...auth(hub), origin: "http://evil.example" })).status).toBe(403);
+      expect((await post(port, "/api/sessions/101/focus", { ...auth(hub), host: `evil.example:${port}` })).status).toBe(403);
+      expect((await post(port, "/api/sessions/101/focus", { "x-dashboard-token": hub.token })).status).toBe(200);
+      expect((await get(port, "/")).body).toContain(hub.token);
+      expect(seen).toHaveLength(1);
+    });
+
+    it("explains sessions it cannot focus", async () => {
+      const hub = await startHub();
+      const plain = await fakeReporter(hub.paths.socket);
+      plain.send(hello({ id: "plain" }));
+      await waitFor(async () => (await sessions(hub)).length === 1);
+      const port = hub.httpPort!;
+      expect(await post(port, "/api/sessions/missing/focus", auth(hub))).toMatchObject({ status: 404 });
+      const unsupported = await post(port, "/api/sessions/plain/focus", auth(hub));
+      expect(unsupported.status).toBe(409);
+      expect(JSON.parse(unsupported.body).error).toContain("does not support Focus");
+      expect((await post(port, "/api/sessions/%E0%A4%A/focus", auth(hub))).status).toBe(400);
+    });
+
+    it("gives up on a session that does not answer, or that closes first", async () => {
+      const hub = new Hub({ dir: tempDir(), port: 0, commandTimeoutMs: 100 });
+      expect(await hub.start()).toBe("started");
+      onCleanup(() => hub.stop());
+      const silent = await focusable(hub);
+      expect((await post(hub.httpPort!, "/api/sessions/101/focus", auth(hub))).status).toBe(504);
+      const pending = post(hub.httpPort!, "/api/sessions/101/focus", auth(hub));
+      await waitFor(() => silent.seen.length === 2);
+      silent.reporter.socket.destroy();
+      const closed = await pending;
+      expect(closed.status).toBe(502);
+      expect(JSON.parse(closed.body).error).toContain("closed");
+    });
+
+    it("ignores results from a different session's connection", async () => {
+      const hub = new Hub({ dir: tempDir(), port: 0, commandTimeoutMs: 300 });
+      expect(await hub.start()).toBe("started");
+      onCleanup(() => hub.stop());
+      const target = await focusable(hub);
+      const other = await fakeReporter(hub.paths.socket);
+      other.send(hello({ id: "other" }));
+      const pending = post(hub.httpPort!, "/api/sessions/101/focus", auth(hub));
+      await waitFor(() => target.seen.length === 1);
+      other.send({ type: "result", id: target.seen[0]!.id, ok: true });
+      expect((await pending).status).toBe(504);
+    });
   });
 });

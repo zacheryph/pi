@@ -1,6 +1,6 @@
 # pi-dashboard: research and implementation plan
 
-Status: phase 1 (MVP) and the publish hooks implemented; phases 2–4 planned. Wireframes are in the
+Status: phases 1 and 2 implemented (MVP, publish hooks, detail page, Focus); phases 3–4 planned. Wireframes are in the
 companion artifact linked from the PR/session; ASCII versions of the chosen
 layout are at the end of this file. Usage docs: [README](../README.md).
 
@@ -165,8 +165,11 @@ From a Pi session in cmux on the Mac:
    fields (cwd, name, agent, model, thinking, status, context), index page
    with live SSE updates, `/dashboard`. Tests: hub lifecycle in a temp dir,
    two concurrent spawns, reporter snapshot builder, main-session detection.
-2. **Detail view and focus.** Todos and stash index (publish hooks landed in
-   PR 2), subagents, tokens/cost, blackhole stats, cmux focus button.
+2. **Detail view and focus (implemented).** Todos and stash index (publish
+   hooks landed in PR 2), subagents, tokens/cost, blackhole stats, cmux focus
+   button. Subagents come from pi-subagents' `subagents:*` events on the
+   session bus, not its `globalThis` service, which in-process children
+   replace.
 3. **Previews and polish.** Stash content preview on click, todo activity
    timelines, recent activity (last tool calls), grouping/filtering by
    directory, browser notifications when a session waits on you, store usage
@@ -191,13 +194,14 @@ From a Pi session in cmux on the Mac:
    main-session detection and core fields; card-grid index; `/dashboard`
    command; tests; `verify-bundle` assertion. Uses a no-op terminal adapter,
    so it does not depend on the spike.
-3. **PR 2, publish hooks (this PR):** `pi-todo:snapshot` and
+3. **PR 2, publish hooks (merged):** `pi-todo:snapshot` and
    `pi-stash:snapshot` events; the dashboard carries bounded task and stash
    metadata in its snapshot (protocol 2, so a running protocol 1 hub steps
    aside) and shows `todos 3/7 · 1 new · stash 2` on cards.
-4. **PR 3, phase 2:** detail page with todos, stash index, subagents,
-   tokens/cost, blackhole counts; cmux adapter and Focus button using the
-   spike results.
+4. **PR 3, phase 2 (this PR):** detail page (`#<pid>`) with todos, stash
+   index, subagents, usage/cost, blackhole counts; cmux adapter and Focus via
+   a token-protected `POST /api/sessions/<id>/focus`, forwarded to the
+   session's reporter (protocol 3).
 5. **PR 4, phase 3:** stash previews, todo timelines, recent activity,
    filtering, notifications, store usage warning.
 
