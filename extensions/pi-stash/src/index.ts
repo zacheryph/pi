@@ -56,7 +56,7 @@ const PutOutput = Type.Object({
 const GetOutput = Type.Object({
   handle: Type.String(), name: Type.String(), hash: Type.String(),
   mode: Type.Union([Type.Literal("head"), Type.Literal("lines"), Type.Literal("grep"), Type.Literal("json")]),
-  text: Type.String(), totalLines: Type.Integer(), bytes: Type.Integer(), truncated: Type.Boolean(),
+  text: Type.String(), totalLines: Type.Integer(), bytes: Type.Integer(), truncated: Type.Boolean(), clipped: Type.Optional(Type.Boolean()),
   range: Type.Optional(Type.Tuple([Type.Integer(), Type.Integer()])),
   next: Type.Optional(Type.Tuple([Type.Integer(), Type.Integer()])),
   matches: Type.Optional(Type.Integer()), matchesShown: Type.Optional(Type.Integer()), hint: Type.Optional(Type.String()),

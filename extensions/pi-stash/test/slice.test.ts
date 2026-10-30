@@ -39,6 +39,37 @@ describe("sliceText", () => {
     const result = sliceText("😀".repeat(1000), { maxBytes: 300 });
     expect(Buffer.byteLength(result.text)).toBeLessThanOrEqual(300);
     expect(result.text).toMatch(/^1\t(😀)+ …\[line clipped\]$/);
+    // The clipped line is incomplete, so the read is truncated even though it is the only line.
+    expect(result).toMatchObject({ truncated: true, clipped: true, range: [1, 1] });
+    expect(result.next).toBeUndefined();
+    expect(result.hint).toBe(`line 1 clipped at 300 bytes; raise maxBytes (max ${HARD_MAX_BYTES}) or use jsonPath if the entry is JSON`);
+  });
+
+  it("reports a clipped line alongside the next range when more lines follow", () => {
+    const result = sliceText(`${"x".repeat(1000)}\nshort\n`, { lines: [1, 2], maxBytes: 300 });
+    expect(result).toMatchObject({ truncated: true, clipped: true, range: [1, 1], next: [2, 2] });
+    expect(result.hint).toBe(`line 1 clipped at 300 bytes; raise maxBytes (max ${HARD_MAX_BYTES}) or use jsonPath if the entry is JSON; truncated at line 1 of 2; next range is [2, 2]`);
+  });
+
+  it("drops the raise-maxBytes advice once the hard cap is reached", () => {
+    const result = sliceText("y".repeat(HARD_MAX_BYTES * 2), { maxBytes: HARD_MAX_BYTES });
+    expect(result).toMatchObject({ truncated: true, clipped: true });
+    expect(result.hint).toBe(`line 1 clipped at ${HARD_MAX_BYTES} bytes; use jsonPath if the entry is JSON`);
+  });
+
+  it("does not mark reads that fit as clipped", () => {
+    const result = sliceText(numbered(3), {});
+    expect(result.truncated).toBe(false);
+    expect(result).not.toHaveProperty("clipped");
+  });
+
+  it("marks a clipped single grep match and a clipped one-line JSON value as truncated", () => {
+    const grep = sliceText(`needle ${"z".repeat(1000)}`, { grep: { pattern: "needle" }, maxBytes: 300 });
+    expect(grep).toMatchObject({ truncated: true, clipped: true, matches: 1, matchesShown: 1 });
+    expect(grep.hint).toMatch(/^first matching line clipped at 300 bytes/);
+    const json = sliceText(JSON.stringify({ blob: "q".repeat(1000) }), { jsonPath: "$.blob", maxBytes: 300 });
+    expect(json).toMatchObject({ mode: "json", truncated: true, clipped: true });
+    expect(json.hint).toMatch(/^value clipped at 300 bytes/);
   });
 
   it("greps with context, separators, and match markers", () => {

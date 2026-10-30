@@ -21,6 +21,8 @@ export interface SliceResult {
   /** First and last entry line shown (head/lines). */
   range?: [number, number];
   truncated: boolean;
+  /** The first output row was longer than the budget and was cut short. */
+  clipped?: boolean;
   /** Next range to request after a truncated head/lines read. */
   next?: [number, number];
   matches?: number;
@@ -49,7 +51,9 @@ class Budget {
   private used = 0;
   private count = 0;
   readonly rows: string[] = [];
-  constructor(private readonly bytes: number, private readonly lines = HARD_MAX_LINES) {}
+  /** Set when a row was cut to fit; the output is then incomplete. */
+  clipped = false;
+  constructor(readonly bytes: number, private readonly lines = HARD_MAX_LINES) {}
 
   /** Adds a row. A first row that is too long is clipped rather than dropped. */
   add(row: string): boolean {
@@ -61,6 +65,7 @@ class Budget {
       this.rows.push(clipBytes(row, Math.max(0, this.bytes - Buffer.byteLength(marker))) + marker);
       this.used = this.bytes;
       this.count++;
+      this.clipped = true;
       return true;
     }
     this.rows.push(row);
@@ -71,6 +76,12 @@ class Budget {
 }
 
 const numbered = (n: number, line: string, mark = "\t") => `${n}${mark}${line}`;
+
+/** How to see more of a row that was clipped to the byte budget. */
+function clipHint(what: string, budget: Budget): string {
+  const raise = budget.bytes < HARD_MAX_BYTES ? `raise maxBytes (max ${HARD_MAX_BYTES}) or ` : "";
+  return `${what} clipped at ${budget.bytes} bytes; ${raise}use jsonPath if the entry is JSON`;
+}
 
 export function clampMaxBytes(maxBytes: number | undefined): number {
   if (maxBytes === undefined || !Number.isFinite(maxBytes)) return DEFAULT_GET_BYTES;
@@ -88,15 +99,20 @@ function readRange(all: string[], start: number, end: number, budget: Budget, mo
     if (!budget.add(numbered(n, all[n - 1]))) break;
     last = n;
   }
-  const truncated = last < end;
-  const result: SliceResult = { mode, text: budget.rows.join("\n"), totalLines: total, range: [start, last], truncated };
-  if (truncated) {
+  const clipped = budget.clipped;
+  const truncated = last < end || clipped;
+  const result: SliceResult = {
+    mode, text: budget.rows.join("\n"), totalLines: total, range: [start, last], truncated, ...(clipped ? { clipped } : {}),
+  };
+  const hints = clipped ? [clipHint(`line ${last}`, budget)] : [];
+  if (last < end) {
     const size = Math.max(1, last - start + 1);
     result.next = [last + 1, Math.min(total, end, last + size)];
-    result.hint = `truncated at line ${last} of ${total}; next range is [${result.next[0]}, ${result.next[1]}]`;
+    hints.push(`truncated at line ${last} of ${total}; next range is [${result.next[0]}, ${result.next[1]}]`);
   } else if (mode === "head" && last < total) {
-    result.hint = `showing lines ${start}-${last} of ${total}`;
+    hints.push(`showing lines ${start}-${last} of ${total}`);
   }
+  if (hints.length) result.hint = hints.join("; ");
   return result;
 }
 
@@ -185,12 +201,14 @@ export function sliceText(text: string, request: SliceRequest): SliceResult {
     }
     const result: SliceResult = {
       mode: "grep", text: budget.rows.join("\n"), totalLines: all.length,
-      truncated: !full, matches: hits.length, matchesShown: shown,
+      truncated: !full || budget.clipped, ...(budget.clipped ? { clipped: true } : {}), matches: hits.length, matchesShown: shown,
     };
+    const hints = budget.clipped ? [clipHint("first matching line", budget)] : [];
     if (!full) {
       const nextLine = hits[shown] === undefined ? undefined : hits[shown] + 1;
-      result.hint = `showing ${shown} of ${hits.length} matches${nextLine ? `; next match is at line ${nextLine}` : ""}; narrow the pattern or read with lines`;
+      hints.push(`showing ${shown} of ${hits.length} matches${nextLine ? `; next match is at line ${nextLine}` : ""}; narrow the pattern or read with lines`);
     }
+    if (hints.length) result.hint = hints.join("; ");
     return result;
   }
 
@@ -217,10 +235,12 @@ export function sliceText(text: string, request: SliceRequest): SliceResult {
       if (!budget.add(row)) break;
       shownRows++;
     }
-    const truncated = shownRows < rendered.length;
+    const truncated = shownRows < rendered.length || budget.clipped;
+    const hint = budget.clipped && shownRows === rendered.length ? clipHint("value", budget)
+      : `value truncated after ${shownRows} of ${rendered.length} lines; use a deeper jsonPath`;
     return {
       mode: "json", text: budget.rows.join("\n"), totalLines: all.length, truncated,
-      ...(truncated ? { hint: `value truncated after ${shownRows} of ${rendered.length} lines; use a deeper jsonPath` } : {}),
+      ...(budget.clipped ? { clipped: true } : {}), ...(truncated ? { hint } : {}),
     };
   }
 
