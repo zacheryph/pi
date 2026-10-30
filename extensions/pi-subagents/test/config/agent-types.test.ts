@@ -221,7 +221,12 @@ describe("AgentTypeRegistry", () => {
     it("returns restricted tools for Explore", () => {
       const registry = makeRegistry();
       const names = registry.getToolNamesForType("Explore");
-      expect(names).toEqual(["read", "bash", "grep", "find", "ls"]);
+      expect(names).toEqual(["read", "bash", "grep", "find", "ls", "stash_get", "stash_list", "stash_put"]);
+    });
+
+    it("lets Plan read the stash but not write to it", () => {
+      const registry = makeRegistry();
+      expect(registry.getToolNamesForType("Plan")).toEqual(["read", "bash", "grep", "find", "ls", "stash_get", "stash_list"]);
     });
 
     it("returns custom tool names for user agent", () => {

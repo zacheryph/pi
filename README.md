@@ -60,6 +60,9 @@ pi-personal/
     │   ├── src/extension.ts             # job_* tools + /jobs command
     │   ├── test/
     │   └── UPSTREAM.md
+    ├── pi-stash/
+    │   ├── src/index.ts                 # stash_* tools + /stash commands
+    │   └── test/
     ├── pi-subagents/                    # vendored fork
     │   ├── src/index.ts                 # subagent tools + /subagents:* commands
     │   ├── test/
@@ -100,6 +103,30 @@ turn instead of polling, and completions arrive as one batched follow-up message
 kills jobs for the user. POSIX only. Logs live under `~/.pi/agent/jobs/` for seven
 days. Do not also install `npm:@woksin/pi-jobs`. See the
 [upstream README](extensions/pi-jobs/README.md) for delivery guarantees and limits.
+
+### pi-stash
+
+Keeps large text (search results, file snapshots, tool output, worker findings)
+outside the model context and hands back a short handle such as
+`stash:auth-findings@3f9a1c2b7d01`. The model and its subagents then read only the
+slices they need.
+
+- `stash_put` stores literal `content`, a `path` inside the working directory, or
+  the full result of an earlier tool call (`toolCallId`). It returns a receipt with
+  a short preview; it never echoes the content.
+- `stash_get` reads a bounded, line-numbered slice: `lines`, `grep`, or `jsonPath`
+  (head by default; 16 KB default, Pi's 50 KB / 2,000-line cap at most).
+- `stash_list` lists this branch's entries.
+
+Content is stored once by SHA-256 under `$PI_STASH_DIR` or `~/.pi/agent/stash/`.
+The name index lives in the session, follows `/tree`, and survives compaction and
+resume; full handles also work from other sessions, which is how a parent and its
+subagents share data. Explore and Plan can read handles; Explore can also stash
+large findings. `/stash` browses entries and `/stash:gc` expires unused content
+(`retentionDays`, default 30, in `~/.pi/agent/stash.json`).
+
+Stashed text is plaintext on local disk and is not redacted. See
+[extension docs](extensions/pi-stash/README.md).
 
 ### pi-subagents
 

@@ -6,7 +6,9 @@
 
 import type { AgentConfig } from "#src/types";
 
-const READ_ONLY_TOOLS = ["read", "bash", "grep", "find", "ls"];
+// stash_get/stash_list read pi-stash handles; they write nothing. Explore alone
+// also gets stash_put (its toolNames), which writes only to Pi's data directory.
+const READ_ONLY_TOOLS = ["read", "bash", "grep", "find", "ls", "stash_get", "stash_list"];
 
 export const DEFAULT_AGENTS: Map<string, AgentConfig> = new Map([
   [
@@ -52,6 +54,7 @@ These project-manager instructions apply only when the most recent active_agent 
 # Delegate and coordinate
 - Use the available agent types that fit the work: Explore for investigation, Plan for design, general-purpose or a suitable custom specialist for implementation and verification.
 - Give each worker a focused assignment containing its task key, objective, scope or file ownership, constraints, relevant decisions, expected deliverable, and completion criteria. Request a concise result with evidence, changed files or artifacts, verification, unresolved items, and its session/output reference when available.
+- Share large material (findings, file snapshots, logs) with workers as stash handles (stash:<name>@<hash>) rather than pasting it, and ask workers to return large results as stash handles with a short summary.
 - Delegate substantial investigation and implementation. Keep your own context focused on project state, decisions, interfaces, risks, and next steps rather than accumulating raw logs and code dumps.
 - Run independent assignments in the background where useful; sequence dependencies and avoid overlapping writes. Track returned agent IDs on the corresponding todos immediately.
 - Use steer_subagent to clarify or redirect a running worker. Collect outcomes with get_subagent_result; wait when progress depends on a worker rather than repeatedly polling it.
@@ -76,11 +79,12 @@ These project-manager instructions apply only when the most recent active_agent 
       displayName: "Explore",
       description: "Fast codebase exploration agent (read-only)",
       toolGuideline: "- Use Explore for codebase searches and code understanding.",
-      toolNames: READ_ONLY_TOOLS,
+      toolNames: [...READ_ONLY_TOOLS, "stash_put"],
       model: "anthropic/claude-haiku-4-5-20251001",
       systemPrompt: `# CRITICAL: READ-ONLY MODE - NO FILE MODIFICATIONS
 You are a file search specialist. You excel at thoroughly navigating and exploring codebases.
 Your role is EXCLUSIVELY to search and analyze existing code. You do NOT have access to file editing tools.
+The one exception is stash_put, when available: it stores text in Pi's own data directory, never the project, and returns a handle.
 
 You are STRICTLY PROHIBITED from:
 - Creating new files
@@ -98,12 +102,14 @@ Use Bash ONLY for read-only operations: ls, git status, git log, git diff, find,
 - Use the grep tool for content search (NOT bash grep/rg command)
 - Use the read tool for reading files (NOT bash cat/head/tail)
 - Use Bash ONLY for read-only operations
+- Read stash handles (stash:<name>@<hash>) from your assignment with stash_get, in slices
 - Make independent tool calls in parallel for efficiency
 - Adapt search approach based on thoroughness level specified
 
 # Output
 - Use absolute file paths in all references
 - Report findings as regular messages
+- When findings are large (long file lists, many matches, extensive excerpts), store them with stash_put and return the handle with a concise summary instead of pasting them
 - Do not use emojis
 - Be thorough and precise`,
       promptMode: "replace",
