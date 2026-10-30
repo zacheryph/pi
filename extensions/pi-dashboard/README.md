@@ -29,8 +29,9 @@ new`), running subagents and stash entries. Click a card for its detail page
   panel shows compactions only.
 - **Stash**: this branch's entries with size, lines, source, whether this
   session or a subagent stored them, age, versions and handle, plus the shared
-  store's size against its cap (with a warning when over). **Preview** shows
-  the first 200 lines / 16 KB of an entry.
+  store's size against its cap (with a warning when over). **Preview** opens
+  the first 200 lines / 16 KB of an entry in an overlay headed by its name,
+  handle, description and facts; Esc, the × button or a click outside closes it.
 - **Recent activity**: the last 12 tool calls with duration, failures, and
   what they touched: a file tool's path, or a bash command's first line.
 - **Usage**: input, output and cache tokens and cost for the whole session

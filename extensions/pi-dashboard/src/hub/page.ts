@@ -23,7 +23,20 @@ header { position: sticky; top: 0; z-index: 1; display: flex; flex-wrap: wrap; a
 button.toggle, button.small { font: 500 12px var(--mono); border: 1px solid var(--line); background: transparent; color: var(--muted); border-radius: 6px; padding: 3px 8px; cursor: pointer; white-space: nowrap; }
 button.toggle[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
 button.small { font-size: 11px; padding: 1px 7px; color: var(--accent); }
-pre.preview { margin: 4px 0 0; padding: 8px 10px; background: var(--wire); border-radius: 6px; font: 12px/1.45 var(--mono); max-height: 360px; overflow: auto; white-space: pre; }
+dialog.modal { padding: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); width: min(980px, calc(100vw - 32px)); max-height: calc(100vh - 48px); box-shadow: 0 24px 64px rgb(0 0 0 / 0.28); overflow: hidden; }
+dialog.modal[open] { display: flex; flex-direction: column; }
+dialog.modal::backdrop { background: rgb(12 17 24 / 0.5); }
+body:has(dialog.modal[open]) { overflow: hidden; }
+.modal-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 14px 18px 12px; border-bottom: 1px solid var(--line); }
+.modal-title { display: grid; gap: 3px; min-width: 0; }
+.modal-title h2 { margin: 0; font: 600 16px var(--mono); overflow-wrap: anywhere; }
+.modal-title p { margin: 4px 0 2px; }
+.modal-body { overflow: auto; flex: 1; min-height: 0; background: var(--bg); }
+.modal-foot { padding: 8px 18px; border-top: 1px solid var(--line); font: 12px var(--mono); color: var(--muted); }
+.pad { margin: 0; padding: 16px 18px; }
+button.close { border: 0; background: transparent; color: var(--muted); font: 22px/1 system-ui, sans-serif; padding: 2px 8px 4px; border-radius: 6px; cursor: pointer; }
+button.close:hover { background: var(--wire); color: var(--ink); }
+pre.preview { margin: 0; padding: 12px 18px; font: 12px/1.5 var(--mono); white-space: pre; tab-size: 4; }
 pre.preview .ln { color: var(--muted); user-select: none; display: inline-block; min-width: 4ch; text-align: right; margin-right: 1.5ch; }
 .timeline { list-style: none; margin: 4px 0 0; padding: 0 0 0 10px; border-left: 2px solid var(--line); display: grid; gap: 6px; }
 .timeline li { display: grid; gap: 2px; }
@@ -111,8 +124,7 @@ let rendered = "";
 const expanded = new Set();
 const notices = new Map();
 const busy = new Set();
-/** Content fetched on request: stash previews and task histories, keyed so a new version refetches. */
-const previews = new Map();
+/** Task histories fetched on request, keyed so a newer task version refetches. */
 const histories = new Map();
 const filterInput = document.getElementById("filter");
 const notifyButton = document.getElementById("notify");
@@ -435,6 +447,68 @@ function memoryPanel(session) {
   return node;
 }
 
+const stashFacts = (session, entry) => [entry.lines + " lines", entry.source,
+  entry.createdBy === session.sessionId ? "this session" : "subagent …" + entry.createdBy.slice(-6),
+  ago(entry.createdAt) + " ago", entry.versions > 1 ? "v" + entry.versions : null].filter(Boolean).join(" · ");
+
+// The stash preview is a modal dialog outside <main>, so live re-renders leave
+// it alone. Esc (native) and a click on the backdrop close it.
+const modal = document.getElementById("preview");
+let modalRequest = 0;
+let modalReturn = "";
+
+function previewHeader(session, entry) {
+  const head = el("div", "modal-head");
+  const heading = el("div", "modal-title");
+  const name = el("h2", "", entry.name);
+  name.id = "preview-title";
+  heading.append(name, el("span", "mono muted wrap", entry.handle));
+  if (entry.description) heading.append(el("p", "wrap", entry.description));
+  heading.append(el("span", "mono muted wrap", bytes(entry.bytes) + " · " + stashFacts(session, entry)));
+  const close = el("button", "close", "×");
+  close.type = "button";
+  close.setAttribute("aria-label", "Close preview");
+  close.addEventListener("click", () => modal.close());
+  head.append(heading, close);
+  return head;
+}
+
+/** Fills the body and footer; the header (and the focused close button) stays put. */
+function showPreview(body, foot, view) {
+  if (view.error) { body.replaceChildren(el("p", "bad pad", view.error)); return; }
+  const pre = el("pre", "preview");
+  view.data.lines.forEach((line, index) => { pre.append(el("span", "ln", index + 1), line, "\\n"); });
+  body.replaceChildren(pre);
+  foot.textContent = view.data.complete
+    ? "All " + view.data.lines.length + (view.data.lines.length === 1 ? " line." : " lines.")
+    : "First " + view.data.lines.length + " of " + view.data.total + " lines. Read the rest in Pi with stash_get.";
+  foot.hidden = false;
+}
+
+async function openPreview(session, entry, returnKey) {
+  const request = ++modalRequest;
+  modalReturn = returnKey;
+  const body = el("div", "modal-body");
+  body.append(el("p", "muted pad", "Loading preview…"));
+  const foot = el("div", "modal-foot");
+  foot.hidden = true;
+  modal.replaceChildren(previewHeader(session, entry), body, foot);
+  if (!modal.open) modal.showModal();
+  let view;
+  try { view = { data: await ask(session, "stash/" + encodeURIComponent(entry.name) + "/preview") }; } catch (error) { view = { error: error.message }; }
+  // Ignore an answer for a preview that was closed or replaced meanwhile.
+  if (request === modalRequest && modal.open) showPreview(body, foot, view);
+}
+
+modal.addEventListener("click", (event) => { if (event.target === modal) modal.close(); });
+modal.addEventListener("close", () => {
+  modalRequest += 1;
+  modal.replaceChildren();
+  // The opening button may have been re-rendered; return focus to its successor.
+  const back = [...main.querySelectorAll("[data-key]")].find((node) => node.dataset.key === modalReturn);
+  if (back) back.focus();
+});
+
 function stashPanel(session) {
   const entries = list(session.stash.entries);
   const size = session.stash.store;
@@ -446,31 +520,17 @@ function stashPanel(session) {
   for (const entry of entries) {
     const li = el("li");
     const row = el("div", "row");
-    const key = session.id + ":" + entry.handle;
-    const shown = previews.get(key);
-    const toggle = el("button", "small", shown ? "Hide" : "Preview");
-    toggle.type = "button";
-    toggle.dataset.key = "preview:" + key;
-    toggle.addEventListener("click", () => {
-      if (previews.has(key)) { previews.delete(key); render(true); }
-      else fetchInto(previews, key, session, "stash/" + encodeURIComponent(entry.name) + "/preview");
-    });
+    const open = el("button", "small", "Preview");
+    open.type = "button";
+    open.dataset.key = "preview:" + session.id + ":" + entry.handle;
+    open.addEventListener("click", () => openPreview(session, entry, open.dataset.key));
     const right = el("span", "row");
-    right.append(el("span", "mono muted num", bytes(entry.bytes)), toggle);
+    right.append(el("span", "mono muted num", bytes(entry.bytes)), open);
     row.append(el("span", "mono clip", entry.name), right);
     li.append(row);
     if (entry.description) li.append(el("span", "clip", entry.description));
-    const by = entry.createdBy === session.sessionId ? "this session" : "subagent …" + entry.createdBy.slice(-6);
-    li.append(el("span", "mono muted clip", entry.lines + " lines · " + entry.source + " · " + by + " · " + ago(entry.createdAt) + " ago" + (entry.versions > 1 ? " · v" + entry.versions : "")));
+    li.append(el("span", "mono muted clip", stashFacts(session, entry)));
     li.append(el("span", "mono muted clip", entry.handle));
-    if (shown && shown.loading) li.append(el("span", "muted", "Loading preview…"));
-    if (shown && shown.error) li.append(el("span", "bad", shown.error));
-    if (shown && shown.data) {
-      const pre = el("pre", "preview");
-      shown.data.lines.forEach((line, index) => { pre.append(el("span", "ln", index + 1), line, "\\n"); });
-      li.append(pre);
-      if (!shown.data.complete) li.append(el("span", "mono muted", "First " + shown.data.lines.length + " of " + shown.data.total + " lines. Read the rest in Pi with stash_get."));
-    }
     ul.append(li);
   }
   node.append(ul);
@@ -632,6 +692,7 @@ export function renderPage(token: string): string {
 <body>
 <header><h1><a href="#">pi dashboard</a></h1><input id="filter" type="search" placeholder="Filter sessions" aria-label="Filter sessions" autocomplete="off" spellcheck="false"><span class="count"></span><button id="notify" class="toggle" type="button" aria-pressed="false">Notifications off</button><span class="conn" aria-live="polite">connecting…</span></header>
 <main></main>
+<dialog id="preview" class="modal" aria-labelledby="preview-title"></dialog>
 <script>${SCRIPT}</script>
 </body>
 </html>
