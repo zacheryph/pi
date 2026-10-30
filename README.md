@@ -102,8 +102,10 @@ nothing needs publishing.
 Local web dashboard of running interactive Pi sessions at
 `http://127.0.0.1:7317/`; `/dashboard` opens it. Cards are grouped by working
 directory and show session name, `--agent` profile, model and thinking level,
-context usage, and live status (idle, working, running a tool, compacting, or
-waiting on a dialog, which sorts first).
+context usage, live status (idle, working, running a tool, compacting, or
+waiting on a dialog, which sorts first), and task and stash counts. pi-todo and
+pi-stash publish their state as `pi-todo:snapshot` / `pi-stash:snapshot` events
+on the session's `pi.events` bus for this and other extensions.
 
 The first interactive session starts a detached hub; sessions connect to it
 over a unix socket in `~/.pi/agent/dashboard/`, and it exits 15 seconds after

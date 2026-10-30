@@ -12,6 +12,12 @@ when one is active, model and thinking level, context usage, and status:
 `idle`, `working`, `tool: <name>`, `compacting`, or `waiting` when Pi is
 blocked on a dialog. Waiting sessions sort first and get a highlighted edge.
 
+When pi-todo and pi-stash are loaded, a card also shows `todos <done>/<total>`
+(with unreviewed messages as `N new`) and `stash <entries>`. They come from the
+`pi-todo:snapshot` and `pi-stash:snapshot` events on the session's `pi.events`
+bus; the dashboard parses them defensively and sends bounded metadata to the
+hub (task text capped, stash content never).
+
 `/dashboard` shows the URL and opens it in your browser.
 
 ## How it works
@@ -55,13 +61,14 @@ A port change takes effect when the hub next starts (after every session exits).
 The hub listens on `127.0.0.1` only and rejects requests whose `Host` header is
 not `127.0.0.1:<port>` or `localhost:<port>`, which blocks DNS-rebinding pages.
 The socket lives in a `0700` directory. The page is read-only: it shows
-directories, session names, model names and dialog titles, but no transcript
+directories, session names, model names, dialog titles, task subjects and
+messages, and stash entry names and descriptions, but no transcript or stash
 content.
 
 ## Planned
 
-Detail page (todos, stash index, subagents, usage, blackhole counts), a Focus
-button that jumps to the session's cmux surface, then stash previews and
+Detail page (task list, stash index, subagents, usage, blackhole counts), a
+Focus button that jumps to the session's cmux surface, then stash previews and
 notifications. See the [plan](docs/plan.md).
 
 ## Development

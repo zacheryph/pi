@@ -4,7 +4,7 @@ import { join } from "node:path";
 // Keep this file free of Pi imports and of TypeScript syntax Node cannot strip.
 
 /** Bump when the hub must be replaced to understand newer reporters. */
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 export const DEFAULT_PORT = 7317;
 /** How long the hub waits with no sessions, or keeps a restarting session's card. */
 export const IDLE_GRACE_MS = 15_000;
@@ -16,6 +16,49 @@ export type SessionStatus =
   | { kind: "tool"; tool: string }
   | { kind: "compacting" }
   | { kind: "waiting"; title?: string };
+
+export type TodoStatus = "pending" | "in_progress" | "completed";
+
+/** From pi-todo's snapshot event, bounded for the wire. */
+export interface TodoSection {
+  revision: number;
+  /** Tasks in the plan; `tasks` may hold fewer when capped. */
+  total: number;
+  tasks: Array<{
+    key: string;
+    subject: string;
+    status: TodoStatus;
+    /** Waiting on an unfinished prerequisite. */
+    blocked: boolean;
+    /** Messages the user has not reviewed. */
+    unreviewed: number;
+    description?: string;
+    dependsOn?: string[];
+    /** Latest outcome message. */
+    message?: { text: string; at?: number };
+    updatedAt?: number;
+  }>;
+}
+
+/** From pi-stash's snapshot event: this branch's entries, newest first, metadata only. */
+export interface StashSection {
+  /** Entries on the branch; `entries` may hold fewer when capped. */
+  total: number;
+  entries: Array<{
+    name: string;
+    handle: string;
+    bytes: number;
+    lines: number;
+    mime: string;
+    description?: string;
+    /** `content`, `path:<relative>`, or `tool:<name>`. */
+    source: string;
+    createdAt: number;
+    /** Session id that stored it; differs from the card's for subagent results. */
+    createdBy: string;
+    versions: number;
+  }>;
+}
 
 export interface SessionSnapshot {
   /** Stable for the Pi process, across /new, /resume and /reload. */
@@ -31,6 +74,10 @@ export interface SessionSnapshot {
   context?: { tokens: number | null; window: number; percent: number | null };
   startedAt: number;
   piVersion?: string;
+  /** Absent when pi-todo is not loaded. */
+  todos?: TodoSection;
+  /** Absent when pi-stash is not loaded. */
+  stash?: StashSection;
 }
 
 export type ReporterMessage =

@@ -1,6 +1,6 @@
 # pi-dashboard: research and implementation plan
 
-Status: phase 1 (MVP) implemented; phases 2–4 planned. Wireframes are in the
+Status: phase 1 (MVP) and the publish hooks implemented; phases 2–4 planned. Wireframes are in the
 companion artifact linked from the PR/session; ASCII versions of the chosen
 layout are at the end of this file. Usage docs: [README](../README.md).
 
@@ -33,7 +33,7 @@ A local web UI showing every running interactive Pi session:
 | Subagents (bonus) | `getSubagentsService().listAgents()` on `globalThis` | Yes |
 | Blackhole | No public API. Persists `om.observations.recorded`, `om.reflections.recorded`, `om.observations.dropped`, `om.folded` custom entries plus compaction entries | Partial: counts, last compaction, tokens since compaction are derivable. Live worker phase and gauges live in its runtime and are not reachable. Fragile across upstream versions; parse defensively and hide the section on unknown shapes (upstream hook deferred) |
 | Stash | In-repo `pi-stash`. Index: `pi-personal:stash-index` custom entries on the branch (`put` + `checkpoint`), replayed by `replayStashIndex` / `currentEntries`. Content: hash-addressed blobs under `$PI_STASH_DIR` or `~/.pi/agent/stash/` | Yes: name, handle, bytes, lines, mime, description, source, creator session, age, version count, store usage vs `maxStoreBytes`. Content preview on demand only (see Security) |
-| Focus session | cmux: capture `CMUX_WORKSPACE_ID`, `CMUX_SURFACE_ID`, `CMUX_SOCKET_PATH` at startup, then `cmux select-workspace` + focus the surface/panel | Yes, with a spike to confirm verbs and socket access mode |
+| Focus session | cmux: `cmux focus-panel --panel "$CMUX_PANEL_ID"`, then `open -b "$CMUX_BUNDLE_ID"` to raise the app | Yes, confirmed in the spike |
 
 ### Constraints found in research
 
@@ -84,14 +84,13 @@ pi (cmux surface C) ─ reporter ─┘  ~/.pi/agent/       ▲
 - Collect data through **section providers**:
   `{ id, collect(ctx, pi): Json | undefined, triggers: EventName[] }`.
   Core, todos, stash, subagents, and blackhole are providers.
-- Prefer publish hooks over re-parsing for in-repo extensions. pi-subagents
-  already exposes a `globalThis` service; give pi-todo and pi-stash the same:
-  a read-only accessor (`getTodoSnapshot()`, `getStashSnapshot()`) plus a
-  `pi.events` change signal (`todos:changed`, `stash:changed`). Until then,
-  the providers replay branch entries with the extensions' own exported
-  replay functions (`replayTodoSession`, `replayStashIndex`), refreshing on
-  `tool_execution_end` for `todo`/`stash_put`, `session_tree`, and
-  `session_compact`.
+- Publish hooks, not re-parsing, for in-repo extensions (done in PR 2).
+  pi-todo and pi-stash emit full, versioned snapshots on the session's
+  `pi.events` bus (`pi-todo:snapshot`, `pi-stash:snapshot`) on session start,
+  branch changes and every change; the dashboard caches the latest and parses
+  it defensively. Not a `globalThis` accessor: subagent children load the same
+  extensions in-process and would overwrite it, while each child gets its own
+  event bus (`DefaultResourceLoader` creates one per session tree).
 - Handle hub commands: `focus` (via the terminal adapter) and `stash_preview`
   (bounded `stash_get`-style head or line range). Later phases can add
   abort/steer.
@@ -129,12 +128,11 @@ interface TerminalAdapter {
 ```
 
 The first adapter whose `detect` matches wins. cmux detects on
-`CMUX_SURFACE_ID` and focuses with:
+`CMUX_PANEL_ID` and focuses with:
 
 ```bash
-cmux workspace select --workspace "$CMUX_WORKSPACE_ID"   # legacy alias: select-workspace
-cmux focus-panel --panel "$CMUX_SURFACE_ID" --workspace "$CMUX_WORKSPACE_ID"
-open -b "$CMUX_BUNDLE_ID"                                # raise cmux above the browser
+cmux focus-panel --panel "$CMUX_PANEL_ID"   # selects the right workspace, surface and tab
+open -b "$CMUX_BUNDLE_ID"                   # focus-panel does not raise cmux above the browser
 ```
 
 tmux, Ghostty, or iTerm adapters can follow without touching the hub.
@@ -150,13 +148,13 @@ From a Pi session in cmux on the Mac:
 - Verbs: `focus-panel --panel <id> [--workspace <id>]`, `focus-pane`,
   `focus-window --window <id>`. `select-workspace` works and prints a notice
   that it is now `cmux workspace select`; use the new form (or `CMUX_QUIET=1`).
-- `select-workspace` switches cmux's visible workspace but is not expected to
-  bring cmux in front of a focused browser; macOS app activation is a separate
-  step (`open -b "$CMUX_BUNDLE_ID"`). Verify when building phase 2.
-- Pi reports its process title as `pi` under both Node and Bun builds. Node
-  v26.10.0 on PATH strips types. The launcher uses `process.execPath` under
-  Node and falls back to `node` on PATH under Bun (`node` in
-  `~/.pi/agent/dashboard.json` overrides).
+- `focus-panel --panel "$CMUX_PANEL_ID"` alone opens the right workspace,
+  surface and tab, so no separate workspace select is needed. It does not bring
+  cmux in front of a focused browser; macOS app activation is a separate step
+  (`open -b "$CMUX_BUNDLE_ID"`).
+- The installed `pi` is a Bun binary, so the reporter runs under Bun and the
+  hub launcher takes the `node` on PATH fallback. Node v26.10.0 on PATH strips
+  types (`node` in `~/.pi/agent/dashboard.json` overrides).
 
 ## Phases
 
@@ -167,9 +165,8 @@ From a Pi session in cmux on the Mac:
    fields (cwd, name, agent, model, thinking, status, context), index page
    with live SSE updates, `/dashboard`. Tests: hub lifecycle in a temp dir,
    two concurrent spawns, reporter snapshot builder, main-session detection.
-2. **Detail view and focus.** Todos and stash index (with publish hooks in
-   pi-todo and pi-stash), subagents, tokens/cost, blackhole stats, cmux focus
-   button.
+2. **Detail view and focus.** Todos and stash index (publish hooks landed in
+   PR 2), subagents, tokens/cost, blackhole stats, cmux focus button.
 3. **Previews and polish.** Stash content preview on click, todo activity
    timelines, recent activity (last tool calls), grouping/filtering by
    directory, browser notifications when a session waits on you, store usage
@@ -189,13 +186,15 @@ From a Pi session in cmux on the Mac:
 ## Next steps
 
 1. **Spike on the Mac** (phase 0): done, results above.
-2. **PR 1, phase 1 MVP (this PR):** new `extensions/pi-dashboard` workspace; hub
+2. **PR 1, phase 1 MVP (merged):** new `extensions/pi-dashboard` workspace; hub
    (socket lock, spawn, 15s idle exit, HTTP + SSE on 7317); reporter with
    main-session detection and core fields; card-grid index; `/dashboard`
    command; tests; `verify-bundle` assertion. Uses a no-op terminal adapter,
    so it does not depend on the spike.
-3. **PR 2, publish hooks:** read-only snapshot accessors and change events in
-   pi-todo and pi-stash. Independent of PR 1; can land in parallel.
+3. **PR 2, publish hooks (this PR):** `pi-todo:snapshot` and
+   `pi-stash:snapshot` events; the dashboard carries bounded task and stash
+   metadata in its snapshot (protocol 2, so a running protocol 1 hub steps
+   aside) and shows `todos 3/7 · 1 new · stash 2` on cards.
 4. **PR 3, phase 2:** detail page with todos, stash index, subagents,
    tokens/cost, blackhole counts; cmux adapter and Focus button using the
    spike results.

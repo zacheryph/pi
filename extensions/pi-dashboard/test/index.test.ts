@@ -9,6 +9,7 @@ type Handler = (event: Record<string, unknown>, ctx: unknown) => unknown;
 function fakePi() {
   const handlers = new Map<string, Handler[]>();
   const commands = new Map<string, { handler: (args: string, ctx: unknown) => Promise<void> }>();
+  const listeners = new Map<string, Array<(data: unknown) => void>>();
   let name: string | undefined = "fix-auth";
   const pi = {
     on: (event: string, handler: Handler) => { handlers.set(event, [...handlers.get(event) ?? [], handler]); return () => {}; },
@@ -16,11 +17,15 @@ function fakePi() {
     getSessionName: () => name,
     getThinkingLevel: () => "high",
     exec: vi.fn(),
+    events: {
+      on: (channel: string, handler: (data: unknown) => void) => { listeners.set(channel, [...listeners.get(channel) ?? [], handler]); return () => {}; },
+      emit: (channel: string, data: unknown) => { for (const handler of listeners.get(channel) ?? []) handler(data); },
+    },
   } as unknown as ExtensionAPI;
   const emit = async (event: string, payload: Record<string, unknown>, ctx: unknown) => {
     for (const handler of handlers.get(event) ?? []) await handler({ type: event, ...payload }, ctx);
   };
-  return { pi, emit, commands, rename: (next: string) => { name = next; } };
+  return { pi, emit, commands, rename: (next: string) => { name = next; }, publish: (channel: string, data: unknown) => pi.events.emit(channel, data) };
 }
 
 function fakeCtx(mode = "tui") {
@@ -85,6 +90,32 @@ describe("pi-dashboard extension", () => {
     await waitFor(async () => {
       const [current] = await env.sessions();
       return current?.name === "renamed" && (current.status as { kind: string }).kind === "idle";
+    });
+  });
+
+  it("carries todo and stash state published on the session bus, from before start and after", async () => {
+    const env = setup();
+    const fake = load(env.deps);
+    const ctx = fakeCtx();
+    onCleanup(() => quit(fake, ctx));
+    const task = { key: "a", subject: "Add backoff", status: "in_progress", blocked: false, unreviewed: 1, updates: [] };
+    // pi-todo and pi-stash load first and publish during their own session_start.
+    fake.publish("pi-todo:snapshot", { version: 1, revision: 1, tasks: [task] });
+    await fake.emit("session_start", { reason: "startup" }, ctx);
+    const [card] = await waitFor(async () => { const list = await env.sessions(); return list.length ? list : undefined; });
+    expect(card?.todos).toEqual({ revision: 1, total: 1, tasks: [{ key: "a", subject: "Add backoff", status: "in_progress", blocked: false, unreviewed: 1 }] });
+    expect(card?.stash).toBeUndefined();
+
+    fake.publish("pi-stash:snapshot", { version: 1, entries: [{
+      handle: "stash:notes@0123456789ab", name: "notes", hash: "0".repeat(64), bytes: 10, lines: 2, mime: "text/plain",
+      createdAt: 5, createdBy: "session-a", source: "content", versions: 1,
+    }] });
+    fake.publish("pi-todo:snapshot", { version: 1, revision: 2, tasks: [{ ...task, status: "completed" }] });
+    await waitFor(async () => {
+      const [current] = await env.sessions();
+      const todos = current?.todos as { revision: number } | undefined;
+      const stash = current?.stash as { total: number } | undefined;
+      return todos?.revision === 2 && stash?.total === 1;
     });
   });
 

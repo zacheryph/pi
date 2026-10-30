@@ -9,6 +9,7 @@ import {
 import { applyTodoRequest, formatTodoContext, formatTodoState, type TodoRequest } from "./actions.ts";
 import { registerTodoCommands } from "./commands.ts";
 import { DEFAULT_CONFIG, loadTodoConfig, saveTodoConfig, type TodoConfig } from "./config.ts";
+import { TODO_SNAPSHOT_EVENT, todoSnapshotEvent } from "./events.ts";
 import {
   cloneTodoState, createEmptyTodoState, MAX_TASK_DEPENDENCIES, MAX_TODO_TASKS,
   type TodoDetails, type TodoState,
@@ -102,6 +103,7 @@ export default function todoExtension(pi: ExtensionAPI, dependencies: TodoExtens
     }
   };
 
+  const publish = () => pi.events.emit(TODO_SNAPSHOT_EVENT, todoSnapshotEvent(state, activity, review));
   const journal = (snapshot: TodoState, history: TodoActivity) =>
     ({ ...cloneTodoState(snapshot), activity: serializeTodoActivity(history) });
   const mutate = (request: TodoRequest, ctx: ExtensionContext, by?: "user"): TodoDetails => {
@@ -116,6 +118,7 @@ export default function todoExtension(pi: ExtensionAPI, dependencies: TodoExtens
       state = cloneTodoState(next);
       activity = recorded.activity;
       updateWidget(ctx);
+      publish();
     }
     return next;
   };
@@ -127,6 +130,7 @@ export default function todoExtension(pi: ExtensionAPI, dependencies: TodoExtens
     pi.appendEntry(TODO_REVIEW_TYPE, entry);
     review = applyTodoReview(review, entry);
     updateWidget();
+    publish();
     return fresh.length;
   };
 
@@ -227,6 +231,7 @@ export default function todoExtension(pi: ExtensionAPI, dependencies: TodoExtens
     config = (dependencies.loadConfig ?? loadTodoConfig)(ctx.cwd);
     uiContext = ctx;
     updateWidget(ctx);
+    publish();
   };
   pi.on("session_start", async (_event, ctx) => restore(ctx));
   pi.on("session_tree", async (_event, ctx) => restore(ctx));

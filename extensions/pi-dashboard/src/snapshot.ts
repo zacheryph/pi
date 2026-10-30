@@ -1,4 +1,4 @@
-import type { SessionSnapshot, SessionStatus } from "./protocol.ts";
+import type { SessionSnapshot, SessionStatus, StashSection, TodoSection } from "./protocol.ts";
 
 /** Written by pi-subagents when a session starts with `--agent`. */
 const MAIN_AGENT_ENTRY = "pi-subagents:main-agent-profile";
@@ -20,6 +20,8 @@ export interface SnapshotInput {
   sessionName?: string;
   thinking?: string;
   status: SessionStatus & { since: number };
+  todos?: TodoSection;
+  stash?: StashSection;
 }
 
 /** Collapses whitespace and caps length; names and titles are user and model text. */
@@ -62,5 +64,7 @@ export function buildSnapshot(input: SnapshotInput): SessionSnapshot {
     ...(usage ? { context: { tokens: usage.tokens, window: usage.contextWindow, percent: usage.percent } } : {}),
     startedAt: input.startedAt,
     ...(input.piVersion ? { piVersion: input.piVersion } : {}),
+    ...(input.todos ? { todos: input.todos } : {}),
+    ...(input.stash ? { stash: input.stash } : {}),
   };
 }

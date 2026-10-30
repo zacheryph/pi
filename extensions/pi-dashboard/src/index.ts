@@ -2,8 +2,9 @@ import { join } from "node:path";
 import { getAgentDir, VERSION, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { loadDashboardConfig, type DashboardConfig } from "./config.ts";
 import { nodeRuntime, spawnHub } from "./launch.ts";
-import { hubPaths, type HubPaths } from "./protocol.ts";
+import { hubPaths, type HubPaths, type StashSection, type TodoSection } from "./protocol.ts";
 import { Reporter } from "./reporter.ts";
+import { readStash, readTodos, STASH_SNAPSHOT_EVENT, TODO_SNAPSHOT_EVENT } from "./sections.ts";
 import { buildSnapshot } from "./snapshot.ts";
 import { StatusTracker } from "./status.ts";
 
@@ -42,13 +43,16 @@ export default function dashboardExtension(pi: ExtensionAPI, dependencies: Dashb
   let status = new StatusTracker();
   let current: ExtensionContext | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  // Latest state other extensions published on this session's bus.
+  let todos: TodoSection | undefined;
+  let stash: StashSection | undefined;
 
   const paths = () => hubPaths(dependencies.dir ?? join(getAgentDir(), "dashboard"));
   const loadConfig = () => (dependencies.loadConfig ?? loadDashboardConfig)();
 
   const snapshot = (ctx: ExtensionContext) => buildSnapshot({
     id: String(pid), pid, startedAt, piVersion: VERSION, ctx,
-    sessionName: pi.getSessionName(), thinking: pi.getThinkingLevel(), status: status.current(),
+    sessionName: pi.getSessionName(), thinking: pi.getThinkingLevel(), status: status.current(), todos, stash,
   });
 
   const publish = () => {
@@ -71,8 +75,15 @@ export default function dashboardExtension(pi: ExtensionAPI, dependencies: Dashb
     reporter?.close(reason);
     reporter = undefined;
     current = undefined;
+    todos = undefined;
+    stash = undefined;
     if (slots[SLOT] === token) delete slots[SLOT];
   };
+
+  // pi-todo and pi-stash publish on session start (before this extension's,
+  // which loads last), so the first snapshot already carries their state.
+  pi.events.on(TODO_SNAPSHOT_EVENT, (data) => { todos = readTodos(data); schedule(); });
+  pi.events.on(STASH_SNAPSHOT_EVENT, (data) => { stash = readStash(data); schedule(); });
 
   pi.on("session_start", (_event, ctx) => {
     // Interactive sessions only; print, json and rpc runs (and subagent children, which run in print mode) are not shown.

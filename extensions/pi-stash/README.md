@@ -85,6 +85,16 @@ branch on start, resume, reload and `/tree`, so abandoned branches drop out.
 bounded, context-only *index card* (the 20 most recent entries: handle, size,
 description). It is never written to the transcript or shown as a message.
 
+## Events
+
+Other extensions can follow the index without parsing journal entries. On
+session start, branch changes, and every `stash_put` (codemode calls included),
+pi-stash emits `pi-stash:snapshot` on the session's `pi.events` bus
+(`src/events.ts`): `{ version: 1, entries }`, the latest version per name, newest
+first, in the same shape `stash_list` returns. Metadata only; content never
+leaves the store. Each subagent has its own bus. pi-dashboard uses it for its
+stash counts.
+
 ## Subagents
 
 The bundled `pi-subagents` lets Explore and Plan call `stash_get` and `stash_list`;
