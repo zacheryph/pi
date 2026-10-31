@@ -7,8 +7,9 @@ export { buildSkillsView } from "./skills.js";
 
 /** Display-only redaction of standalone root sections, not arbitrary XML or tag mentions. */
 export function redactPromptDisplay(prompt: string): string {
-  const lines = [...prompt.matchAll(/([^\r\n]*)(\r\n|\r|\n|$)/g)]
-    .filter((match) => match[0].length > 0);
+  const lines = [...prompt.matchAll(/([^\r\n]*)(\r\n|\r|\n|$)/g)].filter(
+    (match) => match[0].length > 0,
+  );
   const tags: { line: number; name: string; closing: boolean; plain: boolean }[] = [];
   let fence: { char: string; length: number } | undefined;
   let comment = false;
@@ -16,7 +17,13 @@ export function redactPromptDisplay(prompt: string): string {
     const text = match[1];
     const delimiter = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(text);
     if (fence) {
-      if (delimiter && delimiter[1][0] === fence.char && delimiter[1].length >= fence.length && !delimiter[2].trim()) fence = undefined;
+      if (
+        delimiter &&
+        delimiter[1][0] === fence.char &&
+        delimiter[1].length >= fence.length &&
+        !delimiter[2].trim()
+      )
+        fence = undefined;
       return;
     }
     if (comment) {
@@ -32,7 +39,13 @@ export function redactPromptDisplay(prompt: string): string {
       return;
     }
     const tag = /^<(\/?)([a-z][a-z0-9_-]*)(?:[ \t]+[^<>]*)?>[ \t]*$/.exec(text);
-    if (tag) tags.push({ line, name: tag[2], closing: tag[1] === "/", plain: text.trimEnd() === `<${tag[1]}${tag[2]}>` });
+    if (tag)
+      tags.push({
+        line,
+        name: tag[2],
+        closing: tag[1] === "/",
+        plain: text.trimEnd() === `<${tag[1]}${tag[2]}>`,
+      });
   });
 
   const replacements: { start: number; end: number; text: string }[] = [];
@@ -53,8 +66,13 @@ export function redactPromptDisplay(prompt: string): string {
     const close = tags[closeIndex];
     const before = lines[open.line - 1];
     const after = lines[close.line + 1];
-    if (open.plain && close.plain && (!before || !before[1].trim()) && (!after || !after[1].trim()) &&
-      ["tools", "skills", "available_skills"].includes(open.name)) {
+    if (
+      open.plain &&
+      close.plain &&
+      (!before || !before[1].trim()) &&
+      (!after || !after[1].trim()) &&
+      ["tools", "skills", "available_skills"].includes(open.name)
+    ) {
       replacements.push({
         start: lines[open.line].index!,
         end: lines[close.line].index! + lines[close.line][1].length,
@@ -65,7 +83,8 @@ export function redactPromptDisplay(prompt: string): string {
   }
   let display = prompt;
   for (const replacement of replacements.reverse()) {
-    display = display.slice(0, replacement.start) + replacement.text + display.slice(replacement.end);
+    display =
+      display.slice(0, replacement.start) + replacement.text + display.slice(replacement.end);
   }
   return display;
 }
@@ -96,16 +115,21 @@ export function buildToolsView(
     title: "Tools",
     note: "Recorded declarations may lag; indirect access needs an orchestrator.",
     items: tools
-      .filter((tool) => tool.exposure !== "hidden" && (
-        active.has(tool.name) || tool.exposure === "codemode" || tool.exposure === "deferred"
-      ) && !(tool.exposure === "model-only" && hiddenDeclarations.has(tool.name)))
+      .filter(
+        (tool) =>
+          tool.exposure !== "hidden" &&
+          (active.has(tool.name) || tool.exposure === "codemode" || tool.exposure === "deferred") &&
+          !(tool.exposure === "model-only" && hiddenDeclarations.has(tool.name)),
+      )
       .sort((left, right) => left.name.localeCompare(right.name))
       .map((tool) => {
         const isActive = active.has(tool.name);
         const indirect = isActive && hiddenDeclarations.has(tool.name);
         const callable = tool.exposure !== "model-only";
         const declaration = isActive
-          ? indirect ? "Active; declaration hidden (indirect)" : "Active; directly declared"
+          ? indirect
+            ? "Active; declaration hidden (indirect)"
+            : "Active; directly declared"
           : "Inactive; not directly declared";
         const historical = recorded.get(tool.name);
         const primary = historical ?? tool;
@@ -113,16 +137,29 @@ export function buildToolsView(
           ["Name", tool.name],
           ["Access", `${declaration}; callable: ${callable ? "yes" : "no (model-only)"}`],
           ["Exposure", tool.exposure],
-          ["Declaration source", historical ? "Latest recorded (historical)" : "Registered fallback (no branch recording)"],
+          [
+            "Declaration source",
+            historical
+              ? "Latest recorded (historical)"
+              : "Registered fallback (no branch recording)",
+          ],
         ];
-        if (tool.namespace) fields.push(["Namespace", `${tool.namespace.name}${tool.namespace.description ? ` — ${tool.namespace.description}` : ""}`]);
-        fields.push(["Source", sourceSummary(tool.sourceInfo)], ["Description", primary.description]);
+        if (tool.namespace)
+          fields.push([
+            "Namespace",
+            `${tool.namespace.name}${tool.namespace.description ? ` — ${tool.namespace.description}` : ""}`,
+          ]);
+        fields.push(
+          ["Source", sourceSummary(tool.sourceInfo)],
+          ["Description", primary.description],
+        );
         const detail = [...detailFields(fields), "", "Input schema:", json(primary.parameters)];
         const snippet = options.toolSnippets?.[tool.name];
         if (snippet) detail.push("", "Tool snippet (construction metadata):", snippet);
         const guidelines = new Map<string, Set<string>>();
         for (const [source, rules] of [
-          ["Registry", tool.promptGuidelines], ["Prompt", options.toolGuidelines?.[tool.name]],
+          ["Registry", tool.promptGuidelines],
+          ["Prompt", options.toolGuidelines?.[tool.name]],
         ] as const) {
           for (const rule of rules ?? []) {
             const text = rule.trim();
@@ -138,11 +175,12 @@ export function buildToolsView(
             detail.push(`- ${[...sources].join(" + ")}: ${rule.replace(/\r\n|\n|\r/g, "\n  ")}`);
           }
         }
-        if (tool.namespace?.instructions) detail.push("", "Namespace instructions:", tool.namespace.instructions);
+        if (tool.namespace?.instructions)
+          detail.push("", "Namespace instructions:", tool.namespace.instructions);
         return {
           id: tool.name,
           label: tool.name,
-          status: `${isActive ? indirect ? "active · indirect" : "active · directly declared" : "inactive · indirect"} · ${callable ? "callable" : "model-only"}${tool.exposure === "codemode" || tool.exposure === "deferred" ? " · discoverable" : ""}`,
+          status: `${isActive ? (indirect ? "active · indirect" : "active · directly declared") : "inactive · indirect"} · ${callable ? "callable" : "model-only"}${tool.exposure === "codemode" || tool.exposure === "deferred" ? " · discoverable" : ""}`,
           description: tool.description,
           detail: detail.join("\n"),
         };

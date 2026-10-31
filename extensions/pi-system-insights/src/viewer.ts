@@ -48,17 +48,25 @@ export async function showInsightView(ctx: ViewerContext, view: InsightView): Pr
  * Incomplete string commands consume their remaining payload rather than executing it.
  */
 export function sanitizeInsightText(text: string): string {
-  return text
-    .replace(/\r\n/g, "\n")
-    .replace(/(?:\x1b[\]PX^_]|[\x90\x98\x9d\x9e\x9f])[^]*?(?:\x07|\x1b\\|\x9c|$)/g, "")
-    .replace(/(?:\x1b\[|\x9b)[0-?]*[ -/]*[@-~]/g, "")
-    .replace(/\x1b[ -/]*[@-~]/g, "")
-    .replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/g, "")
-    .replace(/\t/g, "    ");
+  return (
+    text
+      .replace(/\r\n/g, "\n")
+      // oxlint-disable-next-line no-control-regex -- Intentionally matches terminal control characters.
+      .replace(/(?:\x1b[\]PX^_]|[\x90\x98\x9d\x9e\x9f])[^]*?(?:\x07|\x1b\\|\x9c|$)/g, "")
+      // oxlint-disable-next-line no-control-regex -- Intentionally matches terminal control characters.
+      .replace(/(?:\x1b\[|\x9b)[0-?]*[ -/]*[@-~]/g, "")
+      // oxlint-disable-next-line no-control-regex -- Intentionally matches terminal control characters.
+      .replace(/\x1b[ -/]*[@-~]/g, "")
+      // oxlint-disable-next-line no-control-regex -- Intentionally matches terminal control characters.
+      .replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/g, "")
+      .replace(/\t/g, "    ")
+  );
 }
 
 export interface InsightViewerOptions {
-  tui: Pick<TUI, "mode" | "requestRender"> & { terminal: Pick<TUI["terminal"], "rows" | "columns"> };
+  tui: Pick<TUI, "mode" | "requestRender"> & {
+    terminal: Pick<TUI["terminal"], "rows" | "columns">;
+  };
   theme: Pick<Theme, "fg" | "bold">;
   keys: Pick<KeybindingsManager, "matches" | "getKeys">;
   view: InsightView;
@@ -86,7 +94,9 @@ export class InsightViewer implements Component, Focusable {
       note: cleanLine(options.view.note),
       text: options.view.text === undefined ? undefined : sanitizeInsightText(options.view.text),
       legend: options.view.legend?.map((entry) => ({
-        label: cleanLine(entry.label), color: entry.color, meaning: cleanLine(entry.meaning),
+        label: cleanLine(entry.label),
+        color: entry.color,
+        meaning: cleanLine(entry.meaning),
       })),
     };
     this.items = (options.view.items ?? []).map((item) => ({
@@ -112,23 +122,35 @@ export class InsightViewer implements Component, Focusable {
 
   private title(): string {
     const root = this.view.title.startsWith("System insights")
-      ? this.view.title : `System insights · ${this.view.title}`;
+      ? this.view.title
+      : `System insights · ${this.view.title}`;
     return this.detail ? `${root} / ${this.detail.label}` : root;
   }
 
   private coreHints(contentWidth: number): string[] {
     let hint: string;
     if (this.isList) {
-      hint = contentWidth >= 40 ? "Enter to see · Esc to close/clear filter"
-        : contentWidth >= 27 ? "Enter see · Esc clear/close"
-        : contentWidth >= 11 ? "Enter · Esc"
-        : contentWidth >= 9 ? "Enter/Esc"
-        : contentWidth >= 5 ? "↵/Esc"
-        : contentWidth >= 3 ? "↵/⎋"
-        : "Esc · Enter";
+      hint =
+        contentWidth >= 40
+          ? "Enter to see · Esc to close/clear filter"
+          : contentWidth >= 27
+            ? "Enter see · Esc clear/close"
+            : contentWidth >= 11
+              ? "Enter · Esc"
+              : contentWidth >= 9
+                ? "Enter/Esc"
+                : contentWidth >= 5
+                  ? "↵/Esc"
+                  : contentWidth >= 3
+                    ? "↵/⎋"
+                    : "Esc · Enter";
     } else {
-      hint = contentWidth >= 14 ? `Esc to ${this.detail ? "go back" : "close"}`
-        : contentWidth >= 9 ? `Esc ${this.detail ? "back" : "close"}` : "Esc";
+      hint =
+        contentWidth >= 14
+          ? `Esc to ${this.detail ? "go back" : "close"}`
+          : contentWidth >= 9
+            ? `Esc ${this.detail ? "back" : "close"}`
+            : "Esc";
     }
     // Shorten before wrapping: both actions outrank lengthy paging labels.
     return wrapTextWithAnsi(hint, Math.max(1, contentWidth));
@@ -154,7 +176,9 @@ export class InsightViewer implements Component, Focusable {
       return true;
     };
     const core = this.coreHints(contentWidth);
-    const footerRows = remaining ? Math.min(core.length, Math.max(1, remaining - Number(frame))) : 0;
+    const footerRows = remaining
+      ? Math.min(core.length, Math.max(1, remaining - Number(frame)))
+      : 0;
     remaining -= footerRows;
     const divider = !!footerRows && frame && take(1);
     const filter = this.isList && take(1);
@@ -165,13 +189,30 @@ export class InsightViewer implements Component, Focusable {
     const outerY = frame && take(2, 2) ? 1 : 0;
     const note = !!this.view.note && take(1, 2);
     const navigation = wrapTextWithAnsi(
-      `↑↓ ${this.isList ? "select" : "scroll"} · ${this.pageHints()} · Ctrl+C close`, contentWidth,
+      `↑↓ ${this.isList ? "select" : "scroll"} · ${this.pageHints()} · Ctrl+C close`,
+      contentWidth,
     );
     const navigationRows = take(navigation.length, 2) ? navigation.length : 0;
     const body = height ? remaining + 1 : 0;
     return {
-      height, frame, outerX, innerX, borderWidth, contentWidth, innerY, outerY,
-      filter, footerRows, divider, legendRows, position, note, navigationRows, body, core, navigation,
+      height,
+      frame,
+      outerX,
+      innerX,
+      borderWidth,
+      contentWidth,
+      innerY,
+      outerY,
+      filter,
+      footerRows,
+      divider,
+      legendRows,
+      position,
+      note,
+      navigationRows,
+      body,
+      core,
+      navigation,
     };
   }
 
@@ -189,7 +230,10 @@ export class InsightViewer implements Component, Focusable {
     if (this.isList) {
       this.selected = Math.max(0, Math.min(this.filtered.length - 1, this.selected + delta));
     } else {
-      this.offset = Math.max(0, Math.min(Math.max(0, this.textLines().length - body), this.offset + delta));
+      this.offset = Math.max(
+        0,
+        Math.min(Math.max(0, this.textLines().length - body), this.offset + delta),
+      );
     }
   }
 
@@ -247,7 +291,8 @@ export class InsightViewer implements Component, Focusable {
   }
 
   handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined {
-    if (this.closed || this.options.tui.mode !== "fullscreen" || event.type !== "wheel") return undefined;
+    if (this.closed || this.options.tui.mode !== "fullscreen" || event.type !== "wheel")
+      return undefined;
     this.move(event.wheelDelta ?? 0);
     this.invalidate();
     this.options.tui.requestRender();
@@ -259,11 +304,14 @@ export class InsightViewer implements Component, Focusable {
     const { theme } = this.options;
     const right = item.badge?.label ?? item.status ?? "";
     const rightWidth = visibleWidth(right);
-    const leftStyle = (text: string) => selected ? theme.fg("accent", text) : text;
+    const leftStyle = (text: string) => (selected ? theme.fg("accent", text) : text);
     if (!right || rightWidth + 2 >= width) return leftStyle(truncateToWidth(left, width, ""));
     const clipped = truncateToWidth(left, width - rightWidth - 1, "");
-    return leftStyle(clipped) + " ".repeat(width - visibleWidth(clipped) - rightWidth)
-      + theme.fg(item.badge?.color ?? "dim", right);
+    return (
+      leftStyle(clipped) +
+      " ".repeat(width - visibleWidth(clipped) - rightWidth) +
+      theme.fg(item.badge?.color ?? "dim", right)
+    );
   }
 
   render(width: number): string[] {
@@ -280,8 +328,13 @@ export class InsightViewer implements Component, Focusable {
       // Input's zero-width cursor marker must survive this padded composition.
       const fitted = truncateToWidth(text, g.contentWidth, "", true);
       return g.frame
-        ? margin + theme.fg("border", "│") + " ".repeat(g.innerX) + fitted
-          + " ".repeat(g.innerX) + theme.fg("border", "│") + margin
+        ? margin +
+            theme.fg("border", "│") +
+            " ".repeat(g.innerX) +
+            fitted +
+            " ".repeat(g.innerX) +
+            theme.fg("border", "│") +
+            margin
         : truncateToWidth(text, this.width, "", true);
     };
     if (g.outerY) lines.push(blank);
@@ -290,9 +343,13 @@ export class InsightViewer implements Component, Focusable {
       const title = truncateToWidth(` ${this.title()} `, innerWidth, "");
       const spare = Math.max(0, innerWidth - visibleWidth(title));
       const left = Math.floor(spare / 2);
-      lines.push(margin + theme.fg("border", `╭${"─".repeat(left)}`)
-        + theme.fg("accent", theme.bold(title))
-        + theme.fg("border", `${"─".repeat(spare - left)}╮`) + margin);
+      lines.push(
+        margin +
+          theme.fg("border", `╭${"─".repeat(left)}`) +
+          theme.fg("accent", theme.bold(title)) +
+          theme.fg("border", `${"─".repeat(spare - left)}╮`) +
+          margin,
+      );
     }
     if (g.innerY) lines.push(row());
     if (g.note) lines.push(row(theme.fg("muted", this.view.note)));
@@ -300,16 +357,24 @@ export class InsightViewer implements Component, Focusable {
     let position: string;
     if (this.isList) {
       this.selected = Math.max(0, Math.min(this.selected, this.filtered.length - 1));
-      const start = Math.max(0, Math.min(
-        this.selected - Math.floor(g.body / 2), this.filtered.length - g.body,
-      ));
+      const start = Math.max(
+        0,
+        Math.min(this.selected - Math.floor(g.body / 2), this.filtered.length - g.body),
+      );
       for (let i = 0; i < g.body; i++) {
         const index = start + i;
         const item = this.filtered[index];
         const prefix = index === this.selected ? "→ " : "  ";
         const text = item
-          ? this.itemRow(`${prefix}${item.badge ? "Name: " : ""}${item.label}`, item, g.contentWidth, index === this.selected)
-          : (!i && !this.filtered.length ? theme.fg("muted", "No matching items.") : "");
+          ? this.itemRow(
+              `${prefix}${item.badge ? "Name: " : ""}${item.label}`,
+              item,
+              g.contentWidth,
+              index === this.selected,
+            )
+          : !i && !this.filtered.length
+            ? theme.fg("muted", "No matching items.")
+            : "";
         lines.push(row(text));
       }
       position = `${this.filtered.length ? this.selected + 1 : 0}/${this.filtered.length} items · ${this.items.length} total`;
@@ -320,20 +385,27 @@ export class InsightViewer implements Component, Focusable {
         const index = this.offset + i;
         const text = content[index] ?? "";
         // Only first original Name row, never a continuation or scrolled row.
-        lines.push(row(index === 0 && this.detail?.badge
-          ? this.itemRow(text, this.detail, g.contentWidth) : text));
+        lines.push(
+          row(
+            index === 0 && this.detail?.badge
+              ? this.itemRow(text, this.detail, g.contentWidth)
+              : text,
+          ),
+        );
       }
       position = `${content.length ? this.offset + 1 : 0}–${Math.min(content.length, this.offset + g.body)}/${content.length} lines`;
     }
     if (g.divider) lines.push(border(`├${"─".repeat(g.borderWidth - 2)}┤`));
     for (const hint of g.core.slice(0, g.footerRows)) lines.push(row(theme.fg("dim", hint)));
     if (g.position) lines.push(row(theme.fg("dim", position)));
-    for (const hint of g.navigation.slice(0, g.navigationRows)) lines.push(row(theme.fg("dim", hint)));
+    for (const hint of g.navigation.slice(0, g.navigationRows))
+      lines.push(row(theme.fg("dim", hint)));
     if (g.legendRows) {
-      const legend = (this.view.legend ?? []).map((entry) =>
-        theme.fg(entry.color, entry.label) + theme.fg("dim", `=${entry.meaning}`),
-      ).join(theme.fg("dim", " · "));
-      for (const line of wrapTextWithAnsi(legend, g.contentWidth).slice(0, g.legendRows)) lines.push(row(line));
+      const legend = (this.view.legend ?? [])
+        .map((entry) => theme.fg(entry.color, entry.label) + theme.fg("dim", `=${entry.meaning}`))
+        .join(theme.fg("dim", " · "));
+      for (const line of wrapTextWithAnsi(legend, g.contentWidth).slice(0, g.legendRows))
+        lines.push(row(line));
     }
     if (g.innerY) lines.push(row());
     if (g.frame) lines.push(border(`╰${"─".repeat(g.borderWidth - 2)}╯`));
@@ -342,12 +414,23 @@ export class InsightViewer implements Component, Focusable {
   }
 
   private pageHints(): string {
-    const pair = (first: Keybinding, second: Keybinding) => [first, second]
-      .flatMap((binding) => this.options.keys.getKeys(binding).slice(0, 1))
-      .map((key) => key.split("+").map((part) => part[0].toUpperCase() + part.slice(1)).join("+"))
-      .join("/");
-    return [pair("tui.altScreen.pageUp", "tui.altScreen.pageDown"), "Home/End",
-      pair("tui.altScreen.top", "tui.altScreen.bottom")].filter(Boolean).join(" · ");
+    const pair = (first: Keybinding, second: Keybinding) =>
+      [first, second]
+        .flatMap((binding) => this.options.keys.getKeys(binding).slice(0, 1))
+        .map((key) =>
+          key
+            .split("+")
+            .map((part) => part[0].toUpperCase() + part.slice(1))
+            .join("+"),
+        )
+        .join("/");
+    return [
+      pair("tui.altScreen.pageUp", "tui.altScreen.pageDown"),
+      "Home/End",
+      pair("tui.altScreen.top", "tui.altScreen.bottom"),
+    ]
+      .filter(Boolean)
+      .join(" · ");
   }
 
   invalidate(): void {

@@ -11,53 +11,92 @@ import {
 } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 import type { InsightView } from "../src/types.js";
-import { InsightViewer, type InsightViewerOptions, sanitizeInsightText, showInsightView } from "../src/viewer.js";
+import {
+  InsightViewer,
+  type InsightViewerOptions,
+  sanitizeInsightText,
+  showInsightView,
+} from "../src/viewer.js";
 
-const DOWN = "\x1b[B", ESC = "\x1b", ENTER = "\r";
-const PAGE_UP = "\x1b[5~", PAGE_DOWN = "\x1b[6~", HOME = "\x1b[H", END = "\x1b[F";
+const DOWN = "\x1b[B",
+  ESC = "\x1b",
+  ENTER = "\r";
+const PAGE_UP = "\x1b[5~",
+  PAGE_DOWN = "\x1b[6~",
+  HOME = "\x1b[H",
+  END = "\x1b[F";
 // Pi's Input wraps its cursor cell in zero-width markers that the TUI resolves to reverse video.
 const [FAKE_CURSOR_START, FAKE_CURSOR_END] = renderFakeCursor("|").split("|");
-const plain = (text: string) => text.replaceAll(CURSOR_MARKER, "").replaceAll(FAKE_CURSOR_START, "")
-  .replaceAll(FAKE_CURSOR_END, "").replace(/\x1b\[[0-9;]*m/g, "");
-const rows = (n: number) => Array.from({ length: n }, (_, i) => `row${String(i).padStart(3, "0")}`).join("\n");
-const items = (n = 40) => Array.from({ length: n }, (_, i) => ({
-  id: `id${i}`, label: `Tool${i}`, status: i % 2 ? "inactive" : "active",
-  description: "Searchable description", detail: `Detail${i}\n${rows(100)}`,
-}));
+const plain = (text: string) =>
+  text
+    .replaceAll(CURSOR_MARKER, "")
+    .replaceAll(FAKE_CURSOR_START, "")
+    .replaceAll(FAKE_CURSOR_END, "")
+    // oxlint-disable-next-line no-control-regex -- Intentionally matches terminal control characters.
+    .replace(/\x1b\[[0-9;]*m/g, "");
+const rows = (n: number) =>
+  Array.from({ length: n }, (_, i) => `row${String(i).padStart(3, "0")}`).join("\n");
+const items = (n = 40) =>
+  Array.from({ length: n }, (_, i) => ({
+    id: `id${i}`,
+    label: `Tool${i}`,
+    status: i % 2 ? "inactive" : "active",
+    description: "Searchable description",
+    detail: `Detail${i}\n${rows(100)}`,
+  }));
 const listView: InsightView = { title: "Tools", note: "Read-only snapshot", items: items() };
 const textView: InsightView = { title: "Prompt", note: "Captured prompt", text: rows(100) };
 const skillView: InsightView = {
-  title: "Skills", note: "Read-only snapshot",
+  title: "Skills",
+  note: "Read-only snapshot",
   legend: [
     { label: "green", color: "success", meaning: "fresh observation" },
     { label: "grey", color: "dim", meaning: "unobserved/dirty" },
   ],
   items: ["fresh", "dirty"].map((label, index) => ({
-    id: label, label, description: `Hidden searchable description ${label}`,
+    id: label,
+    label,
+    description: `Hidden searchable description ${label}`,
     status: "Verbose state must not be shown",
-    badge: { label: "[loaded]", color: index ? "dim" as const : "success" as const },
+    badge: { label: "[loaded]", color: index ? ("dim" as const) : ("success" as const) },
     detail: `Name: ${label}\nDescription: Hidden searchable description ${label}\n${rows(100)}`,
   })),
 };
-function setup(view: InsightView = textView, rows = 40, overrides: Partial<InsightViewerOptions> = {}) {
+function setup(
+  view: InsightView = textView,
+  rows = 40,
+  overrides: Partial<InsightViewerOptions> = {},
+) {
   const tui = {
-    mode: "fullscreen" as InsightViewerOptions["tui"]["mode"], terminal: { rows, columns: 100 },
+    mode: "fullscreen" as InsightViewerOptions["tui"]["mode"],
+    terminal: { rows, columns: 100 },
     requestRender: vi.fn(),
   };
   const options: InsightViewerOptions = {
-    tui, theme: { fg: (_color, text) => text, bold: (text) => text },
-    keys: new KeybindingsManager(TUI_KEYBINDINGS), done: vi.fn(), view, ...overrides,
+    tui,
+    theme: { fg: (_color, text) => text, bold: (text) => text },
+    keys: new KeybindingsManager(TUI_KEYBINDINGS),
+    done: vi.fn(),
+    view,
+    ...overrides,
   };
   const viewer = new InsightViewer(options);
   viewer.focused = true;
   return { viewer, ...options, tui };
 }
 const output = (viewer: InsightViewer, width = 80) => viewer.render(width).map(plain).join("\n");
-const contentRowCount = (viewer: InsightViewer, width = 80) => viewer.render(width).map(plain)
-  .filter((line) => /row\d{3}/.test(line)).length;
-const listRowCount = (viewer: InsightViewer, width = 80) => viewer.render(width).map(plain)
-  .filter((line) => /(?:→|  ) Tool\d+/.test(line)).length;
-const firstRow = (viewer: InsightViewer, width = 80) => Number(/row(\d+)/.exec(output(viewer, width))?.[1]);
+const contentRowCount = (viewer: InsightViewer, width = 80) =>
+  viewer
+    .render(width)
+    .map(plain)
+    .filter((line) => /row\d{3}/.test(line)).length;
+const listRowCount = (viewer: InsightViewer, width = 80) =>
+  viewer
+    .render(width)
+    .map(plain)
+    .filter((line) => /(?:→|  ) Tool\d+/.test(line)).length;
+const firstRow = (viewer: InsightViewer, width = 80) =>
+  Number(/row(\d+)/.exec(output(viewer, width))?.[1]);
 const selected = (viewer: InsightViewer) => /→ (Tool\d+)/.exec(output(viewer))?.[1];
 
 describe("showInsightView", () => {
@@ -71,14 +110,26 @@ describe("showInsightView", () => {
       notify: vi.fn(),
       custom: vi.fn(async (factory: Factory) => {
         let result: unknown;
-        components.push(await factory(tui as unknown as Parameters<Factory>[0], theme as Parameters<Factory>[1], keys as Parameters<Factory>[2], (value) => {
-          result = value;
-          completions.push(value);
-        }));
+        components.push(
+          await factory(
+            tui as unknown as Parameters<Factory>[0],
+            theme as Parameters<Factory>[1],
+            keys as Parameters<Factory>[2],
+            (value) => {
+              result = value;
+              completions.push(value);
+            },
+          ),
+        );
         return result;
       }),
     };
-    return { ctx: { mode, hasUI, ui: ui as unknown as ExtensionContext["ui"] }, ui, components, completions };
+    return {
+      ctx: { mode, hasUI, ui: ui as unknown as ExtensionContext["ui"] },
+      ui,
+      components,
+      completions,
+    };
   }
 
   it("probes actual tui.mode, returns nothing, then mounts centered focused 80% overlay", async () => {
@@ -89,7 +140,8 @@ describe("showInsightView", () => {
     expect(components[0].render(80)).toEqual([]);
     expect(completions).toEqual(["fullscreen"]);
     expect(ui.custom).toHaveBeenLastCalledWith(expect.any(Function), {
-      overlay: true, overlayOptions: { anchor: "center", width: "80%", maxHeight: "80%" },
+      overlay: true,
+      overlayOptions: { anchor: "center", width: "80%", maxHeight: "80%" },
     });
     components[1].handleInput?.("\x03");
     expect(completions).toEqual(["fullscreen", undefined]);
@@ -244,15 +296,23 @@ describe("InsightViewer", () => {
     viewer.handleInput(ESC);
     viewer.handleInput(DOWN);
     viewer.handleInput(ENTER);
-    expect(viewer.render(80).find((line) => plain(line).includes("Name: dirty")))
-      .toContain("\x1b[2m[loaded]\x1b[0m");
+    expect(viewer.render(80).find((line) => plain(line).includes("Name: dirty"))).toContain(
+      "\x1b[2m[loaded]\x1b[0m",
+    );
   });
 
   it("clips long names before badges, keeps right columns aligned, and omits oversized indicators", () => {
-    const long = { ...skillView.items![0], label: "長".repeat(100), detail: `Name: ${"長".repeat(100)}\nsecond line` };
+    const long = {
+      ...skillView.items![0],
+      label: "長".repeat(100),
+      detail: `Name: ${"長".repeat(100)}\nsecond line`,
+    };
     const { viewer } = setup({ ...skillView, items: [long] });
     for (const width of [24, 40, 80]) {
-      const line = viewer.render(width).map(plain).find((line) => line.includes("[loaded]"))!;
+      const line = viewer
+        .render(width)
+        .map(plain)
+        .find((line) => line.includes("[loaded]"))!;
       expect(line).toMatch(/ +\[loaded\] │ $/);
       expect(visibleWidth(line)).toBe(width);
       viewer.handleInput(ENTER);
@@ -289,7 +349,7 @@ describe("InsightViewer", () => {
       for (const height of [0, 1, 2, 3, 5, 10, 40]) {
         tui.terminal.rows = height;
         lines = viewer.render(width).map(plain);
-        expect(lines).toHaveLength(Math.floor(height * .8));
+        expect(lines).toHaveLength(Math.floor(height * 0.8));
         for (const line of lines) expect(visibleWidth(line)).toBe(width);
       }
     }
@@ -383,10 +443,14 @@ describe("InsightViewer", () => {
 
   it("honors remapped paging and shows actual keys", () => {
     const bindings: KeybindingsConfig = {
-      "tui.altScreen.pageDown": "ctrl+f", "tui.altScreen.pageUp": "ctrl+b",
-      "tui.altScreen.top": "ctrl+home", "tui.altScreen.bottom": "ctrl+end",
+      "tui.altScreen.pageDown": "ctrl+f",
+      "tui.altScreen.pageUp": "ctrl+b",
+      "tui.altScreen.top": "ctrl+home",
+      "tui.altScreen.bottom": "ctrl+end",
     };
-    const { viewer } = setup(textView, 40, { keys: new KeybindingsManager(TUI_KEYBINDINGS, bindings) });
+    const { viewer } = setup(textView, 40, {
+      keys: new KeybindingsManager(TUI_KEYBINDINGS, bindings),
+    });
     expect(output(viewer, 120)).toContain("Ctrl+B/Ctrl+F · Home/End · Ctrl+Home/Ctrl+End");
     viewer.handleInput(PAGE_DOWN);
     expect(firstRow(viewer)).toBe(0);
@@ -417,7 +481,8 @@ describe("InsightViewer", () => {
     expect(output(viewer)).toContain("日本語👩‍💻");
     expect(viewer.render(80).join("")).toContain(CURSOR_MARKER);
     for (const width of [1, 2, 4, 8, 9, 10, 15]) {
-      for (const line of viewer.render(width)) expect(visibleWidth(line)).toBeLessThanOrEqual(width);
+      for (const line of viewer.render(width))
+        expect(visibleWidth(line)).toBeLessThanOrEqual(width);
     }
     viewer.focused = false;
     expect(viewer.render(80).join("")).not.toContain(CURSOR_MARKER);
@@ -441,12 +506,20 @@ describe("InsightViewer", () => {
   it("bounds Unicode and trusted theme ANSI at tiny widths, heights and on invalidate", () => {
     let color = 31;
     const theme: InsightViewerOptions["theme"] = {
-      fg: (_token, text) => `\x1b[${color}m${text}\x1b[0m`, bold: (text) => `\x1b[1m${text}\x1b[22m`,
+      fg: (_token, text) => `\x1b[${color}m${text}\x1b[0m`,
+      bold: (text) => `\x1b[1m${text}\x1b[22m`,
     };
     const strange = "日本語 👩‍💻 e\u0301 中文 🦀 ".repeat(12);
-    for (const view of [{ title: strange, note: strange, text: strange }, {
-      title: strange, note: strange, items: [{ id: "one", label: strange, status: strange, description: strange, detail: strange }],
-    }]) {
+    for (const view of [
+      { title: strange, note: strange, text: strange },
+      {
+        title: strange,
+        note: strange,
+        items: [
+          { id: "one", label: strange, status: strange, description: strange, detail: strange },
+        ],
+      },
+    ]) {
       const { viewer, tui } = setup(view, 40, { theme });
       for (const height of [1, 2, 3, 5, 8, 40]) {
         tui.terminal.rows = height;
@@ -463,17 +536,30 @@ describe("InsightViewer", () => {
   });
 
   it("sanitizes all untrusted fields and pasted search, without mutating source", () => {
-    const malicious = "safe\x1b[2J\x1b]52;c;bad\x07\x1b_Pi:c\x07\x1bPpayload\x1b\\\x9b31m\x07\x08\r\u202eend";
+    const malicious =
+      "safe\x1b[2J\x1b]52;c;bad\x07\x1b_Pi:c\x07\x1bPpayload\x1b\\\x9b31m\x07\x08\r\u202eend";
     expect(sanitizeInsightText(malicious)).toBe("safeend");
     expect(sanitizeInsightText("ok\x1b]0;unfinished")).toBe("ok");
-    const source = Object.freeze({ title: malicious, note: malicious,
-      items: Object.freeze([Object.freeze({ id: malicious, label: malicious, status: malicious, description: malicious, detail: malicious,
-        badge: Object.freeze({ label: malicious, color: "success" as const }),
-      })]),
-      legend: Object.freeze([Object.freeze({ label: malicious, color: "dim" as const, meaning: malicious })]),
+    const source = Object.freeze({
+      title: malicious,
+      note: malicious,
+      items: Object.freeze([
+        Object.freeze({
+          id: malicious,
+          label: malicious,
+          status: malicious,
+          description: malicious,
+          detail: malicious,
+          badge: Object.freeze({ label: malicious, color: "success" as const }),
+        }),
+      ]),
+      legend: Object.freeze([
+        Object.freeze({ label: malicious, color: "dim" as const, meaning: malicious }),
+      ]),
     });
     const { viewer } = setup(source);
     viewer.focused = false;
+    // oxlint-disable-next-line no-control-regex -- Intentionally matches terminal control characters.
     expect(output(viewer)).not.toMatch(/[\x07\x08\x9b\u202e]/);
     viewer.handleInput("\x1b[200~safe\x1b]52;c;bad\x07\x1b[201~");
     expect(output(viewer)).toContain("Filter: safe");

@@ -1,4 +1,10 @@
-import type { ExtensionAPI, ExtensionCommandContext, Skill, ToolInfo, ToolResultEvent } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ExtensionCommandContext,
+  Skill,
+  ToolInfo,
+  ToolResultEvent,
+} from "@earendil-works/pi-coding-agent";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import systemInsights from "#src/index";
@@ -7,13 +13,24 @@ import { showInsightView } from "#src/viewer";
 
 vi.mock("#src/viewer", () => ({ showInsightView: vi.fn(async () => {}) }));
 
-const source = { path: "/project/skills/example/SKILL.md", source: "local", scope: "project", origin: "top-level" } as const;
+const source = {
+  path: "/project/skills/example/SKILL.md",
+  source: "local",
+  scope: "project",
+  origin: "top-level",
+} as const;
 const skill: Skill = {
-  name: "example", description: "Example skill description", filePath: source.path,
-  baseDir: "/project/skills/example", sourceInfo: source, disableModelInvocation: false,
+  name: "example",
+  description: "Example skill description",
+  filePath: source.path,
+  baseDir: "/project/skills/example",
+  sourceInfo: source,
+  disableModelInvocation: false,
 };
 const tool: ToolInfo = {
-  name: "read", description: "Registry read description", exposure: "direct",
+  name: "read",
+  description: "Registry read description",
+  exposure: "direct",
   parameters: { type: "object", properties: { path: { type: "string" } } },
   sourceInfo: { ...source, path: "builtin:read" },
 };
@@ -31,24 +48,50 @@ function harness() {
   const pi = {
     registerCommand: (name: string, command: Command) => commands.set(name, command),
     on: (name: string, handler: ResultHandler) => events.set(name, handler),
-    appendEntry, getAllTools, getActiveTools, getCommands,
+    appendEntry,
+    getAllTools,
+    getActiveTools,
+    getCommands,
   } as unknown as ExtensionAPI;
   const sessionManager = SessionManager.inMemory("/project");
   const ctx = {
-    mode: "tui", hasUI: true, cwd: "/project", sessionManager,
+    mode: "tui",
+    hasUI: true,
+    cwd: "/project",
+    sessionManager,
     getSystemPrompt: vi.fn(() => "Exact current prompt\n<rules>custom</rules>"),
-    getSystemPromptOptions: vi.fn(() => ({ cwd: "/project", skills: [skill], selectedTools: ["read"] })),
+    getSystemPromptOptions: vi.fn(() => ({
+      cwd: "/project",
+      skills: [skill],
+      selectedTools: ["read"],
+    })),
     ui: { notify: vi.fn() },
   } as unknown as ExtensionCommandContext;
   systemInsights(pi);
-  return { commands, events, appendEntry, getAllTools, getActiveTools, getCommands, ctx, sessionManager };
+  return {
+    commands,
+    events,
+    appendEntry,
+    getAllTools,
+    getActiveTools,
+    getCommands,
+    ctx,
+    sessionManager,
+  };
 }
 
-const result = (overrides: Partial<ToolResultEvent> = {}): ToolResultEvent => ({
-  type: "tool_result", toolName: "read", toolCallId: "parent/1", parentToolCallId: "parent",
-  input: { path: "skills/example/SKILL.md" }, content: [{ type: "text", text: "Instructions" }],
-  details: undefined, isError: false, ...overrides,
-} as ToolResultEvent);
+const result = (overrides: Partial<ToolResultEvent> = {}): ToolResultEvent =>
+  ({
+    type: "tool_result",
+    toolName: "read",
+    toolCallId: "parent/1",
+    parentToolCallId: "parent",
+    input: { path: "skills/example/SKILL.md" },
+    content: [{ type: "text", text: "Instructions" }],
+    details: undefined,
+    isError: false,
+    ...overrides,
+  }) as ToolResultEvent;
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -64,17 +107,25 @@ describe("system insights commands", () => {
   it("takes current effective prompt from getter, not base options", async () => {
     const h = harness();
     await h.commands.get("system:prompt")!.handler("", h.ctx);
-    expect(showInsightView).toHaveBeenCalledWith(h.ctx, expect.objectContaining({
-      text: "Exact current prompt\n<rules>custom</rules>",
-    }));
+    expect(showInsightView).toHaveBeenCalledWith(
+      h.ctx,
+      expect.objectContaining({
+        text: "Exact current prompt\n<rules>custom</rules>",
+      }),
+    );
     expect(h.ctx.getSystemPromptOptions).not.toHaveBeenCalled();
     expect(h.appendEntry).not.toHaveBeenCalled();
   });
 
   it("prefers one latest branch tool declaration over duplicate registry content", async () => {
     const h = harness();
-    h.sessionManager.appendMessage({ role: "system", content: "", timestamp: 1,
-      toolsAdded: [{ name: "read", description: "Rewritten model declaration", parameters: tool.parameters }],
+    h.sessionManager.appendMessage({
+      role: "system",
+      content: "",
+      timestamp: 1,
+      toolsAdded: [
+        { name: "read", description: "Rewritten model declaration", parameters: tool.parameters },
+      ],
     });
     await h.commands.get("system:tools")!.handler("", h.ctx);
     const view = vi.mocked(showInsightView).mock.calls[0][1];
@@ -87,11 +138,14 @@ describe("system insights commands", () => {
 
   it("redacts tools and skills only in prompt display, without changing session getter", async () => {
     const h = harness();
-    const original = "Before\n\n<tools>\nTool descriptions\n</tools>\n\n<skills>\nSkill catalog\n</skills>\n\nAfter";
+    const original =
+      "Before\n\n<tools>\nTool descriptions\n</tools>\n\n<skills>\nSkill catalog\n</skills>\n\nAfter";
     vi.mocked(h.ctx.getSystemPrompt).mockReturnValue(original);
     await h.commands.get("system:prompt")!.handler("", h.ctx);
     const view = vi.mocked(showInsightView).mock.calls[0][1];
-    expect(view.text).toBe("Before\n\n--- TOOLS [redacted] ---\n\n--- SKILLS [redacted] ---\n\nAfter");
+    expect(view.text).toBe(
+      "Before\n\n--- TOOLS [redacted] ---\n\n--- SKILLS [redacted] ---\n\nAfter",
+    );
     expect(h.ctx.getSystemPrompt()).toBe(original);
     expect(h.ctx.getSystemPromptOptions).not.toHaveBeenCalled();
     expect(h.appendEntry).not.toHaveBeenCalled();
@@ -111,13 +165,25 @@ describe("system insights commands", () => {
     const h = harness();
     const open = () => h.commands.get("system:skills")!.handler("", h.ctx);
     await open();
-    expect(vi.mocked(showInsightView).mock.lastCall![1].items![0].badge).toEqual({ label: "[loaded]", color: "dim" });
-    const marker = h.sessionManager.appendCustomEntry(SKILL_READ_ENTRY, { path: source.path, partial: false });
+    expect(vi.mocked(showInsightView).mock.lastCall![1].items![0].badge).toEqual({
+      label: "[loaded]",
+      color: "dim",
+    });
+    const marker = h.sessionManager.appendCustomEntry(SKILL_READ_ENTRY, {
+      path: source.path,
+      partial: false,
+    });
     await open();
-    expect(vi.mocked(showInsightView).mock.lastCall![1].items![0].badge).toEqual({ label: "[loaded]", color: "success" });
+    expect(vi.mocked(showInsightView).mock.lastCall![1].items![0].badge).toEqual({
+      label: "[loaded]",
+      color: "success",
+    });
     h.sessionManager.appendCompaction("Summary", marker, 100);
     await open();
-    expect(vi.mocked(showInsightView).mock.lastCall![1].items![0].badge).toEqual({ label: "[loaded]", color: "dim" });
+    expect(vi.mocked(showInsightView).mock.lastCall![1].items![0].badge).toEqual({
+      label: "[loaded]",
+      color: "dim",
+    });
     expect(vi.mocked(showInsightView).mock.lastCall![1].legend).toEqual([
       { label: "[loaded]", color: "success", meaning: "fresh observation" },
       { label: "[loaded]", color: "dim", meaning: "unobserved/dirty" },
@@ -150,14 +216,20 @@ describe("nested skill read evidence", () => {
   it("persists only canonical path and partial flag, never tool contents", () => {
     const h = harness();
     h.events.get("tool_result")!(result(), h.ctx);
-    expect(h.appendEntry).toHaveBeenCalledExactlyOnceWith(SKILL_READ_ENTRY, { path: source.path, partial: false });
+    expect(h.appendEntry).toHaveBeenCalledExactlyOnceWith(SKILL_READ_ENTRY, {
+      path: source.path,
+      partial: false,
+    });
     expect(JSON.stringify(h.appendEntry.mock.calls)).not.toContain("Instructions");
   });
 
   it("records partial reads as partial", () => {
     const h = harness();
     h.events.get("tool_result")!(result({ input: { path: source.path, limit: 10 } }), h.ctx);
-    expect(h.appendEntry).toHaveBeenCalledWith(SKILL_READ_ENTRY, { path: source.path, partial: true });
+    expect(h.appendEntry).toHaveBeenCalledWith(SKILL_READ_ENTRY, {
+      path: source.path,
+      partial: true,
+    });
   });
 
   for (const [label, event] of [
