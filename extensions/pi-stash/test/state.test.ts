@@ -53,6 +53,17 @@ describe("index replay", () => {
     expect(currentEntries(index).map((entry) => entry.hash)).toEqual([b.hash, a2.hash]);
   });
 
+  it("keeps adoption fields through puts and checkpoints, and rejects malformed ones", () => {
+    const adopted: StashRecord = { ...record("found", "4".repeat(64), 4), id: "0123456789abcdef", agent: "a3f2b1c4-9d8e", via: "adopt" };
+    expect(replayStashIndex(branch(put(adopted))).records).toEqual([adopted]);
+    expect(replayStashIndex(branch(checkpoint([adopted]))).records).toEqual([adopted]);
+    expect(replayStashIndex(branch(
+      put({ ...adopted, via: "sideways" } as unknown as StashRecord),
+      put({ ...adopted, agent: 7 } as unknown as StashRecord),
+      put({ ...adopted, id: null } as unknown as StashRecord),
+    )).records).toEqual([]);
+  });
+
   it("ignores foreign, malformed and future-version entries", () => {
     const good = record("ok", "a".repeat(64));
     const index = replayStashIndex(branch(

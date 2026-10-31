@@ -151,9 +151,9 @@ outside the model context and hands back a short handle such as
 `stash:auth-findings@3f9a1c2b7d01`. The model and its subagents then read only the
 slices they need.
 
-- `stash_put` stores literal `content`, a `path` inside the working directory, or
-  the full result of an earlier tool call (`toolCallId`). It returns a receipt with
-  a short preview; it never echoes the content.
+- `stash_put` stores literal `content`, a `path` inside the working directory,
+  the full result of an earlier tool call (`toolCallId`), or an existing `handle`.
+  It returns a receipt with a short preview; it never echoes the content.
 - `stash_get` reads a bounded, line-numbered slice: `lines`, `grep`, or `jsonPath`
   (head by default; 16 KB default, Pi's 50 KB / 2,000-line cap at most).
 - `stash_list` lists this branch's entries.
@@ -161,8 +161,9 @@ slices they need.
 Content is stored once by SHA-256 under `$PI_STASH_DIR` or `~/.pi/agent/stash/`.
 The name index lives in the session, follows `/tree`, and survives compaction and
 resume; full handles also work from other sessions, which is how a parent and its
-subagents share data. Explore and Plan can read handles; Explore can also stash
-large findings. `/stash` browses entries and `/stash:gc` expires unused content
+subagents share data. A subagent's entries also appear in its parent's and
+ancestors' stash as they are stored. Explore and Plan can read handles; Explore can
+also stash large findings. `/stash` browses entries and `/stash:gc` expires unused content
 (`retentionDays`, default 30, in `~/.pi/agent/stash.json`).
 
 Stashed text is plaintext on local disk and is not redacted. See

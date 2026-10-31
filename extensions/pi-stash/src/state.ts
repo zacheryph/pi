@@ -16,8 +16,14 @@ export interface StashRecord {
   createdAt: number;
   /** Session that stored the version. */
   createdBy: string;
-  /** Where the text came from: `content`, `path:<relative>`, or `tool:<name>`. */
+  /** Where the text came from: `content`, `path:<relative>`, `tool:<name>`, or `handle:<handle>`. */
   source: string;
+  /** Stable identity of this version, kept when ancestors adopt it. */
+  id?: string;
+  /** pi-subagents agent id of the session that stored it, when that was a subagent. */
+  agent?: string;
+  /** `adopt`: journaled here because a descendant stored it. */
+  via?: "adopt";
 }
 
 /** Every version stored on this branch, oldest first. The latest per name is current. */
@@ -42,7 +48,7 @@ export function countLines(text: string): number {
   return text.split("\n").length - (text.endsWith("\n") ? 1 : 0);
 }
 
-function isRecord(value: unknown): value is StashRecord {
+export function isStashRecord(value: unknown): value is StashRecord {
   if (!value || typeof value !== "object") return false;
   const raw = value as Record<string, unknown>;
   return typeof raw.name === "string" && NAME_PATTERN.test(raw.name)
@@ -50,7 +56,10 @@ function isRecord(value: unknown): value is StashRecord {
     && Number.isSafeInteger(raw.bytes) && Number.isSafeInteger(raw.lines)
     && typeof raw.mime === "string" && Number.isFinite(raw.createdAt)
     && typeof raw.createdBy === "string" && typeof raw.source === "string"
-    && (raw.description === undefined || typeof raw.description === "string");
+    && (raw.description === undefined || typeof raw.description === "string")
+    && (raw.id === undefined || typeof raw.id === "string")
+    && (raw.agent === undefined || typeof raw.agent === "string")
+    && (raw.via === undefined || raw.via === "adopt");
 }
 
 /** Rebuilds the index from the current branch only; abandoned branches never leak in. */
@@ -62,8 +71,8 @@ export function replayStashIndex(ctx: { sessionManager: { getBranch(): Iterable<
     if (item.type !== "custom" || item.customType !== STASH_INDEX_TYPE || !item.data || typeof item.data !== "object") continue;
     const data = item.data as { schemaVersion?: unknown; op?: unknown; record?: unknown; records?: unknown };
     if (data.schemaVersion !== STASH_SCHEMA_VERSION) continue;
-    if (data.op === "put" && isRecord(data.record)) records.push({ ...data.record });
-    else if (data.op === "checkpoint" && Array.isArray(data.records)) records = data.records.filter(isRecord).map((record) => ({ ...record }));
+    if (data.op === "put" && isStashRecord(data.record)) records.push({ ...data.record });
+    else if (data.op === "checkpoint" && Array.isArray(data.records)) records = data.records.filter(isStashRecord).map((record) => ({ ...record }));
   }
   return { records };
 }

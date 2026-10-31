@@ -29,6 +29,11 @@ export function shortSession(id: string): string {
   return safeStashLine(id).slice(0, 8) || "?";
 }
 
+/** Who stored a version: its subagent when known, else its session. */
+export function originLabel(record: Pick<StashRecord, "createdBy" | "agent">): string {
+  return record.agent ? `agent ${safeStashLine(record.agent).slice(0, 8) || "?"}` : shortSession(record.createdBy);
+}
+
 /**
  * One padded body row: a space on both sides of the content, content
  * truncated to the width left after padding, blank when even that won't fit.
@@ -63,11 +68,12 @@ export function entrySummary(record: Pick<StashRecord, "bytes" | "lines">): stri
   return `${formatBytes(record.bytes)} · ${record.lines} line${record.lines === 1 ? "" : "s"}`;
 }
 
-/** List row: handle and description on the left, size/age on the right. */
+/** List row: handle and description on the left, origin (when adopted), size and age on the right. */
 export function entryRow(record: StashRecord, width: number, theme: Fg, now = Date.now()): string {
   const description = record.description ? ` — ${safeStashLine(record.description)}` : "";
   const left = theme.fg("accent", safeStashLine(handleFor(record))) + theme.fg("muted", description);
-  const right = theme.fg("dim", `${entrySummary(record)} · ${formatAge(record.createdAt, now)}`);
+  const origin = record.via === "adopt" ? `↑ ${originLabel(record)} · ` : "";
+  const right = theme.fg("dim", `${origin}${entrySummary(record)} · ${formatAge(record.createdAt, now)}`);
   return splitRow(left, right, width);
 }
 

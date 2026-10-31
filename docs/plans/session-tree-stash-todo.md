@@ -246,8 +246,10 @@ AGENTS.md (UI spacing tests at narrow widths, `commit.gpgsign=false`).
 - Add `provide("pi-stash", { adopt })`, `trackChildren`, and record fields `id`,
   `via`, `agent`. A subagent's put bubbles to all ancestors (fixed `ancestors` scope;
   scope selection comes in PR 4).
-- Context note in an ancestor listing entries adopted since its model's last request.
-  Bounded and marked as data, like the existing card.
+- Adoption turns on the existing context-only index card in the ancestor (its model
+  never saw a receipt for the entry, the same reason the card shows after
+  compaction), with "from <agent>" on adopted rows. This replaces the separate
+  one-request note first planned, which would have reached only one request.
 - `stash_put { handle }` manual adopt.
 - `/stash` and `stash_list` show the origin agent.
 - Tests: child put appears in parent and grandparent indexes and snapshots; a parent
