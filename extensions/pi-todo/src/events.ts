@@ -23,6 +23,8 @@ export interface TodoSnapshotTask {
   updates: TodoUpdate[];
   /** Messages the user has not reviewed yet. */
   unreviewed: number;
+  /** pi-subagents agent id of the subagent this task is handed to, if any. */
+  claimedBy?: string;
 }
 
 export interface TodoSnapshotEvent {
@@ -31,7 +33,9 @@ export interface TodoSnapshotEvent {
   tasks: TodoSnapshotTask[];
 }
 
-export function todoSnapshotEvent(state: TodoState, activity: TodoActivity, review: TodoReviewState): TodoSnapshotEvent {
+export function todoSnapshotEvent(
+  state: TodoState, activity: TodoActivity, review: TodoReviewState, holders: ReadonlyMap<string, string> = new Map(),
+): TodoSnapshotEvent {
   return structuredClone({
     version: TODO_SNAPSHOT_VERSION,
     revision: state.revision,
@@ -43,6 +47,7 @@ export function todoSnapshotEvent(state: TodoState, activity: TodoActivity, revi
         ...(history?.createdAt !== undefined ? { createdAt: history.createdAt } : {}),
         updates: history?.updates ?? [],
         unreviewed: unreviewedTodoUpdates(task.key, activity, review).length,
+        ...(holders.has(task.key) ? { claimedBy: holders.get(task.key) } : {}),
       };
     }),
   });

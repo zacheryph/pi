@@ -144,6 +144,39 @@ describe("todo rendering", () => {
     }
   });
 
+  it("badges delegated tasks, dropping the badge before the status glyph as width shrinks", () => {
+    const s = state([task("audit", "in_progress"), task("ship")]);
+    const assignees = new Map([["audit", "agent a3f2b1c4"]]);
+    const wide = render(s, { ...config, assignees }, 60);
+    expect(wide[1]).toMatch(/^ audit: Task audit +→ agent a3f2b1c4 · ▸ in_progress $/);
+    expect(wide[2]).toMatch(/^ ship: Task ship +○ pending $/);
+    expect(render(s, { ...config, assignees }, 34)[1]).toMatch(/→ agent a3f2b1c4 · ▸ $/);
+    expect(render(s, { ...config, assignees }, 20)[1]).toMatch(/▸ $/);
+    expect(renderTodoText(s, { ...config, assignees })).toContain("▸ audit: Task audit [in_progress] → agent a3f2b1c4");
+    const colored = { fg: (_token: string, text: string) => `\x1b[32m${text}\x1b[0m` } as Theme;
+    const hostile = new Map([["audit", `agent ${unsafe}日本語👩‍💻`.repeat(4)]]);
+    for (let width = 0; width <= 80; width++) {
+      for (const t of [theme, colored]) {
+        const lines = renderTodoLines(s, { ...config, assignees: hostile }, width, t);
+        for (const row of lines.slice(1)) {
+          expect(visibleWidth(row)).toBeLessThanOrEqual(width);
+          expect(row).not.toMatch(/[\n\r\u202e]/);
+          if (width <= 2) expect(row).toBe(" ".repeat(width));
+          else {
+            expect(row.startsWith(" ")).toBe(true);
+            expect(row.endsWith(" ")).toBe(true);
+          }
+        }
+      }
+    }
+  });
+
+  it("titles a subagent's view of its delegated tasks", () => {
+    const s = state([task("audit", "in_progress")]);
+    expect(render(s, { ...config, title: "Assigned tasks" }, 60)[0]).toContain("  Assigned tasks");
+    expect(renderTodoText(s, { ...config, title: "Assigned tasks" })[0]).toBe("Assigned tasks 0/1 completed");
+  });
+
   it.each([1, 2, 3, 8, 30, 80])("insets all body rows at width %i without moving header chrome", width => {
     const colored = { fg: (_token: string, text: string) => `\x1b[32m${text}\x1b[0m` } as Theme;
     const cases = [
@@ -274,6 +307,14 @@ describe("task detail history", () => {
     expect(reviewed).toContainEqual(expect.stringMatching(/^Reviewed: 1m ago \(\d\d:\d\d:\d\d\) through r3$/));
     expect(reviewed.join("\n")).not.toContain("●");
     expect(todoTaskDetail(s.tasks[0], s)).not.toContain("Reviewed: never");
+  });
+
+  it("names the assignee and agent-attributed updates in details", () => {
+    const delegated = new Map([["build", { updates: [{ revision: 5, at: now, status: "in_progress" as const, message: "Started", agent: "a3f2b1c4-9d8e" }] }]]);
+    const lines = todoTaskDetail(s.tasks[0], s, { activity: delegated, review: { tasks: new Map() }, now }, `agent ${unsafe}`);
+    expect(lines).toContain("Assigned to: agent safeend");
+    expect(lines).toContainEqual(expect.stringMatching(/· r5 · note \(in_progress\) · agent a3f2b1c4$/));
+    expect(todoTaskDetail(s.tasks[0], s).join("\n")).not.toContain("Assigned to");
   });
 
   it("formats ages and clocks deterministically", () => {

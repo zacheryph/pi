@@ -186,19 +186,24 @@ comparable.
     added prerequisite db-migration"). Other fields, removing edges, and status
     changes on unclaimed tasks still fail. This is an experiment; if agents abuse it,
     turn it off with config.
-  - In delegated mode, `baseRevision` is checked against the child's last read of its
-    own tasks, not the global revision, so concurrent siblings don't cause stale-write
+  - In delegated mode, `baseRevision` is checked per touched task: the parent records
+    the revision at which each key last changed, and a write is stale only if a task it
+    touches changed after `baseRevision`. Concurrent siblings don't cause stale-write
     errors.
   - `replace` and whole-ledger `clear` are refused. `remove` and completed-only `clear`
     are limited to the child's claims.
 - **Parent effects for free:** `broker.mutate` runs the parent's existing `mutate()`.
   That journals into the parent session, refreshes the widget, re-injects context and
-  publishes to the dashboard. Child messages are recorded with `by: { agent }` and
-  flagged for review like any other message.
-- **Release:** on `subagents:completed`/`failed` or `child:disposed`, the parent
-  journals `{ op: "release", agent }`. Tasks left `in_progress` get a flagged history
-  message: "explore#a3f2 ended (failed) with this task in progress". The claim record
-  stays as assignment history. The parent can always edit any task, claimed or not.
+  publishes to the dashboard. Child updates record `agent: <agentId>` in history, and
+  their messages are flagged for review like any other model message.
+- **Release:** on `subagents:completed`/`failed`/`resumed` or `child:disposed`, the
+  parent journals `{ op: "release", agent }`. Tasks left `in_progress` get a flagged
+  history message: "agent a3f2b1c4 ended (failed) with this task in progress".
+  `subagents:resuming` reclaims the agent's last keys that nobody else holds. Claims
+  replayed at a session start are released, since no subagent survives one. The
+  parent can always edit any task, claimed or not.
+- **Nested:** a child working on handed-over tasks cannot hand them on yet; its
+  `subagent` call with `handoff.todos` is blocked (PR 7).
 - **Fallback:** with no live parent broker (root session, resumed child after a
   restart), the child's todo works locally exactly as today.
 
