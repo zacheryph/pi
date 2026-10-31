@@ -53,7 +53,10 @@ class Budget {
   readonly rows: string[] = [];
   /** Set when a row was cut to fit; the output is then incomplete. */
   clipped = false;
-  constructor(readonly bytes: number, private readonly lines = HARD_MAX_LINES) {}
+  constructor(
+    readonly bytes: number,
+    private readonly lines = HARD_MAX_LINES,
+  ) {}
 
   /** Adds a row. A first row that is too long is clipped rather than dropped. */
   add(row: string): boolean {
@@ -88,11 +91,23 @@ export function clampMaxBytes(maxBytes: number | undefined): number {
   return Math.max(256, Math.min(HARD_MAX_BYTES, Math.floor(maxBytes)));
 }
 
-function readRange(all: string[], start: number, end: number, budget: Budget, mode: "head" | "lines"): SliceResult {
+function readRange(
+  all: string[],
+  start: number,
+  end: number,
+  budget: Budget,
+  mode: "head" | "lines",
+): SliceResult {
   const total = all.length;
   if (!total) return { mode, text: "(empty)", totalLines: 0, truncated: false };
   if (start > total) {
-    return { mode, text: `(no lines: entry has ${total} lines)`, totalLines: total, truncated: false, hint: `Valid range is [1, ${total}]` };
+    return {
+      mode,
+      text: `(no lines: entry has ${total} lines)`,
+      totalLines: total,
+      truncated: false,
+      hint: `Valid range is [1, ${total}]`,
+    };
   }
   let last = start - 1;
   for (let n = start; n <= end; n++) {
@@ -102,13 +117,20 @@ function readRange(all: string[], start: number, end: number, budget: Budget, mo
   const clipped = budget.clipped;
   const truncated = last < end || clipped;
   const result: SliceResult = {
-    mode, text: budget.rows.join("\n"), totalLines: total, range: [start, last], truncated, ...(clipped ? { clipped } : {}),
+    mode,
+    text: budget.rows.join("\n"),
+    totalLines: total,
+    range: [start, last],
+    truncated,
+    ...(clipped ? { clipped } : {}),
   };
   const hints = clipped ? [clipHint(`line ${last}`, budget)] : [];
   if (last < end) {
     const size = Math.max(1, last - start + 1);
     result.next = [last + 1, Math.min(total, end, last + size)];
-    hints.push(`truncated at line ${last} of ${total}; next range is [${result.next[0]}, ${result.next[1]}]`);
+    hints.push(
+      `truncated at line ${last} of ${total}; next range is [${result.next[0]}, ${result.next[1]}]`,
+    );
   } else if (mode === "head" && last < total) {
     hints.push(`showing lines ${start}-${last} of ${total}`);
   }
@@ -137,7 +159,11 @@ export function parseJsonPath(path: string): (string | number)[] {
         i += index[0].length;
       } else if (quoted) {
         const raw = quoted[1];
-        parts.push(raw.startsWith("'") ? raw.slice(1, -1).replace(/\\(.)/g, "$1") : JSON.parse(raw) as string);
+        parts.push(
+          raw.startsWith("'")
+            ? raw.slice(1, -1).replace(/\\(.)/g, "$1")
+            : (JSON.parse(raw) as string),
+        );
         i += quoted[0].length;
       } else throw fail();
     } else if (i === 0 && /[A-Za-z_]/.test(text[i])) {
@@ -151,7 +177,9 @@ export function parseJsonPath(path: string): (string | number)[] {
 }
 
 export function sliceText(text: string, request: SliceRequest): SliceResult {
-  const modes = [request.lines, request.grep, request.jsonPath].filter((value) => value !== undefined);
+  const modes = [request.lines, request.grep, request.jsonPath].filter(
+    (value) => value !== undefined,
+  );
   if (modes.length > 1) throw new Error("Use at most one of lines, grep, and jsonPath");
   const maxBytes = clampMaxBytes(request.maxBytes);
   const all = splitLines(text);
@@ -159,7 +187,12 @@ export function sliceText(text: string, request: SliceRequest): SliceResult {
 
   if (request.lines) {
     const [rawStart, rawEnd] = request.lines;
-    if (!Number.isInteger(rawStart) || !Number.isInteger(rawEnd) || rawStart < 1 || rawEnd < rawStart) {
+    if (
+      !Number.isInteger(rawStart) ||
+      !Number.isInteger(rawEnd) ||
+      rawStart < 1 ||
+      rawEnd < rawStart
+    ) {
       throw new Error("lines must be [start, end] with 1 <= start <= end (1-based, inclusive)");
     }
     return readRange(all, rawStart, Math.min(rawEnd, all.length || 1), budget, "lines");
@@ -171,11 +204,21 @@ export function sliceText(text: string, request: SliceRequest): SliceResult {
     try {
       regex = new RegExp(request.grep.pattern, request.grep.ignoreCase ? "i" : "");
     } catch (error) {
-      throw new Error(`Invalid grep pattern: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(
+        `Invalid grep pattern: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
     const hits: number[] = [];
     for (let i = 0; i < all.length; i++) if (regex.test(all[i])) hits.push(i);
-    if (!hits.length) return { mode: "grep", text: "(no matches)", totalLines: all.length, truncated: false, matches: 0, matchesShown: 0 };
+    if (!hits.length)
+      return {
+        mode: "grep",
+        text: "(no matches)",
+        totalLines: all.length,
+        truncated: false,
+        matches: 0,
+        matchesShown: 0,
+      };
     let shown = 0;
     let printedUntil = -1;
     let full = true;
@@ -185,11 +228,16 @@ export function sliceText(text: string, request: SliceRequest): SliceResult {
       const to = Math.min(all.length - 1, hit + context);
       const rows: string[] = [];
       if (printedUntil >= 0 && from > printedUntil + 1) rows.push("--");
-      for (let i = from; i <= to; i++) rows.push(numbered(i + 1, all[i], hitSet.has(i) ? ":\t" : "-\t"));
+      for (let i = from; i <= to; i++)
+        rows.push(numbered(i + 1, all[i], hitSet.has(i) ? ":\t" : "-\t"));
       // Only whole groups are shown, so a match is never cut from its context.
       const snapshot = budget.rows.length;
       let fits = true;
-      for (const row of rows) if (!budget.add(row)) { fits = false; break; }
+      for (const row of rows)
+        if (!budget.add(row)) {
+          fits = false;
+          break;
+        }
       if (!fits) {
         if (shown) budget.rows.length = snapshot;
         full = false;
@@ -200,13 +248,20 @@ export function sliceText(text: string, request: SliceRequest): SliceResult {
       if (!fits) break;
     }
     const result: SliceResult = {
-      mode: "grep", text: budget.rows.join("\n"), totalLines: all.length,
-      truncated: !full || budget.clipped, ...(budget.clipped ? { clipped: true } : {}), matches: hits.length, matchesShown: shown,
+      mode: "grep",
+      text: budget.rows.join("\n"),
+      totalLines: all.length,
+      truncated: !full || budget.clipped,
+      ...(budget.clipped ? { clipped: true } : {}),
+      matches: hits.length,
+      matchesShown: shown,
     };
     const hints = budget.clipped ? [clipHint("first matching line", budget)] : [];
     if (!full) {
       const nextLine = hits[shown] === undefined ? undefined : hits[shown] + 1;
-      hints.push(`showing ${shown} of ${hits.length} matches${nextLine ? `; next match is at line ${nextLine}` : ""}; narrow the pattern or read with lines`);
+      hints.push(
+        `showing ${shown} of ${hits.length} matches${nextLine ? `; next match is at line ${nextLine}` : ""}; narrow the pattern or read with lines`,
+      );
     }
     if (hints.length) result.hint = hints.join("; ");
     return result;
@@ -217,15 +272,24 @@ export function sliceText(text: string, request: SliceRequest): SliceResult {
     try {
       value = JSON.parse(text);
     } catch (error) {
-      throw new Error(`Entry is not valid JSON, so jsonPath cannot be used: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(
+        `Entry is not valid JSON, so jsonPath cannot be used: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
     for (const part of parseJsonPath(request.jsonPath)) {
       if (typeof part === "number" && Array.isArray(value)) {
         value = value[part < 0 ? value.length + part : part];
-      } else if (value && typeof value === "object" && !Array.isArray(value) && Object.hasOwn(value, String(part))) {
+      } else if (
+        value &&
+        typeof value === "object" &&
+        !Array.isArray(value) &&
+        Object.hasOwn(value, String(part))
+      ) {
         value = (value as Record<string, unknown>)[String(part)];
       } else {
-        throw new Error(`jsonPath "${request.jsonPath}" does not match: no ${typeof part === "number" ? `index ${part}` : `key "${part}"`}`);
+        throw new Error(
+          `jsonPath "${request.jsonPath}" does not match: no ${typeof part === "number" ? `index ${part}` : `key "${part}"`}`,
+        );
       }
       if (value === undefined) throw new Error(`jsonPath "${request.jsonPath}" does not match`);
     }
@@ -236,11 +300,17 @@ export function sliceText(text: string, request: SliceRequest): SliceResult {
       shownRows++;
     }
     const truncated = shownRows < rendered.length || budget.clipped;
-    const hint = budget.clipped && shownRows === rendered.length ? clipHint("value", budget)
-      : `value truncated after ${shownRows} of ${rendered.length} lines; use a deeper jsonPath`;
+    const hint =
+      budget.clipped && shownRows === rendered.length
+        ? clipHint("value", budget)
+        : `value truncated after ${shownRows} of ${rendered.length} lines; use a deeper jsonPath`;
     return {
-      mode: "json", text: budget.rows.join("\n"), totalLines: all.length, truncated,
-      ...(budget.clipped ? { clipped: true } : {}), ...(truncated ? { hint } : {}),
+      mode: "json",
+      text: budget.rows.join("\n"),
+      totalLines: all.length,
+      truncated,
+      ...(budget.clipped ? { clipped: true } : {}),
+      ...(truncated ? { hint } : {}),
     };
   }
 
@@ -248,7 +318,11 @@ export function sliceText(text: string, request: SliceRequest): SliceResult {
 }
 
 /** Leading lines within both budgets; the last one may be clipped. */
-export function headLines(text: string, maxLines: number, maxBytes: number): { lines: string[]; total: number; complete: boolean } {
+export function headLines(
+  text: string,
+  maxLines: number,
+  maxBytes: number,
+): { lines: string[]; total: number; complete: boolean } {
   const all = splitLines(text);
   const lines = splitLines(clipBytes(all.slice(0, maxLines).join("\n"), maxBytes));
   const complete = lines.length === all.length && lines.at(-1) === all.at(-1);

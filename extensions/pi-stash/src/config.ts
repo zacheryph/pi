@@ -22,7 +22,11 @@ export function sanitizeConfig(raw: unknown): Partial<StashConfig> {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
   const input = raw as Record<string, unknown>;
   const config: Partial<StashConfig> = {};
-  if (typeof input.retentionDays === "number" && Number.isFinite(input.retentionDays) && input.retentionDays > 0) {
+  if (
+    typeof input.retentionDays === "number" &&
+    Number.isFinite(input.retentionDays) &&
+    input.retentionDays > 0
+  ) {
     config.retentionDays = input.retentionDays;
   }
   for (const key of ["maxEntryBytes", "maxStoreBytes"] as const) {
@@ -42,7 +46,9 @@ export function loadStashConfig(agentDir = getAgentDir()): StashConfig {
     return { ...DEFAULT_CONFIG, ...sanitizeConfig(JSON.parse(readFileSync(path, "utf8"))) };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-      console.warn(`[pi-stash] Ignoring settings at ${path}: ${error instanceof Error ? error.message : String(error)}`);
+      console.warn(
+        `[pi-stash] Ignoring settings at ${path}: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
     return { ...DEFAULT_CONFIG };
   }

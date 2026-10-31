@@ -1,7 +1,21 @@
 import type { ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
-import { type Component, matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi, type TUI } from "@earendil-works/pi-tui";
+import {
+  type Component,
+  matchesKey,
+  truncateToWidth,
+  visibleWidth,
+  wrapTextWithAnsi,
+  type TUI,
+} from "@earendil-works/pi-tui";
 import { type StashRecord } from "../state.ts";
-import { bodyRow, entryRow, formatBytes, originLabel, previewRows, shortSession } from "./render.ts";
+import {
+  bodyRow,
+  entryRow,
+  formatBytes,
+  originLabel,
+  previewRows,
+  shortSession,
+} from "./render.ts";
 import { safeStashLine } from "./text.ts";
 
 export interface StashPreview {
@@ -46,7 +60,13 @@ export class StashBrowser implements Component {
   }
 
   private bodyHeight(): number {
-    return Math.max(0, this.height() - (this.framed() ? 2 : 0) - 1 - (this.options.warning && this.height() > 1 ? 1 : 0));
+    return Math.max(
+      0,
+      this.height() -
+        (this.framed() ? 2 : 0) -
+        1 -
+        (this.options.warning && this.height() > 1 ? 1 : 0),
+    );
   }
 
   private detailLines(): string[] {
@@ -65,9 +85,19 @@ export class StashBrowser implements Component {
       this.offset = 0;
     } else if (this.detail) {
       const max = Math.max(0, this.detailLines().length - page);
-      const move = matchesKey(data, "up") ? -1 : matchesKey(data, "down") ? 1
-        : matchesKey(data, "pageUp") ? -page : matchesKey(data, "pageDown") ? page
-        : matchesKey(data, "home") ? -Infinity : matchesKey(data, "end") ? Infinity : 0;
+      const move = matchesKey(data, "up")
+        ? -1
+        : matchesKey(data, "down")
+          ? 1
+          : matchesKey(data, "pageUp")
+            ? -page
+            : matchesKey(data, "pageDown")
+              ? page
+              : matchesKey(data, "home")
+                ? -Infinity
+                : matchesKey(data, "end")
+                  ? Infinity
+                  : 0;
       this.offset = Math.max(0, Math.min(max, this.offset + move));
     } else if (matchesKey(data, "up")) {
       this.selected = Math.max(0, this.selected - 1);
@@ -81,16 +111,23 @@ export class StashBrowser implements Component {
         content = previewRows(preview.lines.join("\n"), preview.lines.length);
         if (preview.note) content.push("", safeStashLine(preview.note));
       } catch (error) {
-        content = [`Unable to read: ${safeStashLine(error instanceof Error ? error.message : String(error))}`];
+        content = [
+          `Unable to read: ${safeStashLine(error instanceof Error ? error.message : String(error))}`,
+        ];
       }
-      this.detail = { record, lines: [
-        `Name: ${safeStashLine(record.name)}`,
-        `Hash: ${safeStashLine(record.hash)}`,
-        `Description: ${record.description ? safeStashLine(record.description) : "—"}`,
-        `Stored by: ${originLabel(record)}${record.agent ? ` (session ${shortSession(record.createdBy)})` : ""}`
-          + (record.via === "adopt" ? " · adopted from a subagent" : ""),
-        "", "Contents:", ...content,
-      ] };
+      this.detail = {
+        record,
+        lines: [
+          `Name: ${safeStashLine(record.name)}`,
+          `Hash: ${safeStashLine(record.hash)}`,
+          `Description: ${record.description ? safeStashLine(record.description) : "—"}`,
+          `Stored by: ${originLabel(record)}${record.agent ? ` (session ${shortSession(record.createdBy)})` : ""}` +
+            (record.via === "adopt" ? " · adopted from a subagent" : ""),
+          "",
+          "Contents:",
+          ...content,
+        ],
+      };
       this.offset = 0;
     }
     this.options.tui.requestRender();
@@ -105,35 +142,52 @@ export class StashBrowser implements Component {
     const body = this.bodyHeight();
     const contentWidth = this.contentWidth();
     const lines: string[] = [];
-    const row = (text = "") => frame
-      ? ` ${theme.fg("border", "│")}${bodyRow(text, this.width - 4)}${theme.fg("border", "│")} `
-      : bodyRow(text, this.width);
+    const row = (text = "") =>
+      frame
+        ? ` ${theme.fg("border", "│")}${bodyRow(text, this.width - 4)}${theme.fg("border", "│")} `
+        : bodyRow(text, this.width);
     if (frame) {
       const title = this.detail ? `Stash / ${safeStashLine(this.detail.record.name)}` : "Stash";
       const label = truncateToWidth(` ${title} `, this.width - 4, "");
       const spare = this.width - 4 - visibleWidth(label);
       const left = Math.floor(spare / 2);
-      lines.push(` ${theme.fg("border", `╭${"─".repeat(left)}`)}${theme.fg("accent", label)}${theme.fg("border", `${"─".repeat(spare - left)}╮`)} `);
+      lines.push(
+        ` ${theme.fg("border", `╭${"─".repeat(left)}`)}${theme.fg("accent", label)}${theme.fg("border", `${"─".repeat(spare - left)}╮`)} `,
+      );
     }
-    if (this.options.warning && height > 1) lines.push(row(theme.fg("warning", safeStashLine(this.options.warning))));
+    if (this.options.warning && height > 1)
+      lines.push(row(theme.fg("warning", safeStashLine(this.options.warning))));
     if (this.detail) {
       const content = this.detailLines();
       this.offset = Math.min(this.offset, Math.max(0, content.length - body));
       for (let i = 0; i < body; i++) lines.push(row(content[this.offset + i] ?? ""));
       const end = Math.min(content.length, this.offset + body);
-      lines.push(row(theme.fg("dim", `${content.length ? this.offset + 1 : 0}–${end}/${content.length} · ↑↓ scroll · Esc back`)));
+      lines.push(
+        row(
+          theme.fg(
+            "dim",
+            `${content.length ? this.offset + 1 : 0}–${end}/${content.length} · ↑↓ scroll · Esc back`,
+          ),
+        ),
+      );
     } else {
       const total = entries.reduce((sum, entry) => sum + entry.bytes, 0);
       const summary = `${entries.length} entries · ${formatBytes(total)}`;
       if (body > 1) lines.push(row(theme.fg("muted", summary)));
       const slots = Math.max(0, body - (body > 1 ? 1 : 0));
       this.selected = Math.max(0, Math.min(this.selected, entries.length - 1));
-      const start = Math.max(0, Math.min(this.selected - Math.floor(slots / 2), entries.length - slots));
+      const start = Math.max(
+        0,
+        Math.min(this.selected - Math.floor(slots / 2), entries.length - slots),
+      );
       for (let i = 0; i < slots; i++) {
         const record = entries[start + i];
-        const text = record ? (start + i === this.selected ? theme.fg("accent", "→ ") : "  ")
-          + entryRow(record, Math.max(0, contentWidth - 2), theme)
-          : i === 0 && !entries.length ? theme.fg("muted", "No stash entries on this branch.") : "";
+        const text = record
+          ? (start + i === this.selected ? theme.fg("accent", "→ ") : "  ") +
+            entryRow(record, Math.max(0, contentWidth - 2), theme)
+          : i === 0 && !entries.length
+            ? theme.fg("muted", "No stash entries on this branch.")
+            : "";
         lines.push(row(text));
       }
       lines.push(row(theme.fg("dim", "↑↓ select · Enter details · Esc close")));
@@ -162,9 +216,18 @@ export async function showStashBrowser(
     done(tui.mode);
     return NOTHING;
   });
-  await ctx.ui.custom<void>((tui, theme, _keys, done) => new StashBrowser({
-    tui, theme, entries: snapshot, load, warning, done: () => done(undefined),
-  }), mode === "fullscreen"
-    ? { overlay: true, overlayOptions: { anchor: "center", width: "80%", maxHeight: "80%" } }
-    : { overlay: false });
+  await ctx.ui.custom<void>(
+    (tui, theme, _keys, done) =>
+      new StashBrowser({
+        tui,
+        theme,
+        entries: snapshot,
+        load,
+        warning,
+        done: () => done(undefined),
+      }),
+    mode === "fullscreen"
+      ? { overlay: true, overlayOptions: { anchor: "center", width: "80%", maxHeight: "80%" } }
+      : { overlay: false },
+  );
 }

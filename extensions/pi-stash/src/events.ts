@@ -1,4 +1,10 @@
-import { currentEntries, handleFor, versionsOf, type StashIndex, type StashRecord } from "./state.ts";
+import {
+  currentEntries,
+  handleFor,
+  versionsOf,
+  type StashIndex,
+  type StashRecord,
+} from "./state.ts";
 
 /**
  * `pi.events` channel carrying this branch's stash index for other extensions
@@ -61,15 +67,26 @@ export type StashPreviewResult =
 /** One entry as `stash_list` and the snapshot event report it. */
 export function stashEntryJson(record: StashRecord, index: StashIndex) {
   return {
-    handle: handleFor(record), name: record.name, hash: record.hash, bytes: record.bytes, lines: record.lines,
-    mime: record.mime, ...(record.description ? { description: record.description } : {}),
-    createdAt: record.createdAt, createdBy: record.createdBy, source: record.source,
+    handle: handleFor(record),
+    name: record.name,
+    hash: record.hash,
+    bytes: record.bytes,
+    lines: record.lines,
+    mime: record.mime,
+    ...(record.description ? { description: record.description } : {}),
+    createdAt: record.createdAt,
+    createdBy: record.createdBy,
+    source: record.source,
     versions: versionsOf(index, record.name).length,
-    ...(record.agent ? { agent: record.agent } : {}), ...(record.via ? { via: record.via } : {}),
+    ...(record.agent ? { agent: record.agent } : {}),
+    ...(record.via ? { via: record.via } : {}),
   };
 }
 
-export function stashSnapshotEvent(index: StashIndex, store?: StashSnapshotEvent["store"]): StashSnapshotEvent {
+export function stashSnapshotEvent(
+  index: StashIndex,
+  store?: StashSnapshotEvent["store"],
+): StashSnapshotEvent {
   return {
     version: STASH_SNAPSHOT_VERSION,
     entries: currentEntries(index).map((record) => stashEntryJson(record, index)),

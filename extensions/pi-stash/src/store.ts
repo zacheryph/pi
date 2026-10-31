@@ -1,7 +1,18 @@
 import { createHash, randomBytes } from "node:crypto";
 import {
-  closeSync, fsyncSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync,
-  renameSync, rmSync, statSync, utimesSync, writeSync,
+  closeSync,
+  fsyncSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  statSync,
+  utimesSync,
+  writeSync,
 } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
@@ -38,7 +49,8 @@ export class BlobStore {
   private realRoot(create: boolean): string | undefined {
     try {
       if (create) mkdirSync(this.root, { recursive: true, mode: 0o700 });
-      if (lstatSync(this.root).isSymbolicLink()) throw new Error(`Stash root is a symlink: ${this.root}`);
+      if (lstatSync(this.root).isSymbolicLink())
+        throw new Error(`Stash root is a symlink: ${this.root}`);
       return realpathSync(this.root);
     } catch (error) {
       if (!create && (error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
@@ -56,7 +68,8 @@ export class BlobStore {
     for (const part of rel.split(sep)) {
       current = join(current, part);
       try {
-        if (lstatSync(current).isSymbolicLink()) throw new Error(`Stash path is a symlink: ${current}`);
+        if (lstatSync(current).isSymbolicLink())
+          throw new Error(`Stash path is a symlink: ${current}`);
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") break;
         throw error;
@@ -66,7 +79,10 @@ export class BlobStore {
   }
 
   private dir(realRoot: string, bucket?: string): string {
-    return this.checked(realRoot, bucket ? join(realRoot, "blobs", bucket) : join(realRoot, "blobs"));
+    return this.checked(
+      realRoot,
+      bucket ? join(realRoot, "blobs", bucket) : join(realRoot, "blobs"),
+    );
   }
 
   /** Atomically writes `text` (temp file + rename); an existing blob is only touched. */
@@ -82,7 +98,10 @@ export class BlobStore {
       this.touch(target);
       return { hash, bytes };
     }
-    const temp = this.checked(realRoot, join(bucket, `${TEMP_PREFIX}${hash.slice(0, 16)}-${randomBytes(6).toString("hex")}`));
+    const temp = this.checked(
+      realRoot,
+      join(bucket, `${TEMP_PREFIX}${hash.slice(0, 16)}-${randomBytes(6).toString("hex")}`),
+    );
     try {
       // "wx" refuses to follow or reuse anything already at the temp path.
       const fd = openSync(temp, "wx", 0o600);
@@ -114,7 +133,11 @@ export class BlobStore {
   /** Refreshes mtime so the retention sweep treats the blob as recently used. */
   private touch(path: string): void {
     const now = new Date();
-    try { utimesSync(path, now, now); } catch { /* read-only stores still work */ }
+    try {
+      utimesSync(path, now, now);
+    } catch {
+      /* read-only stores still work */
+    }
   }
 
   has(hash: string): boolean {
@@ -128,7 +151,8 @@ export class BlobStore {
   read(hash: string, options: { touch?: boolean } = {}): string {
     if (!HASH_PATTERN.test(hash)) throw new Error(`Invalid stash hash: ${hash}`);
     const realRoot = this.realRoot(false);
-    const missing = () => new Error(`Stash content ${hash.slice(0, 12)} is missing (expired or from another machine)`);
+    const missing = () =>
+      new Error(`Stash content ${hash.slice(0, 12)} is missing (expired or from another machine)`);
     if (!realRoot) throw missing();
     const path = this.checked(realRoot, join(this.dir(realRoot, hash.slice(0, 2)), hash));
     if (!this.exists(path)) throw missing();
@@ -149,7 +173,9 @@ export class BlobStore {
     } catch {
       return [];
     }
-    return readdirSync(bucket).filter((name) => HASH_PATTERN.test(name) && name.startsWith(prefix)).sort();
+    return readdirSync(bucket)
+      .filter((name) => HASH_PATTERN.test(name) && name.startsWith(prefix))
+      .sort();
   }
 
   /** Refreshes blobs still referenced by the current session so a sweep keeps them. */
@@ -205,16 +231,22 @@ export class BlobStore {
     const protectedHashes = new Set(keep);
     const cutoff = now - retentionDays * DAY_MS;
     const result: SweepResult = { removed: 0, freedBytes: 0, kept: 0 };
-    for (const file of [...this.files()]) {
+    for (const file of this.files()) {
       const isTemp = file.name.startsWith(TEMP_PREFIX);
       if (!isTemp && !HASH_PATTERN.test(file.name)) continue;
-      const expired = isTemp ? file.lastUsed < now - DAY_MS : file.lastUsed < cutoff && !protectedHashes.has(file.name);
+      const expired = isTemp
+        ? file.lastUsed < now - DAY_MS
+        : file.lastUsed < cutoff && !protectedHashes.has(file.name);
       if (!expired) {
         if (!isTemp) result.kept++;
         continue;
       }
       // Re-check right before deleting: the path must still be a plain file.
-      if (!statSync(file.path, { throwIfNoEntry: false })?.isFile() || lstatSync(file.path).isSymbolicLink()) continue;
+      if (
+        !statSync(file.path, { throwIfNoEntry: false })?.isFile() ||
+        lstatSync(file.path).isSymbolicLink()
+      )
+        continue;
       rmSync(file.path, { force: true });
       if (!isTemp) {
         result.removed++;

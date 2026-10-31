@@ -84,7 +84,7 @@ branch on start, resume, reload and `/tree`, so abandoned branches drop out.
   matching more than one blob fails and lists the candidates.
 
 **Context:** after compaction, resume, reload or `/tree`, and once a subagent's entry
-has been adopted, each model request gets a bounded, context-only *index card* (the
+has been adopted, each model request gets a bounded, context-only _index card_ (the
 20 most recent entries: handle, size, origin of adopted entries, description). It is
 never written to the transcript or shown as a message.
 

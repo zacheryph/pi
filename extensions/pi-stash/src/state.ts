@@ -51,28 +51,49 @@ export function countLines(text: string): number {
 export function isStashRecord(value: unknown): value is StashRecord {
   if (!value || typeof value !== "object") return false;
   const raw = value as Record<string, unknown>;
-  return typeof raw.name === "string" && NAME_PATTERN.test(raw.name)
-    && typeof raw.hash === "string" && HASH_PATTERN.test(raw.hash)
-    && Number.isSafeInteger(raw.bytes) && Number.isSafeInteger(raw.lines)
-    && typeof raw.mime === "string" && Number.isFinite(raw.createdAt)
-    && typeof raw.createdBy === "string" && typeof raw.source === "string"
-    && (raw.description === undefined || typeof raw.description === "string")
-    && (raw.id === undefined || typeof raw.id === "string")
-    && (raw.agent === undefined || typeof raw.agent === "string")
-    && (raw.via === undefined || raw.via === "adopt");
+  return (
+    typeof raw.name === "string" &&
+    NAME_PATTERN.test(raw.name) &&
+    typeof raw.hash === "string" &&
+    HASH_PATTERN.test(raw.hash) &&
+    Number.isSafeInteger(raw.bytes) &&
+    Number.isSafeInteger(raw.lines) &&
+    typeof raw.mime === "string" &&
+    Number.isFinite(raw.createdAt) &&
+    typeof raw.createdBy === "string" &&
+    typeof raw.source === "string" &&
+    (raw.description === undefined || typeof raw.description === "string") &&
+    (raw.id === undefined || typeof raw.id === "string") &&
+    (raw.agent === undefined || typeof raw.agent === "string") &&
+    (raw.via === undefined || raw.via === "adopt")
+  );
 }
 
 /** Rebuilds the index from the current branch only; abandoned branches never leak in. */
-export function replayStashIndex(ctx: { sessionManager: { getBranch(): Iterable<unknown> } }): StashIndex {
+export function replayStashIndex(ctx: {
+  sessionManager: { getBranch(): Iterable<unknown> };
+}): StashIndex {
   let records: StashRecord[] = [];
   for (const entry of ctx.sessionManager.getBranch()) {
     if (!entry || typeof entry !== "object") continue;
     const item = entry as { type?: unknown; customType?: unknown; data?: unknown };
-    if (item.type !== "custom" || item.customType !== STASH_INDEX_TYPE || !item.data || typeof item.data !== "object") continue;
-    const data = item.data as { schemaVersion?: unknown; op?: unknown; record?: unknown; records?: unknown };
+    if (
+      item.type !== "custom" ||
+      item.customType !== STASH_INDEX_TYPE ||
+      !item.data ||
+      typeof item.data !== "object"
+    )
+      continue;
+    const data = item.data as {
+      schemaVersion?: unknown;
+      op?: unknown;
+      record?: unknown;
+      records?: unknown;
+    };
     if (data.schemaVersion !== STASH_SCHEMA_VERSION) continue;
     if (data.op === "put" && isStashRecord(data.record)) records.push({ ...data.record });
-    else if (data.op === "checkpoint" && Array.isArray(data.records)) records = data.records.filter(isStashRecord).map((record) => ({ ...record }));
+    else if (data.op === "checkpoint" && Array.isArray(data.records))
+      records = data.records.filter(isStashRecord).map((record) => ({ ...record }));
   }
   return { records };
 }
@@ -102,9 +123,12 @@ export function parseRef(ref: string): ParsedRef {
   const at = text.lastIndexOf("@");
   const name = at < 0 ? text : text.slice(0, at);
   const prefix = at < 0 ? undefined : text.slice(at + 1).toLowerCase();
-  if (!NAME_PATTERN.test(name)) throw new Error(`Invalid stash reference "${ref}": expected stash:<name>@<hash> or <name>`);
+  if (!NAME_PATTERN.test(name))
+    throw new Error(`Invalid stash reference "${ref}": expected stash:<name>@<hash> or <name>`);
   if (prefix !== undefined && !new RegExp(`^[0-9a-f]{${MIN_HANDLE_PREFIX},64}$`).test(prefix)) {
-    throw new Error(`Invalid stash handle "${ref}": hash prefix needs ${MIN_HANDLE_PREFIX}-64 hex digits`);
+    throw new Error(
+      `Invalid stash handle "${ref}": hash prefix needs ${MIN_HANDLE_PREFIX}-64 hex digits`,
+    );
   }
   return { name, prefix };
 }
@@ -125,18 +149,30 @@ export function resolveRef(ref: string, index: StashIndex, store: BlobStore): Re
   const { name, prefix } = parseRef(ref);
   if (!prefix) {
     const record = currentEntries(index).find((entry) => entry.name === name);
-    if (!record) throw new Error(`No stash entry named "${name}" on this branch. Use a full handle (stash:${name}@<hash>) for entries from other sessions.`);
+    if (!record)
+      throw new Error(
+        `No stash entry named "${name}" on this branch. Use a full handle (stash:${name}@<hash>) for entries from other sessions.`,
+      );
     return { hash: record.hash, name: record.name, record };
   }
   const known = index.records.filter((record) => record.hash.startsWith(prefix));
   const stored = store.findByPrefix(prefix);
-  const candidates = [...new Set([...stored, ...known.filter((record) => record.name === name).map((record) => record.hash)])];
+  const candidates = [
+    ...new Set([
+      ...stored,
+      ...known.filter((record) => record.name === name).map((record) => record.hash),
+    ]),
+  ];
   if (candidates.length > 1) {
-    throw new Error(`Ambiguous stash handle "${ref}"; candidates:\n${candidates.map((hash) => `stash:${name}@${hash}`).join("\n")}`);
+    throw new Error(
+      `Ambiguous stash handle "${ref}"; candidates:\n${candidates.map((hash) => `stash:${name}@${hash}`).join("\n")}`,
+    );
   }
-  if (!candidates.length) throw new Error(`Stash content for "${ref}" not found (expired, or stored on another machine)`);
+  if (!candidates.length)
+    throw new Error(`Stash content for "${ref}" not found (expired, or stored on another machine)`);
   const hash = candidates[0];
-  const record = [...index.records].reverse().find((entry) => entry.hash === hash && entry.name === name)
-    ?? [...index.records].reverse().find((entry) => entry.hash === hash);
+  const record =
+    [...index.records].reverse().find((entry) => entry.hash === hash && entry.name === name) ??
+    [...index.records].reverse().find((entry) => entry.hash === hash);
   return { hash, name: name!, record };
 }
