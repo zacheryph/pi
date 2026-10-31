@@ -22,8 +22,14 @@
     "CHANGELOG.md"
   ],
   "imports": {
-    "#src/*": "./src/*",
-    "#test/*": "./test/*"
+    "#src/*": {
+      "types": "./src/*.ts",
+      "default": "./src/*"
+    },
+    "#test/*": {
+      "types": "./test/*.ts",
+      "default": "./test/*"
+    }
   },
   "description": "A focused, in-process sub-agent core for pi — autonomous agents plus a typed API and lifecycle events other extensions build on. Friendly fork of @tintinweb/pi-subagents.",
   "author": {

@@ -1,0 +1,70 @@
+{
+  "name": "@gotgenes/pi-subagents-worktrees",
+  "version": "0.3.3",
+  "private": true,
+  "description": "Git worktree isolation for @gotgenes/pi-subagents — a WorkspaceProvider that runs subagents in isolated worktrees.",
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-extension",
+    "pi-coding-agent",
+    "coding-agent",
+    "subagents",
+    "worktree",
+    "git",
+    "isolation"
+  ],
+  "author": {
+    "name": "Chris Lasher"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gotgenes/pi-packages.git",
+    "directory": "packages/pi-subagents-worktrees"
+  },
+  "homepage": "https://github.com/gotgenes/pi-packages/tree/main/packages/pi-subagents-worktrees#readme",
+  "engines": {
+    "node": ">=24"
+  },
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "UPSTREAM.md"
+  ],
+  "imports": {
+    "#src/*": {
+      "types": "./src/*.ts",
+      "default": "./src/*"
+    },
+    "#test/*": {
+      "types": "./test/*.ts",
+      "default": "./test/*"
+    }
+  },
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  },
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "1.4.0",
+    "@types/node": "^24.19.2",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.5"
+  }
+}

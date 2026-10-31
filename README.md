@@ -80,6 +80,10 @@ pi-personal/
 │   │   ├── docs/
 │   │   ├── LICENSE
 │   │   └── UPSTREAM.md
+│   ├── pi-subagents-worktrees/          # vendored
+│   │   ├── src/index.ts                 # worktree WorkspaceProvider + /subagents-worktrees
+│   │   ├── test/
+│   │   └── UPSTREAM.md
 │   ├── pi-system-insights/
 │   │   ├── src/index.ts                 # /system:* commands
 │   │   └── test/
@@ -214,6 +218,27 @@ Custom agents are read from `.pi/agents/<name>.md` in the project where Pi runs,
 See [upstream README](extensions/pi-subagents/README.md),
 [configuration](extensions/pi-subagents/docs/configuration.md), and
 [provenance/local changes](extensions/pi-subagents/UPSTREAM.md).
+
+### pi-subagents-worktrees
+
+Runs opted-in subagent types in a temporary git worktree, so parallel
+implementation workers never edit the same checkout. Vendored from
+[`gotgenes/pi-packages`](extensions/pi-subagents-worktrees/UPSTREAM.md). List the
+agent types to isolate in `~/.pi/agent/subagents-worktrees.json` or the project's
+`.pi/subagents-worktrees.json`:
+
+```json
+{ "worktreeAgents": ["general-purpose"] }
+```
+
+A child that changes nothing leaves no trace. A child with changes has them
+committed to a `pi-agent-<id>` branch, and its result says how to merge it. A
+failed cleanup leaves the worktree on disk instead of deleting work; session
+start warns about such worktrees and about unmerged `pi-agent-` branches, and
+`/subagents-worktrees` lists preserved worktrees and removes one after
+confirmation. Without a config file nothing is isolated. Do not also install
+`npm:@gotgenes/pi-subagents-worktrees`. See the
+[upstream README](extensions/pi-subagents-worktrees/README.md).
 
 ### pi-system-insights
 
@@ -407,3 +432,4 @@ extension's `UPSTREAM.md`.
 Vendored subagents code retains its upstream [MIT license](extensions/pi-subagents/LICENSE).
 Vendored todo engine retains its upstream [MIT license](extensions/pi-todo/LICENSE).
 Vendored jobs code retains its upstream [MIT license](extensions/pi-jobs/LICENSE).
+Vendored worktrees code retains its upstream [MIT license](extensions/pi-subagents-worktrees/LICENSE).

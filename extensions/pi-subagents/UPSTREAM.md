@@ -186,6 +186,14 @@ No upstream runtime behavior was intentionally changed during import.
 - Tests: `test/service/service.test.ts`, and parent/child, load-only,
   companion and failed-child cases in `test/composition-root.test.ts`.
 
+## Companion typechecking
+
+- `package.json` `imports`: each `#src/*` and `#test/*` target gained a `types`
+  condition (`./src/*.ts`) beside the unchanged `default`, so a companion
+  extension that imports this source by relative path (pi-subagents-worktrees)
+  can typecheck it without mapping `#src` itself. This package's own
+  `tsconfig.json` paths and its runtime resolution are unchanged.
+
 ## Development
 
 Run from this repository's root:
