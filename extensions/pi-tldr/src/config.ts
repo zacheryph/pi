@@ -40,7 +40,9 @@ function readConfig(path: string): Partial<TldrConfig> {
   }
   return {
     ...(typeof record.model === "string" ? { model: record.model.trim() } : {}),
-    ...(typeof record.setSessionName === "boolean" ? { setSessionName: record.setSessionName } : {}),
+    ...(typeof record.setSessionName === "boolean"
+      ? { setSessionName: record.setSessionName }
+      : {}),
   };
 }
 

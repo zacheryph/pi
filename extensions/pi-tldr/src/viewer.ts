@@ -1,5 +1,13 @@
 import type { ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
-import { matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi, type Component, type Focusable, type TUI } from "@earendil-works/pi-tui";
+import {
+  matchesKey,
+  truncateToWidth,
+  visibleWidth,
+  wrapTextWithAnsi,
+  type Component,
+  type Focusable,
+  type TUI,
+} from "@earendil-works/pi-tui";
 import type { TldrResult } from "./core.js";
 
 const NOTHING: Component = { render: () => [], invalidate() {} };
@@ -27,13 +35,21 @@ export async function showTldr(
           done(undefined);
         });
         // Yield to the TUI so the loading modal appears before the request starts.
-        void Promise.resolve().then(() => load(controller.signal)).then(
-          (result) => { if (!controller.signal.aborted) viewer.setSummary(result); },
-          (error) => { if (!controller.signal.aborted) viewer.setError(String(error)); },
-        );
+        void Promise.resolve()
+          .then(() => load(controller.signal))
+          .then(
+            (result) => {
+              if (!controller.signal.aborted) viewer.setSummary(result);
+            },
+            (error) => {
+              if (!controller.signal.aborted) viewer.setError(String(error));
+            },
+          );
         return viewer;
       },
-      mode === "fullscreen" ? { overlay: true, overlayOptions: { anchor: "center", width: "80%", maxHeight: "80%" } } : { overlay: false },
+      mode === "fullscreen"
+        ? { overlay: true, overlayOptions: { anchor: "center", width: "80%", maxHeight: "80%" } }
+        : { overlay: false },
     );
   } finally {
     controller.abort();
@@ -65,6 +81,7 @@ export class TldrViewer implements Component, Focusable {
 
   setError(message: string): void {
     if (this.closed) return;
+    // oxlint-disable-next-line no-control-regex -- Intentionally matches terminal control sequences.
     this.error = message.replace(/[\u0000-\u001f\u007f-\u009f]/g, " ").slice(0, 360);
     this.tui.requestRender();
   }
@@ -107,10 +124,14 @@ export class TldrViewer implements Component, Focusable {
       ? [theme.fg("accent", theme.bold("Could not summarize")), ...wrap(this.error)]
       : this.summary
         ? [
-            theme.fg("accent", theme.bold("Premise")), ...wrap(this.summary.premise), "",
+            theme.fg("accent", theme.bold("Premise")),
+            ...wrap(this.summary.premise),
+            "",
             theme.fg("accent", theme.bold("Findings / turns")),
-            ...findings.flatMap((item) => wrap(`• ${item}`)), "",
-            theme.fg("accent", theme.bold("Current status")), ...wrap(this.summary.status),
+            ...findings.flatMap((item) => wrap(`• ${item}`)),
+            "",
+            theme.fg("accent", theme.bold("Current status")),
+            ...wrap(this.summary.status),
           ]
         : [theme.fg("accent", "Summarizing session…")];
     this.height = Math.max(0, maxH - (framed ? 5 : 1));
@@ -119,15 +140,26 @@ export class TldrViewer implements Component, Focusable {
     const lines: string[] = [];
     if (framed) {
       const innerW = w - 4;
-      const heading = truncateToWidth(` TLDR · ${this.summary?.title || "session"} `, Math.max(1, innerW - 2), "");
-      lines.push(margin + theme.fg("border", "╭") + theme.fg("accent", theme.bold(heading))
-        + theme.fg("border", "─".repeat(Math.max(0, innerW - visibleWidth(heading))) + "╮") + margin);
+      const heading = truncateToWidth(
+        ` TLDR · ${this.summary?.title || "session"} `,
+        Math.max(1, innerW - 2),
+        "",
+      );
+      lines.push(
+        margin +
+          theme.fg("border", "╭") +
+          theme.fg("accent", theme.bold(heading)) +
+          theme.fg("border", "─".repeat(Math.max(0, innerW - visibleWidth(heading))) + "╮") +
+          margin,
+      );
       lines.push(row(""));
     }
     for (const line of inner.slice(this.offset, this.offset + this.height)) lines.push(row(line));
     if (framed) {
       lines.push(row(""));
-      lines.push(row(theme.fg("dim", this.maxOffset ? "↑↓ scroll · Enter/Esc close" : "Enter/Esc close")));
+      lines.push(
+        row(theme.fg("dim", this.maxOffset ? "↑↓ scroll · Enter/Esc close" : "Enter/Esc close")),
+      );
       lines.push(margin + theme.fg("border", `╰${"─".repeat(w - 4)}╯`) + margin);
     } else {
       lines.push(row("Enter/Esc close"));
@@ -136,5 +168,7 @@ export class TldrViewer implements Component, Focusable {
   }
 
   invalidate(): void {}
-  dispose(): void { this.closed = true; }
+  dispose(): void {
+    this.closed = true;
+  }
 }
