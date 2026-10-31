@@ -177,19 +177,22 @@ export const SUBAGENT_EVENTS = {
 
 /** Legacy single slot: always the outermost live service. */
 const SERVICE_KEY = Symbol.for("@gotgenes/pi-subagents:service");
-/** Every live service in publish order; the slot mirrors the first. */
+/** Every live service in session-start order; the slot mirrors the first. */
 const PUBLICATIONS_KEY = Symbol.for("@gotgenes/pi-subagents:services.v1");
 
 interface Publication {
   service: SubagentsService;
-  /** Set once the publishing session has started. */
-  sessionId?: string;
+  sessionId: string;
 }
 
 /**
  * Every child session loads this extension again in-process, so several
- * services are live at once. A child loads after its parent and shuts down
- * before it, so publish order puts the outermost session first.
+ * services are live at once. A child starts after its parent and shuts down
+ * before it, so start order puts the outermost session first.
+ *
+ * Only started sessions are admitted. Pi may run extension factories in
+ * invocations that never start a session (and so never shut one down); a
+ * publication made at load time could then sit ahead of every later session.
  */
 function publications(): Publication[] {
   const slots = globalThis as Record<symbol, unknown>;
@@ -209,19 +212,18 @@ function syncSlot(list: Publication[]): void {
 }
 
 /**
- * Publish a SubagentsService on globalThis for cross-extension access.
+ * Publish a session's SubagentsService on globalThis for cross-extension
+ * access. Call on `session_start`.
  *
- * Publishing an already-published service again records its session id. A
- * later (child) publication never displaces the outermost one from the slot.
+ * A later (child) session never displaces the outermost one from the slot. A
+ * publication for a session id that is already published replaces it in place,
+ * so an instance whose shutdown never unpublished cannot linger.
  */
-export function publishSubagentsService(service: SubagentsService, sessionId?: string): void {
+export function publishSubagentsService(service: SubagentsService, sessionId: string): void {
   const list = publications();
-  const existing = list.find((entry) => entry.service === service);
-  if (existing) {
-    if (sessionId !== undefined) existing.sessionId = sessionId;
-  } else {
-    list.push(sessionId === undefined ? { service } : { service, sessionId });
-  }
+  const index = list.findIndex((entry) => entry.service === service || entry.sessionId === sessionId);
+  if (index >= 0) list[index] = { service, sessionId };
+  else list.push({ service, sessionId });
   syncSlot(list);
 }
 

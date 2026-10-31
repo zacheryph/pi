@@ -29,19 +29,19 @@ describe("SubagentsService accessors", () => {
 
   it("publishSubagentsService stores service on globalThis", () => {
     const mock = makeService("parent");
-    publishSubagentsService(mock);
+    publishSubagentsService(mock, "parent-session");
     expect((globalThis as Record<symbol, unknown>)[SERVICE_KEY]).toBe(mock);
   });
 
   it("getSubagentsService retrieves the published service", () => {
     const mock = makeService("parent");
-    publishSubagentsService(mock);
+    publishSubagentsService(mock, "parent-session");
     expect(getSubagentsService()).toBe(mock);
   });
 
   it("unpublishSubagentsService removes the service from globalThis", () => {
     const mock = makeService("parent");
-    publishSubagentsService(mock);
+    publishSubagentsService(mock, "parent-session");
     unpublishSubagentsService(mock);
     expect(getSubagentsService()).toBeUndefined();
     expect((globalThis as Record<symbol, unknown>)[SERVICE_KEY]).toBeUndefined();
@@ -80,20 +80,35 @@ describe("SubagentsService accessors", () => {
       expect(getSubagentsService("unknown")).toBeUndefined();
     });
 
-    it("records the session id when a service published at load is published again at session start", () => {
-      const parent = makeService("parent");
-      publishSubagentsService(parent);
-      expect(getSubagentsService("parent-session")).toBeUndefined();
+    it("replaces a lingering publication for the same session in place", () => {
+      const stale = makeService("stale");
+      const child = makeService("child");
+      const fresh = makeService("fresh");
+      publishSubagentsService(stale, "parent-session");
+      publishSubagentsService(child, "child-session");
 
+      // A new instance for the same session whose predecessor never unpublished.
+      publishSubagentsService(fresh, "parent-session");
+
+      expect(getSubagentsService()).toBe(fresh);
+      expect(getSubagentsService("parent-session")).toBe(fresh);
+      unpublishSubagentsService(stale);
+      expect(getSubagentsService()).toBe(fresh);
+    });
+
+    it("re-publishing the same service is idempotent", () => {
+      const parent = makeService("parent");
+      publishSubagentsService(parent, "parent-session");
       publishSubagentsService(parent, "parent-session");
 
-      expect(getSubagentsService("parent-session")).toBe(parent);
-      expect(getSubagentsService()).toBe(parent);
+      unpublishSubagentsService(parent);
+
+      expect(getSubagentsService()).toBeUndefined();
     });
 
     it("ignores unpublishing a service that is not published", () => {
       const parent = makeService("parent");
-      publishSubagentsService(parent);
+      publishSubagentsService(parent, "parent-session");
 
       unpublishSubagentsService(makeService("stranger"));
 
@@ -119,7 +134,6 @@ describe("SubagentsService accessors", () => {
       publishSubagentsService(before, "parent-session");
 
       unpublishSubagentsService(before);
-      publishSubagentsService(after);
       publishSubagentsService(after, "parent-session");
 
       expect(getSubagentsService()).toBe(after);

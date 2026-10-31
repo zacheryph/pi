@@ -570,8 +570,9 @@ Key types:
 Every child session loads this extension again in the same process, so several services are live at once.
 A child loads after its parent and shuts down before it, so the accessors keep publications in publish order and treat the first as the outermost:
 
-- `publishSubagentsService(service, sessionId?)` appends to `Symbol.for("@gotgenes/pi-subagents:services.v1")`.
-  The extension publishes at load and again at `session_start` to record its session id.
+- `publishSubagentsService(service, sessionId)` appends to `Symbol.for("@gotgenes/pi-subagents:services.v1")`.
+  The extension publishes on `session_start`, never at load: Pi may run extension factories without ever starting (or shutting down) a session, and such a publication would sit ahead of every later session.
+  Publishing for a session id that is already listed replaces that entry in place.
 - The legacy slot `Symbol.for("@gotgenes/pi-subagents:service")` always holds the outermost live service, so a child never displaces its parent.
 - `getSubagentsService()` returns the outermost service; `getSubagentsService(sessionId)` returns that session's own.
 - `unpublishSubagentsService(service)` removes only that publication and moves the slot to the next outermost one.

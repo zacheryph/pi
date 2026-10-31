@@ -148,8 +148,11 @@ No upstream runtime behavior was intentionally changed during import.
   `Symbol.for("@gotgenes/pi-subagents:services.v1")`. The legacy slot always holds
   the outermost one. `unpublishSubagentsService(service)` removes only its own
   publication (the argument is now required).
-- `getSubagentsService(sessionId?)` can return a specific session's service;
-  `src/index.ts` re-publishes on `session_start` to record the session id.
+- `src/index.ts` publishes on `session_start` instead of at load, so a
+  factory-only load (no session, so no shutdown) never enters the registry.
+  `publishSubagentsService(service, sessionId)` requires the session id and
+  replaces an existing entry for the same session in place.
+- `getSubagentsService(sessionId?)` can return a specific session's service.
 - Tests: `test/service/service.test.ts` and a parent/child case in
   `test/composition-root.test.ts`.
 

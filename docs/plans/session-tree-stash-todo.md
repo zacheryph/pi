@@ -110,10 +110,21 @@ comparable.
   each ancestor in range. `adopt` journals `{ op: "put", record, via: "adopt" }` in
   that ancestor's session, updates its index and publishes its snapshot (which updates
   the dashboard). It also queues a one-line context note for that ancestor's model.
-- **Down:** on `session_start`, a child pulls in records with scope `descendants` or
-  `tree` from its ancestors. It journals them locally with `via: "inherit"`, so a
-  later resume still has them. A put with a downward scope is also pushed to live
-  descendants.
+- **Reach is decided by the origin, never the holder.** A record's origin is the
+  session that created it (`createdBy`). Session T may hold it only when:
+  - upward scopes (`parent`, `ancestors`, `tree`): T is the origin's parent
+    (`parent`) or one of its ancestors (`ancestors`, `tree`);
+  - downward scopes (`descendants`, `tree`): the origin is one of T's ancestors.
+
+  An ancestor that holds an adopted copy does **not** pass it on to its own other
+  children. Otherwise a `tree` entry from child A, adopted into parent P, would leak
+  to A's sibling B.
+- **Down:** on `session_start`, a child T looks at the records its ancestors hold
+  with scope `descendants` or `tree`, and inherits only those whose origin is in
+  `ancestors(T)`. It journals them locally with `via: "inherit"`, so a later resume
+  still has them. This works after the origin has ended, because it checks T's own
+  live chain. A put (or widening) with a downward scope is pushed to the live
+  `descendants(origin)`, not to the holder's descendants.
 - **Changing scope (widen only):** `stash_scope { ref, scope }`, allowed only in the
   session that created the record. The new scope must include the old one (see the
   ordering above). Widening journals `{ op: "scope", id, scope }` and propagates to
@@ -255,7 +266,9 @@ AGENTS.md (UI spacing tests at narrow widths, `commit.gpgsign=false`).
   replaced when the entry widens.
 - Tool text states that scope controls discoverability, not access.
 - Tests: each scope's reach in a three-level tree with siblings (`tree` must not
-  reach siblings or cousins); widening after the fact; narrowing and sideways moves
+  reach siblings or cousins); an A/P/B case where child A puts a `tree` entry, it
+  is adopted into P, and sibling B started afterwards does not inherit it (and a
+  live B does not receive the push); widening after the fact; narrowing and sideways moves
   are errors; private counts per agent and their replacement on widening; a resumed
   child keeps inherited entries; checkpoint after compaction keeps the new fields
   and markers; render tests for the private row at narrow widths.

@@ -503,6 +503,34 @@ describe("composition root: parent tool list", () => {
 });
 
 describe("composition root: service publication", () => {
+  it("does not publish for a load that never starts a session", async () => {
+    // Session A starts.
+    const a = makePi();
+    subagentsExtension(a.pi);
+    await a.fire("session_start", {}, makeSessionStartCtx(makeParentRegistry().registry, makeRecordingUI()));
+    const serviceA = getSubagentsService();
+
+    // B runs the factory only: Pi may load extensions without starting a session.
+    const b = makePi();
+    subagentsExtension(b.pi);
+    expect(getSubagentsService()).toBe(serviceA);
+
+    // A shuts down and a new session C starts.
+    await a.fire("session_shutdown", {}, {});
+    expect(getSubagentsService()).toBeUndefined();
+    const c = makePi();
+    subagentsExtension(c.pi);
+    const ctxC = makeSessionStartCtx(makeParentRegistry().registry, makeRecordingUI());
+    ctxC.sessionManager.getSessionId = vi.fn(() => "session-c");
+    await c.fire("session_start", {}, ctxC);
+
+    expect(getSubagentsService()).toBeDefined();
+    expect(getSubagentsService()).toBe(getSubagentsService("session-c"));
+    expect(getSubagentsService()).not.toBe(serviceA);
+
+    await c.fire("session_shutdown", {}, {});
+  });
+
   it("keeps the parent's service published after an in-process child shuts down", async () => {
     const parent = makePi();
     subagentsExtension(parent.pi);

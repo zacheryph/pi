@@ -205,8 +205,8 @@ export default function (pi: ExtensionAPI) {
 
   // Typed service published via Symbol.for() for cross-extension access.
   // Consumers: const { getSubagentsService } = await import("@gotgenes/pi-subagents");
+  // Published once the session starts (see the session_start handler below).
   const service = new SubagentsServiceAdapter(manager, resolveModel, runtime);
-  publishSubagentsService(service);
 
   const lifecycle = new SessionLifecycleHandler(
     runtime,
@@ -230,7 +230,8 @@ export default function (pi: ExtensionAPI) {
   const widgetEvents = new WidgetEventsHandler(widget);
 
   pi.on("session_start", (event, ctx) => lifecycle.handleSessionStart(event, ctx));
-  // Key the publication by session so getSubagentsService(sessionId) finds it.
+  // Publish only for a started session: a factory-only load (no session_start)
+  // never shuts down, so it must never enter the process-wide registry.
   pi.on("session_start", (_event, ctx) => publishSubagentsService(service, ctx.sessionManager.getSessionId()));
   pi.on("session_start", (event, ctx) => widgetEvents.handleSessionStart(event, ctx));
   pi.on("session_start", (_event, ctx) => watch.setContext(ctx));
