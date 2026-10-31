@@ -1,12 +1,7 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "types": ["node"],
-    // Keeps upstream's test/manager.test.ts byte-for-byte; see UPSTREAM.md.
-    "noUnusedLocals": false
+    "types": ["node"]
   },
-  "include": [
-    "src",
-    "test"
-  ]
+  "include": ["src", "test"]
 }

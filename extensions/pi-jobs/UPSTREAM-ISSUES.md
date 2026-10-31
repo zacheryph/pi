@@ -17,6 +17,7 @@ and image normalization before it calls `_runAgentPrompt()` (l. 1481–1595). Du
 `Agent is already processing a prompt` and the prompt is lost.
 
 **Minimal repro.**
+
 1. Extension A registers an async `before_agent_start` handler that awaits for 500 ms.
 2. Extension B calls `pi.sendMessage({ customType: "x", content: "wake", display: true }, { triggerTurn: true })`
    200 ms after the user submits a prompt.
@@ -42,6 +43,7 @@ agent run. `prompt()` itself refuses to start while compacting (l. 1497); the de
 does not check.
 
 **Minimal repro (deterministic).**
+
 1. Settings: `compaction: { enabled: false, keepRecentTokens: 1 }`, so the history below can be
    compacted.
 2. Extension A (loaded first) has an `agent_settled` handler that calls
@@ -66,6 +68,7 @@ through the same atomic wake queue as #1.
 
 **Summary.** `sendCustomMessage` queues a custom follow-up only in the agent
 (`agent.followUp`) and not in `_followUpMessages` (l. 1759–1761):
+
 - `clearQueue()` (l. 1846–1853), used by Escape (`interactive-mode.js` l. 2401–2403), clears it
   silently. Only user text is restored to the editor.
 - An RPC `abort` leaves it in the agent queue. It is then delivered at the end of whatever run
@@ -80,6 +83,7 @@ Extensions cannot observe either case. There is no extension event for queue cha
 says so.
 
 **Proposed fix.** Any of these would do:
+
 - Return dropped custom messages from `clearQueue()` and emit an extension event (for example
   `queue_cleared { messages }`) so their owners can redeliver.
 - Expose `queue_update` to extensions.
@@ -103,6 +107,7 @@ defer by an event-loop tick (`setImmediate`). That works only if no later `sessi
 handler is still running, because pi awaits every handler before it clears its state.
 
 **Minimal repro.**
+
 1. Extension A's `session_compact` handler schedules `setImmediate(() => ctx.isIdle() && pi.sendMessage(m, { triggerTurn: true }))`.
    If `ctx.isIdle()` is false at that point, it keeps `m` for later.
 2. Extension B (loaded after A) has a `session_compact` handler that awaits 40 ms.
@@ -124,6 +129,7 @@ add an extension event that fires once the session is idle again (see #5).
 
 **Summary.** `navigateTree()` sets `_branchSummaryAbortController` (busy, `isIdle() === false`)
 for the whole navigation and clears it in `finally` (l. 3198–3318).
+
 - **Success:** `session_tree` is emitted (l. 3308), but still before the `finally`, so it has
   the same "fires before teardown" problem as #4. pi-jobs handles this case with an
   idle-checked `setImmediate` drain after `session_tree`.
@@ -134,6 +140,7 @@ for the whole navigation and clears it in `finally` (l. 3198–3318).
   contexts.
 
 **Minimal repro.**
+
 1. Extension A's `session_before_tree` handler awaits 100 ms and then returns `{ cancel: true }`.
 2. Extension B calls `pi.sendMessage(m, { triggerTurn: true })` only when `ctx.isIdle()` is
    true; otherwise it waits for an end event.

@@ -3,15 +3,15 @@
 Background shell jobs and watches for Pi, imported from
 [`woksin/pi-jobs`](https://github.com/woksin/pi-jobs).
 
-| | |
-| --- | --- |
-| Source | https://github.com/woksin/pi-jobs |
-| Directory | repository root |
-| Commit | `a1c27af538b059815beddbb4c4f2c98cfe1eb3e9` (2026-10-23, "docs: refresh README") |
-| Upstream version | `@woksin/pi-jobs` 0.3.1 |
-| Upstream tested with | Pi 1.3.0, Node.js 22.19+ |
-| License | MIT; original notice retained in `LICENSE` |
-| Imported | 2026-10-29 |
+|                      |                                                                                 |
+| -------------------- | ------------------------------------------------------------------------------- |
+| Source               | https://github.com/woksin/pi-jobs                                               |
+| Directory            | repository root                                                                 |
+| Commit               | `a1c27af538b059815beddbb4c4f2c98cfe1eb3e9` (2026-10-23, "docs: refresh README") |
+| Upstream version     | `@woksin/pi-jobs` 0.3.1                                                         |
+| Upstream tested with | Pi 1.3.0, Node.js 22.19+                                                        |
+| License              | MIT; original notice retained in `LICENSE`                                      |
+| Imported             | 2026-10-29                                                                      |
 
 This is an editable source copy, not a Git submodule or npm runtime dependency.
 The root bundle exposes `src/extension.ts`. Install the root bundle; do not also
@@ -24,12 +24,10 @@ except `.github/` (upstream CI and npm publish workflows) with
 `git ls-files | tar`. The first commit on the import branch is that copy alone;
 `diff -r` against the clone showed no differences.
 
-Still byte-for-byte with upstream: `e2e/`, `README.md`, `CHANGELOG.md`,
-`UPSTREAM-ISSUES.md` (upstream's own notes on Pi-side limitations, unrelated to
-this file), `LICENSE`, `.gitignore`, and every upstream file under `src/` and
-`test/` except those named under **Local changes** below (`src/extension.ts`,
-`src/format.ts`, `src/jobs.ts`, `src/ownership.ts`, `src/supervisor.ts`,
-`src/watch.ts`, `test/delivery.test.ts`, `test/extension.test.ts`).
+The Oxc migration formats source, tests, scripts, and Markdown with the bundle's
+shared configuration. These files no longer claim byte-for-byte parity with
+upstream; the import commit remains the reference for comparing local changes.
+The original license and import history are retained.
 
 ## Local changes
 
@@ -54,10 +52,11 @@ Upstream never typechecks; it relies on its tests. Added `tsconfig.json`
 `typescript` and `@types/node` dev dependencies like the other workspaces
 (`@types/node` follows the bundle's Node.js 24 floor).
 
-The shared base enables `noUnusedLocals`; `tsconfig.json` turns it off here
-because upstream's `test/manager.test.ts` destructures an unused `done`, and
-fixing that would edit an otherwise byte-for-byte test file. The base's
-`allowImportingTsExtensions` replaces the copy this `tsconfig.json` used to set.
+The shared base's unused-local checks now apply here too. The Oxc cleanup
+removes the unused test binding, uses Node's actual asynchronous cleanup-hook
+type, and explicitly discards test-registration promises (the Node runner tracks
+the tests). Test message fixtures describe both string and text-block content.
+Shared tools and development dependencies live at the repository root.
 
 Five typing fixes; runtime behaviour is unchanged:
 
@@ -130,6 +129,6 @@ Edits to upstream files, kept small:
 
 ## Sync history
 
-| Date | Upstream commit | Notes |
-| --- | --- | --- |
+| Date       | Upstream commit   | Notes           |
+| ---------- | ----------------- | --------------- |
 | 2026-10-29 | `a1c27af` (0.3.1) | Initial import. |

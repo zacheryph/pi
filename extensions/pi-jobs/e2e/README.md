@@ -8,15 +8,15 @@ cd /path/to/pi-jobs/e2e
 node scen.mjs 1     # exit 0 = PASS, 1 = FAIL, 2 = hard timeout (150 s), 64 = unknown id
 ```
 
-| # | Scenario |
-|---|---|
-| 1 | Successful job wakes the agent once (`OK-MARKER`, exit 0). |
-| 2 | Failing job is reported with its exit code. |
-| 3 | Timeout kills the process group (none of the run's marked processes left). |
-| 4 | `job_watch` matches when a flag file appears 15 s later. |
-| 5 | Two jobs finish during a foreground bash call: each is delivered once, possibly batched. |
-| 6a / 6b | Exiting pi (stdin closed or SIGTERM) leaves no job processes behind. |
-| 7 | Natural-language request: one `job_*` call, no polling, one wake-up. |
+| #       | Scenario                                                                                                                                          |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1       | Successful job wakes the agent once (`OK-MARKER`, exit 0).                                                                                        |
+| 2       | Failing job is reported with its exit code.                                                                                                       |
+| 3       | Timeout kills the process group (none of the run's marked processes left).                                                                        |
+| 4       | `job_watch` matches when a flag file appears 15 s later.                                                                                          |
+| 5       | Two jobs finish during a foreground bash call: each is delivered once, possibly batched.                                                          |
+| 6a / 6b | Exiting pi (stdin closed or SIGTERM) leaves no job processes behind.                                                                              |
+| 7       | Natural-language request: one `job_*` call, no polling, one wake-up.                                                                              |
 | 8a / 8b | A job finishes while another turn streams. Then Escape (`clear_queue` + `abort`) or an RPC `abort`: the completion arrives once, after the abort. |
 
 **Isolation.** Each run creates its own temp directory (`/tmp/pijobs-e2e-XXXXXX`, also pi's

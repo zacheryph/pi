@@ -3,24 +3,24 @@
 export type WatchUntil = "success" | "failure" | "change";
 
 export interface CheckResult {
-	/** Exit status from bash (128+n after signal n), or null if it was not reported. */
-	exitCode: number | null;
-	/** Signal observed directly (the check's supervisor was killed), else null. */
-	signal: string | null;
-	/** True when the check was cut short (per-check timeout, or the watch's timeout/kill). */
-	timedOut: boolean;
-	/** Display output: a bounded tail of the check's output. */
-	output: string;
-	/** Digest of the complete output streams; compared by until:"change" when present. */
-	outputHash?: string;
-	/** A tool check that could not run (tool error, blocked call): no verdict either way. */
-	inconclusive?: boolean;
+  /** Exit status from bash (128+n after signal n), or null if it was not reported. */
+  exitCode: number | null;
+  /** Signal observed directly (the check's supervisor was killed), else null. */
+  signal: string | null;
+  /** True when the check was cut short (per-check timeout, or the watch's timeout/kill). */
+  timedOut: boolean;
+  /** Display output: a bounded tail of the check's output. */
+  output: string;
+  /** Digest of the complete output streams; compared by until:"change" when present. */
+  outputHash?: string;
+  /** A tool check that could not run (tool error, blocked call): no verdict either way. */
+  inconclusive?: boolean;
 }
 
 export interface WatchEvaluation {
-	matched: boolean;
-	/** Fingerprint of the first conclusive check, used by `until: "change"`. */
-	baseline: string | undefined;
+  matched: boolean;
+  /** Fingerprint of the first conclusive check, used by `until: "change"`. */
+  baseline: string | undefined;
 }
 
 /**
@@ -28,8 +28,8 @@ export interface WatchEvaluation {
  * bytes), falling back to the trimmed display output when no digest is available.
  */
 export function fingerprint(result: CheckResult): string {
-	const out = result.outputHash ?? result.output.trim();
-	return `${result.exitCode ?? result.signal}\u0000${out}`;
+  const out = result.outputHash ?? result.output.trim();
+  return `${result.exitCode ?? result.signal}\u0000${out}`;
 }
 
 /**
@@ -39,17 +39,21 @@ export function fingerprint(result: CheckResult): string {
  *  - "failure": the check exited non-zero or was killed by a signal.
  *  - "change": exit status or complete output differs from the first conclusive check.
  */
-export function evaluateWatch(until: WatchUntil, result: CheckResult, baseline: string | undefined): WatchEvaluation {
-	if (result.timedOut || result.inconclusive) return { matched: false, baseline };
-	switch (until) {
-		case "success":
-			return { matched: result.exitCode === 0, baseline };
-		case "failure":
-			return { matched: result.exitCode !== 0, baseline };
-		case "change": {
-			const print = fingerprint(result);
-			if (baseline === undefined) return { matched: false, baseline: print };
-			return { matched: print !== baseline, baseline };
-		}
-	}
+export function evaluateWatch(
+  until: WatchUntil,
+  result: CheckResult,
+  baseline: string | undefined,
+): WatchEvaluation {
+  if (result.timedOut || result.inconclusive) return { matched: false, baseline };
+  switch (until) {
+    case "success":
+      return { matched: result.exitCode === 0, baseline };
+    case "failure":
+      return { matched: result.exitCode !== 0, baseline };
+    case "change": {
+      const print = fingerprint(result);
+      if (baseline === undefined) return { matched: false, baseline: print };
+      return { matched: print !== baseline, baseline };
+    }
+  }
 }

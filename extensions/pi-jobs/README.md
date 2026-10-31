@@ -63,14 +63,14 @@ sensitive output, so do not publish them.
 
 ## Tools
 
-| Tool | Purpose |
-|---|---|
-| `job_start { command, timeoutSeconds, cwd?, label? }` | Run `bash -c <command>` under a supervisor in its own process group; stdout+stderr → log file. Returns at once with id and log path. |
-| `job_watch { check, intervalSeconds, timeoutSeconds, until?, checkTimeoutSeconds?, cwd?, label? }` | Re-run `check` every `intervalSeconds` until the condition holds or `timeoutSeconds` passes. |
-| `job_list {}` | Running and recent jobs of this session. |
-| `job_output { id, tailLines? }` | Bounded log tail (default 40, max 200 lines, max 16 KB). |
-| `job_kill { id }` | SIGTERM the job's process group, SIGKILL after 5 s; returns the final state. |
-| `/jobs`, `/jobs kill <id>` | User command: list / stop. |
+| Tool                                                                                               | Purpose                                                                                                                              |
+| -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `job_start { command, timeoutSeconds, cwd?, label? }`                                              | Run `bash -c <command>` under a supervisor in its own process group; stdout+stderr → log file. Returns at once with id and log path. |
+| `job_watch { check, intervalSeconds, timeoutSeconds, until?, checkTimeoutSeconds?, cwd?, label? }` | Re-run `check` every `intervalSeconds` until the condition holds or `timeoutSeconds` passes.                                         |
+| `job_list {}`                                                                                      | Running and recent jobs of this session.                                                                                             |
+| `job_output { id, tailLines? }`                                                                    | Bounded log tail (default 40, max 200 lines, max 16 KB).                                                                             |
+| `job_kill { id }`                                                                                  | SIGTERM the job's process group, SIGKILL after 5 s; returns the final state.                                                         |
+| `/jobs`, `/jobs kill <id>`                                                                         | User command: list / stop.                                                                                                           |
 
 The model is told: start the job, **end the turn**, do not poll.
 
@@ -123,11 +123,11 @@ jobs finished:`). The output of all completions in a message shares a 16 KB budg
 message goes through `pi.sendMessage(…, { triggerTurn: true, deliverAs: "followUp" })`, and
 pi does the scheduling.
 
-| Situation when the job finishes | What pi-jobs does |
-|---|---|
-| Session idle | Send now; pi starts a run with the completion as its prompt. |
-| A run is active (`agent_start` … `agent_settled`) | Hold it. At the next non-aborted `agent_end`, send everything held as one follow-up, which pi consumes in the same run. |
-| Run aborted, or the completion arrived after the last `agent_end` | At `agent_settled`, send only if pi is idle; pi then starts a new run right after. If pi is already busy again (an earlier `agent_settled` handler started a compaction), keep holding. |
+| Situation when the job finishes                                      | What pi-jobs does                                                                                                                                                                                                                   |
+| -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Session idle                                                         | Send now; pi starts a run with the completion as its prompt.                                                                                                                                                                        |
+| A run is active (`agent_start` … `agent_settled`)                    | Hold it. At the next non-aborted `agent_end`, send everything held as one follow-up, which pi consumes in the same run.                                                                                                             |
+| Run aborted, or the completion arrived after the last `agent_end`    | At `agent_settled`, send only if pi is idle; pi then starts a new run right after. If pi is already busy again (an earlier `agent_settled` handler started a compaction), keep holding.                                             |
 | pi busy without a run (manual compaction, branch summary on `/tree`) | Hold it. Send after `session_compact` or `session_tree` (one `setImmediate`, because these fire before pi clears its busy state), or after `session_compact_failed`, if pi is idle by then. Otherwise send at the next agent event. |
 
 **Recovery.** A follow-up we queued has no `message_end` confirmation when its run settles if
@@ -176,6 +176,7 @@ stops, the loss is reported once, and nothing is retried.
 
 These are documented in [UPSTREAM-ISSUES.md](https://github.com/woksin/pi-jobs/blob/main/UPSTREAM-ISSUES.md), with skipped reproductions
 in `test/agent-session.test.ts`:
+
 - A completion that arrives while a user prompt is still preparing can make that prompt fail
   with "Agent is already processing" (#1).
 - A completion sent from `agent_settled` can start its run inside a compaction that another
