@@ -302,9 +302,11 @@ export function createTodoDelegation(pi: ExtensionAPI, host: DelegationHost) {
       withdraw = provide(sessionId, BROKER_NAME, broker);
       pending.clear();
       lastChange.clear();
-      // No subagent outlives a session start (pi-subagents disposes children on
-      // shutdown and reload), so replayed claims are stale.
+      // Claims replayed on session start or tree navigation cannot safely carry
+      // into the new branch, even if the child session still exists.
       for (const agent of [...replayedClaims.keys()]) release(agent, "session ended");
+      // An agent from another branch must not reclaim keys on a later resume.
+      ended.clear();
       delegated = undefined;
       const parent = parentOf(sessionId);
       const agent = node(sessionId)?.agentId;

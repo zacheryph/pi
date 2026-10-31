@@ -246,6 +246,37 @@ describe("handing tasks to a subagent", () => {
     expect(replayTodoSession({ sessionManager: resumed.manager }).claims.size).toBe(0);
   });
 
+  it("reconciles stale claims, reservations and revisions after tree navigation", async () => {
+    const parent = await planned();
+    const fork = parent.manager.getLeafId()!;
+    const oldAgent = "old-agent";
+    await spawn(parent, { keys: ["a"] }, oldAgent);
+    // Record a newer per-key revision on this branch.
+    await parent.execute({ action: "upsert", tasks: [{ key: "a", description: "Old branch edit" }] });
+    const claimedBranch = parent.manager.getLeafId()!;
+    // Also leave a same-turn spawn reservation that must not leak to another branch.
+    expect(await parent.emit("tool_call", handoffCall("reserved-b", { keys: ["b"] }))).toBeUndefined();
+
+    parent.manager.branch(fork);
+    await parent.emit("session_tree");
+    expect(replayTodoSession({ sessionManager: parent.manager }).claims.size).toBe(0);
+    expect(await parent.emit("tool_call", handoffCall("new-b", { keys: ["b"] }))).toBeUndefined();
+    const child = await spawn(parent, { keys: ["a"] }, "new-agent");
+    const baseRevision = JSON.parse(await child.text({ action: "list" })).revision as number;
+    // The old branch's lastChange must not reject an edit against this branch.
+    await child.execute({ action: "upsert", baseRevision, tasks: [{ key: "a", status: "in_progress" }] });
+
+    // Revisiting a branch whose journal ends with a claim must release it.
+    parent.manager.branch(claimedBranch);
+    await parent.emit("session_tree");
+    expect(replayTodoSession({ sessionManager: parent.manager }).claims.size).toBe(0);
+    expect(parent.snapshots.at(-1)?.tasks.find((task) => task.key === "a")?.claimedBy).toBeUndefined();
+    // The release must not make an old agent eligible to reclaim this branch.
+    parent.bus.emit("subagents:resuming", { id: oldAgent });
+    expect(replayTodoSession({ sessionManager: parent.manager }).claims.size).toBe(0);
+    expect(await parent.emit("tool_call", handoffCall("after-rewind", { keys: ["a"] }))).toBeUndefined();
+  });
+
   it("works locally when nothing was handed over, and refuses to hand delegated tasks on", async () => {
     const parent = await planned();
     const plain = session();

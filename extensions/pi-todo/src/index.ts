@@ -277,12 +277,14 @@ export default function todoExtension(pi: ExtensionAPI, dependencies: TodoExtens
     updateWidget(ctx);
     publish();
   };
-  pi.on("session_start", async (_event, ctx) => {
+  const restoreDelegation = (ctx: ExtensionContext) => {
     restore(ctx);
+    // Tree navigation also changes the authoritative claim and revision history.
     delegation.start(ctx.sessionManager.getSessionId(), claims);
     updateWidget(ctx);
-  });
-  pi.on("session_tree", async (_event, ctx) => restore(ctx));
+  };
+  pi.on("session_start", async (_event, ctx) => restoreDelegation(ctx));
+  pi.on("session_tree", async (_event, ctx) => restoreDelegation(ctx));
   pi.on("session_compact", async () => {
     pi.appendEntry(TODO_JOURNAL_TYPE, journal(state, activity));
   });
