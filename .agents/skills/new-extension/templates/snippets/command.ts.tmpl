@@ -1,0 +1,8 @@
+
+  pi.registerCommand("{{command}}", {
+    description: "Describe /{{command}} in one line",
+    handler: async (_args, ctx) => {
+      if (!ctx.hasUI) return;
+      ctx.ui.notify("/{{command}}: not implemented yet", "info");
+    },
+  });

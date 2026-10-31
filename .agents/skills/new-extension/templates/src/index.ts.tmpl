@@ -1,0 +1,15 @@
+{{imports}}
+/** {{description}} */
+export default function {{factory}}(pi: ExtensionAPI): void {
+  // Per-session state lives in this closure, never in module scope: every
+  // subagent session runs this factory again, and a same-cwd child may share
+  // this module with its parent.
+
+  /** Rebuild state from the current branch (start, resume, reload, /tree). */
+  const restore = (_ctx: ExtensionContext): void => {
+    // Replay this extension's entries from _ctx.sessionManager.getBranch().
+  };
+
+  pi.on("session_start", (_event, ctx) => restore(ctx));
+  pi.on("session_tree", (_event, ctx) => restore(ctx));
+{{registrations}}}

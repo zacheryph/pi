@@ -408,25 +408,10 @@ pi --no-extensions -e ./extensions/pi-subagents/src/index.ts
 
 ### Add another extension
 
-1. Create `extensions/<name>/` with `src/index.ts`, `test/`, a private
-   `package.json` with `check` (`tsc --noEmit`) and `test` scripts, and a
-   `tsconfig.json` extending `../../tsconfig.base.json`. `extensions/pi-tldr/` is
-   the smallest example. CI runs both scripts without `--if-present`.
-2. In root `package.json`, add the directory to `workspaces` and its entry point
-   to `pi.extensions`, then run `npm install --ignore-scripts` to update the
-   lockfile.
-3. Assert its tools and commands in `scripts/verify-bundle.mjs`.
-4. Run `/reload` (or restart Pi). No reinstall needed for a local checkout.
+Use the [`new-extension` skill](.agents/skills/new-extension/SKILL.md).
 
-Keep helper modules beside their entry point, not registered separately. Add
-third-party runtime dependencies to the bundle's root `dependencies` so Git installs
-can install them; for local installs run `npm install --ignore-scripts` yourself.
-Nested manifests alone do not expose another extension through the root bundle.
-
-To copy a third-party extension into the repository, follow the
-[`vendor-extension` skill](.agents/skills/vendor-extension/SKILL.md): a verbatim
-import commit, then integration, with provenance and local changes tracked in the
-extension's `UPSTREAM.md`.
+To copy a third-party extension into the repository, use the
+[`vendor-extension` skill](.agents/skills/vendor-extension/SKILL.md).
 
 ## License
 
