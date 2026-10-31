@@ -14,10 +14,7 @@ Pi loads packages in the order they are listed in `.pi/settings.json`, and this 
 
 ```json
 {
-  "packages": [
-    "npm:@gotgenes/pi-subagents",
-    "npm:@gotgenes/pi-subagents-worktrees"
-  ]
+  "packages": ["npm:@gotgenes/pi-subagents", "npm:@gotgenes/pi-subagents-worktrees"]
 }
 ```
 

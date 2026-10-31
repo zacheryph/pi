@@ -59,7 +59,7 @@ The relevant modules are small and the dependency graph is shallow.
 
 - `src/worktree.ts` owns all git plumbing: `createWorktree`, `cleanupWorktree`, the private `removeWorktree`, and `pruneWorktrees`.
 - `src/workspace-provider.ts` holds the only consumer of `WorktreeCleanupResult`: `WorktreeWorkspace.dispose` reads `hasChanges` and `branch` to build a result addendum, and returns `undefined` otherwise.
-  That `undefined` is what makes the loss *silent* — fixing `worktree.ts` alone would stop the destruction but leave the agent unaware.
+  That `undefined` is what makes the loss _silent_ — fixing `worktree.ts` alone would stop the destruction but leave the agent unaware.
 - `src/index.ts` calls `pruneWorktrees(process.cwd())` at init for crash recovery.
 
 Two facts established during the review of [#705] shape the design.
@@ -222,7 +222,7 @@ They are records of past decisions and are deliberately left alone.
 3. **Tests that must stay as-is.**
    `test/index.test.ts` (which mocks `#src/worktree` and asserts `pruneWorktrees` is called with the cwd) and the `createWorktree` tests are untouched — neither exercises the cleanup result.
 4. **Assertion quality.**
-   The preserved-worktree tests must assert that the agent's file is still *readable* in the preserved worktree, not merely that the directory exists.
+   The preserved-worktree tests must assert that the agent's file is still _readable_ in the preserved worktree, not merely that the directory exists.
    Directory existence is the mechanism; content survival is the property the issue is about.
 
 ## Invariants at risk
@@ -237,7 +237,7 @@ There is no prior phase roadmap for this package, so the invariants at risk are 
    Appending the bypass notice on a new line keeps the existing substring assertion true.
 3. **Step 3's preservation test must survive step 4.**
    This is the one real cross-step trap.
-   If step 3 triggers preservation with a failing pre-commit hook, step 4's `--no-verify` retry makes that same scenario *succeed*, silently inverting the earlier test's meaning.
+   If step 3 triggers preservation with a failing pre-commit hook, step 4's `--no-verify` retry makes that same scenario _succeed_, silently inverting the earlier test's meaning.
    Step 3 therefore triggers the failure at `git add -A` by pre-creating the worktree's `index.lock`, which no later step bypasses.
    Verified at planning time: with the lock in place, `git status --porcelain` still reports the change, `git add -A` fails with `fatal: Unable to create '<gitdir>/index.lock': File exists`, the file remains on disk, and nothing is written to the object database.
    The lock path comes from `git rev-parse --absolute-git-dir` run inside the worktree.
@@ -260,7 +260,7 @@ There is no prior phase roadmap for this package, so the invariants at risk are 
    `fix(pi-subagents-worktrees): preserve the worktree when cleanup fails (#704)`
 4. **Retry the rescue commit past a rejecting hook.**
    Red: a test installing a pre-commit hook that exits non-zero asserts `outcome === "committed"` with `hooksBypassed: true`, the branch exists, and the worktree was removed.
-   A second red test installs a hook that rewrites a file *and* exits non-zero, then asserts the rewritten content is present in the committed tree — pinning the re-stage.
+   A second red test installs a hook that rewrites a file _and_ exits non-zero, then asserts the rewritten content is present in the committed tree — pinning the re-stage.
    A third asserts `dispose`'s addendum carries the bypass notice.
    Green: add `commitStaged`'s retry and the `hooksBypassed` field.
    `fix(pi-subagents-worktrees): retry the rescue commit with --no-verify (#704)`

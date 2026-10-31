@@ -3,17 +3,13 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  findUnmergedRescueBranches,
-  formatRescueBranchNotice,
-} from "#src/rescue-branches";
+import { findUnmergedRescueBranches, formatRescueBranchNotice } from "#src/rescue-branches";
 import { initGitRepo } from "#test/support/git-fixture";
 
 const repos: string[] = [];
 
 afterEach(() => {
-  for (const dir of repos.splice(0))
-    rmSync(dir, { recursive: true, force: true });
+  for (const dir of repos.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
 function makeRepo(): string {
@@ -24,8 +20,7 @@ function makeRepo(): string {
 
 /** Commit a file on `branch`, branched from HEAD, leaving HEAD where it was. */
 function commitOnBranch(repo: string, branch: string): void {
-  const git = (...args: string[]) =>
-    execFileSync("git", args, { cwd: repo, stdio: "pipe" });
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: repo, stdio: "pipe" });
   git("checkout", "-b", branch);
   writeFileSync(join(repo, `${branch}.txt`), "work");
   git("add", "-A");

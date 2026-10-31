@@ -127,10 +127,7 @@ Consumers take the narrow `LiveWorktrees` interface, so a test double is `{ cont
 // src/preserved.ts
 
 /** Rescue worktrees left on disk by a failed cleanup, newest git ordering preserved. */
-export function findPreservedWorktrees(
-  repoCwd: string,
-  live: LiveWorktrees,
-): string[];
+export function findPreservedWorktrees(repoCwd: string, live: LiveWorktrees): string[];
 
 /** The startup warning text for a non-empty list of preserved worktrees. */
 export function formatPreservedNotice(paths: readonly string[]): string;

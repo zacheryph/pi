@@ -68,10 +68,7 @@ describe("findPreservedWorktrees", () => {
     const running = createWorktree(repoDir, "running")!;
     const abandoned = createWorktree(repoDir, "abandoned")!;
 
-    const preserved = findPreservedWorktrees(
-      repoDir,
-      live(realpathSync(running.path)),
-    );
+    const preserved = findPreservedWorktrees(repoDir, live(realpathSync(running.path)));
 
     expect(preserved).toEqual([realpathSync(abandoned.path)]);
   });
@@ -145,10 +142,7 @@ describe("formatPreservedNotice", () => {
   });
 
   it("summarizes the tail of a long list", () => {
-    const paths = Array.from(
-      { length: 7 },
-      (_unused, index) => `/tmp/pi-agent-${index}-1f2e9c04`,
-    );
+    const paths = Array.from({ length: 7 }, (_unused, index) => `/tmp/pi-agent-${index}-1f2e9c04`);
 
     const notice = formatPreservedNotice(paths);
 

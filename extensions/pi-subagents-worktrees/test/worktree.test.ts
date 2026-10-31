@@ -1,11 +1,5 @@
 import { execFileSync } from "node:child_process";
-import {
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -16,11 +10,7 @@ import {
   pruneWorktrees,
   type WorktreeCleanupResult,
 } from "#src/worktree";
-import {
-  initGitRepo,
-  installPreCommitHook,
-  lockGitIndex,
-} from "#test/support/git-fixture";
+import { initGitRepo, installPreCommitHook, lockGitIndex } from "#test/support/git-fixture";
 
 /** Narrow a cleanup result to the expected outcome, failing the test otherwise. */
 function assertOutcome<T extends WorktreeCleanupResult["outcome"]>(
@@ -172,27 +162,19 @@ describe("worktree", () => {
       expect(result.branch).toContain("pi-agent-dirty-1");
 
       // Verify the branch exists in the main repo
-      const branches = execFileSync(
-        "git",
-        ["branch", "--list", result.branch],
-        {
-          cwd: repoDir,
-          stdio: "pipe",
-        },
-      )
+      const branches = execFileSync("git", ["branch", "--list", result.branch], {
+        cwd: repoDir,
+        stdio: "pipe",
+      })
         .toString()
         .trim();
       expect(branches).toContain(result.branch);
 
       // Verify the commit message
-      const log = execFileSync(
-        "git",
-        ["log", "--oneline", "-1", result.branch],
-        {
-          cwd: repoDir,
-          stdio: "pipe",
-        },
-      )
+      const log = execFileSync("git", ["log", "--oneline", "-1", result.branch], {
+        cwd: repoDir,
+        stdio: "pipe",
+      })
         .toString()
         .trim();
       expect(log).toContain("pi-agent: added new file");
@@ -217,14 +199,10 @@ describe("worktree", () => {
       expect(result2.branch).toContain("pi-agent-conflict-1-");
 
       // Both branches should exist
-      const branches = execFileSync(
-        "git",
-        ["branch", "--list", "pi-agent-conflict-1*"],
-        {
-          cwd: repoDir,
-          stdio: "pipe",
-        },
-      )
+      const branches = execFileSync("git", ["branch", "--list", "pi-agent-conflict-1*"], {
+        cwd: repoDir,
+        stdio: "pipe",
+      })
         .toString()
         .trim();
       expect(branches).toContain("pi-agent-conflict-1");
@@ -251,11 +229,10 @@ describe("worktree", () => {
       expect(result.hooksBypassed).toBe(true);
       expect(existsSync(wt.path)).toBe(false);
 
-      const committed = execFileSync(
-        "git",
-        ["show", `${result.branch}:new-file.txt`],
-        { cwd: repoDir, stdio: "pipe" },
-      ).toString();
+      const committed = execFileSync("git", ["show", `${result.branch}:new-file.txt`], {
+        cwd: repoDir,
+        stdio: "pipe",
+      }).toString();
       expect(committed).toBe("agent wrote this");
     });
 
@@ -268,11 +245,10 @@ describe("worktree", () => {
       const result = cleanupWorktree(repoDir, wt, "formatter rewrote the file");
 
       assertOutcome(result, "committed");
-      const committed = execFileSync(
-        "git",
-        ["show", `${result.branch}:new-file.txt`],
-        { cwd: repoDir, stdio: "pipe" },
-      ).toString();
+      const committed = execFileSync("git", ["show", `${result.branch}:new-file.txt`], {
+        cwd: repoDir,
+        stdio: "pipe",
+      }).toString();
       expect(committed).toBe("formatted\n");
     });
 
@@ -287,9 +263,7 @@ describe("worktree", () => {
       expect(result.path).toBe(wt.path);
       expect(result.error).toBeTruthy();
       // The point of preserving: the work is still there to recover.
-      expect(readFileSync(join(wt.path, "precious.txt"), "utf8")).toBe(
-        "agent work",
-      );
+      expect(readFileSync(join(wt.path, "precious.txt"), "utf8")).toBe("agent work");
     });
 
     it("truncates commit message at 200 chars", () => {
@@ -299,14 +273,10 @@ describe("worktree", () => {
       const result = cleanupWorktree(repoDir, wt, longDesc);
       assertOutcome(result, "committed");
 
-      const log = execFileSync(
-        "git",
-        ["log", "--oneline", "-1", result.branch],
-        {
-          cwd: repoDir,
-          stdio: "pipe",
-        },
-      )
+      const log = execFileSync("git", ["log", "--oneline", "-1", result.branch], {
+        cwd: repoDir,
+        stdio: "pipe",
+      })
         .toString()
         .trim();
       // "pi-agent: " prefix (10 chars) + 200 chars of x = 210 total max
@@ -325,9 +295,7 @@ describe("worktree", () => {
     });
 
     it("reports failure instead of swallowing it", () => {
-      expect(() =>
-        discardWorktree(repoDir, join(tmpdir(), "pi-agent-never-registered")),
-      ).toThrow();
+      expect(() => discardWorktree(repoDir, join(tmpdir(), "pi-agent-never-registered"))).toThrow();
     });
   });
 

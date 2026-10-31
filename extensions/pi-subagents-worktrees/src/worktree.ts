@@ -45,10 +45,7 @@ export type WorktreeCleanupResult =
  * Create a temporary git worktree for an agent.
  * Returns the worktree path, or undefined if not in a git repo.
  */
-export function createWorktree(
-  cwd: string,
-  agentId: string,
-): WorktreeInfo | undefined {
+export function createWorktree(cwd: string, agentId: string): WorktreeInfo | undefined {
   // Verify we're in a git repo with at least one commit (HEAD must exist)
   try {
     execFileSync("git", ["rev-parse", "--is-inside-work-tree"], {

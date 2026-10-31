@@ -26,7 +26,7 @@ Every non-obvious mechanism in the design was measured in this session rather th
   Pi substitutes `noOpUIContext` when no UI is bound, so a child's toast goes nowhere; guarding on `ctx.hasUI` both suppresses the dead toast and keeps a pointless `git worktree list` out of every child.
 - **The path heuristic needs two false-positive guards, not one.**
   A live child's worktree looks exactly like a preserved one, hence the `ActiveWorktrees` registry.
-  Less obvious: a session launched *inside* a rescue worktree during recovery would otherwise offer to delete the ground it stands on.
+  Less obvious: a session launched _inside_ a rescue worktree during recovery would otherwise offer to delete the ground it stands on.
 - **Rejected alternatives, with the reason.**
   `git worktree lock --reason` was measured to work well — the reason shows in `--porcelain` and the lock defeats even `remove --force` — but it only marks worktrees preserved after this ships, and a tmp-reaped locked entry survives `prune` as permanent repo cruft.
   A marker file carries richer metadata but adds a write on the failure path.
@@ -34,7 +34,7 @@ Every non-obvious mechanism in the design was measured in this session rather th
 - **An agent tool was rejected in favor of a slash command.**
   Both let the user act without leaving the session; only one puts a destructive `git worktree remove --force` within the model's reach.
 - **The existing "no-ops without the subagents service" test is load-bearing.**
-  It asserts `pi.on` is never called, so the new notice and command must register *after* the service check — recorded as invariant 1 rather than discovered during implementation.
+  It asserts `pi.on` is never called, so the new notice and command must register _after_ the service check — recorded as invariant 1 rather than discovered during implementation.
 - Session-start cost measured at ~9 ms for one `git worktree list --porcelain`, so no caching or debouncing is planned.
 
 ## Stage: Implementation — TDD (2026-08-10T19:51:35Z)
@@ -107,7 +107,7 @@ No user corrections and no rework across the whole session; the one notable fric
    The count came from reading the file rather than grepping it, and the `tidy-first-assessor` corrected it.
    Impact: none — the tidy commit consolidated all of them regardless.
 4. `missing-context` — **The plan did not notice that every fixture in this package lives under `tmpdir()`, which left one designed rule untestable in the obvious way.**
-   The "under the resolved temp root" exclusion needed a rescue-named worktree *outside* the temp root, and there is no such location among the existing fixtures.
+   The "under the resolved temp root" exclusion needed a rescue-named worktree _outside_ the temp root, and there is no such location among the existing fixtures.
    Solved during TDD by creating the scratch worktree under `node_modules/.pi-wt-outside` — outside the temp root on every platform, and gitignored, so a leftover from a failed run cannot reach the working tree.
    Impact: a few minutes and an unplanned test technique; no rework.
 

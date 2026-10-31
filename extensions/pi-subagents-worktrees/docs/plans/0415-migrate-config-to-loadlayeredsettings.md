@@ -121,7 +121,7 @@ This is a refactor that replaces an implementation behind an unchanged public fu
 1. **New tests enabled** — none.
    `loadLayeredSettings` is tested in `packages/pi-subagents/test/...`; re-testing it here would duplicate that coverage.
 2. **Tests that become redundant** — none are removed.
-   The `config.test.ts` cases now verify the *integration* (that `loadWorktreesConfig` wires the helper correctly with the right `filename`, `sanitize`, and `warnLabel`), which is still worth pinning.
+   The `config.test.ts` cases now verify the _integration_ (that `loadWorktreesConfig` wires the helper correctly with the right `filename`, `sanitize`, and `warnLabel`), which is still worth pinning.
 3. **Tests that must stay as-is** — all six existing `config.test.ts` cases, except the one warning-text assertion that updates `config` → `settings`.
    They exercise the contract worktrees depends on regardless of the underlying loader.
 

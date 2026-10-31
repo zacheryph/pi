@@ -25,20 +25,14 @@ function sanitize(raw: unknown): Partial<WorktreesConfig> {
   if (!raw || typeof raw !== "object") return {};
   const r = raw as Record<string, unknown>;
   const out: Partial<WorktreesConfig> = {};
-  if (
-    Array.isArray(r.worktreeAgents) &&
-    r.worktreeAgents.every((x) => typeof x === "string")
-  ) {
+  if (Array.isArray(r.worktreeAgents) && r.worktreeAgents.every((x) => typeof x === "string")) {
     out.worktreeAgents = r.worktreeAgents;
   }
   return out;
 }
 
 /** Load merged config: global provides defaults, project overrides. */
-export function loadWorktreesConfig(
-  agentDir: string,
-  cwd: string,
-): WorktreesConfig {
+export function loadWorktreesConfig(agentDir: string, cwd: string): WorktreesConfig {
   const merged = loadLayeredSettings<WorktreesConfig>({
     agentDir,
     cwd,

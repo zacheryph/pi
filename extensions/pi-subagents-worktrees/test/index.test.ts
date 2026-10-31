@@ -22,8 +22,7 @@ vi.mock("#src/config", () => ({ loadWorktreesConfig }));
 vi.mock("#src/worktree", () => ({ pruneWorktrees }));
 vi.mock("#src/preserved", () => ({
   findPreservedWorktrees,
-  formatPreservedNotice: (paths: readonly string[]) =>
-    `notice for ${paths.join(", ")}`,
+  formatPreservedNotice: (paths: readonly string[]) => `notice for ${paths.join(", ")}`,
 }));
 vi.mock("#src/rescue-branches", () => ({
   findUnmergedRescueBranches,
@@ -88,23 +87,15 @@ describe("piSubagentsWorktrees extension entry", () => {
     const { pi, handlers } = fakePi();
     piSubagentsWorktrees(pi as never);
 
-    expect(loadWorktreesConfig).toHaveBeenCalledWith(
-      "/fake/agent-dir",
-      process.cwd(),
-    );
+    expect(loadWorktreesConfig).toHaveBeenCalledWith("/fake/agent-dir", process.cwd());
     expect(pruneWorktrees).toHaveBeenCalledWith(process.cwd());
     expect(registerWorkspaceProvider).not.toHaveBeenCalled();
 
-    handlers.get("session_start")?.(
-      { type: "session_start" },
-      fakeCtx(false, "child-7").ctx,
-    );
+    handlers.get("session_start")?.({ type: "session_start" }, fakeCtx(false, "child-7").ctx);
 
     expect(getSubagentsService).toHaveBeenCalledWith("child-7");
     expect(registerWorkspaceProvider).toHaveBeenCalledTimes(1);
-    expect(registerWorkspaceProvider.mock.calls[0][0]).toBeInstanceOf(
-      WorktreeWorkspaceProvider,
-    );
+    expect(registerWorkspaceProvider.mock.calls[0][0]).toBeInstanceOf(WorktreeWorkspaceProvider);
   });
 
   it("replaces its own registration when the session starts again", () => {
@@ -142,10 +133,7 @@ describe("piSubagentsWorktrees extension entry", () => {
   it("registers the preserved-worktree command", () => {
     const { pi } = startWithService();
 
-    expect(pi.registerCommand).toHaveBeenCalledWith(
-      "subagents-worktrees",
-      expect.any(Object),
-    );
+    expect(pi.registerCommand).toHaveBeenCalledWith("subagents-worktrees", expect.any(Object));
   });
 
   it("unregisters the provider on session_shutdown", () => {
@@ -158,23 +146,15 @@ describe("piSubagentsWorktrees extension entry", () => {
     piSubagentsWorktrees(pi as never);
     handlers.get("session_start")?.({ type: "session_start" }, fakeCtx(false).ctx);
 
-    expect(pi.on).toHaveBeenCalledWith(
-      "session_shutdown",
-      expect.any(Function),
-    );
+    expect(pi.on).toHaveBeenCalledWith("session_shutdown", expect.any(Function));
     expect(unregister).not.toHaveBeenCalled();
-    handlers.get("session_shutdown")?.(
-      { type: "session_shutdown" },
-      fakeCtx().ctx,
-    );
+    handlers.get("session_shutdown")?.({ type: "session_shutdown" }, fakeCtx().ctx);
     expect(unregister).toHaveBeenCalledTimes(1);
   });
 
   describe("preserved-worktree notice", () => {
     it("warns at session start about rescue worktrees left on disk", () => {
-      findPreservedWorktrees.mockReturnValue([
-        "/private/tmp/pi-agent-abc123-1f2e9c04",
-      ]);
+      findPreservedWorktrees.mockReturnValue(["/private/tmp/pi-agent-abc123-1f2e9c04"]);
       const { handlers } = startWithService();
       const { ctx, notify } = fakeCtx();
 
@@ -200,9 +180,7 @@ describe("piSubagentsWorktrees extension entry", () => {
     });
 
     it("does not scan in a session with no UI to notify", () => {
-      findPreservedWorktrees.mockReturnValue([
-        "/private/tmp/pi-agent-abc123-1f2e9c04",
-      ]);
+      findPreservedWorktrees.mockReturnValue(["/private/tmp/pi-agent-abc123-1f2e9c04"]);
       const { handlers } = startWithService();
       const { ctx, notify } = fakeCtx(false);
 
@@ -222,10 +200,7 @@ describe("piSubagentsWorktrees extension entry", () => {
       handlers.get("session_start")?.({ type: "session_start" }, ctx);
 
       expect(findUnmergedRescueBranches).toHaveBeenCalledWith(process.cwd());
-      expect(notify).toHaveBeenCalledWith(
-        "branch notice for pi-agent-abc123",
-        "warning",
-      );
+      expect(notify).toHaveBeenCalledWith("branch notice for pi-agent-abc123", "warning");
     });
 
     it("stays silent when every rescue branch has been merged", () => {
@@ -238,9 +213,7 @@ describe("piSubagentsWorktrees extension entry", () => {
     });
 
     it("reports each artifact in its own notice when both apply", () => {
-      findPreservedWorktrees.mockReturnValue([
-        "/private/tmp/pi-agent-abc123-1f2e9c04",
-      ]);
+      findPreservedWorktrees.mockReturnValue(["/private/tmp/pi-agent-abc123-1f2e9c04"]);
       findUnmergedRescueBranches.mockReturnValue(["pi-agent-def456"]);
       const { handlers } = startWithService();
       const { ctx, notify } = fakeCtx();

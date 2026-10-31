@@ -2,7 +2,7 @@
   "name": "@gotgenes/pi-subagents-worktrees",
   "version": "0.3.3",
   "private": true,
-  "description": "Git worktree isolation for @gotgenes/pi-subagents \u2014 a WorkspaceProvider that runs subagents in isolated worktrees.",
+  "description": "Git worktree isolation for @gotgenes/pi-subagents — a WorkspaceProvider that runs subagents in isolated worktrees.",
   "keywords": [
     "pi-package",
     "pi",
@@ -41,11 +41,11 @@
   "imports": {
     "#src/*": {
       "types": "./src/*.ts",
-      "default": "./src/*"
+      "default": "./src/*.ts"
     },
     "#test/*": {
       "types": "./test/*.ts",
-      "default": "./test/*"
+      "default": "./test/*.ts"
     }
   },
   "pi": {

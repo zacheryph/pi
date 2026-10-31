@@ -1,36 +1,19 @@
 import { execFileSync } from "node:child_process";
-import {
-  existsSync,
-  mkdtempSync,
-  realpathSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ActiveWorktrees } from "#src/active-worktrees";
 import { WorktreeWorkspaceProvider } from "#src/workspace-provider";
-import {
-  initGitRepo,
-  installPreCommitHook,
-  lockGitIndex,
-} from "#test/support/git-fixture";
+import { initGitRepo, installPreCommitHook, lockGitIndex } from "#test/support/git-fixture";
 
 /** Build a prepare context with sensible defaults. */
-function ctx(overrides: {
-  agentType: string;
-  baseCwd: string;
-  agentId?: string;
-}) {
+function ctx(overrides: { agentType: string; baseCwd: string; agentId?: string }) {
   return { agentId: "agent-1", ...overrides };
 }
 
 /** Build a provider that isolates the given agent types. */
-function makeProvider(
-  live: ActiveWorktrees = new ActiveWorktrees(),
-  worktreeAgents = ["Explore"],
-) {
+function makeProvider(live: ActiveWorktrees = new ActiveWorktrees(), worktreeAgents = ["Explore"]) {
   return new WorktreeWorkspaceProvider({ worktreeAgents }, live);
 }
 
@@ -63,9 +46,7 @@ describe("WorktreeWorkspaceProvider", () => {
 
   it("prepares a born-complete worktree for an opted-in agent type", async () => {
     const provider = makeProvider();
-    const workspace = await provider.prepare(
-      ctx({ agentType: "Explore", baseCwd: repoDir }),
-    );
+    const workspace = await provider.prepare(ctx({ agentType: "Explore", baseCwd: repoDir }));
     expect(workspace).toBeDefined();
     expect(workspace?.cwd).toBeDefined();
     expect(workspace?.cwd).not.toBe(repoDir);
@@ -77,17 +58,15 @@ describe("WorktreeWorkspaceProvider", () => {
   it("throws for an opted-in agent when the base dir is not a git repo", async () => {
     const nonRepo = mkdtempSync(join(tmpdir(), "pi-wt-nonrepo-"));
     const provider = makeProvider();
-    await expect(
-      provider.prepare(ctx({ agentType: "Explore", baseCwd: nonRepo })),
-    ).rejects.toThrow(/worktree isolation/);
+    await expect(provider.prepare(ctx({ agentType: "Explore", baseCwd: nonRepo }))).rejects.toThrow(
+      /worktree isolation/,
+    );
     rmSync(nonRepo, { recursive: true, force: true });
   });
 
   it("dispose returns undefined and removes the worktree when there are no changes", async () => {
     const provider = makeProvider();
-    const workspace = await provider.prepare(
-      ctx({ agentType: "Explore", baseCwd: repoDir }),
-    );
+    const workspace = await provider.prepare(ctx({ agentType: "Explore", baseCwd: repoDir }));
     const wtPath = workspace!.cwd;
     const result = workspace!.dispose({
       status: "completed",
@@ -168,9 +147,7 @@ describe("WorktreeWorkspaceProvider", () => {
     it("records the worktree while the child runs and forgets it on dispose", async () => {
       const live = new ActiveWorktrees();
       const provider = makeProvider(live);
-      const workspace = await provider.prepare(
-        ctx({ agentType: "Explore", baseCwd: repoDir }),
-      );
+      const workspace = await provider.prepare(ctx({ agentType: "Explore", baseCwd: repoDir }));
       const resolved = realpathSync(workspace!.cwd);
 
       expect(live.contains(resolved)).toBe(true);
