@@ -8,7 +8,8 @@ interface UsageLike {
   cost?: { total?: unknown };
 }
 
-const num = (value: unknown) => typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0;
+const num = (value: unknown) =>
+  typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0;
 
 /**
  * Billed usage across every entry in the session file, abandoned branches and
@@ -26,9 +27,18 @@ export function sessionUsage(entries: Iterable<unknown>): UsageSection {
   };
   for (const entry of entries) {
     if (!entry || typeof entry !== "object") continue;
-    const item = entry as { type?: unknown; usage?: UsageLike; message?: { role?: unknown; usage?: UsageLike } };
-    if (item.type === "usage" || item.type === "branch_summary" || item.type === "compaction") add(item.usage);
-    else if (item.type === "message" && (item.message?.role === "assistant" || item.message?.role === "toolResult")) add(item.message.usage);
+    const item = entry as {
+      type?: unknown;
+      usage?: UsageLike;
+      message?: { role?: unknown; usage?: UsageLike };
+    };
+    if (item.type === "usage" || item.type === "branch_summary" || item.type === "compaction")
+      add(item.usage);
+    else if (
+      item.type === "message" &&
+      (item.message?.role === "assistant" || item.message?.role === "toolResult")
+    )
+      add(item.message.usage);
   }
   return totals;
 }

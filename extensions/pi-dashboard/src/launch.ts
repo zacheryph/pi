@@ -23,12 +23,23 @@ export function spawnHub(options: SpawnHubOptions): void {
   mkdirSync(options.paths.dir, { recursive: true, mode: 0o700 });
   try {
     if (statSync(options.paths.log).size > MAX_LOG_BYTES) truncateSync(options.paths.log);
-  } catch { /* no log yet */ }
+  } catch {
+    /* no log yet */
+  }
   const log = openSync(options.paths.log, "a", 0o600);
   try {
-    const child = spawn(options.node, [
-      "--disable-warning=ExperimentalWarning", HUB_ENTRY, "--dir", options.paths.dir, "--port", String(options.port),
-    ], { cwd: options.paths.dir, detached: true, stdio: ["ignore", log, log] });
+    const child = spawn(
+      options.node,
+      [
+        "--disable-warning=ExperimentalWarning",
+        HUB_ENTRY,
+        "--dir",
+        options.paths.dir,
+        "--port",
+        String(options.port),
+      ],
+      { cwd: options.paths.dir, detached: true, stdio: ["ignore", log, log] },
+    );
     // A missing runtime surfaces through the reporter's repeated connect failures.
     child.on("error", () => {});
     child.unref();

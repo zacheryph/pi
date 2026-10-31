@@ -78,15 +78,15 @@ With notifications on, a new question notifies you with its text.
 
 ## Data sources
 
-| Section | Source |
-|---|---|
-| Todos | `pi-todo:snapshot` on the session's `pi.events` bus (history from the same event) |
-| Stash | `pi-stash:snapshot` on the session's `pi.events` bus; previews through pi-stash's `pi-stash:preview` request on the same bus |
+| Section   | Source                                                                                                                                                                                                                |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Todos     | `pi-todo:snapshot` on the session's `pi.events` bus (history from the same event)                                                                                                                                     |
+| Stash     | `pi-stash:snapshot` on the session's `pi.events` bus; previews through pi-stash's `pi-stash:preview` request on the same bus                                                                                          |
 | Subagents | pi-subagents' `subagents:*` lifecycle events on the same bus. Its `globalThis` service is not used: subagent children load the extension in-process and replace it. Agents started before a `/reload` are not listed. |
-| Blackhole | `om.observations.*` and `om.reflections.recorded` entries pi-blackhole saves on the branch (no public API; unknown shapes are skipped) |
-| Usage | Usage on every entry in the session file, as Pi's `/session` sums it |
-| Activity | Pi's `tool_execution_start` / `_end` for top-level calls (codemode's nested calls are left out) |
-| Questions | rpiv ask-user's `rpiv:ask-user:prompt` and `rpiv:ask-user:blocked` events on the session's bus; answers through its `rpiv:ask-user:answer` / `answer-result` contract |
+| Blackhole | `om.observations.*` and `om.reflections.recorded` entries pi-blackhole saves on the branch (no public API; unknown shapes are skipped)                                                                                |
+| Usage     | Usage on every entry in the session file, as Pi's `/session` sums it                                                                                                                                                  |
+| Activity  | Pi's `tool_execution_start` / `_end` for top-level calls (codemode's nested calls are left out)                                                                                                                       |
+| Questions | rpiv ask-user's `rpiv:ask-user:prompt` and `rpiv:ask-user:blocked` events on the session's bus; answers through its `rpiv:ask-user:answer` / `answer-result` contract                                                 |
 
 Payloads are parsed defensively and bounded before they reach the hub. Stash
 content and task history are never part of the live session list; they are

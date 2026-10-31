@@ -15,15 +15,28 @@ function inProcessHub(dir: string) {
   return { spawn, latest: () => hubs.at(-1) };
 }
 
-function reporter(dir: string, spawnHub: () => void, extra: Partial<ConstructorParameters<typeof Reporter>[0]> = {}) {
-  const instance = new Reporter({ socketPath: hubPaths(dir).socket, spawnHub, minDelayMs: 10, maxDelayMs: 50, ...extra });
+function reporter(
+  dir: string,
+  spawnHub: () => void,
+  extra: Partial<ConstructorParameters<typeof Reporter>[0]> = {},
+) {
+  const instance = new Reporter({
+    socketPath: hubPaths(dir).socket,
+    spawnHub,
+    minDelayMs: 10,
+    maxDelayMs: 50,
+    ...extra,
+  });
   onCleanup(() => instance.close("quit"));
   return instance;
 }
 
-const sessions = async (hub: Hub | undefined) => hub?.httpPort
-  ? JSON.parse((await get(hub.httpPort, "/api/sessions")).body).sessions as Array<Record<string, unknown>>
-  : [];
+const sessions = async (hub: Hub | undefined) =>
+  hub?.httpPort
+    ? (JSON.parse((await get(hub.httpPort, "/api/sessions")).body).sessions as Array<
+        Record<string, unknown>
+      >)
+    : [];
 
 describe("Reporter", () => {
   it("spawns a hub when none listens, then says hello and sends updates", async () => {
@@ -45,7 +58,9 @@ describe("Reporter", () => {
     await waitFor(async () => (await sessions(hub.latest())).length === 1);
     const first = hub.latest()!;
     await first.stop();
-    await waitFor(async () => hub.latest() !== first && (await sessions(hub.latest())).length === 1);
+    await waitFor(
+      async () => hub.latest() !== first && (await sessions(hub.latest())).length === 1,
+    );
   });
 
   it("removes its card at once on quit", async () => {
@@ -62,7 +77,11 @@ describe("Reporter", () => {
     const dir = tempDir();
     const spawn = vi.fn();
     const unavailable = vi.fn();
-    const r = reporter(dir, spawn, { unavailableAfter: 3, onUnavailable: unavailable, spawnIntervalMs: 60_000 });
+    const r = reporter(dir, spawn, {
+      unavailableAfter: 3,
+      onUnavailable: unavailable,
+      spawnIntervalMs: 60_000,
+    });
     r.start(snapshot());
     await waitFor(() => unavailable.mock.calls.length === 1);
     await new Promise((resolve) => setTimeout(resolve, 150));

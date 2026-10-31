@@ -3,17 +3,37 @@ import { request } from "node:http";
 import { describe, expect, it } from "vitest";
 import { Hub } from "#src/hub/hub";
 import { LineDecoder, PROTOCOL_VERSION } from "#src/protocol";
-import { fakeReporter, get, onCleanup, post, snapshot, tempDir, waitFor, type FakeReporter } from "#test/helpers";
+import {
+  fakeReporter,
+  get,
+  onCleanup,
+  post,
+  snapshot,
+  tempDir,
+  waitFor,
+  type FakeReporter,
+} from "#test/helpers";
 
 async function startHub(options: { dir?: string; idleGraceMs?: number } = {}) {
-  const hub = new Hub({ dir: options.dir ?? tempDir(), port: 0, idleGraceMs: options.idleGraceMs ?? 5_000 });
+  const hub = new Hub({
+    dir: options.dir ?? tempDir(),
+    port: 0,
+    idleGraceMs: options.idleGraceMs ?? 5_000,
+  });
   expect(await hub.start()).toBe("started");
   onCleanup(() => hub.stop());
   return hub;
 }
 
-const sessions = async (hub: Hub) => JSON.parse((await get(hub.httpPort!, "/api/sessions")).body).sessions as Array<Record<string, unknown>>;
-const hello = (overrides = {}) => ({ type: "hello", version: PROTOCOL_VERSION, snapshot: snapshot(overrides) });
+const sessions = async (hub: Hub) =>
+  JSON.parse((await get(hub.httpPort!, "/api/sessions")).body).sessions as Array<
+    Record<string, unknown>
+  >;
+const hello = (overrides = {}) => ({
+  type: "hello",
+  version: PROTOCOL_VERSION,
+  snapshot: snapshot(overrides),
+});
 
 describe("Hub", () => {
   it("lists a session from hello and applies updates", async () => {
@@ -21,7 +41,10 @@ describe("Hub", () => {
     const reporter = await fakeReporter(hub.paths.socket);
     reporter.send(hello({ name: "fix-auth" }));
     await waitFor(async () => (await sessions(hub)).length === 1);
-    reporter.send({ type: "update", snapshot: snapshot({ name: "renamed", status: { kind: "working", since: 2 } }) });
+    reporter.send({
+      type: "update",
+      snapshot: snapshot({ name: "renamed", status: { kind: "working", since: 2 } }),
+    });
     await waitFor(async () => (await sessions(hub))[0]?.name === "renamed");
     expect((await sessions(hub))[0]).toMatchObject({ id: "101", status: { kind: "working" } });
   });
@@ -128,9 +151,14 @@ describe("Hub", () => {
     expect(page.status).toBe(200);
     expect(page.type).toContain("text/html");
     expect(page.body).toContain("<title>pi dashboard</title>");
-    expect(JSON.parse((await get(hub.httpPort!, "/api/health")).body)).toMatchObject({ ok: true, protocol: PROTOCOL_VERSION });
+    expect(JSON.parse((await get(hub.httpPort!, "/api/health")).body)).toMatchObject({
+      ok: true,
+      protocol: PROTOCOL_VERSION,
+    });
     expect((await get(hub.httpPort!, "/", `localhost:${hub.httpPort}`)).status).toBe(200);
-    expect((await get(hub.httpPort!, "/api/sessions", `evil.example:${hub.httpPort}`)).status).toBe(403);
+    expect((await get(hub.httpPort!, "/api/sessions", `evil.example:${hub.httpPort}`)).status).toBe(
+      403,
+    );
     expect((await get(hub.httpPort!, "/nope")).status).toBe(404);
   });
 
@@ -147,7 +175,7 @@ describe("Hub", () => {
     await waitFor(() => frames.join("").includes("event: sessions"));
     const reporter = await fakeReporter(hub.paths.socket);
     reporter.send(hello({ name: "streamed" }));
-    await waitFor(() => frames.join("").includes("\"name\":\"streamed\""));
+    await waitFor(() => frames.join("").includes('"name":"streamed"'));
   });
 
   it("retries the HTTP port while another process holds it", async () => {
@@ -166,12 +194,19 @@ describe("Hub", () => {
     const terminal = { kind: "cmux", label: "cmux" };
 
     /** A reporter that answers each command with `answer`, recording what it was asked. */
-    function commands(reporter: FakeReporter, answer?: (id: number) => Record<string, unknown> | undefined) {
+    function commands(
+      reporter: FakeReporter,
+      answer?: (id: number) => Record<string, unknown> | undefined,
+    ) {
       const seen: Array<{ id: number; command: string }> = [];
       const decoder = new LineDecoder();
       reporter.socket.setEncoding("utf8");
       reporter.socket.on("data", (chunk: string) => {
-        for (const message of decoder.push(chunk) as Array<{ type: string; id: number; command: string }>) {
+        for (const message of decoder.push(chunk) as Array<{
+          type: string;
+          id: number;
+          command: string;
+        }>) {
           if (message.type !== "command") continue;
           seen.push({ id: message.id, command: message.command });
           const reply = answer?.(message.id);
@@ -181,7 +216,11 @@ describe("Hub", () => {
       return seen;
     }
 
-    async function focusable(hub: Hub, answer?: (id: number) => Record<string, unknown> | undefined, overrides = {}) {
+    async function focusable(
+      hub: Hub,
+      answer?: (id: number) => Record<string, unknown> | undefined,
+      overrides = {},
+    ) {
       const reporter = await fakeReporter(hub.paths.socket);
       const seen = commands(reporter, answer);
       reporter.send(hello({ terminal, ...overrides }));
@@ -189,7 +228,10 @@ describe("Hub", () => {
       return { reporter, seen };
     }
 
-    const auth = (hub: Hub) => ({ "x-dashboard-token": hub.token, origin: `http://127.0.0.1:${hub.httpPort}` });
+    const auth = (hub: Hub) => ({
+      "x-dashboard-token": hub.token,
+      origin: `http://127.0.0.1:${hub.httpPort}`,
+    });
 
     it("forwards a focus command to the session and returns its answer", async () => {
       const hub = await startHub();
@@ -201,10 +243,18 @@ describe("Hub", () => {
 
     it("passes a session's failure back to the page", async () => {
       const hub = await startHub();
-      await focusable(hub, (id) => ({ type: "result", id, ok: false, error: "cmux focus-panel: panel not found" }));
+      await focusable(hub, (id) => ({
+        type: "result",
+        id,
+        ok: false,
+        error: "cmux focus-panel: panel not found",
+      }));
       const response = await post(hub.httpPort!, "/api/sessions/101/focus", auth(hub));
       expect(response.status).toBe(502);
-      expect(JSON.parse(response.body)).toEqual({ ok: false, error: "cmux focus-panel: panel not found" });
+      expect(JSON.parse(response.body)).toEqual({
+        ok: false,
+        error: "cmux focus-panel: panel not found",
+      });
     });
 
     it("requires the page's token and a same-origin request", async () => {
@@ -212,10 +262,28 @@ describe("Hub", () => {
       const { seen } = await focusable(hub, (id) => ({ type: "result", id, ok: true }));
       const port = hub.httpPort!;
       expect((await post(port, "/api/sessions/101/focus")).status).toBe(403);
-      expect((await post(port, "/api/sessions/101/focus", { "x-dashboard-token": "wrong" })).status).toBe(403);
-      expect((await post(port, "/api/sessions/101/focus", { ...auth(hub), origin: "http://evil.example" })).status).toBe(403);
-      expect((await post(port, "/api/sessions/101/focus", { ...auth(hub), host: `evil.example:${port}` })).status).toBe(403);
-      expect((await post(port, "/api/sessions/101/focus", { "x-dashboard-token": hub.token })).status).toBe(200);
+      expect(
+        (await post(port, "/api/sessions/101/focus", { "x-dashboard-token": "wrong" })).status,
+      ).toBe(403);
+      expect(
+        (
+          await post(port, "/api/sessions/101/focus", {
+            ...auth(hub),
+            origin: "http://evil.example",
+          })
+        ).status,
+      ).toBe(403);
+      expect(
+        (
+          await post(port, "/api/sessions/101/focus", {
+            ...auth(hub),
+            host: `evil.example:${port}`,
+          })
+        ).status,
+      ).toBe(403);
+      expect(
+        (await post(port, "/api/sessions/101/focus", { "x-dashboard-token": hub.token })).status,
+      ).toBe(200);
       expect((await get(port, "/")).body).toContain(hub.token);
       expect(seen).toHaveLength(1);
     });
@@ -226,7 +294,9 @@ describe("Hub", () => {
       plain.send(hello({ id: "plain" }));
       await waitFor(async () => (await sessions(hub)).length === 1);
       const port = hub.httpPort!;
-      expect(await post(port, "/api/sessions/missing/focus", auth(hub))).toMatchObject({ status: 404 });
+      expect(await post(port, "/api/sessions/missing/focus", auth(hub))).toMatchObject({
+        status: 404,
+      });
       const unsupported = await post(port, "/api/sessions/plain/focus", auth(hub));
       expect(unsupported.status).toBe(409);
       expect(JSON.parse(unsupported.body).error).toContain("does not support Focus");
@@ -256,16 +326,38 @@ describe("Hub", () => {
       reporter.socket.on("data", (chunk: string) => {
         for (const message of decoder.push(chunk) as Array<Record<string, unknown>>) {
           asked.push(message);
-          reporter.send({ type: "result", id: message.id, ok: true, data: { echo: message.command, name: message.name ?? message.key } });
+          reporter.send({
+            type: "result",
+            id: message.id,
+            ok: true,
+            data: { echo: message.command, name: message.name ?? message.key },
+          });
         }
       });
       reporter.send(hello());
       await waitFor(async () => (await sessions(hub)).length === 1);
-      const preview = await post(hub.httpPort!, "/api/sessions/101/stash/auth%20notes/preview", auth(hub));
-      expect(JSON.parse(preview.body)).toEqual({ ok: true, data: { echo: "stash-preview", name: "auth notes" } });
-      const history = await post(hub.httpPort!, "/api/sessions/101/todos/fix-auth/history", auth(hub));
-      expect(JSON.parse(history.body)).toEqual({ ok: true, data: { echo: "todo-history", name: "fix-auth" } });
-      expect(asked).toMatchObject([{ type: "command", command: "stash-preview", name: "auth notes" }, { type: "command", command: "todo-history", key: "fix-auth" }]);
+      const preview = await post(
+        hub.httpPort!,
+        "/api/sessions/101/stash/auth%20notes/preview",
+        auth(hub),
+      );
+      expect(JSON.parse(preview.body)).toEqual({
+        ok: true,
+        data: { echo: "stash-preview", name: "auth notes" },
+      });
+      const history = await post(
+        hub.httpPort!,
+        "/api/sessions/101/todos/fix-auth/history",
+        auth(hub),
+      );
+      expect(JSON.parse(history.body)).toEqual({
+        ok: true,
+        data: { echo: "todo-history", name: "fix-auth" },
+      });
+      expect(asked).toMatchObject([
+        { type: "command", command: "stash-preview", name: "auth notes" },
+        { type: "command", command: "todo-history", key: "fix-auth" },
+      ]);
       expect((await post(hub.httpPort!, "/api/sessions/101/stash/x/preview")).status).toBe(403);
       expect((await post(hub.httpPort!, "/api/sessions/101/unknown", auth(hub))).status).toBe(404);
       expect((await get(hub.httpPort!, "/api/sessions")).body).not.toContain("echo");
@@ -286,12 +378,40 @@ describe("Hub", () => {
       reporter.send(hello());
       await waitFor(async () => (await sessions(hub)).length === 1);
       const answer = { answers: [{ questionIndex: 0, optionIndexes: [1] }], globalNote: "thanks" };
-      const sent = await post(hub.httpPort!, "/api/sessions/101/questions/toolu_01%2Fx/answer", { ...auth(hub), "content-type": "application/json" }, JSON.stringify(answer));
+      const sent = await post(
+        hub.httpPort!,
+        "/api/sessions/101/questions/toolu_01%2Fx/answer",
+        { ...auth(hub), "content-type": "application/json" },
+        JSON.stringify(answer),
+      );
       expect(sent).toEqual({ status: 200, body: JSON.stringify({ ok: true }) });
-      expect(asked).toMatchObject([{ type: "command", command: "answer", question: "toolu_01/x", answer }]);
-      expect((await post(hub.httpPort!, "/api/sessions/101/questions/q/answer", auth(hub), "{not json")).status).toBe(400);
-      expect((await post(hub.httpPort!, "/api/sessions/101/questions/q/answer", auth(hub), JSON.stringify({ text: "x".repeat(70_000) }))).status).toBe(413);
-      expect((await post(hub.httpPort!, "/api/sessions/101/questions/q/answer", {}, JSON.stringify(answer))).status).toBe(403);
+      expect(asked).toMatchObject([
+        { type: "command", command: "answer", question: "toolu_01/x", answer },
+      ]);
+      expect(
+        (await post(hub.httpPort!, "/api/sessions/101/questions/q/answer", auth(hub), "{not json"))
+          .status,
+      ).toBe(400);
+      expect(
+        (
+          await post(
+            hub.httpPort!,
+            "/api/sessions/101/questions/q/answer",
+            auth(hub),
+            JSON.stringify({ text: "x".repeat(70_000) }),
+          )
+        ).status,
+      ).toBe(413);
+      expect(
+        (
+          await post(
+            hub.httpPort!,
+            "/api/sessions/101/questions/q/answer",
+            {},
+            JSON.stringify(answer),
+          )
+        ).status,
+      ).toBe(403);
       expect(asked).toHaveLength(1);
     });
 

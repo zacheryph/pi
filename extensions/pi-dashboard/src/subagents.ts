@@ -3,15 +3,23 @@ import { clip } from "./sections.ts";
 
 /** pi-subagents lifecycle channels on the session's pi.events bus. */
 export const SUBAGENT_CHANNELS = [
-  "subagents:created", "subagents:started", "subagents:resuming", "subagents:update",
-  "subagents:completed", "subagents:failed", "subagents:resumed",
+  "subagents:created",
+  "subagents:started",
+  "subagents:resuming",
+  "subagents:update",
+  "subagents:completed",
+  "subagents:failed",
+  "subagents:resumed",
 ] as const;
 
 const MAX_AGENTS = 20;
 type Agent = SubagentsSection["agents"][number];
 
 const TERMINAL: Record<string, SubagentState> = {
-  completed: "completed", error: "failed", aborted: "stopped", stopped: "stopped",
+  completed: "completed",
+  error: "failed",
+  aborted: "stopped",
+  stopped: "stopped",
 };
 
 /**
@@ -36,32 +44,51 @@ export class SubagentTracker {
     if (!id) return false;
     const existing = this.agents.get(id);
     const agent: Agent = existing ?? {
-      id, type: clip(raw.type, 64) ?? "agent", description: clip(raw.description, 200) ?? "", state: "queued", since: this.now(),
+      id,
+      type: clip(raw.type, 64) ?? "agent",
+      description: clip(raw.description, 200) ?? "",
+      state: "queued",
+      since: this.now(),
     };
     switch (channel) {
-      case "subagents:created": if (existing) return false; break;
+      case "subagents:created":
+        if (existing) return false;
+        break;
       case "subagents:started":
-      case "subagents:resuming": agent.state = "running"; delete agent.note; break;
-      case "subagents:update": { const note = clip(raw.message, 300); if (note) agent.note = note; break; }
+      case "subagents:resuming":
+        agent.state = "running";
+        delete agent.note;
+        break;
+      case "subagents:update": {
+        const note = clip(raw.message, 300);
+        if (note) agent.note = note;
+        break;
+      }
       case "subagents:completed":
       case "subagents:failed":
       case "subagents:resumed": {
-        agent.state = TERMINAL[String(raw.status)] ?? (channel === "subagents:failed" ? "failed" : "completed");
+        agent.state =
+          TERMINAL[String(raw.status)] ?? (channel === "subagents:failed" ? "failed" : "completed");
         const error = clip(raw.error, 300);
         if (error) agent.note = error;
-        if (typeof raw.durationMs === "number" && Number.isFinite(raw.durationMs)) agent.durationMs = Math.max(0, raw.durationMs);
-        if (typeof raw.toolUses === "number" && Number.isSafeInteger(raw.toolUses)) agent.toolUses = raw.toolUses;
+        if (typeof raw.durationMs === "number" && Number.isFinite(raw.durationMs))
+          agent.durationMs = Math.max(0, raw.durationMs);
+        if (typeof raw.toolUses === "number" && Number.isSafeInteger(raw.toolUses))
+          agent.toolUses = raw.toolUses;
         const tokens = (raw.tokens as { total?: unknown } | undefined)?.total;
         if (typeof tokens === "number" && Number.isFinite(tokens)) agent.tokens = tokens;
         break;
       }
-      default: return false;
+      default:
+        return false;
     }
     this.agents.delete(id);
     this.agents.set(id, agent);
     // Keep running agents; trim the oldest finished ones.
     while (this.agents.size > MAX_AGENTS) {
-      const oldest = [...this.agents.values()].find((candidate) => candidate.state !== "running" && candidate.state !== "queued");
+      const oldest = [...this.agents.values()].find(
+        (candidate) => candidate.state !== "running" && candidate.state !== "queued",
+      );
       if (!oldest) break;
       this.agents.delete(oldest.id);
     }

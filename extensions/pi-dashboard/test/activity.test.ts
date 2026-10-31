@@ -5,8 +5,12 @@ describe("summarize", () => {
   it("shows a bash command's first line and file tools' paths, nothing else", () => {
     expect(summarize("bash", { command: "npm test -w api\necho done" })).toBe("npm test -w api");
     expect(summarize("bash", { command: "x".repeat(200) })).toHaveLength(80);
-    expect(summarize("read", { path: "src/client/retry.ts", offset: 10 })).toBe("src/client/retry.ts");
-    expect(summarize("edit", { file_path: `/very/${"deep/".repeat(30)}retry.ts` })).toMatch(/^….*retry\.ts$/);
+    expect(summarize("read", { path: "src/client/retry.ts", offset: 10 })).toBe(
+      "src/client/retry.ts",
+    );
+    expect(summarize("edit", { file_path: `/very/${"deep/".repeat(30)}retry.ts` })).toMatch(
+      /^….*retry\.ts$/,
+    );
     expect(summarize("write", { path: "a.ts", content: "SECRET=1" })).toBe("a.ts");
     expect(summarize("todo", { action: "upsert", tasks: [{ subject: "x" }] })).toBeUndefined();
     expect(summarize("bash", null)).toBeUndefined();
@@ -37,7 +41,8 @@ describe("ActivityTracker", () => {
 
   it("keeps the 12 most recent calls and ignores ends it never saw", () => {
     const tracker = new ActivityTracker(() => 1);
-    for (let index = 0; index < 20; index += 1) tracker.start(`t${index}`, "read", { path: `f${index}` });
+    for (let index = 0; index < 20; index += 1)
+      tracker.start(`t${index}`, "read", { path: `f${index}` });
     tracker.end("missing", true);
     const section = tracker.section()!;
     expect(section).toHaveLength(12);

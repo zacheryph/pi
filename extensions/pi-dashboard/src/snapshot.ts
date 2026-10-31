@@ -1,5 +1,14 @@
 import type {
-  ActivitySection, MemorySection, Questionnaire, SessionSnapshot, SessionStatus, StashSection, SubagentsSection, TerminalInfo, TodoSection, UsageSection,
+  ActivitySection,
+  MemorySection,
+  Questionnaire,
+  SessionSnapshot,
+  SessionStatus,
+  StashSection,
+  SubagentsSection,
+  TerminalInfo,
+  TodoSection,
+  UsageSection,
 } from "./protocol.ts";
 
 /** Written by pi-subagents when a session starts with `--agent`. */
@@ -10,7 +19,9 @@ export interface SnapshotSource {
   cwd: string;
   sessionManager: { getSessionId(): string; getBranch(): Iterable<unknown> };
   model?: { provider: string; id: string; name?: string };
-  getContextUsage(): { tokens: number | null; contextWindow: number; percent: number | null } | undefined;
+  getContextUsage():
+    | { tokens: number | null; contextWindow: number; percent: number | null }
+    | undefined;
 }
 
 export interface SnapshotInput {
@@ -35,6 +46,7 @@ export interface SnapshotInput {
 /** Collapses whitespace and caps length; names and titles are user and model text. */
 export function cleanText(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
+  // oxlint-disable-next-line no-control-regex -- Intentionally matches terminal control characters.
   const text = value.replace(/[\u0000-\u001f\u007f-\u009f\s]+/g, " ").trim();
   return text ? text.slice(0, MAX_TEXT) : undefined;
 }
@@ -44,8 +56,13 @@ export function agentName(branch: Iterable<unknown>): string | undefined {
   let name: string | undefined;
   for (const entry of branch) {
     if (!entry || typeof entry !== "object") continue;
-    const item = entry as { type?: unknown; customType?: unknown; data?: { profile?: { name?: unknown } } };
-    if (item.type === "custom" && item.customType === MAIN_AGENT_ENTRY) name = cleanText(item.data?.profile?.name);
+    const item = entry as {
+      type?: unknown;
+      customType?: unknown;
+      data?: { profile?: { name?: unknown } };
+    };
+    if (item.type === "custom" && item.customType === MAIN_AGENT_ENTRY)
+      name = cleanText(item.data?.profile?.name);
   }
   return name;
 }
@@ -56,9 +73,10 @@ export function buildSnapshot(input: SnapshotInput): SessionSnapshot {
   const agent = agentName(ctx.sessionManager.getBranch());
   const name = cleanText(input.sessionName);
   const title = input.status.kind === "waiting" ? cleanText(input.status.title) : undefined;
-  const status = input.status.kind === "waiting"
-    ? { kind: "waiting" as const, since: input.status.since, ...(title ? { title } : {}) }
-    : input.status;
+  const status =
+    input.status.kind === "waiting"
+      ? { kind: "waiting" as const, since: input.status.since, ...(title ? { title } : {}) }
+      : input.status;
   return {
     id: input.id,
     pid: input.pid,
@@ -66,10 +84,20 @@ export function buildSnapshot(input: SnapshotInput): SessionSnapshot {
     cwd: ctx.cwd,
     ...(name ? { name } : {}),
     ...(agent ? { agent } : {}),
-    ...(ctx.model ? { model: { provider: ctx.model.provider, id: ctx.model.id, ...(ctx.model.name ? { name: ctx.model.name } : {}) } } : {}),
+    ...(ctx.model
+      ? {
+          model: {
+            provider: ctx.model.provider,
+            id: ctx.model.id,
+            ...(ctx.model.name ? { name: ctx.model.name } : {}),
+          },
+        }
+      : {}),
     ...(input.thinking ? { thinking: input.thinking } : {}),
     status,
-    ...(usage ? { context: { tokens: usage.tokens, window: usage.contextWindow, percent: usage.percent } } : {}),
+    ...(usage
+      ? { context: { tokens: usage.tokens, window: usage.contextWindow, percent: usage.percent } }
+      : {}),
     startedAt: input.startedAt,
     ...(input.piVersion ? { piVersion: input.piVersion } : {}),
     ...(input.todos ? { todos: input.todos } : {}),

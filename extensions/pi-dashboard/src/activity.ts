@@ -35,8 +35,16 @@ export class ActivityTracker {
 
   start(id: string, tool: string, args: unknown): void {
     const summary = summarize(tool, args);
-    this.entries = [{ id, tool: clip(tool, 64) ?? "tool", ...(summary ? { summary } : {}), at: this.now(), running: true },
-      ...this.entries.filter((entry) => entry.id !== id)].slice(0, MAX_ENTRIES);
+    this.entries = [
+      {
+        id,
+        tool: clip(tool, 64) ?? "tool",
+        ...(summary ? { summary } : {}),
+        at: this.now(),
+        running: true,
+      },
+      ...this.entries.filter((entry) => entry.id !== id),
+    ].slice(0, MAX_ENTRIES);
   }
 
   end(id: string, isError: boolean): void {
@@ -53,6 +61,8 @@ export class ActivityTracker {
   }
 
   section(): ActivitySection | undefined {
-    return this.entries.length ? this.entries.map(({ id: _id, ...entry }) => ({ ...entry })) : undefined;
+    return this.entries.length
+      ? this.entries.map(({ id: _id, ...entry }) => ({ ...entry }))
+      : undefined;
   }
 }

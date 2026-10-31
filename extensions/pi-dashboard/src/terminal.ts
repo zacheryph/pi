@@ -17,13 +17,17 @@ export interface TerminalOptions {
 
 const TIMEOUT_MS = 5_000;
 
-export const runCommand: Run = (command, args) => new Promise((resolve, reject) => {
-  execFile(command, args, { timeout: TIMEOUT_MS }, (error, _stdout, stderr) => {
-    if (!error) return resolve();
-    const detail = String(stderr || "").trim().split("\n")[0] || error.message;
-    reject(new Error(`${command} ${args[0] ?? ""}: ${detail}`.trim()));
+export const runCommand: Run = (command, args) =>
+  new Promise((resolve, reject) => {
+    execFile(command, args, { timeout: TIMEOUT_MS }, (error, _stdout, stderr) => {
+      if (!error) return resolve();
+      const detail =
+        String(stderr || "")
+          .trim()
+          .split("\n")[0] || error.message;
+      reject(new Error(`${command} ${args[0] ?? ""}: ${detail}`.trim()));
+    });
   });
-});
 
 /**
  * cmux: `focus-panel` selects the panel's workspace, surface and tab; it does

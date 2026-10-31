@@ -3,16 +3,9 @@
   "compilerOptions": {
     "erasableSyntaxOnly": true,
     "paths": {
-      "#src/*": [
-        "./src/*"
-      ],
-      "#test/*": [
-        "./test/*"
-      ]
+      "#src/*": ["./src/*"],
+      "#test/*": ["./test/*"]
     }
   },
-  "include": [
-    "src",
-    "test"
-  ]
+  "include": ["src", "test"]
 }
