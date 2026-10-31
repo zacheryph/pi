@@ -9,6 +9,7 @@
 import type { Model } from "@earendil-works/pi-ai";
 import type { AgentSessionEvent, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { debugLog } from "#src/debug";
+import type { SubagentHandoff } from "#src/lifecycle/child-lifecycle";
 import type { CreateSubagentSessionParams } from "#src/lifecycle/create-subagent-session";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import { RunListeners } from "#src/lifecycle/run-listeners";
@@ -115,6 +116,8 @@ export interface SubagentExecution {
 	maxTurns?: number;
 	thinkingLevel?: ThinkingLevel;
 	parentSession?: ParentSessionInfo;
+	/** Forwarded to the child's `session-created` event. */
+	handoff?: SubagentHandoff;
 	signal?: AbortSignal;
 }
 
@@ -386,6 +389,8 @@ export class Subagent {
 				type: this.type,
 				cwd,
 				parentSession: this.execution.parentSession,
+				agentId: this.id,
+				...(this.execution.handoff ? { handoff: this.execution.handoff } : {}),
 				model: this.execution.model,
 				thinkingLevel: this.execution.thinkingLevel,
 				askParent: (question) => { this.state.setPendingQuestion(question); },

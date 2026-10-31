@@ -194,6 +194,20 @@ No upstream runtime behavior was intentionally changed during import.
   can typecheck it without mapping `#src` itself. This package's own
   `tsconfig.json` paths and its runtime resolution are unchanged.
 
+## Spawn handoff and run identity on child events
+
+- The `subagent` tool and `SpawnOptions` take a generic `handoff` object whose
+  top-level keys belong to other extensions (pi-todo reads `todos`).
+  `normalizeHandoff` (`src/lifecycle/child-lifecycle.ts`) only checks it is a JSON
+  object within `MAX_HANDOFF_BYTES`, copies and deep-freezes it; the core forwards
+  it untouched on `subagents:child:session-created`. New handoff data needs no
+  change here.
+- `subagents:child:session-created`, `bound` and `disposed` also carry `agentId`
+  (the record id) and `toolCallId` (the parent's tool call; absent for service
+  spawns), so a parent-side extension can tie a child session to the spawn.
+- Tests: `test/handoff-sdk.test.ts` (a real orchestrator session spawning through
+  the tool) plus unit tests in the lifecycle, tools and service suites.
+
 ## Development
 
 Run from this repository's root:

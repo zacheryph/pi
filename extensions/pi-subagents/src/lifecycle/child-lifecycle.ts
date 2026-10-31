@@ -50,16 +50,67 @@ export interface ChildSpawningEvent {
   parentSessionId?: string;
 }
 
+/**
+ * Extension-defined data a spawn hands its child, keyed by the extension that
+ * reads it (pi-todo reads `todos`). The core never interprets it: it checks the
+ * value is a plain JSON object within `MAX_HANDOFF_BYTES`, copies and deep-freezes
+ * it, and forwards it on `session-created`. Each key's owner documents and
+ * validates its own shape.
+ */
+export type SubagentHandoff = Readonly<Record<string, unknown>>;
+
+/** Serialized size cap for a handoff. */
+export const MAX_HANDOFF_BYTES = 16 * 1024;
+
+function deepFreeze<T>(value: T): T {
+  if (value && typeof value === "object") {
+    for (const child of Object.values(value)) deepFreeze(child);
+    Object.freeze(value);
+  }
+  return value;
+}
+
+/**
+ * Check and copy a spawn's handoff. Nothing to hand over (absent, null, `{}`)
+ * yields no handoff; anything that is not a JSON object within the cap is an
+ * error for the caller.
+ */
+export function normalizeHandoff(value: unknown): { handoff?: SubagentHandoff } | { error: string } {
+  if (value === undefined || value === null) return {};
+  if (typeof value !== "object" || Array.isArray(value)) {
+    return { error: "handoff must be an object keyed by the extension that reads it" };
+  }
+  let json: string | undefined;
+  try {
+    json = JSON.stringify(value);
+  } catch (err) {
+    return { error: `handoff must be JSON data: ${err instanceof Error ? err.message : String(err)}` };
+  }
+  const bytes = Buffer.byteLength(json, "utf8");
+  if (bytes > MAX_HANDOFF_BYTES) return { error: `handoff is ${bytes} bytes; the limit is ${MAX_HANDOFF_BYTES}` };
+  const copy = JSON.parse(json) as Record<string, unknown>;
+  return Object.keys(copy).length ? { handoff: deepFreeze(copy) } : {};
+}
+
+/** Identity of the run a child session belongs to, carried on its events. */
+export interface ChildRunIdentity {
+  /** The subagent's record id (`getRecord(id)`); the same across resumes. */
+  agentId?: string;
+  /** The parent's `subagent` tool call; absent for service spawns. */
+  toolCallId?: string;
+}
+
 /** Payload for `subagents:child:session-created`. */
-export interface ChildSessionCreatedEvent {
+export interface ChildSessionCreatedEvent extends ChildRunIdentity {
   /** Child session id — the registry key. Unique per child; concurrent
    * siblings of the same parent occupy distinct keys. */
   sessionId: string;
   parentSessionId?: string;
+  handoff?: SubagentHandoff;
 }
 
 /** Payload for `subagents:child:bound`. */
-export interface ChildBoundEvent {
+export interface ChildBoundEvent extends ChildRunIdentity {
   /** Child session id — the same key `session-created` carried. */
   sessionId: string;
   parentSessionId?: string;
@@ -74,7 +125,7 @@ export interface ChildCompletedEvent {
 }
 
 /** Payload for `subagents:child:disposed`. */
-export interface ChildDisposedEvent {
+export interface ChildDisposedEvent extends ChildRunIdentity {
   /** Child session id — the registry key. Must match `session-created`. */
   sessionId: string;
 }

@@ -45,7 +45,7 @@ falls back to the blob store. Todo works the same way, except it has no shared s
 
 Two facts from this repo the design relies on:
 
-- `subagents:child:session-created { sessionId, parentSessionId }` is emitted
+- `subagents:child:session-created { sessionId, parentSessionId, agentId, toolCallId?, handoff? }` is emitted
   synchronously on the **parent's** bus before the child binds
   (`create-subagent-session.ts:321-325`). The parent's extensions therefore record the
   link before any child `session_start` runs.
@@ -157,9 +157,10 @@ comparable.
 
 ### Todo: pre-claimed handoff
 
-- **Parent:** `subagent({ …, todos: ["auth-audit", "auth-tests"], todo_scope: "assigned" })`.
-  `todo_scope: "ledger"` lets the child read the whole ledger while writing only its
-  claims. The same fields go on `SpawnOptions` for `getSubagentsService().spawn()`.
+- **Parent:** `subagent({ …, handoff: { todos: { keys: ["auth-audit", "auth-tests"], scope: "assigned" } } })`,
+  using pi-subagents' generic `handoff` (pi-todo owns the `todos` key and documents it
+  in its own tool guidance). `scope: "ledger"` lets the child read the whole ledger while writing only its
+  claims. `SpawnOptions.handoff` does the same for `getSubagentsService().spawn()`.
 - **Validation before spawn:** the parent's pi-todo handles `tool_call` for
   `subagent`. Unknown keys, completed keys, or keys a live sibling already holds return
   `{ block: true, reason }`, so the spawn never happens. If the call is valid, pi-todo
@@ -282,28 +283,29 @@ AGENTS.md (UI spacing tests at narrow widths, `commit.gpgsign=false`).
 ### PR 5 — pi-subagents: handoff channel
 
 - Independent of PRs 2-4. Needed by PR 6.
-- `subagent` tool: optional `todos: string[]` and `todo_scope: "assigned" | "ledger"`.
-  The same fields go on `SpawnOptions`. They are forwarded opaquely as
-  `handoff: { todos?: { keys, scope } }`; pi-subagents does not interpret them.
+- `subagent` tool and `SpawnOptions`: a generic `handoff` object whose top-level
+  keys belong to other extensions (pi-todo will read `todos: { keys, scope }`).
+  pi-subagents only checks it is a JSON object within 16 KB, copies and freezes it,
+  and forwards it, so new handoff data never needs a pi-subagents change.
 - `subagents:child:session-created`, `bound` and `disposed` gain `agentId` and
   `toolCallId`; `session-created` also gains `handoff`. All are optional additions to
   the payload.
 - Update `docs/architecture/architecture.md` (event table) and `UPSTREAM.md` (local
   changes).
-- Tests: payload contents for tool spawns and service spawns; resume re-emits with
-  the same `agentId`.
+- Tests: payload contents for tool spawns and service spawns. (A resume reuses the
+  live child session, so `session-created` fires once per agent.)
 
 ### PR 6 — pi-todo: delegated tasks
 
 - Depends on PRs 2 and 5.
-- Parent: `tool_call` veto for invalid `todos`; claim, release and history-message
+- Parent: `tool_call` veto for an invalid `handoff.todos`, plus a tool guideline documenting that key; claim, release and history-message
   journaling in `pi-personal:todo-claims`; broker via `provide("pi-todo", …)`.
 - Child: delegated mode as described above; scoped `list`, context and widget.
   Widget title "Assigned tasks".
 - Parent UI: an assignee badge in the widget and `/todos` browser (`→ explore#a3f2`);
   `TodoSnapshotTask.claimedBy` (optional, snapshot stays v1) for the dashboard.
 - Orchestrator prompt (`pi-subagents/src/config/default-agents.ts`): hand off with
-  `todos` instead of describing tasks in prose.
+  `handoff.todos` instead of describing tasks in prose.
 - `ledger`-mode prerequisite additions on unclaimed tasks, with flagged history
   messages and a config switch (`todos.childPrerequisites`, default on).
 - Tests: the veto cases; a child sees only its claims; a child-added task appears in

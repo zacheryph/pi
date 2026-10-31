@@ -11,6 +11,7 @@ import type { Model } from "@earendil-works/pi-ai";
 import { type BackgroundRequest, resolveBackgroundMode } from "#src/config/invocation-config";
 import { composeAgentInstructions } from "#src/config/prompt-fragments";
 import { debugLog } from "#src/debug";
+import type { SubagentHandoff } from "#src/lifecycle/child-lifecycle";
 import type { ConcurrencyLimiter } from "#src/lifecycle/concurrency-limiter";
 import type { CreateSubagentSessionParams } from "#src/lifecycle/create-subagent-session";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
@@ -212,6 +213,8 @@ export interface AgentSpawnConfig {
   observer?: SubagentLifecycleObserver;
   /** Parent session identity - grouped fields that travel together from the tool boundary. */
   parentSession?: ParentSessionInfo;
+  /** What the parent hands the child; forwarded on its `session-created` event. */
+  handoff?: SubagentHandoff;
 }
 
 export class SubagentManager {
@@ -404,6 +407,7 @@ export class SubagentManager {
         maxTurns: options.maxTurns,
         thinkingLevel: options.thinkingLevel,
         parentSession: options.parentSession,
+        ...(options.handoff ? { handoff: options.handoff } : {}),
         signal: options.signal,
       },
     });

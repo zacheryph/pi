@@ -458,3 +458,27 @@ describe("resolveSpawnConfig — prompt and rawType passthrough", () => {
     expect(result.identity.rawType).toBe("Explore");
   });
 });
+
+describe("resolveSpawnConfig — handoff", () => {
+  const resolve = (params: Record<string, unknown>) => resolveSpawnConfig(
+    { subagent_type: "general-purpose", prompt: "test", description: "d", ...params },
+    testRegistry,
+    makeModelInfo(),
+    defaultSettings,
+  );
+
+  it("passes any extension's keys through", () => {
+    const result = resolve({ handoff: { todos: { keys: ["auth-audit"] }, review: { ticket: "AUTH-12" } } });
+    expect("error" in result ? result.error : result.execution.handoff)
+      .toEqual({ todos: { keys: ["auth-audit"] }, review: { ticket: "AUTH-12" } });
+  });
+
+  it("hands over nothing without a handoff", () => {
+    const result = resolve({});
+    expect("error" in result ? result.error : result.execution.handoff).toBeUndefined();
+  });
+
+  it("reports a handoff that is not an object", () => {
+    expect(resolve({ handoff: ["auth-audit"] })).toEqual({ error: expect.stringContaining("handoff must be an object") });
+  });
+});

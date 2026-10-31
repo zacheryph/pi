@@ -562,7 +562,8 @@ Key types:
 - `SubagentsService` — `spawn`, `getRecord`, `listAgents`, `abort`, `steer`, `resume`, `waitForAll`, `hasRunning`.
 - `ResumeOptions` — `claimOutcome`, `signal`; `ResumeResult` — the resumed snapshot or a `ResumeRefusalReason`.
 - `SubagentRecord` — serializable by-value agent snapshot; admission policy in [decision 0005](../decisions/0005-subagent-record-admission-policy.md).
-- `SpawnOptions` — `description`, `model`, `maxTurns`, `thinkingLevel`, `inheritContext`, `foreground`, `bypassQueue`.
+- `SpawnOptions` — `description`, `model`, `maxTurns`, `thinkingLevel`, `inheritContext`, `foreground`, `bypassQueue`, `handoff`.
+- `SubagentHandoff` — extension-defined data a spawn hands the child, keyed by the extension that reads it; a frozen JSON object of at most `MAX_HANDOFF_BYTES`, forwarded on `subagents:child:session-created`.
 - `SUBAGENT_EVENTS` — channel constants for `pi.events` subscriptions.
 
 ### Accessor pattern
@@ -605,6 +606,19 @@ The core emits events on `pi.events` that any extension can observe:
 | `subagents:steered`   | `{ id, message }`                                                                                | Steering message delivered to a running agent                                             |
 
 These are fire-and-forget broadcast events — no request IDs, no reply channels.
+
+The child-execution lifecycle (`src/lifecycle/child-lifecycle.ts`) is published on the same bus, keyed by the child's session id:
+
+| Channel                           | Payload                                                                   | When                                                         |
+| --------------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `subagents:child:spawning`        | `{ agentName, parentSessionId? }`                                         | A child run starts, before its session exists                |
+| `subagents:child:session-created` | `{ sessionId, parentSessionId?, agentId?, toolCallId?, handoff? }`        | Synchronously, before the child binds its extensions         |
+| `subagents:child:bound`           | `{ sessionId, parentSessionId?, agentId?, toolCallId? }`                  | Every child `session_start` handler has run                  |
+| `subagents:child:completed`       | `{ sessionDir, agentName, turnBudget? }`                                  | The child's prompt resolved                                  |
+| `subagents:child:disposed`        | `{ sessionId, agentId?, toolCallId? }`                                    | After the child's `session_shutdown` and `session.dispose()` |
+
+`agentId` is the record id (`getRecord(id)`), `toolCallId` the parent's `subagent` call (absent for a service spawn), and `handoff` the spawn's extension-defined data.
+The core forwards `handoff` without interpreting it, so a companion extension can define a new key (pi-todo reads `todos`) without a core change. The key's owner documents its shape in its own tool guidance and validates it.
 
 ## Architecture direction
 

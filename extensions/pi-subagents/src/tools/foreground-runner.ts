@@ -97,6 +97,7 @@ export async function runForeground(
         thinkingLevel: execution.thinking,
         signal,
         parentSession: params.parentSession,
+        ...(execution.handoff ? { handoff: execution.handoff } : {}),
         observer: {
           onSessionCreated: (agent) => {
             recordRef = agent;

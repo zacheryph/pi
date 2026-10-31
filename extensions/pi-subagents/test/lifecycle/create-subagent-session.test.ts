@@ -245,6 +245,24 @@ describe("createSubagentSession — lifecycle ordering", () => {
     });
   });
 
+  it("carries the agent id on every event, but no tool call id or handoff a service spawn did not give", async () => {
+    const sub = await createSubagentSession(
+      {
+        snapshot: STUB_SNAPSHOT,
+        type: "Explore",
+        agentId: "agent-7",
+        parentSession: { parentSessionFile: "/sessions/parent.jsonl", parentSessionId: "parent-session-42" },
+      },
+      createSubagentSessionDeps({ io, exec, registry: mockAgentLookup, lifecycle }),
+    );
+    await sub.dispose();
+
+    const identity = { sessionId: "child-session-id", agentId: "agent-7" };
+    expect(lifecycle.sessionCreated).toHaveBeenCalledWith({ ...identity, parentSessionId: "parent-session-42" });
+    expect(lifecycle.bound).toHaveBeenCalledWith({ ...identity, parentSessionId: "parent-session-42" });
+    expect(lifecycle.disposed).toHaveBeenCalledWith(identity);
+  });
+
   it("does not emit completed or disposed during creation", async () => {
     await createSubagentSession(
       { snapshot: STUB_SNAPSHOT, type: "Explore" },

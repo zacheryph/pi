@@ -221,6 +221,9 @@ Launch a sub-agent.
 | `run_in_background` | boolean      | no       | Run without blocking                                             |
 | `resume`            | string       | no       | Agent ID to resume a previous session                            |
 | `inherit_context`   | boolean      | no       | Fork parent conversation into agent                              |
+| `handoff`           | object       | no       | Data for extensions in the agent's session (see below)           |
+
+`handoff` is a JSON object (at most 16 KB) whose top-level keys belong to other extensions, each documenting its key's shape in its own tool guidance. For example, pi-todo reads `todos`. This package does not interpret it: it copies and freezes the object and forwards it on `subagents:child:session-created`, so an extension can add handoff data without changing pi-subagents. `SpawnOptions.handoff` does the same for service spawns.
 
 These five parameters win over the agent file's own values, which fill whichever the call leaves unset.
 An agent file can withhold one with [`locked`](./docs/configuration.md#locking-fields-against-callers); the result then names the agent and the parameters it ignored.

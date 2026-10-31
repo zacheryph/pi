@@ -25,9 +25,10 @@ A value of another shape under that key is replaced, not trusted.
 
 ## Links
 
-pi-subagents emits `subagents:child:session-created { sessionId, parentSessionId }`
-synchronously on the **parent's** bus, before the child binds its extensions,
-and `subagents:child:disposed { sessionId }` after the child shut down.
+pi-subagents emits `subagents:child:session-created { sessionId, parentSessionId,
+agentId, toolCallId?, handoff? }` synchronously on the **parent's** bus, before the
+child binds its extensions, and `subagents:child:disposed { sessionId, ... }` after
+the child shut down.
 `trackChildren(pi)` follows both, so a child's `session_start` handlers always
 find their parent link. Call it from the extension factory, so the subscription
 exists before any spawn. Calling it from several extensions is harmless.
@@ -84,8 +85,7 @@ for (const id of ancestors(childSessionId)) {
   pi-todo already do during tool execution.
 
 Navigation: `parentOf`, `ancestors` (nearest first), `root`, `children`,
-`descendants` (breadth first), `node` (with `agentId` and `handoff` once
-pi-subagents sends them).
+`descendants` (breadth first), `node` (with the child's `agentId` and `handoff`).
 
 When pi-subagents' parent session shuts down for any reason, including
 `/reload`, it aborts and disposes every child. So every ancestor of a live

@@ -257,6 +257,13 @@ ${guidelines}
 							"If true, fork parent conversation into the agent. Omit to use the agent's own default, which is fresh context unless it declares otherwise.",
 					}),
 				),
+				handoff: Type.Optional(
+					Type.Object({}, {
+						additionalProperties: true,
+						description:
+							"Data for extensions in the agent's session, as { <key>: value }. Each key belongs to one extension, which documents the shape in its own tool guidance. Omit unless such guidance tells you to set a key.",
+					}),
+				),
 			}),
 
 			// ---- Custom rendering: inline subagent results ----

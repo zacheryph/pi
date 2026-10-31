@@ -109,6 +109,15 @@ describe("spawnBackground", () => {
     );
   });
 
+  it("passes the handoff to manager.spawn", () => {
+    const { manager } = createToolDeps();
+    const config = makeConfig();
+    config.execution.handoff = { todos: { keys: ["auth-audit"], scope: "assigned" } };
+    spawnBackground(manager, makeParams({ config }));
+    const spawnOpts = (manager.spawn as ReturnType<typeof vi.fn>).mock.calls[0][3];
+    expect(spawnOpts.handoff).toEqual({ todos: { keys: ["auth-audit"], scope: "assigned" } });
+  });
+
   it("passes parentSession.toolCallId to manager.spawn", () => {
     const { manager } = createToolDeps();
     spawnBackground(manager, makeParams({ parentSession: { toolCallId: "tc-99" } }));

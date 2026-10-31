@@ -385,6 +385,23 @@ describe("SubagentsServiceAdapter — spawn", () => {
    * `parentSessionId`. Asserted with toEqual rather than objectContaining so a
    * stray toolCallId would fail rather than be absorbed.
    */
+  describe("handoff", () => {
+    it("forwards a handoff copy and refuses one that is not a JSON object", () => {
+      const mgr = createManagerStub();
+      const svc = new SubagentsServiceAdapter(mgr, vi.fn(), makeRuntimeStub());
+      const handoff = { todos: { keys: ["auth-audit"], scope: "ledger" }, review: { ticket: "AUTH-12" } };
+
+      svc.spawn("Explore", "audit", { handoff });
+      svc.spawn("Explore", "plain");
+
+      expect(vi.mocked(mgr.spawn).mock.calls[0][3].handoff).toEqual(handoff);
+      expect(vi.mocked(mgr.spawn).mock.calls[0][3].handoff).not.toBe(handoff);
+      expect(vi.mocked(mgr.spawn).mock.calls[1][3].handoff).toBeUndefined();
+      expect(() => svc.spawn("Explore", "bad", { handoff: ["x"] as unknown as Record<string, unknown> }))
+        .toThrow(/handoff must be an object/);
+    });
+  });
+
   describe("parent session", () => {
     it("passes the runtime's session identity, without a toolCallId", () => {
       const mgr = createManagerStub();
