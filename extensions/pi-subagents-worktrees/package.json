@@ -1,6 +1,7 @@
 {
   "name": "@gotgenes/pi-subagents-worktrees",
   "version": "0.3.3",
+  "private": true,
   "description": "Git worktree isolation for @gotgenes/pi-subagents — a WorkspaceProvider that runs subagents in isolated worktrees.",
   "keywords": [
     "pi-package",
@@ -22,15 +23,9 @@
     "url": "git+https://github.com/gotgenes/pi-packages.git",
     "directory": "packages/pi-subagents-worktrees"
   },
-  "bugs": {
-    "url": "https://github.com/gotgenes/pi-packages/issues"
-  },
   "homepage": "https://github.com/gotgenes/pi-packages/tree/main/packages/pi-subagents-worktrees#readme",
-  "publishConfig": {
-    "access": "public"
-  },
   "engines": {
-    "node": ">=22"
+    "node": ">=24"
   },
   "type": "module",
   "exports": {
@@ -40,11 +35,18 @@
     "src",
     "README.md",
     "CHANGELOG.md",
-    "LICENSE"
+    "LICENSE",
+    "UPSTREAM.md"
   ],
   "imports": {
-    "#src/*": "./src/*",
-    "#test/*": "./test/*"
+    "#src/*": {
+      "types": "./src/*.ts",
+      "default": "./src/*"
+    },
+    "#test/*": {
+      "types": "./test/*.ts",
+      "default": "./test/*"
+    }
   },
   "pi": {
     "extensions": [
@@ -53,20 +55,16 @@
   },
   "scripts": {
     "check": "tsc --noEmit",
-    "lint": "biome check . && eslint .",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": ">=0.75.0",
-    "@gotgenes/pi-subagents": ">=16.4.0"
+    "@earendil-works/pi-coding-agent": "*"
   },
   "devDependencies": {
-    "@biomejs/biome": "catalog:",
-    "@earendil-works/pi-coding-agent": "0.79.1",
-    "@gotgenes/pi-subagents": "^16.4.0",
-    "@types/node": "catalog:",
-    "typescript": "catalog:",
-    "vitest": "catalog:"
+    "@earendil-works/pi-coding-agent": "1.4.0",
+    "@types/node": "^24.19.2",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.5"
   }
 }

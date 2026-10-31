@@ -16,7 +16,7 @@ import {
   type ExtensionAPI,
   getAgentDir,
 } from "@earendil-works/pi-coding-agent";
-import { getSubagentsService } from "@gotgenes/pi-subagents";
+import { getSubagentsService } from "../../pi-subagents/src/service/service.ts";
 import { ActiveWorktrees } from "#src/active-worktrees";
 import { loadWorktreesConfig } from "#src/config";
 import { debugLog } from "#src/debug";

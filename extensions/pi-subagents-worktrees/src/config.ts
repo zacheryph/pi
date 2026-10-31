@@ -11,7 +11,7 @@
  * `@gotgenes/pi-subagents/settings` (requires >=16.4.0).
  */
 
-import { loadLayeredSettings } from "@gotgenes/pi-subagents/settings";
+import { loadLayeredSettings } from "../../pi-subagents/src/layered-settings.ts";
 
 export interface WorktreesConfig {
   /** Agent-type names that run in a git worktree. Empty → no children isolated. */

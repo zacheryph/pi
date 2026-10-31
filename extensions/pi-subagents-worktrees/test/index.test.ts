@@ -17,7 +17,7 @@ const {
 }));
 
 vi.mock("@earendil-works/pi-coding-agent", () => ({ getAgentDir }));
-vi.mock("@gotgenes/pi-subagents", () => ({ getSubagentsService }));
+vi.mock("../../pi-subagents/src/service/service.ts", () => ({ getSubagentsService }));
 vi.mock("#src/config", () => ({ loadWorktreesConfig }));
 vi.mock("#src/worktree", () => ({ pruneWorktrees }));
 vi.mock("#src/preserved", () => ({
