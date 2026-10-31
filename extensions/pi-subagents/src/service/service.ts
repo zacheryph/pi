@@ -175,22 +175,78 @@ export const SUBAGENT_EVENTS = {
 
 // ---- Accessor functions ----
 
+/** Legacy single slot: always the outermost live service. */
 const SERVICE_KEY = Symbol.for("@gotgenes/pi-subagents:service");
+/** Every live service in publish order; the slot mirrors the first. */
+const PUBLICATIONS_KEY = Symbol.for("@gotgenes/pi-subagents:services.v1");
 
-/** Publish the SubagentsService on globalThis for cross-extension access. */
-export function publishSubagentsService(service: SubagentsService): void {
-  (globalThis as Record<symbol, unknown>)[SERVICE_KEY] = service;
+interface Publication {
+  service: SubagentsService;
+  /** Set once the publishing session has started. */
+  sessionId?: string;
 }
 
-/** Retrieve the published SubagentsService, or undefined if not yet published. */
-export function getSubagentsService(): SubagentsService | undefined {
+/**
+ * Every child session loads this extension again in-process, so several
+ * services are live at once. A child loads after its parent and shuts down
+ * before it, so publish order puts the outermost session first.
+ */
+function publications(): Publication[] {
+  const slots = globalThis as Record<symbol, unknown>;
+  const list = slots[PUBLICATIONS_KEY];
+  if (Array.isArray(list)) return list as Publication[];
+  const created: Publication[] = [];
+  slots[PUBLICATIONS_KEY] = created;
+  return created;
+}
+
+function syncSlot(list: Publication[]): void {
+  const slots = globalThis as Record<symbol, unknown>;
+  const first = list[0];
+  if (first) slots[SERVICE_KEY] = first.service;
+  // eslint-disable-next-line @typescript-eslint/no-dynamic-delete -- Symbol-keyed global property; Map.delete() is not applicable
+  else delete slots[SERVICE_KEY];
+}
+
+/**
+ * Publish a SubagentsService on globalThis for cross-extension access.
+ *
+ * Publishing an already-published service again records its session id. A
+ * later (child) publication never displaces the outermost one from the slot.
+ */
+export function publishSubagentsService(service: SubagentsService, sessionId?: string): void {
+  const list = publications();
+  const existing = list.find((entry) => entry.service === service);
+  if (existing) {
+    if (sessionId !== undefined) existing.sessionId = sessionId;
+  } else {
+    list.push(sessionId === undefined ? { service } : { service, sessionId });
+  }
+  syncSlot(list);
+}
+
+/**
+ * Retrieve a published SubagentsService.
+ *
+ * Without a session id: the outermost live service (the top-level session's).
+ * With one: that session's service, or undefined.
+ */
+export function getSubagentsService(sessionId?: string): SubagentsService | undefined {
+  if (sessionId !== undefined) {
+    return publications().find((entry) => entry.sessionId === sessionId)?.service;
+  }
   return (globalThis as Record<symbol, unknown>)[SERVICE_KEY] as
     | SubagentsService
     | undefined;
 }
 
-/** Remove the SubagentsService from globalThis (call on shutdown/reload). */
-export function unpublishSubagentsService(): void {
-  // eslint-disable-next-line @typescript-eslint/no-dynamic-delete -- Symbol-keyed global property; Map.delete() is not applicable
-  delete (globalThis as Record<symbol, unknown>)[SERVICE_KEY];
+/**
+ * Remove one service (call on shutdown/reload). Only that publication goes; the
+ * slot moves to the next outermost live service, if any.
+ */
+export function unpublishSubagentsService(service: SubagentsService): void {
+  const list = publications();
+  const index = list.findIndex((entry) => entry.service === service);
+  if (index >= 0) list.splice(index, 1);
+  syncSlot(list);
 }

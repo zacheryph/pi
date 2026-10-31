@@ -212,7 +212,7 @@ export default function (pi: ExtensionAPI) {
     runtime,
     manager,
     () => notifications.dispose(),
-    unpublishSubagentsService,
+    () => unpublishSubagentsService(service),
   );
 
   // Live widget: constructed after the manager (it polls listAgents()) and
@@ -230,6 +230,8 @@ export default function (pi: ExtensionAPI) {
   const widgetEvents = new WidgetEventsHandler(widget);
 
   pi.on("session_start", (event, ctx) => lifecycle.handleSessionStart(event, ctx));
+  // Key the publication by session so getSubagentsService(sessionId) finds it.
+  pi.on("session_start", (_event, ctx) => publishSubagentsService(service, ctx.sessionManager.getSessionId()));
   pi.on("session_start", (event, ctx) => widgetEvents.handleSessionStart(event, ctx));
   pi.on("session_start", (_event, ctx) => watch.setContext(ctx));
   pi.on("session_before_switch", () => lifecycle.handleSessionBeforeSwitch());

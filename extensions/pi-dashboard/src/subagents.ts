@@ -15,9 +15,9 @@ const TERMINAL: Record<string, SubagentState> = {
 };
 
 /**
- * Follows subagents through pi-subagents' lifecycle events. pi-subagents also
- * publishes a service on globalThis, but subagent children load the same
- * extension in-process and replace it; the event bus is per session.
+ * Follows subagents through pi-subagents' lifecycle events, which arrive on
+ * this session's own bus. Events cover this session's agents only, and need no
+ * lookup in pi-subagents' process-wide service registry.
  * Agents that started before this runtime loaded are not known.
  */
 export class SubagentTracker {

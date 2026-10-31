@@ -63,6 +63,16 @@ import { createSubagentSession } from "#src/lifecycle/create-subagent-session";
 import { getSubagentsService } from "#src/service/service";
 import { createMockSession, createSubagentSessionStub, toSubagentSession } from "./helpers/mock-session";
 
+// Most tests load the extension without shutting it down, which leaves its
+// service published; start each test with no publications.
+beforeEach(() => {
+  const slots = globalThis as Record<symbol, unknown>;
+  for (const key of ["@gotgenes/pi-subagents:service", "@gotgenes/pi-subagents:services.v1"]) {
+    // eslint-disable-next-line @typescript-eslint/no-dynamic-delete -- Symbol-keyed global in tests
+    delete slots[Symbol.for(key)];
+  }
+});
+
 function makePi() {
   const tools = new Map<string, any>();
   const handlers = new Map<string, any[]>();
@@ -489,5 +499,37 @@ describe("composition root: parent tool list", () => {
     vi.mocked(pi.getAllTools).mockReturnValue([{ name: "read" }, { name: "mcp__github__get_issue" }]);
 
     expect(deps.listParentToolNames()).toEqual(["read", "mcp__github__get_issue"]);
+  });
+});
+
+describe("composition root: service publication", () => {
+  it("keeps the parent's service published after an in-process child shuts down", async () => {
+    const parent = makePi();
+    subagentsExtension(parent.pi);
+    const parentCtx = makeSessionStartCtx(makeParentRegistry().registry, makeRecordingUI());
+    await parent.fire("session_start", {}, parentCtx);
+    const parentService = getSubagentsService();
+    expect(parentService).toBeDefined();
+
+    // A child session loads the same extension again in this process.
+    const child = makePi();
+    subagentsExtension(child.pi);
+    const childCtx = makeSessionStartCtx(makeParentRegistry().registry, makeRecordingUI());
+    childCtx.sessionManager.getSessionId = vi.fn(() => "child-session");
+    await child.fire("session_start", {}, childCtx);
+
+    expect(getSubagentsService()).toBe(parentService);
+    expect(getSubagentsService("session-1")).toBe(parentService);
+    expect(getSubagentsService("child-session")).toBeDefined();
+    expect(getSubagentsService("child-session")).not.toBe(parentService);
+
+    await child.fire("session_shutdown", {}, {});
+
+    expect(getSubagentsService()).toBe(parentService);
+    expect(getSubagentsService("child-session")).toBeUndefined();
+
+    await parent.fire("session_shutdown", {}, {});
+
+    expect(getSubagentsService()).toBeUndefined();
   });
 });
