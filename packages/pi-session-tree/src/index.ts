@@ -119,7 +119,11 @@ export function provide(id: string, name: string, api: unknown, tree = sessionTr
   nodeFor(id, tree).services.set(name, { token, api });
   return () => {
     const current = tree.nodes.get(id);
-    if (current?.services.get(name)?.token === token) current.services.delete(name);
+    if (current?.services.get(name)?.token !== token) return;
+    current.services.delete(name);
+    // A top-level session has no child-disposed event to forget it, so its node
+    // goes with its last service. Linked children wait for that event instead.
+    if (!current.services.size && current.parent === undefined) tree.nodes.delete(id);
   };
 }
 
@@ -128,16 +132,42 @@ export function service<T>(id: string, name: string, tree = sessionTree()): T | 
   return tree.nodes.get(id)?.services.get(name)?.api as T | undefined;
 }
 
+const isThenable = (value: unknown): value is PromiseLike<unknown> =>
+  !!value && (typeof value === "object" || typeof value === "function")
+  && typeof (value as { then?: unknown }).then === "function";
+
 /**
- * Call into another session's service without letting its failure become the
- * caller's: a missing service or a throwing call (for example a runtime made
- * stale by a reload) comes back as a result.
+ * Call into another session's synchronous service without letting its failure
+ * become the caller's: a missing service or a throwing call (for example a
+ * runtime made stale by a reload) comes back as a result.
+ *
+ * A promise cannot be checked synchronously, so a `fn` that returns one is a
+ * misuse: the result is an error (the call has already started), and the
+ * promise's rejection is observed so it cannot go unhandled. Use `callAsync`.
  */
 export function call<T, R>(id: string, name: string, fn: (api: T) => R, tree = sessionTree()): CallResult<R> {
   const api = service<T>(id, name, tree);
   if (api === undefined) return { ok: false, reason: "missing" };
   try {
-    return { ok: true, value: fn(api) };
+    const value = fn(api);
+    if (isThenable(value)) {
+      Promise.resolve(value).catch(() => {});
+      return { ok: false, reason: "error", error: new TypeError(`${name} returned a promise; use callAsync`) };
+    }
+    return { ok: true, value };
+  } catch (error) {
+    return { ok: false, reason: "error", error };
+  }
+}
+
+/** `call` for asynchronous services: a rejection becomes `{ ok: false, reason: "error" }`. */
+export async function callAsync<T, R>(
+  id: string, name: string, fn: (api: T) => R, tree = sessionTree(),
+): Promise<CallResult<Awaited<R>>> {
+  const api = service<T>(id, name, tree);
+  if (api === undefined) return { ok: false, reason: "missing" };
+  try {
+    return { ok: true, value: await fn(api) };
   } catch (error) {
     return { ok: false, reason: "error", error };
   }

@@ -39,7 +39,7 @@ session id there, but Pi writes a file path there for forks.
 
 ```ts
 import {
-  ancestors, call, provide, trackChildren,
+  ancestors, call, callAsync, provide, trackChildren,
 } from "../../../packages/pi-session-tree/src/index.ts";
 
 export default function extension(pi: ExtensionAPI) {
@@ -70,6 +70,15 @@ for (const id of ancestors(childSessionId)) {
 - After a reload, every call on a captured `pi` or `ctx` throws. `call()`
   catches that and returns `{ ok: false, reason: "error" }`, so one stale
   session cannot break its relatives.
+- `call()` is for synchronous services. Use `callAsync()` for a service that
+  returns a promise: it awaits inside its guard, so a rejection (including a
+  stale context throwing inside an async function) becomes
+  `{ ok: false, reason: "error" }`. `call()` refuses a returned promise with an
+  error result, because it cannot check it synchronously.
+- A top-level session's node is removed when its last service is withdrawn,
+  because no child-disposed event will ever arrive for it. A linked child's node
+  stays until `subagents:child:disposed`, so its parent link and handoff survive
+  the gap between the child's `session_shutdown` and its disposal.
 - `appendEntry` on the receiving session's own `pi` is safe even while that
   session is mid-turn. It appends at the current leaf, which pi-stash and
   pi-todo already do during tool execution.

@@ -1,7 +1,7 @@
 import { createEventBus } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  ancestors, call, CHILD_SESSION_CREATED, CHILD_SESSION_DISPOSED, children, descendants, forget, link, node,
+  ancestors, call, callAsync, CHILD_SESSION_CREATED, CHILD_SESSION_DISPOSED, children, descendants, forget, link, node,
   parentOf, provide, root, service, SESSION_TREE_KEY, sessionTree, trackChildren,
 } from "#src/index";
 
@@ -132,6 +132,79 @@ describe("services", () => {
     provide("child", "pi-stash", api);
     link("child", { parent: "root" });
     expect(service("child", "pi-stash")).toBe(api);
+  });
+});
+
+describe("asynchronous services", () => {
+  const stale = () => new Error("This extension ctx is stale");
+
+  it("callAsync resolves a value and reports a missing service", async () => {
+    provide("root", "pi-todo", { mutate: async () => 7 });
+    await expect(callAsync<{ mutate(): Promise<number> }, Promise<number>>("root", "pi-todo", (api) => api.mutate()))
+      .resolves.toEqual({ ok: true, value: 7 });
+    await expect(callAsync("root", "pi-stash", () => 1)).resolves.toEqual({ ok: false, reason: "missing" });
+  });
+
+  it("callAsync turns a rejected promise into an error result", async () => {
+    provide("root", "pi-todo", { mutate: () => Promise.reject(stale()) });
+    const result = await callAsync<{ mutate(): Promise<void> }, Promise<void>>("root", "pi-todo", (api) => api.mutate());
+    expect(result).toMatchObject({ ok: false, reason: "error" });
+    expect(result.ok === false && result.reason === "error" && (result.error as Error).message).toMatch(/stale/);
+  });
+
+  it("callAsync catches a stale context that throws inside an async function", async () => {
+    const ctx = { get sessionManager(): never { throw stale(); } };
+    provide("root", "pi-todo", { mutate: async () => ctx.sessionManager });
+    const result = await callAsync<{ mutate(): Promise<unknown> }, Promise<unknown>>("root", "pi-todo", (api) => api.mutate());
+    expect(result).toMatchObject({ ok: false, reason: "error" });
+  });
+
+  it("call refuses a promise instead of reporting success, without an unhandled rejection", async () => {
+    provide("root", "pi-todo", { mutate: () => Promise.reject(stale()) });
+    const result = call<{ mutate(): Promise<void> }, Promise<void>>("root", "pi-todo", (api) => api.mutate());
+    expect(result.ok).toBe(false);
+    expect(result.ok === false && result.reason === "error" && (result.error as Error).message).toMatch(/callAsync/);
+    // Let the rejected promise settle; vitest fails the run on an unhandled rejection.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+});
+
+describe("session cleanup", () => {
+  it("leaves no node behind for successive top-level sessions", () => {
+    for (const id of ["session-1", "session-2", "session-3"]) {
+      // session_start: two extensions provide; session_shutdown: both withdraw.
+      const withdrawStash = provide(id, "pi-stash", {});
+      const withdrawTodo = provide(id, "pi-todo", {});
+      withdrawStash();
+      expect(node(id)).toBeDefined();
+      withdrawTodo();
+    }
+    expect(sessionTree().nodes.size).toBe(0);
+  });
+
+  it("keeps a linked child's node until pi-subagents reports it disposed", () => {
+    const parent = sessionBus();
+    trackChildren(parent.pi);
+    parent.bus.emit(CHILD_SESSION_CREATED, { sessionId: "child", parentSessionId: "root", agentId: "a3f2" });
+    const withdraw = provide("child", "pi-stash", {});
+
+    withdraw(); // child session_shutdown runs before child:disposed
+    expect(node("child")).toMatchObject({ parent: "root", agentId: "a3f2" });
+
+    parent.bus.emit(CHILD_SESSION_DISPOSED, { sessionId: "child" });
+    expect(node("child")).toBeUndefined();
+  });
+
+  it("drops a withdrawn top-level node without losing its children's links", () => {
+    const withdrawRoot = provide("root", "pi-stash", {});
+    link("child", { parent: "root" });
+    provide("child", "pi-stash", {});
+
+    withdrawRoot();
+
+    expect(node("root")).toBeUndefined();
+    expect(ancestors("child")).toEqual(["root"]);
+    expect(service("child", "pi-stash")).toBeDefined();
   });
 });
 
