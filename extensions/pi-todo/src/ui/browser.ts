@@ -461,6 +461,8 @@ export interface TodoBrowserOptions {
   view?: TodoBrowserView;
   /** Review watermarks (key → revision) for messages this snapshot showed. */
   onReview?: (marks: ReadonlyMap<string, number>) => void;
+  /** Subagent holding each delegated task, as a display label. */
+  assignees?: ReadonlyMap<string, string>;
 }
 
 /**
@@ -474,14 +476,15 @@ export async function showTodoBrowser(ctx: ExtensionContext, state: TodoState, o
   const items = orderedTodoTasks(state).map((task): BrowserItem => {
     const presentation = todoTaskPresentation(task, state);
     const messages = history?.activity.get(task.key)?.updates.flatMap((update) => update.message ?? []) ?? [];
+    const assignee = options.assignees?.get(task.key);
     return {
       id: task.key,
-      label: `${task.key}: ${task.subject}${task.dependsOn?.length ? ` ← ${task.dependsOn.join(", ")}` : ""}`,
+      label: `${task.key}: ${task.subject}${task.dependsOn?.length ? ` ← ${task.dependsOn.join(", ")}` : ""}${assignee ? ` → ${assignee}` : ""}`,
       status: presentation.label,
       badge: { label: `${presentation.glyph} ${presentation.label}`, color: presentation.color },
       ...(history ? { marker: unreviewed.has(task.key) } : {}),
-      description: `${task.description ?? ""} ${task.status} ${(task.dependsOn ?? []).join(" ")} ${messages.join(" ")}`,
-      detail: todoTaskDetail(task, state, history).join("\n"),
+      description: `${task.description ?? ""} ${task.status} ${(task.dependsOn ?? []).join(" ")} ${messages.join(" ")}${assignee ? ` ${assignee}` : ""}`,
+      detail: todoTaskDetail(task, state, history, assignee).join("\n"),
     };
   });
   if (!history) {

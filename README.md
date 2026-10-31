@@ -280,6 +280,11 @@ unreviewed messages. Commands: `/todos:add`, `/todos:update`, `/todos:remove`,
 `/todos:clear`, `/todos:settings`.
 Settings layer global `todos.json` with project `.pi/todos.json`.
 
+A parent hands tasks to a subagent with `handoff: { todos: { keys } }` on its
+`subagent` call. The spawn is blocked if a key is unknown, completed or already
+handed out. The subagent then sees and updates only those tasks, directly in the
+parent's list (shown as `→ agent a3f2b1c4`). The claim is released when the agent ends.
+
 User additions never start/steer a turn. Changed state syncs to the next model
 request by default; no auto-removal, auto-completion, or implicit subagent dispatch.
 Multiple active tasks remain possible for parallel work. See

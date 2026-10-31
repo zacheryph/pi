@@ -14,6 +14,8 @@ export interface TodoController {
   config(): TodoConfig;
   activity(): TodoActivity;
   review(): TodoReviewState;
+  /** Subagent holding each delegated task, as a display label. */
+  assignees(): ReadonlyMap<string, string>;
   now(): number;
   branchToken(): number;
   /** Command edits are recorded as user updates, never flagged for review. */
@@ -36,6 +38,7 @@ export function registerTodoCommands(pi: ExtensionAPI, controller: TodoControlle
     const branch = controller.branchToken();
     await showTodoBrowser(ctx, cloneTodoState(controller.state()), {
       activity: controller.activity(), review: controller.review(), now: controller.now(), view,
+      assignees: controller.assignees(),
       // Never journal a stale snapshot's marks into a replaced session or branch.
       onReview: (marks) => {
         if (ctx.sessionManager.getSessionId() !== session || controller.branchToken() !== branch) return;

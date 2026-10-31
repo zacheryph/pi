@@ -27,6 +27,12 @@ describe("config validation", () => {
     expect(sanitizeConfig({ widget: "false", showCompleted: 0, singleActive: null, confirmClear: [], maxVisible: "5", contextSync: "always" })).toEqual({});
   });
 
+  it("reads the childPrerequisites switch, on by default", () => {
+    expect(DEFAULT_CONFIG.childPrerequisites).toBe(true);
+    expect(sanitizeConfig({ childPrerequisites: false })).toEqual({ childPrerequisites: false });
+    expect(sanitizeConfig({ childPrerequisites: "no" })).toEqual({});
+  });
+
   it.each([null, undefined, false, 3, "text", [], [DEFAULT_CONFIG]])("ignores non-object input %j", raw => {
     expect(sanitizeConfig(raw)).toEqual({});
   });

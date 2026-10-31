@@ -150,6 +150,50 @@ the outcome to its task, and review tracking keeps it flagged until you have see
   plan revision, model output, or context sync, so a pending model update with
   `baseRevision` stays valid. Nothing about review starts or steers a turn.
 
+## Handing tasks to subagents
+
+A parent can hand specific tasks to a subagent through pi-subagents' generic spawn
+`handoff`, under the `todos` key that pi-todo owns:
+
+```ts
+subagent({ subagent_type: "general-purpose", description: "Audit auth", prompt: "…",
+  handoff: { todos: { keys: ["audit", "tests"], scope: "assigned" } } })
+```
+
+- **Checked before the spawn.** pi-todo's `tool_call` handler blocks the `subagent`
+  call, with a reason, when a key is unknown, already completed, or held by another
+  subagent. A call that passes reserves its keys, so two spawns in one turn cannot
+  take the same task. A malformed `handoff.todos` is blocked too.
+- **Claimed before the child starts.** When pi-subagents reports the child session
+  (`subagents:child:session-created`, with its agent id and the same tool call id), the
+  parent journals a claim in `pi-personal:todo-claims`. Claims follow the branch like
+  review marks; the plan state engine is unchanged.
+- **The subagent works in your list.** Its `todo` tool, context snapshot and widget
+  ("Assigned tasks") show only its tasks with `scope: "assigned"`, or your whole list
+  with `scope: "ledger"`. Its writes go to your list through
+  [`pi-session-tree`](../../packages/pi-session-tree/README.md) and are checked there:
+  - It may change and message its own tasks, and remove or clear them once completed.
+  - New tasks it adds join its claim.
+  - With `ledger`, it may also add prerequisites (`dependsOn`, keeping the existing
+    ones) to tasks it does not hold, for a blocker it found. Each addition leaves a
+    flagged message on that task. Set `childPrerequisites: false` to turn this off.
+  - Anything else on other tasks fails, as do `replace` and clearing everything.
+  - `baseRevision` is checked against the tasks the write touches, so other
+    subagents' writes elsewhere do not make it stale.
+- **Attributed and flagged.** Updates record the subagent's agent id (`agent a3f2b1c4`
+  in history), and its messages are flagged for review like any model message. Your
+  widget and browser show `→ agent a3f2b1c4` on handed-over tasks; `pi-todo:snapshot`
+  tasks carry `claimedBy`.
+- **Released when the agent ends.** On `subagents:completed`, `failed`, `resumed` or
+  `child:disposed`, the claim is released and tasks it left `in_progress` get a
+  flagged message ("agent a3f2b1c4 ended (failed) with this task in progress"). A
+  resume reclaims the agent's tasks that nobody else holds. Claims replayed at a later
+  session start are released, since no subagent survives one.
+- You can still edit any task yourself, handed over or not.
+- A subagent working on handed-over tasks cannot hand them on to its own subagents
+  yet; that `subagent` call is blocked. Without a handoff, a subagent keeps its own
+  separate list as before.
+
 ## UI
 
 Above-editor widget uses a static top rule with the Nerd Font tasks icon
@@ -208,7 +252,8 @@ lower-priority layer; malformed files warn instead of preventing startup.
   "showCompleted": true,
   "singleActive": false,
   "confirmClear": true,
-  "contextSync": "changes"
+  "contextSync": "changes",
+  "childPrerequisites": true
 }
 ```
 
@@ -220,6 +265,8 @@ lower-priority layer; malformed files warn instead of preventing startup.
   remain on subsequent requests so user/nested-tool edits cannot disappear again.
   `off` disables sync. No periodic work reminders or forced turns. With sync off,
   explicitly call `list` after user changes or compaction.
+- `childPrerequisites`: let a subagent holding a `ledger` claim add prerequisites to
+  tasks it does not hold (see [Handing tasks to subagents](#handing-tasks-to-subagents)).
 
 ## Persistence and integration boundaries
 
@@ -235,16 +282,19 @@ separate `pi-personal:todo-review` journal of per-task revision watermarks. Like
 tasks, they follow the branch. Compaction checkpoints state without
 sending steering messages or running the agent.
 
-Subagent sessions keep their own lists. No task lifecycle is inferred from child
-notifications: successful child exit is not proof that parent verification passed.
-No subagent spawning, event subscriptions, or process-global task store. Matching
+Subagent sessions keep their own lists unless tasks were handed to them, and then
+they write only through the parent's checks. No task status is inferred from child
+notifications: successful child exit is not proof that parent verification passed;
+the only automatic effect of an agent ending is releasing its claim. No subagent
+spawning or process-global task store. Matching
 UX and explicit model control keep extensions composable and independently loadable.
 
 Other extensions read tasks without coupling to the journal format: on session
 start, branch changes, every plan change, and every review, pi-todo emits
 `pi-todo:snapshot` on the session's `pi.events` bus (`src/events.ts`). The payload
 is a fresh copy: `{ version: 1, revision, tasks }`, where each task adds `blocked`,
-`createdAt`, its bounded `updates` history, and an `unreviewed` message count.
+`createdAt`, its bounded `updates` history, an `unreviewed` message count, and
+`claimedBy` (the subagent's agent id) when the task is handed over.
 Each subagent has its own bus, so listeners see only their own session's tasks.
 pi-dashboard uses it for its task counts.
 

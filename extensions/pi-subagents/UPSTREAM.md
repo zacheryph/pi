@@ -208,6 +208,16 @@ No upstream runtime behavior was intentionally changed during import.
 - Tests: `test/handoff-sdk.test.ts` (a real orchestrator session spawning through
   the tool) plus unit tests in the lifecycle, tools and service suites.
 
+## Orchestrator todo handoff
+
+- The orchestrator prompt (`src/config/default-agents.ts`) tells it to hand each
+  worker its tasks with `handoff: { todos: { keys } }`, which pi-todo turns into a
+  claim the worker updates directly. Its note that workers' todo edits never reach
+  the ledger now covers only edits outside a handoff.
+- `test/todo-handoff-sdk.test.ts`: a real orchestrator (pi-subagents + pi-todo)
+  hands two tasks to a worker through the tool and checks the veto, the scoped list,
+  attributed updates, a new task joining the claim, and the release.
+
 ## Development
 
 Run from this repository's root:

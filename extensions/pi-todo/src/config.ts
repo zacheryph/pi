@@ -10,10 +10,12 @@ export interface TodoConfig {
   singleActive: boolean;
   confirmClear: boolean;
   contextSync: "changes" | "off";
+  /** Let a subagent with a `ledger` claim add prerequisites to tasks it does not hold. */
+  childPrerequisites: boolean;
 }
 export const DEFAULT_CONFIG: TodoConfig = {
   widget: true, maxVisible: 5, showCompleted: true, singleActive: false,
-  confirmClear: true, contextSync: "changes",
+  confirmClear: true, contextSync: "changes", childPrerequisites: true,
 };
 export const CONFIG_FILE = "todos.json";
 
@@ -21,7 +23,7 @@ export function sanitizeConfig(raw: unknown): Partial<TodoConfig> {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
   const input = raw as Record<string, unknown>;
   const config: Partial<TodoConfig> = {};
-  for (const key of ["widget", "showCompleted", "singleActive", "confirmClear"] as const) {
+  for (const key of ["widget", "showCompleted", "singleActive", "confirmClear", "childPrerequisites"] as const) {
     if (typeof input[key] === "boolean") config[key] = input[key];
   }
   if (typeof input.maxVisible === "number" && Number.isInteger(input.maxVisible) && input.maxVisible >= 1 && input.maxVisible <= 12) {

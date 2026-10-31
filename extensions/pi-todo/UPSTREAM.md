@@ -41,6 +41,12 @@ Upstream extension entry/settings/UI are replaced locally:
 - `src/commands.ts`: browser/review/add/update/remove/clear/settings commands; revision
   and session/branch-generation guards around asynchronous dialogs; no prompt
   submission.
+- `src/claims.ts`, `src/delegation.ts`: task handoff to subagents through
+  pi-subagents' `handoff.todos`. A `tool_call` veto and reservation, claims journaled
+  in `pi-personal:todo-claims` (claim/release, branch-scoped, beside the engine),
+  release on agent end, and a broker offered through `packages/pi-session-tree`. A
+  subagent with a claim routes its `todo` calls to it, scoped to its claim or the whole
+  ledger. Updates carry an optional `agent` attribution in history.
 - `src/config.ts`: independent global/project layered settings, no shared-settings
   package dependency. Project writes preserve unrelated settings fields.
 - `src/ui/`: compact widget and browser locally adapted from this repository's

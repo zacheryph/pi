@@ -19,6 +19,8 @@ export interface TodoUpdate {
   message?: string;
   /** User command; absent for model tool calls. */
   by?: "user";
+  /** pi-subagents agent id, when a subagent made the update through a delegated claim. */
+  agent?: string;
 }
 
 export interface TodoTaskActivity {
@@ -73,7 +75,7 @@ export function recordTodoActivity(
   next: TodoDetails,
   patches: readonly { key: string; message?: string }[] | undefined,
   activity: TodoActivity,
-  meta: { at: number; by?: "user" },
+  meta: { at: number; by?: "user"; agent?: string },
 ): { details: TodoDetails; activity: Map<string, TodoTaskActivity> } {
   const messages = new Map<string, string>();
   for (const [index, patch] of (patches ?? []).entries()) {
@@ -111,6 +113,7 @@ export function recordTodoActivity(
         ...(prior && changed ? { from: prior.status } : {}),
         ...(message ? { message } : {}),
         ...(meta.by ? { by: meta.by } : {}),
+        ...(meta.agent ? { agent: meta.agent } : {}),
       });
     }
     const createdAt = prior ? history?.createdAt : meta.at;
@@ -141,6 +144,7 @@ function readUpdate(value: unknown, maxRevision: number): TodoUpdate | undefined
   if (revision === undefined || revision < 1 || revision > maxRevision || at === undefined) return undefined;
   if (!STATUSES.has(value.status) || (value.from !== undefined && !STATUSES.has(value.from))) return undefined;
   if (value.by !== undefined && value.by !== "user") return undefined;
+  if (value.agent !== undefined && (typeof value.agent !== "string" || !value.agent || value.agent.length > 128)) return undefined;
   let message: string | undefined;
   if (value.message !== undefined) {
     if (typeof value.message !== "string") return undefined;
@@ -152,6 +156,7 @@ function readUpdate(value: unknown, maxRevision: number): TodoUpdate | undefined
     ...(value.from !== undefined ? { from: value.from as TodoStatus } : {}),
     ...(message ? { message } : {}),
     ...(value.by === "user" ? { by: "user" as const } : {}),
+    ...(typeof value.agent === "string" ? { agent: value.agent } : {}),
   };
 }
 
