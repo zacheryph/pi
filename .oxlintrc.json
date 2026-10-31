@@ -12,5 +12,13 @@
     "typescript/no-misused-promises": "error",
     "typescript/await-thenable": "error"
   },
-  "ignorePatterns": ["**/dist/**", "**/coverage/**"]
+  "ignorePatterns": ["**/dist/**", "**/coverage/**"],
+  "overrides": [
+    {
+      "files": ["**/*.test.ts", "**/*.test.mjs"],
+      "rules": {
+        "typescript/unbound-method": "off"
+      }
+    }
+  ]
 }
