@@ -224,6 +224,10 @@ describe("AgentTypeRegistry", () => {
       expect(names).toEqual(["read", "bash", "grep", "find", "ls", "stash_get", "stash_list", "stash_put"]);
     });
 
+    it("defaults Explore to the newest available Haiku rather than a pinned version", () => {
+      expect(makeRegistry().resolveAgentConfig("Explore").model).toBe("anthropic/claude-haiku@latest");
+    });
+
     it("lets Plan read the stash but not write to it", () => {
       const registry = makeRegistry();
       expect(registry.getToolNamesForType("Plan")).toEqual(["read", "bash", "grep", "find", "ls", "stash_get", "stash_list"]);

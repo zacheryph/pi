@@ -15,7 +15,7 @@ import { parseThinkingLevel, thinkingLevelError } from "#src/config/thinking-lev
 import { composeAgentInstructions, parseFragments } from "#src/config/prompt-fragments";
 import { MAIN_AGENT_SECTION } from "#src/session/main-profile-prompt";
 import { resolveToolSelection } from "#src/session/tool-selection";
-import { resolveModel } from "#src/session/model-resolver";
+import { LATEST_SUFFIX, resolveModel } from "#src/session/model-resolver";
 import type { AgentConfig } from "#src/types";
 import { sanitizeBrowserText } from "#src/ui/read-only-browser";
 
@@ -144,7 +144,8 @@ export function registerMainAgentProfile(pi: ExtensionAPI, overrides: Partial<Ma
     let model = ctx.model;
     if (profile.model) {
       const slash = profile.model.indexOf("/");
-      const resolved = slash < 0 ? resolveModel(profile.model, ctx.modelRegistry)
+      const resolved = slash < 0 || profile.model.toLowerCase().endsWith(LATEST_SUFFIX)
+        ? resolveModel(profile.model, ctx.modelRegistry)
         : ctx.modelRegistry.find(profile.model.slice(0, slash), profile.model.slice(slash + 1));
       if (!resolved || typeof resolved === "string" || !ctx.modelRegistry.getAvailable().some(m => m.provider === resolved.provider && m.id === resolved.id)) {
         throw new Error(`Unavailable profile model: ${profile.model}.`);

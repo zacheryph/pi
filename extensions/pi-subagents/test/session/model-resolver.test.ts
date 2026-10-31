@@ -206,6 +206,49 @@ describe("resolveModel", () => {
   });
 });
 
+describe("resolveModel — @latest", () => {
+  const HAIKUS = [
+    makeModel({ id: "claude-haiku-4-5-20251001", name: "Claude Haiku 4.5", provider: "anthropic" }),
+    makeModel({ id: "claude-haiku-5-5", name: "Claude Haiku 5.5", provider: "anthropic" }),
+    makeModel({ id: "claude-haiku-5-0", name: "Claude Haiku 5", provider: "anthropic" }),
+    makeModel({ id: "claude-sonnet-5-5", name: "Claude Sonnet 5.5", provider: "anthropic" }),
+    makeModel({ id: "claude-haiku-9-9", name: "Claude Haiku 9.9", provider: "other" }),
+  ];
+
+  it("picks the newest model of the family for the provider", () => {
+    expect(resolveModel("anthropic/claude-haiku@latest", makeRegistry(HAIKUS))).toBe(HAIKUS[1]);
+  });
+
+  it("compares version numbers, not string order or registry order", () => {
+    const models = [HAIKUS[1], HAIKUS[0]].reverse();
+    expect(resolveModel("anthropic/claude-haiku@latest", makeRegistry(models))).toBe(HAIKUS[1]);
+  });
+
+  it("searches every provider when none is given", () => {
+    expect(resolveModel("claude-haiku@latest", makeRegistry(HAIKUS))).toBe(HAIKUS[4]);
+  });
+
+  it("is case-insensitive", () => {
+    expect(resolveModel("Anthropic/Claude-Haiku@LATEST", makeRegistry(HAIKUS))).toBe(HAIKUS[1]);
+  });
+
+  it("considers only available models", () => {
+    expect(resolveModel("anthropic/claude-haiku@latest", makeRegistry(HAIKUS, [HAIKUS[0], HAIKUS[3]]))).toBe(HAIKUS[0]);
+  });
+
+  it("reports an error when no available model matches", () => {
+    const result = resolveModel("anthropic/claude-haiku@latest", makeRegistry(HAIKUS, [HAIKUS[3]]));
+    expect(result).toEqual(expect.stringContaining('No available model matches "anthropic/claude-haiku@latest"'));
+    expect(result).toEqual(expect.stringContaining("anthropic/claude-sonnet-5-5"));
+  });
+
+  it("falls back to the parent model when a config-specified family is unavailable", () => {
+    const parent = HAIKUS[3];
+    expect(resolveInvocationModel(parent, "anthropic/claude-haiku@latest", false, makeRegistry(HAIKUS, [parent])))
+      .toEqual({ model: parent });
+  });
+});
+
 describe("resolveInvocationModel", () => {
   const parentModel = makeModel({ id: "claude-opus-4-6", provider: "anthropic" });
 

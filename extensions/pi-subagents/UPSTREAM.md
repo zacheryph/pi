@@ -100,6 +100,20 @@ No upstream runtime behavior was intentionally changed during import.
   references fail selected execution rather than dropping instructions.
 - Read-only `/subagents:agents` details show fragment sources and composition.
 
+## Latest-model defaults
+
+- `src/session/model-resolver.ts`: a model string ending in `@latest`
+  (`[provider/]family@latest`) resolves to the newest available model whose id
+  contains `family`, comparing the numbers in the id (so `claude-haiku-5-5` beats
+  `claude-haiku-4-5-20251001`). No match is an error string, so config-specified
+  models fall back to the parent like any other unresolved model.
+- `src/main-agent-profile.ts`: a `provider/…@latest` profile model goes through the
+  resolver instead of exact lookup.
+- Explore's default model is `anthropic/claude-haiku@latest` instead of the pinned
+  `anthropic/claude-haiku-4-5-20251001`, so it follows new Haiku releases and does not
+  silently fall back to the parent's model when an old one is retired.
+- Docs: built-in table and the `model` frontmatter rows here and in the README.
+
 ## Dev dependency pins
 
 - Pi dev dependencies bumped from 1.1.0 to 1.4.0 (2026-10-29).

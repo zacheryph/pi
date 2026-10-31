@@ -215,7 +215,7 @@ Launch a sub-agent.
 | `prompt`            | string       | yes      | The task for the agent                                           |
 | `description`       | string       | yes      | Short 3-5 word summary (shown in UI)                             |
 | `subagent_type`     | string       | yes      | Agent type (built-in or custom)                                  |
-| `model`             | string       | no       | Model — `provider/modelId` or fuzzy name (`"haiku"`, `"sonnet"`) |
+| `model`             | string       | no       | Model — `provider/modelId`, fuzzy name (`"haiku"`, `"sonnet"`), or `[provider/]family@latest` (newest available match) |
 | `thinking`          | string       | no       | Thinking level: off, minimal, low, medium, high, xhigh, max      |
 | `max_turns`         | number       | no       | Turn ceiling (minimum 2). Omit for the agent's own limit         |
 | `run_in_background` | boolean      | no       | Run without blocking                                             |
