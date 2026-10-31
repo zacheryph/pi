@@ -153,6 +153,20 @@ No upstream runtime behavior was intentionally changed during import.
 - `test/stash-sdk.test.ts` covers Explore writing and reading, and Plan being
   refused `stash_put`, in real SDK child sessions.
 
+## Personal reviewer profile
+
+- `src/config/default-agents.ts`: new built-in `reviewer` (read-only tools, inherited
+  model, `replace` mode). It verifies finished work against its acceptance criteria,
+  may run the project's checks, never edits files or git state, and starts its report
+  with `Verdict: PASS`, `FAIL`, or `BLOCKED`, followed by per-criterion evidence.
+- `AgentTypeRegistry.DEFAULT_AGENT_NAMES` lists it after Plan.
+- The orchestrator prompt names reviewer for verification and gains one bullet:
+  review each implementation task with a reviewer that did not do the work, resume
+  the implementer on `FAIL`, and stop after two failed rounds.
+- Tests: `test/config/agent-types.test.ts` (profile, tools, orchestrator wording,
+  user override); fixture user agent `reviewer` renamed `linter` there, and the
+  agents-browser lists now include the built-in.
+
 ## Service publication per session
 
 - Upstream kept one `globalThis` slot. Each in-process child session loads the

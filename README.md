@@ -174,6 +174,12 @@ The built-in `orchestrator` profile manages long-running projects with categoriz
 todos, specialist delegation, and follow-ups in prior workers' sessions. Use
 `pi --agent orchestrator` or delegate with `subagent_type: "orchestrator"`.
 
+The built-in `reviewer` profile verifies finished work: it runs the project's
+checks, judges each acceptance criterion with evidence, and reports
+`Verdict: PASS`, `FAIL`, or `BLOCKED` without fixing anything. The orchestrator
+completes an implementation task only after a reviewer that did not do the work
+passes it.
+
 Personal copy of [`gotgenes/pi-packages/packages/pi-subagents`](https://github.com/gotgenes/pi-packages/tree/main/packages/pi-subagents).
 Provides `subagent`, `get_subagent_result`, and `steer_subagent`, plus
 `/subagents:settings`, `/subagents:sessions`, `/subagents:watch`, and
