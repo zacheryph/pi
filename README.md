@@ -286,6 +286,20 @@ Root `pi.skills` loads `skills/`, so a bundle install provides these. Force one
 with `/skill:<name>`. Skills for working on this repository itself live in
 `.agents/skills/` and are not part of the bundle.
 
+### babysit-pr
+
+Drives one pull request to green CI with every review comment handled, without
+polling. It watches the checks of the PR's head commit SHA (never the moving PR
+number) with `job_watch`, or `job_start` with `gh run watch`, and ends its turn
+until they finish. A failed check gets its log read and is classified: caused by
+the PR (reproduce locally with the same command, smallest fix, rerun, push),
+infrastructure (rerun the failed jobs once), or pre-existing (reported, not
+fixed). Review comments in scope are fixed and answered; larger asks go back to
+you. It stops after three attempts per check, on a decision only you can make, or
+on a conflict with the base branch. Never skips tests, pushes empty commits,
+rewrites others' history, approves, or merges. Uses `gh` when authenticated,
+otherwise the GitHub MCP tools.
+
 ### make-it-easy
 
 Turns a project or goal into implementation roadmap options, following Kent
