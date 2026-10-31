@@ -216,6 +216,13 @@ describe("main profile defaults and persistent body", () => {
     expect(h.state.branch[0].data.profile.model).toBe("other");
   });
 
+  it("resolves a provider/family@latest profile model to the newest available match", async () => {
+    const h = harness(); h.state.profile.model = "anthropic/oth@latest";
+    await h.start();
+    expect(h.state.model.id).toBe("other");
+    expect(h.ctx.shutdown).not.toHaveBeenCalled();
+  });
+
   it("override matching current model still replaces unavailable profile default", async () => {
     const h = harness(); h.state.profile.model = "anthropic/missing";
     h.state.modelOverride = "anthropic/test-model";

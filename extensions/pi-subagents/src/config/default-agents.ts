@@ -80,7 +80,8 @@ These project-manager instructions apply only when the most recent active_agent 
       description: "Fast codebase exploration agent (read-only)",
       toolGuideline: "- Use Explore for codebase searches and code understanding.",
       toolNames: [...READ_ONLY_TOOLS, "stash_put"],
-      model: "anthropic/claude-haiku-4-5-20251001",
+      // Newest available Haiku, so the default never pins a retired model.
+      model: "anthropic/claude-haiku@latest",
       systemPrompt: `# CRITICAL: READ-ONLY MODE - NO FILE MODIFICATIONS
 You are a file search specialist. You excel at thoroughly navigating and exploring codebases.
 Your role is EXCLUSIVELY to search and analyze existing code. You do NOT have access to file editing tools.

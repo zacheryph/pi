@@ -1,5 +1,6 @@
 /**
- * Model resolution: exact match ("provider/modelId") with fuzzy fallback.
+ * Model resolution: exact match ("provider/modelId") with fuzzy fallback, and
+ * "<family>@latest" for the newest available model of a family.
  */
 import type { Model } from "@earendil-works/pi-ai";
 
@@ -63,6 +64,11 @@ export function resolveModel(
 ): Model<any> | string {
   // Available models (those with auth configured)
   const all = registry.getAvailable?.() ?? registry.getAll();
+
+  // 0. "[provider/]family@latest": the newest available model of that family.
+  if (input.toLowerCase().endsWith(LATEST_SUFFIX)) {
+    return resolveLatest(input.slice(0, -LATEST_SUFFIX.length), all, registry);
+  }
   const availableSet = new Set(all.map(m => `${m.provider}/${m.id}`.toLowerCase()));
 
   // 1. Exact match: "provider/modelId" — only if available (has auth)
@@ -89,6 +95,42 @@ export function resolveModel(
     .sort()
     .join("\n");
   return `Model not found: "${input}".\n\nAvailable models:\n${modelList}`;
+}
+
+/** Suffix selecting the newest available model of a family, e.g. "anthropic/claude-haiku@latest". */
+export const LATEST_SUFFIX = "@latest";
+
+/**
+ * Newest available model whose id contains `family` (and whose provider matches,
+ * when one is given). Newest compares the numbers in the id left to right, so
+ * `claude-haiku-5-5` beats `claude-haiku-4-5-20251001`; no version format is assumed.
+ */
+function resolveLatest(spec: string, all: Model<any>[], registry: ModelRegistry): Model<any> | string {
+  const slashIdx = spec.indexOf("/");
+  const provider = slashIdx === -1 ? undefined : spec.slice(0, slashIdx).toLowerCase();
+  const family = spec.slice(slashIdx + 1).toLowerCase();
+  const candidates = family
+    ? all.filter(m => (!provider || m.provider.toLowerCase() === provider) && m.id.toLowerCase().includes(family))
+    : [];
+  const newest = candidates.sort(compareNewestFirst)[0];
+  if (newest) return registry.find(newest.provider, newest.id) ?? newest;
+  const modelList = all
+    .map(m => `  ${m.provider}/${m.id}`)
+    .sort()
+    .join("\n");
+  return `No available model matches "${spec}${LATEST_SUFFIX}".\n\nAvailable models:\n${modelList}`;
+}
+
+/** Order by the numbers in each id, highest first; ties fall back to the id, descending. */
+function compareNewestFirst(a: Model<any>, b: Model<any>): number {
+  const version = (m: Model<any>) => [...m.id.matchAll(/\d+/g)].map(part => Number(part[0]));
+  const av = version(a);
+  const bv = version(b);
+  for (let i = 0; i < Math.max(av.length, bv.length); i++) {
+    const delta = (bv[i] ?? 0) - (av[i] ?? 0);
+    if (delta) return delta;
+  }
+  return b.id.localeCompare(a.id);
 }
 
 /**
