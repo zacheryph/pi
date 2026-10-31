@@ -20,7 +20,7 @@ what it must know. Common kinds:
 ## Describe each input
 
 | Input | Consumer | Today's source | Producer / owner | Problem | Recommended supply |
-| --- | --- | --- | --- | --- | --- |
+| ----- | -------- | -------------- | ---------------- | ------- | ------------------ |
 
 "Today's source" is one of: hardcoded, copied in several places, implicit
 convention, passed by the caller, discoverable, or missing. Use evidence.

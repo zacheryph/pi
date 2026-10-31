@@ -392,6 +392,10 @@ script. Oxlint's type-aware rules use the native TypeScript implementation;
 TypeScript 7 runs the full type checks. Shared development dependencies live in
 the root package, while runtime peer dependencies stay with each extension.
 Generated declarations, coverage, and the npm lockfile are excluded from formatting.
+Tests may reference mock methods in assertions; unbound-method checking stays
+enabled for runtime source. Terminal-control regexes have local lint explanations.
+The fix command formats again after successful lint fixes so it leaves code ready
+for the formatting check.
 
 These check/test commands cover every development workspace. To run one
 workspace, pass it with `-w`, e.g. `npm test -w extensions/pi-todo`. Pi modules

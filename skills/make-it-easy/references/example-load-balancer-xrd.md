@@ -12,12 +12,12 @@ every claim.
 
 ## Inputs (phase 2)
 
-| Input | Consumer | Today's source | Producer | Problem | Recommended supply |
-| --- | --- | --- | --- | --- | --- |
-| Which VPC | LB composition | Would be hardcoded VPC ID | Network layer | Every claim and composition knows a network ID; a new VPC means editing both | Discover by tag |
-| Which subnets | LB composition | Would be hardcoded subnet IDs | Network layer | Same, and per-AZ | Discover by tag |
-| Internal or public | Claim author | Implicit | Claim | Choice is the consumer's | Claim field |
-| Security policy | LB composition | Varies | Security team | Not in scope for this change | Open question |
+| Input              | Consumer       | Today's source                | Producer      | Problem                                                                      | Recommended supply |
+| ------------------ | -------------- | ----------------------------- | ------------- | ---------------------------------------------------------------------------- | ------------------ |
+| Which VPC          | LB composition | Would be hardcoded VPC ID     | Network layer | Every claim and composition knows a network ID; a new VPC means editing both | Discover by tag    |
+| Which subnets      | LB composition | Would be hardcoded subnet IDs | Network layer | Same, and per-AZ                                                             | Discover by tag    |
+| Internal or public | Claim author   | Implicit                      | Claim         | Choice is the consumer's                                                     | Claim field        |
+| Security policy    | LB composition | Varies                        | Security team | Not in scope for this change                                                 | Open question      |
 
 The first two are the interesting ones. Hardcoding IDs is the baseline: fast and
 coupled. Passing IDs in every claim pushes network knowledge onto every team.
@@ -27,6 +27,7 @@ balancers in environment X"), and the network layer advertises capability by
 tagging VPCs and subnets. The XRD's composition selects by tag.
 
 **Contract sketch**
+
 - Keys: `example.org/lb-placement` on VPCs (`environment` value) and on
   subnets (`public` or `internal`).
 - Owner: the network layer writes them; the LB composition only reads.
@@ -40,12 +41,12 @@ composition can be tested with fixtures that carry the tags.
 
 ## Friction (phase 3)
 
-| Friction | Blocks | Verdict |
-| --- | --- | --- |
-| VPCs and subnets are created by a module with no tagging hook | Tag contract | Fix first: add a tags input to the module |
-| Subnets differ in naming between environments | Tag contract (cannot tag by name pattern) | Fix first: tag explicitly, ignore names |
-| Two older compositions each hardcode a network ID | Nothing here | Leave. Note it. |
-| No tests for composition selection logic | The change | Work around: fixtures for the new composition only |
+| Friction                                                      | Blocks                                    | Verdict                                            |
+| ------------------------------------------------------------- | ----------------------------------------- | -------------------------------------------------- |
+| VPCs and subnets are created by a module with no tagging hook | Tag contract                              | Fix first: add a tags input to the module          |
+| Subnets differ in naming between environments                 | Tag contract (cannot tag by name pattern) | Fix first: tag explicitly, ignore names            |
+| Two older compositions each hardcode a network ID             | Nothing here                              | Leave. Note it.                                    |
+| No tests for composition selection logic                      | The change                                | Work around: fixtures for the new composition only |
 
 ## Options (phase 4)
 
@@ -61,19 +62,18 @@ composition can be tested with fixtures that carry the tags.
 ## Roadmap (phase 5, Option B)
 
 **Make it easy**
-1. Add a tags input to the network module. *Type:* tidy. *Eases:* 2. *Ships
-   alone:* yes. *Rollback:* revert.
-2. Define the placement contract in docs. *Type:* contract. *Eases:* 3 and 4.
-3. Tag existing VPCs and subnets. *Type:* contract retrofit. *Ships alone:* yes.
-   *Verification:* a query by tag returns the expected set per environment.
 
-**The change**
-4. Implement the XRD and composition selecting by tag. *Done when:* a claim in
-   each environment gets a load balancer in the right subnets, and a missing tag
-   produces the named error.
+1. Add a tags input to the network module. _Type:_ tidy. _Eases:_ 2. _Ships
+   alone:_ yes. _Rollback:_ revert.
+2. Define the placement contract in docs. _Type:_ contract. _Eases:_ 3 and 4.
+3. Tag existing VPCs and subnets. _Type:_ contract retrofit. _Ships alone:_ yes.
+   _Verification:_ a query by tag returns the expected set per environment.
 
-**Clean up**
-5. Document the contract next to the network module and add a check that fails
-   when a subnet lacks required tags.
+**The change** 4. Implement the XRD and composition selecting by tag. _Done when:_ a claim in
+each environment gets a load balancer in the right subnets, and a missing tag
+produces the named error.
+
+**Clean up** 5. Document the contract next to the network module and add a check that fails
+when a subnet lacks required tags.
 
 Step 4 is small because steps 1-3 removed every question about where things live.

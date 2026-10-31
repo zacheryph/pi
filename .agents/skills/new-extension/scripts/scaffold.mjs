@@ -54,6 +54,10 @@ const entry = `./${dir}/src/index.ts`;
 const read = (path) => readFileSync(join(root, path), "utf8");
 if (existsSync(join(root, dir))) fail(`${dir} already exists`);
 
+const formatter = join(root, "node_modules/oxfmt/bin/oxfmt");
+if (!existsSync(formatter))
+  fail("run npm install --ignore-scripts before scaffolding an extension");
+
 const manifest = JSON.parse(read("package.json"));
 if (manifest.workspaces.includes(dir)) fail(`${dir} is already a workspace`);
 if (values.after && !manifest.pi.extensions.includes(`./extensions/${values.after}/src/index.ts`)) {
@@ -142,7 +146,7 @@ const files = {
       engines: { node: manifest.engines?.node ?? ">=24" },
       scripts: {
         check: "oxfmt --check . && oxlint --deny-warnings . && npm run typecheck",
-        fix: "oxfmt --write . && oxlint --fix .",
+        fix: "oxfmt --write . && oxlint --fix . && oxfmt --write .",
         typecheck: "tsc --noEmit",
         test: "vitest run",
         "test:watch": "vitest",
@@ -190,6 +194,16 @@ if (!values["no-install"]) {
     stdio: "inherit",
   });
 }
+
+// Keep generated code and the edited registration lists consistent with CI.
+execFileSync(
+  process.execPath,
+  [formatter, "--write", dir, "package.json", "scripts/verify-bundle.mjs"],
+  {
+    cwd: root,
+    stdio: "inherit",
+  },
+);
 
 console.log(`
 Created ${dir}/ (${Object.keys(files).join(", ")}).

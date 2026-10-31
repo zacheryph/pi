@@ -108,36 +108,42 @@ Use this structure (see `extensions/pi-jobs/UPSTREAM.md`):
 ```markdown
 # Vendored <name>
 
-<one line on what it is>, imported from [`<owner>/<repo>`](<url>).
+<one line on what it is>, imported from [`<owner>/<repo>`](url).
 
-| | |
-| --- | --- |
-| Source | <repo url> |
-| Directory | <subdir or "repository root"> |
-| Commit | `<full sha>` (<date>, "<subject>") |
-| Upstream version | `<package>` <version> |
-| Upstream tested with | Pi <x.y.z>, Node.js <x> |
-| License | <license>; original notice retained in `LICENSE` |
-| Imported | <date> |
+|                      |                                                  |
+| -------------------- | ------------------------------------------------ |
+| Source               | <repo url>                                       |
+| Directory            | <subdir or "repository root">                    |
+| Commit               | `<full sha>` (<date>, "<subject>")               |
+| Upstream version     | `<package>` <version>                            |
+| Upstream tested with | Pi <x.y.z>, Node.js <x>                          |
+| License              | <license>; original notice retained in `LICENSE` |
+| Imported             | <date>                                           |
 
 <Not a submodule; which entry point the bundle loads; don't install the npm package too.>
 
 ## Import
+
 <How it was copied, what was left out and why, which files are byte-for-byte.>
 
 ## Local changes
+
 ### <change group, e.g. Integration (import PR), Personal widget>
+
 - <file or area>: <what changed and why>
 
 ## Known gaps
+
 <Type errors, version mismatches, UI rules not yet applied, missing tests.>
 
 ## Planned changes
+
 <Linked issues.>
 
 ## Sync history
-| Date | Upstream commit | Notes |
-| --- | --- | --- |
+
+| Date   | Upstream commit           | Notes           |
+| ------ | ------------------------- | --------------- |
 | <date> | `<short sha>` (<version>) | Initial import. |
 ```
 

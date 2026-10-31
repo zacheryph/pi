@@ -14,11 +14,11 @@ const workspaces = [
 ];
 const all = [...workspaces].sort();
 
-test("main runs all extension workspaces", () => {
+void test("main runs all extension workspaces", () => {
   assert.deepEqual(selectExtensions([...workspaces, "other-workspace"], [], true), all);
 });
 
-test("PRs select only changed extensions, once per extension", () => {
+void test("PRs select only changed extensions, once per extension", () => {
   assert.deepEqual(
     selectExtensions(workspaces, [
       "extensions/pi-todo/src/index.ts",
@@ -29,7 +29,7 @@ test("PRs select only changed extensions, once per extension", () => {
   );
 });
 
-test("unrelated, removed, and similarly prefixed extensions do not match", () => {
+void test("unrelated, removed, and similarly prefixed extensions do not match", () => {
   assert.deepEqual(
     selectExtensions(workspaces, [
       "README.md",
@@ -41,7 +41,7 @@ test("unrelated, removed, and similarly prefixed extensions do not match", () =>
   assert.deepEqual(selectExtensions(workspaces, []), []);
 });
 
-test("shared dependency, compiler, and CI changes select all extensions", () => {
+void test("shared dependency, compiler, and CI changes select all extensions", () => {
   for (const path of [
     ".nvmrc",
     "package.json",
@@ -57,15 +57,15 @@ test("shared dependency, compiler, and CI changes select all extensions", () => 
   }
 });
 
-test("a shared package change selects every workspace, including the package", () => {
+void test("a shared package change selects every workspace, including the package", () => {
   assert.deepEqual(selectExtensions(workspaces, ["packages/pi-session-tree/src/index.ts"]), all);
 });
 
-test("packages/ files outside a workspace directory do not select everything", () => {
+void test("packages/ files outside a workspace directory do not select everything", () => {
   assert.deepEqual(selectExtensions(workspaces, ["packages/README.md"]), []);
 });
 
-test("git diff excludes base-only changes and selects both sides of cross-extension moves", () => {
+void test("git diff excludes base-only changes and selects both sides of cross-extension moves", () => {
   const cwd = mkdtempSync(join(tmpdir(), "extension-selection-"));
   const git = (...args) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
   const commit = () => {

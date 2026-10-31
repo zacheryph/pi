@@ -36,12 +36,12 @@ Call `todo` with `action: "list"` first. If tasks for this roadmap already exist
 
 One todo per roadmap step, created with a single sparse `upsert`, never `replace`:
 
-| Todo field | From the step |
-|---|---|
-| `key` | `<prefix>-<n>`, where `<prefix>` is a short form of the slug (`lb-xrd-3`). Must match `^[a-z0-9][a-z0-9._-]{0,39}$`. |
-| `subject` | The step heading (verb phrase), up to 160 characters. |
+| Todo field    | From the step                                                                                                                                                                            |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `key`         | `<prefix>-<n>`, where `<prefix>` is a short form of the slug (`lb-xrd-3`). Must match `^[a-z0-9][a-z0-9._-]{0,39}$`.                                                                     |
+| `subject`     | The step heading (verb phrase), up to 160 characters.                                                                                                                                    |
 | `description` | `Type`, `Does`, `Done when`, `Verification`, `Rollback`, and `Roadmap: docs/roadmaps/<slug>.md step <n>`. Up to 2,000 characters; cut `Does` first, never `Done when` or `Verification`. |
-| `dependsOn` | The step's `Depends on`, mapped to keys. Steps without one depend on nothing. |
+| `dependsOn`   | The step's `Depends on`, mapped to keys. Steps without one depend on nothing.                                                                                                            |
 
 Also add one task, `<prefix>-done`, that depends on every step: "Roadmap
 complete: update document status". The ledger holds at most 50 tasks; a roadmap

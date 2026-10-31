@@ -31,7 +31,7 @@
     "check": "oxfmt --check . && oxlint --deny-warnings . && npm run typecheck",
     "test": "node --test --test-timeout=30000 'test/*.test.ts'",
     "typecheck": "tsc --noEmit && for f in e2e/*.mjs; do node --check \"$f\" || exit 1; done",
-    "fix": "oxfmt --write . && oxlint --fix ."
+    "fix": "oxfmt --write . && oxlint --fix . && oxfmt --write ."
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*"
