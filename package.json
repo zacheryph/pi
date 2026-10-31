@@ -9,7 +9,8 @@
     "extensions/pi-system-insights",
     "extensions/pi-todo",
     "extensions/pi-tldr",
-    "extensions/pi-dashboard"
+    "extensions/pi-dashboard",
+    "packages/pi-session-tree"
   ],
   "scripts": {
     "check": "npm run check --workspaces --if-present",

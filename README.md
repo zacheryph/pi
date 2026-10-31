@@ -59,43 +59,49 @@ pi-personal/
 │   └── make-it-easy/                    # roadmap-planning skill
 │       ├── SKILL.md
 │       └── references/                  # one file per phase, template, worked example
-└── extensions/
-    ├── pi-dashboard/
-    │   ├── src/index.ts                 # session reporter + /dashboard command
-    │   ├── src/hub/server.ts            # web hub (plain Node, not a Pi extension)
-    │   ├── test/
-    │   └── docs/plan.md                 # research and phased plan
-    ├── pi-jobs/                         # vendored
-    │   ├── src/extension.ts             # job_* tools + /jobs command
-    │   ├── test/
-    │   └── UPSTREAM.md
-    ├── pi-stash/
-    │   ├── src/index.ts                 # stash_* tools + /stash commands
-    │   └── test/
-    ├── pi-subagents/                    # vendored fork
-    │   ├── src/index.ts                 # subagent tools + /subagents:* commands
-    │   ├── test/
-    │   ├── docs/
-    │   ├── LICENSE
-    │   └── UPSTREAM.md
-    ├── pi-system-insights/
-    │   ├── src/index.ts                 # /system:* commands
-    │   └── test/
-    ├── pi-tldr/
-    │   ├── src/index.ts                 # /tldr command + session naming
-    │   └── test/
-    └── pi-todo/                         # vendored engine, local UI
-        ├── src/index.ts                 # todo tool + /todos:* commands
-        ├── test/
-        ├── docs/comparison.md           # base-selection report
-        └── UPSTREAM.md
+├── extensions/
+│   ├── pi-dashboard/
+│   │   ├── src/index.ts                 # session reporter + /dashboard command
+│   │   ├── src/hub/server.ts            # web hub (plain Node, not a Pi extension)
+│   │   ├── test/
+│   │   └── docs/plan.md                 # research and phased plan
+│   ├── pi-jobs/                         # vendored
+│   │   ├── src/extension.ts             # job_* tools + /jobs command
+│   │   ├── test/
+│   │   └── UPSTREAM.md
+│   ├── pi-stash/
+│   │   ├── src/index.ts                 # stash_* tools + /stash commands
+│   │   └── test/
+│   ├── pi-subagents/                    # vendored fork
+│   │   ├── src/index.ts                 # subagent tools + /subagents:* commands
+│   │   ├── test/
+│   │   ├── docs/
+│   │   ├── LICENSE
+│   │   └── UPSTREAM.md
+│   ├── pi-system-insights/
+│   │   ├── src/index.ts                 # /system:* commands
+│   │   └── test/
+│   ├── pi-tldr/
+│   │   ├── src/index.ts                 # /tldr command + session naming
+│   │   └── test/
+│   └── pi-todo/                         # vendored engine, local UI
+│       ├── src/index.ts                 # todo tool + /todos:* commands
+│       ├── test/
+│       ├── docs/comparison.md           # base-selection report
+│       └── UPSTREAM.md
+└── packages/
+    └── pi-session-tree/                 # shared library, not an extension
+        ├── src/index.ts                 # cross-session registry (globalThis)
+        └── test/
 ```
 
 Each extension directory is an npm workspace with its own `package.json`,
 `tsconfig.json` (extending the root base), and `check`/`test` scripts.
 
 Root `pi.extensions` lists entry points explicitly. Pi loads each as its own
-extension; helper files and tests are not loaded as extensions. Workspaces simplify
+extension; helper files and tests are not loaded as extensions. `packages/` holds
+libraries shared by several extensions. They are workspaces with no `pi` entry, and
+extensions import them by relative path. Workspaces simplify
 development commands. All manifests are private;
 nothing needs publishing.
 

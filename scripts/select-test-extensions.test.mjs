@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { changedFiles, selectExtensions } from "./select-test-extensions.mjs";
 
-const workspaces = ["extensions/pi-todo", "extensions/pi-subagents", "extensions/pi-system-insights"];
+const workspaces = ["extensions/pi-todo", "extensions/pi-subagents", "extensions/pi-system-insights", "packages/pi-session-tree"];
 const all = [...workspaces].sort();
 
 test("main runs all extension workspaces", () => {
@@ -35,6 +35,14 @@ test("shared dependency, compiler, and CI changes select all extensions", () => 
   ]) {
     assert.deepEqual(selectExtensions(workspaces, [path]), all, path);
   }
+});
+
+test("a shared package change selects every workspace, including the package", () => {
+  assert.deepEqual(selectExtensions(workspaces, ["packages/pi-session-tree/src/index.ts"]), all);
+});
+
+test("packages/ files outside a workspace directory do not select everything", () => {
+  assert.deepEqual(selectExtensions(workspaces, ["packages/README.md"]), []);
 });
 
 test("git diff excludes base-only changes and selects both sides of cross-extension moves", () => {
