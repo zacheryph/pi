@@ -16,7 +16,7 @@ import {
   type AgentSessionEvent,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import type { ChildLifecyclePublisher } from "#src/lifecycle/child-lifecycle";
+import type { ChildLifecyclePublisher, ChildRunIdentity } from "#src/lifecycle/child-lifecycle";
 import { emitChildSessionShutdown } from "#src/lifecycle/child-shutdown";
 import {
   normalizeMaxTurns,
@@ -58,7 +58,7 @@ export interface ResumeTurnLoopOptions {
 }
 
 /** Session-level facts known at creation, supplied by the factory. */
-export interface SubagentSessionMeta {
+export interface SubagentSessionMeta extends ChildRunIdentity {
   /** Path to the persisted session JSONL file, if the session was persisted. */
   outputFile: string | undefined;
   /** Child session id — the registry key carried on session-created/disposed events. */
@@ -293,7 +293,11 @@ export class SubagentSession {
     await emitChildSessionShutdown(this._session);
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- dispose may not exist on all session implementations
     this._session.dispose?.();
-    this.meta.lifecycle.disposed({ sessionId: this.meta.sessionId });
+    this.meta.lifecycle.disposed({
+      sessionId: this.meta.sessionId,
+      ...(this.meta.agentId !== undefined ? { agentId: this.meta.agentId } : {}),
+      ...(this.meta.toolCallId !== undefined ? { toolCallId: this.meta.toolCallId } : {}),
+    });
   }
 }
 

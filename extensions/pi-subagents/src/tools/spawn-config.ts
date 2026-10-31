@@ -10,6 +10,7 @@ import type { Model } from "@earendil-works/pi-ai";
 import type { AgentTypeRegistry } from "#src/config/agent-types";
 import { type LockableField, resolveAgentInvocationConfig } from "#src/config/invocation-config";
 import { parseThinkingLevel, thinkingLevelError } from "#src/config/thinking-level";
+import { type SubagentHandoff, toHandoff } from "#src/lifecycle/child-lifecycle";
 import { isBelowMinimumTurns, MIN_MAX_TURNS, normalizeMaxTurns } from "#src/lifecycle/turn-limits";
 import type { ModelRegistry } from "#src/session/model-resolver";
 import { resolveInvocationModel } from "#src/session/model-resolver";
@@ -46,6 +47,8 @@ export interface SpawnExecution {
   inheritContext: boolean;
   runInBackground: boolean;
   agentInvocation: AgentInvocation;
+  /** From `todos`/`todo_scope`; forwarded to the child's `session-created` event. */
+  handoff?: SubagentHandoff;
 }
 
 /** Presentation: display/UI values derived from identity and execution. */
@@ -115,6 +118,7 @@ export function resolveSpawnConfig(
   if (resolution.error) return { error: resolution.error };
   const model = resolution.model;
 
+  const handoff = toHandoff(params.todos, params.todo_scope);
   const thinking = resolvedConfig.thinking;
   const inheritContext = resolvedConfig.inheritContext;
   const runInBackground = resolvedConfig.runInBackground;
@@ -160,6 +164,7 @@ export function resolveSpawnConfig(
       inheritContext,
       runInBackground,
       agentInvocation,
+      ...(handoff ? { handoff } : {}),
     },
     presentation: { agentTags, detailBase },
   };

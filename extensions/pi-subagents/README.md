@@ -221,6 +221,10 @@ Launch a sub-agent.
 | `run_in_background` | boolean      | no       | Run without blocking                                             |
 | `resume`            | string       | no       | Agent ID to resume a previous session                            |
 | `inherit_context`   | boolean      | no       | Fork parent conversation into agent                              |
+| `todos`             | string[]     | no       | Todo keys the agent takes over (with pi-todo; see below)         |
+| `todo_scope`        | string       | no       | With `todos`: `assigned` (default) or `ledger`                   |
+
+`todos` and `todo_scope` are forwarded untouched as `handoff` on `subagents:child:session-created`; this package does not interpret them. The bundled pi-todo scopes the agent's todo list to those tasks.
 
 These five parameters win over the agent file's own values, which fill whichever the call leaves unset.
 An agent file can withhold one with [`locked`](./docs/configuration.md#locking-fields-against-callers); the result then names the agent and the parameters it ignored.

@@ -50,16 +50,43 @@ export interface ChildSpawningEvent {
   parentSessionId?: string;
 }
 
+/**
+ * What a parent hands its child at spawn. The core forwards it on
+ * `session-created` without interpreting it; companion extensions act on it
+ * (pi-todo scopes the child's todo list to `todos.keys`).
+ */
+export interface SubagentHandoff {
+  /** Todo keys the child takes over; `ledger` also lets it read the rest. */
+  todos?: { keys: string[]; scope: "assigned" | "ledger" };
+}
+
+/** A handoff from loose spawn inputs; undefined when nothing is handed over. */
+export function toHandoff(todos: unknown, todoScope: unknown): SubagentHandoff | undefined {
+  if (!Array.isArray(todos)) return undefined;
+  const keys = [...new Set(todos.filter((key): key is string => typeof key === "string").map((key) => key.trim()).filter(Boolean))];
+  if (!keys.length) return undefined;
+  return { todos: { keys, scope: todoScope === "ledger" ? "ledger" : "assigned" } };
+}
+
+/** Identity of the run a child session belongs to, carried on its events. */
+export interface ChildRunIdentity {
+  /** The subagent's record id (`getRecord(id)`); the same across resumes. */
+  agentId?: string;
+  /** The parent's `subagent` tool call; absent for service spawns. */
+  toolCallId?: string;
+}
+
 /** Payload for `subagents:child:session-created`. */
-export interface ChildSessionCreatedEvent {
+export interface ChildSessionCreatedEvent extends ChildRunIdentity {
   /** Child session id — the registry key. Unique per child; concurrent
    * siblings of the same parent occupy distinct keys. */
   sessionId: string;
   parentSessionId?: string;
+  handoff?: SubagentHandoff;
 }
 
 /** Payload for `subagents:child:bound`. */
-export interface ChildBoundEvent {
+export interface ChildBoundEvent extends ChildRunIdentity {
   /** Child session id — the same key `session-created` carried. */
   sessionId: string;
   parentSessionId?: string;
@@ -74,7 +101,7 @@ export interface ChildCompletedEvent {
 }
 
 /** Payload for `subagents:child:disposed`. */
-export interface ChildDisposedEvent {
+export interface ChildDisposedEvent extends ChildRunIdentity {
   /** Child session id — the registry key. Must match `session-created`. */
   sessionId: string;
 }

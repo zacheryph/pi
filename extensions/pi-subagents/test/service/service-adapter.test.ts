@@ -385,6 +385,19 @@ describe("SubagentsServiceAdapter — spawn", () => {
    * `parentSessionId`. Asserted with toEqual rather than objectContaining so a
    * stray toolCallId would fail rather than be absorbed.
    */
+  describe("handoff", () => {
+    it("forwards todos and todoScope as a handoff", () => {
+      const mgr = createManagerStub();
+      const svc = new SubagentsServiceAdapter(mgr, vi.fn(), makeRuntimeStub());
+
+      svc.spawn("Explore", "audit", { todos: ["auth-audit", "auth-tests"], todoScope: "ledger" });
+      svc.spawn("Explore", "plain");
+
+      expect(vi.mocked(mgr.spawn).mock.calls[0][3].handoff).toEqual({ todos: { keys: ["auth-audit", "auth-tests"], scope: "ledger" } });
+      expect(vi.mocked(mgr.spawn).mock.calls[1][3].handoff).toBeUndefined();
+    });
+  });
+
   describe("parent session", () => {
     it("passes the runtime's session identity, without a toolCallId", () => {
       const mgr = createManagerStub();

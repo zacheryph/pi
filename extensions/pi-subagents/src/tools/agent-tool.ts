@@ -1,3 +1,4 @@
+import { StringEnum } from "@earendil-works/pi-ai";
 import type { AgentToolResult, ExtensionContext, ToolRenderResultOptions } from "@earendil-works/pi-coding-agent";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
@@ -255,6 +256,19 @@ ${guidelines}
 					Type.Boolean({
 						description:
 							"If true, fork parent conversation into the agent. Omit to use the agent's own default, which is fresh context unless it declares otherwise.",
+					}),
+				),
+				todos: Type.Optional(
+					Type.Array(Type.String({ minLength: 1, maxLength: 40 }), {
+						maxItems: 50,
+						description:
+							"Keys of todo tasks this agent takes over. With pi-todo, the agent's todo list shows and updates only these tasks in your list.",
+					}),
+				),
+				todo_scope: Type.Optional(
+					StringEnum(["assigned", "ledger"] as const, {
+						description:
+							"With todos: assigned (default) shows the agent only its tasks; ledger also lets it read the rest of your list.",
 					}),
 				),
 			}),

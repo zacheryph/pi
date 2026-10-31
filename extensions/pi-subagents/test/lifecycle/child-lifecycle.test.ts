@@ -7,6 +7,7 @@ import {
   SUBAGENT_CHILD_DISPOSED,
   SUBAGENT_CHILD_SESSION_CREATED,
   SUBAGENT_CHILD_SPAWNING,
+  toHandoff,
 } from "#src/lifecycle/child-lifecycle";
 import { childCompletedEvent } from "#test/helpers/turn-loop-result";
 
@@ -100,5 +101,21 @@ describe("createChildLifecyclePublisher", () => {
     expect(SUBAGENT_CHILD_BOUND).toBe("subagents:child:bound");
     expect(SUBAGENT_CHILD_COMPLETED).toBe("subagents:child:completed");
     expect(SUBAGENT_CHILD_DISPOSED).toBe("subagents:child:disposed");
+  });
+});
+
+describe("toHandoff", () => {
+  it("hands over trimmed, de-duplicated todo keys with the assigned scope by default", () => {
+    expect(toHandoff([" auth-audit", "auth-tests", "auth-audit "], undefined))
+      .toEqual({ todos: { keys: ["auth-audit", "auth-tests"], scope: "assigned" } });
+    expect(toHandoff(["a"], "ledger")).toEqual({ todos: { keys: ["a"], scope: "ledger" } });
+    expect(toHandoff(["a"], "everything")).toEqual({ todos: { keys: ["a"], scope: "assigned" } });
+  });
+
+  it("hands over nothing without usable keys", () => {
+    expect(toHandoff(undefined, "ledger")).toBeUndefined();
+    expect(toHandoff([], undefined)).toBeUndefined();
+    expect(toHandoff(["", "  ", 7, null], undefined)).toBeUndefined();
+    expect(toHandoff("auth-audit", undefined)).toBeUndefined();
   });
 });

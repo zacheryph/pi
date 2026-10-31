@@ -458,3 +458,26 @@ describe("resolveSpawnConfig — prompt and rawType passthrough", () => {
     expect(result.identity.rawType).toBe("Explore");
   });
 });
+
+describe("resolveSpawnConfig — handoff", () => {
+  const resolve = (params: Record<string, unknown>) => {
+    const result = resolveSpawnConfig(
+      { subagent_type: "general-purpose", prompt: "test", description: "d", ...params },
+      testRegistry,
+      makeModelInfo(),
+      defaultSettings,
+    );
+    if ("error" in result) throw new Error(result.error);
+    return result.execution.handoff;
+  };
+
+  it("turns todos and todo_scope into a handoff", () => {
+    expect(resolve({ todos: ["auth-audit"], todo_scope: "ledger" })).toEqual({ todos: { keys: ["auth-audit"], scope: "ledger" } });
+    expect(resolve({ todos: ["auth-audit"] })).toEqual({ todos: { keys: ["auth-audit"], scope: "assigned" } });
+  });
+
+  it("hands over nothing without todos", () => {
+    expect(resolve({})).toBeUndefined();
+    expect(resolve({ todo_scope: "ledger" })).toBeUndefined();
+  });
+});

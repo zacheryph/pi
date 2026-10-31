@@ -21,7 +21,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import type { AgentConfigLookup } from "#src/config/agent-types";
 import { debugNote } from "#src/debug";
-import type { ChildLifecyclePublisher } from "#src/lifecycle/child-lifecycle";
+import type { ChildLifecyclePublisher, SubagentHandoff } from "#src/lifecycle/child-lifecycle";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import { SubagentSession } from "#src/lifecycle/subagent-session";
 import { AskParentTool, type QuestionRecorder } from "#src/session/ask-parent-tool";
@@ -176,6 +176,10 @@ export interface CreateSubagentSessionParams {
   cwd?: string;
   /** Parent session identity (file path + session ID). */
   parentSession?: ParentSessionInfo;
+  /** The subagent record id, carried on this session's lifecycle events. */
+  agentId?: string;
+  /** Forwarded untouched on `session-created`. */
+  handoff?: SubagentHandoff;
   model?: Model<any>;
   thinkingLevel?: ThinkingLevel;
   /**
@@ -303,9 +307,14 @@ export async function createSubagentSession(
     thinkingLevel: cfg.thinkingLevel,
   });
 
+  const run = {
+    ...(params.agentId !== undefined ? { agentId: params.agentId } : {}),
+    ...(params.parentSession?.toolCallId !== undefined ? { toolCallId: params.parentSession.toolCallId } : {}),
+  };
   const subagentSession = new SubagentSession(session, {
     outputFile: sessionManager.getSessionFile(),
     sessionId,
+    ...run,
     sessionDir,
     agentName: type,
     agentMaxTurns: cfg.agentMaxTurns,
@@ -318,7 +327,9 @@ export async function createSubagentSession(
   // entry in place for the first permission check during child extension
   // initialization. The event bus dispatches synchronously, so a synchronous
   // subscriber completes before this returns.
-  deps.lifecycle.sessionCreated({ sessionId, parentSessionId });
+  deps.lifecycle.sessionCreated({
+    sessionId, parentSessionId, ...run, ...(params.handoff ? { handoff: params.handoff } : {}),
+  });
 
   try {
     // Bind extensions so that session_start fires and extensions can initialize.
@@ -334,7 +345,7 @@ export async function createSubagentSession(
   // Every child session_start handler has now run, so this is the first — and
   // only — moment a parent can observe what the child's extensions installed.
   // Deliberately outside the try above: a child whose binding threw never ran.
-  deps.lifecycle.bound({ sessionId, parentSessionId });
+  deps.lifecycle.bound({ sessionId, parentSessionId, ...run });
 
   return subagentSession;
 }

@@ -45,7 +45,7 @@ falls back to the blob store. Todo works the same way, except it has no shared s
 
 Two facts from this repo the design relies on:
 
-- `subagents:child:session-created { sessionId, parentSessionId }` is emitted
+- `subagents:child:session-created { sessionId, parentSessionId, agentId, toolCallId?, handoff? }` is emitted
   synchronously on the **parent's** bus before the child binds
   (`create-subagent-session.ts:321-325`). The parent's extensions therefore record the
   link before any child `session_start` runs.
