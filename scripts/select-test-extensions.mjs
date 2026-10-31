@@ -5,12 +5,15 @@ import { pathToFileURL } from "node:url";
 
 const sharedFiles = new Set([".nvmrc", "package.json", "package-lock.json", "tsconfig.base.json"]);
 
+// Extensions import shared libraries from packages/ by relative path, so a change
+// there re-tests every workspace.
 export function selectExtensions(workspaces, changedFiles, all = false) {
   const runAll = all || changedFiles.some((path) =>
-    sharedFiles.has(path) || path.startsWith(".github/workflows/") || path.startsWith("scripts/"),
+    sharedFiles.has(path) || path.startsWith(".github/workflows/") || path.startsWith("scripts/")
+      || /^packages\/[^/]+\//.test(path),
   );
   return workspaces
-    .filter((workspace) => /^extensions\/[^/]+$/.test(workspace))
+    .filter((workspace) => /^(extensions|packages)\/[^/]+$/.test(workspace))
     .filter((workspace) => runAll || changedFiles.some((path) => path.startsWith(`${workspace}/`)))
     .sort();
 }
