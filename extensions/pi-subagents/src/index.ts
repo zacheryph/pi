@@ -46,7 +46,12 @@ import {
 import { SubagentEventsObserver } from "#src/observation/subagent-events-observer";
 import { registerMainAgentProfile } from "#src/main-agent-profile";
 import { createSubagentRuntime } from "#src/runtime";
-import { publishSubagentsService, unpublishSubagentsService } from "#src/service/service";
+import {
+  discardPendingSince,
+  markPendingPublications,
+  publishSubagentsService,
+  unpublishSubagentsService,
+} from "#src/service/service";
 import { SubagentsServiceAdapter } from "#src/service/service-adapter";
 import { detectEnv } from "#src/session/env";
 
@@ -194,7 +199,17 @@ export default function (pi: ExtensionAPI) {
   const limiter = new ConcurrencyLimiter(() => settings.maxConcurrent);
 
   const manager = new SubagentManager({
-    createSubagentSession: (params) => createSubagentSession(params, subagentSessionDeps),
+    // A child that fails before its session starts leaves the service its own
+    // copy of this extension published at load pending forever; discard it.
+    createSubagentSession: async (params) => {
+      const mark = markPendingPublications();
+      try {
+        return await createSubagentSession(params, subagentSessionDeps);
+      } catch (err) {
+        discardPendingSince(mark);
+        throw err;
+      }
+    },
     baseCwd: process.cwd(),
     observer,
     limiter,
@@ -205,6 +220,8 @@ export default function (pi: ExtensionAPI) {
 
   // Typed service published via Symbol.for() for cross-extension access.
   // Consumers: const { getSubagentsService } = await import("@gotgenes/pi-subagents");
+  // Pending now, so companion factories loading next can register on it;
+  // started on session_start (below).
   const service = new SubagentsServiceAdapter(manager, resolveModel, runtime);
   publishSubagentsService(service);
 
@@ -212,7 +229,7 @@ export default function (pi: ExtensionAPI) {
     runtime,
     manager,
     () => notifications.dispose(),
-    unpublishSubagentsService,
+    () => unpublishSubagentsService(service),
   );
 
   // Live widget: constructed after the manager (it polls listAgents()) and
@@ -230,6 +247,9 @@ export default function (pi: ExtensionAPI) {
   const widgetEvents = new WidgetEventsHandler(widget);
 
   pi.on("session_start", (event, ctx) => lifecycle.handleSessionStart(event, ctx));
+  // Start the publication: it becomes the default once no load is pending, and
+  // getSubagentsService(sessionId) finds it.
+  pi.on("session_start", (_event, ctx) => publishSubagentsService(service, ctx.sessionManager.getSessionId()));
   pi.on("session_start", (event, ctx) => widgetEvents.handleSessionStart(event, ctx));
   pi.on("session_start", (_event, ctx) => watch.setContext(ctx));
   pi.on("session_before_switch", () => lifecycle.handleSessionBeforeSwitch());

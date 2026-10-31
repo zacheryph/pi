@@ -139,6 +139,25 @@ No upstream runtime behavior was intentionally changed during import.
 - `test/stash-sdk.test.ts` covers Explore writing and reading, and Plan being
   refused `stash_put`, in real SDK child sessions.
 
+## Service publication per session
+
+- Upstream kept one `globalThis` slot. Each in-process child session loads the
+  extension again, replaced the parent's service at load, and deleted the slot on
+  shutdown, leaving the parent with no service until its next reload.
+- `src/service/service.ts` now keeps every published service under
+  `Symbol.for("@gotgenes/pi-subagents:services.v1")`, pending from the factory
+  until `session_start`. The newest pending service is the default while a load
+  is in progress (so companions such as pi-subagents-worktrees still register
+  their provider from their factory, in children too); otherwise the outermost
+  started one is. The legacy slot mirrors the default.
+- A starting session drops older pending publications, and a child whose
+  creation fails discards the ones its load made, so a load that never starts
+  cannot stay the default. `unpublishSubagentsService(service)` removes only its
+  own publication (the argument is now required).
+- `getSubagentsService(sessionId?)` can return a specific session's service.
+- Tests: `test/service/service.test.ts`, and parent/child, load-only,
+  companion and failed-child cases in `test/composition-root.test.ts`.
+
 ## Development
 
 Run from this repository's root:

@@ -175,22 +175,122 @@ export const SUBAGENT_EVENTS = {
 
 // ---- Accessor functions ----
 
+/** Legacy single slot, read directly by consumers of the published package. */
 const SERVICE_KEY = Symbol.for("@gotgenes/pi-subagents:service");
+/** Every published service, oldest first. */
+const PUBLICATIONS_KEY = Symbol.for("@gotgenes/pi-subagents:services.v1");
 
-/** Publish the SubagentsService on globalThis for cross-extension access. */
-export function publishSubagentsService(service: SubagentsService): void {
-  (globalThis as Record<symbol, unknown>)[SERVICE_KEY] = service;
+interface Publication {
+  service: SubagentsService;
+  /** Absent while the publishing session's extensions are still loading. */
+  sessionId?: string;
+  seq: number;
 }
 
-/** Retrieve the published SubagentsService, or undefined if not yet published. */
-export function getSubagentsService(): SubagentsService | undefined {
-  return (globalThis as Record<symbol, unknown>)[SERVICE_KEY] as
-    | SubagentsService
-    | undefined;
+interface Publications {
+  next: number;
+  entries: Publication[];
 }
 
-/** Remove the SubagentsService from globalThis (call on shutdown/reload). */
-export function unpublishSubagentsService(): void {
+/**
+ * Every child session loads this extension again in-process, so several
+ * services are published at once.
+ *
+ * A service is published *pending* when its extension factory runs and
+ * *started* on `session_start`. Companion extensions (e.g.
+ * `@gotgenes/pi-subagents-worktrees`) call `getSubagentsService()` from their
+ * own factory, right after this one, and must get the service of the session
+ * that is loading, so the newest pending publication is the default. Once no
+ * load is pending, the default is the outermost started service: a child starts
+ * after its parent and shuts down before it.
+ *
+ * Pi can run factories without ever starting that session (a project-trust
+ * bootstrap pass, a child whose creation failed). Such a pending publication
+ * never shuts down, so it must not stay the default: a session that starts drops
+ * every pending publication older than its own, and a failed child load
+ * discards the ones it made (`discardPendingSince`).
+ */
+function publications(): Publications {
+  const slots = globalThis as Record<symbol, unknown>;
+  const store = slots[PUBLICATIONS_KEY] as Partial<Publications> | undefined;
+  if (store && typeof store.next === "number" && Array.isArray(store.entries)) return store as Publications;
+  const created: Publications = { next: 0, entries: [] };
+  slots[PUBLICATIONS_KEY] = created;
+  return created;
+}
+
+function current(store: Publications): SubagentsService | undefined {
+  const newest = store.entries.at(-1);
+  if (newest && newest.sessionId === undefined) return newest.service;
+  return store.entries.find((entry) => entry.sessionId !== undefined)?.service;
+}
+
+function syncSlot(store: Publications): void {
+  const slots = globalThis as Record<symbol, unknown>;
+  const service = current(store);
+  if (service) slots[SERVICE_KEY] = service;
   // eslint-disable-next-line @typescript-eslint/no-dynamic-delete -- Symbol-keyed global property; Map.delete() is not applicable
-  delete (globalThis as Record<symbol, unknown>)[SERVICE_KEY];
+  else delete slots[SERVICE_KEY];
+}
+
+/**
+ * Publish a SubagentsService on globalThis for cross-extension access.
+ *
+ * Without a session id (from the extension factory) the publication is pending.
+ * With one (from `session_start`) it is started: it keeps its place, replaces
+ * any other publication for the same session, and drops older pending ones.
+ */
+export function publishSubagentsService(service: SubagentsService, sessionId?: string): void {
+  const store = publications();
+  const index = store.entries.findIndex((entry) =>
+    entry.service === service || (sessionId !== undefined && entry.sessionId === sessionId));
+  if (sessionId === undefined) {
+    if (index < 0) store.entries.push({ service, seq: store.next++ });
+  } else {
+    const seq = index >= 0 ? store.entries[index].seq : store.next++;
+    if (index >= 0) store.entries[index] = { service, sessionId, seq };
+    else store.entries.push({ service, sessionId, seq });
+    store.entries = store.entries.filter((entry) => entry.sessionId !== undefined || entry.seq > seq);
+  }
+  syncSlot(store);
+}
+
+/**
+ * Retrieve a published SubagentsService.
+ *
+ * Without a session id: the service of the session whose extensions are
+ * loading, if any, else the outermost started one (the top-level session's).
+ * With one: that session's service, or undefined.
+ */
+export function getSubagentsService(sessionId?: string): SubagentsService | undefined {
+  const store = publications();
+  if (sessionId !== undefined) {
+    return store.entries.find((entry) => entry.sessionId === sessionId)?.service;
+  }
+  return current(store);
+}
+
+/**
+ * Remove one service (call on shutdown/reload). Only that publication goes; the
+ * default moves on as described above.
+ */
+export function unpublishSubagentsService(service: SubagentsService): void {
+  const store = publications();
+  store.entries = store.entries.filter((entry) => entry.service !== service);
+  syncSlot(store);
+}
+
+/** A mark to pass to `discardPendingSince` before loading a child's extensions. */
+export function markPendingPublications(): number {
+  return publications().next;
+}
+
+/**
+ * Discard pending publications made since `mark`: a child load that failed
+ * before its session started will never start or shut down.
+ */
+export function discardPendingSince(mark: number): void {
+  const store = publications();
+  store.entries = store.entries.filter((entry) => entry.sessionId !== undefined || entry.seq < mark);
+  syncSlot(store);
 }
