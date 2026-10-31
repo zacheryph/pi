@@ -562,8 +562,8 @@ Key types:
 - `SubagentsService` — `spawn`, `getRecord`, `listAgents`, `abort`, `steer`, `resume`, `waitForAll`, `hasRunning`.
 - `ResumeOptions` — `claimOutcome`, `signal`; `ResumeResult` — the resumed snapshot or a `ResumeRefusalReason`.
 - `SubagentRecord` — serializable by-value agent snapshot; admission policy in [decision 0005](../decisions/0005-subagent-record-admission-policy.md).
-- `SpawnOptions` — `description`, `model`, `maxTurns`, `thinkingLevel`, `inheritContext`, `foreground`, `bypassQueue`, `todos`, `todoScope`.
-- `SubagentHandoff` — what a spawn hands the child (`todos: { keys, scope }`), forwarded on `subagents:child:session-created`.
+- `SpawnOptions` — `description`, `model`, `maxTurns`, `thinkingLevel`, `inheritContext`, `foreground`, `bypassQueue`, `handoff`.
+- `SubagentHandoff` — extension-defined data a spawn hands the child, keyed by the extension that reads it; a frozen JSON object of at most `MAX_HANDOFF_BYTES`, forwarded on `subagents:child:session-created`.
 - `SUBAGENT_EVENTS` — channel constants for `pi.events` subscriptions.
 
 ### Accessor pattern
@@ -617,8 +617,8 @@ The child-execution lifecycle (`src/lifecycle/child-lifecycle.ts`) is published 
 | `subagents:child:completed`       | `{ sessionDir, agentName, turnBudget? }`                                  | The child's prompt resolved                                  |
 | `subagents:child:disposed`        | `{ sessionId, agentId?, toolCallId? }`                                    | After the child's `session_shutdown` and `session.dispose()` |
 
-`agentId` is the record id (`getRecord(id)`), `toolCallId` the parent's `subagent` call (absent for a service spawn), and `handoff` the `todos`/`todo_scope` the spawn handed over.
-The core forwards `handoff` without interpreting it; pi-todo acts on it.
+`agentId` is the record id (`getRecord(id)`), `toolCallId` the parent's `subagent` call (absent for a service spawn), and `handoff` the spawn's extension-defined data.
+The core forwards `handoff` without interpreting it, so a companion extension can define a new key (pi-todo reads `todos`) without a core change. The key's owner documents its shape in its own tool guidance and validates it.
 
 ## Architecture direction
 

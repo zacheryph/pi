@@ -26,7 +26,7 @@ import type {
 // here for the public API surface — mirrors the LifetimeUsage / workspace pattern.
 export type { SubagentStatus } from "#src/lifecycle/subagent";
 export type { TurnBudget, TurnBudgetPhase } from "#src/lifecycle/turn-limits";
-export type { SubagentHandoff } from "#src/lifecycle/child-lifecycle";
+export { MAX_HANDOFF_BYTES, type SubagentHandoff } from "#src/lifecycle/child-lifecycle";
 // The resume vocabulary is re-exported for the same reason: the record owns the
 // reasons a resume is refused, and the manager adds the one that is not a fact
 // about a record.
@@ -119,10 +119,12 @@ export interface SpawnOptions {
   inheritContext?: boolean;
   foreground?: boolean;
   bypassQueue?: boolean;
-  /** Todo keys the agent takes over; forwarded as `handoff` on `subagents:child:session-created`. */
-  todos?: string[];
-  /** With `todos`: `assigned` (default) or `ledger`. */
-  todoScope?: "assigned" | "ledger";
+  /**
+   * Data for extensions in the child's session, keyed by the extension that
+   * reads it. Forwarded, copied and frozen, on `subagents:child:session-created`.
+   * Must be a JSON object within `MAX_HANDOFF_BYTES`.
+   */
+  handoff?: Record<string, unknown>;
 }
 
 /** The public service contract for cross-extension subagent access. */

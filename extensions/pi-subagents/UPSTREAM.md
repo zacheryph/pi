@@ -196,10 +196,12 @@ No upstream runtime behavior was intentionally changed during import.
 
 ## Spawn handoff and run identity on child events
 
-- The `subagent` tool takes `todos` and `todo_scope`, and `SpawnOptions` takes
-  `todos` and `todoScope`. They become a `SubagentHandoff`
-  (`src/lifecycle/child-lifecycle.ts`) that the core forwards untouched on
-  `subagents:child:session-created` for pi-todo to act on.
+- The `subagent` tool and `SpawnOptions` take a generic `handoff` object whose
+  top-level keys belong to other extensions (pi-todo reads `todos`).
+  `normalizeHandoff` (`src/lifecycle/child-lifecycle.ts`) only checks it is a JSON
+  object within `MAX_HANDOFF_BYTES`, copies and deep-freezes it; the core forwards
+  it untouched on `subagents:child:session-created`. New handoff data needs no
+  change here.
 - `subagents:child:session-created`, `bound` and `disposed` also carry `agentId`
   (the record id) and `toolCallId` (the parent's tool call; absent for service
   spawns), so a parent-side extension can tie a child session to the spawn.

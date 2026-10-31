@@ -7,7 +7,7 @@
 
 import type { Model } from "@earendil-works/pi-ai";
 import { parseThinkingLevel, thinkingLevelError } from "#src/config/thinking-level";
-import { toHandoff } from "#src/lifecycle/child-lifecycle";
+import { normalizeHandoff, type SubagentHandoff } from "#src/lifecycle/child-lifecycle";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import type { AgentSpawnConfig, ResumeCallOptions, ResumeOutcome } from "#src/lifecycle/subagent-manager";
 import type { WorkspaceProvider } from "#src/lifecycle/workspace";
@@ -72,7 +72,7 @@ export class SubagentsServiceAdapter implements SubagentsService {
       thinkingLevel: this.resolveThinkingLevel(options?.thinkingLevel),
       inheritContext: options?.inheritContext,
       bypassQueue: options?.bypassQueue,
-      handoff: toHandoff(options?.todos, options?.todoScope),
+      handoff: this.resolveHandoff(options?.handoff),
       // A caller that names `foreground` has committed; one that omits it has
       // not, so the agent's own frontmatter decides and background is the
       // SDK-door default.
@@ -127,6 +127,13 @@ export class SubagentsServiceAdapter implements SubagentsService {
 
   registerWorkspaceProvider(provider: WorkspaceProvider): () => void {
     return this.manager.registerWorkspaceProvider(provider);
+  }
+
+  /** Check a caller's handoff; a bad one throws, like the adapter's other input failures. */
+  private resolveHandoff(input: unknown): SubagentHandoff | undefined {
+    const checked = normalizeHandoff(input);
+    if ("error" in checked) throw new Error(checked.error);
+    return checked.handoff;
   }
 
   /**

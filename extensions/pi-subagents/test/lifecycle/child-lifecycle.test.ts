@@ -7,7 +7,8 @@ import {
   SUBAGENT_CHILD_DISPOSED,
   SUBAGENT_CHILD_SESSION_CREATED,
   SUBAGENT_CHILD_SPAWNING,
-  toHandoff,
+  MAX_HANDOFF_BYTES,
+  normalizeHandoff,
 } from "#src/lifecycle/child-lifecycle";
 import { childCompletedEvent } from "#test/helpers/turn-loop-result";
 
@@ -104,18 +105,36 @@ describe("createChildLifecyclePublisher", () => {
   });
 });
 
-describe("toHandoff", () => {
-  it("hands over trimmed, de-duplicated todo keys with the assigned scope by default", () => {
-    expect(toHandoff([" auth-audit", "auth-tests", "auth-audit "], undefined))
-      .toEqual({ todos: { keys: ["auth-audit", "auth-tests"], scope: "assigned" } });
-    expect(toHandoff(["a"], "ledger")).toEqual({ todos: { keys: ["a"], scope: "ledger" } });
-    expect(toHandoff(["a"], "everything")).toEqual({ todos: { keys: ["a"], scope: "assigned" } });
+describe("normalizeHandoff", () => {
+  it("copies and deep-freezes any JSON object, without interpreting its keys", () => {
+    const input = { todos: { keys: ["auth-audit"], scope: "ledger" }, review: { ticket: "AUTH-12", strict: true } };
+    const result = normalizeHandoff(input);
+    expect(result).toEqual({ handoff: input });
+    const handoff = "handoff" in result ? result.handoff! : {};
+    expect(handoff).not.toBe(input);
+    expect(Object.isFrozen(handoff)).toBe(true);
+    expect(Object.isFrozen(handoff.todos)).toBe(true);
+    expect(Object.isFrozen((handoff.todos as { keys: string[] }).keys)).toBe(true);
+    input.review.ticket = "changed later";
+    expect((handoff.review as { ticket: string }).ticket).toBe("AUTH-12");
   });
 
-  it("hands over nothing without usable keys", () => {
-    expect(toHandoff(undefined, "ledger")).toBeUndefined();
-    expect(toHandoff([], undefined)).toBeUndefined();
-    expect(toHandoff(["", "  ", 7, null], undefined)).toBeUndefined();
-    expect(toHandoff("auth-audit", undefined)).toBeUndefined();
+  it("keeps only JSON data", () => {
+    expect(normalizeHandoff({ at: new Date(0), skip: undefined, fn: () => 1 })).toEqual({ handoff: { at: "1970-01-01T00:00:00.000Z" } });
+  });
+
+  it("hands over nothing when there is nothing to hand over", () => {
+    expect(normalizeHandoff(undefined)).toEqual({});
+    expect(normalizeHandoff(null)).toEqual({});
+    expect(normalizeHandoff({})).toEqual({});
+  });
+
+  it("refuses values that are not a JSON object within the cap", () => {
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+    for (const value of ["todos", 7, ["a"], circular, { big: 1n }]) {
+      expect(normalizeHandoff(value)).toEqual({ error: expect.stringContaining("handoff") });
+    }
+    expect(normalizeHandoff({ blob: "x".repeat(MAX_HANDOFF_BYTES) })).toEqual({ error: expect.stringMatching(/limit is 16384/) });
   });
 });

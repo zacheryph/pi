@@ -51,21 +51,45 @@ export interface ChildSpawningEvent {
 }
 
 /**
- * What a parent hands its child at spawn. The core forwards it on
- * `session-created` without interpreting it; companion extensions act on it
- * (pi-todo scopes the child's todo list to `todos.keys`).
+ * Extension-defined data a spawn hands its child, keyed by the extension that
+ * reads it (pi-todo reads `todos`). The core never interprets it: it checks the
+ * value is a plain JSON object within `MAX_HANDOFF_BYTES`, copies and deep-freezes
+ * it, and forwards it on `session-created`. Each key's owner documents and
+ * validates its own shape.
  */
-export interface SubagentHandoff {
-  /** Todo keys the child takes over; `ledger` also lets it read the rest. */
-  todos?: { keys: string[]; scope: "assigned" | "ledger" };
+export type SubagentHandoff = Readonly<Record<string, unknown>>;
+
+/** Serialized size cap for a handoff. */
+export const MAX_HANDOFF_BYTES = 16 * 1024;
+
+function deepFreeze<T>(value: T): T {
+  if (value && typeof value === "object") {
+    for (const child of Object.values(value)) deepFreeze(child);
+    Object.freeze(value);
+  }
+  return value;
 }
 
-/** A handoff from loose spawn inputs; undefined when nothing is handed over. */
-export function toHandoff(todos: unknown, todoScope: unknown): SubagentHandoff | undefined {
-  if (!Array.isArray(todos)) return undefined;
-  const keys = [...new Set(todos.filter((key): key is string => typeof key === "string").map((key) => key.trim()).filter(Boolean))];
-  if (!keys.length) return undefined;
-  return { todos: { keys, scope: todoScope === "ledger" ? "ledger" : "assigned" } };
+/**
+ * Check and copy a spawn's handoff. Nothing to hand over (absent, null, `{}`)
+ * yields no handoff; anything that is not a JSON object within the cap is an
+ * error for the caller.
+ */
+export function normalizeHandoff(value: unknown): { handoff?: SubagentHandoff } | { error: string } {
+  if (value === undefined || value === null) return {};
+  if (typeof value !== "object" || Array.isArray(value)) {
+    return { error: "handoff must be an object keyed by the extension that reads it" };
+  }
+  let json: string | undefined;
+  try {
+    json = JSON.stringify(value);
+  } catch (err) {
+    return { error: `handoff must be JSON data: ${err instanceof Error ? err.message : String(err)}` };
+  }
+  const bytes = Buffer.byteLength(json, "utf8");
+  if (bytes > MAX_HANDOFF_BYTES) return { error: `handoff is ${bytes} bytes; the limit is ${MAX_HANDOFF_BYTES}` };
+  const copy = JSON.parse(json) as Record<string, unknown>;
+  return Object.keys(copy).length ? { handoff: deepFreeze(copy) } : {};
 }
 
 /** Identity of the run a child session belongs to, carried on its events. */

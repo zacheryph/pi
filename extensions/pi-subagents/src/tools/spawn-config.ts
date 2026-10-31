@@ -10,7 +10,7 @@ import type { Model } from "@earendil-works/pi-ai";
 import type { AgentTypeRegistry } from "#src/config/agent-types";
 import { type LockableField, resolveAgentInvocationConfig } from "#src/config/invocation-config";
 import { parseThinkingLevel, thinkingLevelError } from "#src/config/thinking-level";
-import { type SubagentHandoff, toHandoff } from "#src/lifecycle/child-lifecycle";
+import { normalizeHandoff, type SubagentHandoff } from "#src/lifecycle/child-lifecycle";
 import { isBelowMinimumTurns, MIN_MAX_TURNS, normalizeMaxTurns } from "#src/lifecycle/turn-limits";
 import type { ModelRegistry } from "#src/session/model-resolver";
 import { resolveInvocationModel } from "#src/session/model-resolver";
@@ -47,7 +47,7 @@ export interface SpawnExecution {
   inheritContext: boolean;
   runInBackground: boolean;
   agentInvocation: AgentInvocation;
-  /** From `todos`/`todo_scope`; forwarded to the child's `session-created` event. */
+  /** The call's `handoff`, checked and frozen; forwarded to the child's `session-created` event. */
   handoff?: SubagentHandoff;
 }
 
@@ -118,7 +118,9 @@ export function resolveSpawnConfig(
   if (resolution.error) return { error: resolution.error };
   const model = resolution.model;
 
-  const handoff = toHandoff(params.todos, params.todo_scope);
+  const checked = normalizeHandoff(params.handoff);
+  if ("error" in checked) return { error: checked.error };
+  const { handoff } = checked;
   const thinking = resolvedConfig.thinking;
   const inheritContext = resolvedConfig.inheritContext;
   const runInBackground = resolvedConfig.runInBackground;

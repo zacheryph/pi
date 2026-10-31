@@ -15,7 +15,7 @@ import { LIFECYCLE_LOG } from "./fixtures/lifecycle-recorder";
 
 // A real orchestrator session loads this extension and spawns a worker through
 // the subagent tool; the worker's lifecycle events reach the orchestrator's bus.
-it("carries the agent id, tool call id and handoff on a tool-spawned child's lifecycle events", async () => {
+it("carries the agent id, tool call id and any extension's handoff on a tool-spawned child's lifecycle events", async () => {
   const dir = mkdtempSync(join(tmpdir(), "handoff-sdk-"));
   const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
   process.env.PI_CODING_AGENT_DIR = dir;
@@ -61,7 +61,7 @@ it("carries the agent id, tool call id and handoff on a tool-spawned child's lif
     faux.setResponses([
       fauxAssistantMessage(fauxToolCall("subagent", {
         subagent_type: "general-purpose", description: "Audit auth", prompt: "Audit the auth module.",
-        todos: ["auth-audit", " auth-tests ", "auth-audit"], todo_scope: "ledger",
+        handoff: { todos: { keys: ["auth-audit", "auth-tests"], scope: "ledger" }, review: { ticket: "AUTH-12" } },
       }, { id: "call-spawn-1" })),
       fauxAssistantMessage("Audit done."),
       context => {
@@ -81,7 +81,7 @@ it("carries the agent id, tool call id and handoff on a tool-spawned child's lif
     expect(created).toEqual({
       sessionId: expect.any(String), parentSessionId: expect.any(String),
       agentId: workerId, toolCallId: "call-spawn-1",
-      handoff: { todos: { keys: ["auth-audit", "auth-tests"], scope: "ledger" } },
+      handoff: { todos: { keys: ["auth-audit", "auth-tests"], scope: "ledger" }, review: { ticket: "AUTH-12" } },
     });
     for (const channel of ["subagents:child:bound", "subagents:child:disposed"]) {
       expect(log.find(entry => entry.channel === channel)?.data, channel).toMatchObject({

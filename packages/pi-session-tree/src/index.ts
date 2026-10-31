@@ -21,11 +21,12 @@ export const SESSION_TREE_VERSION = 1;
 export const CHILD_SESSION_CREATED = "subagents:child:session-created";
 export const CHILD_SESSION_DISPOSED = "subagents:child:disposed";
 
-/** What a parent handed a child at spawn. Opaque to pi-subagents. */
-export interface Handoff {
-  todos?: { keys: string[]; scope: "assigned" | "ledger" };
-  [key: string]: unknown;
-}
+/**
+ * What a parent handed a child at spawn (pi-subagents' `handoff`), keyed by the
+ * extension that reads it; for example pi-todo reads `todos`. Each key's owner
+ * validates its own shape.
+ */
+export type Handoff = Readonly<Record<string, unknown>>;
 
 interface ServiceEntry {
   token: object;

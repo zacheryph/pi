@@ -386,15 +386,19 @@ describe("SubagentsServiceAdapter — spawn", () => {
    * stray toolCallId would fail rather than be absorbed.
    */
   describe("handoff", () => {
-    it("forwards todos and todoScope as a handoff", () => {
+    it("forwards a handoff copy and refuses one that is not a JSON object", () => {
       const mgr = createManagerStub();
       const svc = new SubagentsServiceAdapter(mgr, vi.fn(), makeRuntimeStub());
+      const handoff = { todos: { keys: ["auth-audit"], scope: "ledger" }, review: { ticket: "AUTH-12" } };
 
-      svc.spawn("Explore", "audit", { todos: ["auth-audit", "auth-tests"], todoScope: "ledger" });
+      svc.spawn("Explore", "audit", { handoff });
       svc.spawn("Explore", "plain");
 
-      expect(vi.mocked(mgr.spawn).mock.calls[0][3].handoff).toEqual({ todos: { keys: ["auth-audit", "auth-tests"], scope: "ledger" } });
+      expect(vi.mocked(mgr.spawn).mock.calls[0][3].handoff).toEqual(handoff);
+      expect(vi.mocked(mgr.spawn).mock.calls[0][3].handoff).not.toBe(handoff);
       expect(vi.mocked(mgr.spawn).mock.calls[1][3].handoff).toBeUndefined();
+      expect(() => svc.spawn("Explore", "bad", { handoff: ["x"] as unknown as Record<string, unknown> }))
+        .toThrow(/handoff must be an object/);
     });
   });
 
