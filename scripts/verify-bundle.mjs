@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -84,7 +84,11 @@ try {
   assert.deepEqual(diagnostics, [], "Bundle skills must load without diagnostics");
   const skillNames = skills.map((skill) => skill.name);
   assert.equal(new Set(skillNames).size, skillNames.length, "Skill names must be unique");
-  for (const name of ["make-it-easy"]) {
+  // Every directory under skills/ must load as a skill of the same name.
+  const bundledSkills = readdirSync(join(root, "skills"), { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name);
+  for (const name of bundledSkills) {
     assert.ok(skillNames.includes(name), `Missing skill: ${name}`);
   }
   console.log(`Bundle loaded: ${extensions.length} extensions; ${tools.join(", ")}; skills: ${skillNames.join(", ")}`);
