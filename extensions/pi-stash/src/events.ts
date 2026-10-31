@@ -19,9 +19,13 @@ export interface StashSnapshotEntry {
   createdAt: number;
   /** Session that stored this version. */
   createdBy: string;
-  /** `content`, `path:<relative>`, or `tool:<name>`. */
+  /** `content`, `path:<relative>`, `tool:<name>`, or `handle:<handle>`. */
   source: string;
   versions: number;
+  /** pi-subagents agent id of the session that stored it, when that was a subagent. */
+  agent?: string;
+  /** `adopt` when a descendant stored it and it was adopted onto this branch. */
+  via?: "adopt";
 }
 
 export interface StashSnapshotEvent {
@@ -61,6 +65,7 @@ export function stashEntryJson(record: StashRecord, index: StashIndex) {
     mime: record.mime, ...(record.description ? { description: record.description } : {}),
     createdAt: record.createdAt, createdBy: record.createdBy, source: record.source,
     versions: versionsOf(index, record.name).length,
+    ...(record.agent ? { agent: record.agent } : {}), ...(record.via ? { via: record.via } : {}),
   };
 }
 

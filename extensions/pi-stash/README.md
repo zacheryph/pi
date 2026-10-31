@@ -24,7 +24,7 @@ scripts receive structured values (`structuredContent`) instead of text.
 ### `stash_put`
 
 ```ts
-{ name, description?, content? | path? | toolCallId? }   // exactly one source
+{ name, description?, content? | path? | toolCallId? | handle? }   // exactly one source
 ```
 
 - `content`: literal text.
@@ -36,6 +36,8 @@ scripts receive structured values (`structuredContent`) instead of text.
   branch**, so the model never re-types a big output. When Pi's `bash` kept the
   untruncated output in a temp file, that full output is stored. Calls made inside
   a codemode script leave no tool result; stash those with `content`.
+- `handle`: keep an existing entry (`stash:<name>@<hash>`), for example one from a
+  session that is no longer running, on the current branch under `name`.
 
 Names match `[A-Za-z0-9][A-Za-z0-9._-]{0,63}`. Re-using a name adds a new version;
 older versions stay readable by their full handle.
@@ -81,9 +83,10 @@ branch on start, resume, reload and `/tree`, so abandoned branches drop out.
   content store is shared, so handles cross between parent and children. A prefix
   matching more than one blob fails and lists the candidates.
 
-**Context:** after compaction, resume, reload or `/tree`, each model request gets a
-bounded, context-only *index card* (the 20 most recent entries: handle, size,
-description). It is never written to the transcript or shown as a message.
+**Context:** after compaction, resume, reload or `/tree`, and once a subagent's entry
+has been adopted, each model request gets a bounded, context-only *index card* (the
+20 most recent entries: handle, size, origin of adopted entries, description). It is
+never written to the transcript or shown as a message.
 
 ## Events
 
@@ -103,6 +106,17 @@ this branch's entries are accepted, not full handles. pi-dashboard uses both
 for its stash panel and previews.
 
 ## Subagents
+
+**A subagent's entries appear in its ancestors' stash.** When a subagent stores an
+entry, it hands the entry to its parent's pi-stash, which journals it on its own
+branch (`via: "adopt"`) and hands it to its own parent, and so on up to the root.
+The entry's `id` makes adoption idempotent, so a repeat ends the chain. It then shows up in their `stash_list`,
+`/stash`, index card and `pi-stash:snapshot`, marked with the agent that stored it
+(`↑ agent a3f2b1c4`). Parent links come from pi-subagents' child lifecycle events
+through [`pi-session-tree`](../../packages/pi-session-tree/README.md). Because the
+entry is journaled where it lands, a parent `/tree` back to before the spawn drops it
+like any other entry. A parent that is reloading or gone ends the chain there, and
+every session below it keeps its copy either way. A top-level session's entries stay its own.
 
 The bundled `pi-subagents` lets Explore and Plan call `stash_get` and `stash_list`;
 Explore can also call `stash_put` to return large findings as a handle. The

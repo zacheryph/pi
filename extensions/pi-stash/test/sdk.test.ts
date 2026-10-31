@@ -13,9 +13,14 @@ import { BlobStore } from "#src/store";
 import { DEFAULT_CONFIG } from "#src/config";
 import { STASH_PREVIEW_REQUEST, STASH_SNAPSHOT_EVENT, type StashPreviewResult, type StashSnapshotEvent } from "#src/events";
 import type { EventBus } from "@earendil-works/pi-coding-agent";
+import { provide, SESSION_TREE_KEY, service } from "../../../packages/pi-session-tree/src/index.ts";
 
 const cleanups: Array<() => void> = [];
-afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });
+afterEach(() => {
+  for (const cleanup of cleanups.splice(0).reverse()) cleanup();
+  // eslint-disable-next-line @typescript-eslint/no-dynamic-delete -- Symbol-keyed global in tests
+  delete (globalThis as Record<symbol, unknown>)[SESSION_TREE_KEY];
+});
 
 function tempDir(prefix: string): string {
   const dir = mkdtempSync(join(tmpdir(), prefix));
@@ -58,7 +63,7 @@ async function fixture(options: { manager?: SessionManager; store: BlobStore; re
     bus!.emit(STASH_PREVIEW_REQUEST, { ...request, respond: (value: StashPreviewResult) => { result = value; } });
     return result;
   };
-  return { session, manager, faux, calls, errors, dir, snapshots, preview };
+  return { session, manager, faux, calls, errors, dir, snapshots, preview, bus: bus! };
 }
 
 const call = (name: string, args: Parameters<typeof fauxToolCall>[1], id?: string) =>
@@ -231,9 +236,142 @@ describe("pi-stash in a real AgentSession (offline faux provider)", () => {
     const errors = [...toolResults(h.manager, "stash_put"), ...toolResults(h.manager, "stash_get")]
       .map(result => [result.isError, result.content.map(part => part.type === "text" ? part.text : "").join("")] as const);
     expect(errors).toEqual([
-      [true, expect.stringContaining("exactly one of content, path, or toolCallId")],
+      [true, expect.stringContaining("exactly one of content, path, toolCallId, or handle")],
       [true, expect.stringMatching(/outside the working directory|File not found/)],
       [true, expect.stringContaining("at most one of lines, grep, and jsonPath")],
     ]);
+  }, 20_000);
+});
+
+describe("subagent entries reach ancestors (pi-session-tree)", () => {
+  type Fixture = Awaited<ReturnType<typeof fixture>>;
+  /** What pi-subagents emits on the parent's bus before the child binds. */
+  const spawn = (parent: Fixture, child: Fixture, agentId: string) => parent.bus.emit("subagents:child:session-created", {
+    sessionId: child.manager.getSessionId(), parentSessionId: parent.manager.getSessionId(), agentId,
+  });
+  const records = (manager: SessionManager) => replayStashIndex({ sessionManager: manager }).records;
+
+  it("journals a grandchild's entry on its parent's and grandparent's branches, with its origin", async () => {
+    const store = new BlobStore(tempDir("pi-stash-root-"));
+    const root = await fixture({ store });
+    const child = await fixture({ store });
+    const grandchild = await fixture({ store, responses: [
+      call("stash_put", { name: "findings", description: "auth audit", content: "important\n" }), fauxAssistantMessage("done"),
+    ] });
+    spawn(root, child, "a3f2b1c4-9d8e-4f6a");
+    spawn(child, grandchild, "c07e0000-1111-2222");
+
+    await grandchild.session.prompt("Work");
+
+    const [own] = records(grandchild.manager);
+    expect(own).toMatchObject({ name: "findings", agent: "c07e0000-1111-2222", id: expect.stringMatching(/^[0-9a-f]{16}$/) });
+    expect(own.via).toBeUndefined();
+    for (const holder of [child, root]) {
+      expect(records(holder.manager)).toEqual([{ ...own, via: "adopt" }]);
+      expect(holder.snapshots.at(-1)?.entries).toEqual([expect.objectContaining({
+        name: "findings", createdBy: grandchild.manager.getSessionId(), agent: "c07e0000-1111-2222", via: "adopt",
+      })]);
+    }
+
+    // The root's model never saw a receipt, so it gets the card, origin included.
+    root.faux.setResponses([call("stash_list", {}), fauxAssistantMessage("listed")]);
+    await root.session.prompt("What did the subagents find?");
+    expect(request(root.calls, 0)).toMatch(/stash:findings@[0-9a-f]{12} · 10 B · 1 line · from agent c07e0000 — auth audit/);
+    expect(toolResults(root.manager, "stash_list")[0].content[0]).toMatchObject({ text: expect.stringContaining("by agent c07e0000") });
+  }, 30_000);
+
+  it("hands an entry only to its parent, which passes it on; a gap ends the chain", async () => {
+    const store = new BlobStore(tempDir("pi-stash-root-"));
+    const root = await fixture({ store });
+    const child = await fixture({ store });
+    const grandchild = await fixture({ store, responses: [call("stash_put", { name: "found", content: "f" }), fauxAssistantMessage("done")] });
+    spawn(root, child, "a3f2b1c4-9d8e-4f6a");
+    spawn(child, grandchild, "c07e0000-1111-2222");
+    // The child's pi-stash is replaced by one that records calls and passes nothing on.
+    const adopted: unknown[] = [];
+    provide(child.manager.getSessionId(), "pi-stash", { version: 1, adopt: (record: unknown) => { adopted.push(record); return true; } });
+
+    await grandchild.session.prompt("Work");
+
+    expect(adopted).toEqual([expect.objectContaining({ name: "found", createdBy: grandchild.manager.getSessionId() })]);
+    expect(names(root.manager)).toEqual([]);
+    expect(names(grandchild.manager)).toEqual(["found"]);
+  }, 30_000);
+
+  it("leaves a root session's entries and unlinked sessions alone", async () => {
+    const store = new BlobStore(tempDir("pi-stash-root-"));
+    const root = await fixture({ store, responses: [call("stash_put", { name: "plan", content: "p" }), fauxAssistantMessage("done")] });
+    const stranger = await fixture({ store });
+    await root.session.prompt("Work");
+    expect(names(root.manager)).toEqual(["plan"]);
+    expect(names(stranger.manager)).toEqual([]);
+    expect(records(root.manager)[0].agent).toBeUndefined();
+  }, 20_000);
+
+  it("drops an adopted entry when the parent's /tree goes back before it", async () => {
+    const store = new BlobStore(tempDir("pi-stash-root-"));
+    const parent = await fixture({ store, responses: [fauxAssistantMessage("before")] });
+    await parent.session.prompt("Before the spawn");
+    const beforeSpawn = parent.manager.getLeafId()!;
+    const child = await fixture({ store, responses: [call("stash_put", { name: "found", content: "f" }), fauxAssistantMessage("done")] });
+    spawn(parent, child, "a3f2b1c4-9d8e-4f6a");
+    await child.session.prompt("Work");
+    expect(names(parent.manager)).toEqual(["found"]);
+
+    await parent.session.navigateTree(beforeSpawn, { summarize: false });
+
+    expect(names(parent.manager)).toEqual([]);
+    expect(parent.snapshots.at(-1)?.entries).toEqual([]);
+    expect(names(child.manager)).toEqual(["found"]);
+  }, 20_000);
+
+  it("keeps the child's put when the parent has shut down or its runtime is stale", async () => {
+    const store = new BlobStore(tempDir("pi-stash-root-"));
+    const parent = await fixture({ store });
+    const child = await fixture({ store, responses: [
+      call("stash_put", { name: "one", content: "1" }), call("stash_put", { name: "two", content: "2" }), fauxAssistantMessage("done"),
+    ] });
+    spawn(parent, child, "a3f2b1c4-9d8e-4f6a");
+    parent.session.dispose(); // session_shutdown withdraws the parent's service
+    // A stale instance still registered for the parent throws, as Pi does after a reload.
+    provide(parent.manager.getSessionId(), "pi-stash", { version: 1, adopt: () => { throw new Error("This extension ctx is stale"); } });
+
+    await child.session.prompt("Work");
+
+    expect(toolResults(child.manager, "stash_put").map(result => result.isError)).toEqual([false, false]);
+    expect(names(child.manager)).toEqual(["one", "two"]);
+    expect(child.errors).not.toHaveBeenCalled();
+  }, 20_000);
+
+  it("adopts a version once and refuses malformed records", async () => {
+    const store = new BlobStore(tempDir("pi-stash-root-"));
+    const parent = await fixture({ store });
+    const adopt = service<{ adopt(record: unknown): boolean }>(parent.manager.getSessionId(), "pi-stash")!;
+    const hash = store.put("x").hash;
+    const record = { name: "x", hash, bytes: 1, lines: 1, mime: "text/plain", createdAt: 1, createdBy: "child", source: "content", id: "0123456789abcdef" };
+
+    expect(adopt.adopt(record)).toBe(true);
+    expect(adopt.adopt(record)).toBe(false);
+    expect(adopt.adopt({ ...record, id: "other", hash: "not-a-hash" })).toBe(false);
+    expect(adopt.adopt({ ...record, id: "other", via: "sideways" })).toBe(false);
+    // Without an id adoption could not be told apart from a repeat, so it is refused.
+    expect(adopt.adopt({ ...record, id: undefined })).toBe(false);
+    expect(records(parent.manager)).toEqual([{ ...record, via: "adopt" }]);
+  }, 20_000);
+
+  it("keeps another session's entry on this branch with stash_put {handle}", async () => {
+    const store = new BlobStore(tempDir("pi-stash-root-"));
+    const other = await fixture({ store, responses: [call("stash_put", { name: "report", content: "{\"ok\":true}" }), fauxAssistantMessage("done")] });
+    await other.session.prompt("Store");
+    const [stored] = records(other.manager);
+    const handle = `stash:report@${stored.hash.slice(0, 12)}`;
+    const mine = await fixture({ store, responses: [call("stash_put", { name: "kept-report", handle }), fauxAssistantMessage("done")] });
+
+    await mine.session.prompt("Keep it");
+
+    expect(toolResults(mine.manager, "stash_put")[0].isError).toBe(false);
+    expect(records(mine.manager)).toEqual([expect.objectContaining({
+      name: "kept-report", hash: stored.hash, mime: "application/json", source: `handle:${handle}`,
+    })]);
   }, 20_000);
 });

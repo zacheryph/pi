@@ -1,7 +1,7 @@
 import type { ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import { type Component, matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi, type TUI } from "@earendil-works/pi-tui";
 import { type StashRecord } from "../state.ts";
-import { bodyRow, entryRow, formatBytes, previewRows } from "./render.ts";
+import { bodyRow, entryRow, formatBytes, originLabel, previewRows, shortSession } from "./render.ts";
 import { safeStashLine } from "./text.ts";
 
 export interface StashPreview {
@@ -87,6 +87,8 @@ export class StashBrowser implements Component {
         `Name: ${safeStashLine(record.name)}`,
         `Hash: ${safeStashLine(record.hash)}`,
         `Description: ${record.description ? safeStashLine(record.description) : "—"}`,
+        `Stored by: ${originLabel(record)}${record.agent ? ` (session ${shortSession(record.createdBy)})` : ""}`
+          + (record.via === "adopt" ? " · adopted from a subagent" : ""),
         "", "Contents:", ...content,
       ] };
       this.offset = 0;

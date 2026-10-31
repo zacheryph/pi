@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import stashExtension from "#src/index";
 import type { StashRecord } from "#src/state";
 import { StashBrowser, showStashBrowser, type StashPreview } from "#src/ui/browser";
-import { bodyRow, entryRow, formatAge, formatBytes, headerRule, previewRows } from "#src/ui/render";
+import { bodyRow, entryRow, formatAge, formatBytes, headerRule, originLabel, previewRows } from "#src/ui/render";
 
 const plain = { fg: (_token: string, text: string) => text } as Theme;
 // Colors every token so width math must ignore escape sequences.
@@ -57,6 +57,21 @@ describe("render helpers", () => {
     expect(headerRule("Stash", "2", 20, plain)).toBe("── Stash ────── 2 ──");
   });
 
+  it("labels origins and shows them on adopted rows at every width with ANSI and wide text", () => {
+    expect(originLabel(record())).toBe("session-");
+    expect(originLabel(record({ agent: "a3f2b1c4-9d8e-4f6a" }))).toBe("agent a3f2b1c4");
+    expect(originLabel(record({ agent: "\x1b[2J" }))).toBe("agent ?");
+    const adopted = record({ agent: `${WIDE}-agent`, via: "adopt" });
+    for (const width of WIDTHS) {
+      expect(visibleWidth(entryRow(adopted, width, ansi))).toBeLessThanOrEqual(width);
+      expectPadded(bodyRow(entryRow(adopted, Math.max(0, width - 2), ansi), width), width);
+    }
+    expect(strip(entryRow(record({ agent: "a3f2b1c4-9d8e", via: "adopt" }), 140, ansi)))
+      .toMatch(/ ↑ agent a3f2b1c4 · 12 KB · 340 lines · 1h$/);
+    // Only adopted rows name their origin; a session's own entries stay as they were.
+    expect(strip(entryRow(record({ agent: "a3f2b1c4-9d8e" }), 140, ansi))).not.toContain("agent");
+  });
+
   it("numbers preview rows and strips control sequences", () => {
     expect(previewRows("a\n\x1b[2Jb\nc\n", 2)).toEqual(["1  a", "2  b"]);
     expect(previewRows(Array.from({ length: 12 }, () => "x").join("\n"), 12, 1).at(-1)).toBe("12  x");
@@ -95,6 +110,17 @@ describe("StashBrowser", () => {
     expect(strip(browser.render(80)[0])).toMatch(/Stash/);
     browser.handleInput("\x1b");
     expect(done).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows who stored an adopted entry in its details", () => {
+    const load = vi.fn(() => ({ lines: ["x"] }));
+    const { browser } = make([record({ agent: "a3f2b1c4-9d8e", via: "adopt" }), record({ name: "own", hash: "c".repeat(64) })], 30, load);
+    browser.handleInput("\r");
+    expect(browser.render(80).map(strip).join("\n")).toContain("Stored by: agent a3f2b1c4 (session session-) · adopted from a subagent");
+    browser.handleInput("\x1b");
+    browser.handleInput("\x1b[B");
+    browser.handleInput("\r");
+    expect(browser.render(80).map(strip).join("\n")).toMatch(/Stored by: session- *│/);
   });
 
   it("stays within width and pads every body row at narrow widths", () => {

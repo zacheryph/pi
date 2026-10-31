@@ -107,9 +107,13 @@ comparable.
 - Default scope: `self` in a root session, `ancestors` in a subagent. Both are
   configurable (`stash.defaultScope`, `stash.subagentScope`).
 - **Up (real time):** after journaling locally, the child calls `adopt(record)` on
-  each ancestor in range. `adopt` journals `{ op: "put", record, via: "adopt" }` in
+  its parent only. Each `adopt` journals the record and calls `adopt` on its own
+  parent, up to the root (or the scope's limit); a missing or stale session ends the
+  chain there. `adopt` journals `{ op: "put", record, via: "adopt" }` in
   that ancestor's session, updates its index and publishes its snapshot (which updates
-  the dashboard). It also queues a one-line context note for that ancestor's model.
+  the dashboard). It also turns on that ancestor's index card. With scopes, each
+  `adopt` forwards only while the next parent is still in the record's reach (for
+  example `parent` stops after one hop).
 - **Reach is decided by the origin, never the holder.** A record's origin is the
   session that created it (`createdBy`). Session T may hold it only when:
   - upward scopes (`parent`, `ancestors`, `tree`): T is the origin's parent
@@ -246,8 +250,10 @@ AGENTS.md (UI spacing tests at narrow widths, `commit.gpgsign=false`).
 - Add `provide("pi-stash", { adopt })`, `trackChildren`, and record fields `id`,
   `via`, `agent`. A subagent's put bubbles to all ancestors (fixed `ancestors` scope;
   scope selection comes in PR 4).
-- Context note in an ancestor listing entries adopted since its model's last request.
-  Bounded and marked as data, like the existing card.
+- Adoption turns on the existing context-only index card in the ancestor (its model
+  never saw a receipt for the entry, the same reason the card shows after
+  compaction), with "from <agent>" on adopted rows. This replaces the separate
+  one-request note first planned, which would have reached only one request.
 - `stash_put { handle }` manual adopt.
 - `/stash` and `stash_list` show the origin agent.
 - Tests: child put appears in parent and grandparent indexes and snapshots; a parent
