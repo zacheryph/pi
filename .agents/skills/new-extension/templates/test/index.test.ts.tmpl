@@ -1,0 +1,25 @@
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { describe, expect, it, vi } from "vitest";
+import {{factory}} from "../src/index.ts";
+
+/** A fake ExtensionAPI that records what the factory registers. */
+function harness() {
+  const handlers = new Map<string, Function[]>();
+  const tools = new Map<string, { name: string; execute: Function }>();
+  const commands = new Map<string, { handler: Function }>();
+  const pi = {
+    on: vi.fn((event: string, handler: Function) => handlers.set(event, [...(handlers.get(event) ?? []), handler])),
+    registerTool: vi.fn((tool: { name: string; execute: Function }) => tools.set(tool.name, tool)),
+    registerCommand: vi.fn((name: string, command: { handler: Function }) => commands.set(name, command)),
+  };
+  {{factory}}(pi as unknown as ExtensionAPI);
+  return { pi, handlers, tools, commands };
+}
+
+describe("{{name}}", () => {
+  it("rebuilds state on session start and /tree", () => {
+    const { handlers } = harness();
+    expect(handlers.has("session_start")).toBe(true);
+    expect(handlers.has("session_tree")).toBe(true);
+  });
+{{registrationTests}}});

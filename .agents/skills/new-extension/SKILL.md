@@ -1,112 +1,68 @@
 ---
 name: new-extension
-description: Create a new first-party Pi extension in this repository's bundle. Scaffolds extensions/<name>/ as an npm workspace, registers it in the root manifest, the bundle check and the README, and sets up tests that follow the repository's UI, session and CI conventions. Use when adding a new extension, a new tool or command that belongs in its own extension, or a new shared library under packages/. For copying a third-party extension, use vendor-extension instead.
+description: Create a new first-party Pi extension in this repository's bundle. A script scaffolds extensions/<name>/ from templates and registers it in the root manifest, the bundle check and the README; the skill then covers the session, UI, config and test conventions to implement it by. Use when adding a new extension, a new tool or command that belongs in its own extension, or a new shared library under packages/. For copying a third-party extension, use vendor-extension instead.
 ---
 
 # Add a new extension
 
-Every extension is its own workspace under `extensions/<name>/`, loaded by Pi
-through an explicit entry in the root `package.json`. Nothing is built or
-published: Pi loads the TypeScript source directly. `extensions/pi-tldr/` is the
-smallest complete example; copy its shape.
+Every extension is its own npm workspace under `extensions/<name>/`, loaded by
+Pi through an explicit entry in the root `package.json`. Nothing is built or
+published: Pi loads the TypeScript source directly.
 
-Names are `pi-<topic>` (lowercase, hyphenated). Before starting, check that no
-existing extension already owns the tool or command you want; extend that one
-instead when it does.
+Before starting, check that no existing extension already owns the tool or
+command you want. Extend that one instead when it does.
 
-## 1. Scaffold the workspace
+## 1. Scaffold
 
-```text
-extensions/<name>/
-├── package.json
-├── tsconfig.json
-├── vitest.config.ts
-├── README.md
-├── src/index.ts          # default export: (pi: ExtensionAPI) => void
-└── test/index.test.ts
+Run from the repository root:
+
+```bash
+node .agents/skills/new-extension/scripts/scaffold.mjs pi-<topic> \
+  --description "<one line: what it does>" \
+  --tool <snake_name> --command <name> \
+  --after <pi-extension-it-needs-first>
 ```
 
-`package.json`, matching the other first-party workspaces:
+| Option | Effect |
+| --- | --- |
+| `pi-<topic>` | Directory and package name; lowercase, hyphenated. |
+| `--description` | Required. Used in `package.json`, the factory's doc comment, and both READMEs. |
+| `--tool`, `--command` | Repeatable. Each gets a stub registration, a test, and an assertion in `scripts/verify-bundle.mjs`. A name another extension already uses is refused. Adding a tool also adds `typebox`. |
+| `--after` | Load after that extension (Pi runs `session_start` handlers in load order). Default: last. |
+| `--no-tui` | Leave out `@earendil-works/pi-tui` when the extension renders nothing. |
+| `--no-install` | Skip `npm install --ignore-scripts`; the lockfile is then stale until you run it. CI uses `npm ci`, so commit the updated lockfile. |
 
-```json
-{
-  "name": "<name>",
-  "version": "0.1.0",
-  "private": true,
-  "type": "module",
-  "description": "<one line>",
-  "keywords": ["pi-package", "pi-extension"],
-  "files": ["src", "README.md"],
-  "peerDependencies": {
-    "@earendil-works/pi-ai": "*",
-    "@earendil-works/pi-coding-agent": "*",
-    "@earendil-works/pi-tui": "*"
-  },
-  "engines": { "node": ">=24" },
-  "scripts": { "check": "tsc --noEmit", "test": "vitest run", "test:watch": "vitest" },
-  "devDependencies": {
-    "@earendil-works/pi-ai": "1.4.0",
-    "@earendil-works/pi-coding-agent": "1.4.0",
-    "@earendil-works/pi-tui": "1.4.0",
-    "@types/node": "^24.19.2",
-    "typescript": "^6.0.3",
-    "vitest": "^5.0.5"
-  },
-  "pi": { "extensions": ["./src/index.ts"] }
-}
-```
+It checks everything before writing anything, then:
 
-- Copy the Pi and tool versions from `extensions/pi-tldr/package.json` at the
-  time you scaffold, not from this file, so the pins stay aligned.
-- Add `typebox` (peer `*`, dev pinned like `extensions/pi-todo`) only if the
-  extension registers tools with schemas. Drop `pi-tui` if it renders nothing.
-- CI runs `check` and `test` for the workspace without `--if-present`; both
-  scripts must exist.
+- creates `package.json` (pins copied from `extensions/pi-tldr`, so they match the
+  bundle), `tsconfig.json`, `vitest.config.ts`, `README.md`, `src/index.ts` and
+  `test/index.test.ts` from `templates/`;
+- adds the workspace and the `pi.extensions` entry to the root `package.json`;
+- adds the tools and commands to the lists `scripts/verify-bundle.mjs` asserts;
+- adds the directory to the README layout tree and a short `### <name>` section
+  under Extensions, both in name order;
+- runs `npm install --ignore-scripts`.
 
-`tsconfig.json` extends the shared strict base:
+Review `git diff` afterwards. Then implement the stubs (step 2), extend the
+tests (step 3), and rewrite the README sections: what it does, tools, commands,
+config files. Add a `# comment` to its layout-tree row if it helps.
 
-```json
-{ "extends": "../../tsconfig.base.json", "include": ["src", "test"] }
-```
+Keep helper modules beside `src/index.ts`; only the entry point is registered.
+Import siblings by relative path. Use `#src/*` aliases only with matching
+`imports` and `paths` entries, as `extensions/pi-todo` has. A runtime dependency
+goes in the **root** `dependencies`, since a Git install of the bundle installs
+only those; nested manifests alone expose nothing.
 
-`vitest.config.ts`:
-
-```ts
-import { defineConfig } from "vitest/config";
-export default defineConfig({ root: import.meta.dirname, test: { include: ["test/**/*.test.ts"] } });
-```
-
-Import siblings by relative path. Use `#src/*` aliases only if
-you also add the matching `imports` and `paths` entries, as `extensions/pi-todo`
-does.
-
-## 2. Register it
-
-1. Root `package.json`: add `extensions/<name>` to `workspaces` and
-   `./extensions/<name>/src/index.ts` to `pi.extensions`. Order in
-   `pi.extensions` is load order; put an extension after anything it needs at
-   `session_start`.
-2. Run `npm install --ignore-scripts` to update `package-lock.json`. CI uses
-   `npm ci`, so a stale lockfile fails every job.
-3. `scripts/verify-bundle.mjs`: add each tool to the tools list and each command
-   to the commands list it asserts. The script also fails on duplicate tool,
-   command or flag names across the bundle.
-4. Root `README.md`: add the directory to the layout tree and an `### <name>`
-   section under Extensions: what it does, its tools and commands, its config
-   files, and a link to `extensions/<name>/README.md`.
-
-Runtime dependencies are rare here. If you need one, add it to the **root**
-`dependencies`, since a Git install of the bundle installs only those.
-
-## 3. Follow the runtime conventions
+## 2. Follow the runtime conventions
 
 **Sessions.** Every subagent is a full in-process Pi session that loads every
 bundle extension again. So:
 
 - Keep all state in the factory's closure, never in module scope: a same-cwd
   child may share the parent's module instance.
-- Rebuild state on `session_start` from `ctx.sessionManager.getBranch()` and
-  persist with `pi.appendEntry`, so `/tree`, resume, reload and compaction work.
+- Rebuild state in `restore` (the template wires it to `session_start` and
+  `session_tree`) from `ctx.sessionManager.getBranch()`, and persist with
+  `pi.appendEntry`, so `/tree`, resume, reload and compaction work.
 - Guard UI with `ctx.hasUI`; children have none.
 - A captured `ctx` goes stale after reload. Re-read it from each event.
 - To reach another session (parent or child), use
@@ -122,33 +78,33 @@ optional project override `.pi/<topic>.json`, sanitized field by field with
 defaults for anything missing or invalid (see `extensions/pi-todo/src/config.ts`).
 Never throw on a malformed file; warn and use defaults.
 
-**Tools.** Clear `description` and `promptGuidelines`, bounded output (Pi caps
-at 50 KB / 2,000 lines; stay well under), and `annotations.readOnlyHint` on
-tools that only read, so pi-jobs can watch them.
+**Tools.** Replace the stub `description` and `promptGuidelines`; define real
+`parameters`. Keep output bounded (Pi caps at 50 KB / 2,000 lines; stay well
+under). Set `annotations.readOnlyHint: true` on tools that only read, so pi-jobs
+can watch them.
 
 **Terminal UI.** Follow `AGENTS.md`: at least one space of padding on both sides
 of every body row, subtract padding before layout and truncation, blank rows
 when the width cannot fit padding plus content. Fullscreen views use a centered
 overlay; regular mode uses a custom screen (see `extensions/pi-system-insights`).
 
-## 4. Test it
+## 3. Test it
 
-- `test/index.test.ts`: register the factory against a small fake `pi` that
-  captures `on`, `registerTool` and `registerCommand`, and drive the handlers
-  (see `extensions/pi-tldr/test/index.test.ts`).
+- `test/index.test.ts` starts with a fake `pi` that records `on`,
+  `registerTool` and `registerCommand`. Extend it to drive the handlers and the
+  tools' `execute` (more examples: `extensions/pi-tldr/test/index.test.ts`).
 - Rendering: test narrow widths, ANSI-colored text and wide Unicode, and assert
   the padding rules.
 - Anything that persists or crosses sessions: one SDK test with Pi's real
   `DefaultResourceLoader`, `createAgentSession` and the faux provider (see
   `extensions/pi-stash/test/sdk.test.ts`). It runs offline.
 
-## 5. Verify and open the PR
+## 4. Verify and open the PR
 
 ```bash
 npm run check -w extensions/<name>
 npm test -w extensions/<name>
 npm run verify:bundle
-node --test scripts/select-test-extensions.test.mjs
 ```
 
 Then `/reload` in Pi to try it; a local checkout needs no reinstall. Commit with
@@ -160,4 +116,13 @@ added and what `verify:bundle` now asserts.
 Code that several extensions import goes in `packages/<name>/` instead: a
 workspace with no `pi` manifest entry, so Pi never loads it as an extension.
 Add it to `workspaces` only; extensions import it by relative path. CI re-tests
-every workspace when a package changes. See `packages/pi-session-tree/`.
+every workspace when a package changes. See `packages/pi-session-tree/`. The
+scaffold script does not cover packages.
+
+## Changing the templates
+
+`templates/` holds the files the script renders; `{{name}}`, `{{description}}`,
+`{{factory}}`, `{{imports}}`, `{{registrations}}`, `{{registrationTests}}` and
+`{{surface}}` are filled in, and `templates/snippets/` holds the per-tool and
+per-command blocks. An unknown `{{variable}}` stops the script. After changing a
+template, scaffold a throwaway extension and run step 4 on it.
