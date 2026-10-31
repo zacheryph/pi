@@ -98,7 +98,11 @@ Each record carries a `scope`. The storing session always holds the record.
 | `parent` | the direct parent |
 | `ancestors` | every ancestor up to the root |
 | `descendants` | every child and grandchild, now and later |
-| `tree` | every session under the root (ancestors, siblings, cousins, descendants) |
+| `tree` | its line of descent: `ancestors` + `descendants` (never siblings or cousins) |
+
+Reach is a set, and scopes are ordered by inclusion: `self` ⊂ `parent` ⊂ `ancestors`
+⊂ `tree`, and `self` ⊂ `descendants` ⊂ `tree`. `parent` and `descendants` are not
+comparable.
 
 - Default scope: `self` in a root session, `ancestors` in a subagent. Both are
   configurable (`stash.defaultScope`, `stash.subagentScope`).
@@ -106,21 +110,30 @@ Each record carries a `scope`. The storing session always holds the record.
   each ancestor in range. `adopt` journals `{ op: "put", record, via: "adopt" }` in
   that ancestor's session, updates its index and publishes its snapshot (which updates
   the dashboard). It also queues a one-line context note for that ancestor's model.
-- **Down:** on `session_start`, a child pulls in records in scope from its ancestors
-  (`descendants`/`tree`) and from siblings and cousins (`tree`). It journals them
-  locally with `via: "inherit"`, so a later resume still has them. A put with a
-  downward scope is also pushed to live descendants.
-- **Changing scope:** `stash_scope { ref, scope }`, allowed only in the session that
-  created the record. Widening propagates right away. Narrowing stops future
-  propagation, and live sessions that hold the record only because of propagation
-  journal `{ op: "retract", id }`. Ended sessions keep their copy.
+- **Down:** on `session_start`, a child pulls in records with scope `descendants` or
+  `tree` from its ancestors. It journals them locally with `via: "inherit"`, so a
+  later resume still has them. A put with a downward scope is also pushed to live
+  descendants.
+- **Changing scope (widen only):** `stash_scope { ref, scope }`, allowed only in the
+  session that created the record. The new scope must include the old one (see the
+  ordering above). Widening journals `{ op: "scope", id, scope }` and propagates to
+  the newly reached sessions right away. Anything else (narrowing, or moving sideways
+  such as `parent` → `descendants`) is an error, and the message names the scopes that
+  would be valid. Nothing is ever retracted.
+- **Private entries:** when a subagent stores a `self`-scoped entry, each live
+  ancestor journals a metadata-only marker `{ op: "private", id, agent, session }`
+  with no name, description or handle. `stash_list` and `/stash` show one dim line per
+  agent ("+3 private entries in explore#a3f2"). The context card shows a single total
+  line. If the entry later widens to reach that ancestor, the adopted record replaces
+  its marker (matched by `id`). Cost: one more op in replay and a count in the list
+  and card renderers.
 - Scope controls discoverability, not access. Any session on the machine can read
   content by full handle. The docs and the tool description must say so.
 - **Names:** adopted records keep their name. The newest version wins for bare-name
   lookups, as when a session puts the same name twice. Older versions stay reachable
   by handle. `stash_list` and `/stash` show who stored each entry.
 - **Schema:** stays at v1. New fields are optional: `id`, `scope`, `via`, `agent`.
-  New ops are `scope` and `retract`. Older code ignores unknown ops
+  New ops are `scope` and `private`. Older code ignores unknown ops
   (`state.ts:65-66` only acts on `put` and `checkpoint`), so this is forward
   compatible.
 - **Manual escape hatch:** `stash_put { name, handle }` adopts an existing blob by
@@ -146,9 +159,17 @@ Each record carries a `scope`. The storing session always holds the record.
   broker:
   - `todo list` and the context snapshot show only the claimed tasks (`assigned`), or
     the whole ledger with claims marked (`ledger`).
-  - `upsert` on a claimed key goes to `broker.mutate(request, { agent })`. Writing to
-    an unclaimed key fails. A new key is created in the parent's ledger and claimed by
-    this child. Its `dependsOn` may name any ledger key.
+  - `upsert` on a claimed key goes to `broker.mutate(request, { agent })`. A new key
+    is created in the parent's ledger and claimed by this child. Its `dependsOn` may
+    name any ledger key.
+  - Unclaimed keys: in `assigned` mode the child cannot see them, so any write fails.
+    In `ledger` mode the child may **add prerequisites** to an unclaimed task: a patch
+    with only `key` and `dependsOn`, where the new list contains the old one. That lets
+    a child report "this parent task is blocked by something I found". Every such
+    change records a flagged history message on the affected task ("explore#a3f2
+    added prerequisite db-migration"). Other fields, removing edges, and status
+    changes on unclaimed tasks still fail. This is an experiment; if agents abuse it,
+    turn it off with config.
   - In delegated mode, `baseRevision` is checked against the child's last read of its
     own tasks, not the global revision, so concurrent siblings don't cause stale-write
     errors.
@@ -226,13 +247,18 @@ AGENTS.md (UI spacing tests at narrow widths, `commit.gpgsign=false`).
 ### PR 4 — pi-stash: scopes
 
 - Depends on PR 3.
-- `scope` parameter on `stash_put`; `stash_scope` tool; `retract` op; downward
-  inherit at child `session_start`; live push for `descendants`/`tree`; config
-  defaults.
+- `scope` parameter on `stash_put`; `stash_scope` tool (widen only, otherwise an
+  error); downward inherit at child `session_start`; live push for
+  `descendants`/`tree`; config defaults.
+- Private markers: `private` op, "+N private entries in <agent>" rows in
+  `stash_list` and `/stash`, one total line in the context card, and the marker
+  replaced when the entry widens.
 - Tool text states that scope controls discoverability, not access.
-- Tests: each scope's reach in a three-level tree with siblings; widening after the
-  fact; narrowing retracts from live holders only; a resumed child keeps inherited
-  entries; checkpoint after compaction keeps the new fields.
+- Tests: each scope's reach in a three-level tree with siblings (`tree` must not
+  reach siblings or cousins); widening after the fact; narrowing and sideways moves
+  are errors; private counts per agent and their replacement on widening; a resumed
+  child keeps inherited entries; checkpoint after compaction keeps the new fields
+  and markers; render tests for the private row at narrow widths.
 
 ### PR 5 — pi-subagents: handoff channel
 
@@ -259,8 +285,11 @@ AGENTS.md (UI spacing tests at narrow widths, `commit.gpgsign=false`).
   `TodoSnapshotTask.claimedBy` (optional, snapshot stays v1) for the dashboard.
 - Orchestrator prompt (`pi-subagents/src/config/default-agents.ts`): hand off with
   `todos` instead of describing tasks in prose.
+- `ledger`-mode prerequisite additions on unclaimed tasks, with flagged history
+  messages and a config switch (`todos.childPrerequisites`, default on).
 - Tests: the veto cases; a child sees only its claims; a child-added task appears in
-  the parent; per-key stale checks; release on failure flags in-progress tasks;
+  the parent; `ledger` mode adds a prerequisite to an unclaimed task but cannot change
+  its other fields or remove edges; per-key stale checks; release on failure flags in-progress tasks;
   fallback with no broker; render tests for the badge at narrow widths and with
   wide/ANSI text.
 
@@ -271,10 +300,12 @@ AGENTS.md (UI spacing tests at narrow widths, `commit.gpgsign=false`).
 - Nested handoff: a child may pass its own claims to a grandchild. The root ledger
   stays authoritative and the claim moves to the leaf agent.
 
-## Open questions
+## Decisions
 
-1. Should a `self`-scoped entry from a subagent still be listed in the parent as a
-   collapsed "+N private entries from explore#a3f2" line, or stay fully hidden?
-2. Should narrowing scope be allowed at all in v1, or should scope only ever widen?
-3. Should a child in `ledger` mode be allowed to add `dependsOn` edges to tasks it
-   does not hold?
+1. `tree` means the line of descent (ancestors + descendants), not every session
+   under the root.
+2. A subagent's `self`-scoped entries appear in each ancestor as a "+N private
+   entries in <agent>" line (metadata-only `private` op; small cost).
+3. Scope only widens. Narrowing or moving sideways is an error.
+4. In `ledger` mode a child may add prerequisites to tasks it does not hold, with a
+   flagged history message for each. This is an experiment behind a config switch.
