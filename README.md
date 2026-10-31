@@ -56,6 +56,7 @@ pi-personal/
 ├── package.json                         # bundle manifest + private dev workspace
 ├── tsconfig.base.json
 ├── skills/
+│   ├── babysit-pr/                      # drives a pull request to green
 │   ├── execute-roadmap/                 # carries out a chosen roadmap
 │   └── make-it-easy/                    # roadmap-planning skill
 │       ├── SKILL.md
@@ -330,9 +331,9 @@ Nothing here depends on it.
 
 Carries out a chosen make-it-easy roadmap. Each step becomes a `todo` with its
 `Depends on` mapped to `dependsOn`; ready steps go to subagents (in parallel only
-when their files do not overlap); a separate worker verifies every step against
-its "Done when" and "Verification" lines before it is committed and completed.
-Two failed repair rounds block a step. A finding the roadmap did not anticipate
+when their files do not overlap); a `reviewer` that did not do the work checks
+every step against its "Done when" and "Verification" lines before it is
+committed and completed. Two failed repair rounds block a step. A finding the roadmap did not anticipate
 stops the run and lands in the document's open questions instead of an
 improvised plan. The roadmap document stays the plan of record: its `Status:`
 and per-step `Landed:` lines are updated as work lands, so a later run resumes

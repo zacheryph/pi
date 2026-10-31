@@ -1,6 +1,6 @@
 ---
 name: execute-roadmap
-description: Carry out a chosen make-it-easy roadmap. Turns each step of docs/roadmaps/<slug>.md into a todo with its dependencies, delegates ready steps to subagents, verifies every step against its "Done when" and "Verification" lines with a separate worker, commits one step at a time, and keeps the roadmap document and the todo ledger in sync until the easy change lands or a step is blocked. Use when asked to execute, run, implement, or continue a roadmap, or right after make-it-easy hands off.
+description: Carry out a chosen make-it-easy roadmap. Turns each step of docs/roadmaps/<slug>.md into a todo with its dependencies, delegates ready steps to subagents, verifies every step against its "Done when" and "Verification" lines with a reviewer that did not do the work, commits one step at a time, and keeps the roadmap document and the todo ledger in sync until the easy change lands or a step is blocked. Use when asked to execute, run, implement, or continue a roadmap, or right after make-it-easy hands off.
 ---
 
 # Execute a roadmap
@@ -75,14 +75,16 @@ A worker finishing is not proof. For every implementation step:
 
 1. Read the worker's report. If it changed files outside its scope, treat the
    step as failed.
-2. Spawn a **separate** worker to verify it, read-only where the step allows.
-   Give it the step's `Done when` and `Verification` lines and the diff
-   (`git diff` against the step's starting commit). Ask for pass or fail per
-   line, with evidence.
-3. On pass: commit (see below), then mark the task `completed` with a `message`
-   that names the commit and the evidence.
-4. On fail: resume the original worker (`subagent` with `resume` set to its
-   agent ID) with the verifier's findings. Allow two repair rounds. After that,
+2. Spawn a `reviewer` (never the worker that implemented the step). Give it the
+   task key, the step's `Done when` lines as its acceptance criteria, the
+   `Verification` lines as the checks to run, and the diff range (the step's
+   starting commit to the working tree).
+3. On `Verdict: PASS`: commit (see below), then mark the task `completed` with a
+   `message` that names the commit and the reviewer's evidence.
+4. On `Verdict: FAIL`: resume the original worker (`subagent` with `resume` set
+   to its agent ID) with the reviewer's findings, then review again. Allow two
+   repair rounds. On `Verdict: BLOCKED`, fix what kept the reviewer from checking
+   (a missing service, a check that cannot run) or ask the user. After that,
    the step is blocked: mark it `pending`, record the failure in its `message`,
    and stop dispatching anything that depends on it.
 
