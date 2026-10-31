@@ -378,6 +378,9 @@ pi --no-extensions -e ./extensions/pi-subagents/src/index.ts
 3. Assert its tools and commands in `scripts/verify-bundle.mjs`.
 4. Run `/reload` (or restart Pi). No reinstall needed for a local checkout.
 
+The [`new-extension` skill](.agents/skills/new-extension/SKILL.md) walks an agent
+through these steps plus the session, UI, config and test conventions.
+
 Keep helper modules beside their entry point, not registered separately. Add
 third-party runtime dependencies to the bundle's root `dependencies` so Git installs
 can install them; for local installs run `npm install --ignore-scripts` yourself.
