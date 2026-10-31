@@ -6,10 +6,10 @@
  * every child run; this package decides which agents get a worktree (via the
  * worktreeAgents config) and brackets the run with git plumbing.
  *
- * The provider is registered once at extension init via the published
- * SubagentsService, which requires @gotgenes/pi-subagents to have initialized
- * first — list this package after it in settings.json (Pi loads in order). If
- * the service is absent (not installed, or mis-ordered), the extension no-ops.
+ * The provider is registered on session_start with that session's own
+ * SubagentsService, which the bundled pi-subagents publishes from its own
+ * session_start handler — list this package after it (Pi runs handlers in load
+ * order). If the service is absent, children run unisolated.
  */
 
 import {
@@ -35,28 +35,35 @@ export default function piSubagentsWorktrees(pi: ExtensionAPI): void {
   // Best-effort crash recovery: clear worktrees orphaned by a prior crash.
   pruneWorktrees(process.cwd());
 
-  const service = getSubagentsService();
-  if (!service) {
-    debugLog(
-      "subagents service unavailable — worktree provider not registered",
-      undefined,
-    );
-    return;
-  }
-
   const live = new ActiveWorktrees();
-  const unregister = service.registerWorkspaceProvider(
-    new WorktreeWorkspaceProvider(config, live),
-  );
   const repoCwd = process.cwd();
   const findPreserved = () => findPreservedWorktrees(repoCwd, live);
+  let unregister: (() => void) | undefined;
 
-  // The rescue artifacts a session start reports: worktrees a failed cleanup
-  // left on disk, and branches a successful one committed to that nobody
-  // merged. Two notices rather than one, because they are different artifacts
-  // with different remedies. A session with no UI (every subagent child) has
-  // nowhere to show either, so it does not even look.
+  // Local change: the bundled pi-subagents publishes one service per session on
+  // session_start, and a child session's lookup without an id returns its
+  // parent's. Register with this session's own service, so each session's
+  // children are isolated by its own manager.
   pi.on("session_start", (_event, ctx) => {
+    unregister?.();
+    unregister = undefined;
+    const service = getSubagentsService(ctx.sessionManager.getSessionId());
+    if (service) {
+      unregister = service.registerWorkspaceProvider(
+        new WorktreeWorkspaceProvider(config, live),
+      );
+    } else {
+      debugLog(
+        "subagents service unavailable — worktree provider not registered",
+        undefined,
+      );
+    }
+
+    // The rescue artifacts a session start reports: worktrees a failed cleanup
+    // left on disk, and branches a successful one committed to that nobody
+    // merged. Two notices rather than one, because they are different artifacts
+    // with different remedies. A session with no UI (every subagent child) has
+    // nowhere to show either, so it does not even look.
     if (!ctx.hasUI) return;
     const preserved = findPreserved();
     if (preserved.length > 0) {
@@ -73,5 +80,8 @@ export default function piSubagentsWorktrees(pi: ExtensionAPI): void {
     discard: (path) => discardWorktree(repoCwd, path),
   });
 
-  pi.on("session_shutdown", () => unregister());
+  pi.on("session_shutdown", () => {
+    unregister?.();
+    unregister = undefined;
+  });
 }

@@ -50,9 +50,12 @@ function fakePi() {
 }
 
 /** Build an ExtensionContext double exposing only what the handler reads. */
-function fakeCtx(hasUI = true) {
+function fakeCtx(hasUI = true, sessionId = "session-1") {
   const notify = vi.fn();
-  return { ctx: { hasUI, ui: { notify } }, notify };
+  return {
+    ctx: { hasUI, ui: { notify }, sessionManager: { getSessionId: () => sessionId } },
+    notify,
+  };
 }
 
 describe("piSubagentsWorktrees extension entry", () => {
@@ -77,12 +80,12 @@ describe("piSubagentsWorktrees extension entry", () => {
     return { pi, handlers };
   }
 
-  it("registers a worktree provider with the subagents service at init", () => {
+  it("registers a worktree provider with the session's own service at session_start", () => {
     const unregister = vi.fn();
     const registerWorkspaceProvider = vi.fn((_provider: unknown) => unregister);
     getSubagentsService.mockReturnValue({ registerWorkspaceProvider });
 
-    const { pi } = fakePi();
+    const { pi, handlers } = fakePi();
     piSubagentsWorktrees(pi as never);
 
     expect(loadWorktreesConfig).toHaveBeenCalledWith(
@@ -90,19 +93,50 @@ describe("piSubagentsWorktrees extension entry", () => {
       process.cwd(),
     );
     expect(pruneWorktrees).toHaveBeenCalledWith(process.cwd());
+    expect(registerWorkspaceProvider).not.toHaveBeenCalled();
+
+    handlers.get("session_start")?.(
+      { type: "session_start" },
+      fakeCtx(false, "child-7").ctx,
+    );
+
+    expect(getSubagentsService).toHaveBeenCalledWith("child-7");
     expect(registerWorkspaceProvider).toHaveBeenCalledTimes(1);
     expect(registerWorkspaceProvider.mock.calls[0][0]).toBeInstanceOf(
       WorktreeWorkspaceProvider,
     );
   });
 
-  it("no-ops when the subagents service is unavailable", () => {
+  it("replaces its own registration when the session starts again", () => {
+    const first = vi.fn();
+    const second = vi.fn();
+    const registerWorkspaceProvider = vi
+      .fn()
+      .mockReturnValueOnce(first)
+      .mockReturnValueOnce(second);
+    getSubagentsService.mockReturnValue({ registerWorkspaceProvider });
+
+    const { pi, handlers } = fakePi();
+    piSubagentsWorktrees(pi as never);
+    handlers.get("session_start")?.({ type: "session_start" }, fakeCtx(false).ctx);
+    handlers.get("session_start")?.({ type: "session_start" }, fakeCtx(false).ctx);
+
+    expect(first).toHaveBeenCalledTimes(1);
+    expect(second).not.toHaveBeenCalled();
+    expect(registerWorkspaceProvider).toHaveBeenCalledTimes(2);
+  });
+
+  it("runs children unisolated when the session has no subagents service", () => {
     getSubagentsService.mockReturnValue(undefined);
 
-    const { pi } = fakePi();
+    const { pi, handlers } = fakePi();
     expect(() => piSubagentsWorktrees(pi as never)).not.toThrow();
-    expect(pi.on).not.toHaveBeenCalled();
-    expect(pi.registerCommand).not.toHaveBeenCalled();
+    expect(() =>
+      handlers.get("session_start")?.({ type: "session_start" }, fakeCtx().ctx),
+    ).not.toThrow();
+    expect(() =>
+      handlers.get("session_shutdown")?.({ type: "session_shutdown" }, fakeCtx().ctx),
+    ).not.toThrow();
   });
 
   it("registers the preserved-worktree command", () => {
@@ -122,6 +156,7 @@ describe("piSubagentsWorktrees extension entry", () => {
 
     const { pi, handlers } = fakePi();
     piSubagentsWorktrees(pi as never);
+    handlers.get("session_start")?.({ type: "session_start" }, fakeCtx(false).ctx);
 
     expect(pi.on).toHaveBeenCalledWith(
       "session_shutdown",
