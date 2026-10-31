@@ -144,17 +144,19 @@ No upstream runtime behavior was intentionally changed during import.
 - Upstream kept one `globalThis` slot. Each in-process child session loads the
   extension again, replaced the parent's service at load, and deleted the slot on
   shutdown, leaving the parent with no service until its next reload.
-- `src/service/service.ts` now keeps every live service in publish order under
-  `Symbol.for("@gotgenes/pi-subagents:services.v1")`. The legacy slot always holds
-  the outermost one. `unpublishSubagentsService(service)` removes only its own
-  publication (the argument is now required).
-- `src/index.ts` publishes on `session_start` instead of at load, so a
-  factory-only load (no session, so no shutdown) never enters the registry.
-  `publishSubagentsService(service, sessionId)` requires the session id and
-  replaces an existing entry for the same session in place.
+- `src/service/service.ts` now keeps every published service under
+  `Symbol.for("@gotgenes/pi-subagents:services.v1")`, pending from the factory
+  until `session_start`. The newest pending service is the default while a load
+  is in progress (so companions such as pi-subagents-worktrees still register
+  their provider from their factory, in children too); otherwise the outermost
+  started one is. The legacy slot mirrors the default.
+- A starting session drops older pending publications, and a child whose
+  creation fails discards the ones its load made, so a load that never starts
+  cannot stay the default. `unpublishSubagentsService(service)` removes only its
+  own publication (the argument is now required).
 - `getSubagentsService(sessionId?)` can return a specific session's service.
-- Tests: `test/service/service.test.ts` and a parent/child case in
-  `test/composition-root.test.ts`.
+- Tests: `test/service/service.test.ts`, and parent/child, load-only,
+  companion and failed-child cases in `test/composition-root.test.ts`.
 
 ## Development
 

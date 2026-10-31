@@ -473,7 +473,7 @@ const svc = getSubagentsService();
 svc?.spawn("Explore", "Check for stale TODOs");
 ```
 
-`getSubagentsService()` returns the top-level session's service even while child sessions (which load this extension too) are running. Pass a session id, `getSubagentsService(ctx.sessionManager.getSessionId())`, to get a specific session's own service.
+`getSubagentsService()` returns the top-level session's service even while child sessions (which load this extension too) are running. The one exception is while a session's extensions are loading: then it returns that session's service, so a companion can register on it from its own factory (list the companion after this package). Pass a session id, `getSubagentsService(ctx.sessionManager.getSessionId())`, to get a specific started session's own service.
 
 Declare this package as an optional peer dependency.
 See `src/service/service.ts` for the full `SubagentsService` interface and the `WorkspaceProvider` seam.

@@ -503,7 +503,7 @@ describe("composition root: parent tool list", () => {
 });
 
 describe("composition root: service publication", () => {
-  it("does not publish for a load that never starts a session", async () => {
+  it("drops a load that never started once a later session starts", async () => {
     // Session A starts.
     const a = makePi();
     subagentsExtension(a.pi);
@@ -513,22 +513,83 @@ describe("composition root: service publication", () => {
     // B runs the factory only: Pi may load extensions without starting a session.
     const b = makePi();
     subagentsExtension(b.pi);
-    expect(getSubagentsService()).toBe(serviceA);
+    const serviceB = getSubagentsService();
+    expect(serviceB).not.toBe(serviceA);
 
-    // A shuts down and a new session C starts.
+    // A shuts down and a new session C loads and starts.
     await a.fire("session_shutdown", {}, {});
-    expect(getSubagentsService()).toBeUndefined();
     const c = makePi();
     subagentsExtension(c.pi);
     const ctxC = makeSessionStartCtx(makeParentRegistry().registry, makeRecordingUI());
     ctxC.sessionManager.getSessionId = vi.fn(() => "session-c");
     await c.fire("session_start", {}, ctxC);
 
-    expect(getSubagentsService()).toBeDefined();
     expect(getSubagentsService()).toBe(getSubagentsService("session-c"));
-    expect(getSubagentsService()).not.toBe(serviceA);
+    expect(getSubagentsService()).not.toBe(serviceB);
 
+    // B is gone, not merely behind C.
     await c.fire("session_shutdown", {}, {});
+    expect(getSubagentsService()).toBeUndefined();
+  });
+
+  it("lets a companion register its workspace provider from its factory, in the parent and in a child", async () => {
+    // Mirrors @gotgenes/pi-subagents-worktrees: its factory reads the published
+    // package's slot right after pi-subagents loads and registers one provider,
+    // unregistering it on session_shutdown.
+    const companion = (pi: ReturnType<typeof makePi>["pi"]) => {
+      const service = (globalThis as Record<symbol, unknown>)[Symbol.for("@gotgenes/pi-subagents:service")] as
+        | ReturnType<typeof getSubagentsService>
+        | undefined;
+      if (!service) throw new Error("companion found no subagents service");
+      const unregister = service.registerWorkspaceProvider({ prepare: vi.fn() } as any);
+      pi.on("session_shutdown", () => unregister());
+    };
+
+    const parent = makePi();
+    subagentsExtension(parent.pi);
+    companion(parent.pi);
+    await parent.fire("session_start", {}, makeSessionStartCtx(makeParentRegistry().registry, makeRecordingUI()));
+    const parentService = getSubagentsService("session-1")!;
+    expect(() => parentService.registerWorkspaceProvider({ prepare: vi.fn() } as any)).toThrow(/already registered/);
+
+    // A child loads both extensions again; the companion must get the child's
+    // service (the parent's would refuse a second provider).
+    const child = makePi();
+    subagentsExtension(child.pi);
+    expect(() => companion(child.pi)).not.toThrow();
+    const childCtx = makeSessionStartCtx(makeParentRegistry().registry, makeRecordingUI());
+    childCtx.sessionManager.getSessionId = vi.fn(() => "child-session");
+    await child.fire("session_start", {}, childCtx);
+    expect(getSubagentsService()).toBe(parentService);
+    expect(() => getSubagentsService("child-session")!.registerWorkspaceProvider({ prepare: vi.fn() } as any))
+      .toThrow(/already registered/);
+
+    await child.fire("session_shutdown", {}, {});
+    expect(getSubagentsService()).toBe(parentService);
+    expect(() => parentService.registerWorkspaceProvider({ prepare: vi.fn() } as any)).toThrow(/already registered/);
+    await parent.fire("session_shutdown", {}, {});
+  });
+
+  it("discards the service a child published at load when the child fails before starting", async () => {
+    const parent = makePi();
+    subagentsExtension(parent.pi);
+    await parent.fire("session_start", {}, makeSessionStartCtx(makeParentRegistry().registry, makeRecordingUI()));
+    const parentService = getSubagentsService();
+
+    let defaultDuringChildLoad: unknown;
+    vi.mocked(createSubagentSession).mockImplementationOnce(async () => {
+      // The child's copy of this extension runs its factory, then creation fails.
+      subagentsExtension(makePi().pi);
+      defaultDuringChildLoad = getSubagentsService();
+      throw new Error("createSession failed");
+    });
+    getSubagentsService()!.spawn("general-purpose", "hi", { description: "child" });
+
+    await vi.waitFor(() => expect(defaultDuringChildLoad).toBeDefined());
+    expect(defaultDuringChildLoad).not.toBe(parentService);
+    await vi.waitFor(() => expect(getSubagentsService()).toBe(parentService));
+
+    await parent.fire("session_shutdown", {}, {});
   });
 
   it("keeps the parent's service published after an in-process child shuts down", async () => {

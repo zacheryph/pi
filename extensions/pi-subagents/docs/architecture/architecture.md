@@ -567,15 +567,20 @@ Key types:
 
 ### Accessor pattern
 
-Every child session loads this extension again in the same process, so several services are live at once.
-A child loads after its parent and shuts down before it, so the accessors keep publications in publish order and treat the first as the outermost:
+Every child session loads this extension again in the same process, so several services are published at once.
+Each publication is *pending* from the extension factory until its session's `session_start`, then *started*:
 
-- `publishSubagentsService(service, sessionId)` appends to `Symbol.for("@gotgenes/pi-subagents:services.v1")`.
-  The extension publishes on `session_start`, never at load: Pi may run extension factories without ever starting (or shutting down) a session, and such a publication would sit ahead of every later session.
-  Publishing for a session id that is already listed replaces that entry in place.
-- The legacy slot `Symbol.for("@gotgenes/pi-subagents:service")` always holds the outermost live service, so a child never displaces its parent.
-- `getSubagentsService()` returns the outermost service; `getSubagentsService(sessionId)` returns that session's own.
-- `unpublishSubagentsService(service)` removes only that publication and moves the slot to the next outermost one.
+- The extension publishes `publishSubagentsService(service)` in its factory and `publishSubagentsService(service, sessionId)` on `session_start`, under `Symbol.for("@gotgenes/pi-subagents:services.v1")`.
+- While a load is pending, the newest pending service is the default.
+  Companion extensions such as `@gotgenes/pi-subagents-worktrees` call `getSubagentsService()` from their own factory, right after this one, and must get the service of the session that is loading.
+  That includes each child session, whose companion copy would otherwise try to register a second provider on the parent's service.
+- Otherwise the default is the outermost started service: a child starts after its parent and shuts down before it, so a child never displaces its parent.
+- The legacy slot `Symbol.for("@gotgenes/pi-subagents:service")` mirrors the default, for consumers of the published package that read it directly.
+- Pi can run factories without starting that session (a project-trust bootstrap pass, a child whose creation failed), so no shutdown ever removes such a publication.
+  A session that starts drops every pending publication older than its own, and a failed child creation discards the pending publications made since it began (`markPendingPublications` / `discardPendingSince`, wired in `src/index.ts`).
+- Publishing a started service for a session id that is already listed replaces that entry in place.
+- `getSubagentsService(sessionId)` returns that session's own started service.
+- `unpublishSubagentsService(service)` removes only that publication.
 
 ```typescript
 const parent = getSubagentsService();            // top-level session's service
