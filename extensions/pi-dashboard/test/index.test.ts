@@ -227,6 +227,53 @@ describe("pi-dashboard extension", () => {
     expect(JSON.parse(response.body).error).toBe("pi-stash did not answer; is it loaded?");
   });
 
+  it("shows rpiv ask-user questionnaires and answers them through rpiv's channel", async () => {
+    const env = setup({ detectTerminal: () => undefined });
+    const fake = load(env.deps);
+    const ctx = fakeCtx();
+    onCleanup(() => quit(fake, ctx));
+    const received: unknown[] = [];
+    // Stand-in for rpiv ask-user's inbound answer channel.
+    fake.pi.events.on("rpiv:ask-user:answer", (data) => {
+      const payload = data as { requestId: string; toolCallId: string; answers?: Array<{ optionIndexes?: number[] }> };
+      received.push(payload);
+      const fits = payload.answers?.[0]?.optionIndexes?.[0] === 0;
+      fake.publish("rpiv:ask-user:answer-result", fits
+        ? { ok: true, requestId: payload.requestId, toolCallId: payload.toolCallId }
+        : { ok: false, code: "invalid_answer", reason: "pick Retry", requestId: payload.requestId, toolCallId: payload.toolCallId });
+    });
+    await fake.emit("session_start", { reason: "startup" }, ctx);
+    fake.publish("rpiv:ask-user:prompt", { toolCallId: "toolu_1", questions: [
+      { question: "Which strategy?", header: "Strategy", multiSelect: false, options: [{ label: "Retry", description: "", hasPreview: false }] },
+    ] });
+    const [card] = await waitFor(async () => { const list = await env.sessions(); return list[0]?.questions ? list : undefined; });
+    expect(card?.questions).toEqual([{ id: "toolu_1", since: expect.any(Number), questions: [
+      { question: "Which strategy?", header: "Strategy", multiSelect: false, options: [{ label: "Retry", description: "" }] },
+    ] }]);
+
+    const hub = env.hubs.at(-1)!;
+    const answer = (body: unknown) => post(hub.httpPort!, "/api/sessions/4242/questions/toolu_1/answer", { "x-dashboard-token": hub.token }, JSON.stringify(body));
+    const refused = await answer({ answers: [{ questionIndex: 0, text: "something else" }] });
+    expect(refused.status).toBe(502);
+    expect(JSON.parse(refused.body).error).toBe("Not accepted: pick Retry");
+    expect(await answer({ answers: [{ questionIndex: 0, optionIndexes: [0] }] })).toEqual({ status: 200, body: JSON.stringify({ ok: true }) });
+    expect(received).toHaveLength(2);
+    await waitFor(async () => (await env.sessions())[0]?.questions === undefined);
+    expect((await answer({ cancel: true })).status).toBe(502);
+  });
+
+  it("drops a questionnaire when its tool call ends, however it was answered", async () => {
+    const env = setup({ detectTerminal: () => undefined });
+    const fake = load(env.deps);
+    const ctx = fakeCtx();
+    onCleanup(() => quit(fake, ctx));
+    await fake.emit("session_start", { reason: "startup" }, ctx);
+    fake.publish("rpiv:ask-user:prompt", { toolCallId: "toolu_2", questions: [{ question: "Ok?", header: "", multiSelect: false, options: [] }] });
+    await waitFor(async () => (await env.sessions())[0]?.questions !== undefined);
+    await fake.emit("tool_execution_end", { toolCallId: "toolu_2", toolName: "ask_user_question", result: {}, isError: false }, ctx);
+    await waitFor(async () => (await env.sessions())[0]?.questions === undefined);
+  });
+
   it("does not report print-mode runs", async () => {
     const env = setup();
     const fake = load(env.deps);

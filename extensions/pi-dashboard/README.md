@@ -57,6 +57,25 @@ process's environment. `CMUX_BUNDLED_CLI_PATH` is preferred over `cmux` on
 `PATH`. Sessions outside cmux show no Focus button; other terminals can be
 added as adapters in `src/terminal.ts`.
 
+## Answering questions
+
+When the session's model asks you something with
+[`@juicesharp/rpiv-ask-user-question`](https://www.npmjs.com/package/@juicesharp/rpiv-ask-user-question)
+(2.15 or newer), the card says `Asks: <question>` with an **Answer** button,
+and the detail page shows a **Waiting on you** panel. Answer opens a form with
+every question: one option or your own text for single-select questions, any
+options plus optional text for multi-select ones, and an optional note for the
+whole answer. **Decline** turns it down, as Esc does in the terminal.
+
+The terminal dialog stays open meanwhile, and the first answer wins. If you
+answer in the terminal first, the form says so and stops accepting input.
+Closing the form keeps your draft until the question is answered. Answers go
+through rpiv's own `rpiv:ask-user:answer` event on the session's bus, which
+validates them exactly as the dialog does: an answer that does not fit is
+refused with rpiv's reason and the question stays open.
+
+With notifications on, a new question notifies you with its text.
+
 ## Data sources
 
 | Section | Source |
@@ -67,6 +86,7 @@ added as adapters in `src/terminal.ts`.
 | Blackhole | `om.observations.*` and `om.reflections.recorded` entries pi-blackhole saves on the branch (no public API; unknown shapes are skipped) |
 | Usage | Usage on every entry in the session file, as Pi's `/session` sums it |
 | Activity | Pi's `tool_execution_start` / `_end` for top-level calls (codemode's nested calls are left out) |
+| Questions | rpiv ask-user's `rpiv:ask-user:prompt` and `rpiv:ask-user:blocked` events on the session's bus; answers through its `rpiv:ask-user:answer` / `answer-result` contract |
 
 Payloads are parsed defensively and bounded before they reach the hub. Stash
 content and task history are never part of the live session list; they are
@@ -119,8 +139,8 @@ descriptions, stash entry names and descriptions, and recent tool calls
 carries no transcript or stash content.
 
 Requests the page makes of a session (`POST /api/sessions/<id>/focus`,
-`/stash/<name>/preview`, `/todos/<key>/history`) require a random per-hub
-token that is embedded in the page and sent as `X-Dashboard-Token`, and an
+`/stash/<name>/preview`, `/todos/<key>/history`,
+`/questions/<toolCallId>/answer`) require a random per-hub token that is embedded in the page and sent as `X-Dashboard-Token`, and an
 `Origin` of the dashboard itself when the browser sends one. Other sites cannot
 read the page to learn the token. The hub accepts an answer only from the
 connection of the session it asked, and returns it to that request alone.
@@ -128,9 +148,15 @@ Stash previews are read by pi-stash itself (hash-checked, this branch's entries
 only, bare names only) and capped at 200 lines / 16 KB. Stashed text can hold
 secrets from tool output; a preview shows what is stored.
 
+Answering a question is the one request that changes what a session does. It
+can only answer a questionnaire that is open and waiting on you, carries a JSON
+body of at most 64 KB, and is checked twice: by the dashboard against the
+questions it names, then strictly by rpiv.
+
 ## Planned
 
-Opt-in actions (abort, steer, compact). See the [plan](docs/plan.md).
+Answering other waiting dialogs, then abort and compact. See the
+[plan](docs/plan.md).
 
 ## Development
 

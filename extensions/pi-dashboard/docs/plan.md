@@ -1,6 +1,6 @@
 # pi-dashboard: research and implementation plan
 
-Status: phases 1–3 implemented (MVP, publish hooks, detail page, Focus, previews and polish); phase 4 planned. Wireframes are in the
+Status: phases 1–3 implemented (MVP, publish hooks, detail page, Focus, previews and polish); phase 4 started (answering rpiv ask-user questions). Wireframes are in the
 companion artifact linked from the PR/session; ASCII versions of the chosen
 layout are at the end of this file. Usage docs: [README](../README.md).
 
@@ -174,7 +174,25 @@ From a Pi session in cmux on the Mac:
    timelines, recent activity (last tool calls), grouping/filtering by
    directory, browser notifications when a session waits on you, store usage
    warning when over `maxStoreBytes`.
-4. **Actions (opt-in).** Abort, steer/send message, compact. Off by default.
+4. **Actions.** Answering what a session asks you comes first; abort, steer
+   and compact matter less.
+   - **rpiv ask-user questions (implemented).** `@juicesharp/rpiv-ask-user-question`
+     2.15 publishes an external-answer contract on the session bus
+     (`rpiv:ask-user:prompt`, `:blocked`, inbound `:answer`, `:answer-result`),
+     first answer wins, strictly validated. The dashboard lists open
+     questionnaires and answers through it (protocol 5). On by default: it
+     only answers questions already waiting on the user, behind the page token.
+   - **Other waiting dialogs (next).** Pi gives no external answer API, but
+     every extension's `ctx.ui` is one shared object, and `select`, `confirm`
+     and `input` take an `AbortSignal` that dismisses the terminal dialog. The
+     main session's reporter can wrap those three to publish the dialog and
+     race a browser answer against the terminal. `editor` and `custom` take no
+     signal and stay terminal-only.
+   - **Subagent `ask_parent` questions (later).** Answering one means resuming
+     the child with the answer, through the session's pi-subagents service
+     (`getSubagentsService(sessionId)` in its `services.v1` store). Deferred.
+   - **Abort and compact (later).** `ctx.abort()` and `ctx.compact()`, behind a
+     confirmation.
 
 ## Decisions
 
@@ -202,11 +220,14 @@ From a Pi session in cmux on the Mac:
    index, subagents, usage/cost, blackhole counts; cmux adapter and Focus via
    a token-protected `POST /api/sessions/<id>/focus`, forwarded to the
    session's reporter (protocol 3).
-5. **PR 4, phase 3 (this PR):** stash previews through pi-stash's
+5. **PR 4, phase 3 (merged):** stash previews through pi-stash's
    `pi-stash:preview` request and todo history, both fetched on demand and
    returned only to the asking page; recent tool activity; filter box;
    background-tab notifications for waiting and finished sessions; store size
    and over-cap warning (protocol 4). Grouping stays by directory.
+6. **PR 5, phase 4 part 1 (this PR):** answer rpiv ask-user questionnaires
+   from the browser (protocol 5). Waiting dialogs, `ask_parent`, abort and
+   compact follow.
 
 ## ASCII wireframes (chosen layout)
 

@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { getAgentDir, VERSION, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { ActivityTracker } from "./activity.ts";
+import { AskUserTracker } from "./ask-user.ts";
 import { loadDashboardConfig, type DashboardConfig } from "./config.ts";
 import { nodeRuntime, spawnHub } from "./launch.ts";
 import { memoryStats } from "./memory.ts";
@@ -80,6 +81,7 @@ export default function dashboardExtension(pi: ExtensionAPI, dependencies: Dashb
       id: String(pid), pid, startedAt, piVersion: VERSION, ctx,
       sessionName: pi.getSessionName(), thinking: pi.getThinkingLevel(), status: status.current(),
       todos, stash, usage, memory, subagents: subagents.section(), terminal: terminal?.info, activity: activity.section(),
+      questions: askUser.list(),
     });
   };
 
@@ -111,6 +113,7 @@ export default function dashboardExtension(pi: ExtensionAPI, dependencies: Dashb
     stash = undefined;
     subagents = new SubagentTracker();
     activity = new ActivityTracker();
+    askUser.clear();
     usage = undefined;
     memory = undefined;
     ledgerStale = true;
@@ -121,6 +124,8 @@ export default function dashboardExtension(pi: ExtensionAPI, dependencies: Dashb
   // pi-todo and pi-stash publish on session start (before this extension's,
   // which loads last), so the first snapshot already carries their state.
   pi.events.on(TODO_SNAPSHOT_EVENT, (data) => { todoEvent = data; todos = readTodos(data); schedule(); });
+  // rpiv ask-user questionnaires, answerable from the page through rpiv's own answer channel.
+  const askUser = new AskUserTracker(pi.events, () => schedule());
 
   /** Requests from the page, answered to that page only. Throw to report a failure. */
   const answer = async (request: CommandRequest): Promise<unknown> => {
@@ -142,6 +147,9 @@ export default function dashboardExtension(pi: ExtensionAPI, dependencies: Dashb
         if (!history) throw new Error(`No task "${request.key}" on this branch.`);
         return history;
       }
+      case "answer":
+        await askUser.answer(request.question, request.answer);
+        return undefined;
     }
   };
   pi.events.on(STASH_SNAPSHOT_EVENT, (data) => { stash = readStash(data); schedule(); });
@@ -184,6 +192,8 @@ export default function dashboardExtension(pi: ExtensionAPI, dependencies: Dashb
     schedule(ctx);
   });
   pi.on("tool_execution_end", (event, ctx) => {
+    // However the asking call ended, its questionnaire is over.
+    askUser.close(event.toolCallId);
     if (event.parentToolCallId) return;
     status.toolEnd(event.toolCallId);
     activity.end(event.toolCallId, event.isError);

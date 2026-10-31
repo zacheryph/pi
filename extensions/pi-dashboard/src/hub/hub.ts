@@ -4,7 +4,7 @@ import { createServer as createHttpServer, type IncomingMessage, type Server as 
 import { connect, createServer as createNetServer, type AddressInfo, type Server as NetServer, type Socket } from "node:net";
 import { homedir } from "node:os";
 import {
-  encode, hubPaths, IDLE_GRACE_MS, isSnapshot, LineDecoder, PROTOCOL_VERSION, type CommandRequest, type HubPaths, type SessionSnapshot,
+  encode, hubPaths, IDLE_GRACE_MS, isSnapshot, LineDecoder, PROTOCOL_VERSION, type CommandRequest, type HubPaths, type QuestionnaireAnswer, type SessionSnapshot,
 } from "../protocol.ts";
 import { renderPage } from "./page.ts";
 
@@ -29,10 +29,12 @@ export interface CommandOutcome {
 type Answer = { ok: boolean; error?: string; data?: unknown; timedOut?: boolean };
 
 /** Page routes for session requests: POST /api/sessions/<id>/<route>. */
-const ROUTES: Array<[RegExp, (match: string[]) => CommandRequest]> = [
+const ROUTES: Array<[RegExp, (match: string[], body: unknown) => CommandRequest]> = [
   [/^focus$/, () => ({ command: "focus" })],
   [/^stash\/([^/]+)\/preview$/, (match) => ({ command: "stash-preview", name: match[1]! })],
   [/^todos\/([^/]+)\/history$/, (match) => ({ command: "todo-history", key: match[1]! })],
+  // The answer's shape is checked by the session against the questionnaire it names.
+  [/^questions\/([^/]+)\/answer$/, (match, body) => ({ command: "answer", question: match[1]!, answer: body as QuestionnaireAnswer })],
 ];
 
 export interface SessionView extends SessionSnapshot {
@@ -52,7 +54,8 @@ interface Entry {
 }
 
 const HEARTBEAT_MS = 25_000;
-const MAX_BODY_BYTES = 1024;
+/** Questionnaire answers are the only bodies; free-text answers and notes stay well under this. */
+const MAX_BODY_BYTES = 64 * 1024;
 const BROADCAST_DELAY_MS = 50;
 
 const PAGE_HEADERS = {
@@ -306,17 +309,27 @@ export class Hub {
     const session = /^\/api\/sessions\/([^/]+)\/(.+)$/.exec(pathname);
     if (request.method === "POST" && session) {
       if (!this.authorized(request)) return text(response, 403, "Forbidden\n");
+      const chunks: Buffer[] = [];
       let size = 0;
-      // The body is unused; drain a small one and refuse anything larger.
-      request.on("data", (chunk: Buffer) => { size += chunk.length; if (size > MAX_BODY_BYTES) request.destroy(); });
+      let tooLarge = false;
+      request.on("data", (chunk: Buffer) => {
+        size += chunk.length;
+        if (size > MAX_BODY_BYTES) tooLarge = true;
+        else chunks.push(chunk);
+      });
       request.on("end", () => {
+        if (tooLarge) return text(response, 413, "Request body too large\n");
+        let body: unknown;
+        if (size) {
+          try { body = JSON.parse(Buffer.concat(chunks).toString("utf8")); } catch { return text(response, 400, "Request body is not JSON\n"); }
+        }
         let id: string;
         let command: CommandRequest | undefined;
         try {
           id = decodeURIComponent(session[1]!);
           for (const [pattern, build] of ROUTES) {
             const match = pattern.exec(session[2]!);
-            if (match) { command = build(match.map((part) => decodeURIComponent(part))); break; }
+            if (match) { command = build(match.map((part) => decodeURIComponent(part)), body); break; }
           }
         } catch {
           return text(response, 400, "Bad request path\n");

@@ -66,7 +66,7 @@ export function get(port: number, path: string, host = `127.0.0.1:${port}`): Pro
   });
 }
 
-export function post(port: number, path: string, headers: Record<string, string> = {}): Promise<{ status: number; body: string }> {
+export function post(port: number, path: string, headers: Record<string, string> = {}, body?: string): Promise<{ status: number; body: string }> {
   return new Promise((resolve, reject) => {
     const req = request({ host: "127.0.0.1", port, path, method: "POST", headers: { host: `127.0.0.1:${port}`, ...headers } }, (res) => {
       let body = "";
@@ -75,6 +75,6 @@ export function post(port: number, path: string, headers: Record<string, string>
       res.on("end", () => resolve({ status: res.statusCode ?? 0, body }));
     });
     req.on("error", reject);
-    req.end();
+    req.end(body);
   });
 }

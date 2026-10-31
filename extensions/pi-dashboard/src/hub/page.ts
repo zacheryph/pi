@@ -36,6 +36,29 @@ body:has(dialog.modal[open]) { overflow: hidden; }
 .pad { margin: 0; padding: 16px 18px; }
 button.close { border: 0; background: transparent; color: var(--muted); font: 22px/1 system-ui, sans-serif; padding: 2px 8px 4px; border-radius: 6px; cursor: pointer; }
 button.close:hover { background: var(--wire); color: var(--ink); }
+section.panel.asks { border-color: var(--warn); box-shadow: inset 3px 0 0 var(--warn); }
+.qsummary { display: grid; gap: 4px; min-width: 0; flex: 1; }
+.qline { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+.chip { flex: none; font: 600 10px var(--mono); letter-spacing: 0.05em; text-transform: uppercase; color: var(--warn); background: var(--warn-soft); border-radius: 4px; padding: 1px 6px; }
+.answer-form { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.qform { display: grid; gap: 20px; padding: 16px 18px; overflow: auto; min-height: 0; flex: 1; }
+.qblock { display: grid; gap: 8px; margin: 0; padding: 0; border: 0; min-width: 0; }
+.qlegend { display: flex; gap: 8px; align-items: baseline; padding: 0; margin-bottom: 4px; }
+.qtext { font-weight: 600; white-space: pre-wrap; overflow-wrap: anywhere; }
+.choice { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 2px 8px; align-items: start; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; background: var(--surface); }
+.choice:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.choice input { margin: 3px 0 0; accent-color: var(--accent); }
+.choice span { overflow-wrap: anywhere; }
+.choice small { grid-column: 2; color: var(--muted); overflow-wrap: anywhere; }
+textarea.answer { width: 100%; font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); resize: vertical; }
+label.note { display: grid; gap: 4px; }
+.modal-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; align-items: center; padding: 10px 18px; border-top: 1px solid var(--line); }
+.modal-actions .bad { margin-right: auto; font-size: 13px; }
+button.primary, button.secondary { font: 600 13px system-ui, -apple-system, "Segoe UI", sans-serif; border-radius: 6px; padding: 6px 14px; cursor: pointer; }
+button.primary { background: var(--accent); color: var(--surface); border: 1px solid var(--accent); }
+button.secondary { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+button.primary:disabled, button.secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+.closed-banner { background: var(--warn-soft); color: var(--warn); padding: 8px 18px; font-size: 13px; }
 pre.preview { margin: 0; padding: 12px 18px; font: 12px/1.5 var(--mono); white-space: pre; tab-size: 4; }
 pre.preview .ln { color: var(--muted); user-select: none; display: inline-block; min-width: 4ch; text-align: right; margin-right: 1.5ch; }
 .timeline { list-style: none; margin: 4px 0 0; padding: 0 0 0 10px; border-left: 2px solid var(--line); display: grid; gap: 6px; }
@@ -181,10 +204,14 @@ function meter(context) {
 }
 
 /** A request to one session, answered to this page only. */
-async function ask(session, path) {
+async function ask(session, path, payload) {
   let response;
+  const headers = { "X-Dashboard-Token": token };
+  if (payload !== undefined) headers["Content-Type"] = "application/json";
   try {
-    response = await fetch("/api/sessions/" + encodeURIComponent(session.id) + "/" + path, { method: "POST", headers: { "X-Dashboard-Token": token } });
+    response = await fetch("/api/sessions/" + encodeURIComponent(session.id) + "/" + path, {
+      method: "POST", headers, ...(payload === undefined ? {} : { body: JSON.stringify(payload) }),
+    });
   } catch {
     throw new Error("The dashboard is not reachable.");
   }
@@ -238,7 +265,8 @@ function noticeFor(session) {
 }
 
 function card(session) {
-  const waiting = !session.restarting && session.status.kind === "waiting";
+  const questions = session.restarting ? [] : list(session.questions);
+  const waiting = !session.restarting && (session.status.kind === "waiting" || questions.length > 0);
   const node = el("article", "card" + (waiting ? " attn" : "") + (session.restarting ? " restarting" : ""));
   node.title = "session " + session.sessionId + " · pid " + session.pid;
   node.addEventListener("click", () => { location.hash = encodeURIComponent(session.id); });
@@ -250,7 +278,11 @@ function card(session) {
   name.append(link);
   head.append(name, pill(session.restarting ? "idle" : session.status.kind, statusLabel(session)));
   node.append(head);
-  if (waiting && session.status.title) node.append(el("span", "clip", session.status.title));
+  if (questions.length) {
+    const row = el("div", "row");
+    row.append(el("span", "clip", "Asks: " + questions[0].questions[0].question), answerButton(session, questions[0], false));
+    node.append(row);
+  } else if (waiting && session.status.title) node.append(el("span", "clip", session.status.title));
   if (session.agent) node.append(el("span", "clip", "agent · " + session.agent));
   node.append(el("span", "mono muted clip", [session.model ? session.model.id : "no model", session.thinking].filter(Boolean).join(" · ")));
   node.append(meter(session.context));
@@ -447,6 +479,211 @@ function memoryPanel(session) {
   return node;
 }
 
+// Answering rpiv ask-user questionnaires. The form lives in its own dialog
+// outside <main>, so live re-renders leave it alone, and each questionnaire's
+// form is kept: a draft survives closing and reopening it.
+const answerModal = document.getElementById("answer");
+const answerForms = new Map();
+let answering;
+
+function flash(sessionId, notice) {
+  notices.set(sessionId, notice);
+  setTimeout(() => { if (notices.get(sessionId) === notice) { notices.delete(sessionId); render(true); } }, notice.ok ? 3000 : 8000);
+}
+
+function answerButton(session, questionnaire, solid) {
+  const button = el("button", "focus" + (solid ? " solid" : ""), "Answer");
+  button.type = "button";
+  button.dataset.key = "answer:" + session.id + ":" + questionnaire.id + (solid ? ":detail" : "");
+  button.addEventListener("click", (event) => { event.stopPropagation(); openAnswer(session, questionnaire, button.dataset.key); });
+  return button;
+}
+
+function questionsPanel(session) {
+  const items = list(session.questions);
+  const node = panel("Waiting on you", items.length === 1 ? "1 questionnaire" : items.length + " questionnaires");
+  node.classList.add("asks");
+  const ul = el("ul", "items");
+  for (const questionnaire of items) {
+    const li = el("li");
+    const row = el("div", "row");
+    const what = el("div", "qsummary");
+    for (const question of questionnaire.questions) {
+      const line = el("div", "qline");
+      if (question.header) line.append(el("span", "chip", question.header));
+      line.append(el("span", "wrap", question.question));
+      what.append(line);
+    }
+    row.append(what, answerButton(session, questionnaire, true));
+    li.append(row, el("span", "mono muted", "asked " + ago(questionnaire.since) + " ago · the terminal can answer too; the first answer wins"));
+    ul.append(li);
+  }
+  node.append(ul);
+  return node;
+}
+
+function buildAnswerForm(session, questionnaire, key) {
+  const form = el("form", "answer-form");
+  form.noValidate = true;
+  const head = el("div", "modal-head");
+  const heading = el("div", "modal-title");
+  const count = questionnaire.questions.length;
+  const name = el("h2", "", (count === 1 ? "Question from " : count + " questions from ") + title(session));
+  name.id = "answer-title";
+  heading.append(name, el("span", "mono muted wrap", tilde(session.cwd) + " · asked " + ago(questionnaire.since) + " ago"));
+  const close = el("button", "close", "×");
+  close.type = "button";
+  close.setAttribute("aria-label", "Close");
+  close.addEventListener("click", () => answerModal.close());
+  head.append(heading, close);
+  const banner = el("div", "closed-banner", "This questionnaire was answered or closed in the terminal.");
+  banner.hidden = true;
+  const body = el("div", "qform");
+  const fields = questionnaire.questions.map((question, questionIndex) => {
+    const block = el("fieldset", "qblock");
+    const legend = el("legend", "qlegend");
+    if (question.header) legend.append(el("span", "chip", question.header));
+    legend.append(el("span", "qtext", question.question));
+    block.append(legend);
+    if (question.multiSelect) block.append(el("span", "mono muted", "Pick any that apply."));
+    const group = "q" + questionIndex;
+    const inputs = question.options.map((option, optionIndex) => {
+      const label = el("label", "choice");
+      const input = el("input");
+      input.type = question.multiSelect ? "checkbox" : "radio";
+      input.name = group;
+      input.value = String(optionIndex);
+      label.append(input, el("span", "", option.label));
+      if (option.description) label.append(el("small", "", option.description));
+      block.append(label);
+      return input;
+    });
+    let other;
+    if (!question.multiSelect) {
+      const label = el("label", "choice");
+      other = el("input");
+      other.type = "radio";
+      other.name = group;
+      other.value = "text";
+      label.append(other, el("span", "", "Type something"));
+      block.append(label);
+    }
+    const text = el("textarea", "answer");
+    text.rows = 2;
+    text.placeholder = question.multiSelect ? "Anything else, in your own words (optional)" : "Your own answer";
+    text.setAttribute("aria-label", "Your own answer: " + question.question);
+    if (other) text.addEventListener("input", () => { if (text.value.trim()) other.checked = true; });
+    block.append(text);
+    body.append(block);
+    return { question, inputs, other, text };
+  });
+  const noteLabel = el("label", "note");
+  noteLabel.append(el("span", "label", "Note (optional)"));
+  const note = el("textarea", "answer");
+  note.rows = 2;
+  note.placeholder = "Context for the whole answer";
+  noteLabel.append(note);
+  body.append(noteLabel);
+  const actions = el("div", "modal-actions");
+  const error = el("span", "bad");
+  error.setAttribute("role", "alert");
+  const decline = el("button", "secondary", "Decline");
+  decline.type = "button";
+  decline.title = "Tell the agent you declined, as Esc does in the terminal";
+  const send = el("button", "primary", "Send answer");
+  send.type = "submit";
+  actions.append(error, decline, send);
+  form.append(head, banner, body, actions);
+
+  // Mirrors what the terminal dialog accepts: one option or typed text per
+  // single-select question; options and/or text for multi-select.
+  const collect = () => {
+    const answers = [];
+    fields.forEach((field, questionIndex) => {
+      const text = field.text.value.trim();
+      const picked = field.inputs.filter((input) => input.checked).map((input) => Number(input.value));
+      const label = count === 1 ? "the question" : "question " + (questionIndex + 1);
+      if (field.question.multiSelect) {
+        if (!picked.length && !text) throw new Error("Answer " + label + ": pick at least one option or type an answer.");
+        answers.push({ questionIndex, ...(picked.length ? { optionIndexes: picked } : {}), ...(text ? { text } : {}) });
+      } else if ((field.other && field.other.checked) || (!picked.length && text)) {
+        if (!text) throw new Error("Type your answer to " + label + ", or pick an option.");
+        answers.push({ questionIndex, text });
+      } else if (picked.length) {
+        answers.push({ questionIndex, optionIndexes: picked });
+      } else {
+        throw new Error("Answer " + label + ".");
+      }
+    });
+    const globalNote = note.value.trim();
+    return { answers, ...(globalNote ? { globalNote } : {}) };
+  };
+  const submit = async (payload) => {
+    error.textContent = "";
+    send.disabled = decline.disabled = true;
+    try {
+      await ask(session, "questions/" + encodeURIComponent(questionnaire.id) + "/answer", payload);
+      answerForms.delete(key);
+      flash(session.id, { ok: true, text: payload.cancel ? "Declined the question" : "Answer sent" });
+      answerModal.close();
+      render(true);
+    } catch (failure) {
+      error.textContent = failure.message;
+      send.disabled = decline.disabled = form.dataset.closed === "true";
+    }
+  };
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    let payload;
+    try { payload = collect(); } catch (failure) { error.textContent = failure.message; return; }
+    submit(payload);
+  });
+  decline.addEventListener("click", () => submit({ cancel: true }));
+  form.markClosed = () => {
+    form.dataset.closed = "true";
+    banner.hidden = false;
+    send.disabled = decline.disabled = true;
+  };
+  return form;
+}
+
+function openAnswer(session, questionnaire, returnKey) {
+  const key = session.id + ":" + questionnaire.id;
+  let form = answerForms.get(key);
+  if (!form) {
+    form = buildAnswerForm(session, questionnaire, key);
+    answerForms.set(key, form);
+  }
+  answering = { sessionId: session.id, id: questionnaire.id, key, returnKey };
+  answerModal.replaceChildren(form);
+  if (!answerModal.open) answerModal.showModal();
+  checkAnswerStillOpen();
+  const first = form.querySelector("input:not(:disabled), textarea");
+  if (first) first.focus();
+}
+
+/** Marks the open form closed once its questionnaire leaves the live list, and drops drafts for finished ones. */
+function checkAnswerStillOpen() {
+  const live = new Set();
+  for (const session of state.sessions) {
+    if (session.restarting) continue;
+    for (const questionnaire of list(session.questions)) live.add(session.id + ":" + questionnaire.id);
+  }
+  for (const key of answerForms.keys()) if (!live.has(key) && (!answering || answering.key !== key)) answerForms.delete(key);
+  if (answering && !live.has(answering.key)) {
+    const form = answerForms.get(answering.key);
+    if (form && form.markClosed) form.markClosed();
+  }
+}
+
+answerModal.addEventListener("click", (event) => { if (event.target === answerModal) answerModal.close(); });
+answerModal.addEventListener("close", () => {
+  const back = answering && [...main.querySelectorAll("[data-key]")].find((node) => node.dataset.key === answering.returnKey);
+  answering = undefined;
+  answerModal.replaceChildren();
+  if (back) back.focus();
+});
+
 const stashFacts = (session, entry) => [entry.lines + " lines", entry.source,
   entry.createdBy === session.sessionId ? "this session" : "subagent …" + entry.createdBy.slice(-6),
   ago(entry.createdAt) + " ago", entry.versions > 1 ? "v" + entry.versions : null].filter(Boolean).join(" · ");
@@ -588,6 +825,7 @@ function renderDetail(id) {
   if (session.status.kind === "waiting" && session.status.title) strip.append(cell("Waiting on", el("span", "wrap", session.status.title)));
   head.append(strip);
   wrap.append(head);
+  if (!session.restarting && list(session.questions).length) wrap.append(questionsPanel(session));
   const cols = el("div", "cols");
   const left = el("div", "col");
   const right = el("div", "col");
@@ -638,6 +876,10 @@ function announce(before, after) {
     let body;
     if (now === "waiting" && was !== "waiting") body = "Waiting on you" + (session.status.title ? ": " + session.status.title : "");
     else if (now === "idle" && was !== "idle" && was !== "waiting") body = "Finished; ready for your next prompt";
+    // A new questionnaire says what it asks; it replaces the generic waiting note (same tag).
+    const seen = new Set(list(old.questions).map((questionnaire) => questionnaire.id));
+    const fresh = list(session.questions).find((questionnaire) => !seen.has(questionnaire.id));
+    if (fresh) body = "Asks: " + fresh.questions[0].question;
     if (!body) continue;
     const note = new Notification(title(session) + " · " + tilde(session.cwd), { body, tag: "pi-dashboard:" + session.id });
     note.onclick = () => { window.focus(); location.hash = encodeURIComponent(session.id); note.close(); };
@@ -669,6 +911,7 @@ events.addEventListener("sessions", (event) => {
   announce(state.sessions, list(next.sessions));
   state = next;
   render();
+  checkAnswerStillOpen();
 });
 events.onopen = () => { connected = true; conn.textContent = "● live"; conn.classList.add("live"); render(); };
 // Cards from a lost hub would go stale; the full list returns on reconnect.
@@ -693,6 +936,7 @@ export function renderPage(token: string): string {
 <header><h1><a href="#">pi dashboard</a></h1><input id="filter" type="search" placeholder="Filter sessions" aria-label="Filter sessions" autocomplete="off" spellcheck="false"><span class="count"></span><button id="notify" class="toggle" type="button" aria-pressed="false">Notifications off</button><span class="conn" aria-live="polite">connecting…</span></header>
 <main></main>
 <dialog id="preview" class="modal" aria-labelledby="preview-title"></dialog>
+<dialog id="answer" class="modal" aria-labelledby="answer-title"></dialog>
 <script>${SCRIPT}</script>
 </body>
 </html>

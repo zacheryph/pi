@@ -4,7 +4,7 @@ import { join } from "node:path";
 // Keep this file free of Pi imports and of TypeScript syntax Node cannot strip.
 
 /** Bump when the hub must be replaced to understand newer reporters. */
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 5;
 export const DEFAULT_PORT = 7317;
 /** How long the hub waits with no sessions, or keeps a restarting session's card. */
 export const IDLE_GRACE_MS = 15_000;
@@ -119,6 +119,28 @@ export type ActivitySection = Array<{
   error?: boolean;
 }>;
 
+/** An open rpiv ask-user questionnaire, awaiting the user in the terminal or here. */
+export interface Questionnaire {
+  /** The asking tool call's id; names the questionnaire when answering. */
+  id: string;
+  /** When the dashboard saw it open. */
+  since: number;
+  questions: Array<{
+    question: string;
+    header: string;
+    multiSelect: boolean;
+    options: Array<{ label: string; description: string }>;
+  }>;
+}
+
+/** An answer as rpiv ask-user's `rpiv:ask-user:answer` takes it. */
+export interface QuestionnaireAnswer {
+  answers?: Array<{ questionIndex: number; optionIndexes?: number[]; text?: string; notes?: string }>;
+  globalNote?: string;
+  /** Decline the whole questionnaire, as Esc does in the terminal. */
+  cancel?: boolean;
+}
+
 /** Where Focus goes; present only when a terminal adapter recognized the session. */
 export interface TerminalInfo {
   kind: string;
@@ -149,6 +171,8 @@ export interface SessionSnapshot {
   subagents?: SubagentsSection;
   terminal?: TerminalInfo;
   activity?: ActivitySection;
+  /** Open ask-user questionnaires, oldest first; absent when none. */
+  questions?: Questionnaire[];
 }
 
 export type ReporterMessage =
@@ -165,7 +189,9 @@ export type ReporterMessage =
 export type CommandRequest =
   | { command: "focus" }
   | { command: "stash-preview"; name: string }
-  | { command: "todo-history"; key: string };
+  | { command: "todo-history"; key: string }
+  /** `question` is the questionnaire's id (its tool call id). */
+  | { command: "answer"; question: string; answer: QuestionnaireAnswer };
 
 /** Hub to reporter. */
 export type HubCommand = { type: "command"; id: number } & CommandRequest;
