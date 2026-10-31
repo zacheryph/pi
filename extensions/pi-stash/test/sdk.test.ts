@@ -280,6 +280,24 @@ describe("subagent entries reach ancestors (pi-session-tree)", () => {
     expect(toolResults(root.manager, "stash_list")[0].content[0]).toMatchObject({ text: expect.stringContaining("by agent c07e0000") });
   }, 30_000);
 
+  it("hands an entry only to its parent, which passes it on; a gap ends the chain", async () => {
+    const store = new BlobStore(tempDir("pi-stash-root-"));
+    const root = await fixture({ store });
+    const child = await fixture({ store });
+    const grandchild = await fixture({ store, responses: [call("stash_put", { name: "found", content: "f" }), fauxAssistantMessage("done")] });
+    spawn(root, child, "a3f2b1c4-9d8e-4f6a");
+    spawn(child, grandchild, "c07e0000-1111-2222");
+    // The child's pi-stash is replaced by one that records calls and passes nothing on.
+    const adopted: unknown[] = [];
+    provide(child.manager.getSessionId(), "pi-stash", { version: 1, adopt: (record: unknown) => { adopted.push(record); return true; } });
+
+    await grandchild.session.prompt("Work");
+
+    expect(adopted).toEqual([expect.objectContaining({ name: "found", createdBy: grandchild.manager.getSessionId() })]);
+    expect(names(root.manager)).toEqual([]);
+    expect(names(grandchild.manager)).toEqual(["found"]);
+  }, 30_000);
+
   it("leaves a root session's entries and unlinked sessions alone", async () => {
     const store = new BlobStore(tempDir("pi-stash-root-"));
     const root = await fixture({ store, responses: [call("stash_put", { name: "plan", content: "p" }), fauxAssistantMessage("done")] });
@@ -336,6 +354,8 @@ describe("subagent entries reach ancestors (pi-session-tree)", () => {
     expect(adopt.adopt(record)).toBe(false);
     expect(adopt.adopt({ ...record, id: "other", hash: "not-a-hash" })).toBe(false);
     expect(adopt.adopt({ ...record, id: "other", via: "sideways" })).toBe(false);
+    // Without an id adoption could not be told apart from a repeat, so it is refused.
+    expect(adopt.adopt({ ...record, id: undefined })).toBe(false);
     expect(records(parent.manager)).toEqual([{ ...record, via: "adopt" }]);
   }, 20_000);
 

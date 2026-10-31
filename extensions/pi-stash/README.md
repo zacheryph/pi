@@ -108,14 +108,15 @@ for its stash panel and previews.
 ## Subagents
 
 **A subagent's entries appear in its ancestors' stash.** When a subagent stores an
-entry, pi-stash also journals it, as it happens, on its parent's branch and on each
-further ancestor's (`via: "adopt"`). It then shows up in their `stash_list`,
+entry, it hands the entry to its parent's pi-stash, which journals it on its own
+branch (`via: "adopt"`) and hands it to its own parent, and so on up to the root.
+The entry's `id` makes adoption idempotent, so a repeat ends the chain. It then shows up in their `stash_list`,
 `/stash`, index card and `pi-stash:snapshot`, marked with the agent that stored it
 (`↑ agent a3f2b1c4`). Parent links come from pi-subagents' child lifecycle events
 through [`pi-session-tree`](../../packages/pi-session-tree/README.md). Because the
 entry is journaled where it lands, a parent `/tree` back to before the spawn drops it
-like any other entry. An ancestor that is reloading or gone is skipped, and the
-subagent keeps its own copy either way. A top-level session's entries stay its own.
+like any other entry. A parent that is reloading or gone ends the chain there, and
+every session below it keeps its copy either way. A top-level session's entries stay its own.
 
 The bundled `pi-subagents` lets Explore and Plan call `stash_get` and `stash_list`;
 Explore can also call `stash_put` to return large findings as a handle. The

@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { defineTool, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-import { ancestors, call, node, provide, trackChildren } from "../../../packages/pi-session-tree/src/index.ts";
+import { call, node, parentOf, provide, trackChildren } from "../../../packages/pi-session-tree/src/index.ts";
 import { DEFAULT_CONFIG, loadStashConfig, type StashConfig } from "./config.ts";
 import {
   PREVIEW_MAX_BYTES, PREVIEW_MAX_LINES, STASH_PREVIEW_REQUEST, STASH_SNAPSHOT_EVENT, stashEntryJson, stashSnapshotEvent,
@@ -29,7 +29,10 @@ const SERVICE_NAME = "pi-stash";
 /** What pi-stash offers other sessions in the process (see pi-session-tree). */
 export interface StashTreeService {
   version: 1;
-  /** Journal a descendant's version on this branch; false when it is invalid or already here. */
+  /**
+   * Journal a descendant's version on this branch, then pass it to this
+   * session's parent. False when it is invalid, has no id, or is already here.
+   */
   adopt(record: unknown): boolean;
 }
 
@@ -127,9 +130,20 @@ export default function stashExtension(pi: ExtensionAPI, dependencies: StashExte
   // compaction, resume, reload or /tree it may not have, so it gets the card;
   // likewise once a subagent's entry is adopted here.
   let showCard = false;
+  let sessionId: string | undefined;
   let withdraw: (() => void) | undefined;
   // Link this session's subagents as pi-subagents creates them.
   trackChildren(pi);
+
+  /**
+   * Hand a version to `from`'s parent, which adopts it and hands it on to its
+   * own parent, up to the root. A parent that is reloading or gone ends the
+   * chain there; every session below it keeps the entry regardless.
+   */
+  const passUp = (from: string, record: StashRecord) => {
+    const parent = parentOf(from);
+    if (parent) call<StashTreeService, boolean>(parent, SERVICE_NAME, (service) => service.adopt(record));
+  };
 
   const getStore = () => store ??= new BlobStore(defaultStashRoot());
   const storeSize = (): StashSnapshotEvent["store"] => {
@@ -173,11 +187,8 @@ export default function stashExtension(pi: ExtensionAPI, dependencies: StashExte
     pi.appendEntry<StashJournal>(STASH_INDEX_TYPE, { schemaVersion: STASH_SCHEMA_VERSION, op: "put", record: entry });
     index = { records: [...index.records, entry] };
     publish();
-    // A subagent's entry also lands on each live ancestor's branch. An ancestor
-    // that is reloading or gone is skipped; the entry is kept here regardless.
-    for (const ancestor of ancestors(createdBy)) {
-      call<StashTreeService, boolean>(ancestor, SERVICE_NAME, (service) => service.adopt(entry));
-    }
+    // A subagent's entry also lands on its parent's branch, and from there on up.
+    passUp(createdBy, entry);
     return entry;
   };
 
@@ -191,14 +202,16 @@ export default function stashExtension(pi: ExtensionAPI, dependencies: StashExte
   const service: StashTreeService = {
     version: 1,
     adopt(candidate) {
-      if (!isStashRecord(candidate)) return false;
-      if (candidate.id && index.records.some((existing) => existing.id === candidate.id)) return false;
+      // The id makes adoption idempotent, which also ends any loop in the chain.
+      if (!isStashRecord(candidate) || !candidate.id) return false;
+      if (index.records.some((existing) => existing.id === candidate.id)) return false;
       const adopted: StashRecord = { ...candidate, via: "adopt" };
       getStore().touchAll([adopted.hash]);
       pi.appendEntry<StashJournal>(STASH_INDEX_TYPE, { schemaVersion: STASH_SCHEMA_VERSION, op: "put", record: adopted });
       index = { records: [...index.records, adopted] };
       showCard = true;
       publish();
+      if (sessionId) passUp(sessionId, candidate);
       return true;
     },
   };
@@ -379,8 +392,9 @@ export default function stashExtension(pi: ExtensionAPI, dependencies: StashExte
   pi.on("session_start", async (_event, ctx) => {
     config = (dependencies.loadConfig ?? loadStashConfig)();
     restore(ctx);
+    sessionId = ctx.sessionManager.getSessionId();
     withdraw?.();
-    withdraw = provide(ctx.sessionManager.getSessionId(), SERVICE_NAME, service);
+    withdraw = provide(sessionId, SERVICE_NAME, service);
     try {
       // Refresh what this session still references, then expire the rest.
       const hashes = index.records.map((entry) => entry.hash);
@@ -406,6 +420,7 @@ export default function stashExtension(pi: ExtensionAPI, dependencies: StashExte
   pi.on("session_shutdown", async () => {
     withdraw?.();
     withdraw = undefined;
+    sessionId = undefined;
     index = createEmptyIndex();
     showCard = false;
   });
