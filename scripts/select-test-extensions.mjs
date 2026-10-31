@@ -3,15 +3,28 @@ import { appendFileSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const sharedFiles = new Set([".nvmrc", "package.json", "package-lock.json", "tsconfig.base.json"]);
+const sharedFiles = new Set([
+  ".nvmrc",
+  "package.json",
+  "package-lock.json",
+  "tsconfig.base.json",
+  "tsconfig.json",
+  ".oxlintrc.json",
+  ".oxfmtrc.json",
+]);
 
 // Extensions import shared libraries from packages/ by relative path, so a change
 // there re-tests every workspace.
 export function selectExtensions(workspaces, changedFiles, all = false) {
-  const runAll = all || changedFiles.some((path) =>
-    sharedFiles.has(path) || path.startsWith(".github/workflows/") || path.startsWith("scripts/")
-      || /^packages\/[^/]+\//.test(path),
-  );
+  const runAll =
+    all ||
+    changedFiles.some(
+      (path) =>
+        sharedFiles.has(path) ||
+        path.startsWith(".github/workflows/") ||
+        path.startsWith("scripts/") ||
+        /^packages\/[^/]+\//.test(path),
+    );
   return workspaces
     .filter((workspace) => /^(extensions|packages)\/[^/]+$/.test(workspace))
     .filter((workspace) => runAll || changedFiles.some((path) => path.startsWith(`${workspace}/`)))
@@ -24,7 +37,9 @@ export function changedFiles(base, head, cwd = process.cwd()) {
   return execFileSync("git", ["diff", "--name-only", "--no-renames", "-z", `${base}...${head}`], {
     cwd,
     encoding: "utf8",
-  }).split("\0").filter(Boolean);
+  })
+    .split("\0")
+    .filter(Boolean);
 }
 
 function main() {
@@ -39,7 +54,10 @@ function main() {
   const matrix = JSON.stringify({ extension: extensions });
   console.log(`Extension test matrix: ${matrix}`);
   if (process.env.GITHUB_OUTPUT) {
-    appendFileSync(process.env.GITHUB_OUTPUT, `matrix=${matrix}\nhas-extensions=${extensions.length > 0}\n`);
+    appendFileSync(
+      process.env.GITHUB_OUTPUT,
+      `matrix=${matrix}\nhas-extensions=${extensions.length > 0}\n`,
+    );
   }
 }
 

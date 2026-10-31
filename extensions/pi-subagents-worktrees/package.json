@@ -2,7 +2,7 @@
   "name": "@gotgenes/pi-subagents-worktrees",
   "version": "0.3.3",
   "private": true,
-  "description": "Git worktree isolation for @gotgenes/pi-subagents — a WorkspaceProvider that runs subagents in isolated worktrees.",
+  "description": "Git worktree isolation for @gotgenes/pi-subagents \u2014 a WorkspaceProvider that runs subagents in isolated worktrees.",
   "keywords": [
     "pi-package",
     "pi",
@@ -54,17 +54,13 @@
     ]
   },
   "scripts": {
-    "check": "tsc --noEmit",
+    "check": "oxfmt --check . && oxlint --deny-warnings . && npm run typecheck",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "fix": "oxfmt --write . && oxlint --fix ."
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*"
-  },
-  "devDependencies": {
-    "@earendil-works/pi-coding-agent": "1.4.0",
-    "@types/node": "^24.19.2",
-    "typescript": "^6.0.3",
-    "vitest": "^5.0.5"
   }
 }

@@ -6,7 +6,12 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { changedFiles, selectExtensions } from "./select-test-extensions.mjs";
 
-const workspaces = ["extensions/pi-todo", "extensions/pi-subagents", "extensions/pi-system-insights", "packages/pi-session-tree"];
+const workspaces = [
+  "extensions/pi-todo",
+  "extensions/pi-subagents",
+  "extensions/pi-system-insights",
+  "packages/pi-session-tree",
+];
 const all = [...workspaces].sort();
 
 test("main runs all extension workspaces", () => {
@@ -14,24 +19,39 @@ test("main runs all extension workspaces", () => {
 });
 
 test("PRs select only changed extensions, once per extension", () => {
-  assert.deepEqual(selectExtensions(workspaces, [
-    "extensions/pi-todo/src/index.ts",
-    "extensions/pi-todo/test/example.test.ts",
-    "extensions/pi-subagents/README.md",
-  ]), ["extensions/pi-subagents", "extensions/pi-todo"]);
+  assert.deepEqual(
+    selectExtensions(workspaces, [
+      "extensions/pi-todo/src/index.ts",
+      "extensions/pi-todo/test/example.test.ts",
+      "extensions/pi-subagents/README.md",
+    ]),
+    ["extensions/pi-subagents", "extensions/pi-todo"],
+  );
 });
 
 test("unrelated, removed, and similarly prefixed extensions do not match", () => {
-  assert.deepEqual(selectExtensions(workspaces, [
-    "README.md", "extensions/removed/index.ts", "extensions/pi-todo-extra/index.ts",
-  ]), []);
+  assert.deepEqual(
+    selectExtensions(workspaces, [
+      "README.md",
+      "extensions/removed/index.ts",
+      "extensions/pi-todo-extra/index.ts",
+    ]),
+    [],
+  );
   assert.deepEqual(selectExtensions(workspaces, []), []);
 });
 
 test("shared dependency, compiler, and CI changes select all extensions", () => {
   for (const path of [
-    ".nvmrc", "package.json", "package-lock.json", "tsconfig.base.json",
-    ".github/workflows/extensions.yml", "scripts/select-test-extensions.mjs",
+    ".nvmrc",
+    "package.json",
+    "package-lock.json",
+    "tsconfig.base.json",
+    "tsconfig.json",
+    ".oxlintrc.json",
+    ".oxfmtrc.json",
+    ".github/workflows/extensions.yml",
+    "scripts/select-test-extensions.mjs",
   ]) {
     assert.deepEqual(selectExtensions(workspaces, [path]), all, path);
   }
@@ -50,8 +70,17 @@ test("git diff excludes base-only changes and selects both sides of cross-extens
   const git = (...args) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
   const commit = () => {
     git("add", ".");
-    git("-c", "commit.gpgsign=false", "-c", "user.name=Test", "-c", "user.email=test@example.com",
-      "commit", "-m", "test fixture");
+    git(
+      "-c",
+      "commit.gpgsign=false",
+      "-c",
+      "user.name=Test",
+      "-c",
+      "user.email=test@example.com",
+      "commit",
+      "-m",
+      "test fixture",
+    );
     return git("rev-parse", "HEAD");
   };
   try {
@@ -67,9 +96,13 @@ test("git diff excludes base-only changes and selects both sides of cross-extens
     const head = commit();
     const paths = changedFiles(base, head, cwd);
     assert.deepEqual(paths.sort(), [
-      "extensions/pi-subagents/new file.ts", "extensions/pi-todo/old file.ts",
+      "extensions/pi-subagents/new file.ts",
+      "extensions/pi-todo/old file.ts",
     ]);
-    assert.deepEqual(selectExtensions(workspaces, paths), ["extensions/pi-subagents", "extensions/pi-todo"]);
+    assert.deepEqual(selectExtensions(workspaces, paths), [
+      "extensions/pi-subagents",
+      "extensions/pi-todo",
+    ]);
   } finally {
     rmSync(cwd, { recursive: true, force: true });
   }

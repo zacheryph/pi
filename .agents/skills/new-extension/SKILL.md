@@ -34,8 +34,8 @@ node .agents/skills/new-extension/scripts/scaffold.mjs pi-<topic> \
 
 It checks everything before writing anything, then:
 
-- creates `package.json` (pins copied from `extensions/pi-tldr`, so they match the
-  bundle), `tsconfig.json`, `vitest.config.ts`, `README.md`, `src/index.ts` and
+- creates `package.json` (using the root's shared development tools),
+  `tsconfig.json`, `vitest.config.ts`, `README.md`, `src/index.ts` and
   `test/index.test.ts` from `templates/`;
 - adds the workspace and the `pi.extensions` entry to the root `package.json`;
 - adds the tools and commands to the lists `scripts/verify-bundle.mjs` asserts;

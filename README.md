@@ -378,7 +378,8 @@ and tests:
 
 ```bash
 npm install --ignore-scripts
-npm run check
+npm run check  # formatting, linting, and type checking
+npm run fix    # formatting and safe automatic lint fixes
 npm test
 npm run verify:bundle
 ```
@@ -386,15 +387,22 @@ npm run verify:bundle
 `verify:bundle` checks root-package discovery and tool and skill registration in temporary
 settings, without model calls or changes to your Pi configuration.
 
+Oxfmt and Oxlint use one root configuration for every workspace and repository
+script. Oxlint's type-aware rules use the native TypeScript implementation;
+TypeScript 7 runs the full type checks. Shared development dependencies live in
+the root package, while runtime peer dependencies stay with each extension.
+Generated declarations, coverage, and the npm lockfile are excluded from formatting.
+
 These check/test commands cover every development workspace. To run one
 workspace, pass it with `-w`, e.g. `npm test -w extensions/pi-todo`. Pi modules
 are dev dependencies for testing and peer dependencies for runtime; Pi supplies its
 own modules when loading extensions.
 
 GitHub Actions runs `check` and `test` in parallel jobs per extension workspace,
-plus one `verify:bundle` job whenever any extension is selected. Pull requests
+plus declaration generation and `verify:bundle` whenever any extension is selected.
+A repository-wide job always checks formatting and lint, including scripts. Pull requests
 select extensions with changes under their directory; changes to root
-manifests/lockfiles, `.nvmrc`, shared TypeScript settings, workflows, or scripts
+manifests/lockfiles, `.nvmrc`, shared TypeScript or Oxc settings, workflows, or scripts
 select all extensions. Pushes to `main` always check and test all extensions.
 Unrelated PR changes skip the extension matrix. Matrix selection is tested with
 `node --test scripts/select-test-extensions.test.mjs`. CI reads its Node.js
@@ -405,6 +413,11 @@ Optional public API declaration generation (not needed for extension loading):
 ```bash
 npm run build:types
 ```
+
+Declarations are generated with TypeScript 7 and bundled with Rolldown. The pinned
+`rolldown-plugin-dts` release supports TS 7.0 through its CLI backend; upgrading
+that plugin requires checking compatibility with the stable TypeScript release.
+No TypeScript 6 compatibility package is needed.
 
 To work on one extension without other configured extensions:
 
