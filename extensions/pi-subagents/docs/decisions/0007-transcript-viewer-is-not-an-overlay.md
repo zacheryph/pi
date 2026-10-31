@@ -19,7 +19,7 @@ Operators reported fragments of the viewer's box — the `╭─` top rule, the 
 ### The mechanism
 
 In pi-tui 0.84.4's `TuiMainScreen.doRender`, overlays are composited into the rendered lines **before** the differential compare (`packages/tui/src/tui-main-screen.ts:267`), and that composited array is then stored as `previousLines` — at every assignment site, not only the clearing one (`:314` full render, `:440` deleted-lines path, `:611` the ordinary differential path).
-The renderer's model of the transcript at those rows *is* the overlay.
+The renderer's model of the transcript at those rows _is_ the overlay.
 
 Differential rendering can only repair rows still on screen.
 Anything the terminal has scrolled past is already committed to scrollback with the overlay's pixels in it.
@@ -102,18 +102,35 @@ const BURST = Number(process.argv[2] ?? 1);
 
 function fakeTerminal() {
   return {
-    start() {}, stop() {}, async drainInput() {}, write() {},
-    get columns() { return COLUMNS; },
-    get rows() { return ROWS; },
-    get kittyProtocolActive() { return false; },
-    moveBy() {}, hideCursor() {}, showCursor() {}, clearLine() {},
-    clearFromCursor() {}, clearScreen() {}, setTitle() {}, setProgress() {},
+    start() {},
+    stop() {},
+    async drainInput() {},
+    write() {},
+    get columns() {
+      return COLUMNS;
+    },
+    get rows() {
+      return ROWS;
+    },
+    get kittyProtocolActive() {
+      return false;
+    },
+    moveBy() {},
+    hideCursor() {},
+    showCursor() {},
+    clearLine() {},
+    clearFromCursor() {},
+    clearScreen() {},
+    setTitle() {},
+    setProgress() {},
   };
 }
 
 /** The transcript: plain text only. Never emits a box-drawing glyph. */
 class Chat {
-  constructor() { this.lineCount = 0; }
+  constructor() {
+    this.lineCount = 0;
+  }
   render() {
     return Array.from(
       { length: this.lineCount },
@@ -175,8 +192,12 @@ function report(label, { committed, finalTop, fullRedraws }) {
   console.log(`  rows scrolled into history: ${scrolledOff.length}`);
   console.log(`  ...committed WITH chrome:   ${contaminated.length}`);
   for (const [row, line] of contaminated.slice(0, 3)) {
-    console.log(`    row ${String(row).padStart(2)}: ${JSON.stringify(stripAnsi(line).slice(0, 56))}`);
-    console.log(`            the Chat component rendered: ${JSON.stringify(`chat line ${String(row).padStart(3, "0")}`)}`);
+    console.log(
+      `    row ${String(row).padStart(2)}: ${JSON.stringify(stripAnsi(line).slice(0, 56))}`,
+    );
+    console.log(
+      `            the Chat component rendered: ${JSON.stringify(`chat line ${String(row).padStart(3, "0")}`)}`,
+    );
   }
   return contaminated.length;
 }

@@ -28,7 +28,7 @@ Wrote `packages/pi-subagents/docs/plans/0709-child-session-shutdown-on-dispose.m
   Filing a companion upstream Pi issue was offered and declined.
   A configurable `childShutdownTimeoutMs` setting was offered and declined in favor of a module constant.
 - **Scope boundary held against [#617].**
-  Shutting extensions down at child *completion* rather than *disposal* would release resources sooner but break resume, since retention deliberately outlives the run.
+  Shutting extensions down at child _completion_ rather than _disposal_ would release resources sooner but break resume, since retention deliberately outlives the run.
   The plan ties the emit to disposal and lists the completion-time variant as an Open Question with no issue filed.
 - **No quantitative baseline was claimed.**
   The reporter's 25-pair / 221 MB figures are their measurement, not one reproduced here (it needs a configured stdio MCP server).
@@ -101,7 +101,7 @@ The `pre-completion-reviewer` returned PASS and both CI runs (push and release) 
 - `instruction-violation` (self-identified only in retro) — the root-cause hunt ran inline instead of in an `Explore` subagent.
   `.pi/prompts/plan-issue.md` step 6 says to dispatch `Explore` when a bug report does not reproduce locally (Refs #719); this one never reproduced locally (no stdio MCP server configured) and the hunt ran inline across roughly thirty tool calls, turns 5–36.
   Impact: no rework and no compaction, but a large share of the planning session's context spent before the plan was written — the exact cost #719's rule exists to prevent.
-  Mitigating nuance: the issue body supplied a five-step source trace naming every relevant symbol, so the task was *verifying a supplied diagnosis*, not hunting an unknown cause — and its output (which API is public, what the ordering constraint is) fed directly into the plan's Design Overview.
+  Mitigating nuance: the issue body supplied a five-step source trace naming every relevant symbol, so the task was _verifying a supplied diagnosis_, not hunting an unknown cause — and its output (which API is public, what the ordering constraint is) fed directly into the plan's Design Overview.
   The rule does not currently distinguish those two cases.
 - `instruction-violation` (self-identified) — `echo ===` as a separator in a chained bash command.
   `AGENTS.md` names this exactly: zsh's `equals` expansion reads `=word` as a command-path lookup.

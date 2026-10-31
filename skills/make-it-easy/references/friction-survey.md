@@ -26,19 +26,19 @@ Delegate wide sweeps to read-only `Explore` subagents.
 Friction is anything that would make the change or an input's supply larger,
 riskier, or more surprising than it needs to be. Look for:
 
-| Smell | What it does to the change |
-| --- | --- |
-| Hardcoded values or identifiers | Blocks decoupled supply of an input. |
-| Same knowledge in several places | Turns one change into N edits that can drift. |
-| Missing seam | No place to plug the new thing in without editing internals. |
-| Tangled responsibilities | The new work must understand unrelated concerns. |
-| Wrong or leaky abstraction | New work bends around it or copies it. |
-| Misleading names or structure | Readers, and the plan, go wrong. |
-| Implicit contracts | Rules that live only in people's heads or in a coincidence. |
-| Config sprawl or divergent environments | The change must be made and verified several ways. |
-| No characterization tests | Cannot refactor safely first. |
-| Dead or duplicate code in the way | Noise to read and risk to preserve. |
-| Wrong home | The new thing has no natural location, so it lands somewhere it will rot. |
+| Smell                                   | What it does to the change                                                |
+| --------------------------------------- | ------------------------------------------------------------------------- |
+| Hardcoded values or identifiers         | Blocks decoupled supply of an input.                                      |
+| Same knowledge in several places        | Turns one change into N edits that can drift.                             |
+| Missing seam                            | No place to plug the new thing in without editing internals.              |
+| Tangled responsibilities                | The new work must understand unrelated concerns.                          |
+| Wrong or leaky abstraction              | New work bends around it or copies it.                                    |
+| Misleading names or structure           | Readers, and the plan, go wrong.                                          |
+| Implicit contracts                      | Rules that live only in people's heads or in a coincidence.               |
+| Config sprawl or divergent environments | The change must be made and verified several ways.                        |
+| No characterization tests               | Cannot refactor safely first.                                             |
+| Dead or duplicate code in the way       | Noise to read and risk to preserve.                                       |
+| Wrong home                              | The new thing has no natural location, so it lands somewhere it will rot. |
 
 Reorganizing is legitimate: moving code or resources so the new work has a
 natural home, deleting what is superseded, and simplifying before extending.
@@ -46,7 +46,7 @@ natural home, deleting what is superseded, and simplifying before extending.
 ## Record each item
 
 | Friction | Evidence (`file:line`) | Blocks | Fix cost | Verdict |
-| --- | --- | --- | --- | --- |
+| -------- | ---------------------- | ------ | -------- | ------- |
 
 **Blocks** names the input or the part of the change it makes harder. **Verdict**:
 

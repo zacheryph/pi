@@ -67,7 +67,7 @@ Released as `pi-subagents-v8.0.0` (major bump from the `feat!:` breaking change)
   Biome caught it at the final lint sweep, requiring a separate `refactor:` commit (`f1ee7c1`).
   Impact: one unplanned commit; no rework but added friction.
   Self-identified at final lint.
-  Root cause: the `plan-issue.md` template had a rule for grepping removed *exports* but not for checking private-function orphans.
+  Root cause: the `plan-issue.md` template had a rule for grepping removed _exports_ but not for checking private-function orphans.
 
 #### What caused friction (user side)
 

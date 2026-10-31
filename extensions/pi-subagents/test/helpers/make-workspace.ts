@@ -1,9 +1,9 @@
 import { vi } from "vitest";
 import type {
-	Workspace,
-	WorkspaceDisposeOutcome,
-	WorkspaceDisposeResult,
-	WorkspacePrepareContext,
+  Workspace,
+  WorkspaceDisposeOutcome,
+  WorkspaceDisposeResult,
+  WorkspacePrepareContext,
 } from "#src/lifecycle/workspace";
 
 /**
@@ -14,12 +14,12 @@ import type {
  * counts), which is the whole reason the stub exists.
  */
 export function makeWorkspace(cwd: string, disposeResult?: WorkspaceDisposeResult) {
-	return {
-		cwd,
-		dispose: vi.fn(
-			(_outcome: WorkspaceDisposeOutcome): WorkspaceDisposeResult | undefined => disposeResult,
-		),
-	};
+  return {
+    cwd,
+    dispose: vi.fn(
+      (_outcome: WorkspaceDisposeOutcome): WorkspaceDisposeResult | undefined => disposeResult,
+    ),
+  };
 }
 
 /**
@@ -29,10 +29,9 @@ export function makeWorkspace(cwd: string, disposeResult?: WorkspaceDisposeResul
  * real provider takes when the agent is not opted into isolation.
  */
 export function makeWorkspaceProvider(workspace: Workspace | undefined) {
-	return {
-		prepare: vi.fn(
-			(_ctx: WorkspacePrepareContext): Promise<Workspace | undefined> =>
-				Promise.resolve(workspace),
-		),
-	};
+  return {
+    prepare: vi.fn((_ctx: WorkspacePrepareContext): Promise<Workspace | undefined> =>
+      Promise.resolve(workspace),
+    ),
+  };
 }

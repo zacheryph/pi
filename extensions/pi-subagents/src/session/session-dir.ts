@@ -32,7 +32,10 @@ export function deriveSubagentSessionDir(
 
   // Fallback: use a temp directory keyed by uid and cwd so different
   // projects don't collide when the parent session is not persisted.
-  const encoded = cwd.replace(/[/\\]/g, "-").replace(/^[A-Za-z]:-/, "").replace(/^-+/, "");
+  const encoded = cwd
+    .replace(/[/\\]/g, "-")
+    .replace(/^[A-Za-z]:-/, "")
+    .replace(/^-+/, "");
   const root = join(tmpdir(), `pi-subagents-${process.getuid?.() ?? 0}`);
   return join(root, encoded, "tasks");
 }

@@ -7,18 +7,21 @@ describe("LineDecoder", () => {
     const decoder = new LineDecoder();
     const line = encode({ type: "bye", reason: "quit" });
     expect(decoder.push(line.slice(0, 5))).toEqual([]);
-    expect(decoder.push(line.slice(5) + line)).toEqual([{ type: "bye", reason: "quit" }, { type: "bye", reason: "quit" }]);
+    expect(decoder.push(line.slice(5) + line)).toEqual([
+      { type: "bye", reason: "quit" },
+      { type: "bye", reason: "quit" },
+    ]);
   });
 
   it("drops malformed lines and keeps going", () => {
     const decoder = new LineDecoder();
-    expect(decoder.push("{nope\n\n{\"a\":1}\n")).toEqual([{ a: 1 }]);
+    expect(decoder.push('{nope\n\n{"a":1}\n')).toEqual([{ a: 1 }]);
   });
 
   it("discards an unterminated line over the size cap", () => {
     const decoder = new LineDecoder();
     decoder.push("x".repeat(1024 * 1024 + 1));
-    expect(decoder.push("{\"a\":2}\n")).toEqual([{ a: 2 }]);
+    expect(decoder.push('{"a":2}\n')).toEqual([{ a: 2 }]);
   });
 });
 

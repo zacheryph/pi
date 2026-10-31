@@ -55,7 +55,7 @@ Key behavioral facts that shape the design:
   The manager never calls `onSubagentCompleted` for foreground agents, so the widget cannot learn of foreground completion through the observer.
   It does not need to: `seedFinishedAgents()` already seeds any agent with `completedAt` on the next poll tick, so `markFinished` is fully redundant and is removed.
 - **The widget keeps its `manager` reference.**
-  Rendering still reads `manager.listAgents()`; the observer only changes the *trigger* that starts the timer, not the data source.
+  Rendering still reads `manager.listAgents()`; the observer only changes the _trigger_ that starts the timer, not the data source.
   Full broadcast-plus-query decoupling is the Step 8 concern, deliberately out of scope here.
 
 AGENTS.md / package constraints that apply:
@@ -88,7 +88,11 @@ export class CompositeSubagentObserver implements SubagentManagerObserver {
   // …onSubagentCreated / onSubagentCompleted / onSubagentCompacted follow the same shape…
   private forEach(call: (o: SubagentManagerObserver) => void, label: string): void {
     for (const o of this.delegates) {
-      try { call(o); } catch (err) { debugLog(`CompositeSubagentObserver.${label}`, err); }
+      try {
+        call(o);
+      } catch (err) {
+        debugLog(`CompositeSubagentObserver.${label}`, err);
+      }
     }
   }
 }
@@ -102,7 +106,7 @@ The `add` method exists to break the construction cycle (see wiring below), not 
 The widget needs the manager (for `listAgents()`) and the manager needs the observer, so the composite is constructed first, the widget is registered after construction:
 
 ```typescript
-const eventsObserver = new SubagentEventsObserver({ /* emit, appendEntry, notifications */ });
+const eventsObserver = new SubagentEventsObserver({/* emit, appendEntry, notifications */});
 const observer = new CompositeSubagentObserver([eventsObserver]);
 const manager = new SubagentManager({ /* …, */ observer /* , … */ });
 // …
@@ -165,14 +169,14 @@ Docs:
 - `docs/architecture/architecture.md`:
   - File tree (around line 318) — add `composite-subagent-observer.ts` under `observation/` with a one-line description.
   - System diagram (around line 64) — add a `SubagentManager -.->|notifies| Widget` edge (the inverted, reactive direction) alongside the existing `Widget -.->|polls| SubagentManager`.
-  - Widget prose (around line 363) — note the 80 ms poll loop is now *started by lifecycle notifications* rather than by spawn-tool calls.
+  - Widget prose (around line 363) — note the 80 ms poll loop is now _started by lifecycle notifications_ rather than by spawn-tool calls.
   - Phase 18 roadmap Step 4 entry — mark ✅ with a `Landed:` bullet matching the Steps 1–3 format.
   - Step-dependency Mermaid — `S4` node gets the ✅ marker.
 - `.pi/skills/package-pi-subagents/SKILL.md`:
   - Domain table — Observation `5 → 6` modules (add `composite-subagent-observer.ts` to the list); header "seven domains (57 files)" → "(58 files)".
   - Module-dependency-flow block — note the widget is now a lifecycle observer fanned out through the composite alongside `subagent-events-observer`.
 
-Verify the exact current counts with `grep` before editing (the Step 3 sweep set Observation to 5 and the total to 57); the architecture health-metrics snapshot table (`7,751 (62 files)`) is the Phase 18 *findings* snapshot and is left as-is, per the Step 3 precedent.
+Verify the exact current counts with `grep` before editing (the Step 3 sweep set Observation to 5 and the total to 57); the architecture health-metrics snapshot table (`7,751 (62 files)`) is the Phase 18 _findings_ snapshot and is left as-is, per the Step 3 precedent.
 
 Historical docs under `docs/plans/`, `docs/retro/`, and `docs/architecture/history/` are records of past work and are **not** edited.
 
@@ -198,14 +202,14 @@ Relevant prior `Landed:` invariants and the tests that pin them:
 - "The widget owns detection of completions via `seedFinishedAgents`" (Steps 1–2 outcome).
   Removing `markFinished` relies on this; pinned by `test/ui/agent-widget.test.ts` "AgentWidget.update self-seeds finished agents" and "does not advance the linger age on repeated update() without a turn".
 - "One session subscription per child; runtime holds zero UI state" (Step 3 outcome).
-  Unchanged here — the widget subscribes to *manager lifecycle notifications*, not a second *session* subscription.
+  Unchanged here — the widget subscribes to _manager lifecycle notifications_, not a second _session_ subscription.
 
 No new test is required to protect these; the surviving streaming and self-seed tests plus the type checker cover them.
 
 ## TDD Order
 
 Non-breaking refactor; every commit keeps `pnpm run check` and the full suite green.
-Steps are ordered so the widget is wired as an observer *before* the spawn-tool calls are removed — no commit leaves the widget without a timer-start signal.
+Steps are ordered so the widget is wired as an observer _before_ the spawn-tool calls are removed — no commit leaves the widget without a timer-start signal.
 
 1. **Add `CompositeSubagentObserver` (pure addition).**
    Write `test/observation/composite-subagent-observer.test.ts` (red), then `src/observation/composite-subagent-observer.ts` (green): fan-out in registration order, `add()`, per-delegate fault isolation.

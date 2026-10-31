@@ -6,10 +6,7 @@ import {
 import { describe, expect, it, vi } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import type { EnvInfo } from "#src/session/env";
-import {
-  type ContextFile,
-  renderProjectContext,
-} from "#src/session/project-context";
+import { type ContextFile, renderProjectContext } from "#src/session/project-context";
 import { buildAgentPrompt } from "#src/session/prompts";
 import type { AgentConfig } from "#src/types";
 
@@ -184,12 +181,10 @@ describe("buildAgentPrompt", () => {
       inheritContext: false,
       runInBackground: false,
     };
-    const prompt = buildAgentPrompt(
-      config,
-      "/workspace",
-      env,
-      { systemPrompt: "PARENT parent prompt content", cwd: PARENT_CWD },
-    );
+    const prompt = buildAgentPrompt(config, "/workspace", env, {
+      systemPrompt: "PARENT parent prompt content",
+      cwd: PARENT_CWD,
+    });
     expect(prompt).toContain("You are a standalone agent.");
     // Parent is now included as the cacheable base prefix.
     expect(prompt).toContain("PARENT parent prompt content");
@@ -225,12 +220,10 @@ describe("buildAgentPrompt", () => {
       inheritContext: false,
       runInBackground: false,
     };
-    const prompt = buildAgentPrompt(
-      config,
-      "/workspace",
-      env,
-      { systemPrompt: "IDENTITY parent content", cwd: PARENT_CWD },
-    );
+    const prompt = buildAgentPrompt(config, "/workspace", env, {
+      systemPrompt: "IDENTITY parent content",
+      cwd: PARENT_CWD,
+    });
     const idxIdentity = prompt.indexOf("IDENTITY parent content");
     const idxTag = prompt.indexOf('<active_agent name="ordered"/>');
     const idxEnv = prompt.indexOf("# Environment");
@@ -289,12 +282,10 @@ describe("buildAgentPrompt", () => {
       };
       // Replace mode now places identity (parent/genericBase) first for KV
       // cache reuse; the tag follows after the cacheable prefix.
-      const prompt = buildAgentPrompt(
-        config,
-        "/workspace",
-        env,
-        { systemPrompt: "Parent identity prefix.", cwd: PARENT_CWD },
-      );
+      const prompt = buildAgentPrompt(config, "/workspace", env, {
+        systemPrompt: "Parent identity prefix.",
+        cwd: PARENT_CWD,
+      });
       const idxIdentity = prompt.indexOf("Parent identity prefix.");
       const idxTag = prompt.indexOf('<active_agent name="Explore"/>');
       expect(idxTag).toBeGreaterThan(-1);
@@ -311,12 +302,10 @@ describe("buildAgentPrompt", () => {
         inheritContext: false,
         runInBackground: false,
       };
-      const prompt = buildAgentPrompt(
-        config,
-        "/workspace",
-        env,
-        { systemPrompt: "Parent prompt content.", cwd: PARENT_CWD },
-      );
+      const prompt = buildAgentPrompt(config, "/workspace", env, {
+        systemPrompt: "Parent prompt content.",
+        cwd: PARENT_CWD,
+      });
       const tagIdx = prompt.indexOf('<active_agent name="general-purpose"/>');
       const identityIdx = prompt.indexOf("Parent prompt content.");
       expect(tagIdx).toBeGreaterThan(-1);
@@ -366,12 +355,10 @@ describe("buildAgentPrompt", () => {
         inheritContext: false,
         runInBackground: false,
       };
-      const appendPrompt = buildAgentPrompt(
-        appendConfig,
-        "/workspace",
-        env,
-        { systemPrompt: "Parent.", cwd: PARENT_CWD },
-      );
+      const appendPrompt = buildAgentPrompt(appendConfig, "/workspace", env, {
+        systemPrompt: "Parent.",
+        cwd: PARENT_CWD,
+      });
       const tagIdxB = appendPrompt.indexOf('<active_agent name="agent-b"/>');
       const envIdxB = appendPrompt.indexOf("# Environment");
       // Append mode: tag follows parent content (not at index 0) but still precedes env block
@@ -530,8 +517,7 @@ describe("buildAgentPrompt", () => {
       it("drops the extension blocks that follow the footer", () => {
         // Pi rebuilds these per turn from the base prompt, so the parent's copy
         // is one turn's transient state — and it names the parent's directory.
-        const extensionTail =
-          "# Working Directory\n\nShell commands already execute in `/parent`.";
+        const extensionTail = "# Working Directory\n\nShell commands already execute in `/parent`.";
         const prompt = buildAgentPrompt(replaceConfig(), "/workspace", env, {
           systemPrompt: parentPrompt({
             skills: [skill("colgrep")],
@@ -555,9 +541,7 @@ describe("buildAgentPrompt", () => {
 
         // The agent tag follows the inherited identity directly, so nothing of
         // the catalogue survives between them.
-        expect(
-          prompt.startsWith(`${IDENTITY}\n\n<active_agent name="specialist"/>`),
-        ).toBe(true);
+        expect(prompt.startsWith(`${IDENTITY}\n\n<active_agent name="specialist"/>`)).toBe(true);
       });
 
       it("cuts at Pi's catalogue, not at project context quoting its heading", () => {
@@ -832,17 +816,13 @@ describe("buildAgentPrompt", () => {
         sections.push(`<project_context>\n${content}\n</project_context>`);
       }
       if (layers.skills) {
-        sections.push(
-          `<skills>\n${formatSkillsForPrompt(layers.skills).trim()}\n</skills>`,
-        );
+        sections.push(`<skills>\n${formatSkillsForPrompt(layers.skills).trim()}\n</skills>`);
       }
       if (layers.cwd !== undefined) {
         sections.push(`<cwd>\n${layers.cwd}\n</cwd>`);
       }
       const prompt = [layers.identity ?? IDENTITY, ...sections].join("\n\n");
-      return layers.extensionTail !== undefined
-        ? `${prompt}\n\n${layers.extensionTail}`
-        : prompt;
+      return layers.extensionTail !== undefined ? `${prompt}\n\n${layers.extensionTail}` : prompt;
     }
 
     // Issue #918 on pi ≥0.86: the section renderer wraps the catalogue in a
@@ -1137,9 +1117,7 @@ describe("buildAgentPrompt", () => {
           cwd: PARENT_CWD,
         });
 
-        const catalogues = prompt
-          .split("\n")
-          .filter((line) => line === "<available_skills>");
+        const catalogues = prompt.split("\n").filter((line) => line === "<available_skills>");
         expect(catalogues).toEqual([]);
       });
     });
@@ -1356,15 +1334,11 @@ describe("buildAgentPrompt", () => {
               portablePrompt: PORTABLE,
             },
             (cwd) =>
-              renderProjectContext([
-                { path: `${cwd}/AGENTS.md`, content: "Worktree rules." },
-              ]),
+              renderProjectContext([{ path: `${cwd}/AGENTS.md`, content: "Worktree rules." }]),
           );
 
           expect(prompt).toContain('<project_instructions path="/workspace/AGENTS.md">');
-          expect(prompt.indexOf(PORTABLE)).toBeLessThan(
-            prompt.indexOf("<project_context>"),
-          );
+          expect(prompt.indexOf(PORTABLE)).toBeLessThan(prompt.indexOf("<project_context>"));
         });
 
         it("resolves it even when the child shares the parent's directory", () => {
@@ -1380,10 +1354,7 @@ describe("buildAgentPrompt", () => {
               strategy: "portable",
               portablePrompt: PORTABLE,
             },
-            (cwd) =>
-              renderProjectContext([
-                { path: `${cwd}/AGENTS.md`, content: "Repo rules." },
-              ]),
+            (cwd) => renderProjectContext([{ path: `${cwd}/AGENTS.md`, content: "Repo rules." }]),
           );
 
           expect(prompt).toContain(`<project_instructions path="${PARENT_CWD}/AGENTS.md">`);
@@ -1426,10 +1397,7 @@ describe("buildAgentPrompt", () => {
           "/workspace",
           env,
           { systemPrompt: PI_BASE, cwd: PARENT_CWD, strategy: "portable" },
-          (cwd) =>
-            renderProjectContext([
-              { path: `${cwd}/AGENTS.md`, content: "Worktree rules." },
-            ]),
+          (cwd) => renderProjectContext([{ path: `${cwd}/AGENTS.md`, content: "Worktree rules." }]),
         );
 
         expect(prompt.startsWith(GENERIC_BASE)).toBe(true);
@@ -1441,12 +1409,11 @@ describe("buildAgentPrompt", () => {
       // know which tools the child holds. Explore holds neither `edit` nor
       // `write`, and says so itself twelve lines further down the prompt.
       it("asserts no capability the child may not hold", () => {
-        const prompt = buildAgentPrompt(
-          getDefaultConfig("Explore"),
-          "/workspace",
-          env,
-          { systemPrompt: PI_BASE, cwd: PARENT_CWD, strategy: "portable" },
-        );
+        const prompt = buildAgentPrompt(getDefaultConfig("Explore"), "/workspace", env, {
+          systemPrompt: PI_BASE,
+          cwd: PARENT_CWD,
+          strategy: "portable",
+        });
 
         // Scoped to the adopted identity, which ends at the per-call header:
         // Explore's own prompt names writing legitimately, to prohibit it.

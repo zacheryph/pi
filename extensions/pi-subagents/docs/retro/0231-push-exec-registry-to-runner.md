@@ -57,7 +57,7 @@ The entire issue (plan → TDD → ship) completed in one sitting with no user i
 #### What caused friction (agent side)
 
 - `wrong-abstraction` — The plan listed steps 3, 4, and 5 as separate commits and claimed "each commit is independently valid," but removing fields from `RunContext` (step 3) immediately caused TypeScript excess-property errors in `AgentManager` (step 4) and `index.ts` (step 5).
-  The existing `/plan-issue` rule (line 109) covers removing exports with single call sites, but did not trigger recognition because this was *shrinking* an interface, not removing one.
+  The existing `/plan-issue` rule (line 109) covers removing exports with single call sites, but did not trigger recognition because this was _shrinking_ an interface, not removing one.
   Impact: the TDD agent had to merge three steps on the fly — no rework, but the plan was misleading.
 - `missing-context` — The `sed`-based bulk replacement for `runAgent(..., io)` missed one multi-line call site where `}, io)` appeared on a different line than the opening `runAgent(`.
   Impact: one extra manual edit; caught immediately by the test run.

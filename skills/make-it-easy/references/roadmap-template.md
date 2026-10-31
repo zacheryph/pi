@@ -3,19 +3,22 @@
 Write to `docs/roadmaps/<slug>.md` unless the project keeps plans elsewhere.
 Fill it phase by phase and keep every section short.
 
-````markdown
+```markdown
 # <Goal as a short noun phrase>
 
 Status: draft | chosen | in progress | done · Updated: <date>
 
 ## Goal brief
+
 <from goal-discovery.md>
 
 ## Inputs
+
 <table from inputs-and-contracts.md, plus a contract sketch for each
 discoverable input>
 
 ## What exists
+
 **Prior art:** <what is reusable>
 **Conventions to follow:** <list>
 **Friction:** <table from friction-survey.md>
@@ -23,17 +26,21 @@ discoverable input>
 **Not examined:** <list and why>
 
 ## Options
+
 <option cards, comparison, recommendation>
 
 ## Decision
+
 <chosen option, who decided, what was merged or changed, date>
 
 ## Roadmap
+
 <ordered steps, format below>
 
 ## Open questions
+
 <unowned inputs, unverified claims, decisions that block a step>
-````
+```
 
 ## Step format
 
@@ -42,8 +49,9 @@ Number them in the order they should land.
 
 ```markdown
 ### <n>. <Verb phrase: the outcome>
+
 **Type:** tidy (behavior-preserving) | contract | migration | the change | cleanup
-**Eases:** <step or friction this exists for> *(required for any step before the change)*
+**Eases:** <step or friction this exists for> _(required for any step before the change)_
 **Does:** <what changes, with the files, resources, or components involved>
 **Seam or contract:** <introduced or relied on, if any>
 **Done when:** <observable, checkable>

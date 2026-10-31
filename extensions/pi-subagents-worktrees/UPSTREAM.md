@@ -3,15 +3,15 @@
 Git worktree isolation for pi-subagents children, imported from
 [`gotgenes/pi-packages/packages/pi-subagents-worktrees`](https://github.com/gotgenes/pi-packages/tree/main/packages/pi-subagents-worktrees).
 
-| | |
-| --- | --- |
-| Source | https://github.com/gotgenes/pi-packages |
-| Directory | `packages/pi-subagents-worktrees` |
-| Commit | `62924b0a8389eed41c4da93b0bf0ea89e0b5c794` (2026-09-05, "chore(release): pi-subagents 21.4.1, pi-subagents-worktrees 0.3.3") — the last commit touching this directory as of `98ee0a1` (2026-10-27) |
-| Upstream version | `@gotgenes/pi-subagents-worktrees` 0.3.3 |
-| Upstream tested with | Pi 0.79.1, `@gotgenes/pi-subagents` 16.4+, Node.js 22 |
-| License | MIT; original notice retained in `LICENSE` |
-| Imported | 2026-10-31 |
+|                      |                                                                                                                                                                                                     |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Source               | https://github.com/gotgenes/pi-packages                                                                                                                                                             |
+| Directory            | `packages/pi-subagents-worktrees`                                                                                                                                                                   |
+| Commit               | `62924b0a8389eed41c4da93b0bf0ea89e0b5c794` (2026-09-05, "chore(release): pi-subagents 21.4.1, pi-subagents-worktrees 0.3.3") — the last commit touching this directory as of `98ee0a1` (2026-10-27) |
+| Upstream version     | `@gotgenes/pi-subagents-worktrees` 0.3.3                                                                                                                                                            |
+| Upstream tested with | Pi 0.79.1, `@gotgenes/pi-subagents` 16.4+, Node.js 22                                                                                                                                               |
+| License              | MIT; original notice retained in `LICENSE`                                                                                                                                                          |
+| Imported             | 2026-10-31                                                                                                                                                                                          |
 
 This is an editable source copy, not a Git submodule or npm runtime dependency.
 The root bundle exposes `src/index.ts`, listed right after pi-subagents in
@@ -93,6 +93,13 @@ would have found the parent's service, which already has a provider and throws.
 
 ## Sync history
 
-| Date | Upstream commit | Notes |
-| --- | --- | --- |
+| Date       | Upstream commit   | Notes           |
+| ---------- | ----------------- | --------------- |
 | 2026-10-31 | `62924b0` (0.3.3) | Initial import. |
+
+## Shared Oxc and TypeScript 7 tooling
+
+Source, tests, and documentation follow the bundle's formatting and lint rules.
+Private import maps target explicit `.ts` files. Tests use those package-local
+maps instead of a global `#src` alias, which redirected the sibling subagents
+service's imports into this workspace and broke its session-services tests.

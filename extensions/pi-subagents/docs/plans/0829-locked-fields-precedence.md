@@ -132,7 +132,13 @@ One rule, applied per field:
 // src/config/invocation-config.ts
 
 /** Which field a lock names, spelled as the frontmatter key an author writes. */
-export const LOCKABLE_FIELDS = ["model", "thinking", "max_turns", "inherit_context", "run_in_background"] as const;
+export const LOCKABLE_FIELDS = [
+  "model",
+  "thinking",
+  "max_turns",
+  "inherit_context",
+  "run_in_background",
+] as const;
 export type LockableField = (typeof LOCKABLE_FIELDS)[number];
 
 /** `true` locks every field the agent file sets; a list locks exactly the fields it names. */
@@ -167,7 +173,7 @@ function resolveField<T>(
 - `locked: true` — locked **iff the agent file sets the field**.
   This is exactly today's blanket behavior, which makes it the one-line migration for a file written against it.
 - `locked: [model]` — locked whether or not the file sets `model`.
-  A *bare lock* denies the caller and lets the child inherit the parent's value, so an author can say "never let a caller change my model" without pinning one.
+  A _bare lock_ denies the caller and lets the child inherit the parent's value, so an author can say "never let a caller change my model" without pinning one.
 
 ### `AgentConfig` and the frontmatter parser
 
@@ -180,9 +186,9 @@ function resolveField<T>(
 `custom-agents.ts` reuses the scalar-or-sequence parser `tools:` already has, so both spellings work:
 
 ```yaml
-locked: true                       # lock every field this file sets
-locked: model, thinking            # comma-separated scalar
-locked: [model, max_turns]         # YAML flow sequence
+locked: true # lock every field this file sets
+locked: model, thinking # comma-separated scalar
+locked: [model, max_turns] # YAML flow sequence
 ```
 
 An entry that is not in `LOCKABLE_FIELDS` is dropped with a `debugLog` — an agent file is operator-authored, and failing its whole load over one typo is worse than ignoring the entry.
@@ -223,7 +229,15 @@ import type { ThinkingLevel as SdkThinkingLevel } from "@earendil-works/pi-ai";
  * `ThinkingLevel`; the `satisfies` clause catches an entry the SDK does not
  * know, and the SDK-parity test catches a level the SDK adds that this list omits.
  */
-export const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const satisfies readonly (SdkThinkingLevel | "off")[];
+export const THINKING_LEVELS = [
+  "off",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+] as const satisfies readonly (SdkThinkingLevel | "off")[];
 
 export type SubagentThinkingLevel = (typeof THINKING_LEVELS)[number];
 
@@ -264,7 +278,8 @@ The name stays; its doc comment in both `invocation-config.ts` and `model-resolv
 
 ```typescript
 // src/tools/spawn-config.ts
-const invalidThinking = params.thinking != null && parseThinkingLevel(params.thinking) === undefined;
+const invalidThinking =
+  params.thinking != null && parseThinkingLevel(params.thinking) === undefined;
 if (invalidThinking) return { error: thinkingLevelError(params.thinking as string) };
 
 const agentConfig = registry.resolveAgentConfig(subagentType);
@@ -349,12 +364,16 @@ Today the precedence is only reachable through `resolveAgentInvocationConfig`'s 
 The check runs against the installed SDK rather than asserting a literal:
 
 ```typescript
-const everyLevel = { ...fakeModel, reasoning: true, thinkingLevelMap: Object.fromEntries(THINKING_LEVELS.map(l => [l, "x"])) };
+const everyLevel = {
+  ...fakeModel,
+  reasoning: true,
+  thinkingLevelMap: Object.fromEntries(THINKING_LEVELS.map((l) => [l, "x"])),
+};
 expect([...THINKING_LEVELS].sort()).toEqual(getSupportedThinkingLevels(everyLevel).sort());
 ```
 
 Measured at planning time: `getSupportedThinkingLevels` returns exactly those seven for such a model.
-Residual, stated rather than hidden: a level the SDK adds *and* gates behind a `thinkingLevelMap` key escapes the check, because the map is built from our own list.
+Residual, stated rather than hidden: a level the SDK adds _and_ gates behind a `thinkingLevelMap` key escapes the check, because the map is built from our own list.
 The `satisfies` clause covers the other direction — an entry pi-ai does not declare fails `pnpm run check`.
 
 **Becomes redundant.**
@@ -411,7 +430,7 @@ The one numeric target is the `agentConfig?.` metric row, predicted above at 0 f
    Killing mutations: make the parser return `undefined` for `locked: true`; make it accept any string without filtering to `LOCKABLE_FIELDS`.
 
 6. **`fix(pi-subagents)!: honor subagent tool parameters over agent frontmatter unless the agent locks the field`** The behavior flip.
-   Red: a rewritten `invocation-config.test.ts` — for each of the five fields, caller-wins with no lock; agent value fills when the caller omits; `locked: true` reproduces the previous outcome for a field the file sets and does *not* lock one it leaves unset; a list lock holds the agent's value; a bare list lock yields no value at all; `modelFromParams` is true only when the caller's input won.
+   Red: a rewritten `invocation-config.test.ts` — for each of the five fields, caller-wins with no lock; agent value fills when the caller omits; `locked: true` reproduces the previous outcome for a field the file sets and does _not_ lock one it leaves unset; a list lock holds the agent's value; a bare list lock yields no value at all; `modelFromParams` is true only when the caller's input won.
    Green: required `agentConfig`, `isLocked`, `resolveField`, the inverted merges, and the corrected `modelFromParams` doc comments in `invocation-config.ts` and `model-resolver.ts`.
    Same commit: the `agent-tool.ts` schema descriptions, since they are the contract this commit makes true, and the `default-agents.ts` comment that cites the old semantics.
    `BREAKING CHANGE:` footer naming `locked: true` as the one-line restoration.
@@ -432,7 +451,7 @@ The one numeric target is the `agentConfig?.` metric row, predicted above at 0 f
 | ------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | An existing agent file relying on the blanket lock changes behavior silently on upgrade                             | `locked: true` restores it in one line, and the `BREAKING CHANGE:` footer names it. Step 6 pins the equivalence with a test asserting `locked: true` reproduces the previous outcome for every field the file sets.                                                                                                                |
 | `modelFromParams`'s meaning shifts, so a caller's model typo now errors where the agent's value used to win quietly | Deliberate and stated in Design Overview. Step 6 pins both directions: an agent-file typo still falls back silently, a caller typo errors.                                                                                                                                                                                         |
-| The relocated fallback note's text drifts, breaking a green assertion's meaning rather than the assertion           | Step 1 moves the string verbatim and the existing foreground test must stay green *unedited*; the test helper is updated to produce the same string rather than an approximation of it.                                                                                                                                            |
+| The relocated fallback note's text drifts, breaking a green assertion's meaning rather than the assertion           | Step 1 moves the string verbatim and the existing foreground test must stay green _unedited_; the test helper is updated to produce the same string rather than an approximation of it.                                                                                                                                            |
 | The SDK-parity test is circular for a map-gated level the SDK adds                                                  | Stated as a residual in Test Impact Analysis. The `satisfies` clause covers the opposite direction, and the two together are the strongest check available without an SDK export of the level list (`THINKING_LEVEL_OPTIONS` is internal to `@earendil-works/pi-coding-agent` and absent from its public `index.d.ts` — verified). |
 | Widening the `ThinkingLevel` alias to include `off` breaks a call into the SDK                                      | `CreateSessionOptions.thinkingLevel` reaches `createAgentSession`, whose own `ThinkingLevel` (from `@earendil-works/pi-agent-core`) is exactly the seven-level set including `off`. `pnpm run check` is the gate; the widening is a superset of nothing the SDK rejects.                                                           |
 | A `toMatchObject`/`objectContaining` assertion absorbs a wrong `notes` or `discarded` shape                         | Re-read the note and discard assertions in all four touched test files by hand after steps 1, 2, and 7 rather than trusting the green run.                                                                                                                                                                                         |

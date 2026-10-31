@@ -14,9 +14,11 @@ interface Item {
   data?: { observations?: unknown; reflections?: unknown; observationIds?: unknown };
 }
 
-const list = (value: unknown): unknown[] => Array.isArray(value) ? value : [];
+const list = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
 const id = (value: unknown): string | undefined =>
-  value && typeof value === "object" && typeof (value as { id?: unknown }).id === "string" ? (value as { id: string }).id : undefined;
+  value && typeof value === "object" && typeof (value as { id?: unknown }).id === "string"
+    ? (value as { id: string }).id
+    : undefined;
 
 export function memoryStats(branch: Iterable<unknown>): MemorySection {
   let compactions = 0;
@@ -40,7 +42,11 @@ export function memoryStats(branch: Iterable<unknown>): MemorySection {
       for (const observation of list(item.data?.observations)) {
         const key = id(observation);
         const tokens = (observation as { tokenCount?: unknown }).tokenCount;
-        if (key) observations.set(key, typeof tokens === "number" && Number.isFinite(tokens) && tokens > 0 ? tokens : 0);
+        if (key)
+          observations.set(
+            key,
+            typeof tokens === "number" && Number.isFinite(tokens) && tokens > 0 ? tokens : 0,
+          );
       }
     } else if (item.customType === REFLECTIONS) {
       ledger = true;
@@ -50,7 +56,8 @@ export function memoryStats(branch: Iterable<unknown>): MemorySection {
       }
     } else if (item.customType === DROPPED) {
       ledger = true;
-      for (const key of list(item.data?.observationIds)) if (typeof key === "string") dropped.add(key);
+      for (const key of list(item.data?.observationIds))
+        if (typeof key === "string") dropped.add(key);
     }
   }
   let kept = 0;
@@ -63,11 +70,16 @@ export function memoryStats(branch: Iterable<unknown>): MemorySection {
   return {
     compactions,
     ...(lastCompactionAt !== undefined ? { lastCompactionAt } : {}),
-    ...(ledger ? {
-      blackhole: {
-        observations: observations.size, kept, keptTokens, reflections: reflections.size,
-        dropped: [...dropped].filter((key) => observations.has(key)).length,
-      },
-    } : {}),
+    ...(ledger
+      ? {
+          blackhole: {
+            observations: observations.size,
+            kept,
+            keptTokens,
+            reflections: reflections.size,
+            dropped: [...dropped].filter((key) => observations.has(key)).length,
+          },
+        }
+      : {}),
   };
 }

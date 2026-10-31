@@ -55,7 +55,7 @@ Shipped cleanly: 1073 tests green with no delta, recompute metric 7 → 0, pre-c
 
 #### What went well
 
-- **Tidy-first cleanly applies to a *type* refactor, not just a behavioral one.**
+- **Tidy-first cleanly applies to a _type_ refactor, not just a behavioral one.**
   The two preparatory `test:` commits migrated `session-config.test.ts` / `runtime.test.ts` fixtures onto `makeModel(...)` while the production types were still `unknown` — so they landed green independently and shrank the atomic `refactor:` commit's diff in those files to near-nothing.
   The `tidy-first-assessor` predicted this exactly and its scope boundary held (every Recommended item inside the target-file list; it correctly rejected a premature shared stub-registry helper).
 - **Compiler-guarded refactor discipline paid off.**
@@ -66,8 +66,8 @@ Shipped cleanly: 1073 tests green with no delta, recompute metric 7 → 0, pre-c
 - `missing-context` (planning) — the plan's touch-point enumeration missed `test/session/context.test.ts`'s `makeCtx`, which set `modelRegistry: undefined` incidentally (a `buildParentContext` fixture that never reads the registry) and broke when `SessionContext.modelRegistry` went non-optional.
   Impact: minimal — one `tsc` error at TDD time, fixed with a one-line stub edit folded into the `refactor:` commit; no extra commit, no rework beyond ~30s.
   Self-identified (compiler-caught, not user-caught).
-  Root cause: the plan grepped for the field's *use* sites (model/registry constructors) but not the exact `modelRegistry: undefined` literal that an optional→required tightening breaks.
-  This is a distinct case from the existing #539 touch-point rule (which covers `unknown` → concrete *parameter* types).
+  Root cause: the plan grepped for the field's _use_ sites (model/registry constructors) but not the exact `modelRegistry: undefined` literal that an optional→required tightening breaks.
+  This is a distinct case from the existing #539 touch-point rule (which covers `unknown` → concrete _parameter_ types).
 
 #### What caused friction (user side)
 

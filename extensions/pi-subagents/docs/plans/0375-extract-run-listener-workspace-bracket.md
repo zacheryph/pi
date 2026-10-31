@@ -19,7 +19,7 @@ The goal is to lift both concerns into small owned collaborators so the class sh
 ## Goals
 
 - Extract a `RunListeners` collaborator that owns the observer-unsubscribe and signal-detach handles, so the two listener handles stop being raw nullable fields on `Subagent`.
-- Extract a `WorkspaceBracket` collaborator that owns prepare-at-run-start and dispose-with-result-addendum, so the workspace-disposal *logic* lives in exactly one place.
+- Extract a `WorkspaceBracket` collaborator that owns prepare-at-run-start and dispose-with-result-addendum, so the workspace-disposal _logic_ lives in exactly one place.
 - Bring `subagent.ts` to ≤ 450 LOC (currently 488).
 - Preserve all observable run/resume behavior exactly: observer-callback order, listener release on complete/fail/resume, workspace dispose status mapping, addendum folding, and the distinct error-handling semantics of the two dispose call sites.
 
@@ -30,7 +30,7 @@ This change is **not breaking**: it is a pure internal restructuring with no cha
 
 - No change to `SubagentState`, `SubagentExecution`, the `WorkspaceProvider`/`Workspace` seam interfaces (`src/lifecycle/workspace.ts`), or `subagent-manager.ts` wiring.
 - No change to the run/resume control flow, the abort path, the steer buffer, or the notification field.
-- No unification of the two dispose call sites' *error-handling* semantics (see Design Overview — they are intentionally different lifecycle contexts).
+- No unification of the two dispose call sites' _error-handling_ semantics (see Design Overview — they are intentionally different lifecycle contexts).
 - Phase 17 Steps 5–9 (manager observer extraction, widget delegation split, test-fixture consolidation, cross-package settings-loader duplication) are separate issues.
 
 ## Background
@@ -99,63 +99,63 @@ Owns the two per-run teardown handles and the wire/release behavior.
 
 ```typescript
 export class RunListeners {
-	private unsub?: () => void;
-	private detach?: () => void;
+  private unsub?: () => void;
+  private detach?: () => void;
 
-	/** Wire a parent AbortSignal so it stops the run when fired. No-op when no signal. */
-	wireSignal(signal: AbortSignal | undefined, onAbort: () => void): void {
-		if (!signal) return;
-		const listener = () => onAbort();
-		signal.addEventListener("abort", listener, { once: true });
-		this.detach = () => signal.removeEventListener("abort", listener);
-	}
+  /** Wire a parent AbortSignal so it stops the run when fired. No-op when no signal. */
+  wireSignal(signal: AbortSignal | undefined, onAbort: () => void): void {
+    if (!signal) return;
+    const listener = () => onAbort();
+    signal.addEventListener("abort", listener, { once: true });
+    this.detach = () => signal.removeEventListener("abort", listener);
+  }
 
-	/** Store the record-observer unsubscribe handle. */
-	attachObserver(unsub: () => void): void {
-		this.unsub = unsub;
-	}
+  /** Store the record-observer unsubscribe handle. */
+  attachObserver(unsub: () => void): void {
+    this.unsub = unsub;
+  }
 
-	/** Release the observer + signal handles. Idempotent. */
-	release(): void {
-		this.unsub?.();
-		this.unsub = undefined;
-		this.detach?.();
-		this.detach = undefined;
-	}
+  /** Release the observer + signal handles. Idempotent. */
+  release(): void {
+    this.unsub?.();
+    this.unsub = undefined;
+    this.detach?.();
+    this.detach = undefined;
+  }
 }
 ```
 
 ### `WorkspaceBracket` — `src/lifecycle/workspace-bracket.ts`
 
 Owns the prepared `Workspace` and the prepare/dispose logic.
-It captures the provider *resolver* (not the provider) so resolution stays at run-start, matching today's `getWorkspaceProvider?.()` timing.
+It captures the provider _resolver_ (not the provider) so resolution stays at run-start, matching today's `getWorkspaceProvider?.()` timing.
 
 ```typescript
 import type {
-	Workspace,
-	WorkspaceDisposeOutcome,
-	WorkspacePrepareContext,
-	WorkspaceProvider,
+  Workspace,
+  WorkspaceDisposeOutcome,
+  WorkspacePrepareContext,
+  WorkspaceProvider,
 } from "#src/lifecycle/workspace";
 
 export class WorkspaceBracket {
-	private prepared?: Workspace;
+  private prepared?: Workspace;
 
-	constructor(private readonly resolveProvider: () => WorkspaceProvider | undefined) {}
+  constructor(private readonly resolveProvider: () => WorkspaceProvider | undefined) {}
 
-	/** Resolve the registered provider and prepare the child workspace; returns its cwd (undefined when none). */
-	async prepare(ctx: WorkspacePrepareContext): Promise<string | undefined> {
-		const provider = this.resolveProvider();
-		if (!provider) return undefined;
-		this.prepared = await provider.prepare(ctx);
-		return this.prepared?.cwd;
-	}
+  /** Resolve the registered provider and prepare the child workspace; returns its cwd (undefined when none). */
+  async prepare(ctx: WorkspacePrepareContext): Promise<string | undefined> {
+    const provider = this.resolveProvider();
+    if (!provider) return undefined;
+    this.prepared = await provider.prepare(ctx);
+    return this.prepared?.cwd;
+  }
 
-	/** Dispose the prepared workspace (if any); returns the result addendum verbatim ("" when none). */
-	dispose(outcome: WorkspaceDisposeOutcome): string {
-		if (!this.prepared) return "";
-		return this.prepared.dispose(outcome)?.resultAddendum ?? "";
-	}
+  /** Dispose the prepared workspace (if any); returns the result addendum verbatim ("" when none). */
+  dispose(outcome: WorkspaceDisposeOutcome): string {
+    if (!this.prepared) return "";
+    return this.prepared.dispose(outcome)?.resultAddendum ?? "";
+  }
 }
 ```
 
@@ -239,7 +239,7 @@ Grep confirmation done while planning: `wireSignal`/`attachObserver`/`releaseLis
 2. **Existing tests that become redundant.**
    The `wireSignal`, `attachObserver / releaseListeners`, and `resetForResume releases listeners` `describe` blocks in `subagent.test.ts` (~7 tests) duplicate what `run-listeners.test.ts` now covers at a lower level — remove them.
 3. **Existing tests that must stay as-is.**
-   The `run()` workspace tests (prepare threads cwd into the factory, dispose status mapping for completed/error, addendum folding, no-provider path, prepare-failure path) genuinely exercise the *integration* of the bracket into the run lifecycle — they stay and verify the wiring preserved behavior.
+   The `run()` workspace tests (prepare threads cwd into the factory, dispose status mapping for completed/error, addendum folding, no-provider path, prepare-failure path) genuinely exercise the _integration_ of the bracket into the run lifecycle — they stay and verify the wiring preserved behavior.
    The `completeRun`/`failRun`/`resume`/`abort` behavioral tests stay.
 
 ## Invariants at risk

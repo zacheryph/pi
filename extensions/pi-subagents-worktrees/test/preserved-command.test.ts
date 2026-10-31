@@ -10,10 +10,7 @@ function registerCommand(preserved: string[]) {
   let handler: ((args: string, ctx: unknown) => Promise<void>) | undefined;
   const pi = {
     registerCommand: vi.fn(
-      (
-        _name: string,
-        options: { handler: (args: string, ctx: unknown) => Promise<void> },
-      ) => {
+      (_name: string, options: { handler: (args: string, ctx: unknown) => Promise<void> }) => {
         handler = options.handler;
       },
     ),
@@ -27,8 +24,7 @@ function registerCommand(preserved: string[]) {
   const select = vi.fn(async (): Promise<string | undefined> => undefined);
   const confirm = vi.fn(async () => false);
   const notify = vi.fn();
-  const run = async () =>
-    handler?.("", { ui: { select, confirm, notify } as never });
+  const run = async () => handler?.("", { ui: { select, confirm, notify } as never });
 
   return { pi, discard, select, confirm, notify, run };
 }
@@ -52,10 +48,7 @@ describe("registerPreservedWorktreesCommand", () => {
 
     await empty.run();
 
-    expect(empty.notify).toHaveBeenCalledWith(
-      "No preserved rescue worktrees found.",
-      "info",
-    );
+    expect(empty.notify).toHaveBeenCalledWith("No preserved rescue worktrees found.", "info");
     expect(empty.select).not.toHaveBeenCalled();
   });
 

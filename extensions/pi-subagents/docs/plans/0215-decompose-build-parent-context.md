@@ -55,10 +55,7 @@ Each formatter takes a typed entry and returns `string | undefined` (undefined w
 ```typescript
 function formatMessageEntry(entry: MessageEntry): string | undefined {
   const msg = entry.message;
-  const text =
-    typeof msg.content === "string"
-      ? msg.content
-      : extractText(msg.content);
+  const text = typeof msg.content === "string" ? msg.content : extractText(msg.content);
   if (!text.trim()) return undefined;
   if (msg.role === "user") return `[User]: ${text.trim()}`;
   if (msg.role === "assistant") return `[Assistant]: ${text.trim()}`;

@@ -156,7 +156,7 @@ All three carriers already end with the identical two-call sequence, in the same
 ```typescript
 renderOutcomeBody(record) +
   renderWorkspaceNotice(record.workspaceNotice) +
-  renderQuestionAffordance(record.id, record.pendingQuestion)
+  renderQuestionAffordance(record.id, record.pendingQuestion);
 ```
 
 The Tidy-First assessment recommends consolidating that tail **before** inserting a third element into it, which turns three order-sensitive multi-line edits into one function body:
@@ -164,18 +164,18 @@ The Tidy-First assessment recommends consolidating that tail **before** insertin
 ```typescript
 /** What every outcome carrier appends after the body — the fields, not the record. */
 export interface OutcomeAddenda {
-	id: string;
-	runUpdates?: readonly string[];
-	workspaceNotice?: string;
-	pendingQuestion?: string;
+  id: string;
+  runUpdates?: readonly string[];
+  workspaceNotice?: string;
+  pendingQuestion?: string;
 }
 
 export function renderOutcomeAddenda(outcome: OutcomeAddenda): string {
-	return (
-		renderRunUpdates(outcome.runUpdates) +
-		renderWorkspaceNotice(outcome.workspaceNotice) +
-		renderQuestionAffordance(outcome.id, outcome.pendingQuestion)
-	);
+  return (
+    renderRunUpdates(outcome.runUpdates) +
+    renderWorkspaceNotice(outcome.workspaceNotice) +
+    renderQuestionAffordance(outcome.id, outcome.pendingQuestion)
+  );
 }
 ```
 
@@ -186,11 +186,16 @@ That extends the existing comment at `formatAgentReport` ("Where the work went, 
 
 ```typescript
 export function renderRunUpdates(updates: readonly string[] | undefined): string {
-	if (!updates?.length) return "";
-	const quoted = updates
-		.map((update) => update.split("\n").map((line) => `  ${line}`).join("\n"))
-		.join("\n\n");
-	return `\n\nUpdates this agent sent while it worked:\n\n${quoted}`;
+  if (!updates?.length) return "";
+  const quoted = updates
+    .map((update) =>
+      update
+        .split("\n")
+        .map((line) => `  ${line}`)
+        .join("\n"),
+    )
+    .join("\n\n");
+  return `\n\nUpdates this agent sent while it worked:\n\n${quoted}`;
 }
 ```
 
@@ -292,25 +297,25 @@ No quantitative invariant (prefix bytes, token budget, cache characteristics) is
 1. **`refactor(pi-subagents): consolidate the outcome-carrier addenda tail`** Prepares the change: three carriers repeat `renderWorkspaceNotice(...) + renderQuestionAffordance(...)` in the same order, and this change must insert a third element into that sequence at each.
    Add `OutcomeAddenda` and `renderOutcomeAddenda()` to `outcome-delivery.ts` (without `runUpdates` yet) and replace the tail in `foreground-runner.ts`, `agent-tool.ts`, and `get-result-report.ts`.
    Add a unit test pinning the addenda order if the carriers' existing tests do not already assert a notice and an affordance together in one output.
-   *Killing mutation:* swap the two calls inside `renderOutcomeAddenda` so the affordance precedes the notice — the order test goes red.
+   _Killing mutation:_ swap the two calls inside `renderOutcomeAddenda` so the affordance precedes the notice — the order test goes red.
 
 2. **`refactor(pi-subagents): record the updates a child sends during a claimed run`** `SubagentState` gains `_runUpdates`, `get runUpdates()`, and `recordUpdate()`, cleared in `markRunning()` and `resetForResume()`; `Subagent` gains the delegating getter.
    Nothing calls `recordUpdate` yet, so this is `refactor:` by the observable-outcome rule.
    Tests in `test/lifecycle/subagent-state.test.ts`: records in order; cleared at a fresh run; cleared at a resume; not seedable from `SubagentStateInit`.
-   *Killing mutations:* (a) drop the clear from `resetForResume` — the resume test goes red; (b) drop it from `markRunning` — the fresh-run test goes red; (c) return the live array from the getter instead of a `readonly` view — no test catches this, so type the getter `readonly string[]` and rely on `tsc`.
+   _Killing mutations:_ (a) drop the clear from `resetForResume` — the resume test goes red; (b) drop it from `markRunning` — the fresh-run test goes red; (c) return the live array from the getter instead of a `readonly` view — no test catches this, so type the getter `readonly string[]` and rely on `tsc`.
 
 3. **`refactor(pi-subagents): render a run's updates in every outcome carrier`** `renderRunUpdates()` plus `runUpdates?` on `OutcomeAddenda` and `AgentReport`; `renderOutcomeAddenda` calls it first; `buildReport()` supplies `record.runUpdates`.
    No record populates the buffer yet, so every carrier's output is byte-identical — still `refactor:`.
    Tests: `renderRunUpdates` for empty/undefined, one message, several, and a multi-line message's indentation; one carrier test per carrier that a record carrying updates renders them ahead of the notice.
-   *Killing mutations:* (a) make `renderRunUpdates` return `""` unconditionally — the carrier tests go red; (b) drop the `!updates?.length` guard — the empty-case tests go red on the stray heading.
+   _Killing mutations:_ (a) make `renderRunUpdates` return `""` unconditionally — the carrier tests go red; (b) drop the `!updates?.length` guard — the empty-case tests go red on the stray heading.
 
 4. **`fix(pi-subagents): deliver a child's update with the result when its parent is blocked`** The observable change, in one commit because its three parts are one behavior: `canSendUpdates()` drops the `isBackground` conjunct; `notifyParent` routes through `announceUpdate()`, which buffers when `this.claimed` and always calls `observer.onUpdateSent`; `NotificationManager.sendUpdate()` returns early on `record.claimed`.
    Tests: the channel is supplied to a foreground child and across a resume; an update sent while claimed is buffered and **not** nudged; an update sent while unclaimed is nudged and **not** buffered; the `subagents:update` event fires in both cases; the `midRunUpdates: false` withholding is unchanged.
-   *Killing mutations:* (a) restore `this.isBackground &&` in `canSendUpdates` — the foreground and resume channel tests go red; (b) drop the `if (this.claimed)` in `announceUpdate` — the buffered-update test goes red; (c) drop the `record.claimed` early return in `sendUpdate` — the no-nudge-while-claimed test goes red; (d) suppress `observer.onUpdateSent` when claimed — the event-fires-either-way test goes red.
+   _Killing mutations:_ (a) restore `this.isBackground &&` in `canSendUpdates` — the foreground and resume channel tests go red; (b) drop the `if (this.claimed)` in `announceUpdate` — the buffered-update test goes red; (c) drop the `record.claimed` early return in `sendUpdate` — the no-nudge-while-claimed test goes red; (d) suppress `observer.onUpdateSent` when claimed — the event-fires-either-way test goes red.
    Mutation (c) left green while (b) is red would mean the two layers disagree, which is the failure the single call chain is supposed to make impossible.
 
 5. **`docs(pi-subagents): state the update channel's rationale as claim-based`** Every row of the documentation table in Module-Level Changes, plus Step 14's `✅` mark, Mermaid node, and `Landed:` note in the architecture roadmap.
-   *Verification:* `grep -rn 'background' packages/pi-subagents/docs/configuration.md packages/pi-subagents/README.md .pi/skills/package-pi-subagents/SKILL.md` returns no sentence conditioning `notify_parent` on spawn mode, and `pnpm exec rumdl check` passes on every edited file.
+   _Verification:_ `grep -rn 'background' packages/pi-subagents/docs/configuration.md packages/pi-subagents/README.md .pi/skills/package-pi-subagents/SKILL.md` returns no sentence conditioning `notify_parent` on spawn mode, and `pnpm exec rumdl check` passes on every edited file.
 
 ## Risks and Mitigations
 

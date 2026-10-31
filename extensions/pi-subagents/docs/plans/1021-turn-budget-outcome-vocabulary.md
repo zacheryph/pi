@@ -85,12 +85,12 @@ It reads no `pi.events` channel except `subagents:child:session-created`, and no
 
 ### Vocabulary
 
-| Terminal status | Who ended the run                              | `turnBudget.phase` (when a limit exists) | Paseo shows |
-| --------------- | ---------------------------------------------- | ---------------------------------------- | ----------- |
-| `completed`     | The agent, on its own                          | `within` or `warned`                     | completed   |
-| `error`         | A failure                                      | absent in this issue (see below)         | failed      |
-| `aborted`       | The harness, at the turn limit                 | `exhausted`                              | canceled    |
-| `stopped`       | Operator, parent, or service caller            | whatever the loop reached                | canceled    |
+| Terminal status | Who ended the run                   | `turnBudget.phase` (when a limit exists) | Paseo shows |
+| --------------- | ----------------------------------- | ---------------------------------------- | ----------- |
+| `completed`     | The agent, on its own               | `within` or `warned`                     | completed   |
+| `error`         | A failure                           | absent in this issue (see below)         | failed      |
+| `aborted`       | The harness, at the turn limit      | `exhausted`                              | canceled    |
+| `stopped`       | Operator, parent, or service caller | whatever the loop reached                | canceled    |
 
 `completed` + `warned` is exactly what `steered` meant.
 `aborted` ⇔ `exhausted` holds by construction, because `completeRun` derives the status from the phase.
@@ -154,7 +154,9 @@ runTurnLoop ──TurnLoopResult { responseText, turnBudget? }──▶ Subagent
 const exhausted = result.turnBudget?.phase === "exhausted";
 const finalStatus: SubagentStatus = exhausted ? "aborted" : "completed";
 const holdForResume =
-  finalStatus === "completed" && this.pendingQuestion !== undefined && !wrappedUpAtTurnLimit({ status: finalStatus, turnBudget: result.turnBudget });
+  finalStatus === "completed" &&
+  this.pendingQuestion !== undefined &&
+  !wrappedUpAtTurnLimit({ status: finalStatus, turnBudget: result.turnBudget });
 // ...
 if (exhausted) this.markAborted(finalResult, result.turnBudget);
 else this.markCompleted(finalResult, result.turnBudget);
@@ -285,6 +287,7 @@ Appending keeps every existing caller valid: 4 test sites in `test/lifecycle/sub
    ```
 
    The trailer credits the issue's adopted constraint — every finished run reports a status consumers already treat as final.
+
 6. **`feat(pi-subagents)!: report the turn budget on subagents:child:completed`** Drop `aborted`/`steered` from `TurnLoopResult` (`completeRun` already reads only `turnBudget`) and from `ChildCompletedEvent`, which gains `turnBudget`.
    The step-1 fixtures absorb the shape change; any literal they did not cover migrates here.
    Tests in `test/lifecycle/child-lifecycle.test.ts` and `subagent-session.test.ts`: the emitted event carries the budget and no booleans.

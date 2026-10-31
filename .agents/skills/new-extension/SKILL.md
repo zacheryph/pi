@@ -14,7 +14,8 @@ command you want. Extend that one instead when it does.
 
 ## 1. Scaffold
 
-Run from the repository root:
+Install root development dependencies with `npm install --ignore-scripts`, then run
+from the repository root:
 
 ```bash
 node .agents/skills/new-extension/scripts/scaffold.mjs pi-<topic> \
@@ -23,23 +24,24 @@ node .agents/skills/new-extension/scripts/scaffold.mjs pi-<topic> \
   --after <pi-extension-it-needs-first>
 ```
 
-| Option | Effect |
-| --- | --- |
-| `pi-<topic>` | Directory and package name; lowercase, hyphenated. |
-| `--description` | Required. Used in `package.json`, the factory's doc comment, and the extension's README. |
+| Option                | Effect                                                                                                                                                                                   |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pi-<topic>`          | Directory and package name; lowercase, hyphenated.                                                                                                                                       |
+| `--description`       | Required. Used in `package.json`, the factory's doc comment, and the extension's README.                                                                                                 |
 | `--tool`, `--command` | Repeatable. Each gets a stub registration, a test, and an assertion in `scripts/verify-bundle.mjs`. A name another extension already uses is refused. Adding a tool also adds `typebox`. |
-| `--after` | Load after that extension (Pi runs `session_start` handlers in load order). Default: last. |
-| `--no-tui` | Leave out `@earendil-works/pi-tui` when the extension renders nothing. |
-| `--no-install` | Skip `npm install --ignore-scripts`; the lockfile is then stale until you run it. CI uses `npm ci`, so commit the updated lockfile. |
+| `--after`             | Load after that extension (Pi runs `session_start` handlers in load order). Default: last.                                                                                               |
+| `--no-tui`            | Leave out `@earendil-works/pi-tui` when the extension renders nothing.                                                                                                                   |
+| `--no-install`        | Skip `npm install --ignore-scripts`; the lockfile is then stale until you run it. CI uses `npm ci`, so commit the updated lockfile.                                                      |
 
 It checks everything before writing anything, then:
 
-- creates `package.json` (pins copied from `extensions/pi-tldr`, so they match the
-  bundle), `tsconfig.json`, `vitest.config.ts`, `README.md`, `src/index.ts` and
+- creates `package.json` (using the root's shared development tools),
+  `tsconfig.json`, `vitest.config.ts`, `README.md`, `src/index.ts` and
   `test/index.test.ts` from `templates/`;
 - adds the workspace and the `pi.extensions` entry to the root `package.json`;
 - adds the tools and commands to the lists `scripts/verify-bundle.mjs` asserts;
-- runs `npm install --ignore-scripts`.
+- runs `npm install --ignore-scripts` (unless skipped), then formats the generated
+  workspace and edited root files with Oxfmt.
 
 Review `git diff` afterwards. Then add it to the root README (step 2), implement
 the stubs (step 3), and extend the tests (step 4).

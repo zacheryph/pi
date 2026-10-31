@@ -31,7 +31,7 @@ A consumer reading `SUBAGENT_EVENTS` therefore gets one channel that never fires
   Those belong to separate domains and already have their own constant homes (settings emitter, `child-lifecycle.ts`); `SUBAGENT_EVENTS` is the agent-lifecycle bus only.
 - The `subagents:record` session entry — it is an `appendEntry` (session persistence), not a `pi.events.emit`, so it is not a channel constant.
 - Changing any event payload shape or emission site.
-  This issue reconciles the *constant map* with what is *already emitted*; emission logic is untouched.
+  This issue reconciles the _constant map_ with what is _already emitted_; emission logic is untouched.
 - Phase 18 Steps 7–8 (test-clone consolidation, UI reconsideration) — separate issues ([#426], [#427]).
 
 ## Background
@@ -81,7 +81,7 @@ The `subagents:activity` row is removed.
 
 - `as const` preservation: the literal-string value types must stay narrow, so the new keys keep the `as const` assertion.
   `verify:public-types` confirms the rolled `dist/public.d.ts` exposes the narrowed literal types.
-- No runtime emission changes: the four added constants name channels that are *already* fired, so subscribers wired to the string literals see no behavioral change — only the typed constant is now available.
+- No runtime emission changes: the four added constants name channels that are _already_ fired, so subscribers wired to the string literals see no behavioral change — only the typed constant is now available.
 
 ## Module-Level Changes
 
@@ -102,7 +102,7 @@ This is a constant-map reconciliation, not an extraction, so no new lower-level 
 
 1. New tests enabled: none beyond the expanded `SUBAGENT_EVENTS` assertion — the change adds no new function or collaborator.
 2. Tests becoming redundant: none.
-   The emission-site tests in `test/observation/subagent-events-observer.test.ts` (which assert `subagents:failed`/`compacted`/`created` are emitted) and the steer-tool test stay — they pin the *emission*, while the service test pins the *declaration*.
+   The emission-site tests in `test/observation/subagent-events-observer.test.ts` (which assert `subagents:failed`/`compacted`/`created` are emitted) and the steer-tool test stay — they pin the _emission_, while the service test pins the _declaration_.
 3. Tests that must stay as-is: the observer and steer-tool emission tests — they genuinely exercise the channels the constants now name, and are the other half of the "declared == emitted" invariant.
 
 ## Invariants at risk

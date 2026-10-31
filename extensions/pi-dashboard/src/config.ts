@@ -25,9 +25,10 @@ export function loadDashboardConfig(path = configPath()): DashboardConfig {
   }
   if (!raw || typeof raw !== "object") return { ...DEFAULT_CONFIG };
   const value = raw as Record<string, unknown>;
-  const port = Number.isInteger(value.port) && (value.port as number) > 0 && (value.port as number) <= 65_535
-    ? value.port as number
-    : DEFAULT_PORT;
+  const port =
+    Number.isInteger(value.port) && (value.port as number) > 0 && (value.port as number) <= 65_535
+      ? (value.port as number)
+      : DEFAULT_PORT;
   const node = typeof value.node === "string" && value.node.trim() ? value.node.trim() : undefined;
   return { port, ...(node ? { node } : {}) };
 }

@@ -210,18 +210,18 @@ for naming, trust and snapshot rules. Fragments grant no tools or permissions.
 
 Launch a sub-agent.
 
-| Parameter           | Type         | Required | Description                                                      |
-| ------------------- | ------------ | -------- | ---------------------------------------------------------------- |
-| `prompt`            | string       | yes      | The task for the agent                                           |
-| `description`       | string       | yes      | Short 3-5 word summary (shown in UI)                             |
-| `subagent_type`     | string       | yes      | Agent type (built-in or custom)                                  |
-| `model`             | string       | no       | Model — `provider/modelId`, fuzzy name (`"haiku"`, `"sonnet"`), or `[provider/]family@latest` (newest available match) |
-| `thinking`          | string       | no       | Thinking level: off, minimal, low, medium, high, xhigh, max      |
-| `max_turns`         | number       | no       | Turn ceiling (minimum 2). Omit for the agent's own limit         |
-| `run_in_background` | boolean      | no       | Run without blocking                                             |
-| `resume`            | string       | no       | Agent ID to resume a previous session                            |
-| `inherit_context`   | boolean      | no       | Fork parent conversation into agent                              |
-| `handoff`           | object       | no       | Data for extensions in the agent's session (see below)           |
+| Parameter           | Type    | Required | Description                                                                                                            |
+| ------------------- | ------- | -------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `prompt`            | string  | yes      | The task for the agent                                                                                                 |
+| `description`       | string  | yes      | Short 3-5 word summary (shown in UI)                                                                                   |
+| `subagent_type`     | string  | yes      | Agent type (built-in or custom)                                                                                        |
+| `model`             | string  | no       | Model — `provider/modelId`, fuzzy name (`"haiku"`, `"sonnet"`), or `[provider/]family@latest` (newest available match) |
+| `thinking`          | string  | no       | Thinking level: off, minimal, low, medium, high, xhigh, max                                                            |
+| `max_turns`         | number  | no       | Turn ceiling (minimum 2). Omit for the agent's own limit                                                               |
+| `run_in_background` | boolean | no       | Run without blocking                                                                                                   |
+| `resume`            | string  | no       | Agent ID to resume a previous session                                                                                  |
+| `inherit_context`   | boolean | no       | Fork parent conversation into agent                                                                                    |
+| `handoff`           | object  | no       | Data for extensions in the agent's session (see below)                                                                 |
 
 `handoff` is a JSON object (at most 16 KB) whose top-level keys belong to other extensions, each documenting its key's shape in its own tool guidance. For example, pi-todo reads `todos`. This package does not interpret it: it copies and freezes the object and forwards it on `subagents:child:session-created`, so an extension can add handoff data without changing pi-subagents. `SpawnOptions.handoff` does the same for service spawns.
 
@@ -261,8 +261,8 @@ The message interrupts after the current tool execution.
 | --------------------- | ----------------------------------------------------------------------------------- |
 | `/subagents:settings` | Configure subagent settings (concurrency, turn limits, retention, interrupt policy) |
 | `/subagents:sessions` | View a subagent's session transcript (read-only)                                    |
-| `/subagents:agents` | Browse agent profiles and inspect effective settings and instructions (read-only) |
-| `/subagents:watch` | Toggle the passive, tailing watch overlay (Pi fullscreen mode only) |
+| `/subagents:agents`   | Browse agent profiles and inspect effective settings and instructions (read-only)   |
+| `/subagents:watch`    | Toggle the passive, tailing watch overlay (Pi fullscreen mode only)                 |
 
 ### `/subagents:settings`
 
@@ -357,12 +357,12 @@ Only successful turns count: a response that errored and was retried does not sp
 The minimum `max_turns` is 2, one turn to work and one to answer; a smaller value runs with 2, and the spawn result says so.
 A resumed agent gets a fresh budget with its original ceiling.
 
-| Status      | Meaning                                   | Icon       |
-| ----------- | ----------------------------------------- | ---------- |
-| `completed` | Finished naturally                        | `✓` green  |
-| `completed` | Finished after the turn-budget warning    | `✓` yellow |
-| `aborted`   | Still working at the ceiling; stopped     | `✗` red    |
-| `stopped`   | User-initiated abort                      | `■` dim    |
+| Status      | Meaning                                | Icon       |
+| ----------- | -------------------------------------- | ---------- |
+| `completed` | Finished naturally                     | `✓` green  |
+| `completed` | Finished after the turn-budget warning | `✓` yellow |
+| `aborted`   | Still working at the ceiling; stopped  | `✗` red    |
+| `stopped`   | User-initiated abort                   | `■` dim    |
 
 The budget itself is the `turnBudget` field (`{ used, maxTurns, phase }`) on the subagent record, tool-result details, notifications, and the terminal events.
 It is live while the agent runs: `used` counts the run's successful turns, `maxTurns` is absent for an unlimited run, and `phase` is `within`, then `warned` once the warning was sent, then `exhausted` when the harness stopped the run (always paired with `aborted`).
@@ -527,13 +527,13 @@ A caller that does not need the outcome can ignore the promise.
 It never throws and never rejects.
 A resume that could not start resolves to `{ kind: "refused", reason }` instead, promptly — the checks are synchronous and no turn loop runs:
 
-| `reason`             | Meaning                                                         |
-| -------------------- | --------------------------------------------------------------- |
-| `unknown-agent`      | No record answers to that id (records are cleared per session)  |
-| `still-running`      | The agent has not settled; wait, or `steer` it while it runs    |
-| `no-session`         | The agent never had a session to continue                       |
-| `session-released`   | Its session was released after the retention window             |
-| `workspace-disposed` | Its isolated workspace is gone, so a resume cannot re-enter it  |
+| `reason`             | Meaning                                                        |
+| -------------------- | -------------------------------------------------------------- |
+| `unknown-agent`      | No record answers to that id (records are cleared per session) |
+| `still-running`      | The agent has not settled; wait, or `steer` it while it runs   |
+| `no-session`         | The agent never had a session to continue                      |
+| `session-released`   | Its session was released after the retention window            |
+| `workspace-disposed` | Its isolated workspace is gone, so a resume cannot re-enter it |
 
 A resumed run that _fails_ is still `{ kind: "resumed" }`; the snapshot carries `status: "error"` and the message.
 Refused means nothing started.
@@ -551,7 +551,10 @@ Extensions that store configuration in JSON files can use the shared layered loa
 ```typescript
 import { loadLayeredSettings, type LayeredSettingsSource } from "@gotgenes/pi-subagents/settings";
 
-interface MyConfig { enabled?: boolean; limit?: number }
+interface MyConfig {
+  enabled?: boolean;
+  limit?: number;
+}
 
 function sanitize(raw: unknown): Partial<MyConfig> {
   if (!raw || typeof raw !== "object") return {};
@@ -563,11 +566,11 @@ function sanitize(raw: unknown): Partial<MyConfig> {
 }
 
 const config = loadLayeredSettings<MyConfig>({
-  agentDir,          // Pi runtime agent home directory
-  cwd,               // project root — project file lives at <cwd>/.pi/<filename>
+  agentDir, // Pi runtime agent home directory
+  cwd, // project root — project file lives at <cwd>/.pi/<filename>
   filename: "my-extension.json",
   sanitize,
-  warnLabel: "my-extension",  // prefix for the malformed-file stderr warning
+  warnLabel: "my-extension", // prefix for the malformed-file stderr warning
 });
 ```
 

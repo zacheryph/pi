@@ -38,10 +38,7 @@ export interface BackgroundLaunch {
  * Spawn a background agent and return the tool result immediately.
  * Owns: mapping the spawned record onto its launch report.
  */
-export function spawnBackground(
-  manager: BackgroundManagerDeps,
-  params: BackgroundParams,
-) {
+export function spawnBackground(manager: BackgroundManagerDeps, params: BackgroundParams) {
   const { identity, execution, presentation, notes } = params.config;
 
   let id: string;

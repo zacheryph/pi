@@ -65,7 +65,7 @@ Converting to a `NotificationManager` class makes the state explicit and lets te
 The constructor takes 7 positional parameters:
 
 ```typescript
-constructor(tui, session, record, activity, theme, done, registry)
+constructor(tui, session, record, activity, theme, done, registry);
 ```
 
 Every test must reconstruct all 7 in order.
@@ -109,14 +109,26 @@ export class NotificationManager {
 
   constructor(private deps: NotificationDeps) {}
 
-  cancelNudge(key: string): void { /* ... */ }
-  sendCompletion(record: AgentRecord): void { /* ... */ }
-  cleanupCompleted(id: string): void { /* ... */ }
-  dispose(): void { /* ... */ }
+  cancelNudge(key: string): void {
+    /* ... */
+  }
+  sendCompletion(record: AgentRecord): void {
+    /* ... */
+  }
+  cleanupCompleted(id: string): void {
+    /* ... */
+  }
+  dispose(): void {
+    /* ... */
+  }
 
   // private helpers
-  private scheduleNudge(key: string, send: () => void, delay?: number): void { /* ... */ }
-  private emitIndividualNudge(record: AgentRecord): void { /* ... */ }
+  private scheduleNudge(key: string, send: () => void, delay?: number): void {
+    /* ... */
+  }
+  private emitIndividualNudge(record: AgentRecord): void {
+    /* ... */
+  }
 }
 ```
 
@@ -188,7 +200,7 @@ export interface AgentConfig extends AgentIdentity, AgentPromptConfig {
 Then update consumers to accept the narrow interface:
 
 - `agent-widget.ts`: `getDisplayName(type, registry)` and `getPromptModeLabel(type, registry)` — these go through `AgentConfigLookup.resolveAgentConfig()`, which returns `AgentConfig`.
-  The narrowing applies to the *return type usage*, not the function signature.
+  The narrowing applies to the _return type usage_, not the function signature.
   No change needed here — the function already destructures only `displayName`, `name`, `promptMode`.
 - `tools/helpers.ts`: `formatAgentList` reads `description`, `model` — these are not in `AgentIdentity`.
   `model` is session-config territory.

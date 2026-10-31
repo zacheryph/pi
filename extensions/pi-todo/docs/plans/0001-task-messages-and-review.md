@@ -42,14 +42,17 @@ History lives beside the upstream snapshot, keyed by task key:
 
 ```ts
 interface TodoUpdate {
-  revision: number;        // plan revision that recorded it; also the review watermark
-  at: number;              // epoch ms, display only
-  status: TodoStatus;      // status after the update
-  from?: TodoStatus;       // present when status changed
-  message?: string;        // trimmed; at most 2,000 characters
-  by?: "user";             // user command; absent for model tool calls
+  revision: number; // plan revision that recorded it; also the review watermark
+  at: number; // epoch ms, display only
+  status: TodoStatus; // status after the update
+  from?: TodoStatus; // present when status changed
+  message?: string; // trimmed; at most 2,000 characters
+  by?: "user"; // user command; absent for model tool calls
 }
-interface TodoTaskActivity { createdAt?: number; updates: TodoUpdate[] } // last 10 updates
+interface TodoTaskActivity {
+  createdAt?: number;
+  updates: TodoUpdate[];
+} // last 10 updates
 ```
 
 `recordTodoActivity` runs after `applyTodoRequest` succeeds. It is pure, and it

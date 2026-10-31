@@ -16,7 +16,11 @@ describe("usage", () => {
 
     it("returns 0 when session is undefined or stats throw", () => {
       expect(getSessionTokens(undefined)).toBe(0);
-      const broken = { getSessionStats: (): never => { throw new Error("nope"); } };
+      const broken = {
+        getSessionStats: (): never => {
+          throw new Error("nope");
+        },
+      };
       expect(getSessionTokens(broken)).toBe(0);
     });
   });
@@ -73,15 +77,17 @@ describe("usage", () => {
       // Our accumulator is independent — it keeps growing.
       sessionStatsTokens = { input: 0, output: 0, cacheWrite: 0 };
 
-      expect(getSessionTokens(session)).toBe(0);            // reset
-      expect(getLifetimeTotal(lifetime)).toBe(350);          // preserved
+      expect(getSessionTokens(session)).toBe(0); // reset
+      expect(getLifetimeTotal(lifetime)).toBe(350); // preserved
 
       // Subsequent message_end events feed both: session re-fills, accumulator continues
       sessionStatsTokens = { input: 80, output: 150, cacheWrite: 30 };
-      lifetime.input += 80; lifetime.output += 150; lifetime.cacheWrite += 30;
+      lifetime.input += 80;
+      lifetime.output += 150;
+      lifetime.cacheWrite += 30;
 
-      expect(getSessionTokens(session)).toBe(260);           // post-compaction window
-      expect(getLifetimeTotal(lifetime)).toBe(610);          // 350 + 260, monotone
+      expect(getSessionTokens(session)).toBe(260); // post-compaction window
+      expect(getLifetimeTotal(lifetime)).toBe(610); // 350 + 260, monotone
     });
 
     // The accumulator survives compaction because it lives on AgentActivity /

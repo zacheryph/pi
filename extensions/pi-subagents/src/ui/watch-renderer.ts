@@ -12,14 +12,21 @@ export interface WatchSection {
   blocks: readonly WatchBlock[];
 }
 
-export function watchHeight(rows: number): number { return Math.max(0, Math.floor(rows) - 6); }
+export function watchHeight(rows: number): number {
+  return Math.max(0, Math.floor(rows) - 6);
+}
 
 /**
  * Queued agents have nothing to tail, so they take no section; the top border
  * carries their count right-aligned instead.
  */
-export function renderWatchOverlay(allSections: readonly WatchSection[], width: number, height: number, theme: Theme): string[] {
-  const sections = allSections.filter(section => section.status !== "queued");
+export function renderWatchOverlay(
+  allSections: readonly WatchSection[],
+  width: number,
+  height: number,
+  theme: Theme,
+): string[] {
+  const sections = allSections.filter((section) => section.status !== "queued");
   const queuedCount = allSections.length - sections.length;
   width = Math.max(0, Math.floor(width));
   height = Math.max(0, Math.floor(height));
@@ -37,16 +44,27 @@ export function renderWatchOverlay(allSections: readonly WatchSection[], width: 
     const label = truncateToWidth(text, room, "…");
     // Drop the right label rather than crowd or truncate the title.
     const tail = visibleWidth(label) + visibleWidth(rightText) + 1 <= room ? rightText : "";
-    return theme.fg("border", left + cap) + label
-      + theme.fg("border", "─".repeat(Math.max(0, room - visibleWidth(label) - visibleWidth(tail)))) + tail
-      + theme.fg("border", cap + right);
+    return (
+      theme.fg("border", left + cap) +
+      label +
+      theme.fg("border", "─".repeat(Math.max(0, room - visibleWidth(label) - visibleWidth(tail)))) +
+      tail +
+      theme.fg("border", cap + right)
+    );
   };
   const queuedLabel = queuedCount > 0 ? theme.fg("dim", ` ${queuedCount} queued `) : "";
   const title = theme.fg("accent", ` ${GLYPHS.agentsHeading}  Subagents · Ctrl+Alt+S `);
   const lines = [rule(title, "┌", "┐", queuedLabel)];
   const budget = height - 2;
   if (sections.length === 0) {
-    lines.push(row(theme.fg("dim", queuedCount > 0 ? "Waiting for a free slot…" : "Waiting for background agents…")));
+    lines.push(
+      row(
+        theme.fg(
+          "dim",
+          queuedCount > 0 ? "Waiting for a free slot…" : "Waiting for background agents…",
+        ),
+      ),
+    );
   } else {
     // Reserve at least a header and one tail row per visible agent.
     let count = Math.min(sections.length, Math.floor(budget / 2));
@@ -56,23 +74,65 @@ export function renderWatchOverlay(allSections: readonly WatchSection[], width: 
     for (let index = 0; index < count; index++) {
       const section = sections[index];
       const allocation = Math.floor(body / count) + (index < body % count ? 1 : 0);
-      const icon = section.status === "running" ? "●" : section.status === "queued" ? "◦"
-        : section.status === "completed" ? "✓" : "✗";
-      const color = section.status === "error" || section.status === "aborted" || section.status === "stopped"
-        ? "error" : section.status === "completed" ? "success" : "accent";
+      const icon =
+        section.status === "running"
+          ? "●"
+          : section.status === "queued"
+            ? "◦"
+            : section.status === "completed"
+              ? "✓"
+              : "✗";
+      const color =
+        section.status === "error" || section.status === "aborted" || section.status === "stopped"
+          ? "error"
+          : section.status === "completed"
+            ? "success"
+            : "accent";
       const label = watchText(section.label).replace(/\s+/g, " ").trim();
-      lines.push(row(theme.fg(color, truncateToWidth(`── ${icon} ${label} · ${section.status}`, inner, "…"))));
+      lines.push(
+        row(
+          theme.fg(color, truncateToWidth(`── ${icon} ${label} · ${section.status}`, inner, "…")),
+        ),
+      );
       const tailRows = allocation - 1;
-      const blocks: readonly WatchBlock[] = section.blocks.length ? section.blocks : [{ kind: "note",
-        text: section.status === "queued" ? "Queued…" : section.status === "running" ? "Working…" : "No text output." }];
+      const blocks: readonly WatchBlock[] = section.blocks.length
+        ? section.blocks
+        : [
+            {
+              kind: "note",
+              text:
+                section.status === "queued"
+                  ? "Queued…"
+                  : section.status === "running"
+                    ? "Working…"
+                    : "No text output.",
+            },
+          ];
       let tail: string[] = [];
       for (let block = blocks.length - 1; block >= 0 && tail.length < tailRows; block--) {
         const activity = blocks[block];
-        const label = activity.kind === "thinking" ? "Think" : activity.kind === "tool" ? "Tool" : activity.kind === "skill" ? "Skill" : "";
-        const color = activity.kind === "error" || activity.status === "error" ? "error"
-          : activity.kind === "thinking" ? "thinkingText" : activity.kind === "tool" ? "toolOutput"
-          : activity.kind === "skill" ? activity.status === "success" ? "success" : "warning"
-          : activity.kind === "note" ? "muted" : "text";
+        const label =
+          activity.kind === "thinking"
+            ? "Think"
+            : activity.kind === "tool"
+              ? "Tool"
+              : activity.kind === "skill"
+                ? "Skill"
+                : "";
+        const color =
+          activity.kind === "error" || activity.status === "error"
+            ? "error"
+            : activity.kind === "thinking"
+              ? "thinkingText"
+              : activity.kind === "tool"
+                ? "toolOutput"
+                : activity.kind === "skill"
+                  ? activity.status === "success"
+                    ? "success"
+                    : "warning"
+                  : activity.kind === "note"
+                    ? "muted"
+                    : "text";
         // Reserve label columns while wrapping; put label on FIRST VISIBLE row,
         // not the offscreen start of a long block. Clip label safely on tiny panels.
         const prefix = label ? truncateToWidth(`${label} `, inner - 1, "…") : "";
@@ -88,7 +148,8 @@ export function renderWatchOverlay(allSections: readonly WatchSection[], width: 
       while (tail.length < tailRows) tail.unshift("");
       lines.push(...tail.map(row));
     }
-    if (count < sections.length) lines.push(row(theme.fg("dim", `+${sections.length - count} more agents`)));
+    if (count < sections.length)
+      lines.push(row(theme.fg("dim", `+${sections.length - count} more agents`)));
   }
   while (lines.length < height - 1) lines.push(row(""));
   lines.push(rule("", "└", "┘"));

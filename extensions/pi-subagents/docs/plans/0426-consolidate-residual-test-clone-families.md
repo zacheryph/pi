@@ -32,7 +32,7 @@ This change is **not breaking** — it touches only test files and adds test-onl
 
 ## Non-Goals
 
-- The production-code clone in `src/ui/agent-config-editor.ts` (the `location`/`targetDir`/`targetPath` block, dup `ff960d84`) — the issue scopes to *test* clone families; a production extraction is a separate concern.
+- The production-code clone in `src/ui/agent-config-editor.ts` (the `location`/`targetDir`/`targetPath` block, dup `ff960d84`) — the issue scopes to _test_ clone families; a production extraction is a separate concern.
 - The remaining test clone groups outside the four named files (`subagent-manager.test.ts`, `subagent.test.ts`, `concurrency-limiter.test.ts`, `workspace-bracket.test.ts`, `session-config.test.ts`, `get-result-tool.test.ts`, `spawn-config.test.ts`, `agent-creation-wizard.test.ts`, `agent-file-ops.test.ts`, `agent-menu.test.ts`, `agent-widget.test.ts`).
   The cross-file group `5d8dbd48` (`subagent-manager.test.ts` ↔ `subagent.test.ts`) is explicitly left alone — neither side is a target file.
 - The cross-package `vitest.config.ts` clone (`e5e6691e`, 6 instances) — not a `pi-subagents` test-suite group and not in scope.
@@ -49,7 +49,7 @@ Relevant existing test-helper conventions live in `packages/pi-subagents/test/he
 Constraints from the `testing` skill that shape this plan:
 
 - **Do not wrap the system-under-test call in a helper to eliminate a duplication-metric clone — the repeated act is the test subject, not duplication to remove.**
-  Consolidate the *arrange*, not the *act*.
+  Consolidate the _arrange_, not the _act_.
   For `create-subagent-session`, extract the factory-session + deps arrange but keep `await createSubagentSession(...)` written out in each test.
 - **Group shared setup in a describe-scoped `beforeEach` and keep the act explicit** when the arrangement is uniform.
 - A table-driven `it.each` keeps the act visible in the parameterized body (run once per row) and is the right tool for the menu-option-structure cases — it is not a helper that hides the act.
@@ -91,8 +91,12 @@ Interaction sketch (consumer call site, ~5 lines):
 
 ```typescript
 let dirs: SettingsDirs;
-beforeEach(() => { dirs = createSettingsDirs("subagents.json"); });
-afterEach(() => { disposeSettingsDirs(dirs); });
+beforeEach(() => {
+  dirs = createSettingsDirs("subagents.json");
+});
+afterEach(() => {
+  disposeSettingsDirs(dirs);
+});
 it("loads from global when no project file", () => {
   dirs.writeGlobal({ maxConcurrent: 16 });
   expect(loadSettings(dirs.globalDir, dirs.projectDir)).toEqual({ maxConcurrent: 16 });
@@ -144,18 +148,23 @@ Clone groups `4ac7b228`, `a8e71e9c` (×3), `e36d2314` cluster in the "Menu optio
 
   ```typescript
   it.each([
-    { name: "default agent, no file", config: testDefaultConfig, filePath: undefined,
-      expected: ["Eject (export as .md)", "Disable", "Back"] },
+    {
+      name: "default agent, no file",
+      config: testDefaultConfig,
+      filePath: undefined,
+      expected: ["Eject (export as .md)", "Disable", "Back"],
+    },
     // …one row per existing menu-structure case…
   ])("shows $name options", async ({ config, filePath, expected }) => {
     vi.spyOn(testRegistry, "resolveAgentConfig").mockReturnValue(config);
     const { editor, ui } = setupDetail([undefined], filePath ? { filePath } : {});
     await editor.showAgentDetail(ui, "test-agent");
-    expect((ui.select.mock.calls[0][1] as string[])).toEqual(expected);
+    expect(ui.select.mock.calls[0][1] as string[]).toEqual(expected);
   });
   ```
 
   The act (`editor.showAgentDetail(...)`) stays visible in the table body.
+
 - **Edit/Delete block (`23fe1f93`)** → hoist the shared `const filePath = "/project/.pi/agents/test-agent.md"` to a describe-scoped constant and keep each `await editor.showAgentDetail(...)` act explicit; the residual per-test arrange (`setupDetail`, `ui.editor`/`ui.confirm` resolution) stays inline because it carries the test's intent.
 
 No change to `setupDetail`, `makeEditor`, or `ui-stubs.ts` — they already provide the right arrange seam.
@@ -170,12 +179,12 @@ No change to `setupDetail`, `makeEditor`, or `ui-stubs.ts` — they already prov
 - `test/ui/agent-config-editor.test.ts` — **changed**: convert the menu-option-structure cases to `it.each`; hoist the shared `filePath` in the Edit/Delete blocks.
 
 No `src/` files change.
-No SKILL.md, architecture-doc, or README references to the affected test internals exist to update — these are intra-test fixtures (verified: the architecture roadmap references the *issue* `#426`, not the specific helpers).
+No SKILL.md, architecture-doc, or README references to the affected test internals exist to update — these are intra-test fixtures (verified: the architecture roadmap references the _issue_ `#426`, not the specific helpers).
 The roadmap step's status flips to ✅ in a follow-up doc pass at ship time, not in this plan (consistent with how steps 1–6 were marked).
 
 ## Test Impact Analysis
 
-This issue *is* a test-maintenance change, so the standard extraction lens is inverted:
+This issue _is_ a test-maintenance change, so the standard extraction lens is inverted:
 
 1. **New tests enabled** — only the new `tmp-settings-dirs.test.ts`, a self-test pinning the shared fixture's filesystem behavior (writes land at the right global/project paths; dispose removes both dirs).
    No production seam is newly testable.
@@ -190,7 +199,7 @@ The four target files belong to surfaces earlier Phase 17/18 steps refactored (`
 The invariant at risk is purely **coverage preservation** — a consolidation must not silently drop an assertion.
 Each consolidation step is gated by:
 
-- The full `vitest` suite staying green (test count must not *drop* except by the deliberate `it.each` merges, whose row count equals the former case count).
+- The full `vitest` suite staying green (test count must not _drop_ except by the deliberate `it.each` merges, whose row count equals the former case count).
 - Running `pnpm fallow dupes` after each step to confirm the targeted clone groups disappear and no new ones appear.
 
 No production `Outcome:`/`Landed:` invariant from a prior roadmap step is touched, because no `src/` file changes.

@@ -39,7 +39,7 @@ File-level `eslint-disable` header tally landed exactly as planned: 3 → 1 (onl
 - Removing `agent-tool.ts`'s 6-rule header surfaced a genuinely pre-existing gap the plan didn't name: three `params.resume` (`unknown`) template-literal interpolations in the resume path tripped `no-base-to-string`/`restrict-template-expressions` once the header lifted.
   Fixed with the same `as string` cast already used a few lines away for the `getRecord`/`resume` calls, rather than re-disabling — consistent with the plan's "line-level precision, not zero" goal, but this specific site wasn't anticipated in the Risks section.
 - Retyping `textResult`'s `details` param from `unknown` to `AgentDetails` broke two test call sites at the type level (not runtime): `agent-tool.test.ts`'s `makeCtx()` fake (now needs `as unknown as ExtensionContext`, matching the existing `parent-snapshot.test.ts` convention) and `helpers.test.ts`'s partial `{ displayName, status }` details fixture (now a complete `AgentDetails` literal).
-  Both were anticipated risks in the plan ("grepped all 17 call sites"), but the *test* call sites weren't part of that grep — only `src/` callers were checked.
+  Both were anticipated risks in the plan ("grepped all 17 call sites"), but the _test_ call sites weren't part of that grep — only `src/` callers were checked.
   Future plans retyping a shared helper should grep `test/` call sites too, not just `src/`.
 - Pre-completion reviewer: **PASS**.
   No WARN findings — deterministic checks, doc updates (forward and reverse), code design, test artifacts, Mermaid diagrams, and dead-code all passed; acceptance-criteria and cross-step-invariant checks were correctly SKIPped (no acceptance-criteria section; no earlier-step files touched).

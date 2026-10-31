@@ -21,7 +21,7 @@ A resume can start between the run settling and the waiter's continuation runnin
 The waiter then misreads the new run as its own abandoned wait, and two things go wrong at once:
 
 1. It clears the claim a foreground (claimed) resume took, so the resumed outcome is both returned to the resumer and announced to the parent as a completion nudge.
-2. It reports the *resumed* run (`Status: running`, no result) instead of the run it waited for.
+2. It reports the _resumed_ run (`Status: running`, no result) instead of the run it waited for.
    The waiter's own claim already suppressed run 1's nudge at settle time, so run 1's outcome reaches the parent through no channel.
 
 The issue names the first symptom; planning found the second in the same window.
@@ -126,9 +126,9 @@ supersededOutcome(run: number): SettledOutcome | undefined; // the retained outc
 
 ```typescript
 export type WaitOutcome =
-  | { kind: "settled" }                                  // the waited run is the current run, and it settled
-  | { kind: "unsettled" }                                // the waited run is still active (interrupt, or no run handle)
-  | { kind: "superseded"; outcome: SettledOutcome };     // a resume replaced the waited run after it settled
+  | { kind: "settled" } // the waited run is the current run, and it settled
+  | { kind: "unsettled" } // the waited run is still active (interrupt, or no run handle)
+  | { kind: "superseded"; outcome: SettledOutcome }; // a resume replaced the waited run after it settled
 ```
 
 `Subagent.waitUntilSettled` captures `state.run` before waiting.
@@ -144,8 +144,8 @@ The ordinal-moved-but-no-retained-outcome case is the unreachable double resume 
 if (params.wait === true) {
   const claim = record.claim();
   const wait = await record.waitUntilSettled(signal);
-  if (wait.kind === "settled") record.markConsumed();   // claim kept, as today
-  else claim.release();                                  // only this call's claim
+  if (wait.kind === "settled") record.markConsumed(); // claim kept, as today
+  else claim.release(); // only this call's claim
   if (wait.kind === "superseded") superseded = wait.outcome;
 } else if (!record.isActive()) {
   record.markConsumed();

@@ -54,7 +54,7 @@ The pi-subagents suite went from 1937 to 1962 tests (+25).
 - Pre-completion reviewer: WARN, then PASS on the delta.
   The WARN raised three doc nits, all fixed in `docs(pi-subagents): correct the peer scope and MCP details the review flagged`:
   - `comparison-with-upstream.md` still listed the old peer scope
-  - MCP starts only *enabled* servers
+  - MCP starts only _enabled_ servers
   - the MCP hash suffix also applies on name collisions
 
 ## Stage: Sync (worktree) (2026-10-03T00:51:10Z)

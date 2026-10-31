@@ -11,8 +11,8 @@ issue_title: "Extract SubagentState; make Subagent execution deps mandatory"
 Its `SubagentInit` carries ~20 fields — nearly all optional with "required for `run()`, optional for tests" semantics — and `run()` compensates with two runtime guards that throw `"Subagent not configured for execution"`.
 This violates the construct-complete principle: one class is both a display-only snapshot (tests and the UI read `.status`/`.result`/stats) and an executor (production wires the session factory, observer, run config, and workspace provider).
 
-The earlier framing — split `SubagentInit` into a present-or-absent `SubagentRunSpec` + `SubagentExecutionDeps` pair — only *type-encodes* the duality; it does not remove it.
-The stronger move (captured in the architecture doc's "First-principles refinement") observes that the passive-record need is *test-only*: production constructs a `Subagent` in exactly one place (`SubagentManager.spawn`), always fully wired.
+The earlier framing — split `SubagentInit` into a present-or-absent `SubagentRunSpec` + `SubagentExecutionDeps` pair — only _type-encodes_ the duality; it does not remove it.
+The stronger move (captured in the architecture doc's "First-principles refinement") observes that the passive-record need is _test-only_: production constructs a `Subagent` in exactly one place (`SubagentManager.spawn`), always fully wired.
 So the readable state is the common denominator (extract it as a value object), and the execution deps are the optional-only-for-tests part (make them mandatory; push the passive case into the test factory).
 
 ## Goals
@@ -62,25 +62,30 @@ A pure, independently constructible value object. `SubagentStatus` moves here (i
 
 ```ts
 export type SubagentStatus =
-	| "queued" | "running" | "completed" | "steered"
-	| "aborted" | "stopped" | "error";
+  | "queued"
+  | "running"
+  | "completed"
+  | "steered"
+  | "aborted"
+  | "stopped"
+  | "error";
 
 export interface SubagentStateInit {
-	status?: SubagentStatus;
-	result?: string;
-	error?: string;
-	startedAt?: number;
-	completedAt?: number;
-	// stats always start at zero; callers accumulate via mutation methods
+  status?: SubagentStatus;
+  result?: string;
+  error?: string;
+  startedAt?: number;
+  completedAt?: number;
+  // stats always start at zero; callers accumulate via mutation methods
 }
 
 export class SubagentState {
-	constructor(init?: SubagentStateInit); // status ?? "queued", startedAt ?? Date.now()
-	// getters: status, result, error, startedAt, completedAt,
-	//          toolUses, lifetimeUsage (Readonly), compactionCount
-	// transitions: markRunning, markCompleted, markAborted, markSteered,
-	//              markError, markStopped, resetForResume
-	// accumulators: incrementToolUses, addUsage, incrementCompactions
+  constructor(init?: SubagentStateInit); // status ?? "queued", startedAt ?? Date.now()
+  // getters: status, result, error, startedAt, completedAt,
+  //          toolUses, lifetimeUsage (Readonly), compactionCount
+  // transitions: markRunning, markCompleted, markAborted, markSteered,
+  //              markError, markStopped, resetForResume
+  // accumulators: incrementToolUses, addUsage, incrementCompactions
 }
 ```
 
@@ -90,18 +95,18 @@ It owns its mutations (no output arguments — methods write only its own privat
 
 ```ts
 export interface SubagentExecution {
-	createSubagentSession: (params: CreateSubagentSessionParams) => Promise<SubagentSession>;
-	snapshot: ParentSnapshot;
-	prompt: string;
-	baseCwd: string;
-	observer?: SubagentLifecycleObserver;
-	getRunConfig?: () => RunConfig;
-	getWorkspaceProvider?: () => WorkspaceProvider | undefined;
-	model?: Model<any>;
-	maxTurns?: number;
-	thinkingLevel?: ThinkingLevel;
-	parentSession?: ParentSessionInfo;
-	signal?: AbortSignal;
+  createSubagentSession: (params: CreateSubagentSessionParams) => Promise<SubagentSession>;
+  snapshot: ParentSnapshot;
+  prompt: string;
+  baseCwd: string;
+  observer?: SubagentLifecycleObserver;
+  getRunConfig?: () => RunConfig;
+  getWorkspaceProvider?: () => WorkspaceProvider | undefined;
+  model?: Model<any>;
+  maxTurns?: number;
+  thinkingLevel?: ThinkingLevel;
+  parentSession?: ParentSessionInfo;
+  signal?: AbortSignal;
 }
 ```
 
@@ -111,12 +116,12 @@ The four fields the old `run()` guards required (`createSubagentSession`, `snaps
 
 ```ts
 export interface SubagentInit {
-	id: string;
-	type: SubagentType;
-	description: string;
-	invocation?: AgentInvocation;
-	execution: SubagentExecution;   // mandatory — no more "optional for tests"
-	state?: SubagentState;          // defaults to new SubagentState() (fresh "queued")
+  id: string;
+  type: SubagentType;
+  description: string;
+  invocation?: AgentInvocation;
+  execution: SubagentExecution; // mandatory — no more "optional for tests"
+  state?: SubagentState; // defaults to new SubagentState() (fresh "queued")
 }
 ```
 
@@ -129,19 +134,29 @@ Getters and mutation methods delegate one line to `this.state`.
 
 ```ts
 const execution: SubagentExecution = {
-	createSubagentSession: this.createSubagentSession,
-	snapshot, prompt, baseCwd: this.baseCwd,
-	observer: this.buildObserver(options),
-	getRunConfig: this.getRunConfig,
-	getWorkspaceProvider: () => this._workspaceProvider,
-	model: options.model, maxTurns: options.maxTurns,
-	thinkingLevel: options.thinkingLevel,
-	parentSession: options.parentSession, signal: options.signal,
+  createSubagentSession: this.createSubagentSession,
+  snapshot,
+  prompt,
+  baseCwd: this.baseCwd,
+  observer: this.buildObserver(options),
+  getRunConfig: this.getRunConfig,
+  getWorkspaceProvider: () => this._workspaceProvider,
+  model: options.model,
+  maxTurns: options.maxTurns,
+  thinkingLevel: options.thinkingLevel,
+  parentSession: options.parentSession,
+  signal: options.signal,
 };
 const record = new Subagent({
-	id, type, description: options.description, invocation: options.invocation,
-	execution,
-	state: new SubagentState({ status: options.isBackground ? "queued" : "running", startedAt: Date.now() }),
+  id,
+  type,
+  description: options.description,
+  invocation: options.invocation,
+  execution,
+  state: new SubagentState({
+    status: options.isBackground ? "queued" : "running",
+    startedAt: Date.now(),
+  }),
 });
 ```
 
@@ -149,22 +164,24 @@ Tell-Don't-Ask: the execution bundle is assembled once and handed over; nothing 
 
 ### Observer retarget (`src/observation/record-observer.ts`)
 
-The observer accumulates *stats*, not lifecycle — point it at `SubagentState` and drop the record from `onCompact`:
+The observer accumulates _stats_, not lifecycle — point it at `SubagentState` and drop the record from `onCompact`:
 
 ```ts
 export function subscribeSubagentObserver(
-	session: SubscribableSession,
-	state: SubagentState,
-	options?: { onCompact?: (info: CompactionInfo) => void },
-): () => void
+  session: SubscribableSession,
+  state: SubagentState,
+  options?: { onCompact?: (info: CompactionInfo) => void },
+): () => void;
 ```
 
 `Subagent.run()`/`resume()` wire it with `this.state` and close over `this` to forward itself to the lifecycle observer:
 
 ```ts
-this.attachObserver(subscribeSubagentObserver(this.subagentSession, this.state, {
-	onCompact: (info) => this.execution.observer?.onCompacted?.(this, info),
-}));
+this.attachObserver(
+  subscribeSubagentObserver(this.subagentSession, this.state, {
+    onCompact: (info) => this.execution.observer?.onCompacted?.(this, info),
+  }),
+);
 ```
 
 This removes the observer's only dependency on `Subagent`, so observer tests construct a `SubagentState` directly.
@@ -213,7 +230,7 @@ Grep sweep confirmed no other `src/`, `test/`, or `SKILL.md` references to the r
 
 1. **Extract `SubagentState` (pure addition; lift-and-shift prep).**
    - Create `src/lifecycle/subagent-state.ts` and `test/lifecycle/subagent-state.test.ts` (red → green for every transition/accumulator).
-   - Refactor `Subagent` to hold a `SubagentState` built from the *existing* `SubagentInit` fields; getters/mutators delegate. `SubagentStatus` moves to `subagent-state.ts`, re-exported from `subagent.ts`.
+   - Refactor `Subagent` to hold a `SubagentState` built from the _existing_ `SubagentInit` fields; getters/mutators delegate. `SubagentStatus` moves to `subagent-state.ts`, re-exported from `subagent.ts`.
    - In `subagent.test.ts`, introduce a local construction helper and route call sites through it; move the pure state-machine `describe` blocks into `subagent-state.test.ts`.
    - No consumer breaks (init shape unchanged). `pnpm run check` + `test`.
    - Commit: `refactor: extract SubagentState value object (#373)`.

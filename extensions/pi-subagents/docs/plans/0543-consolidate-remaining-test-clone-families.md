@@ -22,7 +22,7 @@ Two facts, established during planning, undercut the premise:
 1. **fallow 3.2.0 excludes test files from duplication detection by default.**
    `pnpm fallow dupes --workspace @gotgenes/pi-subagents` reports **zero** clones and prints `skipped 235 files matching default duplicates ignores: 235 **/*.test.*`.
    The "in-package test clone groups" metric (9 / 81 lines) is no longer produced by the standard command the roadmap and CI use — the tool now treats test-file token runs as expected scaffolding, not copy-paste.
-2. **The residual duplication in all three files is the repeated system-under-test *act* call, not arrange setup.**
+2. **The residual duplication in all three files is the repeated system-under-test _act_ call, not arrange setup.**
    The flagged families are the repeated `resolveSpawnConfig(...)`, `assembleSessionConfig(...)`, and `manager.spawn(STUB_SNAPSHOT, "general-purpose", "test", {…})` invocations — the test subject itself.
    The `testing` skill is explicit: "Do not wrap the system-under-test call in a helper to eliminate a duplication-metric clone — the repeated act is the test subject, not duplication to remove."
    The arrange for these suites is already well-factored (`createManager`, `arrangeQueuedPair`, `manager-stubs.ts`, `mock-session.ts`, `makeModel`, `makeAgentConfig`, `exploreConfig`) by prior Phase 17 (#378, #379) and Phase 20 steps.
@@ -41,7 +41,7 @@ The operator confirmed the direction (planning `ask-user`): **narrow arrange-onl
 - **No act-call wrapping.**
   The repeated `resolveSpawnConfig` / `assembleSessionConfig` / `manager.spawn` invocations are the test subject and stay explicit per the `testing` skill.
 - **No repo-wide fallow config change.**
-  Setting `duplicates.ignoreDefaults: false` in `.fallowrc.json` would re-include test files but also re-admit every generated/framework file across all six packages (the default ignore is all-or-nothing, not subtractable — `duplicates.ignore` only *adds* patterns).
+  Setting `duplicates.ignoreDefaults: false` in `.fallowrc.json` would re-include test files but also re-admit every generated/framework file across all six packages (the default ignore is all-or-nothing, not subtractable — `duplicates.ignore` only _adds_ patterns).
   Restoring a package-scoped test-clone metric is not worth reintroducing repo-wide noise; considered and rejected (see Design Overview).
 - **No changes to `spawn-config.test.ts`.**
   Its arrange (`testRegistry`, `makeModelInfo()`, `defaultSettings`, `makeAgentConfig`, `makeDisabledPlanRegistry`) is already module-level; the only repetition is the act.
@@ -105,7 +105,9 @@ describe("SubagentManager — lifecycle observer forwarding", () => {
 
   it("forwards onSessionCreated from spawn options observer to Agent", async () => {
     const received: { agent: Subagent | undefined } = { agent: undefined };
-    const id = manager.spawn(STUB_SNAPSHOT, "general-purpose", "test", { /* … act stays explicit … */ });
+    const id = manager.spawn(STUB_SNAPSHOT, "general-purpose", "test", {
+      /* … act stays explicit … */
+    });
     // …
   });
 });
@@ -119,7 +121,7 @@ It touches no act call and no other describe block.
 - `spawn-config.test.ts` — every test independently calls `resolveSpawnConfig({…}, testRegistry, makeModelInfo(), defaultSettings)`.
   The three trailing args are already single module-level values; the only remaining repetition is the act plus its `if ("error" in result) return;` narrowing guard.
   Nothing extractable without wrapping the act.
-- `session-config.test.ts` — the model-resolution tests repeat `assembleSessionConfig("Explore", { …ctx, parentModel }, {}, mockEnv, mockAgentLookup, mockIO)`, but each is preceded by a *different* `mockResolveAgentConfig.mockReturnValueOnce(exploreConfig({…}))` / `mockRegistry` setup that documents a distinct fallback branch.
+- `session-config.test.ts` — the model-resolution tests repeat `assembleSessionConfig("Explore", { …ctx, parentModel }, {}, mockEnv, mockAgentLookup, mockIO)`, but each is preceded by a _different_ `mockResolveAgentConfig.mockReturnValueOnce(exploreConfig({…}))` / `mockRegistry` setup that documents a distinct fallback branch.
   The identical part is the act; the varying part is per-test arrange.
   A top-level `beforeEach` already resets the mocks.
   Nothing extractable without wrapping the act.
@@ -131,7 +133,7 @@ It touches no act call and no other describe block.
   No other describe block changes.
   After the edit, re-check the file's imports for orphans (Biome `noUnusedImports` is warning-level): `createMockSession`, `createSessionFactory`, `createManager`, `STUB_SNAPSHOT` all remain used elsewhere, so no import removal is expected — verify with `pnpm run lint`.
 - `packages/pi-subagents/docs/architecture/architecture.md`:
-  - Health-metrics table (line 791): replace the `Test clone groups (in-package)` row's target with a retirement annotation (e.g. `— (retired: fallow 3.2.0 excludes `**/ *.test.*
+  - Health-metrics table (line 791): replace the `Test clone groups (in-package)` row's target with a retirement annotation (e.g. `— (retired: fallow 3.2.0 excludes `**/ _.test._
     `from dupes)`), or move the note to prose directly under the table.
     Keep the row's Phase 19 baseline for history.
   - Step 9 entry: rewrite `Outcome:` from the numeric clone-group target to the actual outcome (arrange already factored by #378/#379/Step 8; residual is act-repetition retained per the `testing` skill; one describe-scoped `beforeEach` hoist landed).
@@ -182,7 +184,7 @@ This is a behavior-preserving refactor plus a doc update — no red→green cycl
   Mitigation: `beforeEach` re-runs per test, so each gets a fresh `manager`/`factory`; `afterEach` still disposes.
   The `received` state stays per-test.
 - **Risk: retiring the metric hides a real future regression** (test duplication could grow unnoticed).
-  Mitigation: fallow still detects *production* clones; test-clone growth is now a review-time judgment, consistent with the tool's own stance that test token runs are scaffolding.
+  Mitigation: fallow still detects _production_ clones; test-clone growth is now a review-time judgment, consistent with the tool's own stance that test token runs are scaffolding.
   The architecture note records the decision so a future maintainer understands why the metric is gone.
 - **Risk: a later fallow release re-includes test files**, reviving the metric.
   Mitigation: the retirement note is explicit about the tool version and mechanism, so it can be revisited if the default changes.

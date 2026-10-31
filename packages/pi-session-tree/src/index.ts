@@ -134,8 +134,9 @@ export function service<T>(id: string, name: string, tree = sessionTree()): T | 
 }
 
 const isThenable = (value: unknown): value is PromiseLike<unknown> =>
-  !!value && (typeof value === "object" || typeof value === "function")
-  && typeof (value as { then?: unknown }).then === "function";
+  !!value &&
+  (typeof value === "object" || typeof value === "function") &&
+  typeof (value as { then?: unknown }).then === "function";
 
 /**
  * Call into another session's synchronous service without letting its failure
@@ -146,14 +147,23 @@ const isThenable = (value: unknown): value is PromiseLike<unknown> =>
  * misuse: the result is an error (the call has already started), and the
  * promise's rejection is observed so it cannot go unhandled. Use `callAsync`.
  */
-export function call<T, R>(id: string, name: string, fn: (api: T) => R, tree = sessionTree()): CallResult<R> {
+export function call<T, R>(
+  id: string,
+  name: string,
+  fn: (api: T) => R,
+  tree = sessionTree(),
+): CallResult<R> {
   const api = service<T>(id, name, tree);
   if (api === undefined) return { ok: false, reason: "missing" };
   try {
     const value = fn(api);
     if (isThenable(value)) {
       Promise.resolve(value).catch(() => {});
-      return { ok: false, reason: "error", error: new TypeError(`${name} returned a promise; use callAsync`) };
+      return {
+        ok: false,
+        reason: "error",
+        error: new TypeError(`${name} returned a promise; use callAsync`),
+      };
     }
     return { ok: true, value };
   } catch (error) {
@@ -163,7 +173,10 @@ export function call<T, R>(id: string, name: string, fn: (api: T) => R, tree = s
 
 /** `call` for asynchronous services: a rejection becomes `{ ok: false, reason: "error" }`. */
 export async function callAsync<T, R>(
-  id: string, name: string, fn: (api: T) => R, tree = sessionTree(),
+  id: string,
+  name: string,
+  fn: (api: T) => R,
+  tree = sessionTree(),
 ): Promise<CallResult<Awaited<R>>> {
   const api = service<T>(id, name, tree);
   if (api === undefined) return { ok: false, reason: "missing" };
@@ -198,7 +211,9 @@ export function root(id: string, tree = sessionTree()): string {
 
 /** Direct children with a live node. */
 export function children(id: string, tree = sessionTree()): string[] {
-  return [...tree.nodes.values()].filter((candidate) => candidate.parent === id).map((candidate) => candidate.id);
+  return [...tree.nodes.values()]
+    .filter((candidate) => candidate.parent === id)
+    .map((candidate) => candidate.id);
 }
 
 /** Every descendant, breadth first. */
@@ -237,7 +252,15 @@ export function trackChildren(pi: EventSource, tree = sessionTree()): () => void
     const raw = (data ?? {}) as Record<string, unknown>;
     const child = text(raw.sessionId);
     if (!child) return;
-    link(child, { parent: text(raw.parentSessionId), agentId: text(raw.agentId), handoff: readHandoff(raw.handoff) }, tree);
+    link(
+      child,
+      {
+        parent: text(raw.parentSessionId),
+        agentId: text(raw.agentId),
+        handoff: readHandoff(raw.handoff),
+      },
+      tree,
+    );
   });
   const offDisposed = pi.events.on(CHILD_SESSION_DISPOSED, (data) => {
     const child = text((data as Record<string, unknown> | null)?.sessionId);

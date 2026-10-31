@@ -10,8 +10,8 @@ issue_title: "Add WorkspaceProvider extension seam"
 Phase 16, Step 2 of [ADR-0002].
 The core needs only a working directory and a disposal hook for a child run; the default - the parent's cwd, with no setup or teardown - is always correct.
 "Where does a child run, and what brackets the run?"
-is a *strategy* (git worktree, container, tmpdir, remote sandbox), not core behavior.
-[ADR-0002] classifies this as the single *generative* extension surface: a concern that must return a value the core consumes synchronously attaches through a rationed provider seam, not an observational event.
+is a _strategy_ (git worktree, container, tmpdir, remote sandbox), not core behavior.
+[ADR-0002] classifies this as the single _generative_ extension surface: a concern that must return a value the core consumes synchronously attaches through a rationed provider seam, not an observational event.
 This issue adds that seam -`WorkspaceProvider` / `Workspace` plus `SubagentsService.registerWorkspaceProvider` - without the core gaining any knowledge of what an "isolation strategy" is.
 
 ## Goals
@@ -44,7 +44,7 @@ Relevant existing modules:
 - `src/service/service.ts` - the package's public API surface (`package.json` `exports` points at `./src/service.ts`).
   `SubagentsService`, `SpawnOptions`, and `SubagentRecord` all live here; the seam types are re-exported here so the worktrees package can implement them.
 - `src/service/service-adapter.ts` - `SubagentsServiceAdapter implements SubagentsService`, wrapping the `AgentManagerLike` narrow interface.
-- `src/lifecycle/child-lifecycle.ts` - the *observational* lifecycle events from #261 (`spawning`, `session-created`, `completed`, `disposed`).
+- `src/lifecycle/child-lifecycle.ts` - the _observational_ lifecycle events from #261 (`spawning`, `session-created`, `completed`, `disposed`).
   The provider seam is orthogonal: events tell consumers what happened; the provider returns a value the core consumes.
 
 AGENTS.md constraints that apply:
@@ -96,7 +96,7 @@ export interface WorkspaceProvider {
 }
 ```
 
-Note the addendum-formatting boundary: the core appends `resultAddendum` *verbatim*.
+Note the addendum-formatting boundary: the core appends `resultAddendum` _verbatim_.
 The provider owns its own separator and wording (the worktrees package owns the "Changes saved to branch ..." string in #263).
 The core never formats branch text.
 
@@ -158,14 +158,18 @@ try {
 On completion (`completeRun`) the core computes the final status, then disposes:
 
 ```typescript
-const finalStatus: AgentStatus =
-  result.aborted ? "aborted" : result.steered ? "steered" : "completed";
+const finalStatus: AgentStatus = result.aborted
+  ? "aborted"
+  : result.steered
+    ? "steered"
+    : "completed";
 if (this._workspace) {
   const out = this._workspace.dispose({ status: finalStatus, description: this.description });
   if (out?.resultAddendum) finalResult += out.resultAddendum;
 } else {
   const wt = this.worktree?.cleanup(this.description);
-  if (wt?.hasChanges && wt.branch) finalResult += `\n\n---\nChanges saved to branch \`${wt.branch}\`...`;
+  if (wt?.hasChanges && wt.branch)
+    finalResult += `\n\n---\nChanges saved to branch \`${wt.branch}\`...`;
 }
 ```
 
@@ -201,7 +205,7 @@ Provider-first precedence means the two never silently conflict, and #263 collap
 | `docs/architecture/architecture.md` | Mark Phase 16 Step 2 (#262) as landed in the roadmap; note the seam exists and `workspace.ts` is added to the lifecycle domain listing.                                                                                                                                                                                                 |
 
 No exports are removed or renamed, so no `src/`/`test/` removed-symbol grep is required.
-No file in Module-Level Changes is also claimed as unchanged in Non-Goals (the worktree *modules* are non-goals; `agent.ts` touches the worktree *call path* additively, which is consistent).
+No file in Module-Level Changes is also claimed as unchanged in Non-Goals (the worktree _modules_ are non-goals; `agent.ts` touches the worktree _call path_ additively, which is consistent).
 
 ### Grep checklist before finalizing
 
@@ -211,7 +215,7 @@ No file in Module-Level Changes is also claimed as unchanged in Non-Goals (the w
 
 ## Test Impact Analysis
 
-This is an additive seam, so the work is dominated by *new* tests; little existing coverage is affected.
+This is an additive seam, so the work is dominated by _new_ tests; little existing coverage is affected.
 
 1. New unit tests the seam enables: provider registration (throw-on-duplicate, disposer-unregisters), run-start consultation (cwd from `prepare`, `resultAddendum` appended on dispose), `prepare` returns undefined → `baseCwd`, `prepare` rejects → `markError`, and adapter delegation.
    These were impossible before because there was no provider abstraction to substitute.

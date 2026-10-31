@@ -1,6 +1,6 @@
 ---
 issue: 883
-issue_title: "pi-subagents: subagents on a Claude-Agent-SDK provider (pi-claude-bridge) get 400 \"Third-party apps now draw from your extra usage\" — the inherited parent prompt is the trigger"
+issue_title: 'pi-subagents: subagents on a Claude-Agent-SDK provider (pi-claude-bridge) get 400 "Third-party apps now draw from your extra usage" — the inherited parent prompt is the trigger'
 ---
 
 # Portable prompt inheritance for children whose provider re-homes the prompt
@@ -150,7 +150,8 @@ const subagentSessionDeps: SubagentSessionDeps = {
 `assembleSessionConfig` then resolves the model first — the two computations are independent, and `resolveDefaultModel` reads only `ctx.parentModel`, `ctx.modelRegistry`, and `agentConfig.model` — and hands `buildAgentPrompt` the settled strategy:
 
 ```typescript
-const model = options.model ?? resolveDefaultModel(ctx.parentModel, ctx.modelRegistry, agentConfig.model);
+const model =
+  options.model ?? resolveDefaultModel(ctx.parentModel, ctx.modelRegistry, agentConfig.model);
 const strategy = ctx.resolvePromptInheritance?.(model?.provider) ?? "full";
 const systemPrompt = io.buildAgentPrompt(agentConfig, effectiveCwd, env, {
   systemPrompt: ctx.parentSystemPrompt,
@@ -262,7 +263,7 @@ The other two paths keep a provider: `resolveDefaultModel` returns `parentModel`
 ### Scope: `portable` is for re-homing hosts only
 
 Documented, not enforced.
-Pointing `portable` at a provider that does *not* re-home the prompt is worse than `full`, and the worked counter-example belongs in `docs/configuration.md`:
+Pointing `portable` at a provider that does _not_ re-home the prompt is worse than `full`, and the worked counter-example belongs in `docs/configuration.md`:
 
 `@gotgenes/pi-anthropic-auth` shapes the OAuth system prompt by locating Pi's role line —
 
@@ -295,7 +296,7 @@ Under `full` the same stack already produces `portable`'s intended outcome and s
 
 | File                                                             | Change                                                                                                                                                                                                                     |
 | ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `docs/configuration.md`                                          | `promptInheritance` row in the settings table; a *Portable inheritance (opt-in)* subsection with the strategy table, the provider-keyed example, and the re-homing-only scope with the `pi-anthropic-auth` counter-example |
+| `docs/configuration.md`                                          | `promptInheritance` row in the settings table; a _Portable inheritance (opt-in)_ subsection with the strategy table, the provider-keyed example, and the re-homing-only scope with the `pi-anthropic-auth` counter-example |
 | `docs/decisions/0009-portable-inheritance-is-provider-scoped.md` | New ADR: two strategies, why the key is the provider and not the agent, why the default does not flip, why `promptGuidelines` is excluded                                                                                  |
 | `docs/decisions/0008-inherited-region-is-shared-parts.md`        | A Consequences bullet pointing at 0009                                                                                                                                                                                     |
 | `docs/architecture/architecture.md`                              | `prompts.ts` module-tree entry gains the two strategies; `parent-snapshot.ts` entry gains the portable capture                                                                                                             |
@@ -347,27 +348,27 @@ The verification is the existing block staying green, plus the killing mutation 
    Add `PromptInheritance` to `src/types.ts`; add the field to `SubagentsSettings` and `SettingsSnapshot`; extend `sanitize()` with a block shaped like the `excludedExtensionPackages` one; add `_promptInheritance` (assigned unconditionally on load, so removing the key from disk clears it) and `promptInheritanceFor()`.
    Nothing reads it yet, so nothing is observable — hence `refactor:`.
    Tests: `test/settings.test.ts`.
-   *Killing mutations:* make `promptInheritanceFor` return `"full"` unconditionally — the listed-provider test must go red; and let `sanitize()` copy the raw object through unfiltered — the unknown-strategy-dropped test must go red.
+   _Killing mutations:_ make `promptInheritanceFor` return `"full"` unconditionally — the listed-provider test must go red; and let `sanitize()` copy the raw object through unfiltered — the unknown-strategy-dropped test must go red.
    Suggested subject: `refactor(pi-subagents): add the provider-keyed promptInheritance setting`.
 
 2. **`refactor:` — capture and render the parent's portable parts.**
    Add `ParentPromptOptions`, `buildPortablePrompt`, `ParentSnapshot.portablePrompt`, and the third parameter on `buildParentSnapshot`.
    Still unconsumed.
    Tests: `test/lifecycle/parent-snapshot.test.ts`.
-   *Killing mutations:* return `undefined` from `buildPortablePrompt` unconditionally — every render test red; drop the `Project-specific instructions and guidelines:` lead-in — the byte-exact `<project_context>` test red; swap the `customPrompt`/`contextFiles` order — the section-order test red.
+   _Killing mutations:_ return `undefined` from `buildPortablePrompt` unconditionally — every render test red; drop the `Project-specific instructions and guidelines:` lead-in — the byte-exact `<project_context>` test red; swap the `customPrompt`/`contextFiles` order — the section-order test red.
    Suggested subject: `refactor(pi-subagents): render the parent's portable prompt parts into the snapshot`.
 
 3. **`refactor:` — hold the latest prompt-options capture on the runtime.**
    Add `lastPromptOptions` and `setSystemPromptOptions()`; thread it through `buildSnapshot()`.
    Update `runtime.test.ts`'s two `toHaveBeenCalledWith(ctx, true)` assertions in this step.
-   *Killing mutation:* have `buildSnapshot` pass `undefined` as the third argument — the "snapshot carries the captured options" test red.
+   _Killing mutation:_ have `buildSnapshot` pass `undefined` as the third argument — the "snapshot carries the captured options" test red.
    Suggested subject: `refactor(pi-subagents): hold the parent's latest prompt options on the runtime`.
 
 4. **`refactor:` — the portable identity branch in the prompt assembler.**
    Add `strategy?`/`portablePrompt?` to `InheritedPrompt` and the `adoptedIdentity` helper below `buildAgentPrompt`.
    No caller passes `strategy` yet.
    Tests: a new `describe("portable inheritance")` in `test/session/prompts.test.ts`.
-   *Killing mutations, one per equivalence class:* make the portable branch fall through to `inheritedIdentity` — the "carries neither the role line nor the documentation-routing line" tests red, the `full` tests green; return `""` instead of `genericBase` on an empty capture — the fail-safe test red; change `||` to `??` — the whitespace-only test red, the absent-capture test green.
+   _Killing mutations, one per equivalence class:_ make the portable branch fall through to `inheritedIdentity` — the "carries neither the role line nor the documentation-routing line" tests red, the `full` tests green; return `""` instead of `genericBase` on an empty capture — the fail-safe test red; change `||` to `??` — the whitespace-only test red, the absent-capture test green.
    Suggested subject: `refactor(pi-subagents): add the portable identity branch to buildAgentPrompt`.
 
 5. **`refactor:` — resolve the model before building the prompt.**
@@ -379,7 +380,7 @@ The verification is the existing block staying green, plus the killing mutation 
 6. **`feat:` — a child on a re-homing provider inherits only portable parts.**
    The wiring, and the first commit with observable behavior: `AssemblerContext.parentPortablePrompt`/`.resolvePromptInheritance`, the strategy resolution and hand-off in `assembleSessionConfig`, `SubagentSessionDeps.resolvePromptInheritance`, the pass-through in `create-subagent-session.ts`, and in `index.ts` both the `before_agent_start` capture handler and the resolver entry in the deps literal.
    Tests: `test/session/session-config.test.ts` and `test/lifecycle/create-subagent-session.test.ts`.
-   *Killing mutations:* hardcode `"full"` in place of the `resolvePromptInheritance(model?.provider)` call — the "child on a configured provider gets the portable identity" test red; pass `ctx.parentModel?.provider` instead of `model?.provider` — the per-spawn `model:` override test red; delete the `pi.on("before_agent_start")` registration at its new site — the capture-wiring test red.
+   _Killing mutations:_ hardcode `"full"` in place of the `resolvePromptInheritance(model?.provider)` call — the "child on a configured provider gets the portable identity" test red; pass `ctx.parentModel?.provider` instead of `model?.provider` — the per-spawn `model:` override test red; delete the `pi.on("before_agent_start")` registration at its new site — the capture-wiring test red.
    Suggested subject: `feat(pi-subagents): inherit only portable prompt parts on a re-homing provider`.
 
 7. **`docs:` — record the strategy and its scope.**

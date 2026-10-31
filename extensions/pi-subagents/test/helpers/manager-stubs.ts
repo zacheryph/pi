@@ -35,7 +35,10 @@ export function createBlockingFactory() {
  * session. Returns the factory plus the stub and session so tests can configure
  * `runTurnLoop`/`resumeTurnLoop` and emit session events.
  */
-export function createSessionFactory(session: MockSession = createMockSession(), outputFile?: string) {
+export function createSessionFactory(
+  session: MockSession = createMockSession(),
+  outputFile?: string,
+) {
   const stub = createSubagentSessionStub(session, outputFile);
   const factory = vi.fn(async (_params: CreateSubagentSessionParams) => toSubagentSession(stub));
   return { factory, stub, session };

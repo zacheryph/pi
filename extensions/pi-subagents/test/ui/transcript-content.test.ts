@@ -72,7 +72,8 @@ describe("TranscriptContent", () => {
       const messages = [
         {
           role: "user",
-          content: '<skill name="testing" location="/skills/testing">\nskill body\n</skill>\n\nrun the suite',
+          content:
+            '<skill name="testing" location="/skills/testing">\nskill body\n</skill>\n\nrun the suite',
         },
       ] as unknown as SessionMessage[];
 
@@ -118,7 +119,9 @@ describe("TranscriptContent", () => {
       const alone = allRows(contentFrom([userMessage("a question")])).length;
       const assistantOnly = allRows(contentFrom([assistantText("an answer")])).length;
 
-      const together = allRows(contentFrom([assistantText("an answer"), userMessage("a question")])).length;
+      const together = allRows(
+        contentFrom([assistantText("an answer"), userMessage("a question")]),
+      ).length;
 
       expect(together).toBe(assistantOnly + alone + 1);
     });
@@ -266,9 +269,7 @@ describe("TranscriptContent", () => {
     });
 
     it("truncates every row to the requested width", () => {
-      const messages = [
-        { role: "user", content: "x".repeat(500) },
-      ] as unknown as SessionMessage[];
+      const messages = [{ role: "user", content: "x".repeat(500) }] as unknown as SessionMessage[];
 
       const lines = allRows(contentFrom(messages), 40);
 
@@ -360,9 +361,16 @@ describe("TranscriptContent", () => {
       const history: SessionMessage[] = [];
       const content = makeContent(growingSource(history));
 
-      history.push({ role: "custom", customType: "note", content: "invisible" } as unknown as SessionMessage);
+      history.push({
+        role: "custom",
+        customType: "note",
+        content: "invisible",
+      } as unknown as SessionMessage);
       content.apply(settled());
-      history.push({ role: "user", content: "after the custom message" } as unknown as SessionMessage);
+      history.push({
+        role: "user",
+        content: "after the custom message",
+      } as unknown as SessionMessage);
       content.apply(settled());
 
       expect(rendered(content)).toContain("after the custom message");
@@ -471,7 +479,12 @@ describe("TranscriptContent", () => {
 function partialAssistant(text: string): AgentSessionEvent {
   return {
     type: "message_update",
-    message: { role: "assistant", content: [{ type: "text", text }], stopReason: "stop", timestamp: 1 },
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text }],
+      stopReason: "stop",
+      timestamp: 1,
+    },
   } as unknown as AgentSessionEvent;
 }
 
@@ -479,7 +492,12 @@ function partialAssistant(text: string): AgentSessionEvent {
 function thinkingAssistant(thinking: string): AgentSessionEvent {
   return {
     type: "message_start",
-    message: { role: "assistant", content: [{ type: "thinking", thinking }], stopReason: "stop", timestamp: 1 },
+    message: {
+      role: "assistant",
+      content: [{ type: "thinking", thinking }],
+      stopReason: "stop",
+      timestamp: 1,
+    },
   } as unknown as AgentSessionEvent;
 }
 

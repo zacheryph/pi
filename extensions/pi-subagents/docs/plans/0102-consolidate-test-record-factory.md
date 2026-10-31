@@ -60,9 +60,7 @@ A single function in `test/helpers/make-record.ts` with the `Partial<AgentRecord
 ```typescript
 import type { AgentRecord } from "../../src/types.js";
 
-export function createTestRecord(
-  overrides: Partial<AgentRecord> = {},
-): AgentRecord {
+export function createTestRecord(overrides: Partial<AgentRecord> = {}): AgentRecord {
   return {
     id: "agent-1",
     type: "general-purpose",

@@ -29,7 +29,10 @@ describe("builtinExtensionsFor", () => {
     });
 
     async function loadedPaths(extensionsSetting: string[]): Promise<string[]> {
-      writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ extensions: extensionsSetting }));
+      writeFileSync(
+        join(agentDir, "settings.json"),
+        JSON.stringify({ extensions: extensionsSetting }),
+      );
       const loader = new DefaultResourceLoader({
         cwd,
         agentDir,
@@ -81,12 +84,7 @@ describe("builtinExtensionsFor", () => {
     });
 
     it("selects each built-in once, in Pi's order, as a replaceable built-in", () => {
-      const selected = builtinExtensionsFor([
-        "mcp__a__b",
-        "mcp__a__c",
-        "tool_search",
-        "codemode",
-      ]);
+      const selected = builtinExtensionsFor(["mcp__a__b", "mcp__a__c", "tool_search", "codemode"]);
 
       expect(
         selected.map(({ name, builtin, replaceable }) => ({ name, builtin, replaceable })),

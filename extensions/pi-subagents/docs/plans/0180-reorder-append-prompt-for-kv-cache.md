@@ -7,7 +7,7 @@ issue_title: "perf(pi-subagents): reorder append-mode system prompt to enable KV
 
 ## Problem Statement
 
-In append mode, `buildAgentPrompt()` places varying, agent-specific content (the `<active_agent>` tag and env block) *before* the large shared inherited system prompt (~8k tokens).
+In append mode, `buildAgentPrompt()` places varying, agent-specific content (the `<active_agent>` tag and env block) _before_ the large shared inherited system prompt (~8k tokens).
 LLM KV caching works on prefixes — the cache is only reusable when the beginning of the prompt matches.
 Every subagent spawn reprocesses the entire inherited prompt from scratch because the prefix differs per agent.
 
@@ -22,7 +22,7 @@ Every subagent spawn reprocesses the entire inherited prompt from scratch becaus
 
 - Changing replace-mode prompt assembly (no shared prefix to cache).
 - Modifying pi-permission-system (its regex parsing is already position-independent).
-- Changing the *content* of any prompt section — only reordering.
+- Changing the _content_ of any prompt section — only reordering.
 
 ## Background
 
@@ -66,7 +66,7 @@ The env block and agent instructions still provide context to the model; their p
 
 ### `test/session/prompts.test.ts`
 
-1. Update "prepends `<active_agent>` tag in append mode" — change from asserting `prompt.startsWith()` to asserting the tag appears *after* the inherited system prompt.
+1. Update "prepends `<active_agent>` tag in append mode" — change from asserting `prompt.startsWith()` to asserting the tag appears _after_ the inherited system prompt.
 2. Update "active_agent tag appears before envBlock in both modes" — the append-mode assertions change: the tag should still appear before the env block, but no longer at index 0.
    The replace-mode assertions remain unchanged (`tagIdx === 0`).
 

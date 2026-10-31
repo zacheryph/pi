@@ -34,7 +34,7 @@ Released as `pi-subagents-v6.15.0`.
 - `missing-context` — didn't use `colgrep` during initial plan writing to discover the established getter-injection convention in `service-adapter.ts`.
   Used `grep` exclusively for exact symbol matching.
   When prompted by the user to use `colgrep`, the results were confirmatory rather than revelatory because I'd already read the relevant files by that point.
-  The miss was not using it *earlier* for intent-based exploration ("how do existing modules inject session-scoped state?").
+  The miss was not using it _earlier_ for intent-based exploration ("how do existing modules inject session-scoped state?").
   Impact: added friction but no rework — the user's questions surfaced the pattern before code was committed.
   User-caught.
 

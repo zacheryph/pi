@@ -64,9 +64,9 @@ This ship completed the **last** open step of Phase 22 — all 22 step headings 
 #### What went well
 
 - The disposable spike before the design gate did three jobs at once: it confirmed the issue's report, produced the plan's Reproduction table, and surfaced a fact the issue never mentioned — `markCompleted` blocks the status write against `stopped` but always sets `result`, so an aborted resume's record carries the text of the run it stopped.
-  Its third reading (a record aborted on its original run holds a *spent* controller) is what made the chosen option defensible rather than speculative.
+  Its third reading (a record aborted on its original run holds a _spent_ controller) is what made the chosen option defensible rather than speculative.
 - Both fresh-context reviews corrected the design by reading real files rather than endorsing the summary they were handed.
-  The `tidy-first-assessor` found a third stale forwarding assertion (`test/lifecycle/subagent-manager.test.ts`) that neither the issue nor the design summary named, and corrected "fresh controller per run" to *supplement*, not replace, the constructor's.
+  The `tidy-first-assessor` found a third stale forwarding assertion (`test/lifecycle/subagent-manager.test.ts`) that neither the issue nor the design summary named, and corrected "fresh controller per run" to _supplement_, not replace, the constructor's.
   The `pre-completion-reviewer` independently re-ran the prose sweep and parsed all six Mermaid charts.
 - Specifying one killing mutation per equivalence class at plan time made the verify step mechanical: three mutations, three distinct outcomes, all matching predictions (mutation 1 over-killed into class (c), which is extra discrimination, not a shortfall).
 

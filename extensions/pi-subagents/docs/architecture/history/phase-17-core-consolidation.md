@@ -51,17 +51,17 @@ Deferred findings (scored below the priority cut, tracked here rather than as st
 
 Priority = Impact × (6 − Risk).
 
-| Step | Title                                                                                | Category | Impact | Risk | Priority |
-| ---- | ------------------------------------------------------------------------------------ | -------- | ------ | ---- | -------- |
-| 1    | Replace ConcurrencyQueue with a thunk-based ConcurrencyLimiter                       | A/C      | 4      | 2    | 16       |
-| 2    | Extract `SubagentState`; make `Subagent` execution deps mandatory                    | B/D      | 4      | 3    | 12       |
-| 3    | Encapsulate run start and notification attachment on Subagent                        | C        | 3      | 2    | 12       |
-| 4    | Extract run-listener and workspace-bracket collaborators from Subagent               | B/C      | 3      | 2    | 12       |
-| 5    | Extract the manager observer from index.ts into a class                              | B/E      | 3      | 2    | 12       |
-| 6    | Split widget delegation out of SubagentRuntime                                       | C        | 3      | 3    | 9        |
-| 7    | Consolidate lifecycle test fixtures                                                  | D        | 3      | 1    | 15       |
-| 8    | Consolidate UI and tools test fixtures                                               | D        | 2      | 1    | 10       |
-| 9    | Resolve the cross-package settings-loader duplication                                | A        | 2      | 2    | 8        |
+| Step | Title                                                                  | Category | Impact | Risk | Priority |
+| ---- | ---------------------------------------------------------------------- | -------- | ------ | ---- | -------- |
+| 1    | Replace ConcurrencyQueue with a thunk-based ConcurrencyLimiter         | A/C      | 4      | 2    | 16       |
+| 2    | Extract `SubagentState`; make `Subagent` execution deps mandatory      | B/D      | 4      | 3    | 12       |
+| 3    | Encapsulate run start and notification attachment on Subagent          | C        | 3      | 2    | 12       |
+| 4    | Extract run-listener and workspace-bracket collaborators from Subagent | B/C      | 3      | 2    | 12       |
+| 5    | Extract the manager observer from index.ts into a class                | B/E      | 3      | 2    | 12       |
+| 6    | Split widget delegation out of SubagentRuntime                         | C        | 3      | 3    | 9        |
+| 7    | Consolidate lifecycle test fixtures                                    | D        | 3      | 1    | 15       |
+| 8    | Consolidate UI and tools test fixtures                                 | D        | 2      | 1    | 10       |
+| 9    | Resolve the cross-package settings-loader duplication                  | A        | 2      | 2    | 8        |
 
 ### Step 1 — Replace ConcurrencyQueue with a thunk-based ConcurrencyLimiter ([#381])
 

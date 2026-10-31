@@ -13,8 +13,8 @@ issue_title: "Extract ChildSessionFactory from runner"
 ## Problem Statement
 
 `runAgent()` in `src/lifecycle/agent-runner.ts` conflates two concerns.
-The first is session *creation* — platform plumbing: env detection, config assembly, resource-loader construction, session-manager creation, `createSession()`, permission-bridge registration, `bindExtensions()`, and the post-bind recursion-guard tool filter.
-The second is session *interaction* — prompting, turn tracking, soft/hard turn-limit enforcement, response collection, and abort forwarding.
+The first is session _creation_ — platform plumbing: env detection, config assembly, resource-loader construction, session-manager creation, `createSession()`, permission-bridge registration, `bindExtensions()`, and the post-bind recursion-guard tool filter.
+The second is session _interaction_ — prompting, turn tracking, soft/hard turn-limit enforcement, response collection, and abort forwarding.
 
 This is Phase 16, Step 2 of the agent-collaborator architecture (`docs/architecture/architecture.md`).
 The step extracts the creation concern into a narrow `ChildSessionFactory` collaborator so session creation becomes independently testable and so `permission-bridge.ts` is imported by the factory rather than the runner.
@@ -91,41 +91,43 @@ import type { ParentSessionInfo, SubagentType, ThinkingLevel } from "#src/types"
 
 /** Per-agent session-creation config, bound at factory construction. */
 export interface ChildSessionConfig {
-	snapshot: ParentSnapshot;
-	type: SubagentType;
-	model?: Model<any>;
-	isolated?: boolean;
-	thinkingLevel?: ThinkingLevel;
-	parentSession?: ParentSessionInfo;
+  snapshot: ParentSnapshot;
+  type: SubagentType;
+  model?: Model<any>;
+  isolated?: boolean;
+  thinkingLevel?: ThinkingLevel;
+  parentSession?: ParentSessionInfo;
 }
 
 /** Result of creating a configured child session. */
 export interface ChildSessionResult {
-	session: AgentSession;
-	/** Path to the persisted session JSONL file, if persisted. */
-	outputFile?: string;
-	/** Tear down creation side effects (permission-bridge unregister). */
-	cleanup: () => void;
-	/**
-	 * Per-agent configured max turns (from agentConfig.maxTurns) for the
-	 * caller's turn-limit enforcement. Crosses the creation/interaction seam
-	 * because it is computed during config assembly but consumed by the run loop.
-	 */
-	agentMaxTurns?: number;
+  session: AgentSession;
+  /** Path to the persisted session JSONL file, if persisted. */
+  outputFile?: string;
+  /** Tear down creation side effects (permission-bridge unregister). */
+  cleanup: () => void;
+  /**
+   * Per-agent configured max turns (from agentConfig.maxTurns) for the
+   * caller's turn-limit enforcement. Crosses the creation/interaction seam
+   * because it is computed during config assembly but consumed by the run loop.
+   */
+  agentMaxTurns?: number;
 }
 
 /** Creates a configured child AgentSession. Narrow: one method. */
 export interface ChildSessionFactory {
-	create(cwd?: string): Promise<ChildSessionResult>;
+  create(cwd?: string): Promise<ChildSessionResult>;
 }
 
 export class ConcreteChildSessionFactory implements ChildSessionFactory {
-	constructor(
-		private readonly config: ChildSessionConfig,
-		private readonly deps: RunnerDeps,
-	) {}
+  constructor(
+    private readonly config: ChildSessionConfig,
+    private readonly deps: RunnerDeps,
+  ) {}
 
-	async create(cwd?: string): Promise<ChildSessionResult> { /* lifted creation block */ }
+  async create(cwd?: string): Promise<ChildSessionResult> {
+    /* lifted creation block */
+  }
 }
 ```
 
@@ -153,15 +155,15 @@ The factory still has a production consumer in this step — `runAgent` — so t
 
 ```typescript
 const factory = new ConcreteChildSessionFactory(
-	{
-		snapshot,
-		type,
-		model: options.model,
-		isolated: options.isolated,
-		thinkingLevel: options.thinkingLevel,
-		parentSession: options.context.parentSession,
-	},
-	deps,
+  {
+    snapshot,
+    type,
+    model: options.model,
+    isolated: options.isolated,
+    thinkingLevel: options.thinkingLevel,
+    parentSession: options.context.parentSession,
+  },
+  deps,
 );
 const { session, outputFile, cleanup, agentMaxTurns } = await factory.create(options.context.cwd);
 
@@ -169,12 +171,12 @@ options.onSessionCreated?.(session);
 const maxTurns = normalizeMaxTurns(options.maxTurns ?? agentMaxTurns ?? options.defaultMaxTurns);
 // ... turn-tracking subscription, collector, abort forwarding ...
 try {
-	await session.prompt(effectivePrompt);
+  await session.prompt(effectivePrompt);
 } finally {
-	unsubTurns();
-	collector.unsubscribe();
-	cleanupAbort();
-	cleanup(); // was: unregisterChildSession(sessionDir)
+  unsubTurns();
+  collector.unsubscribe();
+  cleanupAbort();
+  cleanup(); // was: unregisterChildSession(sessionDir)
 }
 return { responseText, session, aborted, steered: softLimitReached, sessionFile: outputFile };
 ```

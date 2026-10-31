@@ -9,7 +9,11 @@ import type { Model } from "@earendil-works/pi-ai";
 import { parseThinkingLevel, thinkingLevelError } from "#src/config/thinking-level";
 import { normalizeHandoff, type SubagentHandoff } from "#src/lifecycle/child-lifecycle";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
-import type { AgentSpawnConfig, ResumeCallOptions, ResumeOutcome } from "#src/lifecycle/subagent-manager";
+import type {
+  AgentSpawnConfig,
+  ResumeCallOptions,
+  ResumeOutcome,
+} from "#src/lifecycle/subagent-manager";
 import type { WorkspaceProvider } from "#src/lifecycle/workspace";
 import type {
   ResumeOptions,

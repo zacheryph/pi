@@ -70,10 +70,10 @@ The pre-completion reviewer returned PASS on the first pass; no rework cycles oc
 
 #### What caused friction (agent side)
 
-- `other` (premature outcome claim) — the first refactor commit's message (`7c8ddefe`) initially claimed `service-adapter.spawn` was "off the HIGH-CRAP list," but that outcome only lands in the *next* commit (`b0480c6d`).
+- `other` (premature outcome claim) — the first refactor commit's message (`7c8ddefe`) initially claimed `service-adapter.spawn` was "off the HIGH-CRAP list," but that outcome only lands in the _next_ commit (`b0480c6d`).
   Self-identified before push and fixed via `git commit --amend` (with the AGENTS.md HEAD-ownership check first).
   Impact: one amend, no rework, nothing pushed — a documentation-of-work slip, not a code slip.
-- `missing-context` (structural-mock grep gap) — the plan's Test Impact Analysis named three test files but missed `test/helpers/make-deps.ts`, whose `getModelInfo` stub builds a `ModelInfo`-shaped object *inline* without naming the `ModelInfo` type, so the planning-time type-name grep did not surface it.
+- `missing-context` (structural-mock grep gap) — the plan's Test Impact Analysis named three test files but missed `test/helpers/make-deps.ts`, whose `getModelInfo` stub builds a `ModelInfo`-shaped object _inline_ without naming the `ModelInfo` type, so the planning-time type-name grep did not surface it.
   Impact: none beyond one extra file in the same commit — `tsc --noEmit` caught it immediately after the coupled type change.
 
 #### What caused friction (user side)

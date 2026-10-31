@@ -135,7 +135,12 @@ export interface Questionnaire {
 
 /** An answer as rpiv ask-user's `rpiv:ask-user:answer` takes it. */
 export interface QuestionnaireAnswer {
-  answers?: Array<{ questionIndex: number; optionIndexes?: number[]; text?: string; notes?: string }>;
+  answers?: Array<{
+    questionIndex: number;
+    optionIndexes?: number[];
+    text?: string;
+    notes?: string;
+  }>;
   globalNote?: string;
   /** Decline the whole questionnaire, as Esc does in the terminal. */
   cancel?: boolean;
@@ -200,7 +205,14 @@ export type HubCommand = { type: "command"; id: number } & CommandRequest;
 export interface TodoHistory {
   key: string;
   createdAt?: number;
-  updates: Array<{ revision: number; at: number; status: TodoStatus; from?: TodoStatus; message?: string; byUser?: boolean }>;
+  updates: Array<{
+    revision: number;
+    at: number;
+    status: TodoStatus;
+    from?: TodoStatus;
+    message?: string;
+    byUser?: boolean;
+  }>;
 }
 
 /** The head of a stash entry, as `stash-preview` returns it. */
@@ -237,7 +249,11 @@ export class LineDecoder {
     const messages: unknown[] = [];
     for (const line of lines) {
       if (!line.trim()) continue;
-      try { messages.push(JSON.parse(line)); } catch { /* drop malformed line */ }
+      try {
+        messages.push(JSON.parse(line));
+      } catch {
+        /* drop malformed line */
+      }
     }
     return messages;
   }
@@ -247,7 +263,16 @@ export function isSnapshot(value: unknown): value is SessionSnapshot {
   if (!value || typeof value !== "object") return false;
   const raw = value as Record<string, unknown>;
   const status = raw.status as Record<string, unknown> | undefined;
-  return typeof raw.id === "string" && raw.id.length > 0 && raw.id.length <= 128
-    && Number.isSafeInteger(raw.pid) && typeof raw.sessionId === "string" && typeof raw.cwd === "string"
-    && Number.isFinite(raw.startedAt) && !!status && typeof status.kind === "string" && Number.isFinite(status.since);
+  return (
+    typeof raw.id === "string" &&
+    raw.id.length > 0 &&
+    raw.id.length <= 128 &&
+    Number.isSafeInteger(raw.pid) &&
+    typeof raw.sessionId === "string" &&
+    typeof raw.cwd === "string" &&
+    Number.isFinite(raw.startedAt) &&
+    !!status &&
+    typeof status.kind === "string" &&
+    Number.isFinite(status.since)
+  );
 }

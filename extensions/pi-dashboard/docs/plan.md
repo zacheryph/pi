@@ -18,22 +18,22 @@ A local web UI showing every running interactive Pi session:
 
 ## Feasibility
 
-| Data | Source | Verdict |
-|---|---|---|
-| Directory | `ctx.cwd` | Yes |
-| Session name | `pi.getSessionName()`, `session_info_changed` (pi-tldr auto-names) | Yes |
-| Session id/file | `ctx.sessionManager.getSessionId()` / `getSessionFile()` | Yes |
-| Agent name | `pi-subagents:main-agent-profile` entry on the branch (`profile.name`) | Yes |
-| Model | `ctx.model`, `model_select` | Yes |
-| Thinking | `pi.getThinkingLevel()`, `thinking_level_select` | Yes |
-| Status | Derived from `agent_start`, `turn_start`, `tool_execution_start/end`, `session_before_compact`/`session_compact`, `ui_prompt_start/end`, `agent_settled` | Yes: idle, working, running tool X, compacting, waiting on a prompt |
-| Context usage | `ctx.getContextUsage()` (`tokens` is `null` just after compaction) | Yes |
-| Tokens / cost | Sum `usage` on assistant entries in `getBranch()` | Yes |
-| Todos | In-repo `pi-todo`; branch journal replay (`replayTodoSession`) | Yes; add a small publish hook in pi-todo instead of re-parsing |
-| Subagents (bonus) | `getSubagentsService().listAgents()` on `globalThis` | Yes |
-| Blackhole | No public API. Persists `om.observations.recorded`, `om.reflections.recorded`, `om.observations.dropped`, `om.folded` custom entries plus compaction entries | Partial: counts, last compaction, tokens since compaction are derivable. Live worker phase and gauges live in its runtime and are not reachable. Fragile across upstream versions; parse defensively and hide the section on unknown shapes (upstream hook deferred) |
-| Stash | In-repo `pi-stash`. Index: `pi-personal:stash-index` custom entries on the branch (`put` + `checkpoint`), replayed by `replayStashIndex` / `currentEntries`. Content: hash-addressed blobs under `$PI_STASH_DIR` or `~/.pi/agent/stash/` | Yes: name, handle, bytes, lines, mime, description, source, creator session, age, version count, store usage vs `maxStoreBytes`. Content preview on demand only (see Security) |
-| Focus session | cmux: `cmux focus-panel --panel "$CMUX_PANEL_ID"`, then `open -b "$CMUX_BUNDLE_ID"` to raise the app | Yes, confirmed in the spike |
+| Data              | Source                                                                                                                                                                                                                                   | Verdict                                                                                                                                                                                                                                                              |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Directory         | `ctx.cwd`                                                                                                                                                                                                                                | Yes                                                                                                                                                                                                                                                                  |
+| Session name      | `pi.getSessionName()`, `session_info_changed` (pi-tldr auto-names)                                                                                                                                                                       | Yes                                                                                                                                                                                                                                                                  |
+| Session id/file   | `ctx.sessionManager.getSessionId()` / `getSessionFile()`                                                                                                                                                                                 | Yes                                                                                                                                                                                                                                                                  |
+| Agent name        | `pi-subagents:main-agent-profile` entry on the branch (`profile.name`)                                                                                                                                                                   | Yes                                                                                                                                                                                                                                                                  |
+| Model             | `ctx.model`, `model_select`                                                                                                                                                                                                              | Yes                                                                                                                                                                                                                                                                  |
+| Thinking          | `pi.getThinkingLevel()`, `thinking_level_select`                                                                                                                                                                                         | Yes                                                                                                                                                                                                                                                                  |
+| Status            | Derived from `agent_start`, `turn_start`, `tool_execution_start/end`, `session_before_compact`/`session_compact`, `ui_prompt_start/end`, `agent_settled`                                                                                 | Yes: idle, working, running tool X, compacting, waiting on a prompt                                                                                                                                                                                                  |
+| Context usage     | `ctx.getContextUsage()` (`tokens` is `null` just after compaction)                                                                                                                                                                       | Yes                                                                                                                                                                                                                                                                  |
+| Tokens / cost     | Sum `usage` on assistant entries in `getBranch()`                                                                                                                                                                                        | Yes                                                                                                                                                                                                                                                                  |
+| Todos             | In-repo `pi-todo`; branch journal replay (`replayTodoSession`)                                                                                                                                                                           | Yes; add a small publish hook in pi-todo instead of re-parsing                                                                                                                                                                                                       |
+| Subagents (bonus) | `getSubagentsService().listAgents()` on `globalThis`                                                                                                                                                                                     | Yes                                                                                                                                                                                                                                                                  |
+| Blackhole         | No public API. Persists `om.observations.recorded`, `om.reflections.recorded`, `om.observations.dropped`, `om.folded` custom entries plus compaction entries                                                                             | Partial: counts, last compaction, tokens since compaction are derivable. Live worker phase and gauges live in its runtime and are not reachable. Fragile across upstream versions; parse defensively and hide the section on unknown shapes (upstream hook deferred) |
+| Stash             | In-repo `pi-stash`. Index: `pi-personal:stash-index` custom entries on the branch (`put` + `checkpoint`), replayed by `replayStashIndex` / `currentEntries`. Content: hash-addressed blobs under `$PI_STASH_DIR` or `~/.pi/agent/stash/` | Yes: name, handle, bytes, lines, mime, description, source, creator session, age, version count, store usage vs `maxStoreBytes`. Content preview on demand only (see Security)                                                                                       |
+| Focus session     | cmux: `cmux focus-panel --panel "$CMUX_PANEL_ID"`, then `open -b "$CMUX_BUNDLE_ID"` to raise the app                                                                                                                                     | Yes, confirmed in the spike                                                                                                                                                                                                                                          |
 
 ### Constraints found in research
 
@@ -120,10 +120,10 @@ pi (cmux surface C) ─ reporter ─┘  ~/.pi/agent/       ▲
 
 ```ts
 interface TerminalAdapter {
-  id: string;                                   // "cmux"
+  id: string; // "cmux"
   detect(env: NodeJS.ProcessEnv): TerminalLocator | undefined;
   focus(locator: TerminalLocator): Promise<{ ok: boolean; error?: string }>;
-  describe(locator: TerminalLocator): string;    // "cmux · workspace 2 · surface 5"
+  describe(locator: TerminalLocator): string; // "cmux · workspace 2 · surface 5"
 }
 ```
 
@@ -196,13 +196,13 @@ From a Pi session in cmux on the Mac:
 
 ## Decisions
 
-| Question | Decision |
-|---|---|
-| Layout | **B, card grid** grouped by directory; a card opens the full detail page (`#<session-id>`) |
-| Port | Fixed **7317** on `127.0.0.1`, overridable in `~/.pi/agent/dashboard.json` |
-| Print mode | `pi -p` / json / rpc runs are **not shown**; interactive (`tui`) main sessions only |
-| Stash scope | **Current branch only**, matching `stash_list` |
-| Blackhole | **Show what is derivable** from saved entries: observations, reflections, dropped, compactions, last compaction, tokens since compaction. No live gauges and no upstream ask for now |
+| Question    | Decision                                                                                                                                                                             |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Layout      | **B, card grid** grouped by directory; a card opens the full detail page (`#<session-id>`)                                                                                           |
+| Port        | Fixed **7317** on `127.0.0.1`, overridable in `~/.pi/agent/dashboard.json`                                                                                                           |
+| Print mode  | `pi -p` / json / rpc runs are **not shown**; interactive (`tui`) main sessions only                                                                                                  |
+| Stash scope | **Current branch only**, matching `stash_list`                                                                                                                                       |
+| Blackhole   | **Show what is derivable** from saved entries: observations, reflections, dropped, compactions, last compaction, tokens since compaction. No live gauges and no upstream ask for now |
 
 ## Next steps
 

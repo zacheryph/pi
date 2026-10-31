@@ -29,7 +29,7 @@ Three facts shaped the decision.
    Its "Reactive versus discrete (not internal versus external)" refinement rules `SubagentsService.getRecord` a query by nature, in-package or not.
    A snapshot is the discrete half of that split, and what belongs in it follows from that rather than from a field-by-field vote.
 3. **Whether the required-versus-optional question is even a semver question depends on the contract direction.**
-   TypeScript is structurally typed: adding a required property to a type breaks code that *builds* the value, never code that *reads* it.
+   TypeScript is structurally typed: adding a required property to a type breaks code that _builds_ the value, never code that _reads_ it.
 
 ## Decision
 

@@ -3,7 +3,7 @@
 Independent Pi extension: concise on-demand session recaps and short session/terminal-tab names.
 
 - `/tldr`: immediately opens a dismissible modal with a “Summarizing session…” indicator. When ready, it shows the initial premise, major findings/turning points (bullets), current status, and a 2–4-word title. Errors appear in the same modal. Fullscreen mode uses a centered overlay; regular mode uses a custom screen. Esc/Enter closes; Up/Down scroll.
-- After the first user prompt on a *new* session, generate a short title asynchronously without blocking the main agent. Do not overwrite an existing manual session name or rename an old session upon resume.
+- After the first user prompt on a _new_ session, generate a short title asynchronously without blocking the main agent. Do not overwrite an existing manual session name or rename an old session upon resume.
 - `/tldr` refreshes the title using the **same** response as the summary only if it is unset or still equal to the last name this extension generated; manual names are never replaced. Short names are lowercase hyphen-separated, max 4 words and 48 characters. Pi manages terminal/tab titles normally.
 - The summary uses the active branch, includes a preserved first prompt after compaction, and bounds the supplied transcript; it's intentionally not a full transcript export.
 

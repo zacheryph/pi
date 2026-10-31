@@ -38,17 +38,17 @@ export function isLockableField(name: string): name is LockableField {
  * agent's own `runInBackground` frontmatter fills it.
  */
 export type BackgroundRequest =
-	| { kind: "explicit"; isBackground: boolean }
-	| { kind: "default"; isBackground: boolean };
+  | { kind: "explicit"; isBackground: boolean }
+  | { kind: "default"; isBackground: boolean };
 
 /** Resolve the effective background mode. Explicit answers are honored verbatim. */
 export function resolveBackgroundMode(
-	agentConfig: Pick<AgentConfig, "runInBackground">,
-	request: BackgroundRequest,
+  agentConfig: Pick<AgentConfig, "runInBackground">,
+  request: BackgroundRequest,
 ): boolean {
-	return request.kind === "explicit"
-		? request.isBackground
-		: (agentConfig.runInBackground ?? request.isBackground);
+  return request.kind === "explicit"
+    ? request.isBackground
+    : (agentConfig.runInBackground ?? request.isBackground);
 }
 
 interface AgentInvocationParams {

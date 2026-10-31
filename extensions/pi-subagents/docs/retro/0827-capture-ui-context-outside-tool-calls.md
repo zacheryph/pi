@@ -16,7 +16,7 @@ Filed [#849] for the widget's missing `session_shutdown` teardown and recorded i
 ### Observations
 
 - **The tool-call gate protects nothing.**
-  The issue's central open question — "is the tool-call gate protecting something specific about *when* a `UICtx` is safe to capture?"
+  The issue's central open question — "is the tool-call gate protecting something specific about _when_ a `UICtx` is safe to capture?"
   — resolves to no. `phase-18-reconsider-ui.md` Step 4 records [#423]'s invariant as "no inbound calls from core **spawn tools**", which is about `foreground-runner.ts`/`background-spawner.ts`, not about `tool_execution_start` as a capture site.
   `ToolStartHandler` predates that work (`c293e41e`); it is where a `ctx` happened to be in hand.
   Reading the close comment / history file rather than the ADR's summary sentence is what settled it.
@@ -74,7 +74,7 @@ Pre-completion reviewer: PASS.
 - **Deviation 2 — the plan's mutation set had a hole, in the half the change relocated.**
   All three killing mutations the plan named killed exactly the tests it predicted (2 / 1 / 1).
   But a fourth mutation — deleting `pi.on("turn_start", () => widgetEvents.handleTurnStart())` from `src/index.ts` — left the entire 1352-test suite green.
-  The plan reasoned about mutations for the code it *wrote* (the two handler methods) and for the wiring line that fixed the *bug*, and skipped the wiring line that merely *moved*.
+  The plan reasoned about mutations for the code it _wrote_ (the two handler methods) and for the wiring line that fixed the _bug_, and skipped the wiring line that merely _moved_.
   A relocated call is exactly as unpinned at its new site as it was at its old one, and "behavior-preserving" is what makes it easy to skip.
   Fixed by adding a fourth composition-root test that drives an agent to completion and asserts the next `turn_start` clears the widget.
 
@@ -123,7 +123,7 @@ The retrospective's substantive finding is a gap in mutation-planning discipline
 - **The fourth mutation was unprompted, and it is the reason this change shipped pinned.**
   The plan named three killing mutations and all three killed exactly the tests predicted (2 / 1 / 1) — a clean pass by the letter of the protocol.
   The TDD agent then ran a fourth on its own: deleting `pi.on("turn_start", () => widgetEvents.handleTurnStart())` from `src/index.ts` left all 1352 tests green.
-  The plan had reasoned about mutations for the code it *wrote* (the two handler methods) and for the wiring line that *fixed the bug*, and skipped the wiring line that merely *moved*.
+  The plan had reasoned about mutations for the code it _wrote_ (the two handler methods) and for the wiring line that _fixed the bug_, and skipped the wiring line that merely _moved_.
   A relocated registration is exactly as unpinned at its new site as it was at its old one, and "behavior-preserving" is precisely what makes it easy to skip.
   Fixed with a fourth composition-root test that drives an agent to completion and asserts the next `turn_start` clears the widget.
 
@@ -150,7 +150,7 @@ The retrospective's substantive finding is a gap in mutation-planning discipline
   Impact: caught only because the TDD agent went beyond the plan; cost one extra composition-root test.
   Had it not, a behavior-preserving relocation would have shipped unpinned with a green suite and a PASS review.
 
-- `missing-context` (subagent scope) — the `tidy-first-assessor`'s target-file list, drawn per the skill from "the `src`/`test` files the change will modify or create", excluded every test that merely *drives* the composition root.
+- `missing-context` (subagent scope) — the `tidy-first-assessor`'s target-file list, drawn per the skill from "the `src`/`test` files the change will modify or create", excluded every test that merely _drives_ the composition root.
   `test/composition-root.test.ts` was not a file the design edited; it was a file the design would break.
   The assessor also read SDK `0.79.1` rather than the pinned `0.84.4` for its `session_start` ctx check.
   Impact: none in either case — the planning agent's own post-assessment `grep -rn '#src/index'` caught the first, and it had independently verified the SDK facts against `0.84.4`.

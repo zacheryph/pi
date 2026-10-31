@@ -11,12 +11,12 @@ issue_title: "pi-subagents Phase 20 Step 9: consolidate remaining test clone fam
 
 Planned Phase 20 Step 9.
 Discovery surfaced that the issue's premise has shifted: fallow 3.2.0 now excludes `**/*.test.*` from duplication detection by default, so `fallow dupes --workspace @gotgenes/pi-subagents` reports zero test clones and the "9 in-package clone groups / 81 lines" baseline is no longer measurable.
-The residual duplication in the three named files is the repeated system-under-test *act* call, which the `testing` skill explicitly forbids wrapping.
+The residual duplication in the three named files is the repeated system-under-test _act_ call, which the `testing` skill explicitly forbids wrapping.
 The operator chose (planning `ask-user`) the **narrow arrange-only tidy + metric update** direction, so the plan retires the health metric and lands only the one genuine describe-scoped arrange hoist.
 
 ### Observations
 
-- fallow 3.2.0's `duplicates.ignoreDefaults` is all-or-nothing: `duplicates.ignore` only *adds* patterns, so the only way to re-include test files is `ignoreDefaults: false`, which drops every built-in framework ignore repo-wide across all six packages.
+- fallow 3.2.0's `duplicates.ignoreDefaults` is all-or-nothing: `duplicates.ignore` only _adds_ patterns, so the only way to re-include test files is `ignoreDefaults: false`, which drops every built-in framework ignore repo-wide across all six packages.
   Rejected as out of scope — restoring one package's metric isn't worth repo-wide clone noise.
 - The arrange for all three suites was already factored by prior steps (#378, #379 in Phase 17; Step 8 / #542 in Phase 20) — `createManager`, `arrangeQueuedPair`, `manager-stubs.ts`, `mock-session.ts`, `makeModel`, `exploreConfig`.
   The one un-hoisted arrange is the `lifecycle observer forwarding` describe in `subagent-manager.test.ts` (two tests sharing an identical 3-line setup) — the only concrete tidy in the plan.

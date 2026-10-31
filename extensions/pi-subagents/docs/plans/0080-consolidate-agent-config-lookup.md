@@ -98,7 +98,7 @@ Test files that mock `agent-types.js` with both functions:
 ### `resolveAgentConfig` semantics
 
 ```typescript
-export function resolveAgentConfig(type: string): AgentConfig
+export function resolveAgentConfig(type: string): AgentConfig;
 ```
 
 1. Case-insensitive key lookup via `resolveKey(type)`.

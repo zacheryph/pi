@@ -3,11 +3,13 @@
  */
 
 import type { Model } from "@earendil-works/pi-ai";
-import type { AgentSessionEvent, SessionContext as SdkSessionContext } from "@earendil-works/pi-coding-agent";
+import type {
+  AgentSessionEvent,
+  SessionContext as SdkSessionContext,
+} from "@earendil-works/pi-coding-agent";
 import type { LockDeclaration } from "#src/config/invocation-config";
 import type { SubagentThinkingLevel } from "#src/config/thinking-level";
 import type { ModelRegistry } from "#src/session/model-resolver";
-
 
 export type { SteerOutcome } from "#src/lifecycle/subagent";
 export { Subagent } from "#src/lifecycle/subagent";
@@ -137,12 +139,12 @@ export type ShellExec = (
 
 /** Parent session identity — grouped fields that travel together from the tool boundary. */
 export interface ParentSessionInfo {
-	/** Path to the parent session's JSONL file (for deriving the subagent session directory). */
-	parentSessionFile?: string;
-	/** Session ID of the parent agent (stored in the child session's parentSession header). */
-	parentSessionId?: string;
-	/** Tool call ID for background notification wiring. Exposed on the record via Subagent.toolCallId. */
-	toolCallId?: string;
+  /** Path to the parent session's JSONL file (for deriving the subagent session directory). */
+  parentSessionFile?: string;
+  /** Session ID of the parent agent (stored in the child session's parentSession header). */
+  parentSessionId?: string;
+  /** Tool call ID for background notification wiring. Exposed on the record via Subagent.toolCallId. */
+  toolCallId?: string;
 }
 
 /** Compaction event info passed through lifecycle observers. */

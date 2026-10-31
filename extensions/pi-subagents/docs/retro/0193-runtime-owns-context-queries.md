@@ -32,14 +32,14 @@ Final test count: 854 (up from 848 baseline, +6 new tests for `buildSnapshot`, `
 ### Observations
 
 - The plan's Non-Goals section incorrectly said `buildParentContext` would NOT change.
-In practice it had to accept `SessionContext` instead of `ExtensionContext` — they are not substitutable in that direction.
-The Module-Level Changes list was correct; only the Non-Goals prose was wrong.
+  In practice it had to accept `SessionContext` instead of `ExtensionContext` — they are not substitutable in that direction.
+  The Module-Level Changes list was correct; only the Non-Goals prose was wrong.
 - `context.ts` needed a local `BranchEntry` union type to handle `getBranch(): unknown[]`.
-TypeScript's discriminated union narrowing doesn't work when the union includes a catch-all `{ type: string }` arm — explicit casts within each `if` branch were required.
+  TypeScript's discriminated union narrowing doesn't work when the union includes a catch-all `{ type: string }` arm — explicit casts within each `if` branch were required.
 - `service-adapter.ts` ended up using `runtime.currentCtx.modelRegistry` directly (no `getModelInfo()` call needed in the service adapter) — `ServiceRuntimeLike` only needs `currentCtx` and `buildSnapshot`.
-This is cleaner than the plan's `getModelInfo(): { modelRegistry: unknown }` approach.
+  This is cleaner than the plan's `getModelInfo(): { modelRegistry: unknown }` approach.
 - Biome's `noUnusedPrivateClassMembers` warning caught the leftover `private readonly pi: unknown` in `SessionLifecycleHandler`.
-Removed `pi` from the constructor entirely (rather than adding `_` prefix), which also cleaned up `index.ts`.
+  Removed `pi` from the constructor entirely (rather than adding `_` prefix), which also cleaned up `index.ts`.
 - The `eslint-disable` directive at the top of `index.ts` had two now-unused entries (`no-unsafe-member-access`, `no-unsafe-call`) removed by `eslint --fix`.
 
 ## Stage: Final Retrospective (2026-05-24T20:45:00Z)

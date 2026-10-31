@@ -82,7 +82,7 @@ export class ConcurrencyQueue {
   enqueue(id: string): void;
   dequeue(id: string): boolean;
   markStarted(): void;
-  markFinished(): void;   // running--, drain()
+  markFinished(): void; // running--, drain()
   drain(): void;
   get queuedIds(): readonly string[];
   clear(): void;
@@ -126,7 +126,7 @@ This reordering is safe: `drain()` only starts promises (no await), and the obse
 export interface AgentManagerOptions {
   runner: AgentRunner;
   worktrees: WorktreeManager;
-  queue: ConcurrencyQueue;         // was: getMaxConcurrent
+  queue: ConcurrencyQueue; // was: getMaxConcurrent
   getRunConfig?: () => RunConfig;
   observer?: AgentManagerObserver;
 }

@@ -10,7 +10,7 @@ issue_title: "Remove isolated / extensions:false / noSkills from core"
 The core still carries an extension-lifecycle-control axis - `isolated`, `extensions: false`, and `noSkills` - that lets a spawn blanket-disable a child's extensions and skills.
 Per [ADR-0002], this is policy that does not belong in a minimal orchestrator.
 Deny-at-use (the in-child permission layer, shipped in Step 1 / #261) already covers what `isolated` pretended to do for tools.
-Prevent-load (refusing to bind an extension for true sandboxing) is genuinely generative and is deliberately left as a *latent, un-built* provider seam - we do not ship a vacant hook.
+Prevent-load (refusing to bind an extension for true sandboxing) is genuinely generative and is deliberately left as a _latent, un-built_ provider seam - we do not ship a vacant hook.
 
 This is Phase 16, Step 4.
 With the axis gone, children always load the parent's extensions and skills, and the recursion guard - which currently gates on `cfg.extensions` - becomes unconditional.
@@ -76,7 +76,7 @@ Two parallel axes leave the core together:
 | Skills     | `skills: true \| string[] \| false`; `isolated` forces `false` | always inherit full skill system (field gone) |
 
 The `skills` field collapses for the same reason `extensions` does: `noSkills` is the single mechanism behind **both** restriction modes (`skills: false` → no skills; `skills: string[]` → only those, preloaded into the prompt with the SDK loader suppressed).
-Removing `noSkills` without removing `AgentConfig.skills` would leave a field that silently stops restricting - a `string[]` agent would get its baked-in skills *plus* the full system.
+Removing `noSkills` without removing `AgentConfig.skills` would leave a field that silently stops restricting - a `string[]` agent would get its baked-in skills _plus_ the full system.
 [ADR-0002] says children always load the parent’s skills, which is exactly the `skills: true` path; the other two values are skill curation/policy and leave the core.
 
 ### Assembler after collapse

@@ -1,6 +1,6 @@
 ---
 issue: 883
-issue_title: "pi-subagents: subagents on a Claude-Agent-SDK provider (pi-claude-bridge) get 400 \"Third-party apps now draw from your extra usage\" — the inherited parent prompt is the trigger"
+issue_title: 'pi-subagents: subagents on a Claude-Agent-SDK provider (pi-claude-bridge) get 400 "Third-party apps now draw from your extra usage" — the inherited parent prompt is the trigger'
 pr: 884
 ---
 
@@ -25,7 +25,7 @@ All three assertions passed, confirming the defect:
 - an `append`-mode child inherits both verbatim, plus `operating inside pi, a coding agent harness`;
 - a `replace`-mode child does too.
 
-The line lives in pi's base preamble (`../pi/packages/coding-agent/src/core/system-prompt.ts`, the documentation-routing bullet), which pi emits *before* `<project_context>`, the skills catalogue, and the cwd footer.
+The line lives in pi's base preamble (`../pi/packages/coding-agent/src/core/system-prompt.ts`, the documentation-routing bullet), which pi emits _before_ `<project_context>`, the skills catalogue, and the cwd footer.
 `inheritedIdentity` in `packages/pi-subagents/src/session/prompts.ts` cuts at the catalogue-or-footer, so the base preamble is on the kept side by construction.
 This is ADR 0006 working as designed, not a bug in the cut.
 
@@ -61,7 +61,7 @@ for (let start = custom.indexOf(key); start !== -1; start = custom.indexOf(key, 
 ```
 
 `key` is the parent's `assembledPrompt` — catalogue, cwd footer and all.
-But `inheritedIdentity` *truncates* the parent prompt before embedding it, so `indexOf` returns `-1`, no inheritance edge is recorded, and the whole pi base is forwarded verbatim.
+But `inheritedIdentity` _truncates_ the parent prompt before embedding it, so `indexOf` returns `-1`, no inheritance edge is recorded, and the whole pi base is forwarded verbatim.
 
 The dates line up:
 
@@ -82,7 +82,7 @@ The matcher fails on the truncation.
 #### Why our own children are unaffected
 
 `@gotgenes/pi-anthropic-auth` strips the offending paragraphs at the transport boundary.
-Its `PARAGRAPH_REMOVAL_ANCHORS` drops the paragraph beginning `Pi documentation (read only when the user asks about pi itself`, which *is* the block containing the trigger line, along with the pi identity sentence and the `In addition to the tools above` filler.
+Its `PARAGRAPH_REMOVAL_ANCHORS` drops the paragraph beginning `Pi documentation (read only when the user asks about pi itself`, which _is_ the block containing the trigger line, along with the pi identity sentence and the `In addition to the tools above` filler.
 
 Running `shapeAnthropicOAuthSystemPrompt` over a real child prompt confirmed it:
 
@@ -111,7 +111,7 @@ Recorded so a later stage does not re-derive it.
 
 > If pi later exposes an inherited-system-prompt field, it should replace this inference.
 
-But any marker placed *before* the inherited text breaks the byte-identical parent prefix that `f35e7b1b` ("perf: remove `<inherited_system_prompt>` wrapper to maximise KV cache reuse (#180)") and `1cc25cf0` (#400) exist to preserve.
+But any marker placed _before_ the inherited text breaks the byte-identical parent prefix that `f35e7b1b` ("perf: remove `<inherited_system_prompt>` wrapper to maximise KV cache reuse (#180)") and `1cc25cf0` (#400) exist to preserve.
 This constrains any provenance design before it starts, and is likely why the PR reached for a side channel instead.
 
 #### Code-level findings on the PR itself
@@ -180,7 +180,7 @@ That finding arrived only after the operator asked what `pi-claude-bridge` was, 
   Record 3 shows the `Pi documentation` block absent, settling "why does this not affect us" with an artifact rather than an inference.
   Novel: no prior session in this repo has read a wire capture as evidence.
 - **Cross-package empirical verification.**
-  Running `shapeAnthropicOAuthSystemPrompt` from `@gotgenes/pi-anthropic-auth` directly over a generated child prompt (2894 chars to 1291, trigger gone) proved the immunity claim rather than asserting it, and proved it for the *child*, which the wire log did not cover.
+  Running `shapeAnthropicOAuthSystemPrompt` from `@gotgenes/pi-anthropic-auth` directly over a generated child prompt (2894 chars to 1291, trigger gone) proved the immunity claim rather than asserting it, and proved it for the _child_, which the wire log did not cover.
 - **Pulling the third-party published tarball.**
   `pnpm view pi-claude-bridge@0.7.0 dist.tarball` plus `grep -c findInheritedPrompts` converted "the bridge's safeguard can never match" from a reporter's claim into a checkable fact, and the date table followed from it.
   This is the third-party analogue of the `AGENTS.md` rule about reading a published tag before pricing a rename.
@@ -228,12 +228,12 @@ That finding arrived only after the operator asked what `pi-claude-bridge` was, 
 
 ### Changes made
 
-1. `.pi/prompts/pr-review.md` — added Verify-gate item 6, *Read the downstream consumer*: when the report names another project as the failure path, read that project before judging the diff, and ask there the same already-fixed question item 2 asks here (`pnpm view <pkg> dist.tarball`).
+1. `.pi/prompts/pr-review.md` — added Verify-gate item 6, _Read the downstream consumer_: when the report names another project as the failure path, read that project before judging the diff, and ask there the same already-fixed question item 2 asks here (`pnpm view <pkg> dist.tarball`).
 2. `.pi/prompts/pr-review.md` — added Gather-context item 6: establish whether the defect can reach us, by checking the `@gotgenes/*` extensions this repo runs under, including ones outside this monorepo.
 3. `.pi/prompts/plan-issue.md` — extended Gather-context item 4's upstream-dependency rule: searching the tracker is not reading the code, so read the blamed project's source and the reporter's published tarball.
    Folded into the existing sentence rather than added as an item, because that rule already sends the session to the other project and merely stops at the tracker.
 4. `.pi/prompts/plan-issue.md` — extended Gather-context item 6 with the same reachability check as change 2.
-5. `AGENTS.md`, `## Reading this repo's own artifacts` — added the durable form: a third-party report's claim about the *other* side is the one to check, with #883 as the worked example, plus the separate reachability question.
+5. `AGENTS.md`, `## Reading this repo's own artifacts` — added the durable form: a third-party report's claim about the _other_ side is the one to check, with #883 as the worked example, plus the separate reachability question.
 
 The imperative is duplicated across both prompts and `AGENTS.md`; the rationale and worked example live only in `AGENTS.md` and this retro.
 That split is deliberate — this session skipped two ambient `AGENTS.md` rules (glob quoting, `pnpm` over `npm`), so an ambient rule alone does not reliably fire at the point of use.
@@ -259,11 +259,11 @@ The operator's call is to reply now with two additions and hold the disposition 
 
 The most valuable thing in the reply is a reconciliation neither side could have reached alone. @georgeharker's bridge fork carried `fix/subagent-provider-registration` (`ff505ac`, 2026-08-25), which routed child streaming through the child's **own** module instance because the parent-routed path broke prompt capture — its commit message quotes the bridge's `prompt-capture: no capture for this system prompt` throw.
 That was a bridge-side resolution of the same problem `f805ffc` (2026-08-28, "inherit runtime-registered providers in child sessions", #812) solved on this side.
-Under his fork the capture maps genuinely were separate, so instance isolation *was* the operative mechanism; under upstream `pi-subagents` the child uses the parent's registered provider object, the singleton is shared, and bytes became the blocker.
+Under his fork the capture maps genuinely were separate, so instance isolation _was_ the operative mechanism; under upstream `pi-subagents` the child uses the parent's registered provider object, the singleton is shared, and bytes became the blocker.
 
 The review's PR-side comment treated his instance-isolation claim as simply wrong.
 It was configuration-dependent, and neither party could see the other's configuration.
-This is the sharper form of the `AGENTS.md` rule added in this issue's retro: a third-party report's claim about the other side needs checking, but "checked and false" may mean "false in *our* configuration", not "false".
+This is the sharper form of the `AGENTS.md` rule added in this issue's retro: a third-party report's claim about the other side needs checking, but "checked and false" may mean "false in _our_ configuration", not "false".
 
 #### The prototype and what it covers
 
@@ -371,7 +371,7 @@ Each downstream layer anchors on text the layer beneath leaves in place: `pi-per
 
 Scenario 5 is the finding that settles `portable`'s scope.
 `shapeAnthropicOAuthSystemPrompt` opens with `indexOf(PI_DEFAULT_PROMPT_PREFIX)` and returns the prompt unchanged on `-1` (`~/development/pi/pi-anthropic-auth/src/system-prompt-shaping.ts:123-126`).
-A portable child has no pi role line, so shaping does nothing — and the child never receives `MINIMAL_ANTHROPIC_OAUTH_PROMPT`, which under `full` *replaces* the stripped preamble.
+A portable child has no pi role line, so shaping does nothing — and the child never receives `MINIMAL_ANTHROPIC_OAUTH_PROMPT`, which under `full` _replaces_ the stripped preamble.
 Combined with `general-purpose`'s `systemPrompt: ""` (`src/config/default-agents.ts:23`), a portable child on `anthropic` runs with `AGENTS.md`, a tag, an env block, and no role framing.
 Under `full` the same stack already produces `portable`'s intended outcome and supplies role framing as well.
 
@@ -505,7 +505,7 @@ Pre-completion review returned **PASS** with one WARN, which was closed by `ec33
 
 #### Two mutations were wrong before they were right
 
-The plan's killing mutations mostly landed as predicted, but two needed reshaping at the bench, and both taught the same lesson: a mutation must be *narrow*, or its blast radius stops being evidence.
+The plan's killing mutations mostly landed as predicted, but two needed reshaping at the bench, and both taught the same lesson: a mutation must be _narrow_, or its blast radius stops being evidence.
 
 - Inverting `buildPortablePrompt`'s `if (!options)` guard reddened **12** tests, not the 3 the plan named — because the inverted guard let the no-options path fall through to `options.customPrompt` and throw.
   A crash is not a discrimination signal.
@@ -515,7 +515,7 @@ The plan's killing mutations mostly landed as predicted, but two needed reshapin
 
 #### A vacuous probe survived its own mutation
 
-The composition-root test asserting the deps bag carries a settings-backed resolver was written as `expect(deps.resolvePromptInheritance("claude-bridge")).toBe("full")` — true under the real resolver *and* under a hardcoded `() => "full"`, which is exactly the mutation it was supposed to kill.
+The composition-root test asserting the deps bag carries a settings-backed resolver was written as `expect(deps.resolvePromptInheritance("claude-bridge")).toBe("full")` — true under the real resolver _and_ under a hardcoded `() => "full"`, which is exactly the mutation it was supposed to kill.
 The mutation ran green and the gap surfaced only because the step's prediction said it should not.
 
 Rewriting it to `mkdtemp` a project dir, write a real `.pi/subagents.json` with a `portable` rule, and `vi.spyOn(process, "cwd")` made it discriminate.
@@ -524,7 +524,7 @@ The general shape: **a wiring test whose assertion is the system's default value
 #### `promptGuidelines` was the design's real finding, and it held up
 
 Planning excluded `promptGuidelines` from the portable identity on the grounds that Pi derives it per session from the tools in the registry, correcting PR #884, which includes it.
-The reviewer re-derived this against `../pi/…/agent-session.ts` `_rebuildSystemPrompt` and confirmed it, then went further and checked the three fields that *are* included — `contextFiles`, `customPrompt`, `appendSystemPrompt` all come from the resource loader's operator-facing config surface, none tool- or session-derived.
+The reviewer re-derived this against `../pi/…/agent-session.ts` `_rebuildSystemPrompt` and confirmed it, then went further and checked the three fields that _are_ included — `contextFiles`, `customPrompt`, `appendSystemPrompt` all come from the resource loader's operator-facing config surface, none tool- or session-derived.
 That is the check the plan should have specified itself: excluding the wrong field is only half the question.
 
 #### Deviations from the plan
@@ -532,7 +532,7 @@ That is the check the plan should have specified itself: excluding the wrong fie
 1. **One existing assertion needed updating.**
    `session-config.test.ts`'s "forwards the parent's cwd alongside its system prompt" pinned the inherited-prompt argument's exact shape with `toHaveBeenCalledWith`, so the two new fields broke it.
    Folded into Step 6 as the plan's TDD rules direct.
-   The plan's symbol sweep predicted no breakage because every field is optional — true at the type level, and this is the case that rule does not cover: an *exact-equality assertion* on a produced object breaks when the producer adds a field, whichever way the type is declared.
+   The plan's symbol sweep predicted no breakage because every field is optional — true at the type level, and this is the case that rule does not cover: an _exact-equality assertion_ on a produced object breaks when the producer adds a field, whichever way the type is declared.
 2. **`buildAgentPrompt`'s test-helper stub had to be typed.**
    `createSubagentSessionIO` declared it `vi.fn((..._args: unknown[]) => string)`, so a test could not read back the fourth argument.
    Retyping it to `vi.fn<AssemblerIO["buildAgentPrompt"]>()` cascaded into one placeholder call in `subagent-session-io.test.ts` that passed `{}` for the config and env.
@@ -570,14 +570,14 @@ One accepted residual was filed as #904 and dispositioned as Phase 22 Step 20.
 #### What went well
 
 - **The clarification gate produced five substantive design changes, not one decision.**
-  Each `ask_user` round on the configuration surface was bounced with a question rather than an answer, and each bounce changed the design: showing the config combinations in the real files; the operator's "inheritance is a property of the provider" insight, which inverted the PR's precedence chain; a pressure test against [#180]'s local-model user, which confirmed the choice and strengthened its rationale; a request for stack-by-stack scenarios, which produced the finding that `portable` on `anthropic` is *worse* than the default; and "what is `genericBase`?", which surfaced a live capability-claim defect and became [#904].
+  Each `ask_user` round on the configuration surface was bounced with a question rather than an answer, and each bounce changed the design: showing the config combinations in the real files; the operator's "inheritance is a property of the provider" insight, which inverted the PR's precedence chain; a pressure test against [#180]'s local-model user, which confirmed the choice and strengthened its rationale; a request for stack-by-stack scenarios, which produced the finding that `portable` on `anthropic` is _worse_ than the default; and "what is `genericBase`?", which surfaced a live capability-claim defect and became [#904].
   Novel: no prior retro in this package records a gate whose every round changed the artifact rather than selecting among prepared options.
 - **Reading the dependency's source at planning time corrected the contributed design.**
   `promptGuidelines` was in PR #884's portable parts and in this session's own recorded PR-review decision.
   Opening `../pi/…/agent-session.ts` `_rebuildSystemPrompt` showed it is built by walking `_toolPromptGuidelines` over the session's valid tool names — tool-derived, so inheriting the parent's would assert guidance for tools the child lacks, the exact defect [ADR 0008] removed.
   Excluding it produced a sharper boundary than the PR had ("the operator's own text, and nothing Pi or a tool contributed") and dissolved a rendering question along with it.
 - **The mandated mutation step caught a probe that Red had already blessed.**
-  The composition-root test asserting the deps bag carries a settings-backed resolver went red during Red — but for a *signature* reason (`deps.resolvePromptInheritance` did not exist), not a behavioral one.
+  The composition-root test asserting the deps bag carries a settings-backed resolver went red during Red — but for a _signature_ reason (`deps.resolvePromptInheritance` did not exist), not a behavioral one.
   Its assertion (`…).toBe("full")`) was satisfied by both the real resolver and the hardcoded `() => "full"` it was meant to reject.
   This is precisely the case `/tdd-plan`'s step-3 bullet 1 names, and it is the first time that bullet's stated rationale has been validated against a real vacuous probe here.
 - **The scoped delta re-review is a cheap pattern.**
@@ -618,7 +618,7 @@ One accepted residual was filed as #904 and dispositioned as Phase 22 Step 20.
 
 #### What caused friction (user side)
 
-- Framed as opportunity: the operator's five gate bounces were each a *question* rather than a correction — "show me what the configuration combinations actually look like", "pressure test my choice against #180", "what is `genericBase`?"
+- Framed as opportunity: the operator's five gate bounces were each a _question_ rather than a correction — "show me what the configuration combinations actually look like", "pressure test my choice against #180", "what is `genericBase`?"
   That is the highest-yield form of intervention in this repo's flow, and it worked: every round improved the artifact.
   The one thing that would have compressed it is the premise check above, which is mine to fix, not the operator's.
 - The operator's `pi-anthropic-auth` requirement ("I want to make sure I am covered") arrived at round four.
@@ -633,7 +633,7 @@ One accepted residual was filed as #904 and dispositioned as Phase 22 Step 20.
 - **Escalation-delay tracking** — no `rabbit-hole` friction points.
   The longest same-error sequence was the vacuous-probe diagnosis at 4 consecutive calls, under the five-call threshold, and it ended in a fix rather than a widening search.
 - **Unused-tool detection** — `colgrep` was available and never used; every exploration was exact-symbol (`grep` for `excludedExtensionPackages`, `buildSnapshot`, `promptGuidelines`), which is the right tool for those.
-  The two `missing-context` points above were both about *typing and lifecycle of test helpers*, which no search tool surfaces — reading the helper file would have.
+  The two `missing-context` points above were both about _typing and lifecycle of test helpers_, which no search tool surfaces — reading the helper file would have.
 - **Feedback-loop gap analysis** — verification ran incrementally throughout: `pnpm run check` after every interface-touching step (Steps 2, 3, 4, 6), the affected test file after every Red and Green, and the full suite at Steps 6 and the end.
   The baseline was established before Step 1 with all four gates, which made the single `available_skills` metric row and the 1638 → 1676 test delta checkable rather than asserted.
   No gap to flag.

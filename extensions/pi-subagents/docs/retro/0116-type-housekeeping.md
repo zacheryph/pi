@@ -38,5 +38,5 @@ Released as `pi-subagents-v6.9.2`.
 
 ### Takeaway
 
-When relocating a type or symbol, always run `grep -rn 'SymbolName' src/ test/` before editing to identify *all* importers upfront — both source and test files.
+When relocating a type or symbol, always run `grep -rn 'SymbolName' src/ test/` before editing to identify _all_ importers upfront — both source and test files.
 This avoids the repeated pattern of "edit source → type-check fails on test → fix test → type-check again."

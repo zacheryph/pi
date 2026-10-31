@@ -21,7 +21,7 @@ Two prior investigations narrowed it.
 What remains is **recognition and affordance**.
 `rg -in resume` across `background-spawner.ts`, `foreground-runner.ts`, `get-result-report.ts`, `notification.ts`, and `prompts.ts` matches nothing.
 The child is never told the parent can answer it, and no delivery surface tells the parent that a given result is answerable.
-The only mention anywhere is one static tool guideline — "Use resume with an agent ID to continue a previous agent's work" — which reads as *continue work*, not *answer a question*.
+The only mention anywhere is one static tool guideline — "Use resume with an agent ID to continue a previous agent's work" — which reads as _continue work_, not _answer a question_.
 
 Planning also found the surrounding delivery path unsound in ways that block the fix:
 
@@ -44,7 +44,7 @@ The nudge's existing status strings change wording (see Module-Level Changes); t
 
 - **A child-initiated mid-run channel** — a child that pauses and waits for an answer without terminating.
   Filed as [#858] and adopted as Phase 22 Step 11.
-  This plan's scope is a *completed* child, matching the roadmap step's stated Outcome.
+  This plan's scope is a _completed_ child, matching the roadmap step's stated Outcome.
 - **Fixing the workspace-on-resume defect** — `completeRun()` disposes the child's workspace and `resume()` never re-prepares it, so a workspace-backed ask-back child resumes into a torn-down directory.
   Filed as [#857] and adopted as Phase 22 Step 10.
   This plan does not depend on it: ask-back works for children with no registered `WorkspaceProvider`.
@@ -81,9 +81,9 @@ Archaeology shows this is residue rather than a decision.
 
 ```typescript
 if (options.isBackground) {
-  this.runningBackground--;                    // concurrency accounting
-  this.observer?.onAgentCompleted(record);     // events + persistence + notification
-  this.drainQueue();                           // queue draining
+  this.runningBackground--; // concurrency accounting
+  this.observer?.onAgentCompleted(record); // events + persistence + notification
+  this.drainQueue(); // queue draining
 }
 ```
 
@@ -146,7 +146,7 @@ The built-in `Explore` and `Plan` agents are `promptMode: "replace"`, so they ne
 The three status vocabularies exist because two carriers need different grammar: the nudge wants a standalone label, the foreground result wants a parenthetical suffix appended to a sentence.
 Collapsing them into one function would force one carrier's sentence to change shape.
 
-The design keeps one source of truth for the *facts* and two thin presentations over it:
+The design keeps one source of truth for the _facts_ and two thin presentations over it:
 
 ```typescript
 /** The single terminal-status vocabulary. Presentation is layered over this. */
@@ -259,17 +259,17 @@ Every other transition on this class is monotonic (`??=`), so a revocable pair i
 
 ```typescript
 if (this.disposed) return;
-if (record.claimed) return;   // structural: a carrier owns this outcome
-if (record.consumed) return;  // temporal: the parent already pulled it
+if (record.claimed) return; // structural: a carrier owns this outcome
+if (record.consumed) return; // temporal: the parent already pulled it
 ```
 
 Claim and release points:
 
-| Site                              | Claims                         | Releases                                                                          |
-| --------------------------------- | ------------------------------ | --------------------------------------------------------------------------------- |
-| `spawnAndWait` (foreground)       | at call, before the run starts | never — see below                                                                 |
-| `AgentTool` resume branch         | before `manager.resume(...)`   | on the failure return paths                                                       |
-| `get_subagent_result` with `wait` | before `waitUntilSettled`      | when the wait is abandoned (`record.isActive()` still true)                       |
+| Site                              | Claims                         | Releases                                                    |
+| --------------------------------- | ------------------------------ | ----------------------------------------------------------- |
+| `spawnAndWait` (foreground)       | at call, before the run starts | never — see below                                           |
+| `AgentTool` resume branch         | before `manager.resume(...)`   | on the failure return paths                                 |
+| `get_subagent_result` with `wait` | before `waitUntilSettled`      | when the wait is abandoned (`record.isActive()` still true) |
 
 The third row preserves `get-result-tool.ts`'s documented abandoned-wait behavior exactly, now as an explicit release rather than an emergent one.
 
@@ -324,7 +324,7 @@ Historical plans and retros under `docs/plans/` and `docs/retro/` also name `get
 The carrier tests keep only their framing assertions.
 
 **Existing tests that must stay.**
-`notification.test.ts`'s withhold-and-flush tests (#661) genuinely exercise the timing layer the claim does not replace — the claim gates *whether* a nudge is owed, not *when* it is delivered.
+`notification.test.ts`'s withhold-and-flush tests (#661) genuinely exercise the timing layer the claim does not replace — the claim gates _whether_ a nudge is owed, not _when_ it is delivered.
 `subagent-manager.test.ts`'s concurrency tests pin the limiter routing that the `isBackground` guard's siblings still govern.
 
 **Parser input domain.**
@@ -336,7 +336,7 @@ This change touches surfaces three earlier Phase 22 steps refactored.
 
 - **Step 7 (#798) — the spawn-notes prefix must lead the foreground result, ahead of the `Agent ID` line.**
   Pinned by the ordering assertion Step 7 added to `test/tools/foreground-runner.test.ts` (its retro records that the original test asserted containment only and was order-blind).
-  This plan appends the affordance *after* the body, so the prefix ordering is untouched — but the assertion must still be green after the body is sourced from the shared renderer.
+  This plan appends the affordance _after_ the body, so the prefix ordering is untouched — but the assertion must still be green after the body is sourced from the shared renderer.
 - **Step 7 — the `foreground-runner.ts` grep row (`grep -c 'Agent ID'`) must stay ≥ 1.**
   Measured now at the current commit: **2** (the success and error branches each carry the literal).
   This plan touches neither literal, so the predicted post-change value is **2**.
@@ -348,7 +348,7 @@ This change touches surfaces three earlier Phase 22 steps refactored.
   The ask-back block follows `activeAgentTag`, which already sits after the cacheable prefix, so the shared prefix is unchanged.
   `prompts.test.ts` pins this with `prompt.startsWith(\`${quoted}\n\n\`)` anchored on the identity region; the Tidy-First assessor confirmed no assertion does full-prompt equality, so no mass breakage is expected.
 - **#661 — a nudge is withheld while the parent's agent run is active and flushed on `agent_settled`, re-checking consumption.**
-  The claim gate is added *ahead* of this machinery, not in place of it.
+  The claim gate is added _ahead_ of this machinery, not in place of it.
   Pinned by the existing `notification.test.ts` withhold/flush tests, which must stay green unchanged.
 - **#617 — session retention is timed from consumption.**
   `consumedAt` is not moved, retyped, or re-timed by this plan; the claim is separate state.
@@ -378,7 +378,7 @@ This change touches surfaces three earlier Phase 22 steps refactored.
    These land together: the guard is what currently keeps a foreground completion out of the notification layer, so removing it alone would rest the suppression on the `markConsumed`/`agent_settled` race, which the interrupt edge loses.
    Observable: foreground children emit `subagents:completed` / `failed` / `resumed` and persist a `subagents:record`; no foreground agent produces a nudge, including on an interrupted turn.
    Test surface: `test/lifecycle/subagent-manager.test.ts` (the two guard assertions flip from `.not.toHaveBeenCalled()` to asserting the callback fires), `test/observation/notification.test.ts`.
-   Covers: a foreground completion emits and persists; a foreground completion sends no nudge; an *interrupted* foreground run sends no nudge (the edge the old race lost); the #661 withhold/flush tests stay green untouched.
+   Covers: a foreground completion emits and persists; a foreground completion sends no nudge; an _interrupted_ foreground run sends no nudge (the edge the old race lost); the #661 withhold/flush tests stay green untouched.
    Killing mutations, one per equivalence class:
    - Restore `if (agent.isBackground)` on `onRunFinished` — kills the foreground-emits tests; leaves the nudge-suppression tests green.
    - Restore it on `onResumeFinished` only — kills the foreground-resume-emits test alone.

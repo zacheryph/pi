@@ -44,7 +44,8 @@ export function createExcludedPackagesStorage(
 ): PiSettingsStorage {
   return {
     withLock(scope, fn) {
-      const settings = scope === "global" ? parent.getGlobalSettings() : parent.getProjectSettings();
+      const settings =
+        scope === "global" ? parent.getGlobalSettings() : parent.getProjectSettings();
       fn(JSON.stringify(withPackageExtensionsDisabled(settings, excluded)));
     },
   };

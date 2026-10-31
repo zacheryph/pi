@@ -18,11 +18,7 @@ import type {
 } from "../../pi-subagents/src/service/service.ts";
 import type { ActiveWorktrees } from "#src/active-worktrees";
 import type { WorktreesConfig } from "#src/config";
-import {
-  cleanupWorktree,
-  createWorktree,
-  type WorktreeInfo,
-} from "#src/worktree";
+import { cleanupWorktree, createWorktree, type WorktreeInfo } from "#src/worktree";
 
 /** A prepared git worktree plus its bracketed teardown. Born complete. */
 class WorktreeWorkspace implements Workspace {
@@ -37,14 +33,8 @@ class WorktreeWorkspace implements Workspace {
     return this.info.path;
   }
 
-  dispose(
-    outcome: WorkspaceDisposeOutcome,
-  ): { resultAddendum?: string } | undefined {
-    const result = cleanupWorktree(
-      this.repoCwd,
-      this.info,
-      outcome.description,
-    );
+  dispose(outcome: WorkspaceDisposeOutcome): { resultAddendum?: string } | undefined {
+    const result = cleanupWorktree(this.repoCwd, this.info, outcome.description);
     // No child is running here any more — a worktree cleanup left behind is a
     // preserved one from this point on, and the scan may report it.
     this.live.remove(this.info.path);

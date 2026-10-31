@@ -33,7 +33,7 @@ Test count went 960 → 961 (+1 for the new `rejected` case); the Tidy-First ass
 ### Observations
 
 - Deviation 1: `test/tools/steer-tool.test.ts` needed no edit — its `toContain` assertions already exercise all four outcome paths through the real `Subagent.steer` (`createTestSubagent`), so the plan's listed touch of that file was unnecessary.
-- Deviation 2: the `subagent.test.ts` "flushes pending steers when session is created" test buffered a steer on a *queued* agent before `run()`; the new first-guard rejects non-running steers, so the test now calls `agent.markRunning(Date.now())` before steering.
+- Deviation 2: the `subagent.test.ts` "flushes pending steers when session is created" test buffered a steer on a _queued_ agent before `run()`; the new first-guard rejects non-running steers, so the test now calls `agent.markRunning(Date.now())` before steering.
   This is a faithful reflection of production semantics (callers only ever steered running agents) rather than a behavior regression — it surfaced the plan's documented "running-but-sessionless → buffered" edge case as a concrete test adjustment.
 - The `service-adapter` non-running test fixture was swapped from a bare `{ id, status } as Subagent` stub to `createTestSubagent({ status: "completed" })` because the adapter now calls `record.steer` unconditionally — a real fixture-correctness fix, as the plan anticipated.
 - Complexity target met: `steer-tool.ts` dropped off the `fallow health --targets` refactoring list (health score 4.9); `execute` cyclomatic is ~5.
@@ -73,7 +73,7 @@ The land session ff-merged the peer branch onto `main`, CI passed on `0d45d4b9`,
 #### What caused friction (agent side)
 
 - `missing-context` — during the TDD "After the last TDD step" gates, the agent verified the plan's `steer-tool.execute` complexity target by probing three non-existent `fallow` subcommands (`fallow complexity`, `fallow refactor`, `fallow audit`) before landing on the documented `fallow health --targets` (peer TDD session, steps 60–63; 4 consecutive calls).
-  The `fallow` skill already documents `health --targets` and even the exact "confirm a file dropped off the list" JSON caveat (skill line 88), but the `/tdd-plan` prompt only mandates loading the `fallow` skill on a dead-code gate *failure*, not when a plan names a quantitative complexity target to verify — so the skill was never loaded and the command was rediscovered by trial.
+  The `fallow` skill already documents `health --targets` and even the exact "confirm a file dropped off the list" JSON caveat (skill line 88), but the `/tdd-plan` prompt only mandates loading the `fallow` skill on a dead-code gate _failure_, not when a plan names a quantitative complexity target to verify — so the skill was never loaded and the command was rediscovered by trial.
   Impact: 3 wasted tool calls, no rework, self-corrected within the same step.
 - `instruction-violation` (self-identified) — during this retro session, the `docs(retro)` commit (`f0232403`) swept in an unrelated staged deletion of `packages/pi-permission-system/docs/decisions/0007-model-triage-authorizer.md` (a live ADR from issue #581), even though only the two retro/prompt files were `git add`-ed.
   AGENTS.md warns about exactly this: "Staged deletions from `git rm` ride along with the next `git commit` even when you `git add` only unrelated paths — commit with an explicit pathspec or check `git status` first."

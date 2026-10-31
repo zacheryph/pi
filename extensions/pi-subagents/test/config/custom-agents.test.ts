@@ -33,7 +33,9 @@ describe("loadCustomAgents", () => {
   });
 
   it("loads a basic agent with all frontmatter fields", () => {
-    writeAgent("auditor", `---
+    writeAgent(
+      "auditor",
+      `---
 description: Security Auditor
 tools: read, grep, find
 model: anthropic/claude-opus-4-6
@@ -44,7 +46,8 @@ inherit_context: true
 run_in_background: true
 ---
 
-You are a security auditor.`);
+You are a security auditor.`,
+    );
 
     const result = loadCustomAgents(tmpDir);
     expect(result.size).toBe(1);
@@ -63,10 +66,13 @@ You are a security auditor.`);
   });
 
   it("uses sensible defaults when frontmatter is empty", () => {
-    writeAgent("minimal", `---
+    writeAgent(
+      "minimal",
+      `---
 ---
 
-Just a prompt.`);
+Just a prompt.`,
+    );
 
     const result = loadCustomAgents(tmpDir);
     const agent = result.get("minimal")!;
@@ -98,8 +104,11 @@ Just a prompt.`);
 
   it("parses all with negative literal and MCP selectors", () => {
     writeAgent("all-minus", "---\ntools: [all, -bash, '-mcp__github__*']\n---\nTools.");
-    expect(loadCustomAgents(tmpDir).get("all-minus")!.toolNames)
-      .toEqual(["all", "-bash", "-mcp__github__*"]);
+    expect(loadCustomAgents(tmpDir).get("all-minus")!.toolNames).toEqual([
+      "all",
+      "-bash",
+      "-mcp__github__*",
+    ]);
   });
 
   it("parses negative-only tools to be resolved against all", () => {
@@ -108,22 +117,28 @@ Just a prompt.`);
   });
 
   it("handles tools: none → empty array", () => {
-    writeAgent("notool", `---
+    writeAgent(
+      "notool",
+      `---
 tools: none
 ---
 
-No tools.`);
+No tools.`,
+    );
 
     const result = loadCustomAgents(tmpDir);
     expect(result.get("notool")!.toolNames).toEqual([]);
   });
 
   it("passes through unknown tool names (not filtered)", () => {
-    writeAgent("custom-tools", `---
+    writeAgent(
+      "custom-tools",
+      `---
 tools: read, my_custom_tool, grep
 ---
 
-Custom tools.`);
+Custom tools.`,
+    );
 
     const result = loadCustomAgents(tmpDir);
     // An extension-registered tool name is a supported `tools:` entry: the child's
@@ -132,11 +147,14 @@ Custom tools.`);
   });
 
   it("keeps an MCP tool pattern intact", () => {
-    writeAgent("mcp-tools", `---
+    writeAgent(
+      "mcp-tools",
+      `---
 tools: read, mcp__github__*
 ---
 
-GitHub tools.`);
+GitHub tools.`,
+    );
 
     const result = loadCustomAgents(tmpDir);
     // The child expands the pattern against the parent's tools when it is created.
@@ -145,58 +163,73 @@ GitHub tools.`);
 
   describe("tools field forms", () => {
     it("accepts a YAML block sequence", () => {
-      writeAgent("block-seq", `---
+      writeAgent(
+        "block-seq",
+        `---
 tools:
   - read
   - my_custom_tool
   - grep
 ---
 
-Block sequence.`);
+Block sequence.`,
+      );
 
       const result = loadCustomAgents(tmpDir);
       expect(result.get("block-seq")!.toolNames).toEqual(["read", "my_custom_tool", "grep"]);
     });
 
     it("accepts a YAML flow sequence", () => {
-      writeAgent("flow-seq", `---
+      writeAgent(
+        "flow-seq",
+        `---
 tools: [read, grep]
 ---
 
-Flow sequence.`);
+Flow sequence.`,
+      );
 
       const result = loadCustomAgents(tmpDir);
       expect(result.get("flow-seq")!.toolNames).toEqual(["read", "grep"]);
     });
 
     it("treats a single-element none sequence as no tools", () => {
-      writeAgent("seq-none", `---
+      writeAgent(
+        "seq-none",
+        `---
 tools: [none]
 ---
 
-No tools.`);
+No tools.`,
+      );
 
       const result = loadCustomAgents(tmpDir);
       expect(result.get("seq-none")!.toolNames).toEqual([]);
     });
 
     it("treats an empty sequence as no tools", () => {
-      writeAgent("seq-empty", `---
+      writeAgent(
+        "seq-empty",
+        `---
 tools: []
 ---
 
-No tools.`);
+No tools.`,
+      );
 
       const result = loadCustomAgents(tmpDir);
       expect(result.get("seq-empty")!.toolNames).toEqual([]);
     });
 
     it("keeps a comma inside a quoted sequence entry", () => {
-      writeAgent("seq-comma", `---
+      writeAgent(
+        "seq-comma",
+        `---
 tools: ["read", "weird,name"]
 ---
 
-Comma entry.`);
+Comma entry.`,
+      );
 
       const result = loadCustomAgents(tmpDir);
       expect(result.get("seq-comma")!.toolNames).toEqual(["read", "weird,name"]);
@@ -235,7 +268,10 @@ Comma entry.`);
     });
 
     it("reads every lockable field name", () => {
-      writeAgent("all", `---\nlocked: [model, thinking, max_turns, inherit_context, run_in_background]\n---\n\nAll.`);
+      writeAgent(
+        "all",
+        `---\nlocked: [model, thinking, max_turns, inherit_context, run_in_background]\n---\n\nAll.`,
+      );
 
       expect(loadCustomAgents(tmpDir).get("all")!.locked).toEqual([
         "model",
@@ -266,14 +302,11 @@ Comma entry.`);
   });
 
   describe("thinking level", () => {
-    it.each(["off", "minimal", "low", "medium", "high", "xhigh", "max"])(
-      "keeps %s",
-      (level) => {
-        writeAgent("thinker", `---\nthinking: ${level}\n---\n\nA thinker.`);
+    it.each(["off", "minimal", "low", "medium", "high", "xhigh", "max"])("keeps %s", (level) => {
+      writeAgent("thinker", `---\nthinking: ${level}\n---\n\nA thinker.`);
 
-        expect(loadCustomAgents(tmpDir).get("thinker")!.thinking).toBe(level);
-      },
-    );
+      expect(loadCustomAgents(tmpDir).get("thinker")!.thinking).toBe(level);
+    });
 
     /**
      * Pi does not reject an unrecognized level — clampThinkingLevel misses it in
@@ -296,70 +329,91 @@ Comma entry.`);
   });
 
   it("accepts max_turns: 0 as unlimited", () => {
-    writeAgent("unlimited", `---
+    writeAgent(
+      "unlimited",
+      `---
 max_turns: 0
 ---
 
-Unlimited turns.`);
+Unlimited turns.`,
+    );
 
     const result = loadCustomAgents(tmpDir);
     expect(result.get("unlimited")!.maxTurns).toBe(0);
   });
 
   it("keeps a max_turns below the minimum for the turn loop to raise", () => {
-    writeAgent("terse", `---
+    writeAgent(
+      "terse",
+      `---
 max_turns: 1
 ---
 
-Terse.`);
+Terse.`,
+    );
 
     expect(loadCustomAgents(tmpDir).get("terse")!.maxTurns).toBe(1);
   });
 
   it("rejects negative max_turns", () => {
-    writeAgent("negturns", `---
+    writeAgent(
+      "negturns",
+      `---
 max_turns: -5
 ---
 
-Negative turns.`);
+Negative turns.`,
+    );
 
     const result = loadCustomAgents(tmpDir);
     expect(result.get("negturns")!.maxTurns).toBeUndefined();
   });
 
   it("handles prompt_mode: append", () => {
-    writeAgent("appender", `---
+    writeAgent(
+      "appender",
+      `---
 prompt_mode: append
 ---
 
-Extra instructions.`);
+Extra instructions.`,
+    );
 
     const result = loadCustomAgents(tmpDir);
     expect(result.get("appender")!.promptMode).toBe("append");
   });
 
   it("defaults unknown prompt_mode to append", () => {
-    writeAgent("badmode", `---
+    writeAgent(
+      "badmode",
+      `---
 prompt_mode: merge
 ---
 
-Unknown mode.`);
+Unknown mode.`,
+    );
 
     const result = loadCustomAgents(tmpDir);
     expect(result.get("badmode")!.promptMode).toBe("append");
   });
 
   it("loads multiple agents", () => {
-    writeAgent("agent1", `---
+    writeAgent(
+      "agent1",
+      `---
 description: First
 ---
 
-First agent.`);
-    writeAgent("agent2", `---
+First agent.`,
+    );
+    writeAgent(
+      "agent2",
+      `---
 description: Second
 ---
 
-Second agent.`);
+Second agent.`,
+    );
 
     const result = loadCustomAgents(tmpDir);
     expect(result.size).toBe(2);
@@ -371,11 +425,14 @@ Second agent.`);
     const dir = join(tmpDir, ".pi", "agents");
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "notes.txt"), "not an agent");
-    writeFileSync(join(dir, "real.md"), `---
+    writeFileSync(
+      join(dir, "real.md"),
+      `---
 description: Real Agent
 ---
 
-Real.`);
+Real.`,
+    );
 
     const result = loadCustomAgents(tmpDir);
     expect(result.size).toBe(1);
@@ -383,16 +440,22 @@ Real.`);
   });
 
   it("allows agents with names matching defaults (overrides them)", () => {
-    writeAgent("Explore", `---
+    writeAgent(
+      "Explore",
+      `---
 description: Custom Explore
 ---
 
-Custom explore agent.`);
-    writeAgent("custom", `---
+Custom explore agent.`,
+    );
+    writeAgent(
+      "custom",
+      `---
 description: Custom Agent
 ---
 
-Should be loaded.`);
+Should be loaded.`,
+    );
 
     const result = loadCustomAgents(tmpDir);
     expect(result.has("Explore")).toBe(true);
@@ -401,21 +464,27 @@ Should be loaded.`);
   });
 
   it("handles empty body with frontmatter", () => {
-    writeAgent("nobody", `---
+    writeAgent(
+      "nobody",
+      `---
 description: No body
 tools: read
 ---
-`);
+`,
+    );
 
     const result = loadCustomAgents(tmpDir);
     expect(result.get("nobody")!.systemPrompt).toBe("");
   });
 
   it("handles enabled: false frontmatter", () => {
-    writeAgent("disabled", `---
+    writeAgent(
+      "disabled",
+      `---
 enabled: false
 ---
-`);
+`,
+    );
 
     const result = loadCustomAgents(tmpDir);
     const agent = result.get("disabled")!;
@@ -423,12 +492,15 @@ enabled: false
   });
 
   it("parses display_name frontmatter", () => {
-    writeAgent("myagent", `---
+    writeAgent(
+      "myagent",
+      `---
 description: My Agent
 display_name: MyAgent
 ---
 
-Agent prompt.`);
+Agent prompt.`,
+    );
 
     const result = loadCustomAgents(tmpDir);
     expect(result.get("myagent")!.displayName).toBe("MyAgent");
@@ -445,7 +517,9 @@ Agent prompt.`);
     expect(agents.get("with-fragments")!.systemPrompt).toBe("PROFILE BODY");
     expect(agents.get("invalid-fragments")!.fragmentError).toContain("Invalid fragment name");
     expect(agents.has("aws")).toBe(false);
-    expect(() => composeAgentInstructions(agents.get("with-fragments")!, { projectTrusted: true })).toThrow("fragment \"git\"");
+    expect(() =>
+      composeAgentInstructions(agents.get("with-fragments")!, { projectTrusted: true }),
+    ).toThrow('fragment "git"');
   });
 
   it("keeps fragment lookup local to winning profile scope without cross-scope fallback", () => {
@@ -455,16 +529,25 @@ Agent prompt.`);
       const globalAgents = join(tmpDir, "personal", "agents");
       mkdirSync(join(globalAgents, "fragments"), { recursive: true });
       writeFileSync(join(globalAgents, "scoped.md"), "---\nfragments: [aws]\n---\nGLOBAL BODY");
-      writeFileSync(join(globalAgents, "only-global.md"), "---\nfragments: [aws]\n---\nGLOBAL ONLY");
+      writeFileSync(
+        join(globalAgents, "only-global.md"),
+        "---\nfragments: [aws]\n---\nGLOBAL ONLY",
+      );
       writeFileSync(join(globalAgents, "fragments", "aws.md"), "GLOBAL AWS");
       writeAgent("scoped", "---\nfragments: [aws]\n---\nPROJECT BODY");
       const agents = loadCustomAgents(tmpDir);
       expect(agents.get("scoped")!.source).toBe("project");
-      expect(() => composeAgentInstructions(agents.get("scoped")!, { projectTrusted: true })).toThrow(join(tmpDir, ".pi", "agents", "fragments", "aws.md"));
-      expect(composeAgentInstructions(agents.get("only-global")!).systemPrompt).toBe("GLOBAL AWS\n\n---\n\nGLOBAL ONLY");
+      expect(() =>
+        composeAgentInstructions(agents.get("scoped")!, { projectTrusted: true }),
+      ).toThrow(join(tmpDir, ".pi", "agents", "fragments", "aws.md"));
+      expect(composeAgentInstructions(agents.get("only-global")!).systemPrompt).toBe(
+        "GLOBAL AWS\n\n---\n\nGLOBAL ONLY",
+      );
       mkdirSync(join(tmpDir, ".pi", "agents", "fragments"));
       writeFileSync(join(tmpDir, ".pi", "agents", "fragments", "aws.md"), "PROJECT AWS");
-      expect(composeAgentInstructions(agents.get("scoped")!, { projectTrusted: true }).systemPrompt).toBe("PROJECT AWS\n\n---\n\nPROJECT BODY");
+      expect(
+        composeAgentInstructions(agents.get("scoped")!, { projectTrusted: true }).systemPrompt,
+      ).toBe("PROJECT AWS\n\n---\n\nPROJECT BODY");
     } finally {
       if (originalEnv == null) delete process.env.PI_CODING_AGENT_DIR;
       else process.env.PI_CODING_AGENT_DIR = originalEnv;

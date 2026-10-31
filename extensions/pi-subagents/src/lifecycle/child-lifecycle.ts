@@ -75,7 +75,9 @@ function deepFreeze<T>(value: T): T {
  * yields no handoff; anything that is not a JSON object within the cap is an
  * error for the caller.
  */
-export function normalizeHandoff(value: unknown): { handoff?: SubagentHandoff } | { error: string } {
+export function normalizeHandoff(
+  value: unknown,
+): { handoff?: SubagentHandoff } | { error: string } {
   if (value === undefined || value === null) return {};
   if (typeof value !== "object" || Array.isArray(value)) {
     return { error: "handoff must be an object keyed by the extension that reads it" };
@@ -84,10 +86,13 @@ export function normalizeHandoff(value: unknown): { handoff?: SubagentHandoff } 
   try {
     json = JSON.stringify(value);
   } catch (err) {
-    return { error: `handoff must be JSON data: ${err instanceof Error ? err.message : String(err)}` };
+    return {
+      error: `handoff must be JSON data: ${err instanceof Error ? err.message : String(err)}`,
+    };
   }
   const bytes = Buffer.byteLength(json, "utf8");
-  if (bytes > MAX_HANDOFF_BYTES) return { error: `handoff is ${bytes} bytes; the limit is ${MAX_HANDOFF_BYTES}` };
+  if (bytes > MAX_HANDOFF_BYTES)
+    return { error: `handoff is ${bytes} bytes; the limit is ${MAX_HANDOFF_BYTES}` };
   const copy = JSON.parse(json) as Record<string, unknown>;
   return Object.keys(copy).length ? { handoff: deepFreeze(copy) } : {};
 }
@@ -143,9 +148,7 @@ export interface ChildLifecyclePublisher {
 }
 
 /** Build a publisher backed by an injected `emit` callback. */
-export function createChildLifecyclePublisher(
-  emit: LifecycleEmit,
-): ChildLifecyclePublisher {
+export function createChildLifecyclePublisher(emit: LifecycleEmit): ChildLifecyclePublisher {
   return {
     spawning(event) {
       emit(SUBAGENT_CHILD_SPAWNING, event);

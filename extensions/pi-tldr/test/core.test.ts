@@ -1,8 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
-import { frameTitleRequest, parseTldrResponse, runTldrModel, selectTldrModel, sessionSnapshot, SUMMARY_MAX_TOKENS, TITLE_MAX_TOKENS, titleSlug } from "../src/core.js";
+import {
+  frameTitleRequest,
+  parseTldrResponse,
+  runTldrModel,
+  selectTldrModel,
+  sessionSnapshot,
+  SUMMARY_MAX_TOKENS,
+  TITLE_MAX_TOKENS,
+  titleSlug,
+} from "../src/core.js";
 import { DEFAULT_CONFIG } from "../src/config.js";
 
-const fakeModel = (provider: string, id: string) => ({ provider, id, name: id, type: "chat" }) as any;
+const fakeModel = (provider: string, id: string) =>
+  ({ provider, id, name: id, type: "chat" }) as any;
 
 describe("pi-tldr core", () => {
   it("defaults to automatic naming and model discovery", () => {
@@ -22,9 +32,13 @@ describe("pi-tldr core", () => {
   });
 
   it("rejects terminal escapes in output and clamps 4-word slugs", () => {
-    expect(titleSlug("  Network / Routing   Migration PLAN extras  ")).toBe("network-routing-migration-plan");
+    expect(titleSlug("  Network / Routing   Migration PLAN extras  ")).toBe(
+      "network-routing-migration-plan",
+    );
     expect(titleSlug("\u001b]0;hijack\u0007teSt  Title ")).toBe("test-title");
-    const parsed = parseTldrResponse('```json\n{"title":"Network Routing Migration Plan Extra", "premise":"Move routes", "findings":"One issue; two fixes", "status":"Pending rollout\\nreview"}\n```');
+    const parsed = parseTldrResponse(
+      '```json\n{"title":"Network Routing Migration Plan Extra", "premise":"Move routes", "findings":"One issue; two fixes", "status":"Pending rollout\\nreview"}\n```',
+    );
     expect(parsed.title).toBe("network-routing-migration-plan");
     expect(parsed.status).toBe("Pending rollout review");
     expect(() => parseTldrResponse("not json")).toThrow(/invalid JSON/);
@@ -32,10 +46,14 @@ describe("pi-tldr core", () => {
 
   it("preserves original user premise in a compacted branch", () => {
     const original = { role: "user", content: "Migrate network routes" };
-    const fakeCtx = { sessionManager: {
-      getBranch: () => [{ type: "message", message: original }],
-      buildSessionProjection: () => ({ messages: [{ role: "user", content: "After compaction: update stack A" }] }),
-    } } as any;
+    const fakeCtx = {
+      sessionManager: {
+        getBranch: () => [{ type: "message", message: original }],
+        buildSessionProjection: () => ({
+          messages: [{ role: "user", content: "After compaction: update stack A" }],
+        }),
+      },
+    } as any;
     const snapshot = sessionSnapshot(fakeCtx);
     expect(snapshot).toContain("Migrate network routes");
     expect(snapshot).toContain("After compaction: update stack A");
@@ -43,8 +61,15 @@ describe("pi-tldr core", () => {
 
   describe("runTldrModel", () => {
     const run = async (task: "title" | "summary", stopReason = "stop", text = "ok-title") => {
-      const streamSimple = vi.fn(() => ({ result: async () => ({ stopReason, content: [{ type: "text", text }] }) }));
-      const out = runTldrModel({ modelRegistry: { streamSimple } } as any, fakeModel("anthropic", "claude-haiku-5-5"), "why is this failing?", task);
+      const streamSimple = vi.fn(() => ({
+        result: async () => ({ stopReason, content: [{ type: "text", text }] }),
+      }));
+      const out = runTldrModel(
+        { modelRegistry: { streamSimple } } as any,
+        fakeModel("anthropic", "claude-haiku-5-5"),
+        "why is this failing?",
+        task,
+      );
       return { streamSimple, out };
     };
 

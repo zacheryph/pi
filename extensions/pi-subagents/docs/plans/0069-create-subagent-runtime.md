@@ -70,7 +70,7 @@ let widget: AgentWidget;
 let currentCtx: { pi: unknown; ctx: unknown } | undefined;
 ```
 
-`widget` is assigned *after* `AgentManager` construction, but `notifications` closes over it immediately via arrow callbacks (`(id) => widget.markFinished(id)`).
+`widget` is assigned _after_ `AgentManager` construction, but `notifications` closes over it immediately via arrow callbacks (`(id) => widget.markFinished(id)`).
 `currentCtx` is written by `session_start` and read by `createSubagentsService`.
 `agentActivity` is shared across the notification system, widget, agent tool, and menu handler.
 
@@ -163,9 +163,7 @@ export interface RunOptions {
 `runAgent` changes its resolution chain from:
 
 ```typescript
-const maxTurns = normalizeMaxTurns(
-  options.maxTurns ?? agentConfig?.maxTurns ?? defaultMaxTurns,
-);
+const maxTurns = normalizeMaxTurns(options.maxTurns ?? agentConfig?.maxTurns ?? defaultMaxTurns);
 ```
 
 To:

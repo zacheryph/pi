@@ -12,9 +12,7 @@ describe("renderProjectContext", () => {
     // a blank line, and the section wrapper adds no blank line inside either
     // tag. Pi through 0.85 wrote one below the opening and above the closing.
     it("renders one context file the way pi ≥0.86's buildSystemPrompt does", () => {
-      expect(
-        renderProjectContext([{ path: "/repo/AGENTS.md", content: "Repo rules." }]),
-      ).toBe(
+      expect(renderProjectContext([{ path: "/repo/AGENTS.md", content: "Repo rules." }])).toBe(
         [
           "<project_context>",
           "Project-specific instructions and guidelines:",
@@ -77,11 +75,9 @@ describe("createProjectContextLoader", () => {
   });
 
   it("resolves the block against the directory it is asked about", () => {
-    const discover = vi.fn(
-      ({ cwd }: { cwd: string; agentDir: string }): ContextFile[] => [
-        { path: `${cwd}/AGENTS.md`, content: "Worktree rules." },
-      ],
-    );
+    const discover = vi.fn(({ cwd }: { cwd: string; agentDir: string }): ContextFile[] => [
+      { path: `${cwd}/AGENTS.md`, content: "Worktree rules." },
+    ]);
 
     const block = createProjectContextLoader(discover, "/home/me/.pi/agent")("/worktree");
 
@@ -107,9 +103,7 @@ describe("createProjectContextLoader", () => {
 
       createProjectContextLoader(discoverNothing, "/home/me/.pi/agent")("/sandbox");
 
-      expect(warn).toHaveBeenCalledWith(
-        "[pi-subagents:debug] no project context under /sandbox",
-      );
+      expect(warn).toHaveBeenCalledWith("[pi-subagents:debug] no project context under /sandbox");
     });
 
     it("stays silent when debug logging is off", () => {

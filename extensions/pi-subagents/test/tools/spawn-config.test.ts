@@ -83,9 +83,16 @@ describe("resolveSpawnConfig — model resolution", () => {
 
   it("returns error when user-specified model cannot be resolved", () => {
     const result = resolveSpawnConfig(
-      { subagent_type: "general-purpose", prompt: "test", description: "d", model: "nonexistent-xyz" },
+      {
+        subagent_type: "general-purpose",
+        prompt: "test",
+        description: "d",
+        model: "nonexistent-xyz",
+      },
       testRegistry,
-      makeModelInfo({ modelRegistry: { find: () => undefined, getAll: () => [], getAvailable: () => [] } }),
+      makeModelInfo({
+        modelRegistry: { find: () => undefined, getAll: () => [], getAvailable: () => [] },
+      }),
       defaultSettings,
     );
     expect("error" in result && result.error).toBeTruthy();
@@ -93,15 +100,27 @@ describe("resolveSpawnConfig — model resolution", () => {
 });
 
 describe("resolveSpawnConfig — model label", () => {
-  const parentModel = makeModel({ provider: "anthropic", id: "claude-sonnet-5-5", name: "Claude Sonnet 5.5" });
-  const haiku = makeModel({ provider: "anthropic", id: "claude-haiku-4-5", name: "Claude Haiku 4.5" });
+  const parentModel = makeModel({
+    provider: "anthropic",
+    id: "claude-sonnet-5-5",
+    name: "Claude Sonnet 5.5",
+  });
+  const haiku = makeModel({
+    provider: "anthropic",
+    id: "claude-haiku-4-5",
+    name: "Claude Haiku 4.5",
+  });
   const registryWithHaiku = {
-    find: (provider: string, id: string) => (provider === haiku.provider && id === haiku.id ? haiku : undefined),
+    find: (provider: string, id: string) =>
+      provider === haiku.provider && id === haiku.id ? haiku : undefined,
     getAll: () => [haiku],
     getAvailable: () => [haiku],
   };
 
-  function modelNameFor(params: Record<string, unknown>, modelInfo: Parameters<typeof resolveSpawnConfig>[2]) {
+  function modelNameFor(
+    params: Record<string, unknown>,
+    modelInfo: Parameters<typeof resolveSpawnConfig>[2],
+  ) {
     const result = resolveSpawnConfig(
       { subagent_type: "general-purpose", prompt: "test", description: "d", ...params },
       testRegistry,
@@ -118,7 +137,10 @@ describe("resolveSpawnConfig — model label", () => {
 
   it("labels a requested model as provider/id, not its display name", () => {
     expect(
-      modelNameFor({ model: "anthropic/claude-haiku-4-5" }, makeModelInfo({ parentModel, modelRegistry: registryWithHaiku })),
+      modelNameFor(
+        { model: "anthropic/claude-haiku-4-5" },
+        makeModelInfo({ parentModel, modelRegistry: registryWithHaiku }),
+      ),
     ).toBe("anthropic/claude-haiku-4-5");
   });
 
@@ -165,7 +187,12 @@ describe("resolveSpawnConfig — max turns normalization", () => {
 describe("resolveSpawnConfig — invocation fields", () => {
   it("sets runInBackground from params", () => {
     const result = resolveSpawnConfig(
-      { subagent_type: "general-purpose", prompt: "test", description: "d", run_in_background: true },
+      {
+        subagent_type: "general-purpose",
+        prompt: "test",
+        description: "d",
+        run_in_background: true,
+      },
       testRegistry,
       makeModelInfo(),
       defaultSettings,
@@ -299,7 +326,16 @@ describe("resolveSpawnConfig — minimum turns note", () => {
     const registry = new AgentTypeRegistry(
       () =>
         new Map([
-          ["terse", { name: "terse", description: "Terse", systemPrompt: "", promptMode: "append" as const, maxTurns: 1 }],
+          [
+            "terse",
+            {
+              name: "terse",
+              description: "Terse",
+              systemPrompt: "",
+              promptMode: "append" as const,
+              maxTurns: 1,
+            },
+          ],
         ]),
     );
     const result = resolveSpawnConfig(
@@ -460,17 +496,22 @@ describe("resolveSpawnConfig — prompt and rawType passthrough", () => {
 });
 
 describe("resolveSpawnConfig — handoff", () => {
-  const resolve = (params: Record<string, unknown>) => resolveSpawnConfig(
-    { subagent_type: "general-purpose", prompt: "test", description: "d", ...params },
-    testRegistry,
-    makeModelInfo(),
-    defaultSettings,
-  );
+  const resolve = (params: Record<string, unknown>) =>
+    resolveSpawnConfig(
+      { subagent_type: "general-purpose", prompt: "test", description: "d", ...params },
+      testRegistry,
+      makeModelInfo(),
+      defaultSettings,
+    );
 
   it("passes any extension's keys through", () => {
-    const result = resolve({ handoff: { todos: { keys: ["auth-audit"] }, review: { ticket: "AUTH-12" } } });
-    expect("error" in result ? result.error : result.execution.handoff)
-      .toEqual({ todos: { keys: ["auth-audit"] }, review: { ticket: "AUTH-12" } });
+    const result = resolve({
+      handoff: { todos: { keys: ["auth-audit"] }, review: { ticket: "AUTH-12" } },
+    });
+    expect("error" in result ? result.error : result.execution.handoff).toEqual({
+      todos: { keys: ["auth-audit"] },
+      review: { ticket: "AUTH-12" },
+    });
   });
 
   it("hands over nothing without a handoff", () => {
@@ -479,6 +520,8 @@ describe("resolveSpawnConfig — handoff", () => {
   });
 
   it("reports a handoff that is not an object", () => {
-    expect(resolve({ handoff: ["auth-audit"] })).toEqual({ error: expect.stringContaining("handoff must be an object") });
+    expect(resolve({ handoff: ["auth-audit"] })).toEqual({
+      error: expect.stringContaining("handoff must be an object"),
+    });
   });
 });

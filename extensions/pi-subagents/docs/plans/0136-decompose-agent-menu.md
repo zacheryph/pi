@@ -96,8 +96,11 @@ class FsAgentFileOps implements AgentFileOps {
     return existsSync(filePath);
   }
   read(filePath: string): string | undefined {
-    try { return readFileSync(filePath, "utf-8"); }
-    catch { return undefined; }
+    try {
+      return readFileSync(filePath, "utf-8");
+    } catch {
+      return undefined;
+    }
   }
   write(filePath: string, content: string): void {
     mkdirSync(dirname(filePath), { recursive: true });
@@ -183,7 +186,7 @@ interface AgentMenuDeps {
   agentActivity: AgentActivityReader;
   getModelLabel: (type: string, registry?: ModelRegistry) => string;
   settings: AgentMenuSettings;
-  fileOps: AgentFileOps;          // ← new
+  fileOps: AgentFileOps; // ← new
   personalAgentsDir: string;
   projectAgentsDir: string;
 }

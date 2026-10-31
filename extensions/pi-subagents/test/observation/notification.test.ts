@@ -119,7 +119,11 @@ describe("formatTaskNotification", () => {
     });
 
     it("omits the tool-use-id when the spawn carried none", () => {
-      const record = createTestSubagent({ status: "stopped", stoppedWhileQueued: true, result: undefined });
+      const record = createTestSubagent({
+        status: "stopped",
+        stoppedWhileQueued: true,
+        result: undefined,
+      });
       expect(formatTaskNotification(record, 500)).not.toContain("tool-use-id");
     });
   });
@@ -167,18 +171,32 @@ describe("buildNotificationDetails", () => {
 
   it("carries the run's turn budget", () => {
     const record = createTestSubagent({ turnBudget: { maxTurns: 2, used: 3, phase: "warned" } });
-    expect(buildNotificationDetails(record, 500).turnBudget).toEqual({ maxTurns: 2, used: 3, phase: "warned" });
+    expect(buildNotificationDetails(record, 500).turnBudget).toEqual({
+      maxTurns: 2,
+      used: 3,
+      phase: "warned",
+    });
   });
 
   it("truncates long result previews with ellipsis", () => {
-    const record = createTestSubagent({ description: "Test", result: "x".repeat(600), toolUses: 2, completedAt: 3000, lifetimeUsage: { input: 100, output: 200, cacheWrite: 0 } });
+    const record = createTestSubagent({
+      description: "Test",
+      result: "x".repeat(600),
+      toolUses: 2,
+      completedAt: 3000,
+      lifetimeUsage: { input: 100, output: 200, cacheWrite: 0 },
+    });
     const details = buildNotificationDetails(record, 100);
     expect(details.resultPreview).toHaveLength(101); // 100 chars + "…"
     expect(details.resultPreview.endsWith("…")).toBe(true);
   });
 
   it("previews a never-started agent as never started, not as empty output", () => {
-    const record = createTestSubagent({ status: "stopped", stoppedWhileQueued: true, result: undefined });
+    const record = createTestSubagent({
+      status: "stopped",
+      stoppedWhileQueued: true,
+      result: undefined,
+    });
     const details = buildNotificationDetails(record, 500);
     expect(details.resultPreview).toBe("Never started — stopped while queued.");
   });
@@ -209,12 +227,21 @@ describe("buildEventData", () => {
   });
 
   it("carries the run's turn budget", () => {
-    const record = createTestSubagent({ turnBudget: { maxTurns: 2, used: 7, phase: "exhausted" }, status: "aborted" });
+    const record = createTestSubagent({
+      turnBudget: { maxTurns: 2, used: 7, phase: "exhausted" },
+      status: "aborted",
+    });
     expect(buildEventData(record).turnBudget).toEqual({ maxTurns: 2, used: 7, phase: "exhausted" });
   });
 
   it("omits tokens when total is zero", () => {
-    const record = createTestSubagent({ type: "Explore", description: "Search files", result: "Found 3 files", toolUses: 5, lifetimeUsage: { input: 0, output: 0, cacheWrite: 0 } });
+    const record = createTestSubagent({
+      type: "Explore",
+      description: "Search files",
+      result: "Found 3 files",
+      toolUses: 5,
+      lifetimeUsage: { input: 0, output: 0, cacheWrite: 0 },
+    });
     const data = buildEventData(record);
     expect(data.tokens).toBeUndefined();
   });
@@ -222,7 +249,14 @@ describe("buildEventData", () => {
   it("uses Date.now() fallback when completedAt is undefined", () => {
     vi.useFakeTimers();
     vi.setSystemTime(5000);
-    const record = createTestSubagent({ type: "Explore", description: "Search files", result: "Found 3 files", toolUses: 5, lifetimeUsage: { input: 1000, output: 500, cacheWrite: 0 }, completedAt: undefined });
+    const record = createTestSubagent({
+      type: "Explore",
+      description: "Search files",
+      result: "Found 3 files",
+      toolUses: 5,
+      lifetimeUsage: { input: 1000, output: 500, cacheWrite: 0 },
+      completedAt: undefined,
+    });
     const data = buildEventData(record);
     expect(data.durationMs).toBe(4000); // 5000 - 1000
     vi.useRealTimers();
@@ -283,7 +317,12 @@ describe("NotificationManager", () => {
     let askParent: ((question: string) => void) | undefined;
     stub.runTurnLoop.mockImplementation(() => {
       askParent?.("Which config?");
-      return Promise.resolve(turnLoopResult({ responseText: "Got partway.", turnBudget: { maxTurns: 2, used: 7, phase: "exhausted" } }));
+      return Promise.resolve(
+        turnLoopResult({
+          responseText: "Got partway.",
+          turnBudget: { maxTurns: 2, used: 7, phase: "exhausted" },
+        }),
+      );
     });
     const disposed = createTestSubagent({
       id: "agent-3",
@@ -379,7 +418,11 @@ describe("NotificationManager", () => {
   it("omits the retrieval instruction for an agent that never started", () => {
     const args = makeArgs();
     const system = makeManager(args);
-    const record = createTestSubagent({ status: "stopped", stoppedWhileQueued: true, result: undefined });
+    const record = createTestSubagent({
+      status: "stopped",
+      stoppedWhileQueued: true,
+      result: undefined,
+    });
     system.sendCompletion(record);
     const content = (args.sendMessage.mock.calls[0][0] as { content: string }).content;
     expect(content).toBe(formatTaskNotification(record, 500));
@@ -472,8 +515,12 @@ describe("NotificationManager", () => {
 
     describe("the Pi delivery model the parent stub is built on", () => {
       it("buffers a nextTurn message invisibly, whatever else is asked for", () => {
-        expect(piDeliveryPath(false, { deliverAs: "nextTurn", triggerTurn: true })).toBe("buffered");
-        expect(piDeliveryPath(true, { deliverAs: "nextTurn", triggerTurn: false })).toBe("buffered");
+        expect(piDeliveryPath(false, { deliverAs: "nextTurn", triggerTurn: true })).toBe(
+          "buffered",
+        );
+        expect(piDeliveryPath(true, { deliverAs: "nextTurn", triggerTurn: false })).toBe(
+          "buffered",
+        );
       });
 
       it("queues a mid-stream message onto the run's unrecallable queue", () => {
@@ -576,14 +623,20 @@ describe("NotificationManager", () => {
     describe("a running child's mid-run update", () => {
       it("is delivered immediately when the parent is idle", () => {
         const parent = makePiParent();
-        parent.manager.sendUpdate(createTestSubagent({ id: "live-1", status: "running" }), "Course change.");
+        parent.manager.sendUpdate(
+          createTestSubagent({ id: "live-1", status: "running" }),
+          "Course change.",
+        );
         expect(parent.deliveredToLlm).toHaveLength(1);
       });
 
       it("is withheld while the parent's run is active, then flushed", () => {
         const parent = makePiParent();
         parent.startRun();
-        parent.manager.sendUpdate(createTestSubagent({ id: "live-1", status: "running" }), "Course change.");
+        parent.manager.sendUpdate(
+          createTestSubagent({ id: "live-1", status: "running" }),
+          "Course change.",
+        );
         expect(parent.deliveredToLlm).toHaveLength(0);
         parent.settleRun();
         expect(parent.deliveredToLlm).toHaveLength(1);
@@ -592,7 +645,10 @@ describe("NotificationManager", () => {
       it("is dropped after dispose, like every other announcement", () => {
         const parent = makePiParent();
         parent.manager.dispose();
-        parent.manager.sendUpdate(createTestSubagent({ id: "live-1", status: "running" }), "Course change.");
+        parent.manager.sendUpdate(
+          createTestSubagent({ id: "live-1", status: "running" }),
+          "Course change.",
+        );
         expect(parent.deliveredToLlm).toHaveLength(0);
       });
 

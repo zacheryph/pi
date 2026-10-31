@@ -33,10 +33,7 @@ interface Scope {
  * Never reports a worktree a child of this process is still running in, nor the
  * one the caller is running inside. Returns nothing when git cannot answer.
  */
-export function findPreservedWorktrees(
-  repoCwd: string,
-  live: LiveWorktrees,
-): string[] {
+export function findPreservedWorktrees(repoCwd: string, live: LiveWorktrees): string[] {
   let registered: string[];
   try {
     registered = listWorktreePaths(repoCwd);

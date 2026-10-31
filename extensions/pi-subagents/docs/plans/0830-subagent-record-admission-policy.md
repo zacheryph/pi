@@ -9,8 +9,8 @@ issue_title: "pi-subagents: SubagentRecord's allowlist has no stated policy; dec
 
 **Release:** ship independently
 
-Phase 22's roadmap places this issue in batch `"front-door-majors"` (Steps 2, 4, 3; tail = Step 3) *"so its required/optional decision rides the same major if it comes out breaking — if its resolution is non-breaking, its plan may downgrade it to independently releasable and update this line."*
-The operator settled the contract direction as **producer-only with required additions**, which is semver-minor: TypeScript's structural typing means a consumer that *reads* a `SubagentRecord` is unaffected by new fields, and the package declares that third parties do not implement the interface.
+Phase 22's roadmap places this issue in batch `"front-door-majors"` (Steps 2, 4, 3; tail = Step 3) _"so its required/optional decision rides the same major if it comes out breaking — if its resolution is non-breaking, its plan may downgrade it to independently releasable and update this line."_
+The operator settled the contract direction as **producer-only with required additions**, which is semver-minor: TypeScript's structural typing means a consumer that _reads_ a `SubagentRecord` is unaffected by new fields, and the package declares that third parties do not implement the interface.
 This plan therefore takes the downgrade the roadmap anticipated, ships as `feat:`, and updates the roadmap's `Release:` line and `Release batches` bullet in the same change.
 
 ## Problem Statement
@@ -39,12 +39,12 @@ This change is **not** breaking.
 - **Adding an event channel for live agent activity.**
   The policy declines `activeTools` and `responseText` because a pulled snapshot of momentary state is stale on arrival; the reactive half of that split would need a broadcast channel, and no consumer has asked for one.
   The ADR records the revisit condition instead of building the channel.
-- **Settling the stability guarantee carried by the lifecycle *event payloads*.**
+- **Settling the stability guarantee carried by the lifecycle _event payloads_.**
   `architecture.md` names the record's guarantee and the event payloads' guarantee in the same sentence; this change settles only the record's.
 - **Changing `SubagentsService`'s method set, `SpawnOptions`, or the `SUBAGENT_EVENTS` channel constants.**
 - **Retyping `SubagentRecord.lifetimeUsage` as `Readonly<LifetimeUsage>`.**
   Once the snapshot is a copy, a consumer mutating it harms nothing, and tightening a shipped public property type would be a needless breaking change.
-- **[#827] (widget `UICtx` capture), which is [#748]'s *first* commit and Phase 22 Step 6.**
+- **[#827] (widget `UICtx` capture), which is [#748]'s _first_ commit and Phase 22 Step 6.**
   Only [#748]'s second commit is this issue's close target.
 - **Removing or renaming any field the record exposes today.**
   The policy is applied additively; a removal would be semver-major and no candidate warrants one.
@@ -61,7 +61,7 @@ It builds a required-field object literal, then appends `result`, `error`, and `
 
 Outside `service-adapter.ts` and its tests, nothing in this repository reads a `SubagentRecord`.
 The widget reads live `Subagent` objects through `manager.listAgents()`, not through the service.
-So no candidate field has a named in-repo reader, and the policy is a judgment about *external* consumers rather than a response to local demand.
+So no candidate field has a named in-repo reader, and the policy is a judgment about _external_ consumers rather than a response to local demand.
 
 ### Candidate inventory
 
@@ -130,7 +130,7 @@ The consequence is stated in the ADR so no future widening re-derives it: **addi
 
 ### Snapshot semantics: by value
 
-The policy defines "snapshot" as *by value*: each call returns data that no later mutation of the agent can alter, and that no consumer mutation can write back into the agent.
+The policy defines "snapshot" as _by value_: each call returns data that no later mutation of the agent can alter, and that no consumer mutation can write back into the agent.
 `lifetimeUsage` is the only field that violates this today; the fix is `lifetimeUsage: { ...record.lifetimeUsage }`.
 `LifetimeUsage` is a flat three-number object, so a shallow copy is a full copy.
 
@@ -193,7 +193,7 @@ Both read fields off the record and ask it nothing further — no reach-through,
 ### Interface segregation check
 
 `SubagentRecord` gains four fields and reaches 15.
-It is a DTO, not a dependency bag: no consumer is forced to *supply* it, and each reader picks the fields it needs.
+It is a DTO, not a dependency bag: no consumer is forced to _supply_ it, and each reader picks the fields it needs.
 The design-review dependency-width test targets interfaces a caller must satisfy; the applicable discipline for a return DTO is the admission policy itself, which is the deliverable here.
 
 ## Module-Level Changes
@@ -218,7 +218,7 @@ Greps performed for touch points:
 ## Test Impact Analysis
 
 **New tests the change enables.**
-The policy's *declined* half has never been testable as a statement of intent — an absent field is indistinguishable from an oversight.
+The policy's _declined_ half has never been testable as a statement of intent — an absent field is indistinguishable from an oversight.
 Tests that populate `activeTools`, `responseText`, `consumedAt`, and `stoppedWhileQueued` on the source and assert their absence from the output turn the policy into an executable claim.
 The by-value semantics likewise become testable: mutate the snapshot and re-read the agent, and accumulate usage on the agent and re-read the snapshot.
 
@@ -230,7 +230,7 @@ The consolidation must preserve all six property names.
 **Tests that must stay as-is.**
 The two exact `expect(result).toEqual({...})` blocks (lines ~27–41 and ~87–105) are the strongest policy pin available: any field added to the record without a deliberate test edit fails them.
 They gain the two new required fields and otherwise stay exact — never `toMatchObject`.
-They are not a substitute for the declined-field tests, because their fixtures leave `activeTools` empty and `responseText` blank; only a test that *populates* the declined fields discriminates "policy applied" from "field happened to be empty".
+They are not a substitute for the declined-field tests, because their fixtures leave `activeTools` empty and `responseText` blank; only a test that _populates_ the declined fields discriminates "policy applied" from "field happened to be empty".
 
 The adapter tests below the `toSubagentRecord` block (`spawn` background-request assertions at lines ~301–341) exercise a different surface and are untouched.
 
@@ -247,7 +247,7 @@ No quantitative invariant (prefix bytes, token budget, latency) is in play.
 
 ## TDD Order
 
-1. **`test:` consolidate the overlapping "strips" assertions in `describe("toSubagentRecord")`** *(Tidy-First preparation)*.
+1. **`test:` consolidate the overlapping "strips" assertions in `describe("toSubagentRecord")`** _(Tidy-First preparation)_.
    Friction it prepares: roughly six new tests land in this block, and five accreted `it` blocks already re-assert overlapping subsets of the same properties.
    Merge them into one test asserting all six absent properties by name — `subagentSession`, `abortController`, `promise`, `execution`, `notification`, `invocation` — over a fixture that sets a session, an `invocation`, and a `toolCallId`.
    No production change.

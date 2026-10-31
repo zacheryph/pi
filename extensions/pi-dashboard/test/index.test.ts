@@ -12,26 +12,53 @@ function fakePi() {
   const listeners = new Map<string, Array<(data: unknown) => void>>();
   let name: string | undefined = "fix-auth";
   const pi = {
-    on: (event: string, handler: Handler) => { handlers.set(event, [...handlers.get(event) ?? [], handler]); return () => {}; },
-    registerCommand: (command: string, options: { handler: (args: string, ctx: unknown) => Promise<void> }) => commands.set(command, options),
+    on: (event: string, handler: Handler) => {
+      handlers.set(event, [...(handlers.get(event) ?? []), handler]);
+      return () => {};
+    },
+    registerCommand: (
+      command: string,
+      options: { handler: (args: string, ctx: unknown) => Promise<void> },
+    ) => commands.set(command, options),
     getSessionName: () => name,
     getThinkingLevel: () => "high",
     exec: vi.fn(),
     events: {
-      on: (channel: string, handler: (data: unknown) => void) => { listeners.set(channel, [...listeners.get(channel) ?? [], handler]); return () => {}; },
-      emit: (channel: string, data: unknown) => { for (const handler of listeners.get(channel) ?? []) handler(data); },
+      on: (channel: string, handler: (data: unknown) => void) => {
+        listeners.set(channel, [...(listeners.get(channel) ?? []), handler]);
+        return () => {};
+      },
+      emit: (channel: string, data: unknown) => {
+        for (const handler of listeners.get(channel) ?? []) handler(data);
+      },
     },
   } as unknown as ExtensionAPI;
   const emit = async (event: string, payload: Record<string, unknown>, ctx: unknown) => {
-    for (const handler of handlers.get(event) ?? []) await handler({ type: event, ...payload }, ctx);
+    for (const handler of handlers.get(event) ?? [])
+      await handler({ type: event, ...payload }, ctx);
   };
-  return { pi, emit, commands, rename: (next: string) => { name = next; }, publish: (channel: string, data: unknown) => pi.events.emit(channel, data) };
+  return {
+    pi,
+    emit,
+    commands,
+    rename: (next: string) => {
+      name = next;
+    },
+    publish: (channel: string, data: unknown) => pi.events.emit(channel, data),
+  };
 }
 
 function fakeCtx(mode = "tui", entries: unknown[] = []) {
   return {
-    mode, cwd: "/work/api", hasUI: mode !== "print", ui: { notify: vi.fn() },
-    sessionManager: { getSessionId: () => "session-a", getBranch: () => entries, getEntries: () => entries },
+    mode,
+    cwd: "/work/api",
+    hasUI: mode !== "print",
+    ui: { notify: vi.fn() },
+    sessionManager: {
+      getSessionId: () => "session-a",
+      getBranch: () => entries,
+      getEntries: () => entries,
+    },
     model: { provider: "anthropic", id: "claude-opus" },
     getContextUsage: () => ({ tokens: 5000, contextWindow: 200_000, percent: 2.5 }),
     isIdle: () => true,
@@ -43,14 +70,26 @@ function setup(overrides: Partial<DashboardDependencies> = {}) {
   const hubs: Hub[] = [];
   onCleanup(() => Promise.all(hubs.map((hub) => hub.stop())));
   const spawnHub = vi.fn(() => {
-    const hub = new Hub({ dir, port: 0, idleGraceMs: 300 });
+    // Reporter reconnect starts after 250 ms; a 300 ms hub lifetime raced slow CI.
+    // These integration tests stop hubs explicitly and do not exercise idle expiry.
+    const hub = new Hub({ dir, port: 0, idleGraceMs: 5_000 });
     hubs.push(hub);
     void hub.start();
   });
-  const deps: DashboardDependencies = { dir, spawnHub, publishDelayMs: 10, loadConfig: () => ({ port: 7317 }), ...overrides };
+  const deps: DashboardDependencies = {
+    dir,
+    spawnHub,
+    publishDelayMs: 10,
+    loadConfig: () => ({ port: 7317 }),
+    ...overrides,
+  };
   const sessions = async () => {
     const hub = hubs.at(-1);
-    return hub?.httpPort ? JSON.parse((await get(hub.httpPort, "/api/sessions")).body).sessions as Array<Record<string, unknown>> : [];
+    return hub?.httpPort
+      ? (JSON.parse((await get(hub.httpPort, "/api/sessions")).body).sessions as Array<
+          Record<string, unknown>
+        >)
+      : [];
   };
   const focus = async (id: string) => {
     const hub = hubs.at(-1)!;
@@ -76,17 +115,31 @@ describe("pi-dashboard extension", () => {
     const ctx = fakeCtx();
     onCleanup(() => quit(fake, ctx));
     await fake.emit("session_start", { reason: "startup" }, ctx);
-    const [card] = await waitFor(async () => { const list = await env.sessions(); return list.length ? list : undefined; });
+    const [card] = await waitFor(async () => {
+      const list = await env.sessions();
+      return list.length ? list : undefined;
+    });
     expect(card).toMatchObject({
-      id: "4242", pid: 4242, cwd: "/work/api", name: "fix-auth", thinking: "high",
-      model: { provider: "anthropic", id: "claude-opus" }, status: { kind: "idle" },
+      id: "4242",
+      pid: 4242,
+      cwd: "/work/api",
+      name: "fix-auth",
+      thinking: "high",
+      model: { provider: "anthropic", id: "claude-opus" },
+      status: { kind: "idle" },
       context: { tokens: 5000, window: 200_000, percent: 2.5 },
     });
 
     await fake.emit("agent_start", {}, ctx);
     await fake.emit("tool_execution_start", { toolCallId: "t1", toolName: "bash", args: {} }, ctx);
-    await fake.emit("tool_execution_start", { toolCallId: "t1/1", toolName: "read", args: {}, parentToolCallId: "t1" }, ctx);
-    await waitFor(async () => ((await env.sessions())[0]?.status as { tool?: string })?.tool === "bash");
+    await fake.emit(
+      "tool_execution_start",
+      { toolCallId: "t1/1", toolName: "read", args: {}, parentToolCallId: "t1" },
+      ctx,
+    );
+    await waitFor(
+      async () => ((await env.sessions())[0]?.status as { tool?: string })?.tool === "bash",
+    );
 
     fake.rename("renamed");
     await fake.emit("session_info_changed", { name: "renamed" }, ctx);
@@ -102,19 +155,52 @@ describe("pi-dashboard extension", () => {
     const fake = load(env.deps);
     const ctx = fakeCtx();
     onCleanup(() => quit(fake, ctx));
-    const task = { key: "a", subject: "Add backoff", status: "in_progress", blocked: false, unreviewed: 1, updates: [] };
+    const task = {
+      key: "a",
+      subject: "Add backoff",
+      status: "in_progress",
+      blocked: false,
+      unreviewed: 1,
+      updates: [],
+    };
     // pi-todo and pi-stash load first and publish during their own session_start.
     fake.publish("pi-todo:snapshot", { version: 1, revision: 1, tasks: [task] });
     await fake.emit("session_start", { reason: "startup" }, ctx);
-    const [card] = await waitFor(async () => { const list = await env.sessions(); return list.length ? list : undefined; });
-    expect(card?.todos).toEqual({ revision: 1, total: 1, tasks: [{ key: "a", subject: "Add backoff", status: "in_progress", blocked: false, unreviewed: 1 }] });
+    const [card] = await waitFor(async () => {
+      const list = await env.sessions();
+      return list.length ? list : undefined;
+    });
+    expect(card?.todos).toEqual({
+      revision: 1,
+      total: 1,
+      tasks: [
+        { key: "a", subject: "Add backoff", status: "in_progress", blocked: false, unreviewed: 1 },
+      ],
+    });
     expect(card?.stash).toBeUndefined();
 
-    fake.publish("pi-stash:snapshot", { version: 1, entries: [{
-      handle: "stash:notes@0123456789ab", name: "notes", hash: "0".repeat(64), bytes: 10, lines: 2, mime: "text/plain",
-      createdAt: 5, createdBy: "session-a", source: "content", versions: 1,
-    }] });
-    fake.publish("pi-todo:snapshot", { version: 1, revision: 2, tasks: [{ ...task, status: "completed" }] });
+    fake.publish("pi-stash:snapshot", {
+      version: 1,
+      entries: [
+        {
+          handle: "stash:notes@0123456789ab",
+          name: "notes",
+          hash: "0".repeat(64),
+          bytes: 10,
+          lines: 2,
+          mime: "text/plain",
+          createdAt: 5,
+          createdBy: "session-a",
+          source: "content",
+          versions: 1,
+        },
+      ],
+    });
+    fake.publish("pi-todo:snapshot", {
+      version: 1,
+      revision: 2,
+      tasks: [{ ...task, status: "completed" }],
+    });
     await waitFor(async () => {
       const [current] = await env.sessions();
       const todos = current?.todos as { revision: number } | undefined;
@@ -130,7 +216,10 @@ describe("pi-dashboard extension", () => {
     const ctx = fakeCtx();
     onCleanup(() => quit(fake, ctx));
     await fake.emit("session_start", { reason: "startup" }, ctx);
-    const [card] = await waitFor(async () => { const list = await env.sessions(); return list.length ? list : undefined; });
+    const [card] = await waitFor(async () => {
+      const list = await env.sessions();
+      return list.length ? list : undefined;
+    });
     expect(card?.terminal).toEqual({ kind: "cmux", label: "cmux" });
     expect(await env.focus("4242")).toEqual({ status: 200, body: JSON.stringify({ ok: true }) });
     expect(adapter.focus).toHaveBeenCalledTimes(1);
@@ -147,7 +236,10 @@ describe("pi-dashboard extension", () => {
     const ctx = fakeCtx();
     onCleanup(() => quit(fake, ctx));
     await fake.emit("session_start", { reason: "startup" }, ctx);
-    const [card] = await waitFor(async () => { const list = await env.sessions(); return list.length ? list : undefined; });
+    const [card] = await waitFor(async () => {
+      const list = await env.sessions();
+      return list.length ? list : undefined;
+    });
     expect(card?.terminal).toBeUndefined();
     expect((await env.focus("4242")).status).toBe(409);
   });
@@ -155,23 +247,47 @@ describe("pi-dashboard extension", () => {
   it("reports usage, compactions and subagents", async () => {
     const env = setup({ detectTerminal: () => undefined });
     const fake = load(env.deps);
-    const entries: unknown[] = [{ type: "message", message: { role: "assistant", usage: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, cost: { total: 0.25 } } } }];
+    const entries: unknown[] = [
+      {
+        type: "message",
+        message: {
+          role: "assistant",
+          usage: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, cost: { total: 0.25 } },
+        },
+      },
+    ];
     const ctx = fakeCtx("tui", entries);
     onCleanup(() => quit(fake, ctx));
     await fake.emit("session_start", { reason: "startup" }, ctx);
-    const [card] = await waitFor(async () => { const list = await env.sessions(); return list.length ? list : undefined; });
+    const [card] = await waitFor(async () => {
+      const list = await env.sessions();
+      return list.length ? list : undefined;
+    });
     expect(card?.usage).toEqual({ input: 10, output: 5, cacheRead: 0, cacheWrite: 0, cost: 0.25 });
     expect(card?.memory).toEqual({ compactions: 0 });
     expect(card?.subagents).toBeUndefined();
 
-    entries.push({ type: "compaction", timestamp: "2026-10-30T02:00:00.000Z", usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, cost: { total: 0.05 } } });
+    entries.push({
+      type: "compaction",
+      timestamp: "2026-10-30T02:00:00.000Z",
+      usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, cost: { total: 0.05 } },
+    });
     await fake.emit("session_compact", {}, ctx);
-    fake.publish("subagents:started", { id: "agent-1", type: "Explore", description: "Find auth files" });
+    fake.publish("subagents:started", {
+      id: "agent-1",
+      type: "Explore",
+      description: "Find auth files",
+    });
     await waitFor(async () => {
       const [current] = await env.sessions();
       const memory = current?.memory as { compactions: number } | undefined;
-      const agents = (current?.subagents as { agents: Array<{ state: string }> } | undefined)?.agents;
-      return memory?.compactions === 1 && agents?.[0]?.state === "running" && (current?.usage as { cost: number }).cost === 0.3;
+      const agents = (current?.subagents as { agents: Array<{ state: string }> } | undefined)
+        ?.agents;
+      return (
+        memory?.compactions === 1 &&
+        agents?.[0]?.state === "running" &&
+        (current?.usage as { cost: number } | undefined)?.cost === 0.3
+      );
     });
   });
 
@@ -183,34 +299,79 @@ describe("pi-dashboard extension", () => {
     // Stand-in for pi-stash's synchronous responder on the same bus.
     fake.pi.events.on("pi-stash:preview", (data) => {
       const request = data as { name: string; respond(value: unknown): void };
-      request.respond(request.name === "notes"
-        ? { ok: true, handle: "stash:notes@0123456789ab", lines: ["first", "second"], total: 40, complete: false }
-        : { ok: false, error: `No stash entry named "${request.name}" on this branch.` });
+      request.respond(
+        request.name === "notes"
+          ? {
+              ok: true,
+              handle: "stash:notes@0123456789ab",
+              lines: ["first", "second"],
+              total: 40,
+              complete: false,
+            }
+          : { ok: false, error: `No stash entry named "${request.name}" on this branch.` },
+      );
     });
-    fake.publish("pi-todo:snapshot", { version: 1, revision: 2, tasks: [{
-      key: "fix", subject: "Fix", status: "completed", blocked: false, unreviewed: 0, createdAt: 5,
-      updates: [{ revision: 2, at: 9, status: "completed", from: "pending", message: "done" }],
-    }] });
+    fake.publish("pi-todo:snapshot", {
+      version: 1,
+      revision: 2,
+      tasks: [
+        {
+          key: "fix",
+          subject: "Fix",
+          status: "completed",
+          blocked: false,
+          unreviewed: 0,
+          createdAt: 5,
+          updates: [{ revision: 2, at: 9, status: "completed", from: "pending", message: "done" }],
+        },
+      ],
+    });
     await fake.emit("session_start", { reason: "startup" }, ctx);
     await waitFor(async () => (await env.sessions()).length === 1);
     const hub = env.hubs.at(-1)!;
-    const ask = (path: string) => post(hub.httpPort!, `/api/sessions/4242/${path}`, { "x-dashboard-token": hub.token });
+    const ask = (path: string) =>
+      post(hub.httpPort!, `/api/sessions/4242/${path}`, { "x-dashboard-token": hub.token });
 
-    expect(JSON.parse((await ask("stash/notes/preview")).body)).toEqual({ ok: true, data: { handle: "stash:notes@0123456789ab", lines: ["first", "second"], total: 40, complete: false } });
+    expect(JSON.parse((await ask("stash/notes/preview")).body)).toEqual({
+      ok: true,
+      data: {
+        handle: "stash:notes@0123456789ab",
+        lines: ["first", "second"],
+        total: 40,
+        complete: false,
+      },
+    });
     const missing = await ask("stash/gone/preview");
     expect(missing.status).toBe(502);
     expect(JSON.parse(missing.body).error).toBe('No stash entry named "gone" on this branch.');
-    expect(JSON.parse((await ask("todos/fix/history")).body)).toEqual({ ok: true, data: {
-      key: "fix", createdAt: 5, updates: [{ revision: 2, at: 9, status: "completed", from: "pending", message: "done" }],
-    } });
-    expect(JSON.parse((await ask("todos/nope/history")).body).error).toBe('No task "nope" on this branch.');
+    expect(JSON.parse((await ask("todos/fix/history")).body)).toEqual({
+      ok: true,
+      data: {
+        key: "fix",
+        createdAt: 5,
+        updates: [{ revision: 2, at: 9, status: "completed", from: "pending", message: "done" }],
+      },
+    });
+    expect(JSON.parse((await ask("todos/nope/history")).body).error).toBe(
+      'No task "nope" on this branch.',
+    );
     // Content requests never reach the broadcast session list.
     expect((await get(hub.httpPort!, "/api/sessions")).body).not.toContain("second");
 
-    await fake.emit("tool_execution_start", { toolCallId: "t1", toolName: "bash", args: { command: "npm test" } }, ctx);
-    await fake.emit("tool_execution_end", { toolCallId: "t1", toolName: "bash", result: {}, isError: true }, ctx);
+    await fake.emit(
+      "tool_execution_start",
+      { toolCallId: "t1", toolName: "bash", args: { command: "npm test" } },
+      ctx,
+    );
+    await fake.emit(
+      "tool_execution_end",
+      { toolCallId: "t1", toolName: "bash", result: {}, isError: true },
+      ctx,
+    );
     await waitFor(async () => {
-      const activity = (await env.sessions())[0]?.activity as Array<{ tool: string; summary?: string; error?: boolean }> | undefined;
+      const activity = (await env.sessions())[0]?.activity as
+        | Array<{ tool: string; summary?: string; error?: boolean }>
+        | undefined;
       return activity?.[0]?.summary === "npm test" && activity[0].error === true;
     });
   });
@@ -223,7 +384,9 @@ describe("pi-dashboard extension", () => {
     await fake.emit("session_start", { reason: "startup" }, ctx);
     await waitFor(async () => (await env.sessions()).length === 1);
     const hub = env.hubs.at(-1)!;
-    const response = await post(hub.httpPort!, "/api/sessions/4242/stash/notes/preview", { "x-dashboard-token": hub.token });
+    const response = await post(hub.httpPort!, "/api/sessions/4242/stash/notes/preview", {
+      "x-dashboard-token": hub.token,
+    });
     expect(JSON.parse(response.body).error).toBe("pi-stash did not answer; is it loaded?");
   });
 
@@ -235,28 +398,72 @@ describe("pi-dashboard extension", () => {
     const received: unknown[] = [];
     // Stand-in for rpiv ask-user's inbound answer channel.
     fake.pi.events.on("rpiv:ask-user:answer", (data) => {
-      const payload = data as { requestId: string; toolCallId: string; answers?: Array<{ optionIndexes?: number[] }> };
+      const payload = data as {
+        requestId: string;
+        toolCallId: string;
+        answers?: Array<{ optionIndexes?: number[] }>;
+      };
       received.push(payload);
       const fits = payload.answers?.[0]?.optionIndexes?.[0] === 0;
-      fake.publish("rpiv:ask-user:answer-result", fits
-        ? { ok: true, requestId: payload.requestId, toolCallId: payload.toolCallId }
-        : { ok: false, code: "invalid_answer", reason: "pick Retry", requestId: payload.requestId, toolCallId: payload.toolCallId });
+      fake.publish(
+        "rpiv:ask-user:answer-result",
+        fits
+          ? { ok: true, requestId: payload.requestId, toolCallId: payload.toolCallId }
+          : {
+              ok: false,
+              code: "invalid_answer",
+              reason: "pick Retry",
+              requestId: payload.requestId,
+              toolCallId: payload.toolCallId,
+            },
+      );
     });
     await fake.emit("session_start", { reason: "startup" }, ctx);
-    fake.publish("rpiv:ask-user:prompt", { toolCallId: "toolu_1", questions: [
-      { question: "Which strategy?", header: "Strategy", multiSelect: false, options: [{ label: "Retry", description: "", hasPreview: false }] },
-    ] });
-    const [card] = await waitFor(async () => { const list = await env.sessions(); return list[0]?.questions ? list : undefined; });
-    expect(card?.questions).toEqual([{ id: "toolu_1", since: expect.any(Number), questions: [
-      { question: "Which strategy?", header: "Strategy", multiSelect: false, options: [{ label: "Retry", description: "" }] },
-    ] }]);
+    fake.publish("rpiv:ask-user:prompt", {
+      toolCallId: "toolu_1",
+      questions: [
+        {
+          question: "Which strategy?",
+          header: "Strategy",
+          multiSelect: false,
+          options: [{ label: "Retry", description: "", hasPreview: false }],
+        },
+      ],
+    });
+    const [card] = await waitFor(async () => {
+      const list = await env.sessions();
+      return list[0]?.questions ? list : undefined;
+    });
+    expect(card?.questions).toEqual([
+      {
+        id: "toolu_1",
+        since: expect.any(Number),
+        questions: [
+          {
+            question: "Which strategy?",
+            header: "Strategy",
+            multiSelect: false,
+            options: [{ label: "Retry", description: "" }],
+          },
+        ],
+      },
+    ]);
 
     const hub = env.hubs.at(-1)!;
-    const answer = (body: unknown) => post(hub.httpPort!, "/api/sessions/4242/questions/toolu_1/answer", { "x-dashboard-token": hub.token }, JSON.stringify(body));
+    const answer = (body: unknown) =>
+      post(
+        hub.httpPort!,
+        "/api/sessions/4242/questions/toolu_1/answer",
+        { "x-dashboard-token": hub.token },
+        JSON.stringify(body),
+      );
     const refused = await answer({ answers: [{ questionIndex: 0, text: "something else" }] });
     expect(refused.status).toBe(502);
     expect(JSON.parse(refused.body).error).toBe("Not accepted: pick Retry");
-    expect(await answer({ answers: [{ questionIndex: 0, optionIndexes: [0] }] })).toEqual({ status: 200, body: JSON.stringify({ ok: true }) });
+    expect(await answer({ answers: [{ questionIndex: 0, optionIndexes: [0] }] })).toEqual({
+      status: 200,
+      body: JSON.stringify({ ok: true }),
+    });
     expect(received).toHaveLength(2);
     await waitFor(async () => (await env.sessions())[0]?.questions === undefined);
     expect((await answer({ cancel: true })).status).toBe(502);
@@ -268,9 +475,16 @@ describe("pi-dashboard extension", () => {
     const ctx = fakeCtx();
     onCleanup(() => quit(fake, ctx));
     await fake.emit("session_start", { reason: "startup" }, ctx);
-    fake.publish("rpiv:ask-user:prompt", { toolCallId: "toolu_2", questions: [{ question: "Ok?", header: "", multiSelect: false, options: [] }] });
+    fake.publish("rpiv:ask-user:prompt", {
+      toolCallId: "toolu_2",
+      questions: [{ question: "Ok?", header: "", multiSelect: false, options: [] }],
+    });
     await waitFor(async () => (await env.sessions())[0]?.questions !== undefined);
-    await fake.emit("tool_execution_end", { toolCallId: "toolu_2", toolName: "ask_user_question", result: {}, isError: false }, ctx);
+    await fake.emit(
+      "tool_execution_end",
+      { toolCallId: "toolu_2", toolName: "ask_user_question", result: {}, isError: false },
+      ctx,
+    );
     await waitFor(async () => (await env.sessions())[0]?.questions === undefined);
   });
 

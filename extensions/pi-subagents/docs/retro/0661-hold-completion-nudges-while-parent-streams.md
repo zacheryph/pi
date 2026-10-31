@@ -11,7 +11,7 @@ pr: 661
 ### Session summary
 
 Third-party PR #661 (from `@daoguademeng`, references no issue) reports that a background agent's completion nudge can be delivered twice — once as the result the parent pulls mid-turn, and again verbatim when Pi drains its `followUp` queue at turn end.
-The defect was confirmed real on current `main` by reproduction, and the PR's fix works, but it layers a second hold mechanism on top of the existing 200 ms debounce and gates on `agent_end`, which fires once per agent-run *segment* rather than once per run.
+The defect was confirmed real on current `main` by reproduction, and the PR's fix works, but it layers a second hold mechanism on top of the existing 200 ms debounce and gates on `agent_end`, which fires once per agent-run _segment_ rather than once per run.
 The operator chose to adopt the capability with our own simplified design: gate on `agent_settled` and collapse the two hold mechanisms into one.
 
 ### Evaluation
@@ -31,12 +31,12 @@ The diff does ship five tests.
 
 Two findings constrain any re-implementation and should not be re-litigated during planning.
 Flushing from inside an `agent_end` handler is safe by design — `_handlePostAgentRun` re-checks `this.agent.hasQueuedMessages()` after the awaited extension handlers and runs a continuation (`agent-session.ts:1100-1102`), so a flushed nudge is never lost.
-And the PR's `parentStreaming` mirror flag is *justified*, not redundant state: `isIdle()` is exposed on `ExtensionContext` / `ExtensionContextActions`, **not** on `ExtensionAPI` (`extensions/types.ts:324`, `:1616`), so the extension cannot query streaming state from inside a `setTimeout`.
+And the PR's `parentStreaming` mirror flag is _justified_, not redundant state: `isIdle()` is exposed on `ExtensionContext` / `ExtensionContextActions`, **not** on `ExtensionAPI` (`extensions/types.ts:324`, `:1616`), so the extension cannot query streaming state from inside a `setTimeout`.
 Per the `code-design` rule about confirming an SDK method on the exact type the code holds, `pi.isIdle()` is not an available simplification.
 
 What to change, and why.
 The boundary is wrong: `agent_end` fires once per agent-run segment, and a single `_runAgentPrompt` emits several across auto-retry, auto-compaction, and `followUp` continuations, so a held nudge can be flushed between a failed attempt and its retry.
-`agent_settled` fires exactly once per run and sets `_isAgentRunActive = false` *before* emitting to extensions (`agent-session.ts:581-582`), so a flush there takes the clean idle `triggerTurn` → `_runAgentPrompt` path instead of re-entering the unrecallable queue.
+`agent_settled` fires exactly once per run and sets `_isAgentRunActive = false` _before_ emitting to extensions (`agent-session.ts:581-582`), so a flush there takes the clean idle `triggerTurn` → `_runAgentPrompt` path instead of re-entering the unrecallable queue.
 The structure is also over-built: the PR adds `heldNudges` alongside the existing `pendingNudges` timer map plus a `parentStreaming` flag, leaving two queues and three `record.consumed` checks (schedule-time, fire-time, flush-time).
 Once delivery is gated on the turn boundary, the 200 ms `NUDGE_HOLD_MS` debounce is largely vestigial — an idle parent cannot pull at all, since pulling requires a tool call, which requires a turn, which means streaming.
 
@@ -79,7 +79,7 @@ The central planning work was validating — by spike, not argument — that rem
 ### Observations
 
 The spike was the decisive step and is worth repeating in similar situations.
-`docs/architecture/history/phase-20-result-delivery.md:60` and retro `0535:42` both credit `NUDGE_HOLD_MS` as load-bearing for the `consume()`-after-await invariant, with an explicit warning that *decreasing* it narrows correctness.
+`docs/architecture/history/phase-20-result-delivery.md:60` and retro `0535:42` both credit `NUDGE_HOLD_MS` as load-bearing for the `consume()`-after-await invariant, with an explicit warning that _decreasing_ it narrows correctness.
 Rather than reason about that from prose, a scratch worktree implemented the collapsed design and ran the suite: exactly three tests failed, all of which had been using the timer as a stand-in for "a parent turn is in progress".
 After arranging the streaming state in those three, the full suite passed 1083/1083 with `check` and `lint` clean.
 The invariant strengthens rather than weakens, because the hold window widens from 200 ms to the remainder of the parent's agent run.
@@ -149,7 +149,7 @@ Two prior docs called `NUDGE_HOLD_MS` "load-bearing", which is exactly the kind 
 Spiking the removal in a scratch worktree predicted precisely three failing tests, and precisely those three failed during implementation — converting an argument into a measurement and leaving the SDK version as the session's only real surprise.
 
 The verify-then-evaluate ordering in `/review-third-party-pr` earned its place.
-Reproducing the defect on `main` *before* reading the diff for design meant the whole review rested on a measurement rather than the PR's narrative, and it exposed that the contributor's own "bug repro" test failed on `main` only as a `TypeError` — a detail that directly shaped the re-implementation's test strategy.
+Reproducing the defect on `main` _before_ reading the diff for design meant the whole review rested on a measurement rather than the PR's narrative, and it exposed that the contributor's own "bug repro" test failed on `main` only as a `TypeError` — a detail that directly shaped the re-implementation's test strategy.
 
 The `Explore`-on-`sonnet-5` guidance for Pi-internals traces (AGENTS.md line 62) worked as designed: 35 tool calls and 162 s of subagent budget returned exact `file:line` citations for the `followUp` queue semantics without spending this session's context.
 The `scripts/bin` `npm` shim also did its job, catching an `npm view` slip and pointing at AGENTS.md.
@@ -160,7 +160,7 @@ The `scripts/bin` `npm` shim also did its job, catching an `npm view` slip and p
    Caught only by `tsc` after the source change was already written.
    Impact: the largest cost of the session — an `ask_user` re-decision mid-implementation, a scope escalation from a non-breaking `fix:` to a breaking `fix!:` with a peer-floor raise, plus two follow-on version traps (`0.80.4` was git-tagged but never published to npm, and `pi-ai@0.80.4` does not exist at all, since the three `@earendil-works/*` packages version independently).
    The prior stage note misattributed this to ignoring AGENTS.md; that is wrong, and the correction matters.
-   AGENTS.md line 61 actively *directs* reading the sibling checkout over the installed `dist/`.
+   AGENTS.md line 61 actively _directs_ reading the sibling checkout over the installed `dist/`.
    The gap is that the rule is silent on version skew — the checkout is fine for mechanism and misleading for API availability.
 
 2. `instruction-violation` (self-identified, at retro) — the `/tdd-plan` prompt's Tidy First step and the `tidy-first` skill were both skipped outright.
@@ -182,7 +182,7 @@ The `scripts/bin` `npm` shim also did its job, catching an `npm view` slip and p
 #### What caused friction (user side)
 
 The SDK-version trap was structurally invisible to the operator too — the plan read as well-evidenced (it cited real `file:line` references), and nothing in it signalled that the citations came from a version the package does not install.
-A planning-stage habit of naming the *version* alongside an SDK citation would have made the skew reviewable rather than latent.
+A planning-stage habit of naming the _version_ alongside an SDK citation would have made the skew reviewable rather than latent.
 
 The mid-implementation `ask_user` on the peer-floor decision worked well: it arrived with the concrete before/after table and a measured fallback already verified against the pinned version, so the operator could decide in one round trip rather than requesting analysis.
 

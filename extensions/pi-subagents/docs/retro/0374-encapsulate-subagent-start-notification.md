@@ -109,10 +109,10 @@ Fixed via `Subagent.scheduleVia` (eager capture, control inverted so no external
 
 1. **Planning blind spot.**
    The #374 plan's acceptance criterion was grep-verifiable encapsulation (`\.promise =` only in `subagent.ts`).
-   That measured the *goal* (hide the field) but never the *invariant at risk* (the field is an awaitable handle with an at-spawn timing contract that #381 established).
+   That measured the _goal_ (hide the field) but never the _invariant at risk_ (the field is an awaitable handle with an at-spawn timing contract that #381 established).
    The plan treated `promise` as a field to hide, not as a contract to preserve.
 2. **Implementation masked the semantics.**
-   Converting `record.promise = limiter.schedule(...)` to a bare `limiter.schedule(() => record.start())` tripped `no-floating-promises`; the reflexive `void` fix silenced the lint *and* discarded the eager handle in the same stroke.
+   Converting `record.promise = limiter.schedule(...)` to a bare `limiter.schedule(() => record.start())` tripped `no-floating-promises`; the reflexive `void` fix silenced the lint _and_ discarded the eager handle in the same stroke.
    The lint fix was the exact site of the behavior change, which made it feel mechanical rather than semantic.
 3. **No executable guard.**
    The #381 invariant lived only in an architecture-doc "Outcome:" bullet (prose).

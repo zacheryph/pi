@@ -205,8 +205,7 @@ export interface CreateSubagentSessionParams {
 function buildChildTools(params: CreateSubagentSessionParams): ToolDefinition[] {
   const tools: ToolDefinition[] = [];
   if (params.askParent) tools.push(new AskParentTool(params.askParent).toToolDefinition());
-  if (params.notifyParent)
-    tools.push(new NotifyParentTool(params.notifyParent).toToolDefinition());
+  if (params.notifyParent) tools.push(new NotifyParentTool(params.notifyParent).toToolDefinition());
   return tools;
 }
 
@@ -285,7 +284,10 @@ export async function createSubagentSession(
   // Create a persisted SessionManager so transcripts are written in Pi's
   // official JSONL format. Falls back to a temp directory when the parent
   // session is not persisted (e.g. headless/API mode).
-  const sessionDir = deps.io.deriveSessionDir(params.parentSession?.parentSessionFile, cfg.effectiveCwd);
+  const sessionDir = deps.io.deriveSessionDir(
+    params.parentSession?.parentSessionFile,
+    cfg.effectiveCwd,
+  );
   const sessionManager = deps.io.createSessionManager(cfg.effectiveCwd, sessionDir);
   sessionManager.newSession({ parentSession: params.parentSession?.parentSessionId });
   const sessionId = sessionManager.getSessionId();
@@ -309,7 +311,9 @@ export async function createSubagentSession(
 
   const run = {
     ...(params.agentId !== undefined ? { agentId: params.agentId } : {}),
-    ...(params.parentSession?.toolCallId !== undefined ? { toolCallId: params.parentSession.toolCallId } : {}),
+    ...(params.parentSession?.toolCallId !== undefined
+      ? { toolCallId: params.parentSession.toolCallId }
+      : {}),
   };
   const subagentSession = new SubagentSession(session, {
     outputFile: sessionManager.getSessionFile(),
@@ -328,7 +332,10 @@ export async function createSubagentSession(
   // initialization. The event bus dispatches synchronously, so a synchronous
   // subscriber completes before this returns.
   deps.lifecycle.sessionCreated({
-    sessionId, parentSessionId, ...run, ...(params.handoff ? { handoff: params.handoff } : {}),
+    sessionId,
+    parentSessionId,
+    ...run,
+    ...(params.handoff ? { handoff: params.handoff } : {}),
   });
 
   try {

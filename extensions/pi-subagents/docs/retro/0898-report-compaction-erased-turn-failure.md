@@ -91,7 +91,7 @@ The failure read moved from a post-run scan of `session.messages` to a collector
 
 All three of Step 3's named mutations matched their predictions to the test.
 Restoring the deleted scan reddened exactly the three new strip cases and left every [#889] case green — the green-stays-green half that was the point, since it is the evidence that Step 2's fixture migration did not weaken the coverage it rewrote.
-The latch mutation reddened two, one of which had stayed green through Red; that is the case where the mutation is the *only* evidence the test discriminates.
+The latch mutation reddened two, one of which had stayed green through Red; that is the case where the mutation is the _only_ evidence the test discriminates.
 Deleting the resume call site reddened four, all resume-path.
 
 #### The assessor's `usage` hazard was real, and I measured it rather than trusting it
@@ -194,7 +194,7 @@ The substance is entirely in the first two stages; the sync and ship halves ran 
 
 - `missing-context` — The plan verified, exhaustively, what the SDK does when a turn **runs**: six exits from `_runAutoCompaction`, the `message_end` ordering, `_prepareRetry`, `_replaceMessageInPlace`.
   It never asked what `AgentSession.prompt()` does when a turn does **not** run.
-  It then used the resulting universal claim — "production emits at least one assistant `message_end` per `prompt()` on every path that reaches the read" — to *decline* a fallback at the design gate.
+  It then used the resulting universal claim — "production emits at least one assistant `message_end` per `prompt()` on every path that reaches the read" — to _decline_ a fallback at the design gate.
   Three early returns falsify it: an extension command matched the prompt, an `input` handler reported it handled, or the message was queued while streaming.
   Impact: two pre-completion FAIL rounds and two commits beyond the plan's four, plus the architecture `Landed:` note rewritten twice as the mechanism moved.
   Reviewer-caught, twice — not self-identified.

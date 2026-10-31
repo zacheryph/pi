@@ -99,13 +99,30 @@ The last row but one is why loading follows the allowlist rather than the parent
 `src/session/builtin-extensions.ts` maps tool names to the built-ins that supply them (data plus a small selector):
 
 ```typescript
-import { createCodemodeExtension, createMcpExtension, createToolSearchExtension, type InlineExtension } from "@earendil-works/pi-coding-agent";
+import {
+  createCodemodeExtension,
+  createMcpExtension,
+  createToolSearchExtension,
+  type InlineExtension,
+} from "@earendil-works/pi-coding-agent";
 
 /** Pi's built-in extensions a child may load, each keyed by the tool names that call for it. */
 const BUILTINS = [
-  { name: "codemode", factory: createCodemodeExtension(), provides: (tool: string) => tool === "codemode" },
-  { name: "tool-search", factory: createToolSearchExtension(), provides: (tool: string) => tool === "tool_search" },
-  { name: "mcp", factory: createMcpExtension(), provides: (tool: string) => tool.startsWith("mcp__") || MCP_RESOURCE_TOOLS.has(tool) },
+  {
+    name: "codemode",
+    factory: createCodemodeExtension(),
+    provides: (tool: string) => tool === "codemode",
+  },
+  {
+    name: "tool-search",
+    factory: createToolSearchExtension(),
+    provides: (tool: string) => tool === "tool_search",
+  },
+  {
+    name: "mcp",
+    factory: createMcpExtension(),
+    provides: (tool: string) => tool.startsWith("mcp__") || MCP_RESOURCE_TOOLS.has(tool),
+  },
 ];
 
 export function builtinExtensionsFor(toolNames: readonly string[]): InlineExtension[];
@@ -126,7 +143,10 @@ export interface ExpandedTools {
   unmatchedPatterns: string[];
 }
 
-export function expandMcpToolPatterns(declared: readonly string[], available: readonly string[]): ExpandedTools;
+export function expandMcpToolPatterns(
+  declared: readonly string[],
+  available: readonly string[],
+): ExpandedTools;
 ```
 
 - An entry is a pattern iff it starts with `mcp__` and contains `*`.

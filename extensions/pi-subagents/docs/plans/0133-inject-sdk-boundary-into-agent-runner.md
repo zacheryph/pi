@@ -126,18 +126,10 @@ export interface RunnerIO {
   detectEnv: (exec: ShellExec, cwd: string) => Promise<EnvInfo>;
   getAgentDir: () => string;
   createResourceLoader: (opts: ResourceLoaderOptions) => ResourceLoaderLike;
-  deriveSessionDir: (
-    parentSessionFile: string | undefined,
-    effectiveCwd: string,
-  ) => string;
-  createSessionManager: (
-    cwd: string,
-    sessionDir: string,
-  ) => SessionManagerLike;
+  deriveSessionDir: (parentSessionFile: string | undefined, effectiveCwd: string) => string;
+  createSessionManager: (cwd: string, sessionDir: string) => SessionManagerLike;
   createSettingsManager: (cwd: string, agentDir: string) => unknown;
-  createSession: (
-    opts: CreateSessionOptions,
-  ) => Promise<{ session: AgentSession }>;
+  createSession: (opts: CreateSessionOptions) => Promise<{ session: AgentSession }>;
   assemblerIO: AssemblerIO;
 }
 ```
@@ -150,8 +142,7 @@ All 8 are consumed by `runAgent()` — no field is relayed without use.
 ```typescript
 export function createAgentRunner(io: RunnerIO): AgentRunner {
   return {
-    run: (snapshot, type, prompt, options) =>
-      runAgent(snapshot, type, prompt, options, io),
+    run: (snapshot, type, prompt, options) => runAgent(snapshot, type, prompt, options, io),
     resume: resumeAgent,
   };
 }
@@ -352,8 +343,8 @@ The `vi.mock("../src/agent-types.js", ...)` in both test files can be removed be
    - Replace `expect(defaultResourceLoaderCtor).toHaveBeenCalledWith(expect.objectContaining({...}))` with `expect(io.createResourceLoader).toHaveBeenCalledWith(expect.objectContaining({...}))`.
    - Where the assertion only verified plumbing (e.g., "settings manager gets the right cwd"), simplify to a behavioral assertion or remove if covered by other tests.
    - Keep assertions that verify meaningful configuration decisions (e.g., `noContextFiles: true`, `appendSystemPromptOverride` returns `[]`).
-   Run full test suite.
-   Commit: `test: shift agent-runner assertions toward behavioral checks (#133)`
+     Run full test suite.
+     Commit: `test: shift agent-runner assertions toward behavioral checks (#133)`
 
 ## Risks and Mitigations
 

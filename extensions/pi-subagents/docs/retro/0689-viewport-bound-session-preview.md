@@ -25,10 +25,10 @@ An `Explore` subagent on `../pi` (HEAD `98145a6c0`) confirmed three things that 
 
 Two findings simplify our version relative to PR [#690].
 A partial assistant message lives in `state.streamingMessage` and is never in `state.messages` (`agent.ts:552`), so the PR's `isLiveMessage` / timestamp-matching guard defends a state that cannot occur and is dropped.
-And an extension's in-place `message_end` replacement is applied *before* session listeners are notified (`agent-session.ts:634` before `:637`), so the overlay always consumes final content — a risk the PR body does not address at all.
+And an extension's in-place `message_end` replacement is applied _before_ session listeners are notified (`agent-session.ts:634` before `:637`), so the overlay always consumes final content — a risk the PR body does not address at all.
 
 One incidental discovery reframes the whole change: pi-tui's `Markdown` already caches rendered lines per width (`markdown.ts:248`), while `Container.render` does not cache.
-So a rebuild is expensive chiefly because it *discards* pi-tui's own caches by constructing fresh components — incremental settling is "stop throwing pi-tui's cache away," not a new caching layer.
+So a rebuild is expensive chiefly because it _discards_ pi-tui's own caches by constructing fresh components — incremental settling is "stop throwing pi-tui's cache away," not a new caching layer.
 
 Decisions: adopt-and-reimplement (matching the [#661]/[#662]/[#674] precedent, and explicitly invited by the PR author); full depth; extract `src/ui/transcript-content.ts` rather than growing `TranscriptOverlay` to ~590 lines (also chosen with [#695]'s steering request in mind, since it would build on this substrate); and land the width fix as an independent first commit so [#670] is separately attributable and revertable.
 
@@ -57,7 +57,7 @@ It also corrected the dispatch brief: I had claimed four test helpers would be s
 
 Measurement caught two tests that were green for the wrong reason and would otherwise have shipped as decoration.
 The first: the incremental-settling render-count pins called a `fullRebuildRenderCount` helper that installed a `vi.spyOn` while an outer spy on the same method was still active, so the baseline double-counted and `toBeLessThan` could never discriminate.
-Measuring the baseline *before* installing the spy made both tests genuinely red (22 vs 22, 24 vs 24) and then genuinely green.
+Measuring the baseline _before_ installing the spy made both tests genuinely red (22 vs 22, 24 vs 24) and then genuinely green.
 The second was surfaced by the pre-completion reviewer and is the more interesting one — see below.
 
 The reviewer's one substantive WARN was correct and worth acting on.
@@ -133,7 +133,7 @@ The defining characteristic of the session was that every consequential claim wa
 - The operator's redirect at the depth gate was the highest-leverage intervention of the session, and worth naming as a pattern rather than a friction point.
   Rather than picking an option or correcting me, they asked a question — "45 ms isn't bad, but 0.42 ms is pretty impressive.
   Do we need to research Pi itself to answer some questions?"
-  That bounced an under-evidenced `ask_user` back for grounding, and the research inverted the risk assessment: the deeper option turned out to be the *safer* one, because it mirrors Pi's own interactive-mode model rather than inventing one.
+  That bounced an under-evidenced `ask_user` back for grounding, and the research inverted the risk assessment: the deeper option turned out to be the _safer_ one, because it mirrors Pi's own interactive-mode model rather than inventing one.
   A flat answer to the original ask would have shipped the shallower fix.
 - PR [#690] was supplied as a follow-up message after `/plan-issue` had already begun.
   Impact: negligible directly (~2 tool calls), but it exposed a real prompt gap — `/plan-issue` sweeps sibling **issues** and not sibling **PRs**, so the operator had to supply what the prompt should have found.

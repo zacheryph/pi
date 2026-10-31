@@ -19,7 +19,7 @@ The operator can view a subagent's conversation only through the bespoke `Conver
 That overlay re-implements session-transcript rendering — message formatting, a streaming indicator, scroll chrome — even though Pi already persists each child as a standalone session JSONL and ships its own session-rendering machinery.
 ADR-0004 Decision B replaces the bespoke overlay with **native session navigation**: a flat command that lists the session's subagents, lets the operator pick one, and renders that child's transcript read-only through Pi's own components.
 
-ADR-0004 Addendum 2 (the Step 1 spike, [#446]) refines the sourcing: a file read is a *snapshot* (good for a completed agent, frozen for a running one), so the transcript is **dual-sourced by liveness** — live from the in-memory record for a tracked agent, a file snapshot for an evicted one — rendered through one renderer.
+ADR-0004 Addendum 2 (the Step 1 spike, [#446]) refines the sourcing: a file read is a _snapshot_ (good for a completed agent, frozen for a running one), so the transcript is **dual-sourced by liveness** — live from the in-memory record for a tracked agent, a file snapshot for an evicted one — rendered through one renderer.
 
 This issue is deliberately **sliced** (see Decomposition below).
 It stands up the complete navigation UX — list → pick → read-only, live transcript — behind a renderer-agnostic source seam, using Pi's `serializeConversation` as the first renderer.
@@ -84,7 +84,7 @@ AGENTS.md / package constraints:
 
 - pi-subagents is a minimal core; surviving UI is an **in-core reactive consumer** with no inbound calls into the core.
   The new `agentMessages` accessor is a read-only getter — it adds no inbound call and preserves the Phase 18 spine invariants ([#422]–[#425]).
-- Keep Pi SDK *coupling* out of pure helpers: the pure module uses only Pi's pure utility functions (`serializeConversation`) and an **injected** file/registry, so it stays unit-testable; the overlay component and command handler are SDK/TUI consumers (allowed to import SDK/TUI directly).
+- Keep Pi SDK _coupling_ out of pure helpers: the pure module uses only Pi's pure utility functions (`serializeConversation`) and an **injected** file/registry, so it stays unit-testable; the overlay component and command handler are SDK/TUI consumers (allowed to import SDK/TUI directly).
 - Use narrow interface types (not the concrete `Subagent` class) at the seam — concrete class types leak private fields into test mocks.
 
 ## Design Overview
@@ -214,7 +214,7 @@ No output arguments: nothing writes back into the record or the source.
 ### Decomposition and follow-ups (Kent Beck: make the change easy, then make the easy change)
 
 This issue is the first releasable vertical slice.
-The `TranscriptSource` seam is the "change made easy" — it decouples *how messages are sourced* from *how they are rendered*, so each follow-up is a localized swap:
+The `TranscriptSource` seam is the "change made easy" — it decouples _how messages are sourced_ from _how they are rendered_, so each follow-up is a localized swap:
 
 1. **Renderer upgrade (named follow-up):** replace `renderTranscriptLines`/`TranscriptOverlay`'s `serializeConversation` text path with Pi's per-entry TUI components (`AssistantMessageComponent` / `ToolExecutionComponent` / …) behind the same `TranscriptSource`.
    Selection and sourcing are untouched.
@@ -313,18 +313,18 @@ A later phase step (the renderer / evicted-source follow-ups) must not regress t
    - `listNavigableAgents` keeps only `isSessionReady()` records and builds the expected labels (name · description · status · duration); empty input → `[]`.
    - `liveSource.getMessages` returns the record's `agentMessages`; `subscribe` delegates to `subscribeToUpdates`; `streaming()` returns state only when `status === "running"`, else `undefined`.
    - `renderTranscriptLines` returns `serializeConversation` output split into lines; appends the streaming indicator when streaming; returns the empty-history placeholder for `[]`.
-   Implementation: create `src/ui/session-navigation.ts` with the three interfaces and three functions.
-   Verify `AgentMessage`→`Message` assignability for `serializeConversation([...messages])` here; if it fails, add a typed adapter at the boundary.
-   Commit: `feat: add subagent session selection and live transcript source (#445)`.
+     Implementation: create `src/ui/session-navigation.ts` with the three interfaces and three functions.
+     Verify `AgentMessage`→`Message` assignability for `serializeConversation([...messages])` here; if it fails, add a typed adapter at the boundary.
+     Commit: `feat: add subagent session selection and live transcript source (#445)`.
 3. **Red→Green: read-only overlay component + `/subagent-sessions` command.**
    Test surface: `test/ui/session-navigator.test.ts`.
    Tests:
    - `TranscriptOverlay.render(width)` paints the current `renderTranscriptLines` content with chrome; scroll keys move the viewport; `esc`/`q` calls `done`; `dispose()` unsubscribes; a `subscribe` callback triggers `tui.requestRender`.
    - `SessionNavigatorHandler.handle`: empty entries → `notify` + no `custom`; cancel at `select` → no `custom`; a valid pick → `custom` opened with a `liveSource` for the chosen record (assert via a `makeMenuUI`-style stub).
-   Implementation: create `src/ui/session-navigator.ts`; register the command in `src/index.ts` (sole call site).
-   Run `pnpm run check` immediately (the registration is the only consumer of the new handler export — both must compile together).
-   Run `pnpm fallow dead-code` before pushing (confirms no unreachable file-source branch slipped in).
-   Commit: `feat: add /subagent-sessions read-only navigation command (#445)`.
+     Implementation: create `src/ui/session-navigator.ts`; register the command in `src/index.ts` (sole call site).
+     Run `pnpm run check` immediately (the registration is the only consumer of the new handler export — both must compile together).
+     Run `pnpm fallow dead-code` before pushing (confirms no unreachable file-source branch slipped in).
+     Commit: `feat: add /subagent-sessions read-only navigation command (#445)`.
 
 Steps 2 and 3 may be folded if preferred, but keeping the pure logic (with its stub-only tests) separate from the TUI/SDK wiring keeps each commit self-contained.
 

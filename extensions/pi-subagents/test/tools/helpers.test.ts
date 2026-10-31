@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { TypeListRegistry } from "#src/tools/helpers";
-import { buildAgentGuidelines, buildDetails, buildTypeListText, formatLifetimeTokens, getModelLabelFromConfig, textResult } from "#src/tools/helpers";
+import {
+  buildAgentGuidelines,
+  buildDetails,
+  buildTypeListText,
+  formatLifetimeTokens,
+  getModelLabelFromConfig,
+  textResult,
+} from "#src/tools/helpers";
 import type { AgentDetails } from "#src/ui/display";
 import { createTestSubagent } from "#test/helpers/make-subagent";
 
@@ -19,7 +26,9 @@ function makeRegistry(opts: {
     getDefaultAgentNames: () => opts.defaults ?? [],
     getUserAgentNames: () => opts.users ?? [],
     resolveAgentConfig: (name: string) =>
-      ({ ...opts.resolve?.(name) ?? { description: "", model: undefined } }) as ReturnType<TypeListRegistry["resolveAgentConfig"]>,
+      ({ ...(opts.resolve?.(name) ?? { description: "", model: undefined }) }) as ReturnType<
+        TypeListRegistry["resolveAgentConfig"]
+      >,
     getToolNamesForType: () => [],
   };
 }
@@ -50,7 +59,9 @@ describe("textResult", () => {
 
 describe("formatLifetimeTokens", () => {
   it("returns formatted string when tokens > 0", () => {
-    const result = formatLifetimeTokens({ lifetimeUsage: { input: 500, output: 500, cacheWrite: 0 } });
+    const result = formatLifetimeTokens({
+      lifetimeUsage: { input: 500, output: 500, cacheWrite: 0 },
+    });
     expect(result).toBe("1.0k token");
   });
 
@@ -60,7 +71,9 @@ describe("formatLifetimeTokens", () => {
   });
 
   it("formats large token counts with k suffix", () => {
-    const result = formatLifetimeTokens({ lifetimeUsage: { input: 15000, output: 18800, cacheWrite: 0 } });
+    const result = formatLifetimeTokens({
+      lifetimeUsage: { input: 15000, output: 18800, cacheWrite: 0 },
+    });
     expect(result).toBe("33.8k token");
   });
 });
@@ -259,7 +272,10 @@ describe("buildDetails", () => {
   });
 
   it("carries the record's turn budget", () => {
-    const details = buildDetails(base, createTestSubagent({ turnBudget: { maxTurns: 2, used: 3, phase: "warned" } }));
+    const details = buildDetails(
+      base,
+      createTestSubagent({ turnBudget: { maxTurns: 2, used: 3, phase: "warned" } }),
+    );
     expect(details.turnBudget).toEqual({ maxTurns: 2, used: 3, phase: "warned" });
   });
 
@@ -281,7 +297,10 @@ describe("buildDetails", () => {
     const spawnBase = { ...base, modelName: "anthropic/claude-sonnet-5-5" };
 
     it("labels the model the record runs, over the one resolved at spawn", () => {
-      const details = buildDetails(spawnBase, { ...record, model: { provider: "openai", id: "gpt-5" } });
+      const details = buildDetails(spawnBase, {
+        ...record,
+        model: { provider: "openai", id: "gpt-5" },
+      });
       expect(details.modelName).toBe("openai/gpt-5");
     });
 

@@ -71,7 +71,7 @@ The substantive finding is epistemic rather than procedural — the roadmap step
 
 - **Reading the source before the roadmap entry is what found the second bug.**
   Phase 22 Step 13's `**Cause:**` bullet named exactly one mechanism: the `?.length` truthiness check.
-  The source trace done ahead of it — following `getToolNamesForType` into `resolveAgentConfig` to see why two methods resolved the same key differently — surfaced a *second* fail-open of the same shape in the same five lines: the `enabled !== false` guard, which turned "this agent is disabled" into "give it all seven built-ins."
+  The source trace done ahead of it — following `getToolNamesForType` into `resolveAgentConfig` to see why two methods resolved the same key differently — surfaced a _second_ fail-open of the same shape in the same five lines: the `enabled !== false` guard, which turned "this agent is disabled" into "give it all seven built-ins."
   Had the roadmap entry been read first, its confident single-cause framing would very likely have anchored the design on the operator flip the issue itself proposed.
   This is the inverse of a `missing-context` finding: the prompt's ordering (source exploration at Gather-context step 5, roadmap at step 8) earned its keep.
 - **Spiking both candidate bodies through the full suite before the gate.**
@@ -117,7 +117,7 @@ The substantive finding is epistemic rather than procedural — the roadmap step
 
 Change 2 came from an operator question prompted by this session's own behavior.
 The `## Load skills` sections load unconditionally, but this session ran all four stages in one process, so `package-pi-subagents`, `code-design`, `markdown-conventions`, and `testing` were already in context when `/retro` asked for them again — and I silently skipped three of the four rather than re-reading, departing from the template's literal text with no license to.
-The qualifier is keyed on *presence in context*, not on *having loaded earlier*: a compaction drops a skill's body while leaving the memory of having read it, so "already loaded" alone would license running on that memory.
+The qualifier is keyed on _presence in context_, not on _having loaded earlier_: a compaction drops a skill's body while leaving the memory of having read it, so "already loaded" alone would license running on that memory.
 Scoped by operator decision to the three templates that run warm; `plan-issue`, `pr-review`, `plan-improvements`, `finish-phase`, and `triage-backlog` normally open a session and were left alone.
 
 One proposal was declined: adding a clause to `.pi/prompts/plan-issue.md` Gather-context step 8 telling the planner to read the roadmap entry's `Cause:`/`Target:`/`Outcome:`/`Commit type:` bullets alongside its `Release:` tag.

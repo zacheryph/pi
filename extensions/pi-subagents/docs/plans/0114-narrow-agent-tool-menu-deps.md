@@ -67,7 +67,7 @@ interface AgentMenuDeps {
   agentActivity: Map<string, AgentActivityTracker>;
   getModelLabel: (type: string, registry?: ModelRegistry) => string;
   settings: AgentMenuSettings;
-  emitEvent: (name: string, data: unknown) => void;   // ← dead field
+  emitEvent: (name: string, data: unknown) => void; // ← dead field
   personalAgentsDir: string;
   projectAgentsDir: string;
 }
@@ -96,7 +96,7 @@ interface AgentManagerObserver {
   onAgentStarted(record: AgentRecord): void;
   onAgentCompleted(record: AgentRecord): void;
   onAgentCompacted(record: AgentRecord, info: CompactionInfo): void;
-  onAgentCreated(record: AgentRecord): void;  // ← new
+  onAgentCreated(record: AgentRecord): void; // ← new
 }
 ```
 

@@ -16,95 +16,87 @@ import { GLYPHS, SPINNER } from "#src/ui/glyphs";
 
 /** Dispatch to the per-status renderer based on details.status and isPartial. */
 export function renderAgentResult(
-	details: AgentDetails,
-	resultText: string,
-	expanded: boolean,
-	isPartial: boolean,
-	theme: Theme,
+  details: AgentDetails,
+  resultText: string,
+  expanded: boolean,
+  isPartial: boolean,
+  theme: Theme,
 ): string {
-	if (isPartial || details.status === "running") return renderRunning(details, theme);
-	if (details.status === "background") return renderBackground(details, theme);
-	if (details.status === "completed")
-		return renderCompleted(details, resultText, expanded, theme);
-	if (details.status === "stopped") return renderStopped(details, theme);
-	return renderFailed(details, theme);
+  if (isPartial || details.status === "running") return renderRunning(details, theme);
+  if (details.status === "background") return renderBackground(details, theme);
+  if (details.status === "completed") return renderCompleted(details, resultText, expanded, theme);
+  if (details.status === "stopped") return renderStopped(details, theme);
+  return renderFailed(details, theme);
 }
 
 // ---- Per-status renderers ----
 
 /** Render running/partial status: spinner + stats + activity line. */
 export function renderRunning(details: AgentDetails, theme: Theme): string {
-	const frame = SPINNER[details.spinnerFrame ?? 0];
-	const s = renderStats(details, theme);
-	let line = theme.fg("accent", frame) + (s ? " " + s : "");
-	line += "\n" + theme.fg("dim", `  ${GLYPHS.subLine}  ${details.activity ?? "thinking\u2026"}`);
-	return line;
+  const frame = SPINNER[details.spinnerFrame ?? 0];
+  const s = renderStats(details, theme);
+  let line = theme.fg("accent", frame) + (s ? " " + s : "");
+  line += "\n" + theme.fg("dim", `  ${GLYPHS.subLine}  ${details.activity ?? "thinking\u2026"}`);
+  return line;
 }
 
 /** Render background launch status. */
 export function renderBackground(details: AgentDetails, theme: Theme): string {
-	return theme.fg("dim", `  ${GLYPHS.subLine}  Running in background (ID: ${details.agentId})`);
+  return theme.fg("dim", `  ${GLYPHS.subLine}  Running in background (ID: ${details.agentId})`);
 }
 
 /** Render completed status, with a turn-limit caveat when it wrapped up, and optional expanded result text. */
 export function renderCompleted(
-	details: AgentDetails,
-	resultText: string,
-	expanded: boolean,
-	theme: Theme,
+  details: AgentDetails,
+  resultText: string,
+  expanded: boolean,
+  theme: Theme,
 ): string {
-	const duration = formatMs(details.durationMs);
-	const wrappedUp = wrappedUpAtTurnLimit(details);
-	const icon = wrappedUp ? renderWrappedUpIcon(theme) : renderStatusIcon("completed", theme);
-	const s = renderStats(details, theme);
-	let line = icon + (s ? " " + s : "");
-	line += " " + theme.fg("dim", "\u00B7") + " " + theme.fg("dim", duration);
+  const duration = formatMs(details.durationMs);
+  const wrappedUp = wrappedUpAtTurnLimit(details);
+  const icon = wrappedUp ? renderWrappedUpIcon(theme) : renderStatusIcon("completed", theme);
+  const s = renderStats(details, theme);
+  let line = icon + (s ? " " + s : "");
+  line += " " + theme.fg("dim", "\u00B7") + " " + theme.fg("dim", duration);
 
-	if (expanded) {
-		if (resultText) {
-			const lines = resultText.split("\n").slice(0, 50);
-			for (const l of lines) {
-				line += "\n" + theme.fg("dim", `  ${l}`);
-			}
-			if (resultText.split("\n").length > 50) {
-				line +=
-					"\n" +
-					theme.fg(
-						"muted",
-						"  ... (use get_subagent_result with verbose for full output)",
-					);
-			}
-		}
-	} else {
-		const doneText = wrappedUp ? "Wrapped up (budget warning)" : "Done";
-		line += "\n" + theme.fg("dim", `  ${GLYPHS.subLine}  ${doneText}`);
-	}
-	return line;
+  if (expanded) {
+    if (resultText) {
+      const lines = resultText.split("\n").slice(0, 50);
+      for (const l of lines) {
+        line += "\n" + theme.fg("dim", `  ${l}`);
+      }
+      if (resultText.split("\n").length > 50) {
+        line +=
+          "\n" + theme.fg("muted", "  ... (use get_subagent_result with verbose for full output)");
+      }
+    }
+  } else {
+    const doneText = wrappedUp ? "Wrapped up (budget warning)" : "Done";
+    line += "\n" + theme.fg("dim", `  ${GLYPHS.subLine}  ${doneText}`);
+  }
+  return line;
 }
 
 /** Render stopped status: dim stop icon + stats + "Stopped". */
 export function renderStopped(details: AgentDetails, theme: Theme): string {
-	const s = renderStats(details, theme);
-	let line = renderStatusIcon("stopped", theme) + (s ? " " + s : "");
-	line += "\n" + theme.fg("dim", `  ${GLYPHS.subLine}  Stopped`);
-	return line;
+  const s = renderStats(details, theme);
+  let line = renderStatusIcon("stopped", theme) + (s ? " " + s : "");
+  line += "\n" + theme.fg("dim", `  ${GLYPHS.subLine}  Stopped`);
+  return line;
 }
 
 /** Render error or aborted status: error icon + stats + status message. */
 export function renderFailed(details: AgentDetails, theme: Theme): string {
-	const s = renderStats(details, theme);
-	let line = renderStatusIcon(details.status === "error" ? "error" : "aborted", theme) + (s ? " " + s : "");
+  const s = renderStats(details, theme);
+  let line =
+    renderStatusIcon(details.status === "error" ? "error" : "aborted", theme) + (s ? " " + s : "");
 
-	if (details.status === "error") {
-		line +=
-			"\n" +
-			theme.fg("error", `  ${GLYPHS.subLine}  Error: ${details.error ?? "unknown"}`);
-	} else {
-		line +=
-			"\n" +
-			theme.fg("warning", `  ${GLYPHS.subLine}  Aborted (turn limit reached)`);
-	}
-	return line;
+  if (details.status === "error") {
+    line += "\n" + theme.fg("error", `  ${GLYPHS.subLine}  Error: ${details.error ?? "unknown"}`);
+  } else {
+    line += "\n" + theme.fg("warning", `  ${GLYPHS.subLine}  Aborted (turn limit reached)`);
+  }
+  return line;
 }
 
 // ---- Shared helpers ----
@@ -114,16 +106,16 @@ export function renderFailed(details: AgentDetails, theme: Theme): string {
  * for a run that wrapped up at its turn limit.
  */
 export function renderOutcomeIcon(
-	outcome: { status: SubagentStatus; turnBudget?: TurnBudget },
-	theme: Theme,
+  outcome: { status: SubagentStatus; turnBudget?: TurnBudget },
+  theme: Theme,
 ): string {
-	if (wrappedUpAtTurnLimit(outcome)) return renderWrappedUpIcon(theme);
-	return renderStatusIcon(outcome.status, theme);
+  if (wrappedUpAtTurnLimit(outcome)) return renderWrappedUpIcon(theme);
+  return renderStatusIcon(outcome.status, theme);
 }
 
 /** A success glyph in the warning color: finished, with a turn-limit caveat. */
 function renderWrappedUpIcon(theme: Theme): string {
-	return theme.fg("warning", GLYPHS.success);
+  return theme.fg("warning", GLYPHS.success);
 }
 
 /**
@@ -134,19 +126,19 @@ function renderWrappedUpIcon(theme: Theme): string {
  * `get-result-renderer.ts`, which draws the same vocabulary for the same enum.
  */
 export function renderStatusIcon(status: SubagentStatus, theme: Theme): string {
-	switch (status) {
-		case "completed":
-			return theme.fg("success", GLYPHS.success);
-		case "stopped":
-			return theme.fg("dim", GLYPHS.stopped);
-		case "error":
-		case "aborted":
-			return theme.fg("error", GLYPHS.failure);
-		case "queued":
-			return theme.fg("dim", GLYPHS.queued);
-		case "running":
-			return theme.fg("dim", GLYPHS.streaming);
-	}
+  switch (status) {
+    case "completed":
+      return theme.fg("success", GLYPHS.success);
+    case "stopped":
+      return theme.fg("dim", GLYPHS.stopped);
+    case "error":
+    case "aborted":
+      return theme.fg("error", GLYPHS.failure);
+    case "queued":
+      return theme.fg("dim", GLYPHS.queued);
+    case "running":
+      return theme.fg("dim", GLYPHS.streaming);
+  }
 }
 
 /**
@@ -154,16 +146,14 @@ export function renderStatusIcon(status: SubagentStatus, theme: Theme): string {
  * Returns an empty string when all fields are absent or zero.
  */
 export function renderStats(details: AgentDetails, theme: Theme): string {
-	const parts: string[] = [];
-	if (details.modelName) parts.push(details.modelName);
-	if (details.tags) parts.push(...details.tags);
-	if (details.turnBudget) {
-		parts.push(formatTurnBudget(details.turnBudget));
-	}
-	if (details.toolUses > 0)
-		parts.push(`${details.toolUses} tool use${details.toolUses === 1 ? "" : "s"}`);
-	if (details.tokens) parts.push(details.tokens);
-	return parts
-		.map((p) => theme.fg("dim", p))
-		.join(" " + theme.fg("dim", "\u00B7") + " ");
+  const parts: string[] = [];
+  if (details.modelName) parts.push(details.modelName);
+  if (details.tags) parts.push(...details.tags);
+  if (details.turnBudget) {
+    parts.push(formatTurnBudget(details.turnBudget));
+  }
+  if (details.toolUses > 0)
+    parts.push(`${details.toolUses} tool use${details.toolUses === 1 ? "" : "s"}`);
+  if (details.tokens) parts.push(details.tokens);
+  return parts.map((p) => theme.fg("dim", p)).join(" " + theme.fg("dim", "\u00B7") + " ");
 }

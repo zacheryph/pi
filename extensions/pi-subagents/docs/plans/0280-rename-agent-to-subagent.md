@@ -75,8 +75,13 @@ The `subagent ↔ workspace` relationship is type-only and already exists (`suba
 ```typescript
 // src/lifecycle/subagent.ts (renamed from agent.ts)
 export type SubagentStatus =
-  | "queued" | "running" | "completed" | "steered"
-  | "aborted" | "stopped" | "error";
+  | "queued"
+  | "running"
+  | "completed"
+  | "steered"
+  | "aborted"
+  | "stopped"
+  | "error";
 
 // src/service/service.ts — delete local def, re-export instead
 export type { SubagentStatus } from "#src/lifecycle/subagent";

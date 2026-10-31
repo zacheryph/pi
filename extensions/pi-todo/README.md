@@ -65,7 +65,11 @@ Record an outcome with the status change that produced it:
 {
   "action": "upsert",
   "tasks": [
-    { "key": "build", "status": "completed", "message": "Built; 2 deprecation warnings in auth/session.ts" },
+    {
+      "key": "build",
+      "status": "completed",
+      "message": "Built; 2 deprecation warnings in auth/session.ts"
+    },
     { "key": "verify", "status": "in_progress" }
   ]
 }
@@ -74,13 +78,13 @@ Record an outcome with the status change that produced it:
 `message` goes into the task's history, not its description. The user sees it
 flagged until they review it; see [Messages and review](#messages-and-review).
 
-| Action | Arguments | Behavior |
-| --- | --- | --- |
-| `list` | optional `key` | Read revision/plan; one key returns its full description |
-| `upsert` | `tasks` | Add/patch only named keys; inherit omitted fields |
-| `replace` | `tasks` | Authoritative plan; omitted keys deleted; `[]` clears |
-| `remove` | `keys` | Delete named tasks; dangling live dependencies rejected |
-| `clear` | optional `scope` | `all` (default) clears; `completed` removes only completed tasks not needed by open work |
+| Action    | Arguments        | Behavior                                                                                 |
+| --------- | ---------------- | ---------------------------------------------------------------------------------------- |
+| `list`    | optional `key`   | Read revision/plan; one key returns its full description                                 |
+| `upsert`  | `tasks`          | Add/patch only named keys; inherit omitted fields                                        |
+| `replace` | `tasks`          | Authoritative plan; omitted keys deleted; `[]` clears                                    |
+| `remove`  | `keys`           | Delete named tasks; dangling live dependencies rejected                                  |
+| `clear`   | optional `scope` | `all` (default) clears; `completed` removes only completed tasks not needed by open work |
 
 `upsert` and `replace` tasks accept an optional `message`. A message-only patch
 still advances the revision. Full-plan output shows each task's latest message as a
@@ -105,21 +109,21 @@ details. Validation failures never mutate state.
 
 ## Commands
 
-| Command | Purpose |
-| --- | --- |
-| `/todos` or `/todos:list` | Searchable task list, dependency details and history |
-| `/todos:review` | Browser on unreviewed messages; outside TUI, prints them and marks them reviewed |
-| `/todos:review all` | Mark every unreviewed task reviewed |
-| `/todos:review fix-auth-bug` | Mark one or more space-separated keys reviewed |
-| `/todos:add Fix auth bug` | Add pending task with unique generated key; omit title for input dialog |
-| `/todos:update fix-auth-bug in_progress` | Change status explicitly |
-| `/todos:update fix-auth-bug completed Verified by hand` | Change status and record a note |
-| `/todos:update fix-auth-bug {"dependsOn":["inspect"],"description":"Recheck expiry"}` | Sparse field patch; `message` also accepted |
-| `/todos:remove fix-auth-bug` | Remove one or more space-separated keys |
-| `/todos:clear completed` | Clear finished tasks while preserving prerequisites of open work |
-| `/todos:clear` | Clear all, with confirmation by default |
-| `/todos:clear all --yes` | Explicitly bypass confirmation |
-| `/todos:settings` | Built-in select/input settings menu, like subagents |
+| Command                                                                               | Purpose                                                                          |
+| ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `/todos` or `/todos:list`                                                             | Searchable task list, dependency details and history                             |
+| `/todos:review`                                                                       | Browser on unreviewed messages; outside TUI, prints them and marks them reviewed |
+| `/todos:review all`                                                                   | Mark every unreviewed task reviewed                                              |
+| `/todos:review fix-auth-bug`                                                          | Mark one or more space-separated keys reviewed                                   |
+| `/todos:add Fix auth bug`                                                             | Add pending task with unique generated key; omit title for input dialog          |
+| `/todos:update fix-auth-bug in_progress`                                              | Change status explicitly                                                         |
+| `/todos:update fix-auth-bug completed Verified by hand`                               | Change status and record a note                                                  |
+| `/todos:update fix-auth-bug {"dependsOn":["inspect"],"description":"Recheck expiry"}` | Sparse field patch; `message` also accepted                                      |
+| `/todos:remove fix-auth-bug`                                                          | Remove one or more space-separated keys                                          |
+| `/todos:clear completed`                                                              | Clear finished tasks while preserving prerequisites of open work                 |
+| `/todos:clear`                                                                        | Clear all, with confirmation by default                                          |
+| `/todos:clear all --yes`                                                              | Explicitly bypass confirmation                                                   |
+| `/todos:settings`                                                                     | Built-in select/input settings menu, like subagents                              |
 
 Commands never submit a user prompt, schedule a continuation, start subagents,
 or mark unrelated work completed. On its next model request, the agent gets a
@@ -156,8 +160,12 @@ A parent can hand specific tasks to a subagent through pi-subagents' generic spa
 `handoff`, under the `todos` key that pi-todo owns:
 
 ```ts
-subagent({ subagent_type: "general-purpose", description: "Audit auth", prompt: "…",
-  handoff: { todos: { keys: ["audit", "tests"], scope: "assigned" } } })
+subagent({
+  subagent_type: "general-purpose",
+  description: "Audit auth",
+  prompt: "…",
+  handoff: { todos: { keys: ["audit", "tests"], scope: "assigned" } },
+});
 ```
 
 - **Checked before the spawn.** pi-todo's `tool_call` handler blocks the `subagent`

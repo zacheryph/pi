@@ -131,16 +131,19 @@ describe("settings persistence", () => {
       },
     );
 
-    it.each([true, false])("accepts overlayShowThinking: %s", overlayShowThinking => {
+    it.each([true, false])("accepts overlayShowThinking: %s", (overlayShowThinking) => {
       writeProject({ overlayShowThinking });
       expect(loadSettings(globalDir, projectDir)).toEqual({ overlayShowThinking });
     });
 
-    it.each(["false", "true", 0, 1, null, {}, []])("drops invalid overlayShowThinking: %j", overlayShowThinking => {
-      writeGlobal({ overlayShowThinking: false });
-      writeProject({ overlayShowThinking });
-      expect(loadSettings(globalDir, projectDir)).toEqual({ overlayShowThinking: false });
-    });
+    it.each(["false", "true", 0, 1, null, {}, []])(
+      "drops invalid overlayShowThinking: %j",
+      (overlayShowThinking) => {
+        writeGlobal({ overlayShowThinking: false });
+        writeProject({ overlayShowThinking });
+        expect(loadSettings(globalDir, projectDir)).toEqual({ overlayShowThinking: false });
+      },
+    );
 
     it.each([true, false])("accepts overlayDefaultOpen: %s", (overlayDefaultOpen) => {
       writeProject({ overlayDefaultOpen });
@@ -208,7 +211,10 @@ describe("settings persistence", () => {
     });
 
     it("accepts retention windows within [1, 20160]", () => {
-      writeProject({ consumedSessionRetentionMinutes: 15, unconsumedSessionRetentionMinutes: 1440 });
+      writeProject({
+        consumedSessionRetentionMinutes: 15,
+        unconsumedSessionRetentionMinutes: 1440,
+      });
       expect(loadSettings(globalDir, projectDir)).toEqual({
         consumedSessionRetentionMinutes: 15,
         unconsumedSessionRetentionMinutes: 1440,
@@ -262,7 +268,11 @@ describe("settings persistence", () => {
     });
 
     it("drops absurdly large values (e.g. 1e6)", () => {
-      writeProject({ maxConcurrent: 1_000_000, defaultMaxTurns: 1_000_000, wrapUpTurns: 1_000_000 });
+      writeProject({
+        maxConcurrent: 1_000_000,
+        defaultMaxTurns: 1_000_000,
+        wrapUpTurns: 1_000_000,
+      });
       expect(loadSettings(globalDir, projectDir)).toEqual({});
     });
 
@@ -406,9 +416,7 @@ describe("settings persistence", () => {
       });
     });
   });
-
 });
-
 
 describe("SettingsManager", () => {
   describe("constructor defaults", () => {
@@ -419,12 +427,23 @@ describe("SettingsManager", () => {
     });
 
     it("exports exact fractions for every width preset", () => {
-      expect(Object.keys(OVERLAY_WIDTH_PRESETS)).toEqual(["quarter", "third", "half", "two-thirds"]);
+      expect(Object.keys(OVERLAY_WIDTH_PRESETS)).toEqual([
+        "quarter",
+        "third",
+        "half",
+        "two-thirds",
+      ]);
       expect(Object.values(OVERLAY_WIDTH_PRESETS).map((preset) => preset.fraction)).toEqual([
-        1 / 4, 1 / 3, 1 / 2, 2 / 3,
+        1 / 4,
+        1 / 3,
+        1 / 2,
+        2 / 3,
       ]);
       expect(OVERLAY_WIDTH_PERCENT).toEqual({
-        quarter: "25%", third: "33.333%", half: "50%", "two-thirds": "66.667%",
+        quarter: "25%",
+        third: "33.333%",
+        half: "50%",
+        "two-thirds": "66.667%",
       });
     });
 
@@ -493,9 +512,9 @@ describe("SettingsManager", () => {
     }
 
     it("returns the configured strategy for a listed provider", () => {
-      expect(managerWith({ "claude-bridge": "portable" }).promptInheritanceFor("claude-bridge")).toBe(
-        "portable",
-      );
+      expect(
+        managerWith({ "claude-bridge": "portable" }).promptInheritanceFor("claude-bridge"),
+      ).toBe("portable");
     });
 
     it("returns full for a provider the rules do not list", () => {
@@ -624,7 +643,10 @@ describe("SettingsManager", () => {
 
     it("applies merged settings from disk to in-memory values", () => {
       mkdirSync(join(projectDir, ".pi"), { recursive: true });
-      writeFileSync(join(projectDir, ".pi", "subagents.json"), JSON.stringify({ wrapUpTurns: 7, maxConcurrent: 8 }));
+      writeFileSync(
+        join(projectDir, ".pi", "subagents.json"),
+        JSON.stringify({ wrapUpTurns: 7, maxConcurrent: 8 }),
+      );
       const emit = vi.fn();
       const sm = new SettingsManager({ emit, cwd: projectDir, agentDir: globalDir });
       sm.load();
@@ -635,7 +657,10 @@ describe("SettingsManager", () => {
 
     it("applies defaultMaxTurns from disk (0 → unlimited)", () => {
       mkdirSync(join(projectDir, ".pi"), { recursive: true });
-      writeFileSync(join(projectDir, ".pi", "subagents.json"), JSON.stringify({ defaultMaxTurns: 0 }));
+      writeFileSync(
+        join(projectDir, ".pi", "subagents.json"),
+        JSON.stringify({ defaultMaxTurns: 0 }),
+      );
       const sm = new SettingsManager({ emit: vi.fn(), cwd: projectDir, agentDir: globalDir });
       sm.load();
       expect(sm.defaultMaxTurns).toBeUndefined();
@@ -643,7 +668,10 @@ describe("SettingsManager", () => {
 
     it("applies defaultMaxTurns: 50 from disk", () => {
       mkdirSync(join(projectDir, ".pi"), { recursive: true });
-      writeFileSync(join(projectDir, ".pi", "subagents.json"), JSON.stringify({ defaultMaxTurns: 50 }));
+      writeFileSync(
+        join(projectDir, ".pi", "subagents.json"),
+        JSON.stringify({ defaultMaxTurns: 50 }),
+      );
       const sm = new SettingsManager({ emit: vi.fn(), cwd: projectDir, agentDir: globalDir });
       sm.load();
       expect(sm.defaultMaxTurns).toBe(50);
@@ -651,7 +679,13 @@ describe("SettingsManager", () => {
 
     it("applies retention windows from disk", () => {
       mkdirSync(join(projectDir, ".pi"), { recursive: true });
-      writeFileSync(join(projectDir, ".pi", "subagents.json"), JSON.stringify({ consumedSessionRetentionMinutes: 20, unconsumedSessionRetentionMinutes: 60 }));
+      writeFileSync(
+        join(projectDir, ".pi", "subagents.json"),
+        JSON.stringify({
+          consumedSessionRetentionMinutes: 20,
+          unconsumedSessionRetentionMinutes: 60,
+        }),
+      );
       const sm = new SettingsManager({ emit: vi.fn(), cwd: projectDir, agentDir: globalDir });
       sm.load();
       expect(sm.consumedSessionRetentionMinutes).toBe(20);
@@ -660,7 +694,10 @@ describe("SettingsManager", () => {
 
     it("applies abortAllOnInterrupt: false from disk", () => {
       mkdirSync(join(projectDir, ".pi"), { recursive: true });
-      writeFileSync(join(projectDir, ".pi", "subagents.json"), JSON.stringify({ abortAllOnInterrupt: false }));
+      writeFileSync(
+        join(projectDir, ".pi", "subagents.json"),
+        JSON.stringify({ abortAllOnInterrupt: false }),
+      );
       const sm = new SettingsManager({ emit: vi.fn(), cwd: projectDir, agentDir: globalDir });
       sm.load();
       expect(sm.abortAllOnInterrupt).toBe(false);
@@ -676,7 +713,10 @@ describe("SettingsManager", () => {
 
     it("warns that graceTurns was removed, and neither applies, emits, nor persists it", () => {
       mkdirSync(join(projectDir, ".pi"), { recursive: true });
-      writeFileSync(join(projectDir, ".pi", "subagents.json"), JSON.stringify({ graceTurns: 5, maxConcurrent: 6 }));
+      writeFileSync(
+        join(projectDir, ".pi", "subagents.json"),
+        JSON.stringify({ graceTurns: 5, maxConcurrent: 6 }),
+      );
       const emit = vi.fn();
       const sm = new SettingsManager({ emit, cwd: projectDir, agentDir: globalDir });
       const warnings = captureWarn(() => {
@@ -685,23 +725,33 @@ describe("SettingsManager", () => {
       expect(warnings).toEqual([
         "[pi-subagents] graceTurns was removed; set wrapUpTurns (turns left when a subagent is warned, default 2) instead.",
       ]);
-      expect(emit).toHaveBeenCalledWith("subagents:settings_loaded", { settings: { maxConcurrent: 6 } });
+      expect(emit).toHaveBeenCalledWith("subagents:settings_loaded", {
+        settings: { maxConcurrent: 6 },
+      });
       expect(sm.wrapUpTurns).toBe(2);
       expect(sm.snapshot()).not.toHaveProperty("graceTurns");
     });
 
     it("warns about a defaultMaxTurns below the minimum and runs with 2", () => {
       mkdirSync(join(projectDir, ".pi"), { recursive: true });
-      writeFileSync(join(projectDir, ".pi", "subagents.json"), JSON.stringify({ defaultMaxTurns: 1 }));
+      writeFileSync(
+        join(projectDir, ".pi", "subagents.json"),
+        JSON.stringify({ defaultMaxTurns: 1 }),
+      );
       const sm = new SettingsManager({ emit: vi.fn(), cwd: projectDir, agentDir: globalDir });
       const warnings = captureWarn(() => sm.load());
-      expect(warnings).toEqual(["[pi-subagents] defaultMaxTurns 1 is below the minimum of 2; using 2."]);
+      expect(warnings).toEqual([
+        "[pi-subagents] defaultMaxTurns 1 is below the minimum of 2; using 2.",
+      ]);
       expect(sm.defaultMaxTurns).toBe(2);
     });
 
     it("does not warn for settings within range", () => {
       mkdirSync(join(projectDir, ".pi"), { recursive: true });
-      writeFileSync(join(projectDir, ".pi", "subagents.json"), JSON.stringify({ defaultMaxTurns: 2, wrapUpTurns: 3 }));
+      writeFileSync(
+        join(projectDir, ".pi", "subagents.json"),
+        JSON.stringify({ defaultMaxTurns: 2, wrapUpTurns: 3 }),
+      );
       const sm = new SettingsManager({ emit: vi.fn(), cwd: projectDir, agentDir: globalDir });
       expect(captureWarn(() => sm.load())).toEqual([]);
     });
@@ -713,12 +763,17 @@ describe("SettingsManager", () => {
       const sm = new SettingsManager({ emit, cwd: projectDir, agentDir: globalDir });
       sm.load();
       expect(emit).toHaveBeenCalledTimes(1);
-      expect(emit).toHaveBeenCalledWith("subagents:settings_loaded", { settings: { wrapUpTurns: 7 } });
+      expect(emit).toHaveBeenCalledWith("subagents:settings_loaded", {
+        settings: { wrapUpTurns: 7 },
+      });
     });
 
     it("returns the loaded settings object", () => {
       mkdirSync(join(projectDir, ".pi"), { recursive: true });
-      writeFileSync(join(projectDir, ".pi", "subagents.json"), JSON.stringify({ maxConcurrent: 6 }));
+      writeFileSync(
+        join(projectDir, ".pi", "subagents.json"),
+        JSON.stringify({ maxConcurrent: 6 }),
+      );
       const sm = new SettingsManager({ emit: vi.fn(), cwd: projectDir, agentDir: globalDir });
       const result = sm.load();
       expect(result).toEqual({ maxConcurrent: 6 });
@@ -751,7 +806,18 @@ describe("SettingsManager", () => {
   describe("snapshot()", () => {
     it("returns default values before any changes", () => {
       const sm = new SettingsManager({ emit: vi.fn(), cwd: "/tmp", agentDir: "/nonexistent" });
-      expect(sm.snapshot()).toEqual({ maxConcurrent: 4, defaultMaxTurns: 0, wrapUpTurns: 2, consumedSessionRetentionMinutes: 10, unconsumedSessionRetentionMinutes: 720, abortAllOnInterrupt: true, midRunUpdates: true, overlayWidth: "third", overlayDefaultOpen: false, overlayShowThinking: true });
+      expect(sm.snapshot()).toEqual({
+        maxConcurrent: 4,
+        defaultMaxTurns: 0,
+        wrapUpTurns: 2,
+        consumedSessionRetentionMinutes: 10,
+        unconsumedSessionRetentionMinutes: 720,
+        abortAllOnInterrupt: true,
+        midRunUpdates: true,
+        overlayWidth: "third",
+        overlayDefaultOpen: false,
+        overlayShowThinking: true,
+      });
     });
 
     it("reflects mutations: defaultMaxTurns undefined maps to 0 in snapshot", () => {
@@ -759,36 +825,102 @@ describe("SettingsManager", () => {
       sm.defaultMaxTurns = undefined;
       sm.wrapUpTurns = 3;
       sm.maxConcurrent = 8;
-      expect(sm.snapshot()).toEqual({ maxConcurrent: 8, defaultMaxTurns: 0, wrapUpTurns: 3, consumedSessionRetentionMinutes: 10, unconsumedSessionRetentionMinutes: 720, abortAllOnInterrupt: true, midRunUpdates: true, overlayWidth: "third", overlayDefaultOpen: false, overlayShowThinking: true });
+      expect(sm.snapshot()).toEqual({
+        maxConcurrent: 8,
+        defaultMaxTurns: 0,
+        wrapUpTurns: 3,
+        consumedSessionRetentionMinutes: 10,
+        unconsumedSessionRetentionMinutes: 720,
+        abortAllOnInterrupt: true,
+        midRunUpdates: true,
+        overlayWidth: "third",
+        overlayDefaultOpen: false,
+        overlayShowThinking: true,
+      });
     });
 
     it("reflects a concrete defaultMaxTurns value", () => {
       const sm = new SettingsManager({ emit: vi.fn(), cwd: "/tmp", agentDir: "/nonexistent" });
       sm.defaultMaxTurns = 20;
-      expect(sm.snapshot()).toEqual({ maxConcurrent: 4, defaultMaxTurns: 20, wrapUpTurns: 2, consumedSessionRetentionMinutes: 10, unconsumedSessionRetentionMinutes: 720, abortAllOnInterrupt: true, midRunUpdates: true, overlayWidth: "third", overlayDefaultOpen: false, overlayShowThinking: true });
+      expect(sm.snapshot()).toEqual({
+        maxConcurrent: 4,
+        defaultMaxTurns: 20,
+        wrapUpTurns: 2,
+        consumedSessionRetentionMinutes: 10,
+        unconsumedSessionRetentionMinutes: 720,
+        abortAllOnInterrupt: true,
+        midRunUpdates: true,
+        overlayWidth: "third",
+        overlayDefaultOpen: false,
+        overlayShowThinking: true,
+      });
     });
 
     it("reflects mutated retention windows", () => {
       const sm = new SettingsManager({ emit: vi.fn(), cwd: "/tmp", agentDir: "/nonexistent" });
       sm.consumedSessionRetentionMinutes = 30;
       sm.unconsumedSessionRetentionMinutes = 1440;
-      expect(sm.snapshot()).toEqual({ maxConcurrent: 4, defaultMaxTurns: 0, wrapUpTurns: 2, consumedSessionRetentionMinutes: 30, unconsumedSessionRetentionMinutes: 1440, abortAllOnInterrupt: true, midRunUpdates: true, overlayWidth: "third", overlayDefaultOpen: false, overlayShowThinking: true });
+      expect(sm.snapshot()).toEqual({
+        maxConcurrent: 4,
+        defaultMaxTurns: 0,
+        wrapUpTurns: 2,
+        consumedSessionRetentionMinutes: 30,
+        unconsumedSessionRetentionMinutes: 1440,
+        abortAllOnInterrupt: true,
+        midRunUpdates: true,
+        overlayWidth: "third",
+        overlayDefaultOpen: false,
+        overlayShowThinking: true,
+      });
     });
 
     it("reflects a flipped abortAllOnInterrupt", () => {
       const sm = new SettingsManager({ emit: vi.fn(), cwd: "/tmp", agentDir: "/nonexistent" });
       sm.toggleAbortAllOnInterrupt();
-      expect(sm.snapshot()).toEqual({ maxConcurrent: 4, defaultMaxTurns: 0, wrapUpTurns: 2, consumedSessionRetentionMinutes: 10, unconsumedSessionRetentionMinutes: 720, abortAllOnInterrupt: false, midRunUpdates: true, overlayWidth: "third", overlayDefaultOpen: false, overlayShowThinking: true });
+      expect(sm.snapshot()).toEqual({
+        maxConcurrent: 4,
+        defaultMaxTurns: 0,
+        wrapUpTurns: 2,
+        consumedSessionRetentionMinutes: 10,
+        unconsumedSessionRetentionMinutes: 720,
+        abortAllOnInterrupt: false,
+        midRunUpdates: true,
+        overlayWidth: "third",
+        overlayDefaultOpen: false,
+        overlayShowThinking: true,
+      });
     });
 
     it("omits excludedExtensionPackages when none are configured", () => {
       const sm = new SettingsManager({ emit: vi.fn(), cwd: "/tmp", agentDir: "/nonexistent" });
-      expect(sm.snapshot()).toEqual({ maxConcurrent: 4, defaultMaxTurns: 0, wrapUpTurns: 2, consumedSessionRetentionMinutes: 10, unconsumedSessionRetentionMinutes: 720, abortAllOnInterrupt: true, midRunUpdates: true, overlayWidth: "third", overlayDefaultOpen: false, overlayShowThinking: true });
+      expect(sm.snapshot()).toEqual({
+        maxConcurrent: 4,
+        defaultMaxTurns: 0,
+        wrapUpTurns: 2,
+        consumedSessionRetentionMinutes: 10,
+        unconsumedSessionRetentionMinutes: 720,
+        abortAllOnInterrupt: true,
+        midRunUpdates: true,
+        overlayWidth: "third",
+        overlayDefaultOpen: false,
+        overlayShowThinking: true,
+      });
     });
 
     it("omits promptInheritance when no rules are configured", () => {
       const sm = new SettingsManager({ emit: vi.fn(), cwd: "/tmp", agentDir: "/nonexistent" });
-      expect(sm.snapshot()).toEqual({ maxConcurrent: 4, defaultMaxTurns: 0, wrapUpTurns: 2, consumedSessionRetentionMinutes: 10, unconsumedSessionRetentionMinutes: 720, abortAllOnInterrupt: true, midRunUpdates: true, overlayWidth: "third", overlayDefaultOpen: false, overlayShowThinking: true });
+      expect(sm.snapshot()).toEqual({
+        maxConcurrent: 4,
+        defaultMaxTurns: 0,
+        wrapUpTurns: 2,
+        consumedSessionRetentionMinutes: 10,
+        unconsumedSessionRetentionMinutes: 720,
+        abortAllOnInterrupt: true,
+        midRunUpdates: true,
+        overlayWidth: "third",
+        overlayDefaultOpen: false,
+        overlayShowThinking: true,
+      });
     });
   });
 
@@ -871,7 +1003,18 @@ describe("SettingsManager", () => {
       const toast = sm.saveAndNotify("Max concurrency set to 5");
       expect(toast).toEqual({ message: "Max concurrency set to 5", level: "info" });
       const written = JSON.parse(readFileSync(join(projectDir, ".pi", "subagents.json"), "utf-8"));
-      expect(written).toEqual({ maxConcurrent: 5, defaultMaxTurns: 0, wrapUpTurns: 2, consumedSessionRetentionMinutes: 10, unconsumedSessionRetentionMinutes: 720, abortAllOnInterrupt: true, midRunUpdates: true, overlayWidth: "third", overlayDefaultOpen: false, overlayShowThinking: true });
+      expect(written).toEqual({
+        maxConcurrent: 5,
+        defaultMaxTurns: 0,
+        wrapUpTurns: 2,
+        consumedSessionRetentionMinutes: 10,
+        unconsumedSessionRetentionMinutes: 720,
+        abortAllOnInterrupt: true,
+        midRunUpdates: true,
+        overlayWidth: "third",
+        overlayDefaultOpen: false,
+        overlayShowThinking: true,
+      });
     });
 
     it("emits subagents:settings_changed with persisted:true on success", () => {
@@ -880,7 +1023,18 @@ describe("SettingsManager", () => {
       sm.wrapUpTurns = 3;
       sm.saveAndNotify("Wrap-up turns set to 3");
       expect(emit).toHaveBeenCalledWith("subagents:settings_changed", {
-        settings: { maxConcurrent: 4, defaultMaxTurns: 0, wrapUpTurns: 3, consumedSessionRetentionMinutes: 10, unconsumedSessionRetentionMinutes: 720, abortAllOnInterrupt: true, midRunUpdates: true, overlayWidth: "third", overlayDefaultOpen: false, overlayShowThinking: true },
+        settings: {
+          maxConcurrent: 4,
+          defaultMaxTurns: 0,
+          wrapUpTurns: 3,
+          consumedSessionRetentionMinutes: 10,
+          unconsumedSessionRetentionMinutes: 720,
+          abortAllOnInterrupt: true,
+          midRunUpdates: true,
+          overlayWidth: "third",
+          overlayDefaultOpen: false,
+          overlayShowThinking: true,
+        },
         persisted: true,
       });
     });
@@ -889,7 +1043,11 @@ describe("SettingsManager", () => {
       const filePosingAsCwd = join(tmpdir(), `pi-sm-notdir-${Date.now()}`);
       writeFileSync(filePosingAsCwd, "");
       try {
-        const sm = new SettingsManager({ emit: vi.fn(), cwd: filePosingAsCwd, agentDir: "/nonexistent" });
+        const sm = new SettingsManager({
+          emit: vi.fn(),
+          cwd: filePosingAsCwd,
+          agentDir: "/nonexistent",
+        });
         const toast = sm.saveAndNotify("Max concurrency set to 5");
         expect(toast).toEqual({
           message: "Max concurrency set to 5 (session only; failed to persist)",
@@ -908,7 +1066,18 @@ describe("SettingsManager", () => {
         const sm = new SettingsManager({ emit, cwd: filePosingAsCwd, agentDir: "/nonexistent" });
         sm.saveAndNotify("something");
         expect(emit).toHaveBeenCalledWith("subagents:settings_changed", {
-          settings: { maxConcurrent: 4, defaultMaxTurns: 0, wrapUpTurns: 2, consumedSessionRetentionMinutes: 10, unconsumedSessionRetentionMinutes: 720, abortAllOnInterrupt: true, midRunUpdates: true, overlayWidth: "third", overlayDefaultOpen: false, overlayShowThinking: true },
+          settings: {
+            maxConcurrent: 4,
+            defaultMaxTurns: 0,
+            wrapUpTurns: 2,
+            consumedSessionRetentionMinutes: 10,
+            unconsumedSessionRetentionMinutes: 720,
+            abortAllOnInterrupt: true,
+            midRunUpdates: true,
+            overlayWidth: "third",
+            overlayDefaultOpen: false,
+            overlayShowThinking: true,
+          },
           persisted: false,
         });
       } finally {
@@ -930,7 +1099,12 @@ describe("SettingsManager", () => {
 
     it("sets maxConcurrent, calls callback, persists, and returns info toast", () => {
       const onChanged = vi.fn();
-      const sm = new SettingsManager({ emit: vi.fn(), cwd: projectDir, agentDir: "/nonexistent", onMaxConcurrentChanged: onChanged });
+      const sm = new SettingsManager({
+        emit: vi.fn(),
+        cwd: projectDir,
+        agentDir: "/nonexistent",
+        onMaxConcurrentChanged: onChanged,
+      });
       const toast = sm.applyMaxConcurrent(8);
       expect(sm.maxConcurrent).toBe(8);
       expect(onChanged).toHaveBeenCalledOnce();
@@ -980,7 +1154,12 @@ describe("SettingsManager", () => {
 
     it("does not call onMaxConcurrentChanged", () => {
       const onChanged = vi.fn();
-      const sm = new SettingsManager({ emit: vi.fn(), cwd: projectDir, agentDir: "/nonexistent", onMaxConcurrentChanged: onChanged });
+      const sm = new SettingsManager({
+        emit: vi.fn(),
+        cwd: projectDir,
+        agentDir: "/nonexistent",
+        onMaxConcurrentChanged: onChanged,
+      });
       sm.applyDefaultMaxTurns(5);
       expect(onChanged).not.toHaveBeenCalled();
     });
@@ -1017,14 +1196,22 @@ describe("SettingsManager", () => {
       const sm = new SettingsManager({ emit: vi.fn(), cwd: projectDir, agentDir: "/nonexistent" });
       const toast = sm.applyUnconsumedSessionRetentionMinutes(1440);
       expect(sm.unconsumedSessionRetentionMinutes).toBe(1440);
-      expect(toast).toEqual({ message: "Unconsumed-session retention set to 1440 min", level: "info" });
+      expect(toast).toEqual({
+        message: "Unconsumed-session retention set to 1440 min",
+        level: "info",
+      });
       const written = JSON.parse(readFileSync(join(projectDir, ".pi", "subagents.json"), "utf-8"));
       expect(written.unconsumedSessionRetentionMinutes).toBe(1440);
     });
 
     it("does not call onMaxConcurrentChanged", () => {
       const onChanged = vi.fn();
-      const sm = new SettingsManager({ emit: vi.fn(), cwd: projectDir, agentDir: "/nonexistent", onMaxConcurrentChanged: onChanged });
+      const sm = new SettingsManager({
+        emit: vi.fn(),
+        cwd: projectDir,
+        agentDir: "/nonexistent",
+        onMaxConcurrentChanged: onChanged,
+      });
       sm.applyConsumedSessionRetentionMinutes(30);
       sm.applyUnconsumedSessionRetentionMinutes(1440);
       expect(onChanged).not.toHaveBeenCalled();
@@ -1058,7 +1245,12 @@ describe("SettingsManager", () => {
 
     it("does not call onMaxConcurrentChanged", () => {
       const onChanged = vi.fn();
-      const sm = new SettingsManager({ emit: vi.fn(), cwd: projectDir, agentDir: "/nonexistent", onMaxConcurrentChanged: onChanged });
+      const sm = new SettingsManager({
+        emit: vi.fn(),
+        cwd: projectDir,
+        agentDir: "/nonexistent",
+        onMaxConcurrentChanged: onChanged,
+      });
       sm.applyWrapUpTurns(5);
       expect(onChanged).not.toHaveBeenCalled();
     });
@@ -1084,11 +1276,20 @@ describe("SettingsManager", () => {
       const sm = manager(emit);
       sm.load();
       expect(sm.overlayShowThinking).toBe(true);
-      expect(sm.toggleOverlayShowThinking()).toEqual({ message: "Overlay thinking: hidden", level: "info" });
+      expect(sm.toggleOverlayShowThinking()).toEqual({
+        message: "Overlay thinking: hidden",
+        level: "info",
+      });
       expect(sm.overlayShowThinking).toBe(false);
       expect(loadSettings(dirs.globalDir, dirs.projectDir).overlayShowThinking).toBe(false);
-      expect(emit).toHaveBeenLastCalledWith("subagents:settings_changed", { settings: sm.snapshot(), persisted: true });
-      expect(sm.toggleOverlayShowThinking()).toEqual({ message: "Overlay thinking: shown", level: "info" });
+      expect(emit).toHaveBeenLastCalledWith("subagents:settings_changed", {
+        settings: sm.snapshot(),
+        persisted: true,
+      });
+      expect(sm.toggleOverlayShowThinking()).toEqual({
+        message: "Overlay thinking: shown",
+        level: "info",
+      });
       expect(loadSettings(dirs.globalDir, dirs.projectDir).overlayShowThinking).toBe(true);
     });
 
@@ -1099,7 +1300,9 @@ describe("SettingsManager", () => {
       const sm = manager(emit);
       expect(sm.load()).toEqual({ overlayShowThinking: false });
       expect(sm.overlayShowThinking).toBe(false);
-      expect(emit).toHaveBeenCalledWith("subagents:settings_loaded", { settings: { overlayShowThinking: false } });
+      expect(emit).toHaveBeenCalledWith("subagents:settings_loaded", {
+        settings: { overlayShowThinking: false },
+      });
       sm.applyWrapUpTurns(7);
       const reloaded = manager();
       reloaded.load();
@@ -1113,10 +1316,14 @@ describe("SettingsManager", () => {
       const emit = vi.fn();
       const sm = manager(emit, cwdFile);
       expect(sm.toggleOverlayShowThinking()).toEqual({
-        message: "Overlay thinking: hidden (session only; failed to persist)", level: "warning",
+        message: "Overlay thinking: hidden (session only; failed to persist)",
+        level: "warning",
       });
       expect(sm.overlayShowThinking).toBe(false);
-      expect(emit).toHaveBeenLastCalledWith("subagents:settings_changed", { settings: sm.snapshot(), persisted: false });
+      expect(emit).toHaveBeenLastCalledWith("subagents:settings_changed", {
+        settings: sm.snapshot(),
+        persisted: false,
+      });
     });
 
     it("loads overlay settings and emits their sanitized values", () => {
@@ -1152,7 +1359,8 @@ describe("SettingsManager", () => {
         expect(sm.overlayWidth).toBe(width);
         expect(loadSettings(dirs.globalDir, dirs.projectDir)).toEqual(sm.snapshot());
         expect(emit).toHaveBeenCalledWith("subagents:settings_changed", {
-          settings: sm.snapshot(), persisted: true,
+          settings: sm.snapshot(),
+          persisted: true,
         });
       },
     );
@@ -1167,7 +1375,8 @@ describe("SettingsManager", () => {
       expect(sm.overlayDefaultOpen).toBe(true);
       expect(loadSettings(dirs.globalDir, dirs.projectDir).overlayDefaultOpen).toBe(true);
       expect(emit).toHaveBeenLastCalledWith("subagents:settings_changed", {
-        settings: sm.snapshot(), persisted: true,
+        settings: sm.snapshot(),
+        persisted: true,
       });
       expect(sm.toggleOverlayDefaultOpen().message).toBe(
         "Overlay default visibility: hidden (before explicit show/hide this session)",
@@ -1199,12 +1408,14 @@ describe("SettingsManager", () => {
       });
       expect(sm.overlayWidth).toBe("half");
       expect(sm.toggleOverlayDefaultOpen()).toEqual({
-        message: "Overlay default visibility: shown (before explicit show/hide this session) (session only; failed to persist)",
+        message:
+          "Overlay default visibility: shown (before explicit show/hide this session) (session only; failed to persist)",
         level: "warning",
       });
       expect(sm.overlayDefaultOpen).toBe(true);
       expect(emit).toHaveBeenLastCalledWith("subagents:settings_changed", {
-        settings: sm.snapshot(), persisted: false,
+        settings: sm.snapshot(),
+        persisted: false,
       });
     });
   });
@@ -1294,7 +1505,18 @@ describe("SettingsManager", () => {
       const sm = new SettingsManager({ emit, cwd: projectDir, agentDir: "/nonexistent" });
       sm.toggleAbortAllOnInterrupt();
       expect(emit).toHaveBeenCalledWith("subagents:settings_changed", {
-        settings: { maxConcurrent: 4, defaultMaxTurns: 0, wrapUpTurns: 2, consumedSessionRetentionMinutes: 10, unconsumedSessionRetentionMinutes: 720, abortAllOnInterrupt: false, midRunUpdates: true, overlayWidth: "third", overlayDefaultOpen: false, overlayShowThinking: true },
+        settings: {
+          maxConcurrent: 4,
+          defaultMaxTurns: 0,
+          wrapUpTurns: 2,
+          consumedSessionRetentionMinutes: 10,
+          unconsumedSessionRetentionMinutes: 720,
+          abortAllOnInterrupt: false,
+          midRunUpdates: true,
+          overlayWidth: "third",
+          overlayDefaultOpen: false,
+          overlayShowThinking: true,
+        },
         persisted: true,
       });
     });
@@ -1303,7 +1525,11 @@ describe("SettingsManager", () => {
       const filePosingAsCwd = join(tmpdir(), `pi-sm-notdir-toggle-${Date.now()}`);
       writeFileSync(filePosingAsCwd, "");
       try {
-        const sm = new SettingsManager({ emit: vi.fn(), cwd: filePosingAsCwd, agentDir: "/nonexistent" });
+        const sm = new SettingsManager({
+          emit: vi.fn(),
+          cwd: filePosingAsCwd,
+          agentDir: "/nonexistent",
+        });
         const toast = sm.toggleAbortAllOnInterrupt();
         expect(sm.abortAllOnInterrupt).toBe(false);
         expect(toast).toEqual({
@@ -1317,7 +1543,12 @@ describe("SettingsManager", () => {
 
     it("does not call onMaxConcurrentChanged", () => {
       const onChanged = vi.fn();
-      const sm = new SettingsManager({ emit: vi.fn(), cwd: projectDir, agentDir: "/nonexistent", onMaxConcurrentChanged: onChanged });
+      const sm = new SettingsManager({
+        emit: vi.fn(),
+        cwd: projectDir,
+        agentDir: "/nonexistent",
+        onMaxConcurrentChanged: onChanged,
+      });
       sm.toggleAbortAllOnInterrupt();
       expect(onChanged).not.toHaveBeenCalled();
     });
@@ -1325,12 +1556,20 @@ describe("SettingsManager", () => {
 
   describe("constructor onMaxConcurrentChanged callback", () => {
     it("constructs without callback without throwing", () => {
-      expect(() => new SettingsManager({ emit: vi.fn(), cwd: "/tmp", agentDir: "/nonexistent" })).not.toThrow();
+      expect(
+        () => new SettingsManager({ emit: vi.fn(), cwd: "/tmp", agentDir: "/nonexistent" }),
+      ).not.toThrow();
     });
 
     it("constructs with callback without throwing", () => {
       expect(
-        () => new SettingsManager({ emit: vi.fn(), cwd: "/tmp", agentDir: "/nonexistent", onMaxConcurrentChanged: vi.fn() }),
+        () =>
+          new SettingsManager({
+            emit: vi.fn(),
+            cwd: "/tmp",
+            agentDir: "/nonexistent",
+            onMaxConcurrentChanged: vi.fn(),
+          }),
       ).not.toThrow();
     });
   });

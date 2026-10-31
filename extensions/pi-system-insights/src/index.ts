@@ -24,19 +24,26 @@ export default function systemInsights(pi: ExtensionAPI): void {
     });
   };
 
-  command("system:prompt", "Inspect the current Pi system prompt", ctx =>
-    buildPromptView(ctx.getSystemPrompt()));
+  command("system:prompt", "Inspect the current Pi system prompt", (ctx) =>
+    buildPromptView(ctx.getSystemPrompt()),
+  );
 
-  command("system:tools", "Inspect accessible tools and their declarations", ctx =>
+  command("system:tools", "Inspect accessible tools and their declarations", (ctx) =>
     buildToolsView(
       pi.getAllTools(),
       pi.getActiveTools(),
       ctx.getSystemPromptOptions(),
       getCurrentTools(ctx.sessionManager.buildSessionProjection().messages),
-    ));
+    ),
+  );
 
-  command("system:skills", "Inspect skills and branch-observed loading", ctx =>
-    buildSkillsView(ctx.getSystemPromptOptions().skills ?? [], ctx.sessionManager.getBranch(), ctx.cwd));
+  command("system:skills", "Inspect skills and branch-observed loading", (ctx) =>
+    buildSkillsView(
+      ctx.getSystemPromptOptions().skills ?? [],
+      ctx.sessionManager.getBranch(),
+      ctx.cwd,
+    ),
+  );
 
   // Direct reads and /skill expansions already live in branch history. Nested
   // tool results are not persisted; save only path/partial evidence for skill
@@ -46,9 +53,13 @@ export default function systemInsights(pi: ExtensionAPI): void {
     if (!event.parentToolCallId) return;
     const evidence = skillReadEvidence(event, ctx.cwd);
     if (!evidence) return;
-    const discovered = pi.getCommands().some(command =>
-      command.source === "skill"
-      && normalizeSkillPath(command.sourceInfo.path, ctx.cwd) === evidence.path);
+    const discovered = pi
+      .getCommands()
+      .some(
+        (command) =>
+          command.source === "skill" &&
+          normalizeSkillPath(command.sourceInfo.path, ctx.cwd) === evidence.path,
+      );
     if (discovered) pi.appendEntry(SKILL_READ_ENTRY, evidence);
   });
 }

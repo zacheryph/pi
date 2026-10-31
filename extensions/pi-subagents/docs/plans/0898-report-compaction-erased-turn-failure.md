@@ -172,7 +172,7 @@ const cleanupAbort = forwardAbortSignal(session, opts.signal);
 try {
   await session.prompt(effectivePrompt);
   failIfProviderErrored(failures.getFailure());
-  this.meta.lifecycle.completed({ /* unchanged */ });
+  this.meta.lifecycle.completed({/* unchanged */});
 } finally {
   unsubTurns();
   failures.unsubscribe();
@@ -201,7 +201,7 @@ It also preserves the scan's latent hazard, which is that it answers from state 
 
 `collectResponseText` and `collectTurnFailure` are kept apart, per the Tidy-First assessment.
 They react to disjoint event types (`message_start`/`message_update` versus `message_end`) and share no predicate, so merging saves one `subscribe` call and nothing else.
-Their results also differ in kind: the collected text is *optimistic and overridable* — the caller discards it via `collector.getText().trim() || getLastAssistantText(session)` — while the failure is *authoritative*, consulted once to decide whether to throw.
+Their results also differ in kind: the collected text is _optimistic and overridable_ — the caller discards it via `collector.getText().trim() || getLastAssistantText(session)` — while the failure is _authoritative_, consulted once to decide whether to throw.
 Putting a discardable fact and a control-flow-determining fact behind one interface invites a later reader to weigh them the same.
 `runTurnLoop` already runs three independent per-turn subscriptions in one `try`/`finally`; a fourth matches the file's shape.
 
@@ -211,7 +211,7 @@ Putting a discardable fact and a control-flow-determining fact behind one interf
 
 | File                                | Change                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/lifecycle/subagent-session.ts` | Add module-private `collectTurnFailure(session)`. Delete `readTurnFailure`. `failIfProviderErrored` takes `string \| undefined` instead of the session. Both turn loops create the collector before `prompt()`, pass `failures.getFailure()` to the unchanged call site, and unsubscribe in `finally`. Rewrite the `failIfProviderErrored` doc comment, whose "Keyed on the *last* assistant message … Pi removes a retried error from agent state before retrying" paragraph describes the mechanism being replaced. |
+| `src/lifecycle/subagent-session.ts` | Add module-private `collectTurnFailure(session)`. Delete `readTurnFailure`. `failIfProviderErrored` takes `string \| undefined` instead of the session. Both turn loops create the collector before `prompt()`, pass `failures.getFailure()` to the unchanged call site, and unsubscribe in `finally`. Rewrite the `failIfProviderErrored` doc comment, whose "Keyed on the _last_ assistant message … Pi removes a retried error from agent state before retrying" paragraph describes the mechanism being replaced. |
 
 No other `src/` file changes.
 
@@ -302,14 +302,14 @@ The change adds one session subscription per turn loop and one scalar assignment
 
 Each cycle is red → green → verify → commit.
 
-1. **`refactor(pi-subagents): give the local session stub a generic emit`** *Preparatory (Tidy First).*
+1. **`refactor(pi-subagents): give the local session stub a generic emit`** _Preparatory (Tidy First)._
    `createSession` in `test/lifecycle/subagent-session.test.ts` has no generic broadcast — only `emitTurnEnd(listeners)`, which hard-codes `{ type: "turn_end" }`.
    Step 2 needs to emit `message_end` from the same fixture and has nothing to call.
    Generalize the body into `emit(listeners, event)` and have `emitTurnEnd` delegate to it.
    Test surface: none added; the full package suite must stay green, and the turn-limit cases are the existing consumers that prove the generalized emit is still wired.
    **Killing mutation:** make `emit` a no-op — the turn-limit steer/abort cases go red.
 
-2. **`test(pi-subagents): drive provider failures through message_end events`** *Preparatory (Tidy First).*
+2. **`test(pi-subagents): drive provider failures through message_end events`** _Preparatory (Tidy First)._
    `programMessages` emits a `message_end` carrying `usage: { input: 0, output: 0, cacheWrite: 0 }` alongside every message it pushes, and the three inline `session.prompt` bodies in `subagent.test.ts`'s provider-failure block do the same.
    The fixtures then model both halves of what the SDK does — the event and the state — instead of only the half compaction rewrites.
    Test surface: no assertions added; the full suite must stay green under the **unchanged** source, since the scan still reads the pushed messages.

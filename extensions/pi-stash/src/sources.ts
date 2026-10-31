@@ -9,9 +9,17 @@ export interface SourceText {
 }
 
 const MIME_BY_EXTENSION: Record<string, string> = {
-  ".json": "application/json", ".md": "text/markdown", ".markdown": "text/markdown",
-  ".csv": "text/csv", ".html": "text/html", ".xml": "application/xml", ".yaml": "application/yaml",
-  ".yml": "application/yaml", ".ts": "text/typescript", ".js": "text/javascript", ".py": "text/x-python",
+  ".json": "application/json",
+  ".md": "text/markdown",
+  ".markdown": "text/markdown",
+  ".csv": "text/csv",
+  ".html": "text/html",
+  ".xml": "application/xml",
+  ".yaml": "application/yaml",
+  ".yml": "application/yaml",
+  ".ts": "text/typescript",
+  ".js": "text/javascript",
+  ".py": "text/x-python",
 };
 
 export function guessMime(text: string, path?: string): string {
@@ -22,7 +30,9 @@ export function guessMime(text: string, path?: string): string {
     try {
       JSON.parse(text);
       return "application/json";
-    } catch { /* plain text */ }
+    } catch {
+      /* plain text */
+    }
   }
   return "text/plain";
 }
@@ -50,7 +60,8 @@ export function readCwdFile(path: string, cwd: string, maxBytes: number): Source
   try {
     real = realpathSync(resolved);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") throw new Error(`File not found: ${path}`);
+    if ((error as NodeJS.ErrnoException).code === "ENOENT")
+      throw new Error(`File not found: ${path}`);
     throw error;
   }
   if (!isInside(realCwd, real)) throw new Error(`Path is outside the working directory: ${path}`);
@@ -67,8 +78,11 @@ export function readCwdFile(path: string, cwd: string, maxBytes: number): Source
 interface BranchEntry {
   type?: unknown;
   message?: {
-    role?: unknown; toolCallId?: unknown; toolName?: unknown;
-    content?: unknown; details?: unknown;
+    role?: unknown;
+    toolCallId?: unknown;
+    toolName?: unknown;
+    content?: unknown;
+    details?: unknown;
   };
 }
 
@@ -79,7 +93,12 @@ function fullOutput(details: unknown): string | undefined {
   if (typeof path !== "string" || !isAbsolute(path)) return undefined;
   try {
     const temp = realpathSync(tmpdir());
-    if (!isInside(temp, realpathSync(path)) || lstatSync(path).isSymbolicLink() || !statSync(path).isFile()) return undefined;
+    if (
+      !isInside(temp, realpathSync(path)) ||
+      lstatSync(path).isSymbolicLink() ||
+      !statSync(path).isFile()
+    )
+      return undefined;
     return readFileSync(path, "utf8");
   } catch {
     return undefined;
@@ -87,21 +106,36 @@ function fullOutput(details: unknown): string | undefined {
 }
 
 /** Text of an earlier tool result on the current branch (persisted results only). */
-export function readToolResult(branch: Iterable<unknown>, toolCallId: string, maxBytes: number): SourceText {
+export function readToolResult(
+  branch: Iterable<unknown>,
+  toolCallId: string,
+  maxBytes: number,
+): SourceText {
   let found: BranchEntry["message"] | undefined;
   for (const entry of branch) {
     const item = entry as BranchEntry;
-    if (item?.type === "message" && item.message?.role === "toolResult" && item.message.toolCallId === toolCallId) {
+    if (
+      item?.type === "message" &&
+      item.message?.role === "toolResult" &&
+      item.message.toolCallId === toolCallId
+    ) {
       found = item.message;
     }
   }
   if (!found) {
-    throw new Error(`No tool result with id "${toolCallId}" on the current branch. Calls made inside a codemode script are not kept; stash their output with content instead.`);
+    throw new Error(
+      `No tool result with id "${toolCallId}" on the current branch. Calls made inside a codemode script are not kept; stash their output with content instead.`,
+    );
   }
-  const text = fullOutput(found.details) ?? (Array.isArray(found.content) ? found.content : [])
-    .filter((part): part is { type: "text"; text: string } => !!part && part.type === "text" && typeof part.text === "string")
-    .map((part) => part.text)
-    .join("\n");
+  const text =
+    fullOutput(found.details) ??
+    (Array.isArray(found.content) ? found.content : [])
+      .filter(
+        (part): part is { type: "text"; text: string } =>
+          !!part && part.type === "text" && typeof part.text === "string",
+      )
+      .map((part) => part.text)
+      .join("\n");
   const bytes = Buffer.byteLength(text, "utf8");
   if (bytes > maxBytes) throw tooLarge(bytes, maxBytes);
   const toolName = typeof found.toolName === "string" ? found.toolName : "unknown";

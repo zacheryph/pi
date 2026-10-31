@@ -73,7 +73,7 @@ The child's `session.prompt()` then fires `before_agent_start` for its own bound
 The child's prompt is therefore `A S F X` (inherited verbatim) followed by its own tail, which ends in `S′ F′`.
 
 The inherited copy is not merely redundant.
-It is wrong for a child whose cwd differs — a `WorkspaceProvider` worktree resolves project skills from `loadSkills({ cwd: this.cwd })` against the child's directory — and it is the *only* catalogue for an agent whose `tools:` omits `read`, since `buildSystemPrompt`'s `customPromptHasRead` gate then appends no `S′` at all.
+It is wrong for a child whose cwd differs — a `WorkspaceProvider` worktree resolves project skills from `loadSkills({ cwd: this.cwd })` against the child's directory — and it is the _only_ catalogue for an agent whose `tools:` omits `read`, since `buildSystemPrompt`'s `customPromptHasRead` gate then appends no `S′` at all.
 
 ### Constraint from AGENTS.md
 
@@ -87,9 +87,7 @@ The measurements below were taken against the installed `0.84.4` bundles, not ag
 The call site loses its third argument:
 
 ```typescript
-const identity = inherited
-  ? inheritedIdentity(inherited.systemPrompt, inherited.cwd)
-  : genericBase;
+const identity = inherited ? inheritedIdentity(inherited.systemPrompt, inherited.cwd) : genericBase;
 ```
 
 `InheritedPrompt` keeps both fields — the parent's `cwd` is still what the footer anchor matches against.
@@ -121,9 +119,7 @@ function sessionResolvedTailStart(lines: readonly string[], parentCwd: string): 
 
 function skillsSectionStart(lines: readonly string[]): number {
   const catalogueEnd = lines.lastIndexOf(SKILLS_CATALOGUE_CLOSE);
-  return catalogueEnd === -1
-    ? -1
-    : lines.lastIndexOf(SKILLS_SECTION_HEADING, catalogueEnd);
+  return catalogueEnd === -1 ? -1 : lines.lastIndexOf(SKILLS_SECTION_HEADING, catalogueEnd);
 }
 ```
 
@@ -145,7 +141,7 @@ Four properties earn their keep:
 ### Why truncation rather than excision
 
 Cutting `S` and `F` out while keeping `X` was the alternative.
-It leaves `X` in the child but *displaces* it past the divergence point, so it moves from cached to prefilled — measured at ~275 characters (~69 tokens) in [#640]'s environment, about 0.3 s on the local-model hardware [#180]'s reporter measured at 8,333 tokens ≈ 40 s.
+It leaves `X` in the child but _displaces_ it past the divergence point, so it moves from cached to prefilled — measured at ~275 characters (~69 tokens) in [#640]'s environment, about 0.3 s on the local-model hardware [#180]'s reporter measured at 8,333 tokens ≈ 40 s.
 
 Truncation costs nothing there, because `X` is deleted rather than displaced: the child's uncached token count is **unchanged** from today.
 It is also the more accurate prompt, which is the deciding criterion.

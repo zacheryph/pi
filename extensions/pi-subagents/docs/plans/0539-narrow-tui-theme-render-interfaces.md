@@ -167,7 +167,7 @@ Grouping is dictated by compile units: a shared-type change breaks its consumers
    - `helpers.ts`: `textResult` details param `unknown → AgentDetails`.
    - `foreground-runner.ts`: retype `onUpdate` to `AgentToolResult<AgentDetails>`; drop `details as any` + its line-level disable.
    - `agent-tool.ts`: type `renderCall`/`renderResult` params (`theme: Theme`, `result: AgentToolResult<AgentDetails | undefined>`, `ToolRenderResultOptions`); drop the `result.details` cast; type `_ctx`/inner `ctx` as `ExtensionContext`; remove the file-level header (add a targeted line-level disable only if lint surfaces a residual SDK gap).
-   Verify: `check` + `lint` green (0 file-level headers in these files; package tally 3 → 1); full `pi-subagents` suite green.
+     Verify: `check` + `lint` green (0 file-level headers in these files; package tally 3 → 1); full `pi-subagents` suite green.
 
 3. `docs(pi-subagents): mark Phase 20 Step 5 landed` — update `architecture.md` (Step 5 → ✅, `Landed:` note with the 3 → 1 tally).
    Verify: `pnpm exec rumdl check` on the edited doc.

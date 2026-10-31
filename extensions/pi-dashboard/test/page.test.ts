@@ -18,9 +18,11 @@ describe("renderPage", () => {
   });
 
   it("has one modal dialog for stash previews, outside the live-rendered main", () => {
-    expect(page).toContain('<main></main>\n<dialog id="preview" class="modal" aria-labelledby="preview-title"></dialog>\n<dialog id="answer" class="modal" aria-labelledby="answer-title"></dialog>');
+    expect(page).toContain(
+      '<main></main>\n<dialog id="preview" class="modal" aria-labelledby="preview-title"></dialog>\n<dialog id="answer" class="modal" aria-labelledby="answer-title"></dialog>',
+    );
     expect(page).toContain("modal.showModal()");
-    expect(page).toContain('if (event.target === modal) modal.close();');
+    expect(page).toContain("if (event.target === modal) modal.close();");
   });
 
   it("renders session text through textContent, never innerHTML", () => {

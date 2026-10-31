@@ -83,10 +83,7 @@ By switching from in-memory to persisted, every message the child agent produces
  *
  * Falls back to a temp directory when the parent session is not persisted.
  */
-function deriveSubagentSessionDir(
-  parentSessionFile: string | undefined,
-  cwd: string,
-): string;
+function deriveSubagentSessionDir(parentSessionFile: string | undefined, cwd: string): string;
 ```
 
 ### Data flow (after)

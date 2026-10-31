@@ -109,8 +109,7 @@ function ownProjectContext(
   loadProjectContext: ProjectContextLoader | undefined,
 ): string {
   if (!inherited || !loadProjectContext) return "";
-  const adoptedDescribesOwnDirectory =
-    inherited.strategy !== "portable" && cwd === inherited.cwd;
+  const adoptedDescribesOwnDirectory = inherited.strategy !== "portable" && cwd === inherited.cwd;
   if (adoptedDescribesOwnDirectory) return "";
   const block = loadProjectContext(cwd);
   return block ? `\n\n${block}` : "";
@@ -130,11 +129,7 @@ function ownProjectContext(
  */
 function adoptedIdentity(inherited: InheritedPrompt, cwd: string): string {
   if (inherited.strategy !== "portable") {
-    return inheritedIdentity(
-      inherited.systemPrompt,
-      inherited.cwd,
-      cwd !== inherited.cwd,
-    );
+    return inheritedIdentity(inherited.systemPrompt, inherited.cwd, cwd !== inherited.cwd);
   }
   // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- || intentional: a whitespace-only capture must fall back too, which ?? would not do
   return inherited.portablePrompt?.trim() || genericBase;
@@ -251,11 +246,7 @@ const PROJECT_CONTEXT_LEAD_IN = "Project-specific instructions and guidelines:";
  * (#918). That block names each context file by absolute path, so an inherited
  * copy tells a relocated child its files live in the parent's checkout.
  */
-function inheritedIdentity(
-  prompt: string,
-  parentCwd: string,
-  cutProjectContext: boolean,
-): string {
+function inheritedIdentity(prompt: string, parentCwd: string, cutProjectContext: boolean): string {
   const lines = prompt.split("\n");
   const tail = sessionResolvedTailStart(lines, parentCwd, cutProjectContext);
   if (tail.at === -1) return prompt;
@@ -353,13 +344,8 @@ function sessionResolvedTailStart(
  * records, so this reads apart from the `sessionResolvedTailStart` above it
  * that extends the cut past this anchor.
  */
-function cwdAnchoredTailStart(
-  lines: readonly string[],
-  parentCwd: string,
-): AnchoredTail {
-  const footerAt = lines.lastIndexOf(
-    `Current working directory: ${toPromptPath(parentCwd)}`,
-  );
+function cwdAnchoredTailStart(lines: readonly string[], parentCwd: string): AnchoredTail {
+  const footerAt = lines.lastIndexOf(`Current working directory: ${toPromptPath(parentCwd)}`);
   if (footerAt !== -1) {
     const catalogueAt = skillsSectionStart(lines, footerAt);
     return { at: catalogueAt === -1 ? footerAt : catalogueAt, shape: "footer" };
@@ -389,10 +375,7 @@ function cwdSectionStart(lines: readonly string[], parentCwd: string): number {
     openAt !== -1;
     openAt = lines.lastIndexOf(CWD_SECTION_OPEN, openAt - 1)
   ) {
-    if (
-      lines[openAt + 1] === toPromptPath(parentCwd) &&
-      lines[openAt + 2] === CWD_SECTION_CLOSE
-    ) {
+    if (lines[openAt + 1] === toPromptPath(parentCwd) && lines[openAt + 2] === CWD_SECTION_CLOSE) {
       return openAt;
     }
   }
@@ -412,10 +395,7 @@ function cwdSectionStart(lines: readonly string[], parentCwd: string): number {
  * layers it carries, and leaves the previous section's closing tag adjacent
  * to the tail for the project-context anchor.
  */
-function skillsSectionWrapperStart(
-  lines: readonly string[],
-  cwdAt: number,
-): number {
+function skillsSectionWrapperStart(lines: readonly string[], cwdAt: number): number {
   let closeAt = cwdAt - 1;
   while (closeAt >= 0 && lines[closeAt] === "") closeAt--;
   if (closeAt < 0 || lines[closeAt] !== SKILLS_SECTION_CLOSE) return cwdAt;
@@ -461,14 +441,9 @@ function projectContextStart(lines: readonly string[], tailAt: number): number {
  * The heading is located by searching back from the catalogue's closing tag, so
  * prose quoting Pi's heading ahead of the section is not mistaken for it.
  */
-function skillsSectionStart(
-  lines: readonly string[],
-  footerAt: number,
-): number {
+function skillsSectionStart(lines: readonly string[], footerAt: number): number {
   const catalogueEnd = catalogueCloseBefore(lines, footerAt);
-  return catalogueEnd === -1
-    ? -1
-    : lines.lastIndexOf(SKILLS_SECTION_HEADING, catalogueEnd);
+  return catalogueEnd === -1 ? -1 : lines.lastIndexOf(SKILLS_SECTION_HEADING, catalogueEnd);
 }
 
 /**
@@ -484,10 +459,7 @@ function skillsSectionStart(
  * Without a footer to anchor on, something downstream has rewritten Pi's
  * output; the last closing tag is the best remaining guess.
  */
-function catalogueCloseBefore(
-  lines: readonly string[],
-  footerAt: number,
-): number {
+function catalogueCloseBefore(lines: readonly string[], footerAt: number): number {
   if (footerAt === -1) {
     return lines.lastIndexOf(SKILLS_CATALOGUE_CLOSE);
   }

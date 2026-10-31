@@ -17,7 +17,7 @@ Plan committed at `packages/pi-subagents/docs/plans/0904-fallback-base-asserts-n
 
 - **The issue's reachability guess was inverted by the code.**
   The issue asks whether the no-parent-prompt path is cold; it is not merely cold but **dead in production** — `assembleSessionConfig` (`src/session/session-config.ts:189`) always passes an `InheritedPrompt`.
-  The live arm is `adoptedIdentity`'s portable fallback (`prompts.ts:140`), and for the `portable` population it is the *default* identity, since it fires whenever the parent runs without `--system-prompt` and `--append-system-prompt`.
+  The live arm is `adoptedIdentity`'s portable fallback (`prompts.ts:140`), and for the `portable` population it is the _default_ identity, since it fires whenever the parent runs without `--system-prompt` and `--append-system-prompt`.
   [ADR 0009] had already recorded this as an accepted residual tracking this issue.
 - **The gate widened the fix past what the issue proposed.**
   The issue proposed deleting the capability sentence and rewording "general-purpose" to "focused".
@@ -51,7 +51,7 @@ No deviations from the plan.
 
 - **Every predicted mutation outcome matched exactly**, including the counts.
   Mutating one character inside `GENERIC_BASE` killed exactly the 7 repointed assertions; re-adding the capability sentence to `genericBase` killed 8 (those 7 plus the new test); re-adding only the role sentence killed 7 and left the new test green.
-  That last split is the one worth keeping: it demonstrates the new test pins the *capability claim* while the constant pins the *exact text*, and neither covers the other.
+  That last split is the one worth keeping: it demonstrates the new test pins the _capability claim_ while the constant pins the _exact text_, and neither covers the other.
 - **The third mutation was a test-side one** — widening the new test's slice from `prompt.slice(0, prompt.indexOf("<active_agent"))` to the whole prompt turned `/\bwrite\b/i` red against `Explore`'s own "heredocs to write to files".
   The region scoping is load-bearing, not decorative, and that is now demonstrated rather than asserted.
 - **The Tidy-First step paid off exactly as the assessor predicted.**
@@ -74,7 +74,7 @@ The interesting material is all in the planning stage — the operator's single-
 
 #### What went well
 
-- **A mutation whose predicted outcome was *green* proved two tests cover different claims.**
+- **A mutation whose predicted outcome was _green_ proved two tests cover different claims.**
   The plan named three mutations for the `fix:` step; the second (re-add only the role sentence, not the capability sentence) was predicted to kill the seven text-pinning assertions and leave the new capability test **passing**.
   It did, exactly.
   Predicting a green is unusual — the plan rules ask for a mutation per equivalence class, and this is the sharpest form of that: the split is what demonstrates the exact-text pin and the capability pin are not redundant.

@@ -1,30 +1,72 @@
 import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import type { AssistantMessage, JsonObject, NestedToolCallRecord, ToolCall, ToolResultMessage, UserMessage } from "@earendil-works/pi-ai";
+import type {
+  AssistantMessage,
+  JsonObject,
+  NestedToolCallRecord,
+  ToolCall,
+  ToolResultMessage,
+  UserMessage,
+} from "@earendil-works/pi-ai";
 import { SessionManager, type SessionEntry, type Skill } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it } from "vitest";
-import { buildSkillsView, normalizeSkillPath, SKILL_READ_ENTRY, skillReadEvidence } from "../src/skills.js";
+import {
+  buildSkillsView,
+  normalizeSkillPath,
+  SKILL_READ_ENTRY,
+  skillReadEvidence,
+} from "../src/skills.js";
 
 const cwd = "/project";
 const file = "/project/skills/sample/SKILL.md";
 function skill(name = "sample", filePath = file, commandOnly = false): Skill {
   return {
-    name, description: `Description ${name}`, filePath, baseDir: dirname(filePath),
+    name,
+    description: `Description ${name}`,
+    filePath,
+    baseDir: dirname(filePath),
     sourceInfo: { path: filePath, source: "project", scope: "project", origin: "top-level" },
     disableModelInvocation: commandOnly,
   };
 }
-function assistant(id = "read-1", input: JsonObject = { path: file }, name = "read"): AssistantMessage {
+function assistant(
+  id = "read-1",
+  input: JsonObject = { path: file },
+  name = "read",
+): AssistantMessage {
   const call: ToolCall = { type: "toolCall", id, name, arguments: input };
   return {
-    role: "assistant", content: [call], api: "anthropic-messages", provider: "anthropic", model: "test", stopReason: "toolUse", timestamp: 1,
-    usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+    role: "assistant",
+    content: [call],
+    api: "anthropic-messages",
+    provider: "anthropic",
+    model: "test",
+    stopReason: "toolUse",
+    timestamp: 1,
+    usage: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 0,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    },
   };
 }
-function result(id = "read-1", isError = false, toolName = "read", nested?: NestedToolCallRecord[]): ToolResultMessage {
+function result(
+  id = "read-1",
+  isError = false,
+  toolName = "read",
+  nested?: NestedToolCallRecord[],
+): ToolResultMessage {
   return {
-    role: "toolResult", toolCallId: id, toolName, content: [{ type: "text", text: "SECRET SKILL CONTENT" }], isError, timestamp: 2,
+    role: "toolResult",
+    toolCallId: id,
+    toolName,
+    content: [{ type: "text", text: "SECRET SKILL CONTENT" }],
+    isError,
+    timestamp: 2,
     ...(nested ? { nestedCalls: { calls: nested, complete: false } } : {}),
   };
 }
@@ -42,9 +84,19 @@ function marker(path = file, partial = false): SessionEntry {
   return { ...base(), type: "custom", customType: SKILL_READ_ENTRY, data: { path, partial } };
 }
 function compaction(): SessionEntry {
-  return { ...base(), type: "compaction", summary: "Summary", firstKeptEntryId: "kept", tokensBefore: 100 };
+  return {
+    ...base(),
+    type: "compaction",
+    summary: "Summary",
+    firstKeptEntryId: "kept",
+    tokensBefore: 100,
+  };
 }
-function nested(id = "parent/1", args: Record<string, string | number> = { path: file }, status: NestedToolCallRecord["status"] = "ok"): NestedToolCallRecord {
+function nested(
+  id = "parent/1",
+  args: Record<string, string | number> = { path: file },
+  status: NestedToolCallRecord["status"] = "ok",
+): NestedToolCallRecord {
   return { id, name: "read", arguments: args, status };
 }
 function item(entries: readonly SessionEntry[], discovered = skill()) {
@@ -52,13 +104,17 @@ function item(entries: readonly SessionEntry[], discovered = skill()) {
 }
 
 const tempDirs: string[] = [];
-afterEach(() => { for (const path of tempDirs.splice(0)) rmSync(path, { recursive: true, force: true }); });
+afterEach(() => {
+  for (const path of tempDirs.splice(0)) rmSync(path, { recursive: true, force: true });
+});
 
 describe("path normalization and live read evidence", () => {
   it("normalizes relative, absolute, dot segments, tilde and missing paths", () => {
     expect(normalizeSkillPath("./skills/sample/../sample/SKILL.md", cwd)).toBe(file);
     expect(normalizeSkillPath(file, cwd)).toBe(file);
-    expect(normalizeSkillPath("~/missing-skill-insights/SKILL.md", cwd)).toBe(resolve(homedir(), "missing-skill-insights/SKILL.md"));
+    expect(normalizeSkillPath("~/missing-skill-insights/SKILL.md", cwd)).toBe(
+      resolve(homedir(), "missing-skill-insights/SKILL.md"),
+    );
     expect(normalizeSkillPath("~", cwd)).toBe(normalizeSkillPath(homedir(), cwd));
   });
 
@@ -70,16 +126,32 @@ describe("path normalization and live read evidence", () => {
     writeFileSync(actual, "SECRET FILE CONTENT NEVER DISPLAYED");
     symlinkSync(actual, link);
     expect(normalizeSkillPath(link, cwd)).toBe(normalizeSkillPath(actual, cwd));
-    const view = item([message(assistant("link", { path: link })), message(result("link"))], skill("sample", actual));
+    const view = item(
+      [message(assistant("link", { path: link })), message(result("link"))],
+      skill("sample", actual),
+    );
     expect(view.status).toBe("loaded");
     expect(view.detail).not.toContain("SECRET");
   });
 
-  it.each([{ path: "skills/sample/SKILL.md" }, { path: file, offset: null, limit: null }])("accepts successful complete-range observations %j", (input) => {
-    expect(skillReadEvidence({ toolName: "read", input, isError: false }, cwd)).toEqual({ path: file, partial: false });
-  });
-  it.each([{ path: file, offset: 1 }, { path: file, offset: 4 }, { path: file, limit: 20 }])("labels explicit offset/limit partial %j", (input) => {
-    expect(skillReadEvidence({ toolName: "read", input, isError: false }, cwd)).toEqual({ path: file, partial: true });
+  it.each([{ path: "skills/sample/SKILL.md" }, { path: file, offset: null, limit: null }])(
+    "accepts successful complete-range observations %j",
+    (input) => {
+      expect(skillReadEvidence({ toolName: "read", input, isError: false }, cwd)).toEqual({
+        path: file,
+        partial: false,
+      });
+    },
+  );
+  it.each([
+    { path: file, offset: 1 },
+    { path: file, offset: 4 },
+    { path: file, limit: 20 },
+  ])("labels explicit offset/limit partial %j", (input) => {
+    expect(skillReadEvidence({ toolName: "read", input, isError: false }, cwd)).toEqual({
+      path: file,
+      partial: true,
+    });
   });
   it.each([
     { toolName: "read", input: { path: file }, isError: true },
@@ -121,7 +193,9 @@ describe("detail presentation", () => {
     const discovered = { ...skill(), description: "First line\nSecond line\r\nThird line" };
     const snapshot = structuredClone(discovered);
     const row = item([], discovered);
-    expect(row.detail).toContain("Description: First line\n             Second line\n             Third line");
+    expect(row.detail).toContain(
+      "Description: First line\n             Second line\n             Third line",
+    );
     expect(row.detail).toContain("Invocation:  auto");
     expect(row.detail).not.toContain("Loading:");
     expect(row.detail.match(/\/project\/skills\/sample\/SKILL.md/g)).toHaveLength(1);
@@ -136,10 +210,14 @@ describe("detail presentation", () => {
 
   it("uses identical loaded badge label with fresh/dim colors independently of status", () => {
     for (const [entries, color] of [
-      [[], "dim"], [[marker()], "success"], [[marker(file, true)], "success"],
-      [[marker(), compaction()], "dim"], [[marker(file, true), compaction()], "dim"],
+      [[], "dim"],
+      [[marker()], "success"],
+      [[marker(file, true)], "success"],
+      [[marker(), compaction()], "dim"],
+      [[marker(file, true), compaction()], "dim"],
       [[marker(), compaction(), marker()], "success"],
-    ] as const) expect(item(entries).badge).toEqual({ label: "[loaded]", color });
+    ] as const)
+      expect(item(entries).badge).toEqual({ label: "[loaded]", color });
     expect(item([marker(), compaction()]).detail).toContain("Loading:     loaded · dirty");
     expect(item([marker(), compaction()]).detail.match(/Pre-compaction/g)).toHaveLength(1);
   });
@@ -150,8 +228,12 @@ describe("branch evidence", () => {
     expect(item([message(assistant()), message(result())]).status).toBe("loaded");
     expect(item([message(result())]).status).toBe("not observed");
     expect(item([message(assistant("other")), message(result())]).status).toBe("not observed");
-    expect(item([message(assistant("read-1", { path: file }, "bash")), message(result())]).status).toBe("not observed");
-    expect(item([message(assistant()), message(result("read-1", false, "bash"))]).status).toBe("not observed");
+    expect(
+      item([message(assistant("read-1", { path: file }, "bash")), message(result())]).status,
+    ).toBe("not observed");
+    expect(item([message(assistant()), message(result("read-1", false, "bash"))]).status).toBe(
+      "not observed",
+    );
   });
 
   it("never infers pending, failed, unknown-path, raw command, or codemode script loads", () => {
@@ -160,12 +242,19 @@ describe("branch evidence", () => {
       [message(assistant()), message(result("read-1", true))],
       [message(assistant("unknown", { path: "/another/SKILL.md" })), message(result("unknown"))],
       [message(user("/skill:sample arguments"))],
-      [message(assistant("script", { code: `await tools.read({path: '${file}'})` }, "codemode")), message(result("script", false, "codemode"))],
-    ]) expect(item(entries).status).toBe("not observed");
+      [
+        message(assistant("script", { code: `await tools.read({path: '${file}'})` }, "codemode")),
+        message(result("script", false, "codemode")),
+      ],
+    ])
+      expect(item(entries).status).toBe("not observed");
   });
 
   it("shows explicit partial reads without inferring full-file load", () => {
-    const row = item([message(assistant("partial", { path: file, limit: 10 })), message(result("partial"))]);
+    const row = item([
+      message(assistant("partial", { path: file, limit: 10 })),
+      message(result("partial")),
+    ]);
     expect(row.status).toBe("loaded · partial");
     expect(row.detail).toContain("Partial read: explicit offset/limit");
     expect(row.badge).toEqual({ label: "[loaded]", color: "success" });
@@ -174,43 +263,89 @@ describe("branch evidence", () => {
 
   it("reads expanded user blocks through Pi parser, including text-array content and command-only skills", () => {
     const block = `<skill name="sample" location="${file}">\nSECRET EXPANDED CONTENT\n</skill>\n\nDo task`;
-    expect(item([message(user(block))], skill("sample", file, true)).status).toBe("loaded · command-only");
+    expect(item([message(user(block))], skill("sample", file, true)).status).toBe(
+      "loaded · command-only",
+    );
     const row = item([message(user([{ type: "text", text: block }]))]);
     expect(row.status).toBe("loaded");
     expect(row.detail).toContain("expanded user skill block");
     expect(row.detail).not.toContain("SECRET EXPANDED CONTENT");
-    expect(item([message(user(block.replace('name="sample"', 'name="other"')))]).status).toBe("not observed");
+    expect(item([message(user(block.replace('name="sample"', 'name="other"')))]).status).toBe(
+      "not observed",
+    );
     expect(item([message(user(block.replace(file, "/unknown.md")))]).status).toBe("not observed");
   });
 
   it("matches relative and tilde evidence against discovered paths", () => {
-    expect(item([message(assistant("relative", { path: "skills/sample/SKILL.md" })), message(result("relative"))]).status).toBe("loaded");
+    expect(
+      item([
+        message(assistant("relative", { path: "skills/sample/SKILL.md" })),
+        message(result("relative")),
+      ]).status,
+    ).toBe("loaded");
     const homePath = resolve(homedir(), "missing-skill-insights/SKILL.md");
-    expect(item([message(assistant("home", { path: "~/missing-skill-insights/SKILL.md" })), message(result("home"))], skill("sample", homePath)).status).toBe("loaded");
+    expect(
+      item(
+        [
+          message(assistant("home", { path: "~/missing-skill-insights/SKILL.md" })),
+          message(result("home")),
+        ],
+        skill("sample", homePath),
+      ).status,
+    ).toBe("loaded");
   });
 
   it("counts nested status ok with read arguments, even if parent failed or record incomplete", () => {
-    const row = item([message(assistant("parent", {}, "codemode")), message(result("parent", true, "codemode", [nested()]))]);
+    const row = item([
+      message(assistant("parent", {}, "codemode")),
+      message(result("parent", true, "codemode", [nested()])),
+    ]);
     expect(row.status).toBe("loaded");
     expect(row.detail).toContain("successful nested read");
-    expect(item([message(result("parent", false, "codemode", [nested("parent/1", { path: file, limit: 2 })]))]).status).toBe("loaded · partial");
+    expect(
+      item([
+        message(
+          result("parent", false, "codemode", [nested("parent/1", { path: file, limit: 2 })]),
+        ),
+      ]).status,
+    ).toBe("loaded · partial");
   });
 
   it("ignores nested failures, unfinished, omitted args, non-read and unknown paths", () => {
     const records: NestedToolCallRecord[] = [
-      nested("p/1", { path: file }, "error"), nested("p/2", { path: file }, "unfinished"),
+      nested("p/1", { path: file }, "error"),
+      nested("p/2", { path: file }, "unfinished"),
       { id: "p/3", name: "read", status: "ok", argumentsBytes: 9000 },
-      { ...nested("p/4"), name: "bash" }, nested("p/5", { path: "/unknown.md" }),
+      { ...nested("p/4"), name: "bash" },
+      nested("p/5", { path: "/unknown.md" }),
     ];
     expect(item([message(result("p", false, "codemode", records))]).status).toBe("not observed");
   });
 
   it("restores custom markers; validates data and custom entry type", () => {
     expect(item([marker("skills/sample/SKILL.md", true)]).status).toBe("loaded · partial");
-    for (const data of [null, {}, { path: file }, { path: 1, partial: false }, { path: "", partial: false }, { path: "/unknown.md", partial: false }]) {
-      expect(item([{ ...base(), type: "custom", customType: SKILL_READ_ENTRY, data }]).status).toBe("not observed");
+    for (const data of [
+      null,
+      {},
+      { path: file },
+      { path: 1, partial: false },
+      { path: "", partial: false },
+      { path: "/unknown.md", partial: false },
+    ]) {
+      expect(item([{ ...base(), type: "custom", customType: SKILL_READ_ENTRY, data }]).status).toBe(
+        "not observed",
+      );
     }
-    expect(item([{ ...base(), type: "custom", customType: "another-extension", data: { path: file, partial: false } }]).status).toBe("not observed");
+    expect(
+      item([
+        {
+          ...base(),
+          type: "custom",
+          customType: "another-extension",
+          data: { path: file, partial: false },
+        },
+      ]).status,
+    ).toBe("not observed");
   });
 
   it("uses only current branch, never abandoned loads or branch summary file lists", () => {
@@ -233,7 +368,9 @@ describe("compaction and ordering", () => {
   it("marks any later compaction dirty, even if evidence may be retained", () => {
     const row = item([...loaded(), compaction()]);
     expect(row.status).toBe("loaded · dirty");
-    expect(row.detail).toContain("Pre-compaction evidence; instructions may no longer remain in context");
+    expect(row.detail).toContain(
+      "Pre-compaction evidence; instructions may no longer remain in context",
+    );
     expect(item([compaction(), ...loaded()]).status).toBe("loaded");
     expect(item([compaction()]).status).toBe("not observed");
   });
@@ -242,46 +379,86 @@ describe("compaction and ordering", () => {
     const block = `<skill name="sample" location="${file}">\nInstructions\n</skill>`;
     for (const evidence of [
       [message(result("parent", false, "codemode", [nested()]))],
-      [message(user(block))], [marker()],
-    ]) expect(item([...evidence, compaction()]).status).toBe("loaded · dirty");
+      [message(user(block))],
+      [marker()],
+    ])
+      expect(item([...evidence, compaction()]).status).toBe("loaded · dirty");
     expect(item([marker(file, true), compaction()]).status).toBe("loaded · dirty · partial");
   });
 
   it("fresh successful read or expanded block after compaction cleans; failed or pending reload does not", () => {
     const dirty = [...loaded(), compaction()];
-    expect(item([...dirty, message(assistant("reload")), message(result("reload"))]).status).toBe("loaded");
+    expect(item([...dirty, message(assistant("reload")), message(result("reload"))]).status).toBe(
+      "loaded",
+    );
     expect(item([...dirty, message(assistant("reload"))]).status).toBe("loaded · dirty");
-    expect(item([...dirty, message(assistant("reload")), message(result("reload", true))]).status).toBe("loaded · dirty");
-    expect(item([...dirty, message(user(`<skill name="sample" location="${file}">\nInstructions\n</skill>`))]).status).toBe("loaded");
+    expect(
+      item([...dirty, message(assistant("reload")), message(result("reload", true))]).status,
+    ).toBe("loaded · dirty");
+    expect(
+      item([
+        ...dirty,
+        message(user(`<skill name="sample" location="${file}">\nInstructions\n</skill>`)),
+      ]).status,
+    ).toBe("loaded");
   });
 
   it("marks branch summaries dirty conservatively but never treats summary text as fresh evidence", () => {
-    const summary: SessionEntry = { ...base(), type: "branch_summary", summary: `Read ${file}`, fromId: "abandoned" };
+    const summary: SessionEntry = {
+      ...base(),
+      type: "branch_summary",
+      summary: `Read ${file}`,
+      fromId: "abandoned",
+    };
     expect(item([...loaded(), summary]).status).toBe("loaded · dirty");
     expect(item([...loaded(), summary]).detail).toContain("Pre-branch summary evidence");
     expect(item([summary]).status).toBe("not observed");
   });
 
-  it.each([false, true])("deduplicates live marker before compaction and delayed direct/nested result (nested=%s)", (isNested) => {
-    const call = isNested ? assistant("parent", {}, "codemode") : assistant();
-    const delayed = isNested ? result("parent", false, "codemode", [nested()]) : result();
-    expect(item([message(call), marker(), compaction(), message(delayed)]).status).toBe("loaded · dirty");
-    expect(item([message(call), marker(), message(delayed), compaction()]).status).toBe("loaded · dirty");
-    expect(item([message(call), marker(), message(delayed)]).status).toBe("loaded");
-  });
+  it.each([false, true])(
+    "deduplicates live marker before compaction and delayed direct/nested result (nested=%s)",
+    (isNested) => {
+      const call = isNested ? assistant("parent", {}, "codemode") : assistant();
+      const delayed = isNested ? result("parent", false, "codemode", [nested()]) : result();
+      expect(item([message(call), marker(), compaction(), message(delayed)]).status).toBe(
+        "loaded · dirty",
+      );
+      expect(item([message(call), marker(), message(delayed), compaction()]).status).toBe(
+        "loaded · dirty",
+      );
+      expect(item([message(call), marker(), message(delayed)]).status).toBe("loaded");
+    },
+  );
 
   it("old marker does not swallow genuine reload from new assistant call after compaction", () => {
-    const row = item([message(assistant()), marker(), compaction(), message(result()), message(assistant("reload")), message(result("reload"))]);
+    const row = item([
+      message(assistant()),
+      marker(),
+      compaction(),
+      message(result()),
+      message(assistant("reload")),
+      message(result("reload")),
+    ]);
     expect(row.status).toBe("loaded");
-    expect(item([marker(), compaction(), message(assistant("reload")), message(result("reload"))]).status).toBe("loaded");
+    expect(
+      item([marker(), compaction(), message(assistant("reload")), message(result("reload"))])
+        .status,
+    ).toBe("loaded");
   });
 
   it("new nested call and live marker after compaction clean earlier nested evidence", () => {
     const entries = [
-      message(assistant("parent", {}, "codemode")), marker(),
-      message(result("parent", false, "codemode", [nested()])), compaction(),
-      message(assistant("reload-parent", {}, "codemode")), marker(file, true),
-      message(result("reload-parent", false, "codemode", [nested("reload-parent/1", { path: file, offset: 2 })])),
+      message(assistant("parent", {}, "codemode")),
+      marker(),
+      message(result("parent", false, "codemode", [nested()])),
+      compaction(),
+      message(assistant("reload-parent", {}, "codemode")),
+      marker(file, true),
+      message(
+        result("reload-parent", false, "codemode", [
+          nested("reload-parent/1", { path: file, offset: 2 }),
+        ]),
+      ),
     ];
     expect(item(entries).status).toBe("loaded · partial");
     expect(item([...entries, compaction()]).status).toBe("loaded · dirty · partial");
@@ -290,12 +467,16 @@ describe("compaction and ordering", () => {
   it("tracks last evidence independently for each discovered skill", () => {
     const another = "/project/skills/another/SKILL.md";
     const entries = [
-      marker(), marker(another), compaction(),
-      message(assistant("reload", { path: another })), message(result("reload")),
+      marker(),
+      marker(another),
+      compaction(),
+      message(assistant("reload", { path: another })),
+      message(result("reload")),
     ];
     const view = buildSkillsView([skill("sample"), skill("another", another)], entries, cwd);
     expect(view.items?.map((row) => [row.label, row.status])).toEqual([
-      ["another", "loaded"], ["sample", "loaded · dirty"],
+      ["another", "loaded"],
+      ["sample", "loaded · dirty"],
     ]);
   });
 

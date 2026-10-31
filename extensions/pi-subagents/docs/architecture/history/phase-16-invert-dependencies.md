@@ -2,7 +2,7 @@
 
 ## Summary
 
-Phase 16 reclaimed its original intent — invert the core's outbound dependencies — and extended it: worktree isolation joined permissions as an *extension* on a minimal core, leaving pi-subagents a pure child-session orchestrator.
+Phase 16 reclaimed its original intent — invert the core's outbound dependencies — and extended it: worktree isolation joined permissions as an _extension_ on a minimal core, leaving pi-subagents a pure child-session orchestrator.
 The decision and the full reasoning chain are recorded in [ADR-0002]; the two-surface extension model is described under [Architecture direction](../architecture.md#architecture-direction).
 
 All five steps are closed: [#261], [#262], [#263], [#264], [#265].
@@ -17,7 +17,7 @@ Extensions attach through exactly two surfaces, distinguished by the direction o
    Reactive concerns live here: permission detection, telemetry, UI, notifications.
    Adding a reactive concern never modifies the core.
 2. **Provider seams (generative) — rationed.**
-   The rare concern that must *inject* a value the core consumes synchronously registers a provider the core consults.
+   The rare concern that must _inject_ a value the core consumes synchronously registers a provider the core consults.
    Today there is exactly one: the **workspace provider** (returns the child's working directory plus bracketed setup/teardown).
    A provider seam is the only place the core is "open," so the list is kept as small as possible.
 
@@ -26,7 +26,7 @@ The discriminator when deciding how a concern attaches:
 - It only needs to **know** what happened → subscribe to a lifecycle event (observational, unlimited).
 - It must **return a value the core consumes** → register a provider (generative, rationed).
 
-The governing rule — **no vacant hooks**: the architecture must *admit* a seam without *shipping* it until a concrete consumer exists.
+The governing rule — **no vacant hooks**: the architecture must _admit_ a seam without _shipping_ it until a concrete consumer exists.
 A provider seam with no consumer is a speculative abstraction that taxes every reader and that `fallow` flags as dead.
 Latent extensibility is the deliverable; a vacant hook is not.
 
@@ -36,9 +36,9 @@ An earlier Phase 16 plan ("agent collaborator architecture") proposed giving `Ag
 That framing was abandoned.
 Pulling on a single late-bound `create(cwd?)` parameter on the planned `ChildSessionFactory` exposed deeper problems:
 
-- `WorktreeIsolation.setup()` is a two-phase `construct-then-setup()` that violates "Construct complete" (principle 8) — the worktree is only *ready* at dequeue.
+- `WorktreeIsolation.setup()` is a two-phase `construct-then-setup()` that violates "Construct complete" (principle 8) — the worktree is only _ready_ at dequeue.
 - The worktree and the child session share one lifespan, so they are one run-scoped resource, not sibling collaborators that `Agent` must sequence; the `cwd` parameter only existed because the worktree was split out and `Agent` relayed its output back in.
-- Worktrees are not intrinsic to subagents — they are one *workspace strategy* and belong outside the core, exactly as Phase 14 evicted tool/extension policy.
+- Worktrees are not intrinsic to subagents — they are one _workspace strategy_ and belong outside the core, exactly as Phase 14 evicted tool/extension policy.
 
 Issue #256 (`WorktreeIsolation` as a collaborator) shipped under the abandoned plan and was superseded by #263; issue #257 (`ChildSessionFactory` extraction) was parked.
 Issues #258 (Agent owns session lifecycle via factory) and #259 (dissolve runner concept) belonged to the same abandoned plan — both depended on #256/#257 and were closed as not planned; their structural goals were recovered by Step 5 (#265) via a cleaner route.

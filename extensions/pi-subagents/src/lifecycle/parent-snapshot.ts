@@ -77,7 +77,10 @@ export function buildParentSnapshot(
   return {
     cwd: ctx.cwd,
     projectTrusted: ctx.isProjectTrusted?.(),
-    systemPrompt: withoutMainAgentSection(ctx.getSystemPrompt(), promptOptions?.sections?.[MAIN_AGENT_SECTION]),
+    systemPrompt: withoutMainAgentSection(
+      ctx.getSystemPrompt(),
+      promptOptions?.sections?.[MAIN_AGENT_SECTION],
+    ),
     model: ctx.model,
     modelRegistry: ctx.modelRegistry,
     // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- || intentional: converts empty string to undefined as well as null/undefined

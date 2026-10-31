@@ -80,7 +80,7 @@ export interface PersistedSubagentRecord {
   readonly startedAt: number;
   readonly completedAt: number | undefined;
   readonly outputFile: string | undefined; // new
-  readonly toolUses: number;               // new
+  readonly toolUses: number; // new
 }
 
 /** The fields the reader validates and returns — what the picker labels and opens. */
@@ -93,7 +93,11 @@ export type PersistedRunSummary = Pick<
 export function toPersistedRecord(record: PersistedRecordSource): PersistedSubagentRecord;
 
 /** Narrow input: the session-entry fields the reader inspects. */
-export interface SessionEntryLike { readonly type: string; readonly customType?: string; readonly data?: unknown }
+export interface SessionEntryLike {
+  readonly type: string;
+  readonly customType?: string;
+  readonly data?: unknown;
+}
 
 export function readPersistedRuns(entries: readonly SessionEntryLike[]): PersistedRunSummary[];
 ```
@@ -123,7 +127,12 @@ After the existing live/snapshot pass, it appends a `snapshot` entry for each pe
 const known = new Set(agents.map((a) => a.id));
 for (const run of persisted) {
   if (known.has(run.id) || !run.outputFile) continue;
-  snapshots.push({ kind: "snapshot", outputFile: run.outputFile, heading: buildHeading(run, registry), label: buildLabel(run, registry, true) });
+  snapshots.push({
+    kind: "snapshot",
+    outputFile: run.outputFile,
+    heading: buildHeading(run, registry),
+    label: buildLabel(run, registry, true),
+  });
 }
 ```
 
@@ -207,7 +216,7 @@ Passing raw entries rather than parsed runs lets a handler test drive the whole 
    - validation: a pre-upgrade entry (nine fields, no `toolUses`), and one with `status: "bogus"`, both yield `[]`; an entry with no `outputFile` is kept with `outputFile: undefined`;
    - order: two ids with `startedAt` 1000 and 2000 come back as 2000, then 1000;
    - round trip: `readPersistedRuns([{ type: "custom", customType: SUBAGENT_RECORD_ENTRY, data: toPersistedRecord(record) }])` returns the summary of `record`, pinning that the writer and reader agree.
-   Killing mutations, one per class:
+     Killing mutations, one per class:
    - filtering: drop the `customType === SUBAGENT_RECORD_ENTRY` check.
      The filtering test goes red, because the foreign entry's `data` is a valid record shape in the fixture.
    - last wins: skip an id already in the map instead of overwriting it.

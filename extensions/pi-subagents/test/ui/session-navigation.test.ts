@@ -2,7 +2,13 @@ import { describe, expect, it, vi } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import type { PersistedRunSummary } from "#src/persisted-record";
 import type { AgentSessionEvent, SessionMessage } from "#src/types";
-import { fileSnapshotSource, listNavigableAgents, liveSource, type NavigableSubagent, type TranscriptSource } from "#src/ui/session-navigation";
+import {
+  fileSnapshotSource,
+  listNavigableAgents,
+  liveSource,
+  type NavigableSubagent,
+  type TranscriptSource,
+} from "#src/ui/session-navigation";
 import { makeNavigable } from "#test/helpers/make-navigable";
 
 const registry = new AgentTypeRegistry(() => new Map());
@@ -32,7 +38,9 @@ describe("listNavigableAgents", () => {
     const [entry] = listNavigableAgents([released], registry, []);
     expect(entry.kind).toBe("snapshot");
     expect(entry.kind === "snapshot" && entry.outputFile).toBe("/tasks/released-1.jsonl");
-    expect(entry.label).toBe("Agent (Investigate the bug) · 3 tools · completed · 3.0s · session released (snapshot)");
+    expect(entry.label).toBe(
+      "Agent (Investigate the bug) · 3 tools · completed · 3.0s · session released (snapshot)",
+    );
   });
 
   it("drops a record with neither a live session nor an outputFile", () => {
@@ -58,7 +66,11 @@ describe("listNavigableAgents", () => {
     it("names a live entry's agent, mode, and task", () => {
       const record = makeNavigable({ type: "general-purpose", description: "Investigate the bug" });
       const [entry] = listNavigableAgents([record], registry, []);
-      expect(entry.heading).toEqual({ name: "Agent", modeLabel: "twin", description: "Investigate the bug" });
+      expect(entry.heading).toEqual({
+        name: "Agent",
+        modeLabel: "twin",
+        description: "Investigate the bug",
+      });
     });
 
     it("names a snapshot entry's agent, mode, and task", () => {
@@ -68,18 +80,34 @@ describe("listNavigableAgents", () => {
         description: "Investigate the bug",
       });
       const [entry] = listNavigableAgents([released], registry, []);
-      expect(entry.heading).toEqual({ name: "Agent", modeLabel: "twin", description: "Investigate the bug" });
+      expect(entry.heading).toEqual({
+        name: "Agent",
+        modeLabel: "twin",
+        description: "Investigate the bug",
+      });
     });
 
     it("carries no mode label for a replace-mode agent", () => {
-      const [entry] = listNavigableAgents([makeNavigable({ type: "Explore", description: "Find auth files" })], registry, []);
-      expect(entry.heading).toEqual({ name: "Explore", modeLabel: undefined, description: "Find auth files" });
+      const [entry] = listNavigableAgents(
+        [makeNavigable({ type: "Explore", description: "Find auth files" })],
+        registry,
+        [],
+      );
+      expect(entry.heading).toEqual({
+        name: "Explore",
+        modeLabel: undefined,
+        description: "Find auth files",
+      });
     });
   });
 
   it("orders live entries before snapshot ones, and persisted runs last", () => {
     const live = makeNavigable({ id: "live-1", isSessionReady: () => true });
-    const released = makeNavigable({ id: "released-1", isSessionReady: () => false, outputFile: "/tasks/x.jsonl" });
+    const released = makeNavigable({
+      id: "released-1",
+      isSessionReady: () => false,
+      outputFile: "/tasks/x.jsonl",
+    });
     const persisted = persistedRun({ id: "earlier", outputFile: "/tasks/earlier.jsonl" });
     const sources = listNavigableAgents([live, released], registry, [persisted]).map((e) =>
       e.kind === "live" ? e.record.id : e.outputFile,
@@ -107,7 +135,9 @@ describe("listNavigableAgents", () => {
     });
 
     it("omits a persisted run that recorded no transcript", () => {
-      expect(listNavigableAgents([], registry, [persistedRun({ outputFile: undefined })])).toEqual([]);
+      expect(listNavigableAgents([], registry, [persistedRun({ outputFile: undefined })])).toEqual(
+        [],
+      );
     });
   });
 });
@@ -163,12 +193,16 @@ describe("liveSource", () => {
   });
 
   it("sessionModel reads the record's model and thinking level at call time", () => {
-    const record: { -readonly [K in keyof NavigableSubagent]: NavigableSubagent[K] } = makeNavigable();
+    const record: { -readonly [K in keyof NavigableSubagent]: NavigableSubagent[K] } =
+      makeNavigable();
     const source = liveSource(record);
     expect(source.sessionModel()).toEqual({ model: undefined, thinkingLevel: undefined });
     record.model = { provider: "anthropic", id: "claude-sonnet-5" };
     record.thinkingLevel = "high";
-    expect(source.sessionModel()).toEqual({ model: { provider: "anthropic", id: "claude-sonnet-5" }, thinkingLevel: "high" });
+    expect(source.sessionModel()).toEqual({
+      model: { provider: "anthropic", id: "claude-sonnet-5" },
+      thinkingLevel: "high",
+    });
   });
 
   it("getToolDefinition delegates to the record's getToolDefinition", () => {
@@ -182,8 +216,20 @@ describe("liveSource", () => {
 describe("fileSnapshotSource", () => {
   const SESSION_JSONL = [
     { type: "session", version: 3, id: "s1", timestamp: "2026-06-23T00:00:00Z", cwd: "/proj" },
-    { type: "message", id: "m1", parentId: null, timestamp: "2026-06-23T00:00:01Z", message: { role: "user", content: "do the thing" } },
-    { type: "message", id: "m2", parentId: "m1", timestamp: "2026-06-23T00:00:02Z", message: { role: "assistant", content: [{ type: "text", text: "done" }] } },
+    {
+      type: "message",
+      id: "m1",
+      parentId: null,
+      timestamp: "2026-06-23T00:00:01Z",
+      message: { role: "user", content: "do the thing" },
+    },
+    {
+      type: "message",
+      id: "m2",
+      parentId: "m1",
+      timestamp: "2026-06-23T00:00:02Z",
+      message: { role: "assistant", content: [{ type: "text", text: "done" }] },
+    },
   ]
     .map((entry) => JSON.stringify(entry))
     .join("\n");
@@ -209,11 +255,27 @@ describe("fileSnapshotSource", () => {
     it("reports the model and thinking level the session recorded", () => {
       const jsonl = [
         SESSION_JSONL,
-        JSON.stringify({ type: "model_change", id: "c1", parentId: "m2", timestamp: "2026-06-23T00:00:03Z", provider: "anthropic", modelId: "claude-sonnet-5" }),
-        JSON.stringify({ type: "thinking_level_change", id: "c2", parentId: "c1", timestamp: "2026-06-23T00:00:04Z", thinkingLevel: "medium" }),
+        JSON.stringify({
+          type: "model_change",
+          id: "c1",
+          parentId: "m2",
+          timestamp: "2026-06-23T00:00:03Z",
+          provider: "anthropic",
+          modelId: "claude-sonnet-5",
+        }),
+        JSON.stringify({
+          type: "thinking_level_change",
+          id: "c2",
+          parentId: "c1",
+          timestamp: "2026-06-23T00:00:04Z",
+          thinkingLevel: "medium",
+        }),
       ].join("\n");
       const source = fileSnapshotSource("/tasks/agent.jsonl", () => jsonl);
-      expect(source.sessionModel()).toEqual({ model: { provider: "anthropic", id: "claude-sonnet-5" }, thinkingLevel: "medium" });
+      expect(source.sessionModel()).toEqual({
+        model: { provider: "anthropic", id: "claude-sonnet-5" },
+        thinkingLevel: "medium",
+      });
     });
 
     it("reports the model the last assistant message ran on", () => {
@@ -224,7 +286,12 @@ describe("fileSnapshotSource", () => {
           id: "m3",
           parentId: "m2",
           timestamp: "2026-06-23T00:00:05Z",
-          message: { role: "assistant", content: [{ type: "text", text: "again" }], provider: "openai", model: "gpt-6" },
+          message: {
+            role: "assistant",
+            content: [{ type: "text", text: "again" }],
+            provider: "openai",
+            model: "gpt-6",
+          },
         }),
       ].join("\n");
       const source = fileSnapshotSource("/tasks/agent.jsonl", () => jsonl);
@@ -238,7 +305,13 @@ describe("fileSnapshotSource", () => {
   });
 
   it("returns an empty transcript for a header-only file", () => {
-    const headerOnly = JSON.stringify({ type: "session", version: 3, id: "s1", timestamp: "2026-06-23T00:00:00Z", cwd: "/proj" });
+    const headerOnly = JSON.stringify({
+      type: "session",
+      version: 3,
+      id: "s1",
+      timestamp: "2026-06-23T00:00:00Z",
+      cwd: "/proj",
+    });
     const source = fileSnapshotSource("/tasks/empty.jsonl", () => headerOnly);
     expect(source.getMessages()).toEqual([]);
   });

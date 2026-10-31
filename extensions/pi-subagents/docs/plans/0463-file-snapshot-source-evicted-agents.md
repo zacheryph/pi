@@ -42,7 +42,7 @@ This change is **not** breaking: it is additive (a new source branch and a broad
 Relevant modules:
 
 - `src/ui/session-navigation.ts` — the pure, unit-testable core: `NavigableSubagent` (narrow record view), `NavigationEntry`, `TranscriptSource`, `listNavigableAgents(agents, registry)`, `liveSource(record)`, `buildLabel(record, registry)`.
-  It imports SDK *types* only (`ToolDefinition`) and the lifecycle type `SubagentStatus`.
+  It imports SDK _types_ only (`ToolDefinition`) and the lifecycle type `SubagentStatus`.
 - `src/ui/session-navigator.ts` — the SDK/TUI consumer half: `SessionNavigatorHandler` (picker + source selection) and `TranscriptOverlay` (read-only scrollable renderer).
   The handler already calls `liveSource(entry.record)`; the source is the only seam that varies.
 - `src/lifecycle/subagent-manager.ts` — `listAgents()` (sorted live records), `cleanup()` (the 10-minute sweep), `clearCompleted()` (new-session wipe, called from `handlers/lifecycle.ts` on `session_start` / `session_before_switch`), `removeRecord()` (`disposeSession()` + `agents.delete`).
@@ -55,7 +55,7 @@ SDK functions (`@earendil-works/pi-coding-agent`): `parseSessionEntries(content)
 
 Constraints from AGENTS.md / skills that apply:
 
-- `code-design` SDK-boundary guideline: pure helpers should avoid SDK *runtime* imports.
+- `code-design` SDK-boundary guideline: pure helpers should avoid SDK _runtime_ imports.
   `fileSnapshotSource` calls the SDK runtime functions `parseSessionEntries` / `buildSessionContext` directly (see Design Overview → SDK-runtime decision); there is no `no-restricted-imports` lint rule, and the module already depends on SDK types.
 - `testing`: components used by `session-navigator.ts` need `initTheme(undefined, false)` in `beforeAll` (already present in `session-navigator.test.ts`).
 - `fallow dead-code`: a new export with no caller fails the gate.
@@ -74,8 +74,8 @@ When `cleanup()` disposes a record that has a persisted file, it first copies th
 The picker's candidate set is `live ∪ evicted`, deduped by id, with identical rich labels for both.
 
 Coverage: this surfaces agents evicted **in the current root session** — which are the cleanup sweep's only targets.
-A fresh `SubagentManager` is created per session and `clearCompleted()` runs on `session_start`, so prior-process subagents are never reloaded into the manager; the only files a directory scan would *additionally* surface are old-session orphans, which are exactly the ones with degraded labels.
-Picking an evicted agent still reads its file to render (the messages are gone from memory regardless) — so `fileSnapshotSource` is required either way; the descriptor only feeds the *label*.
+A fresh `SubagentManager` is created per session and `clearCompleted()` runs on `session_start`, so prior-process subagents are never reloaded into the manager; the only files a directory scan would _additionally_ surface are old-session orphans, which are exactly the ones with degraded labels.
+Picking an evicted agent still reads its file to render (the messages are gone from memory regardless) — so `fileSnapshotSource` is required either way; the descriptor only feeds the _label_.
 
 ### SDK-runtime decision — call `parseSessionEntries` / `buildSessionContext` directly
 
@@ -138,9 +138,7 @@ export function fileSnapshotSource(
   readFile: (path: string) => string,
 ): TranscriptSource {
   const entries = parseSessionEntries(readFile(outputFile));
-  const sessionEntries = entries.filter(
-    (entry): entry is SessionEntry => entry.type !== "session",
-  );
+  const sessionEntries = entries.filter((entry): entry is SessionEntry => entry.type !== "session");
   const { messages } = buildSessionContext(sessionEntries);
   return {
     getMessages: () => messages,
@@ -161,11 +159,19 @@ export function listNavigableAgents(
 ): NavigationEntry[] {
   const live = agents
     .filter((record) => record.isSessionReady())
-    .map((record): NavigationEntry => ({ kind: "live", record, label: buildLabel(record, registry) }));
+    .map((record): NavigationEntry => ({
+      kind: "live",
+      record,
+      label: buildLabel(record, registry),
+    }));
   const liveIds = new Set(agents.map((record) => record.id));
   const evictedEntries = evicted
     .filter((d) => !liveIds.has(d.id))
-    .map((d): NavigationEntry => ({ kind: "evicted", outputFile: d.outputFile, label: buildLabel(d, registry, true) }));
+    .map((d): NavigationEntry => ({
+      kind: "evicted",
+      outputFile: d.outputFile,
+      label: buildLabel(d, registry, true),
+    }));
   return [...live, ...evictedEntries];
 }
 ```
@@ -180,7 +186,10 @@ const entry = entries.find((candidate) => candidate.label === choice);
 if (!entry) return;
 let source: TranscriptSource;
 try {
-  source = entry.kind === "live" ? liveSource(entry.record) : fileSnapshotSource(entry.outputFile, readFile);
+  source =
+    entry.kind === "live"
+      ? liveSource(entry.record)
+      : fileSnapshotSource(entry.outputFile, readFile);
 } catch {
   ui.notify("Could not read the session transcript file.", "error");
   return;
@@ -227,7 +236,7 @@ listEvicted(): EvictedSubagent[] {
   No change to `TranscriptOverlay`, `buildTranscriptComponents`, `addMessageComponents`, or `addUserComponents`.
 - `src/index.ts` — add `import { readFileSync } from "node:fs"`; the `subagent-sessions` handler passes `evicted: manager.listEvicted()` and `readFile: (path) => readFileSync(path, "utf8")`.
 - `docs/architecture/architecture.md` — mark Step 4b ([#463]) **Landed** with a note recording the descriptor-vs-scan decision and that ADR-0004 Addendum 2's dual-source design is now realized; flip the `S4b` node label in the step-dependency Mermaid diagram to ✅.
-- `docs/decisions/0004-reconsider-ui-direction.md` — optional one-line note under Addendum 2 that Step 4b chose manager-retained descriptors over a directory scan (the addendum's "evicted/untracked" wording said file snapshot for *rendering*, which still holds; only the *candidate-set* mechanism is being pinned down).
+- `docs/decisions/0004-reconsider-ui-direction.md` — optional one-line note under Addendum 2 that Step 4b chose manager-retained descriptors over a directory scan (the addendum's "evicted/untracked" wording said file snapshot for _rendering_, which still holds; only the _candidate-set_ mechanism is being pinned down).
 
 No SKILL update: the package SKILL's UI section references no session-navigation internals and the file/domain counts are unchanged (no new module — `fileSnapshotSource` joins the existing `session-navigation.ts`).
 The architecture LOC/complexity tables are explicit end-of-phase snapshots, not per-file inventories, so a ~30-LOC addition does not update them.

@@ -70,7 +70,7 @@ Execution was clean except for one significant miss in planning: the change was 
 
 ### Diagnostic details
 
-- **Model-performance correlation** — the breaking-change miss happened on the *strongest* model in the pipeline (`claude-opus-4-8`) during the judgment-heaviest stage (planning).
+- **Model-performance correlation** — the breaking-change miss happened on the _strongest_ model in the pipeline (`claude-opus-4-8`) during the judgment-heaviest stage (planning).
   This rules out model capability as the cause and points to a salience gap in the plan-issue prompt: the breaking determination is framed only as an `ask-user` ambiguity, conditional on the change being "ambiguous," with no unconditional classification step.
 - **Feedback-loop gap analysis** — no gap; the TDD stage ran `check`/`lint`/test/`fallow` incrementally rather than only at the end.
 - Escalation-delay and unused-tool lenses found nothing notable (no rabbit-holes or tool-availability misses).

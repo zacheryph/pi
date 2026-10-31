@@ -24,7 +24,7 @@ The plan adds a `rollup-plugin-dts` build that bundles `src/service/service.ts` 
   3. Artifact — not committed; generated at `prepack` and shipped in the tarball, consumed via the package interface.
   4. Scope — tight: packaging + a `pnpm pack`-based verification harness in #270; defer the `pi-subagents-worktrees` registry-consumption flip (drop `workspace:*`, `link-workspace-packages: false`, wire the real import) to #263.
 - Scope was deliberately narrowed after a chicken-and-egg surfaced: the registry version carrying the fix does not exist until #270 publishes, so the meaningful consumer flip belongs to #263.
-- Sequencing constraint for #263 (captured in the plan): publish #270 first — merge its release-please PR so `pi-subagents` publishes — *before* resuming #263, otherwise #263's `pi-subagents` core edits batch into the same release.
+- Sequencing constraint for #263 (captured in the plan): publish #270 first — merge its release-please PR so `pi-subagents` publishes — _before_ resuming #263, otherwise #263's `pi-subagents` core edits batch into the same release.
   The current `#263` scaffold commits on `main` touch only the unregistered `pi-subagents-worktrees` component, so they do not batch into `pi-subagents` and #270 ships cleanly.
 - Primary feasibility risk flagged: whether `rollup-plugin-dts` resolves `#src/*` while rolling up the type graph.
   Build Step 1 is the explicit checkpoint (emit + assert the output is alias-free and exports the expected symbols).

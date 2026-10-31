@@ -576,7 +576,7 @@ Commit: `refactor: remove legacy fields from AgentRecord, trim AgentRecordInit (
 ## Open Questions
 
 - Whether `record.execution` should be writable once via a `setExecution()` method or simply a public assignable field.
-  Leaning toward public field for simplicity since it's set exactly once and the constructor-complete principle applies to the *collaborator* (ExecutionState), not the field that holds it.
+  Leaning toward public field for simplicity since it's set exactly once and the constructor-complete principle applies to the _collaborator_ (ExecutionState), not the field that holds it.
   Revisit if more than one site needs to write it.
 - Whether `record.promise` should move into `ExecutionState` in a follow-up once the timing concern is resolved (e.g., by using `Promise.withResolvers`).
   Not blocking for this issue — the field count reduction is still significant.

@@ -56,14 +56,14 @@ The public `SubagentsService` interface, `SpawnOptions`, and `SubagentRecord` ar
 
 - **Changing the tool door's frontmatter precedence.**
   `resolveAgentInvocationConfig` gives agent config priority over the `subagent` tool's parameters for every shared field.
-  That is inherited upstream behavior from `tintinweb/pi-subagents` commit `91236678` ("fix(subagents): make agent config authoritative"), whose recorded rationale is a guard against the parent *model* guessing harness knobs it does not understand.
+  That is inherited upstream behavior from `tintinweb/pi-subagents` commit `91236678` ("fix(subagents): make agent config authoritative"), whose recorded rationale is a guard against the parent _model_ guessing harness knobs it does not understand.
   It is currently over-applied — measured during planning, dispatching `Explore` with `model: "sonnet-5"` runs on `claude-haiku-4-5-20251001`, contradicting the tool's own parameter description and this repo's `AGENTS.md`.
   Narrowing that guard to an explicit frontmatter lock list is [#829], which builds on the `BackgroundRequest` mechanism this plan introduces.
   This plan leaves every door's current policy byte-identical.
 - **Capturing `UICtx` outside `tool_execution_start`.**
   The widget is dark for an entire session in which the model never calls a tool, regardless of the roster filter, because `ToolStartHandler` is the only `setUICtx` call site.
   That is [#827]; it carries its own design question (push at `session_start` versus a lazy supplier) and the `finishedTurnAge` aging loose end.
-  This plan makes SDK-spawned agents *eligible*; [#827] makes the widget *present*.
+  This plan makes SDK-spawned agents _eligible_; [#827] makes the widget _present_.
 - **`WorkspacePrepareContext.invocation`.**
   It stays `undefined` for SDK spawns after this change, because the plan does not build an `invocation` snapshot on the SDK door.
   That field is a vacant hook: introduced by us in `51a99701` with no recorded rationale, and never read — `@gotgenes/pi-subagents-worktrees`, the seam's only consumer, touches it only in a test fixture that sets it to `undefined`.
@@ -109,7 +109,7 @@ That is the scattered decision: the manager knows the answer at spawn time and t
 
 ### Why the tool door is a two-step and the SDK door is not
 
-`AgentTool` must know the background mode *before* it calls the manager, because the mode selects the runner: `spawnBackground` (returns immediately) or `runForeground` (streams `onUpdate`, awaits the record).
+`AgentTool` must know the background mode _before_ it calls the manager, because the mode selects the runner: `spawnBackground` (returns immediately) or `runForeground` (streams `onUpdate`, awaits the record).
 So `resolveSpawnConfig` merges frontmatter first and the tool's call to the manager reports an already-committed decision.
 The SDK door has no such branch — `spawn()` always returns an id.
 
@@ -126,7 +126,7 @@ The SDK door has no such branch — `spawn()` always returns an id.
 ### The doc already claims the edge
 
 `architecture.md:245` states `SubagentManager --> AgentTypeRegistry : resolves types` in the class diagram.
-No such edge exists in the code today (`git log -S'registry' -- src/lifecycle/subagent-manager.ts` shows the registry was *removed* from the manager in `aa8b2da6`, #231).
+No such edge exists in the code today (`git log -S'registry' -- src/lifecycle/subagent-manager.ts` shows the registry was _removed_ from the manager in `aa8b2da6`, #231).
 This change makes the diagram true rather than requiring a new edge.
 
 ## Design Overview
@@ -136,7 +136,7 @@ This change makes the diagram true rather than requiring a new edge.
 `isBackground` fuses three decisions — scheduling, announcement, and result delivery — and **result delivery is the root**.
 A caller that holds the result has already settled the other two: it must not be queued (it is blocking a turn) and needs no announcement (it will see the result).
 
-Frontmatter `runInBackground` is therefore a default for a caller that has *not* committed.
+Frontmatter `runInBackground` is therefore a default for a caller that has _not_ committed.
 The second axis is caller determinism: the upstream guard exists because an LLM guesses; a programmatic caller does not.
 
 Both facts are expressed by one discriminated union: a door states whether its answer is a commitment or a fallback.
@@ -231,7 +231,7 @@ export interface SubagentInit {
   id: string;
   type: SubagentType;
   description: string;
-  isBackground: boolean;   // new, required
+  isBackground: boolean; // new, required
   invocation?: AgentInvocation;
   execution: SubagentExecution;
   state?: SubagentState;
@@ -279,7 +279,7 @@ The adapter must not reach through `currentCtx.sessionManager` (Law of Demeter);
 export interface ServiceRuntimeLike {
   readonly currentCtx: SessionContext | undefined;
   buildSnapshot(inheritContext: boolean): ParentSnapshot;
-  getSessionInfo(): { parentSessionFile: string; parentSessionId: string };   // new
+  getSessionInfo(): { parentSessionFile: string; parentSessionId: string }; // new
 }
 ```
 
@@ -290,10 +290,11 @@ const { parentSessionFile, parentSessionId } = this.runtime.getSessionInfo();
 return this.manager.spawn(snapshot, type, prompt, {
   description,
   model,
-  parentSession: { parentSessionFile, parentSessionId },   // no toolCallId — there is no tool call
-  background: options?.foreground === undefined
-    ? { kind: "default", isBackground: true }
-    : { kind: "explicit", isBackground: !options.foreground },
+  parentSession: { parentSessionFile, parentSessionId }, // no toolCallId — there is no tool call
+  background:
+    options?.foreground === undefined
+      ? { kind: "default", isBackground: true }
+      : { kind: "explicit", isBackground: !options.foreground },
   // …existing fields
 });
 ```
@@ -365,7 +366,7 @@ No `.pi/skills/` file names any changed symbol.
 
 **Newly required, because a green suite would otherwise hide the regression.**
 `test/ui/agent-widget.test.ts:33`'s manager stub returns hand-built objects (`listAgents: () => agents.map(a => ({ invocation: { runInBackground: true }, ...a }))`), never real `Subagent` instances.
-It therefore pins the widget's *filter expression* and nothing about how the field arrives.
+It therefore pins the widget's _filter expression_ and nothing about how the field arrives.
 The end-to-end claim — an SDK spawn produces a record the widget shows — must be pinned in `test/service/service-adapter.test.ts` (the adapter passes a `background` request) and `test/lifecycle/subagent-manager.test.ts` (the manager stamps `isBackground` on the record), not in the widget suite.
 
 **Becomes redundant.**
@@ -379,7 +380,7 @@ The value's provenance changes from a literal to a record read; the assertion is
 
 | Invariant                                                        | Source                                  | Pinned by                                                                                                                                              | Action                                                                                                                                                                                                                                                       |
 | ---------------------------------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Widget shows background agents only; foreground runs suppress it | [ADR-0004] Decision A; phase-19 history | `test/ui/agent-widget.test.ts:355-388` ("does not register the widget when only foreground agents exist"; "renders only background agents when…mixed") | Keep both cases, re-expressed on `isBackground`. They pin the filter's *behavior*, which survives the field swap.                                                                                                                                            |
+| Widget shows background agents only; foreground runs suppress it | [ADR-0004] Decision A; phase-19 history | `test/ui/agent-widget.test.ts:355-388` ("does not register the widget when only foreground agents exist"; "renders only background agents when…mixed") | Keep both cases, re-expressed on `isBackground`. They pin the filter's _behavior_, which survives the field swap.                                                                                                                                            |
 | `listAgents()` is funnelled through a single background accessor | phase-19 history line 76                | Same file, via the two cases above                                                                                                                     | Preserved — the accessor keeps its single-point role; only its predicate changes.                                                                                                                                                                            |
 | Foreground `spawnAndWait` runs immediately and is awaited        | `subagent-manager.ts:214-224`           | `test/lifecycle/subagent-manager.test.ts` foreground cases                                                                                             | New risk introduced by this change: `spawnAndWait` stops delegating to `spawn`, so a bug could route it through the limiter. Add an explicit case that `spawnAndWait` stays foreground even for an agent whose frontmatter declares `runInBackground: true`. |
 | The tool door's user-visible disabled-agent error text           | `spawn-config.ts:85`                    | `test/tools/spawn-config.test.ts:89,103`                                                                                                               | Message string is reused verbatim in the manager's throw; the relocated tests assert the same two strings, including canonical casing for case-insensitive input.                                                                                            |

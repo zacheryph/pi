@@ -117,11 +117,8 @@ Three new branches alongside the existing ones, reading the same SDK payload sha
 if (event.type === "tool_execution_start") state.addActiveTool(event.toolName);
 if (event.type === "turn_end") state.incrementTurnCount();
 if (event.type === "message_start") state.resetResponseText();
-if (
-	event.type === "message_update" &&
-	event.assistantMessageEvent.type === "text_delta"
-) {
-	state.appendResponseText(event.assistantMessageEvent.delta);
+if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
+  state.appendResponseText(event.assistantMessageEvent.delta);
 }
 ```
 
@@ -212,7 +209,7 @@ No existing test breaks at any step (pure addition, no removed/renamed symbol).
 - **Risk: the folded fields drift from `AgentActivityTracker` semantics, making Step 2's swap not behavior-preserving.**
   Mitigation: the transition methods are copied field-for-field (turn count starts at 1, `name_seq` keying, first-match removal, reset-then-append response text); Step 2's reader-migration tests will compare record getters against the tracker before deletion.
 - **Risk: resume parity — the surviving `SubagentState` accumulates turn count across a resume while a fresh tracker would not.**
-  Mitigation: the tracker is *not* reset on resume today either (it is not reconstructed), so the record matches.
+  Mitigation: the tracker is _not_ reset on resume today either (it is not reconstructed), so the record matches.
   `resetForResume` is left unchanged and the decision is documented; Step 2 revisits if a reader needs a per-resume reset.
 - **Risk: a second observer now writes the same conceptual fields (record-observer + ui-observer), briefly duplicating active-tool/turn-count bookkeeping.**
   Mitigation: this is the intended tidy-first overlap; the duplicate (`ui-observer`) is removed in Step 3 ([#422]).

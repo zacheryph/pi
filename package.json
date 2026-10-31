@@ -14,8 +14,14 @@
     "packages/pi-session-tree"
   ],
   "scripts": {
-    "check": "npm run check --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present",
+    "check": "npm run format:check && npm run lint && npm run typecheck",
+    "fix": "npm run format && npm run lint:fix && npm run format",
+    "format": "oxfmt --write .",
+    "format:check": "oxfmt --check .",
+    "lint": "oxlint --deny-warnings .",
+    "lint:fix": "oxlint --fix .",
+    "typecheck": "tsc --noEmit && npm run typecheck --workspaces --if-present",
+    "test": "node --test scripts/*.test.mjs && npm run test --workspaces --if-present",
     "verify:bundle": "node scripts/verify-bundle.mjs",
     "build:types": "npm run build:types --workspace=@gotgenes/pi-subagents"
   },
@@ -46,5 +52,19 @@
   },
   "engines": {
     "node": ">=24"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "1.4.0",
+    "@earendil-works/pi-coding-agent": "1.4.0",
+    "@earendil-works/pi-tui": "1.4.0",
+    "@types/node": "^24.19.2",
+    "oxfmt": "0.75.0",
+    "oxlint": "1.90.0",
+    "oxlint-tsgolint": "7.0.2005",
+    "rolldown": "1.2.16",
+    "rolldown-plugin-dts": "0.29.0",
+    "typebox": "1.3.27",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
   }
 }

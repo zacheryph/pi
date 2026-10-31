@@ -10,6 +10,5 @@ export function isDebug(): boolean {
 }
 
 export function debugLog(context: string, err: unknown): void {
-  if (isDebug())
-    console.warn(`[pi-subagents-worktrees:debug] ${context}:`, err);
+  if (isDebug()) console.warn(`[pi-subagents-worktrees:debug] ${context}:`, err);
 }

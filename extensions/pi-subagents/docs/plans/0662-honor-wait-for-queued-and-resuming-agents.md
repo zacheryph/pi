@@ -120,9 +120,17 @@ function settleOrAbort(run: Promise<void>, signal?: AbortSignal): Promise<void> 
   if (signal.aborted) return Promise.resolve();
   const detach = new AbortController();
   const interrupted = new Promise<void>((resolve) => {
-    signal.addEventListener("abort", () => { resolve(); }, { once: true, signal: detach.signal });
+    signal.addEventListener(
+      "abort",
+      () => {
+        resolve();
+      },
+      { once: true, signal: detach.signal },
+    );
   });
-  return Promise.race([run, interrupted]).finally(() => { detach.abort(); });
+  return Promise.race([run, interrupted]).finally(() => {
+    detach.abort();
+  });
 }
 ```
 
@@ -133,7 +141,7 @@ Do not add an `eslint-disable` for `@typescript-eslint/no-invalid-void-type` pre
 `concurrency-limiter.ts:24` needs one for `Promise.withResolvers<void>()`, but `new Promise<void>(...)` is a construct expression and may not trip the rule; add the disable only if `pnpm run lint` reports it, with the same rationale comment.
 
 Interrupting the wait deliberately does **not** abort the agent.
-`get_subagent_result` is a query; ESC on the parent means "stop what *you* are doing", and the agent-killing interpretation already lives in `InterruptHandler` (Issue #664).
+`get_subagent_result` is a query; ESC on the parent means "stop what _you_ are doing", and the agent-killing interpretation already lives in `InterruptHandler` (Issue #664).
 Today ESC ends the wait twice over — through the signal race and through `abortAll()` — but if #664 makes `abortAll` opt-out, the signal race becomes the only escape, which is the reason to land it here rather than defer it.
 
 ### Republishing the run handle on resume
@@ -153,7 +161,7 @@ resume(prompt: string, signal?: AbortSignal): Promise<void> {
 
 Two details matter.
 The precondition failure becomes `Promise.reject`, not `throw`: dropping `async` would otherwise turn the rejection into a synchronous throw that escapes `expect(...).rejects.toThrow(...)`, per the `testing` skill.
-Dropping `async` also makes `resume()` return the *same* promise object as the `promise` getter, which is directly assertable (`expect(agent.promise).toBe(agent.resume("…"))` in spirit) rather than merely "settles at about the same time".
+Dropping `async` also makes `resume()` return the _same_ promise object as the `promise` getter, which is directly assertable (`expect(agent.promise).toBe(agent.resume("…"))` in spirit) rather than merely "settles at about the same time".
 
 `runResume` keeps the always-resolves contract of the existing body (errors are captured by `failResume`), so `_promise` never becomes an unhandled rejection for a waiter that is not watching it.
 
@@ -266,7 +274,7 @@ Co-authored-by: daoguademeng <whumaple@gmail.com>
 | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | A `wait: true` on a deep queue blocks the parent far longer than before     | Step 4's interrupt exit gives the parent an escape that does not kill the agents, independent of Issue #664's abort-all policy                                       |
 | An abort listener leaks onto the parent turn signal across repeated calls   | `settleOrAbort` detaches through an inner `AbortController` in a `finally`, so the listener is removed whichever branch of the race wins                             |
-| Making `resume()` non-`async` converts a rejection into a synchronous throw | Step 5 lands the rejection test *before* step 6's conversion, and the precondition uses `Promise.reject` rather than `throw`                                         |
+| Making `resume()` non-`async` converts a rejection into a synchronous throw | Step 5 lands the rejection test _before_ step 6's conversion, and the precondition uses `Promise.reject` rather than `throw`                                         |
 | `runResume` extraction silently drops a line of the original body           | Step 6 runs the full package suite; the `Subagent.resume() — observer lifecycle` block passes only if the body is intact                                             |
 | The contributor's credit is lost                                            | The `Co-authored-by` trailer above is required on every commit, and the PR close comment thanks `@daoguademeng` and links the implementing SHAs; never `Closes #662` |
 | An interrupted wait leaves the parent with a report it did not expect       | The report is honest (`Status: running` / `queued`) and the record stays unconsumed, so the completion nudge still arrives later                                     |

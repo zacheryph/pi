@@ -1,8 +1,23 @@
 import { createEventBus } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  ancestors, call, callAsync, CHILD_SESSION_CREATED, CHILD_SESSION_DISPOSED, children, descendants, forget, link, node,
-  parentOf, provide, root, service, SESSION_TREE_KEY, sessionTree, trackChildren,
+  ancestors,
+  call,
+  callAsync,
+  CHILD_SESSION_CREATED,
+  CHILD_SESSION_DISPOSED,
+  children,
+  descendants,
+  forget,
+  link,
+  node,
+  parentOf,
+  provide,
+  root,
+  service,
+  SESSION_TREE_KEY,
+  sessionTree,
+  trackChildren,
 } from "#src/index";
 
 afterEach(() => {
@@ -13,7 +28,14 @@ afterEach(() => {
 /** An extension's view of one session's real Pi event bus. */
 function sessionBus() {
   const bus = createEventBus();
-  return { bus, pi: { events: { on: (channel: string, handler: (data: unknown) => void) => bus.on(channel, handler) } } };
+  return {
+    bus,
+    pi: {
+      events: {
+        on: (channel: string, handler: (data: unknown) => void) => bus.on(channel, handler),
+      },
+    },
+  };
 }
 
 describe("registry", () => {
@@ -64,9 +86,17 @@ describe("links and navigation", () => {
   });
 
   it("keeps omitted fields when a link is updated", () => {
-    link("c", { parent: "root", agentId: "agent-1", handoff: { todos: { keys: ["x"], scope: "assigned" } } });
+    link("c", {
+      parent: "root",
+      agentId: "agent-1",
+      handoff: { todos: { keys: ["x"], scope: "assigned" } },
+    });
     link("c", { agentId: "agent-1" });
-    expect(node("c")).toMatchObject({ parent: "root", agentId: "agent-1", handoff: { todos: { keys: ["x"], scope: "assigned" } } });
+    expect(node("c")).toMatchObject({
+      parent: "root",
+      agentId: "agent-1",
+      handoff: { todos: { keys: ["x"], scope: "assigned" } },
+    });
   });
 
   it("refuses a session as its own parent and stops on cycles", () => {
@@ -118,9 +148,16 @@ describe("services", () => {
 
   it("calls a live service and reports missing or failing ones without throwing", () => {
     provide("root", "pi-stash", { count: () => 3 });
-    provide("root", "pi-todo", { mutate: () => { throw new Error("This extension ctx is stale"); } });
+    provide("root", "pi-todo", {
+      mutate: () => {
+        throw new Error("This extension ctx is stale");
+      },
+    });
 
-    expect(call<{ count(): number }, number>("root", "pi-stash", (api) => api.count())).toEqual({ ok: true, value: 3 });
+    expect(call<{ count(): number }, number>("root", "pi-stash", (api) => api.count())).toEqual({
+      ok: true,
+      value: 3,
+    });
     expect(call("root", "pi-dashboard", () => 1)).toEqual({ ok: false, reason: "missing" });
     const failed = call<{ mutate(): void }, void>("root", "pi-todo", (api) => api.mutate());
     expect(failed.ok).toBe(false);
@@ -140,30 +177,54 @@ describe("asynchronous services", () => {
 
   it("callAsync resolves a value and reports a missing service", async () => {
     provide("root", "pi-todo", { mutate: async () => 7 });
-    await expect(callAsync<{ mutate(): Promise<number> }, Promise<number>>("root", "pi-todo", (api) => api.mutate()))
-      .resolves.toEqual({ ok: true, value: 7 });
-    await expect(callAsync("root", "pi-stash", () => 1)).resolves.toEqual({ ok: false, reason: "missing" });
+    await expect(
+      callAsync<{ mutate(): Promise<number> }, Promise<number>>("root", "pi-todo", (api) =>
+        api.mutate(),
+      ),
+    ).resolves.toEqual({ ok: true, value: 7 });
+    await expect(callAsync("root", "pi-stash", () => 1)).resolves.toEqual({
+      ok: false,
+      reason: "missing",
+    });
   });
 
   it("callAsync turns a rejected promise into an error result", async () => {
     provide("root", "pi-todo", { mutate: () => Promise.reject(stale()) });
-    const result = await callAsync<{ mutate(): Promise<void> }, Promise<void>>("root", "pi-todo", (api) => api.mutate());
+    const result = await callAsync<{ mutate(): Promise<void> }, Promise<void>>(
+      "root",
+      "pi-todo",
+      (api) => api.mutate(),
+    );
     expect(result).toMatchObject({ ok: false, reason: "error" });
-    expect(result.ok === false && result.reason === "error" && (result.error as Error).message).toMatch(/stale/);
+    expect(
+      result.ok === false && result.reason === "error" && (result.error as Error).message,
+    ).toMatch(/stale/);
   });
 
   it("callAsync catches a stale context that throws inside an async function", async () => {
-    const ctx = { get sessionManager(): never { throw stale(); } };
+    const ctx = {
+      get sessionManager(): never {
+        throw stale();
+      },
+    };
     provide("root", "pi-todo", { mutate: async () => ctx.sessionManager });
-    const result = await callAsync<{ mutate(): Promise<unknown> }, Promise<unknown>>("root", "pi-todo", (api) => api.mutate());
+    const result = await callAsync<{ mutate(): Promise<unknown> }, Promise<unknown>>(
+      "root",
+      "pi-todo",
+      (api) => api.mutate(),
+    );
     expect(result).toMatchObject({ ok: false, reason: "error" });
   });
 
   it("call refuses a promise instead of reporting success, without an unhandled rejection", async () => {
     provide("root", "pi-todo", { mutate: () => Promise.reject(stale()) });
-    const result = call<{ mutate(): Promise<void> }, Promise<void>>("root", "pi-todo", (api) => api.mutate());
+    const result = call<{ mutate(): Promise<void> }, Promise<void>>("root", "pi-todo", (api) =>
+      api.mutate(),
+    );
     expect(result.ok).toBe(false);
-    expect(result.ok === false && result.reason === "error" && (result.error as Error).message).toMatch(/callAsync/);
+    expect(
+      result.ok === false && result.reason === "error" && (result.error as Error).message,
+    ).toMatch(/callAsync/);
     // Let the rejected promise settle; vitest fails the run on an unhandled rejection.
     await new Promise((resolve) => setTimeout(resolve, 0));
   });
@@ -185,7 +246,11 @@ describe("session cleanup", () => {
   it("keeps a linked child's node until pi-subagents reports it disposed", () => {
     const parent = sessionBus();
     trackChildren(parent.pi);
-    parent.bus.emit(CHILD_SESSION_CREATED, { sessionId: "child", parentSessionId: "root", agentId: "a3f2" });
+    parent.bus.emit(CHILD_SESSION_CREATED, {
+      sessionId: "child",
+      parentSessionId: "root",
+      agentId: "a3f2",
+    });
     const withdraw = provide("child", "pi-stash", {});
 
     withdraw(); // child session_shutdown runs before child:disposed
@@ -215,7 +280,11 @@ describe("trackChildren", () => {
 
     // pi-subagents emits session-created on the parent's bus, then binds the
     // child, whose session_start reads the link.
-    parent.bus.emit(CHILD_SESSION_CREATED, { sessionId: "child", parentSessionId: "root", agentId: "a3f2" });
+    parent.bus.emit(CHILD_SESSION_CREATED, {
+      sessionId: "child",
+      parentSessionId: "root",
+      agentId: "a3f2",
+    });
     const seenAtSessionStart = { parent: parentOf("child"), agent: node("child")?.agentId };
 
     expect(seenAtSessionStart).toEqual({ parent: "root", agent: "a3f2" });
@@ -226,7 +295,11 @@ describe("trackChildren", () => {
     trackChildren(parent.pi);
     const handoff = { todos: { keys: ["auth-audit"], scope: "assigned" as const } };
 
-    parent.bus.emit(CHILD_SESSION_CREATED, { sessionId: "child", parentSessionId: "root", handoff });
+    parent.bus.emit(CHILD_SESSION_CREATED, {
+      sessionId: "child",
+      parentSessionId: "root",
+      handoff,
+    });
     expect(node("child")?.handoff).toEqual(handoff);
 
     parent.bus.emit(CHILD_SESSION_DISPOSED, { sessionId: "child" });
@@ -251,7 +324,11 @@ describe("trackChildren", () => {
 
     parent.bus.emit(CHILD_SESSION_CREATED, undefined);
     parent.bus.emit(CHILD_SESSION_CREATED, { sessionId: 42 });
-    parent.bus.emit(CHILD_SESSION_CREATED, { sessionId: "child", parentSessionId: 7, handoff: ["not", "an", "object"] });
+    parent.bus.emit(CHILD_SESSION_CREATED, {
+      sessionId: "child",
+      parentSessionId: 7,
+      handoff: ["not", "an", "object"],
+    });
     expect(node("child")).toMatchObject({ id: "child" });
     expect(node("child")?.parent).toBeUndefined();
     expect(node("child")?.handoff).toBeUndefined();

@@ -83,7 +83,9 @@ export class SubagentSession {
    * The limits the initial run resolved, kept so every resume runs under the
    * same ceiling. Unlimited until the initial run starts.
    */
-  private turnLimits: { maxTurns?: number; wrapUpTurns: number } = { wrapUpTurns: DEFAULT_WRAP_UP_TURNS };
+  private turnLimits: { maxTurns?: number; wrapUpTurns: number } = {
+    wrapUpTurns: DEFAULT_WRAP_UP_TURNS,
+  };
 
   /**
    * How the session's last assistant turn ended, tracked for the session's
@@ -138,9 +140,7 @@ export class SubagentSession {
     const cleanupAbort = forwardAbortSignal(session, opts.signal);
 
     // Prepend parent context if it was captured at spawn time.
-    const effectivePrompt = this.meta.parentContext
-      ? this.meta.parentContext + prompt
-      : prompt;
+    const effectivePrompt = this.meta.parentContext ? this.meta.parentContext + prompt : prompt;
 
     try {
       await session.prompt(effectivePrompt);
@@ -402,10 +402,7 @@ function collectResponseText(session: AgentSession) {
     if (event.type === "message_start") {
       text = "";
     }
-    if (
-      event.type === "message_update" &&
-      event.assistantMessageEvent.type === "text_delta"
-    ) {
+    if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
       text += event.assistantMessageEvent.delta;
     }
   });
@@ -427,10 +424,7 @@ function getLastAssistantText(session: AgentSession): string {
  * Wire an AbortSignal to abort a session.
  * Returns a cleanup function to remove the listener.
  */
-function forwardAbortSignal(
-  session: AgentSession,
-  signal?: AbortSignal,
-): () => void {
+function forwardAbortSignal(session: AgentSession, signal?: AbortSignal): () => void {
   if (!signal) return () => {};
   const onAbort = (): void => {
     void session.abort();

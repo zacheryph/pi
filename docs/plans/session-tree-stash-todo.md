@@ -18,14 +18,14 @@ Pi runs every subagent as a full in-process session. For each child, pi-subagent
 builds a `DefaultResourceLoader`, creates an `AgentSession`, and calls
 `bindExtensions()`, so every extension factory runs again for that child.
 
-| Thing | Scope | Notes |
-|---|---|---|
-| Extension closure state (`index`, `state`) | per session | Each factory call creates it fresh. |
-| `pi.events` bus | per session | Each `DefaultResourceLoader` creates its own `createEventBus()` unless one is passed in. pi-subagents passes none. |
-| Session JSONL, `pi.appendEntry` | per session | A tree of entries with a leaf pointer. Extensions replay their custom entries from `getBranch()`. |
-| Extension module scope | sometimes shared | See "Module cache" below. Never rely on it. |
-| `globalThis` | process | `Symbol.for(key)` names the same slot from every module copy. |
-| Stash blobs (`~/.pi/agent/stash`) | machine | Content-addressed and shared. |
+| Thing                                      | Scope            | Notes                                                                                                              |
+| ------------------------------------------ | ---------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Extension closure state (`index`, `state`) | per session      | Each factory call creates it fresh.                                                                                |
+| `pi.events` bus                            | per session      | Each `DefaultResourceLoader` creates its own `createEventBus()` unless one is passed in. pi-subagents passes none. |
+| Session JSONL, `pi.appendEntry`            | per session      | A tree of entries with a leaf pointer. Extensions replay their custom entries from `getBranch()`.                  |
+| Extension module scope                     | sometimes shared | See "Module cache" below. Never rely on it.                                                                        |
+| `globalThis`                               | process          | `Symbol.for(key)` names the same slot from every module copy.                                                      |
+| Stash blobs (`~/.pi/agent/stash`)          | machine          | Content-addressed and shared.                                                                                      |
 
 So a child's `stash_put` writes the blob to the shared store and the index entry to
 the child's own JSONL. The parent's `stash_list` replays only the parent's branch, so
@@ -34,14 +34,14 @@ falls back to the blob store. Todo works the same way, except it has no shared s
 
 ## Pi SDK checks (1.4.0)
 
-| Claim | Verdict | Evidence |
-|---|---|---|
-| Each child has its own event bus. | Confirmed | `core/resource-loader.js:248` creates a new bus when none is given; `pi-subagents/src/index.ts:125` builds the child loader without one. |
-| Module-level variables are never shared between extension copies. | **Partly wrong** | `core/extensions/loader.js:464-492` caches each extension's factory by resolved path for the current cwd. A child in the same cwd reuses the parent's imported module, so module scope is shared. A child in a different cwd (a worktree) clears the cache (`loader.js:97-104`), and `resourceLoader.reload()` clears it too (`resource-loader.js:357-360`). Whether module scope is shared depends on the situation, so use `globalThis` with explicit session keys. |
-| `appendEntry` from another session's call is safe mid-turn. | Confirmed, with a caveat | `core/agent-session.js:2783` → `session-manager.js:901` appends synchronously at the current leaf and persists it (`_persist`, `session-manager.js:794`). Nothing checks turn state. Custom entries are not LLM messages. pi-stash and pi-todo already append during tool execution. Caveat: the entry lands between the parent's in-flight assistant message and its tool results. That already happens today. |
-| A captured `pi`/`ctx` goes stale. | Confirmed | Reload: `agent-session.js:2998-3028` emits `session_shutdown{reason:"reload"}` → `oldRunner.invalidate()` → re-imports modules → new factories → `session_start{reason:"reload"}`. After `invalidate()`, every call on the old API throws "This extension ctx is stale…", and all its bus subscriptions are removed (`loader.js:114-163`). The same applies to `newSession`, `fork` and `switchSession`. |
-| The child's header records its parent. | **Unusable** | pi-subagents writes the parent *session id* into `header.parentSession` (`create-subagent-session.ts:286`). Pi itself writes a parent *file path* there for forks (`session-manager.js:1248`, `1404`). Use the lifecycle event instead. |
-| An extension can veto a tool call before it runs. | Confirmed | `tool_call` handlers may return `{ block: true, reason }` (`core/extensions/types.d.ts:1089`). |
+| Claim                                                             | Verdict                  | Evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ----------------------------------------------------------------- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Each child has its own event bus.                                 | Confirmed                | `core/resource-loader.js:248` creates a new bus when none is given; `pi-subagents/src/index.ts:125` builds the child loader without one.                                                                                                                                                                                                                                                                                                                              |
+| Module-level variables are never shared between extension copies. | **Partly wrong**         | `core/extensions/loader.js:464-492` caches each extension's factory by resolved path for the current cwd. A child in the same cwd reuses the parent's imported module, so module scope is shared. A child in a different cwd (a worktree) clears the cache (`loader.js:97-104`), and `resourceLoader.reload()` clears it too (`resource-loader.js:357-360`). Whether module scope is shared depends on the situation, so use `globalThis` with explicit session keys. |
+| `appendEntry` from another session's call is safe mid-turn.       | Confirmed, with a caveat | `core/agent-session.js:2783` → `session-manager.js:901` appends synchronously at the current leaf and persists it (`_persist`, `session-manager.js:794`). Nothing checks turn state. Custom entries are not LLM messages. pi-stash and pi-todo already append during tool execution. Caveat: the entry lands between the parent's in-flight assistant message and its tool results. That already happens today.                                                       |
+| A captured `pi`/`ctx` goes stale.                                 | Confirmed                | Reload: `agent-session.js:2998-3028` emits `session_shutdown{reason:"reload"}` → `oldRunner.invalidate()` → re-imports modules → new factories → `session_start{reason:"reload"}`. After `invalidate()`, every call on the old API throws "This extension ctx is stale…", and all its bus subscriptions are removed (`loader.js:114-163`). The same applies to `newSession`, `fork` and `switchSession`.                                                              |
+| The child's header records its parent.                            | **Unusable**             | pi-subagents writes the parent _session id_ into `header.parentSession` (`create-subagent-session.ts:286`). Pi itself writes a parent _file path_ there for forks (`session-manager.js:1248`, `1404`). Use the lifecycle event instead.                                                                                                                                                                                                                               |
+| An extension can veto a tool call before it runs.                 | Confirmed                | `tool_call` handlers may return `{ block: true, reason }` (`core/extensions/types.d.ts:1089`).                                                                                                                                                                                                                                                                                                                                                                        |
 
 Two facts from this repo the design relies on:
 
@@ -63,13 +63,13 @@ A process-wide registry holds one node per live session:
 // globalThis[Symbol.for("pi-personal.session-tree.v1")]
 interface SessionTree {
   version: 1;
-  nodes: Map<string, SessionNode>;            // key: session id
+  nodes: Map<string, SessionNode>; // key: session id
 }
 interface SessionNode {
   id: string;
-  parent?: string;                            // parent session id (from child:session-created)
-  agentId?: string;                           // pi-subagents record id, stable across resume
-  handoff?: Handoff;                          // what the parent handed this child at spawn
+  parent?: string; // parent session id (from child:session-created)
+  agentId?: string; // pi-subagents record id, stable across resume
+  handoff?: Handoff; // what the parent handed this child at spawn
   services: Map<string, { token: object; api: unknown }>; // "pi-stash", "pi-todo", …
 }
 ```
@@ -92,13 +92,13 @@ interface SessionNode {
 
 Each record carries a `scope`. The storing session always holds the record.
 
-| Scope | Also held by |
-|---|---|
-| `self` | nobody else |
-| `parent` | the direct parent |
-| `ancestors` | every ancestor up to the root |
-| `descendants` | every child and grandchild, now and later |
-| `tree` | its line of descent: `ancestors` + `descendants` (never siblings or cousins) |
+| Scope         | Also held by                                                                 |
+| ------------- | ---------------------------------------------------------------------------- |
+| `self`        | nobody else                                                                  |
+| `parent`      | the direct parent                                                            |
+| `ancestors`   | every ancestor up to the root                                                |
+| `descendants` | every child and grandchild, now and later                                    |
+| `tree`        | its line of descent: `ancestors` + `descendants` (never siblings or cousins) |
 
 Reach is a set, and scopes are ordered by inclusion: `self` ⊂ `parent` ⊂ `ancestors`
 ⊂ `tree`, and `self` ⊂ `descendants` ⊂ `tree`. `parent` and `descendants` are not
@@ -123,6 +123,7 @@ comparable.
   An ancestor that holds an adopted copy does **not** pass it on to its own other
   children. Otherwise a `tree` entry from child A, adopted into parent P, would leak
   to A's sibling B.
+
 - **Down:** on `session_start`, a child T looks at the records its ancestors hold
   with scope `descendants` or `tree`, and inherits only those whose origin is in
   `ancestors(T)`. It journals them locally with `via: "inherit"`, so a later resume

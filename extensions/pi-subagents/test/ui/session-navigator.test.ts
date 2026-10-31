@@ -17,7 +17,12 @@ import {
   type SessionModel,
   type TranscriptSource,
 } from "#src/ui/session-navigation";
-import { type PaneKeys, SessionNavigatorHandler, type SessionNavigatorParams, TranscriptPane } from "#src/ui/session-navigator";
+import {
+  type PaneKeys,
+  SessionNavigatorHandler,
+  type SessionNavigatorParams,
+  TranscriptPane,
+} from "#src/ui/session-navigator";
 import { makeNavigable } from "#test/helpers/make-navigable";
 import { fakeSource, mockTui } from "#test/helpers/transcript-fixtures";
 
@@ -28,8 +33,17 @@ const registry = new AgentTypeRegistry(() => new Map());
 beforeAll(() => initTheme(undefined, false));
 
 /** One SGR colour per thinking level, so a test can tell which level painted a rule. */
-const LEVEL_CODES: Record<string, number> = { off: 0, minimal: 1, low: 2, medium: 3, high: 4, xhigh: 5, max: 6 };
+const LEVEL_CODES: Record<string, number> = {
+  off: 0,
+  minimal: 1,
+  low: 2,
+  medium: 3,
+  high: 4,
+  xhigh: 5,
+  max: 6,
+};
 const levelColour = (level: string): string => `\x1b[38;5;${LEVEL_CODES[level] ?? 9}m`;
+// oxlint-disable-next-line no-control-regex -- Intentionally matches terminal control characters.
 const stripAnsi = (text: string): string => text.replace(/\x1b\[[0-9;]*m/g, "");
 
 /** Plain-text theme; the thinking-border painter wraps in zero-width SGR codes. */
@@ -37,20 +51,26 @@ function ansiTheme() {
   return {
     fg: (_color: string, text: string) => text,
     bold: (text: string) => text,
-    getThinkingBorderColor: (level: string) => (text: string) => `${levelColour(level)}${text}\x1b[39m`,
+    getThinkingBorderColor: (level: string) => (text: string) =>
+      `${levelColour(level)}${text}\x1b[39m`,
   };
 }
 
-const DEFAULT_HEADING: EntryHeading = { name: "Explore", modeLabel: undefined, description: "Find auth files" };
+const DEFAULT_HEADING: EntryHeading = {
+  name: "Explore",
+  modeLabel: undefined,
+  description: "Find auth files",
+};
 
 /** Explicit viewport bindings keep these tests independent of Pi's changing defaults. */
-const keysWith = (overrides: KeybindingsConfig = {}): PaneKeys => new KeybindingsManager(TUI_KEYBINDINGS, {
-  "tui.altScreen.pageUp": "pageUp",
-  "tui.altScreen.pageDown": "pageDown",
-  "tui.altScreen.top": "home",
-  "tui.altScreen.bottom": "end",
-  ...overrides,
-});
+const keysWith = (overrides: KeybindingsConfig = {}): PaneKeys =>
+  new KeybindingsManager(TUI_KEYBINDINGS, {
+    "tui.altScreen.pageUp": "pageUp",
+    "tui.altScreen.pageDown": "pageDown",
+    "tui.altScreen.top": "home",
+    "tui.altScreen.bottom": "end",
+    ...overrides,
+  });
 
 function makePane(
   opts: {
@@ -76,10 +96,16 @@ function makePane(
 /** A user message of `n` numbered rows (`r000`, `r001`, …); it renders as n + 2 transcript lines. */
 const rowsOf = (n: number) =>
   [
-    { role: "user", content: Array.from({ length: n }, (_, i) => `r${String(i).padStart(3, "0")}`).join("\n") },
+    {
+      role: "user",
+      content: Array.from({ length: n }, (_, i) => `r${String(i).padStart(3, "0")}`).join("\n"),
+    },
   ] as unknown as SessionMessage[];
 
-const SONNET_HIGH: SessionModel = { model: { provider: "anthropic", id: "claude-sonnet-5" }, thinkingLevel: "high" };
+const SONNET_HIGH: SessionModel = {
+  model: { provider: "anthropic", id: "claude-sonnet-5" },
+  thinkingLevel: "high",
+};
 
 describe("TranscriptPane", () => {
   it("renders the transcript content", () => {
@@ -141,7 +167,10 @@ describe("TranscriptPane", () => {
   describe("chrome", () => {
     // One message of numbered rows, so every visible row is identifiable content.
     const numbered = [
-      { role: "user", content: Array.from({ length: 80 }, (_, i) => `r${String(i).padStart(3, "0")}`).join("\n") },
+      {
+        role: "user",
+        content: Array.from({ length: 80 }, (_, i) => `r${String(i).padStart(3, "0")}`).join("\n"),
+      },
     ] as unknown as SessionMessage[];
 
     it("paints no frame: no corners or side borders, and rules only on the first and last rows", () => {
@@ -154,8 +183,12 @@ describe("TranscriptPane", () => {
     it("never paints a row wider than it was given", () => {
       const source = fakeSource({ sessionModel: () => SONNET_HIGH });
       for (const width of [6, 20, 57, 80]) {
-        const pane = makePane({ source, heading: { name: "Agent", modeLabel: "twin", description: "Refactor the auth module" } });
-        for (const line of pane.render(width)) expect(visibleWidth(line), `width ${width}`).toBeLessThanOrEqual(width);
+        const pane = makePane({
+          source,
+          heading: { name: "Agent", modeLabel: "twin", description: "Refactor the auth module" },
+        });
+        for (const line of pane.render(width))
+          expect(visibleWidth(line), `width ${width}`).toBeLessThanOrEqual(width);
       }
     });
 
@@ -173,24 +206,40 @@ describe("TranscriptPane", () => {
   });
 
   describe("header rule", () => {
-    const heading: EntryHeading = { name: "Agent", modeLabel: "twin", description: "Refactor auth" };
+    const heading: EntryHeading = {
+      name: "Agent",
+      modeLabel: "twin",
+      description: "Refactor auth",
+    };
     const headerAt = (width: number, sessionModel: SessionModel = SONNET_HIGH): string =>
-      stripAnsi(makePane({ heading, source: fakeSource({ sessionModel: () => sessionModel }) }).render(width)[0] ?? "");
+      stripAnsi(
+        makePane({ heading, source: fakeSource({ sessionModel: () => sessionModel }) }).render(
+          width,
+        )[0] ?? "",
+      );
 
     it("names the agent, its mode, its task, its model, and its thinking level", () => {
-      expect(headerAt(80)).toBe(`── Agent (twin)  Refactor auth · anthropic/claude-sonnet-5 • high ${"─".repeat(14)}`);
+      expect(headerAt(80)).toBe(
+        `── Agent (twin)  Refactor auth · anthropic/claude-sonnet-5 • high ${"─".repeat(14)}`,
+      );
     });
 
     it("says 'thinking off' rather than a bare 'off'", () => {
-      expect(headerAt(80, { ...SONNET_HIGH, thinkingLevel: "off" })).toContain("anthropic/claude-sonnet-5 • thinking off");
+      expect(headerAt(80, { ...SONNET_HIGH, thinkingLevel: "off" })).toContain(
+        "anthropic/claude-sonnet-5 • thinking off",
+      );
     });
 
     it("names the thinking level on its own when the model is unknown", () => {
-      expect(headerAt(80, { model: undefined, thinkingLevel: "high" })).toContain("Refactor auth · thinking high");
+      expect(headerAt(80, { model: undefined, thinkingLevel: "high" })).toContain(
+        "Refactor auth · thinking high",
+      );
     });
 
     it("drops the task first as the width shrinks", () => {
-      expect(headerAt(55)).toBe(`── Agent (twin) · anthropic/claude-sonnet-5 • high ${"─".repeat(4)}`);
+      expect(headerAt(55)).toBe(
+        `── Agent (twin) · anthropic/claude-sonnet-5 • high ${"─".repeat(4)}`,
+      );
     });
 
     it("drops the model next, keeping the agent's name", () => {
@@ -200,7 +249,9 @@ describe("TranscriptPane", () => {
 
   describe("rule colour", () => {
     it("paints both rules for the child's thinking level", () => {
-      const lines = makePane({ source: fakeSource({ sessionModel: () => SONNET_HIGH }) }).render(80);
+      const lines = makePane({ source: fakeSource({ sessionModel: () => SONNET_HIGH }) }).render(
+        80,
+      );
       expect(lines[0]?.startsWith(`${levelColour("high")}── `)).toBe(true);
       expect(lines.at(-1)?.startsWith(`${levelColour("high")}── `)).toBe(true);
     });
@@ -214,7 +265,11 @@ describe("TranscriptPane", () => {
     });
 
     it("paints an unknown level as 'off'", () => {
-      const lines = makePane({ source: fakeSource({ sessionModel: () => ({ model: undefined, thinkingLevel: undefined }) }) }).render(80);
+      const lines = makePane({
+        source: fakeSource({
+          sessionModel: () => ({ model: undefined, thinkingLevel: undefined }),
+        }),
+      }).render(80);
       expect(lines[0]?.startsWith(levelColour("off"))).toBe(true);
     });
   });
@@ -235,7 +290,10 @@ describe("TranscriptPane", () => {
     });
 
     it("omits a pair the operator left unbound", () => {
-      const footer = footerAt(80, keysWith({ "tui.altScreen.top": [], "tui.altScreen.bottom": [] }));
+      const footer = footerAt(
+        80,
+        keysWith({ "tui.altScreen.top": [], "tui.altScreen.bottom": [] }),
+      );
       expect(footer.endsWith(" ↑↓ scroll · PageUp/PageDown · Esc close ──")).toBe(true);
     });
 
@@ -480,7 +538,10 @@ describe("SessionNavigatorHandler", () => {
    * here). A non-interactive UI resolves `undefined` without running anything,
    * as Pi's print and RPC modes do.
    */
-  function makeUI(selectResult?: string, { mode = "regular", interactive = true }: { mode?: TuiMode; interactive?: boolean } = {}) {
+  function makeUI(
+    selectResult?: string,
+    { mode = "regular", interactive = true }: { mode?: TuiMode; interactive?: boolean } = {},
+  ) {
     return {
       select: vi.fn().mockResolvedValue(selectResult),
       notify: vi.fn(),
@@ -519,7 +580,15 @@ describe("SessionNavigatorHandler", () => {
     agents: SessionNavigatorParams["agents"],
     overrides: Partial<Omit<SessionNavigatorParams, "ui" | "agents">> = {},
   ): Promise<void> {
-    return new SessionNavigatorHandler().handle({ ui, agents, registry, cwd: "/test/cwd", readFile: noReadFile, sessionEntries: [], ...overrides });
+    return new SessionNavigatorHandler().handle({
+      ui,
+      agents,
+      registry,
+      cwd: "/test/cwd",
+      readFile: noReadFile,
+      sessionEntries: [],
+      ...overrides,
+    });
   }
 
   it("notifies and skips the pane when no sessions are navigable", async () => {
@@ -538,13 +607,13 @@ describe("SessionNavigatorHandler", () => {
   });
 
   it("opens a read-only pane sourced from the picked record", async () => {
-    const messages = [{ role: "assistant", content: [{ type: "text", text: "picked agent reply" }] }] as unknown as SessionMessage[];
+    const messages = [
+      { role: "assistant", content: [{ type: "text", text: "picked agent reply" }] },
+    ] as unknown as SessionMessage[];
     const record = makeNavigable({ agentMessages: messages });
     const [label] = (() => {
       // The handler labels entries identically to listNavigableAgents.
-      return [
-        "Agent (Test task) · 2 tools · completed · 3.0s",
-      ];
+      return ["Agent (Test task) · 2 tools · completed · 3.0s"];
     })();
     const ui = makeUI(label);
 
@@ -562,7 +631,9 @@ describe("SessionNavigatorHandler", () => {
   it("heads the pane with the picked agent's name and task", async () => {
     const ui = makeUI("Agent (Test task) · 2 tools · completed · 3.0s");
     await handleWith(ui, [makeNavigable()]);
-    expect(stripAnsi(renderCapturedPane(ui)[0] ?? "").startsWith("── Agent (twin)  Test task ")).toBe(true);
+    expect(
+      stripAnsi(renderCapturedPane(ui)[0] ?? "").startsWith("── Agent (twin)  Test task "),
+    ).toBe(true);
   });
 
   it("mounts the transcript outside Pi's overlay compositor", async () => {
@@ -587,7 +658,12 @@ describe("SessionNavigatorHandler", () => {
       await handleIn(ui);
       expect(ui.custom).toHaveBeenLastCalledWith(expect.any(Function), {
         overlay: true,
-        overlayOptions: { anchor: "bottom-center", width: "100%", maxHeight: "70%", margin: { bottom: 2 } },
+        overlayOptions: {
+          anchor: "bottom-center",
+          width: "100%",
+          maxHeight: "70%",
+          margin: { bottom: 2 },
+        },
       });
     });
 
@@ -608,16 +684,30 @@ describe("SessionNavigatorHandler", () => {
   it("opens a pane sourced from the persisted file when a released agent is picked", async () => {
     const jsonl = [
       { type: "session", version: 3, id: "s1", timestamp: "2026-06-23T00:00:00Z", cwd: "/proj" },
-      { type: "message", id: "m1", parentId: null, timestamp: "2026-06-23T00:00:01Z", message: { role: "assistant", content: [{ type: "text", text: "released reply" }] } },
+      {
+        type: "message",
+        id: "m1",
+        parentId: null,
+        timestamp: "2026-06-23T00:00:01Z",
+        message: { role: "assistant", content: [{ type: "text", text: "released reply" }] },
+      },
     ]
       .map((entry) => JSON.stringify(entry))
       .join("\n");
     const readFile = vi.fn(() => jsonl);
     const released = makeNavigable({
-      id: "e1", description: "Old task", status: "completed", startedAt: 1000, completedAt: 4000, toolUses: 5,
-      isSessionReady: () => false, outputFile: "/tasks/e1.jsonl",
+      id: "e1",
+      description: "Old task",
+      status: "completed",
+      startedAt: 1000,
+      completedAt: 4000,
+      toolUses: 5,
+      isSessionReady: () => false,
+      outputFile: "/tasks/e1.jsonl",
     });
-    const ui = makeUI("Agent (Old task) · 5 tools · completed · 3.0s · session released (snapshot)");
+    const ui = makeUI(
+      "Agent (Old task) · 5 tools · completed · 3.0s · session released (snapshot)",
+    );
 
     await handleWith(ui, [released], { readFile });
 
@@ -631,8 +721,15 @@ describe("SessionNavigatorHandler", () => {
       type: "custom",
       customType: "subagents:record",
       data: {
-        id: "e1", type: "general-purpose", description: "Old task", status: "completed",
-        result: "done", startedAt: 1000, completedAt: 4000, outputFile: "/tasks/e1.jsonl", toolUses: 5,
+        id: "e1",
+        type: "general-purpose",
+        description: "Old task",
+        status: "completed",
+        result: "done",
+        startedAt: 1000,
+        completedAt: 4000,
+        outputFile: "/tasks/e1.jsonl",
+        toolUses: 5,
       },
     };
     const label = "Agent (Old task) · 5 tools · completed · 3.0s · session released (snapshot)";
@@ -645,7 +742,15 @@ describe("SessionNavigatorHandler", () => {
     });
 
     it("opens a recorded run from its transcript file", async () => {
-      const readFile = vi.fn(() => JSON.stringify({ type: "session", version: 3, id: "s1", timestamp: "2026-06-23T00:00:00Z", cwd: "/proj" }));
+      const readFile = vi.fn(() =>
+        JSON.stringify({
+          type: "session",
+          version: 3,
+          id: "s1",
+          timestamp: "2026-06-23T00:00:00Z",
+          cwd: "/proj",
+        }),
+      );
       const ui = makeUI(label);
       await handleWith(ui, [], { sessionEntries: [recordEntry], readFile });
       expect(readFile).toHaveBeenCalledWith("/tasks/e1.jsonl");
@@ -658,10 +763,18 @@ describe("SessionNavigatorHandler", () => {
       throw new Error("ENOENT");
     });
     const released = makeNavigable({
-      id: "e1", description: "Old task", status: "completed", startedAt: 1000, completedAt: 4000, toolUses: 5,
-      isSessionReady: () => false, outputFile: "/tasks/e1.jsonl",
+      id: "e1",
+      description: "Old task",
+      status: "completed",
+      startedAt: 1000,
+      completedAt: 4000,
+      toolUses: 5,
+      isSessionReady: () => false,
+      outputFile: "/tasks/e1.jsonl",
     });
-    const ui = makeUI("Agent (Old task) · 5 tools · completed · 3.0s · session released (snapshot)");
+    const ui = makeUI(
+      "Agent (Old task) · 5 tools · completed · 3.0s · session released (snapshot)",
+    );
 
     await handleWith(ui, [released], { readFile });
 

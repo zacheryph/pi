@@ -35,7 +35,7 @@ The `get_subagent_result` tool's observable output (header lines, stats ordering
 - Any change to `execute`'s wait/consume policy or the double-consume in the wait path — it is preserved exactly (see Design Overview / Invariants at risk).
 - Decomposing the notification renderer (`src/observation/renderer.ts`, CRAP 79.4) — that is Phase 20 Step 7 ([#541]).
 - Typing the model boundary or `service-adapter.spawn` (CRAP 71.3) — that is Phase 20 Step 4 ([#538]).
-- Touching `src/tools/result-renderer.ts` (the UI/`Theme` widget renderer for the `subagent` tool) — the new module sits *alongside* it but shares no code; the two render different surfaces (colored TUI widget vs. plain tool-result text).
+- Touching `src/tools/result-renderer.ts` (the UI/`Theme` widget renderer for the `subagent` tool) — the new module sits _alongside_ it but shares no code; the two render different surfaces (colored TUI widget vs. plain tool-result text).
 
 ## Background
 
@@ -175,15 +175,15 @@ private buildReport(record: Subagent, verbose?: boolean): AgentReport {
 
 ### Ordering note (behavior-preserving)
 
-Today the terminal consume runs *after* the header/body are assembled but *before* the verbose conversation is appended.
-Consume is a side effect on `notifications`; output building only *reads* the record.
+Today the terminal consume runs _after_ the header/body are assembled but _before_ the verbose conversation is appended.
+Consume is a side effect on `notifications`; output building only _reads_ the record.
 Moving the terminal consume ahead of `buildReport` is therefore behavior-neutral, and it keeps the shell's two consume sites adjacent to the wait policy they belong with.
 Both consume calls are retained exactly: in the `wait && running` path the pre-await consume fires, then after the await the record is settled so the terminal consume fires again — an idempotent double-consume (Set add + cancel-nudge), unchanged from today.
 
 ### Design-review checklist (applied)
 
 - **Dependency width / ISP** — `AgentReport` carries 12 fields; `formatAgentReport` + its two helpers read every one, so the value object is not over-wide.
-  It deliberately does *not* carry the full `Subagent` (which exposes ~30 members), so the formatter depends only on what it renders.
+  It deliberately does _not_ carry the full `Subagent` (which exposes ~30 members), so the formatter depends only on what it renders.
 - **Law of Demeter** — the formatter receives primitives, no chained access.
   The shell's `buildReport` performs the record-getter reads in one place; `getDisplayName(record.type, registry)` is the only two-arg helper and is already the established seam.
 - **Tell-Don't-Ask** — the formatter is a data→string transform (no collaborator to tell); the consume tell (`notifications.consume(id)`) stays in the shell, unchanged from Step 1.
@@ -236,10 +236,10 @@ Step 1's documented outcome and the invariants it pinned must survive:
      Fails — `get-result-report.ts` does not exist.
    - Green: create `src/tools/get-result-report.ts` (`AgentReport` + `renderStatsParts` + `renderReportBody` + `formatAgentReport`); refactor `GetResultTool.execute` to gather via the new private `buildReport` and delegate to `formatAgentReport`; adjust `test/tools/get-result-tool.test.ts` only if wording assertions shift (they should not — output is identical).
    - Verify: `pnpm --filter @gotgenes/pi-subagents run check && … run lint && … run test`, then `pnpm fallow dead-code` (confirms no unused export and that `get-result-tool.execute` is off the HIGH-CRAP list).
-   Commit: `refactor(pi-subagents): decompose get_subagent_result into a pure report formatter`
+     Commit: `refactor(pi-subagents): decompose get_subagent_result into a pure report formatter`
 2. **Sync architecture doc + skill** (docs).
    - Update `docs/architecture/architecture.md` (module-tree entry, Step 2 `✅` heading + `Landed:` bullet, roadmap Mermaid `S2` tick, discovery-finding-4 CRAP-list prose) and `.pi/skills/package-pi-subagents/SKILL.md` (Tools row 8 → 9 + module list, domain total 56 → 57).
-   Commit: `docs(pi-subagents): record get-result-tool decomposition in architecture and skill`
+     Commit: `docs(pi-subagents): record get-result-tool decomposition in architecture and skill`
 
 Both steps are `refactor:` / `docs:` — hidden/unhidden changelog types.
 As the `result-delivery` batch tail, they ship the batched release-please PR (Step 1 + Step 2) at `/ship-issue` time.

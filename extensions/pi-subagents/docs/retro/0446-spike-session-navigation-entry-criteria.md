@@ -58,7 +58,7 @@ Eight `docs:` commits landed; no release (all `docs:`, auto-batched).
 #### What went well
 
 - **The spike paid for itself, then over-delivered.**
-  It caught that ADR-0004's named candidate (`loadEntriesFromFile`) is not in the SDK's public surface — a finding about the *implementation*, not the harness — before Step 4 started.
+  It caught that ADR-0004's named candidate (`loadEntriesFromFile`) is not in the SDK's public surface — a finding about the _implementation_, not the harness — before Step 4 started.
   The operator's three follow-up questions (upgrade?
   describe-the-mismatch?
   spike-vs-implementation impact?) then drove the addendum from a thin "use `parseSessionEntries`" note into a complete, link-backed render pipeline (Finding 1: `parseSessionEntries` → `buildSessionContext` → Pi's public entry components / `serializeConversation`).
@@ -69,13 +69,13 @@ Eight `docs:` commits landed; no release (all `docs:`, auto-batched).
 
 #### What caused friction (agent side)
 
-- `wrong-abstraction` (compounded by `missing-context`) — I diagnosed a question about the SDK's *export surface* from a *runtime* symptom.
+- `wrong-abstraction` (compounded by `missing-context`) — I diagnosed a question about the SDK's _export surface_ from a _runtime_ symptom.
   The throwaway vitest harness threw `loadEntriesFromFile is not a function`, and I leapt to the dramatic reading ("declared in `.d.ts` but absent at runtime — a types/runtime mismatch") instead of running `tsc`, which disambiguates instantly (`TS2305: has no exported member`).
   The symbol is simply not in the public barrel — types and runtime agree.
   Impact: an incorrect technical claim shipped into three committed artifacts (addendum `7c505b78`, `architecture.md`, the build retro note) and required a 3-file correction commit (`112c4254`) plus two operator questions to surface and fix.
 - `instruction-violation` (user-caught) — the `testing` skill already states "Vitest uses esbuild and does not typecheck; run `pnpm run check`."
   I never ran `tsc` against the harness or the export claim during the build.
-  Two reasons it slipped: (1) the skill was not loaded — `/build-plan` only loads `testing` "if the plan involves test changes or TDD steps," and a docs-only spike using a throwaway harness does not obviously match; (2) the existing rule is framed for "type-only changes," not for *claims/findings about what a module exports*, so it would not clearly have fired even if loaded.
+  Two reasons it slipped: (1) the skill was not loaded — `/build-plan` only loads `testing` "if the plan involves test changes or TDD steps," and a docs-only spike using a throwaway harness does not obviously match; (2) the existing rule is framed for "type-only changes," not for _claims/findings about what a module exports_, so it would not clearly have fired even if loaded.
 - `other` (tooling friction, minor) — getting the `tsc` probe to resolve the package took four attempts (turns 77–80: `npx` blocked → `pnpm exec` → files-on-cmdline tsconfig error → probe-inside-package).
   Impact: added friction, no rework; not a conceptual rabbit-hole.
 
@@ -86,12 +86,12 @@ Eight `docs:` commits landed; no release (all `docs:`, auto-batched).
 
 ### Diagnostic details
 
-- **Model-performance correlation** — Planning + Build + the correction work all ran on `anthropic/claude-opus-4-8` (turns 2–104); the mischaracterization therefore occurred on the *strong* model, so the fix is process (run `tsc` on export claims), not model selection.
+- **Model-performance correlation** — Planning + Build + the correction work all ran on `anthropic/claude-opus-4-8` (turns 2–104); the mischaracterization therefore occurred on the _strong_ model, so the fix is process (run `tsc` on export claims), not model selection.
   The Ship stage (turns 106–122) ran on `opencode-go/deepseek-v4-flash` — appropriate cost-matching for a mechanical git/CI/close procedure, which it executed cleanly.
   A transient `anthropic/claude-sonnet-4-6` `model_change` carried no assistant turn (never ran).
-- **Escalation-delay tracking** — no rabbit-hole exceeded five consecutive tool calls on one error; the runtime `is not a function` was resolved in ~2 calls (the issue was the *interpretation*, not a stuck loop).
+- **Escalation-delay tracking** — no rabbit-hole exceeded five consecutive tool calls on one error; the runtime `is not a function` was resolved in ~2 calls (the issue was the _interpretation_, not a stuck loop).
 - **Unused-tool detection** — for the mischaracterization, `tsc` / `pnpm run check` was available and routine but applied only at baseline (turn 29) and not again until the operator forced it (turns 77–80); it was never run against the harness or the claim.
-- **Feedback-loop gap analysis** — `pnpm run lint` ran after every doc edit (good incremental hygiene), but the *type-check* loop was skipped for precisely the finding that needed it — the harness ran under vitest (no typecheck) and `tsc` was not run on the export claim before committing it.
+- **Feedback-loop gap analysis** — `pnpm run lint` ran after every doc edit (good incremental hygiene), but the _type-check_ loop was skipped for precisely the finding that needed it — the harness ran under vitest (no typecheck) and `tsc` was not run on the export claim before committing it.
 
 ### Changes made
 

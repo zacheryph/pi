@@ -62,12 +62,12 @@ The pi-subagents suite went 1337 → 1349 tests (+12), with the whole delta in `
 - **Two of the plan's own new tests were weak probes, and the plan's mutation discipline did not catch them.**
   `"drops the footer that follows the catalogue"` and `"keeps the identity ahead of the catalogue byte for byte"` both passed during Red.
   I classified them as invariant pins and moved on; the reviewer correctly called the first one out.
-  The tell was available at Red and I ignored it: their fixtures used a parent/child cwd mismatch, which the *pre-fix* footer strip already handled, so the assertion never isolated the catalogue cut.
+  The tell was available at Red and I ignored it: their fixtures used a parent/child cwd mismatch, which the _pre-fix_ footer strip already handled, so the assertion never isolated the catalogue cut.
   Both are now built on matching directories, where [#640]'s exception would have kept the line, and both fail against the pre-fix implementation.
 - **The four planned killing mutations each killed exactly their predicted class**, and the two footer/catalogue classes partitioned cleanly (7 reds each, disjoint).
   That was genuinely reassuring and also the source of false confidence: mutations I chose cannot find a hazard I did not imagine, which is exactly what the reviewer's independent input enumeration was for.
 - **The reviewer found a real anchor defect, and re-deriving it found a second one it missed.**
-  Anchoring the catalogue on the *last* `</available_skills>` leaks the real catalogue when a second well-formed section follows the footer.
+  Anchoring the catalogue on the _last_ `</available_skills>` leaks the real catalogue when a second well-formed section follows the footer.
   Working through the fix surfaced the mirror case the reviewer did not report: a catalogue quoted inside a project-context file wins the same search when the parent resolved no skills, truncating the identity at the quote — an **over-cut**, where the reviewer only found the under-cut.
   Both are now covered, and both fail against the shipped-and-reviewed implementation.
 - **The fix replaced a heuristic with a structural fact.**
@@ -117,7 +117,7 @@ A subagent's prompt now carries exactly one skills catalogue and one working-dir
 - **A mis-pasted slash command cost nothing, because the guard fired before anything irreversible.**
   `/ship-worktree 844` was pasted into the peer session alongside `/sync-worktree 801`.
   The template's step 0 (`git branch --show-current`, before any git or GitHub action) caught it on the first tool call; the session reported the mismatch, declined that half, and ran the command that actually matched the branch.
-  This is the first observed instance of that ordering paying off, and it paid off against a wrong *issue number*, not just a wrong directory — the failure mode it would otherwise have produced is a wrong `issue_close` or a wrong ff-merge.
+  This is the first observed instance of that ordering paying off, and it paid off against a wrong _issue number_, not just a wrong directory — the failure mode it would otherwise have produced is a wrong `issue_close` or a wrong ff-merge.
 - **The reviewer round found a real defect, and re-deriving the fix found its mirror.**
   The `pre-completion-reviewer` reported that anchoring on the last `</available_skills>` under-cuts when a second well-formed catalogue follows the footer.
   Working the fix surfaced the over-cut the reviewer did not report — a catalogue quoted in a project-context file wins the same search when the parent resolved no skills.
@@ -131,7 +131,7 @@ A subagent's prompt now carries exactly one skills catalogue and one working-dir
 #### What caused friction (agent side)
 
 - `other` — **two of the plan's own new tests stayed green during Red and shipped as weak probes.**
-  `"drops the footer that follows the catalogue"` and `"keeps the identity ahead of the catalogue byte for byte"` used a parent/child cwd mismatch that the *pre-fix* footer strip already handled, so neither isolated the catalogue cut it claimed to pin.
+  `"drops the footer that follows the catalogue"` and `"keeps the identity ahead of the catalogue byte for byte"` used a parent/child cwd mismatch that the _pre-fix_ footer strip already handled, so neither isolated the catalogue cut it claimed to pin.
   They were classified as invariant pins and passed over; the reviewer caught one, and re-deriving it caught the other.
   Impact: two follow-up commits (`d184f41b`, and the fixture half of `49f3e46b`) after the review round, plus a second reviewer dispatch.
   The signal was available at Red — 10 of 12 went red — and the two that did not were exactly the two that pinned nothing.
@@ -162,7 +162,7 @@ A subagent's prompt now carries exactly one skills catalogue and one working-dir
 - **Escalation-delay tracking** — no sequence exceeded five consecutive tool calls on the same error.
   The longest was three (turns 179–182 of the peer session), debugging a fixture that placed a quoted catalogue exactly where Pi writes its own; the agent correctly diagnosed the fixture rather than the code and moved on.
 - **Unused-tool detection** — the SDK trace above is the one case where a dispatch was available and not used.
-  The countervailing argument is genuine: what the trace had to establish was a *universal* claim (`buildSystemPrompt` writes the footer after the catalogue in **both** branches, unconditionally), and `AGENTS.md` separately warns that a subagent's universal claim is the one that must be re-verified.
+  The countervailing argument is genuine: what the trace had to establish was a _universal_ claim (`buildSystemPrompt` writes the footer after the catalogue in **both** branches, unconditionally), and `AGENTS.md` separately warns that a subagent's universal claim is the one that must be re-verified.
   A delegated summary here would have had to be re-derived inline before the design could rest on it.
 - **A `mise.toml` environment variable was considered for the SDK checkout path and rejected on evidence.**
   `pi-permission-system` resolves shell variables in two closed sets — `expand-home.ts` handles `~`/`$HOME`/`${HOME}` for config patterns, and `shell-variable-expansion.ts` handles `HOME`/`PWD` for the bash path projection — and the latter's docstring states the set is deliberately closed so "ADR 0003's exclusion of ambient host state stands".

@@ -4,9 +4,9 @@ import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import type { Subagent } from "#src/lifecycle/subagent";
 import type { ResumeRefusalReason } from "#src/lifecycle/subagent-manager";
 import {
-	type AgentToolManager,
-	type AgentToolRuntime,
-	type AgentToolSettings,
+  type AgentToolManager,
+  type AgentToolRuntime,
+  type AgentToolSettings,
 } from "#src/tools/agent-tool";
 import { makeModel } from "./make-model";
 import { createTestSubagent, type TestSubagentOptions } from "./make-subagent";
@@ -21,12 +21,12 @@ const defaultRegistry = new AgentTypeRegistry(() => new Map());
  * can construct the class directly or use individual pieces for spawner/runner tests.
  */
 export type AgentToolFixture = {
-	manager: AgentToolManager;
-	/** Mock runtime satisfying `AgentToolRuntime` (context queries). */
-	runtime: AgentToolRuntime;
-	settings: AgentToolSettings;
-	registry: AgentTypeRegistry;
-	agentDir: string;
+  manager: AgentToolManager;
+  /** Mock runtime satisfying `AgentToolRuntime` (context queries). */
+  runtime: AgentToolRuntime;
+  settings: AgentToolSettings;
+  registry: AgentTypeRegistry;
+  agentDir: string;
 };
 
 /**
@@ -39,32 +39,32 @@ export type AgentToolFixture = {
  * ```
  */
 export function createToolDeps(overrides: Partial<AgentToolFixture> = {}): AgentToolFixture {
-	const runtime: AgentToolRuntime = {
-		buildSnapshot: vi.fn((_inheritContext: boolean): ParentSnapshot => STUB_SNAPSHOT),
-		getModelInfo: vi.fn(() => ({
-			parentModel: makeModel({ id: "claude-sonnet", name: "Claude Sonnet" }),
-			modelRegistry: { find: () => undefined, getAll: () => [], getAvailable: () => [] },
-		})),
-		getSessionInfo: vi.fn(() => ({
-			parentSessionFile: "/sessions/parent.jsonl",
-			parentSessionId: "session-1",
-		})),
-	};
+  const runtime: AgentToolRuntime = {
+    buildSnapshot: vi.fn((_inheritContext: boolean): ParentSnapshot => STUB_SNAPSHOT),
+    getModelInfo: vi.fn(() => ({
+      parentModel: makeModel({ id: "claude-sonnet", name: "Claude Sonnet" }),
+      modelRegistry: { find: () => undefined, getAll: () => [], getAvailable: () => [] },
+    })),
+    getSessionInfo: vi.fn(() => ({
+      parentSessionFile: "/sessions/parent.jsonl",
+      parentSessionId: "session-1",
+    })),
+  };
 
-	return {
-		manager: {
-			spawn: vi.fn().mockReturnValue("agent-1"),
-			spawnAndWait: vi.fn().mockResolvedValue(createTestSubagent()),
-			resume: vi.fn().mockResolvedValue({ kind: "resumed", record: createTestSubagent() }),
-			startResume: vi.fn().mockReturnValue({ kind: "started", record: createTestSubagent() }),
-			getRecord: vi.fn().mockReturnValue(createTestSubagent()),
-		},
-		runtime,
-		settings: { defaultMaxTurns: undefined as number | undefined, maxConcurrent: 4 },
-		registry: defaultRegistry,
-		agentDir: "/home/user/.pi",
-		...overrides,
-	};
+  return {
+    manager: {
+      spawn: vi.fn().mockReturnValue("agent-1"),
+      spawnAndWait: vi.fn().mockResolvedValue(createTestSubagent()),
+      resume: vi.fn().mockResolvedValue({ kind: "resumed", record: createTestSubagent() }),
+      startResume: vi.fn().mockReturnValue({ kind: "started", record: createTestSubagent() }),
+      getRecord: vi.fn().mockReturnValue(createTestSubagent()),
+    },
+    runtime,
+    settings: { defaultMaxTurns: undefined as number | undefined, maxConcurrent: 4 },
+    registry: defaultRegistry,
+    agentDir: "/home/user/.pi",
+    ...overrides,
+  };
 }
 
 /**
@@ -75,12 +75,12 @@ export function createToolDeps(overrides: Partial<AgentToolFixture> = {}): Agent
  * back, not how the manager reports it.
  */
 export function mockResumeRecord(
-	deps: AgentToolFixture,
-	overrides: TestSubagentOptions = {},
+  deps: AgentToolFixture,
+  overrides: TestSubagentOptions = {},
 ): Subagent {
-	const record = createTestSubagent(overrides);
-	deps.manager.resume = vi.fn().mockResolvedValue({ kind: "resumed", record });
-	return record;
+  const record = createTestSubagent(overrides);
+  deps.manager.resume = vi.fn().mockResolvedValue({ kind: "resumed", record });
+  return record;
 }
 
 /**
@@ -88,7 +88,7 @@ export function mockResumeRecord(
  * reason it is wording rather than assembling a record that produces it.
  */
 export function mockResumeRefusal(deps: AgentToolFixture, reason: ResumeRefusalReason): void {
-	deps.manager.resume = vi.fn().mockResolvedValue({ kind: "refused", reason });
+  deps.manager.resume = vi.fn().mockResolvedValue({ kind: "refused", reason });
 }
 
 /**
@@ -96,17 +96,17 @@ export function mockResumeRefusal(deps: AgentToolFixture, reason: ResumeRefusalR
  * and return that record so the test can assert on it.
  */
 export function mockResumeStart(
-	deps: AgentToolFixture,
-	overrides: TestSubagentOptions = {},
+  deps: AgentToolFixture,
+  overrides: TestSubagentOptions = {},
 ): Subagent {
-	const record = createTestSubagent(overrides);
-	deps.manager.startResume = vi.fn().mockReturnValue({ kind: "started", record });
-	return record;
+  const record = createTestSubagent(overrides);
+  deps.manager.startResume = vi.fn().mockReturnValue({ kind: "started", record });
+  return record;
 }
 
 /** Point the fixture's `manager.startResume` at a refusal. */
 export function mockResumeStartRefusal(deps: AgentToolFixture, reason: ResumeRefusalReason): void {
-	deps.manager.startResume = vi.fn().mockReturnValue({ kind: "refused", reason });
+  deps.manager.startResume = vi.fn().mockReturnValue({ kind: "refused", reason });
 }
 
 /**
@@ -115,21 +115,21 @@ export function mockResumeStartRefusal(deps: AgentToolFixture, reason: ResumeRef
  * so the registry keeps the name but excludes it from the enabled surface.
  */
 export function createToolDepsWithDisabledBuiltInAgents(...names: string[]): AgentToolFixture {
-	const registry = new AgentTypeRegistry(
-		() =>
-			new Map(
-				names.map((name) => [
-					name,
-					{
-						name,
-						description: "disabled built-in agent",
-						promptMode: "append" as const,
-						systemPrompt: "",
-						isDefault: true,
-						enabled: false,
-					},
-				]),
-			),
-	);
-	return createToolDeps({ registry });
+  const registry = new AgentTypeRegistry(
+    () =>
+      new Map(
+        names.map((name) => [
+          name,
+          {
+            name,
+            description: "disabled built-in agent",
+            promptMode: "append" as const,
+            systemPrompt: "",
+            isDefault: true,
+            enabled: false,
+          },
+        ]),
+      ),
+  );
+  return createToolDeps({ registry });
 }

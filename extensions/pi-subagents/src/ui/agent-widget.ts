@@ -43,9 +43,13 @@ export function assembleWidgetState(
   let queuedCount = 0;
   let hasFinished = false;
   for (const a of agents) {
-    if (a.status === "running") { runningCount++; }
-    else if (a.status === "queued") { queuedCount++; }
-    else if (a.completedAt && shouldShowFinished(a.id, a.status)) { hasFinished = true; }
+    if (a.status === "running") {
+      runningCount++;
+    } else if (a.status === "queued") {
+      queuedCount++;
+    } else if (a.completedAt && shouldShowFinished(a.id, a.status)) {
+      hasFinished = true;
+    }
   }
   const hasActive = runningCount > 0 || queuedCount > 0;
   return { runningCount, queuedCount, hasFinished, hasActive };
@@ -66,7 +70,12 @@ export type UICtx = {
   setStatus(key: string, text: string | undefined): void;
   setWidget(
     key: string,
-    content: undefined | ((tui: TuiSurface, theme: Theme) => { render(width?: number): string[]; invalidate(): void }),
+    content:
+      | undefined
+      | ((
+          tui: TuiSurface,
+          theme: Theme,
+        ) => { render(width?: number): string[]; invalidate(): void }),
     options?: { placement?: "aboveEditor" | "belowEditor" },
   ): void;
 };
@@ -211,7 +220,7 @@ export class AgentWidget implements SubagentManagerObserver {
    * SDK-spawned agent was filtered out permanently (#724).
    */
   private listBackgroundAgents(): Subagent[] {
-    return this.manager.listAgents().filter(record => record.isBackground);
+    return this.manager.listAgents().filter((record) => record.isBackground);
   }
 
   /** Project a live Subagent record onto a pure-data WidgetAgent snapshot. */
@@ -238,7 +247,7 @@ export class AgentWidget implements SubagentManagerObserver {
   /** Delegate rendering to the pure widget-renderer module. */
   private renderWidget(tui: TuiSurface, theme: Theme, width = tui.terminal.columns): string[] {
     return renderWidgetLines({
-      agents: this.listBackgroundAgents().map(r => this.toWidgetAgent(r)),
+      agents: this.listBackgroundAgents().map((r) => this.toWidgetAgent(r)),
       registry: this.registry,
       spinnerFrame: this.widgetFrame,
       terminalWidth: width,
@@ -265,7 +274,7 @@ export class AgentWidget implements SubagentManagerObserver {
     }
     this.setTimerRunning(false);
     for (const [id] of this.finishedTurnAge) {
-      if (!backgroundAgents.some(a => a.id === id)) this.finishedTurnAge.delete(id);
+      if (!backgroundAgents.some((a) => a.id === id)) this.finishedTurnAge.delete(id);
     }
   }
 
@@ -309,7 +318,9 @@ export class AgentWidget implements SubagentManagerObserver {
 
     const backgroundAgents = this.listBackgroundAgents();
     this.seedFinishedAgents(backgroundAgents);
-    const state = assembleWidgetState(backgroundAgents, (id, status) => this.shouldShowFinished(id, status));
+    const state = assembleWidgetState(backgroundAgents, (id, status) =>
+      this.shouldShowFinished(id, status),
+    );
 
     if (!state.hasActive && !state.hasFinished) {
       this.clearWidget(backgroundAgents);
@@ -322,17 +333,21 @@ export class AgentWidget implements SubagentManagerObserver {
     // Register widget callback once; subsequent updates use requestRender()
     // which re-invokes render() without replacing the component (avoids layout thrashing).
     if (!this.widgetRegistered) {
-      this.uiCtx.setWidget("agents", (tui, theme) => {
-        this.tui = tui;
-        return {
-          render: (width) => this.renderWidget(tui, theme, width),
-          invalidate: () => {
-            // Theme changed — force re-registration so factory captures fresh theme.
-            this.widgetRegistered = false;
-            this.tui = undefined;
-          },
-        };
-      }, { placement: "aboveEditor" });
+      this.uiCtx.setWidget(
+        "agents",
+        (tui, theme) => {
+          this.tui = tui;
+          return {
+            render: (width) => this.renderWidget(tui, theme, width),
+            invalidate: () => {
+              // Theme changed — force re-registration so factory captures fresh theme.
+              this.widgetRegistered = false;
+              this.tui = undefined;
+            },
+          };
+        },
+        { placement: "aboveEditor" },
+      );
       this.widgetRegistered = true;
     } else {
       // Widget already registered — just request a re-render of existing components.

@@ -82,7 +82,13 @@ constructor({
 import { wrapTextWithAnsi } from "@earendil-works/pi-tui";
 // …
 return new ConversationViewer({
-  tui, session, record, activity, theme, done, registry,
+  tui,
+  session,
+  record,
+  activity,
+  theme,
+  done,
+  registry,
   wrapText: wrapTextWithAnsi,
 });
 ```

@@ -19,7 +19,7 @@ The issue is Phase 22 Step 17, `Release: independent`, landing as `fix:`.
 The obvious design — a `failure?: string` field on `TurnLoopResult` that `Subagent.completeRun` branches on — was displaced by having the turn loops **throw**.
 `Subagent.run()` and `runResume()` already wrap the turn-loop calls in `try`/`catch` routing to `failRun`/`failResume`, which already reach `markError` → status `error` → `subagents:failed` → the `Agent failed:` branch.
 So the mechanism half is one helper plus two `if (failure) throw` lines, `src/lifecycle/subagent.ts` needs zero changes, `resumeTurnLoop` keeps `Promise<string>`, and the shared `test/helpers/mock-session.ts` fixture and its ~12 `mockResolvedValue("…")` sites are untouched.
-Worth remembering as a shape: when a package already has a working error path, the cheapest fix for a new failure class is often to *join* it rather than to add a parallel signal.
+Worth remembering as a shape: when a package already has a working error path, the cheapest fix for a new failure class is often to _join_ it rather than to add a parallel signal.
 
 #### The roadmap's target list named a file the design does not touch
 
@@ -139,7 +139,7 @@ The `pi-subagents` suite went from 1611 to 1628 tests.
 #### What went well
 
 - **A design was displaced by a cheaper one at planning time, and the assessor verified it rather than agreeing with it.**
-  The obvious shape — a `failure?: string` field on `TurnLoopResult` — lost to having the turn loops *throw*, which joins the error path `failRun`/`failResume` already implement.
+  The obvious shape — a `failure?: string` field on `TurnLoopResult` — lost to having the turn loops _throw_, which joins the error path `failRun`/`failResume` already implement.
   The `tidy-first-assessor` was asked to check the zero-change prediction for `src/lifecycle/subagent.ts` and confirmed it against the real file.
   Net effect: one helper, two call sites, no new fields, no churn in the shared `test/helpers/mock-session.ts` fixture.
 - **The pre-completion reviewer caught a genuinely vacuous test — the failure mode it exists for.**
@@ -159,7 +159,7 @@ The `pi-subagents` suite went from 1611 to 1628 tests.
 - `missing-context` (self-identified) — the disposable spike for [#899] hand-guessed `PathNormalizer`'s constructor and called `wildcardMatch(value, pattern)` with the operands reversed.
   The `testing` skill states the rule directly: a spike constructing a domain object uses the same `test/helpers/` builder the real tests use.
   Impact: two wasted spike iterations (three tool calls).
-  Self-caught because *every* probe returned `false`, including `sudo *` — a result too uniform to be real, which is what exposed the harness rather than the policy.
+  Self-caught because _every_ probe returned `false`, including `sudo *` — a result too uniform to be real, which is what exposed the harness rather than the policy.
 - `other` (tool misuse, self-identified) — a TDD Step 5 `Edit` ended its `newText` mid-expression and silently dropped the `return textResult(...)` block, leaving `src/tools/foreground-runner.ts` unparseable.
   `AGENTS.md` already records the rule (emit both ends of an enclosing block, or use `Write`).
   Impact: one repair cycle; `pi-autoformat` surfaced the parse error immediately.

@@ -86,8 +86,13 @@ src/index.ts            ← wire: publishSubagentsService(createSubagentsService
 
 ```typescript
 export type SubagentStatus =
-  | "queued" | "running" | "completed" | "steered"
-  | "aborted" | "stopped" | "error";
+  | "queued"
+  | "running"
+  | "completed"
+  | "steered"
+  | "aborted"
+  | "stopped"
+  | "error";
 
 export interface SubagentRecord {
   id: string;
@@ -143,9 +148,7 @@ export function publishSubagentsService(service: SubagentsService): void {
 }
 
 export function getSubagentsService(): SubagentsService | undefined {
-  return (globalThis as Record<symbol, unknown>)[SERVICE_KEY] as
-    | SubagentsService
-    | undefined;
+  return (globalThis as Record<symbol, unknown>)[SERVICE_KEY] as SubagentsService | undefined;
 }
 
 export function unpublishSubagentsService(): void {

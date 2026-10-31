@@ -215,7 +215,7 @@ Step 1 exists because of that result.
    - Killing mutations:
      - (a) The wrapper: `sections.push(appended)`.
        Both new expectations go red.
-     - (b) Wrapping before the absence check: push ``` `<addendum>\n${options.appendSystemPrompt ?? ""}\n</addendum>` ``` unconditionally.
+     - (b) Wrapping before the absence check: push `` `<addendum>\n${options.appendSystemPrompt ?? ""}\n</addendum>` `` unconditionally.
        "treats a whitespace-only custom or append prompt as absent" and "omits a section whose input is absent" go red.
    - Verify: full package suite, `pnpm --filter @gotgenes/pi-subagents run check`, and `pnpm --filter @gotgenes/pi-subagents run lint`.
 

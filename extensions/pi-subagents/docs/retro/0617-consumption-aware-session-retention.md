@@ -55,7 +55,7 @@ The pre-completion reviewer returned PASS.
 ### Session summary
 
 A single-session, design-heavy planning session for #617, conducted as an extended Socratic dialogue rather than a straight-through plan.
-The operator repeatedly pushed on the design — first on the *why* of cleanup, then on solution options, then rejecting disk-read, and finally reversing an auto-consume notification design — before the plan and planning-stage retro landed (`8e7434b2`, `e3b9781a`).
+The operator repeatedly pushed on the design — first on the _why_ of cleanup, then on solution options, then rejecting disk-read, and finally reversing an auto-consume notification design — before the plan and planning-stage retro landed (`8e7434b2`, `e3b9781a`).
 
 ### Observations
 
@@ -71,8 +71,8 @@ The operator repeatedly pushed on the design — first on the *why* of cleanup, 
 
 #### What caused friction (agent side)
 
-- `premature-convergence` — I designed the completion notification as a *consumption edge*: auto-mark the result consumed when its preview fit untruncated in the nudge, presented in the plan draft as "load-bearing, not polish."
-  The operator rejected it — a lifecycle fact decided by result length is ambiguous, and it has the runtime consume *on the caller's behalf*, contradicting the caller-consumes philosophy the operator had stated two turns earlier ("all function calls should return some result, and callers should consume the result").
+- `premature-convergence` — I designed the completion notification as a _consumption edge_: auto-mark the result consumed when its preview fit untruncated in the nudge, presented in the plan draft as "load-bearing, not polish."
+  The operator rejected it — a lifecycle fact decided by result length is ambiguous, and it has the runtime consume _on the caller's behalf_, contradicting the caller-consumes philosophy the operator had stated two turns earlier ("all function calls should return some result, and callers should consume the result").
   I had the contract in hand and optimized against it instead of surfacing the tension as an explicit choice.
   Impact: one full design-section draft (push edge, `ResultPreview`/`buildResultPreview`, four consumption edges) rewritten via a 12-block `Edit` down to three parent-initiated edges — caught pre-commit, so no git-history rework and no follow-up commits.
 

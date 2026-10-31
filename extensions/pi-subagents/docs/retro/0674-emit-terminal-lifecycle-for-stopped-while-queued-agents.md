@@ -53,7 +53,7 @@ CI's `check` job is **red**, and it reproduces locally on the PR branch:
   (no unused-class-member issue found on the next line)
 ```
 
-Cause: the PR's `abortAll()` test is the first *direct* call to `SubagentManager.abortAll()` in the suite — existing tests only mock it through the narrow `LifecycleManager`/`InterruptManager` interfaces.
+Cause: the PR's `abortAll()` test is the first _direct_ call to `SubagentManager.abortAll()` in the suite — existing tests only mock it through the narrow `LifecycleManager`/`InterruptManager` interfaces.
 That resolves the `unused-class-member` finding and strands the suppression.
 The two complexity findings in the same report are inherited and excluded from the gate.
 
@@ -141,7 +141,7 @@ Baseline measured on `b1722630`: 64 test files, 1095 tests green, `pnpm fallow a
   Chose `stoppedWhileQueued`, written only by a new `stopQueued()` transition (one writer, no init-seeding subtlety), over an `everRan` bit maintained by `markRunning()`.
   A new `SubagentStatus` union member was rejected as wire-visible with no new presentation to justify it.
 - **Shutdown — reorder plus latch, deliberately broad.**
-  Named three disadvantages before the operator confirmed: `dispose()` becomes one-shot; a documented, test-pinned cleanup order changes; and it also suppresses the nudges *running* agents currently leak asynchronously at shutdown.
+  Named three disadvantages before the operator confirmed: `dispose()` becomes one-shot; a documented, test-pinned cleanup order changes; and it also suppresses the nudges _running_ agents currently leak asynchronously at shutdown.
   The operator chose to treat the third as intended and have the plan test it, so this fix is not scoped purely to queued agents.
 - **ESC path needs no work.** `InterruptHandler` fires inside the parent's run, so `parentRunActive` is true and the new nudges are withheld and flushed on `agent_settled` per #661 — the leak is specific to `session_shutdown`, where no run is active.
 - **Scope grew by one surface.**

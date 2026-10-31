@@ -12,13 +12,13 @@ build on it.
 
 pi-subagents runs every subagent as a full in-process Pi session:
 
-| | Scope |
-|---|---|
-| Extension closure state | per session (each factory call) |
-| `pi.events` bus | per session (each resource loader creates its own) |
-| Session JSONL, `pi.appendEntry` | per session |
-| Extension module scope | sometimes shared: Pi 1.4.0 caches an extension's module per cwd until a reload, so a same-cwd child may reuse the parent's module and a worktree child does not |
-| `globalThis` | the whole process |
+|                                 | Scope                                                                                                                                                           |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Extension closure state         | per session (each factory call)                                                                                                                                 |
+| `pi.events` bus                 | per session (each resource loader creates its own)                                                                                                              |
+| Session JSONL, `pi.appendEntry` | per session                                                                                                                                                     |
+| Extension module scope          | sometimes shared: Pi 1.4.0 caches an extension's module per cwd until a reload, so a same-cwd child may reuse the parent's module and a worktree child does not |
+| `globalThis`                    | the whole process                                                                                                                                               |
 
 So the registry lives at `globalThis[Symbol.for("pi-personal.session-tree.v1")]`.
 A value of another shape under that key is replaced, not trusted.
@@ -40,7 +40,11 @@ session id there, but Pi writes a file path there for forks.
 
 ```ts
 import {
-  ancestors, call, callAsync, provide, trackChildren,
+  ancestors,
+  call,
+  callAsync,
+  provide,
+  trackChildren,
 } from "../../../packages/pi-session-tree/src/index.ts";
 
 export default function extension(pi: ExtensionAPI) {
@@ -49,7 +53,9 @@ export default function extension(pi: ExtensionAPI) {
 
   pi.on("session_start", (_event, ctx) => {
     withdraw = provide(ctx.sessionManager.getSessionId(), "pi-example", {
-      notify: (text: string) => { /* runs in this session, with this session's pi */ },
+      notify: (text: string) => {
+        /* runs in this session, with this session's pi */
+      },
     });
   });
   pi.on("session_shutdown", () => withdraw?.());
@@ -57,8 +63,12 @@ export default function extension(pi: ExtensionAPI) {
 
 // Elsewhere, in a child session:
 for (const id of ancestors(childSessionId)) {
-  const result = call<{ notify(text: string): void }, void>(id, "pi-example", (api) => api.notify("hi"));
-  if (!result.ok) { /* "missing", or "error" with the thrown error */ }
+  const result = call<{ notify(text: string): void }, void>(id, "pi-example", (api) =>
+    api.notify("hi"),
+  );
+  if (!result.ok) {
+    /* "missing", or "error" with the thrown error */
+  }
 }
 ```
 

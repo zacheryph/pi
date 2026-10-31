@@ -108,7 +108,6 @@ export interface SettingsSnapshot {
   promptInheritance?: Record<string, PromptInheritance>;
 }
 
-
 /** Emit callback — a subset of `pi.events.emit` to keep helpers testable. */
 export type SettingsEmit = (event: string, payload: unknown) => void;
 
@@ -144,7 +143,12 @@ export class SettingsManager {
   private readonly agentDir: string;
   private readonly onMaxConcurrentChanged: (() => void) | undefined;
 
-  constructor(deps: { emit: SettingsEmit; cwd: string; agentDir: string; onMaxConcurrentChanged?: () => void }) {
+  constructor(deps: {
+    emit: SettingsEmit;
+    cwd: string;
+    agentDir: string;
+    onMaxConcurrentChanged?: () => void;
+  }) {
     this.emit = deps.emit;
     this.cwd = deps.cwd;
     this.agentDir = deps.agentDir;
@@ -257,7 +261,8 @@ export class SettingsManager {
     if (typeof settings.overlayShowThinking === "boolean")
       this._overlayShowThinking = settings.overlayShowThinking;
     if (typeof settings.maxConcurrent === "number") this.maxConcurrent = settings.maxConcurrent;
-    if (typeof settings.defaultMaxTurns === "number") this.defaultMaxTurns = settings.defaultMaxTurns;
+    if (typeof settings.defaultMaxTurns === "number")
+      this.defaultMaxTurns = settings.defaultMaxTurns;
     if (typeof settings.wrapUpTurns === "number") this.wrapUpTurns = settings.wrapUpTurns;
     if (typeof settings.consumedSessionRetentionMinutes === "number")
       this.consumedSessionRetentionMinutes = settings.consumedSessionRetentionMinutes;
@@ -308,7 +313,9 @@ export class SettingsManager {
   /** Filter live without discarding retained thinking; existing settings event repaints the overlay. */
   toggleOverlayShowThinking(): { message: string; level: "info" | "warning" } {
     this._overlayShowThinking = !this._overlayShowThinking;
-    return this.saveAndNotify(`Overlay thinking: ${this._overlayShowThinking ? "shown" : "hidden"}`);
+    return this.saveAndNotify(
+      `Overlay thinking: ${this._overlayShowThinking ? "shown" : "hidden"}`,
+    );
   }
 
   /** Flip default visibility; explicit session show/hide still takes precedence. */
@@ -350,13 +357,20 @@ export class SettingsManager {
   /** Set the consumed-session retention window (minutes), persist, and return the toast. */
   applyConsumedSessionRetentionMinutes(n: number): { message: string; level: "info" | "warning" } {
     this.consumedSessionRetentionMinutes = n; // setter normalizes: clamp [1, ceiling]
-    return this.saveAndNotify(`Consumed-session retention set to ${this.consumedSessionRetentionMinutes} min`);
+    return this.saveAndNotify(
+      `Consumed-session retention set to ${this.consumedSessionRetentionMinutes} min`,
+    );
   }
 
   /** Set the unconsumed-session retention window (minutes), persist, and return the toast. */
-  applyUnconsumedSessionRetentionMinutes(n: number): { message: string; level: "info" | "warning" } {
+  applyUnconsumedSessionRetentionMinutes(n: number): {
+    message: string;
+    level: "info" | "warning";
+  } {
     this.unconsumedSessionRetentionMinutes = n; // setter normalizes: clamp [1, ceiling]
-    return this.saveAndNotify(`Unconsumed-session retention set to ${this.unconsumedSessionRetentionMinutes} min`);
+    return this.saveAndNotify(
+      `Unconsumed-session retention set to ${this.unconsumedSessionRetentionMinutes} min`,
+    );
   }
 
   /**
@@ -497,9 +511,7 @@ function sanitize(raw: unknown): SubagentsSettings {
  * Settings arrive from JSON, where the declared types are aspirations, so the
  * strategy is checked at run time rather than trusted.
  */
-function sanitizePromptInheritance(
-  raw: unknown,
-): Record<string, PromptInheritance> | undefined {
+function sanitizePromptInheritance(raw: unknown): Record<string, PromptInheritance> | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const rules: Record<string, PromptInheritance> = {};
   for (const [provider, strategy] of Object.entries(raw as Record<string, unknown>)) {

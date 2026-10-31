@@ -12,20 +12,14 @@
  * order). If the service is absent, children run unisolated.
  */
 
-import {
-  type ExtensionAPI,
-  getAgentDir,
-} from "@earendil-works/pi-coding-agent";
+import { type ExtensionAPI, getAgentDir } from "@earendil-works/pi-coding-agent";
 import { getSubagentsService } from "../../pi-subagents/src/service/service.ts";
 import { ActiveWorktrees } from "#src/active-worktrees";
 import { loadWorktreesConfig } from "#src/config";
 import { debugLog } from "#src/debug";
 import { findPreservedWorktrees, formatPreservedNotice } from "#src/preserved";
 import { registerPreservedWorktreesCommand } from "#src/preserved-command";
-import {
-  findUnmergedRescueBranches,
-  formatRescueBranchNotice,
-} from "#src/rescue-branches";
+import { findUnmergedRescueBranches, formatRescueBranchNotice } from "#src/rescue-branches";
 import { WorktreeWorkspaceProvider } from "#src/workspace-provider";
 import { discardWorktree, pruneWorktrees } from "#src/worktree";
 
@@ -49,14 +43,9 @@ export default function piSubagentsWorktrees(pi: ExtensionAPI): void {
     unregister = undefined;
     const service = getSubagentsService(ctx.sessionManager.getSessionId());
     if (service) {
-      unregister = service.registerWorkspaceProvider(
-        new WorktreeWorkspaceProvider(config, live),
-      );
+      unregister = service.registerWorkspaceProvider(new WorktreeWorkspaceProvider(config, live));
     } else {
-      debugLog(
-        "subagents service unavailable — worktree provider not registered",
-        undefined,
-      );
+      debugLog("subagents service unavailable — worktree provider not registered", undefined);
     }
 
     // The rescue artifacts a session start reports: worktrees a failed cleanup

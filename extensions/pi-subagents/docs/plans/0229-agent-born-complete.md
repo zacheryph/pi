@@ -504,7 +504,7 @@ It becomes a private no-arg method using `this.worktrees` and `this._isolation` 
    - Runner error: failRun + observer.onRunFinished.
    - Abort signal forwarding.
    - RunConfig threading (defaultMaxTurns, graceTurns).
-   Commit: `feat: add Agent.run() encapsulating full execution lifecycle (#229)`
+     Commit: `feat: add Agent.run() encapsulating full execution lifecycle (#229)`
 
 7. **Rewrite `AgentManager.spawn()` to create complete Agent and call `agent.run()`.**
    Delete `startAgent`.
@@ -521,7 +521,7 @@ It becomes a private no-arg method using `this.worktrees` and `this._isolation` 
    - Update notification wiring tests (now Agent-internal).
    - Update mock runners if needed.
    - Verify queue/concurrency tests still pass.
-   Commit: `feat!: AgentManager.spawn() creates complete Agent, deletes startAgent (#229)`
+     Commit: `feat!: AgentManager.spawn() creates complete Agent, deletes startAgent (#229)`
 
 8. **Update tool-layer consumers: `background-spawner.ts`, `foreground-runner.ts`, `agent-tool.ts`.**
    Replace `onSessionCreated` callback with `observer` field in both spawner and runner.

@@ -71,7 +71,7 @@ The single user intervention was a one-line comment removal during TDD Step 3.
 
 #### What caused friction (agent side)
 
-- `other` (tombstone comment) — after removing the obsolete "throws when the session factory is missing" test in TDD Step 3, left a comment narrating the *absence* of the guard (`// No "missing session factory" guard: execution is a mandatory constructor collaborator …`).
+- `other` (tombstone comment) — after removing the obsolete "throws when the session factory is missing" test in TDD Step 3, left a comment narrating the _absence_ of the guard (`// No "missing session factory" guard: execution is a mandatory constructor collaborator …`).
   The user flagged it as unhelpful and asked for removal.
   Impact: one extra `Edit` + a blank-line cleanup + a `--amend` of the Step 3 commit.
   No behavioral rework; user-caught.

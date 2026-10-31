@@ -1,6 +1,12 @@
 import { connect as netConnect, type Socket } from "node:net";
 import {
-  encode, LineDecoder, PROTOCOL_VERSION, type CommandRequest, type QuestionnaireAnswer, type ReporterMessage, type SessionSnapshot,
+  encode,
+  LineDecoder,
+  PROTOCOL_VERSION,
+  type CommandRequest,
+  type QuestionnaireAnswer,
+  type ReporterMessage,
+  type SessionSnapshot,
 } from "./protocol.ts";
 
 export interface ReporterOptions {
@@ -22,12 +28,21 @@ export interface ReporterOptions {
 const NO_LISTENER = new Set(["ENOENT", "ECONNREFUSED"]);
 
 function parseRequest(message: unknown): CommandRequest | undefined {
-  const raw = message as { command?: unknown; name?: unknown; key?: unknown; question?: unknown; answer?: unknown };
+  const raw = message as {
+    command?: unknown;
+    name?: unknown;
+    key?: unknown;
+    question?: unknown;
+    answer?: unknown;
+  };
   if (raw.command === "focus") return { command: "focus" };
-  if (raw.command === "stash-preview" && typeof raw.name === "string") return { command: "stash-preview", name: raw.name };
-  if (raw.command === "todo-history" && typeof raw.key === "string") return { command: "todo-history", key: raw.key };
+  if (raw.command === "stash-preview" && typeof raw.name === "string")
+    return { command: "stash-preview", name: raw.name };
+  if (raw.command === "todo-history" && typeof raw.key === "string")
+    return { command: "todo-history", key: raw.key };
   // The answer's shape is checked against its questionnaire by the extension.
-  if (raw.command === "answer" && typeof raw.question === "string") return { command: "answer", question: raw.question, answer: raw.answer as QuestionnaireAnswer };
+  if (raw.command === "answer" && typeof raw.question === "string")
+    return { command: "answer", question: raw.question, answer: raw.answer as QuestionnaireAnswer };
   return undefined;
 }
 
@@ -83,17 +98,23 @@ export class Reporter {
     socket.unref();
     let failure: string | undefined;
     socket.once("connect", () => {
-      if (this.closed) { socket.destroy(); return; }
+      if (this.closed) {
+        socket.destroy();
+        return;
+      }
       this.attempts = 0;
       this.socket = socket;
-      if (this.snapshot) this.send({ type: "hello", version: PROTOCOL_VERSION, snapshot: this.snapshot });
+      if (this.snapshot)
+        this.send({ type: "hello", version: PROTOCOL_VERSION, snapshot: this.snapshot });
     });
     const decoder = new LineDecoder();
     socket.setEncoding("utf8");
     socket.on("data", (chunk: string) => {
       for (const message of decoder.push(chunk)) this.receive(socket, message);
     });
-    socket.on("error", (error: NodeJS.ErrnoException) => { failure = error.code; });
+    socket.on("error", (error: NodeJS.ErrnoException) => {
+      failure = error.code;
+    });
     socket.once("close", () => {
       if (this.socket === socket) this.socket = undefined;
       if (!this.closed) this.scheduleRetry(failure);
@@ -106,9 +127,18 @@ export class Reporter {
     const id = raw.id;
     const reply = (result: { error: string } | { data: unknown }) => {
       if (socket !== this.socket || socket.destroyed) return;
-      socket.write(encode("error" in result
-        ? { type: "result", id, ok: false, error: result.error }
-        : { type: "result", id, ok: true, ...(result.data === undefined ? {} : { data: result.data }) }));
+      socket.write(
+        encode(
+          "error" in result
+            ? { type: "result", id, ok: false, error: result.error }
+            : {
+                type: "result",
+                id,
+                ok: true,
+                ...(result.data === undefined ? {} : { data: result.data }),
+              },
+        ),
+      );
     };
     const request = parseRequest(message);
     const handler = this.options.onCommand;
@@ -121,9 +151,17 @@ export class Reporter {
 
   private scheduleRetry(failure: string | undefined): void {
     const now = this.options.now?.() ?? Date.now();
-    if (failure && NO_LISTENER.has(failure) && now - this.lastSpawn >= (this.options.spawnIntervalMs ?? 10_000)) {
+    if (
+      failure &&
+      NO_LISTENER.has(failure) &&
+      now - this.lastSpawn >= (this.options.spawnIntervalMs ?? 10_000)
+    ) {
       this.lastSpawn = now;
-      try { this.options.spawnHub(); } catch { /* retried on the next interval */ }
+      try {
+        this.options.spawnHub();
+      } catch {
+        /* retried on the next interval */
+      }
     }
     this.attempts += 1;
     if (!this.reported && this.attempts >= (this.options.unavailableAfter ?? 8)) {
@@ -131,7 +169,10 @@ export class Reporter {
       this.options.onUnavailable?.();
     }
     const min = this.options.minDelayMs ?? 250;
-    const delay = Math.min(min * 2 ** Math.min(this.attempts - 1, 10), this.options.maxDelayMs ?? 30_000);
+    const delay = Math.min(
+      min * 2 ** Math.min(this.attempts - 1, 10),
+      this.options.maxDelayMs ?? 30_000,
+    );
     this.retry = setTimeout(() => this.connect(), delay);
     this.retry.unref?.();
   }

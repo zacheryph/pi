@@ -32,7 +32,13 @@ export class AgentTypeRegistry implements AgentConfigLookup {
   private agents = new Map<string, AgentConfig>();
 
   /** The embedded default agent names. */
-  static readonly DEFAULT_AGENT_NAMES = ["general-purpose", "orchestrator", "Explore", "Plan", "reviewer"] as const;
+  static readonly DEFAULT_AGENT_NAMES = [
+    "general-purpose",
+    "orchestrator",
+    "Explore",
+    "Plan",
+    "reviewer",
+  ] as const;
 
   constructor(private loadUserAgents: () => Map<string, AgentConfig>) {
     this.reload();
@@ -60,7 +66,7 @@ export class AgentTypeRegistry implements AgentConfigLookup {
   /** Get all enabled type names (for spawning and tool descriptions). */
   getAvailableTypes(): string[] {
     return [...this.agents.entries()]
-      .filter(([_, config]) => config.enabled !== false)
+      .filter(([, config]) => config.enabled !== false)
       .map(([name]) => name);
   }
 
@@ -72,14 +78,14 @@ export class AgentTypeRegistry implements AgentConfigLookup {
   /** Get names of default agents currently in the registry. */
   getDefaultAgentNames(): string[] {
     return [...this.agents.entries()]
-      .filter(([_, config]) => config.isDefault === true)
+      .filter(([, config]) => config.isDefault === true)
       .map(([name]) => name);
   }
 
   /** Get names of user-defined agents (non-defaults) currently in the registry. */
   getUserAgentNames(): string[] {
     return [...this.agents.entries()]
-      .filter(([_, config]) => config.isDefault !== true)
+      .filter(([, config]) => config.isDefault !== true)
       .map(([name]) => name);
   }
 

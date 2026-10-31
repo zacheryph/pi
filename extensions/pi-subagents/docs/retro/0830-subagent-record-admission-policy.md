@@ -20,9 +20,9 @@ The plan is committed at `packages/pi-subagents/docs/plans/0830-subagent-record-
   So this was a judgment about external consumers, not a response to local demand, and the no-vacant-hooks reading ("admit nothing without a named reader") was a serious candidate rather than a straw option.
 - **A defect surfaced while reading for the policy.**
   `toSubagentRecord` assigns `lifetimeUsage` by reference to the object `SubagentState.addUsage()` mutates in place, so the "serializable snapshot" drifts under a consumer and lets a consumer write into a running agent's token totals.
-  Defining "snapshot" as *by value* in the policy is what made the fix in-scope rather than a separate issue; the operator chose to land it here.
+  Defining "snapshot" as _by value_ in the policy is what made the fix in-scope rather than a separate issue; the operator chose to land it here.
 - **The contract direction decided the release marker, not the field list.**
-  TypeScript structural typing means required additions break only *implementors*, so declaring the type producer-only makes this semver-minor.
+  TypeScript structural typing means required additions break only _implementors_, so declaring the type producer-only makes this semver-minor.
   The roadmap anticipated exactly this (`"if its resolution is non-breaking, its plan may downgrade it to independently releasable and update this line"`), so the plan takes the downgrade and edits both the Step's `Release:` line and the `Release batches` bullet; Step 3 ([#829]) stays the batch tail.
 - **Alternatives rejected at the gate:** the "mirror all serializable state" policy (would ship an unbounded `responseText` and internal `consumedAt`/`stoppedWhileQueued`), optional-forever additions (consumers null-checking fields the package always populates), and shipping the widening as breaking anyway.
   Also rejected in the plan: retyping `SubagentRecord.lifetimeUsage` as `Readonly<>` — once the value is copied, tightening a shipped public property type buys nothing and costs a breaking change.
@@ -35,7 +35,7 @@ The plan is committed at `packages/pi-subagents/docs/plans/0830-subagent-record-
 #### Deferred tidyings
 
 - `packages/pi-subagents/test/service/service-adapter.test.ts` — a shared "expected record" builder for the two exact `toEqual` blocks was rejected: the two literals share structure but no values, so the builder would be the wrong abstraction.
-- `packages/pi-subagents/src/service/service-adapter.ts` — collapsing the per-field `if (x !== undefined)` lines into a loop over an optional-field list was rejected: the explicitness *is* the allowlist's self-documentation.
+- `packages/pi-subagents/src/service/service-adapter.ts` — collapsing the per-field `if (x !== undefined)` lines into a loop over an optional-field list was rejected: the explicitness _is_ the allowlist's self-documentation.
 - `packages/pi-subagents/test/helpers/make-subagent.ts` — an `outputFile` shorthand on `createTestSubagent` was rejected as feature-scoped rather than preparatory; the implementing step decides whether its tests want one.
 
 ## Stage: Implementation — TDD (2026-08-29T20:56:08Z)
@@ -56,7 +56,7 @@ Pre-completion reviewer: PASS, with all four re-derivation mandates independentl
   Redone with a `cp`-saved copy of the green file; each of the four mutations then killed exactly its own class.
   Mutation testing on uncommitted work needs a file copy, not a git revert.
 - **The declined-field pin can only be killed by an interface change.**
-  TypeScript's excess-property check rejects any narrower leak into `toSubagentRecord`'s `SubagentRecord`-typed literal, so the killing mutation had to add `activeTools` to the interface *and* populate it — exactly [#748]'s diff.
+  TypeScript's excess-property check rejects any narrower leak into `toSubagentRecord`'s `SubagentRecord`-typed literal, so the killing mutation had to add `activeTools` to the interface _and_ populate it — exactly [#748]'s diff.
   The test's populated-source assertions (`expect(record.responseText).toBe("partial answer")` and friends) are what keep it from passing vacuously if a fixture ever stops seeding those fields.
 - **The `lifetimeUsage` drift test needed the real accumulation path.**
   `Subagent` exposes no `addUsage` (accumulation runs through the private `SubagentState` from `record-observer`), so the test constructs a `SubagentState` and a `Subagent` directly rather than casting away the getter's `Readonly`.
@@ -91,20 +91,20 @@ The land ran end to end without an intervention: ff-merge, CI, `issue_close`, re
 #### What went well
 
 - **The clarification gate followed `AGENTS.md` § Clarification gates to the letter and settled in one pass.**
-  The planning turn opened with a `**Terms used below**` block defining *allowlist*, *producer-only type*, and *reactive vs discrete* (the Refs #786 rule), then gave an eight-row candidate inventory table, then three defensible policies each priced by what it admits and what it costs.
+  The planning turn opened with a `**Terms used below**` block defining _allowlist_, _producer-only type_, and _reactive vs discrete_ (the Refs #786 rule), then gave an eight-row candidate inventory table, then three defensible policies each priced by what it admits and what it costs.
   It also named the premise every option shared — that the record's contents are decided per field — and replaced it with a stated rule.
   No bounce, no second gate.
 - **The declined-field pin has exactly one killing mutation, and it is a third party's diff.**
-  TypeScript's excess-property check rejects any narrower leak into `toSubagentRecord`'s `SubagentRecord`-typed literal, so mutation E had to widen the interface *and* populate it — reproducing [#748]'s change.
-  A test whose only kill is the proposal it declines is a stronger pin than an assertion list, and it is the shape to reach for whenever a step's deliverable is a *refusal*.
+  TypeScript's excess-property check rejects any narrower leak into `toSubagentRecord`'s `SubagentRecord`-typed literal, so mutation E had to widen the interface _and_ populate it — reproducing [#748]'s change.
+  A test whose only kill is the proposal it declines is a stronger pin than an assertion list, and it is the shape to reach for whenever a step's deliverable is a _refusal_.
 - **Reading for a policy found a defect the policy then made in-scope.**
   `toSubagentRecord` aliased `lifetimeUsage` to the object `SubagentState.addUsage()` mutates in place.
-  Defining "snapshot" as *by value* in ADR 0005 is what made the fix belong in this change rather than a follow-up issue — the decision framed the bug, not the reverse.
+  Defining "snapshot" as _by value_ in ADR 0005 is what made the fix belong in this change rather than a follow-up issue — the decision framed the bug, not the reverse.
 
 #### What caused friction (agent side)
 
 - `other` — **`/tdd-plan`'s prescribed mutation-revert is unsafe at the point it prescribes it.**
-  Step 3 ("Verify the pins") sits *before* step 4 ("Commit"), so the green edit is always uncommitted when the mutation is applied — yet the prompt names `git checkout -- <file>` as the primary revert, with "(or a saved copy)" parenthetical.
+  Step 3 ("Verify the pins") sits _before_ step 4 ("Commit"), so the green edit is always uncommitted when the mutation is applied — yet the prompt names `git checkout -- <file>` as the primary revert, with "(or a saved copy)" parenthetical.
   The revert wiped the step's own implementation, and mutations B and C then ran against pre-feature code, producing five reds that read as over-broad kills.
   The tell was that a mutation to `isBackground` reddened the `turnCount` test.
   Impact: self-caught after 3 tool calls; the green edit was re-applied and all four mutations redone against a `cp`-saved copy.

@@ -84,16 +84,34 @@ export class AgentTypeRegistry {
   }
 
   /** Re-scan custom agents from disk and merge with defaults. */
-  reload(): void { /* clear + merge DEFAULT_AGENTS + loadUserAgents() */ }
+  reload(): void {
+    /* clear + merge DEFAULT_AGENTS + loadUserAgents() */
+  }
 
-  resolveAgentConfig(type: string): AgentConfig { /* ... */ }
-  resolveType(name: string): string | undefined { /* ... */ }
-  getAvailableTypes(): string[] { /* ... */ }
-  getAllTypes(): string[] { /* ... */ }
-  getDefaultAgentNames(): string[] { /* ... */ }
-  getUserAgentNames(): string[] { /* ... */ }
-  isValidType(type: string): boolean { /* ... */ }
-  getToolNamesForType(type: string): string[] { /* ... */ }
+  resolveAgentConfig(type: string): AgentConfig {
+    /* ... */
+  }
+  resolveType(name: string): string | undefined {
+    /* ... */
+  }
+  getAvailableTypes(): string[] {
+    /* ... */
+  }
+  getAllTypes(): string[] {
+    /* ... */
+  }
+  getDefaultAgentNames(): string[] {
+    /* ... */
+  }
+  getUserAgentNames(): string[] {
+    /* ... */
+  }
+  isValidType(type: string): boolean {
+    /* ... */
+  }
+  getToolNamesForType(type: string): string[] {
+    /* ... */
+  }
 
   static readonly DEFAULT_AGENT_NAMES = ["general-purpose", "Explore", "Plan"] as const;
 }

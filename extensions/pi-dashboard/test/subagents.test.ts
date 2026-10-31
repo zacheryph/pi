@@ -6,14 +6,46 @@ describe("SubagentTracker", () => {
     let now = 100;
     const tracker = new SubagentTracker(() => now);
     expect(tracker.section()).toBeUndefined();
-    expect(tracker.apply("subagents:created", { id: "a", type: "Explore", description: "Find auth files", isBackground: true })).toBe(true);
-    expect(tracker.section()?.agents[0]).toEqual({ id: "a", type: "Explore", description: "Find auth files", state: "queued", since: 100 });
+    expect(
+      tracker.apply("subagents:created", {
+        id: "a",
+        type: "Explore",
+        description: "Find auth files",
+        isBackground: true,
+      }),
+    ).toBe(true);
+    expect(tracker.section()?.agents[0]).toEqual({
+      id: "a",
+      type: "Explore",
+      description: "Find auth files",
+      state: "queued",
+      since: 100,
+    });
     now = 200;
-    tracker.apply("subagents:started", { id: "a", type: "Explore", description: "Find auth files" });
+    tracker.apply("subagents:started", {
+      id: "a",
+      type: "Explore",
+      description: "Find auth files",
+    });
     tracker.apply("subagents:update", { id: "a", message: "found 3 call sites" });
-    expect(tracker.section()?.agents[0]).toMatchObject({ state: "running", note: "found 3 call sites", since: 100 });
-    tracker.apply("subagents:completed", { id: "a", status: "completed", durationMs: 4200, toolUses: 7, tokens: { input: 1, output: 2, total: 3000 } });
-    expect(tracker.section()?.agents[0]).toMatchObject({ state: "completed", durationMs: 4200, toolUses: 7, tokens: 3000 });
+    expect(tracker.section()?.agents[0]).toMatchObject({
+      state: "running",
+      note: "found 3 call sites",
+      since: 100,
+    });
+    tracker.apply("subagents:completed", {
+      id: "a",
+      status: "completed",
+      durationMs: 4200,
+      toolUses: 7,
+      tokens: { input: 1, output: 2, total: 3000 },
+    });
+    expect(tracker.section()?.agents[0]).toMatchObject({
+      state: "completed",
+      durationMs: 4200,
+      toolUses: 7,
+      tokens: 3000,
+    });
   });
 
   it("maps failures, stops and resumes", () => {
@@ -23,7 +55,8 @@ describe("SubagentTracker", () => {
     tracker.apply("subagents:started", { id: "s", type: "Agent", description: "y" });
     tracker.apply("subagents:completed", { id: "s", status: "aborted" });
     expect(tracker.section()?.agents.map((agent) => [agent.id, agent.state, agent.note])).toEqual([
-      ["s", "stopped", undefined], ["f", "failed", "model overloaded"],
+      ["s", "stopped", undefined],
+      ["f", "failed", "model overloaded"],
     ]);
     tracker.apply("subagents:resuming", { id: "f" });
     expect(tracker.section()?.agents[0]).toMatchObject({ id: "f", state: "running" });

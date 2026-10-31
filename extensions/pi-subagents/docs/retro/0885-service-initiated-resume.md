@@ -17,8 +17,8 @@ Filed [#912] and [#913] as follow-ups and recorded their Phase 22 dispositions (
 
 - **The issue body is stale in two places, and both change the work.**
   It says the refusal policy "lives in the tool layer" and would have to move down.
-  Step 15 ([#878]) already moved the *policy* onto `Subagent.resumeRefusal`; what never moved is the **check** — `SubagentManager.resume` still guards on `isSessionReady()` alone, so a second door routed through it would resume a workspace-disposed child.
-  It also implies [#832] is unimplemented; `subagents:resumed` exists and fires at resume *end*, so [#832] is specifically about a *start* event.
+  Step 15 ([#878]) already moved the _policy_ onto `Subagent.resumeRefusal`; what never moved is the **check** — `SubagentManager.resume` still guards on `isSessionReady()` alone, so a second door routed through it would resume a workspace-disposed child.
+  It also implies [#832] is unimplemented; `subagents:resumed` exists and fires at resume _end_, so [#832] is specifically about a _start_ event.
 - **Four design questions went to the operator; all four answered as recommended.**
   Discriminated result (not a throw, not `undefined`), per-call `claimOutcome` defaulting to false, promise resolving at settle, and [#832] folded in on a new channel.
 - **The operator's note on the rejected pre-check option became [#912].**
@@ -93,13 +93,13 @@ The friction worth carrying forward is concentrated in two places: `/ship`'s lan
 #### What went well
 
 - **The killing-mutation step caught a wrong plan prediction before it could ship.**
-  `Module-Level Changes` specified `AgentWidget.onSubagentResuming` as `update()`; the test written from the step's *intent* (the timer restarts) went red against that implementation, and `startLoop()` is what the widget's actual timer lifecycle requires.
+  `Module-Level Changes` specified `AgentWidget.onSubagentResuming` as `update()`; the test written from the step's _intent_ (the timer restarts) went red against that implementation, and `startLoop()` is what the widget's actual timer lifecycle requires.
   A plan-faithful implementation would have shipped a resumed agent with a static spinner, and nothing else in the pipeline would have flagged it — the pre-completion reviewer independently re-derived and confirmed the deviation afterwards.
 - **Wording a string to satisfy a downstream predicate paid off a stage later.**
   Planning deliberately reworded the transient ask-back affordance so it names no `resume:` call, purely so [#878]'s `names no resume call for any reason` loop could widen from three reasons to four.
   At implementation time that loop took the new member with no exception and no test-level special case.
 - **Three stale premises in the issue body were caught before they shaped the plan.**
-  The body described policy that [#878] had already relocated and an event that already existed, and reading the code rather than the body is what produced the actual scope (the *check*, not the policy; a *start* event, not the terminal one).
+  The body described policy that [#878] had already relocated and an event that already existed, and reading the code rather than the body is what produced the actual scope (the _check_, not the policy; a _start_ event, not the terminal one).
 
 #### What caused friction (agent side)
 
@@ -110,12 +110,12 @@ The friction worth carrying forward is concentrated in two places: `/ship`'s lan
 - `rabbit-hole` — **Six consecutive tool calls fighting `biome`'s organize-imports over one `export type` statement.**
   A new local `export type { ResumeRefusal, ResumeRefusalReason };` was merged by the formatter into the adjacent workspace-types export block, and emitted unformatted (`LifetimeUsage,ResumeRefusal,` plus trailing whitespace).
   `biome check --write` reported no fixes (the rewrite is unsafe-classified), a re-edit was re-merged, and only hand-writing the canonical merged form settled it.
-  Impact: ~6 extra tool calls and one rejected commit; the right move was to hand-write the merged form after the *first* re-merge.
+  Impact: ~6 extra tool calls and one rejected commit; the right move was to hand-write the merged form after the _first_ re-merge.
 - `other` — **A hook-rejected commit was invisible because its output was piped through `tail -3`.**
   `git commit -F /tmp/cm.txt 2>&1 | tail -3` showed three passing hook lines and no `[main <sha>]` line; the rejection was above the window.
   Impact: one wasted "did it commit?"
   round trip via `git log --oneline -2`.
-  `AGENTS.md` warns against piping a *gate* through `tail`; piping the commit itself hides the rejection the same way.
+  `AGENTS.md` warns against piping a _gate_ through `tail`; piping the commit itself hides the rejection the same way.
 - `instruction-violation` (self-identified, twice) — **`PLAN` was set in one `bash` call and read in the next.**
   Both ship-stage occurrences failed with `fatal: bad revision '^..HEAD'`.
   `AGENTS.md` states the rule verbatim ("Each `bash` call runs in a fresh shell"), and `/ship` step 10 even reminds you to re-derive it.
@@ -123,7 +123,7 @@ The friction worth carrying forward is concentrated in two places: `/ship`'s lan
 - `instruction-violation` (not self-identified) — **`git rev-parse ea6c081a^{commit} | wc -c` to check a SHA's length.**
   `AGENTS.md` forbids exactly this ("Do not spend a tool call measuring the shape of a deterministic command's own output — `git rev-parse` emits exactly 40 hex characters").
   Impact: one wasted tool call.
-  The underlying worry was legitimate and the *correct* check — re-resolving the identifier I had typed — is what found the real defect: a hand-typed `ea6c081a2` in the #896 close draft, caught by `/ship`'s mandate to re-resolve every hex token in the finished draft.
+  The underlying worry was legitimate and the _correct_ check — re-resolving the identifier I had typed — is what found the real defect: a hand-typed `ea6c081a2` in the #896 close draft, caught by `/ship`'s mandate to re-resolve every hex token in the finished draft.
 - `missing-context` — **The extracted `resumeExisting`'s `detailBase` parameter was typed from memory.**
   `AgentDetails` was wrong (`config.presentation.detailBase` is a five-field `Pick`), then an invented `DetailBase` export was reached for before `SpawnPresentation["detailBase"]` settled it.
   Impact: two extra edit + `check` cycles inside a pure-refactor step.
@@ -146,7 +146,7 @@ The friction worth carrying forward is concentrated in two places: `/ship`'s lan
 - **Feedback-loop gap analysis** — no gap.
   `pnpm run check` ran after every interface-touching step, per-file `vitest` at each Red and Green, the full package suite at each step boundary, and root `lint` plus `fallow dead-code` before the push.
   `verify:public-types` ran inside the step that changed the public surface rather than at the end, per the plan; its one failure was a transient registry hiccup in the throwaway consumer install and passed on re-run.
-- **Tooling gap noted** — `read_session` exposes `limit` (a tail window) but no offset, so attributing a model to a *middle* stage of a long single-process session means re-reading the whole transcript.
+- **Tooling gap noted** — `read_session` exposes `limit` (a tail window) but no offset, so attributing a model to a _middle_ stage of a long single-process session means re-reading the whole transcript.
   Here the prompt frontmatter settled it deterministically and more cheaply; recorded as an observation only, not filed.
 
 ### Changes made

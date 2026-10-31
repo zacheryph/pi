@@ -5,7 +5,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import { guessMime, literalContent, readCwdFile, readToolResult } from "#src/sources";
 
 const dirs: string[] = [];
-afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
+afterEach(() => {
+  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
 function temp(): string {
   const dir = mkdtempSync(join(tmpdir(), "pi-stash-sources-"));
   dirs.push(dir);
@@ -17,7 +19,11 @@ describe("readCwdFile", () => {
     const cwd = temp();
     mkdirSync(join(cwd, "src"));
     writeFileSync(join(cwd, "src", "data.json"), '{"a":1}');
-    expect(readCwdFile("@src/data.json", cwd, 1000)).toEqual({ text: '{"a":1}', mime: "application/json", source: "path:src/data.json" });
+    expect(readCwdFile("@src/data.json", cwd, 1000)).toEqual({
+      text: '{"a":1}',
+      mime: "application/json",
+      source: "path:src/data.json",
+    });
     expect(readCwdFile(join(cwd, "src", "data.json"), cwd, 1000).source).toBe("path:src/data.json");
   });
 
@@ -46,12 +52,28 @@ describe("readCwdFile", () => {
 
 describe("readToolResult", () => {
   const entry = (toolCallId: string, text: string, details?: unknown) => ({
-    type: "message", message: { role: "toolResult", toolCallId, toolName: "grep", content: [{ type: "text", text }, { type: "image", data: "x" }], details },
+    type: "message",
+    message: {
+      role: "toolResult",
+      toolCallId,
+      toolName: "grep",
+      content: [
+        { type: "text", text },
+        { type: "image", data: "x" },
+      ],
+      details,
+    },
   });
 
   it("joins the text content of the matching result on the branch", () => {
-    expect(readToolResult([entry("a", "first"), entry("b", "second")], "b", 1000)).toEqual({ text: "second", mime: "text/plain", source: "tool:grep" });
-    expect(() => readToolResult([entry("a", "first")], "zzz", 1000)).toThrow(/No tool result with id "zzz"/);
+    expect(readToolResult([entry("a", "first"), entry("b", "second")], "b", 1000)).toEqual({
+      text: "second",
+      mime: "text/plain",
+      source: "tool:grep",
+    });
+    expect(() => readToolResult([entry("a", "first")], "zzz", 1000)).toThrow(
+      /No tool result with id "zzz"/,
+    );
     expect(() => readToolResult([entry("a", "x".repeat(20))], "a", 10)).toThrow(/limit/);
   });
 
@@ -59,9 +81,16 @@ describe("readToolResult", () => {
     const dir = temp();
     const full = join(dir, "full.log");
     writeFileSync(full, "complete output");
-    expect(readToolResult([entry("a", "truncated", { fullOutputPath: full })], "a", 1000).text).toBe("complete output");
-    expect(readToolResult([entry("a", "truncated", { fullOutputPath: "/etc/hostname" })], "a", 1000).text).toBe("truncated");
-    expect(readToolResult([entry("a", "truncated", { fullOutputPath: "relative" })], "a", 1000).text).toBe("truncated");
+    expect(
+      readToolResult([entry("a", "truncated", { fullOutputPath: full })], "a", 1000).text,
+    ).toBe("complete output");
+    expect(
+      readToolResult([entry("a", "truncated", { fullOutputPath: "/etc/hostname" })], "a", 1000)
+        .text,
+    ).toBe("truncated");
+    expect(
+      readToolResult([entry("a", "truncated", { fullOutputPath: "relative" })], "a", 1000).text,
+    ).toBe("truncated");
   });
 });
 

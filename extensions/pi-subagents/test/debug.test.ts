@@ -27,10 +27,7 @@ describe("debugLog", () => {
     vi.stubEnv("PI_SUBAGENTS_DEBUG", "1");
     const err = new Error("something failed");
     debugLog("cleanup worktree", err);
-    expect(console.warn).toHaveBeenCalledWith(
-      "[pi-subagents:debug] cleanup worktree:",
-      err,
-    );
+    expect(console.warn).toHaveBeenCalledWith("[pi-subagents:debug] cleanup worktree:", err);
   });
 
   it("isDebug() returns true when PI_SUBAGENTS_DEBUG=1", () => {

@@ -165,8 +165,8 @@ Per-session growth is bounded by spawn count, consistent with the Phase 20 "no n
 1. **Add `Subagent.toolCallId`; migrate `formatTaskNotification`** (prep / lift-and-shift).
    - Red: `test/lifecycle/subagent.test.ts` — new test asserting `record.toolCallId` returns `execution.parentSession.toolCallId` (and `undefined` when absent).
    - Green: add the getter; change `formatTaskNotification` to read `record.toolCallId`.
-   `NotificationState` and `record.notification` remain in place — nothing breaks.
-   Commit: `refactor(pi-subagents): expose Subagent.toolCallId for notification formatting`
+     `NotificationState` and `record.notification` remain in place — nothing breaks.
+     Commit: `refactor(pi-subagents): expose Subagent.toolCallId for notification formatting`
 2. **Move consumed-state into `NotificationManager`; delete `NotificationState`** (atomic core).
    Removing the `NotificationState` export and the `record.notification` surface breaks every importer and its tests at the type level in one commit, so the manager change, both consumer updates, the file/interface deletions, and all consumer-test migrations land together.
    - Red: `test/observation/notification.test.ts` — `consume(id)` suppresses a later `sendCompletion(id)`; `consume` cancels an already-scheduled nudge; `dispose` clears consumed.
@@ -176,10 +176,10 @@ Per-session growth is bounded by spawn count, consistent with the Phase 20 "no n
      Switch `get-result-tool`'s two sites to `consume`; narrow `GetResultToolNotifications`.
      Delete `notification-state.ts` and `notification-state.test.ts`.
      Migrate `subagent.test.ts`, `subagent-manager.test.ts` (Bug 1 + wiring blocks), `get-result-tool.test.ts`, and `subagent-events-observer.test.ts`.
-   Commit: `refactor(pi-subagents): move result-delivery consumed-state into NotificationManager`
+     Commit: `refactor(pi-subagents): move result-delivery consumed-state into NotificationManager`
 3. **Docs + skill sync** (docs).
    - Update `docs/architecture/architecture.md` (class diagram, module tree, Observation-domain note) and `.pi/skills/package-pi-subagents/SKILL.md` (Observation domain row 6 → 5) and the `src/types.ts` `toolCallId` doc comment.
-   Commit: `docs(pi-subagents): drop NotificationState from architecture and skill after result-delivery extraction`
+     Commit: `docs(pi-subagents): drop NotificationState from architecture and skill after result-delivery extraction`
 
 The `refactor:` verify gate for each code step: `pnpm --filter @gotgenes/pi-subagents run check && … run lint && … run test`, plus `pnpm fallow dead-code` after Step 2 to confirm no orphaned `NotificationState` / `cancelNudge` symbol survives.
 

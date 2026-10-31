@@ -14,7 +14,8 @@ const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
 try {
   process.chdir(sandbox);
   process.env.PI_CODING_AGENT_DIR = sandbox;
-  const { DefaultResourceLoader, SettingsManager } = await import("@earendil-works/pi-coding-agent");
+  const { DefaultResourceLoader, SettingsManager } =
+    await import("@earendil-works/pi-coding-agent");
   const loader = new DefaultResourceLoader({
     cwd: sandbox,
     agentDir: sandbox,
@@ -92,7 +93,9 @@ try {
   for (const name of bundledSkills) {
     assert.ok(skillNames.includes(name), `Missing skill: ${name}`);
   }
-  console.log(`Bundle loaded: ${extensions.length} extensions; ${tools.join(", ")}; skills: ${skillNames.join(", ")}`);
+  console.log(
+    `Bundle loaded: ${extensions.length} extensions; ${tools.join(", ")}; skills: ${skillNames.join(", ")}`,
+  );
 } finally {
   process.chdir(originalCwd);
   if (originalAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;

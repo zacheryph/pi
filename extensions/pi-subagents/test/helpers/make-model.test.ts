@@ -19,7 +19,11 @@ describe("makeModel", () => {
   });
 
   it("applies overrides while keeping other defaults", () => {
-    const model = makeModel({ id: "claude-opus-4-6", name: "Claude Opus 4.6", provider: "anthropic" });
+    const model = makeModel({
+      id: "claude-opus-4-6",
+      name: "Claude Opus 4.6",
+      provider: "anthropic",
+    });
     expect(model.id).toBe("claude-opus-4-6");
     expect(model.name).toBe("Claude Opus 4.6");
     expect(model.provider).toBe("anthropic");

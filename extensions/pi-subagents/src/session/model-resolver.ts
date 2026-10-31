@@ -58,10 +58,7 @@ export function resolveInvocationModel(
  * Tries exact match first ("provider/modelId"), then fuzzy match against all available models.
  * Returns the Model on success, or an error message string on failure.
  */
-export function resolveModel(
-  input: string,
-  registry: ModelRegistry,
-): Model<any> | string {
+export function resolveModel(input: string, registry: ModelRegistry): Model<any> | string {
   // Available models (those with auth configured)
   const all = registry.getAvailable?.() ?? registry.getAll();
 
@@ -69,7 +66,7 @@ export function resolveModel(
   if (input.toLowerCase().endsWith(LATEST_SUFFIX)) {
     return resolveLatest(input.slice(0, -LATEST_SUFFIX.length), all, registry);
   }
-  const availableSet = new Set(all.map(m => `${m.provider}/${m.id}`.toLowerCase()));
+  const availableSet = new Set(all.map((m) => `${m.provider}/${m.id}`.toLowerCase()));
 
   // 1. Exact match: "provider/modelId" — only if available (has auth)
   const slashIdx = input.indexOf("/");
@@ -91,7 +88,7 @@ export function resolveModel(
 
   // 3. No match — list available models
   const modelList = all
-    .map(m => `  ${m.provider}/${m.id}`)
+    .map((m) => `  ${m.provider}/${m.id}`)
     .sort()
     .join("\n");
   return `Model not found: "${input}".\n\nAvailable models:\n${modelList}`;
@@ -105,17 +102,25 @@ export const LATEST_SUFFIX = "@latest";
  * when one is given). Newest compares the numbers in the id left to right, so
  * `claude-haiku-5-5` beats `claude-haiku-4-5-20251001`; no version format is assumed.
  */
-function resolveLatest(spec: string, all: Model<any>[], registry: ModelRegistry): Model<any> | string {
+function resolveLatest(
+  spec: string,
+  all: Model<any>[],
+  registry: ModelRegistry,
+): Model<any> | string {
   const slashIdx = spec.indexOf("/");
   const provider = slashIdx === -1 ? undefined : spec.slice(0, slashIdx).toLowerCase();
   const family = spec.slice(slashIdx + 1).toLowerCase();
   const candidates = family
-    ? all.filter(m => (!provider || m.provider.toLowerCase() === provider) && m.id.toLowerCase().includes(family))
+    ? all.filter(
+        (m) =>
+          (!provider || m.provider.toLowerCase() === provider) &&
+          m.id.toLowerCase().includes(family),
+      )
     : [];
   const newest = candidates.sort(compareNewestFirst)[0];
   if (newest) return registry.find(newest.provider, newest.id) ?? newest;
   const modelList = all
-    .map(m => `  ${m.provider}/${m.id}`)
+    .map((m) => `  ${m.provider}/${m.id}`)
     .sort()
     .join("\n");
   return `No available model matches "${spec}${LATEST_SUFFIX}".\n\nAvailable models:\n${modelList}`;
@@ -123,7 +128,7 @@ function resolveLatest(spec: string, all: Model<any>[], registry: ModelRegistry)
 
 /** Order by the numbers in each id, highest first; ties fall back to the id, descending. */
 function compareNewestFirst(a: Model<any>, b: Model<any>): number {
-  const version = (m: Model<any>) => [...m.id.matchAll(/\d+/g)].map(part => Number(part[0]));
+  const version = (m: Model<any>) => [...m.id.matchAll(/\d+/g)].map((part) => Number(part[0]));
   const av = version(a);
   const bv = version(b);
   for (let i = 0; i < Math.max(av.length, bv.length); i++) {
@@ -154,7 +159,14 @@ function findBestFuzzyMatch(all: Model<any>[], query: string): Model<any> | unde
       score = 60 + (query.length / id.length) * 30; // substring, prefer tighter matches
     } else if (name.includes(query)) {
       score = 40 + (query.length / name.length) * 20;
-    } else if (query.split(/[\s\-/]+/).every(part => id.includes(part) || name.includes(part) || m.provider.toLowerCase().includes(part))) {
+    } else if (
+      query
+        .split(/[\s\-/]+/)
+        .every(
+          (part) =>
+            id.includes(part) || name.includes(part) || m.provider.toLowerCase().includes(part),
+        )
+    ) {
       score = 20; // all parts present somewhere
     }
 

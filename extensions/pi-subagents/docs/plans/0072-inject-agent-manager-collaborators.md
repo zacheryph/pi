@@ -29,13 +29,13 @@ Any test of `AgentManager` must mock entire modules via `vi.mock()`, coupling th
 
 ### Prerequisites
 
-| Issue | Title                                               | Status  |
-| ----- | --------------------------------------------------- | ------- |
-| #69   | Create `SubagentRuntime`                            | ✓ Done  |
-| #71   | Extract pure agent-session assembler                | ✓ Done  |
-| #76   | Inject `cwd` into `AgentManager`                    | ✓ Done  |
-| #80   | Consolidate `getConfig`/`getAgentConfig`            | ✓ Done  |
-| #84   | Extract `GitWorktreeManager` class from worktree.ts | ✓ Done  |
+| Issue | Title                                               | Status |
+| ----- | --------------------------------------------------- | ------ |
+| #69   | Create `SubagentRuntime`                            | ✓ Done |
+| #71   | Extract pure agent-session assembler                | ✓ Done |
+| #76   | Inject `cwd` into `AgentManager`                    | ✓ Done |
+| #80   | Consolidate `getConfig`/`getAgentConfig`            | ✓ Done |
+| #84   | Extract `GitWorktreeManager` class from worktree.ts | ✓ Done |
 
 ### Prior art
 
@@ -46,17 +46,17 @@ The interface is defined in `policy-loader.ts` alongside the default `FilePolicy
 ### Current imports in `agent-manager.ts`
 
 ```typescript
-import { resumeAgent, runAgent, type ToolActivity } from "./agent-runner.js";  // runtime + type
-import { addUsage } from "./usage.js";                                          // runtime (pure utility, stays)
+import { resumeAgent, runAgent, type ToolActivity } from "./agent-runner.js"; // runtime + type
+import { addUsage } from "./usage.js"; // runtime (pure utility, stays)
 import { cleanupWorktree, createWorktree, pruneWorktrees } from "./worktree.js"; // runtime
 ```
 
 After this refactor:
 
 ```typescript
-import type { AgentRunner } from "./agent-runner.js";      // type-only (erased at compile)
-import type { WorktreeManager } from "./worktree.js";      // type-only (erased at compile)
-import { addUsage } from "./usage.js";                      // runtime (pure utility, stays)
+import type { AgentRunner } from "./agent-runner.js"; // type-only (erased at compile)
+import type { WorktreeManager } from "./worktree.js"; // type-only (erased at compile)
+import { addUsage } from "./usage.js"; // runtime (pure utility, stays)
 ```
 
 ### Relevant constraints from AGENTS.md
@@ -87,9 +87,15 @@ export interface WorktreeManager {
 
 export class GitWorktreeManager implements WorktreeManager {
   constructor(private readonly cwd: string) {}
-  create(id: string): WorktreeInfo | undefined { return createWorktree(this.cwd, id); }
-  cleanup(wt: WorktreeInfo, description: string): WorktreeCleanupResult { return cleanupWorktree(this.cwd, wt, description); }
-  prune(): void { pruneWorktrees(this.cwd); }
+  create(id: string): WorktreeInfo | undefined {
+    return createWorktree(this.cwd, id);
+  }
+  cleanup(wt: WorktreeInfo, description: string): WorktreeCleanupResult {
+    return cleanupWorktree(this.cwd, wt, description);
+  }
+  prune(): void {
+    pruneWorktrees(this.cwd);
+  }
 }
 ```
 
@@ -104,14 +110,22 @@ The interface exists to decouple `AgentManager` (lifecycle management: queuing, 
 ```typescript
 // In agent-runner.ts
 export interface AgentRunner {
-  run(ctx: ExtensionContext, type: SubagentType, prompt: string, options: RunOptions): Promise<RunResult>;
+  run(
+    ctx: ExtensionContext,
+    type: SubagentType,
+    prompt: string,
+    options: RunOptions,
+  ): Promise<RunResult>;
   resume(session: AgentSession, prompt: string, options?: ResumeOptions): Promise<string>;
 }
 
 export interface ResumeOptions {
   onToolActivity?: (activity: ToolActivity) => void;
   onAssistantUsage?: (usage: { input: number; output: number; cacheWrite: number }) => void;
-  onCompaction?: (info: { reason: "manual" | "threshold" | "overflow"; tokensBefore: number }) => void;
+  onCompaction?: (info: {
+    reason: "manual" | "threshold" | "overflow";
+    tokensBefore: number;
+  }) => void;
   signal?: AbortSignal;
 }
 ```
@@ -148,10 +162,19 @@ const manager = new AgentManager({
   cwd: process.cwd(),
   runner: { run: runAgent, resume: resumeAgent },
   worktrees,
-  onComplete: (record) => { /* ... */ },
-  onStart: (record) => { /* ... */ },
-  onCompact: (record, info) => { /* ... */ },
-  getRunConfig: () => ({ defaultMaxTurns: runtime.defaultMaxTurns, graceTurns: runtime.graceTurns }),
+  onComplete: (record) => {
+    /* ... */
+  },
+  onStart: (record) => {
+    /* ... */
+  },
+  onCompact: (record, info) => {
+    /* ... */
+  },
+  getRunConfig: () => ({
+    defaultMaxTurns: runtime.defaultMaxTurns,
+    graceTurns: runtime.graceTurns,
+  }),
 });
 ```
 
@@ -172,7 +195,10 @@ A grep in step 8 will confirm whether `this.cwd` has any remaining readers; if n
 function createManager(overrides?: Partial<AgentManagerOptions>) {
   const runner: AgentRunner = {
     run: vi.fn().mockResolvedValue({
-      responseText: "done", session: { dispose: vi.fn() }, aborted: false, steered: false,
+      responseText: "done",
+      session: { dispose: vi.fn() },
+      aborted: false,
+      steered: false,
     }),
     resume: vi.fn().mockResolvedValue("resumed"),
   };
@@ -192,8 +218,15 @@ function createManager(overrides?: Partial<AgentManagerOptions>) {
 Tests access the mock stubs directly — no `vi.mocked(runAgent)` needed:
 
 ```typescript
-const { manager, runner } = createManager({ onComplete: (r) => { /* ... */ } });
-manager.spawn(mockPi, mockCtx, "general-purpose", "test", { description: "test", isBackground: true });
+const { manager, runner } = createManager({
+  onComplete: (r) => {
+    /* ... */
+  },
+});
+manager.spawn(mockPi, mockCtx, "general-purpose", "test", {
+  description: "test",
+  isBackground: true,
+});
 expect(runner.run).toHaveBeenCalled();
 ```
 

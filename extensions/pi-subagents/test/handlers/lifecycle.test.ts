@@ -120,14 +120,18 @@ describe("SessionLifecycleHandler", () => {
 
     it("calls cleanup in correct order", async () => {
       const callOrder: string[] = [];
-      mockUnpublishService.mockImplementation(() => { callOrder.push("unpublishService"); });
+      mockUnpublishService.mockImplementation(() => {
+        callOrder.push("unpublishService");
+      });
       mockClearSessionContext.mockImplementation(() => {
         callOrder.push("clearSessionContext");
       });
       mockAbortAll.mockImplementation(() => {
         callOrder.push("abortAll");
       });
-      mockDisposeNotifications.mockImplementation(() => { callOrder.push("disposeNotifications"); });
+      mockDisposeNotifications.mockImplementation(() => {
+        callOrder.push("disposeNotifications");
+      });
       mockDispose.mockImplementation(() => {
         callOrder.push("dispose");
         return Promise.resolve();

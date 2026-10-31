@@ -85,26 +85,21 @@ export async function runForeground(
 
   let record: Subagent;
   try {
-    record = await manager.spawnAndWait(
-      params.snapshot,
-      identity.subagentType,
-      execution.prompt,
-      {
-        description: execution.description,
-        model: execution.model,
-        maxTurns: execution.effectiveMaxTurns,
-        inheritContext: execution.inheritContext,
-        thinkingLevel: execution.thinking,
-        signal,
-        parentSession: params.parentSession,
-        ...(execution.handoff ? { handoff: execution.handoff } : {}),
-        observer: {
-          onSessionCreated: (agent) => {
-            recordRef = agent;
-          },
+    record = await manager.spawnAndWait(params.snapshot, identity.subagentType, execution.prompt, {
+      description: execution.description,
+      model: execution.model,
+      maxTurns: execution.effectiveMaxTurns,
+      inheritContext: execution.inheritContext,
+      thinkingLevel: execution.thinking,
+      signal,
+      parentSession: params.parentSession,
+      ...(execution.handoff ? { handoff: execution.handoff } : {}),
+      observer: {
+        onSessionCreated: (agent) => {
+          recordRef = agent;
         },
       },
-    );
+    });
   } catch (err) {
     clearInterval(spinnerInterval);
     return textResult(err instanceof Error ? err.message : String(err));

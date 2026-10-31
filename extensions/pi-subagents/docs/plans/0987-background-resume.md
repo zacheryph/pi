@@ -123,7 +123,12 @@ if (params.resume) {
   const id = params.resume as string;
   const prompt = params.prompt as string;
   if (params.run_in_background === true) {
-    return this.resumeInBackground(id, prompt, config.identity.displayName, config.presentation.detailBase);
+    return this.resumeInBackground(
+      id,
+      prompt,
+      config.identity.displayName,
+      config.presentation.detailBase,
+    );
   }
   return this.resumeExisting(id, prompt, signal, config.presentation.detailBase);
 }
@@ -138,17 +143,17 @@ A start returns the shared launch renderer with the headline `Agent resumed in b
 
 ```typescript
 export interface BackgroundLaunch {
-  headline: string;               // "Agent started|queued|resumed in background."
+  headline: string; // "Agent started|queued|resumed in background."
   id: string;
   displayName: string;
   description: string;
   detailBase: SpawnPresentation["detailBase"];
-  notes?: readonly string[];      // spawn notes; resume passes none
+  notes?: readonly string[]; // spawn notes; resume passes none
   outputFile?: string;
   queuePosition?: { maxConcurrent: number }; // spawn's queued arm only
 }
 
-export function renderBackgroundLaunch(launch: BackgroundLaunch): AgentToolResult<AgentDetails>
+export function renderBackgroundLaunch(launch: BackgroundLaunch): AgentToolResult<AgentDetails>;
 ```
 
 It lives in `background-spawner.ts`, which already "owns launch message formatting" and which `agent-tool.ts` already imports.
@@ -216,16 +221,16 @@ Predicted unchanged, in the blast radius:
    Tests in `test/lifecycle/subagent-manager.test.ts` under the resume `describe`, in a new nested `describe("startResume")`:
    - returns `{ kind: "started", record }` with `record.status === "running"` while `resumeTurnLoop`'s promise is gated by `Promise.withResolvers` (resolve it at the end);
    - returns `{ kind: "refused", reason: "still-running" }` for a running record and `"unknown-agent"` for an unknown id, without calling `resumeTurnLoop`.
-   Killing mutations: (a) make `startResume` return `{ kind: "started", record: agent }` before calling `agent.resume(...)` — the running-status test goes red; (b) delete the `resumeRefusal` check — the `still-running` test goes red.
-   Verify: every existing `resume` test passes unmodified.
-   Prepares: a non-waiting door (step 5) and the single site for the claim fix (step 3).
+     Killing mutations: (a) make `startResume` return `{ kind: "started", record: agent }` before calling `agent.resume(...)` — the running-status test goes red; (b) delete the `resumeRefusal` check — the `still-running` test goes red.
+     Verify: every existing `resume` test passes unmodified.
+     Prepares: a non-waiting door (step 5) and the single site for the claim fix (step 3).
 3. **`fix(pi-subagents): announce a resumed agent's outcome even after an earlier carrier delivered it`** In `startResume`, `if (options.claimOutcome) agent.claim(); else agent.release();`, with the comment from the Design Overview; update the `release()` caller comment in `src/lifecycle/subagent.ts`.
    Tests in `test/lifecycle/subagent-manager.test.ts`, new `describe("resume announcement after a delivered outcome")`, using a real `NotificationManager` wired as `onSubagentResumed: (r) => notifications.sendCompletion(r)` with the parent run idle:
    - after `spawnFg` (which claims), an unclaimed `resume` sends one completion message (`sendMessage` called once) and leaves `claimed === false`;
    - after a `claimOutcome: true` resume, an unclaimed `resume` sends one completion message;
    - a `claimOutcome: true` resume after `spawnFg` sends none (pins that the fix does not over-release).
-   Killing mutation: revert to `if (options.claimOutcome) agent.claim();` — the first two tests go red, the third stays green.
-   This is the service door's fix too; its commit body says so (an unclaimed `SubagentsService.resume` of an agent that was foreground-spawned or waited on now announces, as the README contract states).
+     Killing mutation: revert to `if (options.claimOutcome) agent.claim();` — the first two tests go red, the third stays green.
+     This is the service door's fix too; its commit body says so (an unclaimed `SubagentsService.resume` of an agent that was foreground-spawned or waited on now announces, as the README contract states).
 4. **`refactor(pi-subagents): give the subagent tool's manager seam startResume`** Add `startResume` to `AgentToolManager` in `src/tools/agent-tool.ts`; add it to `createToolDeps`'s default manager and add `mockResumeStart`/`mockResumeStartRefusal` in `test/helpers/make-deps.ts`, mirroring `mockResumeRecord`/`mockResumeRefusal` (typed `vi.fn` implementations per the `testing` skill so the fixture satisfies the interface).
    No behavior change; `pnpm --filter @gotgenes/pi-subagents run check` after the commit confirms `SubagentManager` still satisfies `AgentToolManager` at the composition root.
 5. **`fix(pi-subagents): resume a subagent in the background when the call asks for run_in_background`** Add the explicit-flag branch and `resumeInBackground` to `AgentTool`; extend the `resume` parameter description.
@@ -236,8 +241,8 @@ Predicted unchanged, in the blast radius:
    - a refusal returns the same sentence the foreground door returns for that reason (one `it.for` over `unknown-agent`, `still-running`);
    - without `run_in_background`, a resume of a type whose agent file declares `run_in_background: true` still calls `manager.resume` (registry override with a custom agent config);
    - with `run_in_background: false`, `manager.resume` is called.
-   Killing mutations, one per class: (a) delete the background branch so every resume goes to `resumeExisting` — the `startResume` call test goes red; (b) route on `config.execution.runInBackground` instead of `params.run_in_background === true` — the frontmatter-default test goes red; (c) pass `{ claimOutcome: true }` to `startResume` — the exact-arguments assertion goes red; (d) call `record.markConsumed()` in `resumeInBackground` — the consumed test goes red; (e) render the launch message before checking `kind === "refused"` — the refusal tests go red.
-   Commit body credits the reporter's diagnosis and expected behavior; final paragraph:
+     Killing mutations, one per class: (a) delete the background branch so every resume goes to `resumeExisting` — the `startResume` call test goes red; (b) route on `config.execution.runInBackground` instead of `params.run_in_background === true` — the frontmatter-default test goes red; (c) pass `{ claimOutcome: true }` to `startResume` — the exact-arguments assertion goes red; (d) call `record.markConsumed()` in `resumeInBackground` — the consumed test goes red; (e) render the launch message before checking `kind === "refused"` — the refusal tests go red.
+     Commit body credits the reporter's diagnosis and expected behavior; final paragraph:
 
    ```text
    Refs #987

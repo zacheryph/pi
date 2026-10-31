@@ -35,10 +35,7 @@ export function registerPreservedWorktreesCommand(
         return;
       }
 
-      const choice = await ctx.ui.select("Preserved rescue worktrees", [
-        ...preserved,
-        CLOSE,
-      ]);
+      const choice = await ctx.ui.select("Preserved rescue worktrees", [...preserved, CLOSE]);
       if (choice === undefined || choice === CLOSE) return;
 
       const confirmed = await ctx.ui.confirm(

@@ -4,20 +4,29 @@ import { StatusTracker } from "#src/status";
 function tracker() {
   let now = 0;
   const status = new StatusTracker(() => now);
-  return { status, tick: (ms: number) => { now += ms; } };
+  return {
+    status,
+    tick: (ms: number) => {
+      now += ms;
+    },
+  };
 }
 
 describe("StatusTracker", () => {
   it("moves from idle to working to a tool and back", () => {
     const { status, tick } = tracker();
     expect(status.current()).toEqual({ kind: "idle", since: 0 });
-    tick(10); status.agentStart();
+    tick(10);
+    status.agentStart();
     expect(status.current()).toEqual({ kind: "working", since: 10 });
-    tick(10); status.toolStart("a", "bash");
+    tick(10);
+    status.toolStart("a", "bash");
     expect(status.current()).toEqual({ kind: "tool", tool: "bash", since: 20 });
-    tick(10); status.toolEnd("a");
+    tick(10);
+    status.toolEnd("a");
     expect(status.current()).toEqual({ kind: "working", since: 30 });
-    tick(10); status.settled();
+    tick(10);
+    status.settled();
     expect(status.current()).toEqual({ kind: "idle", since: 40 });
   });
 

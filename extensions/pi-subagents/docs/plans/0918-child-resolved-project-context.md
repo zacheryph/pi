@@ -1,6 +1,6 @@
 ---
 issue: 918
-issue_title: "pi-subagents-worktrees: `<project_context>`'s inherited `path=\"...\"` attribute defeats worktree isolation, the same way #640's footer did"
+issue_title: 'pi-subagents-worktrees: `<project_context>`''s inherited `path="..."` attribute defeats worktree isolation, the same way #640''s footer did'
 ---
 
 # Resolve a relocated child's project context against its own directory
@@ -101,10 +101,10 @@ A child whose workspace matches its parent's pays nothing, because nothing about
 
 ### Constraints that apply
 
-- [ADR 0006] cuts every layer Pi resolves per session, and rejected *excision* of an interior span because it displaces the tail past the divergence point.
+- [ADR 0006] cuts every layer Pi resolves per session, and rejected _excision_ of an interior span because it displaces the tail past the divergence point.
   Cutting `<project_context>` here is **truncation**, not excision: the catalogue and footer are already gone, so nothing survives past the new cut point.
-- [ADR 0006] also withdrew [#640]'s equal-cwd exception, on the ground that the footer sits *after* the catalogue cut and the exception therefore preserved nothing.
-  That reasoning does not reach this layer, which sits *before* the cut: a cwd-conditional cut here preserves 58,529 shared characters for every non-relocated child.
+- [ADR 0006] also withdrew [#640]'s equal-cwd exception, on the ground that the footer sits _after_ the catalogue cut and the exception therefore preserved nothing.
+  That reasoning does not reach this layer, which sits _before_ the cut: a cwd-conditional cut here preserves 58,529 shared characters for every non-relocated child.
   The condition is re-introduced for the case the old one could not serve, not restored wholesale.
 - [ADR 0008] forbids an extension **editing** the inherited region in place, because the parent keeps its copy and every child's prefix ends at the edit.
   Cutting a trailing span of the child's own adopted identity is the relocation that ADR prescribed, not the edit it refused.
@@ -122,8 +122,7 @@ Concretely, inside `buildAgentPrompt`:
 
 ```ts
 const suppliesOwnProjectContext =
-  inherited !== undefined &&
-  (inherited.strategy === "portable" || cwd !== inherited.cwd);
+  inherited !== undefined && (inherited.strategy === "portable" || cwd !== inherited.cwd);
 ```
 
 - `full` + same cwd → nothing changes.
@@ -272,7 +271,12 @@ const systemPrompt = io.buildAgentPrompt(
   agentConfig,
   effectiveCwd,
   env,
-  { systemPrompt: ctx.parentSystemPrompt, cwd: ctx.cwd, strategy, portablePrompt: ctx.parentPortablePrompt },
+  {
+    systemPrompt: ctx.parentSystemPrompt,
+    cwd: ctx.cwd,
+    strategy,
+    portablePrompt: ctx.parentPortablePrompt,
+  },
   io.loadProjectContext,
 );
 ```
@@ -360,24 +364,24 @@ Steps 1–3 are the Tidy-First assessor's accepted preparatory commits; they cha
 
 2. **`test(pi-subagents): unit-test the project-context renderer directly`** New `test/session/project-context.test.ts`: the byte-exact format assertions (lead-in sentence, blank-line separation, `path=` attribute), lifted from `parent-snapshot.test.ts:83–108`; the composition-order tests stay where they are.
    Prepares: the renderer gains callers whose own tests would not cover its format.
-   *Killing mutation:* drop the `Project-specific instructions and guidelines:` lead-in from the renderer — the new format tests go red, and no existing test does.
+   _Killing mutation:_ drop the `Project-specific instructions and guidelines:` lead-in from the renderer — the new format tests go red, and no existing test does.
 
 3. **`test(pi-subagents): give the parent-prompt fixture a project-context layer`** `parentPrompt()` in `prompts.test.ts` gains `contextFiles?: Array<{ path; content }>`, rendered through `renderProjectContext` and inserted with Pi's separators (`"\n\n" + block + "\n"`) between `identity` and `skills`.
    Add one test using it that must pass **before** any behavior change: a child at the parent's cwd opens with the full identity including the block.
    Prepares: every later step's tests need a positionally-correct block.
-   *Killing mutation:* insert the layer after `skills` instead of before — the new test goes red, because the cut anchors would then find the block past the tail.
+   _Killing mutation:_ insert the layer after `skills` instead of before — the new test goes red, because the cut anchors would then find the block past the tail.
 
 4. **`fix(pi-subagents): stop a relocated child inheriting its parent's project-context paths`** `inheritedIdentity`/`sessionResolvedTailStart` gain the cut flag; `projectContextStartBefore` is added; `buildAgentPrompt` sets the flag when `cwd !== inherited.cwd` under a non-portable strategy.
    Tests: the block and its `path=` attribute are absent for a relocated child in both modes; present, byte for byte, for an equal-cwd child; the cut survives a parent that resolved no skills (footer anchor); a context file quoting `<project_context>` on its own line does not move the cut; a parent prompt with neither catalogue nor footer is still returned unchanged.
-   *Killing mutations:* (a) make `sessionResolvedTailStart` ignore the project-context anchor and return the catalogue/footer index unconditionally — every relocated-child absence test goes red; (b) drop the `cwd !== inherited.cwd` guard so the cut is unconditional — the equal-cwd verbatim tests and the `shared prefix with the parent` tests go red; (c) drop the blank-line skip in `projectContextStartBefore` — the cut never fires, same reds as (a); (d) accept any `<project_context>` line without the lead-in check — the quoted-block test goes red.
+   _Killing mutations:_ (a) make `sessionResolvedTailStart` ignore the project-context anchor and return the catalogue/footer index unconditionally — every relocated-child absence test goes red; (b) drop the `cwd !== inherited.cwd` guard so the cut is unconditional — the equal-cwd verbatim tests and the `shared prefix with the parent` tests go red; (c) drop the blank-line skip in `projectContextStartBefore` — the cut never fires, same reds as (a); (d) accept any `<project_context>` line without the lead-in check — the quoted-block test goes red.
 
 5. **`fix(pi-subagents): give a relocated child its own project instructions`** `ProjectContextLoader`; the optional fifth parameter on `buildAgentPrompt` and the matching `AssemblerIO` member; the relay in `assembleSessionConfig`; placement between identity and header; `debugNote` in `src/debug.ts` and the empty-result note; the `src/index.ts` wiring with `loadProjectContextFiles`; the `assemblerIO` stub in `test/helpers/subagent-session-io.ts` and its exact-keys assertion.
    Tests: a relocated child's prompt carries a `<project_context>` naming **its own** path; the loader is **not** called when the cwds agree; the agent body is still the last section in replace mode; a relocated child whose directory resolves nothing carries no project context and logs the debug note; the composition root wires a loader that reads the child's cwd.
-   *Killing mutations:* (a) call the loader unconditionally — the not-called-when-equal test goes red; (b) place the block after the agent body instead of before the header — the body-last test goes red; (c) return `""` instead of `undefined` for an empty file list — the no-block test goes red (and a bare truthiness check would pass, which is the point of asserting on the rendered output rather than on the call).
+   _Killing mutations:_ (a) call the loader unconditionally — the not-called-when-equal test goes red; (b) place the block after the agent body instead of before the header — the body-last test goes red; (c) return `""` instead of `undefined` for an empty file list — the no-block test goes red (and a bare truthiness check would pass, which is the point of asserting on the rendered output rather than on the call).
 
 6. **`fix(pi-subagents): resolve a portable child's project context against its own directory`** `ParentPromptOptions.contextFiles` removed; `buildPortablePrompt` composes custom + append; `adoptedIdentity` appends the child's own block for `portable` regardless of divergence; `parent-snapshot.test.ts`, `runtime.test.ts`, `composition-root.test.ts`, and `create-subagent-session.test.ts` fixtures updated in the same commit — removing an interface field breaks its constructors at compile time.
    Tests: a relocated portable child's identity names its own path and not the parent's; a non-relocated portable child's prompt is unchanged from today's composed output; the `carries none of Pi's base preamble` guarantee still holds; the no-capture fallback is `genericBase` plus the child's own block, with no Pi base text.
-   *Killing mutation:* keep composing `renderProjectContext(options.contextFiles)` inside `buildPortablePrompt` — the relocated portable child then carries two blocks, one with the parent's path, and both the own-path and no-parent-path assertions go red.
+   _Killing mutation:_ keep composing `renderProjectContext(options.contextFiles)` inside `buildPortablePrompt` — the relocated portable child then carries two blocks, one with the parent's path, and both the own-path and no-parent-path assertions go red.
 
 7. **`docs(pi-subagents): record project context as a directory-resolved layer`** New ADR 0010; the amendment lines in ADRs 0006 and 0009; `docs/configuration.md`'s layer table and `WorkspaceProvider` paragraph, including the author-facing remediation; the `README.md` qualifier; the architecture module tree, the Session count, and the file total; the package skill's inheritance paragraph and domain table.
    Verification: `pnpm exec rumdl check packages/pi-subagents`, and a grep for the stale claims this plan names (`noContextFiles: true` in the skill's inheritance paragraph, `byte for byte` in the configuration table row).

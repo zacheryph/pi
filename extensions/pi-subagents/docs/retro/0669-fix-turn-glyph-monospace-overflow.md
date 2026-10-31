@@ -116,7 +116,7 @@ Test count is unchanged at 1135 — by design, since the guard decision was docu
   Fixed by switching to `cut -d, -f1`, verified equivalent.
   Generalizable: any shell snippet embedded in a block comment must be screened for `*/`, and `sed` substitutions ending in `//` are the common way to smuggle one in.
 - **Tidy First paid off exactly as the plan predicted, and the assessor agreed without adding work.**
-  The `tidy-first-assessor` returned "no preparatory tidying warranted," explicitly reasoning that Step 1 *is* the tidy-first move and that pre-normalizing the literal-vs-escape split would touch the same lines twice for no risk reduction.
+  The `tidy-first-assessor` returned "no preparatory tidying warranted," explicitly reasoning that Step 1 _is_ the tidy-first move and that pre-normalizing the literal-vs-escape split would touch the same lines twice for no risk reduction.
   The extraction commit then passed the full suite with zero test files edited, which is the measurement the plan wanted, and the `fix:` commit's source diff came out to two constants.
 - **The escaped-glyph hazard the plan flagged was real in practice, not just in theory.**
   `src/tools/result-renderer.ts` alone held six `\u23BF` escapes plus one literal `⎿`, and `widget-renderer.ts` line 179 interleaves a box-drawing escape that stays with a `\u25E6` that goes.
@@ -148,7 +148,7 @@ Contributor credit rode every commit as a `Co-authored-by` trailer, and both #66
   Reading Pi's own source at `../pi/packages/tui/src/utils.ts:196` plus an `fc-list` coverage sweep established the real mechanism in under ten tool calls, which is what made the fix generalizable rather than a sympathetic patch.
   The upstream commit message, not the issue, turned out to be the accurate account — worth remembering that a linked upstream fix can be right for reasons its own issue states incorrectly.
 - **Tidy First validated a plan's sequencing instead of adding work.**
-  The `tidy-first-assessor` returned "no preparatory tidying warranted" and argued that Step 1 *was* the tidy-first move, explicitly rejecting a pre-normalization pass as double-touching the same lines.
+  The `tidy-first-assessor` returned "no preparatory tidying warranted" and argued that Step 1 _was_ the tidy-first move, explicitly rejecting a pre-normalization pass as double-touching the same lines.
   This is the first time the assessor's value showed up as a confirmation rather than a list — a useful demonstration that a null result from it is a real signal, not a wasted dispatch.
 - **The extraction's correctness proof was a measurement, not an argument.**
   "Full suite green with zero test files edited" is checkable in a way that "this refactor is behavior-preserving" is not.

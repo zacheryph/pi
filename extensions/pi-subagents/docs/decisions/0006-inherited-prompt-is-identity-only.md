@@ -11,9 +11,9 @@ Accepted, and amended by [ADR 0008], [ADR 0010], and [ADR 0011].
 Supersedes the equal-cwd exception recorded in [#640] and generalizes it into one rule for every layer Pi resolves per session.
 
 The mechanism below is unchanged: a child still inherits the identity region and nothing after it.
-[ADR 0008] amends what that placement *guarantees* — shared parts rather than shared bytes, scoped to hosts that reuse a prefix over the system text independently of the tool definitions — after [#890] found that an extension narrowing the `Available tools:` listing inside this region ended the shared prefix at offset 171.
-[ADR 0010] amends where the region *ends* for one population: `<project_context>` names each context file by absolute path, so a child a `WorkspaceProvider` relocated cuts at that block instead and resolves its own ([#918]).
-[ADR 0011] amends what the region *contains* on Pi's section-shaped prompt: the `<tools>` and `<rules>` sections are session-resolved, so they are excised from the identity a child keeps, the one interior span this record's truncation rule does not govern.
+[ADR 0008] amends what that placement _guarantees_ — shared parts rather than shared bytes, scoped to hosts that reuse a prefix over the system text independently of the tool definitions — after [#890] found that an extension narrowing the `Available tools:` listing inside this region ended the shared prefix at offset 171.
+[ADR 0010] amends where the region _ends_ for one population: `<project_context>` names each context file by absolute path, so a child a `WorkspaceProvider` relocated cuts at that block instead and resolves its own ([#918]).
+[ADR 0011] amends what the region _contains_ on Pi's section-shaped prompt: the `<tools>` and `<rules>` sections are session-resolved, so they are excised from the identity a child keeps, the one interior span this record's truncation rule does not govern.
 
 ## Context
 
@@ -21,7 +21,7 @@ The mechanism below is unchanged: a child still inherits the identity region and
 That placement is deliberate and load-bearing: [#180] and [#400] moved the shared parent text to the front precisely so a child's prompt shares a byte-identical prefix with its parent's, which prefix-caching providers and local inference engines reuse instead of reprocessing.
 The reporter of [#180] measured 8,333 shared tokens costing roughly 40 seconds of prompt processing on a local model before that change.
 
-What the placement overlooked is that the parent's *effective* prompt is not identity alone.
+What the placement overlooked is that the parent's _effective_ prompt is not identity alone.
 Pi's `buildSystemPrompt` writes four regions and extensions append a fifth:
 
 | Region          | Content                                                             | Written by                                                                                               |
@@ -33,7 +33,7 @@ Pi's `buildSystemPrompt` writes four regions and extensions append a fifth:
 | Extension tail  | further blocks                                                      | handlers returning `systemPrompt` from `before_agent_start`                                              |
 
 The last three are resolved against **one session**: its directory, its loaded skills, its bound extensions.
-The extension tail is resolved against one *turn* — Pi rebuilds it from the base prompt on every turn and applies it as a single-turn override.
+The extension tail is resolved against one _turn_ — Pi rebuilds it from the base prompt on every turn and applies it as a single-turn override.
 
 A child session rebuilds all three for itself and appends them after the inherited copy.
 Inheriting them therefore hands the child a second, stale claim of each.
@@ -90,7 +90,7 @@ Both anchors match whole lines, which keeps a footer naming a directory that mer
   Nothing that remains in the child's prompt moved out of that prefix, so no additional tokens require processing.
 - `@gotgenes/pi-nocd` documents a rewrite path premised on subagents inheriting the prompt verbatim, which this decision ends.
   Tracked as [#846].
-- A consumer that recovers the inherited region by searching a child's prompt for the parent's *full* assembled prompt finds nothing, because truncation ends the containment it matches on.
+- A consumer that recovers the inherited region by searching a child's prompt for the parent's _full_ assembled prompt finds nothing, because truncation ends the containment it matches on.
   `pi-claude-bridge` does exactly this to project a child's prompt onto another harness, so a child on that provider forwards Pi's base prompt where the parent forwards only its portable parts.
   Reported as [#883]; a consumer-side matcher fix is proposed at [pi-claude-bridge#88].
   A child whose cwd differs from its parent's is beyond any such fix: Pi's `useExtensionCacheCwd` clears the extension cache on a cwd change, so the consumer's capture of the parent never exists in the child's module instance at all.

@@ -33,7 +33,7 @@ The resume-return edge in `AgentTool.execute` has the same shape: it returns the
 ## Non-Goals
 
 - **The ask-back capability itself** ([#465], Phase 22 Step 8).
-  This step makes a foreground child's question *answerable*; recognizing that a result *is* a question, and nudging the parent about it, is Step 8's mechanism and its own plan.
+  This step makes a foreground child's question _answerable_; recognizing that a result _is_ a question, and nudging the parent about it, is Step 8's mechanism and its own plan.
 - **A shared `renderAgentIdLine()` helper in `tools/helpers.ts`.**
   Considered and declined at the design gate: the literal is one line rendered into three different surrounding contexts, and the published metric row greps the spelling in `foreground-runner.ts` specifically.
   The tidy-first assessor did not re-propose it.
@@ -233,7 +233,7 @@ Re-measure at implementation time rather than writing the predicted number into 
 ## Open Questions
 
 None.
-Step 8 ([#465]) will decide how a child's question is *recognized* and surfaced; this step deliberately settles only the handle's delivery, which that step's soft dependency needs first.
+Step 8 ([#465]) will decide how a child's question is _recognized_ and surfaced; this step deliberately settles only the handle's delivery, which that step's soft dependency needs first.
 
 [#465]: https://github.com/gotgenes/pi-packages/issues/465
 [#617]: https://github.com/gotgenes/pi-packages/issues/617

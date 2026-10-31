@@ -35,17 +35,17 @@ Runtime registrations live on the runtime instance, not in either file, so the c
 ## Non-Goals
 
 - **Not adopting [#811] as written.**
-  The PR reaches `ModelRegistry`'s `private readonly runtime` field and forwards the parent's runtime *instance* to every child.
+  The PR reaches `ModelRegistry`'s `private readonly runtime` field and forwards the parent's runtime _instance_ to every child.
   The triage note in `docs/retro/0812-runtime-registered-providers-in-child-sessions.md` records the operator's decision to use the public replay path instead.
 - **No live inheritance.**
-  A provider registered in the parent *after* a child spawns will not appear in that running child.
+  A provider registered in the parent _after_ a child spawns will not appear in that running child.
   This is the committed contract, not a limitation to revisit — see Design Overview.
 - **No upstream Pi issue.**
   The extension facade withholds `ModelRuntime` deliberately (`sdk.md` lines 1177-1178) and already exposes sufficient public API.
 - **No SDK bump for sibling packages.**
   The other eight packages pin `0.79.1` and are unaffected by this defect; bumping them is unrelated churn and is not tracked as a follow-up.
 - **No change to `createSubagentSession`, `CreateSessionOptions`, or `SessionFactoryIO`.**
-  `modelRegistry` stays a field of `CreateSessionOptions` — it becomes the replay *source* rather than a pass-through to the SDK.
+  `modelRegistry` stays a field of `CreateSessionOptions` — it becomes the replay _source_ rather than a pass-through to the SDK.
 
 ## Background
 
@@ -203,7 +203,7 @@ Nothing today covers this path.
 
 **Tests that must stay as-is.**
 `test/lifecycle/create-subagent-session.test.ts` asserts `io.createSession` receives `expect.objectContaining({ cwd, agentDir })` and `{ settingsManager }`.
-Those pin the *factory's* contract, which this change preserves — `createSubagentSession` still hands `modelRegistry` down; only what the root does with it changes.
+Those pin the _factory's_ contract, which this change preserves — `createSubagentSession` still hands `modelRegistry` down; only what the root does with it changes.
 `test/print-mode.test.ts` loads `#src/index` with a fake `pi` and mocks `createSubagentSession`, so it never reaches `io.createSession` and is unaffected.
 
 **Composition-root test feasibility.**

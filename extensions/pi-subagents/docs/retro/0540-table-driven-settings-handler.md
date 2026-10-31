@@ -54,7 +54,7 @@ Issue #540 closed; no release tag.
 #### What went well
 
 - **Plan-time hazard identification paid off.**
-  The `NaN`-comparison-direction hazard (`parseInt("abc")` → `NaN`, and `NaN >= min` is `false`) was spotted at planning time and pinned with a forward-guard regression test *before* the refactor.
+  The `NaN`-comparison-direction hazard (`parseInt("abc")` → `NaN`, and `NaN >= min` is `false`) was spotted at planning time and pinned with a forward-guard regression test _before_ the refactor.
   The test passed immediately (as predicted) and the refactor preserved `n >= descriptor.minimum` exactly — textbook defensive refactoring, no surprises.
 - **Plan ordering pre-empted the Tidy-First assessor.**
   The plan's pin-test-first, then-rewrite sequencing already embodied the Tidy First move, so the `tidy-first-assessor` found "no preparatory tidying warranted" — a clean confirmation that plan-time Tidy First thinking leaves the assessor nothing to add.
@@ -69,7 +69,7 @@ Issue #540 closed; no release tag.
   This gotcha is already documented in the `markdown-conventions` skill — no new rule warranted.
 - `other` (self-caught) — the plan's Non-Goals declared the architecture-doc Step 6 update "outside this plan's scope" (asserting it lands "when the phase history is written"), which contradicts the `/tdd-plan` template's requirement to mark a completed numbered roadmap step `✅` at TDD completion.
   Reconciled correctly by treating the template as authoritative and adding the doc-update commit.
-  Impact: one extra `docs:` commit; no rework, but the plan carried a slightly wrong mental model of *when* the roadmap doc gets its `✅`.
+  Impact: one extra `docs:` commit; no rework, but the plan carried a slightly wrong mental model of _when_ the roadmap doc gets its `✅`.
 
 #### What caused friction (user side)
 

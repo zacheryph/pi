@@ -81,7 +81,12 @@ A minimal class that implements `AgentRunner` by delegating to the free function
 export class ConcreteAgentRunner implements AgentRunner {
   constructor(private readonly io: RunnerIO) {}
 
-  async run(snapshot: ParentSnapshot, type: SubagentType, prompt: string, options: RunOptions): Promise<RunResult> {
+  async run(
+    snapshot: ParentSnapshot,
+    type: SubagentType,
+    prompt: string,
+    options: RunOptions,
+  ): Promise<RunResult> {
     return runAgent(snapshot, type, prompt, options, this.io);
   }
 

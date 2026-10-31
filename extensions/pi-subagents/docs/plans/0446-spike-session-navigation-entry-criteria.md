@@ -14,7 +14,7 @@ The deliverable is an ADR addendum that unblocks Step 4 ([#445]); it ships on it
 
 ## Problem Statement
 
-ADR-0004 (Phase 18) decided the UI *direction* — replace the bespoke `ConversationViewer` overlay with Pi's own session machinery applied to each child's already-persisted session JSONL — but deliberately left the *mechanism* open behind four "Phase 19 entry criteria."
+ADR-0004 (Phase 18) decided the UI _direction_ — replace the bespoke `ConversationViewer` overlay with Pi's own session machinery applied to each child's already-persisted session JSONL — but deliberately left the _mechanism_ open behind four "Phase 19 entry criteria."
 Each criterion changes the shape of the Step 4 session-navigation code, so all four must be answered before that work can begin.
 This is a spike: produce a minimal, throwaway investigation that answers each criterion against the real SDK surface, then record the answers as an addendum to `docs/decisions/0004-reconsider-ui-direction.md`.
 No production source files change; the spike closes when the ADR addendum is merged.

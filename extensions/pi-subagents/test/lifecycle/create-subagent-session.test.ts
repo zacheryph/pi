@@ -19,7 +19,9 @@ import {
  * The context a custom tool's `execute` receives, derived from the call it
  * feeds so the stub fits whichever context type the installed SDK declares.
  */
-type ExecuteCtx = Parameters<NonNullable<CreateSessionOptions["customTools"]>[number]["execute"]>[4];
+type ExecuteCtx = Parameters<
+  NonNullable<CreateSessionOptions["customTools"]>[number]["execute"]
+>[4];
 
 /** Mock AgentConfigLookup. */
 const mockAgentLookup = createAgentLookup();
@@ -92,7 +94,10 @@ describe("createSubagentSession — assembly", () => {
       expect.objectContaining({ cwd: "/tmp/worktree", agentDir: "/mock/agent-dir" }),
     );
     expect(io.createSettingsManager).toHaveBeenCalledWith("/tmp/worktree", "/mock/agent-dir");
-    expect(io.createSessionManager).toHaveBeenCalledWith("/tmp/worktree", "/mock/session-dir/tasks");
+    expect(io.createSessionManager).toHaveBeenCalledWith(
+      "/tmp/worktree",
+      "/mock/session-dir/tasks",
+    );
     expect(io.createSession).toHaveBeenCalledWith(
       expect.objectContaining({ cwd: "/tmp/worktree", agentDir: "/mock/agent-dir" }),
     );
@@ -149,7 +154,10 @@ describe("createSubagentSession — assembly", () => {
       {
         snapshot: STUB_SNAPSHOT,
         type: "Explore",
-        parentSession: { parentSessionFile: "/sessions/parent.jsonl", parentSessionId: "parent-id-123" },
+        parentSession: {
+          parentSessionFile: "/sessions/parent.jsonl",
+          parentSessionId: "parent-id-123",
+        },
       },
       createSubagentSessionDeps({ io, exec, registry: mockAgentLookup }),
     );
@@ -251,15 +259,24 @@ describe("createSubagentSession — lifecycle ordering", () => {
         snapshot: STUB_SNAPSHOT,
         type: "Explore",
         agentId: "agent-7",
-        parentSession: { parentSessionFile: "/sessions/parent.jsonl", parentSessionId: "parent-session-42" },
+        parentSession: {
+          parentSessionFile: "/sessions/parent.jsonl",
+          parentSessionId: "parent-session-42",
+        },
       },
       createSubagentSessionDeps({ io, exec, registry: mockAgentLookup, lifecycle }),
     );
     await sub.dispose();
 
     const identity = { sessionId: "child-session-id", agentId: "agent-7" };
-    expect(lifecycle.sessionCreated).toHaveBeenCalledWith({ ...identity, parentSessionId: "parent-session-42" });
-    expect(lifecycle.bound).toHaveBeenCalledWith({ ...identity, parentSessionId: "parent-session-42" });
+    expect(lifecycle.sessionCreated).toHaveBeenCalledWith({
+      ...identity,
+      parentSessionId: "parent-session-42",
+    });
+    expect(lifecycle.bound).toHaveBeenCalledWith({
+      ...identity,
+      parentSessionId: "parent-session-42",
+    });
     expect(lifecycle.disposed).toHaveBeenCalledWith(identity);
   });
 
@@ -364,21 +381,46 @@ describe("createSubagentSession — recursion guard", () => {
     await createSubagentSession(
       { snapshot: STUB_SNAPSHOT, type: "orchestrator" },
       createSubagentSessionDeps({
-        io, exec, registry: new AgentTypeRegistry(() => new Map()),
-        listParentToolNames: () => ["read", "bash", "edit", "write", "todo", "subagent", "get_subagent_result", "steer_subagent", "specialist"],
+        io,
+        exec,
+        registry: new AgentTypeRegistry(() => new Map()),
+        listParentToolNames: () => [
+          "read",
+          "bash",
+          "edit",
+          "write",
+          "todo",
+          "subagent",
+          "get_subagent_result",
+          "steer_subagent",
+          "specialist",
+        ],
       }),
     );
-    expect(io.createSession).toHaveBeenCalledWith(expect.objectContaining({
-      tools: ["read", "bash", "edit", "write", "todo", "subagent", "get_subagent_result", "steer_subagent", "specialist"],
-      excludeTools: [],
-    }));
+    expect(io.createSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tools: [
+          "read",
+          "bash",
+          "edit",
+          "write",
+          "todo",
+          "subagent",
+          "get_subagent_result",
+          "steer_subagent",
+          "specialist",
+        ],
+        excludeTools: [],
+      }),
+    );
   });
 
   it("admits only explicitly named delegation tools and honors exclusions in the captured profile", async () => {
     arrangeFactory();
     await createSubagentSession(
       {
-        snapshot: STUB_SNAPSHOT, type: "orchestrator",
+        snapshot: STUB_SNAPSHOT,
+        type: "orchestrator",
         agentConfig: {
           ...new AgentTypeRegistry(() => new Map()).resolveAgentConfig("orchestrator"),
           toolNames: ["all", "subagent", "steer_subagent", "-steer_subagent"],
@@ -386,10 +428,12 @@ describe("createSubagentSession — recursion guard", () => {
       },
       defaultDeps(),
     );
-    expect(io.createSession).toHaveBeenCalledWith(expect.objectContaining({
-      tools: ["subagent"],
-      excludeTools: ["get_subagent_result", "steer_subagent"],
-    }));
+    expect(io.createSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tools: ["subagent"],
+        excludeTools: ["get_subagent_result", "steer_subagent"],
+      }),
+    );
   });
 });
 
@@ -465,9 +509,7 @@ describe("createSubagentSession — the core's own child tools", () => {
 
       await createSubagentSession({ snapshot: STUB_SNAPSHOT, type: "Explore" }, defaultDeps());
 
-      expect(io.createSession).toHaveBeenCalledWith(
-        expect.objectContaining({ tools: ["read"] }),
-      );
+      expect(io.createSession).toHaveBeenCalledWith(expect.objectContaining({ tools: ["read"] }));
     });
 
     it("installs no custom tools", async () => {
@@ -557,16 +599,34 @@ describe("createSubagentSession — all tools and MCP patterns", () => {
     await createSubagentSession(
       { snapshot: STUB_SNAPSHOT, type: "general-purpose" },
       createSubagentSessionDeps({
-        io, exec, registry: createAgentLookup({ toolNames: undefined }),
+        io,
+        exec,
+        registry: createAgentLookup({ toolNames: undefined }),
         listParentToolNames: () => [
-          "read", "bash", "edit", "codemode", "tool_search", "mcp__github__get_issue", "my_extension",
+          "read",
+          "bash",
+          "edit",
+          "codemode",
+          "tool_search",
+          "mcp__github__get_issue",
+          "my_extension",
         ],
       }),
     );
-    expect(io.createSession).toHaveBeenCalledWith(expect.objectContaining({
-      tools: ["read", "bash", "edit", "codemode", "tool_search", "mcp__github__get_issue", "my_extension"],
-      excludeTools: ["subagent", "get_subagent_result", "steer_subagent"],
-    }));
+    expect(io.createSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tools: [
+          "read",
+          "bash",
+          "edit",
+          "codemode",
+          "tool_search",
+          "mcp__github__get_issue",
+          "my_extension",
+        ],
+        excludeTools: ["subagent", "get_subagent_result", "steer_subagent"],
+      }),
+    );
     expect(loadedBuiltinNames()).toEqual(["codemode", "tool-search", "mcp"]);
   });
 
@@ -575,15 +635,24 @@ describe("createSubagentSession — all tools and MCP patterns", () => {
     await createSubagentSession(
       { snapshot: STUB_SNAPSHOT, type: "general-purpose" },
       createSubagentSessionDeps({
-        io, exec, registry: createAgentLookup({ toolNames: ["all", "-bash", "-mcp__github__*"] }),
+        io,
+        exec,
+        registry: createAgentLookup({ toolNames: ["all", "-bash", "-mcp__github__*"] }),
         listParentToolNames: () => [
-          "read", "bash", "codemode", "mcp__github__a", "mcp__gitlab__b", "my_extension",
+          "read",
+          "bash",
+          "codemode",
+          "mcp__github__a",
+          "mcp__gitlab__b",
+          "my_extension",
         ],
       }),
     );
-    expect(io.createSession).toHaveBeenCalledWith(expect.objectContaining({
-      tools: ["read", "codemode", "mcp__gitlab__b", "my_extension"],
-    }));
+    expect(io.createSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tools: ["read", "codemode", "mcp__gitlab__b", "my_extension"],
+      }),
+    );
     expect(loadedBuiltinNames()).toEqual(["codemode", "mcp"]);
   });
 
@@ -592,13 +661,17 @@ describe("createSubagentSession — all tools and MCP patterns", () => {
     await createSubagentSession(
       { snapshot: STUB_SNAPSHOT, type: "general-purpose" },
       createSubagentSessionDeps({
-        io, exec, registry: createAgentLookup({ toolNames: ["all"] }),
+        io,
+        exec,
+        registry: createAgentLookup({ toolNames: ["all"] }),
         listParentToolNames: () => ["read", "subagent", "steer_subagent", "get_subagent_result"],
       }),
     );
-    expect(io.createSession).toHaveBeenCalledWith(expect.objectContaining({
-      excludeTools: ["subagent", "get_subagent_result", "steer_subagent"],
-    }));
+    expect(io.createSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        excludeTools: ["subagent", "get_subagent_result", "steer_subagent"],
+      }),
+    );
   });
 
   const PARENT_TOOLS = ["read", "mcp__github__a", "mcp__github__b", "mcp__gitlab__c"];

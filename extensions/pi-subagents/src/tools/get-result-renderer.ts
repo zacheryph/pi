@@ -30,27 +30,27 @@ export const PREVIEW_CHARS = 200;
  * `preview` is bounded at `PREVIEW_CHARS` by its producer.
  */
 export interface GetResultDetails {
-	agentId: string;
-	displayName: string;
-	status: SubagentStatus;
-	description: string;
-	toolUses: number;
-	/** Pre-formatted lifetime token total; "" when zero. */
-	tokens: string;
-	contextPercent: number | null;
-	compactionCount: number;
-	/** Pre-formatted duration string. */
-	duration: string;
-	/** First non-empty line of the result body, clipped. Never the whole result. */
-	preview?: string;
-	error?: string;
-	/** The run's turn limit and its use; absent when no limit applied. */
-	turnBudget?: TurnBudget;
-	/** Whether the conversation was requested, so the expanded view can say where it went. */
-	verbose: boolean;
-	transcriptPath?: string;
-	/** The model's `provider/id`; optional because details persisted by older versions lack it. */
-	modelName?: string;
+  agentId: string;
+  displayName: string;
+  status: SubagentStatus;
+  description: string;
+  toolUses: number;
+  /** Pre-formatted lifetime token total; "" when zero. */
+  tokens: string;
+  contextPercent: number | null;
+  compactionCount: number;
+  /** Pre-formatted duration string. */
+  duration: string;
+  /** First non-empty line of the result body, clipped. Never the whole result. */
+  preview?: string;
+  error?: string;
+  /** The run's turn limit and its use; absent when no limit applied. */
+  turnBudget?: TurnBudget;
+  /** Whether the conversation was requested, so the expanded view can say where it went. */
+  verbose: boolean;
+  transcriptPath?: string;
+  /** The model's `provider/id`; optional because details persisted by older versions lack it. */
+  modelName?: string;
 }
 
 /**
@@ -60,66 +60,66 @@ export interface GetResultDetails {
  * report text, capped. Neither grows with the size of the result.
  */
 export function renderGetResultLines(
-	details: GetResultDetails,
-	reportText: string,
-	expanded: boolean,
-	theme: Theme,
+  details: GetResultDetails,
+  reportText: string,
+  expanded: boolean,
+  theme: Theme,
 ): string[] {
-	return expanded
-		? renderExpandedReport(details, reportText, theme)
-		: renderCollapsedSummary(details, theme);
+  return expanded
+    ? renderExpandedReport(details, reportText, theme)
+    : renderCollapsedSummary(details, theme);
 }
 
 /** Status glyph and stats, then the description and either the preview or the error. */
 function renderCollapsedSummary(details: GetResultDetails, theme: Theme): string[] {
-	const lines = [`${renderOutcomeIcon(details, theme)} ${renderStats(details, theme)}`];
-	if (details.description) lines.push(subLine(details.description, "dim", theme));
-	if (details.error) {
-		lines.push(subLine(details.error, "error", theme));
-	} else if (details.preview) {
-		lines.push(subLine(details.preview, "dim", theme));
-	}
-	return lines;
+  const lines = [`${renderOutcomeIcon(details, theme)} ${renderStats(details, theme)}`];
+  if (details.description) lines.push(subLine(details.description, "dim", theme));
+  if (details.error) {
+    lines.push(subLine(details.error, "error", theme));
+  } else if (details.preview) {
+    lines.push(subLine(details.preview, "dim", theme));
+  }
+  return lines;
 }
 
 /** The report text capped at MAX_EXPANDED_LINES, with an indicator when lines were dropped. */
 function renderExpandedReport(
-	details: GetResultDetails,
-	reportText: string,
-	theme: Theme,
+  details: GetResultDetails,
+  reportText: string,
+  theme: Theme,
 ): string[] {
-	const reportLines = reportText.split("\n");
-	const shown = reportLines.slice(0, MAX_EXPANDED_LINES);
-	const lines = shown.map((line) => theme.fg("dim", `  ${line}`));
-	const dropped = reportLines.length - shown.length;
-	if (dropped > 0) lines.push(theme.fg("muted", `  ${renderOverflowNotice(details, dropped)}`));
-	return lines;
+  const reportLines = reportText.split("\n");
+  const shown = reportLines.slice(0, MAX_EXPANDED_LINES);
+  const lines = shown.map((line) => theme.fg("dim", `  ${line}`));
+  const dropped = reportLines.length - shown.length;
+  if (dropped > 0) lines.push(theme.fg("muted", `  ${renderOverflowNotice(details, dropped)}`));
+  return lines;
 }
 
 /** Say how much was withheld and where the whole of it can still be read. */
 function renderOverflowNotice(details: GetResultDetails, dropped: number): string {
-	const withheld = details.verbose ? `${dropped} more lines, including the conversation` : `${dropped} more lines`;
-	const where = details.transcriptPath ? ` — full transcript at ${details.transcriptPath}` : "";
-	return `… (${withheld}${where})`;
+  const withheld = details.verbose
+    ? `${dropped} more lines, including the conversation`
+    : `${dropped} more lines`;
+  const where = details.transcriptPath ? ` — full transcript at ${details.transcriptPath}` : "";
+  return `… (${withheld}${where})`;
 }
 
 /** The dim continuation line beneath the status line. */
 function subLine(text: string, color: Parameters<Theme["fg"]>[0], theme: Theme): string {
-	return theme.fg(color, `  ${GLYPHS.subLine}  ${text}`);
+  return theme.fg(color, `  ${GLYPHS.subLine}  ${text}`);
 }
 
 /** Build the stats string: "Explore · anthropic/claude-haiku-4-5 · 44 tool uses · 95.9k token · 9% · ⇊3 · 213.0s". */
 function renderStats(details: GetResultDetails, theme: Theme): string {
-	const parts = [details.displayName];
-	if (details.modelName) parts.push(details.modelName);
-	if (details.toolUses > 0) {
-		parts.push(`${details.toolUses} tool use${details.toolUses === 1 ? "" : "s"}`);
-	}
-	if (details.tokens) parts.push(details.tokens);
-	if (details.contextPercent !== null) parts.push(`${Math.round(details.contextPercent)}%`);
-	if (details.compactionCount > 0) parts.push(`${GLYPHS.compactions}${details.compactionCount}`);
-	parts.push(details.duration);
-	return parts
-		.map((part) => theme.fg("dim", part))
-		.join(" " + theme.fg("dim", "\u00B7") + " ");
+  const parts = [details.displayName];
+  if (details.modelName) parts.push(details.modelName);
+  if (details.toolUses > 0) {
+    parts.push(`${details.toolUses} tool use${details.toolUses === 1 ? "" : "s"}`);
+  }
+  if (details.tokens) parts.push(details.tokens);
+  if (details.contextPercent !== null) parts.push(`${Math.round(details.contextPercent)}%`);
+  if (details.compactionCount > 0) parts.push(`${GLYPHS.compactions}${details.compactionCount}`);
+  parts.push(details.duration);
+  return parts.map((part) => theme.fg("dim", part)).join(" " + theme.fg("dim", "\u00B7") + " ");
 }

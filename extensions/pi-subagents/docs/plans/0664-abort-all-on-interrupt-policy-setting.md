@@ -18,7 +18,7 @@ Issue [#676] (shortcut-driven stop UX) is the only related open issue, and the t
 `InterruptHandler` (`src/handlers/interrupt.ts`) latches the parent turn's `AbortSignal` and calls `manager.abortAll()` when it fires.
 Pressing ESC to redirect the parent mid-sentence therefore also kills every background subagent, including long-running work the interrupt was never aimed at.
 
-Background agents are presented as fire-and-forget ("You will be notified when this agent completes"), and a parent-turn interrupt expresses "stop what *you* are saying", not "stop all delegated work".
+Background agents are presented as fire-and-forget ("You will be notified when this agent completes"), and a parent-turn interrupt expresses "stop what _you_ are saying", not "stop all delegated work".
 At the same time ESC-as-universal-stop is a defensible panic button that some users rely on.
 That makes this policy, not a defect — so the answer is a setting, not a behavior change.
 
@@ -29,7 +29,7 @@ The triage session (`docs/retro/0664-abort-all-on-interrupt-policy-setting.md`) 
 
 - Add an `abortAllOnInterrupt` setting, defaulting to `true`, persisted alongside the existing numeric settings.
 - `InterruptHandler` consults the policy **at abort time**, not at wiring time, so a mid-session settings change applies to the very next ESC.
-- With `abortAllOnInterrupt: false`, ESC stops the parent and leaves background *and queued* subagents running.
+- With `abortAllOnInterrupt: false`, ESC stops the parent and leaves background _and queued_ subagents running.
 - The setting is toggleable from `/subagents:settings` as a direct flip, with no input prompt.
 - README documents that foreground agents abort on ESC regardless of this setting, and why.
 

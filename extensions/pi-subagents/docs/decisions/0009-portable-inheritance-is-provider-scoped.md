@@ -30,7 +30,7 @@ The parent passes because the bridge's projection carries only its portable part
 
 ### Why the region cannot simply be narrowed further
 
-The offending line is in Pi's base preamble, which `inheritedIdentity` keeps by construction — the cut is at the *first per-session layer*, and the preamble precedes all of them.
+The offending line is in Pi's base preamble, which `inheritedIdentity` keeps by construction — the cut is at the _first per-session layer_, and the preamble precedes all of them.
 Cutting further would not be a boundary any principle draws; it would be a blocklist of phrases one provider currently dislikes.
 
 ### The benefit being traded away is real, and recently restored

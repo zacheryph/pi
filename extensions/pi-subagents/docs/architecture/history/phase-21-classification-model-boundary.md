@@ -7,13 +7,13 @@ No polish step is manufactured to fill the ceiling; the scout's scattered findin
 
 ## Health metrics
 
-| Metric                                                            | Phase 20 (end) | Phase 21 target | Recompute                                                                                                             |
-| ----------------------------------------------------------------- | -------------- | --------------- | --------------------------------------------------------------------------------------------------------------------- |
-| Health score                                                      | 78/100 (B)     | ≥ 78 (B)        | `pnpm fallow health --score --workspace @gotgenes/pi-subagents`                                                       |
-| Multi-status classification groupings outside `subagent-state.ts` | 11             | ≤ 2 → 2 ✅      | `grep -rEn 'status [!=]== "[a-z]+" (\|\||&&) ' packages/pi-subagents/src --include="*.ts" \| grep -vc subagent-state` |
-| `model`/`parentModel` typed `unknown` in `src/`                   | 7              | 0 ✅            | `grep -rEn "model\??: unknown\|parentModel\??: unknown" packages/pi-subagents/src --include="*.ts" \| wc -l`          |
-| Direct `this.mark*` calls inside `resume()`                       | 2              | 0               | `sed -n '/async resume(/,/^\t}/p' packages/pi-subagents/src/lifecycle/subagent.ts \| grep -c 'this\.mark'`            |
-| Dead code / production duplication                                | 0 / 0          | 0 / 0           | `pnpm fallow dead-code --workspace @gotgenes/pi-subagents` / `pnpm fallow dupes --workspace @gotgenes/pi-subagents`   |
+| Metric                                                            | Phase 20 (end) | Phase 21 target | Recompute                                                                                                           |
+| ----------------------------------------------------------------- | -------------- | --------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Health score                                                      | 78/100 (B)     | ≥ 78 (B)        | `pnpm fallow health --score --workspace @gotgenes/pi-subagents`                                                     |
+| Multi-status classification groupings outside `subagent-state.ts` | 11             | ≤ 2 → 2 ✅      | `grep -rEn 'status [!=]== "[a-z]+" (\|\|                                                                            | &&) ' packages/pi-subagents/src --include="*.ts" \| grep -vc subagent-state` |
+| `model`/`parentModel` typed `unknown` in `src/`                   | 7              | 0 ✅            | `grep -rEn "model\??: unknown\|parentModel\??: unknown" packages/pi-subagents/src --include="*.ts" \| wc -l`        |
+| Direct `this.mark*` calls inside `resume()`                       | 2              | 0               | `sed -n '/async resume(/,/^\t}/p' packages/pi-subagents/src/lifecycle/subagent.ts \| grep -c 'this\.mark'`          |
+| Dead code / production duplication                                | 0 / 0          | 0 / 0           | `pnpm fallow dead-code --workspace @gotgenes/pi-subagents` / `pnpm fallow dupes --workspace @gotgenes/pi-subagents` |
 
 All three targeted metrics were confirmed delivered at archive time (recomputed 2026-07): the classification-grouping grep lands at 2, the `model`/`parentModel` `unknown` grep lands at 0, and the `resume()` `this.mark*` grep lands at 0.
 The recomputed health score reproduces 78/100 (B) using the `--hotspots --targets` form (the bare `--score` form reports 88 A on this workspace — the two forms diverge, and 78 B is the form the baseline was computed with).

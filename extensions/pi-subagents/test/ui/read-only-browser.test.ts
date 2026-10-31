@@ -1,43 +1,73 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
-  CURSOR_MARKER, KeybindingsManager, renderFakeCursor, TUI_KEYBINDINGS, type TuiMouseEvent, visibleWidth,
+  CURSOR_MARKER,
+  KeybindingsManager,
+  renderFakeCursor,
+  TUI_KEYBINDINGS,
+  type TuiMouseEvent,
+  visibleWidth,
 } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 import {
-  type BrowserView, ReadOnlyBrowser, type ReadOnlyBrowserOptions, sanitizeBrowserText, showReadOnlyBrowser,
+  type BrowserView,
+  ReadOnlyBrowser,
+  type ReadOnlyBrowserOptions,
+  sanitizeBrowserText,
+  showReadOnlyBrowser,
 } from "#src/ui/read-only-browser";
 
-const ESC = "\x1b", ENTER = "\r", DOWN = "\x1b[B", PAGE_DOWN = "\x1b[6~", PAGE_UP = "\x1b[5~";
-const HOME = "\x1b[H", END = "\x1b[F";
+const ESC = "\x1b",
+  ENTER = "\r",
+  DOWN = "\x1b[B",
+  PAGE_DOWN = "\x1b[6~",
+  PAGE_UP = "\x1b[5~";
+const HOME = "\x1b[H",
+  END = "\x1b[F";
 const body = Array.from({ length: 100 }, (_, i) => `row${String(i).padStart(3, "0")}`).join("\n");
 const view: BrowserView = {
-  title: "Definitions", note: "Read-only snapshot",
+  title: "Definitions",
+  note: "Read-only snapshot",
   items: Array.from({ length: 40 }, (_, i) => ({
-    id: String(i), label: `Agent${i}`, status: i % 2 ? "disabled" : "enabled",
+    id: String(i),
+    label: `Agent${i}`,
+    status: i % 2 ? "disabled" : "enabled",
     badge: { label: i % 2 ? "[disabled]" : "[enabled]", color: i % 2 ? "dim" : "success" },
-    description: "hidden searchable description", detail: `Name: Agent${i}\n${body}`,
+    description: "hidden searchable description",
+    detail: `Name: Agent${i}\n${body}`,
   })),
 };
 // Pi's Input wraps its cursor cell in zero-width markers that the TUI resolves to reverse video.
 const [FAKE_CURSOR_START, FAKE_CURSOR_END] = renderFakeCursor("|").split("|");
-const plain = (text: string) => text.replaceAll(CURSOR_MARKER, "").replaceAll(FAKE_CURSOR_START, "")
-  .replaceAll(FAKE_CURSOR_END, "").replace(/\x1b\[[0-9;]*m/g, "");
+const plain = (text: string) =>
+  text
+    .replaceAll(CURSOR_MARKER, "")
+    .replaceAll(FAKE_CURSOR_START, "")
+    .replaceAll(FAKE_CURSOR_END, "")
+    // oxlint-disable-next-line no-control-regex -- Intentionally matches terminal control characters.
+    .replace(/\x1b\[[0-9;]*m/g, "");
 function setup(input = view, rows = 40, overrides: Partial<ReadOnlyBrowserOptions> = {}) {
   const tui = {
     mode: "fullscreen" as ReadOnlyBrowserOptions["tui"]["mode"],
-    terminal: { rows, columns: 100 }, requestRender: vi.fn(),
+    terminal: { rows, columns: 100 },
+    requestRender: vi.fn(),
   };
   const options: ReadOnlyBrowserOptions = {
-    tui, theme: { fg: (_color, text) => text, bold: text => text },
-    keys: new KeybindingsManager(TUI_KEYBINDINGS), done: vi.fn(), view: input, ...overrides,
+    tui,
+    theme: { fg: (_color, text) => text, bold: (text) => text },
+    keys: new KeybindingsManager(TUI_KEYBINDINGS),
+    done: vi.fn(),
+    view: input,
+    ...overrides,
   };
   const browser = new ReadOnlyBrowser(options);
   browser.focused = true;
   return { browser, ...options, tui };
 }
-const output = (browser: ReadOnlyBrowser, width = 80) => browser.render(width).map(plain).join("\n");
+const output = (browser: ReadOnlyBrowser, width = 80) =>
+  browser.render(width).map(plain).join("\n");
 const selected = (browser: ReadOnlyBrowser) => /→ Name: (Agent\d+)/.exec(output(browser))?.[1];
-const firstRow = (browser: ReadOnlyBrowser, width = 80) => Number(/row(\d+)/.exec(output(browser, width))?.[1]);
+const firstRow = (browser: ReadOnlyBrowser, width = 80) =>
+  Number(/row(\d+)/.exec(output(browser, width))?.[1]);
 
 // Handler tests use the actual component factory but do not block waiting for input.
 function context(mode: ExtensionContext["mode"] = "tui", renderer = "fullscreen", hasUI = true) {
@@ -50,32 +80,50 @@ function context(mode: ExtensionContext["mode"] = "tui", renderer = "fullscreen"
     notify: vi.fn(),
     custom: vi.fn(async (factory: Factory) => {
       let result: unknown;
-      components.push(await factory(tui as unknown as Parameters<Factory>[0], theme as Parameters<Factory>[1], keys as Parameters<Factory>[2], value => {
-        result = value;
-        completions.push(value);
-      }));
+      components.push(
+        await factory(
+          tui as unknown as Parameters<Factory>[0],
+          theme as Parameters<Factory>[1],
+          keys as Parameters<Factory>[2],
+          (value) => {
+            result = value;
+            completions.push(value);
+          },
+        ),
+      );
       return result;
     }),
   };
-  return { ctx: { mode, hasUI, ui: ui as unknown as ExtensionContext["ui"] }, ui, components, completions };
+  return {
+    ctx: { mode, hasUI, ui: ui as unknown as ExtensionContext["ui"] },
+    ui,
+    components,
+    completions,
+  };
 }
 
 describe("showReadOnlyBrowser", () => {
-  it.each(["fullscreen", "regular"])("probes actual %s renderer before mounting", async renderer => {
-    const { ctx, ui, components, completions } = context("tui", renderer);
-    await showReadOnlyBrowser(ctx, view);
-    expect(ui.custom).toHaveBeenCalledTimes(2);
-    expect(components[0].render(80)).toEqual([]);
-    expect(completions).toEqual([renderer]);
-    expect(ui.custom).toHaveBeenLastCalledWith(expect.any(Function), renderer === "fullscreen"
-      ? { overlay: true, overlayOptions: { anchor: "center", width: "80%", maxHeight: "80%" } }
-      : { overlay: false });
-    expect(components[1].render(80)).toHaveLength(32);
-    components[1].handleInput?.("\x03");
-    expect(completions).toEqual([renderer, undefined]);
-  });
+  it.each(["fullscreen", "regular"])(
+    "probes actual %s renderer before mounting",
+    async (renderer) => {
+      const { ctx, ui, components, completions } = context("tui", renderer);
+      await showReadOnlyBrowser(ctx, view);
+      expect(ui.custom).toHaveBeenCalledTimes(2);
+      expect(components[0].render(80)).toEqual([]);
+      expect(completions).toEqual([renderer]);
+      expect(ui.custom).toHaveBeenLastCalledWith(
+        expect.any(Function),
+        renderer === "fullscreen"
+          ? { overlay: true, overlayOptions: { anchor: "center", width: "80%", maxHeight: "80%" } }
+          : { overlay: false },
+      );
+      expect(components[1].render(80)).toHaveLength(32);
+      components[1].handleInput?.("\x03");
+      expect(completions).toEqual([renderer, undefined]);
+    },
+  );
 
-  it.each(["rpc", "json", "print"] as const)("never opens terminal UI in %s mode", async mode => {
+  it.each(["rpc", "json", "print"] as const)("never opens terminal UI in %s mode", async (mode) => {
     const { ctx, ui } = context(mode);
     await showReadOnlyBrowser(ctx, view);
     expect(ui.custom).not.toHaveBeenCalled();
@@ -87,9 +135,12 @@ describe("showReadOnlyBrowser", () => {
     await showReadOnlyBrowser(noUI.ctx, view);
     expect(noUI.ui.custom).not.toHaveBeenCalled();
     const { ctx, ui, components } = context();
-    const snapshot = { ...view, items: view.items.map(item => ({ ...item, badge: { ...item.badge! } })) };
+    const snapshot = {
+      ...view,
+      items: view.items.map((item) => ({ ...item, badge: { ...item.badge! } })),
+    };
     const original = ui.custom.getMockImplementation()!;
-    ui.custom.mockImplementationOnce(async factory => {
+    ui.custom.mockImplementationOnce(async (factory) => {
       snapshot.items[0].detail = "mutated";
       snapshot.items[0].badge.label = "bad badge";
       return original(factory);
@@ -116,7 +167,9 @@ describe("ReadOnlyBrowser", () => {
     expect(lines[2]).toBe(` │${" ".repeat(76)}│ `);
     expect(lines.at(-3)).toBe(lines[2]);
     expect(lines.at(-2)).toBe(` ╰${"─".repeat(76)}╯ `);
-    expect(lines.find(line => line.includes("→ Name: Agent0"))).toMatch(/Agent0 +\[enabled\] │ $/);
+    expect(lines.find((line) => line.includes("→ Name: Agent0"))).toMatch(
+      /Agent0 +\[enabled\] │ $/,
+    );
     expect(lines.join("\n")).not.toContain("hidden searchable description");
     expect(lines.join("\n")).toContain("Enter to see · Esc to close/clear filter");
     expect(lines.join("\n")).toContain("Ctrl+C close");
@@ -124,25 +177,43 @@ describe("ReadOnlyBrowser", () => {
 
   it("clips names before status, themes badges independently of selection, and renders Body full-width", () => {
     const detail = `Name: ${"長".repeat(100)}\nDescription: test\n\nBody\n${"x".repeat(200)}\n  indented instruction`;
-    const { browser } = setup({ ...view, items: [{
-      id: "long", label: "長".repeat(100), status: "enabled", description: "test", detail,
-      badge: { label: "[enabled]", color: "success" },
-    }] }, 100, { theme: {
-      fg: (token, text) => `\x1b[${token === "success" ? 32 : token === "accent" ? 36 : 90}m${text}\x1b[0m`,
-      bold: text => text,
-    } });
+    const { browser } = setup(
+      {
+        ...view,
+        items: [
+          {
+            id: "long",
+            label: "長".repeat(100),
+            status: "enabled",
+            description: "test",
+            detail,
+            badge: { label: "[enabled]", color: "success" },
+          },
+        ],
+      },
+      100,
+      {
+        theme: {
+          fg: (token, text) =>
+            `\x1b[${token === "success" ? 32 : token === "accent" ? 36 : 90}m${text}\x1b[0m`,
+          bold: (text) => text,
+        },
+      },
+    );
     for (const width of [24, 40, 80]) {
-      const row = browser.render(width).find(line => line.includes("[enabled]"))!;
+      const row = browser.render(width).find((line) => line.includes("[enabled]"))!;
       expect(row).toContain("\x1b[32m[enabled]\x1b[0m");
       expect(plain(row)).toMatch(/ +\[enabled\] │ $/);
       expect(visibleWidth(row)).toBe(width);
       browser.handleInput(ENTER);
       const detailRows = browser.render(width);
-      expect(detailRows.filter(line => line.includes("[enabled]"))).toHaveLength(1);
-      const fullBodyLine = detailRows.map(plain).find(line => line.includes("xxxxx"))!;
+      expect(detailRows.filter((line) => line.includes("[enabled]"))).toHaveLength(1);
+      const fullBodyLine = detailRows.map(plain).find((line) => line.includes("xxxxx"))!;
       expect(fullBodyLine).toBe(` │ ${"x".repeat(width - 6)} │ `);
       expect(detailRows.map(plain)).toContain(` │ Body${" ".repeat(width - 10)} │ `);
-      expect(detailRows.map(plain).find(line => line.includes("indented"))).toMatch(/^ │   indented/);
+      expect(detailRows.map(plain).find((line) => line.includes("indented"))).toMatch(
+        /^ │   indented/,
+      );
       browser.handleInput(ESC);
     }
   });
@@ -178,7 +249,7 @@ describe("ReadOnlyBrowser", () => {
     expect(tui.requestRender).toHaveBeenCalled();
   });
 
-  it.each(["list", "filtered", "detail"])("Ctrl+C closes once from %s", state => {
+  it.each(["list", "filtered", "detail"])("Ctrl+C closes once from %s", (state) => {
     const { browser, done } = setup();
     if (state === "filtered") browser.handleInput("Agent");
     if (state === "detail") browser.handleInput(ENTER);
@@ -189,7 +260,7 @@ describe("ReadOnlyBrowser", () => {
 
   it("pages list/detail by visible body, clamps ends, recalculates on resize", () => {
     const { browser, tui } = setup();
-    const count = browser.render(80).filter(line => /Name: Agent\d+/.test(line)).length;
+    const count = browser.render(80).filter((line) => /Name: Agent\d+/.test(line)).length;
     browser.handleInput(PAGE_DOWN);
     expect(selected(browser)).toBe(`Agent${count}`);
     browser.handleInput(END);
@@ -197,7 +268,7 @@ describe("ReadOnlyBrowser", () => {
     browser.handleInput(HOME);
     expect(selected(browser)).toBe("Agent0");
     browser.handleInput(ENTER);
-    const detailRows = browser.render(80).filter(line => /row\d+/.test(line)).length + 1; // Name row
+    const detailRows = browser.render(80).filter((line) => /row\d+/.test(line)).length + 1; // Name row
     browser.handleInput(PAGE_DOWN);
     expect(firstRow(browser)).toBe(detailRows - 1);
     browser.handleInput(PAGE_UP);
@@ -215,7 +286,8 @@ describe("ReadOnlyBrowser", () => {
   it("honors remapped page keys and prints actual bindings", () => {
     const { browser } = setup(view, 40, {
       keys: new KeybindingsManager(TUI_KEYBINDINGS, {
-        "tui.altScreen.pageDown": "ctrl+f", "tui.altScreen.pageUp": "ctrl+b",
+        "tui.altScreen.pageDown": "ctrl+f",
+        "tui.altScreen.pageUp": "ctrl+b",
       }),
     });
     expect(output(browser, 120)).toContain("Ctrl+B/Ctrl+F");
@@ -243,21 +315,35 @@ describe("ReadOnlyBrowser", () => {
   it("bounds Unicode and trusted ANSI across tiny layouts, resize, focus and theme changes", () => {
     let color = 31;
     const strange = "日本語 👩‍💻 e\u0301 🦀 ".repeat(20);
-    const { browser, tui } = setup({ ...view, title: strange, note: strange, items: [{
-      id: "one", label: strange, description: strange, detail: strange,
-      badge: { label: "[enabled]", color: "success" },
-    }] }, 40, { theme: { fg: (_token, text) => `\x1b[${color}m${text}\x1b[0m`, bold: text => text } });
+    const { browser, tui } = setup(
+      {
+        ...view,
+        title: strange,
+        note: strange,
+        items: [
+          {
+            id: "one",
+            label: strange,
+            description: strange,
+            detail: strange,
+            badge: { label: "[enabled]", color: "success" },
+          },
+        ],
+      },
+      40,
+      { theme: { fg: (_token, text) => `\x1b[${color}m${text}\x1b[0m`, bold: (text) => text } },
+    );
     for (const height of [0, 1, 2, 3, 5, 10, 40]) {
       tui.terminal.rows = height;
       for (const width of [0, 1, 2, 3, 4, 5, 7, 12, 40, 80]) {
         const lines = browser.render(width);
-        expect(lines).toHaveLength(width === 0 ? 0 : Math.floor(height * .8));
+        expect(lines).toHaveLength(width === 0 ? 0 : Math.floor(height * 0.8));
         for (const line of lines) expect(visibleWidth(line)).toBe(width);
       }
     }
     browser.handleInput("日本語👩‍💻".repeat(30));
     for (const width of [15, 20, 40, 80]) {
-      const filter = browser.render(width).find(line => line.includes(CURSOR_MARKER))!;
+      const filter = browser.render(width).find((line) => line.includes(CURSOR_MARKER))!;
       expect(filter).toBeDefined();
       expect(visibleWidth(filter.split(CURSOR_MARKER)[0])).toBeLessThan(width - 3);
     }
@@ -274,15 +360,23 @@ describe("ReadOnlyBrowser", () => {
   });
 
   it("scrubs terminal commands/control/bidi from all fields and bracketed paste without mutation", () => {
-    const unsafe = "safe\x1b[2J\x1b]52;c;bad\x07\x1b_Pi:c\x07\x1bPpayload\x1b\\\x9b31m\x08\r\u202eend";
+    const unsafe =
+      "safe\x1b[2J\x1b]52;c;bad\x07\x1b_Pi:c\x07\x1bPpayload\x1b\\\x9b31m\x08\r\u202eend";
     expect(sanitizeBrowserText(unsafe)).toBe("safeend");
     expect(sanitizeBrowserText("ok\x1b]0;unfinished")).toBe("ok");
     const item = Object.freeze({
-      id: unsafe, label: unsafe, status: unsafe, description: unsafe, detail: unsafe,
+      id: unsafe,
+      label: unsafe,
+      status: unsafe,
+      description: unsafe,
+      detail: unsafe,
       badge: Object.freeze({ label: unsafe, color: "success" as const }),
     });
-    const { browser } = setup(Object.freeze({ title: unsafe, note: unsafe, items: Object.freeze([item]) }));
+    const { browser } = setup(
+      Object.freeze({ title: unsafe, note: unsafe, items: Object.freeze([item]) }),
+    );
     browser.focused = false;
+    // oxlint-disable-next-line no-control-regex -- Intentionally matches terminal control characters.
     expect(output(browser)).not.toMatch(/[\x07\x08\x9b\u202e]/);
     browser.handleInput("\x1b[200~safe\x1b]52;c;bad\x07\x1b[201~");
     expect(output(browser)).toContain("Filter: safe");

@@ -85,7 +85,11 @@ export function buildPreviewLines(resultPreview: string, expanded: boolean): str
  * Returns a factory so the renderer is independently testable without the Pi SDK.
  */
 export function createNotificationRenderer() {
-  return (message: RendererMessage, { expanded }: RenderOptions, theme: RendererTheme): Text | undefined => {
+  return (
+    message: RendererMessage,
+    { expanded }: RenderOptions,
+    theme: RendererTheme,
+  ): Text | undefined => {
     const d = message.details;
     if (!d) return undefined;
 
@@ -125,7 +129,11 @@ export function createNotificationRenderer() {
  * would draw a still-running child as completed.
  */
 export function createUpdateRenderer() {
-  return (message: UpdateMessage, { expanded }: RenderOptions, theme: RendererTheme): Text | undefined => {
+  return (
+    message: UpdateMessage,
+    { expanded }: RenderOptions,
+    theme: RendererTheme,
+  ): Text | undefined => {
     const d = message.details;
     if (!d) return undefined;
 

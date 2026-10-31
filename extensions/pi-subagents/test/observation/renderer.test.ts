@@ -53,7 +53,10 @@ describe("resolveStatusPresentation", () => {
 
   it("resolves a completed run the harness warned to completed (wrapped up)", () => {
     expect(
-      resolveStatusPresentation({ status: "completed", turnBudget: { maxTurns: 2, used: 3, phase: "warned" } }),
+      resolveStatusPresentation({
+        status: "completed",
+        turnBudget: { maxTurns: 2, used: 3, phase: "warned" },
+      }),
     ).toEqual({
       iconGlyph: "✓",
       iconStyle: "success",
@@ -84,7 +87,6 @@ describe("resolveStatusPresentation", () => {
       statusText: "aborted",
     });
   });
-
 });
 
 describe("buildStatsParts", () => {
@@ -106,19 +108,39 @@ describe("buildStatsParts", () => {
 
   it("shows an unlimited run's turns without a ceiling", () => {
     expect(
-      buildStatsParts({ turnBudget: { used: 4, phase: "within" }, toolUses: 0, totalTokens: 0, durationMs: 0 }),
+      buildStatsParts({
+        turnBudget: { used: 4, phase: "within" },
+        toolUses: 0,
+        totalTokens: 0,
+        durationMs: 0,
+      }),
     ).toEqual(["↻4"]);
   });
 
   it("omits a stat part when its field is zero", () => {
     expect(
-      buildStatsParts({ turnBudget: { maxTurns: 10, used: 5, phase: "within" }, toolUses: 0, totalTokens: 1000, durationMs: 5000 }),
+      buildStatsParts({
+        turnBudget: { maxTurns: 10, used: 5, phase: "within" },
+        toolUses: 0,
+        totalTokens: 1000,
+        durationMs: 5000,
+      }),
     ).toEqual(["↻5≤10", "1.0k token", "5.0s"]);
     expect(
-      buildStatsParts({ turnBudget: { maxTurns: 10, used: 5, phase: "within" }, toolUses: 3, totalTokens: 0, durationMs: 5000 }),
+      buildStatsParts({
+        turnBudget: { maxTurns: 10, used: 5, phase: "within" },
+        toolUses: 3,
+        totalTokens: 0,
+        durationMs: 5000,
+      }),
     ).toEqual(["↻5≤10", "3 tool uses", "5.0s"]);
     expect(
-      buildStatsParts({ turnBudget: { maxTurns: 10, used: 5, phase: "within" }, toolUses: 3, totalTokens: 1000, durationMs: 0 }),
+      buildStatsParts({
+        turnBudget: { maxTurns: 10, used: 5, phase: "within" },
+        toolUses: 3,
+        totalTokens: 1000,
+        durationMs: 0,
+      }),
     ).toEqual(["↻5≤10", "3 tool uses", "1.0k token"]);
   });
 
@@ -287,7 +309,11 @@ describe("createUpdateRenderer", () => {
   it("shows the first line only when collapsed", () => {
     const renderer = createUpdateRenderer();
     const text = renderText(
-      renderer({ details: makeUpdate({ message: "headline\nbody" }) }, { expanded: false }, stubTheme()),
+      renderer(
+        { details: makeUpdate({ message: "headline\nbody" }) },
+        { expanded: false },
+        stubTheme(),
+      ),
     );
 
     expect(text).toContain("headline");
@@ -297,7 +323,11 @@ describe("createUpdateRenderer", () => {
   it("shows every line when expanded", () => {
     const renderer = createUpdateRenderer();
     const text = renderText(
-      renderer({ details: makeUpdate({ message: "headline\nbody" }) }, { expanded: true }, stubTheme()),
+      renderer(
+        { details: makeUpdate({ message: "headline\nbody" }) },
+        { expanded: true },
+        stubTheme(),
+      ),
     );
 
     expect(text).toContain("headline");
@@ -331,7 +361,11 @@ describe("createWorkspaceNoticeRenderer", () => {
   it("shows the first line only when collapsed", () => {
     const renderer = createWorkspaceNoticeRenderer();
     const text = renderText(
-      renderer({ details: makeNotice({ notice: "headline\nbody" }) }, { expanded: false }, stubTheme()),
+      renderer(
+        { details: makeNotice({ notice: "headline\nbody" }) },
+        { expanded: false },
+        stubTheme(),
+      ),
     );
 
     expect(text).toContain("headline");
@@ -341,7 +375,11 @@ describe("createWorkspaceNoticeRenderer", () => {
   it("shows every line when expanded", () => {
     const renderer = createWorkspaceNoticeRenderer();
     const text = renderText(
-      renderer({ details: makeNotice({ notice: "headline\nbody" }) }, { expanded: true }, stubTheme()),
+      renderer(
+        { details: makeNotice({ notice: "headline\nbody" }) },
+        { expanded: true },
+        stubTheme(),
+      ),
     );
 
     expect(text).toContain("headline");

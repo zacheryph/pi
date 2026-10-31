@@ -4,22 +4,32 @@
   "private": true,
   "type": "module",
   "description": "Concise Pi session summaries and optional short terminal-tab names.",
-  "keywords": ["pi-package", "pi-extension"],
-  "files": ["src", "README.md"],
+  "keywords": [
+    "pi-package",
+    "pi-extension"
+  ],
+  "files": [
+    "src",
+    "README.md"
+  ],
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",
     "@earendil-works/pi-coding-agent": "*",
     "@earendil-works/pi-tui": "*"
   },
-  "engines": { "node": ">=24" },
-  "scripts": { "check": "tsc --noEmit", "test": "vitest run", "test:watch": "vitest" },
-  "devDependencies": {
-    "@earendil-works/pi-ai": "1.4.0",
-    "@earendil-works/pi-coding-agent": "1.4.0",
-    "@earendil-works/pi-tui": "1.4.0",
-    "@types/node": "^24.19.2",
-    "typescript": "^6.0.3",
-    "vitest": "^5.0.5"
+  "engines": {
+    "node": ">=24"
   },
-  "pi": { "extensions": ["./src/index.ts"] }
+  "scripts": {
+    "check": "oxfmt --check . && oxlint --deny-warnings . && npm run typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "fix": "oxfmt --write . && oxlint --fix . && oxfmt --write ."
+  },
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  }
 }

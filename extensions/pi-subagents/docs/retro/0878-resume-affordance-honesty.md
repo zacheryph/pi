@@ -28,7 +28,7 @@ Filed [#896] for a hazard found while tracing the refusal paths, and recorded it
 - **Operator gate** — three questions, all recommended options taken: reason-specific close over generic or suppression; one reason-returning getter over a boolean; running-agent hazard out of scope with a follow-up.
 - **A boolean predicate was rejected** because `AgentTool` would keep deriving its own three-way split, leaving the rule in two places — the exact shape that produced the bug.
 - **Scope handed to Step 16.**
-  The refusal *messages* stay in `agent-tool.ts`; only the decision moves.
+  The refusal _messages_ stay in `agent-tool.ts`; only the decision moves.
   [#885] relocates the policy to `SubagentManager`, and [#896] folds in there as a fifth arm of the same union.
 - **Baseline measured, not inferred:** 1589 tests / 76 files, green, at `c62cceb4`'s parent.
 
@@ -65,7 +65,7 @@ Tests went 1589 → 1611 (+22) across 76 files; `check`, root `lint`, and `fallo
   `tsc` confirmed it: `foreground-runner.ts` is untouched in the whole change, only its test moved.
   This is why the predicate is a getter and not an `isResumable()` method.
 - **The nudge test needed an aborted child, not a completed one.**
-  A first draft seeded `pendingQuestion` and ran the agent, but `completeRun`'s `holdForResume` keeps the workspace for a *completed* child with a question — so nothing was disposed and the test would have pinned the wrong state.
+  A first draft seeded `pendingQuestion` and ran the agent, but `completeRun`'s `holdForResume` keeps the workspace for a _completed_ child with a question — so nothing was disposed and the test would have pinned the wrong state.
   Rewritten to drive `ask_parent` from inside a turn loop returning `aborted: true`, which is the real path that reaches the refusal.
 - **Mutation testing found nothing wrong, which is itself the result.**
   All 10 planned mutations killed exactly their predicted equivalence class — suppressing the refusal branch reddened 10 refusal tests and left every resumable test green; forcing it reddened the 5 carrier tests asserting `resume: "<id>"` plus 2 ordering tests.
@@ -76,7 +76,7 @@ Tests went 1589 → 1611 (+22) across 76 files; `check`, root `lint`, and `fallo
 
 - `src/session/ask-parent-tool.ts`'s module comment justified recording-without-announcing on the claim that "every result carrier already renders a pending question with the exact resume call" — the universal claim this issue retired.
   It was the one place outside the three planned doc targets that still made it; the plan's own grep covered `README.md`, `docs/configuration.md`, `docs/architecture/`, and `.pi/skills/`, but not `src/` module comments.
-  A `src/`-comment sweep for a retired *claim* (as opposed to a removed symbol) is the gap worth remembering.
+  A `src/`-comment sweep for a retired _claim_ (as opposed to a removed symbol) is the gap worth remembering.
   The reviewer also noted the child-facing `ask_parent` result text still says the parent "will answer by resuming you"; left as-is deliberately — at the moment a child asks, its session is live and that promise is true.
 
 ## Stage: Final Retrospective (2026-09-07T06:06:00Z)
@@ -91,7 +91,7 @@ Seven commits, 1589 → 1611 tests, one WARN from the pre-completion reviewer (r
 
 #### What went well
 
-- **The plan's killing mutations audited *pre-existing* tests, not just new ones.**
+- **The plan's killing mutations audited _pre-existing_ tests, not just new ones.**
   Step 4's mutation ("return the released-session message from the `no-session` arm") could not be killed by the two `AgentTool` refusal tests as written — both were `toContain` substring matches.
   Naming the mutation in the plan is what exposed them; they were tightened to full-string `toBe` inside the same step.
   The practice was adopted to check new tests, and this is the first time it caught old ones.
@@ -105,7 +105,7 @@ Seven commits, 1589 → 1611 tests, one WARN from the pre-completion reviewer (r
   The plan's Step 16 risk mitigation asserted that a future union member would fail to compile in `resumeRefusalMessage`.
   The reviewer built a scratch `tsc` repro and confirmed it fails `TS2366` under this repo's `strict: true` — turning a plan-time assumption into a checked fact.
   It also independently re-derived door-behavior parity across five record states and found the one stale doc claim outside the planned targets.
-- **Listing a predicted-*unchanged* file in Module-Level Changes made the prediction falsifiable.**
+- **Listing a predicted-_unchanged_ file in Module-Level Changes made the prediction falsifiable.**
   The plan listed `src/tools/foreground-runner.ts` under a "no change" heading, with the note that the claim must be re-checked at implementation time.
   `tsc` confirmed it: the getter satisfies the new required field structurally, and the file is untouched in the whole change.
 
@@ -118,7 +118,7 @@ Seven commits, 1589 → 1611 tests, one WARN from the pre-completion reviewer (r
 - `instruction-violation` (self-identified) — one `Edit` call carried `oldText2`/`newText2` keys on an `edits[]` entry, the anti-pattern `AGENTS.md` § Edit tool batches names explicitly.
   Impact: none — both extra values were empty strings, and the reported block count (6) matched the intended edit count (6).
   Worth recording that the documented detection method (count reported blocks against intended edits) **passes** when the stray keys are empty, so it would not have caught a non-empty one either.
-- `other` — the first draft of the nudge's refusal test seeded `pendingQuestion` and ran the agent, but `completeRun`'s `holdForResume` keeps the workspace for a *completed* child with a question, so nothing would have been disposed and the test would have pinned the wrong state.
+- `other` — the first draft of the nudge's refusal test seeded `pendingQuestion` and ran the agent, but `completeRun`'s `holdForResume` keeps the workspace for a _completed_ child with a question, so nothing would have been disposed and the test would have pinned the wrong state.
   Caught while writing, before running.
   Impact: one extra `Edit`, no rework.
 - `other` — `pi-autoformat` rewrote the plan's line-reference tokens on write: `(~:211)` became `(~~211)` and `(~:34)` became `~~:34)`, losing an opening parenthesis.

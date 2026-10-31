@@ -53,9 +53,9 @@ Introduce a discriminated union describing the outcome of a steer attempt, expor
 
 ```typescript
 export type SteerOutcome =
-	| { kind: "delivered" }
-	| { kind: "buffered" }
-	| { kind: "rejected"; status: SubagentStatus };
+  | { kind: "delivered" }
+  | { kind: "buffered" }
+  | { kind: "rejected"; status: SubagentStatus };
 ```
 
 `Subagent.steer` gains the rejection rule as its first guard, preserving the existing buffer-or-deliver ordering:
@@ -97,24 +97,29 @@ Identical to the current contract.
 
 ```typescript
 const record = this.manager.getRecord(params.agent_id);
-if (!record) return textResult(`Agent not found: "${params.agent_id}". It may have been cleaned up.`);
+if (!record)
+  return textResult(`Agent not found: "${params.agent_id}". It may have been cleaned up.`);
 
 let outcome: SteerOutcome;
 try {
-	outcome = await record.steer(params.message);
+  outcome = await record.steer(params.message);
 } catch (err) {
-	return textResult(`Failed to steer agent: ${err instanceof Error ? err.message : String(err)}`);
+  return textResult(`Failed to steer agent: ${err instanceof Error ? err.message : String(err)}`);
 }
 
 switch (outcome.kind) {
-	case "rejected":
-		return textResult(`Agent "${params.agent_id}" is not running (status: ${outcome.status}). Cannot steer a non-running agent.`);
-	case "buffered":
-		this.events.emit("subagents:steered", { id: record.id, message: params.message });
-		return textResult(`Steering message queued for agent ${record.id}. It will be delivered once the session initializes.`);
-	case "delivered":
-		this.events.emit("subagents:steered", { id: record.id, message: params.message });
-		return this.renderDelivered(record);
+  case "rejected":
+    return textResult(
+      `Agent "${params.agent_id}" is not running (status: ${outcome.status}). Cannot steer a non-running agent.`,
+    );
+  case "buffered":
+    this.events.emit("subagents:steered", { id: record.id, message: params.message });
+    return textResult(
+      `Steering message queued for agent ${record.id}. It will be delivered once the session initializes.`,
+    );
+  case "delivered":
+    this.events.emit("subagents:steered", { id: record.id, message: params.message });
+    return this.renderDelivered(record);
 }
 ```
 

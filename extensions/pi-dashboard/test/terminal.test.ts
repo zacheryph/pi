@@ -13,8 +13,13 @@ describe("cmux adapter", () => {
   it("focuses the panel with the bundled CLI, then raises the app on macOS", async () => {
     const run = vi.fn(async () => {});
     const adapter = cmuxAdapter({
-      env: { CMUX_PANEL_ID: "CD96", CMUX_BUNDLED_CLI_PATH: "/Applications/cmux.app/bin/cmux", CMUX_BUNDLE_ID: "com.cmuxterm.app" },
-      platform: "darwin", run,
+      env: {
+        CMUX_PANEL_ID: "CD96",
+        CMUX_BUNDLED_CLI_PATH: "/Applications/cmux.app/bin/cmux",
+        CMUX_BUNDLE_ID: "com.cmuxterm.app",
+      },
+      platform: "darwin",
+      run,
     })!;
     expect(adapter.info).toEqual({ kind: "cmux", label: "cmux" });
     await adapter.focus();
@@ -31,8 +36,12 @@ describe("cmux adapter", () => {
   });
 
   it("stops at a failing focus-panel", async () => {
-    const run = vi.fn(async () => { throw new Error("cmux focus-panel: panel not found"); });
-    await expect(cmuxAdapter({ env: { CMUX_PANEL_ID: "gone" }, platform: "darwin", run })!.focus()).rejects.toThrow("panel not found");
+    const run = vi.fn(async () => {
+      throw new Error("cmux focus-panel: panel not found");
+    });
+    await expect(
+      cmuxAdapter({ env: { CMUX_PANEL_ID: "gone" }, platform: "darwin", run })!.focus(),
+    ).rejects.toThrow("panel not found");
     expect(run).toHaveBeenCalledTimes(1);
   });
 });
@@ -41,10 +50,15 @@ describe("runCommand", () => {
   it("runs a real command and reports its first stderr line on failure", async () => {
     const dir = tempDir();
     const script = join(dir, "fake-cmux");
-    writeFileSync(script, `#!/bin/sh\necho "$@" > "${dir}/args"\n[ "$2" = "--panel" ] || { echo "bad args" >&2; exit 1; }\n`);
+    writeFileSync(
+      script,
+      `#!/bin/sh\necho "$@" > "${dir}/args"\n[ "$2" = "--panel" ] || { echo "bad args" >&2; exit 1; }\n`,
+    );
     chmodSync(script, 0o755);
     await runCommand(script, ["focus-panel", "--panel", "P1"]);
     expect(readFileSync(join(dir, "args"), "utf8").trim()).toBe("focus-panel --panel P1");
-    await expect(runCommand(script, ["focus-panel"])).rejects.toThrow(/fake-cmux focus-panel: bad args/);
+    await expect(runCommand(script, ["focus-panel"])).rejects.toThrow(
+      /fake-cmux focus-panel: bad args/,
+    );
   });
 });

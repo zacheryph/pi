@@ -138,7 +138,13 @@ export function createResolvedSpawnConfig(
     presentation: {
       modelName: options.model,
       agentTags: [],
-      detailBase: { displayName, description, subagentType, modelName: options.model, tags: undefined },
+      detailBase: {
+        displayName,
+        description,
+        subagentType,
+        modelName: options.model,
+        tags: undefined,
+      },
     },
   };
 }
@@ -151,9 +157,16 @@ Consumer call site (the act stays inline and explicit):
 
 ```typescript
 const result = await runForeground(
-  manager, widget, runtime.agentActivity,
-  { config: createResolvedSpawnConfig({ fellBack: true, rawType: "unknown-type" }), snapshot: STUB_SNAPSHOT, parentSession },
-  undefined, undefined,
+  manager,
+  widget,
+  runtime.agentActivity,
+  {
+    config: createResolvedSpawnConfig({ fellBack: true, rawType: "unknown-type" }),
+    snapshot: STUB_SNAPSHOT,
+    parentSession,
+  },
+  undefined,
+  undefined,
 );
 expect(result.content[0].text).toContain('Unknown agent type "unknown-type"');
 ```
@@ -168,10 +181,12 @@ Extract a file-local helper that **returns** the mock implementation (a value), 
 ```typescript
 function spawnAndWaitRegistering(record = createTestSubagent({ result: "done" })) {
   record.subagentSession = toSubagentSession(createSubagentSessionStub(createMockSession()));
-  return vi.fn(async (_s, _t, _p, opts: { observer?: { onSessionCreated?: (r: Subagent) => void } }) => {
-    opts.observer?.onSessionCreated?.(record);
-    return record;
-  });
+  return vi.fn(
+    async (_s, _t, _p, opts: { observer?: { onSessionCreated?: (r: Subagent) => void } }) => {
+      opts.observer?.onSessionCreated?.(record);
+      return record;
+    },
+  );
 }
 ```
 
@@ -188,8 +203,13 @@ Extract value-returning builders for the arrange only:
 
 ```typescript
 function manualUI(opts: { location?: string; tools?: string; model?: string; thinking?: string }) {
-  return makeMenuUI([opts.location ?? "Project (.pi/agents/)", "Manual configuration",
-    opts.tools ?? "all", opts.model ?? "inherit (parent model)", opts.thinking ?? "inherit"]);
+  return makeMenuUI([
+    opts.location ?? "Project (.pi/agents/)",
+    "Manual configuration",
+    opts.tools ?? "all",
+    opts.model ?? "inherit (parent model)",
+    opts.thinking ?? "inherit",
+  ]);
 }
 function withInputs(ui: ReturnType<typeof makeMenuUI>, ...values: (string | undefined)[]) {
   ui.input = vi.fn();

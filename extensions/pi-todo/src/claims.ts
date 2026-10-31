@@ -14,7 +14,14 @@ export const MAX_HANDOFF_TASKS = 50;
 export type TodoClaimScope = "assigned" | "ledger";
 
 export type TodoClaimsEntry =
-  | { op: "claim"; agent: string; session: string; scope: TodoClaimScope; keys: string[]; at: number }
+  | {
+      op: "claim";
+      agent: string;
+      session: string;
+      scope: TodoClaimScope;
+      keys: string[];
+      at: number;
+    }
   | { op: "release"; agent: string; at: number };
 
 /** A live claim: the keys one subagent may update. */
@@ -36,11 +43,28 @@ const text = (value: unknown, max = 128): value is string =>
   typeof value === "string" && value.length > 0 && value.length <= max;
 
 function readEntry(raw: unknown): TodoClaimsEntry | undefined {
-  if (!isRecord(raw) || !text(raw.agent) || typeof raw.at !== "number" || !Number.isFinite(raw.at)) return undefined;
+  if (!isRecord(raw) || !text(raw.agent) || typeof raw.at !== "number" || !Number.isFinite(raw.at))
+    return undefined;
   if (raw.op === "release") return { op: "release", agent: raw.agent, at: raw.at };
-  if (raw.op !== "claim" || !text(raw.session) || (raw.scope !== "assigned" && raw.scope !== "ledger")) return undefined;
-  if (!Array.isArray(raw.keys) || !raw.keys.every((key) => typeof key === "string" && KEY_PATTERN.test(key))) return undefined;
-  return { op: "claim", agent: raw.agent, session: raw.session, scope: raw.scope, keys: [...raw.keys] as string[], at: raw.at };
+  if (
+    raw.op !== "claim" ||
+    !text(raw.session) ||
+    (raw.scope !== "assigned" && raw.scope !== "ledger")
+  )
+    return undefined;
+  if (
+    !Array.isArray(raw.keys) ||
+    !raw.keys.every((key) => typeof key === "string" && KEY_PATTERN.test(key))
+  )
+    return undefined;
+  return {
+    op: "claim",
+    agent: raw.agent,
+    session: raw.session,
+    scope: raw.scope,
+    keys: [...raw.keys] as string[],
+    at: raw.at,
+  };
 }
 
 /** Apply one journal entry. A repeated claim for an agent adds keys to its claim. */
@@ -54,7 +78,10 @@ export function applyTodoClaims(claims: TodoClaims, raw: unknown): Map<string, T
   }
   const existing = next.get(entry.agent);
   next.set(entry.agent, {
-    agent: entry.agent, session: entry.session, scope: entry.scope, at: existing?.at ?? entry.at,
+    agent: entry.agent,
+    session: entry.session,
+    scope: entry.scope,
+    at: existing?.at ?? entry.at,
     keys: [...new Set([...(existing?.keys ?? []), ...entry.keys])],
   });
   return next;
@@ -91,15 +118,18 @@ export interface TodoHandoff {
 export function readTodoHandoff(handoff: unknown): TodoHandoff | string | undefined {
   if (!isRecord(handoff) || handoff[HANDOFF_KEY] === undefined) return undefined;
   const raw = handoff[HANDOFF_KEY];
-  if (!isRecord(raw) || !Array.isArray(raw.keys)) return "handoff.todos must be { keys: string[], scope?: \"assigned\" | \"ledger\" }";
+  if (!isRecord(raw) || !Array.isArray(raw.keys))
+    return 'handoff.todos must be { keys: string[], scope?: "assigned" | "ledger" }';
   if (raw.scope !== undefined && raw.scope !== "assigned" && raw.scope !== "ledger") {
-    return "handoff.todos.scope must be \"assigned\" or \"ledger\"";
+    return 'handoff.todos.scope must be "assigned" or "ledger"';
   }
   const keys = [...new Set(raw.keys.map((key) => (typeof key === "string" ? key.trim() : "")))];
   if (!keys.length) return "handoff.todos.keys must name at least one task";
-  if (keys.length > MAX_HANDOFF_TASKS) return `handoff.todos.keys may name at most ${MAX_HANDOFF_TASKS} tasks`;
+  if (keys.length > MAX_HANDOFF_TASKS)
+    return `handoff.todos.keys may name at most ${MAX_HANDOFF_TASKS} tasks`;
   const bad = keys.find((key) => !KEY_PATTERN.test(key));
-  if (bad !== undefined) return `handoff.todos.keys has an invalid task key: ${JSON.stringify(bad)}`;
+  if (bad !== undefined)
+    return `handoff.todos.keys has an invalid task key: ${JSON.stringify(bad)}`;
   return { keys, scope: raw.scope ?? "assigned" };
 }
 
@@ -108,14 +138,18 @@ export function readTodoHandoff(handoff: unknown): TodoHandoff | string | undefi
  * exist, be unfinished, and not be held or reserved by another subagent.
  */
 export function handoffConflict(
-  handoff: TodoHandoff, state: TodoState, held: ReadonlyMap<string, string>,
+  handoff: TodoHandoff,
+  state: TodoState,
+  held: ReadonlyMap<string, string>,
 ): string | undefined {
   const byKey = new Map(state.tasks.map((task) => [task.key, task]));
   const unknown = handoff.keys.filter((key) => !byKey.has(key));
-  if (unknown.length) return `unknown task${unknown.length === 1 ? "" : "s"}: ${unknown.join(", ")}`;
+  if (unknown.length)
+    return `unknown task${unknown.length === 1 ? "" : "s"}: ${unknown.join(", ")}`;
   const done = handoff.keys.filter((key) => byKey.get(key)!.status === "completed");
   if (done.length) return `already completed: ${done.join(", ")}`;
   const taken = handoff.keys.filter((key) => held.has(key));
-  if (taken.length) return `already handed to ${taken.map((key) => `${key} (${held.get(key)})`).join(", ")}`;
+  if (taken.length)
+    return `already handed to ${taken.map((key) => `${key} (${held.get(key)})`).join(", ")}`;
   return undefined;
 }

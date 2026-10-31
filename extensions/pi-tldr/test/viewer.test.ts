@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { TldrResult } from "../src/core.js";
 import { TldrViewer } from "../src/viewer.js";
 
+// oxlint-disable-next-line no-control-regex -- Intentionally matches terminal control sequences.
 const plain = (text: string) => text.replace(/\x1b\[[0-9;]*m/g, "");
 /** Theme that emits real ANSI so width math is exercised against escape codes. */
 const ansiTheme = {
@@ -28,7 +29,9 @@ describe("TldrViewer rendering", () => {
     const { viewer } = setup();
     viewer.setSummary(summary);
     const text = viewer.render(80).map(plain);
-    const bullets = text.filter((line) => line.includes("• ")).map((line) => /• (\S+(?: \S+)*)/.exec(line)?.[1]);
+    const bullets = text
+      .filter((line) => line.includes("• "))
+      .map((line) => /• (\S+(?: \S+)*)/.exec(line)?.[1]);
     expect(bullets).toEqual(["One issue", "two fixes", "three"]);
   });
 
@@ -57,7 +60,8 @@ describe("TldrViewer rendering", () => {
         prepare(viewer);
         const lines = viewer.render(width);
         expect(lines.length).toBeGreaterThan(0);
-        for (const line of lines) expect(visibleWidth(line), `width ${width}: ${JSON.stringify(plain(line))}`).toBe(width);
+        for (const line of lines)
+          expect(visibleWidth(line), `width ${width}: ${JSON.stringify(plain(line))}`).toBe(width);
       }
     });
 

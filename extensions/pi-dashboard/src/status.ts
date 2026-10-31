@@ -19,13 +19,35 @@ export class StatusTracker {
     this.since = now();
   }
 
-  agentStart(): void { this.running = true; this.touch(); }
-  toolStart(id: string, name: string): void { this.tools.delete(id); this.tools.set(id, name); this.touch(); }
-  toolEnd(id: string): void { this.tools.delete(id); this.touch(); }
-  compactStart(): void { this.compacting = true; this.touch(); }
-  compactEnd(): void { this.compacting = false; this.touch(); }
-  promptStart(title?: string): void { this.prompt = title ? { title } : {}; this.touch(); }
-  promptEnd(): void { this.prompt = undefined; this.touch(); }
+  agentStart(): void {
+    this.running = true;
+    this.touch();
+  }
+  toolStart(id: string, name: string): void {
+    this.tools.delete(id);
+    this.tools.set(id, name);
+    this.touch();
+  }
+  toolEnd(id: string): void {
+    this.tools.delete(id);
+    this.touch();
+  }
+  compactStart(): void {
+    this.compacting = true;
+    this.touch();
+  }
+  compactEnd(): void {
+    this.compacting = false;
+    this.touch();
+  }
+  promptStart(title?: string): void {
+    this.prompt = title ? { title } : {};
+    this.touch();
+  }
+  promptEnd(): void {
+    this.prompt = undefined;
+    this.touch();
+  }
 
   /** Pi has no automatic work left. */
   settled(): void {
@@ -39,7 +61,10 @@ export class StatusTracker {
   }
 
   private derive(): SessionStatus {
-    if (this.prompt) return this.prompt.title ? { kind: "waiting", title: this.prompt.title } : { kind: "waiting" };
+    if (this.prompt)
+      return this.prompt.title
+        ? { kind: "waiting", title: this.prompt.title }
+        : { kind: "waiting" };
     if (this.compacting) return { kind: "compacting" };
     const tool = [...this.tools.values()].at(-1);
     if (tool) return { kind: "tool", tool };

@@ -25,14 +25,14 @@ watch an **immutable target** (a check run id or a commit SHA), not a PR number.
 
 Give exactly one of `check` or `toolCheck`.
 
-| Field | Meaning |
-| --- | --- |
-| `toolCheck.tool` | Exact tool name. |
-| `toolCheck.args` | Arguments for the tool. |
-| `toolCheck.match.path` | Dot path into the result, e.g. `check_runs.0.status`; `""` for the whole result. |
-| `toolCheck.match.equals` | Holds when the value equals this (deep, key order ignored). |
-| `toolCheck.match.in` | Holds when the value equals one of these. |
-| `toolCheck.match.contains` | Holds when the value, as text, contains this string. |
+| Field                      | Meaning                                                                          |
+| -------------------------- | -------------------------------------------------------------------------------- |
+| `toolCheck.tool`           | Exact tool name.                                                                 |
+| `toolCheck.args`           | Arguments for the tool.                                                          |
+| `toolCheck.match.path`     | Dot path into the result, e.g. `check_runs.0.status`; `""` for the whole result. |
+| `toolCheck.match.equals`   | Holds when the value equals this (deep, key order ignored).                      |
+| `toolCheck.match.in`       | Holds when the value equals one of these.                                        |
+| `toolCheck.match.contains` | Holds when the value, as text, contains this string.                             |
 
 `match` takes at most one of `equals`, `in`, and `contains`. With only `path`, it
 holds when the path exists.

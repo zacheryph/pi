@@ -569,7 +569,7 @@ Key types:
 ### Accessor pattern
 
 Every child session loads this extension again in the same process, so several services are published at once.
-Each publication is *pending* from the extension factory until its session's `session_start`, then *started*:
+Each publication is _pending_ from the extension factory until its session's `session_start`, then _started_:
 
 - The extension publishes `publishSubagentsService(service)` in its factory and `publishSubagentsService(service, sessionId)` on `session_start`, under `Symbol.for("@gotgenes/pi-subagents:services.v1")`.
 - While a load is pending, the newest pending service is the default.
@@ -584,7 +584,7 @@ Each publication is *pending* from the extension factory until its session's `se
 - `unpublishSubagentsService(service)` removes only that publication.
 
 ```typescript
-const parent = getSubagentsService();            // top-level session's service
+const parent = getSubagentsService(); // top-level session's service
 const own = getSubagentsService(ctx.sessionManager.getSessionId());
 ```
 
@@ -609,13 +609,13 @@ These are fire-and-forget broadcast events — no request IDs, no reply channels
 
 The child-execution lifecycle (`src/lifecycle/child-lifecycle.ts`) is published on the same bus, keyed by the child's session id:
 
-| Channel                           | Payload                                                                   | When                                                         |
-| --------------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| `subagents:child:spawning`        | `{ agentName, parentSessionId? }`                                         | A child run starts, before its session exists                |
-| `subagents:child:session-created` | `{ sessionId, parentSessionId?, agentId?, toolCallId?, handoff? }`        | Synchronously, before the child binds its extensions         |
-| `subagents:child:bound`           | `{ sessionId, parentSessionId?, agentId?, toolCallId? }`                  | Every child `session_start` handler has run                  |
-| `subagents:child:completed`       | `{ sessionDir, agentName, turnBudget? }`                                  | The child's prompt resolved                                  |
-| `subagents:child:disposed`        | `{ sessionId, agentId?, toolCallId? }`                                    | After the child's `session_shutdown` and `session.dispose()` |
+| Channel                           | Payload                                                            | When                                                         |
+| --------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------ |
+| `subagents:child:spawning`        | `{ agentName, parentSessionId? }`                                  | A child run starts, before its session exists                |
+| `subagents:child:session-created` | `{ sessionId, parentSessionId?, agentId?, toolCallId?, handoff? }` | Synchronously, before the child binds its extensions         |
+| `subagents:child:bound`           | `{ sessionId, parentSessionId?, agentId?, toolCallId? }`           | Every child `session_start` handler has run                  |
+| `subagents:child:completed`       | `{ sessionDir, agentName, turnBudget? }`                           | The child's prompt resolved                                  |
+| `subagents:child:disposed`        | `{ sessionId, agentId?, toolCallId? }`                             | After the child's `session_shutdown` and `session.dispose()` |
 
 `agentId` is the record id (`getRecord(id)`), `toolCallId` the parent's `subagent` call (absent for a service spawn), and `handoff` the spawn's extension-defined data.
 The core forwards `handoff` without interpreting it, so a companion extension can define a new key (pi-todo reads `todos`) without a core change. The key's owner documents its shape in its own tool guidance and validates it.
@@ -808,14 +808,14 @@ No `src/` function reaches HIGH severity or CRAP ≥ 60 (Phase 20 target met).
 
 Files with highest commit frequency × complexity:
 
-| Score | File                          | Commits | Trend          |
-| ----- | ----------------------------- | ------- | -------------- |
-| 41.9  | `index.ts`                    | 125     | ▼ cooling      |
-| 39.9  | `lifecycle/subagent.ts`       | 52      | ─ stable       |
-| 19.9  | `tools/agent-tool.ts`         | 76      | ▼ cooling      |
-| 17.7  | `service/service-adapter.ts`  | 25      | ▼ cooling      |
-| 15.7  | `tools/foreground-runner.ts`  | 35      | ▼ cooling      |
-| 15.2  | `ui/agent-widget.ts`          | 29      | ▼ cooling      |
+| Score | File                         | Commits | Trend     |
+| ----- | ---------------------------- | ------- | --------- |
+| 41.9  | `index.ts`                   | 125     | ▼ cooling |
+| 39.9  | `lifecycle/subagent.ts`      | 52      | ─ stable  |
+| 19.9  | `tools/agent-tool.ts`        | 76      | ▼ cooling |
+| 17.7  | `service/service-adapter.ts` | 25      | ▼ cooling |
+| 15.7  | `tools/foreground-runner.ts` | 35      | ▼ cooling |
+| 15.2  | `ui/agent-widget.ts`         | 29      | ▼ cooling |
 
 `index.ts` remains the top churn hotspot but has cooled further; `lifecycle/subagent.ts` moved from third to second, its commit count more than doubling across Phase 22's delivery-boundary steps (10, 11, 14, 15, 17, 19, 21, 22 all touch it); no `src/` file among the top six is currently accelerating.
 

@@ -73,13 +73,13 @@ export class SettingsManager {
 
   // ── Property accessors with normalization ──
   get defaultMaxTurns(): number | undefined;
-  set defaultMaxTurns(n: number | undefined);  // 0 or undefined → undefined; else max(1, n)
+  set defaultMaxTurns(n: number | undefined); // 0 or undefined → undefined; else max(1, n)
 
   get graceTurns(): number;
-  set graceTurns(n: number);                    // max(1, n)
+  set graceTurns(n: number); // max(1, n)
 
   get maxConcurrent(): number;
-  set maxConcurrent(n: number);                 // max(1, n)
+  set maxConcurrent(n: number); // max(1, n)
 
   // ── Lifecycle methods ──
 

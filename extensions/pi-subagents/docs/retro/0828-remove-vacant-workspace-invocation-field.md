@@ -57,7 +57,7 @@ The `invocation` storage-chain metric row went 7 → 0 (roadmap baseline 8; Step
   Killing mutation B (re-add the field to `WorkspacePrepareContext` alone) was a no-op across `tsc`, the full 1337-test suite, and `pnpm fallow dead-code`, exactly as the plan predicted and recorded as a known non-covered class.
   Predicting the no-op in advance is what made it a finding rather than a surprise.
 - **The Red step paid for itself immediately.**
-  Writing the `toStrictEqual` assertion against the *unchanged* code produced a red that named the extra `invocation` key directly.
+  Writing the `toStrictEqual` assertion against the _unchanged_ code produced a red that named the extra `invocation` key directly.
   Had the step merely deleted `invocation: undefined` from the existing `toHaveBeenCalledWith` literal, it would have gone green without ever demonstrating that the assertion discriminates.
 - **The issue body's gating claim stayed refuted under a second, independent derivation.**
   The `pre-completion-reviewer` re-ran the partial-removal probe by hand rather than accepting the plan's measurement, and confirmed `tsc`, `fallow dead-code`, and the suite all pass with the vacant field restored to the type alone.

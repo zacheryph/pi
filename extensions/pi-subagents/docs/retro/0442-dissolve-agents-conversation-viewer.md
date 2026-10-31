@@ -41,7 +41,7 @@ Pre-completion reviewer returned PASS.
 ### Observations
 
 - **Unplanned fallow finding:** after deleting `agent-menu.ts`, `showAgentDetail` (`agent-config-editor.ts`) and `showCreateWizard` (`agent-creation-wizard.ts`) lost their only external callers and became unused class members.
-  The plan's risk analysis covered unused *files* (`FsAgentFileOps`) but not unused class *methods*.
+  The plan's risk analysis covered unused _files_ (`FsAgentFileOps`) but not unused class _methods_.
   Added `// fallow-ignore-next-line unused-class-member` suppressions with a comment pointing to [#441] as the removal commit.
   Future plans for hub-deletion steps should explicitly check whether public methods on surviving leaf classes lose their only caller.
 - **Unplanned commitlint diversion:** bodies with `#N` mid-sentence in multi-paragraph messages are still misidentified as footer tokens by commitlint v21.0.2 despite issue [#4099] being closed COMPLETED on 2026-06-02 with no linked PR.
@@ -79,7 +79,7 @@ The session's dominant friction was an unplanned commitlint diversion that produ
    Impact: ~4 extra tool calls; caught immediately, no lasting damage.
 3. `missing-context` / unused-tool — determining the upstream commitlint issue state took several rounds of `web_search` + `fetch_content` until the user said "Remember you have access to the `gh` CLI, too"; `gh issue view 4099 --repo conventional-changelog/commitlint` then returned the authoritative state (`CLOSED`/`COMPLETED`, no linked PR) in one call.
    Impact: several wasted research rounds; user-caught.
-4. `missing-context` (minor) — the plan's risk analysis covered unused *files* (`FsAgentFileOps`, kept live by its test import) but not unused class *methods*; deleting the hub orphaned `showAgentDetail` and `showCreateWizard`, tripping `fallow dead-code`.
+4. `missing-context` (minor) — the plan's risk analysis covered unused _files_ (`FsAgentFileOps`, kept live by its test import) but not unused class _methods_; deleting the hub orphaned `showAgentDetail` and `showCreateWizard`, tripping `fallow dead-code`.
    Impact: low — caught by the gate, resolved with two `fallow-ignore-next-line unused-class-member` suppressions pointing at [#441].
 
 #### What caused friction (user side)

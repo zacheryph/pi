@@ -19,7 +19,9 @@ export function resolveToolSelection(
 ): ResolvedToolSelection {
   const entries = declared ?? ["all"];
   const inclusions = entries.filter((entry) => !entry.startsWith("-"));
-  const exclusions = entries.filter((entry) => entry.startsWith("-")).map((entry) => entry.slice(1));
+  const exclusions = entries
+    .filter((entry) => entry.startsWith("-"))
+    .map((entry) => entry.slice(1));
   const candidates = [...new Set(available)];
   const selected = new Set<string>();
   const excluded = new Set<string>();

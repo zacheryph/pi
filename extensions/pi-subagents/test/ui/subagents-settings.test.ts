@@ -22,14 +22,18 @@ function makeSettings() {
     })),
     consumedSessionRetentionMinutes: 10,
     unconsumedSessionRetentionMinutes: 720,
-    applyConsumedSessionRetentionMinutes: vi.fn((): { message: string; level: "info" | "warning" } => ({
-      message: "Consumed-session retention set to 30 min",
-      level: "info",
-    })),
-    applyUnconsumedSessionRetentionMinutes: vi.fn((): { message: string; level: "info" | "warning" } => ({
-      message: "Unconsumed-session retention set to 1440 min",
-      level: "info",
-    })),
+    applyConsumedSessionRetentionMinutes: vi.fn(
+      (): { message: string; level: "info" | "warning" } => ({
+        message: "Consumed-session retention set to 30 min",
+        level: "info",
+      }),
+    ),
+    applyUnconsumedSessionRetentionMinutes: vi.fn(
+      (): { message: string; level: "info" | "warning" } => ({
+        message: "Unconsumed-session retention set to 1440 min",
+        level: "info",
+      }),
+    ),
     abortAllOnInterrupt: true,
     toggleAbortAllOnInterrupt: vi.fn((): { message: string; level: "info" | "warning" } => ({
       message: "Abort all subagents on ESC: off",
@@ -38,11 +42,16 @@ function makeSettings() {
     overlayWidth: "third" as OverlayWidth,
     overlayDefaultOpen: false,
     overlayShowThinking: true,
-    toggleOverlayShowThinking: vi.fn((): { message: string; level: "info" | "warning" } => ({ message: "Overlay thinking: hidden", level: "info" })),
-    applyOverlayWidth: vi.fn((width: OverlayWidth): { message: string; level: "info" | "warning" } => ({
-      message: `Overlay width set to ${width}`,
+    toggleOverlayShowThinking: vi.fn((): { message: string; level: "info" | "warning" } => ({
+      message: "Overlay thinking: hidden",
       level: "info",
     })),
+    applyOverlayWidth: vi.fn(
+      (width: OverlayWidth): { message: string; level: "info" | "warning" } => ({
+        message: `Overlay width set to ${width}`,
+        level: "info",
+      }),
+    ),
     toggleOverlayDefaultOpen: vi.fn((): { message: string; level: "info" | "warning" } => ({
       message: "Overlay default visibility: shown (before explicit show/hide this session)",
       level: "info",
@@ -128,26 +137,33 @@ describe("SubagentsSettingsHandler", () => {
 });
 
 describe("SubagentsSettingsHandler — overlay settings", () => {
-  it.each([true, false])("shows thinking visibility %s and toggles without input", async shown => {
-    const { handler, settings } = makeHandler();
-    settings.overlayShowThinking = shown;
-    const choice = `Overlay thinking (current: ${shown ? "shown" : "hidden"})`;
-    const ui = makeMenuUI([choice]);
-    await handler.handle({ ui });
-    expect(ui.select.mock.calls[0][1]).toContain(choice);
-    expect(settings.toggleOverlayShowThinking).toHaveBeenCalledOnce();
-    expect(ui.input).not.toHaveBeenCalled();
-    expect(ui.notify).toHaveBeenCalledWith("Overlay thinking: hidden", "info");
-  });
+  it.each([true, false])(
+    "shows thinking visibility %s and toggles without input",
+    async (shown) => {
+      const { handler, settings } = makeHandler();
+      settings.overlayShowThinking = shown;
+      const choice = `Overlay thinking (current: ${shown ? "shown" : "hidden"})`;
+      const ui = makeMenuUI([choice]);
+      await handler.handle({ ui });
+      expect(ui.select.mock.calls[0][1]).toContain(choice);
+      expect(settings.toggleOverlayShowThinking).toHaveBeenCalledOnce();
+      expect(ui.input).not.toHaveBeenCalled();
+      expect(ui.notify).toHaveBeenCalledWith("Overlay thinking: hidden", "info");
+    },
+  );
 
   it("forwards thinking persistence warnings", async () => {
     const { handler, settings } = makeHandler();
     settings.toggleOverlayShowThinking.mockReturnValue({
-      message: "Overlay thinking: hidden (session only; failed to persist)", level: "warning",
+      message: "Overlay thinking: hidden (session only; failed to persist)",
+      level: "warning",
     });
     const ui = makeMenuUI(["Overlay thinking (current: shown)"]);
     await handler.handle({ ui });
-    expect(ui.notify).toHaveBeenCalledWith("Overlay thinking: hidden (session only; failed to persist)", "warning");
+    expect(ui.notify).toHaveBeenCalledWith(
+      "Overlay thinking: hidden (session only; failed to persist)",
+      "warning",
+    );
   });
   it.each<OverlayWidth>(["quarter", "third", "half", "two-thirds"])(
     "selects width preset %s without freeform input",
@@ -155,11 +171,12 @@ describe("SubagentsSettingsHandler — overlay settings", () => {
       const { handler, settings } = makeHandler();
       const ui = makeMenuUI(["Overlay width (current: third)", OVERLAY_WIDTH_PRESETS[width].label]);
       await handler.handle({ ui });
-      expect(ui.select).toHaveBeenNthCalledWith(
-        2,
-        "Overlay width (fraction of terminal width)",
-        ["Quarter (1/4)", "Third (1/3)", "Half (1/2)", "Two-thirds (2/3)"],
-      );
+      expect(ui.select).toHaveBeenNthCalledWith(2, "Overlay width (fraction of terminal width)", [
+        "Quarter (1/4)",
+        "Third (1/3)",
+        "Half (1/2)",
+        "Two-thirds (2/3)",
+      ]);
       expect(settings.applyOverlayWidth).toHaveBeenCalledExactlyOnceWith(width);
       expect(ui.input).not.toHaveBeenCalled();
       expect(ui.notify).toHaveBeenCalledWith(`Overlay width set to ${width}`, "info");
@@ -206,7 +223,8 @@ describe("SubagentsSettingsHandler — overlay settings", () => {
     expect(ui.input).not.toHaveBeenCalled();
     expect(ui.select).toHaveBeenCalledOnce();
     expect(ui.notify).toHaveBeenCalledWith(
-      "Overlay default visibility: shown (before explicit show/hide this session)", "info",
+      "Overlay default visibility: shown (before explicit show/hide this session)",
+      "info",
     );
   });
 
@@ -219,7 +237,8 @@ describe("SubagentsSettingsHandler — overlay settings", () => {
     const ui = makeMenuUI(["Overlay width (current: third)", "Half (1/2)"]);
     await handler.handle({ ui });
     expect(ui.notify).toHaveBeenCalledWith(
-      "Overlay width set to half (session only; failed to persist)", "warning",
+      "Overlay width set to half (session only; failed to persist)",
+      "warning",
     );
   });
 });

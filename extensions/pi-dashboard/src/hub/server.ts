@@ -19,7 +19,8 @@ function integer(name: string, fallback: number, min: number, max: number): numb
   return value;
 }
 
-const log = (line: string) => process.stderr.write(`${new Date().toISOString()} [hub ${process.pid}] ${line}\n`);
+const log = (line: string) =>
+  process.stderr.write(`${new Date().toISOString()} [hub ${process.pid}] ${line}\n`);
 const dir = option("dir");
 if (!dir) {
   process.stderr.write("usage: server.ts --dir <dir> [--port <n>] [--idle-grace-ms <n>]\n");
@@ -34,7 +35,7 @@ const hub = new Hub({
 });
 
 try {
-  if (await hub.start() === "already-running") {
+  if ((await hub.start()) === "already-running") {
     log("another hub owns the socket; exiting");
     process.exit(0);
   }
@@ -42,7 +43,8 @@ try {
   log(`failed to start: ${error instanceof Error ? error.message : String(error)}`);
   process.exit(1);
 }
-for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) process.on(signal, () => void hub.stop(signal));
+for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const)
+  process.on(signal, () => void hub.stop(signal));
 await hub.closed;
 log("stopped");
 process.exit(0);

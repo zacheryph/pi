@@ -3,13 +3,22 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  countLines, currentEntries, handleFor, parseRef, replayStashIndex, resolveRef,
-  STASH_INDEX_TYPE, STASH_SCHEMA_VERSION, type StashRecord,
+  countLines,
+  currentEntries,
+  handleFor,
+  parseRef,
+  replayStashIndex,
+  resolveRef,
+  STASH_INDEX_TYPE,
+  STASH_SCHEMA_VERSION,
+  type StashRecord,
 } from "#src/state";
 import { BlobStore } from "#src/store";
 
 const dirs: string[] = [];
-afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
+afterEach(() => {
+  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
 function store(): BlobStore {
   const dir = mkdtempSync(join(tmpdir(), "pi-stash-state-"));
   dirs.push(dir);
@@ -17,15 +26,34 @@ function store(): BlobStore {
 }
 
 function record(name: string, hash: string, createdAt = 1): StashRecord {
-  return { name, hash, bytes: 1, lines: 1, mime: "text/plain", createdAt, createdBy: "session", source: "content" };
+  return {
+    name,
+    hash,
+    bytes: 1,
+    lines: 1,
+    mime: "text/plain",
+    createdAt,
+    createdBy: "session",
+    source: "content",
+  };
 }
-const put = (r: StashRecord) => ({ type: "custom", customType: STASH_INDEX_TYPE, data: { schemaVersion: STASH_SCHEMA_VERSION, op: "put", record: r } });
-const checkpoint = (records: StashRecord[]) => ({ type: "custom", customType: STASH_INDEX_TYPE, data: { schemaVersion: STASH_SCHEMA_VERSION, op: "checkpoint", records } });
+const put = (r: StashRecord) => ({
+  type: "custom",
+  customType: STASH_INDEX_TYPE,
+  data: { schemaVersion: STASH_SCHEMA_VERSION, op: "put", record: r },
+});
+const checkpoint = (records: StashRecord[]) => ({
+  type: "custom",
+  customType: STASH_INDEX_TYPE,
+  data: { schemaVersion: STASH_SCHEMA_VERSION, op: "checkpoint", records },
+});
 const branch = (...entries: unknown[]) => ({ sessionManager: { getBranch: () => entries } });
 
 describe("handles", () => {
   it("formats with a 12-character hash prefix", () => {
-    expect(handleFor({ name: "auth-findings", hash: "3f9a1c2b7d01".padEnd(64, "0") })).toBe("stash:auth-findings@3f9a1c2b7d01");
+    expect(handleFor({ name: "auth-findings", hash: "3f9a1c2b7d01".padEnd(64, "0") })).toBe(
+      "stash:auth-findings@3f9a1c2b7d01",
+    );
   });
 
   it("parses handles and bare names, rejecting short prefixes and bad names", () => {
@@ -39,7 +67,13 @@ describe("handles", () => {
   });
 
   it("counts lines with or without a trailing newline", () => {
-    expect([countLines(""), countLines("a"), countLines("a\n"), countLines("a\nb"), countLines("\n\n")]).toEqual([0, 1, 1, 2, 2]);
+    expect([
+      countLines(""),
+      countLines("a"),
+      countLines("a\n"),
+      countLines("a\nb"),
+      countLines("\n\n"),
+    ]).toEqual([0, 1, 1, 2, 2]);
   });
 });
 
@@ -54,25 +88,48 @@ describe("index replay", () => {
   });
 
   it("keeps adoption fields through puts and checkpoints, and rejects malformed ones", () => {
-    const adopted: StashRecord = { ...record("found", "4".repeat(64), 4), id: "0123456789abcdef", agent: "a3f2b1c4-9d8e", via: "adopt" };
+    const adopted: StashRecord = {
+      ...record("found", "4".repeat(64), 4),
+      id: "0123456789abcdef",
+      agent: "a3f2b1c4-9d8e",
+      via: "adopt",
+    };
     expect(replayStashIndex(branch(put(adopted))).records).toEqual([adopted]);
     expect(replayStashIndex(branch(checkpoint([adopted]))).records).toEqual([adopted]);
-    expect(replayStashIndex(branch(
-      put({ ...adopted, via: "sideways" } as unknown as StashRecord),
-      put({ ...adopted, agent: 7 } as unknown as StashRecord),
-      put({ ...adopted, id: null } as unknown as StashRecord),
-    )).records).toEqual([]);
+    expect(
+      replayStashIndex(
+        branch(
+          put({ ...adopted, via: "sideways" } as unknown as StashRecord),
+          put({ ...adopted, agent: 7 } as unknown as StashRecord),
+          put({ ...adopted, id: null } as unknown as StashRecord),
+        ),
+      ).records,
+    ).toEqual([]);
   });
 
   it("ignores foreign, malformed and future-version entries", () => {
     const good = record("ok", "a".repeat(64));
-    const index = replayStashIndex(branch(
-      { type: "custom", customType: "other", data: { op: "put", record: good } },
-      { type: "custom", customType: STASH_INDEX_TYPE, data: { schemaVersion: 99, op: "put", record: good } },
-      { type: "custom", customType: STASH_INDEX_TYPE, data: { schemaVersion: STASH_SCHEMA_VERSION, op: "put", record: { ...good, hash: "nope" } } },
-      null,
-      put(good),
-    ));
+    const index = replayStashIndex(
+      branch(
+        { type: "custom", customType: "other", data: { op: "put", record: good } },
+        {
+          type: "custom",
+          customType: STASH_INDEX_TYPE,
+          data: { schemaVersion: 99, op: "put", record: good },
+        },
+        {
+          type: "custom",
+          customType: STASH_INDEX_TYPE,
+          data: {
+            schemaVersion: STASH_SCHEMA_VERSION,
+            op: "put",
+            record: { ...good, hash: "nope" },
+          },
+        },
+        null,
+        put(good),
+      ),
+    );
     expect(index.records).toEqual([good]);
   });
 
@@ -80,8 +137,16 @@ describe("index replay", () => {
     const shared = record("shared", "1".repeat(64));
     const left = record("left", "2".repeat(64));
     const right = record("right", "3".repeat(64));
-    expect(currentEntries(replayStashIndex(branch(put(shared), put(left)))).map((r) => r.name).sort()).toEqual(["left", "shared"]);
-    expect(currentEntries(replayStashIndex(branch(put(shared), put(right)))).map((r) => r.name).sort()).toEqual(["right", "shared"]);
+    expect(
+      currentEntries(replayStashIndex(branch(put(shared), put(left))))
+        .map((r) => r.name)
+        .sort(),
+    ).toEqual(["left", "shared"]);
+    expect(
+      currentEntries(replayStashIndex(branch(put(shared), put(right))))
+        .map((r) => r.name)
+        .sort(),
+    ).toEqual(["right", "shared"]);
   });
 });
 
@@ -92,10 +157,17 @@ describe("resolveRef", () => {
     const v2 = s.put("two").hash;
     const index = { records: [record("doc", v1, 1), record("doc", v2, 2)] };
     expect(resolveRef("doc", index, s).hash).toBe(v2);
-    expect(resolveRef(`stash:doc@${v1.slice(0, 12)}`, index, s)).toMatchObject({ hash: v1, record: { hash: v1 } });
+    expect(resolveRef(`stash:doc@${v1.slice(0, 12)}`, index, s)).toMatchObject({
+      hash: v1,
+      record: { hash: v1 },
+    });
     // Another session's handle: not in this index, still readable.
     const foreign = s.put("from a subagent").hash;
-    expect(resolveRef(`stash:findings@${foreign.slice(0, 12)}`, { records: [] }, s)).toEqual({ hash: foreign, name: "findings", record: undefined });
+    expect(resolveRef(`stash:findings@${foreign.slice(0, 12)}`, { records: [] }, s)).toEqual({
+      hash: foreign,
+      name: "findings",
+      record: undefined,
+    });
     expect(() => resolveRef("missing", index, s)).toThrow(/No stash entry named "missing"/);
     expect(() => resolveRef(`x@${"0".repeat(12)}`, index, s)).toThrow(/not found/);
   });
@@ -110,7 +182,9 @@ describe("resolveRef", () => {
     mkdirSync(join(s.root, "blobs", "ab"), { recursive: true });
     writeFileSync(join(s.root, "blobs", "ab", a), "a");
     writeFileSync(join(s.root, "blobs", "ab", b), "b");
-    expect(() => resolveRef("stash:dup@abcdef012345", { records: [] }, s)).toThrow(new RegExp(`Ambiguous[\\s\\S]*${a}[\\s\\S]*${b}`));
+    expect(() => resolveRef("stash:dup@abcdef012345", { records: [] }, s)).toThrow(
+      new RegExp(`Ambiguous[\\s\\S]*${a}[\\s\\S]*${b}`),
+    );
     expect(resolveRef(`stash:dup@${a.slice(0, 13)}`, { records: [] }, s).hash).toBe(a);
   });
 });

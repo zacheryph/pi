@@ -174,7 +174,7 @@ Regular mode does not enable mouse tracking, so the method is inert there.
    Killing mutations:
    - Change the `pageUp` branch to subtract `1` instead of `viewportHeight`; the PgUp test goes red.
    - Delete the `home` branch; the Home test goes red.
-   Commit: `test(pi-subagents): pin the session viewer's paging and top/bottom keys`.
+     Commit: `test(pi-subagents): pin the session viewer's paging and top/bottom keys`.
 2. **refactor: extract `scrollBy(delta)` and `scrollTo(offset)` on `TranscriptPane`.**
    Each owns the clamp and the `autoScroll = offset >= maxScroll` rule, using `scrollBounds(this.inputWidth())`.
    This prepares Steps 5 and 6, which would otherwise copy the clamp a sixth time.
@@ -196,26 +196,26 @@ Regular mode does not enable mouse tracking, so the method is inert there.
    - `handleInput` matches through `keys`; `footerHint()` renders the resolved keys (Design Overview).
    - Update the `footer rule` assertion to `↑↓ scroll · PageUp/PageDown · Home/End · Esc close`, and confirm it still fits at 80 columns.
      If it does not, record the measured width and the shorter wording chosen.
-   New tests:
+     New tests:
    - A pane built with `{ "tui.altScreen.pageUp": "ctrl+b" }` pages up on Ctrl+B (`\x02`) and not on bare PgUp.
    - Its footer reads `Ctrl+B/PageDown`.
    - With `tui.altScreen.top` and `bottom` bound to `[]`, the footer has no `Home`/`End` segment.
-   Step 1's tests stay green on default bindings.
-   Killing mutations:
+     Step 1's tests stay green on default bindings.
+     Killing mutations:
    - Restore `matchesKey(data, "pageUp")` in the page-up branch; the Ctrl+B test goes red.
    - Make `footerHint()` return the old literal; the remap hint test goes red.
    - Drop the empty-pair omission; the unbound test goes red.
-   Commit: `feat(pi-subagents): the session viewer's paging keys follow your keybindings`.
+     Commit: `feat(pi-subagents): the session viewer's paging keys follow your keybindings`.
 6. **feat: scroll the viewer with the mouse wheel.**
    Add `handleMouse` (Design Overview).
    Tests:
    - A wheel event with `wheelDelta: -3` at the bottom shows the transcript 3 rows up.
    - A following `wheelDelta: 3` returns to the bottom, and a later source change keeps following.
    - A `click` event returns `undefined`.
-   Killing mutations:
+     Killing mutations:
    - Use `Math.abs(event.wheelDelta)`; the scroll-up test goes red.
    - Return `{ handled: true }` for every event type; the click test goes red.
-   Commit: `feat(pi-subagents): scroll the session viewer with the mouse wheel`.
+     Commit: `feat(pi-subagents): scroll the session viewer with the mouse wheel`.
 7. **fix: page the session viewer natively in fullscreen mode.**
    - Add `probeTuiMode`, `viewerMountOptions`, `FULLSCREEN_OVERLAY`, and `ViewerMountOptions`.
    - Update the module doc comment.
@@ -224,16 +224,16 @@ Regular mode does not enable mouse tracking, so the method is inert there.
      It resolves with the `done` value when `done` is called synchronously, and with `undefined` otherwise.
      `mountedPaneFactory` now picks the last call.
    - Add `makeUI({ probeResult: undefined })`, which simulates a non-interactive UI by resolving without calling the factory.
-   New tests (`describe("mount mode")`):
+     New tests (`describe("mount mode")`):
    - Fullscreen mounts with exactly `{ overlay: true, overlayOptions: { anchor: "bottom-center", width: "100%", maxHeight: "70%", margin: { bottom: 3 } } }`.
    - Regular keeps exactly `{ overlay: false }` (the existing ADR 0007 test).
    - A probe that resolves `undefined` mounts with `{ overlay: false }`.
    - The probe's factory calls `done` before returning, so the probe never mounts a component.
-   Killing mutations:
+     Killing mutations:
    - Make `viewerMountOptions` return `{ overlay: false }` unconditionally; the fullscreen test goes red.
    - Make the fallback treat a non-`"regular"` result as fullscreen (`mode === "regular" ? "regular" : "fullscreen"`); the undefined-probe test goes red.
    - Change `margin: { bottom: 3 }` to `3`; the fullscreen exact-options test goes red.
-   Commit: `fix(pi-subagents): page the session viewer natively in fullscreen mode`.
+     Commit: `fix(pi-subagents): page the session viewer natively in fullscreen mode`.
 8. **docs: record the fullscreen overlay decision.**
    - Add ADR 0012, amending ADR 0007.
      - Context: the alt-screen listener, the upstream posture, why the 0007 defect is regular-mode only (0007's own text on `TuiAltScreen`).
@@ -242,7 +242,7 @@ Regular mode does not enable mouse tracking, so the method is inert there.
    - Update ADR 0007's frontmatter and Status section.
    - Update the README `### /subagents:sessions` sample footer and add a sentence on fullscreen behavior and the bindings.
    - Then run the manual check in Risks and record its result in the retro.
-   Commit: `docs(pi-subagents): record why the fullscreen session viewer is an overlay`.
+     Commit: `docs(pi-subagents): record why the fullscreen session viewer is an overlay`.
 
 ## Risks and Mitigations
 

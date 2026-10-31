@@ -54,7 +54,10 @@ export interface SpawnExecution {
 /** Presentation: display/UI values derived from identity and execution. */
 export interface SpawnPresentation {
   agentTags: string[];
-  detailBase: Pick<AgentDetails, "displayName" | "description" | "subagentType" | "modelName" | "tags">;
+  detailBase: Pick<
+    AgentDetails,
+    "displayName" | "description" | "subagentType" | "modelName" | "tags"
+  >;
 }
 
 /** Fully resolved config for spawning an agent — composed of domain-aligned sub-interfaces. */
@@ -127,9 +130,7 @@ export function resolveSpawnConfig(
 
   const modelName = modelLabel(model);
 
-  const effectiveMaxTurns = normalizeMaxTurns(
-    resolvedConfig.maxTurns ?? settings.defaultMaxTurns,
-  );
+  const effectiveMaxTurns = normalizeMaxTurns(resolvedConfig.maxTurns ?? settings.defaultMaxTurns);
 
   const agentInvocation: AgentInvocation = {
     thinking,

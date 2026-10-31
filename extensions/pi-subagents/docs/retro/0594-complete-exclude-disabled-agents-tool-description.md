@@ -32,8 +32,8 @@ Secondary gap: `buildTypeListText` emits the bare `Default agents:` header even 
 - `agent-tool.ts` change builds an `agentSpecificGuidelines` array gated by `registry.isValidType("Explore")` etc., filtered by a type guard.
   Works, but hardcodes the three agent names as magic-string literals **parallel to the `default-agents` config** — a second source of truth.
   Operator chose to **source the guideline copy from the agent config** (e.g. a `toolGuideline` field on the built-in `AgentConfig`) so descriptions and guidelines share one home and the registry drives both.
-- **Test defect to fix:** the new `agent-tool.test.ts` case asserts `not.toContain(\`- ${name} :\`)` — with a **space before the colon**.
-  The real type-list format is `- Explore:` (no space, see `helpers.ts:82,87`), so that assertion passes vacuously regardless of the fix.
+- **Test defect to fix:** the new `agent-tool.test.ts` case asserts `not.toContain(\`- ${name} :\`)`— with a **space before the colon**.
+  The real type-list format is`- Explore:`(no space, see`helpers.ts:82,87`), so that assertion passes vacuously regardless of the fix.
   The meaningful assertion (`not.toContain(\`- Use ${name} for \`)`) is fine; drop or correct the tautological one.
 - Minor: double space after `&&` in the gated expressions (Biome would normalize).
 
@@ -131,7 +131,7 @@ The pipeline carried the recorded decision cleanly — each stage's retro note s
   The PR-review stage separated the real problem (disabled built-ins leaking into the `Guidelines:` block) from the PR's implementation, caught a tautological test assertion (`- ${name} :` with a space that never matches the real `- ${name}:` format), and identified the parallel-source-of-truth smell.
   That evaluation — not the PR diff — became the plan, producing the `toolGuideline`-on-`AgentConfig` design.
 - **`tidy-first-assessor` held its scope boundary on a real change (first-live-use checkpoint).**
-  It recommended exactly one change-scoped refactor (extract `isEnabledAgent` in `helpers.ts`, reused by the new `buildAgentGuidelines`) and explicitly *declined* to restructure the adjacent `defaultDescs`/`customDescs` duplication because the change did not touch it.
+  It recommended exactly one change-scoped refactor (extract `isEnabledAgent` in `helpers.ts`, reused by the new `buildAgentGuidelines`) and explicitly _declined_ to restructure the adjacent `defaultDescs`/`customDescs` duplication because the change did not touch it.
   This is the discipline the skill's checkpoint watches for — the Rejected-as-scope-creep list correctly excluded untouched code.
 - **Ship-stage release-PR merge distinguished `IN_PROGRESS` from the empty-rollup case.**
   `release_pr_merge` returned `UNSTABLE`; `statusCheckRollup` showed an `IN_PROGRESS` `check`, so I waited three poll cycles for it to finish and retried `release_pr_merge` rather than falling back to `gh pr merge --rebase` (which the prompt reserves for the empty-rollup `GITHUB_TOKEN` case).

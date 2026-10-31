@@ -47,10 +47,7 @@ export function renderProjectContext(
 export type ProjectContextLoader = (cwd: string) => string | undefined;
 
 /** Pi's context-file discovery, as `loadProjectContextFiles` implements it. */
-export type ContextFileDiscovery = (options: {
-  cwd: string;
-  agentDir: string;
-}) => ContextFile[];
+export type ContextFileDiscovery = (options: { cwd: string; agentDir: string }) => ContextFile[];
 
 /**
  * A loader that resolves a directory's project instructions against the

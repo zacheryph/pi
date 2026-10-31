@@ -16,7 +16,7 @@ The plan (`packages/pi-subagents/docs/plans/0864-bound-widget-to-terminal-viewpo
 ### Observations
 
 - The reporter's diagnosis named the 80 ms loop but not the path to a blank screen.
-  Measuring found it: at 12 widget lines and 14 terminal rows, **100 of 100** spinner ticks call `fullRender(true)`, which clears screen *and* scrollback and repaints the whole transcript (53,699 bytes/tick on a 2000-line transcript, roughly 671 KB/s at 12.5 Hz).
+  Measuring found it: at 12 widget lines and 14 terminal rows, **100 of 100** spinner ticks call `fullRender(true)`, which clears screen _and_ scrollback and repaints the whole transcript (53,699 bytes/tick on a 2000-line transcript, roughly 671 KB/s at 12.5 Hz).
   At 24 rows it is 0 of 100.
   The trigger is `(widgetLines - 1) + dockLinesBelowWidget > terminalRows`, so the extension owns a real lever: `renderWidgetLines` never saw `tui.terminal.rows` and capped at a hard-coded 12.
 - The spike refuted the reporter's proposed item 2 and redirected it.
@@ -29,15 +29,15 @@ The plan (`packages/pi-subagents/docs/plans/0864-bound-widget-to-terminal-viewpo
   `pi#8923`, which the body summarizes as "missing terminal rows restored by resize", is actually a **fullscreen**-mode issue closed `NOT_PLANNED` whose own repro notes regular-mode recovery worked and that the failure persists with widgets removed, so it does not support the regular-mode claim.
 - The issue's diagnostics recipe (`PI_DEBUG_REDRAW=1`, log at `~/.pi/agent/pi-debug.log`) is correct for the reported 0.84.4 but wrong for current Pi: `main` renamed it to `PI_TUI_DEBUG_REDRAW` and the log to `pi-tui-debug.log` under `logDirectory`.
 - The operator asked whether to match Pi's own animation timer instead of picking 250 ms. Checked: Pi's `Loader` default is also 80 ms, so we already match, but `DEFAULT_INTERVAL_MS` is module-private, `InteractiveMode.workingIndicatorOptions` is `private`, and `ctx.ui.setWorkingIndicator()` is a setter with no getter, so there is no runtime read path.
-  More decisive: Pi's loader animates only while the parent is *working* and is swapped for the static `IdleStatus` when idle, the opposite duty cycle to ours, so its cadence carries no justification for our window.
+  More decisive: Pi's loader animates only while the parent is _working_ and is swapped for the static `IdleStatus` when idle, the opposite duty cycle to ours, so its cadence carries no justification for our window.
   Operator chose 250 ms flat.
 - The package already had the convention for this: `TranscriptPane.viewportHeight` in `session-navigator.ts` reads `tui.terminal.rows` and clamps with a `CHROME_LINES` / `MIN_VIEWPORT` / `VIEWPORT_HEIGHT_PCT` triple.
   `widgetLineBudget` mirrors it, using the absolute-reserve form rather than the percentage one because the reserved quantity is a literal count of dock rows below the widget.
-- An existing doc comment on `onSubagentResuming` already asserts "the timer stops once nothing is running", which the code does not hold (`clearWidget` stops it only when nothing is active *and* nothing finished).
+- An existing doc comment on `onSubagentResuming` already asserts "the timer stops once nothing is running", which the code does not hold (`clearWidget` stops it only when nothing is active _and_ nothing finished).
   Step 5 makes the comment true.
 - Escape-hatch setting declined by the operator: once the height bound removes the hazard, a disable knob guards nothing, and mechanism is forever while docs are reversible.
 - Tidy-First assessor returned three Recommended preparations (a params builder in `test/widget-renderer.test.ts`, a `stubTui()` builder in `test/ui/agent-widget.test.ts`, and a `setTimerRunning(shouldRun)` extraction in `agent-widget.ts`), and corrected the design summary's field count (the params object has 6 fields, so `terminalHeight` is the 7th, not the 8th).
-  Its most useful note was a rejection: a fully behavior-preserving "single owner in `update()`" refactor is not reachable, because collapsing three event triggers to one state check *is* the behavior change, so it stays one atomic `fix:` commit on top of the mechanism extraction.
+  Its most useful note was a rejection: a fully behavior-preserving "single owner in `update()`" refactor is not reachable, because collapsing three event triggers to one state check _is_ the behavior change, so it stays one atomic `fix:` commit on top of the mechanism extraction.
   Every count it reported was re-verified by grep before the plan recorded it.
 
 #### Deferred tidyings
@@ -69,7 +69,7 @@ The widget's rendered height now derives from `tui.terminal.rows`, its animation
   The operator chose to fix it in this branch over filing a follow-up, since the reachability is this change's doing and lands where the issue lives.
   Raising the budget floor to hide the path again was offered and declined: it would trade the honest 3-line floor for a widget the viewport bound cannot protect.
   The plan now carries a `### Departure: assembleOverflow counts hidden queued agents` section recording this.
-- `perf(pi-subagents): slow the agents widget animation to 250 ms` was kept despite reading as mechanism-named, because `perf` reaches the changelog and the animation cadence *is* the observable — a user sees the spinner rate.
+- `perf(pi-subagents): slow the agents widget animation to 250 ms` was kept despite reading as mechanism-named, because `perf` reaches the changelog and the animation cadence _is_ the observable — a user sees the spinner rate.
   The rule against seam-named subjects targets things like "add `terminalHeight` param", not a user-visible behavior change stated with its value.
 - Two ESLint auto-fixes landed during commits: the fake `Terminal` satisfies Pi's interface structurally, so both `as unknown as Terminal` and the `as never` casts on the widget-factory arguments were unnecessary.
   The compiled fake needing no cast is a small piece of evidence that the test couples to Pi's public surface rather than its internals.
@@ -111,7 +111,7 @@ This entry synthesizes all four stages (planning, TDD, sync, ship), reading the 
   `test/ui/widget-viewport.test.ts` failed at exactly the cells the spike measured (10 rows × 4 agents, 12 × 4, 14 × 6) and passed at 16, 18, 24, and 40 — so the test demonstrably would have caught the bug, not merely documented the fix.
 - The pre-completion reviewer's finding was **independently reproduced before being acted on**.
   The implementing session wrote a throwaway probe (`test/probe.test.ts`, deleted immediately after) to confirm the `assembleOverflow` undercount rather than accepting the subagent's claim as a premise — exactly the posture `AGENTS.md` principle 2 asks for.
-- The tidy-first assessor's most valuable output was a **rejection**: it ruled that collapsing three timer-start triggers into one state check *is* the behavior change, not a preparation for it, which kept the `refactor:` mechanism extraction and the `fix:` rule change as separate commits.
+- The tidy-first assessor's most valuable output was a **rejection**: it ruled that collapsing three timer-start triggers into one state check _is_ the behavior change, not a preparation for it, which kept the `refactor:` mechanism extraction and the `fix:` rule change as separate commits.
 - Feedback loops ran incrementally throughout, not at the end.
   Every step ran `vitest run` at Red and at Green, `pnpm run check` after Green, and its planned killing mutations before committing — with two mutations returning informative surprises (a fourth test killed where three were predicted; a `terminalHeight` mutation that killed only the integration cells, proving the two test layers discriminate different claims).
 
@@ -123,7 +123,7 @@ This entry synthesizes all four stages (planning, TDD, sync, ship), reading the 
   Impact: roughly six extra tool calls across the peer sessions, including an `od -c` inspection to diagnose the failed match.
   No content rework.
 - `instruction-violation` (self-identified) — the repair for those literals reached for `perl -CSD -pi` rather than a second `Edit`, and the first attempt (`s/AgentWidget \\\\u2014 the animation/…/`) was itself over-escaped and matched nothing.
-  `edit-tool` § Scripted substitutions already says a replacement containing backslashes is a trap and to use `Edit`; the skill does not name the *repair* case specifically, which is where both sessions went wrong.
+  `edit-tool` § Scripted substitutions already says a replacement containing backslashes is a trap and to use `Edit`; the skill does not name the _repair_ case specifically, which is where both sessions went wrong.
   Impact: one wasted `perl` invocation plus its verification grep.
 - `missing-context` (reviewer-caught) — the plan asserted "No change to `assembleOverflow`" on the strength of a reachability the change itself altered.
   Lowering the line budget from a fixed 10 to a viewport-derived floor of 3 made a pre-existing queued-drop miscount reachable at ≤10 rows with an ordinary agent mix, where it previously needed five simultaneous running agents.
@@ -138,7 +138,7 @@ This entry synthesizes all four stages (planning, TDD, sync, ship), reading the 
 - Nothing that cost time.
   Two interventions materially improved the outcome:
   - Asking "why not match Pi's own animation timer?"
-    at the cadence gate turned a picked number into a grounded one — the investigation found Pi's `Loader` default is *also* 80 ms but module-private, setter-only, and animating on the **opposite** duty cycle, which is a far better justification for choosing 250 ms than the original.
+    at the cadence gate turned a picked number into a grounded one — the investigation found Pi's `Loader` default is _also_ 80 ms but module-private, setter-only, and animating on the **opposite** duty cycle, which is a far better justification for choosing 250 ms than the original.
   - Choosing to fix the `assembleOverflow` finding in-branch rather than defer it kept the fix where its reachability was created, and declining the offered "raise the budget floor to hide the path again" preserved the honest 3-line floor.
 - Opportunity, not criticism: the operator reviewed the `perf:` subject-line judgment call only because the implementing session surfaced it explicitly at handoff.
   That surfacing is worth keeping as a habit — it converted a silent judgment into a reviewed one at zero cost.

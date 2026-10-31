@@ -6,7 +6,9 @@ import { afterEach, expect, it } from "vitest";
 import { SESSION_TREE_KEY } from "#src/index";
 
 const slots = globalThis as Record<symbol, unknown>;
-const keys = ["provider", "consumer", "seen"].map((name) => Symbol.for(`pi-session-tree.test.${name}`));
+const keys = ["provider", "consumer", "seen"].map((name) =>
+  Symbol.for(`pi-session-tree.test.${name}`),
+);
 const dirs: string[] = [];
 
 afterEach(() => {
@@ -22,7 +24,10 @@ it("shares one registry between extensions that each load their own copy of the 
     cwd: dir,
     agentDir: dir,
     settingsManager: SettingsManager.inMemory({}),
-    additionalExtensionPaths: [join(import.meta.dirname, "fixtures/provider.ts"), join(import.meta.dirname, "fixtures/consumer.ts")],
+    additionalExtensionPaths: [
+      join(import.meta.dirname, "fixtures/provider.ts"),
+      join(import.meta.dirname, "fixtures/consumer.ts"),
+    ],
     noPromptTemplates: true,
     noThemes: true,
     noContextFiles: true,

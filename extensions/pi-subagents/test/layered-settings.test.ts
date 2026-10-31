@@ -32,7 +32,14 @@ describe("loadLayeredSettings", () => {
 
   beforeEach(() => {
     dirs = createSettingsDirs(FILENAME);
-    ({ globalDir: agentDir, projectDir: cwd, globalFile, projectFile, writeGlobal, writeProject } = dirs);
+    ({
+      globalDir: agentDir,
+      projectDir: cwd,
+      globalFile,
+      projectFile,
+      writeGlobal,
+      writeProject,
+    } = dirs);
   });
 
   afterEach(() => {
@@ -40,7 +47,13 @@ describe("loadLayeredSettings", () => {
   });
 
   function load() {
-    return loadLayeredSettings<TestConfig>({ agentDir, cwd, filename: FILENAME, sanitize, warnLabel: "test-pkg" });
+    return loadLayeredSettings<TestConfig>({
+      agentDir,
+      cwd,
+      filename: FILENAME,
+      sanitize,
+      warnLabel: "test-pkg",
+    });
   }
 
   describe("missing files", () => {

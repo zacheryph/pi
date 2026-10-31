@@ -17,14 +17,10 @@
     "node": ">=24"
   },
   "scripts": {
-    "check": "tsc --noEmit",
+    "check": "oxfmt --check . && oxlint --deny-warnings . && npm run typecheck",
     "test": "vitest run",
-    "test:watch": "vitest"
-  },
-  "devDependencies": {
-    "@earendil-works/pi-coding-agent": "1.4.0",
-    "@types/node": "^24.19.2",
-    "typescript": "^6.0.3",
-    "vitest": "^5.0.5"
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "fix": "oxfmt --write . && oxlint --fix . && oxfmt --write ."
   }
 }

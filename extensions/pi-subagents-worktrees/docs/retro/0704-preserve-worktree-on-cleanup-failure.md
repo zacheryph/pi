@@ -23,7 +23,7 @@ Defect verification (against current `main`, base `4482a5db`):
 - Not already fixed.
   `git log --oneline -S "removeWorktree on cleanup error"` shows the destructive `catch` present since the package was scaffolded (`9a7dcfc5`) and inherited from the pi-subagents core before that (`049f4891`).
   The reporter is on `0.2.3`, which is the current version — there is no upgrade answer here.
-- Real boundary confirmed: `src/worktree.ts` (the outer `catch` in `cleanupWorktree`) plus `src/workspace-provider.ts` (`WorktreeWorkspace.dispose` returning `undefined`, which is what makes the loss *silent*).
+- Real boundary confirmed: `src/worktree.ts` (the outer `catch` in `cleanupWorktree`) plus `src/workspace-provider.ts` (`WorktreeWorkspace.dispose` returning `undefined`, which is what makes the loss _silent_).
   The PR touches exactly this path.
 - One correction to the report.
   The issue and the PR's plan both assert "no dangling commit, no dangling blob, `git fsck` finds nothing."
@@ -44,7 +44,7 @@ What is valuable:
 What we would change:
 
 - The motivating case is still broken, and this is the substantive finding.
-  The PR's plan declares `--no-verify` an explicit non-goal, but with a mutating formatter hook cleanup now fails on *every* subagent run that produced changes, leaking both a `tmpdir` worktree and a registered `git worktree list` entry each time.
+  The PR's plan declares `--no-verify` an explicit non-goal, but with a mutating formatter hook cleanup now fails on _every_ subagent run that produced changes, leaking both a `tmpdir` worktree and a registered `git worktree list` entry each time.
   `pruneWorktrees` (called from `src/index.ts` at startup) reclaims none of them — verified: `git worktree prune` only drops administrative entries whose directory is already gone.
   So the PR as written converts "silent loss, once" into "unbounded worktree accumulation, forever, plus an error addendum on every run."
   A `git commit --no-verify` retry was verified to succeed cleanly in exactly this scenario.
@@ -94,13 +94,13 @@ Filed [#714] for the one deferral the plan concretely names.
 ### Observations
 
 - **This repository is itself affected.**
-  The `committed` `commit-msg` hook rejects the rescue commit's `pi-agent: <description>` subject — `Disallowed type \`pi-agent\`` — so every subagent that runs in a worktree here and produces changes currently loses that work.
-  This turned out to be a stronger motivating example than the reporter's formatter-hook scenario, and it also confirms the retry must use `--no-verify` rather than something narrower, since `--no-verify` is what skips `commit-msg` as well as `pre-commit`.
+  The `committed` `commit-msg` hook rejects the rescue commit's `pi-agent: <description>` subject — `Disallowed type \`pi-agent\``— so every subagent that runs in a worktree here and produces changes currently loses that work.
+  This turned out to be a stronger motivating example than the reporter's formatter-hook scenario, and it also confirms the retry must use`--no-verify`rather than something narrower, since`--no-verify`is what skips`commit-msg`as well as`pre-commit`.
 - **Not breaking, and this was worth verifying rather than assuming.**
   `WorktreeCleanupResult` looked like a public type, but the package's `exports` map is `{ ".": "./src/index.ts" }`, `index.ts` exports only the default extension function, and no file outside the package references `cleanupWorktree`, `WorktreeCleanupResult`, or `WorktreeInfo`.
   Deep imports are blocked by the `exports` map, so the union is an internal change and the commits are `fix:`, not `fix!:`.
 - **A cross-step trap was caught at planning time.**
-  The obvious way to test preservation is a failing pre-commit hook, but step 4's `--no-verify` retry makes that exact scenario *succeed* — step 3's test would have silently inverted meaning while staying green.
+  The obvious way to test preservation is a failing pre-commit hook, but step 4's `--no-verify` retry makes that exact scenario _succeed_ — step 3's test would have silently inverted meaning while staying green.
   The plan instead triggers step 3's failure by pre-creating the worktree's `index.lock`, which no later step bypasses.
   Verified: `git status --porcelain` still reports the change, `git add -A` fails with `fatal: Unable to create '<gitdir>/index.lock': File exists`, the file survives on disk, and nothing reaches the object database.
 - **Re-staging before the retry was the non-obvious design detail.**
@@ -125,7 +125,7 @@ Package test count went from 26 to 31; the pre-completion reviewer returned **PA
 ### Observations
 
 - **The tidy-first assessment paid for itself.**
-  It caught that the plan deferred `commitStaged`'s *existence* to step 4, which would have made that commit both introduce the helper and add its retry body.
+  It caught that the plan deferred `commitStaged`'s _existence_ to step 4, which would have made that commit both introduce the helper and add its retry body.
   Extracting a bare non-retrying `commitStaged` in step 1 meant step 4 edited exactly one function's internals and never touched `cleanupWorktree`'s call site.
   It also spotted that `initGitRepo` was duplicated verbatim across both suites right before both were about to gain failure-path cases.
 - **The planned cross-step trap was real and the mitigation held.**
@@ -168,13 +168,13 @@ One self-caught instruction violation (fabricated commit SHAs in the PR close co
   The issue and the contributor's plan both asserted "no dangling commit, no dangling blob, `git fsck` finds nothing."
   Recovering the file via `git cat-file -p` on the dangling tree showed that is false for the hook case, because our own `git add -A` writes blobs before the commit fails.
   Had this gone unchecked, the false claim would have been copied into our own plan — the contributor's plan had already copied it.
-  Verifying a third-party report's *mechanism*, not just its conclusion, is what made the difference.
+  Verifying a third-party report's _mechanism_, not just its conclusion, is what made the difference.
 - **Finding that this repository triggers the bug reframed the whole fix.**
   `committed` rejects the rescue commit's `pi-agent:` subject (`Disallowed type`), so every worktree subagent here that produced changes was losing that work.
   This turned an abstract third-party report into a locally reproducible, self-affecting bug, and it is what justified `--no-verify` (which skips `commit-msg`) over any narrower remedy.
   It also exposed that PR [#705] as written would have left this repo leaking a worktree per run rather than fixing it.
 - **The `tidy-first-assessor` found a real flaw in a plan written minutes earlier in the same session.**
-  It caught that the plan deferred `commitStaged`'s *existence* to step 4, which would have forced that commit to both introduce the helper and add its retry body.
+  It caught that the plan deferred `commitStaged`'s _existence_ to step 4, which would have forced that commit to both introduce the helper and add its retry body.
   A fresh-context reviewer beating the author on a plan that recent is a strong argument for the bracket being mandatory rather than discretionary.
 - **The cross-step invariant trap was predicted, mitigated, and independently confirmed.**
   Planning identified that step 3's preservation test would be silently inverted by step 4's `--no-verify` retry, and chose a locked-index failure mode that no later step can bypass.
@@ -189,10 +189,10 @@ One self-caught instruction violation (fabricated commit SHAs in the PR close co
    `AGENTS.md` and `.pi/prompts/ship-issue.md` both require running `git rev-parse` and pasting the result exactly, never hand-extending a short hash.
    That rule was followed correctly for the issue close comment, then broken minutes later in the PR close comment, where five SHAs were listed and two (`7411088c…`, `e1baca45…`) were hand-extended into hashes that do not exist.
    Impact: the wrong SHAs were live on a public PR until a `git rev-parse` check caught them; recovery took one verification call plus a `gh api … PATCH` edit.
-   Root cause is placement, not salience: the SHA rule lives under the *issue* close comment's bullet list, and the third-party-PR close path is a separate branch of the prompt that does not restate it.
+   Root cause is placement, not salience: the SHA rule lives under the _issue_ close comment's bullet list, and the third-party-PR close path is a separate branch of the prompt that does not restate it.
    Multi-SHA credit lists are exactly where the shortcut is tempting, and that is the one place the prompt goes quiet.
 2. `other` — **The `/ship-issue` prompt does not describe this session's actual shape.**
-   Its third-party branch handles the case where the shipped argument *is* the PR.
+   Its third-party branch handles the case where the shipped argument _is_ the PR.
    Here the argument was the issue (`704`) and the adopted PR ([#705]) was a second, separate close target.
    Nothing in the prompt says to close it; that only happened because the PR Review stage of this retro had recorded the obligation.
    Impact: no rework, but the correct behavior depended on a breadcrumb rather than the prompt, which will not hold when the retro is longer or the stages are split across sessions.
@@ -206,7 +206,7 @@ One self-caught instruction violation (fabricated commit SHAs in the PR close co
 
 - Nothing blocking.
   The operator answered four decision gates (PR direction, then three planning design questions) and made no corrections across five stages.
-- The handoff contract written by `/review-third-party-pr` — "the direction is already decided here, so its Decide gate is satisfied" — worked exactly as intended: planning honored the recorded decision instead of re-litigating it, while still surfacing the genuinely *new* ambiguities that only became visible after reading the code.
+- The handoff contract written by `/review-third-party-pr` — "the direction is already decided here, so its Decide gate is satisfied" — worked exactly as intended: planning honored the recorded decision instead of re-litigating it, while still surfacing the genuinely _new_ ambiguities that only became visible after reading the code.
   This is worth preserving; the temptation when splitting a decision across two gates is to either re-ask everything or ask nothing.
 - One opportunity: the hook-bypass safety question (a `gitleaks`-style hook being skipped) is a security-posture decision that surfaced only at planning.
   Surfacing it during PR review, where the security implications of the adopted design were already being weighed, would have consolidated it with the direction decision.
