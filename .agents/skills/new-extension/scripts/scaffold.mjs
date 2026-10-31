@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Scaffold a first-party extension from ../templates and register it in the
-// bundle: root package.json, scripts/verify-bundle.mjs, README layout and section.
+// bundle: root package.json and scripts/verify-bundle.mjs. The root README is
+// left to the agent (see SKILL.md).
 //
 //   node .agents/skills/new-extension/scripts/scaffold.mjs <pi-name> \
 //     --description "<one line>" [--tool <name>]... [--command <name>]... \
@@ -66,11 +67,6 @@ if (!verify.includes(TOOL_ANCHOR) || !verify.includes(COMMAND_ANCHOR)) {
 }
 for (const tool of values.tool) if (verify.includes(`"${tool}",`)) fail(`tool "${tool}" is already asserted by another extension`);
 for (const command of values.command) if (verify.includes(`"${command}",`)) fail(`command "${command}" is already asserted by another extension`);
-
-const readme = read("README.md");
-const TREE_ROW = /^│   ([├└])── (pi-[a-z0-9-]+)\/.*$/;
-if (!readme.split("\n").some((line) => TREE_ROW.test(line))) fail("README.md layout tree not found");
-if (!readme.includes("\n## Extensions\n") || !readme.includes("\n## Skills\n")) fail("README.md Extensions section not found");
 
 // ---- Render templates ----
 
@@ -160,61 +156,16 @@ writeFileSync(join(root, "scripts/verify-bundle.mjs"), verify
   .replace(TOOL_ANCHOR, `${asserted(values.tool)}${TOOL_ANCHOR}`)
   .replace(COMMAND_ANCHOR, `${asserted(values.command)}${COMMAND_ANCHOR}`));
 
-writeFileSync(join(root, "README.md"), addSection(addTreeRow(readme)));
-
 if (!values["no-install"]) {
   execFileSync("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund"], { cwd: root, stdio: "inherit" });
 }
 
 console.log(`
 Created ${dir}/ (${Object.keys(files).join(", ")}).
-Registered it in package.json, scripts/verify-bundle.mjs and README.md${values["no-install"] ? "" : ", and updated package-lock.json"}.
-Changed: ${["package.json", "scripts/verify-bundle.mjs", "README.md", ...(values["no-install"] ? [] : ["package-lock.json"])].join(", ")}.
+Registered it in package.json and scripts/verify-bundle.mjs${values["no-install"] ? "" : ", and updated package-lock.json"}.
+Changed: ${["package.json", "scripts/verify-bundle.mjs", ...(values["no-install"] ? [] : ["package-lock.json"])].join(", ")}.
 
-Next: implement src/index.ts, extend the tests, and expand the README section. Then:
+Next: add it to the root README (layout tree and an Extensions section), implement
+src/index.ts, and extend the tests. Then:
   npm run check -w ${dir} && npm test -w ${dir} && npm run verify:bundle${values["no-install"] ? "\n  (run npm install --ignore-scripts first: the lockfile is not updated)" : ""}
 `);
-
-// ---- README helpers ----
-
-/** Insert the extension into the layout tree, keeping its rows sorted. */
-function addTreeRow(text) {
-  const lines = text.split("\n");
-  const rows = lines.flatMap((line, index) => {
-    const match = TREE_ROW.exec(line);
-    return match ? [{ index, last: match[1] === "└", name: match[2] }] : [];
-  });
-  const block = [
-    `│   ├── ${name}/`,
-    `│   │   ├── src/index.ts`,
-    `│   │   └── test/`,
-  ];
-  const next = rows.find((row) => row.name > name);
-  if (next) {
-    lines.splice(next.index, 0, ...block);
-    return lines.join("\n");
-  }
-  // New last entry: the old last row and its children gain a continuing rail.
-  const last = rows[rows.length - 1];
-  let end = last.index + 1;
-  while (end < lines.length && lines[end].startsWith("│       ")) {
-    lines[end] = `│   │   ${lines[end].slice("│       ".length)}`;
-    end++;
-  }
-  lines[last.index] = lines[last.index].replace("│   └── ", "│   ├── ");
-  lines.splice(end, 0, `│   └── ${name}/`, `│       ├── src/index.ts`, `│       └── test/`);
-  return lines.join("\n");
-}
-
-/** Insert a `### <name>` section under ## Extensions, keeping sections sorted. */
-function addSection(text) {
-  const start = text.indexOf("\n## Extensions\n");
-  const end = text.indexOf("\n## Skills\n", start);
-  const section = `### ${name}\n\n${description} ${surface === "No tools or commands yet." ? "" : `${surface} `}See [extension docs](${dir}/README.md).\n\n`;
-  const heading = /\n### (\S+)\n/g;
-  heading.lastIndex = start;
-  for (let match = heading.exec(text); match && match.index < end; match = heading.exec(text)) {
-    if (match[1] > name) return text.slice(0, match.index + 1) + section + text.slice(match.index + 1);
-  }
-  return `${text.slice(0, end + 1)}${section}${text.slice(end + 1)}`;
-}

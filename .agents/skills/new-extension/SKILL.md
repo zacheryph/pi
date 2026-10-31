@@ -1,6 +1,6 @@
 ---
 name: new-extension
-description: Create a new first-party Pi extension in this repository's bundle. A script scaffolds extensions/<name>/ from templates and registers it in the root manifest, the bundle check and the README; the skill then covers the session, UI, config and test conventions to implement it by. Use when adding a new extension, a new tool or command that belongs in its own extension, or a new shared library under packages/. For copying a third-party extension, use vendor-extension instead.
+description: Create a new first-party Pi extension in this repository's bundle. A script scaffolds extensions/<name>/ from templates and registers it in the root manifest and the bundle check; the skill then covers the README entry and the session, UI, config and test conventions to implement it by. Use when adding a new extension, a new tool or command that belongs in its own extension, or a new shared library under packages/. For copying a third-party extension, use vendor-extension instead.
 ---
 
 # Add a new extension
@@ -26,7 +26,7 @@ node .agents/skills/new-extension/scripts/scaffold.mjs pi-<topic> \
 | Option | Effect |
 | --- | --- |
 | `pi-<topic>` | Directory and package name; lowercase, hyphenated. |
-| `--description` | Required. Used in `package.json`, the factory's doc comment, and both READMEs. |
+| `--description` | Required. Used in `package.json`, the factory's doc comment, and the extension's README. |
 | `--tool`, `--command` | Repeatable. Each gets a stub registration, a test, and an assertion in `scripts/verify-bundle.mjs`. A name another extension already uses is refused. Adding a tool also adds `typebox`. |
 | `--after` | Load after that extension (Pi runs `session_start` handlers in load order). Default: last. |
 | `--no-tui` | Leave out `@earendil-works/pi-tui` when the extension renders nothing. |
@@ -39,13 +39,10 @@ It checks everything before writing anything, then:
   `test/index.test.ts` from `templates/`;
 - adds the workspace and the `pi.extensions` entry to the root `package.json`;
 - adds the tools and commands to the lists `scripts/verify-bundle.mjs` asserts;
-- adds the directory to the README layout tree and a short `### <name>` section
-  under Extensions, both in name order;
 - runs `npm install --ignore-scripts`.
 
-Review `git diff` afterwards. Then implement the stubs (step 2), extend the
-tests (step 3), and rewrite the README sections: what it does, tools, commands,
-config files. Add a `# comment` to its layout-tree row if it helps.
+Review `git diff` afterwards. Then add it to the root README (step 2), implement
+the stubs (step 3), and extend the tests (step 4).
 
 Keep helper modules beside `src/index.ts`; only the entry point is registered.
 Import siblings by relative path. Use `#src/*` aliases only with matching
@@ -53,7 +50,18 @@ Import siblings by relative path. Use `#src/*` aliases only with matching
 goes in the **root** `dependencies`, since a Git install of the bundle installs
 only those; nested manifests alone expose nothing.
 
-## 2. Follow the runtime conventions
+## 2. Add it to the root README
+
+The script leaves the root `README.md` to you:
+
+- **Layout tree:** add `extensions/<name>/` with its entry point and `test/`,
+  in name order, matching the neighbors' rails and `# comments`.
+- **Extensions section:** add `### <name>` in name order: what it does, its tools
+  and commands, its config files, and a link to `extensions/<name>/README.md`.
+  Write it for a user of the bundle; implementation detail belongs in the
+  extension's own README.
+
+## 3. Follow the runtime conventions
 
 **Sessions.** Every subagent is a full in-process Pi session that loads every
 bundle extension again. So:
@@ -88,7 +96,7 @@ of every body row, subtract padding before layout and truncation, blank rows
 when the width cannot fit padding plus content. Fullscreen views use a centered
 overlay; regular mode uses a custom screen (see `extensions/pi-system-insights`).
 
-## 3. Test it
+## 4. Test it
 
 - `test/index.test.ts` starts with a fake `pi` that records `on`,
   `registerTool` and `registerCommand`. Extend it to drive the handlers and the
@@ -99,7 +107,7 @@ overlay; regular mode uses a custom screen (see `extensions/pi-system-insights`)
   `DefaultResourceLoader`, `createAgentSession` and the faux provider (see
   `extensions/pi-stash/test/sdk.test.ts`). It runs offline.
 
-## 4. Verify and open the PR
+## 5. Verify and open the PR
 
 ```bash
 npm run check -w extensions/<name>
@@ -125,4 +133,4 @@ scaffold script does not cover packages.
 `{{factory}}`, `{{imports}}`, `{{registrations}}`, `{{registrationTests}}` and
 `{{surface}}` are filled in, and `templates/snippets/` holds the per-tool and
 per-command blocks. An unknown `{{variable}}` stops the script. After changing a
-template, scaffold a throwaway extension and run step 4 on it.
+template, scaffold a throwaway extension and run step 5 on it.
