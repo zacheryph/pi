@@ -2,6 +2,7 @@ import { visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it } from "vitest";
 import { labeledRule } from "#src/ui/labeled-rule";
 
+// oxlint-disable-next-line no-control-regex -- Intentionally matches terminal control characters.
 const stripAnsi = (text: string): string => text.replace(/\x1b\[[0-9;]*m/g, "");
 
 /** Leaves the rule unstyled, so outputs compare as plain strings. */
@@ -13,7 +14,9 @@ const HINTS = "↑↓ scroll · PgUp/PgDn · Esc close";
 describe("labeledRule", () => {
   describe("fit", () => {
     it("embeds a left label after a two-dash lead-in and fills the rest", () => {
-      expect(labeledRule(30, plain, ["Subagent session"])).toBe(`── Subagent session ${"─".repeat(10)}`);
+      expect(labeledRule(30, plain, ["Subagent session"])).toBe(
+        `── Subagent session ${"─".repeat(10)}`,
+      );
     });
 
     it("embeds a right label before a two-dash trailer", () => {
@@ -30,7 +33,9 @@ describe("labeledRule", () => {
 
   describe("fallback", () => {
     it("drops the right label before the left one falls back, even when a shorter left label would fit with it", () => {
-      expect(labeledRule(50, plain, [POSITION, "142"], [HINTS])).toBe(`── ${POSITION} ${"─".repeat(31)}`);
+      expect(labeledRule(50, plain, [POSITION, "142"], [HINTS])).toBe(
+        `── ${POSITION} ${"─".repeat(31)}`,
+      );
     });
 
     it("drops the right label one column below the width that fits both", () => {
@@ -38,7 +43,11 @@ describe("labeledRule", () => {
     });
 
     it("tries the left candidates in order, taking the first that fits", () => {
-      const candidates = ["Explore  review the diff · anthropic/claude-sonnet-5", "Explore · anthropic/claude-sonnet-5", "Explore"];
+      const candidates = [
+        "Explore  review the diff · anthropic/claude-sonnet-5",
+        "Explore · anthropic/claude-sonnet-5",
+        "Explore",
+      ];
       expect(labeledRule(60, plain, candidates)).toBe(`── ${candidates[0]} ${"─".repeat(4)}`);
       expect(labeledRule(45, plain, candidates)).toBe(`── ${candidates[1]} ${"─".repeat(6)}`);
       expect(labeledRule(20, plain, candidates)).toBe(`── Explore ${"─".repeat(9)}`);
@@ -55,7 +64,9 @@ describe("labeledRule", () => {
   describe("painting", () => {
     it("styles only the rule's own characters, never the labels", () => {
       const bracket = (rule: string): string => `<${rule}>`;
-      expect(labeledRule(40, bracket, [POSITION], ["hints"])).toBe(`<── >${POSITION}< ${"─".repeat(12)} >hints< ──>`);
+      expect(labeledRule(40, bracket, [POSITION], ["hints"])).toBe(
+        `<── >${POSITION}< ${"─".repeat(12)} >hints< ──>`,
+      );
     });
   });
 

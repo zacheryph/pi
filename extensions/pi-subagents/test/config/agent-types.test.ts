@@ -107,7 +107,9 @@ describe("AgentTypeRegistry", () => {
 
     it("returns config for disabled type (no fallback for existing disabled)", () => {
       const registry = makeRegistry(
-        new Map([["Plan", makeAgentConfig({ name: "Plan", description: "Disabled", enabled: false })]])
+        new Map([
+          ["Plan", makeAgentConfig({ name: "Plan", description: "Disabled", enabled: false })],
+        ]),
       );
       const config = registry.resolveAgentConfig("Plan");
       expect(config.name).toBe("Plan");
@@ -116,7 +118,9 @@ describe("AgentTypeRegistry", () => {
 
     it("returns user-defined agent config", () => {
       const registry = makeRegistry(
-        new Map([["auditor", makeAgentConfig({ name: "auditor", description: "Security auditor" })]])
+        new Map([
+          ["auditor", makeAgentConfig({ name: "auditor", description: "Security auditor" })],
+        ]),
       );
       const config = registry.resolveAgentConfig("auditor");
       expect(config.name).toBe("auditor");
@@ -135,15 +139,13 @@ describe("AgentTypeRegistry", () => {
 
     it("excludes disabled agents", () => {
       const registry = makeRegistry(
-        new Map([["Plan", makeAgentConfig({ name: "Plan", enabled: false })]])
+        new Map([["Plan", makeAgentConfig({ name: "Plan", enabled: false })]]),
       );
       expect(registry.getAvailableTypes()).not.toContain("Plan");
     });
 
     it("includes user agents", () => {
-      const registry = makeRegistry(
-        new Map([["auditor", makeAgentConfig({ name: "auditor" })]])
-      );
+      const registry = makeRegistry(new Map([["auditor", makeAgentConfig({ name: "auditor" })]]));
       expect(registry.getAvailableTypes()).toContain("auditor");
     });
   });
@@ -151,7 +153,7 @@ describe("AgentTypeRegistry", () => {
   describe("getAllTypes", () => {
     it("includes disabled agents", () => {
       const registry = makeRegistry(
-        new Map([["Plan", makeAgentConfig({ name: "Plan", enabled: false })]])
+        new Map([["Plan", makeAgentConfig({ name: "Plan", enabled: false })]]),
       );
       expect(registry.getAllTypes()).toContain("Plan");
     });
@@ -159,9 +161,7 @@ describe("AgentTypeRegistry", () => {
 
   describe("getDefaultAgentNames", () => {
     it("returns only default agents", () => {
-      const registry = makeRegistry(
-        new Map([["auditor", makeAgentConfig({ name: "auditor" })]])
-      );
+      const registry = makeRegistry(new Map([["auditor", makeAgentConfig({ name: "auditor" })]]));
       const names = registry.getDefaultAgentNames();
       expect(names).toContain("general-purpose");
       expect(names).toContain("Explore");
@@ -176,7 +176,7 @@ describe("AgentTypeRegistry", () => {
         new Map([
           ["auditor", makeAgentConfig({ name: "auditor" })],
           ["linter", makeAgentConfig({ name: "linter" })],
-        ])
+        ]),
       );
       const names = registry.getUserAgentNames();
       expect(names).toEqual(["auditor", "linter"]);
@@ -199,7 +199,7 @@ describe("AgentTypeRegistry", () => {
 
     it("returns false for disabled agents", () => {
       const registry = makeRegistry(
-        new Map([["Plan", makeAgentConfig({ name: "Plan", enabled: false })]])
+        new Map([["Plan", makeAgentConfig({ name: "Plan", enabled: false })]]),
       );
       expect(registry.isValidType("Plan")).toBe(false);
     });
@@ -221,26 +221,53 @@ describe("AgentTypeRegistry", () => {
     it("returns restricted tools for Explore", () => {
       const registry = makeRegistry();
       const names = registry.getToolNamesForType("Explore");
-      expect(names).toEqual(["read", "bash", "grep", "find", "ls", "stash_get", "stash_list", "stash_put"]);
+      expect(names).toEqual([
+        "read",
+        "bash",
+        "grep",
+        "find",
+        "ls",
+        "stash_get",
+        "stash_list",
+        "stash_put",
+      ]);
     });
 
     it("defaults Explore to the newest available Haiku rather than a pinned version", () => {
-      expect(makeRegistry().resolveAgentConfig("Explore").model).toBe("anthropic/claude-haiku@latest");
+      expect(makeRegistry().resolveAgentConfig("Explore").model).toBe(
+        "anthropic/claude-haiku@latest",
+      );
     });
 
     it("lets Plan read the stash but not write to it", () => {
       const registry = makeRegistry();
-      expect(registry.getToolNamesForType("Plan")).toEqual(["read", "bash", "grep", "find", "ls", "stash_get", "stash_list"]);
+      expect(registry.getToolNamesForType("Plan")).toEqual([
+        "read",
+        "bash",
+        "grep",
+        "find",
+        "ls",
+        "stash_get",
+        "stash_list",
+      ]);
     });
 
     it("lets reviewer read and run checks without stash or edit tools", () => {
       const registry = makeRegistry();
-      expect(registry.getToolNamesForType("reviewer")).toEqual(["read", "bash", "grep", "find", "ls", "stash_get", "stash_list"]);
+      expect(registry.getToolNamesForType("reviewer")).toEqual([
+        "read",
+        "bash",
+        "grep",
+        "find",
+        "ls",
+        "stash_get",
+        "stash_list",
+      ]);
     });
 
     it("returns custom tool names for user agent", () => {
       const registry = makeRegistry(
-        new Map([["auditor", makeAgentConfig({ name: "auditor", toolNames: ["read", "grep"] })]])
+        new Map([["auditor", makeAgentConfig({ name: "auditor", toolNames: ["read", "grep"] })]]),
       );
       expect(registry.getToolNamesForType("auditor")).toEqual(["read", "grep"]);
     });
@@ -253,14 +280,16 @@ describe("AgentTypeRegistry", () => {
 
     it("returns an empty list for an agent that declared tools: none", () => {
       const registry = makeRegistry(
-        new Map([["silent", makeAgentConfig({ name: "silent", toolNames: [] })]])
+        new Map([["silent", makeAgentConfig({ name: "silent", toolNames: [] })]]),
       );
       expect(registry.getToolNamesForType("silent")).toEqual([]);
     });
 
     it("selects all available tools for a user agent with no tools key", () => {
       const registry = makeRegistry(
-        new Map([["unrestricted", makeAgentConfig({ name: "unrestricted", toolNames: undefined })]])
+        new Map([
+          ["unrestricted", makeAgentConfig({ name: "unrestricted", toolNames: undefined })],
+        ]),
       );
       expect(registry.getToolNamesForType("unrestricted")).toEqual(["all"]);
     });
@@ -269,7 +298,7 @@ describe("AgentTypeRegistry", () => {
       const registry = makeRegistry(
         new Map([
           ["retired", makeAgentConfig({ name: "retired", toolNames: ["read"], enabled: false })],
-        ])
+        ]),
       );
       expect(registry.getToolNamesForType("retired")).toEqual(["read"]);
     });
@@ -281,7 +310,13 @@ describe("AgentTypeRegistry", () => {
     });
 
     it("contains the built-in default names", () => {
-      expect(AgentTypeRegistry.DEFAULT_AGENT_NAMES).toEqual(["general-purpose", "orchestrator", "Explore", "Plan", "reviewer"]);
+      expect(AgentTypeRegistry.DEFAULT_AGENT_NAMES).toEqual([
+        "general-purpose",
+        "orchestrator",
+        "Explore",
+        "Plan",
+        "reviewer",
+      ]);
     });
 
     it("is no longer exported from types.ts", async () => {
@@ -298,14 +333,20 @@ describe("AgentTypeRegistry", () => {
       expect(registry.resolveType("Orchestrator")).toBe("orchestrator");
       expect(registry.getDefaultAgentNames()).toContain("orchestrator");
       expect(registry.resolveAgentConfig("orchestrator")).toMatchObject({
-        name: "orchestrator", displayName: "Orchestrator", isDefault: true,
+        name: "orchestrator",
+        displayName: "Orchestrator",
+        isDefault: true,
         promptMode: "replace",
         toolNames: ["all", "todo", "subagent", "get_subagent_result", "steer_subagent"],
       });
     });
 
     it("can be overridden or disabled like every other built-in", () => {
-      const custom = makeAgentConfig({ name: "orchestrator", systemPrompt: "Custom PM", enabled: false });
+      const custom = makeAgentConfig({
+        name: "orchestrator",
+        systemPrompt: "Custom PM",
+        enabled: false,
+      });
       const registry = makeRegistry(new Map([["orchestrator", custom]]));
       expect(registry.resolveAgentConfig("orchestrator")).toBe(custom);
       expect(registry.isValidType("orchestrator")).toBe(false);
@@ -318,7 +359,12 @@ describe("AgentTypeRegistry", () => {
       const registry = makeRegistry();
       expect(registry.resolveType("Reviewer")).toBe("reviewer");
       const config = registry.resolveAgentConfig("reviewer");
-      expect(config).toMatchObject({ name: "reviewer", displayName: "Reviewer", isDefault: true, promptMode: "replace" });
+      expect(config).toMatchObject({
+        name: "reviewer",
+        displayName: "Reviewer",
+        isDefault: true,
+        promptMode: "replace",
+      });
       expect(config.model).toBeUndefined();
       expect(config.toolNames).not.toContain("edit");
       expect(config.toolNames).not.toContain("write");
@@ -329,12 +375,16 @@ describe("AgentTypeRegistry", () => {
     it("is the orchestrator's verifier", () => {
       const prompt = makeRegistry().resolveAgentConfig("orchestrator").systemPrompt;
       expect(prompt).toContain("reviewer for verification");
-      expect(prompt).toContain("Verify implementation tasks with a reviewer worker that did not do the work");
+      expect(prompt).toContain(
+        "Verify implementation tasks with a reviewer worker that did not do the work",
+      );
     });
 
     it("yields to a user definition with the same name", () => {
       const custom = makeAgentConfig({ name: "reviewer", systemPrompt: "My review rules" });
-      expect(makeRegistry(new Map([["reviewer", custom]])).resolveAgentConfig("reviewer")).toBe(custom);
+      expect(makeRegistry(new Map([["reviewer", custom]])).resolveAgentConfig("reviewer")).toBe(
+        custom,
+      );
     });
   });
 

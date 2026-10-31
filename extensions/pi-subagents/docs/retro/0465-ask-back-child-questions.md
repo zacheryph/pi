@@ -16,7 +16,7 @@ Committed `docs/plans/0465-ask-back-child-questions.md` (8 TDD steps), filed [#8
 ### Observations
 
 - **The issue is third-party and its literal ask was already narrowed twice by the operator's own comments.**
-  The reporter's "the subagent asks a question, and then it just ends" turned out to describe a missing *handle* ([#798], shipped) plus a missing *affordance* (this plan).
+  The reporter's "the subagent asks a question, and then it just ends" turned out to describe a missing _handle_ ([#798], shipped) plus a missing _affordance_ (this plan).
   Reading the close comments rather than the issue body is what made the residual legible.
 - **Session title was translated from Chinese at the operator's request.**
   The plan and retro keep the exact Chinese `issue_title` in frontmatter (it is the machine-matched field) while the H1, slug, and prose are English.
@@ -26,7 +26,7 @@ Committed `docs/plans/0465-ask-back-child-questions.md` (8 TDD steps), filed [#8
   The guard inherited its condition by adjacency and was never a decision about events.
   Classified `fix:` on that basis.
 - **Three successive design proposals of mine were wrong, each corrected by an operator question.**
-  I proposed a structural predicate plus a temporal gate (two gates); the operator asked "what if we made it safe to always tell the parent?", which revealed the parent *is* always told and there are four carriers of which exactly one fires.
+  I proposed a structural predicate plus a temporal gate (two gates); the operator asked "what if we made it safe to always tell the parent?", which revealed the parent _is_ always told and there are four carriers of which exactly one fires.
   I then proposed collapsing to one gate by claiming at commitment; checking `get_subagent_result` found that would regress documented abandoned-wait behavior and shrink every ask-back child's answerable window from 720 to 10 minutes.
   The settled model — a revocable carrier claim separate from the `consumedAt` latch — came from the operator's "distinguish the desired behaviors rather than complect them" framing, not from my drafts.
 - **The codebase already held the vocabulary the design needed.**
@@ -98,7 +98,7 @@ Writing the round-trip test ("the protocol block must not parse as a question") 
 The fix — name the marker without angle brackets in prose — is now documented at the declaration.
 
 The reviewer then found the same failure mode in a class the plan's input domain missed: an inline code span.
-Fixing it exposed a second defect the reviewer had not named — quoting was applied *after* building the block list, so a quoted opening tag had already consumed the closing tag of a genuine question that followed.
+Fixing it exposed a second defect the reviewer had not named — quoting was applied _after_ building the block list, so a quoted opening tag had already consumed the closing tag of a genuine question that followed.
 
 #### Review rounds
 
@@ -169,7 +169,7 @@ This entry synthesizes all four stages — planning, TDD, sync, and ship — fro
   **First attempt** — I proposed filing an issue against the baseline itself, before reading [#816]'s plan.
   **Second attempt** — pushed back with "we've fixed this before", I read the plan, over-corrected to "documented, accepted cost, nothing to file", and told the operator no issue was warranted.
   Both were wrong, and the operator's second push (that the four packages pinning the floor are rarely updated) is what forced the measurement that settled it: the baseline's depth was **1 commit** on every advance through Aug 24, jumped to 169 the moment [#816] landed on Aug 27, and is 434 now.
-  The pre-[#816] write-back advanced the floor to whichever component released *last* — too recent, so commits from a dormant component's true last release were collected by nobody.
+  The pre-[#816] write-back advanced the floor to whichever component released _last_ — too recent, so commits from a dormant component's true last release were collected by nobody.
   That is the bug [#816] fixed, so the fast CI was the defect's side effect and not a solution to restore.
   What is genuinely unpriced is [#816]'s risk table treating a stalled baseline as an anomaly; a stalled floor is the normal state whenever the oldest component is dormant, and none of the four has pending commits or an open release PR.
   Filed as [#865] with a `scope:repo` label.
@@ -186,7 +186,7 @@ This entry synthesizes all four stages — planning, TDD, sync, and ship — fro
 
 No friction — the operator's interventions were the highest-leverage contributions to the issue.
 Three successive design proposals of mine were wrong, and each was corrected by a redirecting question rather than a directive: "what if we made it safe to always tell the parent?"
-revealed that the parent *is* always told by exactly one of four carriers, and "distinguish the desired behaviors rather than complect them" produced the revocable-claim-versus-`consumedAt`-latch split that the final design rests on.
+revealed that the parent _is_ always told by exactly one of four carriers, and "distinguish the desired behaviors rather than complect them" produced the revocable-claim-versus-`consumedAt`-latch split that the final design rests on.
 Those arrived at the design gate, which is where they belong.
 
 One opportunity: the operator's own earlier comments on this third-party issue had already narrowed its literal ask twice, and planning recovered that only by reading [#798]'s close comments.

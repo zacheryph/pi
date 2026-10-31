@@ -75,7 +75,10 @@ class Agent {
   abort(): boolean;
 
   /** Create a worktree for isolated execution. Throws if impossible. */
-  setupWorktree(worktrees: WorktreeManager, isolation: IsolationMode | undefined): string | undefined;
+  setupWorktree(
+    worktrees: WorktreeManager,
+    isolation: IsolationMode | undefined,
+  ): string | undefined;
 }
 ```
 

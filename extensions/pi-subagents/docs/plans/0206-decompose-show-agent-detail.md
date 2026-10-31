@@ -61,7 +61,7 @@ The existing test suite (`test/ui/agent-config-editor.test.ts`, 18 tests) covers
 export function buildMenuOptions(
   cfg: { isDefault?: boolean; enabled?: boolean },
   file: string | undefined,
-): string[]
+): string[];
 ```
 
 Accepts the minimal config shape and file path.
@@ -90,7 +90,7 @@ Signature: `(ui: MenuUI, name: string, file: string) => Promise<void>`.
 #### `buildEjectContent` (exported, pure)
 
 ```typescript
-export function buildEjectContent(cfg: AgentConfig): string
+export function buildEjectContent(cfg: AgentConfig): string;
 ```
 
 Builds the full `.md` file content (frontmatter + system prompt) for an ejected agent.

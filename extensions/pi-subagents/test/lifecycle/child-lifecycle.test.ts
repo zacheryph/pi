@@ -52,7 +52,10 @@ describe("createChildLifecyclePublisher", () => {
   it("emits subagents:child:completed with the run outcome", () => {
     const { emit, publisher } = setup();
 
-    const event = childCompletedEvent({ sessionDir: "/sessions/child-abc", turnBudget: { maxTurns: 2, used: 3, phase: "warned" } });
+    const event = childCompletedEvent({
+      sessionDir: "/sessions/child-abc",
+      turnBudget: { maxTurns: 2, used: 3, phase: "warned" },
+    });
     publisher.completed(event);
 
     expect(emit).toHaveBeenCalledOnce();
@@ -107,7 +110,10 @@ describe("createChildLifecyclePublisher", () => {
 
 describe("normalizeHandoff", () => {
   it("copies and deep-freezes any JSON object, without interpreting its keys", () => {
-    const input = { todos: { keys: ["auth-audit"], scope: "ledger" }, review: { ticket: "AUTH-12", strict: true } };
+    const input = {
+      todos: { keys: ["auth-audit"], scope: "ledger" },
+      review: { ticket: "AUTH-12", strict: true },
+    };
     const result = normalizeHandoff(input);
     expect(result).toEqual({ handoff: input });
     const handoff = "handoff" in result ? result.handoff! : {};
@@ -120,7 +126,9 @@ describe("normalizeHandoff", () => {
   });
 
   it("keeps only JSON data", () => {
-    expect(normalizeHandoff({ at: new Date(0), skip: undefined, fn: () => 1 })).toEqual({ handoff: { at: "1970-01-01T00:00:00.000Z" } });
+    expect(normalizeHandoff({ at: new Date(0), skip: undefined, fn: () => 1 })).toEqual({
+      handoff: { at: "1970-01-01T00:00:00.000Z" },
+    });
   });
 
   it("hands over nothing when there is nothing to hand over", () => {
@@ -135,6 +143,8 @@ describe("normalizeHandoff", () => {
     for (const value of ["todos", 7, ["a"], circular, { big: 1n }]) {
       expect(normalizeHandoff(value)).toEqual({ error: expect.stringContaining("handoff") });
     }
-    expect(normalizeHandoff({ blob: "x".repeat(MAX_HANDOFF_BYTES) })).toEqual({ error: expect.stringMatching(/limit is 16384/) });
+    expect(normalizeHandoff({ blob: "x".repeat(MAX_HANDOFF_BYTES) })).toEqual({
+      error: expect.stringMatching(/limit is 16384/),
+    });
   });
 });

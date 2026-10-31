@@ -55,7 +55,7 @@ The hub↔leaf type cycle (the key constraint):
 
 This is a bidirectional cycle: the hub imports the leaf classes; the leaves import the hub's `MenuUI` type.
 Deleting either subtree first leaves the other half referencing a deleted module, so `tsc --noEmit` (which type-checks all of `src` + `test`) fails.
-The issue's premise that the leaves become "pure orphans" once the hub is gone holds for *runtime* reachability but not at the *type* level — the `MenuUI` back-import keeps them coupled.
+The issue's premise that the leaves become "pure orphans" once the hub is gone holds for _runtime_ reachability but not at the _type_ level — the `MenuUI` back-import keeps them coupled.
 
 Constraints from AGENTS.md / package skill:
 

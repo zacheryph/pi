@@ -111,7 +111,7 @@ Callers destructure what they need:
 
 ```typescript
 const { deps, mockAbort } = createDeps();
-mockAbort.mockReturnValue(false);  // ← type-checked, no cast
+mockAbort.mockReturnValue(false); // ← type-checked, no cast
 ```
 
 ### lifecycle.test.ts

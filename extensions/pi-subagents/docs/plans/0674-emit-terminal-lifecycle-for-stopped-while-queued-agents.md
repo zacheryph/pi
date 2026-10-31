@@ -15,7 +15,7 @@ It is a `fix:` commit series, which cuts a release on its own at the next releas
 ## Problem Statement
 
 Whether stopping a background agent produces a terminal lifecycle signal depends on whether the concurrency limiter had admitted it yet.
-`SubagentManager.abort()` and `abortAll()` both shortcut the queued branch — `record.markStopped()` and return — while a *running* agent's stop flows through `completeRun`/`failRun` → `onRunFinished` → `onSubagentCompleted`.
+`SubagentManager.abort()` and `abortAll()` both shortcut the queued branch — `record.markStopped()` and return — while a _running_ agent's stop flows through `completeRun`/`failRun` → `onRunFinished` → `onSubagentCompleted`.
 
 Nothing downstream fires for a queued stop: no `subagents:failed` event, no `subagents:record` session entry, no completion nudge.
 The identical user action produces a terminal event or not by scheduling accident.
@@ -46,7 +46,7 @@ It is an observable behavior change — new `subagents:failed` events, new `suba
   Both already carry `status: "stopped"`.
   Two tests pin the record entry's exact eight fields (`toHaveBeenCalledExactlyOnceWith`), and widening a cross-extension wire payload is a separate decision — see Open Questions.
 - **ESC blast radius** ([#664]) and **the stop-shortcut picker** ([#676]).
-  Both change *which* agents get stopped; this issue changes what happens when one is.
+  Both change _which_ agents get stopped; this issue changes what happens when one is.
 - **Merging [#665].**
   It stays open as the reference until this lands, then is closed with credit.
 
@@ -181,7 +181,7 @@ Two coupled changes:
 The latch alone is too late in the current order; the reorder alone leaves no guard for any later caller.
 
 This is deliberately broader than the headline fix.
-Today a *running* agent aborted at shutdown also leaks a nudge — its turn loop rejects after the handler has returned, `parentRunActive` is false, and `dispose()` cannot recall it either.
+Today a _running_ agent aborted at shutdown also leaks a nudge — its turn loop rejects after the handler has returned, `parentRunActive` is false, and `dispose()` cannot recall it either.
 The latch closes that path too, and the plan tests it.
 
 The ESC path is unaffected and needs no special handling: `InterruptHandler` fires inside the parent's run, so `parentRunActive` is true and every nudge — queued or running — is withheld and flushed on `agent_settled`, exactly as [#661] specified.
@@ -205,7 +205,7 @@ if (report.stoppedWhileQueued)
   Track and watch — narrowing both helpers is a separate tidy, not this fix.
 - **Repeated discriminator.**
   `stoppedWhileQueued` is read at three presentation sites (`formatTaskNotification`, `emitIndividualNudge`, `buildNotificationDetails`) plus `renderReportBody`.
-  Per-variant presentation dispatch is idiomatic; the smell would be a *decision* re-derived.
+  Per-variant presentation dispatch is idiomatic; the smell would be a _decision_ re-derived.
   If a fourth, non-presentation site appears, hoist it.
 - **No output arguments, no reach-through.**
   The flag is written only by its owning value object and read through a delegating getter.
@@ -219,7 +219,7 @@ if (report.stoppedWhileQueued)
 - **`src/lifecycle/subagent.ts`** — add a delegating `get stoppedWhileQueued()`; add `stopQueued()`; update `abort()`'s doc comment, which currently says "A still-queued agent is stopped by SubagentManager" — after this change the manager delegates to `stopQueued()`.
 - **`src/lifecycle/subagent-manager.ts`** — `abort()`'s queued branch and `abortAll()`'s queued branch both call `record.stopQueued()`; update the `abort()` inline comment; remove the stale `// fallow-ignore-next-line unused-class-member` above `abortAll()` (the suppressions above `hasRunning()` and `waitForAll()` stay).
 - **`src/observation/notification.ts`** — `formatTaskNotification` branches to a trimmed never-started block; `buildNotificationDetails` sets the honest `resultPreview`; `NotificationManager` gains the `_disposed` latch, `sendCompletion` returns early when set, and `emitIndividualNudge` drops the pointer lines for a never-started record.
-- **`src/handlers/lifecycle.ts`** — reorder `handleSessionShutdown` to `unpublishService → clearSessionContext → disposeNotifications → abortAll → dispose`; rewrite the numbered cleanup comment to state *why* notifications die first.
+- **`src/handlers/lifecycle.ts`** — reorder `handleSessionShutdown` to `unpublishService → clearSessionContext → disposeNotifications → abortAll → dispose`; rewrite the numbered cleanup comment to state _why_ notifications die first.
 - **`src/tools/get-result-report.ts`** — `AgentReport` gains required `stoppedWhileQueued: boolean`; `renderReportBody` gains the never-started branch.
 - **`src/tools/get-result-tool.ts`** — `buildReport` populates `stoppedWhileQueued: record.stoppedWhileQueued`.
 
@@ -235,7 +235,7 @@ if (report.stoppedWhileQueued)
 
 - **`README.md`** — the Concurrency section gains a sentence: stopping a queued agent before it starts still produces a completion notification, and that notification says the agent never started.
   The status table's `stopped` row ("User-initiated abort") stays accurate and is not edited.
-- **`docs/architecture/architecture.md`** — the *Agent lifecycle* state diagram gains `queued --> stopped : stopQueued() (never started)`.
+- **`docs/architecture/architecture.md`** — the _Agent lifecycle_ state diagram gains `queued --> stopped : stopQueued() (never started)`.
   While in the diagram, correct two pre-existing swapped labels: `running --> aborted` is currently labelled "abort() called" and `running --> stopped` "max turns reached", but `abort()` calls `markStopped()` (→ `stopped`) and the turn-limit path calls `markAborted()` (→ `aborted`).
   The README status table already has this right.
   No module-tree entry changes: the `notification.ts`, `subagent-state.ts`, and `handlers/lifecycle.ts` entries stay accurate.
@@ -309,7 +309,7 @@ Every commit body ends with a blank line and `Co-authored-by: daoguademeng <whum
    Commit: `fix(pi-subagents): tell the truth in a stopped-while-queued notification`.
 
 5. **Shutdown suppression.**
-   Red — `test/observation/notification.test.ts`: `sendCompletion` after `dispose()` sends nothing, with no parent run active (this is the leak the issue asked to confirm); a queued stop *during* an active parent run is still withheld and flushed on `onParentAgentSettled` (the [#661] guard).
+   Red — `test/observation/notification.test.ts`: `sendCompletion` after `dispose()` sends nothing, with no parent run active (this is the leak the issue asked to confirm); a queued stop _during_ an active parent run is still withheld and flushed on `onParentAgentSettled` (the [#661] guard).
    `test/handlers/lifecycle.test.ts`: the cleanup order is `unpublishService, clearSessionContext, disposeNotifications, abortAll, dispose`.
    Green — add the `_disposed` latch and the early return; reorder `handleSessionShutdown` and rewrite its numbered comment.
    Commit: `fix(pi-subagents): stop nudging a session that is shutting down`.
@@ -330,7 +330,7 @@ Final gate before handoff: `pnpm run check`, `pnpm run lint`, `pnpm --filter @go
 
 | Risk                                                                                                                              | Mitigation                                                                                                                                                                                                                                                          |
 | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Nudge volume on a mass stop — ESC or `abortAll()` with N queued agents now produces N extra nudges, each with `triggerTurn: true` | Already the behavior for N *running* agents, so this is parity, not a new class of event. The nudges are withheld by [#661] and flushed once on `agent_settled`, so they arrive as one batch after the turn, not mid-stream. Blast-radius control is [#664]/[#676]. |
+| Nudge volume on a mass stop — ESC or `abortAll()` with N queued agents now produces N extra nudges, each with `triggerTurn: true` | Already the behavior for N _running_ agents, so this is parity, not a new class of event. The nudges are withheld by [#661] and flushed once on `agent_settled`, so they arrive as one batch after the turn, not mid-stream. Blast-radius control is [#664]/[#676]. |
 | Shutdown reorder is broader than the headline fix — it also suppresses running agents' shutdown nudges                            | Deliberate and tested (TDD 5). Those nudges fire into a session that is already gone; suppressing them is the fix, not a regression. Recorded here so a future reader does not read it as accidental scope.                                                         |
 | `dispose()` becomes one-shot; a future caller that disposes and reuses the manager gets silence                                   | Single call site (`handleSessionShutdown`), and the extension factory constructs a fresh `NotificationManager` per session. The latch is documented on `dispose()`.                                                                                                 |
 | The cleanup-order test is an intentionally-changed pinned invariant                                                               | The updated assertion stays exact (`toEqual` on the full sequence), and the handler's numbered comment is rewritten to state why notifications die before aborts — so the next reader sees intent, not drift.                                                       |

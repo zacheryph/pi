@@ -16,11 +16,11 @@ Filed [#885] (expose `resume` on `SubagentsService`) and recorded it as Phase 22
 ### Observations
 
 - **A third instance of the defect the issue does not name.**
-  `GetResultTool` with `wait: true` calls `record.claim()` and blocks the parent on a *background* child's initial run, with no resume involved — the same window the gate refuses for a foreground child.
+  `GetResultTool` with `wait: true` calls `record.claim()` and blocks the parent on a _background_ child's initial run, with no resume involved — the same window the gate refuses for a foreground child.
   Finding it is what refuted the "recompute at the resume edge" framing: spawn mode and "is this a resume" both under-describe the condition.
 - **The predicate already existed.**
   `record.claimed` is set at all three blocking front doors and is already consulted by `NotificationManager.sendCompletion`; `sendUpdate` deliberately skips it.
-  Substituting it *subsumes* the old gate rather than replacing it — a foreground initial run is claimed for its whole duration, so `isBackground` falls out as a consequence.
+  Substituting it _subsumes_ the old gate rather than replacing it — a foreground initial run is claimed for its whole duration, so `isBackground` falls out as a consequence.
 - **The shared-premise check paid off.**
   All three of the issue's options assumed the nudge is an update's only carrier.
   Naming that premise in the gate's substance message produced the fourth option, which the operator chose.
@@ -64,7 +64,7 @@ Test count 1564 → 1589 (+25) in pi-subagents.
   Removed the directive, kept the note explaining why `src/` reaches it only through structural interfaces.
 - **An atomic `Edit` batch rejection dropped two edits silently.**
   The batch carrying Step 14's `✅` heading and Mermaid marks was rejected on an unrelated third edit; only the third was re-applied, so the marks were missing until the pre-completion reviewer caught it.
-  This is the `AGENTS.md` hazard exactly — after a rejection, re-apply *every* intended edit, not just the one retried.
+  This is the `AGENTS.md` hazard exactly — after a rejection, re-apply _every_ intended edit, not just the one retried.
 - **Pre-completion reviewer: WARN** (one finding, the missing `✅` marks above; fixed in `0f4f2e79`).
   Its requested routing re-derivation found no stranding path beyond the ones the plan enumerates and accepts.
 
@@ -100,7 +100,7 @@ The whole four-stage arc (plan → TDD → sync → ship) produced one friction 
    All three of the issue's options assumed the nudge is an update's only carrier; naming that premise in the gate's substance message produced option D (claim-based routing), which the operator chose.
    The rule did not merely improve the gate's phrasing — it produced a design that subsumes the old gate instead of patching it, and that no option in the issue body described.
 2. **Investigation refuted the issue's own framing before the first gate.**
-   Reading `get-result-tool.ts` found a third instance of the defect — `get_subagent_result(wait: true)` claims and blocks the parent on a *background* child's initial run — which no spawn-mode or resume-based predicate can express.
+   Reading `get-result-tool.ts` found a third instance of the defect — `get_subagent_result(wait: true)` claims and blocks the parent on a _background_ child's initial run — which no spawn-mode or resume-based predicate can express.
    This is the `/plan-issue` "trace what triggers the defect" instruction paying off on a self-filed issue, where the temptation to treat the body as a spec is strongest.
 3. **The mandatory "Verify the pins" step caught a vacuous test.**
    "Leads with what the agent flagged along the way" passed pre-fix because `indexOf` returned `-1` and `-1 < N` holds.

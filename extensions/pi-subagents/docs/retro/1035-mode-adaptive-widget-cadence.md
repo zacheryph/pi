@@ -47,7 +47,7 @@ Executed all four planned steps as four commits: the one-shot timer-chain refact
 - Pre-completion reviewer: WARN, no blockers.
   - Evidence provenance: the probe is not in the tree and the plan's table shows one representative run of five.
   - Robustness: `setTimerRunning` now runs last in `update()`, so a throw from `setWidget`/`requestRender`/`setStatus` during a tick ends the chain until the next lifecycle event (`setInterval` kept firing through a throw); judged theoretical.
-  The reviewer re-derived the #864 timer-iff-running and #849 dispose-is-final invariants over every `update()` entry path and found them held.
+    The reviewer re-derived the #864 timer-iff-running and #849 dispose-is-final invariants over every `update()` entry path and found them held.
 
 ## Stage: Sync (worktree) (2026-10-06T05:27:46Z)
 

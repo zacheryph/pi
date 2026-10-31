@@ -1,10 +1,19 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
 import {
-  createAgentSession, DefaultResourceLoader, ModelRegistry, ModelRuntime,
-  SessionManager, SettingsManager, type ResourceLoader,
+  createFauxCore,
+  fauxAssistantMessage,
+  fauxToolCall,
+} from "@earendil-works/pi-ai/providers/faux";
+import {
+  createAgentSession,
+  DefaultResourceLoader,
+  ModelRegistry,
+  ModelRuntime,
+  SessionManager,
+  SettingsManager,
+  type ResourceLoader,
 } from "@earendil-works/pi-coding-agent";
 import { expect, it, vi } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
@@ -20,52 +29,111 @@ it("carries the agent id, tool call id and any extension's handoff on a tool-spa
   const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
   process.env.PI_CODING_AGENT_DIR = dir;
   const createRuntime = ModelRuntime.create.bind(ModelRuntime);
-  const offline = vi.spyOn(ModelRuntime, "create").mockImplementation(options =>
-    createRuntime({ ...options, refreshOnCreate: false }));
+  const offline = vi
+    .spyOn(ModelRuntime, "create")
+    .mockImplementation((options) => createRuntime({ ...options, refreshOnCreate: false }));
   const slots = globalThis as Record<symbol, unknown>;
   slots[LIFECYCLE_LOG] = [];
   let orchestrator: Awaited<ReturnType<typeof createSubagentSession>> | undefined;
   try {
-    writeFileSync(join(dir, "settings.json"), JSON.stringify({
-      extensions: [resolve(import.meta.dirname, "../src/index.ts"), resolve(import.meta.dirname, "fixtures/lifecycle-recorder.ts")],
-      compaction: { enabled: false }, retry: { enabled: false },
-    }));
+    writeFileSync(
+      join(dir, "settings.json"),
+      JSON.stringify({
+        extensions: [
+          resolve(import.meta.dirname, "../src/index.ts"),
+          resolve(import.meta.dirname, "fixtures/lifecycle-recorder.ts"),
+        ],
+        compaction: { enabled: false },
+        retry: { enabled: false },
+      }),
+    );
     const faux = createFauxCore({ provider: "handoff-test", models: [{ id: "coordinator" }] });
-    const runtime = await ModelRuntime.create({ authPath: join(dir, "auth.json"), modelsPath: null, modelsStorePath: join(dir, "cache") });
-    runtime.registerProvider("handoff-test", { api: faux.api, apiKey: "test-key", models: faux.models, streamSimple: faux.streamSimple });
-    const parentTools = ["read", "bash", "edit", "write", "grep", "find", "ls", "subagent", "get_subagent_result", "steer_subagent"];
-    orchestrator = await createSubagentSession({
-      type: "orchestrator",
-      snapshot: { cwd: dir, systemPrompt: "PROJECT BASE", model: faux.getModel(), modelRegistry: new ModelRegistry(runtime) },
-    }, {
-      registry: new AgentTypeRegistry(() => new Map()),
-      exec: vi.fn(),
-      lifecycle: createChildLifecyclePublisher(() => {}),
-      resolvePromptInheritance: () => "full",
-      listParentToolNames: () => parentTools,
-      io: {
-        detectEnv: async () => ({ isGitRepo: false, branch: "", platform: "linux" }),
-        getAgentDir: () => dir,
-        deriveSessionDir: () => join(dir, "sessions"),
-        createSessionManager: (cwd, sessionDir) => SessionManager.create(cwd, sessionDir),
-        createSettingsManager: (cwd, agentDir) => SettingsManager.create(cwd, agentDir),
-        createLoaderSettingsManager: settings => settings,
-        createResourceLoader: options => new DefaultResourceLoader({ ...options, noSkills: true }),
-        createSession: async ({ sessionManager, resourceLoader, modelRegistry: _registry, ...rest }) => createAgentSession({
-          ...rest, sessionManager: sessionManager as SessionManager, resourceLoader: resourceLoader as ResourceLoader, modelRuntime: runtime,
-        }),
-        assemblerIO: { buildAgentPrompt, loadProjectContext: () => undefined },
-      },
+    const runtime = await ModelRuntime.create({
+      authPath: join(dir, "auth.json"),
+      modelsPath: null,
+      modelsStorePath: join(dir, "cache"),
     });
+    runtime.registerProvider("handoff-test", {
+      api: faux.api,
+      apiKey: "test-key",
+      models: faux.models,
+      streamSimple: faux.streamSimple,
+    });
+    const parentTools = [
+      "read",
+      "bash",
+      "edit",
+      "write",
+      "grep",
+      "find",
+      "ls",
+      "subagent",
+      "get_subagent_result",
+      "steer_subagent",
+    ];
+    orchestrator = await createSubagentSession(
+      {
+        type: "orchestrator",
+        snapshot: {
+          cwd: dir,
+          systemPrompt: "PROJECT BASE",
+          model: faux.getModel(),
+          modelRegistry: new ModelRegistry(runtime),
+        },
+      },
+      {
+        registry: new AgentTypeRegistry(() => new Map()),
+        exec: vi.fn(),
+        lifecycle: createChildLifecyclePublisher(() => {}),
+        resolvePromptInheritance: () => "full",
+        listParentToolNames: () => parentTools,
+        io: {
+          detectEnv: async () => ({ isGitRepo: false, branch: "", platform: "linux" }),
+          getAgentDir: () => dir,
+          deriveSessionDir: () => join(dir, "sessions"),
+          createSessionManager: (cwd, sessionDir) => SessionManager.create(cwd, sessionDir),
+          createSettingsManager: (cwd, agentDir) => SettingsManager.create(cwd, agentDir),
+          createLoaderSettingsManager: (settings) => settings,
+          createResourceLoader: (options) =>
+            new DefaultResourceLoader({ ...options, noSkills: true }),
+          createSession: async ({
+            sessionManager,
+            resourceLoader,
+            modelRegistry: _registry,
+            ...rest
+          }) =>
+            createAgentSession({
+              ...rest,
+              sessionManager: sessionManager as SessionManager,
+              resourceLoader: resourceLoader as ResourceLoader,
+              modelRuntime: runtime,
+            }),
+          assemblerIO: { buildAgentPrompt, loadProjectContext: () => undefined },
+        },
+      },
+    );
     let workerId: string | undefined;
     faux.setResponses([
-      fauxAssistantMessage(fauxToolCall("subagent", {
-        subagent_type: "general-purpose", description: "Audit auth", prompt: "Audit the auth module.",
-        handoff: { todos: { keys: ["auth-audit", "auth-tests"], scope: "ledger" }, review: { ticket: "AUTH-12" } },
-      }, { id: "call-spawn-1" })),
+      fauxAssistantMessage(
+        fauxToolCall(
+          "subagent",
+          {
+            subagent_type: "general-purpose",
+            description: "Audit auth",
+            prompt: "Audit the auth module.",
+            handoff: {
+              todos: { keys: ["auth-audit", "auth-tests"], scope: "ledger" },
+              review: { ticket: "AUTH-12" },
+            },
+          },
+          { id: "call-spawn-1" },
+        ),
+      ),
       fauxAssistantMessage("Audit done."),
-      context => {
-        const result = context.messages.findLast(message => message.role === "toolResult" && message.toolName === "subagent");
+      (context) => {
+        const result = context.messages.findLast(
+          (message) => message.role === "toolResult" && message.toolName === "subagent",
+        );
         workerId = /Agent ID: ([\w-]+)/.exec(JSON.stringify(result))?.[1];
         return fauxAssistantMessage("Delegated.");
       },
@@ -77,15 +145,22 @@ it("carries the agent id, tool call id and any extension's handoff on a tool-spa
     orchestrator = undefined;
 
     const log = slots[LIFECYCLE_LOG] as Array<{ channel: string; data: Record<string, unknown> }>;
-    const created = log.find(entry => entry.channel === "subagents:child:session-created")?.data;
+    const created = log.find((entry) => entry.channel === "subagents:child:session-created")?.data;
     expect(created).toEqual({
-      sessionId: expect.any(String), parentSessionId: expect.any(String),
-      agentId: workerId, toolCallId: "call-spawn-1",
-      handoff: { todos: { keys: ["auth-audit", "auth-tests"], scope: "ledger" }, review: { ticket: "AUTH-12" } },
+      sessionId: expect.any(String),
+      parentSessionId: expect.any(String),
+      agentId: workerId,
+      toolCallId: "call-spawn-1",
+      handoff: {
+        todos: { keys: ["auth-audit", "auth-tests"], scope: "ledger" },
+        review: { ticket: "AUTH-12" },
+      },
     });
     for (const channel of ["subagents:child:bound", "subagents:child:disposed"]) {
-      expect(log.find(entry => entry.channel === channel)?.data, channel).toMatchObject({
-        sessionId: created!.sessionId, agentId: workerId, toolCallId: "call-spawn-1",
+      expect(log.find((entry) => entry.channel === channel)?.data, channel).toMatchObject({
+        sessionId: created!.sessionId,
+        agentId: workerId,
+        toolCallId: "call-spawn-1",
       });
     }
   } finally {

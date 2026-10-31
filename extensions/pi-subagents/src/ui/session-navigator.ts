@@ -164,7 +164,14 @@ export interface TranscriptPaneOptions {
  * holds, such as those from before a `/reload`.
  */
 export class SessionNavigatorHandler {
-  async handle({ ui, agents, registry, cwd, readFile, sessionEntries }: SessionNavigatorParams): Promise<void> {
+  async handle({
+    ui,
+    agents,
+    registry,
+    cwd,
+    readFile,
+    sessionEntries,
+  }: SessionNavigatorParams): Promise<void> {
     const entries = listNavigableAgents(agents, registry, readPersistedRuns(sessionEntries));
     if (entries.length === 0) {
       ui.notify("No subagent sessions to view.", "info");
@@ -180,7 +187,10 @@ export class SessionNavigatorHandler {
 
     let source: TranscriptSource;
     try {
-      source = entry.kind === "live" ? liveSource(entry.record) : fileSnapshotSource(entry.outputFile, readFile);
+      source =
+        entry.kind === "live"
+          ? liveSource(entry.record)
+          : fileSnapshotSource(entry.outputFile, readFile);
     } catch {
       ui.notify("Could not read the session transcript file.", "error");
       return;
@@ -189,7 +199,16 @@ export class SessionNavigatorHandler {
     const mode = await probeTuiMode(ui);
     await ui.custom<undefined>(
       (tui, theme, keys, done) =>
-        new TranscriptPane({ tui, theme, keys, source, heading: entry.heading, done, cwd, markdownTheme }),
+        new TranscriptPane({
+          tui,
+          theme,
+          keys,
+          source,
+          heading: entry.heading,
+          done,
+          cwd,
+          markdownTheme,
+        }),
       viewerMountOptions(mode),
     );
   }
@@ -212,7 +231,9 @@ async function probeTuiMode(ui: SessionNavigatorUI): Promise<TuiMode> {
 
 /** Docked in regular mode (ADR 0007); a focused overlay in fullscreen mode, so the viewport keys reach it (ADR 0012). */
 function viewerMountOptions(mode: TuiMode): ViewerMountOptions {
-  return mode === "fullscreen" ? { overlay: true, overlayOptions: FULLSCREEN_OVERLAY } : { overlay: false };
+  return mode === "fullscreen"
+    ? { overlay: true, overlayOptions: FULLSCREEN_OVERLAY }
+    : { overlay: false };
 }
 
 /**
@@ -238,7 +259,16 @@ export class TranscriptPane implements Component {
   /** Width the host last rendered at; input must use the same layout. */
   private renderedWidth: number | undefined;
 
-  constructor({ tui, theme, keys, source, heading, done, cwd, markdownTheme }: TranscriptPaneOptions) {
+  constructor({
+    tui,
+    theme,
+    keys,
+    source,
+    heading,
+    done,
+    cwd,
+    markdownTheme,
+  }: TranscriptPaneOptions) {
     this.tui = tui;
     this.theme = theme;
     this.keys = keys;
@@ -268,7 +298,10 @@ export class TranscriptPane implements Component {
       this.scrollBy(1);
     } else if (this.keys.matches(data, "tui.altScreen.pageUp") || matchesKey(data, "shift+up")) {
       this.scrollBy(-viewportHeight, { follow: false });
-    } else if (this.keys.matches(data, "tui.altScreen.pageDown") || matchesKey(data, "shift+down")) {
+    } else if (
+      this.keys.matches(data, "tui.altScreen.pageDown") ||
+      matchesKey(data, "shift+down")
+    ) {
       this.scrollBy(viewportHeight);
     } else if (this.keys.matches(data, "tui.altScreen.top")) {
       this.scrollTo(0, { follow: false });
@@ -352,13 +385,20 @@ export class TranscriptPane implements Component {
    * Header labels, most to least informative: the rule drops the task first,
    * then the model and thinking level, before it truncates the agent's name.
    */
-  private headerLabels(model: ModelIdentity | undefined, thinkingLevel: string | undefined): string[] {
+  private headerLabels(
+    model: ModelIdentity | undefined,
+    thinkingLevel: string | undefined,
+  ): string[] {
     const th = this.theme;
     const { name, modeLabel, description } = this.heading;
     const identity = th.bold(name) + (modeLabel ? ` ${th.fg("muted", `(${modeLabel})`)}` : "");
     const runtime = describeRuntime(model, thinkingLevel);
     const runtimeTag = runtime ? th.fg("muted", ` · ${runtime}`) : "";
-    return [`${identity}  ${th.fg("muted", description)}${runtimeTag}`, identity + runtimeTag, identity];
+    return [
+      `${identity}  ${th.fg("muted", description)}${runtimeTag}`,
+      identity + runtimeTag,
+      identity,
+    ];
   }
 
   private scrollBy(delta: number, options?: ScrollOptions): void {
@@ -382,7 +422,11 @@ export class TranscriptPane implements Component {
    * The single place a width becomes a viewport height, so `render` and
    * `handleInput` cannot disagree about how far the transcript scrolls.
    */
-  private scrollBounds(width: number): { totalLines: number; viewportHeight: number; maxScroll: number } {
+  private scrollBounds(width: number): {
+    totalLines: number;
+    viewportHeight: number;
+    maxScroll: number;
+  } {
     const totalLines = this.content.lineCount(width);
     const viewportHeight = this.viewportHeight(totalLines);
     return { totalLines, viewportHeight, maxScroll: Math.max(0, totalLines - viewportHeight) };
@@ -420,7 +464,10 @@ function displayKey(key: KeyId): string {
  * `anthropic/claude-sonnet-5 • high`, in Pi's footer wording: `thinking off` rather
  * than a bare `off`, and `thinking <level>` when no model is named to attach it to.
  */
-function describeRuntime(model: ModelIdentity | undefined, thinkingLevel: string | undefined): string {
+function describeRuntime(
+  model: ModelIdentity | undefined,
+  thinkingLevel: string | undefined,
+): string {
   if (!model) return thinkingLevel ? `thinking ${thinkingLevel}` : "";
   if (!thinkingLevel) return formatModel(model);
   const level = thinkingLevel === "off" ? "thinking off" : thinkingLevel;

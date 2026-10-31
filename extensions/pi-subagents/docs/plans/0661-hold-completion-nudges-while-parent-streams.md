@@ -22,7 +22,7 @@ A background agent's completion nudge can reach the parent LLM twice: once as th
 `NotificationManager` guards against this by re-reading `record.consumed` at nudge schedule time and at fire time.
 Neither guard covers the real window.
 "Fire" means handing the message to `pi.sendMessage()`, and Pi routes that to `this.agent.followUp(appMessage)` whenever the session is streaming (`agent-session.ts:1443-1450`), a queue the extension cannot recall.
-The message is only *delivered* when the agent loop drains that queue at turn end (`agent-session.ts:1100-1102`).
+The message is only _delivered_ when the agent loop drains that queue at turn end (`agent-session.ts:1100-1102`).
 The entire remainder of the parent's turn sits between handoff and delivery, and a `get_subagent_result` call in that span marks the record consumed far too late.
 The result is a redundant `<task-notification>` carrying a result the parent already has, plus a forced extra LLM turn re-reporting it.
 
@@ -60,7 +60,7 @@ Three facts established by reading Pi's source at the sibling checkout `../pi` c
 1. `isIdle()` is exposed on `ExtensionContext` / `ExtensionContextActions` (`extensions/types.ts:324`, `:1616`), **not** on `ExtensionAPI` (`:1179`).
    The extension holds `pi: ExtensionAPI`, so it cannot query streaming state on demand and must mirror it from lifecycle events.
    Per the `code-design` rule about confirming an SDK method on the exact type the code holds, `pi.isIdle()` is not available here.
-2. `agent_end` fires once per agent-run *segment*; a single `_runAgentPrompt` emits several across auto-retry, auto-compaction, and `followUp` continuations.
+2. `agent_end` fires once per agent-run _segment_; a single `_runAgentPrompt` emits several across auto-retry, auto-compaction, and `followUp` continuations.
    `agent_settled` fires exactly once per run, from the `finally` block of `_runAgentPrompt` (`agent-session.ts:1071`), so it also fires on error and abort.
 3. `_emitAgentSettled` sets `_isAgentRunActive = false` **before** emitting to extensions (`agent-session.ts:581-582`).
    A `sendMessage` issued from an `agent_settled` handler therefore sees `isStreaming === false` and takes the `triggerTurn` → `_runAgentPrompt` path, rather than re-entering the unrecallable `followUp` queue.
@@ -149,7 +149,7 @@ Reentrancy: the flush calls `pi.sendMessage`, whose runtime binding is fire-and-
 Greps run at planning time to bound the blast radius.
 `NUDGE_HOLD_MS` appears in no `src/` file other than `notification.ts`, and in `docs/` only inside historical plans and retros, which are immutable records and are not edited.
 `scheduleNudge` and `cancelNudge` are private with no call sites outside the class.
-`README.md` describes notification *rendering*, never delivery timing, so it needs no edit.
+`README.md` describes notification _rendering_, never delivery timing, so it needs no edit.
 `architecture.md:592` describes #617's consumption ownership and stays accurate — the notification layer still only reads `consumedAt`.
 
 ## Test Impact Analysis
@@ -170,7 +170,7 @@ The `sendCompletion` delegation tests in `subagent-events-observer.test.ts` stay
 ## Invariants at risk
 
 The `consume()`-after-await invariant from Phase 20 / #617 is documented as depending on this constant.
-`docs/architecture/history/phase-20-result-delivery.md:60` credits the 200 ms window, and retro `0535-extract-result-delivery-from-subagent.md:42` calls `NUDGE_HOLD_MS` "a load-bearing constant", warning that a *decrease* narrows the window in which a post-await `consume()` remains effective.
+`docs/architecture/history/phase-20-result-delivery.md:60` credits the 200 ms window, and retro `0535-extract-result-delivery-from-subagent.md:42` calls `NUDGE_HOLD_MS` "a load-bearing constant", warning that a _decrease_ narrows the window in which a post-await `consume()` remains effective.
 
 This was measured at planning time rather than argued, per the spike rule.
 A scratch worktree implemented the collapsed design and ran the full package suite: 1083/1083 tests pass once the three tests above arrange the streaming state, with `pnpm run check` and `pnpm run lint` both clean.

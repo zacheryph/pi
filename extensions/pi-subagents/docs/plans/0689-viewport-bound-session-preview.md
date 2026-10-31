@@ -104,7 +104,7 @@ First, the incremental model is **Pi's own model**, not an invention: we mirror 
 Second, PR [#690]'s `isLiveMessage` / timestamp-matching guard — which excludes a trailing in-flight assistant message from `getMessages()` — defends against a state that cannot occur, because a partial is never in `state.messages`.
 Our version drops it.
 
-The last row explains where the 45 ms rebuild actually goes: `Markdown` leaves are already cached per width, so a rebuild is expensive mostly because it *discards* pi-tui's own caches by constructing fresh components.
+The last row explains where the 45 ms rebuild actually goes: `Markdown` leaves are already cached per width, so a rebuild is expensive mostly because it _discards_ pi-tui's own caches by constructing fresh components.
 Incremental settling is, at bottom, "stop throwing pi-tui's cache away."
 
 ### Constraints from AGENTS.md
@@ -118,7 +118,7 @@ Incremental settling is, at bottom, "stop throwing pi-tui's cache away."
 ### Separation of concerns
 
 `TranscriptOverlay` keeps what an overlay owns: scroll offset, auto-scroll, chrome, key handling, and the lifecycle of its subscription.
-Everything about *what rows exist and what they say* moves to a new collaborator, `src/ui/transcript-content.ts`.
+Everything about _what rows exist and what they say_ moves to a new collaborator, `src/ui/transcript-content.ts`.
 
 ```typescript
 /** Dependencies the per-entry component tree needs from the SDK/TUI environment. */
@@ -220,7 +220,7 @@ The derived estimate is only a fallback for the (unreachable in practice) case o
   With per-message blocks each container is fresh, so the decision moves to a `hasVisibleContent` flag owned by `TranscriptContent` and threaded in as a parameter.
   This is the one place where identical output depends on hoisted state; the equivalence test pins it.
 - **In-place message replacement.**
-  An extension returning a replacement from `message_end` mutates the settled object, but Pi applies that *before* notifying session listeners, so the overlay always consumes final content.
+  An extension returning a replacement from `message_end` mutates the settled object, but Pi applies that _before_ notifying session listeners, so the overlay always consumes final content.
 - **Empty width.** `slice`/`lineCount` return empty/zero for a non-positive width, matching today's `buildContentLines` guard.
 - **Width change.**
   A width change clears every block's line cache and the flat cache; blocks and components survive, so pi-tui's `Markdown` caches re-warm at the new width once.

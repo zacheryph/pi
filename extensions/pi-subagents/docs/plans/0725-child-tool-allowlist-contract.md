@@ -129,7 +129,11 @@ function parseCsvField(val: unknown): string[] | undefined {
   if (val === undefined || val === null) return undefined;
   const items = Array.isArray(val)
     ? val.map((entry) => String(entry).trim()).filter(Boolean)
-    : String(val).trim().split(",").map((entry) => entry.trim()).filter(Boolean);
+    : String(val)
+        .trim()
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter(Boolean);
   if (items.length === 0) return undefined;
   return items.length === 1 && items[0] === "none" ? undefined : items;
 }

@@ -18,16 +18,12 @@ export function getAgentConversation(session: AgentSession): string {
 
   for (const msg of session.messages) {
     if (msg.role === "user") {
-      const text =
-        typeof msg.content === "string"
-          ? msg.content
-          : extractText(msg.content);
+      const text = typeof msg.content === "string" ? msg.content : extractText(msg.content);
       if (text.trim()) parts.push(`[User]: ${text.trim()}`);
     } else if (msg.role === "assistant") {
       const { textParts, toolNames } = extractAssistantContent(msg.content);
       const attribution = formatAttribution(msg);
-      if (textParts.length > 0)
-        parts.push(`[Assistant${attribution}]: ${textParts.join("\n")}`);
+      if (textParts.length > 0) parts.push(`[Assistant${attribution}]: ${textParts.join("\n")}`);
       if (toolNames.length > 0)
         parts.push(`[Tool Calls]:\n${toolNames.map((n) => `  Tool: ${n}`).join("\n")}`);
     } else if (msg.role === "toolResult") {

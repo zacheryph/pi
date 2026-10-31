@@ -16,7 +16,7 @@ Plan committed as `packages/pi-subagents/docs/plans/0798-deliver-resume-handle-i
 ### Observations
 
 - The defect is a delivery-channel asymmetry, not a missing capability: `buildDetails` already sets `details.agentId`, but `details` is renderer metadata and never reaches the model.
-  The issue's own comment sharpened it further — the background door has *two* model-visible channels (spawn result and completion nudge), the foreground door has none.
+  The issue's own comment sharpened it further — the background door has _two_ model-visible channels (spawn result and completion nudge), the foreground door has none.
 - Operator decisions at the gate: bare `Agent ID: <id>` header line (byte symmetry with `background-spawner.ts`, no restated resume hint); all three edges including the foreground error branch and the resume-return edge; the literal written **inline** at each site rather than extracted into a `tools/helpers.ts` helper.
 - The inline decision keeps the roadmap's health-metric row valid as written — its recompute command greps `'Agent ID'` in `foreground-runner.ts` specifically, so a helper extraction would have forced a same-commit row rewrite.
   Measured baseline `0`; predicted `2` after the change (success and error branches).
@@ -24,7 +24,7 @@ Plan committed as `packages/pi-subagents/docs/plans/0798-deliver-resume-handle-i
   The plan strengthens it into an index comparison and gives it its own killing mutation.
 - Two things the handle unlocks, not one — `resume` and `get_subagent_result(id, verbose: true)` for a truncated foreground summary.
   Worth remembering if a later step reconsiders the line's placement.
-- Scope held to delivery: recognizing that a result *is* a question belongs to Step 8 ([#465]), whose soft dependency on this step is exactly the handle.
+- Scope held to delivery: recognizing that a result _is_ a question belongs to Step 8 ([#465]), whose soft dependency on this step is exactly the handle.
 
 #### Deferred tidyings
 
@@ -78,7 +78,7 @@ The issue's substance was small; what this retro has to say is mostly about the 
 #### What went well
 
 - The step's mutation predictions were checked against reality in the right direction.
-  Mutation (a) killed **three** tests where the plan named two, and the TDD session classified that as a superset rather than quietly accepting it — the prompt's rule flags a mutation killing *fewer* tests than predicted, and getting the asymmetry right is what makes the check meaningful.
+  Mutation (a) killed **three** tests where the plan named two, and the TDD session classified that as a superset rather than quietly accepting it — the prompt's rule flags a mutation killing _fewer_ tests than predicted, and getting the asymmetry right is what makes the check meaningful.
 - Mutation (c) restored `agent-tool.ts` to a byte-identical copy of `HEAD`, so `git diff --stat` printed nothing.
   The session read that correctly — as confirmation the mutation is the exact inverse of the green edit, not as evidence the mutation failed to apply.
   That distinction is the difference between a verified pin and a no-op.

@@ -240,3 +240,13 @@ Fetch upstream in a separate checkout, compare its `packages/pi-subagents` direc
 against this directory, and merge changes while preserving local modifications and
 license notices. Update the commit/version above after each import. `pi update`
 updates the bundle's Git checkout; it does not merge upstream into this vendored copy.
+
+## Shared Oxc and TypeScript 7 tooling
+
+- Apply the bundle's Oxfmt formatting and Oxlint correctness checks to source,
+  tests, scripts, and documentation.
+- Keep terminal-control matching explicit with narrowly scoped lint comments.
+- Resolve private import aliases to explicit `.ts` files so sibling workspace
+  consumers can load the service through standard package import resolution.
+- Generate public declarations with TypeScript 7 and bundle them with Rolldown;
+  no TypeScript 6 compiler API is required.

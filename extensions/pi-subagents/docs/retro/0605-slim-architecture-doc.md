@@ -16,7 +16,7 @@ Two adaptation decisions were confirmed with the operator via `ask_user`; both f
 ### Observations
 
 - **Asymmetric debt vs. #601.**
-  pi-subagents does **not** carry the duplicated `### Phase N` prose #601 removed — it already uses the compact Phase/Title/Status + structural-issues table form #601 was *migrating pi-permission-system toward*, and `/finish-phase` (steps 97, 113) actively maintains those tables.
+  pi-subagents does **not** carry the duplicated `### Phase N` prose #601 removed — it already uses the compact Phase/Title/Status + structural-issues table form #601 was _migrating pi-permission-system toward_, and `/finish-phase` (steps 97, 113) actively maintains those tables.
   So issue proposed-change 1 is a near-no-op here; the real bulk is concentrated in `## Target architecture` (shipped-narrated-as-target) and `## Current structural analysis` (shipped-narrated-as-proposed), neither of which has a pi-permission-system analog.
   This asymmetry drove the `ask_user` gate despite the operator-authored, unambiguous-looking spec.
 - **Operator decisions (`ask_user`):** aggressive fold of `## Current structural analysis` (collapse the shipped/done material, keep live Health/Complexity/Churn snapshots); and rename `## Target architecture` fixing anchors like #601 (rather than keeping the heading).
@@ -73,7 +73,7 @@ Execution quality was high: incremental `rumdl` after every content step, a mark
 #### What caused friction (agent side)
 
 1. `other` (tool-schema misuse) — the first Step-1 `Edit` (turn 31) packed a second replacement into one `edits[]` entry as fabricated `oldText2`/`newText2` keys instead of a second array entry.
-   The tool silently applied only the two real blocks and reported "Successfully replaced 2 block(s)" — a *success* banner masking a dropped edit.
+   The tool silently applied only the two real blocks and reported "Successfully replaced 2 block(s)" — a _success_ banner masking a dropped edit.
    Self-caught immediately (the `2 block(s)` count vs. three intended edits) and re-applied in turn 32.
    Impact: one extra `Edit` call, no rework, no bad commit — but the silent-partial-success is the real hazard (easy to miss without counting).
 2. `missing-context` (mild, plan-time) — the plan scoped module-org op 3 as "strip the one `#164` sentence," but at build time the intro also carried stale `62 files`/`six domains` counts contradicting the eight-directory tree and the 57-file health metric.

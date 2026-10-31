@@ -58,7 +58,7 @@ This change is **not breaking**: absent or empty settings reproduce current beha
 `packages/pi-subagents/src/lifecycle/create-subagent-session.ts` builds the child's resource loader and session:
 
 ```typescript
-const loader = deps.io.createResourceLoader({ cwd, agentDir, /* … */ });
+const loader = deps.io.createResourceLoader({ cwd, agentDir /* … */ });
 await loader.reload();
 // …
 const { session } = await deps.io.createSession({
@@ -77,7 +77,7 @@ Pi's `PackageSource` object form supports per-resource-type filters.
 Two branches in `DefaultPackageManager.collectPackageResources` consume them, and `extensions: []` produces "load none" in **both**:
 
 - Default mode (`autoload` unset or `true`) routes to `applyPackageFilter`, which special-cases the empty array — its own comment reads "Empty array explicitly disables all resources of this type" — and marks every discovered extension file `enabled: false`.
-- Delta mode (`autoload: false`) routes to `applyPackageDeltaFilter`, which starts from nothing and only *adds* explicitly matched patterns, so an empty array adds no extensions.
+- Delta mode (`autoload: false`) routes to `applyPackageDeltaFilter`, which starts from nothing and only _adds_ explicitly matched patterns, so an empty array adds no extensions.
 
 This is the same idiom this repo already documents in `AGENTS.md` for its own double-load suppression entries.
 Because the filter is applied during package **resolution**, an excluded package's extension paths never reach `loadExtensionsCached`, so the module is never imported and its factory never runs — which is what the reported OOM requires.
@@ -86,9 +86,9 @@ Because the filter is applied during package **resolution**, an excluded package
 
 `DefaultResourceLoaderOptions` exposes `extensionsOverride?: (base: LoadExtensionsResult) => LoadExtensionsResult`, which looks like a cleaner seam but is unusable here for two independent reasons found while reading `dist/core/resource-loader.js`:
 
-- It runs *after* `loadFinalExtensionSet`, which has already called `loadExtensionsCached(extensionPaths, …)`.
+- It runs _after_ `loadFinalExtensionSet`, which has already called `loadExtensionsCached(extensionPaths, …)`.
   The excluded package's module is imported into the heap before the callback can drop it, so the memory cost this issue exists to avoid is already paid.
-- It runs *before* `applyExtensionSourceInfo`, so `extension.sourceInfo` is still unpopulated when the callback fires.
+- It runs _before_ `applyExtensionSourceInfo`, so `extension.sourceInfo` is still unpopulated when the callback fires.
   The callback would have to re-derive each extension's owning package by matching file paths against install roots — duplicating what `DefaultPackageManager` already knows.
 
 ### Why the child settings view cannot be a subclass
@@ -126,7 +126,7 @@ The amendment records this reasoning and notes that the seam remains additively 
 ### Where the decision lives
 
 The core factory must not learn about exclusion policy.
-Following the `code-design` rule "thread decisions, not discriminators", `src/index.ts` — the composition boundary that already owns settings — resolves the policy and hands `createSubagentSession` the *product*: a settings manager for the loader.
+Following the `code-design` rule "thread decisions, not discriminators", `src/index.ts` — the composition boundary that already owns settings — resolves the policy and hands `createSubagentSession` the _product_: a settings manager for the loader.
 
 This is a deliberate divergence from [#697], which threads a `getExcludedExtensionPackages: () => readonly string[]` getter into `SubagentSessionDeps` and branches inside the factory.
 Keeping the raw list out of the factory means `create-subagent-session.ts` gains no policy knowledge, no fifth dependency-bag field, and no conditional.
@@ -158,9 +158,16 @@ createLoaderSettingsManager: (parent) => {
 const sessionSettings = deps.io.createSettingsManager(cfg.effectiveCwd, agentDir);
 const loaderSettings = deps.io.createLoaderSettingsManager(sessionSettings);
 
-const loader = deps.io.createResourceLoader({ cwd: cfg.effectiveCwd, agentDir, settingsManager: loaderSettings, /* … */ });
+const loader = deps.io.createResourceLoader({
+  cwd: cfg.effectiveCwd,
+  agentDir,
+  settingsManager: loaderSettings /* … */,
+});
 await loader.reload();
-const { session } = await deps.io.createSession({ settingsManager: sessionSettings, resourceLoader: loader, /* … */ });
+const { session } = await deps.io.createSession({
+  settingsManager: sessionSettings,
+  resourceLoader: loader /* … */,
+});
 ```
 
 The factory reads no `PackageSource` shapes and holds no exclusion list, so Tell-Don't-Ask and the Law of Demeter both hold: it asks the IO boundary for a view and passes it on.
@@ -168,7 +175,7 @@ Only one settings file read happens per child, as today — the filtered view re
 
 ### New module: `src/session/package-exclusions.ts`
 
-Pure transform plus the storage adapter, with no SDK *value* imports.
+Pure transform plus the storage adapter, with no SDK _value_ imports.
 `Settings` and `SettingsStorage` are not exported from the package root, so both are derived structurally from the exported `SettingsManager` class:
 
 ```typescript
@@ -183,8 +190,14 @@ export interface ParentSettingsView {
   getProjectSettings(): PiSettings;
 }
 
-export function withPackageExtensionsDisabled(settings: PiSettings, excluded: ReadonlySet<string>): PiSettings;
-export function createExcludedPackagesStorage(parent: ParentSettingsView, excluded: ReadonlySet<string>): PiSettingsStorage;
+export function withPackageExtensionsDisabled(
+  settings: PiSettings,
+  excluded: ReadonlySet<string>,
+): PiSettings;
+export function createExcludedPackagesStorage(
+  parent: ParentSettingsView,
+  excluded: ReadonlySet<string>,
+): PiSettingsStorage;
 ```
 
 `ParentSettingsView` satisfies ISP: the storage reads only the two scope accessors.
@@ -290,7 +303,7 @@ Malformed input degrades to "no exclusions", matching the module's existing sile
 | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `README.md`                                           | New `### Excluding package extensions from children` subsection under `## Persistent Settings`, before `### Abort on interrupt`; update the `## Removed: agent memory and skill preloading` sentence that currently reads "Children now always inherit the parent's skills and extensions" |
 | `docs/decisions/0002-extensions-on-a-minimal-core.md` | Amendment section recording the settings-key decision and the "no vacant hooks" reasoning                                                                                                                                                                                                  |
-| `docs/architecture/architecture.md`                   | Add `package-exclusions.ts` to the `session/` module tree; update the `Recursion guard` and `Extension lifecycle control` bullets that assert children *always* load parent extensions; refresh the health-metrics file count and LOC                                                      |
+| `docs/architecture/architecture.md`                   | Add `package-exclusions.ts` to the `session/` module tree; update the `Recursion guard` and `Extension lifecycle control` bullets that assert children _always_ load parent extensions; refresh the health-metrics file count and LOC                                                      |
 
 ### Grep sweep performed
 

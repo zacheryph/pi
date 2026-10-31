@@ -21,7 +21,6 @@ import type {
   WorkspaceProvider,
 } from "#src/lifecycle/workspace";
 
-
 // SubagentStatus is defined in the lifecycle layer (single home) and re-exported
 // here for the public API surface — mirrors the LifetimeUsage / workspace pattern.
 export type { SubagentStatus } from "#src/lifecycle/subagent";
@@ -220,7 +219,8 @@ interface Publications {
 function publications(): Publications {
   const slots = globalThis as Record<symbol, unknown>;
   const store = slots[PUBLICATIONS_KEY] as Partial<Publications> | undefined;
-  if (store && typeof store.next === "number" && Array.isArray(store.entries)) return store as Publications;
+  if (store && typeof store.next === "number" && Array.isArray(store.entries))
+    return store as Publications;
   const created: Publications = { next: 0, entries: [] };
   slots[PUBLICATIONS_KEY] = created;
   return created;
@@ -249,15 +249,19 @@ function syncSlot(store: Publications): void {
  */
 export function publishSubagentsService(service: SubagentsService, sessionId?: string): void {
   const store = publications();
-  const index = store.entries.findIndex((entry) =>
-    entry.service === service || (sessionId !== undefined && entry.sessionId === sessionId));
+  const index = store.entries.findIndex(
+    (entry) =>
+      entry.service === service || (sessionId !== undefined && entry.sessionId === sessionId),
+  );
   if (sessionId === undefined) {
     if (index < 0) store.entries.push({ service, seq: store.next++ });
   } else {
     const seq = index >= 0 ? store.entries[index].seq : store.next++;
     if (index >= 0) store.entries[index] = { service, sessionId, seq };
     else store.entries.push({ service, sessionId, seq });
-    store.entries = store.entries.filter((entry) => entry.sessionId !== undefined || entry.seq > seq);
+    store.entries = store.entries.filter(
+      (entry) => entry.sessionId !== undefined || entry.seq > seq,
+    );
   }
   syncSlot(store);
 }
@@ -298,6 +302,8 @@ export function markPendingPublications(): number {
  */
 export function discardPendingSince(mark: number): void {
   const store = publications();
-  store.entries = store.entries.filter((entry) => entry.sessionId !== undefined || entry.seq < mark);
+  store.entries = store.entries.filter(
+    (entry) => entry.sessionId !== undefined || entry.seq < mark,
+  );
   syncSlot(store);
 }

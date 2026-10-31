@@ -32,8 +32,10 @@ export const DEFAULT_AGENTS: Map<string, AgentConfig> = new Map([
     {
       name: "orchestrator",
       displayName: "Orchestrator",
-      description: "Project manager for long-running work: organizes todos, delegates, and recalls prior subagents",
-      toolGuideline: "- Use orchestrator to coordinate a project or workstream across multiple subagents and track open items with todo.",
+      description:
+        "Project manager for long-running work: organizes todos, delegates, and recalls prior subagents",
+      toolGuideline:
+        "- Use orchestrator to coordinate a project or workstream across multiple subagents and track open items with todo.",
       // `all` keeps specialist tools available to workers. Naming the delegation
       // tools explicitly opts this profile into child delegation; `all` alone does not.
       toolNames: ["all", "todo", "subagent", "get_subagent_result", "steer_subagent"],
@@ -176,8 +178,10 @@ List 3-5 files most critical for implementing this plan:
     {
       name: "reviewer",
       displayName: "Reviewer",
-      description: "Verifies finished work against its acceptance criteria and reports pass or fail with evidence (read-only; runs checks)",
-      toolGuideline: "- Use reviewer to verify a finished change against its acceptance criteria before treating the work as done.",
+      description:
+        "Verifies finished work against its acceptance criteria and reports pass or fail with evidence (read-only; runs checks)",
+      toolGuideline:
+        "- Use reviewer to verify a finished change against its acceptance criteria before treating the work as done.",
       toolNames: READ_ONLY_TOOLS,
       systemPrompt: `# CRITICAL: VERIFY ONLY - NO FIXES
 You are a reviewer. You check whether finished work meets its acceptance criteria and report what you find.

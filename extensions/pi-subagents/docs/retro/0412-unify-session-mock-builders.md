@@ -58,7 +58,7 @@ No `pi-subagents` release bumped (a `refactor(test):` change), so only the unrel
 
 #### What caused friction (agent side)
 
-- `missing-context` — the plan called for a docstring touch-up on `createMockSession`, but the existing `createMockSession` docstring block in `mock-session.ts` was *already orphaned* (sitting above `toAgentSession`, not its own declaration).
+- `missing-context` — the plan called for a docstring touch-up on `createMockSession`, but the existing `createMockSession` docstring block in `mock-session.ts` was _already orphaned_ (sitting above `toAgentSession`, not its own declaration).
   I enriched the orphaned block instead of noticing it wasn't attached to the symbol it documents.
   Impact: one extra `refactor(test):` commit (`5999dcad`) to move the block; caught by the pre-completion reviewer, so no escaped defect — reviewer-caught, not user-caught.
 

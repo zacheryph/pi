@@ -17,7 +17,7 @@ Plan committed at `packages/pi-subagents/docs/plans/0466-resume-completion-signa
 
 - **Terminology correction mid-`ask_user`.**
   The operator asked "distinct event vs distinct channel?"
-  — in this codebase each event *is* its own channel string (`SUBAGENT_EVENTS` already has six), so "distinct resumed event" and "a new `subagents:resumed` channel" are the same thing.
+  — in this codebase each event _is_ its own channel string (`SUBAGENT_EVENTS` already has six), so "distinct resumed event" and "a new `subagents:resumed` channel" are the same thing.
   Re-asked with that framing; operator chose the distinct channel.
 - **Scope reduction from the roadmap.**
   The roadmap's tentative target-file list named `subagent-session.ts` (`resumeTurnLoop` result shape).

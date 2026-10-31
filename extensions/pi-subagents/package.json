@@ -24,14 +24,14 @@
   "imports": {
     "#src/*": {
       "types": "./src/*.ts",
-      "default": "./src/*"
+      "default": "./src/*.ts"
     },
     "#test/*": {
       "types": "./test/*.ts",
-      "default": "./test/*"
+      "default": "./test/*.ts"
     }
   },
-  "description": "A focused, in-process sub-agent core for pi \u2014 autonomous agents plus a typed API and lifecycle events other extensions build on. Friendly fork of @tintinweb/pi-subagents.",
+  "description": "A focused, in-process sub-agent core for pi — autonomous agents plus a typed API and lifecycle events other extensions build on. Friendly fork of @tintinweb/pi-subagents.",
   "author": {
     "name": "Chris Lasher"
   },

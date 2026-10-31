@@ -47,8 +47,12 @@ function getToolCallName(c: { type: string }): string {
 `ui/message-formatters.ts` (exported):
 
 ```typescript
-interface ToolCallContent { /* identical */ }
-export function getToolCallName(c: { type: string }): string { /* identical */ }
+interface ToolCallContent {
+  /* identical */
+}
+export function getToolCallName(c: { type: string }): string {
+  /* identical */
+}
 ```
 
 The content-iteration pattern appears in:
@@ -60,8 +64,8 @@ Both collect `textParts: string[]` and tool names via the same `for (const c of 
 
 ### Structural analysis
 
-Per the code-design skill's "structural reasons before extracting duplication" check: the two consumers differ only in *presentation* (plain text vs. themed TUI lines).
-The *data extraction* — identifying text items and tool-call items, extracting tool names — is the same logical operation.
+Per the code-design skill's "structural reasons before extracting duplication" check: the two consumers differ only in _presentation_ (plain text vs. themed TUI lines).
+The _data extraction_ — identifying text items and tool-call items, extracting tool names — is the same logical operation.
 This is incidental duplication suitable for extraction.
 
 ### Dependencies
@@ -125,7 +129,8 @@ export function extractAssistantContent(
 ```typescript
 const { textParts, toolNames } = extractAssistantContent(msg.content);
 if (textParts.length > 0) parts.push(`[Assistant]: ${textParts.join("\n")}`);
-if (toolNames.length > 0) parts.push(`[Tool Calls]:\n${toolNames.map(n => `  Tool: ${n}`).join("\n")}`);
+if (toolNames.length > 0)
+  parts.push(`[Tool Calls]:\n${toolNames.map((n) => `  Tool: ${n}`).join("\n")}`);
 ```
 
 `formatAssistantMessage` (message-formatters.ts):
@@ -134,7 +139,8 @@ if (toolNames.length > 0) parts.push(`[Tool Calls]:\n${toolNames.map(n => `  Too
 const { textParts, toolNames } = extractAssistantContent(content);
 const lines: string[] = [theme.bold("[Assistant]")];
 if (textParts.length > 0) lines.push(...wrapText(textParts.join("\n").trim(), width));
-for (const name of toolNames) lines.push(truncateToWidth(theme.fg("muted", `  [Tool: ${name}]`), width));
+for (const name of toolNames)
+  lines.push(truncateToWidth(theme.fg("muted", `  [Tool: ${name}]`), width));
 ```
 
 Both consumers call the same extraction, then apply their own presentation.

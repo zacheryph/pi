@@ -70,7 +70,6 @@ export class SubagentRuntime {
    * Only valid during an active session (currentCtx is defined).
    */
   buildSnapshot(inheritContext: boolean): ParentSnapshot {
-
     return buildParentSnapshot(this.currentCtx!, inheritContext, this.lastPromptOptions);
   }
 

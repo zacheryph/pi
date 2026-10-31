@@ -21,8 +21,8 @@ The issue (written at the Phase 18 end) named five files and a "≤ 10 clone gro
 Re-running fallow against current `main` (after the terminal cut shifted line numbers and the Phase-19 UI surfaces added new test files) shows the live picture differs from the issue's snapshot.
 There are **16** `pi-subagents` test clone families today, but they split into two kinds:
 
-1. Genuine *arrange / fixture / helper* duplication — safe to extract.
-2. The repeated *system-under-test call* (`resolveSpawnConfig`, `assembleSessionConfig`, `schedule`) — which the `testing` skill explicitly says **not** to wrap in a helper just to clear a duplication metric, because the repeated act *is* the test subject.
+1. Genuine _arrange / fixture / helper_ duplication — safe to extract.
+2. The repeated _system-under-test call_ (`resolveSpawnConfig`, `assembleSessionConfig`, `schedule`) — which the `testing` skill explicitly says **not** to wrap in a helper just to clear a duplication metric, because the repeated act _is_ the test subject.
 
 Several of the issue's five named targets fall into category 2.
 The operator confirmed (planning `ask_user`) a **guardrail-first** approach over the **full live set** of clones: extract only genuine fixtures, leave act-clones in place and documented, and address the new Phase-19 UI clones the issue never anticipated.
@@ -32,7 +32,7 @@ The operator confirmed (planning `ask_user`) a **guardrail-first** approach over
 - Extract genuine (non-act) test duplication into shared or hoisted helpers, following the package's `test/helpers/*.ts` convention.
 - Clear the clone families that are legitimately arrange/fixture/result-extraction boilerplate.
 - Keep the full suite green at every step — the existing tests are the safety net for their own refactor.
-- Reach the issue's `≤ 10` clone-group target *honestly*, without wrapping any system-under-test call.
+- Reach the issue's `≤ 10` clone-group target _honestly_, without wrapping any system-under-test call.
 - Document the residual act-clones as intentional in the plan, so a future fallow pass does not re-flag them as oversight.
 
 ## Non-Goals
@@ -46,7 +46,7 @@ The operator confirmed (planning `ask_user`) a **guardrail-first** approach over
   - `test/lifecycle/subagent.test.ts` — `agent.run()` act block (`dup:a3814745`).
   - `test/tools/get-result-tool.test.ts` — `execute(...)` act block (`dup:230828a8`, 5 lines, marginal).
 - No production-source changes — this is test-only.
-- No change to test *assertions* or behavior coverage; only the arrange/setup ceremony is consolidated.
+- No change to test _assertions_ or behavior coverage; only the arrange/setup ceremony is consolidated.
 - No new fallow rule or config change.
 
 ## Background
@@ -118,8 +118,16 @@ Both call sites import it: `import { makeNavigable } from "#test/helpers/make-na
 
 ```typescript
 export function emitResumeUsageAndCompaction(session: MockSession): void {
-  session.emit({ type: "message_end", message: { role: "assistant", usage: { input: 70, output: 30, cacheWrite: 5 } } });
-  session.emit({ type: "compaction_end", aborted: false, result: { tokensBefore: 999 }, reason: "overflow" });
+  session.emit({
+    type: "message_end",
+    message: { role: "assistant", usage: { input: 70, output: 30, cacheWrite: 5 } },
+  });
+  session.emit({
+    type: "compaction_end",
+    aborted: false,
+    result: { tokensBefore: 999 },
+    reason: "overflow",
+  });
 }
 ```
 
@@ -129,11 +137,11 @@ Both `subagent-manager.test.ts` and `subagent.test.ts` set this inside a `mockIm
 
 These stay file-local (the convention reserves `test/helpers/` for cross-file sharing); each is a `function` declared once at the top of its `describe`/module and called from each test, with the **act left explicit** in every test:
 
-- `ui/agent-widget.test.ts` — the `makeWidget(agents)` helper is currently declared *twice* (one per `describe`).
+- `ui/agent-widget.test.ts` — the `makeWidget(agents)` helper is currently declared _twice_ (one per `describe`).
   Hoist a single copy to module scope (above the first `describe`) and delete the second.
   The second `describe` uses `vi.useFakeTimers()` in `beforeEach`, but `makeWidget` does not touch timers, so a module-scope definition serves both.
 - `ui/session-navigator.test.ts` — extract a `renderCapturedOverlay(ui): string[]` helper that performs the repeated `const factory = ui.custom.mock.calls[0][0] as (…) => Component; return factory(mockTui(), ansiTheme(), undefined, vi.fn()).render(80);`.
-  This is *result extraction* (reading what the SUT produced), not the act (`new SessionNavigatorHandler().handle(…)` stays explicit in each test).
+  This is _result extraction_ (reading what the SUT produced), not the act (`new SessionNavigatorHandler().handle(…)` stays explicit in each test).
   The `#423` reactive-consumer invariant assertion (`expect(record.getToolDefinition).not.toHaveBeenCalled()`) lives in the test body, untouched by the helper.
 - `lifecycle/subagent-manager.test.ts` — extract a local `seedResultConsumedObserver()` returning `{ manager, record, seenConsumed: () => boolean | undefined }` for the two Bug-1 tests; the act (`markConsumed()` before/after `await record.promise`) stays in each test.
 - `lifecycle/subagent.test.ts` — extract a local `makeReadySubagent()` returning `{ agent }` (build `makeSubagent()`, push a message onto a `createMockSession()`, wire `createSubagentSessionStub`/`toSubagentSession`); the act (reading `agent.messages` vs `agent.agentMessages`) stays in each test.

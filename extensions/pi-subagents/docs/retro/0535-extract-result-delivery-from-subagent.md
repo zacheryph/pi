@@ -39,7 +39,7 @@ Pre-completion reviewer: **PASS**.
   The pre-completion reviewer independently hand-traced both rewritten tests against the real `NotificationManager`/`SubagentManager` wiring and confirmed the rewrite is a legitimate strengthening, not a coverage loss.
 - The tidy-first-assessor found no preparatory refactoring needed — the plan's own Step 1 (lift `toolCallId` out first) already was the one legitimate tidy-first move, and Step 2's atomicity (the `NotificationState` deletion breaks every importer at once) argues against further splitting, not for it.
   It did flag two stale doc/title references to `NotificationState` outside the plan's file list (`test/helpers/make-subagent.ts`'s doc comment, and test titles in `background-spawner.test.ts` / `agent-tool.test.ts`) as "rejected as scope creep but directly caused by this change" — folded those one-line fixes into the Step 2 commit since they reference the deleted symbol.
-- `NUDGE_HOLD_MS` (200 ms) is a load-bearing constant for the new `consume()`-after-await invariant: `consume()` only suppresses a nudge that hasn't fired yet, so any future increase to the hold window doesn't threaten correctness, but a *decrease* narrows the window in which `get-result-tool`'s post-await `consume()` call remains effective — worth a mental note if that constant ever moves.
+- `NUDGE_HOLD_MS` (200 ms) is a load-bearing constant for the new `consume()`-after-await invariant: `consume()` only suppresses a nudge that hasn't fired yet, so any future increase to the hold window doesn't threaten correctness, but a _decrease_ narrows the window in which `get-result-tool`'s post-await `consume()` call remains effective — worth a mental note if that constant ever moves.
 - Session started with a `git pull --rebase` (not `--ff-only`) because a sibling worktree session was concurrently landing `pi-permission-system` work — confirmed with the operator before rebasing; the rebase was clean (2 local commits replayed onto new `origin/main`).
 - Release remains `mid-batch — defer (batch "result-delivery")` per the plan; the release-please PR should stay open until Step 2 (#536) lands.
 
@@ -71,7 +71,7 @@ The standout across stages was a test-driven-**design** finding during TDD (see 
 
 - **Textbook land** — the root `/land-worktree 535` ran end-to-end with zero corrections: ff-merge `c36307e7..87d30127`, CI `success`, issue closed with an implemented-in summary, release deferred per the plan's `**Release:** mid-batch — defer (batch "result-delivery")` marker, branch + worktree torn down.
 - **Test-driven design win (novel)** — the plan's Step 2 specified a Red test that reproduces the historical "Bug 1" race by calling `markConsumed()` without the paired `cancelNudge()`.
-  The new atomic `consume(id)` tell always cancels the pending nudge, so that test could no longer fail — the refactor made the bug *unrepresentable*, not merely reordered.
+  The new atomic `consume(id)` tell always cancels the pending nudge, so that test could no longer fail — the refactor made the bug _unrepresentable_, not merely reordered.
   The implementer (on sonnet) recognized this mid-cycle, rewrote the block to pin both orderings (consume before and after awaiting) as passing invariants, and the pre-completion reviewer independently hand-traced the rewrite against the real wiring and confirmed it a legitimate strengthening.
   This is the desirable shape of "a planned Red test can't go red" — treat it as a design signal, not a test to force-fail.
 - **Release discipline** — the `mid-batch — defer` marker was honored at every stage (plan, TDD retro, ship breadcrumb, land), so the `result-delivery` batch stays open for Step 2 ([#536]) with no premature release.
@@ -79,7 +79,7 @@ The standout across stages was a test-driven-**design** finding during TDD (see 
 #### What caused friction (agent side)
 
 - `missing-context` (template gap) — `/tdd-plan`'s "Sync with remote" step is trunk-only (`git pull --ff-only`, stop on any failure).
-  Run in the peer worktree after a sibling had landed `pi-permission-system` on `origin/main`, it hard-stopped on the *expected* divergence (peer turns 26–27), requiring an operator round-trip ("we're simultaneously developing pi-permission-system … `git pull --rebase`").
+  Run in the peer worktree after a sibling had landed `pi-permission-system` on `origin/main`, it hard-stopped on the _expected_ divergence (peer turns 26–27), requiring an operator round-trip ("we're simultaneously developing pi-permission-system … `git pull --rebase`").
   The agent correctly followed the stop rule — the gap is the trunk-oriented template, which (unlike `/retro` and `/ship-worktree`) has no worktree-branch branch.
   Impact: one hard-stop + operator clarification; no rework.
 - `other` (environment/tooling) — during `/ship-worktree`, `set_session_name` and the session-transcript-path capture command repeatedly stalled as `pending` (peer turns 140–160).
@@ -89,7 +89,7 @@ The standout across stages was a test-driven-**design** finding during TDD (see 
 
 #### What caused friction (user side)
 
-- The parallel-development context (`pi-permission-system` landing concurrently) surfaced only *after* the `/tdd-plan` sync hard-stop.
+- The parallel-development context (`pi-permission-system` landing concurrently) surfaced only _after_ the `/tdd-plan` sync hard-stop.
   Sharing it at worktree launch would have pre-empted the stop — but this is inherent to parallel work and the stop-then-clarify was low-cost.
   Framed as opportunity, not criticism.
 

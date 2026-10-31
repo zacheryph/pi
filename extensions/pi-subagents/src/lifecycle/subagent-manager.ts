@@ -15,13 +15,23 @@ import type { SubagentHandoff } from "#src/lifecycle/child-lifecycle";
 import type { ConcurrencyLimiter } from "#src/lifecycle/concurrency-limiter";
 import type { CreateSubagentSessionParams } from "#src/lifecycle/create-subagent-session";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
-import { type ResumeRefusal, Subagent, type SubagentLifecycleObserver } from "#src/lifecycle/subagent";
+import {
+  type ResumeRefusal,
+  Subagent,
+  type SubagentLifecycleObserver,
+} from "#src/lifecycle/subagent";
 import type { SubagentSession } from "#src/lifecycle/subagent-session";
 import { SubagentState } from "#src/lifecycle/subagent-state";
 import type { WorkspaceProvider } from "#src/lifecycle/workspace";
 
 import type { RunConfig } from "#src/runtime";
-import type { AgentConfig, CompactionInfo, ParentSessionInfo, SubagentType, ThinkingLevel } from "#src/types";
+import type {
+  AgentConfig,
+  CompactionInfo,
+  ParentSessionInfo,
+  SubagentType,
+  ThinkingLevel,
+} from "#src/types";
 
 /**
  * The agent-registry slice the manager needs to resolve a spawn. Deliberately
@@ -221,7 +231,9 @@ export class SubagentManager {
   private agents = new Map<string, Subagent>();
   private sweepInterval: ReturnType<typeof setInterval>;
   private readonly observer?: SubagentManagerObserver;
-  private readonly createSubagentSession: (params: CreateSubagentSessionParams) => Promise<SubagentSession>;
+  private readonly createSubagentSession: (
+    params: CreateSubagentSessionParams,
+  ) => Promise<SubagentSession>;
   private readonly limiter: ConcurrencyLimiter;
   private readonly baseCwd: string;
   private getRunConfig?: () => RunConfig;
@@ -256,9 +268,7 @@ export class SubagentManager {
    */
   registerWorkspaceProvider(provider: WorkspaceProvider): () => void {
     if (this._workspaceProvider) {
-      throw new Error(
-        "A WorkspaceProvider is already registered; only one is supported.",
-      );
+      throw new Error("A WorkspaceProvider is already registered; only one is supported.");
     }
     this._workspaceProvider = provider;
     return () => {
@@ -274,7 +284,11 @@ export class SubagentManager {
       },
       onSessionCreated: (agent) => {
         // Viewer faults must not suppress the per-spawn observer or fail the run.
-        try { this.observer?.onSubagentSessionCreated?.(agent); } catch (err) { debugLog("onSubagentSessionCreated observer", err); }
+        try {
+          this.observer?.onSubagentSessionCreated?.(agent);
+        } catch (err) {
+          debugLog("onSubagentSessionCreated observer", err);
+        }
         options.observer?.onSessionCreated?.(agent);
       },
       // Terminal transitions are reported for every agent. Whether the parent
@@ -283,13 +297,25 @@ export class SubagentManager {
       // lifecycle event and the session-history record, which are facts about
       // the run rather than announcements.
       onRunFinished: (agent) => {
-        try { this.observer?.onSubagentCompleted(agent); } catch (err) { debugLog("onSubagentCompleted observer", err); }
+        try {
+          this.observer?.onSubagentCompleted(agent);
+        } catch (err) {
+          debugLog("onSubagentCompleted observer", err);
+        }
       },
       onResumeStarted: (agent) => {
-        try { this.observer?.onSubagentResuming(agent); } catch (err) { debugLog("onSubagentResuming observer", err); }
+        try {
+          this.observer?.onSubagentResuming(agent);
+        } catch (err) {
+          debugLog("onSubagentResuming observer", err);
+        }
       },
       onResumeFinished: (agent) => {
-        try { this.observer?.onSubagentResumed(agent); } catch (err) { debugLog("onSubagentResumed observer", err); }
+        try {
+          this.observer?.onSubagentResumed(agent);
+        } catch (err) {
+          debugLog("onSubagentResumed observer", err);
+        }
       },
       onUpdateSent: (agent, message) => {
         this.observer?.onSubagentUpdate?.(agent, message);
@@ -315,7 +341,12 @@ export class SubagentManager {
     prompt: string,
     options: AgentSpawnConfig,
   ): string {
-    return this.create(snapshot, this.resolveSpawn(type, options.background, snapshot), prompt, options);
+    return this.create(
+      snapshot,
+      this.resolveSpawn(type, options.background, snapshot),
+      prompt,
+      options,
+    );
   }
 
   /**
@@ -350,7 +381,11 @@ export class SubagentManager {
    * Stamp the invariants every front door shares: a canonical agent type, a
    * rejection for a disabled one, and the effective background mode.
    */
-  private resolveSpawn(type: string, background: BackgroundRequest, snapshot: ParentSnapshot): ResolvedSpawn {
+  private resolveSpawn(
+    type: string,
+    background: BackgroundRequest,
+    snapshot: ParentSnapshot,
+  ): ResolvedSpawn {
     const canonical = this.registry.resolveType(type);
     if (canonical !== undefined && !this.registry.isValidType(canonical)) {
       throw new Error(`Agent type "${canonical}" is disabled`);
@@ -373,7 +408,11 @@ export class SubagentManager {
       if (Array.isArray(agentConfig.locked)) Object.freeze(agentConfig.locked);
       Object.freeze(agentConfig);
     }
-    return { type: resolvedType, isBackground: resolveBackgroundMode(profile, background), agentConfig };
+    return {
+      type: resolvedType,
+      isBackground: resolveBackgroundMode(profile, background),
+      agentConfig,
+    };
   }
 
   /** Create, register, and start (or queue) a record for an already-resolved spawn. */
@@ -437,7 +476,11 @@ export class SubagentManager {
    * words the answer. Delegates to Subagent.resume(), which owns the observer
    * subscription lifecycle.
    */
-  async resume(id: string, prompt: string, options: ResumeCallOptions = {}): Promise<ResumeOutcome> {
+  async resume(
+    id: string,
+    prompt: string,
+    options: ResumeCallOptions = {},
+  ): Promise<ResumeOutcome> {
     const start = this.startResume(id, prompt, options);
     if (start.kind === "refused") return start;
     await start.record.promise;
@@ -471,9 +514,7 @@ export class SubagentManager {
   }
 
   listAgents(): Subagent[] {
-    return [...this.agents.values()].sort(
-      (a, b) => b.startedAt - a.startedAt,
-    );
+    return [...this.agents.values()].sort((a, b) => b.startedAt - a.startedAt);
   }
 
   abort(id: string): boolean {
@@ -536,7 +577,7 @@ export class SubagentManager {
   /** Whether any agents are still running or queued. */
   // fallow-ignore-next-line unused-class-member
   hasRunning(): boolean {
-    return [...this.agents.values()].some(r => r.isActive());
+    return [...this.agents.values()].some((r) => r.isActive());
   }
 
   /** Abort all running and queued agents immediately. */
@@ -571,8 +612,8 @@ export class SubagentManager {
   /** Promises of all running/queued agents that have one. */
   private pendingPromises(): Promise<void>[] {
     return [...this.agents.values()]
-      .filter(r => r.isActive())
-      .map(r => r.promise)
+      .filter((r) => r.isActive())
+      .map((r) => r.promise)
       .filter((p): p is Promise<void> => p != null);
   }
 
@@ -586,7 +627,7 @@ export class SubagentManager {
     clearInterval(this.sweepInterval);
     // Drop pending thunks
     this.limiter.clear();
-    const teardowns = [...this.agents.values()].map(record => record.disposeSession());
+    const teardowns = [...this.agents.values()].map((record) => record.disposeSession());
     this.agents.clear();
     await Promise.allSettled(teardowns);
   }

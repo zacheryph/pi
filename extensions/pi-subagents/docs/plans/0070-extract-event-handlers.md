@@ -128,7 +128,7 @@ export class SessionLifecycleHandler {
 
 Five constructor params — `runtime` and `manager` are shared across all three methods (the key insight the plain-function design missed), while `disposeNotifications` and `unpublishService` are shutdown-only callbacks.
 
-`LifecycleRuntime` exposes methods, not mutable fields — the handler *tells* the runtime to set/clear session context instead of writing raw fields (the output-argument smell that #87 eliminates).
+`LifecycleRuntime` exposes methods, not mutable fields — the handler _tells_ the runtime to set/clear session context instead of writing raw fields (the output-argument smell that #87 eliminates).
 
 #### ToolStartHandler (in tool-start.ts)
 
@@ -260,7 +260,7 @@ Handler instances are constructed once and hold their collaborators for the exte
 
 None.
 No existing tests directly test the event handler bodies — they were untestable inline lambdas.
-The extraction creates *new* coverage, not duplicate coverage.
+The extraction creates _new_ coverage, not duplicate coverage.
 
 ### Existing tests that stay as-is
 

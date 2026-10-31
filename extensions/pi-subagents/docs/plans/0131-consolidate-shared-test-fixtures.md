@@ -64,7 +64,7 @@ The core shape includes:
 ```typescript
 interface MockSession {
   subscribe: Mock<[fn: (event: any) => void], () => void>;
-  emit(event: any): void;       // test-only helper, not on production Session
+  emit(event: any): void; // test-only helper, not on production Session
   dispose: Mock;
   steer: Mock;
   sessionManager: { getSessionFile: Mock };

@@ -57,8 +57,8 @@ What changes is which channel carries a message the parent receives either way.
   Pi polls the steering queue every turn and the follow-up queue only where the run would otherwise end (measured below), so `steer` is the only mechanism that would arrive sooner and it interrupts the parent's task to do it.
   End-of-run delivery becomes the designed semantics, and `README.md`'s "rather than only at the end" is corrected in this plan rather than chased with a mechanism change.
 - **Deleting the withheld-update queue.**
-  Considered and rejected during the design gate: a child that is *still running* when the parent goes idle is exactly the case where an announcement is useful and its affordance is true, and dropping the queue would defer that message to the child's completion.
-  What is deleted is the *unconditional* flush, which is the first defect itself.
+  Considered and rejected during the design gate: a child that is _still running_ when the parent goes idle is exactly the case where an announcement is useful and its affordance is true, and dropping the queue would defer that message to the child's completion.
+  What is deleted is the _unconditional_ flush, which is the first defect itself.
 - **Exposing `runUpdates` on the public `SubagentRecord` snapshot.**
   Nothing outside this package reads it, and [ADR 0005](../decisions/0005-subagent-record-admission-policy.md) withholds package-internal bookkeeping.
 - **A `claimDelivery` service surface for external carriers** — that is [#897], unchanged here.
@@ -114,8 +114,8 @@ The same hazard applies to the new `markUpdateAnnounced`, which is why the TDD O
 ```typescript
 /** One update a child sent during this run, and whether an announcement delivered it. */
 interface RunUpdate {
-	message: string;
-	announced: boolean;
+  message: string;
+  announced: boolean;
 }
 ```
 
@@ -196,8 +196,8 @@ An update the flush declines stays unannounced in the ledger, so the run's outco
 ### The fourth carrier
 
 The completion nudge is the only outcome carrier that renders no updates today — `emitIndividualNudge` composes `formatTaskNotification` plus `buildPointerLines`, which calls `renderWorkspaceNotice` and `renderQuestionAffordance` but not `renderRunUpdates`.
-[#872] left this open explicitly (*"Does a completion nudge want to summarize the updates that preceded it?*
-*Not until a case is observed."*); this issue is that case, and without it a child whose parent never pulls would lose its messages.
+[#872] left this open explicitly (_"Does a completion nudge want to summarize the updates that preceded it?_
+_Not until a case is observed."_); this issue is that case, and without it a child whose parent never pulls would lose its messages.
 
 ```typescript
 private buildPointerLines(record: Subagent): string {
@@ -237,7 +237,7 @@ Once the announcement channel has delivered a message, the carriers stop renderi
 That claim is sound about the **result** — `renderOutcomeBody` returns the same text on every call — and it survives untouched.
 The **addenda tail** was never byte-stable: `resumeRefusal` is a live getter (`subagent.ts:219`), so two pulls separated by the retention sweep already render different affordance sentences, and `workspaceNotice` can arrive between two pulls.
 The tail re-renders from current state rather than replaying a fixed transcript, and under the latch `runUpdates` behaves the same way — the state simply now includes "already delivered elsewhere".
-[#872]'s actual objection was to a report *silently* different from the first; a message the parent read in the same conversation is not silent.
+[#872]'s actual objection was to a report _silently_ different from the first; a message the parent read in the same conversation is not silent.
 
 ### Edge cases
 
@@ -290,11 +290,11 @@ The latch is state-level, so `markUpdateAnnounced`'s first-match behavior, the g
 `notification.test.ts`'s existing `makePiParent()` harness already models Pi's delivery paths, so the full delivery matrix above becomes assertable end to end against a real `Subagent` rather than through one carrier at a time.
 
 **Tests that change meaning.**
-`notification.test.ts`'s *"is announced even after the parent collected an earlier outcome"* pins [#858]'s rule that consumption gates a completion but not an update.
+`notification.test.ts`'s _"is announced even after the parent collected an earlier outcome"_ pins [#858]'s rule that consumption gates a completion but not an update.
 Its premise is narrowed rather than refuted: consumption still does not gate an update, but a consumed record is terminal, and a terminated run's updates ride the outcome.
 It is rewritten to assert the message still reaches the parent — through the report — rather than through an announcement.
 
-`subagent.test.ts`'s *"holds nothing back when no carrier has claimed the outcome"* asserts `agent.runUpdates` is `[]` after an unclaimed `notifyParent` call.
+`subagent.test.ts`'s _"holds nothing back when no carrier has claimed the outcome"_ asserts `agent.runUpdates` is `[]` after an unclaimed `notifyParent` call.
 Under the unconditional ledger that assertion inverts: the message is present, because the stubbed observer in that test never announces it.
 Flagged here so it does not surface as an unexplained red.
 
@@ -307,11 +307,11 @@ Flagged here so it does not surface as an unexplained red.
 
 Step 14 ([#872]) documented three outcomes this change must not regress:
 
-- **An update sent while a carrier holds the outcome is rendered by that carrier, not announced** — pinned by `subagent.test.ts`'s *"holds an update for the carrier that claimed the run's outcome"* and `notification.test.ts`'s *"is left to the carrier that holds the outcome, which is blocked meanwhile"*.
+- **An update sent while a carrier holds the outcome is rendered by that carrier, not announced** — pinned by `subagent.test.ts`'s _"holds an update for the carrier that claimed the run's outcome"_ and `notification.test.ts`'s _"is left to the carrier that holds the outcome, which is blocked meanwhile"_.
   Both survive: `canAnnounceUpdate` keeps `!record.claimed` as its first conjunct, and the ledger now records for every run rather than only a claimed one, which strictly widens what the carrier can render.
-- **The `subagents:update` lifecycle event fires whichever channel delivers** — pinned by *"tells the observer either way, because the update is a fact about the run"*.
+- **The `subagents:update` lifecycle event fires whichever channel delivers** — pinned by _"tells the observer either way, because the update is a fact about the run"_.
   `announceUpdate` still calls the observer unconditionally; the only line removed is the recording condition.
-- **`midRunUpdates` is the operator's lever** — pinned by *"withholds the channel when the operator turned mid-run updates off"*, untouched.
+- **`midRunUpdates` is the operator's lever** — pinned by _"withholds the channel when the operator turned mid-run updates off"_, untouched.
 
 Step 11 ([#858]) documented the 2000-character cap, applied in the tool before either path sees the message, and untouched here.
 
@@ -331,21 +331,21 @@ No quantitative invariant (prefix bytes, token budget, cache characteristics) is
    Once `sendUpdate` gains its liveness guard those tests go red for a reason unrelated to the claim, release, consumption, and ordering conditions each one isolates.
    Add `status: "running"` to the seven fixtures the Tidy-First assessment enumerated; the dispose test is unaffected because `disposed` short-circuits first.
    Adds no assertion and stays green under today's code — that is the point of landing it separately.
-   *Killing mutation:* none by construction; the mutation that proves it was needed is reverting one fixture to the default status **after** step 3, which turns that step's liveness test red.
+   _Killing mutation:_ none by construction; the mutation that proves it was needed is reverting one fixture to the default status **after** step 3, which turns that step's liveness test red.
 
 2. **`refactor(pi-subagents): latch each run update to the channel that delivered it`** `SubagentState` gains the `RunUpdate` entry shape, the filtered `runUpdates` getter, and `markUpdateAnnounced`; `Subagent` gains the public delegating `markUpdateAnnounced`; `NotificationManager.emitUpdate` calls it.
    Nothing observable changes: `announceUpdate` is still claim-gated here, and a claimed record never reaches `emitUpdate`, so the mark is a no-op on every path — hence `refactor:` by the observable-outcome rule.
    The manager's call site lands in this commit rather than the next because `pnpm fallow dead-code` rejected [#872]'s `runUpdates` getter for arriving a step ahead of its first reader.
    Tests in `test/lifecycle/subagent-state.test.ts`: records in order; the getter omits an announced entry; `markUpdateAnnounced` marks the first unannounced match and leaves a later duplicate alone; an unknown message is a no-op; the ledger clears at a fresh run and at a resume.
-   *Killing mutations:* (a) make `markUpdateAnnounced` mark every match — the duplicate-message test goes red; (b) drop the `!update.announced` filter from the getter — the omission test goes red; (c) drop the clear from `resetForResume` — the resume test goes red.
+   _Killing mutations:_ (a) make `markUpdateAnnounced` mark every match — the duplicate-message test goes red; (b) drop the `!update.announced` filter from the getter — the omission test goes red; (c) drop the clear from `resetForResume` — the resume test goes red.
 
 3. **`fix(pi-subagents): deliver each mid-run update once, on the channel that can reach the parent`** The observable change, in one commit because its parts are one behavior: `announceUpdate` records unconditionally; `canAnnounceUpdate` is added and consulted by both `sendUpdate` and `emitUpdate`; `buildPointerLines` renders the run's undelivered updates.
-   `subagent.test.ts`'s *"holds nothing back when no carrier has claimed the outcome"* is inverted in this commit.
+   `subagent.test.ts`'s _"holds nothing back when no carrier has claimed the outcome"_ is inverted in this commit.
    Tests, one per delivery-matrix row plus the two reported orderings: an update withheld, then a `wait: true` collection, then settle — the report carries it and nothing is announced; an update withheld, then the child completes, then settle — the nudge carries it and no `<subagent-update>` is sent; a child still running at settle — announced, and absent from a later report; a parent idle with a running child — announced at once, and absent from a later report; a claimed run — carrier renders, nothing announced.
-   *Killing mutations:* (a) restore `if (this.claimed)` in `announceUpdate` — the `wait: true` ordering test goes red with an empty report tail; (b) drop `record.isActive()` from `canAnnounceUpdate` — both reported-ordering tests go red on an announced `<subagent-update>` for a terminated child; (c) remove the `canAnnounceUpdate` call from `emitUpdate` while leaving it in `sendUpdate` — the two ordering tests go red and the enqueue-time tests stay green, which is the pair proving the flush re-checks rather than replays; (d) drop `record.markUpdateAnnounced(message)` from `emitUpdate` — the two "absent from a later report" tests go red; (e) drop `renderRunUpdates` from `buildPointerLines` — the completion-nudge test goes red.
+   _Killing mutations:_ (a) restore `if (this.claimed)` in `announceUpdate` — the `wait: true` ordering test goes red with an empty report tail; (b) drop `record.isActive()` from `canAnnounceUpdate` — both reported-ordering tests go red on an announced `<subagent-update>` for a terminated child; (c) remove the `canAnnounceUpdate` call from `emitUpdate` while leaving it in `sendUpdate` — the two ordering tests go red and the enqueue-time tests stay green, which is the pair proving the flush re-checks rather than replays; (d) drop `record.markUpdateAnnounced(message)` from `emitUpdate` — the two "absent from a later report" tests go red; (e) drop `renderRunUpdates` from `buildPointerLines` — the completion-nudge test goes red.
 
 4. **`docs(pi-subagents): state where a mid-run update lands`** Every row of the documentation table in Module-Level Changes, including the new Phase 22 Step 21 entry with its `✅` mark, `Landed:` note, Mermaid node downstream of Step 14, Track D line, sweep-disposition line, and `Release batches` entry — the step does not exist yet, so it is created complete rather than added unmarked and marked later.
-   *Verification:* `grep -rn 'only at the end\|arrives as its own message' packages/pi-subagents/README.md packages/pi-subagents/docs/configuration.md` returns nothing, `grep -n 'announced as it happens' .pi/skills/package-pi-subagents/SKILL.md` returns nothing, and `pnpm exec rumdl check` passes on every edited file.
+   _Verification:_ `grep -rn 'only at the end\|arrives as its own message' packages/pi-subagents/README.md packages/pi-subagents/docs/configuration.md` returns nothing, `grep -n 'announced as it happens' .pi/skills/package-pi-subagents/SKILL.md` returns nothing, and `pnpm exec rumdl check` passes on every edited file.
 
 ## Risks and Mitigations
 

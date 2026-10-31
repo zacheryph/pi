@@ -22,16 +22,16 @@ That reframing is what made "lock scope: tool door only" the cheap answer rather
 
 Traced [#834]'s open question at planning time instead of deferring it.
 Measured against the installed `@earendil-works/pi-ai@0.84.4`: `clampThinkingLevel(model, "bananas")` returns `"off"`, because an unknown level misses the ordered table and falls to `availableLevels[0]`.
-An unrecognized thinking level therefore silently *disables* thinking rather than being ignored — the strongest argument for rejecting at the door, and a fact no amount of reading the type would have produced.
+An unrecognized thinking level therefore silently _disables_ thinking rather than being ignored — the strongest argument for rejecting at the door, and a fact no amount of reading the type would have produced.
 Two doc defects fell out of the same trace: `off` is valid at runtime but absent from the `ThinkingLevel` this package re-exports, and `max` is missing from every doc and from the tool schema.
 
 Established that `THINKING_LEVEL_OPTIONS` is internal to `@earendil-works/pi-coding-agent` and absent from its public `index.d.ts`, so the package must carry its own level list.
 Planned two complementary checks rather than a literal assertion: a `satisfies` clause (catches an entry the SDK does not declare) and a runtime SDK-parity test against `getSupportedThinkingLevels` (catches a level the SDK adds).
-The residual — a level the SDK adds *and* gates behind `thinkingLevelMap` — is stated in the plan rather than papered over.
+The residual — a level the SDK adds _and_ gates behind `thinkingLevelMap` — is stated in the plan rather than papered over.
 
 Release finding worth carrying forward: the roadmap names this issue the `front-door-majors` batch tail, but [#828] (the other member) is still open, and it is `refactor!:` — a hidden changelog type that cannot cut a release alone.
 So the marker is `mid-batch — defer`: hold the release-please PR open until [#828] joins it.
-The batch's tail designation is about which commit is the *release vehicle*, not about landing order.
+The batch's tail designation is about which commit is the _release vehicle_, not about landing order.
 
 Rejected [#641] (operator-configured `defaultMaxTurns` floors) as out of scope with a recorded reason: a floor is a clamp at the settings layer, a lock is a choice at the agent-file layer, and folding them together would put settings into a merge that is currently agent-file-only.
 Phase 22's sweep line for [#641] is unchanged; the exclusion lives in the plan's Non-Goals.
@@ -63,10 +63,10 @@ The planned SDK-parity test built its `thinkingLevelMap` from `THINKING_LEVELS` 
 The check was vacuous for exactly the levels that could plausibly drift — `xhigh` and `max` are the only gated ones.
 Replaced with two directional checks: an ungated-parity assertion (catches a level the SDK adds without a gate) and a per-level `clampThinkingLevel(model, level) === level` loop (catches an entry the SDK does not know, since it clamps an unknown level to `off`).
 Both were verified with mutations that do kill.
-The residual — a level the SDK adds *and* gates — is recorded in the module's doc comment rather than left implicit.
+The residual — a level the SDK adds _and_ gates — is recorded in the module's doc comment rather than left implicit.
 
 [#834]'s open question ("I have not traced what the SDK does with an unrecognized level") was answered by measurement during planning, and the answer drove the design: `clampThinkingLevel` misses an unknown level in its ordered table and returns `availableLevels[0]`, which is always `off`.
-A typo therefore *disables* thinking rather than being ignored, which is why all three producers reject or drop rather than pass through.
+A typo therefore _disables_ thinking rather than being ignored, which is why all three producers reject or drop rather than pass through.
 
 Two deviations from the plan's Module-Level Changes, both deliberate.
 The planned lock-note test in `test/tools/foreground-runner.test.ts` was not added: steps 1 and 2 already pin both runners rendering `config.notes` content-independently, so a lock-note variant would re-assert the same mechanism with different strings.
@@ -78,7 +78,7 @@ The `locked: true` / list split earned its keep during implementation.
 The four-case precedence table needed a mutation per form to prove the distinction was pinned.
 
 Pre-completion reviewer: WARN → WARN → PASS over three rounds.
-Round 1 caught a README sentence *this PR added* that overclaimed — the SDK door fills `model`, `thinkingLevel`, and `maxTurns` from frontmatter but never `inheritContext`, which `service-adapter.ts` resolves to `false` before the manager sees it.
+Round 1 caught a README sentence _this PR added_ that overclaimed — the SDK door fills `model`, `thinkingLevel`, and `maxTurns` from frontmatter but never `inheritContext`, which `service-adapter.ts` resolves to `false` before the manager sees it.
 Round 1 also flagged that `resolveField`'s `!== undefined` presence check was correct but unpinned, a bug class this package has shipped before; round 2 flagged the remaining `model: ""` gap and, usefully, that filing the README correction under `test:` would leave an incorrect public claim shipped visibly under `docs:` with its fix hidden.
 Split into a `docs:` commit and a `test:` commit before pushing.
 
@@ -116,10 +116,10 @@ The issue ran four stages across two sessions — planning, TDD, and worktree sh
   The implementing session replaced it with two directional checks and verified all three replacements with mutations that do kill.
   A plan-authored mutation is written before the test exists, so it cannot see a fixture that will later derive from the mutated symbol; the Verify step is the only place that gap closes.
 - Planning answered [#834]'s open question by **measuring** the SDK rather than reading its types: `clampThinkingLevel(model, "bananas")` returns `"off"` because an unknown level misses the ordered table and falls to `availableLevels[0]`.
-  That an unrecognized level silently *disables* thinking — rather than being ignored — is what drove rejection at all three producers, and no amount of reading `ThinkingLevel` would have produced it.
+  That an unrecognized level silently _disables_ thinking — rather than being ignored — is what drove rejection at all three producers, and no amount of reading `ThinkingLevel` would have produced it.
 - Round 2 of the pre-completion review caught a **commit-typing** defect rather than a code defect: filing the README correction under `test:` would ship an incorrect public claim visibly under `docs:` while its fix stayed hidden.
   The session reset and re-split into `docs:` + `test:` before pushing.
-  This is the `AGENTS.md` "type a commit by what a user can observe" rule applied to a *correction*, where the observable is the claim being withdrawn.
+  This is the `AGENTS.md` "type a commit by what a user can observe" rule applied to a _correction_, where the observable is the claim being withdrawn.
 
 #### What caused friction (agent side)
 

@@ -17,18 +17,18 @@ The core question that triggered this decision: a single-method `ChildSessionFac
 Pulling that thread exposed progressively more rudimentary issues.
 
 1. `cwd` is late-bound because `WorktreeIsolation.setup()` is called lazily inside `Agent.run()`, after construction — a two-phase `construct-then-setup()` that violates design principle 8 ("Construct complete").
-2. The worktree is *ready* only at dequeue (a concurrency slot is held and `git worktree add` has run).
+2. The worktree is _ready_ only at dequeue (a concurrency slot is held and `git worktree add` has run).
    "Construct when ready" therefore means constructing the worktree at run-start, not at spawn — which dissolves the lazy `setup()` and makes `cwd` knowable at construction.
 3. The worktree and the child session share one lifespan: both are born at run-start and torn down at completion (the worktree's cleanup saves a branch; the session is disposed).
    Resources with one lifetime are one resource, not sibling collaborators that `Agent` must sequence.
    The `create(cwd?)` parameter only existed because we split one run-scoped resource (the worktree) out and made `Agent` relay its output back in.
 4. Worktrees are not intrinsic to what makes subagents useful.
    The maintainer never uses them (WIP-of-1, trunk-based, CI/CD).
-   Git worktree isolation is one *strategy* for answering "where does this child run, and what brackets the run?"
+   Git worktree isolation is one _strategy_ for answering "where does this child run, and what brackets the run?"
    — a container, a throwaway tmpdir, or a remote sandbox are others.
-   The core needs only *a working directory and a disposal hook*; the default (the parent's cwd, no setup/teardown) is always correct.
-5. This mirrors Phase 14, which evicted tool/extension *policy* (`disallowed_tools`, `extensions` filtering) to `@gotgenes/pi-permission-system`.
-   Worktrees are *environment* policy; they belong outside the core for the same reason.
+   The core needs only _a working directory and a disposal hook_; the default (the parent's cwd, no setup/teardown) is always correct.
+5. This mirrors Phase 14, which evicted tool/extension _policy_ (`disallowed_tools`, `extensions` filtering) to `@gotgenes/pi-permission-system`.
+   Worktrees are _environment_ policy; they belong outside the core for the same reason.
 
 Permissions and workspaces are orthogonal concerns that must compose as independent extensions on the core, never knowing about each other.
 
@@ -46,7 +46,7 @@ Everything else attaches through exactly two extension surfaces, distinguished b
    Adding a reactive concern never modifies the core.
 
 2. **Provider seams (generative) — rationed.**
-   The rare concern that must *inject* a value the core consumes synchronously registers a provider the core consults.
+   The rare concern that must _inject_ a value the core consumes synchronously registers a provider the core consults.
    Today there is exactly one: the **workspace provider** (it returns the child's working directory plus bracketed setup/teardown).
    A provider seam is the only place the core is "open," so the list is kept as small as possible.
 
@@ -63,7 +63,7 @@ Workspaces are generative: the core cannot default the cwd away when an isolatio
 
 ### The governing rule: no vacant hooks
 
-The architecture must *admit* a seam without *shipping* it until a concrete consumer exists.
+The architecture must _admit_ a seam without _shipping_ it until a concrete consumer exists.
 A provider seam with no consumer is not extensibility — it is a speculative abstraction that taxes every reader, and `fallow` flags it as dead.
 Latent extensibility (the design can host the seam additively) is the deliverable; a vacant hook is not.
 
@@ -71,10 +71,10 @@ Latent extensibility (the design can host the seam additively) is the deliverabl
 
 - **Worktree isolation** (`worktree.ts`, `worktree-isolation.ts`, `GitWorktreeManager`, the `isolation: "worktree"` spawn mode) → a new package, `@gotgenes/pi-subagents-worktrees`, that implements the workspace provider and owns the git plumbing and the "saved to branch" result.
 - **`permission-bridge.ts`** → retired.
-  The core stops reaching *out* to `Symbol.for("@gotgenes/pi-permission-system:service")` and instead *emits* lifecycle events the permission system subscribes to.
+  The core stops reaching _out_ to `Symbol.for("@gotgenes/pi-permission-system:service")` and instead _emits_ lifecycle events the permission system subscribes to.
 - **`isolated` / `extensions: false` / `noSkills`** → removed.
   Deny-at-use (the in-child permission layer blocking disallowed tool calls) covers what `isolated` pretended to do for tools.
-  Prevent-load (refusing to bind an extension because of load-time side effects, cost, or true sandboxing) is genuinely generative and cannot be reduced to observation, so it is left as a *latent* (un-built) provider seam, added only if a real consumer needs it.
+  Prevent-load (refusing to bind an extension because of load-time side effects, cost, or true sandboxing) is genuinely generative and cannot be reduced to observation, so it is left as a _latent_ (un-built) provider seam, added only if a real consumer needs it.
 
 ### What stays in the core (not policy)
 
@@ -99,11 +99,11 @@ Permissions depend only on the core's events; workspaces depend only on the core
 
 ## Amendment: prevent-load ships as a settings key, not a provider seam (#696)
 
-This decision reserved prevent-load as a *latent* provider seam, "added only if a real consumer needs it."
+This decision reserved prevent-load as a _latent_ provider seam, "added only if a real consumer needs it."
 A real consumer arrived: in-process children reloaded `@cortexkit/pi-magic-context`, whose per-session initialization scans the whole Pi session store, and four concurrent children exhausted the V8 heap in the shared process.
 
 The seam was nonetheless **not** built.
-The governing rule above — no vacant hooks — decides it: a provider seam is warranted when an *extension* must inject a value the core consumes, and no extension wants to supply a prevent-load policy.
+The governing rule above — no vacant hooks — decides it: a provider seam is warranted when an _extension_ must inject a value the core consumes, and no extension wants to supply a prevent-load policy.
 The only policy source is the operator's configuration, so a registerable provider whose sole consumer would be pi-subagents' own settings reader is precisely the speculative abstraction this ADR forbids.
 
 The core therefore reads an `excludedExtensionPackages` list from the layered `subagents.json` and filters the child's package view before resource loading.

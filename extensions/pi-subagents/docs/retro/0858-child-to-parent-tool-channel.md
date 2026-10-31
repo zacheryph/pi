@@ -19,7 +19,7 @@ Committed `docs/plans/0858-child-to-parent-tool-channel.md` (8 TDD steps), filed
   [#465] has since shipped, so the deferral was satisfied — but reading it as a live constraint is what made the first design question "does the blocking ask still earn itself?"
   rather than "how do we build it?".
 - **Three of the issue's own premises did not survive checking.**
-  The workspace motivation was closed by [#857]; the retention motivation turned out to be a bug in `sweep()`'s two-way branch rather than a missing channel; and the claim that a new child tool is invisible "to every agent that declares one" understates it — `BUILTIN_TOOL_NAMES` is *also* an explicit allowlist, so no child anywhere receives a new extension tool without an agent-file edit.
+  The workspace motivation was closed by [#857]; the retention motivation turned out to be a bug in `sweep()`'s two-way branch rather than a missing channel; and the claim that a new child tool is invisible "to every agent that declares one" understates it — `BUILTIN_TOOL_NAMES` is _also_ an explicit allowlist, so no child anywhere receives a new extension tool without an agent-file edit.
 - **The operator reversed my recommendation twice, and was right both times.**
   I recommended the blocking ask, then had to withdraw it when the operator asked whether the update belonged in a consumer package: pricing that question surfaced that the blocking half duplicates the end-and-resume loop while the one-way update has no counterpart.
   Then the operator asked whether `question-for-parent` was "a tool masquerading in a protocol trenchcoat" — which is exactly what it is, and reframing it that way dissolved the charter problem rather than escalating it.
@@ -84,7 +84,7 @@ Filed [#872] and recorded it as Phase 22 Step 14.
 
 Every step's predicted killing mutations behaved as the plan said, with two informative details:
 
-- **Step 4's recorder-no-op mutation killed 11 tests**, spanning the migrated ask-back block *and* [#857]'s workspace-hold block.
+- **Step 4's recorder-no-op mutation killed 11 tests**, spanning the migrated ask-back block _and_ [#857]'s workspace-hold block.
   That breadth is the evidence step 4 needed: before the migration those tests drew their question from marker text and would have stayed green.
 - **Step 3's three mutations killed three disjoint sets** — the allowlist assertions, the `Subagent` supply, and the tool's own callback — while `customTools` stayed green under the allowlist mutation.
   That separation is the point: the SDK drops a `customTools` entry whose name is missing from `tools` with no error, so a test that conflated the two halves would have shipped an invisible tool.
@@ -161,7 +161,7 @@ The change shipped a net deletion: two child-facing tools (`ask_parent`, `notify
 
 - `missing-context` — **the SDK version glob selected a version the package cannot use.**
   Planning turns 24–30 read `node_modules/.pnpm/@earendil-works+pi-coding-agent@*` with `head -1`, landing on `0.79.1`.
-  The store holds three versions (`0.79.1`, `0.80.5`, `0.84.4`); `0.79.1` is *below* this package's own declared peer floor of `>=0.81.0`, so it is another package's transitive dependency.
+  The store holds three versions (`0.79.1`, `0.80.5`, `0.84.4`); `0.79.1` is _below_ this package's own declared peer floor of `>=0.81.0`, so it is another package's transitive dependency.
   Every `customTools` and `isAllowedTool` fact in the design was first established against it.
   Impact: roughly seven tool calls against the wrong tree, plus a second verification pass later.
   It was corrected only because the `tidy-first-assessor` independently reported `0.84.4` — nothing in the agent's own procedure would have caught it.

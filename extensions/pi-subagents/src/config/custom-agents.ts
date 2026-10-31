@@ -25,18 +25,22 @@ export function loadCustomAgents(cwd: string): Map<string, AgentConfig> {
   const projectDir = join(cwd, ".pi", "agents");
 
   const agents = new Map<string, AgentConfig>();
-  loadFromDir(globalDir, agents, "global");   // lower priority
-  loadFromDir(projectDir, agents, "project");  // higher priority (overwrites)
+  loadFromDir(globalDir, agents, "global"); // lower priority
+  loadFromDir(projectDir, agents, "project"); // higher priority (overwrites)
   return agents;
 }
 
 /** Load agent configs from a directory into the map. */
-function loadFromDir(dir: string, agents: Map<string, AgentConfig>, source: "project" | "global"): void {
+function loadFromDir(
+  dir: string,
+  agents: Map<string, AgentConfig>,
+  source: "project" | "global",
+): void {
   if (!existsSync(dir)) return;
 
   let files: string[];
   try {
-    files = readdirSync(dir).filter(f => f.endsWith(".md"));
+    files = readdirSync(dir).filter((f) => f.endsWith(".md"));
   } catch (err) {
     debugLog("readdirSync agents dir", err);
     return;
@@ -69,7 +73,7 @@ function loadFromDir(dir: string, agents: Map<string, AgentConfig>, source: "pro
       inheritContext: fm.inherit_context != null ? fm.inherit_context === true : undefined,
       runInBackground: fm.run_in_background != null ? fm.run_in_background === true : undefined,
       locked: lockDeclaration(fm.locked, name),
-      enabled: fm.enabled !== false,  // default true; explicitly false disables
+      enabled: fm.enabled !== false, // default true; explicitly false disables
       source,
       sourcePath: join(dir, file),
     });
@@ -100,7 +104,10 @@ function lockDeclaration(val: unknown, agentName: string): LockDeclaration | und
   const fields = entries.filter(isLockableField);
   const unknownEntries = entries.filter((entry) => !isLockableField(entry));
   if (unknownEntries.length > 0) {
-    debugLog(`agent ${agentName} frontmatter locked`, `unknown fields: ${unknownEntries.join(", ")}`);
+    debugLog(
+      `agent ${agentName} frontmatter locked`,
+      `unknown fields: ${unknownEntries.join(", ")}`,
+    );
   }
   return fields.length > 0 ? fields : undefined;
 }
@@ -136,9 +143,13 @@ function nonNegativeInt(val: unknown): number | undefined {
 function parseListField(val: unknown): string[] | undefined {
   if (val === undefined || val === null) return undefined;
   const items = Array.isArray(val)
-    ? val.map(entry => String(entry).trim()).filter(Boolean)
-    // eslint-disable-next-line @typescript-eslint/no-base-to-string -- val is already narrowed past null/undefined; String() is the intended coercion here
-    : String(val).trim().split(",").map(entry => entry.trim()).filter(Boolean);
+    ? val.map((entry) => String(entry).trim()).filter(Boolean)
+    : // eslint-disable-next-line @typescript-eslint/no-base-to-string -- val is already narrowed past null/undefined; String() is the intended coercion here
+      String(val)
+        .trim()
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter(Boolean);
   if (items.length === 0) return undefined;
   return items.length === 1 && items[0] === "none" ? undefined : items;
 }

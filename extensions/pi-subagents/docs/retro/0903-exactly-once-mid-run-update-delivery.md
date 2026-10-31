@@ -36,7 +36,7 @@ Plan committed at `packages/pi-subagents/docs/plans/0903-exactly-once-mid-run-up
 #### Deferred tidyings
 
 - `test/observation/notification.test.ts` — a local `liveRecord()` factory to de-duplicate the repeated `{ id: "live-1", status: "running" }` literal; the assessor rated it marginal at seven sites and left it to taste.
-- `src/observation/notification.ts` — the assessor considered extracting a shared announce-predicate as *preparation* and declined: the duplication does not exist in today's code, it is created by this change, so it is a shape decision inside step 3 (where the plan does adopt it as `canAnnounceUpdate`).
+- `src/observation/notification.ts` — the assessor considered extracting a shared announce-predicate as _preparation_ and declined: the duplication does not exist in today's code, it is created by this change, so it is a shape decision inside step 3 (where the plan does adopt it as `canAnnounceUpdate`).
 
 ## Stage: Implementation — TDD (2026-09-10T03:21:58Z)
 
@@ -53,9 +53,9 @@ Pre-completion reviewer: PASS.
   The reviewer confirmed this is correct test layering rather than a gap.
 - **Mutation (b) exposed a real hole and produced a new test.**
   Dropping `record.isActive()` was predicted to redden both reported orderings; it reddened only the completion-nudge one, because the reporter's own scenario (`get_subagent_result` with `wait: true`) claims the outcome and is therefore suppressed by the claim conjunct alone.
-  Added *"stays quiet once a pull without wait has rendered it"* — the collect-without-waiting path is the one only liveness catches, and it is a real production ordering.
+  Added _"stays quiet once a pull without wait has rendered it"_ — the collect-without-waiting path is the one only liveness catches, and it is a real production ordering.
   Re-ran mutation (b) afterwards: two reds, as intended.
-- **The plan's predicted rewrite of *"is announced even after the parent collected an earlier outcome"* never happened.**
+- **The plan's predicted rewrite of _"is announced even after the parent collected an earlier outcome"_ never happened.**
   The step-1 fixture tidy gave it `status: "running"`, under which it passes unchanged and still pins that consumption does not gate an update.
   Reviewer WARN (non-blocking): that fixture is now a state production cannot reach — every `markConsumed()` call site fires only after the record is terminal — so the test remains a valid unit pin on `canAnnounceUpdate` but its name implies a reachable ordering that no longer exists.
   Left as-is rather than renaming after the review; worth a rename on the next touch of that file.
@@ -88,7 +88,7 @@ Every `ask_user` round produced a better design than the one offered into it.
 - **Mutation testing found a hole the plan did not predict.**
   Two of four predicted killing mutations were wrong.
   One was benign test layering; the other was real — the reporter's own `wait: true` ordering is suppressed by the claim conjunct alone, so nothing pinned the liveness conjunct at all until a test for the collect-without-waiting path was added.
-  `/tdd-plan`'s rule that a mutation killing fewer tests than predicted is *a finding, not a pass* is what surfaced it.
+  `/tdd-plan`'s rule that a mutation killing fewer tests than predicted is _a finding, not a pass_ is what surfaced it.
 
 #### What caused friction (agent side)
 
@@ -115,9 +115,9 @@ Every `ask_user` round produced a better design than the one offered into it.
   Three commits hit it before the interruption.
   `AGENTS.md` says such a body "belongs in a file passed with `-F`", which `/dev/stdin` satisfies literally while tripping the external-path permission gate.
   A one-sentence `AGENTS.md` amendment naming a real path (`/tmp/msg.txt`) was proposed and **declined**; recorded here instead.
-- Round 1 of the clarification gate was bounced with a precise reason: *"I need a greater explanation of the situation, and the shape of our proposed fixes, especially in terms of what the user notices."*
+- Round 1 of the clarification gate was bounced with a precise reason: _"I need a greater explanation of the situation, and the shape of our proposed fixes, especially in terms of what the user notices."_
   The first substance message was an accurate code trace with no scenario written from the parent agent's vantage point.
-  This is the one friction point that produced a prompt change (see below) — the existing gate guidance requires concrete examples but never says *whose* view they take.
+  This is the one friction point that produced a prompt change (see below) — the existing gate guidance requires concrete examples but never says _whose_ view they take.
 
 ### Diagnostic details
 
@@ -127,7 +127,7 @@ Every `ask_user` round produced a better design than the one offered into it.
 - **Escalation-delay tracking** — no sequence exceeded five consecutive tool calls on the same error.
   The longest run (roughly ten calls) was the mutation-verification loop in step 3, which was productive throughout rather than stuck.
 - **Unused-tool detection** — nothing notable.
-  The one candidate dispatch that was deliberately *not* made (`Explore` for the Pi source trace) is recorded above as a win rather than a gap.
+  The one candidate dispatch that was deliberately _not_ made (`Explore` for the Pi source trace) is recorded above as a win rather than a gap.
 - **Feedback-loop gap analysis** — no gap.
   `pnpm run check` and the package suite ran after every TDD step, `pnpm fallow dead-code` ran before the step-2 commit where the plan flagged a hazard, and the full root-level `lint`/`fallow` gates ran again at ship time on the exact tree being pushed.
 

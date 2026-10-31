@@ -12,10 +12,10 @@ Today a subagent run is assembled by a monolithic `runAgent()` (the "runner") in
 `Agent` then sequences workspace teardown and status transitions around it through an injected `AgentRunner` interface.
 With the cwd now resolved through the `WorkspaceProvider` seam (Step 2) and worktrees evicted to a sibling package (Step 3), there is nothing left for a separate runner layer to assemble.
 
-Child-session creation should instead produce a *born-complete* value object — a `SubagentSession` that wraps one SDK `AgentSession` plus its turn-driving and teardown — and the runner concept should dissolve.
+Child-session creation should instead produce a _born-complete_ value object — a `SubagentSession` that wraps one SDK `AgentSession` plus its turn-driving and teardown — and the runner concept should dissolve.
 `Agent.run()` becomes coordination, not assembly.
 
-This step also closes the determinism gap deferred from #261: today `session-created`/`disposed` bracket only the first turn loop ("executing now"), so a resume — a *second* turn loop on the same session — fires no events and the permission system falls back to its filesystem-path heuristic.
+This step also closes the determinism gap deferred from #261: today `session-created`/`disposed` bracket only the first turn loop ("executing now"), so a resume — a _second_ turn loop on the same session — fires no events and the permission system falls back to its filesystem-path heuristic.
 Moving unregistration to true session disposal shifts the registry from "executing now" to "exists", and resume executions become registry-detected for free.
 
 ## Goals
@@ -54,7 +54,7 @@ Relevant modules:
   Subsumed by `SubagentSession`.
 - `src/lifecycle/agent-manager.ts` — constructs `Agent`s with the injected `runner`; disposes sessions in `removeRecord`/`dispose`/`cleanup`.
 - `src/lifecycle/child-lifecycle.ts` — the `ChildLifecyclePublisher` (`spawning`, `sessionCreated`, `completed`, `disposed`).
-  Unchanged here; only *when* `disposed` fires moves.
+  Unchanged here; only _when_ `disposed` fires moves.
 - `src/lifecycle/workspace.ts` — the abstract `WorkspaceProvider`/`Workspace` seam.
   The core has zero git/worktree knowledge; all worktree mechanics live in `@gotgenes/pi-subagents-worktrees`, untouched by this issue.
 - `src/session/session-config.ts` — `assembleSessionConfig()`, the pure assembler `runAgent()` calls.
@@ -114,8 +114,12 @@ export class SubagentSession {
   ) {}
 
   /** Wrapped session — exposed for observer wiring + consumers; retired by #277. */
-  get session(): AgentSession { return this._session; }
-  get outputFile(): string | undefined { return this.meta.outputFile; }
+  get session(): AgentSession {
+    return this._session;
+  }
+  get outputFile(): string | undefined {
+    return this.meta.outputFile;
+  }
 
   /** Drive the initial run's turn loop; emits `completed` on success. */
   runTurnLoop(prompt: string, opts: TurnLoopOptions): Promise<TurnLoopResult>;
@@ -137,8 +141,9 @@ Placing them on `SubagentSession` (the object that owns the `AgentSession`) — 
 ### `createSubagentSession` — the assembly factory
 
 ```typescript
-export interface SubagentSessionDeps { // (was RunnerDeps)
-  io: SubagentSessionIO;               // EnvironmentIO & SessionFactoryIO (moved verbatim)
+export interface SubagentSessionDeps {
+  // (was RunnerDeps)
+  io: SubagentSessionIO; // EnvironmentIO & SessionFactoryIO (moved verbatim)
   exec: ShellExec;
   registry: AgentConfigLookup;
   lifecycle: ChildLifecyclePublisher;
@@ -147,7 +152,7 @@ export interface SubagentSessionDeps { // (was RunnerDeps)
 export interface CreateSubagentSessionParams {
   snapshot: ParentSnapshot;
   type: SubagentType;
-  cwd?: string;                  // resolved workspace cwd; undefined → parent cwd
+  cwd?: string; // resolved workspace cwd; undefined → parent cwd
   parentSession?: ParentSessionInfo;
   model?: Model<any>;
   thinkingLevel?: ThinkingLevel;
@@ -166,7 +171,7 @@ Body (the assembly portion of `runAgent`, unchanged in substance):
 3. `createResourceLoader` → `reload()`; `createSessionManager` → `newSession(...)`; `createSession(...)`.
 4. Construct `SubagentSession` (session, outputFile, sessionDir, agentName, lifecycle).
 5. `lifecycle.sessionCreated({ sessionDir, agentName, parentSessionId })` — synchronous, before `bindExtensions()` (the pre-bind ordering the permission registry depends on).
-6. `try { await session.bindExtensions({}); applyRecursionGuard(session); } catch (err) { subagentSession.dispose(); throw err; }` — if binding fails *after* `sessionCreated`, dispose (emit `disposed` + `session.dispose()`) before rethrowing, so registration is never leaked.
+6. `try { await session.bindExtensions({}); applyRecursionGuard(session); } catch (err) { subagentSession.dispose(); throw err; }` — if binding fails _after_ `sessionCreated`, dispose (emit `disposed` + `session.dispose()`) before rethrowing, so registration is never leaked.
 7. Return the `SubagentSession`.
 
 Note the factory takes a resolved `cwd` value, never the `WorkspaceProvider`.
@@ -232,7 +237,7 @@ The `Agent.session` getter likewise still exposes the wrapped session for the ex
 
 - Creation failure after `session-created`: the factory disposes (emit `disposed` + `session.dispose()`) before rethrowing → no registry leak; symmetric with the success path.
 - Turn-loop throw: `SubagentSession` exists and stays registered; `Agent.failRun` runs (workspace teardown + error status); `disposed` fires later at cleanup — symmetric register/unregister regardless of run success or failure.
-- Graceful abort (max turns + grace): `runTurnLoop` returns `{ aborted: true }` and emits `completed` (matching today); a *thrown* error skips `completed`.
+- Graceful abort (max turns + grace): `runTurnLoop` returns `{ aborted: true }` and emits `completed` (matching today); a _thrown_ error skips `completed`.
 
 ## Module-Level Changes
 

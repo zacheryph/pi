@@ -103,7 +103,11 @@ The constructor accepts `maxTurns?: number` (set at creation time, immutable).
 A narrow type for the usage values passed to `onUsageUpdate`:
 
 ```typescript
-interface UsageDelta { input: number; output: number; cacheWrite: number }
+interface UsageDelta {
+  input: number;
+  output: number;
+  cacheWrite: number;
+}
 ```
 
 This matches the shape `addUsage` already expects and avoids coupling to the full `LifetimeUsage` type name for what is logically a delta.

@@ -43,7 +43,7 @@ Either way the trailer goes on, since the design itself is theirs.
 
 ### Why the richer ESC design is not reachable
 
-The operator's instinct was that ESC is *ambiguous* when both the parent and background agents are running, and that the right answer is to ask — a menu offering "stop the main agent," "stop the background ones," "stop one," "stop everything," with repeated presses escalating toward stop-it-all.
+The operator's instinct was that ESC is _ambiguous_ when both the parent and background agents are running, and that the right answer is to ask — a menu offering "stop the main agent," "stop the background ones," "stop one," "stop everything," with repeated presses escalating toward stop-it-all.
 That design is sound but cannot be built on ESC.
 Verified against the pinned `@earendil-works/pi-coding-agent` 0.80.5, not just the `../pi` checkout:
 
@@ -61,12 +61,12 @@ Two further constraints worth remembering:
 - **Double-ESC is already taken.**
   `settingsManager.getDoubleEscapeAction(): "fork" | "tree" | "none"` fires on two ESCs within 500 ms when the editor is empty.
   Mashing ESC already escalates today — into session navigation — which collides directly with any "mash to stop everything" scheme.
-- `ui.onTerminalInput()` returns `{ consume?: boolean }` and *could* swallow ESC before the editor sees it.
+- `ui.onTerminalInput()` returns `{ consume?: boolean }` and _could_ swallow ESC before the editor sees it.
   Rejected: it routes around Pi's reserved-key policy through a side door and would have this package seize the global interrupt key even when no subagents exist.
 
 ### Follow-on
 
-#676 carries the reachable half of the operator's design: dedicated shortcuts we own, which fire *before* anything is aborted, so every outcome is still live.
+#676 carries the reachable half of the operator's design: dedicated shortcuts we own, which fire _before_ anything is aborted, so every outcome is still live.
 Agreed shape there is two keys — an immediate "stop all subagents" fast path plus a picker for one/all/everything — both configurable through the package's existing `loadLayeredSettings` config with defaults.
 
 #664 and #676 are independent and can land in either order.
@@ -85,7 +85,7 @@ Release recommendation is ship independently: the issue is in no roadmap phase a
 ### Observations
 
 - **Measurement that shaped the design.**
-  Traced the abort paths rather than assuming: `spawnBackground` passes no `signal`, so `InterruptHandler` is the *only* thing that aborts a background agent on ESC; `runForeground` and the resume path both pass the tool's `signal` straight through to `Subagent.run()`'s `listeners.wireSignal`, so a foreground agent self-aborts on ESC regardless of the setting.
+  Traced the abort paths rather than assuming: `spawnBackground` passes no `signal`, so `InterruptHandler` is the _only_ thing that aborts a background agent on ESC; `runForeground` and the resume path both pass the tool's `signal` straight through to `Subagent.run()`'s `listeners.wireSignal`, so a foreground agent self-aborts on ESC regardless of the setting.
   The contributor's offered "scope it to background-only agents" variant is therefore already the effective behavior — no filtering needed in `abortAll()`.
 - **Operator decisions taken at the `ask_user` gate.** (1) Keep the name `abortAllOnInterrupt` and document the foreground nuance in the README, rather than renaming to a background-explicit key. (2) Fold the boolean into `subagents-settings.ts`'s descriptor table as a `kind`-discriminated union (`numeric` | `toggle`) with one dispatch point, rather than a second table or an inline special case. (3) With the policy off, skip `abortAll()` entirely so queued agents are spared too — no "drop the queue, spare the running" variant.
 - **Tell-Don't-Ask on the toggle.**
@@ -118,7 +118,7 @@ The plan was followed without deviation; every implementation and docs commit ca
 - **Snapshot growth rippled predictably.**
   Adding a field to `snapshot()` broke seven existing full-object `toEqual` assertions across the `snapshot()` and `saveAndNotify()` blocks.
   Extended them in place rather than loosening to `toMatchObject`, so a dropped numeric field still fails loudly.
-- **Policy read timing is pinned by four tests**, including one asserting the predicate is *not* consulted until the signal fires — the mid-session-toggle guarantee lives in a test, not just prose.
+- **Policy read timing is pinned by four tests**, including one asserting the predicate is _not_ consulted until the signal fires — the mid-session-toggle guarantee lives in a test, not just prose.
 - **README structure needed a second pass.**
   The new `### Abort on interrupt` subsection initially landed between the Persistent Settings prose and its global-defaults example, orphaning the example under the wrong heading; moved it below the failure-behavior paragraph.
   Also updated the example's trailing sentence, which enumerated the example's keys.

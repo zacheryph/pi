@@ -51,19 +51,19 @@ Roadmap constraint (from `docs/architecture/architecture.md`): every Phase 20 st
 
 ```typescript
 export interface SubagentStateInit {
-	status?: SubagentStatus;
-	result?: string;
-	error?: string;
-	startedAt?: number;
-	completedAt?: number;
-	// Stats
-	toolUses?: number;
-	lifetimeUsage?: LifetimeUsage;
-	compactionCount?: number;
-	// Live activity
-	turnCount?: number;
-	activeTools?: string[];
-	responseText?: string;
+  status?: SubagentStatus;
+  result?: string;
+  error?: string;
+  startedAt?: number;
+  completedAt?: number;
+  // Stats
+  toolUses?: number;
+  lifetimeUsage?: LifetimeUsage;
+  compactionCount?: number;
+  // Live activity
+  turnCount?: number;
+  activeTools?: string[];
+  responseText?: string;
 }
 ```
 
@@ -106,17 +106,17 @@ Extracted-module interaction — `createTestSubagent` after the collapse (the se
 
 ```typescript
 const state = new SubagentState({
-	status: "completed",
-	result: "All done.",
-	startedAt: 1000,
-	completedAt: 2000,
-	toolUses: toolUses ?? 3,
-	lifetimeUsage: lifetimeUsage ?? { input: 500, output: 500, cacheWrite: 0 },
-	...(compactionCount !== undefined ? { compactionCount } : {}),
-	...(turnCount !== undefined ? { turnCount } : {}),
-	...(activeTools !== undefined ? { activeTools } : {}),
-	...(responseText !== undefined ? { responseText } : {}),
-	...stateOverrides,
+  status: "completed",
+  result: "All done.",
+  startedAt: 1000,
+  completedAt: 2000,
+  toolUses: toolUses ?? 3,
+  lifetimeUsage: lifetimeUsage ?? { input: 500, output: 500, cacheWrite: 0 },
+  ...(compactionCount !== undefined ? { compactionCount } : {}),
+  ...(turnCount !== undefined ? { turnCount } : {}),
+  ...(activeTools !== undefined ? { activeTools } : {}),
+  ...(responseText !== undefined ? { responseText } : {}),
+  ...stateOverrides,
 });
 ```
 

@@ -12,7 +12,11 @@ vi.mock("#src/lifecycle/create-subagent-session", async () => {
 
 import subagentsExtension from "#src/index";
 import { createSubagentSession } from "#src/lifecycle/create-subagent-session";
-import { createMockSession, createSubagentSessionStub, toSubagentSession } from "./helpers/mock-session";
+import {
+  createMockSession,
+  createSubagentSessionStub,
+  toSubagentSession,
+} from "./helpers/mock-session";
 
 function makePi() {
   const tools = new Map<string, any>();

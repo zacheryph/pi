@@ -102,8 +102,8 @@ The dominant friction was capturing the `pre-completion-reviewer`'s verdict: for
 
 ### Root-cause follow-up: reviewer verdict-capture failure
 
-After the initial retro commit we examined *why* foreground dispatches returned only a banner.
+After the initial retro commit we examined _why_ foreground dispatches returned only a banner.
 Ruled out the #229 abort-signal leak: it only fires on `isolation: "worktree"` setup failure (never exercised by the reviewer dispatches, which used no worktree), and a leaked listener cannot truncate a healthy agent's output — wrong code path and wrong symptom.
 The `/reload` after the fix is a confounder (it clears in-session state) but does not implicate the leak itself.
-Best explanation (≈70% confidence): the reviewer ended long, thrashing runs (232 tool calls, repeated `fatal: bad revision` lookups) *on tool activity rather than a final report*, so foreground returned the last text it saw.
+Best explanation (≈70% confidence): the reviewer ended long, thrashing runs (232 tool calls, repeated `fatal: bad revision` lookups) _on tool activity rather than a final report_, so foreground returned the last text it saw.
 Note: the running extension loads `../packages/pi-subagents` from this working tree (per `.pi/settings.json`), so source edits take effect after `/reload` — an earlier claim that the session ran an installed build was wrong.

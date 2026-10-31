@@ -67,7 +67,7 @@ Issue #725 closed with a root-cause explanation, and [PR 612] closed as supersed
 #### What went well
 
 - The diagnosis held up end to end because it was read out of source, not inferred.
-  The whole issue turns on one line in the installed SDK — `_refreshToolRegistry`'s `isAllowedTool` filter running *before* the registry is built — and every downstream decision (docs-only direction, `excludeTools` denylist, the PR 612 critique) rests on it.
+  The whole issue turns on one line in the installed SDK — `_refreshToolRegistry`'s `isAllowedTool` filter running _before_ the registry is built — and every downstream decision (docs-only direction, `excludeTools` denylist, the PR 612 critique) rests on it.
   Reading `node_modules/.pnpm/@earendil-works+pi-coding-agent@0.80.5/.../core/agent-session.js` directly cost about four tool calls and settled questions that prose could not.
 - The `ask_user` free-text note channel did real design work.
   Three of this issue's scope decisions arrived as notes attached to option selections, not as answers to the options: the YAML-vs-CSV frontmatter question (became the parser fix), "this package deserves its own configuration doc" (became `docs/configuration.md`), and "can we please avoid an `as any` cast?"
@@ -104,7 +104,7 @@ Issue #725 closed with a root-cause explanation, and [PR 612] closed as supersed
 
 - **Model-performance correlation** — the session ran three effective model switches: `claude-opus-5` for planning, `claude-sonnet-5` for TDD and ship, `claude-opus-5` for this retro.
   The split matches the work: judgment-heavy direction-setting and design on opus, mechanical red→green→commit execution and the deterministic ship sequence on sonnet.
-  Three subagents ran: `Explore` on `sonnet-5` for the SDK trace (68 tool calls, 85k tokens, one wrong negative as noted above — the model choice was right for a multi-hop trace, and `haiku` would have done worse), `tidy-first-assessor` (returned no preparatory commits plus one correct call — that the fixture's before/after-bind toggle would go dead as a *consequence* of the guard change, so it belonged inside that commit), and `pre-completion-reviewer` (PASS, with one placement note that was acted on).
+  Three subagents ran: `Explore` on `sonnet-5` for the SDK trace (68 tool calls, 85k tokens, one wrong negative as noted above — the model choice was right for a multi-hop trace, and `haiku` would have done worse), `tidy-first-assessor` (returned no preparatory commits plus one correct call — that the fixture's before/after-bind toggle would go dead as a _consequence_ of the guard change, so it belonged inside that commit), and `pre-completion-reviewer` (PASS, with one placement note that was acted on).
 - **Escalation-delay tracking** — no sequence exceeded five consecutive tool calls on the same error.
   The one investigation deep enough to qualify (the SDK semantics hunt) was delegated to `Explore` rather than run inline, per the `AGENTS.md` guidance.
 - **Unused-tool detection** — nothing material.

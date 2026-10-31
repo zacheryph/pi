@@ -26,10 +26,17 @@ import {
 import { Key } from "@earendil-works/pi-tui";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import { loadCustomAgents } from "#src/config/custom-agents";
-import { InterruptHandler, SessionLifecycleHandler, WidgetEventsHandler } from "#src/handlers/index";
+import {
+  InterruptHandler,
+  SessionLifecycleHandler,
+  WidgetEventsHandler,
+} from "#src/handlers/index";
 import { createChildLifecyclePublisher } from "#src/lifecycle/child-lifecycle";
 import { ConcurrencyLimiter } from "#src/lifecycle/concurrency-limiter";
-import { createSubagentSession, type SubagentSessionDeps } from "#src/lifecycle/create-subagent-session";
+import {
+  createSubagentSession,
+  type SubagentSessionDeps,
+} from "#src/lifecycle/create-subagent-session";
 import { SubagentManager } from "#src/lifecycle/subagent-manager";
 import { CompositeSubagentObserver } from "#src/observation/composite-subagent-observer";
 import {
@@ -73,7 +80,10 @@ import { WatchOverlay } from "#src/ui/watch-overlay";
 
 export default function (pi: ExtensionAPI) {
   // ---- Register custom notification renderer ----
-  pi.registerMessageRenderer<NotificationDetails>("subagent-notification", createNotificationRenderer());
+  pi.registerMessageRenderer<NotificationDetails>(
+    "subagent-notification",
+    createNotificationRenderer(),
+  );
   pi.registerMessageRenderer<UpdateDetails>("subagent-update", createUpdateRenderer());
   pi.registerMessageRenderer<WorkspaceNoticeDetails>(
     "subagent-workspace-notice",
@@ -89,9 +99,7 @@ export default function (pi: ExtensionAPI) {
   // Owns completion nudges and live-activity cleanup. The widget detects finished
   // agents itself (AgentWidget.update self-seeds), so NotificationManager has no
   // widget dependency — keeping the construction graph a cycle-free DAG.
-  const notifications = new NotificationManager(
-    (msg, opts) => pi.sendMessage(msg, opts),
-  );
+  const notifications = new NotificationManager((msg, opts) => pi.sendMessage(msg, opts));
 
   // Gate nudge delivery on the parent's agent run. agent_settled fires exactly
   // once per run (from a finally block, so it also covers error and abort),
@@ -175,10 +183,7 @@ export default function (pi: ExtensionAPI) {
       assemblerIO: {
         buildAgentPrompt,
         // Pi's own discovery, pointed at whichever directory the child runs in.
-        loadProjectContext: createProjectContextLoader(
-          loadProjectContextFiles,
-          getAgentDir(),
-        ),
+        loadProjectContext: createProjectContextLoader(loadProjectContextFiles, getAgentDir()),
       },
     },
     exec: (cmd, args, opts) => pi.exec(cmd, args, opts),
@@ -191,7 +196,11 @@ export default function (pi: ExtensionAPI) {
     resolvePromptInheritance: (provider) => settings.promptInheritanceFor(provider),
     // Read per child rather than once: an MCP server connects in the
     // background, so its tools register after this extension loads.
-    listParentToolNames: () => pi.getAllTools().filter((tool) => tool.exposure !== "hidden").map((tool) => tool.name),
+    listParentToolNames: () =>
+      pi
+        .getAllTools()
+        .filter((tool) => tool.exposure !== "hidden")
+        .map((tool) => tool.name),
   };
 
   // ConcurrencyLimiter: schedules background run thunks FIFO against the limit.
@@ -239,7 +248,9 @@ export default function (pi: ExtensionAPI) {
 
   const watch = new WatchOverlay(manager, registry, settings);
   observer.add(watch);
-  const unsubscribeWatchSettings = pi.events.on("subagents:settings_changed", () => watch.settingsChanged());
+  const unsubscribeWatchSettings = pi.events.on("subagents:settings_changed", () =>
+    watch.settingsChanged(),
+  );
 
   // Give the widget its UI context and its turn ticks. Pi fans an event out to
   // every handler an extension registers for it, so these take their own
@@ -249,7 +260,9 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_start", (event, ctx) => lifecycle.handleSessionStart(event, ctx));
   // Start the publication: it becomes the default once no load is pending, and
   // getSubagentsService(sessionId) finds it.
-  pi.on("session_start", (_event, ctx) => publishSubagentsService(service, ctx.sessionManager.getSessionId()));
+  pi.on("session_start", (_event, ctx) =>
+    publishSubagentsService(service, ctx.sessionManager.getSessionId()),
+  );
   pi.on("session_start", (event, ctx) => widgetEvents.handleSessionStart(event, ctx));
   pi.on("session_start", (_event, ctx) => watch.setContext(ctx));
   pi.on("session_before_switch", () => lifecycle.handleSessionBeforeSwitch());
@@ -280,7 +293,9 @@ export default function (pi: ExtensionAPI) {
 
   // ---- Agent tool ----
 
-  pi.registerTool(new AgentTool(manager, runtime, settings, registry, getAgentDir()).toToolDefinition());
+  pi.registerTool(
+    new AgentTool(manager, runtime, settings, registry, getAgentDir()).toToolDefinition(),
+  );
 
   // ---- get_subagent_result tool ----
 

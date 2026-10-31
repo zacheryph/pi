@@ -21,7 +21,13 @@ import {
   ToolExecutionComponent,
   UserMessageComponent,
 } from "@earendil-works/pi-coding-agent";
-import { Container, type MarkdownTheme, Spacer, type TUI, truncateToWidth } from "@earendil-works/pi-tui";
+import {
+  Container,
+  type MarkdownTheme,
+  Spacer,
+  type TUI,
+  truncateToWidth,
+} from "@earendil-works/pi-tui";
 import type { AgentSessionEvent, SessionMessage } from "#src/types";
 import { describeActivity } from "#src/ui/display";
 import { GLYPHS } from "#src/ui/glyphs";
@@ -238,7 +244,9 @@ export class TranscriptContent {
         this.consumeBashExecution(message);
         break;
       case "compactionSummary":
-        this.consumeSummary(new CompactionSummaryMessageComponent(message, this.options.markdownTheme));
+        this.consumeSummary(
+          new CompactionSummaryMessageComponent(message, this.options.markdownTheme),
+        );
         break;
       case "branchSummary":
         this.consumeSummary(new BranchSummaryMessageComponent(message, this.options.markdownTheme));
@@ -248,7 +256,9 @@ export class TranscriptContent {
 
   private consumeAssistant(message: AssistantSessionMessage): void {
     const block = this.appendBlock();
-    block.container.addChild(new AssistantMessageComponent(message, false, this.options.markdownTheme));
+    block.container.addChild(
+      new AssistantMessageComponent(message, false, this.options.markdownTheme),
+    );
     for (const content of message.content) {
       if (content.type !== "toolCall") continue;
       const tool = new ToolExecutionComponent(
@@ -279,13 +289,22 @@ export class TranscriptContent {
 
   private consumeUser(message: Extract<SessionMessage, { role: "user" }>): void {
     const block = this.appendBlock();
-    addUserComponents(block.container, message.content, this.options.markdownTheme, this.hasVisibleContent);
+    addUserComponents(
+      block.container,
+      message.content,
+      this.options.markdownTheme,
+      this.hasVisibleContent,
+    );
     if (block.container.children.length > 0) this.hasVisibleContent = true;
   }
 
   private consumeBashExecution(message: Extract<SessionMessage, { role: "bashExecution" }>): void {
     const block = this.appendBlock();
-    const bash = new BashExecutionComponent(message.command, this.options.tui, message.excludeFromContext);
+    const bash = new BashExecutionComponent(
+      message.command,
+      this.options.tui,
+      message.excludeFromContext,
+    );
     if (message.output) bash.appendOutput(message.output);
     bash.setComplete(message.exitCode, message.cancelled, undefined, message.fullOutputPath);
     block.container.addChild(bash);

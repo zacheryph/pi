@@ -42,17 +42,17 @@ import { type TurnBudget, wrappedUpAtTurnLimit } from "#src/lifecycle/turn-limit
  * different grammar, not different facts.
  */
 interface StatusMeaning {
-	/** Sentence-initial label, e.g. "Wrapped up". */
-	label: string;
-	/** Why, without terminal punctuation, e.g. "after turn-budget warning". */
-	detail: string;
+  /** Sentence-initial label, e.g. "Wrapped up". */
+  label: string;
+  /** Why, without terminal punctuation, e.g. "after turn-budget warning". */
+  detail: string;
 }
 
 const STATUS_MEANINGS: Partial<Record<SubagentStatus, StatusMeaning>> = {
-	aborted: { label: "Aborted", detail: "turn limit reached, output may be incomplete" },
-	// "user request" rather than "stopped by user": the detail must stand on its
-	// own after the label, which both presentations already supply.
-	stopped: { label: "Stopped", detail: "user request" },
+  aborted: { label: "Aborted", detail: "turn limit reached, output may be incomplete" },
+  // "user request" rather than "stopped by user": the detail must stand on its
+  // own after the label, which both presentations already supply.
+  stopped: { label: "Stopped", detail: "user request" },
 };
 
 /** A run that finished on its own after the harness warned it about its turn limit. */
@@ -63,13 +63,13 @@ const WRAPPED_UP: StatusMeaning = { label: "Wrapped up", detail: "after turn-bud
  * label names, and the budget that qualifies a completed run.
  */
 export interface StatusOutcome {
-	status: SubagentStatus;
-	error?: string;
-	turnBudget?: TurnBudget;
+  status: SubagentStatus;
+  error?: string;
+  turnBudget?: TurnBudget;
 }
 
 function statusMeaning(outcome: StatusOutcome): StatusMeaning | undefined {
-	return wrappedUpAtTurnLimit(outcome) ? WRAPPED_UP : STATUS_MEANINGS[outcome.status];
+  return wrappedUpAtTurnLimit(outcome) ? WRAPPED_UP : STATUS_MEANINGS[outcome.status];
 }
 
 /**
@@ -84,11 +84,11 @@ function statusMeaning(outcome: StatusOutcome): StatusMeaning | undefined {
  * to give up, so it gets its own sentence in the renderer below.
  */
 const RESUME_REFUSAL_CLAUSES: Record<Exclude<ResumeRefusal, "still-running">, string> = {
-	// Deliberately not "...no session to resume": the clause is followed by a
-	// colon, and "resume:" is the exact token the parent must not see here.
-	"no-session": "it has no active session",
-	"session-released": "its session was released after its retention window",
-	"workspace-disposed": "it ran in an isolated workspace that has since been removed",
+  // Deliberately not "...no session to resume": the clause is followed by a
+  // colon, and "resume:" is the exact token the parent must not see here.
+  "no-session": "it has no active session",
+  "session-released": "its session was released after its retention window",
+  "workspace-disposed": "it ran in an isolated workspace that has since been removed",
 };
 
 /**
@@ -98,9 +98,9 @@ const RESUME_REFUSAL_CLAUSES: Record<Exclude<ResumeRefusal, "still-running">, st
  * went wrong.
  */
 export function renderStatusLabel(outcome: StatusOutcome): string {
-	if (outcome.status === "error") return `Error: ${outcome.error ?? "unknown"}`;
-	const meaning = statusMeaning(outcome);
-	return meaning ? `${meaning.label} (${meaning.detail})` : "Done";
+  if (outcome.status === "error") return `Error: ${outcome.error ?? "unknown"}`;
+  const meaning = statusMeaning(outcome);
+  return meaning ? `${meaning.label} (${meaning.detail})` : "Done";
 }
 
 /**
@@ -109,9 +109,9 @@ export function renderStatusLabel(outcome: StatusOutcome): string {
  * or when the body already carries the explanation, as an error's does.
  */
 export function renderStatusNote(outcome: StatusOutcome): string {
-	const meaning = statusMeaning(outcome);
-	if (!meaning) return "";
-	return ` (${meaning.label.toLowerCase()} \u2014 ${meaning.detail})`;
+  const meaning = statusMeaning(outcome);
+  if (!meaning) return "";
+  return ` (${meaning.label.toLowerCase()} \u2014 ${meaning.detail})`;
 }
 
 /**
@@ -119,11 +119,11 @@ export function renderStatusNote(outcome: StatusOutcome): string {
  * caller cannot come to depend on fields this module does not use.
  */
 export interface OutcomeBody {
-	status: SubagentStatus;
-	result: string | undefined;
-	error: string | undefined;
-	/** Whether the agent was stopped before the limiter ever admitted it. */
-	stoppedWhileQueued: boolean;
+  status: SubagentStatus;
+  result: string | undefined;
+  error: string | undefined;
+  /** Whether the agent was stopped before the limiter ever admitted it. */
+  stoppedWhileQueued: boolean;
 }
 
 /**
@@ -139,34 +139,34 @@ export interface OutcomeBody {
  * needs, so a carrier holding any shape can call it.
  */
 export function renderQuestionAffordance(
-	agentId: string,
-	question: string | undefined,
-	refusal: ResumeRefusal | undefined,
+  agentId: string,
+  question: string | undefined,
+  refusal: ResumeRefusal | undefined,
 ): string {
-	if (!question) return "";
-	const quoted = question
-		.split("\n")
-		.map((line) => `  ${line}`)
-		.join("\n");
-	if (refusal === "still-running") {
-		return (
-			"\n\nThis agent asked a question before it finished running, so it cannot be " +
-			`resumed yet:\n\n${quoted}\n\n` +
-			"Wait for it to settle \u2014 get_subagent_result with wait: true returns when it " +
-			"does \u2014 then answer it."
-		);
-	}
-	if (refusal) {
-		return (
-			"\n\nThis agent ended its run with a question that can no longer be answered \u2014 " +
-			`${RESUME_REFUSAL_CLAUSES[refusal]}:\n\n${quoted}\n\n` +
-			"Spawn a new agent with the context it needs; this one cannot be resumed."
-		);
-	}
-	return (
-		`\n\nThis agent is waiting on an answer:\n\n${quoted}\n\n` +
-		`Answer by calling subagent with resume: "${agentId}" and your answer as the prompt.`
-	);
+  if (!question) return "";
+  const quoted = question
+    .split("\n")
+    .map((line) => `  ${line}`)
+    .join("\n");
+  if (refusal === "still-running") {
+    return (
+      "\n\nThis agent asked a question before it finished running, so it cannot be " +
+      `resumed yet:\n\n${quoted}\n\n` +
+      "Wait for it to settle \u2014 get_subagent_result with wait: true returns when it " +
+      "does \u2014 then answer it."
+    );
+  }
+  if (refusal) {
+    return (
+      "\n\nThis agent ended its run with a question that can no longer be answered \u2014 " +
+      `${RESUME_REFUSAL_CLAUSES[refusal]}:\n\n${quoted}\n\n` +
+      "Spawn a new agent with the context it needs; this one cannot be resumed."
+    );
+  }
+  return (
+    `\n\nThis agent is waiting on an answer:\n\n${quoted}\n\n` +
+    `Answer by calling subagent with resume: "${agentId}" and your answer as the prompt.`
+  );
 }
 
 /**
@@ -178,7 +178,7 @@ export function renderQuestionAffordance(
  * call it, and so the framing has one home if a carrier ever needs its own.
  */
 export function renderWorkspaceNotice(notice: string | undefined): string {
-	return notice ?? "";
+  return notice ?? "";
 }
 
 /**
@@ -189,29 +189,29 @@ export function renderWorkspaceNotice(notice: string | undefined): string {
  * — both `Subagent` and `AgentReport` satisfy this structurally.
  */
 export interface OutcomeAddenda {
-	id: string;
-	runUpdates?: readonly string[];
-	workspaceNotice?: string;
-	pendingQuestion?: string;
-	/**
-	 * Why a resume would be refused; undefined when one would be accepted.
-	 *
-	 * Required rather than optional so a carrier that forgets it fails to
-	 * compile. An omitted optional would silently mean "resumable", which is the
-	 * fail-open this field exists to close.
-	 */
-	resumeRefusal: ResumeRefusal | undefined;
+  id: string;
+  runUpdates?: readonly string[];
+  workspaceNotice?: string;
+  pendingQuestion?: string;
+  /**
+   * Why a resume would be refused; undefined when one would be accepted.
+   *
+   * Required rather than optional so a carrier that forgets it fails to
+   * compile. An omitted optional would silently mean "resumable", which is the
+   * fail-open this field exists to close.
+   */
+  resumeRefusal: ResumeRefusal | undefined;
 }
 
 /** The addenda tail every outcome carrier appends, in one order. */
 export function renderOutcomeAddenda(outcome: OutcomeAddenda): string {
-	return (
-		// What the agent flagged along the way, then where the work went, then the
-		// call to action that follows both.
-		renderRunUpdates(outcome.runUpdates) +
-		renderWorkspaceNotice(outcome.workspaceNotice) +
-		renderQuestionAffordance(outcome.id, outcome.pendingQuestion, outcome.resumeRefusal)
-	);
+  return (
+    // What the agent flagged along the way, then where the work went, then the
+    // call to action that follows both.
+    renderRunUpdates(outcome.runUpdates) +
+    renderWorkspaceNotice(outcome.workspaceNotice) +
+    renderQuestionAffordance(outcome.id, outcome.pendingQuestion, outcome.resumeRefusal)
+  );
 }
 
 /**
@@ -221,16 +221,16 @@ export function renderOutcomeAddenda(outcome: OutcomeAddenda): string {
  * free to receive as they happened.
  */
 export function renderRunUpdates(updates: readonly string[] | undefined): string {
-	if (!updates?.length) return "";
-	const quoted = updates
-		.map((update) =>
-			update
-				.split("\n")
-				.map((line) => `  ${line}`)
-				.join("\n"),
-		)
-		.join("\n\n");
-	return `\n\nUpdates this agent sent while it worked:\n\n${quoted}`;
+  if (!updates?.length) return "";
+  const quoted = updates
+    .map((update) =>
+      update
+        .split("\n")
+        .map((line) => `  ${line}`)
+        .join("\n"),
+    )
+    .join("\n\n");
+  return `\n\nUpdates this agent sent while it worked:\n\n${quoted}`;
 }
 
 /**
@@ -245,12 +245,12 @@ export function renderRunUpdates(updates: readonly string[] | undefined): string
  * agreeing with them (#889).
  */
 export function renderOutcomeBody(outcome: OutcomeBody): string {
-	if (outcome.status === "running")
-		return "Agent is still running. Use wait: true or check back later.";
-	if (outcome.status === "error") return `Error: ${outcome.error}`;
-	if (outcome.stoppedWhileQueued)
-		return "Agent was stopped while queued and never started. No work was performed.";
-	const trimmed = outcome.result?.trim();
-	// eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- || intentional: converts falsy values to fallback
-	return trimmed || "No output.";
+  if (outcome.status === "running")
+    return "Agent is still running. Use wait: true or check back later.";
+  if (outcome.status === "error") return `Error: ${outcome.error}`;
+  if (outcome.stoppedWhileQueued)
+    return "Agent was stopped while queued and never started. No work was performed.";
+  const trimmed = outcome.result?.trim();
+  // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- || intentional: converts falsy values to fallback
+  return trimmed || "No output.";
 }

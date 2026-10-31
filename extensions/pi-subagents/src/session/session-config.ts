@@ -176,7 +176,9 @@ export function assembleSessionConfig(
   // A legacy/no-fragment queued spawn may see a registry reload at run-start.
   // Never silently omit newly declared fragments or read them in this assembler.
   if (!options.agentConfig && (agentConfig.fragmentError || agentConfig.fragments?.length)) {
-    throw new Error(`Agent "${agentConfig.name}": fragment instructions were not prepared at spawn; start a new agent`);
+    throw new Error(
+      `Agent "${agentConfig.name}": fragment instructions were not prepared at spawn; start a new agent`,
+    );
   }
 
   const effectiveCwd = options.cwd ?? ctx.cwd;
@@ -190,8 +192,7 @@ export function assembleSessionConfig(
   // prompt-inheritance strategy; the two computations are otherwise
   // independent, so the order is free.
   const model =
-    options.model ??
-    resolveDefaultModel(ctx.parentModel, ctx.modelRegistry, agentConfig.model);
+    options.model ?? resolveDefaultModel(ctx.parentModel, ctx.modelRegistry, agentConfig.model);
 
   // Build system prompt from the resolved agent config. The strategy is keyed
   // on the child's own provider, so a per-spawn model override moves the child

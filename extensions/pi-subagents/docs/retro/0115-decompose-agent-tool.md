@@ -24,7 +24,7 @@ Released as `pi-subagents-v6.9.1`.
 #### What caused friction (agent side)
 
 - `wrong-abstraction` (user-caught) — The initial plan was a mechanical code-move that defined 4 new interfaces (`ForegroundRunDeps`, `BackgroundSpawnDeps`, `ForegroundRunParams`, `BackgroundSpawnParams`) to paper over two upstream API gaps: a `listAgents()` reverse-search in the foreground `onSessionCreated` callback, and a post-spawn `record.notification` mutation in the background path.
-  The user asked *"What dependencies are still missing for these split tools, that they want, rather than some low level state or collaborators that they have?"*
+  The user asked _"What dependencies are still missing for these split tools, that they want, rather than some low level state or collaborators that they have?"_
   — redirecting me to fix the API surface before extracting.
   Impact: entire plan rewritten (~15 minutes), but the revised plan was significantly cleaner and the implementation went smoothly.
 
@@ -43,7 +43,7 @@ Released as `pi-subagents-v6.9.1`.
 #### What caused friction (user side)
 
 - The initial plan's size and mechanical nature required a user redirect.
-  The `/plan-issue` prompt's Design Overview section asks to sketch consumer call sites for *new collaborators*, but the same Tell-Don't-Ask check should apply to *extracted* modules' interactions with their upstream dependencies.
+  The `/plan-issue` prompt's Design Overview section asks to sketch consumer call sites for _new collaborators_, but the same Tell-Don't-Ask check should apply to _extracted_ modules' interactions with their upstream dependencies.
   A prompt tweak could help the agent catch this pattern earlier.
 
 ### Changes made

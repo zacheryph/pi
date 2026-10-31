@@ -79,22 +79,22 @@ AGENTS.md / code-design constraints that apply:
 
 ```typescript
 export interface WidgetAgent {
-	readonly id: string;
-	readonly type: SubagentType;
-	readonly status: string;
-	readonly description: string;
-	readonly toolUses: number;
-	readonly startedAt: number;
-	readonly completedAt?: number;
-	readonly error?: string;
-	readonly lifetimeUsage?: Readonly<LifetimeUsage>;
-	readonly compactionCount: number;
-	// Folded-in live activity (was WidgetActivity)
-	readonly turnCount: number;
-	readonly maxTurns?: number;
-	readonly activeTools: ReadonlyMap<string, string>;
-	readonly responseText: string;
-	readonly contextPercent: number | null;
+  readonly id: string;
+  readonly type: SubagentType;
+  readonly status: string;
+  readonly description: string;
+  readonly toolUses: number;
+  readonly startedAt: number;
+  readonly completedAt?: number;
+  readonly error?: string;
+  readonly lifetimeUsage?: Readonly<LifetimeUsage>;
+  readonly compactionCount: number;
+  // Folded-in live activity (was WidgetActivity)
+  readonly turnCount: number;
+  readonly maxTurns?: number;
+  readonly activeTools: ReadonlyMap<string, string>;
+  readonly responseText: string;
+  readonly contextPercent: number | null;
 }
 ```
 
@@ -141,12 +141,9 @@ The `activity` constructor param and field are removed.
 
 ```typescript
 if (this.record.status === "running") {
-	lines.push(...formatStreamingIndicator(
-		this.record.activeTools,
-		this.record.responseText,
-		width,
-		th,
-	));
+  lines.push(
+    ...formatStreamingIndicator(this.record.activeTools, this.record.responseText, width, th),
+  );
 }
 ```
 

@@ -238,10 +238,10 @@ describe("resolveAgentInvocationConfig", () => {
     });
 
     it("omits a field whose caller value matched the agent's own", () => {
-      const resolved = resolveAgentInvocationConfig(
-        makeOpinionatedConfig({ locked: true }),
-        { ...overridingParams, model: "provider/config-model" },
-      );
+      const resolved = resolveAgentInvocationConfig(makeOpinionatedConfig({ locked: true }), {
+        ...overridingParams,
+        model: "provider/config-model",
+      });
 
       expect(resolved.discarded).not.toContain("model");
       expect(resolved.discarded).toContain("thinking");

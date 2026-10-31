@@ -56,19 +56,19 @@ AGENTS.md constraint: this is the `@gotgenes/pi-subagents` package; run package-
 
 ```typescript
 export function createFactorySession(options: FactorySessionOptions = {}) {
-	const before = options.toolsBeforeBind ?? ["read"];
-	const after = options.toolsAfterBind ?? before;
-	let bound = false;
-	return {
-		...createMockSession(), // working event bus + messages/steer/dispose/sessionManager core
-		prompt: vi.fn().mockResolvedValue(undefined),
-		abort: vi.fn(),
-		getActiveToolNames: vi.fn(() => (bound ? after : before)),
-		setActiveToolsByName: vi.fn(),
-		bindExtensions: vi.fn(async () => {
-			bound = true;
-		}),
-	};
+  const before = options.toolsBeforeBind ?? ["read"];
+  const after = options.toolsAfterBind ?? before;
+  let bound = false;
+  return {
+    ...createMockSession(), // working event bus + messages/steer/dispose/sessionManager core
+    prompt: vi.fn().mockResolvedValue(undefined),
+    abort: vi.fn(),
+    getActiveToolNames: vi.fn(() => (bound ? after : before)),
+    setActiveToolsByName: vi.fn(),
+    bindExtensions: vi.fn(async () => {
+      bound = true;
+    }),
+  };
 }
 ```
 

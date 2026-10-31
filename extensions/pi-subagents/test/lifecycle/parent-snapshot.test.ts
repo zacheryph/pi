@@ -9,10 +9,7 @@ vi.mock("#src/session/context", () => ({
 }));
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import {
-  buildParentSnapshot,
-  type ParentPromptOptions,
-} from "#src/lifecycle/parent-snapshot";
+import { buildParentSnapshot, type ParentPromptOptions } from "#src/lifecycle/parent-snapshot";
 
 function makeCtx(overrides: Record<string, unknown> = {}) {
   return {
@@ -116,13 +113,9 @@ describe("buildParentSnapshot", () => {
         appendSystemPrompt: "Extra instructions.",
       });
       expect(snapshot.portablePrompt).toBe(
-        [
-          "You are a specialist.",
-          "",
-          "<addendum>",
-          "Extra instructions.",
-          "</addendum>",
-        ].join("\n"),
+        ["You are a specialist.", "", "<addendum>", "Extra instructions.", "</addendum>"].join(
+          "\n",
+        ),
       );
     });
 
@@ -132,9 +125,7 @@ describe("buildParentSnapshot", () => {
       const snapshot = buildParentSnapshot(makeCtx(), false, {
         appendSystemPrompt: "Extra instructions.",
       });
-      expect(snapshot.portablePrompt).toBe(
-        "<addendum>\nExtra instructions.\n</addendum>",
-      );
+      expect(snapshot.portablePrompt).toBe("<addendum>\nExtra instructions.\n</addendum>");
     });
 
     it("omits a section whose input is absent", () => {

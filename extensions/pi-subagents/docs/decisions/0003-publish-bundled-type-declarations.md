@@ -21,7 +21,7 @@ A `tsc --traceResolution` of a sibling consuming the package surfaced two compou
    A latent bug, unnoticed because nothing in-repo imported the package by name.
 2. Once corrected, the public entry's internal alias imports cascade.
    `service/service.ts` imports `type LifetimeUsage` and `type WorkspaceProvider` via the `#src/*` alias.
-   When a sibling's `tsc` follows the symlink, the consumer's own `paths` (`#src/*` → `./src/*`) intercept first and resolve into the *consumer's* `src/` — a global-`paths` collision, since both packages define `#src/*`.
+   When a sibling's `tsc` follows the symlink, the consumer's own `paths` (`#src/*` → `./src/*`) intercept first and resolve into the _consumer's_ `src/` — a global-`paths` collision, since both packages define `#src/*`.
    The fallback to the publisher's `package.json` `imports` field also fails: `tsc` cannot resolve the extensionless `.ts` target under Node `imports` semantics ("Import specifier '#src/lifecycle/usage' does not exist in package.json scope").
 
 The public entry's type closure is deeply entangled: `WorkspaceProvider` (in `lifecycle/workspace.ts`) reaches `AgentStatus` in the 510-line `lifecycle/agent.ts`, plus `SubagentType`/`AgentInvocation` from `types.ts` (which itself re-exports the `Agent` class).

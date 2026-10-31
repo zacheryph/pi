@@ -7,13 +7,13 @@ For the tools, commands, events, and service API, see the [README](../README.md)
 
 ## Default Agent Types
 
-| Type              | Tools                      | Model                         | Prompt Mode            | Description                                                                                      |
-| ----------------- | -------------------------- | ----------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------ |
-| `general-purpose` | all available                      | inherit                       | `append` (parent twin) | Inherits the parent's prompt identity — same rules, CLAUDE.md, project conventions               |
-| `orchestrator`    | all available; explicit todo and delegation tools | inherit | `replace` | Project manager: categorizes tasks, delegates work, tracks open items, and recalls prior workers |
-| `Explore`         | read, bash, grep, find, ls | newest Haiku (`anthropic/claude-haiku@latest`; falls back to inherit) | `replace`              | Fast codebase exploration (read-only); inherits the parent prompt as a base                      |
-| `Plan`            | read, bash, grep, find, ls | inherit                       | `replace`              | Software architect for implementation planning (read-only); inherits the parent prompt as a base |
-| `reviewer`        | read, bash, grep, find, ls | inherit                       | `replace`              | Verifies finished work against its acceptance criteria; runs checks, reports `Verdict: PASS/FAIL/BLOCKED` with evidence, never fixes |
+| Type              | Tools                                             | Model                                                                 | Prompt Mode            | Description                                                                                                                          |
+| ----------------- | ------------------------------------------------- | --------------------------------------------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `general-purpose` | all available                                     | inherit                                                               | `append` (parent twin) | Inherits the parent's prompt identity — same rules, CLAUDE.md, project conventions                                                   |
+| `orchestrator`    | all available; explicit todo and delegation tools | inherit                                                               | `replace`              | Project manager: categorizes tasks, delegates work, tracks open items, and recalls prior workers                                     |
+| `Explore`         | read, bash, grep, find, ls                        | newest Haiku (`anthropic/claude-haiku@latest`; falls back to inherit) | `replace`              | Fast codebase exploration (read-only); inherits the parent prompt as a base                                                          |
+| `Plan`            | read, bash, grep, find, ls                        | inherit                                                               | `replace`              | Software architect for implementation planning (read-only); inherits the parent prompt as a base                                     |
+| `reviewer`        | read, bash, grep, find, ls                        | inherit                                                               | `replace`              | Verifies finished work against its acceptance criteria; runs checks, reports `Verdict: PASS/FAIL/BLOCKED` with evidence, never fixes |
 
 The `general-purpose` agent is a **parent twin** — it receives the parent's inherited identity and nothing of its own, so it follows the same rules the parent does.
 Explore, Plan and reviewer use `replace` mode: the parent prompt is the cacheable base and their specialist read-only instructions are appended last, giving them the final say.
@@ -199,11 +199,11 @@ All fields are optional — sensible defaults for everything.
 
 | Field               | Default        | Description                                                                                                                                                                                                                                   |
 | ------------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `fragments`         | —              | Ordered fragment names from the winning profile's `agents/fragments/<name>.md`; combined before the profile body. See [Prompt fragments](#prompt-fragments). |
+| `fragments`         | —              | Ordered fragment names from the winning profile's `agents/fragments/<name>.md`; combined before the profile body. See [Prompt fragments](#prompt-fragments).                                                                                  |
 | `description`       | filename       | Agent description shown in tool listings                                                                                                                                                                                                      |
 | `display_name`      | —              | Display name for UI (e.g. widget, agent list)                                                                                                                                                                                                 |
-| `tools`             | all available  | `all` for registered tools; explicit names restrict; `-name` removes; `none` disables tools. See [Tool selection](#tool-selection)                                                                                                      |
-| `model`             | inherit parent | Model — `provider/modelId`, fuzzy name (`"haiku"`, `"sonnet"`), or `[provider/]family@latest` for the newest available model whose id contains `family`                                                                                                                                                                              |
+| `tools`             | all available  | `all` for registered tools; explicit names restrict; `-name` removes; `none` disables tools. See [Tool selection](#tool-selection)                                                                                                            |
+| `model`             | inherit parent | Model — `provider/modelId`, fuzzy name (`"haiku"`, `"sonnet"`), or `[provider/]family@latest` for the newest available model whose id contains `family`                                                                                       |
 | `thinking`          | inherit        | off, minimal, low, medium, high, xhigh, max. An unrecognized value is dropped, and the agent inherits the parent's level                                                                                                                      |
 | `max_turns`         | unlimited      | Turn ceiling: the harness stops the agent after this many turns (minimum 2). `0` or omit for unlimited                                                                                                                                        |
 | `prompt_mode`       | `append`       | `replace`: parent prompt is the cacheable base; body is appended last with full control and no `<agent_instructions>` wrapper. `append`: parent prompt is the base; body is wrapped in `<agent_instructions>` (agent acts as a "parent twin") |
@@ -233,8 +233,8 @@ This is the behavior every agent file had before locking became opt-in, so it is
 A list withholds exactly the fields it names, in either YAML spelling:
 
 ```yaml
-locked: model, thinking            # comma-separated
-locked: [model, max_turns]         # flow sequence
+locked: model, thinking # comma-separated
+locked: [model, max_turns] # flow sequence
 ```
 
 The list form also withholds a field this file leaves unset — `locked: [model]` with no `model:` denies the caller a model override and lets the child inherit the parent's.
@@ -351,12 +351,12 @@ Either way you see it once.
 Examples (comma-separated scalars, YAML flow sequences and block sequences all work):
 
 ```yaml
-tools: all                            # same as omitting tools
-tools: all, -bash, -mcp__github__*    # all except shell and GitHub MCP
-tools: [-bash, -write]                # negative-only implicitly selects all
-tools: [read, grep, find]            # explicit restricted allowlist
+tools: all # same as omitting tools
+tools: all, -bash, -mcp__github__* # all except shell and GitHub MCP
+tools: [-bash, -write] # negative-only implicitly selects all
+tools: [read, grep, find] # explicit restricted allowlist
 tools: read, codemode, mcp__github__* # explicit allowlist with MCP wildcard
-tools: none                           # no capability tools
+tools: none # no capability tools
 ```
 
 Exclusions take precedence regardless of ordering. A `-name` removes an exact tool; `-mcp__server__*` removes a server's currently registered tools. An explicit `all` or a negative-only declaration starts with all available names. Expansion is a spawn/startup snapshot, not an ongoing subscription to later registrations.
@@ -400,9 +400,9 @@ tools: read, codemode, mcp__github__get_issue, mcp__github__list_issues, mcp__gi
 Or name a whole server, or a prefix of its tools, with `*`:
 
 ```yaml
-tools: read, codemode, mcp__github__*                            # every github tool
-tools: read, codemode, mcp__github__get_*, mcp__github__list_*   # a read-shaped subset
-tools: read, codemode, mcp__*                                    # every MCP tool
+tools: read, codemode, mcp__github__* # every github tool
+tools: read, codemode, mcp__github__get_*, mcp__github__list_* # a read-shaped subset
+tools: read, codemode, mcp__* # every MCP tool
 ```
 
 A pattern is any entry that starts with `mcp__` and contains `*`, which matches any run of characters.
@@ -511,11 +511,11 @@ or the layered `subagents.json` files:
 }
 ```
 
-| Setting | Default | Accepted values |
-| --- | --- | --- |
-| `overlayWidth` | `third` | `quarter` (25%), `third` (~33%), `half` (50%), `two-thirds` (~67%) |
-| `overlayDefaultOpen` | `false` | Boolean: show automatically while agents are active, before any explicit session choice |
-| `overlayShowThinking` | `true` | Boolean: display provider-emitted thinking in the watch feed |
+| Setting               | Default | Accepted values                                                                         |
+| --------------------- | ------- | --------------------------------------------------------------------------------------- |
+| `overlayWidth`        | `third` | `quarter` (25%), `third` (~33%), `half` (50%), `two-thirds` (~67%)                      |
+| `overlayDefaultOpen`  | `false` | Boolean: show automatically while agents are active, before any explicit session choice |
+| `overlayShowThinking` | `true`  | Boolean: display provider-emitted thinking in the watch feed                            |
 
 Explicit show/hide takes precedence for the current session, including subsequent
 agent runs; changing the default does not override it. Automatic hiding after all
@@ -569,7 +569,7 @@ When [`@gotgenes/pi-permission-system`](https://github.com/gotgenes/pi-packages/
 Excluding an extension that only registers an authorizer chain link costs nothing but saves its load time: the node that adjudicates an ask still judges every descendant's request.
 
 One case used to weaken a child, and recent versions of that extension close it.
-An extension can declare the filesystem path *another* package's tool accesses, so that the permission system's `path` and `external_directory` gates can see it.
+An extension can declare the filesystem path _another_ package's tool accesses, so that the permission system's `path` and `external_directory` gates can see it.
 Excluding such a declaring package left the tool present in the child with its path undeclared, and the child's own gates stopped seeing it — silently, because the parent's gating is unaffected and still looks correct.
 
 The condition needed both halves, so most exclusions could never hit it:

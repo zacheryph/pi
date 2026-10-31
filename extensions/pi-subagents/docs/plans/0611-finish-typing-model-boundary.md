@@ -126,9 +126,9 @@ Typing its params/return changes no control flow:
 
 ```typescript
 // after — behavior identical, types tightened
-const found = registry.find(provider, modelId);           // Model<any> | undefined
+const found = registry.find(provider, modelId); // Model<any> | undefined
 if (found && isAvailable(provider, modelId)) return found; // Model<any>
-return parentModel;                                        // Model<any> | undefined
+return parentModel; // Model<any> | undefined
 ```
 
 Adopting the shared `ModelRegistry` interface also removes the duplicated inline structural type (`{ find(...): unknown; getAvailable?() }` appears in both `parent-snapshot.ts` and `session-config.ts`) — collapsing a small duplication onto the single owning interface.

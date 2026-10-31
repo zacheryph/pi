@@ -46,9 +46,7 @@ describe("getAgentConversation", () => {
       ],
     });
     const result = getAgentConversation(toAgentSession(session));
-    expect(result).toBe(
-      "[Assistant (anthropic/claude-sonnet-4-20250514)]: hi there",
-    );
+    expect(result).toBe("[Assistant (anthropic/claude-sonnet-4-20250514)]: hi there");
   });
 
   it("formats assistant messages with provider only", () => {
@@ -126,9 +124,7 @@ describe("getAgentConversation", () => {
       ],
     });
     const result = getAgentConversation(toAgentSession(session));
-    expect(result).toBe(
-      `[Tool Result (read)]: ${"x".repeat(200)}...`,
-    );
+    expect(result).toBe(`[Tool Result (read)]: ${"x".repeat(200)}...`);
   });
 
   it("formats a full conversation with multiple messages", () => {

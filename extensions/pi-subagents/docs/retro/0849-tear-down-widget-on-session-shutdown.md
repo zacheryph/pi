@@ -23,7 +23,7 @@ The plan is six steps: one preparatory `test:` fixture widening, two `fix:` beha
 
 - **The defect is masked today by an accidental three-fact chain.**
   `manager.dispose()` empties the registry → the next 80 ms tick finds no agents → `update()`'s idle path calls `clearWidget()`.
-  So the resources *are* released, by emergent behavior rather than by design.
+  So the resources _are_ released, by emergent behavior rather than by design.
   The plan states this honestly instead of overselling a leak: on the interactive-quit path it is moot (`InteractiveMode.shutdown()` stops the TUI before emitting `session_shutdown`, then `process.exit(0)`), and on the session-replacement paths (`/new`, `/resume`, `/fork`) the residual is a ≤ 80 ms race against a **process-global** widget key (`setExtensionWidget` looks the key up in one map on the persistent `InteractiveMode` instance).
   Framing it as a resource acquired with no explicit release, rather than as a user-visible leak, is what kept the plan's claims defensible.
 
@@ -68,14 +68,14 @@ Pre-completion reviewer: WARN (two doc-accuracy findings, both fixed).
 
 - **Deviation 1 — `fallow` counts test call sites, which broke two plan claims in the same direction.**
   The plan deferred removing the `fallow-ignore-next-line unused-class-member` comment to step 4, reasoning that `dispose()` would have no call site until the wiring landed.
-  It has one as soon as step 2's tests call it, so the suppression went stale immediately and `pnpm fallow dead-code` failed in the *opposite* direction from the plan's prediction.
+  It has one as soon as step 2's tests call it, so the suppression went stale immediately and `pnpm fallow dead-code` failed in the _opposite_ direction from the plan's prediction.
   Removed it in step 2 instead.
   The same fact invalidates step 4's second killing mutation: with the registration deleted and no suppression, fallow reports zero findings.
   The gate can never pin production wiring — the composition-root tests are the only pin.
   Both corrections are recorded in the commit bodies and the architecture doc's `Landed:` note; the plan file is left as written.
 
 - **Deviation 2 — the first draft of step 4's tests was vacuous, and the reviewer reproduced why.**
-  Spawning a background agent and firing `session_shutdown` while it was still *running* passed with the wiring deleted: `abortAll()`'s notification settles after `manager.dispose()` has emptied the registry, so `update()` takes its idle path into `clearWidget()` and tears the widget down incidentally.
+  Spawning a background agent and firing `session_shutdown` while it was still _running_ passed with the wiring deleted: `abortAll()`'s notification settles after `manager.dispose()` has emptied the registry, so `update()` takes its idle path into `clearWidget()` and tears the widget down incidentally.
   That is the accidental self-heal the plan's Background described, and it is deterministic in this harness rather than the ≤ 80 ms race the plan expected.
   Driving the agent to **completion** first fixes it — `disposeSession()` notifies no observer, so no incidental `update()` lands.
   The `completeAgentIntoWidget()` doc comment records why the choice is load-bearing.
@@ -83,7 +83,7 @@ Pre-completion reviewer: WARN (two doc-accuracy findings, both fixed).
 - **Deviation 3 — step 5 was dropped, not deferred.**
   The plan anticipated that the ordering mutation might stay green and pre-authorized recording it as a finding.
   Measured: swapping the two `session_shutdown` registrations leaves all 1447 tests green, because Decision 2's `uiCtx` clear makes both orders converge.
-  Worse, the test written for the step survived the *wiring-deletion* mutation too, so by the `testing` skill's definition it was a broken probe — and `composition-root.test.ts`'s docstring claims only that file fails when wiring is removed, so committing it would have weakened a true claim.
+  Worse, the test written for the step survived the _wiring-deletion_ mutation too, so by the `testing` skill's definition it was a broken probe — and `composition-root.test.ts`'s docstring claims only that file fails when wiring is removed, so committing it would have weakened a true claim.
   Operator chose to drop it and keep the ordering as defensive intent in an `index.ts` comment.
 
 - **Deviation 4 — step 2 was retyped `fix:` → `refactor:`.**
@@ -145,9 +145,9 @@ The retrospective then found two defects the ship flow had no step to catch: a f
 
 - `instruction-violation` (self-identified — but only at retro, after it shipped) — the close comment cites `a1c1e5c7` for the Tidy-First refactor commit.
   That object does not exist; the real commit is `a14a217c`.
-  The comment's *first* SHA (`a9a7a630`) was correct because it was copied from `git log` output; the second was typed from memory mid-draft.
+  The comment's _first_ SHA (`a9a7a630`) was correct because it was copied from `git log` output; the second was typed from memory mid-draft.
   `AGENTS.md` names this failure mode precisely — "including the second and third hash cited mid-draft, which is where the invention happens (Refs #777)" — and `/ship-issue` carries its operational form (resolve every SHA before drafting, then re-resolve every hex token in the finished draft, Refs #704, #788).
-  `/ship-worktree` step 5 carries only the *formatting* half of that rule ("SHA as plain text (no backticks) so GitHub auto-links it") and none of the verification half.
+  `/ship-worktree` step 5 carries only the _formatting_ half of that rule ("SHA as plain text (no backticks) so GitHub auto-links it") and none of the verification half.
   Impact: a wrong, non-auto-linking SHA published to a public closed issue; requires a correcting comment.
 
 - `missing-context` — the ship session never opened the plan body or the retro file, so [PR #850] was not closed.

@@ -106,6 +106,7 @@ export function resolveInvocationModel(
   This makes the function total.
   The guarded path is unreachable in practice (a live session always has a registry when a model override is requested); previously it would have thrown a `TypeError` on `registry.getAll`.
   Converting an unreachable crash into a typed error result is internal hardening, not a user-facing behavior change — hence `refactor:`, not `fix:`.
+
 - The file-level `eslint-disable` header is removed: `no-redundant-type-constituents` was for `any | string` (now `Model<any> | string`, a genuine union); `no-unsafe-assignment` was for the untyped registry reads (now typed).
 
 ### Typed model boundary in `spawn-config.ts` + `runtime.ts`
@@ -217,14 +218,14 @@ The fixture migration (partial model literals → `makeModel`) is mechanical: th
 ## Risks and Mitigations
 
 - **Risk**: `Model<any>` re-introduces `any` at member-access sites.
-  *Mitigation*: `Model<TApi>.id`/`.name`/`.provider` are typed independent of `TApi`; only the phantom generic is `any`, so accesses stay typed.
+  _Mitigation_: `Model<TApi>.id`/`.name`/`.provider` are typed independent of `TApi`; only the phantom generic is `any`, so accesses stay typed.
   Verified against the SDK `Model` interface.
 - **Risk**: fixture migration silently changes resolution results.
-  *Mitigation*: scoring reads only `id`/`name`/`provider`; `makeModel` preserves those from the old literals, and the `toEqual` assertions catch any drift.
+  _Mitigation_: scoring reads only `id`/`name`/`provider`; `makeModel` preserves those from the old literals, and the `toEqual` assertions catch any drift.
 - **Risk**: the extraction doesn't drop `spawn` below threshold.
-  *Mitigation*: Step 2 verifies with `fallow health --complexity` and, if needed, extracts the options-assembly too.
+  _Mitigation_: Step 2 verifies with `fallow health --complexity` and, if needed, extracts the options-assembly too.
 - **Risk**: removing a file-level disable surfaces a genuinely irreducible SDK-gap line.
-  *Mitigation*: fall back to a line-level suppression with the specific named rule (per the roadmap's "line-level precision, not zero" guidance), not a re-added file header.
+  _Mitigation_: fall back to a line-level suppression with the specific named rule (per the roadmap's "line-level precision, not zero" guidance), not a re-added file header.
 
 ## Open Questions
 

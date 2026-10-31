@@ -46,7 +46,7 @@ Fixing the API gaps first makes the extraction clean: each extracted module rece
 
 #### Gap 1: foreground ID discovery
 
-The foreground path needs the agent ID *during* execution (inside `onSessionCreated`, before `spawnAndWait` resolves) to register the activity tracker in the widget.
+The foreground path needs the agent ID _during_ execution (inside `onSessionCreated`, before `spawnAndWait` resolves) to register the activity tracker in the widget.
 The manager's internal `onSessionCreated` handler already has `id` and `record` in scope but passes only `session` to the caller's callback.
 The tool works around this by iterating `listAgents()` and matching by session identity:
 
@@ -59,7 +59,7 @@ onSessionCreated: (session) => {
       // ...
     }
   }
-}
+};
 ```
 
 This is a violation of Tell-Don't-Ask: the tool asks the manager for data it already has.
@@ -150,7 +150,7 @@ onSessionCreated: (session, record) => {
   fgId = record.id;
   deps.agentActivity.set(record.id, fgState);
   deps.widget.ensureTimer();
-}
+};
 ```
 
 The `runForeground` function receives narrow deps:
@@ -181,7 +181,11 @@ The `spawnBackground` function receives narrow deps:
 
 ```typescript
 export interface BackgroundDeps {
-  manager: { spawn: AgentToolManager["spawn"]; getRecord: AgentToolManager["getRecord"]; getMaxConcurrent: AgentToolManager["getMaxConcurrent"] };
+  manager: {
+    spawn: AgentToolManager["spawn"];
+    getRecord: AgentToolManager["getRecord"];
+    getMaxConcurrent: AgentToolManager["getMaxConcurrent"];
+  };
   widget: { ensureTimer(): void; update(): void };
   agentActivity: AgentActivityAccess;
 }

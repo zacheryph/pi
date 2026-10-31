@@ -8,7 +8,11 @@ import { SubagentsServiceAdapter, toSubagentRecord } from "#src/service/service-
 import { type SessionContext, Subagent } from "#src/types";
 import { makeModel } from "#test/helpers/make-model";
 import { createTestSubagent, makeStubExecution } from "#test/helpers/make-subagent";
-import { createMockSession, createSubagentSessionStub, toSubagentSession } from "#test/helpers/mock-session";
+import {
+  createMockSession,
+  createSubagentSessionStub,
+  toSubagentSession,
+} from "#test/helpers/mock-session";
 import { STUB_SNAPSHOT } from "#test/helpers/stub-ctx";
 
 describe("toSubagentRecord", () => {
@@ -57,7 +61,9 @@ describe("toSubagentRecord", () => {
   });
 
   it("reports turns only through the turn budget", () => {
-    const result = toSubagentRecord(createTestSubagent({ turnBudget: { maxTurns: 12, used: 4, phase: "within" } }));
+    const result = toSubagentRecord(
+      createTestSubagent({ turnBudget: { maxTurns: 12, used: 4, phase: "within" } }),
+    );
     expect(result.turnBudget).toEqual({ maxTurns: 12, used: 4, phase: "within" });
     expect(result).not.toHaveProperty("turnCount");
     expect(result).not.toHaveProperty("maxTurns");
@@ -125,7 +131,9 @@ describe("toSubagentRecord", () => {
   });
 
   it("does not let a consumer write into the agent's own totals", () => {
-    const agent = createTestSubagent({ lifetimeUsage: { input: 100, output: 200, cacheWrite: 50 } });
+    const agent = createTestSubagent({
+      lifetimeUsage: { input: 100, output: 200, cacheWrite: 50 },
+    });
 
     const snapshot = toSubagentRecord(agent);
     snapshot.lifetimeUsage.input = 999;
@@ -196,7 +204,7 @@ function makeStubCtx(): SessionContext {
 function makeRuntimeStub(override: Partial<ServiceRuntimeLike> = {}): ServiceRuntimeLike {
   return {
     currentCtx: makeStubCtx(),
-    buildSnapshot: vi.fn((_: boolean): ParentSnapshot => STUB_SNAPSHOT),
+    buildSnapshot: vi.fn((): ParentSnapshot => STUB_SNAPSHOT),
     getSessionInfo: vi.fn(() => ({
       parentSessionFile: "/sessions/parent.jsonl",
       parentSessionId: "parent-session-123",
@@ -220,7 +228,9 @@ function createManagerStub() {
     abort: vi.fn<SubagentManagerLike["abort"]>(() => true),
     waitForAll: vi.fn<SubagentManagerLike["waitForAll"]>(async () => {}),
     hasRunning: vi.fn<SubagentManagerLike["hasRunning"]>(() => false),
-    registerWorkspaceProvider: vi.fn<SubagentManagerLike["registerWorkspaceProvider"]>(() => () => {}),
+    registerWorkspaceProvider: vi.fn<SubagentManagerLike["registerWorkspaceProvider"]>(
+      () => () => {},
+    ),
     resume: vi.fn<SubagentManagerLike["resume"]>(async () => ({
       kind: "resumed",
       record: createTestSubagent(),
@@ -251,12 +261,10 @@ describe("SubagentsServiceAdapter — getRecord and listAgents", () => {
   function createService(records: Subagent[]): SubagentsService {
     const manager = createManagerStub();
     manager.getRecord.mockImplementation((id) => records.find((r) => r.id === id));
-    manager.listAgents.mockImplementation(() => [...records].sort((a, b) => b.startedAt - a.startedAt));
-    return new SubagentsServiceAdapter(
-      manager,
-      () => makeModel({ id: "test" }),
-      makeRuntimeStub(),
+    manager.listAgents.mockImplementation(() =>
+      [...records].sort((a, b) => b.startedAt - a.startedAt),
     );
+    return new SubagentsServiceAdapter(manager, () => makeModel({ id: "test" }), makeRuntimeStub());
   }
 
   it("getRecord returns serialized record for known id", () => {
@@ -292,9 +300,7 @@ describe("SubagentsServiceAdapter — spawn", () => {
       vi.fn(),
       makeRuntimeStub({ currentCtx: undefined }),
     );
-    expect(() => svc.spawn("Explore", "do something")).toThrow(
-      /no active session/i,
-    );
+    expect(() => svc.spawn("Explore", "do something")).toThrow(/no active session/i);
   });
 
   it("resolves string model names via resolveModel", () => {
@@ -315,9 +321,7 @@ describe("SubagentsServiceAdapter — spawn", () => {
       () => 'Model not found: "bad-model".\n\nAvailable models:\n  anthropic/claude-sonnet',
       makeRuntimeStub(),
     );
-    expect(() => svc.spawn("Explore", "task", { model: "bad-model" })).toThrow(
-      /Model not found/,
-    );
+    expect(() => svc.spawn("Explore", "task", { model: "bad-model" })).toThrow(/Model not found/);
   });
 
   describe("thinking level", () => {
@@ -361,11 +365,7 @@ describe("SubagentsServiceAdapter — spawn", () => {
   it("delegates to manager.spawn with resolved model", () => {
     const resolvedModel = makeModel({ id: "claude-sonnet", provider: "anthropic" });
     const mgr = createManagerStub();
-    const svc = new SubagentsServiceAdapter(
-      mgr,
-      () => resolvedModel,
-      makeRuntimeStub(),
-    );
+    const svc = new SubagentsServiceAdapter(mgr, () => resolvedModel, makeRuntimeStub());
     const id = svc.spawn("Explore", "check TODOs", { model: "sonnet", maxTurns: 5 });
     expect(id).toBe("spawned-id");
     expect(mgr.spawn).toHaveBeenCalledWith(
@@ -389,7 +389,10 @@ describe("SubagentsServiceAdapter — spawn", () => {
     it("forwards a handoff copy and refuses one that is not a JSON object", () => {
       const mgr = createManagerStub();
       const svc = new SubagentsServiceAdapter(mgr, vi.fn(), makeRuntimeStub());
-      const handoff = { todos: { keys: ["auth-audit"], scope: "ledger" }, review: { ticket: "AUTH-12" } };
+      const handoff = {
+        todos: { keys: ["auth-audit"], scope: "ledger" },
+        review: { ticket: "AUTH-12" },
+      };
 
       svc.spawn("Explore", "audit", { handoff });
       svc.spawn("Explore", "plain");
@@ -397,8 +400,9 @@ describe("SubagentsServiceAdapter — spawn", () => {
       expect(vi.mocked(mgr.spawn).mock.calls[0][3].handoff).toEqual(handoff);
       expect(vi.mocked(mgr.spawn).mock.calls[0][3].handoff).not.toBe(handoff);
       expect(vi.mocked(mgr.spawn).mock.calls[1][3].handoff).toBeUndefined();
-      expect(() => svc.spawn("Explore", "bad", { handoff: ["x"] as unknown as Record<string, unknown> }))
-        .toThrow(/handoff must be an object/);
+      expect(() =>
+        svc.spawn("Explore", "bad", { handoff: ["x"] as unknown as Record<string, unknown> }),
+      ).toThrow(/handoff must be an object/);
     });
   });
 
@@ -573,7 +577,9 @@ describe("SubagentsServiceAdapter — steer, abort, waitForAll, hasRunning", () 
     it("delegates to session.steer and returns true when session is ready", async () => {
       const mockSteer = vi.fn(async () => {});
       const record = createTestSubagent({ id: "a-1", status: "running" });
-      record.subagentSession = toSubagentSession(createSubagentSessionStub(createMockSession({ steer: mockSteer })));
+      record.subagentSession = toSubagentSession(
+        createSubagentSessionStub(createMockSession({ steer: mockSteer })),
+      );
       const mgr = createManagerStub();
       mgr.getRecord.mockReturnValue(record);
       const svc = createSvc(mgr);
@@ -639,7 +645,7 @@ describe("SubagentsServiceAdapter — resume", () => {
         isBackground: true,
         result: "Resumed output.",
         toolUses: 5,
-          startedAt: 1000,
+        startedAt: 1000,
         completedAt: 2000,
         lifetimeUsage: { input: 100, output: 200, cacheWrite: 50 },
         compactionCount: 0,

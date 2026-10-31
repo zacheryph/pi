@@ -67,7 +67,10 @@ export interface SpawnExecution {
 export interface SpawnPresentation {
   modelName: string | undefined;
   agentTags: string[];
-  detailBase: Pick<AgentDetails, "displayName" | "description" | "subagentType" | "modelName" | "tags">;
+  detailBase: Pick<
+    AgentDetails,
+    "displayName" | "description" | "subagentType" | "modelName" | "tags"
+  >;
 }
 
 /** Fully resolved config — now a composition of domain-aligned sub-interfaces. */

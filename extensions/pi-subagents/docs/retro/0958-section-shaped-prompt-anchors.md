@@ -21,7 +21,7 @@ The operator chose **adopt mostly as-is**: merge the PR, then land follow-up com
 I generated a parent prompt from the actual 0.86.1 dist rather than a hand fixture — a scratch `pnpm install @earendil-works/pi-coding-agent@0.86.1`, calling `buildSystemPrompt` directly — and confirmed all three deltas the PR claims. pi 0.86 renders the cwd as a `<cwd>` section (no `Current working directory:` footer), wraps the catalogue in a `<skills>` section, and drops the blank line below `<project_context>`'s opening tag so the lead-in sits at `openAt+1`.
 Cross-checked against pi's own source at `../pi`: `buildSystemPromptSections` wraps each section as `<name>\n…\n</name>` and `getSystemMessageText` joins them with `"\n\n"`.
 
-Fed through current `main`'s `buildAgentPrompt` with a relocated child, the child prompt came back carrying the parent's full `<project_context>` block naming `/parent/AGENTS.md`, plus an unclosed `<skills>` tag — the latter on *every* 0.86 child, because the cut lands on the heading inside the wrapper rather than on the wrapper.
+Fed through current `main`'s `buildAgentPrompt` with a relocated child, the child prompt came back carrying the parent's full `<project_context>` block naming `/parent/AGENTS.md`, plus an unclosed `<skills>` tag — the latter on _every_ 0.86 child, because the cut lands on the heading inside the wrapper rather than on the wrapper.
 
 Reachability is not hypothetical: `pi --version` reports 0.86.1, and `.pi/settings.json` loads `pi-subagents-worktrees`, the `WorkspaceProvider` that creates relocated children.
 The peer range is `>=0.81.0`, unbounded above.
@@ -38,7 +38,7 @@ The PR branch also handles the **real** 0.86.1 prompt bytes for both the relocat
 #### Approach
 
 Sound and idiomatic, which is why it clears the usual third-party bar.
-Dispatch is on *which cwd layer is present*, never a version check, and it lives at one point (`tailStart`) — OCP's decide-once.
+Dispatch is on _which cwd layer is present_, never a version check, and it lives at one point (`tailStart`) — OCP's decide-once.
 `cwdSectionStart` applies the same whole-line content discipline the 0.85 footer anchor uses, and `skillsSectionWrapperStart` validates the wrapper by pi's own heading before cutting at the opening tag.
 No speculative generality, no over-wide threading, no new parameters on a shared interface; the four new constants match the existing `SKILLS_CATALOGUE_CLOSE` / `PROJECT_CONTEXT_OPEN` convention.
 
@@ -123,7 +123,7 @@ Both follow-ups carry `Co-authored-by: George Harker <george@george-graphics.co.
   Only the real push settled it.
 - **The fork PR's CI run took roughly four minutes to be created**, during which `statusCheckRollup` was `[]` and `actions/runs?head_sha=…` returned `total_count: 0`.
   `ci_find` timed out at 125 s on a run that did eventually appear and pass.
-  An empty rollup on a fork PR means *not yet created* as often as it means *awaiting approval* — neither is a failure, and the distinction is not visible from the rollup alone.
+  An empty rollup on a fork PR means _not yet created_ as often as it means _awaiting approval_ — neither is a failure, and the distinction is not visible from the rollup alone.
   No approval was needed here, the fork having been approved on the previous head.
 - **`main` had advanced to `bdad88a4` mid-session** while three local doc commits sat unpushed.
   `git rev-parse --short main origin/main` failed with `Needed a single revision` at one point and resolved individually at another, which looked like divergence and was not: `git status -sb` read `ahead 3` and `git merge-base --is-ancestor` confirmed a clean fast-forward.
@@ -156,7 +156,7 @@ The direction landed on `adopt-as-is`, the rarer of `/pr-review`'s branches, wit
   `git show main:packages/pi-subagents/src/session/prompts.ts > …`, run the suite, `git checkout` to restore: 5 of 7 new tests failed, exactly as the PR body said.
   A claim that survives independent reproduction is worth more in the close comment than one repeated from the PR.
 - **The Verify gate found more than it was pointed at.**
-  The dangling unclosed `<skills>` tag on *every* 0.86 child, relocated or not, is not in the issue or the PR body; it fell out of printing the actual child prompt instead of asserting against it.
+  The dangling unclosed `<skills>` tag on _every_ 0.86 child, relocated or not, is not in the issue or the PR body; it fell out of printing the actual child prompt instead of asserting against it.
   The same run of evidence produced [#961] and [#962].
 - **Verification ran incrementally, not at the end.**
   The full gate (`check`, `lint`, package suite) ran after the first nit edit and again after the second, before each commit, rather than once before the push.

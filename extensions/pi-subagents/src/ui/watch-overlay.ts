@@ -10,14 +10,26 @@ import { getDisplayName } from "#src/ui/display";
 import { renderWatchOverlay, watchHeight, type WatchSection } from "#src/ui/watch-renderer";
 import { WatchTail, type WatchResources } from "#src/ui/watch-tail";
 
-export type WatchAgent = Pick<Subagent, "id" | "type" | "description" | "isBackground" | "status" | "responseText"
-  | "result" | "error" | "subscribeToUpdates"> & {
-    /** Resource metadata only; never inspect session messages or skill contents. */
-    readonly subagentSession?: { readonly session: {
+export type WatchAgent = Pick<
+  Subagent,
+  | "id"
+  | "type"
+  | "description"
+  | "isBackground"
+  | "status"
+  | "responseText"
+  | "result"
+  | "error"
+  | "subscribeToUpdates"
+> & {
+  /** Resource metadata only; never inspect session messages or skill contents. */
+  readonly subagentSession?: {
+    readonly session: {
       readonly resourceLoader: { getSkills(): { skills: WatchResources["skills"] } };
       readonly sessionManager: { getCwd(): string };
-    } };
+    };
   };
+};
 export interface WatchSettings {
   readonly overlayWidth: OverlayWidth;
   readonly overlayDefaultOpen: boolean;
@@ -27,7 +39,12 @@ type WatchContext = Pick<ExtensionContext, "mode" | "hasUI"> & {
   ui: Pick<ExtensionUIContext, "setWidget" | "theme" | "notify">;
 };
 type WatchTUI = Pick<TUI, "mode" | "terminal" | "showOverlay" | "requestRender">;
-interface Watched { record: WatchAgent; tail: WatchTail; unsubscribe?: () => void; finishedAt?: number }
+interface Watched {
+  record: WatchAgent;
+  tail: WatchTail;
+  unsubscribe?: () => void;
+  finishedAt?: number;
+}
 const HOST_KEY = "subagent-watch-host";
 const LINGER_MS = 8000;
 const REPAINT_MS = 100;
@@ -57,13 +74,16 @@ export class WatchOverlay implements SubagentManagerObserver {
     // Zero-row widget obtains Pi's injected TUI without replacing its editor or
     // opening an unresolved custom dialog. We own the low-level overlay handle,
     // so hide() removes THIS overlay, even when another extension is above it.
-    context.ui.setWidget(HOST_KEY, tui => {
+    context.ui.setWidget(HOST_KEY, (tui) => {
       this.tui = tui;
       this.refresh();
       let mode = tui.mode;
       return {
         render: () => {
-          if (mode !== tui.mode) { mode = tui.mode; this.refresh(); }
+          if (mode !== tui.mode) {
+            mode = tui.mode;
+            this.refresh();
+          }
           return [];
         },
         invalidate: () => {},
@@ -89,13 +109,28 @@ export class WatchOverlay implements SubagentManagerObserver {
     this.refresh();
   }
 
-  settingsChanged(): void { this.refresh(); }
+  settingsChanged(): void {
+    this.refresh();
+  }
 
-  onSubagentCreated(record: WatchAgent): void { this.track(record); this.refresh(); }
-  onSubagentStarted(record: WatchAgent): void { this.track(record); this.refresh(); }
-  onSubagentSessionCreated(record: WatchAgent): void { this.subscribe(record); this.refresh(); }
-  onSubagentCompleted(record: WatchAgent): void { this.finish(record); }
-  onSubagentResumed(record: WatchAgent): void { this.finish(record); }
+  onSubagentCreated(record: WatchAgent): void {
+    this.track(record);
+    this.refresh();
+  }
+  onSubagentStarted(record: WatchAgent): void {
+    this.track(record);
+    this.refresh();
+  }
+  onSubagentSessionCreated(record: WatchAgent): void {
+    this.subscribe(record);
+    this.refresh();
+  }
+  onSubagentCompleted(record: WatchAgent): void {
+    this.finish(record);
+  }
+  onSubagentResumed(record: WatchAgent): void {
+    this.finish(record);
+  }
   onSubagentResuming(record: WatchAgent): void {
     const watched = this.track(record);
     if (watched) {
@@ -106,7 +141,9 @@ export class WatchOverlay implements SubagentManagerObserver {
     this.scheduleExpiry();
     this.refresh();
   }
-  onSubagentCompacted(): void { this.requestRepaint(); }
+  onSubagentCompacted(): void {
+    this.requestRepaint();
+  }
 
   private track(record: WatchAgent): Watched | undefined {
     if (!this.context || !record.isBackground) return undefined;
@@ -125,15 +162,17 @@ export class WatchOverlay implements SubagentManagerObserver {
     // No inherited history: use child resources only to recognize live read evidence.
     try {
       const session = record.subagentSession?.session;
-      if (session) watched.tail.setResources({
-        cwd: session.sessionManager.getCwd(), skills: session.resourceLoader.getSkills().skills,
-      });
+      if (session)
+        watched.tail.setResources({
+          cwd: session.sessionManager.getCwd(),
+          skills: session.resourceLoader.getSkills().skills,
+        });
     } catch (error) {
       debugLog("WatchOverlay.resources", error);
       // Metadata failure must not break observation or produce stale skill evidence.
       watched.tail.setResources({ cwd: process.cwd(), skills: [] });
     }
-    watched.unsubscribe = record.subscribeToUpdates(event => {
+    watched.unsubscribe = record.subscribeToUpdates((event) => {
       if (watched.tail.apply(event)) this.requestRepaint();
     });
   }
@@ -145,7 +184,8 @@ export class WatchOverlay implements SubagentManagerObserver {
     watched.unsubscribe = undefined;
     watched.finishedAt = Date.now();
     if (record.error) watched.tail.note(`Error: ${record.error}`, "error");
-    else if (record.result && !watched.tail.blocks.some(block => block.kind === "text")) watched.tail.note(record.result, "text");
+    else if (record.result && !watched.tail.blocks.some((block) => block.kind === "text"))
+      watched.tail.note(record.result, "text");
     this.scheduleExpiry();
     this.refresh();
   }
@@ -164,24 +204,37 @@ export class WatchOverlay implements SubagentManagerObserver {
   private refresh(): void {
     if (!this.context || !this.tui) return;
     const wanted = this.lastVisibility ?? this.settings.overlayDefaultOpen;
-    this.visible = this.tui.mode === "fullscreen" && wanted && (this.lastVisibility === true || this.watched.size > 0);
+    this.visible =
+      this.tui.mode === "fullscreen" &&
+      wanted &&
+      (this.lastVisibility === true || this.watched.size > 0);
     if (this.handle && this.appliedWidth !== this.settings.overlayWidth) {
       this.handle.hide();
       this.handle = undefined;
     }
     if (!this.handle && this.visible) {
       try {
-        this.handle = this.tui.showOverlay({
-          render: width => renderWatchOverlay(this.sections(), width, watchHeight(this.tui!.terminal.rows), this.context!.ui.theme),
-          invalidate: () => {},
-        }, {
-          anchor: "top-right",
-          width: OVERLAY_WIDTH_PERCENT[this.settings.overlayWidth],
-          maxHeight: "100%",
-          nonCapturing: true,
-          // Tiny terminals cannot afford a panel; retain visibility preference on resize.
-          visible: (width, height) => this.tui?.mode === "fullscreen" && width >= 20 && height >= 10,
-        });
+        this.handle = this.tui.showOverlay(
+          {
+            render: (width) =>
+              renderWatchOverlay(
+                this.sections(),
+                width,
+                watchHeight(this.tui!.terminal.rows),
+                this.context!.ui.theme,
+              ),
+            invalidate: () => {},
+          },
+          {
+            anchor: "top-right",
+            width: OVERLAY_WIDTH_PERCENT[this.settings.overlayWidth],
+            maxHeight: "100%",
+            nonCapturing: true,
+            // Tiny terminals cannot afford a panel; retain visibility preference on resize.
+            visible: (width, height) =>
+              this.tui?.mode === "fullscreen" && width >= 20 && height >= 10,
+          },
+        );
         this.appliedWidth = this.settings.overlayWidth;
       } catch (error) {
         debugLog("WatchOverlay.showOverlay", error);
@@ -205,20 +258,25 @@ export class WatchOverlay implements SubagentManagerObserver {
   private scheduleExpiry(): void {
     if (this.expiry) clearTimeout(this.expiry);
     this.expiry = undefined;
-    const ends = [...this.watched.values()].flatMap(item => item.finishedAt == null ? [] : [item.finishedAt + LINGER_MS]);
+    const ends = [...this.watched.values()].flatMap((item) =>
+      item.finishedAt == null ? [] : [item.finishedAt + LINGER_MS],
+    );
     if (!ends.length) return;
-    this.expiry = setTimeout(() => {
-      this.expiry = undefined;
-      const now = Date.now();
-      for (const [id, item] of this.watched) {
-        if (item.finishedAt != null && item.finishedAt + LINGER_MS <= now) {
-          item.unsubscribe?.();
-          this.watched.delete(id);
+    this.expiry = setTimeout(
+      () => {
+        this.expiry = undefined;
+        const now = Date.now();
+        for (const [id, item] of this.watched) {
+          if (item.finishedAt != null && item.finishedAt + LINGER_MS <= now) {
+            item.unsubscribe?.();
+            this.watched.delete(id);
+          }
         }
-      }
-      this.refresh();
-      this.scheduleExpiry();
-    }, Math.max(0, Math.min(...ends) - Date.now()));
+        this.refresh();
+        this.scheduleExpiry();
+      },
+      Math.max(0, Math.min(...ends) - Date.now()),
+    );
     this.expiry.unref?.();
   }
 

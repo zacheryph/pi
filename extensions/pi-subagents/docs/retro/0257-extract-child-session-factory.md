@@ -11,7 +11,7 @@ issue_title: "Extract ChildSessionFactory from runner"
 
 ### Session summary
 
-Produced the implementation plan for Phase 16, Step 2 — extracting session *creation* out of `runAgent()` into a `ChildSessionFactory` collaborator while leaving session *interaction* in the runner.
+Produced the implementation plan for Phase 16, Step 2 — extracting session _creation_ out of `runAgent()` into a `ChildSessionFactory` collaborator while leaving session _interaction_ in the runner.
 The plan is a lift-and-shift: `runAgent()` keeps its `(snapshot, type, prompt, options, deps)` signature and delegates creation to a new `ConcreteChildSessionFactory`, so the existing 313-line runner test suite keeps passing through delegation.
 `#256` (`WorktreeIsolation`) is already merged; this step is independent of it and gates Steps 3-4.
 

@@ -9,13 +9,13 @@ import { vi } from "vitest";
  * Return type unannotated so vi.fn() stubs retain their Mock<...> methods.
  */
 export function makeMenuUI(selectResults: (string | undefined)[] = []) {
-	let selectIdx = 0;
-	return {
-		select: vi.fn().mockImplementation(() => selectResults[selectIdx++]),
-		input: vi.fn(),
-		confirm: vi.fn(),
-		editor: vi.fn(),
-		notify: vi.fn(),
-		custom: vi.fn(),
-	};
+  let selectIdx = 0;
+  return {
+    select: vi.fn().mockImplementation(() => selectResults[selectIdx++]),
+    input: vi.fn(),
+    confirm: vi.fn(),
+    editor: vi.fn(),
+    notify: vi.fn(),
+    custom: vi.fn(),
+  };
 }

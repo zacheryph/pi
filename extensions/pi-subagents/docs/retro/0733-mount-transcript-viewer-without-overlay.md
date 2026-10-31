@@ -69,7 +69,7 @@ Test count 1508 → 1514 (+6) in `pi-subagents`; `check`, `lint` (0 findings), `
   Root cause is the exact hazard `AGENTS.md` warns about: I read line numbers from the `../../pi` checkout, which tracks Pi's `main`, instead of the pinned dependency the ADR claims to cite.
   The sharper form is that the checkout **drifted during this session** — the `compositeOverlays` line read 267 at planning time and 268 by the end — so even a number captured correctly earlier can rot in place.
   The durable fix is to cite from the installed package's sourcemap (`dist/*.js.map` `sourcesContent`), which is what shipped.
-- The reviewer also caught that the threshold prose asserted 8 *is* the distance to the top of the screen and then computed that distance as 7.
+- The reviewer also caught that the threshold prose asserted 8 _is_ the distance to the top of the screen and then computed that distance as 7.
   It is one more than the distance.
   The planning retro had it right and the shipped text dropped the `+ 1`.
 - **A chrome change is invisible in the pane's total height.**
@@ -133,7 +133,7 @@ This retrospective spans all four stages, read from the peer transcript rather t
   Three `previousLines = newLines` line citations in ADR 0007 were each off by one.
   A fresh-context reviewer with a mandate to re-derive rather than accept is what found it; the implementing session had every number in front of it and had already checked them once.
 - **The peer→root handoff carried exactly the facts the ship stage needed.**
-  The `## Stage: Sync (worktree)` note stated the `**Release:**` marker, predicted the minor bump with the two `feat:` SHAs, and listed the two follow-ups as *not* this branch's work.
+  The `## Stage: Sync (worktree)` note stated the `**Release:**` marker, predicted the minor bump with the two `feat:` SHAs, and listed the two follow-ups as _not_ this branch's work.
   The ship session re-derived each independently (`next-version.sh`, the `(#N)` subject scan) and every one matched, so the breadcrumb functioned as a cross-check rather than a claim to trust.
 - **Verification ran incrementally, not at the end.**
   The TDD session established a four-gate green baseline before step 1 and ran `pnpm run check` after steps 1, 3, 4, 5, and 6 — so the end-of-cycle run confirmed a state already known green instead of discovering one.

@@ -7,12 +7,12 @@ issue_title: "Replace ConcurrencyQueue with a thunk-based ConcurrencyLimiter"
 
 ## Problem Statement
 
-The `ConcurrencyQueue` stores background-agent IDs and decides *when* to start them, but it cannot start an agent itself.
+The `ConcurrencyQueue` stores background-agent IDs and decides _when_ to start them, but it cannot start an agent itself.
 It compensates with a `startAgent(id)` callback that reaches back into the manager (`getRecord(id)`, status check, `run()`) — a dependency back-edge that forces forward-referenced bindings in both `index.ts` and the manager test helper.
 The queue also keeps its own `running` counter, fed by `markStarted`/`markFinished` relays in the manager's observer, duplicating state the agents already carry.
 A queued agent has `promise === undefined` until the queue starts it, which is the direct cause of `waitForAll`'s `while (true)` drain loop and its `eslint-disable`.
 
-These are three symptoms of one root cause: the queue schedules *identifiers it cannot act on* instead of *work it can run*.
+These are three symptoms of one root cause: the queue schedules _identifiers it cannot act on_ instead of _work it can run_.
 Scheduling thunks (`() => Promise<void>`) instead of IDs dissolves all three at the source.
 
 This is Phase 17 Step 1 (core consolidation), recorded in `docs/architecture/architecture.md` under "Improvement roadmap (Phase 17 — core consolidation)".
@@ -58,7 +58,7 @@ Constraints from AGENTS.md and skills:
 - Where the old `drain()` used `while (… && !isFull())` with `this.queue.shift()!`, prefer a bounded loop without a non-null assertion (`code-design` Biome/ESLint notes).
 
 The current observer-relay path (`buildObserver` → `queue.markStarted`/`markFinished`) confirmed: the queue's `running` counter mirrors the per-agent status the manager already tracks (the manager filters on `status === "running" || "queued"` in `cleanup`, `clearCompleted`, `hasRunning`, `waitForAll`).
-No production caller awaits a *queued* agent's promise (`get-result-tool.ts` guards on `status === "running"`; `spawnAndWait` is foreground; `waitForAll` filters by status), so giving queued agents a settled-on-completion promise is safe.
+No production caller awaits a _queued_ agent's promise (`get-result-tool.ts` guards on `status === "running"`; `spawnAndWait` is foreground; `waitForAll` filters by status), so giving queued agents a settled-on-completion promise is safe.
 
 ## Design Overview
 
@@ -69,46 +69,48 @@ It owns the active count and the pending queue; it has no knowledge of agents, I
 
 ```typescript
 export class ConcurrencyLimiter {
-	private active = 0;
-	private readonly pending: Array<{ start: () => void; settle: () => void }> = [];
+  private active = 0;
+  private readonly pending: Array<{ start: () => void; settle: () => void }> = [];
 
-	constructor(private readonly getLimit: () => number) {}
+  constructor(private readonly getLimit: () => number) {}
 
-	/**
-	 * Schedule a task to run FIFO once a slot is free.
-	 * The returned promise always settles: it follows the task's settlement when
-	 * the task runs, or resolves early if clear() drops it before it starts.
-	 */
-	schedule(task: () => Promise<void>): Promise<void> {
-		const { promise, resolve, reject } = Promise.withResolvers<void>();
-		this.pending.push({
-			start: () => {
-				this.active++;
-				task().then(resolve, reject).finally(() => {
-					this.active--;
-					this.recheck();
-				});
-			},
-			settle: resolve,
-		});
-		this.recheck();
-		return promise;
-	}
+  /**
+   * Schedule a task to run FIFO once a slot is free.
+   * The returned promise always settles: it follows the task's settlement when
+   * the task runs, or resolves early if clear() drops it before it starts.
+   */
+  schedule(task: () => Promise<void>): Promise<void> {
+    const { promise, resolve, reject } = Promise.withResolvers<void>();
+    this.pending.push({
+      start: () => {
+        this.active++;
+        task()
+          .then(resolve, reject)
+          .finally(() => {
+            this.active--;
+            this.recheck();
+          });
+      },
+      settle: resolve,
+    });
+    this.recheck();
+    return promise;
+  }
 
-	/** Start pending tasks until the limit is reached. Call when the limit may have grown. */
-	recheck(): void {
-		while (this.active < this.getLimit()) {
-			const next = this.pending.shift();
-			if (!next) break;
-			next.start();
-		}
-	}
+  /** Start pending tasks until the limit is reached. Call when the limit may have grown. */
+  recheck(): void {
+    while (this.active < this.getLimit()) {
+      const next = this.pending.shift();
+      if (!next) break;
+      next.start();
+    }
+  }
 
-	/** Drop all pending tasks, resolving their promises without running them. */
-	clear(): void {
-		const dropped = this.pending.splice(0);
-		for (const task of dropped) task.settle();
-	}
+  /** Drop all pending tasks, resolving their promises without running them. */
+  clear(): void {
+    const dropped = this.pending.splice(0);
+    for (const task of dropped) task.settle();
+  }
 }
 ```
 
@@ -131,9 +133,9 @@ Design decisions:
 ```typescript
 // spawn(), background and not bypassQueue:
 record.promise = this.limiter.schedule(() => {
-	// Guard: an abort-while-queued task is a no-op (Step 3 folds this into Subagent.start()).
-	if (record.status !== "queued") return Promise.resolve();
-	return record.run();
+  // Guard: an abort-while-queued task is a no-op (Step 3 folds this into Subagent.start()).
+  if (record.status !== "queued") return Promise.resolve();
+  return record.run();
 });
 // foreground or bypassQueue:
 record.promise = record.run();
@@ -167,21 +169,22 @@ The status guard replaces `dequeue` — an aborted queued agent (status `stopped
   ```
 
   The re-check loop is no longer `while (true)` and no longer drives scheduling — the limiter auto-starts queued agents as slots free, so a single `allSettled` covers the queued case.
-  The loop survives only to catch agents spawned *during* the wait.
+  The loop survives only to catch agents spawned _during_ the wait.
   The `eslint-disable @typescript-eslint/no-unnecessary-condition` is deleted.
+
 - `dispose()` — `this.limiter.clear()` (unchanged in intent).
 
 ### `index.ts` wiring
 
 ```typescript
 const settings = new SettingsManager({
-	// …
-	onMaxConcurrentChanged: () => limiter.recheck(), // forward-ref closure (settings → limiter); benign
+  // …
+  onMaxConcurrentChanged: () => limiter.recheck(), // forward-ref closure (settings → limiter); benign
 });
 settings.load();
 // …
 const limiter = new ConcurrencyLimiter(() => settings.maxConcurrent);
-const manager = new SubagentManager({ /* … */ limiter, /* … */ });
+const manager = new SubagentManager({ /* … */ limiter /* … */ });
 ```
 
 The only surviving forward reference is `settings → limiter` (a runtime-only closure, the same shape as today's `settings → queue.drain`).
@@ -192,7 +195,7 @@ The `limiter → manager` back-edge (the `startAgent` callback and its explanato
 - **Abort while queued** — `markStopped()` flips status; the scheduled thunk, when run, returns `Promise.resolve()` (no-op), settling `record.promise`.
 - **Limit decreased below active count** — `recheck()` simply starts nothing (`active < getLimit()` is false); in-flight tasks finish normally.
 - **Limit increased** — `onMaxConcurrentChanged → limiter.recheck()` starts newly-admissible pending tasks.
-- **`clear()` with in-flight tasks** — only *pending* tasks are dropped; running tasks complete and `active--` on settle.
+- **`clear()` with in-flight tasks** — only _pending_ tasks are dropped; running tasks complete and `active--` on settle.
 
 ## Module-Level Changes
 

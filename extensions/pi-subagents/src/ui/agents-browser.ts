@@ -5,10 +5,16 @@ import { LOCKABLE_FIELDS, type LockableField } from "#src/config/invocation-conf
 import { composeAgentInstructions, parseFragments } from "#src/config/prompt-fragments";
 import { normalizeMaxTurns } from "#src/lifecycle/turn-limits";
 import type { AgentConfig } from "#src/types";
-import { type BrowserView, sanitizeBrowserText, showReadOnlyBrowser } from "#src/ui/read-only-browser";
+import {
+  type BrowserView,
+  sanitizeBrowserText,
+  showReadOnlyBrowser,
+} from "#src/ui/read-only-browser";
 
-export type AgentsBrowserRegistry = Pick<AgentTypeRegistry,
-  "getAllTypes" | "resolveAgentConfig" | "getToolNamesForType">;
+export type AgentsBrowserRegistry = Pick<
+  AgentTypeRegistry,
+  "getAllTypes" | "resolveAgentConfig" | "getToolNamesForType"
+>;
 export interface AgentsBrowserDefaults {
   readonly defaultMaxTurns?: number;
 }
@@ -31,9 +37,12 @@ export async function showAgentsBrowser(
     ctx.ui.notify("Agent definitions browser requires TUI mode.", "warning");
     return;
   }
-  await showReadOnlyBrowser(ctx, buildAgentsView(registry, defaults, {
-    projectTrusted: ctx.isProjectTrusted?.() === true,
-  }));
+  await showReadOnlyBrowser(
+    ctx,
+    buildAgentsView(registry, defaults, {
+      projectTrusted: ctx.isProjectTrusted?.() === true,
+    }),
+  );
 }
 
 /** Registry already contains winning definitions, including disabled overrides. */
@@ -45,18 +54,23 @@ export function buildAgentsView(
   return {
     title: "Subagents · Agents",
     note: "Read-only effective definitions · unlocked fields may be overridden by callers",
-    items: [...registry.getAllTypes()].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" })).map((name) => {
-      const config = registry.resolveAgentConfig(name);
-      const enabled = config.enabled !== false;
-      return {
-        id: name,
-        label: name,
-        status: enabled ? "enabled" : "disabled",
-        badge: { label: enabled ? "[enabled]" : "[disabled]", color: enabled ? "success" : "dim" },
-        description: config.description,
-        detail: agentDetail(config, registry.getToolNamesForType(name), defaults, options),
-      };
-    }),
+    items: [...registry.getAllTypes()]
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
+      .map((name) => {
+        const config = registry.resolveAgentConfig(name);
+        const enabled = config.enabled !== false;
+        return {
+          id: name,
+          label: name,
+          status: enabled ? "enabled" : "disabled",
+          badge: {
+            label: enabled ? "[enabled]" : "[disabled]",
+            color: enabled ? "success" : "dim",
+          },
+          description: config.description,
+          detail: agentDetail(config, registry.getToolNamesForType(name), defaults, options),
+        };
+      }),
   };
 }
 
@@ -91,7 +105,8 @@ function maxTurnsSummary(config: AgentConfig, defaults: AgentsBrowserDefaults): 
   const effective = normalizeMaxTurns(configured);
   let label = effective === undefined ? "unlimited" : String(effective);
   if (configured !== undefined && configured !== effective) label += ` (configured: ${configured})`;
-  if (config.maxTurns === undefined && defaults.defaultMaxTurns !== undefined) label += " (extension default)";
+  if (config.maxTurns === undefined && defaults.defaultMaxTurns !== undefined)
+    label += " (extension default)";
   return label;
 }
 
@@ -112,8 +127,18 @@ function agentDetail(
     ["Thinking", config.thinking ?? "(inherit parent)"],
     ["Max turns", maxTurnsSummary(config, defaults)],
     ["Prompt mode", config.promptMode],
-    ["Inherit context", config.inheritContext === undefined ? "false (tool default; caller decides)" : String(config.inheritContext)],
-    ["Run in background", config.runInBackground === undefined ? "false (tool default; caller decides)" : String(config.runInBackground)],
+    [
+      "Inherit context",
+      config.inheritContext === undefined
+        ? "false (tool default; caller decides)"
+        : String(config.inheritContext),
+    ],
+    [
+      "Run in background",
+      config.runInBackground === undefined
+        ? "false (tool default; caller decides)"
+        : String(config.runInBackground),
+    ],
     ["Locked", lockSummary(config)],
     ["Tool guideline", config.toolGuideline ?? "(none)"],
     ["Description", config.description],
@@ -125,15 +150,30 @@ function agentDetail(
     // blocks preview. Validate names before deriving paths; never expand paths.
     const parsed = parseFragments(config.fragments);
     const names = parsed.fragments ?? [];
-    const provenance = names.map((name, index) => `${index + 1}. ${name}\n   ${config.sourcePath
-      ? join(dirname(config.sourcePath), "fragments", `${name}.md`)
-      : "(source path unavailable)"}`).join("\n");
-    sections.push("", "Fragments", sanitizeBrowserText(provenance) || "(invalid)", "", "Composed instructions");
+    const provenance = names
+      .map(
+        (name, index) =>
+          `${index + 1}. ${name}\n   ${
+            config.sourcePath
+              ? join(dirname(config.sourcePath), "fragments", `${name}.md`)
+              : "(source path unavailable)"
+          }`,
+      )
+      .join("\n");
+    sections.push(
+      "",
+      "Fragments",
+      sanitizeBrowserText(provenance) || "(invalid)",
+      "",
+      "Composed instructions",
+    );
     try {
       const composed = composeAgentInstructions(config, options);
       sections.push(sanitizeBrowserText(composed.systemPrompt) || "(empty)");
     } catch (error) {
-      sections.push(`Error: ${sanitizeBrowserText(error instanceof Error ? error.message : String(error))}`);
+      sections.push(
+        `Error: ${sanitizeBrowserText(error instanceof Error ? error.message : String(error))}`,
+      );
     }
   }
   return sections.join("\n");

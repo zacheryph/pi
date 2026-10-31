@@ -74,7 +74,7 @@ Three independent blockers, each verified in source:
    Nothing re-sets it, so a re-prepared workspace at a new path is not where the resumed child runs.
 2. **The path is randomized.** `createWorktree` appends `randomUUID().slice(0, 8)` to the worktree path (`packages/pi-subagents-worktrees/src/worktree.ts`), so a second `prepare()` cannot return the first path even in principle.
 3. **The child's work is not in the new tree.**
-   `cleanupWorktree` commits a dirty tree to `pi-agent-<id>` and removes the worktree; a fresh `git worktree add --detach <path> HEAD` checks out the *parent's* HEAD.
+   `cleanupWorktree` commits a dirty tree to `pi-agent-<id>` and removes the worktree; a fresh `git worktree add --detach <path> HEAD` checks out the _parent's_ HEAD.
    The resumed child would find none of its own edits, and the second cleanup would collide on the branch name and fall back to `pi-agent-<id>-<timestamp>`, scattering the work across two branches.
 
 ### Prepared is not the same as provider-registered
@@ -132,7 +132,11 @@ The flag is set before the call rather than after, so a provider whose `dispose(
 `completeRun()` becomes:
 
 ```typescript
-const finalStatus: SubagentStatus = result.aborted ? "aborted" : result.steered ? "steered" : "completed";
+const finalStatus: SubagentStatus = result.aborted
+  ? "aborted"
+  : result.steered
+    ? "steered"
+    : "completed";
 const { question, body } = parseQuestionForParent(result.responseText);
 const holdForResume = finalStatus === "completed" && question !== undefined;
 const finalBody = holdForResume
@@ -188,7 +192,9 @@ A child that asks, is resumed, answers without asking again, and then is resumed
 ```typescript
 // Agent tool, resume branch — tell by id, with an outcome, no reaching through
 const existing = this.manager.getRecord(id);
-if (!existing.isSessionReady()) { /* not-found / released messages, unchanged */ }
+if (!existing.isSessionReady()) {
+  /* not-found / released messages, unchanged */
+}
 if (existing.workspaceDisposed) return textResult(WORKSPACE_GONE_MESSAGE);
 existing.claim();
 ```
@@ -292,7 +298,7 @@ Estimated after: 75 files (the new helper's sibling test), roughly 15–20 added
 | Invariant                                                                                   | Source                                               | Pin                                                                                          | Risk here                                                                                                                          |
 | ------------------------------------------------------------------------------------------- | ---------------------------------------------------- | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | A declared question is split out before the result is stored, so it renders once            | Step 8 ([#465]) `Landed:`                            | `subagent.test.ts` — "records a declared question and strips it from the stored result"      | Step 1 moves the parse; opened and confirmed it asserts both `pendingQuestion` and the stripped `result`                           |
-| An aborted run's declared question is still recorded                                        | Step 8 ([#465])                                      | `subagent.test.ts` — "records a question an aborted run declared before it ran out of turns" | The hold rule deliberately excludes `aborted`; this test pins that the *question* still records even though the workspace disposes |
+| An aborted run's declared question is still recorded                                        | Step 8 ([#465])                                      | `subagent.test.ts` — "records a question an aborted run declared before it ran out of turns" | The hold rule deliberately excludes `aborted`; this test pins that the _question_ still records even though the workspace disposes |
 | A resumed run's follow-up question is recorded and stripped                                 | Step 8 ([#465])                                      | `subagent.test.ts` — "records a follow-up question a resumed run declares"                   | `completeResume` gains a branch around the same parse                                                                              |
 | The claim is caller-scoped: `resetForResume` clears `consumedAt` but not the claim          | Step 8 ([#465]) `Landed:`                            | `subagent.test.ts` resume/claim tests                                                        | The new refusal returns **before** `existing.claim()`, so a refused resume claims nothing                                          |
 | `Workspace.dispose()` throws propagate; the best-effort wrap belongs at the call site       | Phase 16 Step 2 (`workspace-bracket.ts` doc comment) | `workspace-bracket.test.ts` — "propagates a throwing dispose (does not swallow)"             | The flag is set before delegating, so the throw still escapes                                                                      |

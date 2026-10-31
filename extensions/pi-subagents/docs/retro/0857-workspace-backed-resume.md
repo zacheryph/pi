@@ -26,13 +26,13 @@ Two follow-up forks were settled in a bundled gate — hold on `completed` only 
 The new `wasDisposed()` keys on an actually-prepared workspace instead.
 
 The Tidy-First assessor's `completeRun` reorder was accepted with one qualification.
-It reported the reorder as behavior-preserving; it is behavior-preserving *for the existing suite*, but not byte-identical when a question block ends the output **and** an addendum exists, because `spliceOut` strips the addendum's leading blank line today.
+It reported the reorder as behavior-preserving; it is behavior-preserving _for the existing suite_, but not byte-identical when a question block ends the output **and** an addendum exists, because `spliceOut` strips the addendum's leading blank line today.
 That intersection cannot arise for a `completed` outcome under the new rule, and no existing test covers it — recorded in the plan as a scoped claim rather than the universal one.
 
 Marker spelling: the protocol tag is `<question-for-parent>` (hyphens), not the underscored form the issue body and the roadmap step both use.
 
 The addendum drop is real and was filed rather than hand-waved: a question-ending child that is never resumed disposes at `releaseSession()`, where `resultAddendum` has no reader, so the worktrees provider's `Changes saved to branch …` line is lost.
-The preserved-worktree scan does not cover it — that scan reports *failed* cleanups, and this one succeeds.
+The preserved-worktree scan does not cover it — that scan reports _failed_ cleanups, and this one succeeds.
 The operator adopted [#870] as a new Phase 22 Step 12 rather than deferring it.
 
 Baseline measured at planning time: 1447 tests across 74 files.
@@ -61,7 +61,7 @@ Running both directions is what made the 9-test set fully mutation-verified; run
 A boolean accessor needs both mutation directions, not one.
 
 Six of the eleven new tests in step 5 passed during Red.
-Each was a genuine regression pin rather than a broken probe, but only because they were checked: "disposes when the retention sweep releases the session" was green pre-fix for the *wrong reason* — `completeRun` had already disposed — and became meaningful only once the hold rule stopped it from doing so.
+Each was a genuine regression pin rather than a broken probe, but only because they were checked: "disposes when the retention sweep releases the session" was green pre-fix for the _wrong reason_ — `completeRun` had already disposed — and became meaningful only once the hold rule stopped it from doing so.
 Deleting the `releaseSession` call turned it red, which is the evidence; the Red run was not.
 
 The `!this.isActive()` guard went into its own private `disposeHeldWorkspace()` rather than being spelled inline at both catch-all call sites as the plan sketched.

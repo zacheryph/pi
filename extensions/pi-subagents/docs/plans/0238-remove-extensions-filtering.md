@@ -50,10 +50,7 @@ Steps 1 (#237, completed) and 2 (#238) are independent; Step 3 (#239) depends on
 ### `filterActiveTools` after this change
 
 ```typescript
-function filterActiveTools(
-  activeTools: string[],
-  config: ToolFilterConfig,
-): string[] {
+function filterActiveTools(activeTools: string[], config: ToolFilterConfig): string[] {
   const { toolNames, extensions } = config;
   if (extensions === false) {
     return activeTools;
@@ -180,11 +177,11 @@ Both are narrowing changes — existing `true` and `false` values remain valid.
 
 ## Risks and Mitigations
 
-| Risk                                                                             | Mitigation                                                                                                                                   |
-| -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| Users with `extensions: <csv-list>` silently lose per-extension filtering        | `feat!:` commit triggers major version bump; frontmatter parser emits deprecation warning and coerces to `true`; README documents the change |
-| `filterActiveTools` behavior regresses for boolean paths                         | Steps 1–4 each run type checks or tests; `extensions: true` and `extensions: false` tests are unchanged                                      |
-| Type annotation `boolean | string[]` in test mock causes tsc errors after step 1 | Step 2 narrows the annotation in the same commit that removes the array branch                                                               |
+| Risk                                                                      | Mitigation                                                                                                                                   |
+| ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Users with `extensions: <csv-list>` silently lose per-extension filtering | `feat!:` commit triggers major version bump; frontmatter parser emits deprecation warning and coerces to `true`; README documents the change |
+| `filterActiveTools` behavior regresses for boolean paths                  | Steps 1–4 each run type checks or tests; `extensions: true` and `extensions: false` tests are unchanged                                      |
+| Type annotation `boolean                                                  | string[]` in test mock causes tsc errors after step 1                                                                                        | Step 2 narrows the annotation in the same commit that removes the array branch |
 
 ## Open Questions
 

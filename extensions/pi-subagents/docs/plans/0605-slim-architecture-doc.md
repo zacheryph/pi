@@ -35,7 +35,7 @@ This change is **not breaking** — it alters no code, config, default, output s
 - Do **not** cut the `## Phase 11 (complete)` … `## Phase 19 (complete)` completion-summary chain — the `/plan-improvements` Step 1 gate reads it to confirm prior phases are condensed, and `/finish-phase` builds it.
 - Do **not** cut or restructure the active `## Phase 20 improvement roadmap` (Steps, dependency diagram, tracks, batches) — Step 9 ([#543]) is still open, so it is the live roadmap.
   Its completed steps carry `✅` marks and `Landed:` notes (already framed as done, not pending), so they are not "shipped narrated as target."
-- Do **not** cut the `## Refactoring history` phase table or the `### Structural refactoring issues` table — `/finish-phase` (steps 97, 113) actively maintains both as the pi-subagents convention (the table form this issue's proposed-change 1 targets is *already* how pi-subagents records history; see Design Overview op 1).
+- Do **not** cut the `## Refactoring history` phase table or the `### Structural refactoring issues` table — `/finish-phase` (steps 97, 113) actively maintains both as the pi-subagents convention (the table form this issue's proposed-change 1 targets is _already_ how pi-subagents records history; see Design Overview op 1).
 - Do **not** rewrite the `history/phase-N-*.md` files — they are the canonical per-phase record and are unchanged.
 - Do **not** rename `### First-principles refinement and the deeper target` — its anchor is cited by four `history/` references; keeping the heading preserves them, and the name is not misleading (it is genuinely-open direction material this issue keeps in full).
 - Do **not** add a package-skill regrowth guard or touch `/finish-phase` — the ongoing-prevention mechanism ([#606]) and the shared-convention generalization ([#607]) are the sibling follow-ups already filed by [#601]; this issue pays down the existing backlog only.
@@ -68,7 +68,7 @@ No code, so no data shapes change; the design decisions are editorial boundaries
 
 ### op 1 — Duplicated per-phase history (issue change 1): near no-op
 
-The issue's proposed-change 1 ("collapse duplicated per-phase history the completion summaries and history files carry") targets the *prose* `### Phase N` duplication [#601] removed from pi-permission-system. pi-subagents does **not** carry that debt: it already records history in the compact table form [#601] was *migrating pi-permission-system toward* — a Phase/Title/Status table (`## Refactoring history`) plus a `### Structural refactoring issues` mapping table, both maintained by `/finish-phase`.
+The issue's proposed-change 1 ("collapse duplicated per-phase history the completion summaries and history files carry") targets the _prose_ `### Phase N` duplication [#601] removed from pi-permission-system. pi-subagents does **not** carry that debt: it already records history in the compact table form [#601] was _migrating pi-permission-system toward_ — a Phase/Title/Status table (`## Refactoring history`) plus a `### Structural refactoring issues` mapping table, both maintained by `/finish-phase`.
 So op 1 finds nothing material to cut here; this is documented, not a separate build step.
 
 ### op 2 — Fold `Target architecture` → `Architecture direction` (issue change 2)
@@ -76,7 +76,7 @@ So op 1 finds nothing material to cut here; this is documented, not a separate b
 Rename the heading `## Target architecture` → `## Architecture direction` (new anchor `#architecture-direction`; distinct from the existing `## Cross-extension architecture`).
 Then fold the shipped material into current-state prose:
 
-- **Reframe the intro** (491–501) from "the long-term architectural direction is to make pi-subagents a minimal orchestrator…" to current-state ("pi-subagents *is* a minimal orchestrator with inverted dependencies…"), keeping the [ADR-0002] and `client-server-opportunities.md` pointers.
+- **Reframe the intro** (491–501) from "the long-term architectural direction is to make pi-subagents a minimal orchestrator…" to current-state ("pi-subagents _is_ a minimal orchestrator with inverted dependencies…"), keeping the [ADR-0002] and `client-server-opportunities.md` pointers.
 - **Collapse `### Responsibilities to remove`** (542–552) — all four (tool policy, extension filtering, worktree isolation, extension-lifecycle control) shipped in Phase 14/16 — into one current-state sentence pointing at "What the core dropped" (already documented above at line 407) and the relevant ADR/phase, or fold it into `### Core responsibilities`.
 - **Lightly current-tense `### First-principles refinement and the deeper target`** where it narrates now-shipped consequences (e.g. "Phase 18 is 'reconsider the UI', not 'extract the UI'" and "the activity/metrics push tier is provisional" both resolved), but **keep the section and its heading** — it is genuinely-open direction material kept in full, and its anchor has four `history/` citers.
 
@@ -181,7 +181,7 @@ If the operator prefers fewer commits, steps 1–3 can collapse into one — but
   Mitigation: the cut material is shipped and preserved in the `history/phase-10-*.md` / `phase-14-*.md` / `phase-16-*.md` files and the linked issues; the fold leaves current-state prose plus those pointers.
 - **Broken anchors from the rename.**
   Risk: renaming `## Target architecture` strands `#target-architecture` fragment links (MD051 fails the build).
-  Mitigation: the three fragment links + one prose name reference are enumerated and updated in step 1's commit; `### First-principles refinement…` is deliberately *not* renamed to avoid touching its four `history/` citers.
+  Mitigation: the three fragment links + one prose name reference are enumerated and updated in step 1's commit; `### First-principles refinement…` is deliberately _not_ renamed to avoid touching its four `history/` citers.
 - **Over-cutting a gate-relevant section.**
   Risk: trimming too aggressively removes the `## Phase N (complete)` chain, the active Phase 20 roadmap, or the `/finish-phase`-maintained tables.
   Mitigation: the Non-Goals fence each explicitly, and every cut is a scoped edit to a named region, not a bulk deletion.

@@ -46,10 +46,7 @@ export function subscribeSubagentObserver(
       state.resetResponseText();
     }
 
-    if (
-      event.type === "message_update" &&
-      event.assistantMessageEvent.type === "text_delta"
-    ) {
+    if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
       state.appendResponseText(event.assistantMessageEvent.delta);
     }
 

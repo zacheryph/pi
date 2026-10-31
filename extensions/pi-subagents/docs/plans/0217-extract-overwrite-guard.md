@@ -101,7 +101,14 @@ export async function writeAgentFile(
 In `AgentConfigEditor.ejectAgent`:
 
 ```typescript
-await writeAgentFile(this.fileOps, ui, this.registry, targetPath, buildEjectContent(cfg), `Ejected ${name} to`);
+await writeAgentFile(
+  this.fileOps,
+  ui,
+  this.registry,
+  targetPath,
+  buildEjectContent(cfg),
+  `Ejected ${name} to`,
+);
 ```
 
 In `AgentCreationWizard.showManualWizard`:

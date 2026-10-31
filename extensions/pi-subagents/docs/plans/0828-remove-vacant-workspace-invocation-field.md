@@ -206,7 +206,7 @@ No other test constructs a `WorkspacePrepareContext`, and `service-adapter.test.
 
 1. **New tests enabled.**
    None — this is a deletion, and it introduces no new unit.
-   One existing test is *strengthened*: the seam-context assertion gains real discriminating power (`toStrictEqual` on the recorded call argument) that the `toHaveBeenCalledWith` form measurably did not have.
+   One existing test is _strengthened_: the seam-context assertion gains real discriminating power (`toStrictEqual` on the recorded call argument) that the `toHaveBeenCalledWith` form measurably did not have.
 2. **Tests that become redundant.**
    Two assertions go vacuous and are removed rather than left passing for the wrong reason:
    - `test/service/service-adapter.test.ts:75` — `expect(result).not.toHaveProperty("invocation")` would pass because the source no longer carries the field, not because `toSubagentRecord` strips it.

@@ -70,7 +70,9 @@ export interface TypeListRegistry extends AgentConfigLookup {
  * Extracted from index.ts so it can be called inside createAgentTool.
  */
 export function buildTypeListText(registry: TypeListRegistry, agentDir: string): string {
-  const defaultNames = registry.getDefaultAgentNames().filter((name) => isEnabledAgent(registry, name));
+  const defaultNames = registry
+    .getDefaultAgentNames()
+    .filter((name) => isEnabledAgent(registry, name));
   const userNames = registry.getUserAgentNames().filter((name) => isEnabledAgent(registry, name));
 
   const defaultDescs = defaultNames.map((name) => {

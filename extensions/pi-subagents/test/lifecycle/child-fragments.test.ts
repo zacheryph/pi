@@ -4,12 +4,20 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import { ConcurrencyLimiter } from "#src/lifecycle/concurrency-limiter";
-import { createSubagentSession, type CreateSubagentSessionParams } from "#src/lifecycle/create-subagent-session";
+import {
+  createSubagentSession,
+  type CreateSubagentSessionParams,
+} from "#src/lifecycle/create-subagent-session";
 import { SubagentManager } from "#src/lifecycle/subagent-manager";
 import { buildAgentPrompt } from "#src/session/prompts";
 import type { AgentConfig } from "#src/types";
 import { STUB_SNAPSHOT } from "#test/helpers/stub-ctx";
-import { createAgentLookup, createFactorySession, createSubagentSessionDeps, createSubagentSessionIO } from "#test/helpers/subagent-session-io";
+import {
+  createAgentLookup,
+  createFactorySession,
+  createSubagentSessionDeps,
+  createSubagentSessionIO,
+} from "#test/helpers/subagent-session-io";
 
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
@@ -25,7 +33,9 @@ describe("child fragment spawn snapshots", () => {
   let io: ReturnType<typeof createSubagentSessionIO>;
   let registry: AgentTypeRegistry;
   let sessionRegistry: ReturnType<typeof createAgentLookup>;
-  let factory: ReturnType<typeof vi.fn<(params: CreateSubagentSessionParams) => ReturnType<typeof createSubagentSession>>>;
+  let factory: ReturnType<
+    typeof vi.fn<(params: CreateSubagentSessionParams) => ReturnType<typeof createSubagentSession>>
+  >;
 
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), "pi-child-fragments-"));
@@ -46,8 +56,12 @@ describe("child fragment spawn snapshots", () => {
     // Fragment-bearing spawns bypass this live lookup; no-fragment spawns
     // retain their existing run-start registry behavior.
     sessionRegistry = createAgentLookup();
-    sessionRegistry.resolveAgentConfig.mockImplementation(type => registry.resolveAgentConfig(type));
-    sessionRegistry.getToolNamesForType.mockImplementation(type => registry.getToolNamesForType(type));
+    sessionRegistry.resolveAgentConfig.mockImplementation((type) =>
+      registry.resolveAgentConfig(type),
+    );
+    sessionRegistry.getToolNamesForType.mockImplementation((type) =>
+      registry.getToolNamesForType(type),
+    );
     io = createSubagentSessionIO();
     io.assemblerIO.buildAgentPrompt.mockImplementation(buildAgentPrompt);
     io.createSession.mockImplementation(async () => ({ session: createFactorySession() }));
@@ -87,7 +101,9 @@ describe("child fragment spawn snapshots", () => {
       prepare: async () => ({ cwd: childCwd, dispose: () => ({}) }),
     });
 
-    const record = await manager.spawnAndWait(STUB_SNAPSHOT, profile.name, "Task", { description: "Task" });
+    const record = await manager.spawnAndWait(STUB_SNAPSHOT, profile.name, "Task", {
+      description: "Task",
+    });
 
     expect(record.status).toBe("completed");
     expect(childPrompt()).toContain("AWS source instructions.\n\n---\n\nChild body.");
@@ -103,65 +119,89 @@ describe("child fragment spawn snapshots", () => {
     { fragments: ["aws.md"], error: /Invalid fragment name/ },
     { fragments: ["../aws"], error: /Invalid fragment name/ },
     { fragmentError: "fragments must be an array of names", error: /must be an array/ },
-  ])("refuses invalid or missing references before session creation: $error", async ({ error, ...config }) => {
-    Object.assign(profile, config);
+  ])(
+    "refuses invalid or missing references before session creation: $error",
+    async ({ error, ...config }) => {
+      Object.assign(profile, config);
 
-    expect(spawn).toThrow(error);
-    await expect(manager.spawnAndWait(STUB_SNAPSHOT, profile.name, "Task", { description: "Task" })).rejects.toThrow(error);
+      expect(spawn).toThrow(error);
+      await expect(
+        manager.spawnAndWait(STUB_SNAPSHOT, profile.name, "Task", { description: "Task" }),
+      ).rejects.toThrow(error);
 
-    expect(manager.listAgents()).toEqual([]);
-    expect(factory).not.toHaveBeenCalled();
-    expect(io.createSession).not.toHaveBeenCalled();
-    if (config.fragments?.[0] !== "missing") expect(readFileSync).not.toHaveBeenCalled();
-  });
+      expect(manager.listAgents()).toEqual([]);
+      expect(factory).not.toHaveBeenCalled();
+      expect(io.createSession).not.toHaveBeenCalled();
+      if (config.fragments?.[0] !== "missing") expect(readFileSync).not.toHaveBeenCalled();
+    },
+  );
 
   it.each([undefined, []])("preserves no-fragment instructions exactly (%s)", async (fragments) => {
     profile.fragments = fragments;
     profile.systemPrompt = "  Original body.\n\n";
     profile.source = "project";
 
-    const record = await manager.spawnAndWait(STUB_SNAPSHOT, profile.name, "Task", { description: "Task" });
+    const record = await manager.spawnAndWait(STUB_SNAPSHOT, profile.name, "Task", {
+      description: "Task",
+    });
 
     expect(record.status).toBe("completed");
     expect(factory.mock.calls[0][0].agentConfig).toBeUndefined();
-    expect(io.assemblerIO.buildAgentPrompt.mock.calls[0][0].systemPrompt).toBe(profile.systemPrompt);
-    expect(childPrompt()).toBe(buildAgentPrompt(profile, STUB_SNAPSHOT.cwd,
-      { isGitRepo: false, branch: "", platform: "linux" },
-      { systemPrompt: STUB_SNAPSHOT.systemPrompt, cwd: STUB_SNAPSHOT.cwd, strategy: "full" },
-      io.assemblerIO.loadProjectContext));
+    expect(io.assemblerIO.buildAgentPrompt.mock.calls[0][0].systemPrompt).toBe(
+      profile.systemPrompt,
+    );
+    expect(childPrompt()).toBe(
+      buildAgentPrompt(
+        profile,
+        STUB_SNAPSHOT.cwd,
+        { isGitRepo: false, branch: "", platform: "linux" },
+        { systemPrompt: STUB_SNAPSHOT.systemPrompt, cwd: STUB_SNAPSHOT.cwd, strategy: "full" },
+        io.assemblerIO.loadProjectContext,
+      ),
+    );
     expect(readFileSync).not.toHaveBeenCalled();
   });
 
-  it.each(["edit", "delete"])("freezes queued content/config before later %s and registry reload", async (change) => {
-    const gate = Promise.withResolvers<void>();
-    const firstSession = createFactorySession();
-    firstSession.prompt.mockImplementation(async () => gate.promise);
-    io.createSession.mockResolvedValueOnce({ session: firstSession });
-    const first = manager.spawn(STUB_SNAPSHOT, "general-purpose", "Hold slot", { description: "Hold", background });
-    const queued = spawn();
-    expect(manager.getRecord(queued)?.status).toBe("queued");
-    expect(readFileSync).toHaveBeenCalledExactlyOnceWith(fragmentPath(), "utf8");
+  it.each(["edit", "delete"])(
+    "freezes queued content/config before later %s and registry reload",
+    async (change) => {
+      const gate = Promise.withResolvers<void>();
+      const firstSession = createFactorySession();
+      firstSession.prompt.mockImplementation(async () => gate.promise);
+      io.createSession.mockResolvedValueOnce({ session: firstSession });
+      const first = manager.spawn(STUB_SNAPSHOT, "general-purpose", "Hold slot", {
+        description: "Hold",
+        background,
+      });
+      const queued = spawn();
+      expect(manager.getRecord(queued)?.status).toBe("queued");
+      expect(readFileSync).toHaveBeenCalledExactlyOnceWith(fragmentPath(), "utf8");
 
-    if (change === "edit") writeFileSync(fragmentPath(), "Changed instructions.");
-    else unlinkSync(fragmentPath());
-    profile.systemPrompt = "Changed child body.";
-    profile.toolNames!.push("bash");
-    profile.fragments!.push("missing");
-    registry.reload();
-    gate.resolve();
-    await manager.getRecord(first)!.promise;
-    await manager.getRecord(queued)!.promise;
+      if (change === "edit") writeFileSync(fragmentPath(), "Changed instructions.");
+      else unlinkSync(fragmentPath());
+      profile.systemPrompt = "Changed child body.";
+      profile.toolNames!.push("bash");
+      profile.fragments!.push("missing");
+      registry.reload();
+      gate.resolve();
+      await manager.getRecord(first)!.promise;
+      await manager.getRecord(queued)!.promise;
 
-    expect(manager.getRecord(queued)?.status).toBe("completed");
-    expect(childPrompt(1)).toContain("AWS source instructions.\n\n---\n\nChild body.");
-    expect(childPrompt(1)).not.toContain("Changed");
-    expect(io.createSession.mock.calls[1][0].tools).toEqual(["read", "ask_parent", "notify_parent"]);
-    const prepared = factory.mock.calls[1][0].agentConfig!;
-    expect(Object.isFrozen(prepared)).toBe(true);
-    expect(Object.isFrozen(prepared.toolNames)).toBe(true);
-    expect(prepared.fragments).toEqual(["aws"]);
-    expect(readFileSync).toHaveBeenCalledTimes(1);
-  });
+      expect(manager.getRecord(queued)?.status).toBe("completed");
+      expect(childPrompt(1)).toContain("AWS source instructions.\n\n---\n\nChild body.");
+      expect(childPrompt(1)).not.toContain("Changed");
+      expect(io.createSession.mock.calls[1][0].tools).toEqual([
+        "read",
+        "ask_parent",
+        "notify_parent",
+      ]);
+      const prepared = factory.mock.calls[1][0].agentConfig!;
+      expect(Object.isFrozen(prepared)).toBe(true);
+      expect(Object.isFrozen(prepared.toolNames)).toBe(true);
+      expect(prepared.fragments).toEqual(["aws"]);
+      expect(readFileSync).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it("keeps run-start registry resolution for queued no-fragment profiles", async () => {
     profile.fragments = [];
@@ -169,7 +209,10 @@ describe("child fragment spawn snapshots", () => {
     const firstSession = createFactorySession();
     firstSession.prompt.mockImplementation(async () => gate.promise);
     io.createSession.mockResolvedValueOnce({ session: firstSession });
-    const first = manager.spawn(STUB_SNAPSHOT, "general-purpose", "Hold slot", { description: "Hold", background });
+    const first = manager.spawn(STUB_SNAPSHOT, "general-purpose", "Hold slot", {
+      description: "Hold",
+      background,
+    });
     const queued = spawn();
     profile.systemPrompt = "Updated legacy body.";
     profile.toolNames = ["grep"];
@@ -180,18 +223,26 @@ describe("child fragment spawn snapshots", () => {
 
     expect(factory.mock.calls[1][0].agentConfig).toBeUndefined();
     expect(childPrompt(1)).toContain("Updated legacy body.");
-    expect(io.createSession.mock.calls[1][0].tools).toEqual(["grep", "ask_parent", "notify_parent"]);
+    expect(io.createSession.mock.calls[1][0].tools).toEqual([
+      "grep",
+      "ask_parent",
+      "notify_parent",
+    ]);
     expect(readFileSync).not.toHaveBeenCalled();
   });
 
   it.each([{ fragments: ["aws"] }, { fragmentError: "Invalid declaration" }])(
-    "refuses queued no-fragment profiles gaining unprepared declarations (%s)", async (declaration) => {
+    "refuses queued no-fragment profiles gaining unprepared declarations (%s)",
+    async (declaration) => {
       profile.fragments = [];
       const gate = Promise.withResolvers<void>();
       const firstSession = createFactorySession();
       firstSession.prompt.mockImplementation(async () => gate.promise);
       io.createSession.mockResolvedValueOnce({ session: firstSession });
-      const first = manager.spawn(STUB_SNAPSHOT, "general-purpose", "Hold slot", { description: "Hold", background });
+      const first = manager.spawn(STUB_SNAPSHOT, "general-purpose", "Hold slot", {
+        description: "Hold",
+        background,
+      });
       const queued = spawn();
       Object.assign(profile, declaration);
       registry.reload();
@@ -200,7 +251,9 @@ describe("child fragment spawn snapshots", () => {
       await manager.getRecord(queued)!.promise;
 
       expect(manager.getRecord(queued)?.status).toBe("error");
-      expect(manager.getRecord(queued)?.error).toContain("fragment instructions were not prepared at spawn; start a new agent");
+      expect(manager.getRecord(queued)?.error).toContain(
+        "fragment instructions were not prepared at spawn; start a new agent",
+      );
       expect(io.createSession).toHaveBeenCalledTimes(1);
       expect(readFileSync).not.toHaveBeenCalled();
     },
@@ -228,20 +281,32 @@ describe("child fragment spawn snapshots", () => {
     expect(registryRead).not.toHaveBeenCalled();
   });
 
-  it.each([false, undefined])("rejects untrusted project fragments without file reads (trust=%s)", (projectTrusted) => {
-    profile.source = "project";
+  it.each([false, undefined])(
+    "rejects untrusted project fragments without file reads (trust=%s)",
+    (projectTrusted) => {
+      profile.source = "project";
 
-    expect(() => manager.spawn({ ...STUB_SNAPSHOT, projectTrusted }, profile.name, "Task", { description: "Task", background }))
-      .toThrow(/require Pi project trust/);
+      expect(() =>
+        manager.spawn({ ...STUB_SNAPSHOT, projectTrusted }, profile.name, "Task", {
+          description: "Task",
+          background,
+        }),
+      ).toThrow(/require Pi project trust/);
 
-    expect(readFileSync).not.toHaveBeenCalled();
-    expect(factory).not.toHaveBeenCalled();
-  });
+      expect(readFileSync).not.toHaveBeenCalled();
+      expect(factory).not.toHaveBeenCalled();
+    },
+  );
 
   it("accepts explicitly trusted project fragments", async () => {
     profile.source = "project";
 
-    const record = await manager.spawnAndWait({ ...STUB_SNAPSHOT, projectTrusted: true }, profile.name, "Task", { description: "Task" });
+    const record = await manager.spawnAndWait(
+      { ...STUB_SNAPSHOT, projectTrusted: true },
+      profile.name,
+      "Task",
+      { description: "Task" },
+    );
 
     expect(record.status).toBe("completed");
     expect(childPrompt()).toContain("AWS source instructions.");

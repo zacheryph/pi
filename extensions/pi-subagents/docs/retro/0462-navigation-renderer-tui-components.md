@@ -26,7 +26,7 @@ Wrote a four-step TDD plan at `packages/pi-subagents/docs/plans/0462-navigation-
 - Non-breaking internal renderer swap; `Release: independent` per the roadmap.
   Step 4a gates Step 5 ([#442]) for rendering parity but is not part of any release batch.
 - Follow-up [#463] (Step 4b, file-snapshot source) already exists and is open — referenced as a Non-Goal, nothing new to file.
-- Parity is defined as *using Pi's own components*, not byte-equality with the bespoke viewer; `custom`-role messages are skipped (the bespoke viewer never rendered them either), noted as an Open Question.
+- Parity is defined as _using Pi's own components_, not byte-equality with the bespoke viewer; `custom`-role messages are skipped (the bespoke viewer never rendered them either), noted as an Open Question.
 
 ## Stage: Implementation — TDD (2026-06-22T21:30:00Z)
 
@@ -40,8 +40,8 @@ Test count went from 1084 to 1088 (+4 net: +4 accessor/seam tests, +3 new naviga
 
 - The production code (`session-navigation.ts`, `session-navigator.ts`, `index.ts`) type-checked clean on the first `tsc` run — the SDK message-union narrowing (`switch (message.role)`), component construction, and `updateResult(toolResultMessage)` all resolved without casts.
   `SessionMessage` (= the SDK `AgentMessage` union) narrows by `role` even though `@earendil-works/pi-agent-core` is not a direct dependency.
-- Two deviations from the plan's Module-Level Changes, both intentional: (1) `src/types.ts` was *not* changed — `ToolDefinition` is imported directly from `@earendil-works/pi-coding-agent` in each consumer rather than re-exported through the barrel (avoids a speculative re-export `fallow` would flag); (2) `test/helpers/mock-session.ts` gained a `getToolDefinition` stub (needed for the step-1 accessor tests, not listed in the plan).
-- Pi's per-entry components read a *global* interactive theme initialized by `initTheme()`; Pi does this at startup, but tests had to call `initTheme(undefined, false)` in `beforeAll`.
+- Two deviations from the plan's Module-Level Changes, both intentional: (1) `src/types.ts` was _not_ changed — `ToolDefinition` is imported directly from `@earendil-works/pi-coding-agent` in each consumer rather than re-exported through the barrel (avoids a speculative re-export `fallow` would flag); (2) `test/helpers/mock-session.ts` gained a `getToolDefinition` stub (needed for the step-1 accessor tests, not listed in the plan).
+- Pi's per-entry components read a _global_ interactive theme initialized by `initTheme()`; Pi does this at startup, but tests had to call `initTheme(undefined, false)` in `beforeAll`.
   An early probe with `AssistantMessageComponent` passed without it, but `UserMessageComponent`/`ToolExecutionComponent` throw `"Theme not initialized"` — so the global-theme dependency is component-specific and only surfaced once the broader role set was exercised.
 - `setComplete`'s `TruncationResult` param requires more fields than `BashExecutionMessage` carries, so the bash component is completed with `undefined` truncation info (command + output still render).
   Pi's own JS passes `{ truncated: true }` but that path is untyped.
@@ -61,7 +61,7 @@ Execution was notably clean — six commits, no rework of production code, CI gr
 
 1. **Upfront SDK verification in planning paid off at implementation.**
    Planning inspected the actual component constructors, the `renderSessionContext` mapping, and `AgentSession.getToolDefinition` in `node_modules/**/*.d.ts` before committing to a design.
-   Result: the production code (`session-navigation.ts`, `session-navigator.ts`, `index.ts`) type-checked clean on the *first* `tsc` run during TDD — the SDK message-union narrowing and component construction needed no casts.
+   Result: the production code (`session-navigation.ts`, `session-navigator.ts`, `index.ts`) type-checked clean on the _first_ `tsc` run during TDD — the SDK message-union narrowing and component construction needed no casts.
 2. **Probe-driven de-risking.**
    Before the renderer rewrite, a throwaway `_probe-theme.test.ts` confirmed `getMarkdownTheme()` + a Pi component render works outside interactive mode — validating the riskiest assumption cheaply, then deleted.
 3. **The operator's planning interjections were strategic, not mechanical.**
@@ -76,7 +76,7 @@ Execution was notably clean — six commits, no rework of production code, CI gr
 #### What caused friction (agent side)
 
 1. `missing-context` (self-identified) — the `initTheme()` requirement for Pi's interactive components.
-   The de-risking probe exercised only `AssistantMessageComponent`, which happens *not* to read the global theme, so the probe passed and gave false confidence.
+   The de-risking probe exercised only `AssistantMessageComponent`, which happens _not_ to read the global theme, so the probe passed and gave false confidence.
    The real tests then threw `"Theme not initialized"` from `UserMessageComponent`/`ToolExecutionComponent`.
    Impact: one extra Red cycle (4 failing tests) → added `beforeAll(() => initTheme(undefined, false))`; no production rework.
 2. `other` (self-identified) — a wrong second assertion in the post-review #423 pin (`expect(record.getToolDefinition).toHaveBeenCalled()` on a fixture whose assistant message had no `toolCall`, so the lookup never fires).
@@ -91,9 +91,9 @@ Execution was notably clean — six commits, no rework of production code, CI gr
 
 - **Feedback-loop gap analysis** — no gap.
   Verification ran incrementally: per-step targeted `vitest`, `pnpm run check` after each interface change, full suite + lint + `fallow` before commits.
-  Both friction points were caught by running tests *before* committing, not after.
+  Both friction points were caught by running tests _before_ committing, not after.
 - **Escalation-delay tracking** — no rabbit holes; each friction point resolved in a single iteration (well under the 5-tool-call threshold).
-- **Probe-coverage note** — the `initTheme()` miss is a probe *coverage* gap, not a tool-availability gap: a one-variant probe (`AssistantMessageComponent`) did not validate the environment dependency of the broader component set actually used.
+- **Probe-coverage note** — the `initTheme()` miss is a probe _coverage_ gap, not a tool-availability gap: a one-variant probe (`AssistantMessageComponent`) did not validate the environment dependency of the broader component set actually used.
 - **Model-performance / unused-tool** — nothing notable.
   The only subagent dispatch (`pre-completion-reviewer`) is purpose-built for judgment-heavy review; SDK inspection used direct `grep`/`bash` over `.d.ts` files, which was appropriate.
 

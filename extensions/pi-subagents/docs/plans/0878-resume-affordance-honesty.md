@@ -45,14 +45,14 @@ For such a child under a registered `WorkspaceProvider`, the completion nudge an
 ## Non-Goals
 
 - **Refusing a resume of a still-running agent.**
-  `SubagentManager.resume` guards on `isSessionReady()` alone, so a resume during the window between `ask_parent` and the child's turn ending is *accepted* and starts a second turn loop on the live session.
+  `SubagentManager.resume` guards on `isSessionReady()` alone, so a resume during the window between `ask_parent` and the child's turn ending is _accepted_ and starts a second turn loop on the live session.
   That is a door defect, not an affordance defect: this change's predicate leaves such a record resumable, and the affordance keeps naming the resume.
   Filed as [#896] and folded into Step 16 ([#885]), which relocates the whole refusal policy to `SubagentManager`.
 - **Clearing `pendingQuestion` when a resume stops being possible.**
   Considered and rejected in Design Overview; it also perturbs `resolveRetentionWindow`, which reads the field.
-- **Moving `AgentTool`'s refusal *messages* to the choke point.**
+- **Moving `AgentTool`'s refusal _messages_ to the choke point.**
   Step 16 ([#885]) owns that.
-  This change moves the *decision* only; the four operator-facing sentences stay where they are, byte-for-byte.
+  This change moves the _decision_ only; the four operator-facing sentences stay where they are, byte-for-byte.
 - **Adding resumability to the public `SubagentRecord`.**
   [ADR 0005](../decisions/0005-subagent-record-admission-policy.md) governs that surface, and no consumer has asked.
 - **`renderOutcomeBody`'s empty-string guard and the running-status body** — Step 17 ([#889]).
@@ -131,10 +131,10 @@ The messages themselves stay in `agent-tool.ts` for Step 16 to relocate.
 
 ```typescript
 export function renderQuestionAffordance(
-	agentId: string,
-	question: string | undefined,
-	refusal: ResumeRefusal | undefined,
-): string
+  agentId: string,
+  question: string | undefined,
+  refusal: ResumeRefusal | undefined,
+): string;
 ```
 
 Resumable (byte-identical to today):
@@ -174,12 +174,12 @@ They live in this module as a `Record<ResumeRefusal, string>` beside `STATUS_MEA
 
 ```typescript
 export interface OutcomeAddenda {
-	id: string;
-	runUpdates?: readonly string[];
-	workspaceNotice?: string;
-	pendingQuestion?: string;
-	/** Why a resume would be refused; undefined when one would be accepted. */
-	resumeRefusal: ResumeRefusal | undefined;
+  id: string;
+  runUpdates?: readonly string[];
+  workspaceNotice?: string;
+  pendingQuestion?: string;
+  /** Why a resume would be refused; undefined when one would be accepted. */
+  resumeRefusal: ResumeRefusal | undefined;
 }
 ```
 
@@ -298,46 +298,46 @@ Each of these was opened and read, not inferred from the roadmap's `Outcome:` li
 Steps 1 and 2 are the Tidy-First preparation.
 
 1. **`test:` add a ready-session option to `createTestSubagent`.**
-   *Friction it prepares:* every fixture the helper builds has `subagentSession === undefined`, so once `resumeRefusal` exists they all read `"no-session"`; the later steps need a one-flag way to say "resumable" in three test files, two of which (`foreground-runner.test.ts`, `notification.test.ts`) import no mock-session helper today.
-   *Surface:* `test/helpers/make-subagent.ts`, `test/helpers/make-subagent.test.ts`.
-   *Covers:* `sessionReady: true` yields `isSessionReady() === true`; the default stays `false`.
-   *Killing mutation:* make the option assign nothing — the new helper test goes red while every existing test stays green.
-   *Commit:* `test(pi-subagents): add a ready-session option to createTestSubagent`.
+   _Friction it prepares:_ every fixture the helper builds has `subagentSession === undefined`, so once `resumeRefusal` exists they all read `"no-session"`; the later steps need a one-flag way to say "resumable" in three test files, two of which (`foreground-runner.test.ts`, `notification.test.ts`) import no mock-session helper today.
+   _Surface:_ `test/helpers/make-subagent.ts`, `test/helpers/make-subagent.test.ts`.
+   _Covers:_ `sessionReady: true` yields `isSessionReady() === true`; the default stays `false`.
+   _Killing mutation:_ make the option assign nothing — the new helper test goes red while every existing test stays green.
+   _Commit:_ `test(pi-subagents): add a ready-session option to createTestSubagent`.
 
 2. **`test:` opt the three affordance fixtures into `sessionReady`.**
-   *Friction it prepares:* isolates the fixture repair from the behavior change, so step 5 does not have to explain three failures in files it is not otherwise touching.
-   *Surface:* `test/tools/agent-tool.test.ts` line ~211, `test/tools/foreground-runner.test.ts` line ~34, `test/observation/notification.test.ts` line ~264.
-   *Covers:* nothing new — a no-op today, green before and after.
-   *Killing mutation:* none applies; this step adds no assertion.
+   _Friction it prepares:_ isolates the fixture repair from the behavior change, so step 5 does not have to explain three failures in files it is not otherwise touching.
+   _Surface:_ `test/tools/agent-tool.test.ts` line ~211, `test/tools/foreground-runner.test.ts` line ~34, `test/observation/notification.test.ts` line ~264.
+   _Covers:_ nothing new — a no-op today, green before and after.
+   _Killing mutation:_ none applies; this step adds no assertion.
    Verification is that the suite stays at its current count and the three tests still assert `'resume: "<id>"'`.
-   *Commit:* `test(pi-subagents): make the affordance fixtures session-ready`.
+   _Commit:_ `test(pi-subagents): make the affordance fixtures session-ready`.
 
 3. **`refactor:` add `Subagent.resumeRefusal`.**
-   *Surface:* `test/lifecycle/subagent.test.ts`, new `describe("Subagent — resumeRefusal", …)`.
-   *Covers:* four equivalence classes — a record with a live session and no disposed workspace (`undefined`); a record whose session was never created (`"no-session"`); a record after `releaseSession()` (`"session-released"`); a record whose workspace the bracket disposed while its session is still live (`"workspace-disposed"`).
+   _Surface:_ `test/lifecycle/subagent.test.ts`, new `describe("Subagent — resumeRefusal", …)`.
+   _Covers:_ four equivalence classes — a record with a live session and no disposed workspace (`undefined`); a record whose session was never created (`"no-session"`); a record after `releaseSession()` (`"session-released"`); a record whose workspace the bracket disposed while its session is still live (`"workspace-disposed"`).
    Drive each through real state (assign a session stub, `await releaseSession()`, run with a stub provider), never by seeding the union value.
-   *Killing mutations:* (a) return `undefined` unconditionally — all three refusal cases go red, the resumable case stays green; (b) drop the `workspaceDisposed` arm — only the workspace case goes red; (c) swap the `sessionReleased` ternary's branches — the released and never-created cases swap and both go red.
-   *Commit:* `refactor(pi-subagents): answer resumability from the subagent record`.
+   _Killing mutations:_ (a) return `undefined` unconditionally — all three refusal cases go red, the resumable case stays green; (b) drop the `workspaceDisposed` arm — only the workspace case goes red; (c) swap the `sessionReleased` ternary's branches — the released and never-created cases swap and both go red.
+   _Commit:_ `refactor(pi-subagents): answer resumability from the subagent record`.
    Typed `refactor:` because nothing observable changes yet — no carrier reads it in this commit.
 
 4. **`refactor:` read the refusal from the record in `AgentTool`.**
-   *Surface:* `test/tools/agent-tool.test.ts` — the three existing refusal-message tests, unchanged, plus the existing successful-resume tests.
-   *Covers:* the switch returns each of the three messages verbatim, and a resumable record still resumes.
-   *Killing mutations:* (a) drop the `"workspace-disposed"` arm so the switch falls through to the resume — the disposed-workspace test goes red; (b) return the released-session message from the `"no-session"` arm — the no-session test goes red.
-   *Commit:* `refactor(pi-subagents): switch the resume refusal on one record predicate`.
+   _Surface:_ `test/tools/agent-tool.test.ts` — the three existing refusal-message tests, unchanged, plus the existing successful-resume tests.
+   _Covers:_ the switch returns each of the three messages verbatim, and a resumable record still resumes.
+   _Killing mutations:_ (a) drop the `"workspace-disposed"` arm so the switch falls through to the resume — the disposed-workspace test goes red; (b) return the released-session message from the `"no-session"` arm — the no-session test goes red.
+   _Commit:_ `refactor(pi-subagents): switch the resume refusal on one record predicate`.
 
 5. **`fix:` stop advertising a resume that will be refused.**
    The mechanism and its whole set of call sites land together: `renderQuestionAffordance`'s third parameter, `RESUME_REFUSAL_CLAUSES`, the required field on `OutcomeAddenda` and `AgentReport`, `buildReport`, and `buildPointerLines`.
    They cannot split — making the field required breaks `tsc` at every construction site in the same commit.
-   *Surface:* `test/observation/outcome-delivery.test.ts`, `test/tools/get-result-report.test.ts`, `test/tools/get-result-tool.test.ts`, `test/observation/notification.test.ts`, `test/tools/agent-tool.test.ts`, `test/tools/foreground-runner.test.ts`.
-   *Covers:* the resumable branch is byte-identical to today (assert the full string, not a substring); one case per refusal reason asserting the question survives, the reason clause is present, and the text contains no `resume:` call; the tail's fixed order still holds with the refusal branch rendering; `buildReport` forwards the record's refusal; the nudge renders the refusal form for a record whose workspace was disposed.
-   *Killing mutations:* (a) ignore the third parameter and always render today's text — every refusal case goes red across all four carriers, and the resumable cases stay green; (b) render the refusal form unconditionally — the four `'resume: "<id>"'` carrier tests go red; (c) have `buildReport` hard-code `resumeRefusal: undefined` — only the `get-result-tool` forwarding test and the report's refusal case go red, which is what distinguishes "the renderer works" from "the carrier supplies the fact"; (d) drop the `resumeRefusal` argument from `buildPointerLines`' call — only the nudge's refusal case goes red.
-   *Commit:* `fix(pi-subagents): report an unanswerable question without naming a resume`.
+   _Surface:_ `test/observation/outcome-delivery.test.ts`, `test/tools/get-result-report.test.ts`, `test/tools/get-result-tool.test.ts`, `test/observation/notification.test.ts`, `test/tools/agent-tool.test.ts`, `test/tools/foreground-runner.test.ts`.
+   _Covers:_ the resumable branch is byte-identical to today (assert the full string, not a substring); one case per refusal reason asserting the question survives, the reason clause is present, and the text contains no `resume:` call; the tail's fixed order still holds with the refusal branch rendering; `buildReport` forwards the record's refusal; the nudge renders the refusal form for a record whose workspace was disposed.
+   _Killing mutations:_ (a) ignore the third parameter and always render today's text — every refusal case goes red across all four carriers, and the resumable cases stay green; (b) render the refusal form unconditionally — the four `'resume: "<id>"'` carrier tests go red; (c) have `buildReport` hard-code `resumeRefusal: undefined` — only the `get-result-tool` forwarding test and the report's refusal case go red, which is what distinguishes "the renderer works" from "the carrier supplies the fact"; (d) drop the `resumeRefusal` argument from `buildPointerLines`' call — only the nudge's refusal case goes red.
+   _Commit:_ `fix(pi-subagents): report an unanswerable question without naming a resume`.
 
 6. **`docs:` update the surfaces that promise the resume.**
-   *Surface:* `README.md`, `docs/configuration.md`, `docs/architecture/architecture.md` (two module-tree entries, the Step 15 `✅` mark, the Mermaid node, and the `Landed:` note).
-   *Verification:* `pnpm exec rumdl check` on each edited file, and a grep for the old promise wording returning nothing.
-   *Commit:* `docs(pi-subagents): record what a result promises about resuming`.
+   _Surface:_ `README.md`, `docs/configuration.md`, `docs/architecture/architecture.md` (two module-tree entries, the Step 15 `✅` mark, the Mermaid node, and the `Landed:` note).
+   _Verification:_ `pnpm exec rumdl check` on each edited file, and a grep for the old promise wording returning nothing.
+   _Commit:_ `docs(pi-subagents): record what a result promises about resuming`.
 
 ## Risks and Mitigations
 

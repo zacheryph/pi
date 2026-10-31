@@ -26,7 +26,9 @@ describe("fakeSource", () => {
   });
 
   it("applies overrides over the defaults", () => {
-    const source = fakeSource({ streaming: () => ({ activeTools: new Map(), responseText: "hi" }) });
+    const source = fakeSource({
+      streaming: () => ({ activeTools: new Map(), responseText: "hi" }),
+    });
     expect(source.streaming()).toEqual({ activeTools: new Map(), responseText: "hi" });
     expect(source.getMessages()).toEqual([{ role: "user", content: "Hello world" }]);
   });

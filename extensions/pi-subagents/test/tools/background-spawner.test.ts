@@ -1,9 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
-import { type BackgroundParams, renderBackgroundLaunch, spawnBackground } from "#src/tools/background-spawner";
+import {
+  type BackgroundParams,
+  renderBackgroundLaunch,
+  spawnBackground,
+} from "#src/tools/background-spawner";
 import { createToolDeps } from "#test/helpers/make-deps";
 import { createResolvedSpawnConfig } from "#test/helpers/make-spawn-config";
 import { createTestSubagent } from "#test/helpers/make-subagent";
-import { createMockSession, createSubagentSessionStub, toSubagentSession } from "#test/helpers/mock-session";
+import {
+  createMockSession,
+  createSubagentSessionStub,
+  toSubagentSession,
+} from "#test/helpers/mock-session";
 import { STUB_SNAPSHOT } from "#test/helpers/stub-ctx";
 
 function makeConfig(overrides: Parameters<typeof createResolvedSpawnConfig>[0] = {}) {
@@ -20,7 +28,11 @@ function makeParams(overrides: Partial<BackgroundParams> = {}): BackgroundParams
   return {
     config: makeConfig(),
     snapshot: STUB_SNAPSHOT,
-    parentSession: { parentSessionFile: "/sessions/parent.jsonl", parentSessionId: "session-1", toolCallId: "tc-1" },
+    parentSession: {
+      parentSessionFile: "/sessions/parent.jsonl",
+      parentSessionId: "session-1",
+      toolCallId: "tc-1",
+    },
     settings: { maxConcurrent: 4 },
     ...overrides,
   };
@@ -158,7 +170,9 @@ describe("spawnBackground", () => {
 
   it("includes output file path in result when present", () => {
     const record = createTestSubagent({ status: "running" });
-    record.subagentSession = toSubagentSession(createSubagentSessionStub(createMockSession(), "/sessions/bg.jsonl"));
+    record.subagentSession = toSubagentSession(
+      createSubagentSessionStub(createMockSession(), "/sessions/bg.jsonl"),
+    );
     const deps = createToolDeps({
       manager: {
         ...createToolDeps().manager,
@@ -190,9 +204,15 @@ describe("spawnBackground", () => {
   describe("launch message", () => {
     it("renders the started launch with its output file", () => {
       const record = createTestSubagent({ status: "running" });
-      record.subagentSession = toSubagentSession(createSubagentSessionStub(createMockSession(), "/sessions/bg.jsonl"));
+      record.subagentSession = toSubagentSession(
+        createSubagentSessionStub(createMockSession(), "/sessions/bg.jsonl"),
+      );
       const deps = createToolDeps({
-        manager: { ...createToolDeps().manager, spawn: vi.fn().mockReturnValue("bg-3"), getRecord: vi.fn().mockReturnValue(record) },
+        manager: {
+          ...createToolDeps().manager,
+          spawn: vi.fn().mockReturnValue("bg-3"),
+          getRecord: vi.fn().mockReturnValue(record),
+        },
       });
 
       const result = spawnBackground(deps.manager, makeParams());
@@ -249,7 +269,9 @@ describe("spawnBackground", () => {
     const deps = createToolDeps({
       manager: {
         ...createToolDeps().manager,
-        spawn: vi.fn().mockImplementation(() => { throw new Error("spawn failed"); }),
+        spawn: vi.fn().mockImplementation(() => {
+          throw new Error("spawn failed");
+        }),
         getRecord: vi.fn(),
       },
     });

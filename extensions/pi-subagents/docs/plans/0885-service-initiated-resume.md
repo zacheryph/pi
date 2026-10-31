@@ -26,7 +26,7 @@ Neither door refuses a resume of a **still-running** agent at all ([#896]).
 The window is reachable: `ask_parent` records the question during the run, and `get_subagent_result` in the interval before the child's turn ends renders the ask-back affordance naming that exact resume call.
 
 Finally, a resume that starts without a tool call emits nothing ([#832]).
-`subagents:resumed` fires only when a resumed run *terminates*, so a UI can learn that a child went back to running only by polling `getRecord`.
+`subagents:resumed` fires only when a resumed run _terminates_, so a UI can learn that a child went back to running only by polling `getRecord`.
 
 ## Goals
 
@@ -67,13 +67,13 @@ Relevant modules, as of `2eea3c6f`:
 | `src/service/service.ts`                         | The public contract: `SubagentsService`, `SubagentRecord`, `SUBAGENT_EVENTS`                                         |
 | `src/service/service-adapter.ts`                 | `SubagentManagerLike` and the `Subagent` → `SubagentRecord` mapping                                                  |
 | `src/observation/outcome-delivery.ts`            | `renderQuestionAffordance` and `RESUME_REFUSAL_CLAUSES` — the affordance that must agree with the door               |
-| `src/observation/subagent-events-observer.ts`    | Emits the lifecycle channels; `subagents:resumed` fires at resume *end*                                              |
+| `src/observation/subagent-events-observer.ts`    | Emits the lifecycle channels; `subagents:resumed` fires at resume _end_                                              |
 | `src/observation/composite-subagent-observer.ts` | Fans manager notifications out to the events observer and the widget                                                 |
 
 The issue body predates two landed steps and is stale in two places, both verified against the code above:
 
 - The refusal **policy** already moved onto the record in Step 15 ([#878]): `Subagent.resumeRefusal` composes the three facts and `AgentTool` holds only an exhaustive `switch` over them.
-  What has *not* moved is the **check** — the manager still never consults it.
+  What has _not_ moved is the **check** — the manager still never consults it.
 - `subagents:resumed` already exists; it reports a terminal resume, not a starting one.
 
 Constraints from `AGENTS.md` that apply:
@@ -147,7 +147,7 @@ return textResult(/* … */);
 
 Two things disappear with it: the `getRecord` pre-read, and the `release()` on a failed resume.
 The release branch becomes unreachable — nothing awaits between the refusal check and `agent.resume()`, and `Subagent.resume` rejects only for a missing session, which `resumeRefusal` has already excluded.
-`Subagent.runResume` captures every other error into `failResume`, so a resumed run that *fails* is still `{ kind: "resumed" }` with `status: "error"` on the record: a refusal means the run never started, not that it went badly.
+`Subagent.runResume` captures every other error into `failResume`, so a resumed run that _fails_ is still `{ kind: "resumed" }` with `status: "error"` on the record: a refusal means the run never started, not that it went badly.
 
 ### The public method
 
@@ -229,7 +229,9 @@ A new channel rather than a second `subagents:started`, for the reason `docs/pla
 Transient and permanent are different claims, not one claim with a parameter, so the existing clause table narrows rather than growing a fourth row:
 
 ```typescript
-const RESUME_REFUSAL_CLAUSES: Record<Exclude<ResumeRefusal, "still-running">, string> = { /* unchanged */ };
+const RESUME_REFUSAL_CLAUSES: Record<Exclude<ResumeRefusal, "still-running">, string> = {
+  /* unchanged */
+};
 ```
 
 The permanent branch keeps its wording ("can no longer be answered … Spawn a new agent").
@@ -292,7 +294,7 @@ Wait for it to settle — get_subagent_result with wait: true returns when it do
 
 - `src/observation/notification.ts` — the nudge reads `record.claimed` / `record.consumed`, and this change sets those through the same `Subagent.claim()` the tool door already used.
 - `src/lifecycle/subagent-state.ts` — no new state; `still-running` is derived from `status`, which the value object already owns.
-- `src/tools/get-result-report.ts` and `src/tools/get-result-tool.ts` — both declare and pass `resumeRefusal: ResumeRefusal | undefined`; widening the union is source-compatible at a type *reference*, and the report's rendering is `outcome-delivery.ts`'s job.
+- `src/tools/get-result-report.ts` and `src/tools/get-result-tool.ts` — both declare and pass `resumeRefusal: ResumeRefusal | undefined`; widening the union is source-compatible at a type _reference_, and the report's rendering is `outcome-delivery.ts`'s job.
 - `src/tools/foreground-runner.ts` — a foreground run is not a resume.
 - `src/ui/session-navigation.ts` — reads `isSessionReady()` directly for transcript mounting, which this change does not touch.
 
@@ -322,7 +324,7 @@ The predicate is also applied to the door's new `still-running` sentence, which 
 | Invariant (source)                                                                                  | Pinned by                                                                                                                                                                                               | This change                                                                                                                                                                                          |
 | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Step 15 ([#878]): no carrier names a resume the extension would refuse                              | `test/observation/outcome-delivery.test.ts` (`names no resume call for any reason`), plus the **required** `resumeRefusal` field on `OutcomeAddenda` / `AgentReport` making an omission a compile error | Extended, not weakened: the union widens, the required field forces every carrier to keep passing it, and the loop is widened to the new member                                                      |
-| Step 14 ([#872]): an update is routed by `record.claimed`, and the lifecycle event fires either way | `test/lifecycle/subagent.test.ts` update-channel tests; `test/observation/notification.test.ts`                                                                                                         | An unclaimed service resume is the first unclaimed *blocking-free* resume. New test: a service resume without `claimOutcome` leaves `record.claimed` false, so its mid-run updates stay announceable |
+| Step 14 ([#872]): an update is routed by `record.claimed`, and the lifecycle event fires either way | `test/lifecycle/subagent.test.ts` update-channel tests; `test/observation/notification.test.ts`                                                                                                         | An unclaimed service resume is the first unclaimed _blocking-free_ resume. New test: a service resume without `claimOutcome` leaves `record.claimed` false, so its mid-run updates stay announceable |
 | Step 21 ([#903]): every update reaches the parent exactly once                                      | `test/observation/notification.test.ts`                                                                                                                                                                 | One accepted regression window, priced below                                                                                                                                                         |
 | Step 7 ([#798]): the foreground result text carries the resume handle                               | `test/tools/foreground-runner.test.ts` (`resume: "agent-5"`)                                                                                                                                            | Untouched — the foreground path is not a resume                                                                                                                                                      |
 | [ADR 0005]: `SubagentRecord` admits no live objects                                                 | `test/service/service-adapter.test.ts`                                                                                                                                                                  | Held: `ResumeResult` carries a `toSubagentRecord` snapshot, never the `Subagent`. New test asserts the returned record has no methods (`toEqual` against the full expected snapshot)                 |

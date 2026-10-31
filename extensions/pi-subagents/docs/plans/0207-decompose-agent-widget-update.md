@@ -57,7 +57,7 @@ No existing tests cover `AgentWidget` methods — `test/widget-renderer.test.ts`
 
 ### `dispose` is not a duplication target
 
-`dispose` (10 lines, cognitive ~2) and `update`'s idle path share *some* statements — `clearInterval`, `setWidget(undefined)`, `setStatus(undefined)`, flag resets — but differ in two ways:
+`dispose` (10 lines, cognitive ~2) and `update`'s idle path share _some_ statements — `clearInterval`, `setWidget(undefined)`, `setStatus(undefined)`, flag resets — but differ in two ways:
 
 - **Guards:** `update`'s idle path guards each call (`if (widgetRegistered)`, `if (lastStatusText !== undefined)`) to avoid redundant SDK calls during repeated timer ticks.
   `dispose` unconditionally calls `setWidget`/`setStatus` (when `uiCtx` exists) as a correctness guarantee during shutdown.
@@ -89,7 +89,7 @@ export interface WidgetState {
 export function assembleWidgetState(
   agents: readonly AgentSummary[],
   shouldShowFinished: (agentId: string, status: string) => boolean,
-): WidgetState
+): WidgetState;
 ```
 
 The input uses a local `AgentSummary` interface (3 fields) rather than `WidgetAgent` (10+ fields).

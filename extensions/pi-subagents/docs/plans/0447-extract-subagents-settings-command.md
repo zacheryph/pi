@@ -46,7 +46,7 @@ Relevant existing modules:
   It depends solely on `this.settings` (typed `AgentMenuSettings`) and the `ui` parameter (`MenuUI`).
   It calls `ui.select` once, then `ui.input` + one `settings.apply*` + `ui.notify` for the chosen field.
   It does not loop: it shows the settings list once, applies one change (or none), and returns.
-  The re-show in the live menu comes from `showAgentsMenu` re-invoking *itself* after `showSettings` returns — not from `showSettings` looping.
+  The re-show in the live menu comes from `showAgentsMenu` re-invoking _itself_ after `showSettings` returns — not from `showSettings` looping.
 - `AgentMenuSettings` (in `agent-menu.ts`) — the narrow settings shape `showSettings` reads: `readonly maxConcurrent`, `readonly defaultMaxTurns: number | undefined`, `readonly graceTurns`, plus `applyMaxConcurrent`/`applyDefaultMaxTurns`/`applyGraceTurns`, each returning `{ message: string; level: "info" | "warning" }`.
 - `MenuUI` (in `agent-menu.ts`) — the wide menu UI interface; `showSettings` uses only `select`, `input`, and `notify` from it.
 - `src/settings.ts` — `SettingsManager` is the concrete settings object constructed in `index.ts`.
@@ -149,7 +149,7 @@ The extraction introduces a genuine new collaborator (a focused command handler 
 
 Doc / skill grep results (no stale references to update in this step):
 
-- `architecture.md` Step 2 already names `src/ui/subagents-settings.ts`, `SubagentsSettingsHandler`, `SubagentsSettingsManager`, and the `/subagents-settings` command with `Outcome: new subagents-settings.ts (~80 LOC) and focused command registered; agent-menu.ts untouched` — the file appears as a *planned* addition, so no doc edit is needed now; its status line flips to ✅ at ship time only if the operator wants it folded in.
+- `architecture.md` Step 2 already names `src/ui/subagents-settings.ts`, `SubagentsSettingsHandler`, `SubagentsSettingsManager`, and the `/subagents-settings` command with `Outcome: new subagents-settings.ts (~80 LOC) and focused command registered; agent-menu.ts untouched` — the file appears as a _planned_ addition, so no doc edit is needed now; its status line flips to ✅ at ship time only if the operator wants it folded in.
 - The package skill (`.pi/skills/package-pi-subagents/SKILL.md`) lists the UI domain by count (`ui/` = 10 modules); adding one file makes it 11, but the table is a coarse summary that is not maintained per-file — leave it for a later Phase 19 doc-sync unless the operator asks otherwise.
 - `settings.ts` comments reference `/agents → Settings` as the writer of project settings; those are still accurate (the in-menu path keeps working), so no edit.
   They become stale only when [#442] deletes `agent-menu.ts`; do not pre-edit them here.
@@ -183,8 +183,8 @@ The new handler adds no inbound call into the core and emits no events — it re
    - `defaultMaxTurns`: `0` delegates `applyDefaultMaxTurns(0)`; a positive value delegates; `n < 0` notifies the warning;
    - `graceTurns`: valid input delegates to `applyGraceTurns(n)`; `n < 1` notifies the warning;
    - empty/cancelled `input` → no apply call.
-   Implementation: create `src/ui/subagents-settings.ts` with the class and both interfaces; body lifted verbatim from `showSettings`.
-   Commit: `feat: add SubagentsSettingsHandler for focused settings command (#447)`.
+     Implementation: create `src/ui/subagents-settings.ts` with the class and both interfaces; body lifted verbatim from `showSettings`.
+     Commit: `feat: add SubagentsSettingsHandler for focused settings command (#447)`.
 2. **Green: register the `/subagents-settings` command in `index.ts`.**
    Test surface: none new (command registration in `index.ts` is exercised by the package's existing index-level wiring tests if present; otherwise verify by `pnpm run check` and the suite).
    Implementation: import `SubagentsSettingsHandler`, construct it with `settings`, and `registerCommand("subagents-settings", ...)` passing `{ ui: ctx.ui }`.

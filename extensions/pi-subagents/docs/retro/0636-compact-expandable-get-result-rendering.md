@@ -62,7 +62,7 @@ Test count went from 1712 to 1764 (+52: `result-renderer` +8, `bounded-lines` +1
 ### Observations
 
 - **Every predicted mutation killed exactly the predicted class.**
-  Step 1's mutation reddened three *pre-existing* `renderStopped`/`renderFailed` tests alongside the new table, which is what proved the extraction was behavior-preserving rather than merely green.
+  Step 1's mutation reddened three _pre-existing_ `renderStopped`/`renderFailed` tests alongside the new table, which is what proved the extraction was behavior-preserving rather than merely green.
   Step 3's two mutations split 15 collapsed / 9 expanded and 5 cap / 19 other, matching the plan's per-class predictions.
   Two negative-assertion tests (`omits the compaction glyph`, `omits the context percent`) stayed green under the collapsed mutation; each has a positive sibling that went red, so the pair discriminates even though neither half does alone.
 - **The plan's central claim was incomplete, and only the reviewer's adversarial input enumeration found it.**
@@ -72,9 +72,9 @@ Test count went from 1712 to 1764 (+52: `result-renderer` +8, `bounded-lines` +1
 - **The second review round widened the same gap again.**
   `\v` and `\f` are zero-width, so they survive a width-based clip, and a VT100-class terminal moves the cursor down for both exactly as for `\n`.
   The cut is now `/[\r\n\v\f]/`.
-  Lesson: "one row per line" is a claim about what the *terminal* does with the string, not about array length — the test that asserts `render(w).length` cannot see the difference, which is precisely why the reviewer's re-derivation mandate was worth writing.
+  Lesson: "one row per line" is a claim about what the _terminal_ does with the string, not about array length — the test that asserts `render(w).length` cannot see the difference, which is precisely why the reviewer's re-derivation mandate was worth writing.
 - **A generic default silently removed a type check.**
-  Widening `textResult` to `<T = AgentDetails>` meant `background-spawner.ts`'s inline details literal began *defining* `T` instead of being checked against `AgentDetails`.
+  Widening `textResult` to `<T = AgentDetails>` meant `background-spawner.ts`'s inline details literal began _defining_ `T` instead of being checked against `AgentDetails`.
   `tsc` stayed green because the literal happened to conform.
   Fixed by hoisting to `const details: AgentDetails = {…}`; an explicit `textResult<AgentDetails>(…)` was tried first and rejected by `@typescript-eslint/no-unnecessary-type-arguments`.
   Verified by adding an unknown field and confirming `tsc` now fails where it previously passed.
@@ -134,13 +134,13 @@ The dominant pattern across all four stages was measurement displacing argument 
   Round 2 widened the same gap to `\v` and `\f`, which are zero-width and so survive a width clip while still moving the cursor down.
   Both fixes went into `BoundedLines` rather than its two call sites, because the component is what promises the bound.
 - **Two `AGENTS.md` version-discipline rules earned their keep.**
-  Enumerating *published* versions (`pnpm view … versions`) rather than git tags pinned `0.84.2` as the fallback-cap boundary.
+  Enumerating _published_ versions (`pnpm view … versions`) rather than git tags pinned `0.84.2` as the fallback-cap boundary.
   Reading the persistence path rather than the `.d.ts` established that `details` is `JSON.stringify`'d into the session JSONL and never sent to the model — the single most decision-relevant fact, invisible from the type declarations, and what justified diverging from PR [#729]'s design.
 
 #### What caused friction (agent side)
 
 - `instruction-violation` (self-identified) — the PR [#729] close comment was posted with `gh pr comment --body` and an inline double-quoted body containing backticks and backslash escapes.
-  `AGENTS.md` requires `--body-file` for a body containing backticks, but states its rationale for *single* quotes (`` \` `` ships literally), so the double-quoted form read as permitted.
+  `AGENTS.md` requires `--body-file` for a body containing backticks, but states its rationale for _single_ quotes (`` \` `` ships literally), so the double-quoted form read as permitted.
   Three opening backticks were lost to escape collapse, publishing `` `\n`/\r`/\v`/\f` `` on a contributor-facing comment.
   Impact: 2 extra tool calls to read the comment back via `gh api` and `PATCH` it from a `--body-file` heredoc, which worked first try; malformed for under a minute, no other rework.
 - `instruction-violation` (self-identified, no impact) — the ship session ran `pnpm run lint 2>&1 | tail -40` and `pnpm fallow dead-code 2>&1 | tail -60`, the exact pipe-through-`tail` pattern `AGENTS.md` forbids because a pipeline's exit status is the filter's.
@@ -177,7 +177,7 @@ The dominant pattern across all four stages was measurement displacing argument 
 
 ### Changes made
 
-1. `AGENTS.md` § Shell and search — widened the `gh issue comment` / `gh pr comment` rule to require `--body-file` *whatever the quoting*, and split the quoting mechanism onto its own sentence.
+1. `AGENTS.md` § Shell and search — widened the `gh issue comment` / `gh pr comment` rule to require `--body-file` _whatever the quoting_, and split the quoting mechanism onto its own sentence.
    The rule previously stated only the single-quote failure, so the double-quoted form this session used read as the sanctioned workaround.
 2. `AGENTS.md` § Commits — widened the `git checkout <ref> -- <path>` warning from "as the swap in an A/B measurement" to "to revert any probe — an A/B swap, a killing mutation, a type-check spike".
    The probe that lost work here was none of the framings the rule named.

@@ -25,7 +25,7 @@ The package's declared peer floor is `>=0.81.0`, and the cap is absent in `0.81.
 Three defects survive on **every** supported version.
 
 **The expanded view is unbounded.**
-`app.tools.expand` (Ctrl+O) is a *global* toggle — `setToolsExpanded` walks every expandable child in the chat container — so expanding to read any one tool result expands every `get_subagent_result` in the transcript to its full length.
+`app.tools.expand` (Ctrl+O) is a _global_ toggle — `setToolsExpanded` walks every expandable child in the chat container — so expanding to read any one tool result expands every `get_subagent_result` in the transcript to its full length.
 Measured on a real stored report (182 result lines, 9 054 characters, longest line 526 characters): 227–258 terminal rows at widths 80–120, before `verbose: true` adds the whole child conversation on top.
 The sibling `subagent` tool caps its expanded body at 50 lines in `renderCompleted`; `get_subagent_result` has no cap at all.
 
@@ -129,11 +129,11 @@ It receives pre-themed lines and emits exactly one terminal row per line:
 
 ```typescript
 export class BoundedLines implements Component {
-	constructor(private readonly lines: readonly string[]) {}
+  constructor(private readonly lines: readonly string[]) {}
 
-	render(width: number): string[] {
-		return this.lines.map((line) => truncateToWidth(line, width));
-	}
+  render(width: number): string[] {
+    return this.lines.map((line) => truncateToWidth(line, width));
+  }
 }
 ```
 
@@ -149,23 +149,23 @@ It never returns a `Component`, so it stays free of SDK and TUI types beyond `Th
 ```typescript
 /** Compact presentation metadata for a get_subagent_result result. Never the full result. */
 export interface GetResultDetails {
-	agentId: string;
-	displayName: string;
-	status: SubagentStatus;
-	description: string;
-	toolUses: number;
-	/** Pre-formatted lifetime token total; "" when zero. */
-	tokens: string;
-	contextPercent: number | null;
-	compactionCount: number;
-	/** Pre-formatted duration string. */
-	duration: string;
-	/** First non-empty line of the result body, clipped to PREVIEW_CHARS. Never the whole result. */
-	preview?: string;
-	error?: string;
-	/** Whether the conversation was requested, so the expanded view can say so. */
-	verbose: boolean;
-	transcriptPath?: string;
+  agentId: string;
+  displayName: string;
+  status: SubagentStatus;
+  description: string;
+  toolUses: number;
+  /** Pre-formatted lifetime token total; "" when zero. */
+  tokens: string;
+  contextPercent: number | null;
+  compactionCount: number;
+  /** Pre-formatted duration string. */
+  duration: string;
+  /** First non-empty line of the result body, clipped to PREVIEW_CHARS. Never the whole result. */
+  preview?: string;
+  error?: string;
+  /** Whether the conversation was requested, so the expanded view can say so. */
+  verbose: boolean;
+  transcriptPath?: string;
 }
 ```
 
@@ -343,7 +343,7 @@ The collapsed body goes from 10 rows (on `0.84.2`+) or the whole report (below i
 | Risk                                                        | Mitigation                                                                                                                                                                                                                                                                           |
 | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | A thrown renderer blanks the tool row                       | Pi wraps both hooks in `try`/`catch` and falls back to `createCallFallback`/`createResultFallback`, so a throw degrades to today's behavior rather than breaking the TUI. The renderer is nonetheless total: every field it reads is either required or explicitly optional-guarded. |
-| Clipping hides content the operator wanted                  | Clipping is horizontal only and applies to the *view*; `content` is untouched, and the indicator names the transcript path. The 50-line cap matches the `subagent` tool's existing, accepted budget.                                                                                 |
+| Clipping hides content the operator wanted                  | Clipping is horizontal only and applies to the _view_; `content` is untouched, and the indicator names the transcript path. The 50-line cap matches the `subagent` tool's existing, accepted budget.                                                                                 |
 | The collapsed preview leaks something long                  | `preview` is clipped at `PREVIEW_CHARS` before entering `details`, and clipped again to the terminal width by `BoundedLines` — two independent bounds, the second of which cannot be bypassed by a wide glyph.                                                                       |
 | `truncateToWidth` behaves differently at the pi-tui floor   | Verified present and exported at `v0.75.0`, the declared floor, as well as in the installed `0.84.4`.                                                                                                                                                                                |
 | Step 1's extraction silently changes `subagent`'s rendering | Step 1 edits no test. Any change in `result-renderer.ts`'s output fails an existing assertion rather than being absorbed.                                                                                                                                                            |

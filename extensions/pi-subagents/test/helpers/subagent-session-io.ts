@@ -7,13 +7,13 @@ import { createMockSession } from "#test/helpers/mock-session";
 
 /** Default AgentConfig returned by createAgentLookup. Matches the Explore stub used in factory tests. */
 const DEFAULT_AGENT_CONFIG: AgentConfig = {
-	name: "Explore",
-	description: "Explore",
-	toolNames: ["read"],
-	systemPrompt: "You are Explore.",
-	promptMode: "replace",
-	inheritContext: false,
-	runInBackground: false,
+  name: "Explore",
+  description: "Explore",
+  toolNames: ["read"],
+  systemPrompt: "You are Explore.",
+  promptMode: "replace",
+  inheritContext: false,
+  runInBackground: false,
 };
 
 /**
@@ -31,27 +31,27 @@ const DEFAULT_AGENT_CONFIG: AgentConfig = {
  *   io.assemblerIO.buildAgentPrompt.mockReturnValue("custom");
  */
 export function createSubagentSessionIO() {
-	return {
-		detectEnv: vi.fn().mockResolvedValue({ isGitRepo: false, branch: "", platform: "linux" }),
-		getAgentDir: vi.fn().mockReturnValue("/mock/agent-dir"),
-		createResourceLoader: vi.fn().mockReturnValue({ reload: vi.fn().mockResolvedValue(undefined) }),
-		deriveSessionDir: vi.fn().mockReturnValue("/mock/session-dir/tasks"),
-		createSessionManager: vi.fn().mockReturnValue({
-			newSession: vi.fn(),
-			getSessionFile: vi.fn().mockReturnValue("/sessions/child.jsonl"),
-			getSessionId: vi.fn().mockReturnValue("child-session-id"),
-		}),
-		createSettingsManager: vi.fn().mockReturnValue({}),
-		// Identity by default: no package exclusions, so children inherit everything.
-		createLoaderSettingsManager: vi.fn().mockImplementation((parent: unknown) => parent),
-		createSession: vi.fn(),
-		assemblerIO: {
-			// Typed against the real signature so a test can read back the
-			// inherited-prompt argument the assembler composed.
-			buildAgentPrompt: vi.fn<AssemblerIO["buildAgentPrompt"]>(() => "system prompt"),
-			loadProjectContext: vi.fn<AssemblerIO["loadProjectContext"]>(() => undefined),
-		},
-	};
+  return {
+    detectEnv: vi.fn().mockResolvedValue({ isGitRepo: false, branch: "", platform: "linux" }),
+    getAgentDir: vi.fn().mockReturnValue("/mock/agent-dir"),
+    createResourceLoader: vi.fn().mockReturnValue({ reload: vi.fn().mockResolvedValue(undefined) }),
+    deriveSessionDir: vi.fn().mockReturnValue("/mock/session-dir/tasks"),
+    createSessionManager: vi.fn().mockReturnValue({
+      newSession: vi.fn(),
+      getSessionFile: vi.fn().mockReturnValue("/sessions/child.jsonl"),
+      getSessionId: vi.fn().mockReturnValue("child-session-id"),
+    }),
+    createSettingsManager: vi.fn().mockReturnValue({}),
+    // Identity by default: no package exclusions, so children inherit everything.
+    createLoaderSettingsManager: vi.fn().mockImplementation((parent: unknown) => parent),
+    createSession: vi.fn(),
+    assemblerIO: {
+      // Typed against the real signature so a test can read back the
+      // inherited-prompt argument the assembler composed.
+      buildAgentPrompt: vi.fn<AssemblerIO["buildAgentPrompt"]>(() => "system prompt"),
+      loadProjectContext: vi.fn<AssemblerIO["loadProjectContext"]>(() => undefined),
+    },
+  };
 }
 
 /**
@@ -65,11 +65,11 @@ export function createSubagentSessionIO() {
  * point if needed.
  */
 export function createAgentLookup(configOverrides?: Partial<AgentConfig>) {
-	const config: AgentConfig = { ...DEFAULT_AGENT_CONFIG, ...configOverrides };
-	return {
-		resolveAgentConfig: vi.fn((_type: string): AgentConfig => config),
-		getToolNamesForType: vi.fn((_type: string): string[] => config.toolNames ?? ["all"]),
-	};
+  const config: AgentConfig = { ...DEFAULT_AGENT_CONFIG, ...configOverrides };
+  return {
+    resolveAgentConfig: vi.fn((_type: string): AgentConfig => config),
+    getToolNamesForType: vi.fn((_type: string): string[] => config.toolNames ?? ["all"]),
+  };
 }
 
 /**
@@ -84,24 +84,23 @@ export function createAgentLookup(configOverrides?: Partial<AgentConfig>) {
  * unannotated createSubagentSessionIO() shape), so callers can still assert on it.
  */
 export function createSubagentSessionDeps(overrides?: {
-	io?: ReturnType<typeof createSubagentSessionIO>;
-	exec?: ShellExec;
-	registry?: AgentConfigLookup;
-	lifecycle?: ReturnType<typeof createChildLifecycleMock>;
-	resolvePromptInheritance?: (provider: string | undefined) => PromptInheritance;
-	listParentToolNames?: () => readonly string[];
+  io?: ReturnType<typeof createSubagentSessionIO>;
+  exec?: ShellExec;
+  registry?: AgentConfigLookup;
+  lifecycle?: ReturnType<typeof createChildLifecycleMock>;
+  resolvePromptInheritance?: (provider: string | undefined) => PromptInheritance;
+  listParentToolNames?: () => readonly string[];
 }) {
-	return {
-		io: overrides?.io ?? createSubagentSessionIO(),
-		exec: overrides?.exec ?? vi.fn(),
-		registry: overrides?.registry ?? createAgentLookup(),
-		lifecycle: overrides?.lifecycle ?? createChildLifecycleMock(),
-		resolvePromptInheritance:
-			overrides?.resolvePromptInheritance ??
-			vi.fn((_provider: string | undefined): PromptInheritance => "full"),
-		listParentToolNames:
-			overrides?.listParentToolNames ?? vi.fn((): readonly string[] => []),
-	};
+  return {
+    io: overrides?.io ?? createSubagentSessionIO(),
+    exec: overrides?.exec ?? vi.fn(),
+    registry: overrides?.registry ?? createAgentLookup(),
+    lifecycle: overrides?.lifecycle ?? createChildLifecycleMock(),
+    resolvePromptInheritance:
+      overrides?.resolvePromptInheritance ??
+      vi.fn((_provider: string | undefined): PromptInheritance => "full"),
+    listParentToolNames: overrides?.listParentToolNames ?? vi.fn((): readonly string[] => []),
+  };
 }
 
 /**
@@ -112,13 +111,13 @@ export function createSubagentSessionDeps(overrides?: {
  * Return type is unannotated so the vi.fn() Mock<...> methods survive.
  */
 export function createChildLifecycleMock() {
-	return {
-		spawning: vi.fn<ChildLifecyclePublisher["spawning"]>(),
-		sessionCreated: vi.fn<ChildLifecyclePublisher["sessionCreated"]>(),
-		bound: vi.fn<ChildLifecyclePublisher["bound"]>(),
-		completed: vi.fn<ChildLifecyclePublisher["completed"]>(),
-		disposed: vi.fn<ChildLifecyclePublisher["disposed"]>(),
-	};
+  return {
+    spawning: vi.fn<ChildLifecyclePublisher["spawning"]>(),
+    sessionCreated: vi.fn<ChildLifecyclePublisher["sessionCreated"]>(),
+    bound: vi.fn<ChildLifecyclePublisher["bound"]>(),
+    completed: vi.fn<ChildLifecyclePublisher["completed"]>(),
+    disposed: vi.fn<ChildLifecyclePublisher["disposed"]>(),
+  };
 }
 
 /** The default agent config, exported for tests that build mutable wrappers around it. */
@@ -139,12 +138,12 @@ export { DEFAULT_AGENT_CONFIG };
  * Mock<...> methods (mock.calls, mockResolvedValue, etc.).
  */
 export function createFactorySession() {
-	return {
-		...createMockSession(),
-		prompt: vi.fn().mockResolvedValue(undefined),
-		abort: vi.fn(),
-		getActiveToolNames: vi.fn((): string[] => ["read"]),
-		setActiveToolsByName: vi.fn(),
-		bindExtensions: vi.fn(async (): Promise<void> => undefined),
-	};
+  return {
+    ...createMockSession(),
+    prompt: vi.fn().mockResolvedValue(undefined),
+    abort: vi.fn(),
+    getActiveToolNames: vi.fn((): string[] => ["read"]),
+    setActiveToolsByName: vi.fn(),
+    bindExtensions: vi.fn(async (): Promise<void> => undefined),
+  };
 }

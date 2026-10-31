@@ -181,9 +181,7 @@ export class SubagentsSettingsHandler {
   constructor(private readonly settings: SubagentsSettingsManager) {}
 
   async handle({ ui }: { ui: SubagentsSettingsUI }): Promise<void> {
-    const options = SETTINGS.map(
-      (d) => `${d.label} (current: ${d.currentDisplay(this.settings)})`,
-    );
+    const options = SETTINGS.map((d) => `${d.label} (current: ${d.currentDisplay(this.settings)})`);
     const choice = await ui.select("Settings", options);
     if (!choice) return;
 
@@ -197,7 +195,10 @@ export class SubagentsSettingsHandler {
     }
 
     if (descriptor.kind === "enum") {
-      const choice = await ui.select(descriptor.selectTitle, descriptor.choices.map((c) => c.label));
+      const choice = await ui.select(
+        descriptor.selectTitle,
+        descriptor.choices.map((c) => c.label),
+      );
       const selected = descriptor.choices.find((c) => c.label === choice);
       if (!selected) return;
       const toast = descriptor.apply(this.settings, selected.value);

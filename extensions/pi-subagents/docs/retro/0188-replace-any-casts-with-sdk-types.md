@@ -61,7 +61,7 @@ Test count: 902 → 901 (one non-conforming test removed).
   Impact: one failed commit attempt, immediate fix (changed `.map((c) => c.text ?? "")` to `.map((c) => c.text)`).
 - `missing-context` — The plan's step 2 didn't anticipate the five additional lint errors surfaced by properly typing the `record-observer` callback: unnecessary optional chain on `event.message?.role`, unnecessary `if (u)` guard, and three unnecessary `?? 0` guards on usage fields.
   Impact: added ~5 minutes of investigation to verify the SDK types were truly non-optional before removing guards; required removing one test case (`"ignores message_end without usage"`).
-  Both instances stem from the same root cause: the plan checked that the SDK types *existed* but didn't trace the *field optionality* of types downstream of `AgentSessionEvent` (specifically `AgentMessage.usage` and `Usage.{input,output,cacheWrite}`).
+  Both instances stem from the same root cause: the plan checked that the SDK types _existed_ but didn't trace the _field optionality_ of types downstream of `AgentSessionEvent` (specifically `AgentMessage.usage` and `Usage.{input,output,cacheWrite}`).
 
 #### What caused friction (user side)
 

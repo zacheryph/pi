@@ -43,7 +43,7 @@ Pre-completion reviewer: PASS.
   Reworked to AAA — describe-scoped `beforeEach` for arrange, `createSubagentSession(...)` act kept explicit per test.
 - The operator relaxed the roadmap's "lifecycle families ≤ 1" Outcome.
   Two families remain by design (the repeated act with test-specific arrange); documented as intentional in `architecture.md` Step 7.
-  Lesson recorded: a clone-count metric is a weak signal for *test* code — AAA structure beats it, and chasing the metric produced the wrong abstraction before it was caught.
+  Lesson recorded: a clone-count metric is a weak signal for _test_ code — AAA structure beats it, and chasing the metric produced the wrong abstraction before it was caught.
 - `programTurns(session, listeners, turns)` is a legitimate arrange helper for the turn-limit tests (turn count is the meaningful input, not a discriminator flag); removed the restated-boundary comments per `code-design` (names/args over comments).
 - Folding the extension-tools tests was safe because the recursion guard reads only the session mock's `getActiveToolNames`/`setActiveToolsByName`; the agent config and `type` don't affect those assertions (mocked `io.createSession` ignores `cfg.toolNames`).
 - Surfaced three overlapping session-mock builders (`createMockSession`, `createSubagentSessionStub`, `createFactorySession`); filed [#412] as a follow-up rather than expanding #378 scope.

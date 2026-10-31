@@ -49,12 +49,18 @@ export function formatTaskNotification(record: Subagent, resultMaxLen: number): 
   const durationMs = record.completedAt ? record.completedAt - record.startedAt : 0;
   const totalTokens = getLifetimeTotal(record.lifetimeUsage);
   const contextPercent = record.getContextPercent();
-  const ctxXml = contextPercent !== null ? `<context_percent>${Math.round(contextPercent)}</context_percent>` : "";
-  const compactXml = record.compactionCount ? `<compactions>${record.compactionCount}</compactions>` : "";
+  const ctxXml =
+    contextPercent !== null
+      ? `<context_percent>${Math.round(contextPercent)}</context_percent>`
+      : "";
+  const compactXml = record.compactionCount
+    ? `<compactions>${record.compactionCount}</compactions>`
+    : "";
 
   const resultPreview = record.result
     ? record.result.length > resultMaxLen
-      ? record.result.slice(0, resultMaxLen) + "\n...(truncated, use get_subagent_result for full output)"
+      ? record.result.slice(0, resultMaxLen) +
+        "\n...(truncated, use get_subagent_result for full output)"
       : record.result
     : "No output.";
 
@@ -164,13 +170,12 @@ function buildResultPreview(record: Subagent, resultMaxLen: number): string {
 
 /** Build event data for lifecycle events from a Subagent. */
 export function buildEventData(record: Subagent) {
-  const durationMs = record.completedAt ? record.completedAt - record.startedAt : Date.now() - record.startedAt;
+  const durationMs = record.completedAt
+    ? record.completedAt - record.startedAt
+    : Date.now() - record.startedAt;
   const u = record.lifetimeUsage;
   const total = getLifetimeTotal(u);
-  const tokens =
-    total > 0
-      ? { input: u.input, output: u.output, total }
-      : undefined;
+  const tokens = total > 0 ? { input: u.input, output: u.output, total } : undefined;
   return {
     id: record.id,
     type: record.type,

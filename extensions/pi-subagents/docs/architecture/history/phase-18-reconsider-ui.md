@@ -13,19 +13,19 @@ All eight steps are closed: [#420], [#421], [#422], [#423], [#424], [#425], [#42
 
 Baseline at the start of Phase 18 (end of Phase 17):
 
-| Metric                                   | Phase 18 start                                                     | Phase 18 end                          |
-| ---------------------------------------- | ------------------------------------------------------------------ | ------------------------------------- |
-| Health score                             | 78/100 (B)                                                         | 78/100 (B)                            |
-| Source LOC                               | 7,751 (62 files)                                                   | 7,650 (61 files)                      |
-| Dead code                                | 0 files, 0 exports                                                 | 0 files, 0 exports                    |
-| Maintainability index                    | 90.9 (good)                                                        | 90.9 (good)                           |
-| Avg cyclomatic complexity                | 1.4                                                                | 1.4                                   |
-| P90 cyclomatic complexity                | 2                                                                  | 2                                     |
-| Fallow refactoring targets               | 0                                                                  | 0                                     |
-| Production duplication                   | 11 lines (1 internal clone group in `agent-config-editor.ts`)      | 11 lines (1 internal clone group)     |
-| Test duplication                         | 28 clone groups, 503 lines                                         | 14 clone groups (below <15 target)    |
-| Tests                                    | 1,031 passing                                                      | 1,047 passing                         |
-| Activity-tier modules slated for removal | `ui-observer.ts` (61) + `agent-activity-tracker.ts` (84) = 145 LOC | Deleted in Step 3                     |
+| Metric                                   | Phase 18 start                                                     | Phase 18 end                       |
+| ---------------------------------------- | ------------------------------------------------------------------ | ---------------------------------- |
+| Health score                             | 78/100 (B)                                                         | 78/100 (B)                         |
+| Source LOC                               | 7,751 (62 files)                                                   | 7,650 (61 files)                   |
+| Dead code                                | 0 files, 0 exports                                                 | 0 files, 0 exports                 |
+| Maintainability index                    | 90.9 (good)                                                        | 90.9 (good)                        |
+| Avg cyclomatic complexity                | 1.4                                                                | 1.4                                |
+| P90 cyclomatic complexity                | 2                                                                  | 2                                  |
+| Fallow refactoring targets               | 0                                                                  | 0                                  |
+| Production duplication                   | 11 lines (1 internal clone group in `agent-config-editor.ts`)      | 11 lines (1 internal clone group)  |
+| Test duplication                         | 28 clone groups, 503 lines                                         | 14 clone groups (below <15 target) |
+| Tests                                    | 1,031 passing                                                      | 1,047 passing                      |
+| Activity-tier modules slated for removal | `ui-observer.ts` (61) + `agent-activity-tracker.ts` (84) = 145 LOC | Deleted in Step 3                  |
 
 ## Findings
 
@@ -116,12 +116,12 @@ Folding the live activity onto the record (the single owner of run state, consis
      The conversation viewer shows a truncated view, yet `Subagent.messages` already exposes the full history and the core already persists each child as a standard Pi session JSONL (`outputFile`) — the limit is the bespoke overlay's rendering, not data access.
    - **Foreground widget redundancy.**
      In foreground the tool's inline `onUpdate` stream already shows progress, so the above-editor widget duplicates it; the widget earns its keep only for background agents — a per-mode judgment the fused UI cannot vary.
-   Candidate redesign to record: replace the bespoke overlay with "open the child session in the same viewer Pi uses for any session," following the recursive-Pi insight and the already-persisted session file.
-   Judge the widget, conversation viewer, and `/agents` menu per component — keep, shrink, extract to `@gotgenes/pi-subagents-ui`, or remove — and capture the decision in an ADR that gateways Phase 19.
-   Smell: Category E (organization / boundary).
-   Outcome: a recorded per-component decision motivated by the two concerns; the inherited UI is substitutable and no longer preserved by default.
-   Landed: [ADR-0004] records the per-component decision — (A) shrink the widget to background agents only; (B) remove the bespoke `ConversationViewer`, replacing it with native session navigation over the persisted child JSONL (`switchSession`/`loadEntriesFromFile`, mechanism gated on a Phase 19 spike); (C) dissolve the `/agents` command (remove the create wizard and the agent-types config editor, re-home running-agent visibility onto the widget + session navigation, extract settings to a focused `/subagents:settings` command); (D) keep the surviving UI in-core (substitutable, not extracted).
-   The ADR gateways Phase 19, which implements these decisions under its own plan; no runtime code changed in this step.
+     Candidate redesign to record: replace the bespoke overlay with "open the child session in the same viewer Pi uses for any session," following the recursive-Pi insight and the already-persisted session file.
+     Judge the widget, conversation viewer, and `/agents` menu per component — keep, shrink, extract to `@gotgenes/pi-subagents-ui`, or remove — and capture the decision in an ADR that gateways Phase 19.
+     Smell: Category E (organization / boundary).
+     Outcome: a recorded per-component decision motivated by the two concerns; the inherited UI is substitutable and no longer preserved by default.
+     Landed: [ADR-0004] records the per-component decision — (A) shrink the widget to background agents only; (B) remove the bespoke `ConversationViewer`, replacing it with native session navigation over the persisted child JSONL (`switchSession`/`loadEntriesFromFile`, mechanism gated on a Phase 19 spike); (C) dissolve the `/agents` command (remove the create wizard and the agent-types config editor, re-home running-agent visibility onto the widget + session navigation, extract settings to a focused `/subagents:settings` command); (D) keep the surviving UI in-core (substitutable, not extracted).
+     The ADR gateways Phase 19, which implements these decisions under its own plan; no runtime code changed in this step.
 
 ## Step dependency diagram
 

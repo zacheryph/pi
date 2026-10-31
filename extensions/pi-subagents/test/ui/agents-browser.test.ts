@@ -6,44 +6,78 @@ import { describe, expect, it, vi } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import { loadCustomAgents } from "#src/config/custom-agents";
 import type { AgentConfig } from "#src/types";
-import { buildAgentsView, showAgentsBrowser, type AgentsBrowserOptions } from "#src/ui/agents-browser";
+import {
+  buildAgentsView,
+  showAgentsBrowser,
+  type AgentsBrowserOptions,
+} from "#src/ui/agents-browser";
 import { ReadOnlyBrowser } from "#src/ui/read-only-browser";
 
 function agent(overrides: Partial<AgentConfig> = {}): AgentConfig {
   return {
-    name: "auditor", displayName: "Auditor", description: "First line\nSecond line",
+    name: "auditor",
+    displayName: "Auditor",
+    description: "First line\nSecond line",
     systemPrompt: "# Instructions\n  Keep indentation.\n\n**Literal Markdown**\nLast instruction.",
-    promptMode: "append", ...overrides,
+    promptMode: "append",
+    ...overrides,
   };
 }
-const registry = (config = agent()) => new AgentTypeRegistry(() => new Map([[config.name, config]]));
+const registry = (config = agent()) =>
+  new AgentTypeRegistry(() => new Map([[config.name, config]]));
 const detail = (config = agent(), defaults = {}, options: AgentsBrowserOptions = {}) =>
-  buildAgentsView(registry(config), defaults, options).items.find(item => item.id === config.name)!.detail;
+  buildAgentsView(registry(config), defaults, options).items.find(
+    (item) => item.id === config.name,
+  )!.detail;
 const field = (text: string, label: string) => new RegExp(`^${label}: +(.+)$`, "m").exec(text)?.[1];
 
 describe("effective agent definitions", () => {
   it("sorts built-in and custom agents alphabetically, ignoring case, without changing registry order", () => {
-    const configs = [agent({ name: "zebra" }), agent({ name: "Alpha", enabled: false }), agent({ name: "beta" })];
-    const r = new AgentTypeRegistry(() => new Map(configs.map(config => [config.name, config])));
+    const configs = [
+      agent({ name: "zebra" }),
+      agent({ name: "Alpha", enabled: false }),
+      agent({ name: "beta" }),
+    ];
+    const r = new AgentTypeRegistry(() => new Map(configs.map((config) => [config.name, config])));
     const names = r.getAllTypes();
     const originalOrder = [...names];
     vi.spyOn(r, "getAllTypes").mockReturnValue(names);
 
-    expect(buildAgentsView(r).items.map(item => item.label)).toEqual([
-      "Alpha", "beta", "Explore", "general-purpose", "orchestrator", "Plan", "reviewer", "zebra",
+    expect(buildAgentsView(r).items.map((item) => item.label)).toEqual([
+      "Alpha",
+      "beta",
+      "Explore",
+      "general-purpose",
+      "orchestrator",
+      "Plan",
+      "reviewer",
+      "zebra",
     ]);
     expect(names).toEqual(originalOrder);
   });
 
   it("lists defaults and disabled overrides without description rows", () => {
-    const r = registry(agent({ name: "Explore", enabled: false, source: "project", toolNames: [] }));
+    const r = registry(
+      agent({ name: "Explore", enabled: false, source: "project", toolNames: [] }),
+    );
     const view = buildAgentsView(r);
-    expect(view.items.map(item => item.label)).toEqual(["Explore", "general-purpose", "orchestrator", "Plan", "reviewer"]);
-    expect(view.items.find(item => item.label === "Explore")).toMatchObject({
-      status: "disabled", badge: { label: "[disabled]", color: "dim" }, description: "First line\nSecond line",
+    expect(view.items.map((item) => item.label)).toEqual([
+      "Explore",
+      "general-purpose",
+      "orchestrator",
+      "Plan",
+      "reviewer",
+    ]);
+    expect(view.items.find((item) => item.label === "Explore")).toMatchObject({
+      status: "disabled",
+      badge: { label: "[disabled]", color: "dim" },
+      description: "First line\nSecond line",
     });
-    expect(view.items.find(item => item.id === "general-purpose")!.badge).toEqual({ label: "[enabled]", color: "success" });
-    const config = view.items.find(item => item.label === "Explore")!.detail;
+    expect(view.items.find((item) => item.id === "general-purpose")!.badge).toEqual({
+      label: "[enabled]",
+      color: "success",
+    });
+    const config = view.items.find((item) => item.label === "Explore")!.detail;
     expect(field(config, "Enabled")).toBe("false");
     expect(field(config, "Source")).toBe("project");
     expect(field(config, "Tools")).toBe("(none)");
@@ -53,9 +87,16 @@ describe("effective agent definitions", () => {
 
   it("orders Name, effective fields, Description, then full-width Body on following line", () => {
     const config = agent({
-      source: "project", sourcePath: "/project/.pi/agents/auditor.md", toolNames: ["read", "mcp__github__*"],
-      model: "provider/model", thinking: "high", maxTurns: 30, inheritContext: true, runInBackground: false,
-      locked: ["model", "thinking"], toolGuideline: "Pick auditor for reviews.",
+      source: "project",
+      sourcePath: "/project/.pi/agents/auditor.md",
+      toolNames: ["read", "mcp__github__*"],
+      model: "provider/model",
+      thinking: "high",
+      maxTurns: 30,
+      inheritContext: true,
+      runInBackground: false,
+      locked: ["model", "thinking"],
+      toolGuideline: "Pick auditor for reviews.",
     });
     const text = detail(config);
     expect(text.split("\n")[0]).toMatch(/^Name: +auditor$/);
@@ -71,9 +112,9 @@ describe("effective agent definitions", () => {
     expect(field(text, "Locked")).toBe("model, thinking");
     expect(field(text, "Tool guideline")).toBe(config.toolGuideline);
     const lines = text.split("\n");
-    const description = lines.findIndex(line => line.startsWith("Description:"));
+    const description = lines.findIndex((line) => line.startsWith("Description:"));
     const heading = lines.indexOf("Body");
-    expect(description).toBeGreaterThan(lines.findIndex(line => line.startsWith("Locked:")));
+    expect(description).toBeGreaterThan(lines.findIndex((line) => line.startsWith("Locked:")));
     expect(lines[description + 1]).toMatch(/^ +Second line$/);
     expect(heading).toBe(description + 3); // continuation, blank, Body
     expect(lines.slice(heading + 1).join("\n")).toBe(config.systemPrompt);
@@ -94,16 +135,26 @@ describe("effective agent definitions", () => {
     expect(field(text, "Source path")).toBe("(not available)");
     expect(text.endsWith("\n\nBody\n(empty)")).toBe(true);
     expect(field(detail(agent({ maxTurns: 1 })), "Max turns")).toBe("2 (configured: 1)");
-    expect(field(detail(agent({ maxTurns: 0 }), { defaultMaxTurns: 20 }), "Max turns")).toBe("unlimited (configured: 0)");
-    expect(field(detail(agent(), { defaultMaxTurns: 1 }), "Max turns")).toBe("2 (configured: 1) (extension default)");
-    const embedded = buildAgentsView(registry()).items.find(item => item.id === "general-purpose")!.detail;
+    expect(field(detail(agent({ maxTurns: 0 }), { defaultMaxTurns: 20 }), "Max turns")).toBe(
+      "unlimited (configured: 0)",
+    );
+    expect(field(detail(agent(), { defaultMaxTurns: 1 }), "Max turns")).toBe(
+      "2 (configured: 1) (extension default)",
+    );
+    const embedded = buildAgentsView(registry()).items.find(
+      (item) => item.id === "general-purpose",
+    )!.detail;
     expect(field(embedded, "Source")).toBe("default (embedded)");
     expect(field(embedded, "Source path")).toBe("(embedded)");
   });
 
   it("whole-file locks only claim declared fields, explicit lists also lock absent fields", () => {
-    expect(field(detail(agent({ locked: true, model: "m", inheritContext: false, maxTurns: 0 })), "Locked"))
-      .toBe("true (declared fields: model, max_turns, inherit_context)");
+    expect(
+      field(
+        detail(agent({ locked: true, model: "m", inheritContext: false, maxTurns: 0 })),
+        "Locked",
+      ),
+    ).toBe("true (declared fields: model, max_turns, inherit_context)");
     expect(field(detail(agent({ locked: true })), "Locked")).toBe("true (declared fields: none)");
     expect(field(detail(agent({ locked: ["thinking"] })), "Locked")).toBe("thinking");
   });
@@ -116,17 +167,22 @@ describe("effective agent definitions", () => {
     config.systemPrompt = "changed";
     config.enabled = false;
     config.description = "changed";
-    const item = view.items.find(item => item.id === config.name)!;
+    const item = view.items.find((item) => item.id === config.name)!;
     expect(item.detail).not.toContain("changed");
     expect(field(item.detail, "Tools")).toBe("read");
     expect(item.status).toBe("enabled");
   });
 
   it("preserves body whitespace/literal Markdown, strips unsafe terminal text before alignment", () => {
-    const text = detail(agent({
-      description: "Review\x1b]52;c;bad\x07\nContinue", model: "ok\x1b[2J", sourcePath: "/safe\u202efile",
-      systemPrompt: "  instruction\n\n```text\n\tKeep literal.\n```\x1b]0;unfinished",
-    }));
+    const text = detail(
+      agent({
+        description: "Review\x1b]52;c;bad\x07\nContinue",
+        model: "ok\x1b[2J",
+        sourcePath: "/safe\u202efile",
+        systemPrompt: "  instruction\n\n```text\n\tKeep literal.\n```\x1b]0;unfinished",
+      }),
+    );
+    // oxlint-disable-next-line no-control-regex -- Intentionally matches terminal control characters.
     expect(text).not.toMatch(/[\x1b\x07\u202e]/);
     expect(field(text, "Model")).toBe("ok");
     expect(field(text, "Source path")).toBe("/safefile");
@@ -134,44 +190,81 @@ describe("effective agent definitions", () => {
   });
 
   it("shows raw Body, ordered source-local provenance and composed instructions without mutating config", () => {
-    const config = agent({ source: "global", sourcePath: "/global/agents/auditor.md", fragments: ["aws", "audit", "aws"], systemPrompt: "RAW BODY" });
-    const readFile = vi.fn((path: string) => path.endsWith("aws.md") ? "AWS\x1b[31m" : "AUDIT\x1b]52;c;payload\x07");
+    const config = agent({
+      source: "global",
+      sourcePath: "/global/agents/auditor.md",
+      fragments: ["aws", "audit", "aws"],
+      systemPrompt: "RAW BODY",
+    });
+    const readFile = vi.fn((path: string) =>
+      path.endsWith("aws.md") ? "AWS\x1b[31m" : "AUDIT\x1b]52;c;payload\x07",
+    );
     const text = detail(config, {}, { readFile });
-    expect(text).toContain("\nBody\nRAW BODY\n\nFragments\n1. aws\n   /global/agents/fragments/aws.md\n2. audit\n   /global/agents/fragments/audit.md");
+    expect(text).toContain(
+      "\nBody\nRAW BODY\n\nFragments\n1. aws\n   /global/agents/fragments/aws.md\n2. audit\n   /global/agents/fragments/audit.md",
+    );
     expect(text).toContain("\nComposed instructions\nAWS\n\n---\n\nAUDIT\n\n---\n\nRAW BODY");
+    // oxlint-disable-next-line no-control-regex -- Intentionally matches terminal control characters.
     expect(text).not.toMatch(/[\x1b\x07]/);
-    expect(readFile.mock.calls.map(([path]) => path)).toEqual(["/global/agents/fragments/aws.md", "/global/agents/fragments/audit.md"]);
+    expect(readFile.mock.calls.map(([path]) => path)).toEqual([
+      "/global/agents/fragments/aws.md",
+      "/global/agents/fragments/audit.md",
+    ]);
     expect(config.systemPrompt).toBe("RAW BODY");
     expect(config.fragments).toEqual(["aws", "audit", "aws"]);
   });
 
   it("keeps provenance and Body when missing fragment blocks composition; sanitizes error", () => {
-    const readFile = vi.fn(() => { throw new Error("ENOENT\x1b]0;fake title\x07"); });
-    const text = detail(agent({ fragments: ["missing"], sourcePath: "/project/.pi/agents/auditor.md", systemPrompt: "RAW BODY" }), {}, { readFile });
+    const readFile = vi.fn(() => {
+      throw new Error("ENOENT\x1b]0;fake title\x07");
+    });
+    const text = detail(
+      agent({
+        fragments: ["missing"],
+        sourcePath: "/project/.pi/agents/auditor.md",
+        systemPrompt: "RAW BODY",
+      }),
+      {},
+      { readFile },
+    );
     expect(text).toContain("\nBody\nRAW BODY");
     expect(text).toContain("1. missing\n   /project/.pi/agents/fragments/missing.md");
     expect(text).toContain("Composed instructions\nError:");
     expect(text).toContain("ENOENT");
+    // oxlint-disable-next-line no-control-regex -- Intentionally matches terminal control characters.
     expect(text).not.toMatch(/[\x1b\x07]/);
     expect(readFile).toHaveBeenCalledTimes(1);
   });
 
-  it.each([false, undefined])("blocks untrusted project preview without fragment IO (%s)", projectTrusted => {
-    const readFile = vi.fn(() => "SECRET");
-    const config = agent({ source: "project", sourcePath: "/project/.pi/agents/auditor.md", fragments: ["aws"], systemPrompt: "RAW BODY" });
-    const text = detail(config, {}, { projectTrusted, readFile });
-    expect(text).toContain("\nBody\nRAW BODY");
-    expect(text).toContain("1. aws\n   /project/.pi/agents/fragments/aws.md");
-    expect(text).toContain("Composed instructions\nError:");
-    expect(text).toContain("require Pi project trust");
-    expect(text).not.toContain("SECRET");
-    expect(readFile).not.toHaveBeenCalled();
-    expect(detail(config, {}, { projectTrusted: true, readFile })).toContain("SECRET\n\n---\n\nRAW BODY");
-  });
+  it.each([false, undefined])(
+    "blocks untrusted project preview without fragment IO (%s)",
+    (projectTrusted) => {
+      const readFile = vi.fn(() => "SECRET");
+      const config = agent({
+        source: "project",
+        sourcePath: "/project/.pi/agents/auditor.md",
+        fragments: ["aws"],
+        systemPrompt: "RAW BODY",
+      });
+      const text = detail(config, {}, { projectTrusted, readFile });
+      expect(text).toContain("\nBody\nRAW BODY");
+      expect(text).toContain("1. aws\n   /project/.pi/agents/fragments/aws.md");
+      expect(text).toContain("Composed instructions\nError:");
+      expect(text).toContain("require Pi project trust");
+      expect(text).not.toContain("SECRET");
+      expect(readFile).not.toHaveBeenCalled();
+      expect(detail(config, {}, { projectTrusted: true, readFile })).toContain(
+        "SECRET\n\n---\n\nRAW BODY",
+      );
+    },
+  );
 
   it("shows invalid declarations/errors without fragment IO and leaves no-fragment view unchanged", () => {
     const readFile = vi.fn(() => "UNEXPECTED");
-    for (const overrides of [{ fragmentError: "Invalid fragment declaration" }, { fragments: ["../aws"] }]) {
+    for (const overrides of [
+      { fragmentError: "Invalid fragment declaration" },
+      { fragments: ["../aws"] },
+    ]) {
       const text = detail(agent(overrides), {}, { projectTrusted: true, readFile });
       expect(text).toContain("Composed instructions\nError:");
       expect(text).toContain("Invalid fragment");
@@ -189,7 +282,7 @@ describe("effective agent definitions", () => {
     const readFile = vi.fn(() => "ORIGINAL");
     const view = buildAgentsView(registry(config), {}, { readFile });
     readFile.mockReturnValue("EDITED");
-    const item = view.items.find(item => item.id === config.name)!;
+    const item = view.items.find((item) => item.id === config.name)!;
     expect(item.detail).toContain("ORIGINAL");
     expect(item.detail).not.toContain("EDITED");
     expect(readFile).toHaveBeenCalledTimes(1);
@@ -210,16 +303,25 @@ describe("effective agent definitions", () => {
       writeFileSync(path, "---\nenabled: false\n---\nProject body");
       const old = new AgentTypeRegistry(() => loadCustomAgents(project));
       const view = buildAgentsView(old);
-      const item = view.items.find(item => item.id === "Explore")!;
+      const item = view.items.find((item) => item.id === "Explore")!;
       expect(field(item.detail, "Source path")).toBe(path);
       expect(field(item.detail, "Source")).toBe("project");
       expect(item.detail.endsWith("\nBody\nProject body")).toBe(true);
       writeFileSync(path, "New project body");
       const fresh = new AgentTypeRegistry(() => loadCustomAgents(project));
-      expect(buildAgentsView(fresh).items.find(item => item.id === "Explore")!.detail.endsWith("\nBody\nNew project body")).toBe(true);
+      expect(
+        buildAgentsView(fresh)
+          .items.find((item) => item.id === "Explore")!
+          .detail.endsWith("\nBody\nNew project body"),
+      ).toBe(true);
       expect(old.resolveAgentConfig("Explore").enabled).toBe(false);
       const global = new AgentTypeRegistry(() => loadCustomAgents(root));
-      expect(field(buildAgentsView(global).items.find(item => item.id === "Explore")!.detail, "Source path")).toBe(join(globalDir, "Explore.md"));
+      expect(
+        field(
+          buildAgentsView(global).items.find((item) => item.id === "Explore")!.detail,
+          "Source path",
+        ),
+      ).toBe(join(globalDir, "Explore.md"));
     } finally {
       if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR;
       else process.env.PI_CODING_AGENT_DIR = previous;
@@ -229,61 +331,114 @@ describe("effective agent definitions", () => {
 });
 
 describe("showAgentsBrowser", () => {
-  it.each(["rpc", "json", "print"] as const)("guards %s before reading registry", async mode => {
+  it.each(["rpc", "json", "print"] as const)("guards %s before reading registry", async (mode) => {
     const r = registry();
     const read = vi.spyOn(r, "getAllTypes");
     const ui = { notify: vi.fn(), custom: vi.fn() };
     await showAgentsBrowser({ mode, hasUI: true, ui: ui as unknown as ExtensionContext["ui"] }, r);
     expect(read).not.toHaveBeenCalled();
     expect(ui.custom).not.toHaveBeenCalled();
-    expect(ui.notify).toHaveBeenCalledWith("Agent definitions browser requires TUI mode.", "warning");
+    expect(ui.notify).toHaveBeenCalledWith(
+      "Agent definitions browser requires TUI mode.",
+      "warning",
+    );
   });
 
-  it.each([false, true])("uses live project trust for composed browser preview (%s)", async trusted => {
-    const root = mkdtempSync(join(tmpdir(), "pi-browser-trust-"));
-    try {
-      mkdirSync(join(root, "fragments"));
-      writeFileSync(join(root, "fragments", "aws.md"), "TRUSTED FRAGMENT CONTENT");
-      const r = registry(agent({ source: "project", sourcePath: join(root, "auditor.md"), fragments: ["aws"], systemPrompt: "RAW BODY" }));
-      type Factory = Parameters<ExtensionContext["ui"]["custom"]>[0];
-      const { KeybindingsManager, TUI_KEYBINDINGS } = await import("@earendil-works/pi-tui");
-      const components: Awaited<ReturnType<Factory>>[] = [];
-      const ui = { notify: vi.fn(), custom: vi.fn(async (factory: Factory) => {
-        let result: unknown;
-        components.push(await factory({ mode: "regular", terminal: { rows: 100, columns: 160 }, requestRender() {} } as Parameters<Factory>[0], {
-          fg: (_token: string, text: string) => text, bold: (text: string) => text,
-        } as Parameters<Factory>[1], new KeybindingsManager(TUI_KEYBINDINGS) as Parameters<Factory>[2], value => { result = value; }));
-        return result;
-      }) };
-      const isProjectTrusted = vi.fn(() => trusted);
-      await showAgentsBrowser({ mode: "tui", hasUI: true, ui: ui as unknown as ExtensionContext["ui"], isProjectTrusted }, r);
-      const browser = components[1] as ReadOnlyBrowser;
-      browser.handleInput("auditor");
-      browser.handleInput("\r");
-      const text = browser.render(160).join("\n");
-      expect(isProjectTrusted).toHaveBeenCalledTimes(1);
-      expect(text).toContain("Composed instructions");
-      if (trusted) expect(text).toContain("TRUSTED FRAGMENT CONTENT");
-      else {
-        expect(text).toContain("require Pi project trust");
-        expect(text).not.toContain("TRUSTED FRAGMENT CONTENT");
+  it.each([false, true])(
+    "uses live project trust for composed browser preview (%s)",
+    async (trusted) => {
+      const root = mkdtempSync(join(tmpdir(), "pi-browser-trust-"));
+      try {
+        mkdirSync(join(root, "fragments"));
+        writeFileSync(join(root, "fragments", "aws.md"), "TRUSTED FRAGMENT CONTENT");
+        const r = registry(
+          agent({
+            source: "project",
+            sourcePath: join(root, "auditor.md"),
+            fragments: ["aws"],
+            systemPrompt: "RAW BODY",
+          }),
+        );
+        type Factory = Parameters<ExtensionContext["ui"]["custom"]>[0];
+        const { KeybindingsManager, TUI_KEYBINDINGS } = await import("@earendil-works/pi-tui");
+        const components: Awaited<ReturnType<Factory>>[] = [];
+        const ui = {
+          notify: vi.fn(),
+          custom: vi.fn(async (factory: Factory) => {
+            let result: unknown;
+            components.push(
+              await factory(
+                {
+                  mode: "regular",
+                  terminal: { rows: 100, columns: 160 },
+                  requestRender() {},
+                } as Parameters<Factory>[0],
+                {
+                  fg: (_token: string, text: string) => text,
+                  bold: (text: string) => text,
+                } as Parameters<Factory>[1],
+                new KeybindingsManager(TUI_KEYBINDINGS) as Parameters<Factory>[2],
+                (value) => {
+                  result = value;
+                },
+              ),
+            );
+            return result;
+          }),
+        };
+        const isProjectTrusted = vi.fn(() => trusted);
+        await showAgentsBrowser(
+          {
+            mode: "tui",
+            hasUI: true,
+            ui: ui as unknown as ExtensionContext["ui"],
+            isProjectTrusted,
+          },
+          r,
+        );
+        const browser = components[1] as ReadOnlyBrowser;
+        browser.handleInput("auditor");
+        browser.handleInput("\r");
+        const text = browser.render(160).join("\n");
+        expect(isProjectTrusted).toHaveBeenCalledTimes(1);
+        expect(text).toContain("Composed instructions");
+        if (trusted) expect(text).toContain("TRUSTED FRAGMENT CONTENT");
+        else {
+          expect(text).toContain("require Pi project trust");
+          expect(text).not.toContain("TRUSTED FRAGMENT CONTENT");
+        }
+      } finally {
+        rmSync(root, { recursive: true, force: true });
       }
-    } finally { rmSync(root, { recursive: true, force: true }); }
-  });
+    },
+  );
 
   it("handles no UI and passes effective snapshot to actual browser factory", async () => {
     const r = registry();
     type Factory = Parameters<ExtensionContext["ui"]["custom"]>[0];
     const { KeybindingsManager, TUI_KEYBINDINGS } = await import("@earendil-works/pi-tui");
     const components: Awaited<ReturnType<Factory>>[] = [];
-    const ui = { notify: vi.fn(), custom: vi.fn(async (factory: Factory) => {
-      const tui = { mode: "regular", terminal: { rows: 100, columns: 120 }, requestRender() {} };
-      let result: unknown;
-      components.push(await factory(tui as Parameters<Factory>[0], {
-        fg: (_token: string, text: string) => text, bold: (text: string) => text,
-      } as Parameters<Factory>[1], new KeybindingsManager(TUI_KEYBINDINGS) as Parameters<Factory>[2], value => { result = value; }));
-      return result;
-    }) };
+    const ui = {
+      notify: vi.fn(),
+      custom: vi.fn(async (factory: Factory) => {
+        const tui = { mode: "regular", terminal: { rows: 100, columns: 120 }, requestRender() {} };
+        let result: unknown;
+        components.push(
+          await factory(
+            tui as Parameters<Factory>[0],
+            {
+              fg: (_token: string, text: string) => text,
+              bold: (text: string) => text,
+            } as Parameters<Factory>[1],
+            new KeybindingsManager(TUI_KEYBINDINGS) as Parameters<Factory>[2],
+            (value) => {
+              result = value;
+            },
+          ),
+        );
+        return result;
+      }),
+    };
     const ctx = { mode: "tui" as const, hasUI: false, ui: ui as unknown as ExtensionContext["ui"] };
     await showAgentsBrowser(ctx, r);
     expect(ui.custom).not.toHaveBeenCalled();

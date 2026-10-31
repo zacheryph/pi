@@ -121,7 +121,7 @@ All 5 diagrams re-verified with `mmdc` after the edit.
 Repeatedly hitting `sleep` in the ship stage's `release_pr_merge` retry loop for this issue (the release-please PR came back `UNSTABLE` with a genuinely `IN_PROGRESS` `check` run, not the empty-rollup `GITHUB_TOKEN` case, so `/ship-issue`'s runbook correctly polled rather than falling back to `gh pr merge`).
 The user flagged this as a recurring friction: is a fixed `sleep 60` the right accommodation, or does the workflow need to change?
 
-What we're accommodating: a release-please PR opened immediately after the shipped commit's own CI run completes can still have its *own* `check` run in flight when `/ship-issue` reaches step 6 — the PR is a fresh ref, so GitHub queues a new run for it rather than reusing the just-finished one from `main`.
+What we're accommodating: a release-please PR opened immediately after the shipped commit's own CI run completes can still have its _own_ `check` run in flight when `/ship-issue` reaches step 6 — the PR is a fresh ref, so GitHub queues a new run for it rather than reusing the just-finished one from `main`.
 `release_pr_merge`'s single-shot `UNSTABLE` check can't distinguish "no checks ran" (the documented `GITHUB_TOKEN`-doesn't-trigger-workflows case, safe to `gh pr merge --rebase` past) from "a check is still running" (must wait) without a second `gh pr view --json statusCheckRollup` read — which this session did correctly, but by hand, with an arbitrary `sleep 60`.
 
 A sturdier accommodation would be a small poll loop (e.g. `gh pr checks 672 --watch` or a `statusCheckRollup`-driven loop with short backoff) instead of one fixed sleep — avoids both under-waiting (retrying too soon) and over-waiting (a flat 60s when the check finishes in 10s), and removes the manual re-poll step from the runbook prose into something scriptable.
@@ -141,14 +141,14 @@ Two process frictions surfaced, both in the release/ship tail rather than the en
 
 - The red-first discipline caught a **false-green test**, which is the strongest signal in the session.
   The deleted "keeps a waiter blocked until the resume finishes" test asserted the status a waiter observes — exactly the bug's symptom — and looked like a proper integration pin.
-  Run against unfixed source it *passed*, because the resume settles in the same tick the test resolves it.
+  Run against unfixed source it _passed_, because the resume settles in the same tick the test resolves it.
   Written Red-and-Green together it would have shipped as a no-op pin that nobody would ever question.
 - The `/review-third-party-pr` verify gate produced binary evidence instead of a judgment call.
   Checking the PR branch out, reverting only `src/lifecycle/subagent.ts` and `src/tools/get-result-tool.ts` to `origin/main`, and re-running the two touched test files turned "is this defect real" into a watched failure.
   A single `git log 104339af..origin/main -- <four files>` returning empty also settled "the PR base is 28 commits behind" as irrelevant — cheap and decisive.
 - "No preparatory tidying warranted" was not the same as "no value".
   The `tidy-first-assessor` recommended zero prep commits but its reconnaissance changed two plan steps: it found the existing `describe("Subagent.scheduleVia() — eager promise capture")` block already using `Promise.withResolvers` gating (the timer-free idiom the new tests needed), and found `"throws when no session exists"` already pinning the resume precondition, making the plan's step-5 test redundant.
-- The plan's instruction *not* to add an `eslint-disable` preemptively paid off: `new Promise<void>(...)` did not trip `@typescript-eslint/no-invalid-void-type`, unlike `Promise.withResolvers<void>()` in `concurrency-limiter.ts`.
+- The plan's instruction _not_ to add an `eslint-disable` preemptively paid off: `new Promise<void>(...)` did not trip `@typescript-eslint/no-invalid-void-type`, unlike `Promise.withResolvers<void>()` in `concurrency-limiter.ts`.
 
 #### What caused friction (agent side)
 
@@ -157,7 +157,7 @@ Two process frictions surfaced, both in the release/ship tail rather than the en
   The sibling `watchRelease` in the same file already implements a `pollInterval = 10` loop, so the polling idiom sits ten lines away from the code that needed it.
   Impact: one wasted `release_pr_merge` call and one arbitrary 60s sleep; the user flagged it as recurring across sessions.
 - `other` (workflow gap) — `/retro-note` commits but never pushes, and it is designed to interrupt any workflow.
-  Invoked here *after* `/ship-issue` had already pushed (step 3), its commit `fe61d301` stranded locally while CI pushed the `last-release-sha` write-back onto the same base.
+  Invoked here _after_ `/ship-issue` had already pushed (step 3), its commit `fe61d301` stranded locally while CI pushed the `last-release-sha` write-back onto the same base.
   Impact: divergent history at the next sync, `/retro`'s gate correctly refused to fast-forward, and a user-authorized `git rebase origin/main` was needed before the retrospective could start.
 - `instruction-violation` (self-identified, after the fact) — the `/ship-issue` step-7 report named `fe61d301` as "New HEAD on `main`" when that commit had never been pushed.
   The prompt says to print `git log --oneline -1`, which is local HEAD; nothing in step 7 cross-checks it against the upstream.

@@ -12,7 +12,7 @@ The runtime then carries five relay-only delegation methods — `setUICtx`, `onT
 That is a relay-only dependency (design-review check 5): the runtime holds the widget purely to hand it to others, and the coupling leaks into tests, where the `AgentToolRuntime` fixture stubs all five widget methods on the runtime mock.
 
 The issue's "Proposed change" — construct the widget before its consumers and pass the `WidgetLike` handle directly to the tool deps and `NotificationManager` — is the right intent but is **not directly feasible** as stated.
-`NotificationManager` is not just a consumer of the widget; it is a transitive *dependency* of the widget.
+`NotificationManager` is not just a consumer of the widget; it is a transitive _dependency_ of the widget.
 The construction graph contains a genuine cycle:
 
 ```text

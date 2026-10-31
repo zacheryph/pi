@@ -81,7 +81,7 @@ The one recurring friction was non-ASCII corruption in `Edit` bodies, which no g
 #### What went well
 
 - The plan measured instead of reading: a scratch install of pi 0.86.1 ran the real `buildSystemPrompt`, because the function is not exported and a test cannot pin it.
-  That same habit caught the tidy-first assessor's inverted claim (it said the 6 tests go red *after* the change without the prep; they go red *today* and go green after it) before it reached the plan.
+  That same habit caught the tidy-first assessor's inverted claim (it said the 6 tests go red _after_ the change without the prep; they go red _today_ and go green after it) before it reached the plan.
 - The planning session found the `openAt + 2` coverage trap by running the killing mutation against both renderer shapes, not by reasoning about the fixture.
   That turned a silent coverage loss into a `test:` prep step, and the TDD stage re-ran the same mutation after steps 1 and 2 as an invariant check.
 - The sync session wrote a literal `\u2014` escape into the retro file and the #967 decoder repaired it before the agent looked; the agent's follow-up `grep` found nothing.

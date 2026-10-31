@@ -6,9 +6,7 @@ import {
 } from "#src/lifecycle/child-shutdown";
 
 /** A child session whose runner records what it was asked to emit. */
-function createShutdownCapableSession(
-  overrides: Partial<ShutdownCapableSession> = {},
-) {
+function createShutdownCapableSession(overrides: Partial<ShutdownCapableSession> = {}) {
   const emit = vi.fn((_event: { type: "session_shutdown"; reason: "quit" }): Promise<unknown> =>
     Promise.resolve(undefined),
   );

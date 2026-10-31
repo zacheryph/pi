@@ -17,7 +17,7 @@ Plan committed as `0265-born-complete-subagent-session.md`; a side-quest filed #
 
 - Vocabulary was pinned down explicitly because "execution" is overloaded: granular execution = one turn loop (one `session.prompt()`, run or resume); the born-complete object spans the whole session lifetime (run + resumes).
   The object is named `SubagentSession` (matches the existing `SubagentType` / `SubagentSessionDir` / `SubagentSessionRegistry` family; cohesive with the deferred `Agent` → `Subagent` rename).
-  Turn driving is `runTurnLoop` / `resumeTurnLoop`; resume is *not* an SDK `session.resume()` — it is `session.prompt()` again on the retained session.
+  Turn driving is `runTurnLoop` / `resumeTurnLoop`; resume is _not_ an SDK `session.resume()` — it is `session.prompt()` again on the retained session.
 - The turn-loop home is **on `SubagentSession`** (methods), not inline on `Agent` and not a free function.
   The user caught that `subagent.driveTurnLoop(subagentSession.session, …)` is a Law-of-Demeter reach-through; putting the behavior on the object that owns the `AgentSession` is both LoD-correct and more testable (satisfying the user's conditional "inline only if straightforward to test").
 - Workspace ownership locked to **Option A** (session-only `SubagentSession`; `Agent` keeps workspace prepare/dispose).
@@ -27,7 +27,7 @@ Plan committed as `0265-born-complete-subagent-session.md`; a side-quest filed #
 - Worktrees are already out of the core (#263) — confirmed zero git code in `pi-subagents/src/` (only doc comments).
   The A/B fork is purely about how the core sequences its abstract `WorkspaceProvider` seam; `@gotgenes/pi-subagents-worktrees` is untouched.
 - Registry semantics: moving `disposed` from run-completion to true session disposal makes resume executions registry-detected (closes the gap deferred from #261).
-  The permission system's subscription code does not change; only *when* `disposed` fires moves.
+  The permission system's subscription code does not change; only _when_ `disposed` fires moves.
   Edge case planned: `createSubagentSession` must dispose on a post-`session-created` failure to avoid a registry leak.
 - Discovered debt captured (the user's "it is in doing the work that we discover the work to be done"): filed #277 for the remaining `agent.session` reach-throughs (steer buffer-or-deliver duplicated across `steer-tool` + `service-adapter`, conversation viewing, resume-readiness guards) and added a "Session encapsulation debt (Law of Demeter)" subsection to `architecture.md` (commit `038a1283`).
   `SubagentSession` exposes a `.session` accessor in #265 so observer wiring + consumers keep working; #277 retires those.
@@ -51,7 +51,7 @@ Pre-completion reviewer: initial FAIL (MD060 table alignment in SKILL.md, auto-f
 - The atomic call-site swap (step 5) touched more test files than the plan's step-5 list anticipated: every tool/service test that set `record.execution = { session, outputFile }` (`steer-tool`, `agent-tool`, `background-spawner`, `foreground-runner`, `get-result-tool`, `service-adapter`) had to migrate to `record.subagentSession = toSubagentSession(createSubagentSessionStub(...))`.
   Added `createSubagentSessionStub`/`toSubagentSession` to `mock-session.ts` so the migration was a one-line change per call site; the stub's `steer`/`dispose` delegate to the underlying `MockSession` so existing session-spy assertions kept working unchanged.
 - `disposed` moved from `runAgent`'s `finally` (run-completion) to `SubagentSession.dispose()`, invoked by `AgentManager` via the new `Agent.disposeSession()` (routing both `record.session?.dispose?.()` call sites at `agent-manager.ts:235,309`).
-  The full cross-package suite confirms the permission system (1504 tests) is unaffected — its subscription code did not change, only *when* `disposed` fires.
+  The full cross-package suite confirms the permission system (1504 tests) is unaffected — its subscription code did not change, only _when_ `disposed` fires.
 - Test-helper gotcha: `makeSubagentSession`'s `outputFile` default initially swallowed an explicit `undefined` via `?? default`; fixed with an `"outputFile" in metaOverrides` presence check (the testing-skill "Partial spread erases explicit undefined" family).
 - `print-mode.test.ts` now mocks `#src/lifecycle/create-subagent-session` (was `#src/lifecycle/agent-runner`); `index.ts` wraps the factory as `(params) => createSubagentSession(params, deps)`, so the module mock still intercepts it.
 - fallow stayed clean throughout — the transient duplication of IO interfaces + turn-loop helpers between `agent-runner.ts` and the new modules (steps 3–5) was removed in step 6 before the pre-completion gate ran.

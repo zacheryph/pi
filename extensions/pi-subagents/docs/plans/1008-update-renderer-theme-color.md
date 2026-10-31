@@ -1,6 +1,6 @@
 ---
 issue: 1008
-issue_title: "pi-subagents: the mid-run update renderer calls `theme.fg(\"info\")`, which throws, so updates render as plain custom messages"
+issue_title: 'pi-subagents: the mid-run update renderer calls `theme.fg("info")`, which throws, so updates render as plain custom messages'
 ---
 
 # Type renderer theme colors as Pi's `ThemeColor` and fix the update renderer's `info`

@@ -18,6 +18,8 @@ describe("exact main-profile prompt exclusion", () => {
 
   it("removes repeated exact sections rather than leaving a quoted copy in child identity", () => {
     const block = wrap("MAIN");
-    expect(withoutMainAgentSection(`BASE\n${block}\nEXAMPLE\n${block}`, "MAIN")).toBe("BASE\n\nEXAMPLE\n");
+    expect(withoutMainAgentSection(`BASE\n${block}\nEXAMPLE\n${block}`, "MAIN")).toBe(
+      "BASE\n\nEXAMPLE\n",
+    );
   });
 });

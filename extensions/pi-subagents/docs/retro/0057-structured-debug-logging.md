@@ -26,7 +26,7 @@ Shipped as `pi-subagents-v5.1.0`, then followed up with a `refactor:` commit con
 - `missing-context` — When loading the `ask-user` skill I guessed `.pi/skills/ask-user/SKILL.md` before reading the actual `<location>` tag in `AGENTS.md`, triggering an ENOENT error and a follow-up `find` call.
   Impact: 2 extra tool calls, no rework. (self-identified)
 
-- `other` — The plan's TDD Order step 1 stated *"the test skill documents this pattern"* for `vi.resetModules()` + dynamic import when testing module-level env constants — but the testing skill does not have that entry.
+- `other` — The plan's TDD Order step 1 stated _"the test skill documents this pattern"_ for `vi.resetModules()` + dynamic import when testing module-level env constants — but the testing skill does not have that entry.
   The aspiration was recorded rather than verified.
   During the retro, the user's question ("should that be a function getter instead?") led to a better outcome: replace the module-level constant with `isDebug()` so `vi.stubEnv()` alone works, consistent with how every other `process.env` read in this codebase is structured.
   Impact: one retro-phase `refactor:` commit; the approach shipped in `v5.1.0` was technically correct but unnecessarily complex to test.

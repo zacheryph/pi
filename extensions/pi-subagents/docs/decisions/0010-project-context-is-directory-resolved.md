@@ -35,7 +35,7 @@ The block names each context file by absolute path, so a child a `WorkspaceProvi
 The reporter ran five background children in `pi-subagents-worktrees` worktrees on real multi-step tickets; four of five, all on mid-tier models, resolved the conflict in favour of the inherited path, prefixed their shell calls with `cd <parent checkout> &&`, and committed into the shared parent checkout.
 Nothing surfaced an error, and each child's assigned workspace sat unused.
 
-This is [#640]'s defect (the inherited cwd footer) and [#801]'s (the inherited skills catalogue) in the third per-session layer, which those two changes left in place because it sits *inside* the shared prefix rather than after it.
+This is [#640]'s defect (the inherited cwd footer) and [#801]'s (the inherited skills catalogue) in the third per-session layer, which those two changes left in place because it sits _inside_ the shared prefix rather than after it.
 
 ### The cost is the same for every treatment
 
@@ -64,8 +64,8 @@ A child whose directory is not the one its adopted identity describes drops the 
 
 ### Why the equal-cwd condition is legitimate here
 
-[ADR 0006] withdrew [#640]'s equal-cwd exception, on the ground that the footer sits *after* the catalogue cut and the exception therefore preserved nothing.
-That reasoning does not reach this layer, which sits *before* the cut: the condition preserves 58,529 shared characters for every child that is not relocated, which is the common case.
+[ADR 0006] withdrew [#640]'s equal-cwd exception, on the ground that the footer sits _after_ the catalogue cut and the exception therefore preserved nothing.
+That reasoning does not reach this layer, which sits _before_ the cut: the condition preserves 58,529 shared characters for every child that is not relocated, which is the common case.
 
 ### Why the block is not left to Pi
 

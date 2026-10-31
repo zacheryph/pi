@@ -18,12 +18,12 @@ Wrote a four-step plan (three `refactor:` commits + a `docs:` sweep) at `package
   `SubagentManager` has a single `observer` slot.
   Three options surfaced: (A) a `CompositeSubagentObserver` fan-out in `index.ts`, (B) make the manager hold an observer list, (C) subscribe the widget to the public `pi.events` channels.
   The operator initially leaned toward B (matching the issue's literal file list) but was unsure; after reframing around the decouple + overridable-UI north star, they chose **A**.
-  Rationale recorded in the plan: A keeps the core closed for modification, B moves fan-out *into* the core (wrong direction), and C front-runs the Step 6 ([#425]) public-event-contract reconciliation.
-  Key insight that flattened the decision: all three options keep the widget's `manager.listAgents()` reference, so they only change the *trigger*, not the data source — full broadcast-plus-query decoupling is the Step 8 ([#427]) concern.
+  Rationale recorded in the plan: A keeps the core closed for modification, B moves fan-out _into_ the core (wrong direction), and C front-runs the Step 6 ([#425]) public-event-contract reconciliation.
+  Key insight that flattened the decision: all three options keep the widget's `manager.listAgents()` reference, so they only change the _trigger_, not the data source — full broadcast-plus-query decoupling is the Step 8 ([#427]) concern.
 - **`markFinished` is fully redundant** and is deleted, not relocated: `seedFinishedAgents()` (added in [#421] / [#422]) already seeds any agent with `completedAt` on each poll tick.
   This matters because the manager **never fires `onSubagentCompleted` for foreground agents** (`onRunFinished` guards on `isBackground`), so the widget could not learn of foreground completion via the observer anyway — polling covers it.
 - **Construction cycle** (widget needs manager → manager needs observer → observer includes widget) is broken by constructing the composite with `[eventsObserver]`, passing it to the manager, then `observer.add(widget)` after the widget is built; the manager consults the observer only lazily at spawn time.
-- **TDD ordering avoids a behavior gap:** Step 2 wires the widget as an observer *while the spawn tools still drive it* (idempotent double-drive), strictly before Step 3 removes the spawn-tool calls — so no commit leaves the widget without a timer-start signal.
+- **TDD ordering avoids a behavior gap:** Step 2 wires the widget as an observer _while the spawn tools still drive it_ (idempotent double-drive), strictly before Step 3 removes the spawn-tool calls — so no commit leaves the widget without a timer-start signal.
   The new widget observer methods need no `fallow-ignore` because they are invoked polymorphically through `SubagentManagerObserver` (the `SubagentEventsObserver` precedent).
 - This step narrows `AgentToolWidget` to `setUICtx` only but keeps the `AgentTool` widget constructor param; full removal is Step 5 ([#424]).
 - Non-breaking and internal-only (no public service/settings surface touched), so `refactor:`/`docs:` commits, no `BREAKING CHANGE` footer.
@@ -64,7 +64,7 @@ Execution was clean — two self-caught agent-side slips, no rework commits, and
 - **Two-round `ask_user` on the wiring decision (planning).**
   The first round offered three mechanisms (composite / manager-list / `pi.events`); the operator picked B but flagged uncertainty.
   Reframing around the decouple + overridable-UI north star and re-asking flipped the choice to A (`CompositeSubagentObserver`) with explicit buy-in.
-  The reframe surfaced the insight that flattened the decision: all three options keep the widget's `manager.listAgents()` reference, so they change only the *trigger*, not the data source.
+  The reframe surfaced the insight that flattened the decision: all three options keep the widget's `manager.listAgents()` reference, so they change only the _trigger_, not the data source.
 - **`vi.getTimerCount()` as a precise timer-start assertion.**
   The widget observer tests assert `getTimerCount()` goes `0 → 1` on `onSubagentStarted`/`onSubagentCreated`, cleanly distinguishing `startLoop` (timer + render) from a bare `update()` (render only).
 - **"Double-drive" lift-and-shift ordering.**

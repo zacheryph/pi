@@ -6,19 +6,19 @@ import { turnLoopResult } from "#test/helpers/turn-loop-result";
 
 /** The core shape returned by `createMockSession`. */
 export interface MockSession {
-	messages: unknown[];
-	subscribe: Mock<(fn: (event: unknown) => void) => () => void>;
-	emit(event: unknown): void;
-	dispose: Mock<() => void>;
-	steer: Mock<(...args: unknown[]) => Promise<unknown>>;
-	sessionManager: { getSessionFile: Mock<() => unknown> };
-	getToolDefinition: Mock<(name: string) => unknown>;
-	hasExtensionHandlers: Mock<(eventType: string) => boolean>;
-	extensionRunner: { emit: Mock<(event: unknown) => Promise<unknown>> };
-	/** The child's current model, as `AgentSession.model` reports it. */
-	model: { provider: string; id: string } | undefined;
-	/** The child's current thinking level, as `AgentSession.thinkingLevel` reports it. */
-	thinkingLevel: string;
+  messages: unknown[];
+  subscribe: Mock<(fn: (event: unknown) => void) => () => void>;
+  emit(event: unknown): void;
+  dispose: Mock<() => void>;
+  steer: Mock<(...args: unknown[]) => Promise<unknown>>;
+  sessionManager: { getSessionFile: Mock<() => unknown> };
+  getToolDefinition: Mock<(name: string) => unknown>;
+  hasExtensionHandlers: Mock<(eventType: string) => boolean>;
+  extensionRunner: { emit: Mock<(event: unknown) => Promise<unknown>> };
+  /** The child's current model, as `AgentSession.model` reports it. */
+  model: { provider: string; id: string } | undefined;
+  /** The child's current thinking level, as `AgentSession.thinkingLevel` reports it. */
+  thinkingLevel: string;
 }
 
 /**
@@ -28,8 +28,16 @@ export interface MockSession {
  * exact payloads (input:70/output:30/cacheWrite:5, tokensBefore:999).
  */
 export function emitResumeUsageAndCompaction(session: MockSession): void {
-	session.emit({ type: "message_end", message: { role: "assistant", usage: { input: 70, output: 30, cacheWrite: 5 } } });
-	session.emit({ type: "compaction_end", aborted: false, result: { tokensBefore: 999 }, reason: "overflow" });
+  session.emit({
+    type: "message_end",
+    message: { role: "assistant", usage: { input: 70, output: 30, cacheWrite: 5 } },
+  });
+  session.emit({
+    type: "compaction_end",
+    aborted: false,
+    result: { tokensBefore: 999 },
+    reason: "overflow",
+  });
 }
 
 /**
@@ -40,7 +48,7 @@ export function emitResumeUsageAndCompaction(session: MockSession): void {
  * SDK imports and makes the intent explicit.
  */
 export function toAgentSession(session: MockSession): AgentSession {
-	return session as unknown as AgentSession;
+  return session as unknown as AgentSession;
 }
 
 /**
@@ -53,32 +61,40 @@ export function toAgentSession(session: MockSession): AgentSession {
  * child's `session_shutdown` before disposing the session.
  */
 export function createSubagentSessionStub(
-	session: MockSession = createMockSession(),
-	outputFile?: string,
+  session: MockSession = createMockSession(),
+  outputFile?: string,
 ) {
-	return {
-		session,
-		outputFile,
-		runTurnLoop: vi.fn().mockResolvedValue(turnLoopResult({ responseText: "done" })),
-		resumeTurnLoop: vi.fn().mockResolvedValue(turnLoopResult({ responseText: "resumed" })),
-		steer: vi.fn((message: string): Promise<void> => session.steer(message) as Promise<void>),
-		dispose: vi.fn((): Promise<void> => {
-			session.dispose();
-			return Promise.resolve();
-		}),
-		getConversation: vi.fn((): string => ""),
-		getContextPercent: vi.fn((): number | null => null),
-		subscribe: vi.fn((fn: (event: unknown) => void): (() => void) => session.subscribe(fn)),
-		getSessionStats: vi.fn(() => ({
-			tokens: { input: 0, output: 0, cacheWrite: 0 },
-			contextUsage: { percent: null as number | null },
-		})),
-		get messages(): readonly unknown[] { return session.messages; },
-		get agentMessages(): readonly unknown[] { return session.messages; },
-		get model(): MockSession["model"] { return session.model; },
-		get thinkingLevel(): string { return session.thinkingLevel; },
-		getToolDefinition: vi.fn((name: string): unknown => session.getToolDefinition(name)),
-	};
+  return {
+    session,
+    outputFile,
+    runTurnLoop: vi.fn().mockResolvedValue(turnLoopResult({ responseText: "done" })),
+    resumeTurnLoop: vi.fn().mockResolvedValue(turnLoopResult({ responseText: "resumed" })),
+    steer: vi.fn((message: string): Promise<void> => session.steer(message) as Promise<void>),
+    dispose: vi.fn((): Promise<void> => {
+      session.dispose();
+      return Promise.resolve();
+    }),
+    getConversation: vi.fn((): string => ""),
+    getContextPercent: vi.fn((): number | null => null),
+    subscribe: vi.fn((fn: (event: unknown) => void): (() => void) => session.subscribe(fn)),
+    getSessionStats: vi.fn(() => ({
+      tokens: { input: 0, output: 0, cacheWrite: 0 },
+      contextUsage: { percent: null as number | null },
+    })),
+    get messages(): readonly unknown[] {
+      return session.messages;
+    },
+    get agentMessages(): readonly unknown[] {
+      return session.messages;
+    },
+    get model(): MockSession["model"] {
+      return session.model;
+    },
+    get thinkingLevel(): string {
+      return session.thinkingLevel;
+    },
+    getToolDefinition: vi.fn((name: string): unknown => session.getToolDefinition(name)),
+  };
 }
 
 /**
@@ -87,8 +103,10 @@ export function createSubagentSessionStub(
  * SubagentSession is a class with private fields — no plain object satisfies it
  * without a type bridge. Centralising the cast keeps test files explicit.
  */
-export function toSubagentSession(stub: ReturnType<typeof createSubagentSessionStub>): SubagentSession {
-	return stub as unknown as SubagentSession;
+export function toSubagentSession(
+  stub: ReturnType<typeof createSubagentSessionStub>,
+): SubagentSession {
+  return stub as unknown as SubagentSession;
 }
 
 /**
@@ -102,36 +120,38 @@ export function toSubagentSession(stub: ReturnType<typeof createSubagentSessionS
  * All fields are always present — callers that only need `subscribe`/`emit`
  * can ignore the rest. Pass `overrides` to replace or extend specific fields.
  */
-export function createMockSession(overrides: Record<string, unknown> = {}): MockSession & Record<string, unknown> {
-	const subscribers = new Set<(event: unknown) => void>();
+export function createMockSession(
+  overrides: Record<string, unknown> = {},
+): MockSession & Record<string, unknown> {
+  const subscribers = new Set<(event: unknown) => void>();
 
-	const subscribe = vi.fn((fn: (event: unknown) => void) => {
-		subscribers.add(fn);
-		return () => {
-			subscribers.delete(fn);
-		};
-	});
+  const subscribe = vi.fn((fn: (event: unknown) => void) => {
+    subscribers.add(fn);
+    return () => {
+      subscribers.delete(fn);
+    };
+  });
 
-	const base: MockSession = {
-		messages: [],
-		subscribe,
-		emit(event: unknown) {
-			for (const fn of subscribers) fn(event);
-		},
-		dispose: vi.fn(),
-		steer: vi.fn().mockResolvedValue(undefined),
-		sessionManager: { getSessionFile: vi.fn() },
-		getToolDefinition: vi.fn((_name: string): unknown => undefined),
-		// Extension-runner seam read by emitChildSessionShutdown on disposal (#709).
-		// Defaults to "this child has shutdown handlers" so every teardown path
-		// under test exercises the emit rather than its skip branch.
-		hasExtensionHandlers: vi.fn((_eventType: string): boolean => true),
-		extensionRunner: {
-			emit: vi.fn((_event: unknown): Promise<unknown> => Promise.resolve(undefined)),
-		},
-		model: undefined,
-		thinkingLevel: "off",
-	};
+  const base: MockSession = {
+    messages: [],
+    subscribe,
+    emit(event: unknown) {
+      for (const fn of subscribers) fn(event);
+    },
+    dispose: vi.fn(),
+    steer: vi.fn().mockResolvedValue(undefined),
+    sessionManager: { getSessionFile: vi.fn() },
+    getToolDefinition: vi.fn((_name: string): unknown => undefined),
+    // Extension-runner seam read by emitChildSessionShutdown on disposal (#709).
+    // Defaults to "this child has shutdown handlers" so every teardown path
+    // under test exercises the emit rather than its skip branch.
+    hasExtensionHandlers: vi.fn((_eventType: string): boolean => true),
+    extensionRunner: {
+      emit: vi.fn((_event: unknown): Promise<unknown> => Promise.resolve(undefined)),
+    },
+    model: undefined,
+    thinkingLevel: "off",
+  };
 
-	return { ...base, ...overrides };
+  return { ...base, ...overrides };
 }

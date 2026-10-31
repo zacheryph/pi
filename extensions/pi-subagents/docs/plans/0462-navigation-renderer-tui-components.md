@@ -75,7 +75,7 @@ AGENTS.md / package constraints:
 - pi-subagents is a minimal core; the navigator is an in-core reactive consumer with **no inbound call** into the core.
   The new `getToolDefinition` accessor is a read-only getter (like `agentMessages`) — it adds no inbound call and preserves the Phase 18 spine invariants ([#422]–[#425]).
   This is the dependency-safe answer to "wire real tool definitions": arrows still point inward (navigator → record getter → wrapped `AgentSession.getToolDefinition`); `SubagentManager` tracks nothing extra and no dependency is inverted.
-- Keep Pi SDK *coupling* out of pure helpers: per-entry components require a `TUI`, `cwd`, and `markdownTheme`, so the component-building renderer lives in the SDK/TUI module `session-navigator.ts`, not in the pure `session-navigation.ts`.
+- Keep Pi SDK _coupling_ out of pure helpers: per-entry components require a `TUI`, `cwd`, and `markdownTheme`, so the component-building renderer lives in the SDK/TUI module `session-navigator.ts`, not in the pure `session-navigation.ts`.
   The `serializeConversation` text renderer leaves the pure module entirely.
 - Use narrow interface types (not the concrete `Subagent`) at the seam — unchanged from the slice.
 
@@ -126,18 +126,35 @@ A new function builds a `Container` of per-entry components from a message snaps
 ```typescript
 function buildTranscriptComponents(
   messages: readonly SessionMessage[],
-  opts: { tui: TUI; cwd: string; markdownTheme: MarkdownTheme; getToolDefinition: (name: string) => ToolDefinition | undefined },
+  opts: {
+    tui: TUI;
+    cwd: string;
+    markdownTheme: MarkdownTheme;
+    getToolDefinition: (name: string) => ToolDefinition | undefined;
+  },
 ): Container {
   const container = new Container();
   const pendingTools = new Map<string, ToolExecutionComponent>();
   for (const message of messages) {
     switch (message.role) {
-      case "assistant": { /* AssistantMessageComponent + per-toolCall ToolExecutionComponent (track pending by id) */ }
-      case "toolResult": { /* pendingTools.get(toolCallId)?.updateResult(message) */ }
-      case "user": { /* parseSkillBlock → SkillInvocation(+UserMessage) | UserMessageComponent */ }
-      case "bashExecution": { /* BashExecutionComponent + appendOutput + setComplete */ }
-      case "compactionSummary": { /* CompactionSummaryMessageComponent */ }
-      case "branchSummary": { /* BranchSummaryMessageComponent */ }
+      case "assistant": {
+        /* AssistantMessageComponent + per-toolCall ToolExecutionComponent (track pending by id) */
+      }
+      case "toolResult": {
+        /* pendingTools.get(toolCallId)?.updateResult(message) */
+      }
+      case "user": {
+        /* parseSkillBlock → SkillInvocation(+UserMessage) | UserMessageComponent */
+      }
+      case "bashExecution": {
+        /* BashExecutionComponent + appendOutput + setComplete */
+      }
+      case "compactionSummary": {
+        /* CompactionSummaryMessageComponent */
+      }
+      case "branchSummary": {
+        /* BranchSummaryMessageComponent */
+      }
       // custom: skipped (no message renderer available — see Open Questions)
     }
   }
@@ -289,13 +306,13 @@ A later phase step (Step 4b file source, Step 5 deletion) must not regress these
    Tests:
    - `TranscriptOverlay.render` paints component-rendered content for user/assistant messages (text appears); a tool call renders via `ToolExecutionComponent` using a stubbed `getToolDefinition`; the `◍` streaming indicator still appends while running; rebuild-on-change re-renders after a `subscribe` callback; `esc`/`q` calls `done`; `dispose` unsubscribes.
    - `SessionNavigatorHandler.handle`: empty entries → `notify`, no `custom`; cancel → no `custom`; valid pick → `custom` opened with an overlay sourced from the picked record and the passed `cwd`.
-   Implementation (one commit — removing `renderTranscriptLines` breaks the overlay and its tests at the type level, so the rewrite, the export removal, the test updates, and the `index.ts` call-site update land together):
+     Implementation (one commit — removing `renderTranscriptLines` breaks the overlay and its tests at the type level, so the rewrite, the export removal, the test updates, and the `index.ts` call-site update land together):
    - Add `buildTranscriptComponents` and rewrite `TranscriptOverlay` (cached `Container`, rebuild-on-change, drop `wrapText`) in `session-navigator.ts`.
    - Remove `renderTranscriptLines`/`toMessages`/`serializeConversation`/`describeActivity` from `session-navigation.ts`.
    - Add `cwd` to `SessionNavigatorParams`; update `index.ts` to pass `ctx.cwd`.
    - Remove the `renderTranscriptLines` describe block from `session-navigation.test.ts`.
-   Run `pnpm run check` immediately (shared-interface + single-call-site change) and `pnpm fallow dead-code` before pushing (confirms no orphaned helper after the renderer move).
-   Commit: `feat: render /subagent-sessions transcript with Pi per-entry components (#462)`.
+     Run `pnpm run check` immediately (shared-interface + single-call-site change) and `pnpm fallow dead-code` before pushing (confirms no orphaned helper after the renderer move).
+     Commit: `feat: render /subagent-sessions transcript with Pi per-entry components (#462)`.
 4. **Docs: record rendering parity and flip Step 4a.**
    Test surface: none (docs).
    Update `docs/architecture/architecture.md` Step 4a status to landed and the `S4a` Mermaid node; note the native navigator now renders at parity, unblocking Step 5.
@@ -315,7 +332,7 @@ A later phase step (Step 4b file source, Step 5 deletion) must not regress these
 - **Risk: removing `renderTranscriptLines` and its tests leaves orphaned imports.**
   Mitigation: Step 3 removes the `serializeConversation`/`describeActivity` imports from `session-navigation.ts` in the same commit; `pnpm fallow dead-code` and a re-read of the file confirm no orphans (Biome `noUnusedImports` is warning-level).
 - **Risk: parity is asserted only by "text appears", missing richer formatting differences.**
-  Mitigation: the goal is *native-fidelity via Pi's own components* — using the same components Pi uses **is** the parity definition; the tests assert the component path is taken (tool call renders via `ToolExecutionComponent`, bash via `BashExecutionComponent`), not byte-equality with the bespoke output.
+  Mitigation: the goal is _native-fidelity via Pi's own components_ — using the same components Pi uses **is** the parity definition; the tests assert the component path is taken (tool call renders via `ToolExecutionComponent`, bash via `BashExecutionComponent`), not byte-equality with the bespoke output.
 
 ## Open Questions
 
@@ -334,5 +351,4 @@ A later phase step (Step 4b file source, Step 5 deletion) must not regress these
 [#423]: https://github.com/gotgenes/pi-packages/issues/423
 [#424]: https://github.com/gotgenes/pi-packages/issues/424
 [#425]: https://github.com/gotgenes/pi-packages/issues/425
-
 [ADR-0004]: https://github.com/gotgenes/pi-packages/blob/main/packages/pi-subagents/docs/decisions/0004-reconsider-ui-direction.md

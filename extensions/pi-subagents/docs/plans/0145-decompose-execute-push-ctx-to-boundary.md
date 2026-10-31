@@ -99,7 +99,7 @@ createAgentTool({
     parentSessionFile: ctx.sessionManager.getSessionFile(),
     parentSessionId: ctx.sessionManager.getSessionId(),
   }),
-})
+});
 ```
 
 After this, `execute` touches `ctx` only for `ctx.ui` — which is already delegated via `widget.setUICtx()`.

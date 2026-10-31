@@ -155,7 +155,7 @@ The call sites:
 await session.prompt(effectivePrompt);
 const failure = readTurnFailure(session);
 if (failure) throw new Error(failure);
-this.meta.lifecycle.completed({ /* unchanged */ });
+this.meta.lifecycle.completed({/* unchanged */});
 ```
 
 ```typescript
@@ -303,7 +303,7 @@ No quantitative invariant is at risk: the change adds no prompt bytes, no per-tu
 
 Each cycle is red → green → verify → commit.
 
-1. **`test(pi-subagents): let createTestSubagent set the session outputFile`** *Preparatory (Tidy First).*
+1. **`test(pi-subagents): let createTestSubagent set the session outputFile`** _Preparatory (Tidy First)._
    `createTestSubagent` calls `createSubagentSessionStub()` with no second argument, so `record.outputFile` is always `undefined` unless the caller hand-rolls a full `execution`.
    Step 5 needs a fixture with a populated `outputFile`; without this it would build a session stub inline.
    Add `outputFile?: string` to `TestSubagentOptions` and thread it through the `sessionReady` branch.

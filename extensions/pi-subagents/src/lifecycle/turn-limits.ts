@@ -60,7 +60,8 @@ export class TurnBudgetTracker {
 
   constructor(limits: { maxTurns?: number; wrapUpTurns: number }) {
     this.maxTurns = limits.maxTurns;
-    this.warnAt = limits.maxTurns == null ? undefined : Math.max(0, limits.maxTurns - limits.wrapUpTurns);
+    this.warnAt =
+      limits.maxTurns == null ? undefined : Math.max(0, limits.maxTurns - limits.wrapUpTurns);
   }
 
   /** Whether the budget must be stated before the first turn; records the warning when it must. */
@@ -88,7 +89,8 @@ export class TurnBudgetTracker {
 
   /** Account for a turn about to start. */
   onTurnStart(): TurnBudgetAction {
-    if (this.maxTurns == null || this.phase === "exhausted" || this.used < this.maxTurns) return undefined;
+    if (this.maxTurns == null || this.phase === "exhausted" || this.used < this.maxTurns)
+      return undefined;
     this.phase = "exhausted";
     return "stop";
   }
@@ -111,7 +113,10 @@ export class TurnBudgetTracker {
  * limit: the one outcome every presentation qualifies with a turn-limit caveat.
  * Takes the two fields it reads, so any outcome-shaped object satisfies it.
  */
-export function wrappedUpAtTurnLimit(outcome: { status: string; turnBudget?: TurnBudget }): boolean {
+export function wrappedUpAtTurnLimit(outcome: {
+  status: string;
+  turnBudget?: TurnBudget;
+}): boolean {
   return outcome.status === "completed" && outcome.turnBudget?.phase === "warned";
 }
 

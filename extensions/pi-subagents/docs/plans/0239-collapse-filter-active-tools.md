@@ -42,10 +42,7 @@ With the only remaining filter logic being the `EXCLUDED_TOOL_NAMES` guard, a si
 Current `filterActiveTools` body:
 
 ```typescript
-function filterActiveTools(
-  activeTools: string[],
-  config: ToolFilterConfig,
-): string[] {
+function filterActiveTools(activeTools: string[], config: ToolFilterConfig): string[] {
   const { toolNames, extensions } = config;
   if (!extensions) {
     return activeTools;
@@ -92,8 +89,8 @@ The `extensions === false` guard moves to the callsite: `if (cfg.extensions)`.
 export interface SessionConfig {
   effectiveCwd: string;
   systemPrompt: string;
-  toolNames: string[];       // was toolFilter.toolNames
-  extensions: boolean;        // was toolFilter.extensions
+  toolNames: string[]; // was toolFilter.toolNames
+  extensions: boolean; // was toolFilter.extensions
   model: unknown;
   thinkingLevel: ThinkingLevel | undefined;
   noSkills: boolean;

@@ -85,7 +85,7 @@ export interface AgentManagerOptions {
   registry: AgentTypeRegistry;
   getMaxConcurrent?: () => number;
   getRunConfig?: () => RunConfig;
-  observer?: AgentManagerObserver;  // replaces onStart, onComplete, onCompact
+  observer?: AgentManagerObserver; // replaces onStart, onComplete, onCompact
 }
 ```
 
@@ -122,16 +122,19 @@ The three closure lambdas collapse into one object literal:
 const observer: AgentManagerObserver = {
   onAgentStarted(record) {
     pi.events.emit("subagents:started", {
-      id: record.id, type: record.type, description: record.description,
+      id: record.id,
+      type: record.type,
+      description: record.description,
     });
   },
   onAgentCompleted(record) {
-    const isError = record.status === "error" || record.status === "stopped" || record.status === "aborted";
+    const isError =
+      record.status === "error" || record.status === "stopped" || record.status === "aborted";
     const eventData = buildEventData(record);
     if (isError) pi.events.emit("subagents:failed", eventData);
     else pi.events.emit("subagents:completed", eventData);
 
-    pi.appendEntry("subagents:record", { /* same fields as today */ });
+    pi.appendEntry("subagents:record", {/* same fields as today */});
 
     if (record.notification?.resultConsumed) {
       notifications.cleanupCompleted(record.id);
@@ -141,8 +144,11 @@ const observer: AgentManagerObserver = {
   },
   onAgentCompacted(record, info) {
     pi.events.emit("subagents:compacted", {
-      id: record.id, type: record.type, description: record.description,
-      reason: info.reason, tokensBefore: info.tokensBefore,
+      id: record.id,
+      type: record.type,
+      description: record.description,
+      reason: info.reason,
+      tokensBefore: info.tokensBefore,
       compactionCount: record.compactionCount,
     });
   },

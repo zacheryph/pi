@@ -93,7 +93,9 @@ export function createFactorySession(options: FactorySessionOptions = {}) {
     dispose: vi.fn(),
     getActiveToolNames: vi.fn(() => (bound ? after : before)),
     setActiveToolsByName: vi.fn(),
-    bindExtensions: vi.fn(async () => { bound = true; }),
+    bindExtensions: vi.fn(async () => {
+      bound = true;
+    }),
   };
 }
 ```
@@ -106,9 +108,15 @@ Return type is deliberately unannotated so callers retain the `Mock<...>` method
 Consumer call site (verifies Tell-Don't-Ask: the helper returns a ready mock; the test arranges and asserts on it):
 
 ```typescript
-const session = createFactorySession({ toolsBeforeBind: ["read"], toolsAfterBind: ["read", "extension_tool"] });
+const session = createFactorySession({
+  toolsBeforeBind: ["read"],
+  toolsAfterBind: ["read", "extension_tool"],
+});
 io.createSession.mockResolvedValue({ session });
-await createSubagentSession({ snapshot: STUB_SNAPSHOT, type: "test-agent" }, createSubagentSessionDeps({ io, exec, registry }));
+await createSubagentSession(
+  { snapshot: STUB_SNAPSHOT, type: "test-agent" },
+  createSubagentSessionDeps({ io, exec, registry }),
+);
 expect(session.setActiveToolsByName.mock.calls[0][0]).toContain("extension_tool");
 ```
 
@@ -132,7 +140,10 @@ function spawnBgWithToolCall(mgr: SubagentManager, toolCallId: string, prompt = 
 
 /** Arrange a manager at limit 1 with two bg agents: first runs, second queues. */
 function arrangeQueuedPair() {
-  const { manager } = createManager({ createSubagentSession: createBlockingFactory(), getMaxConcurrent: () => 1 });
+  const { manager } = createManager({
+    createSubagentSession: createBlockingFactory(),
+    getMaxConcurrent: () => 1,
+  });
   const running = spawnBg(manager, "a");
   const queued = spawnBg(manager, "b");
   return { manager, running, queued };
@@ -170,7 +181,7 @@ This is a test-refactoring issue, so the lens is inverted from a production extr
    No new behavioral tests — the refactor must not change coverage.
 2. **Existing tests that become redundant.**
    None are removed.
-   The duplication being removed is *arrange-block* duplication inside `it()` bodies, not duplicate `it()` cases.
+   The duplication being removed is _arrange-block_ duplication inside `it()` bodies, not duplicate `it()` cases.
    Every existing assertion stays.
 3. **Tests that must stay as-is.**
    All 228 lifecycle test cases keep their assertions; they are the regression guard.

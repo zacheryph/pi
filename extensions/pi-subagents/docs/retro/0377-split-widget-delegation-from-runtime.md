@@ -10,7 +10,7 @@ issue_title: "Split widget delegation out of SubagentRuntime"
 ### Session summary
 
 Produced the implementation plan for removing the `widget` field and five relay methods from `SubagentRuntime`.
-Investigation surfaced that the issue's stated approach ("construct the widget before its consumers, pass the handle to `NotificationManager`") is infeasible as written — `NotificationManager` is a transitive *dependency* of the widget, forming a genuine construction cycle (`NotificationManager → widget → manager → observer → NotificationManager`).
+Investigation surfaced that the issue's stated approach ("construct the widget before its consumers, pass the handle to `NotificationManager`") is infeasible as written — `NotificationManager` is a transitive _dependency_ of the widget, forming a genuine construction cycle (`NotificationManager → widget → manager → observer → NotificationManager`).
 The plan dissolves the cycle instead of relocating its late seam.
 
 ### Observations

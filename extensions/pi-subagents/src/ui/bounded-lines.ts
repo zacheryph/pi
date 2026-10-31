@@ -21,15 +21,15 @@ import { truncateToWidth } from "@earendil-works/pi-tui";
 
 /** Renders pre-themed lines one-to-one onto terminal rows, clipped to the viewport. */
 export class BoundedLines implements Component {
-	constructor(private readonly lines: readonly string[]) {}
+  constructor(private readonly lines: readonly string[]) {}
 
-	render(width: number): string[] {
-		return this.lines.map((line) => truncateToWidth(firstLineOf(line), width));
-	}
+  render(width: number): string[] {
+    return this.lines.map((line) => truncateToWidth(firstLineOf(line), width));
+  }
 
-	/** Required by `Component`; nothing is cached between renders, so there is nothing to discard. */
-	// fallow-ignore-next-line unused-class-member
-	invalidate(): void {}
+  /** Required by `Component`; nothing is cached between renders, so there is nothing to discard. */
+  // fallow-ignore-next-line unused-class-member
+  invalidate(): void {}
 }
 
 /**
@@ -40,6 +40,6 @@ export class BoundedLines implements Component {
  * a width-based clip would pass them through to cost a row of their own.
  */
 function firstLineOf(line: string): string {
-	const breakAt = line.search(/[\r\n\v\f]/);
-	return breakAt === -1 ? line : line.slice(0, breakAt);
+  const breakAt = line.search(/[\r\n\v\f]/);
+  return breakAt === -1 ? line : line.slice(0, breakAt);
 }

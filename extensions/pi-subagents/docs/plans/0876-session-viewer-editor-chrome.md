@@ -122,9 +122,13 @@ Before the session exists (queued) the spawn override answers, and an inherited 
 
 ```typescript
 /** What a model-and-thinking display reads. `Model<any>` satisfies it structurally. */
-export interface ModelIdentity { readonly provider: string; readonly id: string }   // display.ts
+export interface ModelIdentity {
+  readonly provider: string;
+  readonly id: string;
+} // display.ts
 
-export interface SessionModel {                                                        // session-navigation.ts
+export interface SessionModel {
+  // session-navigation.ts
   readonly model: ModelIdentity | undefined;
   readonly thinkingLevel: string | undefined;
 }
@@ -250,7 +254,7 @@ Predicted unchanged, and the claim each rests on:
 1. New tests enabled: `labeledRule` is pure, so its fit/fallback/truncation branches and its exact-width invariant are testable across a width sweep without mounting Pi's components.
    `SubagentSession`/`Subagent` model getters become assertable directly.
 2. Redundant tests: none removed.
-   The pane's footer layout arithmetic moves into `labeledRule`, so the pane tests assert what the rules *say* and leave the geometry to `labeled-rule.test.ts`.
+   The pane's footer layout arithmetic moves into `labeledRule`, so the pane tests assert what the rules _say_ and leave the geometry to `labeled-rule.test.ts`.
 3. Kept as-is, because they pin the pane's own layer: the `height` (`14`/`28`/`5` rows), `scroll bounds`, `spends only two rows on chrome` (25 numbered rows at 40×80), and `mounts the transcript outside Pi's overlay compositor` tests.
    All must stay green unmodified; that they do is the evidence chrome still costs two rows.
    `paints no box-drawing glyphs` is **rewritten**, not deleted: its claim was "no frame", which becomes "no `╭╮╰╯│` anywhere, and `─` only in the first and last rows".
@@ -286,11 +290,11 @@ Predicted unchanged, and the claim each rests on:
    `refactor:` because the pane does not read either yet.
 6. **`feat(pi-subagents): show the subagent's name, model, and thinking level in the session viewer's rules`** Adds `TranscriptTheme`, `formatModel`/`ModelIdentity` in `display.ts`, `TranscriptPaneOptions.heading`, the two `labeledRule` rows, and the handler's `entry.heading` pass-through; updates the stale padding comment and the module doc comment.
    `session-navigator.test.ts`: `ansiTheme()` gains `getThinkingBorderColor: vi.fn((level) => (s) => \`{${level}}${s}\`)`.
-   New `describe("header rule")`: carries name, mode tag, description, `anthropic/claude-sonnet-5`, `• high`; `• thinking off` wording; drops the description, then the model, as width shrinks.
-   New `describe("rule colour")`: both rules are painted for the source's thinking level; after `sessionModel()` changes the next render repaints with the new level; an unknown level paints `off`.
+   New `describe("header rule")`: carries name, mode tag, description, `anthropic/claude-sonnet-5`, `• high`; `• thinking off`wording; drops the description, then the model, as width shrinks.
+   New`describe("rule colour")`: both rules are painted for the source's thinking level; after `sessionModel()`changes the next render repaints with the new level; an unknown level paints`off`.
    New `describe("footer rule")`: position and hints at 80; hints dropped, position kept, at 40.
-   Rewrite `paints no box-drawing glyphs` → `paints no frame`; add the `visibleWidth(line) <= width` sweep; handler test: the mounted pane's header names the picked entry's agent.
-   Killing mutations: (a) pass `"off"` to `getThinkingBorderColor` unconditionally → kills the colour tests; (b) drop `runtime` from `headerLabels` → kills the model and thinking tests; (c) pass a fixed heading in the handler instead of `entry.heading` → kills the handler test; (d) delete the footer's `[hints]` argument → kills the footer-at-80 test.
+   Rewrite `paints no box-drawing glyphs`→`paints no frame`; add the `visibleWidth(line) <= width`sweep; handler test: the mounted pane's header names the picked entry's agent.
+   Killing mutations: (a) pass`"off"`to`getThinkingBorderColor`unconditionally → kills the colour tests; (b) drop`runtime`from`headerLabels`→ kills the model and thinking tests; (c) pass a fixed heading in the handler instead of`entry.heading`→ kills the handler test; (d) delete the footer's`[hints]` argument → kills the footer-at-80 test.
    Existing height and scroll tests stay unmodified and green.
 7. **`feat(pi-subagents): show each background subagent's provider and model in the agents widget`** `widget-renderer.test.ts`: the running header and the finished line carry `[anthropic/claude-sonnet-5]` after the name and mode tag; no `[` segment when `model` is absent.
    `agent-widget.test.ts`, in the existing projection block: `toWidgetAgent` copies `record.model`.

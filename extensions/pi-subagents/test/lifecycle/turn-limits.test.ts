@@ -54,7 +54,9 @@ describe("wrappedUpAtTurnLimit", () => {
     for (const phase of phases) {
       const expected = status === "completed" && phase === "warned";
       it(`is ${expected} for ${status} with phase ${phase}`, () => {
-        expect(wrappedUpAtTurnLimit({ status, turnBudget: { maxTurns: 2, used: 3, phase } })).toBe(expected);
+        expect(wrappedUpAtTurnLimit({ status, turnBudget: { maxTurns: 2, used: 3, phase } })).toBe(
+          expected,
+        );
       });
     }
 

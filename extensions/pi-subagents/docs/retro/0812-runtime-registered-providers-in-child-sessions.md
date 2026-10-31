@@ -94,7 +94,7 @@ Agreed scope:
    This deletes the two-option straddle and is what makes the public replay path available.
    Narrowing a published peer range is breaking for users on `0.80.5`–`0.80.7`, so the change carries a `!` and a migration note.
 4. **Semantics — snapshot at spawn.**
-   A provider registered in the parent *after* a child spawns will not appear in that running child.
+   A provider registered in the parent _after_ a child spawns will not appear in that running child.
    This is the committed contract, consistent with how `ParentSnapshot` already captures cwd, model, and system prompt at spawn.
    Document it in `docs/configuration.md`.
 
@@ -166,7 +166,7 @@ Test count moved from 1230 to 1238 across 68 → 70 files in `pi-subagents`.
   That commit added the public `ModelRegistry` constructor, `getRegisteredProviderIds()`, and `getRegisteredProviderConfig()` — but **not** `getRegisteredNativeProvider()` or the native `registerProvider(provider)` overload, which landed three days later in `019e4ad68`, first tagged `v0.81.0`.
   `inheritRegisteredProviders` calls `getRegisteredNativeProvider` unconditionally for every registered id, so on Pi `0.80.8`–`0.80.10` every subagent spawn would have thrown `TypeError: modelRegistry.getRegisteredNativeProvider is not a function` — a worse failure than the bug being fixed.
 - **The generalization is the lesson.**
-  I checked *one* commit for a *set* of three accessors and quantified over all of them.
+  I checked _one_ commit for a _set_ of three accessors and quantified over all of them.
   This is exactly the universal-claim failure AGENTS.md warns about, made against an external surface rather than a subagent report.
   The correct check enumerates each API independently: `git show <tag>:<path> | grep <symbol>` per symbol per candidate tag, which is what the fix used.
 - **Rewriting history was the right call, not a convenience.**
@@ -184,7 +184,7 @@ Test count moved from 1230 to 1238 across 68 → 70 files in `pi-subagents`.
   The architecture doc's health-metrics row also needed updating (LOC `8,323` → `8,416`, files `61` → `62`, maintainability `91.0` → `91.1`), which the plan's table did not list.
   Values were re-measured with `fallow health` and a direct line count rather than incremented by hand; the old LOC figure was already 13 lines stale.
 - **Reviewer's non-blocking find, folded in.**
-  Provider *registrations* are isolated per child, but Pi's `resolve-config-value.ts` keeps a module-scope `commandResultCache` shared process-wide, so a shell-command API key (`"apiKey": "!cmd"`) resolves once for parent and children together.
+  Provider _registrations_ are isolated per child, but Pi's `resolve-config-value.ts` keeps a module-scope `commandResultCache` shared process-wide, so a shell-command API key (`"apiKey": "!cmd"`) resolves once for parent and children together.
   Pre-existing SDK behavior, but adjacent enough to the isolation claim that `docs/configuration.md` now says so.
 - **The SDK bump was far cheaper than feared** — the planning spike had already established that bumping `pi-coding-agent`, `pi-ai`, and `pi-tui` together leaves exactly one type error (the one being fixed), so implementation hit no surprises there.
 - **Pre-completion reviewer: FAIL (round 1) → PASS (round 2).**
@@ -216,7 +216,7 @@ The session's decisive moments were both external to the implementing agent — 
 - **Mutation-testing a new pin, cheaply.**
   Swapping the native/config branch order in `inheritRegisteredProviders` failed exactly one test ("prefers the native form"), confirming the pin was not vacuous — about 30 seconds of work.
 - **The `tidy-first-assessor` correctly returned "none".**
-  Its reasoning was that the plan's own new-module step *was* the tidy-first move, mirroring `package-exclusions.ts`'s established shape — a more useful answer than manufacturing a preparatory commit.
+  Its reasoning was that the plan's own new-module step _was_ the tidy-first move, mirroring `package-exclusions.ts`'s established shape — a more useful answer than manufacturing a preparatory commit.
 
 #### What caused friction (agent side)
 
@@ -224,7 +224,7 @@ The session's decisive moments were both external to the implementing agent — 
   One commit was checked; a claim was then made about a set of five APIs.
   Reviewer-caught, not self-caught, and not user-caught.
   Impact: the wrong floor propagated into four artifacts before detection, and correcting it required rewriting two unpushed commits (the `BREAKING CHANGE:` footer ships verbatim to an uneditable `CHANGELOG.md`, so a follow-up commit could not fix it) plus one extra correction commit, `be47ef70`.
-- `other` — the PR-review evaluation asserted the private-field reach was "currently unavoidable" after checking that `ExtensionContext` exposes no `modelRuntime` and that `ModelRegistry` has no `runtime` accessor, but without enumerating what `ModelRegistry` *does* expose.
+- `other` — the PR-review evaluation asserted the private-field reach was "currently unavoidable" after checking that `ExtensionContext` exposes no `modelRuntime` and that `ModelRegistry` has no `runtime` accessor, but without enumerating what `ModelRegistry` _does_ expose.
   The negative was verified; the alternative surface was not.
   Impact: no rework — the operator's question caught it before the plan was written — but the recorded evaluation would otherwise have committed the repo to a private-field design.
 - `instruction-violation` (self-identified) — `/plan-issue` instructs checking `docs/architecture/` for "layout listings, complexity tables, health metrics" affected by added modules; the plan's Module-Level Changes table listed the Mermaid node and module tree but omitted the health-metrics row.
@@ -242,7 +242,7 @@ The session's decisive moments were both external to the implementing agent — 
 - **Model-performance correlation** — directly observed from inline transcript labels: the ship stage ran on `anthropic/claude-sonnet-5`, the retrospective on `anthropic/claude-opus-5`.
   All three subagent dispatches (one `tidy-first-assessor`, two `pre-completion-reviewer`) ran `anthropic/claude-sonnet-5` per their agent frontmatter.
   The session recorded three model changes (`opus-5` → `sonnet-5` → `opus-5`), which places the PR-review, planning, and TDD stages on `opus-5`.
-  No quality mismatch found, and one finding worth keeping: the peer-floor defect was *made* on `opus-5` during planning and *caught* on `sonnet-5` by the fresh-context reviewer.
+  No quality mismatch found, and one finding worth keeping: the peer-floor defect was _made_ on `opus-5` during planning and _caught_ on `sonnet-5` by the fresh-context reviewer.
   The corrective is procedural (verify each symbol), not a model upgrade — the stronger model made the error, and fresh context, not more capability, is what found it.
 - **Escalation-delay tracking** — no `rabbit-hole` friction points; longest single-error sequence was two iterations on `composition-root.test.ts` lint findings (mock parameter typing, then an unnecessary optional chain), well under the five-call threshold.
 - **Unused-tool detection** — nothing actionable.
@@ -250,7 +250,7 @@ The session's decisive moments were both external to the implementing agent — 
   An `Explore` dispatch for the SDK archaeology was considered and correctly skipped — `AGENTS.md` reserves it for multi-hop hunts, and these were targeted reads of known files.
 - **Feedback-loop gap analysis** — no gap.
   A full green baseline (`check`, `lint`, `test`, `fallow dead-code`) was established before the first TDD cycle; `pnpm run check` ran after each step; root-level `pnpm run lint` ran before committing step 2 and caught two errors that a package-scoped run would have surfaced identically but later.
-  The one thing no gate could see was the peer floor — it is a claim about *other* installations, invisible to every local check, which is precisely why it needed a source-level per-symbol verification rather than a green suite.
+  The one thing no gate could see was the peer floor — it is a claim about _other_ installations, invisible to every local check, which is precisely why it needed a source-level per-symbol verification rather than a green suite.
 
 ### Changes made
 

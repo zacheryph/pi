@@ -23,7 +23,7 @@ A throwaway test (since deleted) against `main` asserted that `createSubagentSes
 - `packages/pi-subagents/src/lifecycle/create-subagent-session.ts:184` calls `deps.io.createResourceLoader({...})` with no `settingsManager`, no `extensionsOverride`, and no `noExtensions`.
 - Pi's `DefaultResourceLoader` therefore falls back to `SettingsManager.create(this.cwd, this.agentDir)` (`resource-loader.js:119`), resolves every configured package via `packageManager.resolve()`, and binds every parent extension in the child.
 
-Not already fixed in an earlier release: `git log --oneline -S "noExtensions" -- packages/pi-subagents/` surfaces `3cc682ec feat!: always inherit extensions; make the recursion guard unconditional (#264)`, which deliberately *removed* the seam.
+Not already fixed in an earlier release: `git log --oneline -S "noExtensions" -- packages/pi-subagents/` surfaces `3cc682ec feat!: always inherit extensions; make the recursion guard unconditional (#264)`, which deliberately _removed_ the seam.
 Nothing re-added it since.
 
 The real boundary is correct: the OOM originates in the child extension factory at `bindExtensions()`, and dropping the package's extension paths in the child loader means the factory never runs.
@@ -44,7 +44,7 @@ Run from a scratch worktree on the PR head (`6237ceb4`), not trusted from the PR
 
 [ADR-0002] evicted per-agent extension policy but was explicit that prevent-load is different:
 
-> Prevent-load (refusing to bind an extension because of load-time side effects, cost, or true sandboxing) is genuinely generative and cannot be reduced to observation, so it is left as a *latent* (un-built) provider seam, added only if a real consumer needs it.
+> Prevent-load (refusing to bind an extension because of load-time side effects, cost, or true sandboxing) is genuinely generative and cannot be reduced to observation, so it is left as a _latent_ (un-built) provider seam, added only if a real consumer needs it.
 
 Magic Context is that real consumer.
 So admitting the capability honors the ADR's "no vacant hooks" rule rather than reversing Phase 14.
@@ -65,7 +65,7 @@ So admitting the capability honors the ADR's "no vacant hooks" rule rather than 
    Pi already exposes a first-class alternative: `DefaultResourceLoaderOptions.extensionsOverride?: (base: LoadExtensionsResult) => LoadExtensionsResult`, which is a pure function over the loaded extension set with no proxy and no settings mutation.
 
 2. **Blast radius wider than the problem.**
-   The PR passes the *same* proxied manager as the child **session's** `settingsManager` in `createSession({ settingsManager })`, not only the loader's.
+   The PR passes the _same_ proxied manager as the child **session's** `settingsManager` in `createSession({ settingsManager })`, not only the loader's.
    Every session-level settings read in the child — npm command, project trust, model config, and any future consumer — now observes a mutated `packages` array.
    Nothing in the stated problem requires that; the change should be scoped to the loader.
 
@@ -132,11 +132,11 @@ The plan lands as five TDD steps and is a non-breaking, ship-independently featu
 
 - **`extensionsOverride` is unusable, not the better seam.**
   The review recommended replacing the `Proxy` with Pi's `extensionsOverride` loader option.
-  Reading `resource-loader.js` showed it runs at line 279 — *after* `loadFinalExtensionSet` already called `loadExtensionsCached` (modules imported into the heap, so the OOM cost is already paid) and *before* `applyExtensionSourceInfo` at line 280 (so `extension.sourceInfo` is unpopulated and the callback cannot match by package source at all).
+  Reading `resource-loader.js` showed it runs at line 279 — _after_ `loadFinalExtensionSet` already called `loadExtensionsCached` (modules imported into the heap, so the OOM cost is already paid) and _before_ `applyExtensionSourceInfo` at line 280 (so `extension.sourceInfo` is unpopulated and the callback cannot match by package source at all).
   The contributor's settings-level approach was right on the mechanism.
 - **The claimed `autoload: false` "silent hole" does not exist.**
   The review asserted `applyPackageDeltaFilter`'s early return on an empty array meant the exclusion silently no-ops.
-  In delta mode the filter starts from nothing and only *adds* matched patterns, so `extensions: []` yields "add none" — the desired outcome.
+  In delta mode the filter starts from nothing and only _adds_ matched patterns, so `extensions: []` yields "add none" — the desired outcome.
   `extensions: []` is correct in both modes.
 
 The generalizable lesson: a PR review that reads the diff plus one layer of the dependency is not enough to judge a mechanism.
@@ -158,19 +158,19 @@ The plan keeps the conditional field but gives it a named `SettingsSnapshot` typ
 #### Design divergence from the PR: keep policy out of the factory
 
 The PR threads `getExcludedExtensionPackages: () => readonly string[]` into `SubagentSessionDeps` and branches inside `createSubagentSession`.
-Applying the `code-design` rule "thread decisions, not discriminators", the plan instead resolves the policy at the `index.ts` composition boundary and hands the factory the *product* via a new `SessionFactoryIO.createLoaderSettingsManager(parent)` member.
+Applying the `code-design` rule "thread decisions, not discriminators", the plan instead resolves the policy at the `index.ts` composition boundary and hands the factory the _product_ via a new `SessionFactoryIO.createLoaderSettingsManager(parent)` member.
 The factory gains no policy knowledge, no fifth dependency-bag field, and no conditional; the no-exclusions path is identity.
 
 #### Adjacent issue reframes the feature
 
-Issue [#709] (child disposal skips `session_shutdown`, leaking extension-owned processes) explicitly names #696/#697 a *workaround* with a different failure mode — excluding `pi-mcp-adapter` also removes the child's MCP tools.
+Issue [#709] (child disposal skips `session_shutdown`, leaking extension-owned processes) explicitly names #696/#697 a _workaround_ with a different failure mode — excluding `pi-mcp-adapter` also removes the child's MCP tools.
 The two are complementary, not substitutes, and the plan says so in Non-Goals and in the README cross-reference.
 This did not surface from the issue body; it came from the open-issue sweep.
 
 #### ADR reasoning inverted the expected answer
 
 [ADR-0002] reserved prevent-load as a provider seam, which reads like an argument against the settings key.
-But the same ADR's "no vacant hooks" rule — a seam with no consumer "is not extensibility — it is a speculative abstraction that taxes every reader, and `fallow` flags it as dead" — argues *against* building the seam here, since no external extension wants to supply a prevent-load policy.
+But the same ADR's "no vacant hooks" rule — a seam with no consumer "is not extensibility — it is a speculative abstraction that taxes every reader, and `fallow` flags it as dead" — argues _against_ building the seam here, since no external extension wants to supply a prevent-load policy.
 The amendment records that reasoning rather than quietly rewriting the ADR to match the patch, which is what the PR did.
 
 #### Risks carried forward
@@ -261,7 +261,7 @@ A mid-session permission anomaly the operator caught produced two extra issues (
 2. **The `tidy-first-assessor` rejected a suggestion planted in its own dispatch prompt.**
    The dispatch asked, as question 2, whether a shared `snapshot()` expectation fixture was warranted before adding a seventh field.
    It came back with "the prompt's premise doesn't hold against the actual design," showed that the optional-when-empty shape leaves all six existing `toEqual` literals untouched, and declined it as tidying code the change never touches.
-   A subagent resisting a leading question from its dispatcher is worth noting; the two tidyings it *did* recommend both landed and both shrank the commits that followed.
+   A subagent resisting a leading question from its dispatcher is worth noting; the two tidyings it _did_ recommend both landed and both shrank the commits that followed.
 
 3. **A data-loss bug was found by reasoning, not by a failure.**
    Nothing reported it and no test caught it.
@@ -296,7 +296,7 @@ A mid-session permission anomaly the operator caught produced two extra issues (
 
 1. **The highest-leverage intervention in the session was a question, not a correction.**
    "What justification did it have running `find /`?"
-   was strategic oversight of exactly the kind this workflow wants from the operator — it questioned an agent's *judgment* rather than its output, and it found things no deterministic gate would have.
+   was strategic oversight of exactly the kind this workflow wants from the operator — it questioned an agent's _judgment_ rather than its output, and it found things no deterministic gate would have.
    Worth repeating as a pattern.
 
 2. **A durable principle arrived late and only in chat.**
@@ -317,7 +317,7 @@ A mid-session permission anomaly the operator caught produced two extra issues (
 - **Escalation-delay tracking** — no agent-side rabbit holes.
   The longest single-error sequence was two tool calls (the parse-error repair, and the mock-typing fix).
   The one genuine escalation failure was the subagent's: **one** failed `grep` → immediate `find /`, with no intermediate attempt to widen the glob depth.
-  That is under-escalation of *thinking* rather than over-escalation of tool calls — the opposite of the pattern this lens usually catches, and not detectable by a call-count threshold.
+  That is under-escalation of _thinking_ rather than over-escalation of tool calls — the opposite of the pattern this lens usually catches, and not detectable by a call-count threshold.
 - **Unused-tool detection** — for friction point 1 (the `.d.ts`-only reading), an `Explore` subagent with `model: "sonnet-5"` over `resource-loader.js`/`package-manager.js` was available and is explicitly recommended by `AGENTS.md` for multi-hop SDK traces.
   It was not dispatched at PR-review time; the trace was done inline one stage later during planning, which is where the correction came from.
 - **Feedback-loop gap analysis** — verification was incremental and clean.

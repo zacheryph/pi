@@ -67,7 +67,7 @@ The roadmap's Step 6 landed note states the wiring precedent this change follows
 ### Why the leak is masked today, and where it still bites
 
 The release does currently happen, by an accidental chain rather than by design.
-`manager.dispose()` empties the agent registry, so the *next* 80 ms tick finds no agents, takes `update()`'s idle path, and calls `clearWidget()` — which clears the interval and unregisters both entries.
+`manager.dispose()` empties the agent registry, so the _next_ 80 ms tick finds no agents, takes `update()`'s idle path, and calls `clearWidget()` — which clears the interval and unregisters both entries.
 
 Two consequences follow, and the plan should not overstate either.
 
@@ -269,7 +269,7 @@ Listed because it drives the rewired seam even though the design edits nothing i
 | Grep                                                | Scope                             | Result                                                                                                                           |
 | --------------------------------------------------- | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
 | `widget-events`, `WidgetEvents`, `session_shutdown` | `.pi/skills/`                     | No `pi-subagents` skill names the module or the mechanism — no skill edit needed                                                 |
-| `widget`                                            | `packages/pi-subagents/README.md` | Six hits, all about what the widget *shows*; none describes teardown                                                             |
+| `widget`                                            | `packages/pi-subagents/README.md` | Six hits, all about what the widget _shows_; none describes teardown                                                             |
 | `dispose`                                           | `packages/pi-subagents/docs/`     | Architecture hits are all about `SubagentSession`/`disposeSession`/`workspace-bracket`, plus the three Step 9 lines listed above |
 | `fallow-ignore`                                     | `packages/pi-subagents/src/`      | Five sites; only `agent-widget.ts:300` is in scope                                                                               |
 | `#src/index`                                        | `packages/pi-subagents/test/`     | `composition-root.test.ts` and `print-mode.test.ts` — both already fan out per event                                             |

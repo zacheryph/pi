@@ -15,7 +15,7 @@ Wrote `packages/pi-subagents/docs/plans/0443-consolidate-remaining-test-clone-fa
 
 ### Observations
 
-- The issue is the operator's own, but the proposed "extract a shared fixture" list was substantially invalidated by live evidence: several named targets (`resolveSpawnConfig`, `assembleSessionConfig`, `schedule`) are the repeated *system-under-test act*, which the `testing` skill says not to wrap to clear a clone metric.
+- The issue is the operator's own, but the proposed "extract a shared fixture" list was substantially invalidated by live evidence: several named targets (`resolveSpawnConfig`, `assembleSessionConfig`, `schedule`) are the repeated _system-under-test act_, which the `testing` skill says not to wrap to clear a clone metric.
 - `ask_user` gate settled two decisions: **guardrail-first** (leave act-clones, extract only genuine fixtures) and **full live set** (include the new Phase-19 UI clones, notably the byte-identical `makeNavigable` factory duplicated across `session-navigation.test.ts` and `session-navigator.test.ts`).
 - Eight genuine extraction targets identified; clearing them drops the count from 16 to 8 — below the issue's `≤ 10` target — without wrapping any act.
   The four primary UI/lifecycle extractions alone reach 10.
@@ -36,13 +36,13 @@ The full suite, `pnpm run check`, root `pnpm run lint`, and `pnpm fallow dead-co
 
 ### Observations
 
-- Clone count dropped from 16 to 9 — the issue's `≤ 10` target was met, but the plan's *predicted* 8 missed by one.
+- Clone count dropped from 16 to 9 — the issue's `≤ 10` target was met, but the plan's _predicted_ 8 missed by one.
   `dup:ea0a1bce` was pre-classified as captured-overlay boilerplate; once `renderCapturedOverlay` extracted the boilerplate, the surviving fingerprint proved to be the `evicted` arrange + the `SessionNavigatorHandler.handle` SUT act — an act-clone.
   Per the operator's guardrail-first decision, it was left intact and documented rather than wrapped.
   Treated as a documented deviation, not a re-decision, because the governing guardrail (leave act-clones) was already chosen in planning.
 - All 9 residual families are genuine repeated SUT calls (`resolveSpawnConfig`, `assembleSessionConfig`, `schedule`, `handle`, `spawnBg`+`await`, `agent.run()`, `execute`) — recorded in the plan's Non-Goals.
 - `makeNavigable` was byte-identical across the two UI files (verified with `diff`), so the shared extraction was a pure lift; the `NavigableSubagent` type import had to stay in `session-navigation.test.ts` (still used at line 91) but was removed from `session-navigator.test.ts`.
-- The cross-file `dup:5d8dbd48` only cleared after *both* halves (manager + subagent resume tests) adopted `emitResumeUsageAndCompaction` — split across Steps 4 and 5.
+- The cross-file `dup:5d8dbd48` only cleared after _both_ halves (manager + subagent resume tests) adopted `emitResumeUsageAndCompaction` — split across Steps 4 and 5.
 - Pre-completion reviewer: PASS (deterministic checks green; all three plan invariants verified held; residual act-clones confirmed legitimate).
 
 [#442]: https://github.com/gotgenes/pi-packages/issues/442
@@ -59,13 +59,13 @@ The session was notably clean — no rework, no user corrections, and the single
 
 #### What went well
 
-- The planning `ask_user` (guardrail-first + full-live-set) pre-empted a TDD-stage judgment call: when the clone count came out 9 instead of the predicted 8 because `dup:ea0a1bce` proved to be an act-clone, the pre-established guardrail made it a *documented deviation* rather than a scramble to force the metric.
+- The planning `ask_user` (guardrail-first + full-live-set) pre-empted a TDD-stage judgment call: when the clone count came out 9 instead of the predicted 8 because `dup:ea0a1bce` proved to be an act-clone, the pre-established guardrail made it a _documented deviation_ rather than a scramble to force the metric.
   This is the "do not escalate abstraction to force a number" discipline working exactly as the prompt intends — a planning decision paying off two stages later.
 - Reconciling against live `fallow dupes` output at plan time (rather than trusting the issue's Phase-18-era line numbers) caught that several named "extract a fixture" targets were actually the repeated system-under-test act.
   Planning around the stale issue list would have produced leaky test helpers that the `testing` guardrail forbids.
 - Incremental verification held throughout TDD: `pnpm run check` ran after every shared-type-changing step (1, 3, 4, 5, 6) plus a per-step affected-file `vitest` run, with the full suite + root `lint` + `fallow dead-code` at the end.
   No type error or broken consumer surfaced late.
-- The cross-file clone `dup:5d8dbd48` only cleared once *both* resume-test halves adopted `emitResumeUsageAndCompaction`; sequencing the manager half (Step 4) and subagent half (Step 5) into adjacent commits kept each commit green.
+- The cross-file clone `dup:5d8dbd48` only cleared once _both_ resume-test halves adopted `emitResumeUsageAndCompaction`; sequencing the manager half (Step 4) and subagent half (Step 5) into adjacent commits kept each commit green.
 
 #### What caused friction (agent side)
 

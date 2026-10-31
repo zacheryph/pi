@@ -81,10 +81,18 @@ export class SubagentEventsObserver implements SubagentManagerObserver {
     this.notifications = deps.notifications;
   }
 
-  onSubagentStarted(record: Subagent): void { /* emit started */ }
-  onSubagentCompleted(record: Subagent): void { /* emit failed|completed, appendEntry, dispatch */ }
-  onSubagentCompacted(record: Subagent, info: CompactionInfo): void { /* emit compacted */ }
-  onSubagentCreated(record: Subagent): void { /* emit created */ }
+  onSubagentStarted(record: Subagent): void {
+    /* emit started */
+  }
+  onSubagentCompleted(record: Subagent): void {
+    /* emit failed|completed, appendEntry, dispatch */
+  }
+  onSubagentCompacted(record: Subagent, info: CompactionInfo): void {
+    /* emit compacted */
+  }
+  onSubagentCreated(record: Subagent): void {
+    /* emit created */
+  }
 }
 ```
 
@@ -113,7 +121,7 @@ const manager = new SubagentManager({
 
 ### Extracted-module interaction with upstream deps
 
-The observer only *reads* from its inputs and *tells* its collaborators — no output-argument mutation, no reverse-search, no reach-back into the manager:
+The observer only _reads_ from its inputs and _tells_ its collaborators — no output-argument mutation, no reverse-search, no reach-back into the manager:
 
 ```text
 onSubagentCompleted(record):
@@ -164,7 +172,7 @@ Grep confirms no `package-*/SKILL.md` documents the inline observer literal or `
    All four observer methods become directly testable with `vi.fn()` stubs for `emit`/`appendEntry` and a stubbed `NotificationSystem`.
    Previously the only way to exercise these paths was through `SubagentManager` integration tests that drove the manager's `buildObserver` forwarding — the index-level observer body itself had zero coverage.
 2. **No existing tests become redundant.**
-   The `subagent-manager.test.ts` observer tests (lines 76–148) exercise the manager's *forwarding* (`buildObserver` → `this.observer?.onSubagent…`), a different layer that stays.
+   The `subagent-manager.test.ts` observer tests (lines 76–148) exercise the manager's _forwarding_ (`buildObserver` → `this.observer?.onSubagent…`), a different layer that stays.
    `notification.test.ts` keeps the `buildEventData` tests.
    `agent-tool.test.ts:153` keeps its note that `subagents:created` is delegated to the observer.
 3. **Tests that must stay as-is.**
@@ -193,7 +201,7 @@ These invariants lived only in the untested inline literal before; the new tests
    - `onSubagentStarted` emits `subagents:started` with `{ id, type, description }`.
    - `onSubagentCompleted` (success status) emits `subagents:completed` with `buildEventData(record)`, calls `appendEntry("subagents:record", …)` with the eight fields, and calls `notifications.sendCompletion(record)`.
    - `onSubagentCompleted` (error/stopped/aborted) emits `subagents:failed`.
-   - `onSubagentCompleted` with `record.notification?.resultConsumed` calls `notifications.cleanupCompleted(record.id)` and does *not* call `sendCompletion`.
+   - `onSubagentCompleted` with `record.notification?.resultConsumed` calls `notifications.cleanupCompleted(record.id)` and does _not_ call `sendCompletion`.
    - `onSubagentCompacted` emits `subagents:compacted` with `{ id, type, description, reason, tokensBefore, compactionCount }`.
    - `onSubagentCreated` emits `subagents:created` with `{ id, type, description, isBackground: true }`.
 

@@ -75,7 +75,13 @@ All other fields remain public (identity fields are `readonly`; non-transition m
 
 ```typescript
 export type AgentRecordStatus =
-  | "queued" | "running" | "completed" | "steered" | "aborted" | "stopped" | "error";
+  | "queued"
+  | "running"
+  | "completed"
+  | "steered"
+  | "aborted"
+  | "stopped"
+  | "error";
 
 export class AgentRecord {
   // Identity — readonly, set once at construction
@@ -86,19 +92,29 @@ export class AgentRecord {
 
   // Transition state — private backing fields, public getters
   private _status: AgentRecordStatus;
-  get status(): AgentRecordStatus { return this._status; }
+  get status(): AgentRecordStatus {
+    return this._status;
+  }
 
   private _result?: string;
-  get result(): string | undefined { return this._result; }
+  get result(): string | undefined {
+    return this._result;
+  }
 
   private _error?: string;
-  get error(): string | undefined { return this._error; }
+  get error(): string | undefined {
+    return this._error;
+  }
 
   private _startedAt: number;
-  get startedAt(): number { return this._startedAt; }
+  get startedAt(): number {
+    return this._startedAt;
+  }
 
   private _completedAt?: number;
-  get completedAt(): number | undefined { return this._completedAt; }
+  get completedAt(): number | undefined {
+    return this._completedAt;
+  }
 
   // Non-transition mutable state — public fields
   toolUses: number;
@@ -114,7 +130,9 @@ export class AgentRecord {
   toolCallId?: string;
   outputFile?: string;
 
-  constructor(init: AgentRecordInit) { /* ... */ }
+  constructor(init: AgentRecordInit) {
+    /* ... */
+  }
 
   // Transition methods — see below
 }

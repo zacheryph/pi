@@ -16,7 +16,7 @@ The plan is a test-only refactor verified by the existing suite staying green pl
 ### Observations
 
 - Release: ship independently — the Phase 18 roadmap step 7 carries no `Release: batch` tag and is explicitly "independent of the disentanglement spine."
-- The `testing` skill's rule "do not wrap the system-under-test call in a helper to eliminate a duplication-metric clone" drove the design: consolidate *arrange* only, keep every `loadSettings`/`createSubagentSession`/`showAgentDetail` act written out.
+- The `testing` skill's rule "do not wrap the system-under-test call in a helper to eliminate a duplication-metric clone" drove the design: consolidate _arrange_ only, keep every `loadSettings`/`createSubagentSession`/`showAgentDetail` act written out.
   For `agent-config-editor` menu cases, `it.each` is the right tool — it keeps the act visible in the table body rather than hiding it in a helper.
 - Three independent consolidations: (1) a new shared `test/helpers/tmp-settings-dirs.ts` fixture for the cross-file settings tmp-dir scaffolding (with paired self-test, per the `test/helpers/*.test.ts` convention); (2) file-local `arrangeFactory`/`defaultDeps` for the `create-subagent-session` post-bind-guard block; (3) `it.each` table + hoisted `filePath` for `agent-config-editor`.
 - Scope deliberately excludes: the production clone in `src/ui/agent-config-editor.ts` (test-only issue), the cross-package `vitest.config.ts` clone, the `5d8dbd48` group spanning `subagent-manager.test.ts` ↔ `subagent.test.ts` (neither is a target file), and all other non-target test clone families.
@@ -66,10 +66,10 @@ Execution was clean overall; the one recurring friction was the plan over-predic
 
 #### What caused friction (agent side)
 
-- `missing-context` (planning) — the plan's Step 1 *verify* listed clone group `4003c0e7` (the `console.warn` spy try/finally boilerplate) as expected-gone, but the Step 1 *design* only described the tmp-dir fixture, which does not touch that clone.
+- `missing-context` (planning) — the plan's Step 1 _verify_ listed clone group `4003c0e7` (the `console.warn` spy try/finally boilerplate) as expected-gone, but the Step 1 _design_ only described the tmp-dir fixture, which does not touch that clone.
   The build discovered the gap and added `capture-warn.ts` + migrated ~7 spy tests mid-step.
   Impact: one unplanned helper (with self-test) folded into the same commit; no follow-up commit, but the plan-vs-build mismatch was real.
-- `wrong-abstraction` (build, self-corrected) — Step 2's first pass applied arrange helpers (`arrangeFactory`/`defaultDeps`) alone, which left a *new* transient clone (`62899223`) between the two adjacent post-bind tests.
+- `wrong-abstraction` (build, self-corrected) — Step 2's first pass applied arrange helpers (`arrangeFactory`/`defaultDeps`) alone, which left a _new_ transient clone (`62899223`) between the two adjacent post-bind tests.
   Folding the three membership cases into one `it.each` cleared it.
   Impact: one extra edit+verify iteration within the step; caught by the same-step `fallow dupes` run.
 - `other` (build, trivial) — wrote a brittle `captureWarn` self-test ("suppresses real stderr") that asserted `vi.spyOn` nested-restore semantics rather than the helper's behavior; the test failed immediately and was dropped.
@@ -91,7 +91,7 @@ Execution was clean overall; the one recurring friction was the plan over-predic
 - **Escalation-delay tracking** — no `rabbit-hole`; the two prediction-gap fixes resolved in 1–2 tool calls each via the per-step `fallow dupes` check.
   No sequence exceeded the 5-call flag.
 - **Unused-tool detection** — none needed; scope was small and fully understood from the planning-stage file reads. `fallow dupes` was the right and sufficient tool.
-- **Feedback-loop gap analysis** — verification ran *incrementally*: `pnpm run check` + `vitest run <file>` + `pnpm fallow dupes` after every step, full suite + `fallow dead-code` at the end.
+- **Feedback-loop gap analysis** — verification ran _incrementally_: `pnpm run check` + `vitest run <file>` + `pnpm fallow dupes` after every step, full suite + `fallow dead-code` at the end.
   No end-only verification gap.
 
 ### Changes made

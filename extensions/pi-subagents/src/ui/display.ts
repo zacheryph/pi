@@ -139,15 +139,16 @@ export function getDisplayName(type: SubagentType, registry: AgentConfigLookup):
 }
 
 /** Short label for prompt mode: "twin" for append, nothing for replace (the default). */
-export function getPromptModeLabel(type: SubagentType, registry: AgentConfigLookup): string | undefined {
+export function getPromptModeLabel(
+  type: SubagentType,
+  registry: AgentConfigLookup,
+): string | undefined {
   const config = registry.resolveAgentConfig(type);
   return config.promptMode === "append" ? "twin" : undefined;
 }
 
 /** Mode label is not included — callers add it where they want it. */
-export function buildInvocationTags(
-  invocation: AgentInvocation | undefined,
-): { tags: string[] } {
+export function buildInvocationTags(invocation: AgentInvocation | undefined): { tags: string[] } {
   const tags: string[] = [];
   if (!invocation) return { tags };
   if (invocation.thinking) tags.push(`thinking: ${invocation.thinking}`);
@@ -159,13 +160,20 @@ export function buildInvocationTags(
 
 /** Truncate text to a single line, max `len` chars. */
 function truncateLine(text: string, len = 60): string {
-  const line = text.split("\n").find(l => l.trim())?.trim() ?? "";
+  const line =
+    text
+      .split("\n")
+      .find((l) => l.trim())
+      ?.trim() ?? "";
   if (line.length <= len) return line;
   return line.slice(0, len) + "…";
 }
 
 /** Build a human-readable activity string from currently-running tools or response text. */
-export function describeActivity(activeTools: ReadonlyMap<string, string>, responseText?: string): string {
+export function describeActivity(
+  activeTools: ReadonlyMap<string, string>,
+  responseText?: string,
+): string {
   if (activeTools.size > 0) {
     const groups = new Map<string, number>();
     for (const toolName of activeTools.values()) {

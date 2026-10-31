@@ -16,7 +16,7 @@ The central design fork — how evicted agents enter the picker — was resolved
 
 - **Eviction is memory management.**
   The cleanup sweep's `disposeSession()` frees the in-memory message history; the transcript survives only on disk.
-  So rendering an evicted agent *always* reads the file (`fileSnapshotSource`) regardless of candidate-set strategy — the strategy only affects the picker *label*.
+  So rendering an evicted agent _always_ reads the file (`fileSnapshotSource`) regardless of candidate-set strategy — the strategy only affects the picker _label_.
 - **Persisted child sessions carry no `type`/`description`.**
   The JSONL has only the conversation plus a header (`id`, `timestamp`, `cwd`, `parentSession`).
   A directory scan (the issue's literal wording) would therefore produce degraded labels and parse every file per open.
@@ -65,7 +65,7 @@ Execution was notably clean — no rework, no plan deviations, two auto-fixed li
   Exploration revealed the persisted session carries no subagent `type`/`description`, so a scan yields degraded labels.
   The gate surfaced descriptors-vs-scan-vs-hybrid; the operator's "why are we evicting at all?"
   and "tell me more about how the labels degrade" drove a better-grounded decision (descriptors).
-  This is the `/plan-issue` "treat Proposed change as a hypothesis" contract working as intended — novel because the divergence was the *enumeration mechanism*, not a surface ambiguity.
+  This is the `/plan-issue` "treat Proposed change as a hypothesis" contract working as intended — novel because the divergence was the _enumeration mechanism_, not a surface ambiguity.
 - **Exploratory probe before the first TDD test.**
   A disposable script (`explore-session.mjs`, deleted after) confirmed `buildSessionContext` auto-detects the leaf with no `leafId` and the `type !== "session"` filter drops the header — validating the `fileSnapshotSource` shape before any test was written (the `testing` skill's "inspect the actual runtime shape first" rule).
 - **The plan predicted transient dead code and sequenced to clear it.**
@@ -74,7 +74,7 @@ Execution was notably clean — no rework, no plan deviations, two auto-fixed li
 
 #### What caused friction (agent side)
 
-- `other` — the first `ask_user` led with the enumeration mechanism (descriptors/scan/hybrid) before establishing *why eviction creates the problem*.
+- `other` — the first `ask_user` led with the enumeration mechanism (descriptors/scan/hybrid) before establishing _why eviction creates the problem_.
   The operator's first reply was "Why are we 'evicting' subagents in the first place?", i.e. asking for the framing I already held but had not front-loaded.
   Impact: two extra `ask_user` round-trips before the decision — but they produced a better-understood outcome, so net-positive; no rework.
 - `other` (lint nit) — four `entry?.kind` optional chains on a destructured array element tripped `@typescript-eslint/no-unnecessary-condition`, and a stray `!` tripped `no-unnecessary-type-assertion`; both surfaced via the pre-commit hook.

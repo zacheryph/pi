@@ -68,7 +68,7 @@ The execution was notably friction-free: pre-completion review PASSed on the fir
 #### What went well
 
 - The whole multi-session flow landed with no deviations from the plan and no rework — the plan's code sketches transcribed near-verbatim, the extraction hit its CRAP target, and every gate (pre-completion PASS, clean rebase, clean ff-merge, single-package release) passed first try.
-- The `tidy-first-assessor` correctly recognized there was *no* legitimate preparatory move: `execute` was already comment-delimited into sections mapping 1:1 onto the plan's extracted pieces, and the `fallow dead-code` same-commit-wiring constraint forbade splitting the extraction — so it recommended nothing rather than inventing busywork.
+- The `tidy-first-assessor` correctly recognized there was _no_ legitimate preparatory move: `execute` was already comment-delimited into sections mapping 1:1 onto the plan's extracted pieces, and the `fallow dead-code` same-commit-wiring constraint forbade splitting the extraction — so it recommended nothing rather than inventing busywork.
 - The land session's judgment checkpoints were all navigated correctly despite running on a reasoning-weak model (see Diagnostic details): it identified that only #536 was open (checking #535/#443/#470 states), read the plan's `**Release:** ship now` marker, and verified PR #589 bumped only `pi-subagents` before merging.
 
 #### What caused friction (agent side)

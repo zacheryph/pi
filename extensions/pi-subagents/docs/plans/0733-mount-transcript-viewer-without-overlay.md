@@ -282,18 +282,35 @@ const BURST = Number(process.argv[2] ?? 1);
 
 function fakeTerminal() {
   return {
-    start() {}, stop() {}, async drainInput() {}, write() {},
-    get columns() { return COLUMNS; },
-    get rows() { return ROWS; },
-    get kittyProtocolActive() { return false; },
-    moveBy() {}, hideCursor() {}, showCursor() {}, clearLine() {},
-    clearFromCursor() {}, clearScreen() {}, setTitle() {}, setProgress() {},
+    start() {},
+    stop() {},
+    async drainInput() {},
+    write() {},
+    get columns() {
+      return COLUMNS;
+    },
+    get rows() {
+      return ROWS;
+    },
+    get kittyProtocolActive() {
+      return false;
+    },
+    moveBy() {},
+    hideCursor() {},
+    showCursor() {},
+    clearLine() {},
+    clearFromCursor() {},
+    clearScreen() {},
+    setTitle() {},
+    setProgress() {},
   };
 }
 
 /** The transcript: plain text only. Never emits a box-drawing glyph. */
 class Chat {
-  constructor() { this.lineCount = 0; }
+  constructor() {
+    this.lineCount = 0;
+  }
   render() {
     return Array.from(
       { length: this.lineCount },
@@ -355,8 +372,12 @@ function report(label, { committed, finalTop, fullRedraws }) {
   console.log(`  rows scrolled into history: ${scrolledOff.length}`);
   console.log(`  ...committed WITH chrome:   ${contaminated.length}`);
   for (const [row, line] of contaminated.slice(0, 3)) {
-    console.log(`    row ${String(row).padStart(2)}: ${JSON.stringify(stripAnsi(line).slice(0, 56))}`);
-    console.log(`            the Chat component rendered: ${JSON.stringify(`chat line ${String(row).padStart(3, "0")}`)}`);
+    console.log(
+      `    row ${String(row).padStart(2)}: ${JSON.stringify(stripAnsi(line).slice(0, 56))}`,
+    );
+    console.log(
+      `            the Chat component rendered: ${JSON.stringify(`chat line ${String(row).padStart(3, "0")}`)}`,
+    );
   }
   return contaminated.length;
 }

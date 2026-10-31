@@ -107,8 +107,7 @@ The fix is to ensure the option interface matches the constructor's parameter ty
 `conversation-viewer.ts` and `agent-runner.ts` both do:
 
 ```typescript
-(c as any).name ?? (c as any).toolName ?? "unknown"
-(msg as any).role === "bashExecution"
+(c as any).name ?? (c as any).toolName ?? "unknown"(msg as any).role === "bashExecution";
 const bash = msg as any;
 ```
 

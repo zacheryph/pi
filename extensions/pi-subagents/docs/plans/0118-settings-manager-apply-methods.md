@@ -10,7 +10,7 @@ issue_title: "refactor(pi-subagents): SettingsManager apply methods — eliminat
 `showSettings` in `agent-menu.ts` orchestrates across two collaborators when changing a setting — it mutates `settings` properties directly (output arguments), separately pokes `manager.notifyConcurrencyChanged()`, then calls `settings.saveAndNotify()`.
 The menu knows too much about the consequence chain of a settings change.
 
-This is a Law of Demeter / Tell-Don't-Ask violation: the menu should *tell* settings what the user wants, not coordinate the mechanics of persistence and queue drain.
+This is a Law of Demeter / Tell-Don't-Ask violation: the menu should _tell_ settings what the user wants, not coordinate the mechanics of persistence and queue drain.
 
 ## Goals
 
@@ -107,7 +107,7 @@ applyGraceTurns(n: number): { message: string; level: "info" | "warning" } {
 }
 ```
 
-The toast message uses the *post-normalization* value (e.g., `max(1, n)`) so the user sees what was actually applied.
+The toast message uses the _post-normalization_ value (e.g., `max(1, n)`) so the user sees what was actually applied.
 
 ### Consumer call-site sketch (agent-menu.ts)
 
@@ -199,7 +199,7 @@ The closure captures `manager` by reference — safe because the callback is nev
 - **Apply method integration**: construct `SettingsManager` with an `onMaxConcurrentChanged` spy → call `applyMaxConcurrent(n)` → verify the spy was called, value was set, `saveAndNotify` persisted, and the returned toast is correct.
   Previously impossible because the consequence chain was spread across the menu and two collaborators.
 - **Toast message accuracy**: verify that apply methods use post-normalization values in the toast (e.g., `applyMaxConcurrent(0)` sets to 1 and reports "set to 1", not "set to 0").
-- **Callback not invoked for non-concurrency settings**: verify `onMaxConcurrentChanged` is *not* called when `applyDefaultMaxTurns` or `applyGraceTurns` is used.
+- **Callback not invoked for non-concurrency settings**: verify `onMaxConcurrentChanged` is _not_ called when `applyDefaultMaxTurns` or `applyGraceTurns` is used.
 
 ### Existing tests that become simpler
 

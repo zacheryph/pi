@@ -93,10 +93,7 @@ Field count drops from 10 top-level fields to 8 (7 remaining + 1 `toolFilter`).
 ### filterActiveTools after extraction
 
 ```typescript
-function filterActiveTools(
-  activeTools: string[],
-  config: ToolFilterConfig,
-): string[] {
+function filterActiveTools(activeTools: string[], config: ToolFilterConfig): string[] {
   const { toolNames, extensions, disallowedSet } = config;
   // ... body unchanged
 }

@@ -238,7 +238,7 @@ The `createAgentSession()` call changes:
 export interface AgentManagerOptions {
   runner: AgentRunner;
   worktrees: WorktreeManager;
-  exec: ShellExec;              // NEW — injected from pi.exec
+  exec: ShellExec; // NEW — injected from pi.exec
   maxConcurrent?: number;
   getRunConfig?: () => RunConfig;
   onStart?: OnAgentStart;

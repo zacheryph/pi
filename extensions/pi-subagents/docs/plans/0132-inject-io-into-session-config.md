@@ -66,16 +66,8 @@ Defined in `session-config.ts` alongside the existing assembler types:
 ```typescript
 export interface AssemblerIO {
   preloadSkills: (skills: string[], cwd: string) => PreloadedSkill[];
-  buildMemoryBlock: (
-    name: string,
-    scope: MemoryScope,
-    cwd: string,
-  ) => string;
-  buildReadOnlyMemoryBlock: (
-    name: string,
-    scope: MemoryScope,
-    cwd: string,
-  ) => string;
+  buildMemoryBlock: (name: string, scope: MemoryScope, cwd: string) => string;
+  buildReadOnlyMemoryBlock: (name: string, scope: MemoryScope, cwd: string) => string;
   buildAgentPrompt: (
     config: AgentPromptConfig,
     cwd: string,

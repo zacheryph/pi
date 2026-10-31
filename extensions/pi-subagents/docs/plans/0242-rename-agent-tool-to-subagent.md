@@ -23,7 +23,7 @@ The PascalCase name was inherited from tintinweb/pi-subagents, which mimicked Cl
 
 ## Non-Goals
 
-- Renaming the `displayName` of the general-purpose agent type (`"Agent"` in `default-agents.ts` and `agent-types.ts` fallback) — that is a UI display name for the agent *type*, not the tool name.
+- Renaming the `displayName` of the general-purpose agent type (`"Agent"` in `default-agents.ts` and `agent-types.ts` fallback) — that is a UI display name for the agent _type_, not the tool name.
   The widget shows "Agent" as the display name for general-purpose agents; this is a separate concern.
 - Renaming the companion tools `get_subagent_result` and `steer_subagent` — they already follow the lowercase convention.
 - Updating the companion tools' `label` fields (`"Steer Agent"`, `"Get Agent Result"`) — these use "Agent" in the human-readable sense, not as the tool name.
@@ -115,7 +115,7 @@ const EXCLUDED_TOOL_NAMES = ["subagent", "get_subagent_result", "steer_subagent"
 
 1. Update tool name references in the "features" bullet (`` `Agent` `` → `` `subagent` ``).
 2. Update usage example heading and code block (`Agent({` → `subagent({`).
-3. Update tool parameter table heading (`### \`Agent\`` → `### \`subagent\``).
+3. Update tool parameter table heading (`### \`Agent\``→`### \`subagent\``).
 4. Update prose references to the `Agent` tool ("`Agent` tool parameters", "`Agent` tool returns").
 5. Update widget example display — the widget shows `Agent` because the general-purpose type's `displayName` is `"Agent"`, so those lines stay as-is.
 

@@ -31,12 +31,14 @@ export type BuiltinExtension = Exclude<InlineExtension, ExtensionFactory>;
  * order, each at most once.
  */
 export function builtinExtensionsFor(toolNames: readonly string[]): BuiltinExtension[] {
-  return BUILTINS.filter((builtin) => toolNames.some(builtin.supplies)).map(({ name, factory }) => ({
-    name,
-    factory,
-    builtin: true,
-    replaceable: true,
-  }));
+  return BUILTINS.filter((builtin) => toolNames.some(builtin.supplies)).map(
+    ({ name, factory }) => ({
+      name,
+      factory,
+      builtin: true,
+      replaceable: true,
+    }),
+  );
 }
 
 /** MCP's resource tools, which MCP registers alongside the server tools. */
@@ -56,7 +58,11 @@ const BUILTINS: readonly {
   supplies: (toolName: string) => boolean;
 }[] = [
   { name: "codemode", factory: createCodemodeExtension(), supplies: (tool) => tool === "codemode" },
-  { name: "tool-search", factory: createToolSearchExtension(), supplies: (tool) => tool === "tool_search" },
+  {
+    name: "tool-search",
+    factory: createToolSearchExtension(),
+    supplies: (tool) => tool === "tool_search",
+  },
   {
     name: "mcp",
     factory: createMcpExtension(),

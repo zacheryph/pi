@@ -9,7 +9,7 @@ date: 2026-09-08
 
 Accepted, and amended by [ADR 0011].
 Amends [ADR 0006], which stands: a child still inherits the parent prompt's identity region and nothing after it.
-What this record changes is the *goal* that placement serves, and the claim the package makes about it.
+What this record changes is the _goal_ that placement serves, and the claim the package makes about it.
 [ADR 0011] excises Pi's `<tools>` and `<rules>` sections from the region on the section-shaped prompt, which ends the shared prefix at the preamble for a parent that renders them and replaces the accepted residual below.
 
 ## Context
@@ -36,7 +36,7 @@ The `tools` array precedes the system prompt, so **any** child whose tool array 
 
 On the Anthropic OAuth path there is a second, independent break: `@gotgenes/pi-anthropic-auth` prepends a billing block as system block 0 whose hash is derived from the first user message, and a parent and child never share one.
 
-The property pays where tool definitions are rendered *after* the system text — local inference engines whose chat template does so, which is [#180]'s own constituency, and API-key Anthropic with an identical tool array.
+The property pays where tool definitions are rendered _after_ the system text — local inference engines whose chat template does so, which is [#180]'s own constituency, and API-key Anthropic with an identical tool array.
 The package had never said so.
 
 ## Decision

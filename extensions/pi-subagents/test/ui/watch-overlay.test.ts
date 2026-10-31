@@ -12,20 +12,39 @@ function agent(overrides: Partial<WatchAgent> = {}) {
   let ready = false;
   const unsubscribe = vi.fn();
   const record: Mutable<WatchAgent> = {
-    id: "a", type: "general-purpose", description: "watch me", isBackground: true,
-    status: "running", responseText: "", result: undefined, error: undefined,
-    subscribeToUpdates: vi.fn(fn => {
+    id: "a",
+    type: "general-purpose",
+    description: "watch me",
+    isBackground: true,
+    status: "running",
+    responseText: "",
+    result: undefined,
+    error: undefined,
+    subscribeToUpdates: vi.fn((fn) => {
       if (!ready) return undefined;
       listeners.add(fn);
-      return () => { listeners.delete(fn); unsubscribe(); };
+      return () => {
+        listeners.delete(fn);
+        unsubscribe();
+      };
     }),
     ...overrides,
   };
-  return { record, unsubscribe, ready: () => { ready = true; }, emit: (event: AgentSessionEvent) => { for (const listener of listeners) listener(event); } };
+  return {
+    record,
+    unsubscribe,
+    ready: () => {
+      ready = true;
+    },
+    emit: (event: AgentSessionEvent) => {
+      for (const listener of listeners) listener(event);
+    },
+  };
 }
 
 function fixture(initial: WatchAgent[] = [], mode: "tui" | "rpc" | "print" = "tui") {
-  const overlays: Array<{ component: Component; options?: OverlayOptions; handle: OverlayHandle }> = [];
+  const overlays: Array<{ component: Component; options?: OverlayOptions; handle: OverlayHandle }> =
+    [];
   const hosts: Component[] = [];
   const tui = {
     mode: "fullscreen" as "regular" | "fullscreen",
@@ -34,8 +53,14 @@ function fixture(initial: WatchAgent[] = [], mode: "tui" | "rpc" | "print" = "tu
     showOverlay: vi.fn((component: Component, options?: OverlayOptions) => {
       let hidden = false;
       const handle = {
-        hide: vi.fn(), setHidden: vi.fn((value: boolean) => { hidden = value; }),
-        isHidden: () => hidden, focus: vi.fn(), unfocus: vi.fn(), isFocused: () => false,
+        hide: vi.fn(),
+        setHidden: vi.fn((value: boolean) => {
+          hidden = value;
+        }),
+        isHidden: () => hidden,
+        focus: vi.fn(),
+        unfocus: vi.fn(),
+        isFocused: () => false,
         getBounds: () => undefined,
       };
       overlays.push({ component, options, handle });
@@ -54,14 +79,37 @@ function fixture(initial: WatchAgent[] = [], mode: "tui" | "rpc" | "print" = "tu
     }),
   };
   const context = { mode, hasUI: mode !== "print", ui: ui as unknown as ExtensionUIContext };
-  const settings: Mutable<WatchSettings> = { overlayWidth: "third", overlayDefaultOpen: true, overlayShowThinking: true };
-  const watch = new WatchOverlay({ listAgents: () => initial }, new AgentTypeRegistry(() => new Map()), settings);
+  const settings: Mutable<WatchSettings> = {
+    overlayWidth: "third",
+    overlayDefaultOpen: true,
+    overlayShowThinking: true,
+  };
+  const watch = new WatchOverlay(
+    { listAgents: () => initial },
+    new AgentTypeRegistry(() => new Map()),
+    settings,
+  );
   watch.setContext(context);
-  return { watch, context, settings, ui, tui, overlays, hosts, text: () => overlays.at(-1)!.component.render(40).join("\n") };
+  return {
+    watch,
+    context,
+    settings,
+    ui,
+    tui,
+    overlays,
+    hosts,
+    text: () => overlays.at(-1)!.component.render(40).join("\n"),
+  };
 }
 
-beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(10000); });
-afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(10000);
+});
+afterEach(() => {
+  vi.clearAllTimers();
+  vi.useRealTimers();
+});
 
 describe("WatchOverlay lifecycle and visibility", () => {
   it("auto-opens passively on background activity using configured width", () => {
@@ -70,7 +118,11 @@ describe("WatchOverlay lifecycle and visibility", () => {
     const a = agent();
     f.watch.onSubagentStarted(a.record);
     expect(f.overlays).toHaveLength(1);
-    expect(f.overlays[0].options).toMatchObject({ anchor: "top-right", width: "33.333%", nonCapturing: true });
+    expect(f.overlays[0].options).toMatchObject({
+      anchor: "top-right",
+      width: "33.333%",
+      nonCapturing: true,
+    });
     expect(f.overlays[0].options!.visible!(120, 30)).toBe(true);
     expect(f.overlays[0].options!.visible!(12, 7)).toBe(false);
     expect(f.text()).toContain("watch me");
@@ -85,8 +137,16 @@ describe("WatchOverlay lifecycle and visibility", () => {
     a.ready();
     f.watch.onSubagentSessionCreated(a.record);
     f.watch.toggle();
-    a.emit({ type: "tool_execution_start", toolCallId: "read", toolName: "read", args: { path: "auth.ts" } });
-    a.emit({ type: "message_update", message: { role: "assistant", content: [{ type: "text", text: "Found middleware" }] } } as AgentSessionEvent);
+    a.emit({
+      type: "tool_execution_start",
+      toolCallId: "read",
+      toolName: "read",
+      args: { path: "auth.ts" },
+    });
+    a.emit({
+      type: "message_update",
+      message: { role: "assistant", content: [{ type: "text", text: "Found middleware" }] },
+    } as AgentSessionEvent);
     f.watch.toggle();
     expect(f.text()).toContain("auth.ts");
     expect(f.text()).toContain("Found middleware");
@@ -99,9 +159,16 @@ describe("WatchOverlay lifecycle and visibility", () => {
     const a = agent();
     a.ready();
     f.watch.onSubagentSessionCreated(a.record);
-    a.emit({ type: "message_update", message: { role: "assistant", content: [
-      { type: "thinking", thinking: "provider reasoning" }, { type: "text", text: "normal output" },
-    ] } } as AgentSessionEvent);
+    a.emit({
+      type: "message_update",
+      message: {
+        role: "assistant",
+        content: [
+          { type: "thinking", thinking: "provider reasoning" },
+          { type: "text", text: "normal output" },
+        ],
+      },
+    } as AgentSessionEvent);
     expect(f.text()).toContain("Think provider reasoning");
     expect(f.text()).toContain("normal output");
     vi.advanceTimersByTime(100);
@@ -113,9 +180,16 @@ describe("WatchOverlay lifecycle and visibility", () => {
     vi.advanceTimersByTime(100);
     expect(f.tui.requestRender).toHaveBeenCalledTimes(paints + 1);
     f.watch.toggle(); // panel hidden; feed still retained
-    a.emit({ type: "message_end", message: { role: "assistant", content: [
-      { type: "thinking", thinking: "recent hidden reasoning" }, { type: "text", text: "normal output" },
-    ] } } as AgentSessionEvent);
+    a.emit({
+      type: "message_end",
+      message: {
+        role: "assistant",
+        content: [
+          { type: "thinking", thinking: "recent hidden reasoning" },
+          { type: "text", text: "normal output" },
+        ],
+      },
+    } as AgentSessionEvent);
     f.settings.overlayShowThinking = true;
     f.watch.settingsChanged();
     expect(f.overlays).toHaveLength(1);
@@ -132,16 +206,31 @@ describe("WatchOverlay lifecycle and visibility", () => {
     const session = {
       resourceLoader: { getSkills: vi.fn(() => ({ skills })) },
       sessionManager: { getCwd: vi.fn(() => "/child") },
-      get messages(): never { throw new Error("Must not read inherited transcript"); },
+      get messages(): never {
+        throw new Error("Must not read inherited transcript");
+      },
     };
     const a = agent({ subagentSession: { session } });
     a.ready();
     f.watch.onSubagentSessionCreated(a.record);
     expect(f.text()).not.toContain("Skill deploy");
-    a.emit({ type: "tool_execution_start", toolCallId: "p/1", parentToolCallId: "p", toolName: "read", args: { path: "skills/deploy/SKILL.md" } });
+    a.emit({
+      type: "tool_execution_start",
+      toolCallId: "p/1",
+      parentToolCallId: "p",
+      toolName: "read",
+      args: { path: "skills/deploy/SKILL.md" },
+    });
     expect(f.text()).toContain("Skill deploy · loading…");
     expect(f.text()).not.toContain("loaded");
-    a.emit({ type: "tool_execution_end", toolCallId: "p/1", parentToolCallId: "p", toolName: "read", result: { content: [{ type: "text", text: "private instructions" }] }, isError: false });
+    a.emit({
+      type: "tool_execution_end",
+      toolCallId: "p/1",
+      parentToolCallId: "p",
+      toolName: "read",
+      result: { content: [{ type: "text", text: "private instructions" }] },
+      isError: false,
+    });
     expect(f.text()).toContain("Skill deploy · loaded");
     expect(f.text()).not.toContain("private instructions");
     expect(session.resourceLoader.getSkills).toHaveBeenCalledOnce();
@@ -219,7 +308,8 @@ describe("WatchOverlay lifecycle and visibility", () => {
     const a = agent();
     a.ready();
     f.watch.onSubagentSessionCreated(a.record);
-    for (let i = 0; i < 50; i++) a.emit({ type: "tool_execution_start", toolCallId: String(i), toolName: "read", args: {} });
+    for (let i = 0; i < 50; i++)
+      a.emit({ type: "tool_execution_start", toolCallId: String(i), toolName: "read", args: {} });
     vi.advanceTimersByTime(100);
     expect(f.tui.requestRender).toHaveBeenCalledTimes(1);
     f.watch.toggle();
@@ -257,7 +347,10 @@ describe("WatchOverlay lifecycle and visibility", () => {
     f.watch.onSubagentStarted(a.record);
     expect(f.overlays).toHaveLength(0);
     f.watch.toggle();
-    expect(f.ui.notify).toHaveBeenCalledWith("Subagent watch overlay requires Pi fullscreen mode.", "warning");
+    expect(f.ui.notify).toHaveBeenCalledWith(
+      "Subagent watch overlay requires Pi fullscreen mode.",
+      "warning",
+    );
     f.tui.mode = "fullscreen";
     f.hosts[0].render(120);
     expect(f.overlays).toHaveLength(1);

@@ -39,9 +39,7 @@ const ctx: AssemblerContext = {
   modelRegistry: mockRegistry,
 };
 
-const mockLoadProjectContext: Mock<AssemblerIO["loadProjectContext"]> = vi.fn(
-  () => undefined,
-);
+const mockLoadProjectContext: Mock<AssemblerIO["loadProjectContext"]> = vi.fn(() => undefined);
 
 /** IO stubs injected into assembleSessionConfig in place of module-level imports. */
 const mockIO = {
@@ -51,7 +49,13 @@ const mockIO = {
 
 /** The Explore agent config used across the model/thinking resolution tests. */
 function exploreConfig(overrides: Partial<AgentConfig> = {}): AgentConfig {
-  return { name: "Explore", description: "test", systemPrompt: "prompt", promptMode: "replace", ...overrides };
+  return {
+    name: "Explore",
+    description: "test",
+    systemPrompt: "prompt",
+    promptMode: "replace",
+    ...overrides,
+  };
 }
 
 beforeEach(() => {
@@ -76,7 +80,14 @@ describe("assembleSessionConfig — default agent shape", () => {
   });
 
   it("uses options.cwd as effectiveCwd when provided", () => {
-    const result = assembleSessionConfig("Explore", ctx, { cwd: "/tmp/worktree" }, mockEnv, mockAgentLookup, mockIO);
+    const result = assembleSessionConfig(
+      "Explore",
+      ctx,
+      { cwd: "/tmp/worktree" },
+      mockEnv,
+      mockAgentLookup,
+      mockIO,
+    );
 
     expect(result.effectiveCwd).toBe("/tmp/worktree");
   });
@@ -100,14 +111,7 @@ describe("assembleSessionConfig — default agent shape", () => {
   it("forwards the parent's cwd alongside its system prompt", () => {
     // The prompt builder needs the parent's cwd to redact the footer that text
     // claims — the child's own cwd is a separate argument.
-    assembleSessionConfig(
-      "Explore",
-      ctx,
-      { cwd: "/worktree" },
-      mockEnv,
-      mockAgentLookup,
-      mockIO,
-    );
+    assembleSessionConfig("Explore", ctx, { cwd: "/worktree" }, mockEnv, mockAgentLookup, mockIO);
 
     expect(mockBuildAgentPrompt).toHaveBeenCalledWith(
       mockResolveAgentConfig(),
@@ -126,11 +130,13 @@ describe("assembleSessionConfig — default agent shape", () => {
 
 describe("assembleSessionConfig — prepared fragment configuration", () => {
   it.each([{ fragments: ["aws"] }, { fragmentError: "Invalid declaration" }])(
-    "refuses raw fragment config without composing or creating a prompt (%s)", (declaration) => {
+    "refuses raw fragment config without composing or creating a prompt (%s)",
+    (declaration) => {
       mockResolveAgentConfig.mockReturnValueOnce(exploreConfig(declaration));
 
-      expect(() => assembleSessionConfig("Explore", ctx, {}, mockEnv, mockAgentLookup, mockIO))
-        .toThrow("fragment instructions were not prepared at spawn; start a new agent");
+      expect(() =>
+        assembleSessionConfig("Explore", ctx, {}, mockEnv, mockAgentLookup, mockIO),
+      ).toThrow("fragment instructions were not prepared at spawn; start a new agent");
       expect(mockBuildAgentPrompt).not.toHaveBeenCalled();
       expect(mockLoadProjectContext).not.toHaveBeenCalled();
       expect(mockGetToolNamesForType).not.toHaveBeenCalled();
@@ -138,7 +144,11 @@ describe("assembleSessionConfig — prepared fragment configuration", () => {
   );
 
   it("consumes prepared config without live registry lookup", () => {
-    const agentConfig = exploreConfig({ fragments: ["aws"], systemPrompt: "Composed AWS instructions", toolNames: [] });
+    const agentConfig = exploreConfig({
+      fragments: ["aws"],
+      systemPrompt: "Composed AWS instructions",
+      toolNames: [],
+    });
 
     assembleSessionConfig("Explore", ctx, { agentConfig }, mockEnv, mockAgentLookup, mockIO);
 
@@ -157,7 +167,9 @@ describe("assembleSessionConfig — model resolution", () => {
 
   it("options.model wins over config model and parent model", () => {
     const explicitModel = makeModel({ provider: "anthropic", id: "claude-opus-4" });
-    mockResolveAgentConfig.mockReturnValueOnce(exploreConfig({ model: "anthropic/claude-haiku-4" }));
+    mockResolveAgentConfig.mockReturnValueOnce(
+      exploreConfig({ model: "anthropic/claude-haiku-4" }),
+    );
 
     const result = assembleSessionConfig(
       "Explore",
@@ -270,7 +282,14 @@ describe("assembleSessionConfig — unknown type fallback", () => {
       (config: { name: string }) => `resolved:${config.name}`,
     );
 
-    const result = assembleSessionConfig("unknown-custom-agent", ctx, {}, mockEnv, mockAgentLookup, mockIO);
+    const result = assembleSessionConfig(
+      "unknown-custom-agent",
+      ctx,
+      {},
+      mockEnv,
+      mockAgentLookup,
+      mockIO,
+    );
 
     expect(result.systemPrompt).toBe("resolved:general-purpose");
   });
@@ -345,9 +364,7 @@ describe("assembleSessionConfig — prompt inheritance", () => {
     const bridgeModel = makeModel({ provider: "claude-bridge", id: "opus" });
     mockRegistry.find.mockReturnValueOnce(bridgeModel);
     mockRegistry.getAvailable.mockReturnValueOnce([bridgeModel]);
-    mockResolveAgentConfig.mockReturnValueOnce(
-      exploreConfig({ model: "claude-bridge/opus" }),
-    );
+    mockResolveAgentConfig.mockReturnValueOnce(exploreConfig({ model: "claude-bridge/opus" }));
 
     assembleSessionConfig(
       "Explore",

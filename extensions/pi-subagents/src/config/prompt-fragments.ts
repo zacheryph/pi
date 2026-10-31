@@ -25,7 +25,9 @@ export function parseFragments(value: unknown): Pick<AgentConfig, "fragments" | 
   }
   for (const name of value) {
     if (typeof name !== "string" || !/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(name)) {
-      return { fragmentError: `Invalid fragment name ${JSON.stringify(name)}: use letters, digits, '_' or '-' only; no paths or .md suffix` };
+      return {
+        fragmentError: `Invalid fragment name ${JSON.stringify(name)}: use letters, digits, '_' or '-' only; no paths or .md suffix`,
+      };
     }
   }
   return { fragments: [...new Set(value as string[])] };
@@ -46,19 +48,24 @@ export function composeAgentInstructions(
   const body = profile.systemPrompt.trim();
   if (!names.length) return { body, fragments: [], systemPrompt: profile.systemPrompt };
   if (profile.source === "project" && options.projectTrusted !== true) {
-    throw new Error(`Agent "${profile.name}" fragments require Pi project trust (--approve or /trust).`);
+    throw new Error(
+      `Agent "${profile.name}" fragments require Pi project trust (--approve or /trust).`,
+    );
   }
-  if (!profile.sourcePath) throw new Error(`Agent "${profile.name}" fragments require a profile source path.`);
+  if (!profile.sourcePath)
+    throw new Error(`Agent "${profile.name}" fragments require a profile source path.`);
   const fragmentDir = join(dirname(profile.sourcePath), "fragments");
-  const readFile = options.readFile ?? (path => readFileSync(path, "utf8"));
-  const fragments = names.map(name => {
+  const readFile = options.readFile ?? ((path) => readFileSync(path, "utf8"));
+  const fragments = names.map((name) => {
     const path = join(fragmentDir, `${name}.md`);
     try {
       return { name, path, content: readFile(path).trim() };
     } catch (error) {
-      throw new Error(`Agent "${profile.name}" fragment "${name}" (${path}): ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(
+        `Agent "${profile.name}" fragment "${name}" (${path}): ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   });
-  const parts = [...fragments.map(fragment => fragment.content), body].filter(Boolean);
+  const parts = [...fragments.map((fragment) => fragment.content), body].filter(Boolean);
   return { body, fragments, systemPrompt: parts.join("\n\n---\n\n") };
 }

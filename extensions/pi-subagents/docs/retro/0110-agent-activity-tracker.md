@@ -23,7 +23,7 @@ All 7 source files and 3 test files were migrated incrementally without any big-
   2. `Date.now()` key collision in `activeTools` Map — two `onToolStart("Read")` calls in the same millisecond produced identical keys, so the second overwrote the first.
      The Red phase test `"multiple concurrent tools with same name tracked independently"` caught it.
   3. `describeActivity` signature needed `ReadonlyMap<string, string>` after the accessor change — caught by `pnpm run check` in step 3.
-  All three were fixed immediately with no cascading rework.
+     All three were fixed immediately with no cascading rework.
 - **Incremental migration avoided type breakage.**
   The plan kept `AgentActivity` alive in `agent-widget.ts` until step 3, so steps 1–2 compiled without touching downstream files.
   Each step only broke the files it was about to migrate, keeping intermediate states valid.

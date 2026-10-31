@@ -18,7 +18,7 @@ const MODELS = [
 function makeRegistry(models = MODELS, available?: typeof MODELS): ModelRegistry {
   return {
     find(provider: string, modelId: string) {
-      return models.find(m => m.provider === provider && m.id === modelId);
+      return models.find((m) => m.provider === provider && m.id === modelId);
     },
     getAll() {
       return models;
@@ -176,8 +176,16 @@ describe("resolveModel", () => {
   describe("ambiguous matches", () => {
     const SIMILAR_MODELS = [
       makeModel({ id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6", provider: "anthropic" }),
-      makeModel({ id: "claude-sonnet-4-5-20241022", name: "Claude Sonnet 4.5", provider: "anthropic" }),
-      makeModel({ id: "claude-haiku-4-5-20251001", name: "Claude Haiku 4.5", provider: "anthropic" }),
+      makeModel({
+        id: "claude-sonnet-4-5-20241022",
+        name: "Claude Sonnet 4.5",
+        provider: "anthropic",
+      }),
+      makeModel({
+        id: "claude-haiku-4-5-20251001",
+        name: "Claude Haiku 4.5",
+        provider: "anthropic",
+      }),
     ];
 
     it("'sonnet' prefers tighter id match (shorter id)", () => {
@@ -233,19 +241,29 @@ describe("resolveModel — @latest", () => {
   });
 
   it("considers only available models", () => {
-    expect(resolveModel("anthropic/claude-haiku@latest", makeRegistry(HAIKUS, [HAIKUS[0], HAIKUS[3]]))).toBe(HAIKUS[0]);
+    expect(
+      resolveModel("anthropic/claude-haiku@latest", makeRegistry(HAIKUS, [HAIKUS[0], HAIKUS[3]])),
+    ).toBe(HAIKUS[0]);
   });
 
   it("reports an error when no available model matches", () => {
     const result = resolveModel("anthropic/claude-haiku@latest", makeRegistry(HAIKUS, [HAIKUS[3]]));
-    expect(result).toEqual(expect.stringContaining('No available model matches "anthropic/claude-haiku@latest"'));
+    expect(result).toEqual(
+      expect.stringContaining('No available model matches "anthropic/claude-haiku@latest"'),
+    );
     expect(result).toEqual(expect.stringContaining("anthropic/claude-sonnet-5-5"));
   });
 
   it("falls back to the parent model when a config-specified family is unavailable", () => {
     const parent = HAIKUS[3];
-    expect(resolveInvocationModel(parent, "anthropic/claude-haiku@latest", false, makeRegistry(HAIKUS, [parent])))
-      .toEqual({ model: parent });
+    expect(
+      resolveInvocationModel(
+        parent,
+        "anthropic/claude-haiku@latest",
+        false,
+        makeRegistry(HAIKUS, [parent]),
+      ),
+    ).toEqual({ model: parent });
   });
 });
 
@@ -254,7 +272,12 @@ describe("resolveInvocationModel", () => {
 
   describe("config-specified model silent fallback (modelFromParams false)", () => {
     it("returns parent model when config-specified model fails to resolve", () => {
-      const result = resolveInvocationModel(parentModel, "nonexistent-model", false, makeRegistry());
+      const result = resolveInvocationModel(
+        parentModel,
+        "nonexistent-model",
+        false,
+        makeRegistry(),
+      );
       expect(result).toEqual({ model: parentModel });
       expect(result.error).toBeUndefined();
     });

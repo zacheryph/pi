@@ -156,7 +156,9 @@ The substitution is direct, and the surrounding code does not change shape:
 ```typescript
 // src/ui/display.ts
 export function formatTurns(turnCount: number, maxTurns?: number | null): string {
-  return maxTurns != null ? `${GLYPHS.turns}${turnCount}≤${maxTurns}` : `${GLYPHS.turns}${turnCount}`;
+  return maxTurns != null
+    ? `${GLYPHS.turns}${turnCount}≤${maxTurns}`
+    : `${GLYPHS.turns}${turnCount}`;
 }
 
 // src/ui/widget-renderer.ts
@@ -210,7 +212,7 @@ Grep verification performed at planning time, so the file list above is complete
    The extraction does make a future vocabulary-level test possible for the first time — a single import surface instead of eleven scattered literals — which is what [#683] would need if it proceeds.
 2. **Tests that become redundant.**
    None.
-   It is tempting to collapse the five files' literal assertions into one test of `GLYPHS`, and that would be wrong: those tests assert *rendered output*, which is what a user sees, whereas a `GLYPHS` test would assert only that a constant holds what it holds.
+   It is tempting to collapse the five files' literal assertions into one test of `GLYPHS`, and that would be wrong: those tests assert _rendered output_, which is what a user sees, whereas a `GLYPHS` test would assert only that a constant holds what it holds.
    Keep the rendered-output assertions distributed as they are.
 3. **Tests that must stay as-is.**
    All of `test/display.test.ts`, `test/observation/renderer.test.ts`, `test/tools/result-renderer.test.ts`, `test/widget-renderer.test.ts`, and `test/ui/agent-widget.test.ts`.
@@ -230,7 +232,7 @@ No invariant here is quantitative: the change touches no prompt prefix, token bu
 ## TDD Order
 
 1. **Extract the glyph vocabulary.**
-   Add `src/ui/glyphs.ts` holding the eleven `GLYPHS` entries at their *current* values (`turns: "⟳"`, `compactions: "↻"`) plus `SPINNER`, with the doc comment's coverage table reflecting the current state.
+   Add `src/ui/glyphs.ts` holding the eleven `GLYPHS` entries at their _current_ values (`turns: "⟳"`, `compactions: "↻"`) plus `SPINNER`, with the doc comment's coverage table reflecting the current state.
    Replace every literal and escaped glyph site in `src/ui/display.ts`, `src/ui/widget-renderer.ts`, `src/observation/renderer.ts`, `src/tools/result-renderer.ts`, `src/tools/agent-tool.ts`, and `src/ui/session-navigator.ts`, and repoint the `SPINNER` imports in `src/tools/result-renderer.ts`, `src/ui/widget-renderer.ts`, and `src/tools/foreground-runner.ts`.
    Removing the `SPINNER` export from `display.ts` breaks its importers at the type level, so the move and all three import updates must land in this one commit.
    Verify: `pnpm run check`, `pnpm run lint`, and the full package suite pass with **no test file edited**; `rg -n '[^\x00-\x7f]' src --glob '*.ts'` shows glyphs only in `glyphs.ts` plus box drawing and punctuation.

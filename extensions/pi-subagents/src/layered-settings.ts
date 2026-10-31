@@ -93,7 +93,11 @@ export function loadLayeredSettings<T>(source: LayeredSettingsSource<T>): Partia
 /**
  * Read one settings file. Missing → `{}` (silent). Malformed → `{}` + warn.
  */
-function readLayer<T>(path: string, sanitize: (raw: unknown) => Partial<T>, warnLabel: string): Partial<T> {
+function readLayer<T>(
+  path: string,
+  sanitize: (raw: unknown) => Partial<T>,
+  warnLabel: string,
+): Partial<T> {
   if (!existsSync(path)) return {};
   try {
     return sanitize(JSON.parse(readFileSync(path, "utf-8")));

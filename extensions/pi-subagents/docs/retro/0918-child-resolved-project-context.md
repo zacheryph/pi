@@ -1,6 +1,6 @@
 ---
 issue: 918
-issue_title: "pi-subagents-worktrees: `<project_context>`'s inherited `path=\"...\"` attribute defeats worktree isolation, the same way #640's footer did"
+issue_title: 'pi-subagents-worktrees: `<project_context>`''s inherited `path="..."` attribute defeats worktree isolation, the same way #640''s footer did'
 ---
 
 # Retro: #918 — `<project_context>`'s inherited `path="..."` attribute defeats worktree isolation
@@ -19,12 +19,12 @@ The plan at `packages/pi-subagents/docs/plans/0918-child-resolved-project-contex
   So the option set is not "which edit is cheapest" but "annotate the false claim or remove it", and the measurement is what made that visible.
   Estimating instead of measuring would have produced an option list comparing costs that are identical.
 - **An elegant-looking generalization was strictly worse.**
-  Making the relocation unconditional (every child re-renders its own block, so the rule has no `if`) buys a relocated child nothing — its block cannot match its parent's whatever we do — while making every *non*-relocated child's prefix depend on our byte-replica of Pi's renderer.
+  Making the relocation unconditional (every child re-renders its own block, so the rule has no `if`) buys a relocated child nothing — its block cannot match its parent's whatever we do — while making every _non_-relocated child's prefix depend on our byte-replica of Pi's renderer.
   `buildSystemPrompt` is not exported from `@earendil-works/pi-coding-agent`, so no test could pin that replica against the real thing.
   Conditioning on divergence removes the replica risk entirely.
 - **Re-adding a cwd condition [ADR 0006] withdrew.**
-  ADR 0006 dropped [#640]'s equal-cwd exception because the footer sits *after* the catalogue cut, so the exception preserved nothing.
-  `<project_context>` sits *before* the cut, so the same reasoning does not reach it — checked before planning the re-introduction rather than relying on the remembered rule.
+  ADR 0006 dropped [#640]'s equal-cwd exception because the footer sits _after_ the catalogue cut, so the exception preserved nothing.
+  `<project_context>` sits _before_ the cut, so the same reasoning does not reach it — checked before planning the re-introduction rather than relying on the remembered rule.
 - **Both `ask_user` bounces were substantive, not formatting.**
   The first asked which package the fix belongs in (answer: core — the `Workspace` seam is `{ cwd, dispose() }` with no prompt-side field, which also produced a fifth option nobody had named).
   The second asked what `prompt_mode: replace` is, which surfaced that the cheap variant (`noContextFiles: false`, letting Pi rebuild) moves a relocated `Explore`/`Plan` child's body off the end — and that produced the adopted `cut-inline` variant.
@@ -34,7 +34,7 @@ The plan at `packages/pi-subagents/docs/plans/0918-child-resolved-project-contex
   A debug note and a `docs/configuration.md` contract for provider authors were added instead of a fallback; an opt-in escape hatch was offered and declined.
 - **Tidy-First assessor returned three accepted preparatory commits** (extract `renderProjectContext` to `src/session/project-context.ts`, unit-test it directly, add a project-context layer to the `parentPrompt()` fixture) and one useful rejection: do **not** reshape `buildAgentPrompt`'s parameter list ahead of the change — an optional trailing parameter costs zero call-site edits across ~30 sites, and a parameter-object shape is the design decision itself, not separable prep.
   It also caught a real tension in my design summary: `renderProjectContext`'s "two callers" are both new, because `buildPortablePrompt` loses its `contextFiles` input entirely.
-- **Sharpest test hazard identified:** the expensive failure is the cut firing on an *equal-cwd* child, which silently ends the shared prefix for every child on prefix-reusing hosts and is invisible to `tsc` and to a green suite.
+- **Sharpest test hazard identified:** the expensive failure is the cut firing on an _equal-cwd_ child, which silently ends the shared prefix for every child on prefix-reusing hosts and is invisible to `tsc` and to a green suite.
   The existing `shared prefix with the parent` tests cannot see it, because their fixture has no `<project_context>` layer — hence preparatory step 3.
 
 #### Deferred tidyings
@@ -59,7 +59,7 @@ Pre-completion reviewer: PASS.
 
 - **Two planned mutations survived, and both were real findings.**
   Step 6's mutation collapsing `strategy !== "portable" && cwd === inherited.cwd` to `cwd === inherited.cwd` left the whole suite green: every portable fixture in `prompts.test.ts` also had a diverged cwd, so the divergence arm covered for the portable arm and nothing pinned it.
-  Added *resolves it even when the child shares the parent's directory*, which the mutation then killed in both prompt modes.
+  Added _resolves it even when the child shares the parent's directory_, which the mutation then killed in both prompt modes.
   The second survivor was the snapshot half — re-adding the parent's block to `buildPortablePrompt` reddened nothing, because once `contextFiles` left `ParentPromptOptions` neither the unit test nor the composition-root test supplied one any more.
   Pi passes its **whole** `systemPromptOptions` object at runtime, so the field is present whatever the declared type says; both pins now supply it (the unit test through a cast, the composition-root test through the real `before_agent_start` payload) and assert exact equality.
 - **The plan's "fewer reds than predicted is a finding" rule did the work here.**
@@ -106,7 +106,7 @@ The dominant theme is that this issue's two hardest findings — an unpinned `po
 - **The mutation protocol found two tests that could not fail, and one of them was a pre-existing pin.**
   Step 6's mutation collapsing `strategy !== "portable" && cwd === inherited.cwd` to `cwd === inherited.cwd` left the whole suite green, because every `portable` fixture in `prompts.test.ts` also had a diverged cwd — the divergence arm was silently covering for the portable arm.
   The second survivor was sharper still: re-adding the parent's block to `buildPortablePrompt` reddened nothing, because once `contextFiles` left `ParentPromptOptions` neither the unit test nor the composition-root test supplied one any more.
-  Fixing that one required *adding* `contextFiles` back to two pins before the mutation could be detected at all.
+  Fixing that one required _adding_ `contextFiles` back to two pins before the mutation could be detected at all.
   Both would have shipped as green, `tsc`-clean, lint-clean code with an unpinned arm — this is the strongest evidence so far for the plan-level rule that fewer reds than predicted is a finding rather than a pass.
 - **Measuring instead of estimating collapsed the option space before the gate was written.**
   Planning imported the pinned SDK 0.84.4's `buildSystemPrompt` and rendered this repo's own `AGENTS.md` through it, which showed that stripping the `path=` attribute, remapping it, and cutting the block all diverge the child at the same 2,151-char offset.

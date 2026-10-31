@@ -155,8 +155,8 @@ Per `docs/architecture/architecture.md` § Dependency bag convention:
 
 ```typescript
 // index.ts
-pi.registerCommand('agents', {
-  description: 'Manage agents',
+pi.registerCommand("agents", {
+  description: "Manage agents",
   handler: async (_args, ctx) => {
     await agentsMenuHandler({
       ui: ctx.ui,

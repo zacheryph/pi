@@ -37,7 +37,7 @@ The operator declined the mechanism question twice.
 The first bounce ("we should be managing them as first-class instances") produced the six-divergence audit.
 The second ("is there an invariant we could hold to?") produced the delivery-commitment framing: `isBackground` fuses scheduling, announcement, and result delivery, and delivery is the root — a caller holding the promise has already settled the other two.
 
-The third bounce asked *why* config wins over the callsite, which turned out to be the most valuable question of the session.
+The third bounce asked _why_ config wins over the callsite, which turned out to be the most valuable question of the session.
 Archaeology found upstream commit `91236678` ("fix(subagents): make agent config authoritative", edxeth, 2026-03-21), inherited through the hard fork, whose recorded rationale is explicitly a guard against **the parent model guessing harness knobs it does not understand**.
 That rationale is about a non-deterministic caller and does not reach a programmatic one — which is exactly the front-door distinction this issue is about.
 
@@ -91,7 +91,7 @@ Narrowing it to `AgentSpawnConfig` first turns the later required-field addition
 After the plan was committed, the four spun-off issues plus [#724] were judged a **bug cluster**, which `improvement-discovery` names as a legitimate trigger for a new phase.
 The operator's call: run `/plan-improvements` for `pi-subagents` with full discovery, **before** `/tdd-plan` on [#724], so the phase takes a clean pre-change health baseline and [#724] enters as a step carrying a grep-able `Release:` tag.
 
-The candidate cause — to be tested by the sweep, not assumed — is *the two front doors were never held to the same contract*. [#724] (the SDK door bypasses the tool door's resolution pipeline), [#829] (precedence is uniform across doors with different callers), [#830] (the public snapshot's allowlist has no stated policy), and [#828] (a vacant field on the public seam) all express it; it traces to the architecture doc's "Reactive versus discrete (not internal versus external)" section, which rules `SubagentsService.getRecord` a query "in-package or not" but was never audited against the code.
+The candidate cause — to be tested by the sweep, not assumed — is _the two front doors were never held to the same contract_. [#724] (the SDK door bypasses the tool door's resolution pipeline), [#829] (precedence is uniform across doors with different callers), [#830] (the public snapshot's allowlist has no stated policy), and [#828] (a vacant field on the public seam) all express it; it traces to the architecture doc's "Reactive versus discrete (not internal versus external)" section, which rules `SubagentsService.getRecord` a query "in-package or not" but was never audited against the code.
 [#827] does **not** fit the cause — it is widget activation, not the public surface — and should be triaged out of the spine rather than carried as a symptom-driven step.
 
 Run the discovery in a **fresh session**.
@@ -137,7 +137,7 @@ Under `DEFAULT_MAX_CONCURRENT = 4` the limiter admits a background agent immedia
 It was caught not by review but by its **twin**: a sibling asserting `"queued"` failed for the same root cause, retroactively convicting the passing one.
 The fix was to discriminate on `onSubagentCreated`, which fires for background agents alone.
 
-A second defect surfaced during the describe-nesting restructure: a test occupied one manager's limiter slot while asserting about a *second* manager, whose limiter was unrelated.
+A second defect surfaced during the describe-nesting restructure: a test occupied one manager's limiter slot while asserting about a _second_ manager, whose limiter was unrelated.
 A purely organizational prompt produced a correctness find, because reorganizing forces the question "where does this belong?"
 rather than "does it pass?".
 
@@ -147,7 +147,7 @@ The resulting `c4bc1f6a` records that test organization is upstream of probe ade
 It also scoped the existing mutation rule, which had failed to fire for three reasons — it keys on "passes during the Red step", but tests rewritten after Green never have a Red step; a bulk red from a signature change (21 tests failing for one missing field) says nothing about per-test discrimination; and one mutation kills one equivalence class, so surviving tests are not evidence of soundness.
 Landed in the `testing` skill, `craftsmanship-scout`, and both TDD prompts, with `/plan-issue` now budgeting a per-step killing mutation.
 
-The scout gap was specific and grounded: `subagent-manager.test.ts` is the package's **largest** test file, so Phase 22's discovery almost certainly opened it, and the scout reported "no concentrated debt" while praising a *smaller* file's nested tree as healthy.
+The scout gap was specific and grounded: `subagent-manager.test.ts` is the package's **largest** test file, so Phase 22's discovery almost certainly opened it, and the scout reported "no concentrated debt" while praising a _smaller_ file's nested tree as healthy.
 It had a lens for a nested tree as health and none for a flat one as debt.
 
 #### The restructure verification earned its keep
@@ -199,7 +199,7 @@ The dominant theme across all three stages is that **verification of the verific
   Two complementary mutations were needed to validate five background-mode pins: ignoring frontmatter killed the three `default`-request cases and correctly left the two `explicit` ones green.
   A single mutation would have looked like proof while covering three-fifths of the claims.
 - **Both Tidy-First steps paid off, one beyond its stated purpose.**
-  Step 1 narrowed `SubagentManagerLike.spawn`'s `unknown` options to make a later required field a compile error; it *also* immediately exposed an unrelated pre-existing hole (`SpawnOptions.thinkingLevel` is `string`, unvalidated on both doors), filed as [#834].
+  Step 1 narrowed `SubagentManagerLike.spawn`'s `unknown` options to make a later required field a compile error; it _also_ immediately exposed an unrelated pre-existing hole (`SpawnOptions.thinkingLevel` is `string`, unvalidated on both doors), filed as [#834].
   Step 2's payoff was exactly as predicted — the required `isBackground` broke one construction site instead of six.
 - **Model selection tracked task character across stages.**
   See `### Diagnostic details`.
@@ -228,7 +228,7 @@ The dominant theme across all three stages is that **verification of the verific
   Opportunity: leading with the organizing principle ("nest by unit, then scenario") rather than the local symptom ("don't repeat a prefix") would have let me fix my blocks and the surrounding 17 in one pass, instead of my-blocks-first and a whole-file restructure two steps later.
 - The question **"How can we set aside time and effort to take similar actions?"**
   was a budgeting question, and only half of it is answered.
-  Enforcement now exists (a Verify step in the cycle, a per-step killing mutation in plans, a scout lens), but nothing budgets the *test re-reading* that found the two-manager defect.
+  Enforcement now exists (a Verify step in the cycle, a per-step killing mutation in plans, a scout lens), but nothing budgets the _test re-reading_ that found the two-manager defect.
   The standing per-phase audit option was offered and declined, so this is recorded as an open question rather than a proposal.
 
 ### Diagnostic details

@@ -84,7 +84,7 @@ Three findings, each verified rather than assumed:
 
 1. **It deadlocks in the foreground.** `runForeground` awaits `spawnAndWait`, so the parent cannot call `steer_subagent` while inside its own tool execution.
 2. **The reply cannot travel through the SDK.**
-   `Agent.steer()` enqueues into `steeringQueue`, drained *between* turns (`pi/packages/agent/src/agent.ts:283`), so a tool blocked awaiting an answer blocks its own delivery.
+   `Agent.steer()` enqueues into `steeringQueue`, drained _between_ turns (`pi/packages/agent/src/agent.ts:283`), so a tool blocked awaiting an answer blocks its own delivery.
    The reply would have to be intercepted in `Subagent.steer()`.
 3. **It duplicates end-and-resume.**
    See Problem Statement.
@@ -98,7 +98,7 @@ So **every** child has an explicit allowlist, and no child anywhere receives a n
 
 `README.md` and the architecture doc's scope table carry a matching Non-Goal:
 
-> *Widening a child's tool allowlist on the agent's behalf.*
+> _Widening a child's tool allowlist on the agent's behalf._
 > An agent's `tools:` frontmatter is the complete allowlist and the only mechanism that widens it, because a settings-level list would hand a read-only `Explore` agent write-capable tools from a file its author never saw.
 
 Its history matters.
@@ -109,7 +109,7 @@ Its history matters.
 This change is a **carrier swap**, not a widening.
 The core already installs its own protocol in every child on its own authority: `buildAgentPrompt` injects `<active_agent>`, `parentContext` is prepended to the run prompt, and [#465] taught every child the marker in both prompt modes unconditionally.
 Changing that protocol's carrier from a text marker to a tool schema grants no machine capability — neither tool touches the filesystem, the shell, or the network; each can only put text into the session that spawned the child — and neither re-admits `subagent`.
-[#612]'s two failure modes are untouched, and [#768]'s objection to a *user-authored* key naming tools from outside the agent file still stands.
+[#612]'s two failure modes are untouched, and [#768]'s objection to a _user-authored_ key naming tools from outside the agent file still stands.
 
 Force-inclusion is structurally required rather than merely convenient: an opt-in `ask_parent` would silently delete ask-back from every agent that declares `tools:`.
 
@@ -208,7 +208,7 @@ Superseded by #872: the same blockage occurs on a resume and on a `get_subagent_
 
 ```typescript
 // Subagent.run(), at the createSubagentSession call
-const runConfig = this.execution.getRunConfig?.();   // hoisted above the call
+const runConfig = this.execution.getRunConfig?.(); // hoisted above the call
 this.subagentSession = await this.execution.createSubagentSession({
   // …existing fields…
   askParent: (question) => this.state.setPendingQuestion(question),
@@ -222,7 +222,7 @@ this.subagentSession = await this.execution.createSubagentSession({
 `createSubagentSession` builds a definition for each callback it was given, appends their names to the allowlist, and passes them as `customTools`:
 
 ```typescript
-const childTools = buildChildTools(params);            // [] when neither callback is supplied
+const childTools = buildChildTools(params); // [] when neither callback is supplied
 const { session } = await deps.io.createSession({
   // …existing fields…
   tools: [...cfg.toolNames, ...childTools.map((t) => t.name)],
@@ -263,7 +263,7 @@ const finalResult = holdForResume
 
 The trailing `this.state.setPendingQuestion(question)` is deleted outright, and `spliceOut` disappears with the parser because the question was never in the body.
 `completeResume` mirrors this.
-[#857]'s invariant is preserved by construction: the hold now keys off *when* the tool was called during the run rather than off text found afterwards.
+[#857]'s invariant is preserved by construction: the hold now keys off _when_ the tool was called during the run rather than off text found afterwards.
 
 **One behavior the tool would otherwise change.**
 The parse never ran on the error path, so an errored child carries no `pendingQuestion` today; with a mid-run tool it could.
@@ -442,33 +442,33 @@ Neither direction is pinned by a byte-count test today and this plan adds none �
 1. **`refactor(pi-subagents): extract the retention-window selection from the sweep`** Export `resolveRetentionWindow` and `RetentionCandidate`; `sweep()` calls it.
    Behavior-preserving.
    Add unit tests for both existing branches (consumed → short window measured from the later of completion and consumption; unconsumed → long window from completion).
-   *Killing mutation:* make `resolveRetentionWindow` always return the unconsumed window — the new consumed-branch test goes red while the existing integration sweep tests, which drive a consumed record, also go red.
+   _Killing mutation:_ make `resolveRetentionWindow` always return the unconsumed window — the new consumed-branch test goes red while the existing integration sweep tests, which drive a consumed record, also go red.
    Prepares step 2 by making its branch unit-testable.
 
 2. **`fix(pi-subagents): keep a child's session alive while its question is unanswered`** A record with `pendingQuestion` set takes the unconsumed window.
    New test: a consumed record carrying a question holds past the short window.
-   *Killing mutation:* delete the `pendingQuestion` term — the new test goes red and step 1's two branch tests stay green, which is the evidence that the three cases are separately pinned.
+   _Killing mutation:_ delete the `pendingQuestion` term — the new test goes red and step 1's two branch tests stay green, which is the evidence that the three cases are separately pinned.
 
 3. **`feat(pi-subagents): let a child ask its parent a question with a tool`** `AskParentTool`; `CreateSubagentSessionParams.askParent`; `CreateSessionOptions.customTools`; the allowlist append; `Subagent.run()` supplies the callback with `runConfig` hoisted; `failRun`/`failResume` clear `pendingQuestion`.
    The marker still works — both mechanisms coexist for one commit, which is what keeps step 4's large test migration off this commit.
-   *Killing mutations:* (a) drop the append, leaving `tools: cfg.toolNames` — the allowlist assertion goes red while the `customTools` assertion stays green; (b) pass `askParent: undefined` unconditionally — the "a child session is given `ask_parent`" test goes red; (c) make `execute` skip the callback — the "calling `ask_parent` records the question" test goes red; (d) delete the `failRun` clear — the errored-run test goes red.
+   _Killing mutations:_ (a) drop the append, leaving `tools: cfg.toolNames` — the allowlist assertion goes red while the `customTools` assertion stays green; (b) pass `askParent: undefined` unconditionally — the "a child session is given `ask_parent`" test goes red; (c) make `execute` skip the callback — the "calling `ask_parent` records the question" test goes red; (d) delete the `failRun` clear — the errored-run test goes red.
 
 4. **`refactor(pi-subagents): retire the question-for-parent marker`** Delete `ask-back.ts` and its test; drop the prompt block and fix the seam whitespace; drop both parse call sites; migrate the 15 `subagent.test.ts` tests and the `heldWorkspaceAgent()` helper to the tool trigger; delete `prompts.test.ts`'s ask-back block.
    `refactor:` rather than `feat!:`: the capability is unchanged and reaches the parent by the same four carriers; the marker was never a documented user surface, and `parseQuestionForParent` is exported from neither public entry.
-   *Killing mutations:* (a) restore the `completeRun` parse and delete the tool's state write — the migrated question tests go red; (b) delete the workspace hold at its new site (`holdForResume` forced to `false`) — [#857]'s three hold tests go red, which is the check that a relocated invariant is still pinned.
+   _Killing mutations:_ (a) restore the `completeRun` parse and delete the tool's state write — the migrated question tests go red; (b) delete the workspace hold at its new site (`holdForResume` forced to `false`) — [#857]'s three hold tests go red, which is the check that a relocated invariant is still pinned.
 
 5. **`refactor(pi-subagents): order the withheld announcement queue`** Replace the id-keyed map with the `PendingAnnouncement` list.
    Behavior-preserving for completions.
    Add the missing multi-record arrival-order coverage.
-   *Killing mutations:* (a) append instead of replacing in place — `"collapses a re-completion during the same turn into a single delivery"` goes red; (b) flush in reverse — the new arrival-order test goes red and the collapse test stays green.
+   _Killing mutations:_ (a) append instead of replacing in place — `"collapses a re-completion during the same turn into a single delivery"` goes red; (b) flush in reverse — the new arrival-order test goes red and the collapse test stays green.
    Prepares step 6.
 
 6. **`refactor(pi-subagents): announce a child's mid-run update to its parent`** `NotificationManager.sendUpdate`, `formatUpdateNotification`, `buildUpdateDetails`, `createUpdateRenderer` and its registration, the two optional observer methods, the composite fan-out, and the `subagents:update` emission.
    Nothing calls `sendUpdate` yet, so this is `refactor:` by the observable-outcome rule.
-   *Killing mutations:* (a) make `sendUpdate` ignore `parentRunActive` — the withhold test goes red; (b) make it return early on `record.consumed` — the "an update is announced even after an earlier outcome was consumed" test goes red, which is the assertion that separates the update gates from the completion gates.
+   _Killing mutations:_ (a) make `sendUpdate` ignore `parentRunActive` — the withhold test goes red; (b) make it return early on `record.consumed` — the "an update is announced even after an earlier outcome was consumed" test goes red, which is the assertion that separates the update gates from the completion gates.
 
 7. **`feat(pi-subagents): let a running background child send its parent an update`** `NotifyParentTool`; `CreateSubagentSessionParams.notifyParent` and its definition; `Subagent.run()` supplies it under `isBackground && midRunUpdates`; `RunConfig.midRunUpdates`; the settings field and its `/subagents:settings` row.
-   *Killing mutations:* (a) supply it regardless of `isBackground` — the "a foreground child is not given `notify_parent`" test goes red; (b) supply it regardless of the setting — the `midRunUpdates: false` test goes red; (c) remove the 2000-character truncation — the cap test goes red.
+   _Killing mutations:_ (a) supply it regardless of `isBackground` — the "a foreground child is not given `notify_parent`" test goes red; (b) supply it regardless of the setting — the `midRunUpdates: false` test goes red; (c) remove the 2000-character truncation — the cap test goes red.
 
 8. **`docs(pi-subagents): document the child-to-parent tools and narrow the tool-widening boundary`**
    README, `configuration.md`, `architecture.md` (including Step 11 ✅, its `Landed:` note, and the Mermaid mark), and the package skill, per Module-Level Changes.
@@ -481,7 +481,7 @@ Neither direction is pinned by a byte-count test today and this plan adds none �
 | **A chatty child.** A tool that can interrupt will be used to interrupt                                                                                                                        | The tool description names the bar ("only for a material finding that changes what the delegating agent would do"), background-only delivery keeps it off the blocking path, and `midRunUpdates` is the operator's lever. No per-run cap until a real case is observed |
 | **The allowlist append silently no-ops.** A `customTools` entry whose name is missing from `tools` is dropped with no error — [#725]'s exact finding                                           | Step 3's killing mutation (a) pins the two halves separately, so dropping the append fails a test rather than shipping a tool nobody can see                                                                                                                           |
 | **The charter amendment is read as reopening [#612] / [#768]**                                                                                                                                 | The amendment states the distinction positively (core-installed protocol versus user-authored capability widening) and both closed items remain refused under it. Recorded in prose per the operator's decision; no ADR                                                |
-| **The queue rewrite regresses [#661] without a red test**, since no existing test pins cross-record order                                                                                      | Step 5 adds that coverage *before* step 6 introduces a second entry kind, and its second killing mutation (flush in reverse) is the check that the new coverage discriminates                                                                                          |
+| **The queue rewrite regresses [#661] without a red test**, since no existing test pins cross-record order                                                                                      | Step 5 adds that coverage _before_ step 6 introduces a second entry kind, and its second killing mutation (flush in reverse) is the check that the new coverage discriminates                                                                                          |
 | **`prompts.ts` seam whitespace.** `activeAgentTag` already ends in `\n\n`, so a naive deletion adds a blank line no test catches                                                               | Named explicitly in Module-Level Changes; re-read the region after the edit, since autoformat reflow makes a whitespace slip easy to miss                                                                                                                              |
 
 ## Open Questions

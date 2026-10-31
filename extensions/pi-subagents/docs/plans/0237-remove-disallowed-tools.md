@@ -51,10 +51,7 @@ Steps 1 and 2 (#237, #238) are independent; Step 3 (#239) depends on both.
 With `disallowedSet` removed, the function simplifies:
 
 ```typescript
-function filterActiveTools(
-  activeTools: string[],
-  config: ToolFilterConfig,
-): string[] {
+function filterActiveTools(activeTools: string[], config: ToolFilterConfig): string[] {
   const { toolNames, extensions } = config;
   if (extensions === false) {
     return activeTools;

@@ -101,7 +101,9 @@ class RunHandle {
     private readonly record: AgentRecord,
     private readonly worktrees: WorktreeManager,
     onFinished?: () => void,
-  ) { this.onFinished = onFinished; }
+  ) {
+    this.onFinished = onFinished;
+  }
 
   wireSignal(signal: AbortSignal | undefined, onAbort: () => void): void;
   attachObserver(unsub: () => void): void;
@@ -109,7 +111,7 @@ class RunHandle {
   fail(err: unknown): void;
 
   private detachListeners(): void;
-  private fireOnFinished(): void;  // idempotent — nulls callback after first call
+  private fireOnFinished(): void; // idempotent — nulls callback after first call
 }
 ```
 

@@ -106,8 +106,8 @@ The service door is unchanged, and reads the same either way:
 ```typescript
 const outcome = await subagents.resume(id, "answer", { signal: ctl.signal });
 // Either lever now stops the same run:
-ctl.abort();          // routes through record.abort() → status "stopped"
-subagents.abort(id);  // fires the record's current controller → status "stopped"
+ctl.abort(); // routes through record.abort() → status "stopped"
+subagents.abort(id); // fires the record's current controller → status "stopped"
 ```
 
 ### Edge cases
