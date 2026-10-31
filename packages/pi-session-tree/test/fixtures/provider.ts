@@ -2,6 +2,7 @@
 import { provide, sessionTree } from "../../src/index.ts";
 
 export default function provider(): void {
-  (globalThis as Record<symbol, unknown>)[Symbol.for("pi-session-tree.test.provider")] = sessionTree;
+  (globalThis as Record<symbol, unknown>)[Symbol.for("pi-session-tree.test.provider")] =
+    sessionTree;
   provide("session-1", "probe", { hello: "from provider" });
 }
