@@ -1,4 +1,9 @@
-import { unreviewedTodoUpdates, type TodoActivity, type TodoReviewState, type TodoUpdate } from "./activity.ts";
+import {
+  unreviewedTodoUpdates,
+  type TodoActivity,
+  type TodoReviewState,
+  type TodoUpdate,
+} from "./activity.ts";
 import { isTaskBlocked, type TodoState, type TodoStatus } from "./state.ts";
 
 /**
@@ -34,7 +39,10 @@ export interface TodoSnapshotEvent {
 }
 
 export function todoSnapshotEvent(
-  state: TodoState, activity: TodoActivity, review: TodoReviewState, holders: ReadonlyMap<string, string> = new Map(),
+  state: TodoState,
+  activity: TodoActivity,
+  review: TodoReviewState,
+  holders: ReadonlyMap<string, string> = new Map(),
 ): TodoSnapshotEvent {
   return structuredClone({
     version: TODO_SNAPSHOT_VERSION,

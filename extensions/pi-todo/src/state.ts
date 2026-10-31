@@ -7,11 +7,7 @@ export const MAX_TASK_DEPENDENCIES = 20;
 
 export type TodoStatus = "pending" | "in_progress" | "completed";
 
-const TODO_STATUSES: ReadonlySet<TodoStatus> = new Set([
-  "pending",
-  "in_progress",
-  "completed",
-]);
+const TODO_STATUSES: ReadonlySet<TodoStatus> = new Set(["pending", "in_progress", "completed"]);
 
 function isTodoStatus(value: unknown): value is TodoStatus {
   return typeof value === "string" && TODO_STATUSES.has(value as TodoStatus);
@@ -115,7 +111,8 @@ function normalizeTask(input: ResolvedTodoTaskInput, index: number): ResolvedTod
   const key = normalizeTaskKey(input.key, `tasks[${index}].key`);
   const subject = input.subject.trim();
   if (!subject) throw new TodoValidationError(`tasks[${index}].subject is required`);
-  if (subject.length > 160) throw new TodoValidationError(`tasks[${index}].subject must be at most 160 characters`);
+  if (subject.length > 160)
+    throw new TodoValidationError(`tasks[${index}].subject must be at most 160 characters`);
 
   const description = normalizeOptionalText(input.description);
   if (description && description.length > 2_000) {
@@ -127,7 +124,9 @@ function normalizeTask(input: ResolvedTodoTaskInput, index: number): ResolvedTod
   }
 
   if ((input.dependsOn?.length ?? 0) > MAX_TASK_DEPENDENCIES) {
-    throw new TodoValidationError(`tasks[${index}].dependsOn supports at most ${MAX_TASK_DEPENDENCIES} keys`);
+    throw new TodoValidationError(
+      `tasks[${index}].dependsOn supports at most ${MAX_TASK_DEPENDENCIES} keys`,
+    );
   }
   const dependsOn = [...new Set((input.dependsOn ?? []).map((dependency) => dependency.trim()))];
   if (dependsOn.some((dependency) => !dependency)) {
@@ -171,12 +170,16 @@ function assertDependenciesAreConsistent(tasks: readonly ResolvedTodoTaskInput[]
   for (const [index, task] of tasks.entries()) {
     for (const dependency of task.dependsOn ?? []) {
       if (!byKey.has(dependency)) {
-        throw new TodoValidationError(`tasks[${index}].dependsOn references missing task ${dependency}`);
+        throw new TodoValidationError(
+          `tasks[${index}].dependsOn references missing task ${dependency}`,
+        );
       }
     }
 
     if (task.status !== "in_progress" && task.status !== "completed") continue;
-    const unresolved = (task.dependsOn ?? []).filter((dependency) => byKey.get(dependency)?.status !== "completed");
+    const unresolved = (task.dependsOn ?? []).filter(
+      (dependency) => byKey.get(dependency)?.status !== "completed",
+    );
     if (unresolved.length > 0) {
       throw new TodoValidationError(
         `tasks[${index}] cannot be ${task.status} while dependencies are unresolved: ${unresolved.join(", ")}`,
@@ -218,21 +221,26 @@ export function writeTodoSnapshot(state: TodoState, input: TodoSnapshotInput): T
       throw new TodoValidationError(`tasks[${index}].status is required for new task ${key}`);
     }
 
-    normalized.push(normalizeTask({
-      key,
-      subject,
-      status,
-      ...(patch.description !== undefined
-        ? { description: patch.description }
-        : existing?.description
-          ? { description: existing.description }
-          : {}),
-      ...(patch.dependsOn !== undefined
-        ? { dependsOn: patch.dependsOn }
-        : existing?.dependsOn?.length
-          ? { dependsOn: [...existing.dependsOn] }
-          : {}),
-    }, index));
+    normalized.push(
+      normalizeTask(
+        {
+          key,
+          subject,
+          status,
+          ...(patch.description !== undefined
+            ? { description: patch.description }
+            : existing?.description
+              ? { description: existing.description }
+              : {}),
+          ...(patch.dependsOn !== undefined
+            ? { dependsOn: patch.dependsOn }
+            : existing?.dependsOn?.length
+              ? { dependsOn: [...existing.dependsOn] }
+              : {}),
+        },
+        index,
+      ),
+    );
   }
 
   const removedTasks = state.tasks.filter((task) => !keys.has(task.key));
@@ -266,7 +274,9 @@ export function writeTodoSnapshot(state: TodoState, input: TodoSnapshotInput): T
 
   const previousOrder = state.tasks.map((task) => task.key);
   const nextOrder = nextTasks.map((task) => task.key);
-  const orderChanged = previousOrder.length !== nextOrder.length || previousOrder.some((key, index) => key !== nextOrder[index]);
+  const orderChanged =
+    previousOrder.length !== nextOrder.length ||
+    previousOrder.some((key, index) => key !== nextOrder[index]);
   const removed = removedTasks.map((task) => task.key);
   const changed = added.length > 0 || updated.length > 0 || removed.length > 0 || orderChanged;
   return {
@@ -330,22 +340,31 @@ function readPersistedTask(candidate: unknown, index: number): ResolvedTodoTaskI
   ) {
     return undefined;
   }
-  if (candidate.description !== undefined && typeof candidate.description !== "string") return undefined;
+  if (candidate.description !== undefined && typeof candidate.description !== "string")
+    return undefined;
   if (
     candidate.dependsOn !== undefined &&
-    (!Array.isArray(candidate.dependsOn) || candidate.dependsOn.some((item) => typeof item !== "string"))
+    (!Array.isArray(candidate.dependsOn) ||
+      candidate.dependsOn.some((item) => typeof item !== "string"))
   ) {
     return undefined;
   }
 
   try {
-    return normalizeTask({
-      key: candidate.key,
-      subject: candidate.subject,
-      status: candidate.status as TodoStatus,
-      ...(typeof candidate.description === "string" ? { description: candidate.description } : {}),
-      ...(Array.isArray(candidate.dependsOn) ? { dependsOn: candidate.dependsOn as string[] } : {}),
-    }, index);
+    return normalizeTask(
+      {
+        key: candidate.key,
+        subject: candidate.subject,
+        status: candidate.status as TodoStatus,
+        ...(typeof candidate.description === "string"
+          ? { description: candidate.description }
+          : {}),
+        ...(Array.isArray(candidate.dependsOn)
+          ? { dependsOn: candidate.dependsOn as string[] }
+          : {}),
+      },
+      index,
+    );
   } catch {
     return undefined;
   }
@@ -390,21 +409,24 @@ function readLegacyState(value: Record<string, unknown>): TodoState | undefined 
   const droppedKeys = new Set<string>();
   for (const candidate of value.tasks) {
     if (!isRecord(candidate) || typeof candidate.key !== "string") continue;
-    if (candidate.archived === true || candidate.status === "cancelled") droppedKeys.add(candidate.key.trim());
+    if (candidate.archived === true || candidate.status === "cancelled")
+      droppedKeys.add(candidate.key.trim());
   }
 
   const migratedCandidates: unknown[] = [];
   for (const candidate of value.tasks) {
     if (!isRecord(candidate)) return undefined;
     if (candidate.archived === true || candidate.status === "cancelled") continue;
-    migratedCandidates.push(Array.isArray(candidate.dependsOn)
-      ? {
-          ...candidate,
-          dependsOn: candidate.dependsOn.filter(
-            (dependency) => typeof dependency !== "string" || !droppedKeys.has(dependency.trim()),
-          ),
-        }
-      : candidate);
+    migratedCandidates.push(
+      Array.isArray(candidate.dependsOn)
+        ? {
+            ...candidate,
+            dependsOn: candidate.dependsOn.filter(
+              (dependency) => typeof dependency !== "string" || !droppedKeys.has(dependency.trim()),
+            ),
+          }
+        : candidate,
+    );
   }
   const tasks = validatePersistedTasks(migratedCandidates);
   if (!tasks) return undefined;
@@ -433,7 +455,9 @@ function readTodoStateEntry(rawEntry: unknown): TodoState | undefined {
   return readState(message.details);
 }
 
-export function replayTodoState(ctx: { sessionManager: { getBranch(): Iterable<unknown> } }): TodoState {
+export function replayTodoState(ctx: {
+  sessionManager: { getBranch(): Iterable<unknown> };
+}): TodoState {
   let state = createEmptyTodoState();
   for (const rawEntry of ctx.sessionManager.getBranch()) {
     const restored = readTodoStateEntry(rawEntry);
@@ -461,7 +485,10 @@ export function needsTodoContextCheckpoint(entries: Iterable<unknown>): boolean 
     let modelFacing = false;
     if (rawEntry.type === "custom" && rawEntry.customType === TODO_STATE_CUSTOM_TYPE) {
       persisted = rawEntry.data;
-    } else if (rawEntry.type === "custom_message" && rawEntry.customType === TODO_STATE_CUSTOM_TYPE) {
+    } else if (
+      rawEntry.type === "custom_message" &&
+      rawEntry.customType === TODO_STATE_CUSTOM_TYPE
+    ) {
       persisted = rawEntry.details;
       modelFacing = true;
     } else if (rawEntry.type === "message" && isRecord(rawEntry.message)) {

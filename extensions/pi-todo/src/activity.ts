@@ -61,7 +61,9 @@ function readCount(value: unknown): number | undefined {
 
 /** Bounded to the valid Date range so formatting never throws. */
 function readTime(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 8.64e15 ? value : undefined;
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 8.64e15
+    ? value
+    : undefined;
 }
 
 /**
@@ -80,10 +82,13 @@ export function recordTodoActivity(
   const messages = new Map<string, string>();
   for (const [index, patch] of (patches ?? []).entries()) {
     if (patch.message === undefined) continue;
-    if (typeof patch.message !== "string") throw new TodoValidationError(`tasks[${index}].message must be a string`);
+    if (typeof patch.message !== "string")
+      throw new TodoValidationError(`tasks[${index}].message must be a string`);
     const message = patch.message.trim();
     if (message.length > MAX_TASK_MESSAGE_LENGTH) {
-      throw new TodoValidationError(`tasks[${index}].message must be at most ${MAX_TASK_MESSAGE_LENGTH} characters`);
+      throw new TodoValidationError(
+        `tasks[${index}].message must be at most ${MAX_TASK_MESSAGE_LENGTH} characters`,
+      );
     }
     if (message) messages.set(patch.key.trim(), message);
   }
@@ -94,7 +99,13 @@ export function recordTodoActivity(
     details = {
       ...next,
       revision: previous.revision + 1,
-      change: { ...next.change, updated: [...next.change.updated, ...[...messages.keys()].filter((key) => !listed.has(key))] },
+      change: {
+        ...next.change,
+        updated: [
+          ...next.change.updated,
+          ...[...messages.keys()].filter((key) => !listed.has(key)),
+        ],
+      },
     };
   }
 
@@ -109,7 +120,9 @@ export function recordTodoActivity(
     const updates = history?.updates.map((update) => ({ ...update })) ?? [];
     if (changed || message) {
       updates.push({
-        revision: details.revision, at: meta.at, status: task.status,
+        revision: details.revision,
+        at: meta.at,
+        status: task.status,
         ...(prior && changed ? { from: prior.status } : {}),
         ...(message ? { message } : {}),
         ...(meta.by ? { by: meta.by } : {}),
@@ -127,9 +140,15 @@ export function recordTodoActivity(
 }
 
 export function cloneTodoActivity(activity: TodoActivity): Map<string, TodoTaskActivity> {
-  return new Map([...activity].map(([key, entry]) => [key, {
-    ...entry, updates: entry.updates.map((update) => ({ ...update })),
-  }]));
+  return new Map(
+    [...activity].map(([key, entry]) => [
+      key,
+      {
+        ...entry,
+        updates: entry.updates.map((update) => ({ ...update })),
+      },
+    ]),
+  );
 }
 
 /** Journal form. Task keys cannot spell "__proto__", so a plain object is safe. */
@@ -141,10 +160,16 @@ function readUpdate(value: unknown, maxRevision: number): TodoUpdate | undefined
   if (!isRecord(value)) return undefined;
   const revision = readCount(value.revision);
   const at = readTime(value.at);
-  if (revision === undefined || revision < 1 || revision > maxRevision || at === undefined) return undefined;
-  if (!STATUSES.has(value.status) || (value.from !== undefined && !STATUSES.has(value.from))) return undefined;
+  if (revision === undefined || revision < 1 || revision > maxRevision || at === undefined)
+    return undefined;
+  if (!STATUSES.has(value.status) || (value.from !== undefined && !STATUSES.has(value.from)))
+    return undefined;
   if (value.by !== undefined && value.by !== "user") return undefined;
-  if (value.agent !== undefined && (typeof value.agent !== "string" || !value.agent || value.agent.length > 128)) return undefined;
+  if (
+    value.agent !== undefined &&
+    (typeof value.agent !== "string" || !value.agent || value.agent.length > 128)
+  )
+    return undefined;
   let message: string | undefined;
   if (value.message !== undefined) {
     if (typeof value.message !== "string") return undefined;
@@ -152,7 +177,9 @@ function readUpdate(value: unknown, maxRevision: number): TodoUpdate | undefined
     if (!message || message.length > MAX_TASK_MESSAGE_LENGTH) return undefined;
   }
   return {
-    revision, at, status: value.status as TodoStatus,
+    revision,
+    at,
+    status: value.status as TodoStatus,
     ...(value.from !== undefined ? { from: value.from as TodoStatus } : {}),
     ...(message ? { message } : {}),
     ...(value.by === "user" ? { by: "user" as const } : {}),
@@ -205,13 +232,23 @@ export function isReviewable(update: TodoUpdate): boolean {
   return !!update.message && update.by !== "user";
 }
 
-export function unreviewedTodoUpdates(key: string, activity: TodoActivity, review: TodoReviewState): TodoUpdate[] {
+export function unreviewedTodoUpdates(
+  key: string,
+  activity: TodoActivity,
+  review: TodoReviewState,
+): TodoUpdate[] {
   const seen = review.tasks.get(key)?.revision ?? 0;
-  return (activity.get(key)?.updates ?? []).filter((update) => isReviewable(update) && update.revision > seen);
+  return (activity.get(key)?.updates ?? []).filter(
+    (update) => isReviewable(update) && update.revision > seen,
+  );
 }
 
 /** Latest unreviewed update per task, newest first; ties keep plan order. */
-export function unreviewedTodoTasks(state: TodoState, activity: TodoActivity, review: TodoReviewState): Map<string, TodoUpdate> {
+export function unreviewedTodoTasks(
+  state: TodoState,
+  activity: TodoActivity,
+  review: TodoReviewState,
+): Map<string, TodoUpdate> {
   const entries: [string, TodoUpdate][] = [];
   for (const task of state.tasks) {
     const latest = unreviewedTodoUpdates(task.key, activity, review).at(-1);
@@ -222,7 +259,10 @@ export function unreviewedTodoTasks(state: TodoState, activity: TodoActivity, re
 
 /** Review marks for unreviewed tasks in this snapshot, optionally limited to keys. */
 export function todoReviewMarks(
-  state: TodoState, activity: TodoActivity, review: TodoReviewState, keys?: Iterable<string>,
+  state: TodoState,
+  activity: TodoActivity,
+  review: TodoReviewState,
+  keys?: Iterable<string>,
 ): Map<string, number> {
   const allowed = keys ? new Set(keys) : undefined;
   const marks = new Map<string, number>();

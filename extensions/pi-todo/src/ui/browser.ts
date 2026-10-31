@@ -1,6 +1,10 @@
 import { formatTodoAge, todoTaskDetail, orderedTodoTasks, todoTaskPresentation } from "./render.js";
 import {
-  createTodoReviewState, lastTodoActivityAt, type TodoActivity, type TodoReviewState, unreviewedTodoTasks,
+  createTodoReviewState,
+  lastTodoActivityAt,
+  type TodoActivity,
+  type TodoReviewState,
+  unreviewedTodoTasks,
 } from "../activity.js";
 import type { TodoState } from "../state.js";
 import { sanitizeTodoText } from "./text.js";
@@ -112,7 +116,9 @@ export async function showReadOnlyBrowser(ctx: ViewerContext, view: BrowserView)
 }
 
 export interface ReadOnlyBrowserOptions {
-  tui: Pick<TUI, "mode" | "requestRender"> & { terminal: Pick<TUI["terminal"], "rows" | "columns"> };
+  tui: Pick<TUI, "mode" | "requestRender"> & {
+    terminal: Pick<TUI["terminal"], "rows" | "columns">;
+  };
   theme: Pick<Theme, "fg" | "bold">;
   keys: Pick<KeybindingsManager, "matches" | "getKeys">;
   view: BrowserView;
@@ -152,10 +158,17 @@ export class ReadOnlyBrowser implements Component, Focusable {
       detail: sanitizeTodoText(item.detail),
     }));
     this.markers = this.items.some((item) => item.marker);
-    this.tabs = options.view.views?.length ? options.view.views.map((tab) => ({
-      label: cleanLine(tab.label), ids: tab.ids.map(cleanLine), ...(tab.empty ? { empty: cleanLine(tab.empty) } : {}),
-    })) : undefined;
-    this.tab = Math.max(0, Math.min((this.tabs?.length ?? 1) - 1, Math.floor(options.view.initialView ?? 0) || 0));
+    this.tabs = options.view.views?.length
+      ? options.view.views.map((tab) => ({
+          label: cleanLine(tab.label),
+          ids: tab.ids.map(cleanLine),
+          ...(tab.empty ? { empty: cleanLine(tab.empty) } : {}),
+        }))
+      : undefined;
+    this.tab = Math.max(
+      0,
+      Math.min((this.tabs?.length ?? 1) - 1, Math.floor(options.view.initialView ?? 0) || 0),
+    );
     this.filtered = this.tabItems();
     this.width = options.tui.terminal.columns;
     this.input = new Input({
@@ -177,16 +190,22 @@ export class ReadOnlyBrowser implements Component, Focusable {
   private coreHints(contentWidth: number): string[] {
     let hint: string;
     if (this.isList) {
-      hint = contentWidth >= 40 ? "Enter to see · Esc to close/clear filter"
-        : contentWidth >= 27 ? "Enter see · Esc clear/close"
-        : contentWidth >= 11 ? "Enter · Esc"
-        : contentWidth >= 9 ? "Enter/Esc"
-        : contentWidth >= 5 ? "↵/Esc"
-        : contentWidth >= 3 ? "↵/⎋"
-        : "Esc · Enter";
+      hint =
+        contentWidth >= 40
+          ? "Enter to see · Esc to close/clear filter"
+          : contentWidth >= 27
+            ? "Enter see · Esc clear/close"
+            : contentWidth >= 11
+              ? "Enter · Esc"
+              : contentWidth >= 9
+                ? "Enter/Esc"
+                : contentWidth >= 5
+                  ? "↵/Esc"
+                  : contentWidth >= 3
+                    ? "↵/⎋"
+                    : "Esc · Enter";
     } else {
-      hint = contentWidth >= 14 ? "Esc to go back"
-        : contentWidth >= 9 ? "Esc back" : "Esc";
+      hint = contentWidth >= 14 ? "Esc to go back" : contentWidth >= 9 ? "Esc back" : "Esc";
     }
     // Shorten before wrapping: both actions outrank lengthy paging labels.
     return wrapTextWithAnsi(hint, Math.max(1, contentWidth));
@@ -208,7 +227,9 @@ export class ReadOnlyBrowser implements Component, Focusable {
       return true;
     };
     const core = this.coreHints(contentWidth);
-    const footerRows = remaining ? Math.min(core.length, Math.max(1, remaining - Number(frame))) : 0;
+    const footerRows = remaining
+      ? Math.min(core.length, Math.max(1, remaining - Number(frame)))
+      : 0;
     remaining -= footerRows;
     const divider = !!footerRows && frame && take(1);
     const filter = this.isList && take(1);
@@ -216,20 +237,40 @@ export class ReadOnlyBrowser implements Component, Focusable {
     const innerY = frame && take(2, 2) ? 1 : 0;
     const outerY = frame && take(2, 2) ? 1 : 0;
     const note = !!this.view.note && take(1, 2);
-    const actions = this.isList ? [
-      ...((this.tabs?.length ?? 0) > 1 ? ["Tab view"] : []),
-      ...(this.markers && this.options.view.onReview ? ["Ctrl+R mark reviewed"] : []),
-    ] : [];
+    const actions = this.isList
+      ? [
+          ...((this.tabs?.length ?? 0) > 1 ? ["Tab view"] : []),
+          ...(this.markers && this.options.view.onReview ? ["Ctrl+R mark reviewed"] : []),
+        ]
+      : [];
     const navigation = wrapTextWithAnsi(
-      `↑↓ ${this.isList ? "select" : "scroll"} · ${[...actions, this.pageHints()].join(" · ")} · Ctrl+C close`, contentWidth,
+      `↑↓ ${this.isList ? "select" : "scroll"} · ${[...actions, this.pageHints()].join(" · ")} · Ctrl+C close`,
+      contentWidth,
     );
     const commands = wrapTextWithAnsi("Edit: /todos:add · /todos:clear", contentWidth);
     const commandRows = take(commands.length, 2) ? commands.length : 0;
     const navigationRows = take(navigation.length, 2) ? navigation.length : 0;
     const body = height ? remaining + 1 : 0;
     return {
-      height, frame, outerX, innerX, borderWidth, contentWidth, innerY, outerY,
-      filter, footerRows, divider, position, note, navigationRows, commandRows, body, core, navigation, commands,
+      height,
+      frame,
+      outerX,
+      innerX,
+      borderWidth,
+      contentWidth,
+      innerY,
+      outerY,
+      filter,
+      footerRows,
+      divider,
+      position,
+      note,
+      navigationRows,
+      commandRows,
+      body,
+      core,
+      navigation,
+      commands,
     };
   }
 
@@ -247,7 +288,10 @@ export class ReadOnlyBrowser implements Component, Focusable {
     if (this.isList) {
       this.selected = Math.max(0, Math.min(this.filtered.length - 1, this.selected + delta));
     } else {
-      this.offset = Math.max(0, Math.min(Math.max(0, this.textLines().length - body), this.offset + delta));
+      this.offset = Math.max(
+        0,
+        Math.min(Math.max(0, this.textLines().length - body), this.offset + delta),
+      );
     }
   }
 
@@ -281,7 +325,12 @@ export class ReadOnlyBrowser implements Component, Focusable {
       this.move(-Infinity);
     } else if (matchesKey(data, "end") || keys.matches(data, "tui.altScreen.bottom")) {
       this.move(Infinity);
-    } else if (this.isList && this.tabs && this.tabs.length > 1 && (matchesKey(data, "tab") || matchesKey(data, "shift+tab"))) {
+    } else if (
+      this.isList &&
+      this.tabs &&
+      this.tabs.length > 1 &&
+      (matchesKey(data, "tab") || matchesKey(data, "shift+tab"))
+    ) {
       const step = matchesKey(data, "tab") ? 1 : -1;
       this.tab = (this.tab + step + this.tabs.length) % this.tabs.length;
       this.filter();
@@ -326,7 +375,8 @@ export class ReadOnlyBrowser implements Component, Focusable {
   }
 
   handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined {
-    if (this.closed || this.options.tui.mode !== "fullscreen" || event.type !== "wheel") return undefined;
+    if (this.closed || this.options.tui.mode !== "fullscreen" || event.type !== "wheel")
+      return undefined;
     this.move(event.wheelDelta ?? 0);
     this.invalidate();
     this.options.tui.requestRender();
@@ -338,11 +388,14 @@ export class ReadOnlyBrowser implements Component, Focusable {
     const { theme } = this.options;
     const right = item.badge?.label ?? item.status ?? "";
     const rightWidth = visibleWidth(right);
-    const leftStyle = (text: string) => selected ? theme.fg("accent", text) : text;
+    const leftStyle = (text: string) => (selected ? theme.fg("accent", text) : text);
     if (!right || rightWidth + 2 >= width) return leftStyle(truncateToWidth(left, width, ""));
     const clipped = truncateToWidth(left, width - rightWidth - 1, "");
-    return leftStyle(clipped) + " ".repeat(width - visibleWidth(clipped) - rightWidth)
-      + theme.fg(item.badge?.color ?? "dim", right);
+    return (
+      leftStyle(clipped) +
+      " ".repeat(width - visibleWidth(clipped) - rightWidth) +
+      theme.fg(item.badge?.color ?? "dim", right)
+    );
   }
 
   render(width: number): string[] {
@@ -359,8 +412,13 @@ export class ReadOnlyBrowser implements Component, Focusable {
       // Input's zero-width cursor marker must survive this padded composition.
       const fitted = truncateToWidth(text, g.contentWidth, "", true);
       return g.frame
-        ? margin + theme.fg("border", "│") + " ".repeat(g.innerX) + fitted
-          + " ".repeat(g.innerX) + theme.fg("border", "│") + margin
+        ? margin +
+            theme.fg("border", "│") +
+            " ".repeat(g.innerX) +
+            fitted +
+            " ".repeat(g.innerX) +
+            theme.fg("border", "│") +
+            margin
         : truncateToWidth(text, this.width, "", true);
     };
     if (g.outerY) lines.push(blank);
@@ -369,14 +427,20 @@ export class ReadOnlyBrowser implements Component, Focusable {
       const title = truncateToWidth(` ${this.title()} `, innerWidth, "");
       const spare = Math.max(0, innerWidth - visibleWidth(title));
       const left = Math.floor(spare / 2);
-      lines.push(margin + theme.fg("border", `╭${"─".repeat(left)}`)
-        + theme.fg("accent", theme.bold(title))
-        + theme.fg("border", `${"─".repeat(spare - left)}╮`) + margin);
+      lines.push(
+        margin +
+          theme.fg("border", `╭${"─".repeat(left)}`) +
+          theme.fg("accent", theme.bold(title)) +
+          theme.fg("border", `${"─".repeat(spare - left)}╮`) +
+          margin,
+      );
     }
     if (g.innerY) lines.push(row());
     if (g.note) {
       const unreviewed = this.items.filter((item) => item.marker).length;
-      const note = this.markers ? `${this.view.note} · ${unreviewed ? `${unreviewed} unreviewed` : "all reviewed"}` : this.view.note;
+      const note = this.markers
+        ? `${this.view.note} · ${unreviewed ? `${unreviewed} unreviewed` : "all reviewed"}`
+        : this.view.note;
       lines.push(row(theme.fg("muted", note)));
     }
     if (g.filter) lines.push(row(this.input.render(g.contentWidth)[0] ?? ""));
@@ -384,24 +448,39 @@ export class ReadOnlyBrowser implements Component, Focusable {
     const tab = this.tabs?.[this.tab];
     if (this.isList) {
       this.selected = Math.max(0, Math.min(this.selected, this.filtered.length - 1));
-      const start = Math.max(0, Math.min(
-        this.selected - Math.floor(g.body / 2), this.filtered.length - g.body,
-      ));
+      const start = Math.max(
+        0,
+        Math.min(this.selected - Math.floor(g.body / 2), this.filtered.length - g.body),
+      );
       const empty = tab?.empty && !this.tabItems().length ? tab.empty : "No matching tasks.";
       for (let i = 0; i < g.body; i++) {
         const index = start + i;
         const item = this.filtered[index];
         const prefix = index === this.selected ? "→ " : "  ";
         // Selected rows are accent as a whole; others color only the marker.
-        const mark = !this.markers || !item ? "" : !item.marker ? "  "
-          : index === this.selected ? `${MARKER} ` : `${theme.fg("accent", MARKER)} `;
+        const mark =
+          !this.markers || !item
+            ? ""
+            : !item.marker
+              ? "  "
+              : index === this.selected
+                ? `${MARKER} `
+                : `${theme.fg("accent", MARKER)} `;
         const text = item
-          ? this.itemRow(`${prefix}${mark}${item.label}`, item, g.contentWidth, index === this.selected)
-          : (!i && !this.filtered.length ? theme.fg("muted", empty) : "");
+          ? this.itemRow(
+              `${prefix}${mark}${item.label}`,
+              item,
+              g.contentWidth,
+              index === this.selected,
+            )
+          : !i && !this.filtered.length
+            ? theme.fg("muted", empty)
+            : "";
         lines.push(row(text));
       }
-      position = `${tab ? `${tab.label} · ` : ""}`
-        + `${this.filtered.length ? this.selected + 1 : 0}/${this.filtered.length} tasks · ${this.items.length} total`;
+      position =
+        `${tab ? `${tab.label} · ` : ""}` +
+        `${this.filtered.length ? this.selected + 1 : 0}/${this.filtered.length} tasks · ${this.items.length} total`;
     } else {
       const content = this.textLines();
       this.offset = Math.min(this.offset, Math.max(0, content.length - g.body));
@@ -409,15 +488,21 @@ export class ReadOnlyBrowser implements Component, Focusable {
         const index = this.offset + i;
         const text = content[index] ?? "";
         // Only first original Name row, never a continuation or scrolled row.
-        lines.push(row(index === 0 && this.detail?.badge
-          ? this.itemRow(text, this.detail, g.contentWidth) : text));
+        lines.push(
+          row(
+            index === 0 && this.detail?.badge
+              ? this.itemRow(text, this.detail, g.contentWidth)
+              : text,
+          ),
+        );
       }
       position = `${content.length ? this.offset + 1 : 0}–${Math.min(content.length, this.offset + g.body)}/${content.length} lines`;
     }
     if (g.divider) lines.push(border(`├${"─".repeat(g.borderWidth - 2)}┤`));
     for (const hint of g.core.slice(0, g.footerRows)) lines.push(row(theme.fg("dim", hint)));
     if (g.position) lines.push(row(theme.fg("dim", position)));
-    for (const hint of g.navigation.slice(0, g.navigationRows)) lines.push(row(theme.fg("dim", hint)));
+    for (const hint of g.navigation.slice(0, g.navigationRows))
+      lines.push(row(theme.fg("dim", hint)));
     for (const hint of g.commands.slice(0, g.commandRows)) lines.push(row(theme.fg("dim", hint)));
     if (g.innerY) lines.push(row());
     if (g.frame) lines.push(border(`╰${"─".repeat(g.borderWidth - 2)}╯`));
@@ -426,12 +511,23 @@ export class ReadOnlyBrowser implements Component, Focusable {
   }
 
   private pageHints(): string {
-    const pair = (first: Keybinding, second: Keybinding) => [first, second]
-      .flatMap((binding) => this.options.keys.getKeys(binding).slice(0, 1))
-      .map((key) => key.split("+").map((part) => part[0].toUpperCase() + part.slice(1)).join("+"))
-      .join("/");
-    return [pair("tui.altScreen.pageUp", "tui.altScreen.pageDown"), "Home/End",
-      pair("tui.altScreen.top", "tui.altScreen.bottom")].filter(Boolean).join(" · ");
+    const pair = (first: Keybinding, second: Keybinding) =>
+      [first, second]
+        .flatMap((binding) => this.options.keys.getKeys(binding).slice(0, 1))
+        .map((key) =>
+          key
+            .split("+")
+            .map((part) => part[0].toUpperCase() + part.slice(1))
+            .join("+"),
+        )
+        .join("/");
+    return [
+      pair("tui.altScreen.pageUp", "tui.altScreen.pageDown"),
+      "Home/End",
+      pair("tui.altScreen.top", "tui.altScreen.bottom"),
+    ]
+      .filter(Boolean)
+      .join(" · ");
   }
 
   invalidate(): void {
@@ -469,13 +565,24 @@ export interface TodoBrowserOptions {
  * Task snapshot. Task mutations belong exclusively to explicit commands/tools;
  * the only write is review state, through onReview.
  */
-export async function showTodoBrowser(ctx: ExtensionContext, state: TodoState, options: TodoBrowserOptions = {}): Promise<void> {
+export async function showTodoBrowser(
+  ctx: ExtensionContext,
+  state: TodoState,
+  options: TodoBrowserOptions = {},
+): Promise<void> {
   const now = options.now ?? Date.now();
-  const history = options.activity && { activity: options.activity, review: options.review ?? createTodoReviewState(), now };
-  const unreviewed = history ? unreviewedTodoTasks(state, history.activity, history.review) : new Map();
+  const history = options.activity && {
+    activity: options.activity,
+    review: options.review ?? createTodoReviewState(),
+    now,
+  };
+  const unreviewed = history
+    ? unreviewedTodoTasks(state, history.activity, history.review)
+    : new Map();
   const items = orderedTodoTasks(state).map((task): BrowserItem => {
     const presentation = todoTaskPresentation(task, state);
-    const messages = history?.activity.get(task.key)?.updates.flatMap((update) => update.message ?? []) ?? [];
+    const messages =
+      history?.activity.get(task.key)?.updates.flatMap((update) => update.message ?? []) ?? [];
     const assignee = options.assignees?.get(task.key);
     return {
       id: task.key,
@@ -492,9 +599,13 @@ export async function showTodoBrowser(ctx: ExtensionContext, state: TodoState, o
     return;
   }
   const order = new Map(state.tasks.map((task, index) => [task.key, index]));
-  const recent = state.tasks.map((task) => task.key).sort((a, b) =>
-    (lastTodoActivityAt(b, history.activity) ?? -1) - (lastTodoActivityAt(a, history.activity) ?? -1)
-    || order.get(a)! - order.get(b)!);
+  const recent = state.tasks
+    .map((task) => task.key)
+    .sort(
+      (a, b) =>
+        (lastTodoActivityAt(b, history.activity) ?? -1) -
+          (lastTodoActivityAt(a, history.activity) ?? -1) || order.get(a)! - order.get(b)!,
+    );
   // Each shown message is reviewed once, at the revision this snapshot displayed.
   const pending = new Map(unreviewed);
   const review = (keys: string[]) => {
@@ -513,7 +624,11 @@ export async function showTodoBrowser(ctx: ExtensionContext, state: TodoState, o
     items,
     views: [
       { label: "All", ids: items.map((item) => item.id) },
-      { label: "Unreviewed", ids: [...unreviewed.keys()], empty: "No unreviewed messages. Tab for other views." },
+      {
+        label: "Unreviewed",
+        ids: [...unreviewed.keys()],
+        empty: "No unreviewed messages. Tab for other views.",
+      },
       { label: "Recent", ids: recent },
     ],
     initialView: Math.max(0, TODO_VIEWS.indexOf(options.view ?? "all")),
