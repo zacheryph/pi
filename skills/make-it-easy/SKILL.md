@@ -82,7 +82,8 @@ large or has open questions, the roadmap is not done: return to phase 3.
 ### 6. Hand off
 
 Save the document, list open questions, and stop. Mention which step to start
-with and whether it can ship alone.
+with and whether it can ship alone. Once the user has chosen, offer to carry the
+roadmap out with the `execute-roadmap` skill.
 
 ## Asking the user
 

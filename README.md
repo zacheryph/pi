@@ -56,6 +56,7 @@ pi-personal/
 ├── package.json                         # bundle manifest + private dev workspace
 ├── tsconfig.base.json
 ├── skills/
+│   ├── execute-roadmap/                 # carries out a chosen roadmap
 │   └── make-it-easy/                    # roadmap-planning skill
 │       ├── SKILL.md
 │       └── references/                  # one file per phase, template, worked example
@@ -324,6 +325,18 @@ with [`@firstpick/pi-extension-grill-me`](https://www.npmjs.com/package/@firstpi
 only in stage 1. If its `questionnaire` tool is installed the skill uses it to
 batch questions, and it reuses an existing `GRILL-ME.md` instead of re-asking.
 Nothing here depends on it.
+
+### execute-roadmap
+
+Carries out a chosen make-it-easy roadmap. Each step becomes a `todo` with its
+`Depends on` mapped to `dependsOn`; ready steps go to subagents (in parallel only
+when their files do not overlap); a separate worker verifies every step against
+its "Done when" and "Verification" lines before it is committed and completed.
+Two failed repair rounds block a step. A finding the roadmap did not anticipate
+stops the run and lands in the document's open questions instead of an
+improvised plan. The roadmap document stays the plan of record: its `Status:`
+and per-step `Landed:` lines are updated as work lands, so a later run resumes
+from the first unfinished step. It commits locally and pushes only when asked.
 
 ## Development
 
