@@ -26,7 +26,7 @@ incrementally, one phase at a time, so a stopped session loses nothing.
 phase. Read it if the phases feel abstract.
 
 Plan only. Do not start implementing. At the end offer to turn the steps into
-todos if a `todo` tool is available.
+todos with the `todo` tool.
 
 ## Scale to the task
 
@@ -100,10 +100,10 @@ with and whether it can ship alone.
 
 ## Delegation
 
-If a subagent tool is available, phase 3 recon can fan out to read-only
-explorers, one per input or component. Ask each for evidence with `file:line`
-and a short conclusion, not file dumps. If `stash_put` exists, stash large
-findings and keep handles in the document.
+Fan phase 3 recon out to read-only `Explore` subagents, one per input or
+component. Ask each for evidence with `file:line` and a short conclusion, not
+file dumps. Have them return large findings as `stash_put` handles, and keep
+the handles in the document.
 
 ## Rules that keep the plan honest
 
