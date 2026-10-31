@@ -175,11 +175,11 @@ describe("AgentTypeRegistry", () => {
       const registry = makeRegistry(
         new Map([
           ["auditor", makeAgentConfig({ name: "auditor" })],
-          ["reviewer", makeAgentConfig({ name: "reviewer" })],
+          ["linter", makeAgentConfig({ name: "linter" })],
         ])
       );
       const names = registry.getUserAgentNames();
-      expect(names).toEqual(["auditor", "reviewer"]);
+      expect(names).toEqual(["auditor", "linter"]);
       expect(names).not.toContain("general-purpose");
     });
   });
@@ -229,6 +229,11 @@ describe("AgentTypeRegistry", () => {
       expect(registry.getToolNamesForType("Plan")).toEqual(["read", "bash", "grep", "find", "ls", "stash_get", "stash_list"]);
     });
 
+    it("lets reviewer read and run checks without stash or edit tools", () => {
+      const registry = makeRegistry();
+      expect(registry.getToolNamesForType("reviewer")).toEqual(["read", "bash", "grep", "find", "ls", "stash_get", "stash_list"]);
+    });
+
     it("returns custom tool names for user agent", () => {
       const registry = makeRegistry(
         new Map([["auditor", makeAgentConfig({ name: "auditor", toolNames: ["read", "grep"] })]])
@@ -272,7 +277,7 @@ describe("AgentTypeRegistry", () => {
     });
 
     it("contains the built-in default names", () => {
-      expect(AgentTypeRegistry.DEFAULT_AGENT_NAMES).toEqual(["general-purpose", "orchestrator", "Explore", "Plan"]);
+      expect(AgentTypeRegistry.DEFAULT_AGENT_NAMES).toEqual(["general-purpose", "orchestrator", "Explore", "Plan", "reviewer"]);
     });
 
     it("is no longer exported from types.ts", async () => {
@@ -301,6 +306,31 @@ describe("AgentTypeRegistry", () => {
       expect(registry.resolveAgentConfig("orchestrator")).toBe(custom);
       expect(registry.isValidType("orchestrator")).toBe(false);
       expect(registry.getAvailableTypes()).not.toContain("orchestrator");
+    });
+  });
+
+  describe("reviewer profile", () => {
+    it("is a read-only built-in that reports a verdict without fixing", () => {
+      const registry = makeRegistry();
+      expect(registry.resolveType("Reviewer")).toBe("reviewer");
+      const config = registry.resolveAgentConfig("reviewer");
+      expect(config).toMatchObject({ name: "reviewer", displayName: "Reviewer", isDefault: true, promptMode: "replace" });
+      expect(config.model).toBeUndefined();
+      expect(config.toolNames).not.toContain("edit");
+      expect(config.toolNames).not.toContain("write");
+      expect(config.systemPrompt).toContain("Verdict: PASS");
+      expect(config.systemPrompt).toContain("You do NOT fix anything");
+    });
+
+    it("is the orchestrator's verifier", () => {
+      const prompt = makeRegistry().resolveAgentConfig("orchestrator").systemPrompt;
+      expect(prompt).toContain("reviewer for verification");
+      expect(prompt).toContain("Verify implementation tasks with a reviewer worker that did not do the work");
+    });
+
+    it("yields to a user definition with the same name", () => {
+      const custom = makeAgentConfig({ name: "reviewer", systemPrompt: "My review rules" });
+      expect(makeRegistry(new Map([["reviewer", custom]])).resolveAgentConfig("reviewer")).toBe(custom);
     });
   });
 

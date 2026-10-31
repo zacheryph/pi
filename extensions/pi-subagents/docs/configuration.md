@@ -13,9 +13,10 @@ For the tools, commands, events, and service API, see the [README](../README.md)
 | `orchestrator`    | all available; explicit todo and delegation tools | inherit | `replace` | Project manager: categorizes tasks, delegates work, tracks open items, and recalls prior workers |
 | `Explore`         | read, bash, grep, find, ls | haiku (falls back to inherit) | `replace`              | Fast codebase exploration (read-only); inherits the parent prompt as a base                      |
 | `Plan`            | read, bash, grep, find, ls | inherit                       | `replace`              | Software architect for implementation planning (read-only); inherits the parent prompt as a base |
+| `reviewer`        | read, bash, grep, find, ls | inherit                       | `replace`              | Verifies finished work against its acceptance criteria; runs checks, reports `Verdict: PASS/FAIL/BLOCKED` with evidence, never fixes |
 
 The `general-purpose` agent is a **parent twin** — it receives the parent's inherited identity and nothing of its own, so it follows the same rules the parent does.
-Explore and Plan use `replace` mode: the parent prompt is the cacheable base and their specialist read-only instructions are appended last, giving them the final say.
+Explore, Plan and reviewer use `replace` mode: the parent prompt is the cacheable base and their specialist read-only instructions are appended last, giving them the final say.
 
 Default agents can be **overridden** by creating a `.md` file with the same name (e.g. `.pi/agents/general-purpose.md`), or **disabled** per-project with `enabled: false` frontmatter.
 
@@ -51,8 +52,10 @@ The profile's instructions establish this working loop:
 2. Delegate focused assignments to the available specialists. Keep owners,
    worker IDs, transcript/artifact references, decisions, blockers, and next actions
    in task descriptions. Keep raw implementation detail in the worker sessions.
-3. Collect results and verify acceptance criteria before completing todos.
-   Record questions and follow-ups immediately. Waiting items stay `pending`
+3. Collect results and verify acceptance criteria before completing todos: a
+   `reviewer` that did not do the work checks each implementation task. A
+   `FAIL` goes back to the implementer by resume; after two failed rounds the
+   task stays `pending` with the findings. Record questions and follow-ups immediately. Waiting items stay `pending`
    with a described blocker; todo has no separate waiting/blocked status.
 4. Steer running workers; resume settled workers by their original agent IDs for
    rationale, clarification, or follow-up work. Reuse their context instead of
