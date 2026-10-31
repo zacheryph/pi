@@ -1,5 +1,7 @@
 import { connect as netConnect, type Socket } from "node:net";
-import { encode, LineDecoder, PROTOCOL_VERSION, type CommandRequest, type ReporterMessage, type SessionSnapshot } from "./protocol.ts";
+import {
+  encode, LineDecoder, PROTOCOL_VERSION, type CommandRequest, type QuestionnaireAnswer, type ReporterMessage, type SessionSnapshot,
+} from "./protocol.ts";
 
 export interface ReporterOptions {
   socketPath: string;
@@ -20,10 +22,12 @@ export interface ReporterOptions {
 const NO_LISTENER = new Set(["ENOENT", "ECONNREFUSED"]);
 
 function parseRequest(message: unknown): CommandRequest | undefined {
-  const raw = message as { command?: unknown; name?: unknown; key?: unknown };
+  const raw = message as { command?: unknown; name?: unknown; key?: unknown; question?: unknown; answer?: unknown };
   if (raw.command === "focus") return { command: "focus" };
   if (raw.command === "stash-preview" && typeof raw.name === "string") return { command: "stash-preview", name: raw.name };
   if (raw.command === "todo-history" && typeof raw.key === "string") return { command: "todo-history", key: raw.key };
+  // The answer's shape is checked against its questionnaire by the extension.
+  if (raw.command === "answer" && typeof raw.question === "string") return { command: "answer", question: raw.question, answer: raw.answer as QuestionnaireAnswer };
   return undefined;
 }
 

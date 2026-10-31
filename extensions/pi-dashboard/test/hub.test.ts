@@ -271,6 +271,30 @@ describe("Hub", () => {
       expect((await get(hub.httpPort!, "/api/sessions")).body).not.toContain("echo");
     });
 
+    it("relays a questionnaire answer's JSON body, and refuses bad or oversized bodies", async () => {
+      const hub = await startHub();
+      const reporter = await fakeReporter(hub.paths.socket);
+      const decoder = new LineDecoder();
+      const asked: Array<Record<string, unknown>> = [];
+      reporter.socket.setEncoding("utf8");
+      reporter.socket.on("data", (chunk: string) => {
+        for (const message of decoder.push(chunk) as Array<Record<string, unknown>>) {
+          asked.push(message);
+          reporter.send({ type: "result", id: message.id, ok: true });
+        }
+      });
+      reporter.send(hello());
+      await waitFor(async () => (await sessions(hub)).length === 1);
+      const answer = { answers: [{ questionIndex: 0, optionIndexes: [1] }], globalNote: "thanks" };
+      const sent = await post(hub.httpPort!, "/api/sessions/101/questions/toolu_01%2Fx/answer", { ...auth(hub), "content-type": "application/json" }, JSON.stringify(answer));
+      expect(sent).toEqual({ status: 200, body: JSON.stringify({ ok: true }) });
+      expect(asked).toMatchObject([{ type: "command", command: "answer", question: "toolu_01/x", answer }]);
+      expect((await post(hub.httpPort!, "/api/sessions/101/questions/q/answer", auth(hub), "{not json")).status).toBe(400);
+      expect((await post(hub.httpPort!, "/api/sessions/101/questions/q/answer", auth(hub), JSON.stringify({ text: "x".repeat(70_000) }))).status).toBe(413);
+      expect((await post(hub.httpPort!, "/api/sessions/101/questions/q/answer", {}, JSON.stringify(answer))).status).toBe(403);
+      expect(asked).toHaveLength(1);
+    });
+
     it("ignores results from a different session's connection", async () => {
       const hub = new Hub({ dir: tempDir(), port: 0, commandTimeoutMs: 300 });
       expect(await hub.start()).toBe("started");

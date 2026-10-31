@@ -124,7 +124,8 @@ A card opens a detail page with the task list and history, subagents, recent
 tool calls, stash index with on-demand previews, usage and cost, and
 pi-blackhole memory counts. **Focus** jumps to the session's cmux panel and
 raises cmux. A filter box and opt-in browser notifications (waiting or
-finished sessions) round out the index. pi-todo and pi-stash publish their state as
+finished sessions) round out the index. Questions the model asks through
+rpiv ask-user (`ask_user_question`) can be answered from the page. pi-todo and pi-stash publish their state as
 `pi-todo:snapshot` / `pi-stash:snapshot` events on the session's `pi.events`
 bus for this and other extensions.
 
