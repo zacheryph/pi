@@ -12,7 +12,8 @@
     "extensions/pi-tldr",
     "extensions/pi-dashboard",
     "packages/pi-session-tree",
-    "packages/pi-foundations"
+    "packages/pi-foundations",
+    "packages/pi-ui"
   ],
   "scripts": {
     "check": "npm run format:check && npm run lint && npm run typecheck",

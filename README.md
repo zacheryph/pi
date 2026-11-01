@@ -96,6 +96,7 @@ pi-personal/
 │       ├── docs/comparison.md           # base-selection report
 │       └── UPSTREAM.md
 └── packages/
+    ├── pi-ui/                           # shared terminal UI library (no migrations yet)
     ├── pi-foundations/                  # shared settings + model lookup
     └── pi-session-tree/                 # shared library, not an extension
         ├── src/index.ts                 # cross-session registry (globalThis)
@@ -107,7 +108,8 @@ Each extension directory is an npm workspace with its own `package.json`,
 
 Root `pi.extensions` lists entry points explicitly. Pi loads each as its own
 extension; helper files and tests are not loaded as extensions. `packages/` holds
-libraries shared by several extensions. They are workspaces with no `pi` entry, and
+libraries shared by extensions, including [pi-ui](packages/pi-ui/README.md) for
+terminal views and widget layout. They are workspaces with no `pi` entry, and
 extensions import them by relative path. Workspaces simplify
 development commands. All manifests are private;
 nothing needs publishing.
