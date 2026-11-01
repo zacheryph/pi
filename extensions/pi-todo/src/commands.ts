@@ -11,7 +11,7 @@ import type { TodoConfig } from "./config.ts";
 import { cloneTodoState, type TodoState } from "./state.ts";
 import { showTodoBrowser, type TodoBrowserView } from "./ui/browser.ts";
 import { formatTodoAge, todoMessageLine } from "./ui/render.ts";
-import { safeTodoLine, sanitizeTodoText } from "./ui/text.ts";
+import { sanitizeLine, sanitizeText } from "../../../packages/pi-ui/src/index.ts";
 
 export interface TodoController {
   state(): TodoState;
@@ -42,7 +42,7 @@ export function registerTodoCommands(pi: ExtensionAPI, controller: TodoControlle
           await handler(args.trim(), ctx);
         } catch (error) {
           ctx.ui.notify(
-            sanitizeTodoText(error instanceof Error ? error.message : String(error)),
+            sanitizeText(error instanceof Error ? error.message : String(error)),
             "error",
           );
         }
@@ -66,7 +66,7 @@ export function registerTodoCommands(pi: ExtensionAPI, controller: TodoControlle
           controller.markReviewed(marks, ctx);
         } catch (error) {
           ctx.ui.notify(
-            sanitizeTodoText(
+            sanitizeText(
               `Review not saved: ${error instanceof Error ? error.message : String(error)}`,
             ),
             "error",
@@ -129,7 +129,7 @@ export function registerTodoCommands(pi: ExtensionAPI, controller: TodoControlle
           .toReversed()
           .map(
             (update) =>
-              `${safeTodoLine(key)} [${update.status}] ${formatTodoAge(update.at, now)}: ${todoMessageLine(update.message ?? "")}`,
+              `${sanitizeLine(key)} [${update.status}] ${formatTodoAge(update.at, now)}: ${todoMessageLine(update.message ?? "")}`,
           ),
       );
       ctx.ui.notify(lines.join("\n"), "info");

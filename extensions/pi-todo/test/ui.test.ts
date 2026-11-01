@@ -10,9 +10,13 @@ import {
   todoTaskDetail,
   type TodoRenderConfig,
 } from "../src/ui/render.js";
-import { sanitizeTodoText } from "../src/ui/text.js";
+import {
+  renderBlocks,
+  sanitizeText as sanitizeTodoText,
+  type Block,
+} from "../../../packages/pi-ui/src/index.ts";
 
-const theme = { fg: (_token: string, text: string) => text } as Theme;
+const theme = { fg: (_token: string, text: string) => text, bold: (text: string) => text } as Theme;
 const task = (
   key: string,
   status: TodoTask["status"] = "pending",
@@ -25,6 +29,8 @@ const task = (
 });
 const state = (tasks: TodoTask[]): TodoState => ({ schemaVersion: 2, revision: 4, tasks });
 const config = { maxVisible: 5, showCompleted: true };
+/** Plain detail rows, wide enough that nothing wraps. */
+const detail = (blocks: readonly Block[]) => renderBlocks(blocks, 1000, theme);
 const render = (s: TodoState, c: TodoRenderConfig = config, width = 100, rows = Infinity) =>
   renderTodoLines(s, c, width, theme, rows);
 const unsafe =
@@ -64,13 +70,15 @@ describe("todo rendering", () => {
         },
       } as Theme;
       const s = state([task("one", status)]);
-      const lines = renderTodoLines(s, config, 19, t);
-      expect(lines[0]).toBe(`──   Todos  ${status === "completed" ? "1/1" : "0/1"} ──`);
-      expect(visibleWidth(lines[0])).toBe(19);
+      const lines = renderTodoLines(s, config, 20, t);
+      expect(lines[0]).toBe(`──   Todos ─ ${status === "completed" ? "1/1" : "0/1"} ──`);
+      expect(visibleWidth(lines[0])).toBe(20);
       expect(calls).toContain("border: ──");
-      expect(render(s, config, 18)[0]).toBe("  Todos");
+      // Progress drops before the title; then the icon; then the label clips.
+      expect(render(s, config, 19)[0]).toBe("──   Todos ───────");
       expect(calls).toContain(`${color}:  Todos`);
-      expect(render(s, config, 8)[0]).toBe("  Todos");
+      expect(render(s, config, 11)[0]).toBe("── Todos ──");
+      expect(render(s, config, 8)[0]).toBe("Todos───");
       expect(renderTodoText(s)[0]).not.toContain("");
     }
   });
@@ -78,13 +86,13 @@ describe("todo rendering", () => {
   it("reserves trailing border columns for multi-digit progress with ANSI styling", () => {
     const s = state(Array.from({ length: 50 }, (_, i) => task(`k${i}`, "completed")));
     const colored = { fg: (_token: string, text: string) => `\x1b[32m${text}\x1b[0m` } as Theme;
-    for (const width of [21, 22, 30, 80]) {
+    for (const width of [22, 30, 80]) {
       const header = render(s, config, width)[0];
       expect(header).toMatch(/^──   Todos ─* 50\/50 ──$/);
       expect(visibleWidth(header)).toBe(width);
       expect(visibleWidth(renderTodoLines(s, config, width, colored)[0])).toBe(width);
     }
-    expect(render(s, config, 20)[0]).toBe("  Todos");
+    expect(render(s, config, 21)[0]).toMatch(/^──   Todos ─+$/);
   });
 
   it("orders stably and hides completed without changing state or overflow counts", () => {
@@ -100,13 +108,13 @@ describe("todo rendering", () => {
     expect(lines).toHaveLength(4);
     expect(lines[1]).toContain("active:");
     expect(lines[2]).toContain("r2:");
-    expect(lines[3]).toBe(" +2 more ");
+    expect(lines[3]).toMatch(/^ \+2 more +$/);
     expect(lines.join("\n")).not.toContain("done:");
     expect(lines[0]).toContain("1/5");
     expect(JSON.stringify(s)).toBe(before);
-    expect(render(state([task("done", "completed")]), { ...config, showCompleted: false })[1]).toBe(
-      " No unfinished tasks ",
-    );
+    expect(
+      render(state([task("done", "completed")]), { ...config, showCompleted: false })[1],
+    ).toMatch(/^ No unfinished tasks +$/);
   });
 
   it("defaults/clamps task budget and bounds rows, preserving overflow", () => {
@@ -123,9 +131,9 @@ describe("todo rendering", () => {
     }
     for (let rows = 0; rows <= 15; rows++)
       expect(render(s, config, 80, rows).length).toBeLessThanOrEqual(rows);
-    expect(render(s, config, 80, 3).at(-1)).toBe(" +19 more ");
+    expect(render(s, config, 80, 3).at(-1)).toMatch(/^ \+19 more +$/);
     expect(render(s, config, 0)).toEqual([]);
-    expect(render(state([]))[1]).toBe(" No tasks ");
+    expect(render(state([]))[1]).toMatch(/^ No tasks +$/);
   });
 
   it("plain config matches priority, filtering, task limit and overflow without slicing rows", () => {
@@ -172,7 +180,8 @@ describe("todo rendering", () => {
   });
 
   it("scrubs terminal commands, newlines, bidi and Unicode separators in all fields", () => {
-    expect(sanitizeTodoText(unsafe)).toBe("safeend");
+    // pi-ui turns a lone CR into a line break; single-line fields join with a space.
+    expect(sanitizeTodoText(unsafe)).toBe("safe\nend");
     expect(sanitizeTodoText("safe\x1b]0;unfinished")).toBe("safe");
     const s = state([
       {
@@ -190,9 +199,9 @@ describe("todo rendering", () => {
         /[\x00-\x1f\x7f-\x9f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069\u2028\u2029]/,
       );
     }
-    expect(render(s).join(" ")).toContain("safeend: safeend next line ← safeend");
-    expect(renderTodoText(s).join(" ")).toContain("safeend body");
-    expect(todoTaskDetail(s.tasks[0], s).join("\n")).toContain("safeend — pending");
+    expect(render(s).join(" ")).toContain("safe end: safe end next line ← safe end");
+    expect(renderTodoText(s).join(" ")).toContain("safe end body");
+    expect(detail(todoTaskDetail(s.tasks[0], s)).join("\n")).toContain("• safe end — pending");
     expect(JSON.stringify(s)).toBe(before);
   });
 
@@ -224,7 +233,11 @@ describe("todo rendering", () => {
     expect(wide[1]).toMatch(/^ audit: Task audit +→ agent a3f2b1c4 · ▸ in_progress $/);
     expect(wide[2]).toMatch(/^ ship: Task ship +○ pending $/);
     expect(render(s, { ...config, assignees }, 34)[1]).toMatch(/→ agent a3f2b1c4 · ▸ $/);
-    expect(render(s, { ...config, assignees }, 20)[1]).toMatch(/▸ $/);
+    // Below that, the status label outranks the key: the left column clips first.
+    expect(
+      // oxlint-disable-next-line no-control-regex -- Strip the clip's ANSI resets.
+      render(s, { ...config, assignees }, 20)[1].replace(/\x1b\[[0-9;]*m/g, ""),
+    ).toMatch(/^ aud… ▸ in_progress $/);
     expect(renderTodoText(s, { ...config, assignees })).toContain(
       "▸ audit: Task audit [in_progress] → agent a3f2b1c4",
     );
@@ -325,10 +338,10 @@ describe("unreviewed message rendering", () => {
       expect(visibleWidth(renderTodoLines(s, c, width, colored)[0])).toBeLessThanOrEqual(width);
       if (header.includes("new")) expect(header).toMatch(/^──   Todos [─ ]+● 2 new · 2\/4 ──$/);
     }
-    expect(render(s, c, 29)[0]).toBe("──   Todos  ● 2 new · 2/4 ──");
-    expect(render(s, c, 28)[0]).toMatch(/^──   Todos ─+ 2\/4 ──$/);
-    expect(render(s, c, 19)[0]).toBe("──   Todos  2/4 ──");
-    expect(render(s, c, 18)[0]).toBe("  Todos");
+    expect(render(s, c, 30)[0]).toBe("──   Todos ─ ● 2 new · 2/4 ──");
+    expect(render(s, c, 29)[0]).toMatch(/^──   Todos ─+ 2\/4 ──$/);
+    expect(render(s, c, 20)[0]).toBe("──   Todos ─ 2/4 ──");
+    expect(render(s, c, 19)[0]).toBe("──   Todos ───────");
     expect(render(s)[0]).not.toContain("new");
   });
 
@@ -343,7 +356,7 @@ describe("unreviewed message rendering", () => {
     // Overflow beyond the task budget still prefers unreviewed rows.
     expect(render(s, { ...c, maxVisible: 1 }).slice(1)).toEqual([
       expect.stringContaining("● done:"),
-      " +3 more ",
+      expect.stringMatching(/^ \+3 more +$/),
     ]);
     // No gutter unless a shown row is unreviewed.
     expect(render(s, { ...config, unreviewed: new Map() })[1]).toMatch(/^ active:/);
@@ -363,14 +376,7 @@ describe("unreviewed message rendering", () => {
       80,
       t,
     );
-    expect(calls).toEqual(
-      expect.arrayContaining([
-        "accent:● ",
-        "text:done: Task done",
-        "dim: — Note",
-        "accent:● 1 new",
-      ]),
-    );
+    expect(calls).toEqual(expect.arrayContaining(["accent:● ", "dim: — Note", "accent:● 1 new"]));
     expect(calls).not.toContain("muted:done: Task done");
   });
 
@@ -459,34 +465,42 @@ describe("task detail history", () => {
   ]);
 
   it("adds times, review state and a newest-first timeline marking unreviewed messages", () => {
-    const lines = todoTaskDetail(s.tasks[0], s, { activity, review: { tasks: new Map() }, now });
+    const lines = detail(
+      todoTaskDetail(s.tasks[0], s, { activity, review: { tasks: new Map() }, now }),
+    );
     expect(lines).toEqual(
       expect.arrayContaining([
-        expect.stringMatching(/^Created: 2h ago \(\d\d:\d\d:\d\d\)$/),
-        expect.stringMatching(/^Updated: just now \(\d\d:\d\d:\d\d\)$/),
-        "Reviewed: never",
-        "Activity (newest first; ● = unreviewed):",
+        expect.stringMatching(/^Created +2h ago \(\d\d:\d\d:\d\d\)$/),
+        expect.stringMatching(/^Updated +just now \(\d\d:\d\d:\d\d\)$/),
+        expect.stringMatching(/^Reviewed +never$/),
+        "Activity (newest first; ● = unreviewed)",
       ]),
     );
-    const timeline = lines.slice(lines.indexOf("Activity (newest first; ● = unreviewed):") + 1);
+    const timeline = lines.slice(lines.indexOf("Activity (newest first; ● = unreviewed)") + 1);
     expect(timeline).toEqual([
       expect.stringMatching(/^ {2}just now \(.+\) · r4 · note \(completed\) · you$/),
       "    Hand check",
       expect.stringMatching(/^● 10m ago \(.+\) · r3 · in_progress → completed$/),
       "    Built",
-      "    safeend",
+      "    safe",
+      "    end",
       expect.stringMatching(/^ {2}1h ago \(.+\) · r2 · pending → in_progress$/),
     ]);
-    const reviewed = todoTaskDetail(s.tasks[0], s, {
-      activity,
-      review: { at: now - 60_000, tasks: new Map([["build", { revision: 3, at: now - 60_000 }]]) },
-      now,
-    });
+    const reviewed = detail(
+      todoTaskDetail(s.tasks[0], s, {
+        activity,
+        review: {
+          at: now - 60_000,
+          tasks: new Map([["build", { revision: 3, at: now - 60_000 }]]),
+        },
+        now,
+      }),
+    );
     expect(reviewed).toContainEqual(
-      expect.stringMatching(/^Reviewed: 1m ago \(\d\d:\d\d:\d\d\) through r3$/),
+      expect.stringMatching(/^Reviewed +1m ago \(\d\d:\d\d:\d\d\) through r3$/),
     );
     expect(reviewed.join("\n")).not.toContain("●");
-    expect(todoTaskDetail(s.tasks[0], s)).not.toContain("Reviewed: never");
+    expect(detail(todoTaskDetail(s.tasks[0], s)).join("\n")).not.toContain("Reviewed");
   });
 
   it("names the assignee and agent-attributed updates in details", () => {
@@ -506,17 +520,19 @@ describe("task detail history", () => {
         },
       ],
     ]);
-    const lines = todoTaskDetail(
-      s.tasks[0],
-      s,
-      { activity: delegated, review: { tasks: new Map() }, now },
-      `agent ${unsafe}`,
+    const lines = detail(
+      todoTaskDetail(
+        s.tasks[0],
+        s,
+        { activity: delegated, review: { tasks: new Map() }, now },
+        `agent ${unsafe}`,
+      ),
     );
-    expect(lines).toContain("Assigned to: agent safeend");
+    expect(lines).toContainEqual(expect.stringMatching(/^Assigned to +agent safe end$/));
     expect(lines).toContainEqual(
       expect.stringMatching(/· r5 · note \(in_progress\) · agent a3f2b1c4$/),
     );
-    expect(todoTaskDetail(s.tasks[0], s).join("\n")).not.toContain("Assigned to");
+    expect(detail(todoTaskDetail(s.tasks[0], s)).join("\n")).not.toContain("Assigned to");
   });
 
   it("formats ages and clocks deterministically", () => {

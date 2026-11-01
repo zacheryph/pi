@@ -49,9 +49,10 @@ Upstream extension entry/settings/UI are replaced locally:
   ledger. Updates carry an optional `agent` attribution in history.
 - `src/config.ts`: independent global/project layered settings, no shared-settings
   package dependency. Project writes preserve unrelated settings fields.
-- `src/ui/`: compact widget and browser locally adapted from this repository's
-  subagents/system-insights conventions. Helpers stay local so standalone loading
-  does not depend on another extension's internal modules.
+- `src/ui/`: compact widget and browser built on this repository's shared
+  `packages/pi-ui` library (`renderWidget`, `showExplorer`, sanitizers). The
+  extension keeps task selection/ordering, status mapping, detail content and
+  review callbacks; layout, framing, input and sanitization come from pi-ui.
 - `test/`: local regression tests for validation, additive operations, persistence,
   lifecycle/context behavior, commands/settings, and terminal rendering.
 

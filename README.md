@@ -277,8 +277,8 @@ recorded in task history and flagged until reviewed, so outcomes survive later
 subagent or tool output. The widget counts unreviewed messages, shows excerpts, and
 puts those tasks first.
 
-Above-editor widget matches subagents' compact top-rule/identity/status layout.
-`/todos` or `/todos:list` opens a searchable browser matching insights, with All,
+Above-editor widget and browser use the shared [pi-ui](packages/pi-ui/README.md)
+widget and explorer. `/todos` or `/todos:list` opens a searchable browser with All,
 Unreviewed and Recent views plus per-task activity timelines. `/todos:review` opens
 unreviewed messages. Commands: `/todos:add`, `/todos:update`, `/todos:remove`,
 `/todos:clear`, `/todos:settings`.
