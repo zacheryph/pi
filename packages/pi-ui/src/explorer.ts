@@ -17,7 +17,7 @@ import {
   type DetailContent,
 } from "./detail.ts";
 import { ICONS } from "./icons.ts";
-import { cells, fitPanelHeight, layoutPanel, renderPanel, splitColumns } from "./layout.ts";
+import { cells, layoutPanel, renderPanel, splitColumns } from "./layout.ts";
 import { openModal, type ModalContext, type ModalOptions } from "./modal.ts";
 import { HINT_PRIORITY, navigationDelta, navigationHint, type Hint } from "./navigation.ts";
 import {
@@ -114,8 +114,6 @@ export class Explorer implements Component, Focusable {
   private readonly marked = new Set<string>();
   private readonly search = new Map<string, string>();
   private filtered: ExplorerItem[] = [];
-  /** Rows the longest tab needs, so filtering and tab switches never resize the panel. */
-  private readonly listRows: number;
   private selected = 0;
   private tab: number;
   private detail?: ExplorerItem;
@@ -141,12 +139,6 @@ export class Explorer implements Component, Focusable {
     this.tab = Math.min(
       cells(this.view.initialTab ?? 0),
       Math.max(0, (this.view.tabs?.length ?? 1) - 1),
-    );
-    const ids = new Set(this.view.items.map((item) => item.id));
-    this.listRows = Math.max(
-      1,
-      this.view.items.length,
-      ...(this.view.tabs ?? []).map((tab) => tab.ids.filter((id) => ids.has(id)).length),
     );
     this.width = cells(options.tui.terminal.columns);
     this.input = new Input({
@@ -174,9 +166,9 @@ export class Explorer implements Component, Focusable {
     const cleared = ids.filter((id) => this.marked.delete(id));
     if (cleared.length && this.view.marker) this.view.marker.onClear?.(cleared);
   }
-  private hints(detail = Boolean(this.detail)): Hint[] {
+  private hints(): Hint[] {
     const { marker, tabs } = this.view;
-    const actions: Hint[] = detail
+    const actions: Hint[] = this.detail
       ? [{ keys: "Esc", action: "back", priority: HINT_PRIORITY.action }]
       : [
           { keys: "Enter", action: "open", priority: HINT_PRIORITY.action },
@@ -248,32 +240,12 @@ export class Explorer implements Component, Focusable {
   private height(): number {
     return viewHeight(this.options.tui.terminal.rows, this.options.heightFraction);
   }
-  /**
-   * Take only the rows needed: the list is sized for its longest tab; a detail
-   * keeps at least that height and grows to fit its content, up to the cap.
-   */
   private geometry(status = "") {
-    const max = this.height();
-    const { contentWidth } = layoutPanel(this.width, max);
+    const { contentWidth } = layoutPanel(this.width, this.height());
     const chrome = this.chrome(contentWidth, status);
-    const listBefore =
-      1 + ((this.view.tabs?.length ?? 0) > 1 ? 1 : 0) + (this.view.notices?.length ?? 0);
-    const listAfter = footerRows("", this.hints(false), contentWidth, this.options.theme).length;
-    let height = fitPanelHeight(this.width, max, this.listRows, listBefore, listAfter);
-    if (this.detail)
-      height = Math.max(
-        height,
-        fitPanelHeight(
-          this.width,
-          max,
-          this.viewport.lineCount(contentWidth),
-          chrome.before.length,
-          chrome.after.length,
-        ),
-      );
     return {
       ...chrome,
-      layout: layoutPanel(this.width, height, chrome.before.length, chrome.after.length),
+      layout: layoutPanel(this.width, this.height(), chrome.before.length, chrome.after.length),
     };
   }
   private move(delta: number): void {

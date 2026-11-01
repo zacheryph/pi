@@ -221,12 +221,11 @@ factory. `done` and disposal are idempotent; the factory's abort signal ends on
 completion, disposal or failure. Focus, key-release preferences, cursor markers
 and method receivers are retained by the lifecycle wrapper.
 
-Views take only the rows their content needs, capped at 80% of terminal rows
-(`fitPanelHeight`); the overlay stays centered on whatever height renders. An
-explorer list is sized for its longest tab so filtering and tab switches never
-resize it; an opened detail keeps at least that height and grows to fit its
-content. The footer's `n–m/N lines` position appears only when content scrolls.
-A direct `DetailView`/`Explorer` constructor accepts `heightFraction` for the cap. If customizing `overlayOptions.maxHeight`, give the view
+Explorers use 80% of terminal rows. A `DetailView` takes only the rows its
+content needs, capped at the same 80% (`fitPanelHeight`); the overlay stays
+centered on whatever height renders. In both, the footer's `n–m/N lines`
+position appears only when content scrolls. A direct `DetailView`/`Explorer`
+constructor accepts `heightFraction` for the height (the cap, for `DetailView`). If customizing `overlayOptions.maxHeight`, give the view
 a matching fraction so its footer fits without renderer cropping.
 
 Use `PassiveOverlay` with the TUI obtained from the host:
