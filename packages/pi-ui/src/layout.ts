@@ -161,22 +161,14 @@ export function fitPanelHeight(
   afterRows = 0,
 ): number {
   maxHeight = cells(maxHeight);
+  const cap = layoutPanel(width, maxHeight);
+  // No layout at zero width can show the requested body; keep the cap.
+  if (!cap.width) return maxHeight;
   const body = Math.max(1, cells(bodyRows)),
     before = cells(beforeRows),
-    after = cells(afterRows),
-    framed = layoutPanel(width, maxHeight).framed;
-  for (let height = Math.min(maxHeight, body + before + after); height < maxHeight; height++) {
-    const layout = layoutPanel(width, height, before, after);
-    if (
-      layout.framed === framed &&
-      layout.bodyRows >= body &&
-      layout.beforeRows === before &&
-      layout.afterRows === after &&
-      layout.dividerRows === (before ? 1 : 0)
-    )
-      return height;
-  }
-  return maxHeight;
+    after = cells(afterRows);
+  // Keep the cap's frame so fitting height never changes the wrapping width.
+  return Math.min(maxHeight, body + before + (before ? 1 : 0) + after + (cap.framed ? 2 : 0));
 }
 
 /**

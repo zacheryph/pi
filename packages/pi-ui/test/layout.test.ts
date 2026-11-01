@@ -68,6 +68,11 @@ describe("terminal geometry", () => {
     // Unframed at narrow widths: header 1 + divider 1 + body 2 + footer 1.
     expect(fitPanelHeight(5, 10, 2, 1, 1)).toBe(5);
     expect(fitPanelHeight(0, 10, 3)).toBe(10);
+    // A short framed panel must retain the cap's narrower content width.
+    expect(fitPanelHeight(7, 20, 1)).toBe(3);
+    expect(layoutPanel(7, fitPanelHeight(7, 20, 1)).contentWidth).toBe(1);
+    expect(fitPanelHeight(7, 2, 1)).toBe(1);
+    expect(fitPanelHeight(40, 20, 3.9, 1.9, 2.9)).toBe(9);
     for (const width of [0, 3, 7, 20])
       for (const max of [0, 1, 3, 6, 12])
         expect(fitPanelHeight(width, max, 4, 2, 1)).toBeLessThanOrEqual(max);

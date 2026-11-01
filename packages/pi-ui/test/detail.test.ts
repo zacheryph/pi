@@ -32,6 +32,9 @@ describe("footer status rule", () => {
     }
     const rows = footerRows("2/3", [{ keys: "Esc", action: "close" }], 20, theme, "✓");
     expect(plain(rows)).toBe("── ✓  2/3 ──────────\nEsc close");
+    expect(plain(footerRows("", [{ keys: "Esc", action: "close" }], 20, theme))).toBe(
+      "\nEsc close",
+    );
   });
 });
 describe("detail viewport", () => {
@@ -154,6 +157,39 @@ describe("DetailView", () => {
     view.setContent(text);
     expect(view.render(60)).toHaveLength(24);
     expect(plain(view.render(60))).toContain("── 1–20/80 lines ──");
+  });
+  it("reflows, clamps scrolling and restores the blank status after resizing or replacing content", () => {
+    const tui = surface(30);
+    const content = Array.from({ length: 10 }, (_, i) => `[${i}]${"1234567890".repeat(3)}`).join(
+      "\n",
+    );
+    const view = new DetailView({
+      tui,
+      theme,
+      keys: keys(),
+      title: "Resize",
+      content,
+      done: vi.fn(),
+    });
+    expect(view.render(60)).toHaveLength(14);
+    expect(plain(view.render(60))).not.toContain("lines");
+    expect(view.render(18)).toHaveLength(24);
+    expect(plain(view.render(18))).toContain("1–19/30");
+    view.handleInput("\x1b[F");
+    expect(plain(view.render(18))).not.toContain("[0]");
+    const expanded = plain(view.render(60));
+    expect(view.render(60)).toHaveLength(14);
+    expect(expanded).toContain("[0]");
+    expect(expanded).toContain("[9]");
+    expect(expanded).not.toContain("lines");
+    tui.terminal.rows = 10;
+    expect(view.render(60)).toHaveLength(8);
+    expect(plain(view.render(60))).toContain("1–4/10 lines");
+    view.handleInput("\x1b[F");
+    view.setContent("replacement", false);
+    expect(view.render(60)).toHaveLength(5);
+    expect(plain(view.render(60))).toContain("replacement");
+    expect(plain(view.render(60))).not.toContain("lines");
   });
   it("scrolls by keyboard and wheel, honors key remapping, and shows formatted hints", () => {
     const tui = surface(15),

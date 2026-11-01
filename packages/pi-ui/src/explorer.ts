@@ -249,10 +249,6 @@ export class Explorer implements Component, Focusable {
       chrome.before.length,
       chrome.after.length,
     );
-    // An item detail that shows every line has no position to report: its status
-    // row stays blank, keeping a row of breathing room above the hints.
-    if (this.detail && this.viewport.lineCount(layout.contentWidth) <= layout.bodyRows)
-      chrome.after[0] = "";
     return { ...chrome, layout };
   }
   private move(delta: number): void {

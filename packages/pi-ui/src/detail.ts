@@ -163,7 +163,7 @@ export function statusRule(status: string, width: number, theme: UITheme, icon?:
   );
 }
 
-/** Shared footer: a status divider (icon optional), then up to two rows of prioritized hints. */
+/** Shared footer: a status divider (blank for empty status), then up to two hint rows. */
 export function footerRows(
   status: string,
   hints: readonly Hint[],
@@ -172,7 +172,7 @@ export function footerRows(
   icon?: string,
 ): string[] {
   return [
-    statusRule(status, width, theme, icon),
+    status ? statusRule(status, width, theme, icon) : "",
     ...layoutHints(hints, width, FOOTER_HINT_ROWS).map((row) =>
       paint(theme, "dim", sanitizeLine(row)),
     ),
@@ -312,10 +312,7 @@ export class DetailView implements Component, Focusable {
     const after = footerRows("", this.hints(), contentWidth, this.options.theme).length;
     // Take only the rows the content needs, up to the height cap.
     const height = fitPanelHeight(this.width, max, lines, 0, after);
-    const layout = layoutPanel(this.width, height, 0, after);
-    // With no header divider, don't show a footer divider either: when every line
-    // is visible there is no position to report, so the status row stays blank.
-    return { layout, status: lines > layout.bodyRows };
+    return { layout: layoutPanel(this.width, height, 0, after) };
   }
   handleInput(data: string): void {
     if (this.closed) return;
@@ -344,12 +341,11 @@ export class DetailView implements Component, Focusable {
   render(width: number): string[] {
     if (this.closed) return [];
     this.width = cells(width);
-    const { layout, status } = this.geometry(),
+    const { layout } = this.geometry(),
       { theme } = this.options;
     const body = this.viewport.render(layout.contentWidth, layout.bodyRows);
     const position = this.viewport.position(layout.contentWidth, layout.bodyRows);
     const after = footerRows(positionText(position), this.hints(), layout.contentWidth, theme);
-    if (!status) after[0] = "";
     return renderPanel(layout, this.title, body, theme, { after });
   }
   invalidate(): void {
