@@ -253,14 +253,14 @@ Read-only session inspectors:
 - `/system:tools` — accessible tools; Enter shows declaration/schema and prompt metadata.
 - `/system:skills` — discovered skills; Enter shows description and loading evidence.
 
-Fullscreen viewers use a centered 80% width/height overlay; regular mode uses a
-custom screen to avoid overlay scrollback contamination. Each view has a title,
-rounded border, padded content, and help footer. Indexes omit descriptions;
-details align fields and show one full tool schema.
+Viewers use the shared [pi-ui](packages/pi-ui/README.md) explorer and detail view
+(fullscreen TUI only): a centered 80% width/height overlay with a title, rounded
+border, padded content, and help footer. Indexes omit descriptions; details align
+fields and show one full tool schema.
 
 Skill loading tracks the current branch and becomes dirty after compaction.
 Badges are green for fresh loading evidence, grey for unobserved/dirty state;
-footer explains colors. Esc returns from details to list, then closes.
+a legend above the list explains colors. Esc returns from details to list, then closes.
 Viewers never load skill instructions or change tools/settings. See
 [package README](extensions/pi-system-insights/README.md) for controls and evidence limits.
 

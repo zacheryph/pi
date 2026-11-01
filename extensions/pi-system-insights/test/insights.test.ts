@@ -2,6 +2,7 @@ import type { Tool } from "@earendil-works/pi-ai";
 import type { BuildSystemPromptOptions, ToolInfo } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
+import { detailText, field, section } from "#test/helpers";
 import { buildPromptView, buildToolsView, redactPromptDisplay } from "../src/insights.js";
 
 // Pi's real prompt builder is internal, not exported from the package entry.
@@ -25,14 +26,6 @@ function tool(name: string, exposure: ToolInfo["exposure"] = "direct"): ToolInfo
   };
 }
 const options = { cwd: "/work" };
-
-function field(detail: string | undefined, label: string): string | undefined {
-  return detail
-    ?.split("\n")
-    .find((line) => line.startsWith(`${label}:`))
-    ?.slice(label.length + 1)
-    .trim();
-}
 
 describe("buildPromptView", () => {
   it.each([
@@ -185,7 +178,7 @@ describe("buildToolsView", () => {
     expect(view.items?.find((item) => item.label === "script")?.status).toContain(
       "inactive · indirect · callable · discoverable",
     );
-    expect(view.items?.find((item) => item.label === "orchestrator")?.detail).toContain(
+    expect(detailText(view.items?.find((item) => item.label === "orchestrator")?.detail)).toContain(
       "no (model-only)",
     );
     expect(field(view.items?.find((item) => item.label === "searchable")?.detail, "Exposure")).toBe(
@@ -206,7 +199,7 @@ describe("buildToolsView", () => {
     );
     expect(view.items).toHaveLength(2);
     expect(view.items?.[0]?.status).toContain("active · indirect · callable");
-    expect(view.items?.[0]?.detail).toContain("Active; declaration hidden (indirect)");
+    expect(detailText(view.items?.[0]?.detail)).toContain("Active; declaration hidden (indirect)");
     expect(view.items?.[1]?.status).toContain("active · directly declared");
   });
 
@@ -250,22 +243,20 @@ describe("buildToolsView", () => {
       recorded,
     ).items![0];
     expect(item.description).toBe("Registry read");
-    expect(field(item.detail, "Description")).toBe("Latest recorded");
+    expect(section(item.detail, "Description")).toBe("Latest recorded\nSecond line");
     expect(field(item.detail, "Declaration source")).toBe("Latest recorded (historical)");
     expect(field(item.detail, "Namespace")).toBe("fs — Files");
     expect(field(item.detail, "Source")).toBe("builtin:read · temporary · builtin");
-    expect(item.detail).toContain("\n                    Second line");
-    expect(item.detail.split("\n")[0]).toBe("Name:               read");
-    expect(item.detail).toContain("Namespace instructions:\nNamespace guidance");
-    expect(item.detail).toContain("Tool snippet (construction metadata):\nRead snippet");
-    expect(item.detail).toContain(
-      "Guidelines (construction metadata):\n- Registry: Registry guideline",
-    );
-    expect(item.detail).toContain("- Registry + Prompt: Shared rule");
-    expect(item.detail.match(/Shared rule/g)).toHaveLength(1);
-    expect(item.detail.match(/Construction rule/g)).toHaveLength(1);
-    expect(item.detail.match(/Input schema:/g)).toHaveLength(1);
-    expect(item.detail).toContain('"recorded":');
+    const detail = detailText(item.detail);
+    expect(detail.split("\n")[0]).toMatch(/^Access +Active; directly declared; callable: yes$/);
+    expect(detail).toContain("Namespace instructions\nNamespace guidance");
+    expect(detail).toContain("Tool snippet (construction metadata)\nRead snippet");
+    expect(detail).toContain("Guidelines (construction metadata)\n• Registry: Registry guideline");
+    expect(detail).toContain("• Registry + Prompt: Shared rule");
+    expect(detail.match(/Shared rule/g)).toHaveLength(1);
+    expect(detail.match(/Construction rule/g)).toHaveLength(1);
+    expect(detail.match(/Input schema/g)).toHaveLength(1);
+    expect(detail).toContain('"recorded":');
     for (const absent of [
       "Registry read",
       '"path":',
@@ -276,7 +267,7 @@ describe("buildToolsView", () => {
       "Current registry",
       "Discovery:",
     ])
-      expect(item.detail).not.toContain(absent);
+      expect(detail).not.toContain(absent);
   });
 
   it("uses registered fallback without duplicate schema/description, handles absent metadata", () => {
@@ -287,12 +278,13 @@ describe("buildToolsView", () => {
       exposure: "direct",
     } as unknown as ToolInfo;
     const view = buildToolsView([minimal], ["bare"], options, []);
-    const detail = view.items![0].detail;
-    expect(field(detail, "Declaration source")).toBe("Registered fallback (no branch recording)");
-    expect(field(detail, "Source")).toBe("(not available)");
-    expect(detail).toContain("Description:        Bare\n                    More detail");
-    expect(detail.match(/Input schema:/g)).toHaveLength(1);
-    expect(detail).not.toContain("Namespace:");
+    const blocks = view.items![0].detail;
+    const detail = detailText(blocks);
+    expect(field(blocks, "Declaration source")).toBe("Registered fallback (no branch recording)");
+    expect(field(blocks, "Source")).toBe("(not available)");
+    expect(detail).toContain("Description\nBare\nMore detail");
+    expect(detail.match(/Input schema/g)).toHaveLength(1);
+    expect(field(blocks, "Namespace")).toBeUndefined();
     expect(detail).not.toContain("Tool snippet");
     expect(detail).not.toContain("Guidelines");
     expect(buildToolsView([], [], options, []).items).toEqual([]);
