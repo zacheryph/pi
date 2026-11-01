@@ -59,20 +59,19 @@ added as adapters in `src/terminal.ts`.
 
 ## Answering questions
 
-When the session's model asks you something with
-[`@juicesharp/rpiv-ask-user-question`](https://www.npmjs.com/package/@juicesharp/rpiv-ask-user-question)
-(2.15 or newer), the card says `Asks: <question>` with an **Answer** button,
+When the session's model asks you something with the bundled
+[pi-ask](../pi-ask/README.md) `ask` tool, the card says `Asks: <question>` with an **Answer** button,
 and the detail page shows a **Waiting on you** panel. Answer opens a form with
 every question: one option or your own text for single-select questions, any
 options plus optional text for multi-select ones, and an optional note for the
 whole answer. **Decline** turns it down, as Esc does in the terminal.
 
-The terminal dialog stays open meanwhile, and the first answer wins. If you
+The terminal window stays open meanwhile, and the first answer wins. If you
 answer in the terminal first, the form says so and stops accepting input.
 Closing the form keeps your draft until the question is answered. Answers go
-through rpiv's own `rpiv:ask-user:answer` event on the session's bus, which
-validates them exactly as the dialog does: an answer that does not fit is
-refused with rpiv's reason and the question stays open.
+through pi-ask's `ask:answer` event on the session's bus, which validates them
+strictly: an answer that does not fit is refused with pi-ask's reason and the
+question stays open.
 
 With notifications on, a new question notifies you with its text.
 
@@ -86,7 +85,7 @@ With notifications on, a new question notifies you with its text.
 | Blackhole | `om.observations.*` and `om.reflections.recorded` entries pi-blackhole saves on the branch (no public API; unknown shapes are skipped)                                                                               |
 | Usage     | Usage on every entry in the session file, as Pi's `/session` sums it                                                                                                                                                 |
 | Activity  | Pi's `tool_execution_start` / `_end` for top-level calls (codemode's nested calls are left out)                                                                                                                      |
-| Questions | rpiv ask-user's `rpiv:ask-user:prompt` and `rpiv:ask-user:blocked` events on the session's bus; answers through its `rpiv:ask-user:answer` / `answer-result` contract                                                |
+| Questions | pi-ask's `ask:opened` and `ask:closed` events on the session's bus; answers through its `ask:answer` / `ask:answer-result` contract                                                                                  |
 
 Payloads are parsed defensively and bounded before they reach the hub. Stash
 content and task history are never part of the live session list; they are
@@ -151,7 +150,7 @@ secrets from tool output; a preview shows what is stored.
 Answering a question is the one request that changes what a session does. It
 can only answer a questionnaire that is open and waiting on you, carries a JSON
 body of at most 64 KB, and is checked twice: by the dashboard against the
-questions it names, then strictly by rpiv.
+questions it names, then strictly by pi-ask.
 
 ## Planned
 

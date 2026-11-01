@@ -71,6 +71,8 @@ export interface SubagentSessionMeta extends ChildRunIdentity {
   /** Parent context prepended to the run prompt, captured at spawn time. */
   parentContext: string | undefined;
   lifecycle: ChildLifecyclePublisher;
+  /** Releases what the factory offered for this child, after its session is gone. */
+  onDispose?: () => void;
 }
 
 /**
@@ -293,6 +295,7 @@ export class SubagentSession {
     await emitChildSessionShutdown(this._session);
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- dispose may not exist on all session implementations
     this._session.dispose?.();
+    this.meta.onDispose?.();
     this.meta.lifecycle.disposed({
       sessionId: this.meta.sessionId,
       ...(this.meta.agentId !== undefined ? { agentId: this.meta.agentId } : {}),
