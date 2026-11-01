@@ -742,6 +742,33 @@ describe("user commands", () => {
     env.noContinuation();
   });
 
+  it("TUI widget collapses to its heading while an inline window (an ask) is open", async () => {
+    const env = await started({ mode: "tui", hasUI: true });
+    await env.execute(add("a"));
+    await env.execute(add("b"));
+    const factory = env.ui.setWidget.mock.calls.at(-1)?.[1] as (
+      tui: unknown,
+      theme: unknown,
+    ) => { render(width: number): string[] };
+    const widget = factory(
+      { requestRender: vi.fn() },
+      { fg: (_color: string, text: string) => text, bold: (text: string) => text },
+    );
+    const expanded = widget.render(60);
+    expect(expanded).toHaveLength(3);
+    const open = Symbol.for("pi-ui.inline-window.open");
+    const slots = globalThis as Record<symbol, unknown>;
+    slots[open] = 1;
+    try {
+      expect(widget.render(60)).toEqual([expanded[0]]);
+    } finally {
+      // oxlint-disable-next-line no-dynamic-delete -- Remove this test's Symbol-keyed slot.
+      delete slots[open];
+    }
+    expect(widget.render(60)).toEqual(expanded);
+    env.noContinuation();
+  });
+
   it("add dialog cancellation and session replacement do not mutate another session", async () => {
     const env = await started({ mode: "rpc", hasUI: true });
     await env.command("todo:add");

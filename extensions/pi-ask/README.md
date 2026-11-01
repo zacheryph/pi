@@ -44,6 +44,11 @@ The route is chosen when the session starts.
 | RPC host (editor integrations)   | user   | One host dialog per question                                                                       |
 | No UI and no parent (print/json) | none   | The tool is hidden                                                                                 |
 
+While the inline window is open, the todo and subagent widgets above it shrink
+to their heading rule so the question keeps its rows. Scrolling the transcript
+minimizes the window to three rows; any key or scrolling back to the end
+restores it.
+
 The tool's description and guidelines differ by route, because the two behave
 differently: asking you blocks and returns your answer, while asking a parent
 cannot block (a parent waiting in the foreground for this subagent would

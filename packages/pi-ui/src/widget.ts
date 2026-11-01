@@ -1,4 +1,5 @@
 import type { Component } from "@earendil-works/pi-tui";
+import { inlineWindowOpen } from "./inline-window.ts";
 import { bodyRow, cells, labeledRule, splitColumns, titleText } from "./layout.ts";
 import { copyLine, paint, styleLine, type Line } from "./style.ts";
 import { sanitizeLine } from "./text.ts";
@@ -25,6 +26,12 @@ export interface WidgetView {
   /** Body rows before overflow. `Infinity` or omitted means no limit. */
   maxVisible?: number;
   emptyText?: string;
+  /**
+   * Shown in Pi's widget area. While an inline window is open, a docked widget
+   * shows only its heading so the window keeps its rows. Leave unset for tool
+   * results and other views in the transcript.
+   */
+  docked?: boolean;
 }
 
 /** Row budgets: nonnegative integers, with `Infinity` meaning unbounded. */
@@ -48,7 +55,8 @@ function overflowText(rows: readonly WidgetRow[], hidden: readonly WidgetRow[]):
 /** No sorting, timers, events, terminal reads, or task/agent lifecycle. */
 export function renderWidget(view: WidgetView, width: number, theme: UITheme): string[] {
   width = cells(width);
-  const rowsBudget = budget(view.maxRows);
+  const rowsBudget =
+    view.docked && inlineWindowOpen() ? Math.min(1, budget(view.maxRows)) : budget(view.maxRows);
   if (!width || !rowsBudget) return [];
   const tone = view.active === false ? "dim" : "accent";
   const heading = [

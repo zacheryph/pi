@@ -170,6 +170,8 @@ export function renderWidgetLines(params: {
       meta: queuedCount > 0 ? [{ text: `${queuedCount} queued`, tone: "dim" }] : [],
       rows: ordered.map((agent) => agentRow(agent, registry, spinnerFrame, width, now)),
       maxRows: widgetLineBudget(terminalHeight),
+      // Collapse to the heading while an inline window (an ask) is open.
+      docked: true,
     },
     width,
     theme,

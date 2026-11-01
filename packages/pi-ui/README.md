@@ -73,18 +73,19 @@ Shared conventions the library enforces:
 
 ## API
 
-| Module          | Exports                                                                                                                                               | Responsibility                                                                  |
-| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| `text.ts`       | `sanitizeText`, `sanitizeLine`, `firstPhysicalLine`                                                                                                   | Untrusted plain text normalization; separate trusted-row clipping               |
-| `style.ts`      | `Tone`, `Span`, `Line`, `Badge`, `styleLine`, `styleBadge`, `plainText`, `paint`, `copyLine`, `clip`, `ELLIPSIS`                                      | The single tone → theme mapping and the shared ellipsis                         |
-| `layout.ts`     | `bodyRow`, `splitColumns`, `labeledRule`, `divider`, `layoutPanel`, `fitPanelHeight`, `renderPanel`, `BoundedLines`, `cells`, `titleText`, `ICON_GAP` | Low-level width-aware rows, frames, titles, rules and column fallback           |
-| `icons.ts`      | `ICONS`, `SPINNER`                                                                                                                                    | Shared semantic vocabulary; callers schedule animation                          |
-| `navigation.ts` | `navigationDelta`, `navigationHint`, `formatKey`, `layoutHints`, `hintText`, `Hint`, `HINT_PRIORITY`                                                  | Navigation and prioritized, wrapped footer hints from the same keybindings      |
-| `modal.ts`      | `openModal`, `PassiveOverlay`                                                                                                                         | Capturing centered overlays and separately owned noncapturing overlays          |
-| `detail.ts`     | `DetailView`, `showDetail`, `Block`, `renderBlocks`, `renderDetail`, `footerRows`, `statusRule`, `TextViewport`, `viewHeight`                         | Structured detail content, live loading/results/errors, scrolling               |
-| `explorer.ts`   | `Explorer`, `showExplorer`, `snapshotExplorer`                                                                                                        | Snapshot filtering, tabs, badges, markers, status row and lazy detail drilldown |
-| `widget.ts`     | `renderWidget`, `Widget`                                                                                                                              | Pure compact heading/body/overflow rendering                                    |
-| `types.ts`      | `UITheme`, `UIColor`, `UIKeys`, `UISurface`, `Title`, `DisposableComponent`                                                                           | Narrow SDK collaborators and presentation types                                 |
+| Module             | Exports                                                                                                                                               | Responsibility                                                                       |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `text.ts`          | `sanitizeText`, `sanitizeLine`, `firstPhysicalLine`                                                                                                   | Untrusted plain text normalization; separate trusted-row clipping                    |
+| `style.ts`         | `Tone`, `Span`, `Line`, `Badge`, `styleLine`, `styleBadge`, `plainText`, `paint`, `copyLine`, `clip`, `ELLIPSIS`                                      | The single tone → theme mapping and the shared ellipsis                              |
+| `layout.ts`        | `bodyRow`, `splitColumns`, `labeledRule`, `divider`, `layoutPanel`, `fitPanelHeight`, `renderPanel`, `BoundedLines`, `cells`, `titleText`, `ICON_GAP` | Low-level width-aware rows, frames, titles, rules and column fallback                |
+| `icons.ts`         | `ICONS`, `SPINNER`                                                                                                                                    | Shared semantic vocabulary; callers schedule animation                               |
+| `navigation.ts`    | `navigationDelta`, `navigationHint`, `formatKey`, `layoutHints`, `hintText`, `Hint`, `HINT_PRIORITY`                                                  | Navigation and prioritized, wrapped footer hints from the same keybindings           |
+| `modal.ts`         | `openModal`, `PassiveOverlay`                                                                                                                         | Capturing centered overlays and separately owned noncapturing overlays               |
+| `detail.ts`        | `DetailView`, `showDetail`, `Block`, `renderBlocks`, `renderDetail`, `footerRows`, `statusRule`, `TextViewport`, `viewHeight`                         | Structured detail content, live loading/results/errors, scrolling                    |
+| `explorer.ts`      | `Explorer`, `showExplorer`, `snapshotExplorer`                                                                                                        | Snapshot filtering, tabs, badges, markers, status row and lazy detail drilldown      |
+| `widget.ts`        | `renderWidget`, `Widget`                                                                                                                              | Pure compact heading/body/overflow rendering                                         |
+| `inline-window.ts` | `openInlineWindow`, `InlineWindow`, `inlineWindowOpen`                                                                                                | Focused windows in the editor's place that minimize while the transcript is scrolled |
+| `types.ts`         | `UITheme`, `UIColor`, `UIKeys`, `UISurface`, `Title`, `DisposableComponent`                                                                           | Narrow SDK collaborators and presentation types                                      |
 
 ## Explorers
 
@@ -275,8 +276,17 @@ three rows for the editor's place anyway, so this is the smallest it can get and
 the session can be reviewed with the rest of the screen. It keeps focus: the next key calls
 `tui.scrollToBottom()` and restores it, and that key is not passed to the body,
 so a keystroke typed without seeing the window never acts on it. Scrolling back
-to the end restores it too. In regular mode the terminal owns scrollback and the
-window never minimizes. `minimizedHint` replaces the bar's "any key returns".
+to the end restores it too. Minimizing frees rows under the transcript, so the
+window scrolls the transcript back by that many (`tui.scrollBy`), keeping the
+last line seen at the bottom. Otherwise a short scroll would land on the
+transcript's new end, which follows output again and restores the window, which
+then minimizes on the next scroll. In regular mode the terminal owns scrollback
+and the window never minimizes. `minimizedHint` replaces the bar's "any key
+returns".
+
+`inlineWindowOpen()` is true while any extension has an inline window open. Pi
+loads each extension with its own copy of this library, so the count lives on
+`globalThis`. Widgets marked `docked` read it and collapse to their heading.
 
 ## Widgets
 
@@ -311,7 +321,11 @@ fallbacks and groups. `maxRows` counts the heading; `maxVisible` caps body rows;
 `Infinity` (or omitting `maxVisible`) means unbounded, e.g. for inline tool
 results. Overflow reserves one row and reads `+5 more (3 running, 2 finished)`,
 with groups in their order of first appearance. A one-row budget shows only the
-heading. The helper never starts animation timers, polls or subscribes to events.
+heading. Set `docked: true` on a view registered with `setWidget`: while an
+inline window is open it shows only its heading rule, metadata included, so the
+window keeps the rows Pi's dock would otherwise share out between them. Leave it
+unset for tool results and other views in the transcript. The helper never starts
+animation timers, polls or subscribes to events.
 `Widget` snapshots input and offers `setView`; its caller requests rendering.
 
 Rows are clipped to one physical row and inset by a space on both sides. Widths
