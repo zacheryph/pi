@@ -1,12 +1,39 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
-import { DetailView, TextViewport, renderBlocks, type Block } from "../src/detail.ts";
+import {
+  DetailView,
+  TextViewport,
+  footerRows,
+  renderBlocks,
+  statusRule,
+  type Block,
+} from "../src/detail.ts";
 import { bounded, keys, plain, surface, theme, wheel } from "./helpers.ts";
 
 const text = Array.from(
   { length: 80 },
   (_, i) => `row${i.toString().padStart(2, "0")} 界 text`,
 ).join("\n");
+describe("footer status rule", () => {
+  it("renders the status inline in a widget-style rule, dropping the optional icon first", () => {
+    expect(plain([statusRule("1/5 tasks", 24, theme, "✓")])).toBe("── ✓  1/5 tasks ────────");
+    expect(plain([statusRule("1/5 tasks", 24, theme)])).toBe("── 1/5 tasks ───────────");
+    expect(plain([statusRule("1/5 tasks", 15, theme, "✓")])).toBe("── 1/5 tasks ──");
+    expect(plain([statusRule("", 6, theme, "✓")])).toBe("──────");
+    expect(plain([statusRule("bad\x1b]52;c;x\x07\nrow", 20, theme, "\x1b[31m✓")])).toBe(
+      "── ✓  bad row ──────",
+    );
+  });
+  it("bounds ANSI and wide text at every width and keeps hints below the rule", () => {
+    for (let width = 0; width < 40; width++) {
+      const rule = statusRule("界é👨‍👩‍👧‍👦 status", width, theme, "界");
+      expect(visibleWidth(rule)).toBe(width);
+      bounded([rule], width, 1);
+    }
+    const rows = footerRows("2/3", [{ keys: "Esc", action: "close" }], 20, theme, "✓");
+    expect(plain(rows)).toBe("── ✓  2/3 ──────────\nEsc close");
+  });
+});
 describe("detail viewport", () => {
   it("reflows and clamps across scroll, content updates, and repeated resizes", () => {
     const viewport = new TextViewport(text);

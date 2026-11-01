@@ -7,7 +7,15 @@ import {
   type TuiMouseEvent,
   type TuiMouseEventResult,
 } from "@earendil-works/pi-tui";
-import { cells, layoutPanel, renderPanel, splitColumns } from "./layout.ts";
+import {
+  cells,
+  divider,
+  ICON_GAP,
+  labeledRule,
+  layoutPanel,
+  renderPanel,
+  splitColumns,
+} from "./layout.ts";
 import { openModal, type ModalContext, type ModalOptions } from "./modal.ts";
 import {
   HINT_PRIORITY,
@@ -138,16 +146,41 @@ export function renderDetail(
   ];
 }
 
-/** Shared footer: a dim status row, then up to two rows of prioritized hints. */
+/**
+ * Shared footer status divider, styled like a widget heading:
+ * `── icon  status ─────`. The icon is optional and dropped before the status clips.
+ */
+export function statusRule(status: string, width: number, theme: UITheme, icon?: string): string {
+  const text = sanitizeLine(status),
+    mark = icon ? sanitizeLine(icon) : "";
+  if (!text) return divider(width, theme);
+  const labels = [...(mark ? [`${mark}${ICON_GAP}${text}`] : []), text];
+  return labeledRule(
+    width,
+    (rule) => theme.fg("border", rule),
+    labels.map((label) => paint(theme, "dim", label)),
+  );
+}
+
+/** Shared footer: a status divider, then up to two rows of prioritized hints. */
 export function footerRows(
   status: string,
   hints: readonly Hint[],
   width: number,
   theme: UITheme,
+  icon?: string,
 ): string[] {
-  return [status, ...layoutHints(hints, width, FOOTER_HINT_ROWS)].map((row) =>
-    paint(theme, "dim", sanitizeLine(row)),
-  );
+  return [
+    statusRule(status, width, theme, icon),
+    ...layoutHints(hints, width, FOOTER_HINT_ROWS).map((row) =>
+      paint(theme, "dim", sanitizeLine(row)),
+    ),
+  ];
+}
+
+/** The icon of an object title, if any. */
+export function titleIcon(title: Title): string | undefined {
+  return typeof title === "string" ? undefined : title.icon;
 }
 
 /** Reusable scrolling model for detail panels, explorers and caller-owned passive views. */
@@ -307,7 +340,13 @@ export class DetailView implements Component, Focusable {
       { theme } = this.options;
     const body = this.viewport.render(layout.contentWidth, layout.bodyRows);
     const position = this.viewport.position(layout.contentWidth, layout.bodyRows);
-    const after = footerRows(positionText(position), this.hints(), layout.contentWidth, theme);
+    const after = footerRows(
+      positionText(position),
+      this.hints(),
+      layout.contentWidth,
+      theme,
+      titleIcon(this.title),
+    );
     return renderPanel(layout, this.title, body, theme, { after });
   }
   invalidate(): void {

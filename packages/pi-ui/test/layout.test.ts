@@ -4,6 +4,7 @@ import {
   BoundedLines,
   bodyRow,
   cells,
+  divider,
   labeledRule,
   layoutPanel,
   renderPanel,
@@ -36,6 +37,25 @@ describe("terminal geometry", () => {
         }
       }
     }
+  });
+  it("divides header rows from the body, dropping the divider before any body or header row", () => {
+    expect(layoutPanel(40, 12, 2, 3)).toMatchObject({ beforeRows: 2, dividerRows: 1, bodyRows: 4 });
+    expect(layoutPanel(40, 12, 0, 3)).toMatchObject({ dividerRows: 0, bodyRows: 7 });
+    // Tight: header + footer + one body row leave no room for the divider.
+    expect(layoutPanel(40, 7, 2, 2)).toMatchObject({ beforeRows: 2, dividerRows: 0, bodyRows: 1 });
+    const g = layoutPanel(20, 8, 1, 1);
+    const rows = renderPanel(g, "T", ["body"], theme, { before: ["head"], after: ["foot"] });
+    expect(plain(rows).split("\n").slice(1, 4)).toEqual([
+      " │ head           │ ",
+      " │ ────────────── │ ",
+      " │ body           │ ",
+    ]);
+    const unframed = renderPanel(layoutPanel(5, 3, 1, 0), "T", ["界界界"], theme, {
+      before: ["界"],
+    });
+    expect(plain(unframed)).toBe(" 界  \n ─── \n 界… ");
+    for (let width = 0; width < 12; width++)
+      expect(visibleWidth(divider(width, theme))).toBe(width);
   });
   it("keeps padded body rows and full-width rules in display cells without wrapping", () => {
     for (let width = 0; width < 100; width++) {
