@@ -62,6 +62,9 @@ pi-personal/
 │       ├── SKILL.md
 │       └── references/                  # one file per phase, template, worked example
 ├── extensions/
+│   ├── pi-ask/
+│   │   ├── src/index.ts                 # ask tool, routed to the parent agent or the user
+│   │   ├── test/
 │   ├── pi-dashboard/
 │   │   ├── src/index.ts                 # session reporter + /dashboard command
 │   │   ├── src/hub/server.ts            # web hub (plain Node, not a Pi extension)
@@ -116,6 +119,19 @@ nothing needs publishing.
 
 ## Extensions
 
+### pi-ask
+
+One `ask` tool for questions, routed by session. In the main session it asks you:
+up to four questions, each with optional choices and a free-text answer, in a
+window that opens under the transcript and keeps focus. In fullscreen mode the
+window shrinks to three rows (title, waiting question, hint) while you scroll
+back through the session, and
+the next key brings it back. RPC hosts get their own dialogs instead, and the
+dashboard can answer from the browser. In a subagent, `ask` goes to the agent
+that delegated the task: the question is recorded on the run, the subagent ends
+its turn, and the parent answers by resuming it. Where no one can answer (print
+mode), the tool is hidden. See the [package README](extensions/pi-ask/README.md).
+
 ### pi-dashboard
 
 Local web dashboard of running interactive Pi sessions at
@@ -128,7 +144,7 @@ tool calls, stash index with on-demand previews, usage and cost, and
 pi-blackhole memory counts. **Focus** jumps to the session's cmux panel and
 raises cmux. A filter box and opt-in browser notifications (waiting or
 finished sessions) round out the index. Questions the model asks through
-rpiv ask-user (`ask_user_question`) can be answered from the page. pi-todo and pi-stash publish their state as
+pi-ask's `ask` can be answered from the page. pi-todo and pi-stash publish their state as
 `todo:snapshot` / `stash:snapshot` events on the session's `pi.events`
 bus for this and other extensions.
 

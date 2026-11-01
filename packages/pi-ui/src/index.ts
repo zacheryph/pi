@@ -8,3 +8,4 @@ export * from "./modal.ts";
 export * from "./detail.ts";
 export * from "./explorer.ts";
 export * from "./widget.ts";
+export * from "./inline-window.ts";

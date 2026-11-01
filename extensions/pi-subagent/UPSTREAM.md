@@ -309,3 +309,13 @@ package moved from `extensions/pi-subagents` (`@gotgenes/pi-subagents`) to
   `subagent-watch-host` became `subagent:watch`, status `subagents` became
   `subagent:status`, and status `main-agent` became `agent:status`.
 - Settings file: `subagents.json` became `subagent.json`.
+
+## Questions through pi-ask
+
+The `ask_parent` tool is gone. A child asks with the bundled pi-ask's `ask`,
+which the core reaches through a session-tree service: before a child's
+extensions bind, `createSubagentSession` offers the run's question recorder as
+the child's `ask:route`, adds `ask` to the child's tool allowlist as protocol,
+and withdraws the service when the child is disposed. The question still lands
+on the record as `pendingQuestion`, and every result carrier still renders it
+with the resume call that answers it.

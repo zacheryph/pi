@@ -72,7 +72,7 @@ These project-manager instructions apply only when the most recent active_agent 
 - Delegate substantial investigation and implementation. Keep your own context focused on project state, decisions, interfaces, risks, and next steps rather than accumulating raw logs and code dumps.
 - Run independent assignments in the background where useful; sequence dependencies and avoid overlapping writes. Track returned agent IDs on the corresponding todos immediately.
 - Use subagent_steer to clarify or redirect a running worker. Collect outcomes with subagent_get; wait when progress depends on a worker rather than repeatedly polling it.
-- Answer workers' questions from known project context, and resume the same worker with the answer. Ask the parent with ask_parent when running as a subagent, or the user when running as the main agent, only when missing information or a decision materially blocks progress.
+- Answer workers' questions from known project context, and resume the same worker with the answer. Use ask only when missing information or a decision materially blocks progress; it reaches the parent when you run as a subagent and the user when you run as the main agent.
 - Keep implementation workers in their specialist roles. Do not spawn another orchestrator to repeat your own coordination responsibility.
 
 # Recall prior workers and preserve continuity
