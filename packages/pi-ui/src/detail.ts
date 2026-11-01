@@ -7,7 +7,16 @@ import {
   type TuiMouseEvent,
   type TuiMouseEventResult,
 } from "@earendil-works/pi-tui";
-import { cells, layoutPanel, renderPanel, splitColumns } from "./layout.ts";
+import {
+  cells,
+  divider,
+  fitPanelHeight,
+  ICON_GAP,
+  labeledRule,
+  layoutPanel,
+  renderPanel,
+  splitColumns,
+} from "./layout.ts";
 import { openModal, type ModalContext, type ModalOptions } from "./modal.ts";
 import {
   HINT_PRIORITY,
@@ -138,16 +147,36 @@ export function renderDetail(
   ];
 }
 
-/** Shared footer: a dim status row, then up to two rows of prioritized hints. */
+/**
+ * Shared footer status divider, styled like a widget heading:
+ * `── icon  status ─────`. The icon is optional and dropped before the status clips.
+ */
+export function statusRule(status: string, width: number, theme: UITheme, icon?: string): string {
+  const text = sanitizeLine(status),
+    mark = icon ? sanitizeLine(icon) : "";
+  if (!text) return divider(width, theme);
+  const labels = [...(mark ? [`${mark}${ICON_GAP}${text}`] : []), text];
+  return labeledRule(
+    width,
+    (rule) => theme.fg("border", rule),
+    labels.map((label) => paint(theme, "dim", label)),
+  );
+}
+
+/** Shared footer: a status divider (blank for empty status), then up to two hint rows. */
 export function footerRows(
   status: string,
   hints: readonly Hint[],
   width: number,
   theme: UITheme,
+  icon?: string,
 ): string[] {
-  return [status, ...layoutHints(hints, width, FOOTER_HINT_ROWS)].map((row) =>
-    paint(theme, "dim", sanitizeLine(row)),
-  );
+  return [
+    status ? statusRule(status, width, theme, icon) : "",
+    ...layoutHints(hints, width, FOOTER_HINT_ROWS).map((row) =>
+      paint(theme, "dim", sanitizeLine(row)),
+    ),
+  ];
 }
 
 /** Reusable scrolling model for detail panels, explorers and caller-owned passive views. */
@@ -166,6 +195,10 @@ export class TextViewport {
   }
   invalidate(): void {
     this.cached = undefined;
+  }
+  /** Physical rows the content wraps to at `width`. */
+  lineCount(width: number): number {
+    return this.lines(width).length;
   }
   private lines(width: number): readonly string[] {
     width = cells(width);
@@ -209,7 +242,9 @@ export class TextViewport {
   }
 }
 
+/** Scroll position, or empty when every line is visible (nothing to scroll). */
 export function positionText(position: { start: number; end: number; total: number }): string {
+  if (position.start <= 1 && position.end >= position.total) return "";
   return `${position.start}–${position.end}/${position.total} lines`;
 }
 
@@ -270,11 +305,14 @@ export class DetailView implements Component, Focusable {
     ];
   }
   private geometry() {
-    const height = viewHeight(this.options.tui.terminal.rows, this.options.heightFraction);
-    const { contentWidth } = layoutPanel(this.width, height);
-    // Footer height never depends on the status text, which is always one row.
-    const after = footerRows("", this.hints(), contentWidth, this.options.theme);
-    return { layout: layoutPanel(this.width, height, 0, after.length) };
+    const max = viewHeight(this.options.tui.terminal.rows, this.options.heightFraction);
+    const { contentWidth } = layoutPanel(this.width, max);
+    const lines = this.viewport.lineCount(contentWidth);
+    // Footer: the status row (always one row), then the hint rows.
+    const after = footerRows("", this.hints(), contentWidth, this.options.theme).length;
+    // Take only the rows the content needs, up to the height cap.
+    const height = fitPanelHeight(this.width, max, lines, 0, after);
+    return { layout: layoutPanel(this.width, height, 0, after) };
   }
   handleInput(data: string): void {
     if (this.closed) return;

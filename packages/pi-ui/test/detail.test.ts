@@ -1,12 +1,42 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
-import { DetailView, TextViewport, renderBlocks, type Block } from "../src/detail.ts";
+import {
+  DetailView,
+  TextViewport,
+  footerRows,
+  renderBlocks,
+  statusRule,
+  type Block,
+} from "../src/detail.ts";
 import { bounded, keys, plain, surface, theme, wheel } from "./helpers.ts";
 
 const text = Array.from(
   { length: 80 },
   (_, i) => `row${i.toString().padStart(2, "0")} 界 text`,
 ).join("\n");
+describe("footer status rule", () => {
+  it("renders the status inline in a widget-style rule, dropping the optional icon first", () => {
+    expect(plain([statusRule("1/5 tasks", 24, theme, "✓")])).toBe("── ✓  1/5 tasks ────────");
+    expect(plain([statusRule("1/5 tasks", 24, theme)])).toBe("── 1/5 tasks ───────────");
+    expect(plain([statusRule("1/5 tasks", 15, theme, "✓")])).toBe("── 1/5 tasks ──");
+    expect(plain([statusRule("", 6, theme, "✓")])).toBe("──────");
+    expect(plain([statusRule("bad\x1b]52;c;x\x07\nrow", 20, theme, "\x1b[31m✓")])).toBe(
+      "── ✓  bad row ──────",
+    );
+  });
+  it("bounds ANSI and wide text at every width and keeps hints below the rule", () => {
+    for (let width = 0; width < 40; width++) {
+      const rule = statusRule("界é👨‍👩‍👧‍👦 status", width, theme, "界");
+      expect(visibleWidth(rule)).toBe(width);
+      bounded([rule], width, 1);
+    }
+    const rows = footerRows("2/3", [{ keys: "Esc", action: "close" }], 20, theme, "✓");
+    expect(plain(rows)).toBe("── ✓  2/3 ──────────\nEsc close");
+    expect(plain(footerRows("", [{ keys: "Esc", action: "close" }], 20, theme))).toBe(
+      "\nEsc close",
+    );
+  });
+});
 describe("detail viewport", () => {
   it("reflows and clamps across scroll, content updates, and repeated resizes", () => {
     const viewport = new TextViewport(text);
@@ -107,6 +137,59 @@ describe("DetailView", () => {
     view.setContent("late result");
     view.setTitle("late");
     expect(tui.requestRender).toHaveBeenCalledTimes(requests);
+  });
+  it("takes only the rows short content needs and blanks the status row when all of it is shown", () => {
+    const view = new DetailView({
+      tui: surface(30),
+      theme,
+      keys: keys(),
+      title: "Short",
+      content: "one\ntwo\nthree",
+      done: vi.fn(),
+    });
+    const rows = view.render(60);
+    // Frame 2 + body 3 + blank status row 1 + hints 1: no header divider, so no
+    // bare footer divider either, but a blank row keeps the hints off the content.
+    expect(rows).toHaveLength(7);
+    expect(plain(rows)).not.toContain("lines");
+    expect(plain(rows)).not.toMatch(/│ ─+ │/);
+    expect(plain(rows)).toMatch(/│ three +│ \n │ +│ \n │ Esc close/);
+    view.setContent(text);
+    expect(view.render(60)).toHaveLength(24);
+    expect(plain(view.render(60))).toContain("── 1–20/80 lines ──");
+  });
+  it("reflows, clamps scrolling and restores the blank status after resizing or replacing content", () => {
+    const tui = surface(30);
+    const content = Array.from({ length: 10 }, (_, i) => `[${i}]${"1234567890".repeat(3)}`).join(
+      "\n",
+    );
+    const view = new DetailView({
+      tui,
+      theme,
+      keys: keys(),
+      title: "Resize",
+      content,
+      done: vi.fn(),
+    });
+    expect(view.render(60)).toHaveLength(14);
+    expect(plain(view.render(60))).not.toContain("lines");
+    expect(view.render(18)).toHaveLength(24);
+    expect(plain(view.render(18))).toContain("1–19/30");
+    view.handleInput("\x1b[F");
+    expect(plain(view.render(18))).not.toContain("[0]");
+    const expanded = plain(view.render(60));
+    expect(view.render(60)).toHaveLength(14);
+    expect(expanded).toContain("[0]");
+    expect(expanded).toContain("[9]");
+    expect(expanded).not.toContain("lines");
+    tui.terminal.rows = 10;
+    expect(view.render(60)).toHaveLength(8);
+    expect(plain(view.render(60))).toContain("1–4/10 lines");
+    view.handleInput("\x1b[F");
+    view.setContent("replacement", false);
+    expect(view.render(60)).toHaveLength(5);
+    expect(plain(view.render(60))).toContain("replacement");
+    expect(plain(view.render(60))).not.toContain("lines");
   });
   it("scrolls by keyboard and wheel, honors key remapping, and shows formatted hints", () => {
     const tui = surface(15),
