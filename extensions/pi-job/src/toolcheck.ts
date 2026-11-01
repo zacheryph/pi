@@ -1,5 +1,5 @@
 /**
- * job_watch tool checks (local addition, see UPSTREAM.md): call one Pi tool per interval through
+ * job_watch tool checks (local addition, see CHANGELOG.md): call one Pi tool per interval through
  * the session's ctx.executeTool(), so validation, tool_call hooks and permission checks apply as
  * for model-issued calls. No model is involved, so only read-only or explicitly allowed tools
  * may be watched, and a failed call is inconclusive rather than a verdict.

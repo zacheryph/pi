@@ -73,7 +73,8 @@ pi-personal/
 │   ├── pi-job/                          # vendored
 │   │   ├── src/extension.ts             # job_* tools + /job command
 │   │   ├── test/
-│   │   └── UPSTREAM.md
+│   │   ├── CHANGELOG.md                 # local changes
+│   │   └── UPSTREAM.md                  # vendoring provenance
 │   ├── pi-stash/
 │   │   ├── src/index.ts                 # stash_* tools + /stash commands
 │   │   └── test/
@@ -82,10 +83,12 @@ pi-personal/
 │   │   ├── test/
 │   │   ├── docs/
 │   │   ├── LICENSE
+│   │   ├── CHANGELOG.md
 │   │   └── UPSTREAM.md
 │   ├── pi-subagent-worktree/            # vendored
 │   │   ├── src/index.ts                 # worktree WorkspaceProvider + /subagent:worktrees
 │   │   ├── test/
+│   │   ├── CHANGELOG.md
 │   │   └── UPSTREAM.md
 │   ├── pi-system-insights/
 │   │   ├── src/index.ts                 # /system:* commands
@@ -97,6 +100,7 @@ pi-personal/
 │       ├── src/index.ts                 # todo_* tools + /todo:* commands
 │       ├── test/
 │       ├── docs/comparison.md           # base-selection report
+│       ├── CHANGELOG.md
 │       └── UPSTREAM.md
 └── packages/
     ├── pi-ui/                           # shared terminal UI library (no migrations yet)
@@ -158,7 +162,8 @@ and Node binary are set in `~/.pi/agent/dashboard.json`. Loopback only. See
 ### pi-job
 
 Background shell jobs and watches that wake the agent when they finish, vendored
-from [`woksin/pi-jobs`](extensions/pi-job/UPSTREAM.md) with local additions.
+from [`woksin/pi-jobs`](extensions/pi-job/UPSTREAM.md) with
+[local additions](extensions/pi-job/CHANGELOG.md).
 `job_start` runs a command in its own process group and returns immediately;
 `job_watch` re-runs a shell check until it succeeds, fails, or its output changes.
 With `toolCheck` it instead polls a read-only Pi tool, such as an MCP tool, until a
@@ -237,8 +242,9 @@ Pi 1.1.0 overlays can contaminate terminal scrollback there.
 Custom agents are read from `.pi/agents/<name>.md` in the project where Pi runs, or
 `~/.pi/agent/agents/<name>.md`; they are not definitions inside this bundle.
 See [upstream README](extensions/pi-subagent/README.md),
-[configuration](extensions/pi-subagent/docs/configuration.md), and
-[provenance/local changes](extensions/pi-subagent/UPSTREAM.md).
+[configuration](extensions/pi-subagent/docs/configuration.md),
+[provenance](extensions/pi-subagent/UPSTREAM.md), and
+[local changes](extensions/pi-subagent/CHANGELOG.md).
 
 ### pi-subagent-worktree
 
@@ -447,7 +453,9 @@ pi --no-extensions -e ./extensions/pi-subagent/src/index.ts
 Use the [`new-extension` skill](.agents/skills/new-extension/SKILL.md).
 
 To copy a third-party extension into the repository, use the
-[`vendor-extension` skill](.agents/skills/vendor-extension/SKILL.md).
+[`vendor-extension` skill](.agents/skills/vendor-extension/SKILL.md). Each vendored
+extension records its provenance in `UPSTREAM.md` and its local changes in
+`CHANGELOG.md`.
 
 ## License
 

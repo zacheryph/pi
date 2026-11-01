@@ -1,16 +1,22 @@
 ---
 name: vendor-extension
-description: Copy a third-party Pi extension into this repository as editable source and track its provenance and local changes in UPSTREAM.md. Use when importing (vendoring) an extension from GitHub or npm into extensions/, changing a vendored extension, or syncing one with a newer upstream version.
+description: Copy a third-party Pi extension into this repository as editable source, record its provenance in UPSTREAM.md and every local change in CHANGELOG.md. Use when importing (vendoring) an extension from GitHub or npm into extensions/, changing a vendored extension, or syncing one with a newer upstream version.
 ---
 
 # Vendor an extension
 
 Vendored extensions live in `extensions/<name>/` as plain source: no Git
-submodule, no nested `.git`, no npm runtime dependency. Every one has an
-`UPSTREAM.md` that records where it came from and every local change. Examples:
-`extensions/pi-job/UPSTREAM.md` (unchanged import),
-`extensions/pi-todo/UPSTREAM.md` (engine kept, UI replaced),
-`extensions/pi-subagent/UPSTREAM.md` (heavily customised fork).
+submodule, no nested `.git`, no npm runtime dependency. Every one has two
+records:
+
+- `UPSTREAM.md`: where it came from and how it was copied, nothing else. It
+  changes only when the extension is imported or synced with upstream.
+- `CHANGELOG.md`: every local change, newest first. Its first (oldest) entry only
+  points at `UPSTREAM.md`.
+
+Examples: `extensions/pi-job/` (small additions),
+`extensions/pi-todo/` (engine kept, UI replaced),
+`extensions/pi-subagent/` (heavily customised fork).
 
 ## Rules
 
@@ -19,10 +25,11 @@ submodule, no nested `.git`, no npm runtime dependency. Every one has an
 - **Pin a full commit SHA**, never a branch or tag.
 - **Keep the license.** Copy upstream's `LICENSE` unchanged and stop if the
   license does not allow copying and modifying (MIT, Apache-2.0, BSD are fine).
-- **Record every local change in `UPSTREAM.md` in the same commit as the change.**
+- **Record every local change in `CHANGELOG.md` in the same commit as the change.**
+  Never record local changes, known gaps or plans in `UPSTREAM.md`.
 - **Prefer sidecar modules over edits.** Put new behaviour in new files and keep
-  upstream files byte-for-byte where possible, so syncs stay cheap. Name the
-  byte-for-byte files in `UPSTREAM.md`.
+  upstream files byte-for-byte where possible, so syncs stay cheap. Each
+  changelog entry names the upstream files it edits.
 - Commit with `git -c commit.gpgsign=false commit …`. Never change global Git config.
 - Anything the extension renders follows the terminal UI spacing rules in `AGENTS.md`.
 
@@ -53,6 +60,9 @@ diff -r --exclude=.git --exclude=.github <scratch>/<repo> extensions/<name> && e
 For a monorepo, run `git ls-files <subdir>` and strip the prefix (`tar
 --strip-components`). Leave out media and contributor-only config (`.pi/`,
 `AGENTS.md`) only when they would affect this repository, and note it.
+
+If upstream ships a `CHANGELOG.md`, it is copied verbatim here like every other
+file; step 4 clears it.
 
 Commit only that directory:
 
@@ -98,12 +108,13 @@ At the repository root:
 - `scripts/verify-bundle.mjs`: assert the extension's tools and commands. The
   script already fails on duplicate tool, command, or flag names.
 - `README.md`: add the extension to the layout tree, an `### <name>` section that
-  links `UPSTREAM.md`, a warning not to install the published package as well,
-  and a line under License.
+  links `UPSTREAM.md` and `CHANGELOG.md`, a warning not to install the published
+  package as well, and a line under License.
 
-## 4. Write UPSTREAM.md
+## 4. Write UPSTREAM.md and CHANGELOG.md
 
-Use this structure (see `extensions/pi-job/UPSTREAM.md`):
+`UPSTREAM.md` holds only the vendoring details. Use this structure (see
+`extensions/pi-job/UPSTREAM.md`):
 
 ```markdown
 # Vendored <name>
@@ -124,21 +135,8 @@ Use this structure (see `extensions/pi-job/UPSTREAM.md`):
 
 ## Import
 
-<How it was copied, what was left out and why, which files are byte-for-byte.>
-
-## Local changes
-
-### <change group, e.g. Integration (import PR), Personal widget>
-
-- <file or area>: <what changed and why>
-
-## Known gaps
-
-<Type errors, version mismatches, UI rules not yet applied, missing tests.>
-
-## Planned changes
-
-<Linked issues.>
+<How it was copied, what was left out and why, and whether upstream's changelog
+was cleared.>
 
 ## Sync history
 
@@ -146,6 +144,33 @@ Use this structure (see `extensions/pi-job/UPSTREAM.md`):
 | ------ | ------------------------- | --------------- |
 | <date> | `<short sha>` (<version>) | Initial import. |
 ```
+
+`CHANGELOG.md` holds every local change, newest entry first. Create it, or if
+upstream shipped one, replace its whole content: upstream's history stays in the
+source repository, linked at the pinned commit. The first entry is only the
+pointer to `UPSTREAM.md`; the integration changes are the next entry:
+
+```markdown
+# Changelog
+
+Local changes to this vendored copy, newest first. Where it came from is
+recorded in [UPSTREAM.md](UPSTREAM.md).
+
+## <date>: Integration (#<pr>)
+
+- <file or area>: <what changed and why>
+- Known gap: <type errors, version mismatches, UI rules not yet applied, missing
+  tests>
+
+## <date>: Vendored
+
+Imported from upstream; see [UPSTREAM.md](UPSTREAM.md). Upstream's changelog was
+cleared at import; for earlier history see the
+[source changelog](<repo url>/blob/<full sha>/<subdir/>CHANGELOG.md).
+```
+
+Leave out the sentence about the source changelog when upstream had none. Add
+`CHANGELOG.md` to the `files` list in `package.json` next to `UPSTREAM.md`.
 
 ## 5. Verify and open the PR
 
@@ -164,16 +189,20 @@ untouched copy, and list each integration change.
 
 1. Put new behaviour in sidecar modules when you can; edit upstream files only
    when necessary.
-2. In the same commit, add the change under **Local changes**, update the
-   byte-for-byte list if a file left it, and remove any **Known gaps** it fixes.
+2. In the same commit, add an entry at the top of `CHANGELOG.md`
+   (`## <date>: <summary> (#<pr>)`) listing each file or area and what changed,
+   and naming any known gap it fixes or introduces. Do not touch `UPSTREAM.md`.
 
 ## Syncing with a newer upstream
 
 1. Clone upstream and diff the pinned SHA against the new one:
    `git -C <scratch>/<repo> diff <old sha> <new sha> -- . ':!.github'`.
-2. Apply that diff to `extensions/<name>/`. Resolve conflicts against the local
-   changes listed in `UPSTREAM.md`.
-3. Update the Commit, Upstream version, and Upstream tested with rows, add a
-   **Sync history** row, and update any local-change notes the sync affected.
+2. Apply that diff to `extensions/<name>/`, except upstream's `CHANGELOG.md`,
+   which stays local. Resolve conflicts against the local changes listed in
+   `CHANGELOG.md`.
+3. In `UPSTREAM.md`, update the Commit, Upstream version, and Upstream tested
+   with rows and add a **Sync history** row. In `CHANGELOG.md`, add an entry for
+   the sync that links the source changelog between the two commits and lists
+   any local change the sync reworked or made unnecessary.
 4. Run the checks in step 5 and open a PR titled
    `chore(<name>): sync upstream to <short sha>`.
