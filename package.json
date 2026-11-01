@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "workspaces": [
-    "extensions/pi-jobs",
+    "extensions/pi-job",
     "extensions/pi-stash",
     "extensions/pi-subagents",
     "extensions/pi-subagents-worktrees",
@@ -38,7 +38,7 @@
   },
   "pi": {
     "extensions": [
-      "./extensions/pi-jobs/src/extension.ts",
+      "./extensions/pi-job/src/extension.ts",
       "./extensions/pi-stash/src/index.ts",
       "./extensions/pi-subagents/src/index.ts",
       "./extensions/pi-subagents-worktrees/src/index.ts",

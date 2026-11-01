@@ -90,7 +90,7 @@ Never throw on a malformed file; warn and use defaults.
 
 **Tools.** Replace the stub `description` and `promptGuidelines`; define real
 `parameters`. Keep output bounded (Pi caps at 50 KB / 2,000 lines; stay well
-under). Set `annotations.readOnlyHint: true` on tools that only read, so pi-jobs
+under). Set `annotations.readOnlyHint: true` on tools that only read, so pi-job
 can watch them.
 
 **Terminal UI.** Follow `AGENTS.md`: at least one space of padding on both sides

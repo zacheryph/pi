@@ -220,7 +220,7 @@ void test("stale context detected by isIdle: disposed, nothing sent", () => {
   assert.deepEqual(state.lost, ["a"]);
 });
 
-/** A pi-jobs message in the current format: header part + one part per completion. */
+/** A pi-job message in the current format: header part + one part per completion. */
 const msg = (ids: string[]) => {
   const single = ids.length === 1;
   return {
@@ -266,11 +266,11 @@ void test("context filter: each completion block reaches the model at most once"
   assert.deepEqual(texts(out[0]), ["block u1"]);
   assert.deepEqual(
     texts(out[1]),
-    ["[pi-jobs: 1 completion already shown above omitted.]\n\n", "block u2"],
+    ["[pi-job: 1 completion already shown above omitted.]\n\n", "block u2"],
     "seen block stripped, unseen kept",
   );
   assert.deepEqual(texts(out[2]), [
-    "[pi-jobs: 2 completions already shown above omitted.]\n\n",
+    "[pi-job: 2 completions already shown above omitted.]\n\n",
     "block u3",
   ]);
   assert.deepEqual(texts(out[3]), [DUPLICATE_STUB], "nothing unseen: stub, not removed");
@@ -298,7 +298,7 @@ void test("context filter is idempotent and never loses an unseen block", () => 
   for (const id of ["a", "b", "c", "d", "e"])
     assert.equal(shown.split(`block ${id}`).length - 1, 1, `${id} shown exactly once`);
   assert.deepEqual(texts(once[1]), [
-    "[pi-jobs: 1 completion already shown above omitted.]\n\n",
+    "[pi-job: 1 completion already shown above omitted.]\n\n",
     "block b",
     "block c",
   ]);

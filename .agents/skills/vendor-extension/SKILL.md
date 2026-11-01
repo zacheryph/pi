@@ -8,7 +8,7 @@ description: Copy a third-party Pi extension into this repository as editable so
 Vendored extensions live in `extensions/<name>/` as plain source: no Git
 submodule, no nested `.git`, no npm runtime dependency. Every one has an
 `UPSTREAM.md` that records where it came from and every local change. Examples:
-`extensions/pi-jobs/UPSTREAM.md` (unchanged import),
+`extensions/pi-job/UPSTREAM.md` (unchanged import),
 `extensions/pi-todo/UPSTREAM.md` (engine kept, UI replaced),
 `extensions/pi-subagents/UPSTREAM.md` (heavily customised fork).
 
@@ -103,7 +103,7 @@ At the repository root:
 
 ## 4. Write UPSTREAM.md
 
-Use this structure (see `extensions/pi-jobs/UPSTREAM.md`):
+Use this structure (see `extensions/pi-job/UPSTREAM.md`):
 
 ```markdown
 # Vendored <name>

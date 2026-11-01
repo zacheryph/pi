@@ -1,4 +1,4 @@
-# pi-jobs
+# pi-job
 
 Background shell jobs and watches for pi that wake the agent when they finish.
 
@@ -9,7 +9,7 @@ Long waits (CI runs, long builds, "poll until X") run outside the model at zero 
 ```mermaid
 sequenceDiagram
     participant A as Agent
-    participant J as pi-jobs
+    participant J as pi-job
     A->>J: job_start / job_watch
     J-->>A: id + log path (returns at once)
     Note over A: ends its turn, no polling
@@ -27,7 +27,7 @@ sequenceDiagram
 - `job_start` runs a command under a supervisor in its own process group, with a log file.
 - `job_watch` re-runs a check until it succeeds, fails or changes (`until`).
 - Completions are batched into one message with a bounded log tail.
-- `job_list`, `job_output` and `job_kill`, plus `/jobs` and `/jobs kill <id>` for you.
+- `job_list`, `job_read` and `job_kill`, plus `/job` and `/job kill <id>` for you.
 - Logs are capped at 50 MB and old logs are cleaned up after 7 days.
 - Jobs survive `/reload`.
 
@@ -57,7 +57,7 @@ for managed packages. Other runtime versions are not guaranteed.
 
 Ask the agent to run a long command with `job_start` or wait for a condition with `job_watch`.
 It should end its turn instead of polling, then continue when the completion message arrives.
-Use `/jobs` to see session jobs or `/jobs kill j1` to stop one. Commands run with your user
+Use `/job` to see session jobs or `/job kill j1` to stop one. Commands run with your user
 permissions and inherited environment; only run commands you trust. Logs can contain
 sensitive output, so do not publish them.
 
@@ -68,9 +68,9 @@ sensitive output, so do not publish them.
 | `job_start { command, timeoutSeconds, cwd?, label? }`                                              | Run `bash -c <command>` under a supervisor in its own process group; stdout+stderr → log file. Returns at once with id and log path. |
 | `job_watch { check, intervalSeconds, timeoutSeconds, until?, checkTimeoutSeconds?, cwd?, label? }` | Re-run `check` every `intervalSeconds` until the condition holds or `timeoutSeconds` passes.                                         |
 | `job_list {}`                                                                                      | Running and recent jobs of this session.                                                                                             |
-| `job_output { id, tailLines? }`                                                                    | Bounded log tail (default 40, max 200 lines, max 16 KB).                                                                             |
+| `job_read { id, tailLines? }`                                                                      | Bounded log tail (default 40, max 200 lines, max 16 KB).                                                                             |
 | `job_kill { id }`                                                                                  | SIGTERM the job's process group, SIGKILL after 5 s; returns the final state.                                                         |
-| `/jobs`, `/jobs kill <id>`                                                                         | User command: list / stop.                                                                                                           |
+| `/job`, `/job kill <id>`                                                                           | User command: list / stop.                                                                                                           |
 
 The model is told: start the job, **end the turn**, do not poll.
 
@@ -106,14 +106,14 @@ jobs finished:`). The output of all completions in a message shares a 16 KB budg
 
 **Terminal states.** `succeeded`, `failed` (non-zero exit or spawn failure), `timed_out`,
 `matched` (watch) and `killed`. There is **no message** for jobs stopped by
-`job_kill`/`/jobs kill` (the caller gets the final state synchronously) or by non-reload session shutdown
+`job_kill`/`/job kill` (the caller gets the final state synchronously) or by non-reload session shutdown
 (nobody to wake).
 
 ### Guarantee
 
 > In the normal case each completion is **delivered at least once**. Each model context contains
 > **at most one full copy** of each completion id, for messages in the current indexed format;
-> messages from older pi-jobs versions are only stubbed as a whole once all their ids were shown. Across Escape/abort, delivery is **best
+> messages from older pi-job versions are only stubbed as a whole once all their ids were shown. Across Escape/abort, delivery is **best
 > effort**, with at most one resend per dropped follow-up. This is **not exactly-once**: pi has no
 > atomic wake API (see [UPSTREAM-ISSUES.md](https://github.com/woksin/pi-jobs/blob/main/UPSTREAM-ISSUES.md)).
 
@@ -123,7 +123,7 @@ jobs finished:`). The output of all completions in a message shares a 16 KB budg
 message goes through `pi.sendMessage(…, { triggerTurn: true, deliverAs: "followUp" })`, and
 pi does the scheduling.
 
-| Situation when the job finishes                                      | What pi-jobs does                                                                                                                                                                                                                   |
+| Situation when the job finishes                                      | What pi-job does                                                                                                                                                                                                                    |
 | -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Session idle                                                         | Send now; pi starts a run with the completion as its prompt.                                                                                                                                                                        |
 | A run is active (`agent_start` … `agent_settled`)                    | Hold it. At the next non-aborted `agent_end`, send everything held as one follow-up, which pi consumes in the same run.                                                                                                             |
@@ -139,7 +139,7 @@ and occupies its own content part (`details.completions[].part`). A model-contex
 the first copy of each id. In later messages it removes already-shown completion blocks,
 leaving a one-line note, and keeps the unseen ones. A message with nothing unseen becomes a
 one-line stub. The stub keeps the message in place, so the context never ends on an assistant
-message. Messages from older pi-jobs versions without part indices can only be stubbed as a
+message. Messages from older pi-job versions without part indices can only be stubbed as a
 whole. Job handles such as `j1` restart in every session and are never used for
 deduplication.
 
@@ -239,7 +239,7 @@ in `test/agent-session.test.ts`:
 - Output tails read at most the last N bytes of the log; logs are never loaded whole, and the
   byte cap holds after decoding (invalid UTF-8 cannot inflate it). A watch keeps at most
   64 KB of one check's output in memory, even when the check writes larger chunks.
-- The 50 most recent finished jobs are kept for `job_list`/`job_output`; state is in memory
+- The 50 most recent finished jobs are kept for `job_list`/`job_read`; state is in memory
   only (retained across same-process reload, not restored after restart/resume).
 
 ## Logs

@@ -23,7 +23,7 @@ void test("history high-water mark includes lists, old result text and completio
       }),
       {
         type: "custom_message",
-        customType: "pi-jobs",
+        customType: "job:completion",
         details: { completions: [{ job: { id: "j544" } }] },
       },
       entry({ role: "toolResult", toolName: "Agent", details: { id: "j9999" } }),
@@ -50,14 +50,14 @@ void test("history recovery keeps full commands without a watch cap and excludes
     },
     {
       type: "custom_message",
-      customType: "pi-jobs",
+      customType: "job:completion",
       details: { completions: [{ job: snapshot("j2", "matched") }] },
     },
     {
       type: "message",
       message: {
         role: "custom",
-        customType: "pi-jobs",
+        customType: "job:completion",
         details: { completions: [{ job: snapshot("j3", "timed_out") }] },
       },
     },
@@ -71,7 +71,7 @@ void test("history recovery keeps full commands without a watch cap and excludes
     },
     {
       type: "message",
-      message: { role: "toolResult", toolName: "job_output", details: snapshot("j5", "succeeded") },
+      message: { role: "toolResult", toolName: "job_read", details: snapshot("j5", "succeeded") },
     },
     {
       type: "message",
@@ -186,36 +186,33 @@ void test("compatible adoption cancels handoff expiry", async (t) => {
   assert.equal(stopped, false);
 });
 
-void test("incompatible and legacy suspended owners are stopped, never adopted", async (t) => {
-  const global = globalThis as any,
-    legacyKey = Symbol.for("pi-jobs.sessionOwners.v1"),
-    saved = global[legacyKey];
-  const legacy = handoffOwner(),
+void test("incompatible suspended owners are stopped, never adopted", async (t) => {
+  const versionless = handoffOwner(),
     malformed = handoffOwner();
   const job = { id: "j1", kind: "watch", command: "echo full command; false", status: "running" };
-  for (const owner of [legacy, malformed]) owner.manager.list = () => [job] as any;
-  delete (legacy as any).version;
+  for (const owner of [versionless, malformed]) owner.manager.list = () => [job] as any;
+  delete (versionless as any).version;
   delete (malformed.delivery as any).rebind;
   let stopped = 0;
-  for (const owner of [legacy, malformed])
+  for (const owner of [versionless, malformed])
     owner.manager.shutdown = async () => {
       stopped++;
     };
-  global[legacyKey] = new Map([["legacy", legacy]]);
   const owners = sessionOwners();
+  owners.set("versionless", versionless);
   owners.set("malformed", malformed);
   t.after(() => {
+    owners.delete("versionless");
     owners.delete("malformed");
-    if (saved === undefined) delete global[legacyKey];
-    else global[legacyKey] = saved;
   });
+  assert.equal(compatibleOwner(versionless), false);
   assert.equal(compatibleOwner(malformed), false);
-  for (const id of ["legacy", "malformed"]) {
+  for (const id of ["versionless", "malformed"]) {
     const result = await takeReloadOwner(id);
     assert.equal(result.incompatible, true);
     assert.deepEqual(result.dropped, [job]);
   }
   assert.equal(stopped, 2);
-  assert.equal(global[legacyKey].size, 0);
+  assert.equal(owners.has("versionless"), false);
   assert.equal(owners.has("malformed"), false);
 });

@@ -1,6 +1,6 @@
 # Tool checks for `job_watch`
 
-Local addition to the vendored pi-jobs (see [UPSTREAM.md](UPSTREAM.md)). Instead of
+Local addition to the vendored pi-job (see [UPSTREAM.md](UPSTREAM.md)). Instead of
 a shell `check`, a watch can call **one Pi tool per interval**, such as an MCP tool,
 and wake the agent when a condition on its result holds. Like shell watches, no
 model is involved while it waits.
