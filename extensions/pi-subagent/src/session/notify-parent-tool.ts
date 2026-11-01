@@ -13,7 +13,7 @@
  * renders the update into its own return instead of an announcement arriving
  * after it. A child whose parent is free is nudged as it goes.
  *
- * Lives in `session/` alongside `ask-parent-tool.ts`, for the same reason.
+ * Lives in `session/` because the assembly factory installs it on the child's session, where every `tools/` module is registered on the parent's.
  */
 
 import { defineTool } from "@earendil-works/pi-coding-agent";

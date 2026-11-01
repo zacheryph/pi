@@ -169,7 +169,7 @@ export default function dashboardExtension(
     todos = readTodos(data);
     schedule();
   });
-  // rpiv ask-user questionnaires, answerable from the page through rpiv's own answer channel.
+  // pi-ask questionnaires, answerable from the page through pi-ask's answer channel.
   const askUser = new AskUserTracker(pi.events, () => schedule());
 
   /** Requests from the page, answered to that page only. Throw to report a failure. */
