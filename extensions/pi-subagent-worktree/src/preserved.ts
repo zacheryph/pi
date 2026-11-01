@@ -65,7 +65,7 @@ export function formatPreservedNotice(paths: readonly string[]): string {
   return (
     `${subject} still on disk:\n${listed}${tail}\n` +
     "They hold subagent work that was never merged, and the temp directory is cleared periodically.\n" +
-    "Run /subagents-worktrees to inspect or remove them."
+    "Run /subagent:worktrees to inspect or remove them."
   );
 }
 

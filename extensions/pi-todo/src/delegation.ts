@@ -22,7 +22,7 @@ import {
 import { cloneTodoState, type TodoDetails, type TodoState, TodoValidationError } from "./state.ts";
 
 /** Session-tree service name. */
-export const BROKER_NAME = "pi-todo";
+export const BROKER_NAME = "todo:broker";
 /** A reservation made in `tool_call` stops guarding its keys after this long without a child. */
 const RESERVATION_MS = 15 * 60_000;
 
@@ -207,7 +207,7 @@ export interface Delegated {
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 /**
- * Parent side: veto bad `handoff.todos` before a spawn, bind claims as children
+ * Parent side: veto bad `handoff.todo` before a spawn, bind claims as children
  * are created, release them as agents end, and offer the broker. Child side:
  * find this session's claim and route the todo tool to the parent's broker.
  */

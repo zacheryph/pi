@@ -175,7 +175,7 @@ No upstream runtime behavior was intentionally changed during import.
 - `src/service/service.ts` now keeps every published service under
   `Symbol.for("subagent:services")` (see Identifiers), pending from the factory
   until `session_start`. The newest pending service is the default while a load
-  is in progress (so companions such as pi-subagents-worktrees still register
+  is in progress (so companions such as pi-subagent-worktree still register
   their provider from their factory, in children too); otherwise the outermost
   started one is. The upstream single slot is gone (see Identifiers).
 - A starting session drops older pending publications, and a child whose
@@ -190,7 +190,7 @@ No upstream runtime behavior was intentionally changed during import.
 
 - `package.json` `imports`: each `#src/*` and `#test/*` target gained a `types`
   condition (`./src/*.ts`) beside the unchanged `default`, so a companion
-  extension that imports this source by relative path (pi-subagents-worktrees)
+  extension that imports this source by relative path (pi-subagent-worktree)
   can typecheck it without mapping `#src` itself. This package's own
   `tsconfig.json` paths and its runtime resolution are unchanged.
 

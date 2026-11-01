@@ -1,5 +1,5 @@
 /**
- * preserved-command.ts — `/subagents-worktrees`, the on-demand view of the
+ * preserved-command.ts — `/subagent:worktrees`, the on-demand view of the
  * rescue worktrees a failed cleanup left behind.
  *
  * The startup notice reports them once; this command lists them at any time and
@@ -20,12 +20,12 @@ export interface PreservedCommandDeps {
   discard: (path: string) => void;
 }
 
-/** Register `/subagents-worktrees`. */
+/** Register `/subagent:worktrees`. */
 export function registerPreservedWorktreesCommand(
   pi: ExtensionAPI,
   deps: PreservedCommandDeps,
 ): void {
-  pi.registerCommand("subagents-worktrees", {
+  pi.registerCommand("subagent:worktrees", {
     description:
       "List rescue worktrees preserved by a failed cleanup, and remove one you no longer need",
     handler: async (_args, ctx) => {

@@ -20,7 +20,7 @@ function setup(view?: Partial<ExplorerView>, style: object = theme) {
     notices: [[{ text: "Snapshot" }, { text: " · old", tone: "warning" }]],
     onOpen,
     marker: { label: "unreviewed", clearAction: "mark reviewed", onClear },
-    hints: [{ keys: "/todos:add", action: "add" }],
+    hints: [{ keys: "/todo:add", action: "add" }],
     items: [
       {
         id: "a",
@@ -86,12 +86,12 @@ describe("Explorer", () => {
       "Esc close",
       "Tab view",
       "Ctrl+R mark reviewed",
-      "/todos:add add",
+      "/todo:add add",
       "↑↓ PgUp/PgDn Home/End",
     ])
       expect(wide).toContain(hint);
     // At 80 columns everything still fits across two hint rows.
-    expect(output(explorer)).toContain("/todos:add add");
+    expect(output(explorer)).toContain("/todo:add add");
     expect(output(explorer)).toContain("PgUp/PgDn");
     // Narrow: navigation goes first, actions never drop.
     const narrow = output(explorer, 40);

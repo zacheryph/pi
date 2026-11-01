@@ -52,7 +52,7 @@ export interface ChildSpawningEvent {
 
 /**
  * Extension-defined data a spawn hands its child, keyed by the extension that
- * reads it (pi-todo reads `todos`). The core never interprets it: it checks the
+ * reads it (pi-todo reads `todo`). The core never interprets it: it checks the
  * value is a plain JSON object within `MAX_HANDOFF_BYTES`, copies and deep-freezes
  * it, and forwards it on `session-created`. Each key's owner documents and
  * validates its own shape.

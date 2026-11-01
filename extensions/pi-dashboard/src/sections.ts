@@ -11,7 +11,7 @@ import type {
 // emission cannot bloat or break the hub connection.
 
 /** pi-todo: `src/events.ts`. */
-export const TODO_SNAPSHOT_EVENT = "pi-todo:snapshot";
+export const TODO_SNAPSHOT_EVENT = "todo:snapshot";
 /** pi-stash: `src/events.ts`. */
 export const STASH_SNAPSHOT_EVENT = "stash:snapshot";
 /** pi-stash: synchronous request for the head of one entry on this branch. */

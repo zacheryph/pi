@@ -83,8 +83,8 @@ pi-personal/
 │   │   ├── docs/
 │   │   ├── LICENSE
 │   │   └── UPSTREAM.md
-│   ├── pi-subagents-worktrees/          # vendored
-│   │   ├── src/index.ts                 # worktree WorkspaceProvider + /subagents-worktrees
+│   ├── pi-subagent-worktree/            # vendored
+│   │   ├── src/index.ts                 # worktree WorkspaceProvider + /subagent:worktrees
 │   │   ├── test/
 │   │   └── UPSTREAM.md
 │   ├── pi-system-insights/
@@ -94,7 +94,7 @@ pi-personal/
 │   │   ├── src/index.ts                 # /tldr command + session naming
 │   │   └── test/
 │   └── pi-todo/                         # vendored engine, local UI
-│       ├── src/index.ts                 # todo tool + /todos:* commands
+│       ├── src/index.ts                 # todo_* tools + /todo:* commands
 │       ├── test/
 │       ├── docs/comparison.md           # base-selection report
 │       └── UPSTREAM.md
@@ -145,7 +145,7 @@ pi-blackhole memory counts. **Focus** jumps to the session's cmux panel and
 raises cmux. A filter box and opt-in browser notifications (waiting or
 finished sessions) round out the index. Questions the model asks through
 pi-ask's `ask` can be answered from the page. pi-todo and pi-stash publish their state as
-`pi-todo:snapshot` / `stash:snapshot` events on the session's `pi.events`
+`todo:snapshot` / `stash:snapshot` events on the session's `pi.events`
 bus for this and other extensions.
 
 The first interactive session starts a detached hub; sessions connect to it
@@ -240,13 +240,13 @@ See [upstream README](extensions/pi-subagent/README.md),
 [configuration](extensions/pi-subagent/docs/configuration.md), and
 [provenance/local changes](extensions/pi-subagent/UPSTREAM.md).
 
-### pi-subagents-worktrees
+### pi-subagent-worktree
 
 Runs opted-in subagent types in a temporary git worktree, so parallel
 implementation workers never edit the same checkout. Vendored from
-[`gotgenes/pi-packages`](extensions/pi-subagents-worktrees/UPSTREAM.md). List the
-agent types to isolate in `~/.pi/agent/subagents-worktrees.json` or the project's
-`.pi/subagents-worktrees.json`:
+[`gotgenes/pi-packages`](extensions/pi-subagent-worktree/UPSTREAM.md). List the
+agent types to isolate in `~/.pi/agent/subagent-worktree.json` or the project's
+`.pi/subagent-worktree.json`:
 
 ```json
 { "worktreeAgents": ["general-purpose"] }
@@ -256,10 +256,10 @@ A child that changes nothing leaves no trace. A child with changes has them
 committed to a `pi-agent-<id>` branch, and its result says how to merge it. A
 failed cleanup leaves the worktree on disk instead of deleting work; session
 start warns about such worktrees and about unmerged `pi-agent-` branches, and
-`/subagents-worktrees` lists preserved worktrees and removes one after
+`/subagent:worktrees` lists preserved worktrees and removes one after
 confirmation. Without a config file nothing is isolated. Do not also install
 `npm:@gotgenes/pi-subagents-worktrees`. See the
-[upstream README](extensions/pi-subagents-worktrees/README.md).
+[upstream README](extensions/pi-subagent-worktree/README.md).
 
 ### pi-system-insights
 
@@ -283,9 +283,9 @@ Viewers never load skill instructions or change tools/settings. See
 ### pi-todo
 
 Dependency-aware task tracking built on
-[`@99percentpeople/pi-todo`](extensions/pi-todo/UPSTREAM.md). One atomic `todo`
-tool: additive `upsert` preserves omitted tasks; `replace`, `remove`, and `clear`
-make deletion explicit. Stable keys, cycle checks, optional revision guards, and
+[`@99percentpeople/pi-todo`](extensions/pi-todo/UPSTREAM.md). One tool per
+action: `todo_list` reads, additive `todo_upsert` preserves omitted tasks, and
+`todo_replace`, `todo_remove` and `todo_clear` make deletion explicit. Stable keys, cycle checks, optional revision guards, and
 branch-scoped persistence work with direct and nested codemode calls.
 
 Updates can carry a `message` (completion summary, findings, handoff). It is
@@ -294,13 +294,13 @@ subagent or tool output. The widget counts unreviewed messages, shows excerpts, 
 puts those tasks first.
 
 Above-editor widget and browser use the shared [pi-ui](packages/pi-ui/README.md)
-widget and explorer. `/todos` or `/todos:list` opens a searchable browser with All,
-Unreviewed and Recent views plus per-task activity timelines. `/todos:review` opens
-unreviewed messages. Commands: `/todos:add`, `/todos:update`, `/todos:remove`,
-`/todos:clear`, `/todos:settings`.
-Settings layer global `todos.json` with project `.pi/todos.json`.
+widget and explorer. `/todo` opens a searchable browser with All,
+Unreviewed and Recent views plus per-task activity timelines. `/todo:review` opens
+unreviewed messages. Commands: `/todo:add`, `/todo:update`, `/todo:remove`,
+`/todo:clear`, `/todo:settings`.
+Settings layer global `todo.json` with project `.pi/todo.json`.
 
-A parent hands tasks to a subagent with `handoff: { todos: { keys } }` on its
+A parent hands tasks to a subagent with `handoff: { todo: { keys } }` on its
 `subagent_start` call. The spawn is blocked if a key is unknown, completed or already
 handed out. The subagent then sees and updates only those tasks, directly in the
 parent's list (shown as `→ agent a3f2b1c4`). The claim is released when the agent ends.
@@ -451,4 +451,4 @@ To copy a third-party extension into the repository, use the
 Vendored subagents code retains its upstream [MIT license](extensions/pi-subagent/LICENSE).
 Vendored todo engine retains its upstream [MIT license](extensions/pi-todo/LICENSE).
 Vendored jobs code retains its upstream [MIT license](extensions/pi-job/LICENSE).
-Vendored worktrees code retains its upstream [MIT license](extensions/pi-subagents-worktrees/LICENSE).
+Vendored worktrees code retains its upstream [MIT license](extensions/pi-subagent-worktree/LICENSE).

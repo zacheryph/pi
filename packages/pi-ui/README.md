@@ -94,7 +94,7 @@ await showExplorer(ctx, {
   noun: ["task", "tasks"],
   notices: [["Read-only snapshot", { text: " · store over size cap", tone: "warning" }]],
   marker: { label: "unreviewed", clearAction: "mark reviewed", onClear: (ids) => review(ids) },
-  hints: [{ keys: "/todos:add" }, { keys: "/todos:clear" }],
+  hints: [{ keys: "/todo:add" }, { keys: "/todo:clear" }],
   items: [
     {
       id: "t1",

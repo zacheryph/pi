@@ -3,8 +3,8 @@
  *
  * Worktrees are opt-in by agent type: an agent runs in a worktree only when its
  * type appears in `worktreeAgents`. Config is read from a global file
- * (`<agentDir>/subagents-worktrees.json`) merged under a project file
- * (`<cwd>/.pi/subagents-worktrees.json`, which overrides global).
+ * (`<agentDir>/subagent:worktrees.json`) merged under a project file
+ * (`<cwd>/.pi/subagent:worktrees.json`, which overrides global).
  * Missing files are silent; a malformed file warns and falls back to empty.
  *
  * Consumes the shared `loadLayeredSettings` helper from
@@ -18,7 +18,7 @@ export interface WorktreesConfig {
   worktreeAgents: string[];
 }
 
-const CONFIG_FILENAME = "subagents-worktrees.json";
+const CONFIG_FILENAME = "subagent-worktree.json";
 
 /** Drop fields that don't match the expected shape. Silent — garbage becomes absent. */
 function sanitize(raw: unknown): Partial<WorktreesConfig> {
@@ -38,7 +38,7 @@ export function loadWorktreesConfig(agentDir: string, cwd: string): WorktreesCon
     cwd,
     filename: CONFIG_FILENAME,
     sanitize,
-    warnLabel: "pi-subagents-worktrees",
+    warnLabel: "pi-subagent-worktree",
   });
   return { worktreeAgents: merged.worktreeAgents ?? [] };
 }

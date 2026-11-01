@@ -77,19 +77,15 @@ export function registerTodoCommands(pi: ExtensionAPI, controller: TodoControlle
   };
   const list = async (_args: string, ctx: ExtensionCommandContext) => {
     if (!ctx.hasUI || ctx.mode !== "tui") {
-      ctx.ui.notify(
-        "Task browser requires TUI mode. Use todo(action: list) in other modes.",
-        "warning",
-      );
+      ctx.ui.notify("Task browser requires TUI mode. Use todo_list in other modes.", "warning");
       return;
     }
     await browse(ctx, "all");
   };
-  register("todos", "Browse session tasks (alias for /todos:list)", list);
-  register("todos:list", "Browse/search session tasks and dependency details", list);
+  register("todo", "Browse/search session tasks and dependency details", list);
   register(
-    "todos:review",
-    "Review task messages: /todos:review [all|<key> ...]; viewing marks reviewed",
+    "todo:review",
+    "Review task messages: /todo:review [all|<key> ...]; viewing marks reviewed",
     async (args, ctx) => {
       const state = controller.state(),
         activity = controller.activity(),
@@ -137,8 +133,8 @@ export function registerTodoCommands(pi: ExtensionAPI, controller: TodoControlle
     },
   );
   register(
-    "todos:add",
-    "Append a task: /todos:add <subject> (never starts agent)",
+    "todo:add",
+    "Append a task: /todo:add <subject> (never starts agent)",
     async (args, ctx) => {
       const session = ctx.sessionManager.getSessionId();
       const branch = controller.branchToken();
@@ -151,13 +147,13 @@ export function registerTodoCommands(pi: ExtensionAPI, controller: TodoControlle
     },
   );
   register(
-    "todos:update",
-    "Edit task: /todos:update <key> <status> [message] | <key> <JSON patch>",
+    "todo:update",
+    "Edit task: /todo:update <key> <status> [message] | <key> <JSON patch>",
     (args, ctx) => {
       const match = /^(\S+)\s+([\s\S]+)$/.exec(args);
       if (!match)
         throw new Error(
-          "Usage: /todos:update <key> <pending|in_progress|completed> [message] | <key> <JSON patch>",
+          "Usage: /todo:update <key> <pending|in_progress|completed> [message] | <key> <JSON patch>",
         );
       const [, key, value] = match;
       if (!controller.state().tasks.some((task) => task.key === key))
@@ -202,24 +198,24 @@ export function registerTodoCommands(pi: ExtensionAPI, controller: TodoControlle
     },
   );
   register(
-    "todos:remove",
-    "Remove tasks: /todos:remove <key> [key ...]; refuses dangling dependencies",
+    "todo:remove",
+    "Remove tasks: /todo:remove <key> [key ...]; refuses dangling dependencies",
     (args, ctx) => {
-      if (!args) throw new Error("Usage: /todos:remove <key> [key ...]");
+      if (!args) throw new Error("Usage: /todo:remove <key> [key ...]");
       controller.mutate({ action: "remove", keys: args.split(/\s+/) }, ctx);
       ctx.ui.notify("Removed tasks. Agent sees change on its next request.", "info");
     },
   );
   register(
-    "todos:clear",
-    "Clear tasks: /todos:clear [all|completed] [--yes]; completed keeps needed blockers",
+    "todo:clear",
+    "Clear tasks: /todo:clear [all|completed] [--yes]; completed keeps needed blockers",
     async (args, ctx) => {
       const parts = args ? args.split(/\s+/) : [];
       if (
         parts.some((part) => !["all", "completed", "--yes"].includes(part)) ||
         (parts.includes("all") && parts.includes("completed"))
       )
-        throw new Error("Usage: /todos:clear [all|completed] [--yes]");
+        throw new Error("Usage: /todo:clear [all|completed] [--yes]");
       const scope = parts.includes("completed") ? "completed" : "all";
       const revision = controller.state().revision;
       const session = ctx.sessionManager.getSessionId();
@@ -229,7 +225,7 @@ export function registerTodoCommands(pi: ExtensionAPI, controller: TodoControlle
         return;
       }
       if (scope === "all" && controller.config().confirmClear && !parts.includes("--yes")) {
-        if (!ctx.hasUI) throw new Error("Use /todos:clear all --yes without UI");
+        if (!ctx.hasUI) throw new Error("Use /todo:clear all --yes without UI");
         if (
           !(await ctx.ui.confirm(
             "Clear task list?",
@@ -249,11 +245,11 @@ export function registerTodoCommands(pi: ExtensionAPI, controller: TodoControlle
     },
   );
   register(
-    "todos:settings",
+    "todo:settings",
     "Configure task display and policies (project overrides global defaults)",
     async (_args, ctx) => {
       if (!ctx.hasUI) {
-        ctx.ui.notify("Task settings require UI. Edit .pi/todos.json instead.", "warning");
+        ctx.ui.notify("Task settings require UI. Edit .pi/todo.json instead.", "warning");
         return;
       }
       const config = controller.config();

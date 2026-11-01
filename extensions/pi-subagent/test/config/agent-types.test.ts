@@ -337,7 +337,17 @@ describe("AgentTypeRegistry", () => {
         displayName: "Orchestrator",
         isDefault: true,
         promptMode: "replace",
-        toolNames: ["all", "todo", "subagent_start", "subagent_get", "subagent_steer"],
+        toolNames: [
+          "all",
+          "todo_list",
+          "todo_upsert",
+          "todo_replace",
+          "todo_remove",
+          "todo_clear",
+          "subagent_start",
+          "subagent_get",
+          "subagent_steer",
+        ],
       });
     });
 
