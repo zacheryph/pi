@@ -80,8 +80,8 @@ pi-personal/
 │   │   ├── docs/
 │   │   ├── LICENSE
 │   │   └── UPSTREAM.md
-│   ├── pi-subagents-worktrees/          # vendored
-│   │   ├── src/index.ts                 # worktree WorkspaceProvider + /subagents-worktrees
+│   ├── pi-subagent-worktree/            # vendored
+│   │   ├── src/index.ts                 # worktree WorkspaceProvider + /subagent:worktrees
 │   │   ├── test/
 │   │   └── UPSTREAM.md
 │   ├── pi-system-insights/
@@ -224,13 +224,13 @@ See [upstream README](extensions/pi-subagent/README.md),
 [configuration](extensions/pi-subagent/docs/configuration.md), and
 [provenance/local changes](extensions/pi-subagent/UPSTREAM.md).
 
-### pi-subagents-worktrees
+### pi-subagent-worktree
 
 Runs opted-in subagent types in a temporary git worktree, so parallel
 implementation workers never edit the same checkout. Vendored from
-[`gotgenes/pi-packages`](extensions/pi-subagents-worktrees/UPSTREAM.md). List the
-agent types to isolate in `~/.pi/agent/subagents-worktrees.json` or the project's
-`.pi/subagents-worktrees.json`:
+[`gotgenes/pi-packages`](extensions/pi-subagent-worktree/UPSTREAM.md). List the
+agent types to isolate in `~/.pi/agent/subagent-worktree.json` or the project's
+`.pi/subagent-worktree.json`:
 
 ```json
 { "worktreeAgents": ["general-purpose"] }
@@ -240,10 +240,10 @@ A child that changes nothing leaves no trace. A child with changes has them
 committed to a `pi-agent-<id>` branch, and its result says how to merge it. A
 failed cleanup leaves the worktree on disk instead of deleting work; session
 start warns about such worktrees and about unmerged `pi-agent-` branches, and
-`/subagents-worktrees` lists preserved worktrees and removes one after
+`/subagent:worktrees` lists preserved worktrees and removes one after
 confirmation. Without a config file nothing is isolated. Do not also install
 `npm:@gotgenes/pi-subagents-worktrees`. See the
-[upstream README](extensions/pi-subagents-worktrees/README.md).
+[upstream README](extensions/pi-subagent-worktree/README.md).
 
 ### pi-system-insights
 
@@ -435,4 +435,4 @@ To copy a third-party extension into the repository, use the
 Vendored subagents code retains its upstream [MIT license](extensions/pi-subagent/LICENSE).
 Vendored todo engine retains its upstream [MIT license](extensions/pi-todo/LICENSE).
 Vendored jobs code retains its upstream [MIT license](extensions/pi-jobs/LICENSE).
-Vendored worktrees code retains its upstream [MIT license](extensions/pi-subagents-worktrees/LICENSE).
+Vendored worktrees code retains its upstream [MIT license](extensions/pi-subagent-worktree/LICENSE).

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadWorktreesConfig } from "#src/config";
 
-const FILENAME = "subagents-worktrees.json";
+const FILENAME = "subagent-worktree.json";
 
 describe("loadWorktreesConfig", () => {
   let agentDir: string;

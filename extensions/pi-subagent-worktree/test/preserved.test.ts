@@ -126,7 +126,7 @@ describe("formatPreservedNotice", () => {
       "1 rescue worktree from a failed cleanup is still on disk:\n" +
         "  /tmp/pi-agent-abc123-1f2e9c04\n" +
         "They hold subagent work that was never merged, and the temp directory is cleared periodically.\n" +
-        "Run /subagents-worktrees to inspect or remove them.",
+        "Run /subagent:worktrees to inspect or remove them.",
     );
   });
 

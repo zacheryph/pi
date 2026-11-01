@@ -688,7 +688,7 @@ These policy and environment concerns were removed so the core stays narrow; eac
 In the target state, pi-subagent publishes events and a provider seam; other packages hook in:
 
 - **pi-permission-system** (observational) subscribes to child-session lifecycle events, detects subagent execution context in the child, and gates tool calls at runtime.
-- **pi-subagents-worktrees** (generative) registers a `WorkspaceProvider` that prepares a git worktree at run-start and tears it down after, supplying the child's cwd.
+- **pi-subagent-worktree** (generative) registers a `WorkspaceProvider` that prepares a git worktree at run-start and tears it down after, supplying the child's cwd.
 - **pi-subagent-ui** (future, under reconsideration — see the [first-principles refinement](#first-principles-refinement-and-the-deeper-target)) subscribes to the broadcast and the query/behavior interfaces; the conversation viewer and `/agents` menu were removed in Phase 19 per [ADR-0004]; the surviving UI (widget, session navigator, settings command) stays in-core.
 - **Any future extension** (OTel, auditing, cost tracking) subscribes to the same events without pi-subagent knowing.
 
