@@ -20,7 +20,7 @@ pi-subagents runs every subagent as a full in-process Pi session:
 | Extension module scope          | sometimes shared: Pi 1.4.0 caches an extension's module per cwd until a reload, so a same-cwd child may reuse the parent's module and a worktree child does not |
 | `globalThis`                    | the whole process                                                                                                                                               |
 
-So the registry lives at `globalThis[Symbol.for("pi-personal.session-tree.v1")]`.
+So the registry lives at `globalThis[Symbol.for("session-tree:registry")]`.
 A value of another shape under that key is replaced, not trusted.
 
 ## Links

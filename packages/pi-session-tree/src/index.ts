@@ -14,7 +14,7 @@
  * parent link.
  */
 
-export const SESSION_TREE_KEY = Symbol.for("pi-personal.session-tree.v1");
+export const SESSION_TREE_KEY = Symbol.for("session-tree:registry");
 export const SESSION_TREE_VERSION = 1;
 
 /** pi-subagents lifecycle channels this registry follows (on the parent's bus). */
