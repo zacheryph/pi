@@ -8,10 +8,10 @@
  * Missing files are silent; a malformed file warns and falls back to empty.
  *
  * Consumes the shared `loadLayeredSettings` helper from
- * `@gotgenes/pi-subagents/settings` (requires >=16.4.0).
+ * the repository-local `pi-foundations` package.
  */
 
-import { loadLayeredSettings } from "../../pi-subagents/src/layered-settings.ts";
+import { loadLayeredSettings } from "../../../packages/pi-foundations/src/settings.ts";
 
 export interface WorktreesConfig {
   /** Agent-type names that run in a git worktree. Empty → no children isolated. */

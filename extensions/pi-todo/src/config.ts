@@ -1,5 +1,8 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import {
+  loadLayeredSettings,
+  patchSettingsFile,
+} from "../../../packages/pi-foundations/src/settings.ts";
+import { join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { sanitizeTodoText } from "./ui/text.ts";
 
@@ -50,46 +53,27 @@ export function sanitizeConfig(raw: unknown): Partial<TodoConfig> {
   return config;
 }
 
-function readLayer(path: string): Partial<TodoConfig> {
-  try {
-    return sanitizeConfig(JSON.parse(readFileSync(path, "utf8")));
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-      console.warn(
-        sanitizeTodoText(
-          `[pi-todo] Ignoring settings at ${path}: ${error instanceof Error ? error.message : String(error)}`,
-        ),
-      );
-    }
-    return {};
-  }
-}
-
 /** Same layering as subagents, without requiring its package to be installed. */
 export function loadTodoConfig(cwd: string, agentDir = getAgentDir()): TodoConfig {
   return {
     ...DEFAULT_CONFIG,
-    ...readLayer(join(agentDir, CONFIG_FILE)),
-    ...readLayer(join(cwd, ".pi", CONFIG_FILE)),
+    ...loadLayeredSettings<TodoConfig>({
+      agentDir,
+      cwd,
+      filename: CONFIG_FILE,
+      sanitize: sanitizeConfig,
+      warnLabel: "pi-todo",
+      onError: (path, error) =>
+        console.warn(
+          sanitizeTodoText(
+            `[pi-todo] Ignoring settings at ${path}: ${error instanceof Error ? error.message : String(error)}`,
+          ),
+        ),
+    }),
   };
 }
 
 export function saveTodoConfig(cwd: string, patch: Partial<TodoConfig>): void {
   const path = join(cwd, ".pi", CONFIG_FILE);
-  // Do not silently destroy malformed project settings on write.
-  let existing: Record<string, unknown> = {};
-  try {
-    const value: unknown = JSON.parse(readFileSync(path, "utf8"));
-    if (!value || typeof value !== "object" || Array.isArray(value))
-      throw new Error("Settings must be a JSON object");
-    existing = value as Record<string, unknown>;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-  }
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(
-    path,
-    `${JSON.stringify({ ...existing, ...sanitizeConfig(patch) }, null, 2)}\n`,
-    "utf8",
-  );
+  patchSettingsFile(path, sanitizeConfig(patch));
 }

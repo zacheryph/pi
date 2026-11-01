@@ -2,9 +2,12 @@
 // - Global:  ~/.pi/agent/subagents.json (agentDir injected at construction) — manual defaults, never written here
 // - Project: <cwd>/.pi/subagents.json — written by /agents → Settings; overrides global on load
 
-import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { type LayeredSettingsSource, loadLayeredSettings } from "#src/layered-settings";
+import { join } from "node:path";
+import {
+  type LayeredSettingsSource,
+  loadLayeredSettings,
+  writeSettingsFile,
+} from "../../../packages/pi-foundations/src/settings.ts";
 import { isBelowMinimumTurns, MIN_MAX_TURNS } from "#src/lifecycle/turn-limits";
 import type { PromptInheritance } from "#src/types";
 
@@ -545,8 +548,7 @@ export function loadSettings(agentDir: string, cwd: string): SubagentsSettings {
 export function saveSettings(s: SubagentsSettings, cwd: string = process.cwd()): boolean {
   const path = projectPath(cwd);
   try {
-    mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, JSON.stringify(s, null, 2), "utf-8");
+    writeSettingsFile(path, s);
     return true;
   } catch {
     return false;
