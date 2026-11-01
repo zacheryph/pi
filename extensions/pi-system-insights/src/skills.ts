@@ -7,7 +7,8 @@ import {
   type Skill,
   type ToolResultEvent,
 } from "@earendil-works/pi-coding-agent";
-import { detailFields, sourceSummary } from "./detail-format.js";
+import type { Block } from "../../../packages/pi-ui/src/index.ts";
+import { sourceSummary } from "./detail-format.js";
 import type { InsightView } from "./types.js";
 
 /** Branch-local successful read evidence only; never skill contents. */
@@ -183,9 +184,10 @@ export function buildSkillsView(
     title: "Skills",
     note: "Observed loading; no skill files opened. Retention unverified.",
     legend: [
-      { label: "[loaded]", color: "success", meaning: "fresh observation" },
-      { label: "[loaded]", color: "dim", meaning: "unobserved/dirty" },
+      { label: "[loaded]", tone: "success", meaning: "fresh observation" },
+      { label: "[loaded]", tone: "dim", meaning: "unobserved/dirty" },
     ],
+    noun: ["skill", "skills"],
     items: [...skills]
       .sort((left, right) => left.name.localeCompare(right.name))
       .map((skill) => {
@@ -195,8 +197,6 @@ export function buildSkillsView(
           ? `loaded${dirty ? " · dirty" : ""}${observation.partial ? " · partial" : ""}`
           : "not observed";
         const fields: [string, string][] = [
-          ["Name", skill.name],
-          ["Description", skill.description],
           ["Path", skill.filePath],
           ["Source", sourceSummary(skill.sourceInfo, false)],
           ["Invocation", skill.disableModelInvocation ? "command-only" : "auto"],
@@ -206,20 +206,25 @@ export function buildSkillsView(
           ],
         ];
         if (observation) fields.push(["Loading", status]);
-        const detail = detailFields(fields);
+        const detail: Block[] = [{ fields }];
         if (observation?.partial)
-          detail.push("Partial read: explicit offset/limit; full-file load not inferred.");
+          detail.push({
+            text: "Partial read: explicit offset/limit; full-file load not inferred.",
+            tone: "warning",
+          });
         if (dirty)
-          detail.push(
-            `Pre-${boundaryKind} evidence; instructions may no longer remain in context.`,
-          );
+          detail.push({
+            text: `Pre-${boundaryKind} evidence; instructions may no longer remain in context.`,
+            tone: "warning",
+          });
+        detail.push({ heading: "Description" }, { text: skill.description || "(none)" });
         return {
           id: skill.filePath,
           label: skill.name,
           description: skill.description,
           status: `${status}${skill.disableModelInvocation ? " · command-only" : ""}`,
-          badge: { label: "[loaded]", color: observation && !dirty ? "success" : "dim" },
-          detail: detail.join("\n"),
+          badge: { text: "[loaded]", tone: observation && !dirty ? "success" : "dim" },
+          detail,
         };
       }),
   };

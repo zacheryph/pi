@@ -9,6 +9,7 @@ import type {
   ToolResultMessage,
   UserMessage,
 } from "@earendil-works/pi-ai";
+import { detailText, field, section } from "#test/helpers";
 import { SessionManager, type SessionEntry, type Skill } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -131,7 +132,7 @@ describe("path normalization and live read evidence", () => {
       skill("sample", actual),
     );
     expect(view.status).toBe("loaded");
-    expect(view.detail).not.toContain("SECRET");
+    expect(detailText(view.detail)).not.toContain("SECRET");
   });
 
   it.each([{ path: "skills/sample/SKILL.md" }, { path: file, offset: null, limit: null }])(
@@ -170,19 +171,19 @@ describe("discovered skill metadata", () => {
     expect(view.items?.map((row) => row.label)).toEqual(["a-first", "z-last"]);
     const first = view.items![0]!;
     expect(first.status).toBe("not observed · command-only");
-    expect(first.detail).toContain("Description: Description a-first");
-    expect(first.detail).toContain("Path:        /missing.md");
-    expect(first.detail).toContain("Source:      project");
-    expect(first.detail).toContain("Invocation:  command-only");
-    expect(first.detail).not.toContain('"source":');
-    expect(first.detail).toContain("not proof of being unloaded");
-    expect(first.detail.split("\n")[0]).toBe("Name:        a-first");
+    expect(section(first.detail, "Description")).toBe("Description a-first");
+    expect(field(first.detail, "Path")).toBe("/missing.md");
+    expect(field(first.detail, "Source")).toBe("project");
+    expect(field(first.detail, "Invocation")).toBe("command-only");
+    expect(detailText(first.detail)).not.toContain('"source":');
+    expect(field(first.detail, "Evidence")).toContain("not proof of being unloaded");
+    expect(detailText(first.detail).split("\n")[0]).toBe("Path        /missing.md");
     expect(first.description).toBe("Description a-first");
-    expect(first.badge).toEqual({ label: "[loaded]", color: "dim" });
+    expect(first.badge).toEqual({ text: "[loaded]", tone: "dim" });
     expect(view.note).toContain("no skill files opened");
     expect(view.legend).toEqual([
-      { label: "[loaded]", color: "success", meaning: "fresh observation" },
-      { label: "[loaded]", color: "dim", meaning: "unobserved/dirty" },
+      { label: "[loaded]", tone: "success", meaning: "fresh observation" },
+      { label: "[loaded]", tone: "dim", meaning: "unobserved/dirty" },
     ]);
     expect(buildSkillsView([], [], cwd).items).toEqual([]);
   });
@@ -193,19 +194,17 @@ describe("detail presentation", () => {
     const discovered = { ...skill(), description: "First line\nSecond line\r\nThird line" };
     const snapshot = structuredClone(discovered);
     const row = item([], discovered);
-    expect(row.detail).toContain(
-      "Description: First line\n             Second line\n             Third line",
-    );
-    expect(row.detail).toContain("Invocation:  auto");
-    expect(row.detail).not.toContain("Loading:");
-    expect(row.detail.match(/\/project\/skills\/sample\/SKILL.md/g)).toHaveLength(1);
+    expect(detailText(row.detail)).toContain("Description\nFirst line\nSecond line\nThird line");
+    expect(field(row.detail, "Invocation")).toBe("auto");
+    expect(field(row.detail, "Loading")).toBeUndefined();
+    expect(detailText(row.detail).match(/\/project\/skills\/sample\/SKILL.md/g)).toHaveLength(1);
     expect(row.description).toBe(discovered.description);
     expect(discovered).toEqual(snapshot);
   });
 
   it("shows missing source without a raw JSON dump", () => {
     const discovered = { ...skill(), sourceInfo: undefined } as unknown as Skill;
-    expect(item([], discovered).detail).toContain("Source:      (not available)");
+    expect(field(item([], discovered).detail, "Source")).toBe("(not available)");
   });
 
   it("uses identical loaded badge label with fresh/dim colors independently of status", () => {
@@ -217,9 +216,11 @@ describe("detail presentation", () => {
       [[marker(file, true), compaction()], "dim"],
       [[marker(), compaction(), marker()], "success"],
     ] as const)
-      expect(item(entries).badge).toEqual({ label: "[loaded]", color });
-    expect(item([marker(), compaction()]).detail).toContain("Loading:     loaded · dirty");
-    expect(item([marker(), compaction()]).detail.match(/Pre-compaction/g)).toHaveLength(1);
+      expect(item(entries).badge).toEqual({ text: "[loaded]", tone: color });
+    expect(field(item([marker(), compaction()]).detail, "Loading")).toBe("loaded · dirty");
+    expect(detailText(item([marker(), compaction()]).detail).match(/Pre-compaction/g)).toHaveLength(
+      1,
+    );
   });
 });
 
@@ -256,9 +257,9 @@ describe("branch evidence", () => {
       message(result("partial")),
     ]);
     expect(row.status).toBe("loaded · partial");
-    expect(row.detail).toContain("Partial read: explicit offset/limit");
-    expect(row.badge).toEqual({ label: "[loaded]", color: "success" });
-    expect(row.detail).not.toContain("SECRET SKILL CONTENT");
+    expect(detailText(row.detail)).toContain("Partial read: explicit offset/limit");
+    expect(row.badge).toEqual({ text: "[loaded]", tone: "success" });
+    expect(detailText(row.detail)).not.toContain("SECRET SKILL CONTENT");
   });
 
   it("reads expanded user blocks through Pi parser, including text-array content and command-only skills", () => {
@@ -268,8 +269,8 @@ describe("branch evidence", () => {
     );
     const row = item([message(user([{ type: "text", text: block }]))]);
     expect(row.status).toBe("loaded");
-    expect(row.detail).toContain("expanded user skill block");
-    expect(row.detail).not.toContain("SECRET EXPANDED CONTENT");
+    expect(detailText(row.detail)).toContain("expanded user skill block");
+    expect(detailText(row.detail)).not.toContain("SECRET EXPANDED CONTENT");
     expect(item([message(user(block.replace('name="sample"', 'name="other"')))]).status).toBe(
       "not observed",
     );
@@ -301,7 +302,7 @@ describe("branch evidence", () => {
       message(result("parent", true, "codemode", [nested()])),
     ]);
     expect(row.status).toBe("loaded");
-    expect(row.detail).toContain("successful nested read");
+    expect(detailText(row.detail)).toContain("successful nested read");
     expect(
       item([
         message(
@@ -368,7 +369,7 @@ describe("compaction and ordering", () => {
   it("marks any later compaction dirty, even if evidence may be retained", () => {
     const row = item([...loaded(), compaction()]);
     expect(row.status).toBe("loaded · dirty");
-    expect(row.detail).toContain(
+    expect(detailText(row.detail)).toContain(
       "Pre-compaction evidence; instructions may no longer remain in context",
     );
     expect(item([compaction(), ...loaded()]).status).toBe("loaded");
@@ -411,7 +412,9 @@ describe("compaction and ordering", () => {
       fromId: "abandoned",
     };
     expect(item([...loaded(), summary]).status).toBe("loaded · dirty");
-    expect(item([...loaded(), summary]).detail).toContain("Pre-branch summary evidence");
+    expect(detailText(item([...loaded(), summary]).detail)).toContain(
+      "Pre-branch summary evidence",
+    );
     expect(item([summary]).status).toBe("not observed");
   });
 

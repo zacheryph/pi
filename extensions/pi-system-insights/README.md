@@ -13,20 +13,21 @@ settings changes, external editor, or skill-file loading.
   Enter shows description, path, source, and loading evidence—not instruction
   contents. Opening this viewer never marks a skill loaded.
 
-Fullscreen uses a focused, centered overlay at 80% terminal width and height.
-Views have a centered title, rounded border, one-cell inner/outer padding, and
-contextual footer help. On tiny terminals, chrome/padding shrink to fit. Tool and
-skill indexes show names/status only; descriptions remain searchable and appear
-in details. Fields align their labels and values; skills have right-aligned
-`[loaded]` badges and a color legend in both list and detail views.
+Views use the bundle's shared `packages/pi-ui` explorer and detail view: a
+focused, centered overlay at 80% terminal width and height with a centered title,
+rounded border, padded rows and prioritized footer hints. Tool and skill indexes
+show names with a right-aligned status (tools) or `[loaded]` badge (skills);
+descriptions remain searchable and appear in details. The note and the `[loaded]`
+color legend are shown above the list and the detail. Details open with the name
+and badge, then aligned fields and sections (description, input schema, snippets,
+guidelines).
 
-Regular mode uses a bounded custom screen instead: Pi 1.1.0 overlays can leave
-fragments in terminal scrollback. RPC, print, and JSON modes do not open viewers.
+Fullscreen TUI only: RPC, print, JSON and Pi's regular renderer do not open viewers.
 
 Use ↑/↓ to navigate, Enter to inspect, Esc to return to the list, then Esc to
 close. Type to filter lists; Esc clears an active filter before closing. Ctrl+C
-closes from any view. PageUp/PageDown and Home/End scroll text or navigate lists;
-Pi fullscreen paging remaps are honored. Fullscreen mouse wheel scrolls too.
+closes from any view. PgUp/PgDn and Home/End scroll text or navigate lists; Pi
+alternate-screen paging remaps are honored. The mouse wheel scrolls too.
 Views are snapshots taken when each command opens; reopen to refresh.
 
 ## What the labels mean
@@ -64,7 +65,7 @@ A successful nested read does not prove its caller forwarded the instructions.
 A compaction or branch summary after the latest observed load marks that skill
 **dirty**: instructions may have been summarized away. A later read/invocation
 clears that state. Green `[loaded]` means fresh observed loading after the latest
-boundary; grey `[loaded]` means not observed or dirty. Footer explains both colors.
+boundary; grey `[loaded]` means not observed or dirty. A legend explains both colors.
 Neither color guarantees the instructions remain in model context.
 “Not observed” is not proof a skill was never loaded: shell reads, custom tools,
 and old incomplete history may leave no recognizable evidence. Flags describe

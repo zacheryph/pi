@@ -1,6 +1,7 @@
 import type { Tool } from "@earendil-works/pi-ai";
 import type { BuildSystemPromptOptions, ToolInfo } from "@earendil-works/pi-coding-agent";
-import { detailFields, sourceSummary } from "./detail-format.js";
+import type { Block } from "../../../packages/pi-ui/src/index.ts";
+import { sourceSummary } from "./detail-format.js";
 import type { InsightView } from "./types.js";
 
 export { buildSkillsView } from "./skills.js";
@@ -114,6 +115,7 @@ export function buildToolsView(
   return {
     title: "Tools",
     note: "Recorded declarations may lag; indirect access needs an orchestrator.",
+    noun: ["tool", "tools"],
     items: tools
       .filter(
         (tool) =>
@@ -134,7 +136,6 @@ export function buildToolsView(
         const historical = recorded.get(tool.name);
         const primary = historical ?? tool;
         const fields: [string, string][] = [
-          ["Name", tool.name],
           ["Access", `${declaration}; callable: ${callable ? "yes" : "no (model-only)"}`],
           ["Exposure", tool.exposure],
           [
@@ -149,13 +150,17 @@ export function buildToolsView(
             "Namespace",
             `${tool.namespace.name}${tool.namespace.description ? ` — ${tool.namespace.description}` : ""}`,
           ]);
-        fields.push(
-          ["Source", sourceSummary(tool.sourceInfo)],
-          ["Description", primary.description],
-        );
-        const detail = [...detailFields(fields), "", "Input schema:", json(primary.parameters)];
+        fields.push(["Source", sourceSummary(tool.sourceInfo)]);
+        const detail: Block[] = [
+          { fields },
+          { heading: "Description" },
+          { text: primary.description || "(none)" },
+          { heading: "Input schema" },
+          { lines: json(primary.parameters).split("\n") },
+        ];
         const snippet = options.toolSnippets?.[tool.name];
-        if (snippet) detail.push("", "Tool snippet (construction metadata):", snippet);
+        if (snippet)
+          detail.push({ heading: "Tool snippet (construction metadata)" }, { text: snippet });
         const guidelines = new Map<string, Set<string>>();
         for (const [source, rules] of [
           ["Registry", tool.promptGuidelines],
@@ -169,20 +174,23 @@ export function buildToolsView(
             guidelines.set(text, sources);
           }
         }
-        if (guidelines.size) {
-          detail.push("", "Guidelines (construction metadata):");
-          for (const [rule, sources] of guidelines) {
-            detail.push(`- ${[...sources].join(" + ")}: ${rule.replace(/\r\n|\n|\r/g, "\n  ")}`);
-          }
-        }
+        if (guidelines.size)
+          detail.push(
+            { heading: "Guidelines (construction metadata)" },
+            {
+              bullets: [...guidelines].map(
+                ([rule, sources]) => `${[...sources].join(" + ")}: ${rule}`,
+              ),
+            },
+          );
         if (tool.namespace?.instructions)
-          detail.push("", "Namespace instructions:", tool.namespace.instructions);
+          detail.push({ heading: "Namespace instructions" }, { text: tool.namespace.instructions });
         return {
           id: tool.name,
           label: tool.name,
           status: `${isActive ? (indirect ? "active · indirect" : "active · directly declared") : "inactive · indirect"} · ${callable ? "callable" : "model-only"}${tool.exposure === "codemode" || tool.exposure === "deferred" ? " · discoverable" : ""}`,
           description: tool.description,
-          detail: detail.join("\n"),
+          detail,
         };
       }),
   };

@@ -130,8 +130,8 @@ describe("system insights commands", () => {
     await h.commands.get("system:tools")!.handler("", h.ctx);
     const view = vi.mocked(showInsightView).mock.calls[0][1];
     expect(view.items).toHaveLength(1);
-    expect(view.items![0].detail).not.toContain("Registry read description");
-    expect(view.items![0].detail).toContain("Rewritten model declaration");
+    expect(JSON.stringify(view.items![0].detail)).not.toContain("Registry read description");
+    expect(JSON.stringify(view.items![0].detail)).toContain("Rewritten model declaration");
     expect(h.getActiveTools).toHaveBeenCalledOnce();
     expect(h.appendEntry).not.toHaveBeenCalled();
   });
@@ -157,7 +157,7 @@ describe("system insights commands", () => {
     const view = vi.mocked(showInsightView).mock.calls[0][1];
     expect(view.items).toHaveLength(1);
     expect(view.items![0].description).toBe(skill.description);
-    expect(view.items![0].detail).toContain(skill.filePath);
+    expect(JSON.stringify(view.items![0].detail)).toContain(skill.filePath);
     expect(h.appendEntry).not.toHaveBeenCalled();
   });
 
@@ -166,8 +166,8 @@ describe("system insights commands", () => {
     const open = () => h.commands.get("system:skills")!.handler("", h.ctx);
     await open();
     expect(vi.mocked(showInsightView).mock.lastCall![1].items![0].badge).toEqual({
-      label: "[loaded]",
-      color: "dim",
+      text: "[loaded]",
+      tone: "dim",
     });
     const marker = h.sessionManager.appendCustomEntry(SKILL_READ_ENTRY, {
       path: source.path,
@@ -175,18 +175,18 @@ describe("system insights commands", () => {
     });
     await open();
     expect(vi.mocked(showInsightView).mock.lastCall![1].items![0].badge).toEqual({
-      label: "[loaded]",
-      color: "success",
+      text: "[loaded]",
+      tone: "success",
     });
     h.sessionManager.appendCompaction("Summary", marker, 100);
     await open();
     expect(vi.mocked(showInsightView).mock.lastCall![1].items![0].badge).toEqual({
-      label: "[loaded]",
-      color: "dim",
+      text: "[loaded]",
+      tone: "dim",
     });
     expect(vi.mocked(showInsightView).mock.lastCall![1].legend).toEqual([
-      { label: "[loaded]", color: "success", meaning: "fresh observation" },
-      { label: "[loaded]", color: "dim", meaning: "unobserved/dirty" },
+      { label: "[loaded]", tone: "success", meaning: "fresh observation" },
+      { label: "[loaded]", tone: "dim", meaning: "unobserved/dirty" },
     ]);
     expect(h.appendEntry).not.toHaveBeenCalled();
   });
