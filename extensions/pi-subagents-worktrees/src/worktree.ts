@@ -7,7 +7,7 @@
  * A worktree is only ever removed once its outcome is certain: when cleanup
  * fails partway, it is left on disk so the agent's work stays recoverable.
  *
- * Lifted from the pi-subagents core (Phase 16 Step 3, ADR 0002): git plumbing is
+ * Lifted from the pi-subagent core (Phase 16 Step 3, ADR 0002): git plumbing is
  * a workspace strategy, not core behavior, and now lives behind the
  * WorkspaceProvider seam in this package.
  */

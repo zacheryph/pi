@@ -28,7 +28,7 @@ export interface StashSnapshotEntry {
   /** `content`, `path:<relative>`, `tool:<name>`, or `handle:<handle>`. */
   source: string;
   versions: number;
-  /** pi-subagents agent id of the session that stored it, when that was a subagent. */
+  /** pi-subagent agent id of the session that stored it, when that was a subagent. */
   agent?: string;
   /** `adopt` when a descendant stored it and it was adopted onto this branch. */
   via?: "adopt";

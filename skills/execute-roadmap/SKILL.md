@@ -81,7 +81,7 @@ A worker finishing is not proof. For every implementation step:
    starting commit to the working tree).
 3. On `Verdict: PASS`: commit (see below), then mark the task `completed` with a
    `message` that names the commit and the reviewer's evidence.
-4. On `Verdict: FAIL`: resume the original worker (`subagent` with `resume` set
+4. On `Verdict: FAIL`: resume the original worker (`subagent_start` with `resume` set
    to its agent ID) with the reviewer's findings, then review again. Allow two
    repair rounds. On `Verdict: BLOCKED`, fix what kept the reviewer from checking
    (a missing service, a check that cannot run) or ask the user. After that,

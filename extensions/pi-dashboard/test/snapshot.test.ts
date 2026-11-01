@@ -3,7 +3,7 @@ import { agentName, buildSnapshot, cleanText, type SnapshotSource } from "#src/s
 
 const profile = (name: unknown) => ({
   type: "custom",
-  customType: "pi-subagents:main-agent-profile",
+  customType: "agent:profile",
   data: { version: 1, profile: { name } },
 });
 

@@ -11,8 +11,8 @@ import type {
   UsageSection,
 } from "./protocol.ts";
 
-/** Written by pi-subagents when a session starts with `--agent`. */
-const MAIN_AGENT_ENTRY = "pi-subagents:main-agent-profile";
+/** Written by pi-subagent when a session starts with `--agent`. */
+const MAIN_AGENT_ENTRY = "agent:profile";
 const MAX_TEXT = 200;
 
 export interface SnapshotSource {

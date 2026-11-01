@@ -2,12 +2,12 @@ import type { TodoState } from "./state.ts";
 
 /**
  * Task delegation to subagents. A parent hands keys to a child through
- * pi-subagents' generic spawn `handoff` under the `todos` key; the claim is
+ * pi-subagent's generic spawn `handoff` under the `todos` key; the claim is
  * journaled here, beside the plan state (like review watermarks), so upstream's
  * state engine stays untouched.
  */
 export const TODO_CLAIMS_TYPE = "pi-personal:todo-claims";
-/** The key pi-todo owns in pi-subagents' spawn `handoff`. */
+/** The key pi-todo owns in pi-subagent's spawn `handoff`. */
 export const HANDOFF_KEY = "todos";
 export const MAX_HANDOFF_TASKS = 50;
 

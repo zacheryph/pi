@@ -24,4 +24,4 @@ Global `~/.pi/agent/tldr.json` with project override `.pi/tldr.json`:
 
 Both model calls run through Pi's registered, authenticated model provider, without changing the main model or injecting summary prompts into the main agent conversation. Normal model usage charges can apply. The model sees a text-only, bounded session snapshot; tool outputs and sensitive context included in the snapshot may be sent to the selected model.
 
-This extension does not modify `pi-subagents`, `pi-system-insights`, or `pi-todo`.
+This extension does not modify `pi-subagent`, `pi-system-insights`, or `pi-todo`.

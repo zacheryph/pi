@@ -1,5 +1,5 @@
 /**
- * workspace-provider.ts — git worktree implementation of the pi-subagents
+ * workspace-provider.ts — git worktree implementation of the pi-subagent
  * WorkspaceProvider seam (ADR 0002, Phase 16 Step 3).
  *
  * The core consults a registered provider for every child run. This provider
@@ -15,7 +15,7 @@ import type {
   WorkspaceDisposeOutcome,
   WorkspacePrepareContext,
   WorkspaceProvider,
-} from "../../pi-subagents/src/service/service.ts";
+} from "../../pi-subagent/src/service/service.ts";
 import type { ActiveWorktrees } from "#src/active-worktrees";
 import type { WorktreesConfig } from "#src/config";
 import { cleanupWorktree, createWorktree, type WorktreeInfo } from "#src/worktree";

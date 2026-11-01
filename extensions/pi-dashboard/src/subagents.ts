@@ -1,15 +1,15 @@
 import type { SubagentsSection, SubagentState } from "./protocol.ts";
 import { clip } from "./sections.ts";
 
-/** pi-subagents lifecycle channels on the session's pi.events bus. */
+/** pi-subagent lifecycle channels on the session's pi.events bus. */
 export const SUBAGENT_CHANNELS = [
-  "subagents:created",
-  "subagents:started",
-  "subagents:resuming",
-  "subagents:update",
-  "subagents:completed",
-  "subagents:failed",
-  "subagents:resumed",
+  "subagent:created",
+  "subagent:started",
+  "subagent:resuming",
+  "subagent:notified",
+  "subagent:completed",
+  "subagent:failed",
+  "subagent:resumed",
 ] as const;
 
 const MAX_AGENTS = 20;
@@ -23,9 +23,9 @@ const TERMINAL: Record<string, SubagentState> = {
 };
 
 /**
- * Follows subagents through pi-subagents' lifecycle events, which arrive on
+ * Follows subagents through pi-subagent's lifecycle events, which arrive on
  * this session's own bus. Events cover this session's agents only, and need no
- * lookup in pi-subagents' process-wide service registry.
+ * lookup in pi-subagent's process-wide service registry.
  * Agents that started before this runtime loaded are not known.
  */
 export class SubagentTracker {
@@ -51,24 +51,24 @@ export class SubagentTracker {
       since: this.now(),
     };
     switch (channel) {
-      case "subagents:created":
+      case "subagent:created":
         if (existing) return false;
         break;
-      case "subagents:started":
-      case "subagents:resuming":
+      case "subagent:started":
+      case "subagent:resuming":
         agent.state = "running";
         delete agent.note;
         break;
-      case "subagents:update": {
+      case "subagent:notified": {
         const note = clip(raw.message, 300);
         if (note) agent.note = note;
         break;
       }
-      case "subagents:completed":
-      case "subagents:failed":
-      case "subagents:resumed": {
+      case "subagent:completed":
+      case "subagent:failed":
+      case "subagent:resumed": {
         agent.state =
-          TERMINAL[String(raw.status)] ?? (channel === "subagents:failed" ? "failed" : "completed");
+          TERMINAL[String(raw.status)] ?? (channel === "subagent:failed" ? "failed" : "completed");
         const error = clip(raw.error, 300);
         if (error) agent.note = error;
         if (typeof raw.durationMs === "number" && Number.isFinite(raw.durationMs))

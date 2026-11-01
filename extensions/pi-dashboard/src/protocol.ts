@@ -172,7 +172,7 @@ export interface SessionSnapshot {
   stash?: StashSection;
   usage?: UsageSection;
   memory?: MemorySection;
-  /** Absent when pi-subagents is not loaded or nothing has run yet. */
+  /** Absent when pi-subagent is not loaded or nothing has run yet. */
   subagents?: SubagentsSection;
   terminal?: TerminalInfo;
   activity?: ActivitySection;

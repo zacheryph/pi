@@ -127,12 +127,12 @@ async function planned(config: Partial<TodoConfig> = {}) {
 
 const handoffCall = (toolCallId: string, todos: unknown) => ({
   type: "tool_call",
-  toolName: "subagent",
+  toolName: "subagent_start",
   toolCallId,
   input: { prompt: "x", description: "x", subagent_type: "general-purpose", handoff: { todos } },
 });
 
-/** What pi-subagents does: veto check, session-created on the parent's bus, then the child starts. */
+/** What pi-subagent does: veto check, session-created on the parent's bus, then the child starts. */
 async function spawn(
   parent: Session,
   todos: { keys: string[]; scope?: string },
@@ -143,7 +143,7 @@ async function spawn(
   const blocked = await parent.emit("tool_call", handoffCall(toolCallId, todos));
   expect(blocked).toBeUndefined();
   const child = session(config);
-  parent.bus.emit("subagents:child:session-created", {
+  parent.bus.emit("subagent:session:created", {
     sessionId: child.id,
     parentSessionId: parent.id,
     agentId,
@@ -214,7 +214,7 @@ describe("handing tasks to a subagent", () => {
     expect(
       await parent.emit("tool_call", {
         type: "tool_call",
-        toolName: "subagent",
+        toolName: "subagent_start",
         toolCallId: "y",
         input: { handoff: { review: 1 } },
       }),
@@ -227,7 +227,7 @@ describe("handing tasks to a subagent", () => {
       await parent.emit("tool_call", handoffCall("call-outer/1", { keys: ["a"] })),
     ).toBeUndefined();
     const child = session();
-    parent.bus.emit("subagents:child:session-created", {
+    parent.bus.emit("subagent:session:created", {
       sessionId: child.id,
       parentSessionId: parent.id,
       agentId: "nested-agent",
@@ -413,7 +413,7 @@ describe("handing tasks to a subagent", () => {
     const child = await spawn(parent, { keys: ["a", "b"] });
     await child.execute({ action: "upsert", tasks: [{ key: "a", status: "in_progress" }] });
 
-    parent.bus.emit("subagents:failed", { id: "a3f2b1c4-0000-0000", status: "error" });
+    parent.bus.emit("subagent:failed", { id: "a3f2b1c4-0000-0000", status: "error" });
 
     const plan = replayTodoSession({ sessionManager: parent.manager });
     expect(plan.claims.size).toBe(0);
@@ -425,7 +425,7 @@ describe("handing tasks to a subagent", () => {
       child.execute({ action: "upsert", tasks: [{ key: "a", status: "completed" }] }),
     ).rejects.toThrow("no tasks are assigned to you any more");
 
-    parent.bus.emit("subagents:resuming", { id: "a3f2b1c4-0000-0000" });
+    parent.bus.emit("subagent:resuming", { id: "a3f2b1c4-0000-0000" });
     await child.execute({ action: "upsert", tasks: [{ key: "a", status: "completed" }] });
     expect((await parent.tasks()).find((task) => task.key === "a")?.status).toBe("completed");
     expect(claimEntries(parent).map((entry) => (entry as { op: string }).op)).toEqual([
@@ -485,7 +485,7 @@ describe("handing tasks to a subagent", () => {
       parent.snapshots.at(-1)?.tasks.find((task) => task.key === "a")?.claimedBy,
     ).toBeUndefined();
     // The release must not make an old agent eligible to reclaim this branch.
-    parent.bus.emit("subagents:resuming", { id: oldAgent });
+    parent.bus.emit("subagent:resuming", { id: oldAgent });
     expect(replayTodoSession({ sessionManager: parent.manager }).claims.size).toBe(0);
     expect(
       await parent.emit("tool_call", handoffCall("after-rewind", { keys: ["a"] })),
@@ -495,7 +495,7 @@ describe("handing tasks to a subagent", () => {
   it("works locally when nothing was handed over, and refuses to hand delegated tasks on", async () => {
     const parent = await planned();
     const plain = session();
-    parent.bus.emit("subagents:child:session-created", {
+    parent.bus.emit("subagent:session:created", {
       sessionId: plain.id,
       parentSessionId: parent.id,
       agentId: "plain-agent",

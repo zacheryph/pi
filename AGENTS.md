@@ -22,6 +22,6 @@ Do not change global Git signing settings.
 ## Skills
 
 Skills in `skills/` ship in the same bundle as every extension in this repository,
-so their tools are always available. Refer to them directly (`todo`, `subagent`,
+so their tools are always available. Refer to them directly (`todo`, `subagent_start`,
 `stash_put`, `job_watch`); do not write "if a subagent tool is available". Keep
 conditional wording only for tools from packages outside this repository.

@@ -1,5 +1,5 @@
 /**
- * pi-subagents-worktrees — git worktree isolation for @gotgenes/pi-subagents.
+ * pi-subagents-worktrees — git worktree isolation for pi-subagent.
  *
  * Registers a WorkspaceProvider (ADR 0002, Phase 16 Step 3) that runs opted-in
  * subagents in a temporary git worktree. The core consults the provider for
@@ -7,13 +7,13 @@
  * worktreeAgents config) and brackets the run with git plumbing.
  *
  * The provider is registered on session_start with that session's own
- * SubagentsService, which the bundled pi-subagents publishes from its own
+ * SubagentsService, which the bundled pi-subagent publishes from its own
  * session_start handler — list this package after it (Pi runs handlers in load
  * order). If the service is absent, children run unisolated.
  */
 
 import { type ExtensionAPI, getAgentDir } from "@earendil-works/pi-coding-agent";
-import { getSubagentsService } from "../../pi-subagents/src/service/service.ts";
+import { getSubagentsService } from "../../pi-subagent/src/service/service.ts";
 import { ActiveWorktrees } from "#src/active-worktrees";
 import { loadWorktreesConfig } from "#src/config";
 import { debugLog } from "#src/debug";
@@ -34,7 +34,7 @@ export default function piSubagentsWorktrees(pi: ExtensionAPI): void {
   const findPreserved = () => findPreservedWorktrees(repoCwd, live);
   let unregister: (() => void) | undefined;
 
-  // Local change: the bundled pi-subagents publishes one service per session on
+  // Local change: the bundled pi-subagent publishes one service per session on
   // session_start, and a child session's lookup without an id returns its
   // parent's. Register with this session's own service, so each session's
   // children are isolated by its own manager.

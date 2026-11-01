@@ -7,7 +7,7 @@ import {
   publishSubagentsService,
   type SubagentsService,
   unpublishSubagentsService,
-} from "../../pi-subagents/src/service/service.ts";
+} from "../../pi-subagent/src/service/service.ts";
 import piSubagentsWorktrees from "#src/index";
 
 type Handler = (event: unknown, ctx: unknown) => void;

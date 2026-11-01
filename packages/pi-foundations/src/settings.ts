@@ -12,7 +12,7 @@ export interface LayeredSettingsSource<T> {
   agentDir: string;
   /** Project root; the project file lives at `<cwd>/.pi/<filename>`. */
   cwd: string;
-  /** Base filename for both layers, e.g. `"subagents.json"`. */
+  /** Base filename for both layers, e.g. `"subagent.json"`. */
   filename: string;
   /**
    * Validate and coerce parsed JSON into a partial settings object.
@@ -22,7 +22,7 @@ export interface LayeredSettingsSource<T> {
   sanitize: (raw: unknown) => Partial<T>;
   /**
    * Short label used in the malformed-file warning prefix,
-   * e.g. `"pi-subagents"` → `"[pi-subagents] Ignoring malformed settings at …"`.
+   * e.g. `"pi-subagent"` → `"[pi-subagent] Ignoring malformed settings at …"`.
    */
   warnLabel: string;
   /** Override error reporting (e.g. terminal-safe warnings). */

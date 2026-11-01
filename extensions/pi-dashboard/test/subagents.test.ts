@@ -7,7 +7,7 @@ describe("SubagentTracker", () => {
     const tracker = new SubagentTracker(() => now);
     expect(tracker.section()).toBeUndefined();
     expect(
-      tracker.apply("subagents:created", {
+      tracker.apply("subagent:created", {
         id: "a",
         type: "Explore",
         description: "Find auth files",
@@ -22,18 +22,18 @@ describe("SubagentTracker", () => {
       since: 100,
     });
     now = 200;
-    tracker.apply("subagents:started", {
+    tracker.apply("subagent:started", {
       id: "a",
       type: "Explore",
       description: "Find auth files",
     });
-    tracker.apply("subagents:update", { id: "a", message: "found 3 call sites" });
+    tracker.apply("subagent:notified", { id: "a", message: "found 3 call sites" });
     expect(tracker.section()?.agents[0]).toMatchObject({
       state: "running",
       note: "found 3 call sites",
       since: 100,
     });
-    tracker.apply("subagents:completed", {
+    tracker.apply("subagent:completed", {
       id: "a",
       status: "completed",
       durationMs: 4200,
@@ -50,37 +50,37 @@ describe("SubagentTracker", () => {
 
   it("maps failures, stops and resumes", () => {
     const tracker = new SubagentTracker(() => 1);
-    tracker.apply("subagents:started", { id: "f", type: "Agent", description: "x" });
-    tracker.apply("subagents:failed", { id: "f", status: "error", error: "model overloaded" });
-    tracker.apply("subagents:started", { id: "s", type: "Agent", description: "y" });
-    tracker.apply("subagents:completed", { id: "s", status: "aborted" });
+    tracker.apply("subagent:started", { id: "f", type: "Agent", description: "x" });
+    tracker.apply("subagent:failed", { id: "f", status: "error", error: "model overloaded" });
+    tracker.apply("subagent:started", { id: "s", type: "Agent", description: "y" });
+    tracker.apply("subagent:completed", { id: "s", status: "aborted" });
     expect(tracker.section()?.agents.map((agent) => [agent.id, agent.state, agent.note])).toEqual([
       ["s", "stopped", undefined],
       ["f", "failed", "model overloaded"],
     ]);
-    tracker.apply("subagents:resuming", { id: "f" });
+    tracker.apply("subagent:resuming", { id: "f" });
     expect(tracker.section()?.agents[0]).toMatchObject({ id: "f", state: "running" });
     expect(tracker.section()?.agents[0]?.note).toBeUndefined();
-    tracker.apply("subagents:resumed", { id: "f", status: "completed" });
+    tracker.apply("subagent:resumed", { id: "f", status: "completed" });
     expect(tracker.section()?.agents[0]?.state).toBe("completed");
   });
 
   it("ignores malformed and unrelated events, and does not re-queue a known agent", () => {
     const tracker = new SubagentTracker(() => 1);
-    expect(tracker.apply("subagents:started", { type: "Agent" })).toBe(false);
-    expect(tracker.apply("subagents:settings_changed", { id: "a" })).toBe(false);
-    expect(tracker.apply("subagents:started", null)).toBe(false);
-    tracker.apply("subagents:started", { id: "a", type: "Agent", description: "x" });
-    expect(tracker.apply("subagents:created", { id: "a" })).toBe(false);
+    expect(tracker.apply("subagent:started", { type: "Agent" })).toBe(false);
+    expect(tracker.apply("subagent:settings:changed", { id: "a" })).toBe(false);
+    expect(tracker.apply("subagent:started", null)).toBe(false);
+    tracker.apply("subagent:started", { id: "a", type: "Agent", description: "x" });
+    expect(tracker.apply("subagent:created", { id: "a" })).toBe(false);
     expect(tracker.section()?.agents[0]?.state).toBe("running");
   });
 
   it("keeps 20 agents, trimming the oldest finished ones before any running one", () => {
     const tracker = new SubagentTracker(() => 1);
-    tracker.apply("subagents:started", { id: "long-runner", type: "Agent", description: "x" });
+    tracker.apply("subagent:started", { id: "long-runner", type: "Agent", description: "x" });
     for (let index = 0; index < 25; index += 1) {
-      tracker.apply("subagents:started", { id: `a${index}`, type: "Agent", description: "x" });
-      tracker.apply("subagents:completed", { id: `a${index}`, status: "completed" });
+      tracker.apply("subagent:started", { id: `a${index}`, type: "Agent", description: "x" });
+      tracker.apply("subagent:completed", { id: `a${index}`, status: "completed" });
     }
     const ids = tracker.section()!.agents.map((agent) => agent.id);
     expect(ids).toHaveLength(20);

@@ -5,7 +5,7 @@
   "workspaces": [
     "extensions/pi-jobs",
     "extensions/pi-stash",
-    "extensions/pi-subagents",
+    "extensions/pi-subagent",
     "extensions/pi-subagents-worktrees",
     "extensions/pi-system-insights",
     "extensions/pi-todo",
@@ -40,7 +40,7 @@
     "extensions": [
       "./extensions/pi-jobs/src/extension.ts",
       "./extensions/pi-stash/src/index.ts",
-      "./extensions/pi-subagents/src/index.ts",
+      "./extensions/pi-subagent/src/index.ts",
       "./extensions/pi-subagents-worktrees/src/index.ts",
       "./extensions/pi-system-insights/src/index.ts",
       "./extensions/pi-todo/src/index.ts",
