@@ -307,11 +307,17 @@ export class DetailView implements Component, Focusable {
   private geometry() {
     const max = viewHeight(this.options.tui.terminal.rows, this.options.heightFraction);
     const { contentWidth } = layoutPanel(this.width, max);
-    // Footer height never depends on the status text, which is always one row.
-    const after = footerRows("", this.hints(), contentWidth, this.options.theme).length;
+    const lines = this.viewport.lineCount(contentWidth);
+    // Footer: the status row (always one row), then the hint rows.
+    const withStatus = footerRows("", this.hints(), contentWidth, this.options.theme).length;
     // Take only the rows the content needs, up to the height cap.
-    const height = fitPanelHeight(this.width, max, this.viewport.lineCount(contentWidth), 0, after);
-    return { layout: layoutPanel(this.width, height, 0, after) };
+    const fit = (after: number) =>
+      layoutPanel(this.width, fitPanelHeight(this.width, max, lines, 0, after), 0, after);
+    const layout = fit(withStatus);
+    // With no header divider, don't show a footer divider either: when every line
+    // is visible there is no position to report, so the status row is dropped.
+    if (lines <= layout.bodyRows) return { layout: fit(withStatus - 1), status: false };
+    return { layout, status: true };
   }
   handleInput(data: string): void {
     if (this.closed) return;
@@ -340,11 +346,12 @@ export class DetailView implements Component, Focusable {
   render(width: number): string[] {
     if (this.closed) return [];
     this.width = cells(width);
-    const { layout } = this.geometry(),
+    const { layout, status } = this.geometry(),
       { theme } = this.options;
     const body = this.viewport.render(layout.contentWidth, layout.bodyRows);
     const position = this.viewport.position(layout.contentWidth, layout.bodyRows);
     const after = footerRows(positionText(position), this.hints(), layout.contentWidth, theme);
+    if (!status) after.shift();
     return renderPanel(layout, this.title, body, theme, { after });
   }
   invalidate(): void {
