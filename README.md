@@ -96,6 +96,7 @@ pi-personal/
 │       ├── docs/comparison.md           # base-selection report
 │       └── UPSTREAM.md
 └── packages/
+    ├── pi-foundations/                  # shared settings + model lookup
     └── pi-session-tree/                 # shared library, not an extension
         ├── src/index.ts                 # cross-session registry (globalThis)
         └── test/

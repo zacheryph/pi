@@ -1,3 +1,4 @@
+import { compareNewestFirst, findExactModel } from "../../../packages/pi-foundations/src/models.ts";
 import type { Model } from "@earendil-works/pi-ai";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
@@ -14,26 +15,12 @@ type ModelCatalog = Pick<ExtensionContext, "modelRegistry" | "model">;
 export function selectTldrModel(ctx: ModelCatalog, configured: string): Model<any> {
   const available = ctx.modelRegistry.getAvailable();
   if (configured !== "auto") {
-    const split = configured.indexOf("/");
-    const match =
-      split >= 0
-        ? available.find((m) => `${m.provider}/${m.id}`.toLowerCase() === configured.toLowerCase())
-        : available.find((m) => m.id.toLowerCase() === configured.toLowerCase());
+    const match = findExactModel(available, configured);
     if (!match)
       throw new Error(`TLDR model '${configured}' is not available. Check /models or tldr.json.`);
     return match;
   }
-  const newest = (matches: Model<any>[]) =>
-    matches.sort((a, b) => {
-      const version = (m: Model<any>) => [...m.id.matchAll(/\d+/g)].map((part) => Number(part[0]));
-      const aa = version(a),
-        bb = version(b);
-      for (let i = 0; i < Math.max(aa.length, bb.length); i++) {
-        const delta = (bb[i] ?? 0) - (aa[i] ?? 0);
-        if (delta) return delta;
-      }
-      return b.id.localeCompare(a.id);
-    })[0];
+  const newest = (matches: Model<any>[]) => matches.sort(compareNewestFirst)[0];
   const chat = available.filter(
     (m) => !(m as { type?: string }).type || (m as { type?: string }).type === "chat",
   );

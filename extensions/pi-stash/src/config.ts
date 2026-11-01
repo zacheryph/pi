@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readSettingsFile } from "../../../packages/pi-foundations/src/settings.ts";
 import { join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 
@@ -42,14 +42,12 @@ export function sanitizeConfig(raw: unknown): Partial<StashConfig> {
  */
 export function loadStashConfig(agentDir = getAgentDir()): StashConfig {
   const path = join(agentDir, CONFIG_FILE);
-  try {
-    return { ...DEFAULT_CONFIG, ...sanitizeConfig(JSON.parse(readFileSync(path, "utf8"))) };
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+  return {
+    ...DEFAULT_CONFIG,
+    ...readSettingsFile(path, sanitizeConfig, (error) => {
       console.warn(
         `[pi-stash] Ignoring settings at ${path}: ${error instanceof Error ? error.message : String(error)}`,
       );
-    }
-    return { ...DEFAULT_CONFIG };
-  }
+    }),
+  };
 }
