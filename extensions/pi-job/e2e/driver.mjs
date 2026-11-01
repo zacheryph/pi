@@ -1,4 +1,4 @@
-// RPC driver for pi-jobs end-to-end scenarios: runs `pi --mode rpc` and records its events.
+// RPC driver for pi-job end-to-end scenarios: runs `pi --mode rpc` and records its events.
 import { execFileSync, spawn } from "node:child_process";
 
 const MODEL = "anthropic/claude-haiku-4-5";

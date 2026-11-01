@@ -1,5 +1,5 @@
 /**
- * job_watch tool checks end to end (local addition): real AgentSession, faux provider, the pi-jobs
+ * job_watch tool checks end to end (local addition): real AgentSession, faux provider, the pi-job
  * extension, and a fake read-only status tool. Offline.
  */
 import { test } from "node:test";

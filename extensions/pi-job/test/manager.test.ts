@@ -458,7 +458,7 @@ void test("leader exits while a TERM-ignoring descendant survives: ownership hol
 function escaper(t: Parameters<typeof tempDir>[0]) {
   const pidFile = join(
     tmpdir(),
-    `pi-jobs-esc-${process.pid}-${Math.random().toString(36).slice(2)}.pid`,
+    `pi-job-esc-${process.pid}-${Math.random().toString(36).slice(2)}.pid`,
   );
   t.after(() => {
     try {
@@ -538,7 +538,7 @@ void test("log size cap: output beyond the cap is discarded, the job keeps runni
   assert.ok(size >= 100_000 && size < 100_300, `log size ${size}`);
   assert.match(
     readFileSync(done[0].logPath, "utf8"),
-    /\[pi-jobs: log truncated at 98 KB; further output is discarded, the job keeps running\]\n$/,
+    /\[pi-job: log truncated at 98 KB; further output is discarded, the job keeps running\]\n$/,
   );
   assert.equal(done[0].logTruncated, true);
 });

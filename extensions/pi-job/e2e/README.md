@@ -1,10 +1,10 @@
-# pi-jobs end-to-end scenarios
+# pi-job end-to-end scenarios
 
 These scenarios drive a real `pi --mode rpc` session with `anthropic/claude-haiku-4-5`. They
 need network access and credentials, and each run costs about a cent.
 
 ```sh
-cd /path/to/pi-jobs/e2e
+cd /path/to/pi-job/e2e
 node scen.mjs 1     # exit 0 = PASS, 1 = FAIL, 2 = hard timeout (150 s), 64 = unknown id
 ```
 

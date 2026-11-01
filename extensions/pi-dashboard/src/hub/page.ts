@@ -153,8 +153,8 @@ const filterInput = document.getElementById("filter");
 const notifyButton = document.getElementById("notify");
 const stored = (key) => { try { return localStorage.getItem(key) || ""; } catch { return ""; } };
 const store = (key, value) => { try { localStorage.setItem(key, value); } catch {} };
-let filter = stored("pi-dashboard:filter");
-let notifyOn = stored("pi-dashboard:notify") === "on" && "Notification" in window && Notification.permission === "granted";
+let filter = stored("dashboard:filter");
+let notifyOn = stored("dashboard:notify") === "on" && "Notification" in window && Notification.permission === "granted";
 
 const ORDER = { waiting: 0, tool: 1, working: 1, compacting: 1, idle: 2 };
 const TODO_GLYPH = { completed: "✓", in_progress: "◐", pending: "○" };
@@ -881,7 +881,7 @@ function announce(before, after) {
     const fresh = list(session.questions).find((questionnaire) => !seen.has(questionnaire.id));
     if (fresh) body = "Asks: " + fresh.questions[0].question;
     if (!body) continue;
-    const note = new Notification(title(session) + " · " + tilde(session.cwd), { body, tag: "pi-dashboard:" + session.id });
+    const note = new Notification(title(session) + " · " + tilde(session.cwd), { body, tag: "dashboard:" + session.id });
     note.onclick = () => { window.focus(); location.hash = encodeURIComponent(session.id); note.close(); };
   }
 }
@@ -893,17 +893,17 @@ function showNotify() {
 
 notifyButton.addEventListener("click", async () => {
   if (!("Notification" in window)) { notifyButton.textContent = "Notifications unavailable"; return; }
-  if (notifyOn) { notifyOn = false; store("pi-dashboard:notify", "off"); showNotify(); return; }
+  if (notifyOn) { notifyOn = false; store("dashboard:notify", "off"); showNotify(); return; }
   const permission = Notification.permission === "default" ? await Notification.requestPermission() : Notification.permission;
   notifyOn = permission === "granted";
   notifyButton.title = permission === "denied" ? "Notifications are blocked for this page in your browser's settings." : "";
-  store("pi-dashboard:notify", notifyOn ? "on" : "off");
+  store("dashboard:notify", notifyOn ? "on" : "off");
   showNotify();
 });
 showNotify();
 
 filterInput.value = filter;
-filterInput.addEventListener("input", () => { filter = filterInput.value; store("pi-dashboard:filter", filter); render(true); });
+filterInput.addEventListener("input", () => { filter = filterInput.value; store("dashboard:filter", filter); render(true); });
 
 const events = new EventSource("/events");
 events.addEventListener("sessions", (event) => {

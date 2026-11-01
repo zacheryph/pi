@@ -243,10 +243,13 @@ export class Explorer implements Component, Focusable {
   private geometry(status = "") {
     const { contentWidth } = layoutPanel(this.width, this.height());
     const chrome = this.chrome(contentWidth, status);
-    return {
-      ...chrome,
-      layout: layoutPanel(this.width, this.height(), chrome.before.length, chrome.after.length),
-    };
+    const layout = layoutPanel(
+      this.width,
+      this.height(),
+      chrome.before.length,
+      chrome.after.length,
+    );
+    return { ...chrome, layout };
   }
   private move(delta: number): void {
     if (Number.isNaN(delta)) return;

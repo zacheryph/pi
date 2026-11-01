@@ -55,12 +55,12 @@ import { showStashBrowser } from "./ui/browser.ts";
 import { bodyRow, sanitizeLine, sanitizeText } from "../../../packages/pi-ui/src/index.ts";
 import { entrySummary, formatAge, formatBytes, originLabel, previewRows } from "./ui/render.ts";
 
-const CONTEXT_TYPE = "pi-personal:stash-context";
+const CONTEXT_TYPE = "stash:context";
 const CARD_ENTRIES = 20;
 const LIST_LIMIT = 200;
 const PREVIEW_ROWS = 10;
 /** Session-tree service name other sessions' pi-stash calls. */
-const SERVICE_NAME = "pi-stash";
+const SERVICE_NAME = "stash:service";
 
 /** What pi-stash offers other sessions in the process (see pi-session-tree). */
 export interface StashTreeService {

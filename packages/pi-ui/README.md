@@ -58,7 +58,13 @@ Shared conventions the library enforces:
 - Frame titles are centered; `detail` renders as a breadcrumb (`Todos / t1`).
 - Icons are followed by two spaces (`ICON_GAP`) because Nerd Font glyphs can
   overrun their measured cell.
-- Footers are a dim status row followed by at most two rows of hints. Hints wrap
+- Header rows (filter, tabs, notices) are separated from the content by a plain
+  border-colored divider, dropped first when the panel is short.
+- Footers start with a status divider styled like a widget heading
+  (`── 1/5 tasks ─────`), followed by at most two rows of hints. Explorers and
+  detail views show no icon; `footerRows` keeps a blank row when status is empty.
+  `statusRule`/`footerRows` accept an optional icon
+  (`── icon  1/5 tasks ─────`) that is dropped before the status clips. Hints wrap
   between entries and the least important are dropped first (`HINT_PRIORITY`:
   actions 0 never drop, view 1, extension 2, navigation 3).
 - Keys are formatted once (`formatKey`: `PgUp`, `Ctrl+R`, `Esc`). Navigation is
@@ -67,18 +73,18 @@ Shared conventions the library enforces:
 
 ## API
 
-| Module          | Exports                                                                                                                  | Responsibility                                                                  |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
-| `text.ts`       | `sanitizeText`, `sanitizeLine`, `firstPhysicalLine`                                                                      | Untrusted plain text normalization; separate trusted-row clipping               |
-| `style.ts`      | `Tone`, `Span`, `Line`, `Badge`, `styleLine`, `styleBadge`, `plainText`, `paint`, `copyLine`, `clip`, `ELLIPSIS`         | The single tone → theme mapping and the shared ellipsis                         |
-| `layout.ts`     | `bodyRow`, `splitColumns`, `labeledRule`, `layoutPanel`, `renderPanel`, `BoundedLines`, `cells`, `titleText`, `ICON_GAP` | Low-level width-aware rows, frames, titles, rules and column fallback           |
-| `icons.ts`      | `ICONS`, `SPINNER`                                                                                                       | Shared semantic vocabulary; callers schedule animation                          |
-| `navigation.ts` | `navigationDelta`, `navigationHint`, `formatKey`, `layoutHints`, `hintText`, `Hint`, `HINT_PRIORITY`                     | Navigation and prioritized, wrapped footer hints from the same keybindings      |
-| `modal.ts`      | `openModal`, `PassiveOverlay`                                                                                            | Capturing centered overlays and separately owned noncapturing overlays          |
-| `detail.ts`     | `DetailView`, `showDetail`, `Block`, `renderBlocks`, `renderDetail`, `footerRows`, `TextViewport`, `viewHeight`          | Structured detail content, live loading/results/errors, scrolling               |
-| `explorer.ts`   | `Explorer`, `showExplorer`, `snapshotExplorer`                                                                           | Snapshot filtering, tabs, badges, markers, status row and lazy detail drilldown |
-| `widget.ts`     | `renderWidget`, `Widget`                                                                                                 | Pure compact heading/body/overflow rendering                                    |
-| `types.ts`      | `UITheme`, `UIColor`, `UIKeys`, `UISurface`, `Title`, `DisposableComponent`                                              | Narrow SDK collaborators and presentation types                                 |
+| Module          | Exports                                                                                                                                               | Responsibility                                                                  |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `text.ts`       | `sanitizeText`, `sanitizeLine`, `firstPhysicalLine`                                                                                                   | Untrusted plain text normalization; separate trusted-row clipping               |
+| `style.ts`      | `Tone`, `Span`, `Line`, `Badge`, `styleLine`, `styleBadge`, `plainText`, `paint`, `copyLine`, `clip`, `ELLIPSIS`                                      | The single tone → theme mapping and the shared ellipsis                         |
+| `layout.ts`     | `bodyRow`, `splitColumns`, `labeledRule`, `divider`, `layoutPanel`, `fitPanelHeight`, `renderPanel`, `BoundedLines`, `cells`, `titleText`, `ICON_GAP` | Low-level width-aware rows, frames, titles, rules and column fallback           |
+| `icons.ts`      | `ICONS`, `SPINNER`                                                                                                                                    | Shared semantic vocabulary; callers schedule animation                          |
+| `navigation.ts` | `navigationDelta`, `navigationHint`, `formatKey`, `layoutHints`, `hintText`, `Hint`, `HINT_PRIORITY`                                                  | Navigation and prioritized, wrapped footer hints from the same keybindings      |
+| `modal.ts`      | `openModal`, `PassiveOverlay`                                                                                                                         | Capturing centered overlays and separately owned noncapturing overlays          |
+| `detail.ts`     | `DetailView`, `showDetail`, `Block`, `renderBlocks`, `renderDetail`, `footerRows`, `statusRule`, `TextViewport`, `viewHeight`                         | Structured detail content, live loading/results/errors, scrolling               |
+| `explorer.ts`   | `Explorer`, `showExplorer`, `snapshotExplorer`                                                                                                        | Snapshot filtering, tabs, badges, markers, status row and lazy detail drilldown |
+| `widget.ts`     | `renderWidget`, `Widget`                                                                                                                              | Pure compact heading/body/overflow rendering                                    |
+| `types.ts`      | `UITheme`, `UIColor`, `UIKeys`, `UISurface`, `Title`, `DisposableComponent`                                                                           | Narrow SDK collaborators and presentation types                                 |
 
 ## Explorers
 
@@ -216,8 +222,15 @@ factory. `done` and disposal are idempotent; the factory's abort signal ends on
 completion, disposal or failure. Focus, key-release preferences, cursor markers
 and method receivers are retained by the lifecycle wrapper.
 
-Views default to 80% of terminal rows. A direct `DetailView`/`Explorer` constructor
-accepts `heightFraction`. If customizing `overlayOptions.maxHeight`, give the view
+Explorers use 80% of terminal rows. A `DetailView` takes only the rows its
+content needs, capped at the same 80% (`fitPanelHeight`); the overlay stays
+centered on whatever height renders. The footer's `n–m/N lines` status row
+appears only when content scrolls; when every line is visible, a `DetailView`
+and an explorer's item detail show a blank row in its place, so a panel without
+a header divider shows no bare footer divider either but the hints keep their
+breathing room. A direct `DetailView`/`Explorer`
+constructor accepts `heightFraction` for the height (the cap, for `DetailView`).
+If customizing `overlayOptions.maxHeight`, give the view
 a matching fraction so its footer fits without renderer cropping.
 
 Use `PassiveOverlay` with the TUI obtained from the host:
@@ -283,7 +296,10 @@ last. Heading metadata is dropped before the title falls back to its label alone
 
 ## Low-level layout
 
-`layoutPanel` reserves one body row, then footer rows, then optional header rows.
+`fitPanelHeight` returns the smallest height (up to a cap) whose layout shows a
+given body plus all header, divider and footer rows.
+`layoutPanel` reserves one body row, then footer rows, then optional header rows,
+then a divider below the header rows (`dividerRows`) when one still fits.
 At widths below seven or heights below three it uses padded unframed rows.
 `renderPanel` consumes that layout and returns bounded rows, preserving trusted
 ANSI and Input cursor commands. These primitives, `splitColumns`, `labeledRule`

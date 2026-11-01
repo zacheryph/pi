@@ -1,8 +1,8 @@
 /**
  * Contract: what Pi's ctx.executeTool() does when a tool keeps its ExtensionToolContext and calls
  * it after the tool call itself has returned, which is how job_watch tool checks will run (#9).
- * Pins Pi behaviour that pi-jobs relies on; a Pi upgrade that changes any of it fails here.
- * Offline: real AgentSession, faux provider, no pi-jobs code.
+ * Pins Pi behaviour that pi-job relies on; a Pi upgrade that changes any of it fails here.
+ * Offline: real AgentSession, faux provider, no pi-job code.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -40,7 +40,7 @@ const text = (o: Outcome) =>
     .join("");
 
 async function fixture(t: { after(fn: () => void | Promise<void>): void }) {
-  const dir = mkdtempSync(join(tmpdir(), "pi-jobs-contract-"));
+  const dir = mkdtempSync(join(tmpdir(), "pi-job-contract-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const faux = createFauxCore({ provider: "contract", models: [{ id: "m" }] });
   const modelRuntime = await ModelRuntime.create({

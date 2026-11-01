@@ -12,7 +12,7 @@ import { sourceSummary } from "./detail-format.js";
 import type { InsightView } from "./types.js";
 
 /** Branch-local successful read evidence only; never skill contents. */
-export const SKILL_READ_ENTRY = "pi-system-insights:skill-read";
+export const SKILL_READ_ENTRY = "system:skill-read";
 
 export function normalizeSkillPath(path: string, cwd: string): string {
   const expanded =
