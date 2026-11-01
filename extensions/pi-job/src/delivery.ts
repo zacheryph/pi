@@ -29,7 +29,7 @@
  */
 
 /** Custom message type of completion messages. */
-export const CUSTOM_TYPE = "pi-jobs";
+export const CUSTOM_TYPE = "job:completion";
 
 export interface Completion<T> {
   /** Globally unique (UUID); the only key used for deduplication. */
@@ -217,7 +217,7 @@ interface CompletionRef {
   part?: number;
 }
 
-/** Completions carried by a pi-jobs message (none for other messages or the round-2 format). */
+/** Completions carried by a pi-job message (none for other messages or the round-2 format). */
 export function completionRefs(message: ContextMessage): CompletionRef[] {
   if (message?.role !== "custom" || message.customType !== CUSTOM_TYPE) return [];
   const list = (
@@ -232,16 +232,15 @@ export function completionRefs(message: ContextMessage): CompletionRef[] {
     }));
 }
 
-export const DUPLICATE_STUB =
-  "[pi-jobs: this completion was already delivered above; nothing new.]";
+export const DUPLICATE_STUB = "[pi-job: this completion was already delivered above; nothing new.]";
 
 function stripped(count: number): string {
-  return `[pi-jobs: ${count} completion${count === 1 ? "" : "s"} already shown above omitted.]\n\n`;
+  return `[pi-job: ${count} completion${count === 1 ? "" : "s"} already shown above omitted.]\n\n`;
 }
 
 /**
  * Model-context filter, keyed on unique completion ids only (display handles such as `j1` are
- * never compared). In each pi-jobs message, the block of every completion already shown earlier
+ * never compared). In each pi-job message, the block of every completion already shown earlier
  * in the context is removed and replaced by a one-line note; unseen blocks are kept as they
  * are. A message left with no unseen completion becomes a one-line stub (kept, not removed, so
  * the context never ends on an assistant message). Messages without per-block part indices can

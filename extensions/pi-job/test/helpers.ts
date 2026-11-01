@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { TestContext } from "node:test";
 
 export function tempDir(t: Pick<TestContext, "after">): string {
-  const dir = mkdtempSync(join(tmpdir(), "pi-jobs-test-"));
+  const dir = mkdtempSync(join(tmpdir(), "pi-job-test-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   return dir;
 }

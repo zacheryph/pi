@@ -42,7 +42,7 @@ export class LogWriter {
       this.truncated = true;
       this.raw(
         Buffer.from(
-          `\n[pi-jobs: log truncated at ${formatBytes(this.capBytes)}; further output is discarded, the job keeps running]\n`,
+          `\n[pi-job: log truncated at ${formatBytes(this.capBytes)}; further output is discarded, the job keeps running]\n`,
         ),
       );
     }

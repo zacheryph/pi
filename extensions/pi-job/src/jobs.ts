@@ -90,7 +90,7 @@ export interface ManagerOptions {
   killGraceMs?: number;
   /** After a command's status is known, how long to wait for its output pipes to close. */
   drainMs?: number;
-  /** Finished jobs kept for job_list / job_output. */
+  /** Finished jobs kept for job_list / job_read. */
   keepFinished?: number;
   /** In-memory cap for one watch check's output. */
   checkOutputBytes?: number;
@@ -260,7 +260,7 @@ export class JobManager {
     job.snap.checks = 0;
     try {
       job.log = new LogWriter(job.snap.logPath, this.opts.logCapBytes);
-      job.log.write(`# pi-jobs watch until ${options.until}: ${options.check}\n`);
+      job.log.write(`# pi-job watch until ${options.until}: ${options.check}\n`);
       this.runCheck(job, options);
     } catch (err) {
       this.discard(job);
@@ -361,7 +361,7 @@ export class JobManager {
   }
 
   private commandDone(job: Job, outcome: RunOutcome): void {
-    if (outcome.error) job.log?.write(`pi-jobs: failed to start: ${outcome.error}\n`);
+    if (outcome.error) job.log?.write(`pi-job: failed to start: ${outcome.error}\n`);
     const status: Exclude<JobStatus, "running"> =
       job.pending === "timeout"
         ? "timed_out"
@@ -455,7 +455,7 @@ export class JobManager {
         job.timers.delete(checkTimer);
       }
       if (job.run === run) job.run = undefined;
-      if (outcome.error) sink.push(Buffer.from(`pi-jobs: failed to run check: ${outcome.error}\n`));
+      if (outcome.error) sink.push(Buffer.from(`pi-job: failed to run check: ${outcome.error}\n`));
       const raw = sink.toBuffer();
       const output = tailBuffer(raw, 1000, this.opts.checkOutputBytes, !sink.dropped).text;
       const outputHash = `${outHash.digest("hex")}:${errHash.digest("hex")}`;

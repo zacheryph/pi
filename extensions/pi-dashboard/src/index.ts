@@ -36,7 +36,7 @@ import { detectTerminal, type TerminalAdapter } from "./terminal.ts";
 import { sessionUsage } from "./usage.ts";
 
 /** One reporter per process: subagent children and other embedded sessions stay off the dashboard. */
-const SLOT = Symbol.for("pi-dashboard:reporter");
+const SLOT = Symbol.for("dashboard:reporter");
 const PUBLISH_DELAY_MS = 250;
 
 export interface DashboardDependencies {
@@ -72,7 +72,7 @@ export default function dashboardExtension(
   const pid = dependencies.pid ?? process.pid;
   const startedAt = Math.round(Date.now() - process.uptime() * 1000);
   const slots = globalThis as Record<symbol, unknown>;
-  const token = Symbol("pi-dashboard:runtime");
+  const token = Symbol("dashboard:runtime");
   let reporter: Reporter | undefined;
   let status = new StatusTracker();
   let current: ExtensionContext | undefined;

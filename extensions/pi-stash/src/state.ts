@@ -1,7 +1,7 @@
 import { HASH_PATTERN, type BlobStore } from "./store.ts";
 
 /** Custom session entry; one per change, plus a checkpoint after compaction. */
-export const STASH_INDEX_TYPE = "pi-personal:stash-index";
+export const STASH_INDEX_TYPE = "stash:index";
 export const STASH_SCHEMA_VERSION = 1;
 export const NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 export const MIN_HANDLE_PREFIX = 12;

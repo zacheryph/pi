@@ -4,6 +4,8 @@ import {
   BoundedLines,
   bodyRow,
   cells,
+  divider,
+  fitPanelHeight,
   labeledRule,
   layoutPanel,
   renderPanel,
@@ -36,6 +38,44 @@ describe("terminal geometry", () => {
         }
       }
     }
+  });
+  it("divides header rows from the body, dropping the divider before any body or header row", () => {
+    expect(layoutPanel(40, 12, 2, 3)).toMatchObject({ beforeRows: 2, dividerRows: 1, bodyRows: 4 });
+    expect(layoutPanel(40, 12, 0, 3)).toMatchObject({ dividerRows: 0, bodyRows: 7 });
+    // Tight: header + footer + one body row leave no room for the divider.
+    expect(layoutPanel(40, 7, 2, 2)).toMatchObject({ beforeRows: 2, dividerRows: 0, bodyRows: 1 });
+    const g = layoutPanel(20, 8, 1, 1);
+    const rows = renderPanel(g, "T", ["body"], theme, { before: ["head"], after: ["foot"] });
+    expect(plain(rows).split("\n").slice(1, 4)).toEqual([
+      " │ head           │ ",
+      " │ ────────────── │ ",
+      " │ body           │ ",
+    ]);
+    const unframed = renderPanel(layoutPanel(5, 3, 1, 0), "T", ["界界界"], theme, {
+      before: ["界"],
+    });
+    expect(plain(unframed)).toBe(" 界  \n ─── \n 界… ");
+    for (let width = 0; width < 12; width++)
+      expect(visibleWidth(divider(width, theme))).toBe(width);
+  });
+  it("fits the panel height to its content, capped at the maximum", () => {
+    // Frame 2 + header 2 + divider 1 + body 3 + footer 2.
+    expect(fitPanelHeight(40, 20, 3, 2, 2)).toBe(10);
+    expect(layoutPanel(40, 10, 2, 2)).toMatchObject({ bodyRows: 3, dividerRows: 1 });
+    expect(fitPanelHeight(40, 20, 3)).toBe(5);
+    expect(fitPanelHeight(40, 20, 0)).toBe(3);
+    expect(fitPanelHeight(40, 8, 30, 2, 2)).toBe(8);
+    // Unframed at narrow widths: header 1 + divider 1 + body 2 + footer 1.
+    expect(fitPanelHeight(5, 10, 2, 1, 1)).toBe(5);
+    expect(fitPanelHeight(0, 10, 3)).toBe(10);
+    // A short framed panel must retain the cap's narrower content width.
+    expect(fitPanelHeight(7, 20, 1)).toBe(3);
+    expect(layoutPanel(7, fitPanelHeight(7, 20, 1)).contentWidth).toBe(1);
+    expect(fitPanelHeight(7, 2, 1)).toBe(1);
+    expect(fitPanelHeight(40, 20, 3.9, 1.9, 2.9)).toBe(9);
+    for (const width of [0, 3, 7, 20])
+      for (const max of [0, 1, 3, 6, 12])
+        expect(fitPanelHeight(width, max, 4, 2, 1)).toBeLessThanOrEqual(max);
   });
   it("keeps padded body rows and full-width rules in display cells without wrapping", () => {
     for (let width = 0; width < 100; width++) {

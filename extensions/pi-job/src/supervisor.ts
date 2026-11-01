@@ -101,7 +101,7 @@ export class SupervisedRun {
     const graceSeconds = (Math.max(0, opts.graceMs) / 1000).toFixed(3);
     this.child = spawn(
       "bash",
-      ["-c", SUPERVISOR_SCRIPT, "pi-jobs-supervisor", graceSeconds, opts.command],
+      ["-c", SUPERVISOR_SCRIPT, "pi-job-supervisor", graceSeconds, opts.command],
       {
         cwd: opts.cwd,
         env: opts.env,

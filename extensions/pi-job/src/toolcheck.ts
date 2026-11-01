@@ -228,7 +228,7 @@ export function createToolProbe(
   };
 }
 
-/** Short label for /jobs, the log header and notifications. */
+/** Short label for /job, the log header and notifications. */
 export function toolCheckTitle(spec: ToolCheckSpec): string {
   const args = canonicalJson(spec.args);
   const shown = args.length > 120 ? `${args.slice(0, 117)}...` : args;
