@@ -22,7 +22,7 @@ import { createSubagentSession } from "#src/lifecycle/create-subagent-session";
 import { buildAgentPrompt } from "#src/session/prompts";
 
 // A real orchestrator session (pi-subagent + pi-todo) hands two tasks to a
-// worker through handoff.todos. Scripted model responses, real SDK sessions.
+// worker through handoff.todo. Scripted model responses, real SDK sessions.
 it("hands todo tasks to a worker that sees and updates only those, in the orchestrator's list", async () => {
   const dir = mkdtempSync(join(tmpdir(), "todo-handoff-sdk-"));
   const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
@@ -64,7 +64,11 @@ it("hands todo tasks to a worker that sees and updates only those, in the orches
       "grep",
       "find",
       "ls",
-      "todo",
+      "todo_list",
+      "todo_upsert",
+      "todo_replace",
+      "todo_remove",
+      "todo_clear",
       "subagent_start",
       "subagent_get",
       "subagent_steer",
@@ -125,13 +129,12 @@ it("hands todo tasks to a worker that sees and updates only those, in the orches
           subagent_type: "general-purpose",
           description: "Audit auth",
           prompt: "Audit auth and write its tests.",
-          handoff: { todos: { keys } },
+          handoff: { todo: { keys } },
         },
         id,
       );
     faux.setResponses([
-      call("todo", {
-        action: "upsert",
+      call("todo_upsert", {
         tasks: [
           { key: "audit", subject: "Audit auth" },
           { key: "tests", subject: "Write auth tests" },
@@ -146,29 +149,28 @@ it("hands todo tasks to a worker that sees and updates only those, in the orches
         return spawn(["audit", "tests"], "call-spawn");
       },
       // The worker's turn loop.
-      call("todo", { action: "list" }),
+      call("todo_list", {}),
       (context) => {
-        const listed = text(lastResult(context.messages, "todo"));
+        const listed = text(lastResult(context.messages, "todo_list"));
         expect(listed).toContain("audit");
         expect(listed).toContain("tests");
         expect(listed).not.toContain("ship");
-        return call("todo", {
-          action: "upsert",
+        return call("todo_upsert", {
           tasks: [
             { key: "audit", status: "completed", message: "Session cookie path is sound." },
             { key: "rotate-key", subject: "Rotate signing key", dependsOn: ["audit"] },
           ],
         });
       },
-      call("todo", { action: "upsert", tasks: [{ key: "ship", status: "completed" }] }),
+      call("todo_upsert", { tasks: [{ key: "ship", status: "completed" }] }),
       (context) => {
-        expect(text(lastResult(context.messages, "todo"))).toContain(
+        expect(text(lastResult(context.messages, "todo_upsert"))).toContain(
           "task ship is not assigned to you",
         );
         return fauxAssistantMessage("Audit finished; follow-up added.");
       },
       // Back in the orchestrator.
-      call("todo", { action: "list" }),
+      call("todo_list", {}),
       fauxAssistantMessage("Delegated."),
     ]);
 
@@ -177,7 +179,7 @@ it("hands todo tasks to a worker that sees and updates only those, in the orches
 
     const branch = orchestrator.session.sessionManager.getBranch();
     const journal = branch
-      .filter((entry) => entry.type === "custom" && entry.customType === "pi-personal:todo-state")
+      .filter((entry) => entry.type === "custom" && entry.customType === "todo:journal")
       .at(-1) as {
       data: {
         tasks: { key: string; status: string }[];
@@ -195,7 +197,7 @@ it("hands todo tasks to a worker that sees and updates only those, in the orches
     );
     expect(audit?.agent).toEqual(expect.any(String));
     const claims = branch
-      .filter((entry) => entry.type === "custom" && entry.customType === "pi-personal:todo-claims")
+      .filter((entry) => entry.type === "custom" && entry.customType === "todo:claim")
       .map((entry) => (entry as { data: { op: string; agent: string; keys?: string[] } }).data);
     expect(claims.map((entry) => [entry.op, entry.keys])).toEqual([
       ["claim", ["audit", "tests"]],

@@ -67,7 +67,7 @@ async function fixture(
       (pi) => {
         if (options.delayToolResult)
           pi.on("tool_result", async (event) => {
-            if (event.toolName === "todo") await options.delayToolResult!();
+            if (event.toolName.startsWith("todo_")) await options.delayToolResult!();
           });
       },
     ],
@@ -85,7 +85,7 @@ async function fixture(
       compaction: { enabled: false },
       retry: { enabled: false },
     }),
-    tools: ["todo", "codemode"],
+    tools: ["todo_list", "todo_upsert", "todo_replace", "todo_remove", "todo_clear", "codemode"],
   });
   cleanups.push(() => session.dispose());
   const errors = vi.fn();
@@ -97,7 +97,7 @@ async function fixture(
 const nestedWrite = (after = 'return "hidden";') =>
   fauxAssistantMessage(
     fauxToolCall("codemode", {
-      code: `await tools.todo({action:"upsert",tasks:[{key:"inspect",subject:"Inspect",status:"in_progress"},{key:"verify",subject:"Verify",dependsOn:["inspect"]}]}); ${after}`,
+      code: `await tools.todo_upsert({tasks:[{key:"inspect",subject:"Inspect",status:"in_progress"},{key:"verify",subject:"Verify",dependsOn:["inspect"]}]}); ${after}`,
     }),
     { stopReason: "toolUse" },
   );
@@ -107,7 +107,7 @@ function snapshot(manager: SessionManager) {
 }
 
 describe("real Pi SDK integration (offline faux provider)", () => {
-  it("loads standalone package with exactly one tool and expected commands", async () => {
+  it("loads standalone package with one tool per action and expected commands", async () => {
     const dir = mkdtempSync(join(tmpdir(), "pi-todo-loader-"));
     cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
     const loader = new DefaultResourceLoader({
@@ -123,16 +123,21 @@ describe("real Pi SDK integration (offline faux provider)", () => {
     const { extensions, errors } = loader.getExtensions();
     expect(errors).toEqual([]);
     expect(extensions).toHaveLength(1);
-    expect([...extensions[0].tools.keys()]).toEqual(["todo"]);
+    expect([...extensions[0].tools.keys()]).toEqual([
+      "todo_list",
+      "todo_upsert",
+      "todo_replace",
+      "todo_remove",
+      "todo_clear",
+    ]);
     expect([...extensions[0].commands.keys()]).toEqual([
-      "todos",
-      "todos:list",
-      "todos:review",
-      "todos:add",
-      "todos:update",
-      "todos:remove",
-      "todos:clear",
-      "todos:settings",
+      "todo",
+      "todo:review",
+      "todo:add",
+      "todo:update",
+      "todo:remove",
+      "todo:clear",
+      "todo:settings",
     ]);
   });
 
@@ -155,7 +160,7 @@ describe("real Pi SDK integration (offline faux provider)", () => {
           (entry) =>
             entry.type === "message" &&
             entry.message.role === "toolResult" &&
-            entry.message.toolName === "todo",
+            entry.message.toolName.startsWith("todo_"),
         ),
       ).toHaveLength(0);
       expect(snapshot(h.manager).tasks.map((task) => task.key)).toEqual(["inspect", "verify"]);
@@ -174,7 +179,7 @@ describe("real Pi SDK integration (offline faux provider)", () => {
 
   it("commands never call provider; next ordinary request sees exact changed/empty plan", async () => {
     const h = await fixture();
-    await h.session.prompt("/todos:add Fix auth");
+    await h.session.prompt("/todo:add Fix auth");
     expect(h.calls).not.toHaveBeenCalled();
     expect(snapshot(h.manager).tasks[0]).toMatchObject({ key: "fix-auth", status: "pending" });
     await h.session.prompt("Continue");
@@ -184,7 +189,7 @@ describe("real Pi SDK integration (offline faux provider)", () => {
     await h.session.prompt("Another request without direct todo results");
     expect(h.calls).toHaveBeenCalledTimes(2);
     expect(JSON.stringify(h.calls.mock.calls[1][1])).toContain("Current task list (revision 1)");
-    await h.session.prompt("/todos:clear all --yes");
+    await h.session.prompt("/todo:clear all --yes");
     expect(h.calls).toHaveBeenCalledTimes(2);
     h.faux.setResponses([fauxAssistantMessage("done again")]);
     await h.session.prompt("Next");
@@ -205,7 +210,7 @@ describe("real Pi SDK integration (offline faux provider)", () => {
     const h = await fixture({
       responses: [
         fauxAssistantMessage(
-          fauxToolCall("todo", { action: "upsert", tasks: [{ key: "old", subject: "Old" }] }),
+          fauxToolCall("todo_upsert", { tasks: [{ key: "old", subject: "Old" }] }),
           { stopReason: "toolUse" },
         ),
         fauxAssistantMessage("done"),
@@ -217,7 +222,7 @@ describe("real Pi SDK integration (offline faux provider)", () => {
     });
     const running = h.session.prompt("Work");
     await ready;
-    await h.session.prompt("/todos:clear all --yes");
+    await h.session.prompt("/todo:clear all --yes");
     expect(snapshot(h.manager).revision).toBe(2);
     release();
     await running;
@@ -234,9 +239,9 @@ describe("real Pi SDK integration (offline faux provider)", () => {
 
   it("real tree navigation restores branch-local state instead of abandoned additions", async () => {
     const h = await fixture();
-    await h.session.prompt("/todos:add First work");
+    await h.session.prompt("/todo:add First work");
     const first = h.manager.getLeafId()!;
-    await h.session.prompt("/todos:add Abandoned work");
+    await h.session.prompt("/todo:add Abandoned work");
     expect(snapshot(h.manager).tasks).toHaveLength(2);
     await h.session.navigateTree(first, { summarize: false });
     await h.session.prompt("Current branch");
@@ -250,8 +255,7 @@ describe("real Pi SDK integration (offline faux provider)", () => {
     const h = await fixture({
       responses: [
         fauxAssistantMessage(
-          fauxToolCall("todo", {
-            action: "upsert",
+          fauxToolCall("todo_upsert", {
             tasks: [{ key: "tracked", subject: "Tracked" }],
           }),
           { stopReason: "toolUse" },
@@ -272,9 +276,9 @@ describe("real Pi SDK integration (offline faux provider)", () => {
   it("same-process independent loaders keep parent/child plans and checkpoints isolated", async () => {
     const parent = await fixture();
     const child = await fixture();
-    await parent.session.prompt("/todos:add Parent work");
-    await child.session.prompt("/todos:add Child work");
-    await child.session.prompt("/todos:update child-work completed");
+    await parent.session.prompt("/todo:add Parent work");
+    await child.session.prompt("/todo:add Child work");
+    await child.session.prompt("/todo:update child-work completed");
     expect(snapshot(parent.manager).tasks).toEqual([
       expect.objectContaining({ key: "parent-work", status: "pending" }),
     ]);
@@ -293,8 +297,7 @@ describe("real Pi SDK integration (offline faux provider)", () => {
     const h = await fixture({
       responses: [
         fauxAssistantMessage(
-          fauxToolCall("todo", {
-            action: "upsert",
+          fauxToolCall("todo_upsert", {
             tasks: [
               {
                 key: "audit",
@@ -322,7 +325,7 @@ describe("real Pi SDK integration (offline faux provider)", () => {
         }),
       ],
     );
-    await h.session.prompt("/todos:review all");
+    await h.session.prompt("/todo:review all");
     expect(h.calls).toHaveBeenCalledTimes(2);
     expect(
       h.manager

@@ -31,10 +31,10 @@ Stop and say why, without creating todos, when:
 
 ## 1. Build the ledger
 
-Call `todo` with `action: "list"` first. If tasks for this roadmap already exist
+Call `todo_list` first. If tasks for this roadmap already exist
 (same key prefix), this is a resume: reconcile instead of re-creating.
 
-One todo per roadmap step, created with a single sparse `upsert`, never `replace`:
+One todo per roadmap step, created with a single sparse `todo_upsert`, never `todo_replace`:
 
 | Todo field    | From the step                                                                                                                                                                            |
 | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

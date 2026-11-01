@@ -164,7 +164,7 @@ describe("pi-dashboard extension", () => {
       updates: [],
     };
     // pi-todo and pi-stash load first and publish during their own session_start.
-    fake.publish("pi-todo:snapshot", { version: 1, revision: 1, tasks: [task] });
+    fake.publish("todo:snapshot", { version: 1, revision: 1, tasks: [task] });
     await fake.emit("session_start", { reason: "startup" }, ctx);
     const [card] = await waitFor(async () => {
       const list = await env.sessions();
@@ -196,7 +196,7 @@ describe("pi-dashboard extension", () => {
         },
       ],
     });
-    fake.publish("pi-todo:snapshot", {
+    fake.publish("todo:snapshot", {
       version: 1,
       revision: 2,
       tasks: [{ ...task, status: "completed" }],
@@ -311,7 +311,7 @@ describe("pi-dashboard extension", () => {
           : { ok: false, error: `No stash entry named "${request.name}" on this branch.` },
       );
     });
-    fake.publish("pi-todo:snapshot", {
+    fake.publish("todo:snapshot", {
       version: 1,
       revision: 2,
       tasks: [

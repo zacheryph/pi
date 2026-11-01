@@ -15,7 +15,7 @@ pi --no-extensions -e ./extensions/pi-todo/src/index.ts
 ```
 
 Remove or disable `@juicesharp/rpiv-todo` before loading this extension: both own
-`todo` and `/todos`. Nothing here changes your personal Pi settings automatically.
+the todo tools and `/todo`. Nothing here changes your personal Pi settings automatically.
 For an installed bundle, remove the old package and reload:
 
 ```bash
@@ -29,13 +29,15 @@ full-list writes or rpiv's numeric IDs/create/update actions.
 
 ## Agent tool
 
-One tool, `todo`. All mutations are atomic and sequential. Every successful result
+One tool per action: `todo_list`, `todo_upsert`, `todo_replace`, `todo_remove` and
+`todo_clear`. All mutations are atomic and sequential. Every successful result
 includes the revision and current plan. New keys require a subject; status defaults
 to `pending`. Keys are stable lowercase ASCII identifiers, not display numbers.
 
+`todo_upsert`:
+
 ```json
 {
-  "action": "upsert",
   "tasks": [
     { "key": "inspect", "subject": "Inspect implementation", "status": "in_progress" },
     { "key": "build", "subject": "Build change", "dependsOn": ["inspect"] },
@@ -48,7 +50,6 @@ Sparse completion and handoff in one call:
 
 ```json
 {
-  "action": "upsert",
   "baseRevision": 1,
   "tasks": [
     { "key": "inspect", "status": "completed" },
@@ -57,13 +58,12 @@ Sparse completion and handoff in one call:
 }
 ```
 
-`verify` remains unchanged. Unlike upstream, omission during `upsert` never deletes.
+`verify` remains unchanged. Unlike upstream, omission during `todo_upsert` never deletes.
 
 Record an outcome with the status change that produced it:
 
 ```json
 {
-  "action": "upsert",
   "tasks": [
     {
       "key": "build",
@@ -78,22 +78,25 @@ Record an outcome with the status change that produced it:
 `message` goes into the task's history, not its description. The user sees it
 flagged until they review it; see [Messages and review](#messages-and-review).
 
-| Action    | Arguments        | Behavior                                                                                 |
-| --------- | ---------------- | ---------------------------------------------------------------------------------------- |
-| `list`    | optional `key`   | Read revision/plan; one key returns its full description                                 |
-| `upsert`  | `tasks`          | Add/patch only named keys; inherit omitted fields                                        |
-| `replace` | `tasks`          | Authoritative plan; omitted keys deleted; `[]` clears                                    |
-| `remove`  | `keys`           | Delete named tasks; dangling live dependencies rejected                                  |
-| `clear`   | optional `scope` | `all` (default) clears; `completed` removes only completed tasks not needed by open work |
+| Tool           | Arguments        | Annotations | Behavior                                                                                 |
+| -------------- | ---------------- | ----------- | ---------------------------------------------------------------------------------------- |
+| `todo_list`    | optional `key`   | read-only   | Read revision/plan; one key returns its full description                                 |
+| `todo_upsert`  | `tasks`          | additive    | Add/patch only named keys; inherit omitted fields                                        |
+| `todo_replace` | `tasks`          | destructive | Authoritative plan; omitted keys deleted; `[]` clears                                    |
+| `todo_remove`  | `keys`           | destructive | Delete named tasks; dangling live dependencies rejected                                  |
+| `todo_clear`   | optional `scope` | destructive | `all` (default) clears; `completed` removes only completed tasks not needed by open work |
 
-`upsert` and `replace` tasks accept an optional `message`. A message-only patch
+Each tool's schema requires only its own arguments, and the read-only annotation lets
+`job_watch` tool checks and read-only agents use `todo_list` without write access.
+
+`todo_upsert` and `todo_replace` tasks accept an optional `message`. A message-only patch
 still advances the revision. Full-plan output shows each task's latest message as a
-120-character `lastMessage`. `list` with `key` adds `createdAt` and the task's full
+120-character `lastMessage`. `todo_list` with `key` adds `createdAt` and the task's full
 `updates` history.
 
 Optional `baseRevision` rejects stale operations. Use it when user commands or
 concurrent agents may have changed the plan. `description: ""` clears description;
-`dependsOn: []` clears prerequisites. Replace may reorder tasks; upsert preserves
+`dependsOn: []` clears prerequisites. `todo_replace` may reorder tasks; `todo_upsert` preserves
 existing order and appends new tasks.
 
 Dependencies must exist and be acyclic. A task cannot start or finish until every
@@ -109,21 +112,21 @@ details. Validation failures never mutate state.
 
 ## Commands
 
-| Command                                                                               | Purpose                                                                          |
-| ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| `/todos` or `/todos:list`                                                             | Searchable task list, dependency details and history                             |
-| `/todos:review`                                                                       | Browser on unreviewed messages; outside TUI, prints them and marks them reviewed |
-| `/todos:review all`                                                                   | Mark every unreviewed task reviewed                                              |
-| `/todos:review fix-auth-bug`                                                          | Mark one or more space-separated keys reviewed                                   |
-| `/todos:add Fix auth bug`                                                             | Add pending task with unique generated key; omit title for input dialog          |
-| `/todos:update fix-auth-bug in_progress`                                              | Change status explicitly                                                         |
-| `/todos:update fix-auth-bug completed Verified by hand`                               | Change status and record a note                                                  |
-| `/todos:update fix-auth-bug {"dependsOn":["inspect"],"description":"Recheck expiry"}` | Sparse field patch; `message` also accepted                                      |
-| `/todos:remove fix-auth-bug`                                                          | Remove one or more space-separated keys                                          |
-| `/todos:clear completed`                                                              | Clear finished tasks while preserving prerequisites of open work                 |
-| `/todos:clear`                                                                        | Clear all, with confirmation by default                                          |
-| `/todos:clear all --yes`                                                              | Explicitly bypass confirmation                                                   |
-| `/todos:settings`                                                                     | Built-in select/input settings menu, like subagents                              |
+| Command                                                                              | Purpose                                                                          |
+| ------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------- |
+| `/todo`                                                                              | Searchable task list, dependency details and history                             |
+| `/todo:review`                                                                       | Browser on unreviewed messages; outside TUI, prints them and marks them reviewed |
+| `/todo:review all`                                                                   | Mark every unreviewed task reviewed                                              |
+| `/todo:review fix-auth-bug`                                                          | Mark one or more space-separated keys reviewed                                   |
+| `/todo:add Fix auth bug`                                                             | Add pending task with unique generated key; omit title for input dialog          |
+| `/todo:update fix-auth-bug in_progress`                                              | Change status explicitly                                                         |
+| `/todo:update fix-auth-bug completed Verified by hand`                               | Change status and record a note                                                  |
+| `/todo:update fix-auth-bug {"dependsOn":["inspect"],"description":"Recheck expiry"}` | Sparse field patch; `message` also accepted                                      |
+| `/todo:remove fix-auth-bug`                                                          | Remove one or more space-separated keys                                          |
+| `/todo:clear completed`                                                              | Clear finished tasks while preserving prerequisites of open work                 |
+| `/todo:clear`                                                                        | Clear all, with confirmation by default                                          |
+| `/todo:clear all --yes`                                                              | Explicitly bypass confirmation                                                   |
+| `/todo:settings`                                                                     | Built-in select/input settings menu, like subagents                              |
 
 Commands never submit a user prompt, schedule a continuation, start subagents,
 or mark unrelated work completed. On its next model request, the agent gets a
@@ -146,7 +149,7 @@ the outcome to its task, and review tracking keeps it flagged until you have see
   last review of that task. Status changes without a message never flag a task,
   and neither do your own notes.
 - **Reviewing:** opening a task's details in the browser marks it reviewed.
-  Ctrl+R marks every unreviewed task in the current filtered list. `/todos:review`
+  Ctrl+R marks every unreviewed task in the current filtered list. `/todo:review`
   also marks tasks reviewed, with or without arguments. A review covers only the
   messages that were shown. A message that arrives while the browser is open stays
   unreviewed.
@@ -157,26 +160,26 @@ the outcome to its task, and review tracking keeps it flagged until you have see
 ## Handing tasks to subagents
 
 A parent can hand specific tasks to a subagent through pi-subagent's generic spawn
-`handoff`, under the `todos` key that pi-todo owns:
+`handoff`, under the `todo` key that pi-todo owns:
 
 ```ts
 subagent_start({
   subagent_type: "general-purpose",
   description: "Audit auth",
   prompt: "…",
-  handoff: { todos: { keys: ["audit", "tests"], scope: "assigned" } },
+  handoff: { todo: { keys: ["audit", "tests"], scope: "assigned" } },
 });
 ```
 
 - **Checked before the spawn.** pi-todo's `tool_call` handler blocks the `subagent_start`
   call, with a reason, when a key is unknown, already completed, or held by another
   subagent. A call that passes reserves its keys, so two spawns in one turn cannot
-  take the same task. A malformed `handoff.todos` is blocked too.
+  take the same task. A malformed `handoff.todo` is blocked too.
 - **Claimed before the child starts.** When pi-subagent reports the child session
   (`subagent:session:created`, with its agent id and the same tool call id), the
-  parent journals a claim in `pi-personal:todo-claims`. Claims follow the branch like
+  parent journals a claim in `todo:claim` entries. Claims follow the branch like
   review marks; the plan state engine is unchanged.
-- **The subagent works in your list.** Its `todo` tool, context snapshot and widget
+- **The subagent works in your list.** Its todo tools, context snapshot and widget
   ("Assigned tasks") show only its tasks with `scope: "assigned"`, or your whole list
   with `scope: "ledger"`. Its writes go to your list through
   [`pi-session-tree`](../../packages/pi-session-tree/README.md) and are checked there:
@@ -185,12 +188,12 @@ subagent_start({
   - With `ledger`, it may also add prerequisites (`dependsOn`, keeping the existing
     ones) to tasks it does not hold, for a blocker it found. Each addition leaves a
     flagged message on that task. Set `childPrerequisites: false` to turn this off.
-  - Anything else on other tasks fails, as do `replace` and clearing everything.
+  - Anything else on other tasks fails, as do `todo_replace` and clearing everything.
   - `baseRevision` is checked against the tasks the write touches, so other
     subagents' writes elsewhere do not make it stale.
 - **Attributed and flagged.** Updates record the subagent's agent id (`agent a3f2b1c4`
   in history), and its messages are flagged for review like any model message. Your
-  widget and browser show `→ agent a3f2b1c4` on handed-over tasks; `pi-todo:snapshot`
+  widget and browser show `→ agent a3f2b1c4` on handed-over tasks; `todo:snapshot`
   tasks carry `claimedBy`.
 - **Released when the agent ends.** On `subagent:completed`, `failed`, `resumed` or
   `child:disposed`, the claim is released and tasks it left `in_progress` get a
@@ -253,9 +256,9 @@ gets plain-text widget output; task tools remain usable without terminal UI.
 
 ## Settings
 
-Same layering as subagents: defaults → `<agentDir>/todos.json` →
-`<cwd>/.pi/todos.json`. Agent directory honors `PI_CODING_AGENT_DIR` (normally
-`~/.pi/agent`). `/todos:settings` writes only the changed project setting; global
+Same layering as subagents: defaults → `<agentDir>/todo.json` →
+`<cwd>/.pi/todo.json`. Agent directory honors `PI_CODING_AGENT_DIR` (normally
+`~/.pi/agent`). `/todo:settings` writes only the changed project setting; global
 settings are edited manually. Settings apply immediately. If persistence fails,
 the change remains session-only with a warning. Invalid fields fall back to the
 lower-priority layer; malformed files warn instead of preventing startup.
@@ -293,7 +296,7 @@ direct result cannot overwrite a newer command edit during replay. Older upstrea
 results remain a fallback before the first local checkpoint. Reload, resume, tree
 navigation, and compaction restore the latest valid branch snapshot. Snapshots
 journaled before history existed restore with empty history. Review marks are a
-separate `pi-personal:todo-review` journal of per-task revision watermarks. Like
+separate `todo:review` journal of per-task revision watermarks. Like
 tasks, they follow the branch. Compaction checkpoints state without
 sending steering messages or running the agent.
 
@@ -306,7 +309,7 @@ UX and explicit model control keep extensions composable and independently loada
 
 Other extensions read tasks without coupling to the journal format: on session
 start, branch changes, every plan change, and every review, pi-todo emits
-`pi-todo:snapshot` on the session's `pi.events` bus (`src/events.ts`). The payload
+`todo:snapshot` on the session's `pi.events` bus (`src/events.ts`). The payload
 is a fresh copy: `{ version: 1, revision, tasks }`, where each task adds `blocked`,
 `createdAt`, its bounded `updates` history, an `unreviewed` message count, and
 `claimedBy` (the subagent's agent id) when the task is handed over.

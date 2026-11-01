@@ -118,7 +118,7 @@ describe("read-only todo browser", () => {
     state.tasks[1].dependsOn = ["t0"];
     const { browser } = await open(state);
     expect(output(browser)).toMatch(/╭─+ Todos ─+╮/);
-    expect(output(browser)).toContain("/todos:add · /todos:clear");
+    expect(output(browser)).toContain("/todo:add · /todo:clear");
     expect(output(browser)).toContain("Read-only task snapshot");
     expect(output(browser)).not.toContain("hidden detail");
     browser.handleInput("blocked");
