@@ -3,6 +3,14 @@
 The stated request is usually a solution. Find the outcome behind it, because
 the cheapest roadmap often serves the outcome by a different route.
 
+## No goal given
+
+Do not invent one. Look for plans that already exist: one stated earlier in the
+conversation, a `draft` roadmap in `docs/roadmaps/`, a `GRILL-ME.md`. Ask with
+`ask`, offering each as a choice named after its plan, and let the user type
+their own goal instead. If nothing exists, ask for the goal in one free-text
+question. Log the answer as the first row of the Answers table.
+
 ## Look before asking
 
 Read the README, docs, recent commits, issues, and the code the request touches.
@@ -47,3 +55,27 @@ Write this at the top of the roadmap document and get a yes or a correction:
 ```
 
 If `GRILL-ME.md` exists, fold its decisions in and cite them.
+
+## Answers
+
+Log every question you asked or settled from the repo, in the order they came
+up, directly under the goal brief. Keep adding rows in later phases; phase 4's
+choice of option is recorded under `## Decision`, not here.
+
+```markdown
+## Answers
+
+| #   | Question                      | Recommended                    | Answer                 | Source           | Status   |
+| --- | ----------------------------- | ------------------------------ | ---------------------- | ---------------- | -------- |
+| 1   | Keep the v1 endpoint?         | Yes: two clients still call it | No, retire it in March | user             | resolved |
+| 2   | Where does the timeout live?  | —                              | `config/lb.yaml`       | `src/load.ts:14` | resolved |
+| 3   | Which region rolls out first? | eu-west: lowest traffic        | —                      | —                | open     |
+```
+
+- **Recommended** is what you showed the user, so a reader can see where they
+  overrode it. Use `—` for facts read from the repo.
+- **Answer** is the user's choice in their words, including any text they typed.
+- **Source** is `user`, a `file:line`, or `GRILL-ME.md`.
+- **Status** is `resolved` only when the Answer column has the user's answer or
+  a cited fact. Dismissed or unasked questions are `open` and also go under
+  `## Open questions`.

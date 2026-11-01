@@ -12,6 +12,10 @@ Status: draft | chosen | in progress | done · Updated: <date>
 
 <from goal-discovery.md>
 
+## Answers
+
+<question log from goal-discovery.md; add rows in every phase>
+
 ## Inputs
 
 <table from inputs-and-contracts.md, plus a contract sketch for each

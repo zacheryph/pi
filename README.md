@@ -372,10 +372,13 @@ change". The work is staged, and each stage has a gate:
 5. **Roadmap:** ordered, independently shippable steps that keep tidying
    separate from behavior change and end with a small, easy change.
 
-It plans and writes `docs/roadmaps/<slug>.md`; it does not implement. It overlaps
-with [`@firstpick/pi-extension-grill-me`](https://www.npmjs.com/package/@firstpick/pi-extension-grill-me)
-only in stage 1. If its `questionnaire` tool is installed the skill uses it to
-batch questions, and it reuses an existing `GRILL-ME.md` instead of re-asking.
+It plans and writes `docs/roadmaps/<slug>.md`; it does not implement. It asks
+its questions with pi-ask's `ask`, four at a time, and logs each one in the
+roadmap with the recommendation it showed, your answer, and whether it is
+resolved. A question you dismiss stays open; it is not answered for you. It
+overlaps with
+[`@firstpick/pi-extension-grill-me`](https://www.npmjs.com/package/@firstpick/pi-extension-grill-me)
+only in stage 1 and reuses an existing `GRILL-ME.md` instead of re-asking.
 Nothing here depends on it.
 
 ### execute-roadmap

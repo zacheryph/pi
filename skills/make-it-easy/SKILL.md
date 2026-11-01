@@ -44,9 +44,11 @@ reference file when you enter the phase, not before.
 ### 1. True goal — `references/goal-discovery.md`
 
 Separate the stated request from the outcome it serves. Look at the code first
-and ask the user only what the code cannot tell you. Gate: a confirmed goal
-brief with success criteria, non-goals, constraints, and an explicit statement
-of what existing things may be changed.
+and ask the user only what the code cannot tell you. If you were given no goal,
+do not invent one: offer the plans that already exist and let the user pick or
+describe their own. Gate: a confirmed goal brief with success criteria,
+non-goals, constraints, and an explicit statement of what existing things may
+be changed.
 
 ### 2. Inputs — `references/inputs-and-contracts.md`
 
@@ -88,15 +90,23 @@ roadmap out with the `execute-roadmap` skill.
 ## Asking the user
 
 - Investigate before asking. Never ask what the repo, config, or docs answer.
-- Batch independent questions, each with your recommendation and a one-line
-  reason. Hold dependent questions for the next round.
-- If a `questionnaire` tool is available (it ships with
-  `@firstpick/pi-extension-grill-me`), use it for each batch of choices.
-  Otherwise ask in chat, at most four questions at a time.
-- `/grill-me` overlaps with phase 1 only. If the user has already run it and a
-  `GRILL-ME.md` (or `.pi/grill-me/state.json`) exists, treat its decisions as
-  answered input to the goal brief and ask only what is missing. Do not call the
-  `grill_*` tools; the roadmap document is the record.
+- Ask with `ask`, up to four independent questions per call. Put your
+  recommended choice first, label it "(Recommended)", and give a one-line
+  reason in its description. Hold dependent questions for the next round.
+- After each round, check the answers against earlier answers and the facts
+  from the repo. Raise a conflict or a changed assumption before asking
+  anything new.
+- Log every question in the document's **Answers** table
+  (`references/goal-discovery.md`) as soon as it is answered or dismissed.
+- If the user dismisses the questions, do not ask them again in chat and do not
+  answer them yourself. Log them as `open` and list them under **Open
+  questions**. If the current gate needs them, save the document, say what is
+  unresolved, and stop.
+- `/grill-me` (from `@firstpick/pi-extension-grill-me`) overlaps with phase 1
+  only. If a `GRILL-ME.md` (or `.pi/grill-me/state.json`) exists, copy its
+  decisions into the Answers table with `GRILL-ME.md` as the source and ask
+  only what is missing. Do not call the `grill_*` tools; the roadmap document
+  is the record.
 - Never ask for secrets or credentials.
 
 ## Delegation
@@ -121,3 +131,6 @@ the handles in the document.
 - Prefer orderings where each step ships value or removes risk. A roadmap that
   delivers nothing until its last step is a bet; label it as one.
 - Say what you did not verify. A friction claim without evidence is a guess.
+- A question is resolved only when the user answered it or the repo settles it
+  (cite `file:line`). Your recommendation is not an answer: a question nobody
+  answered stays `open`, however confident you are.
