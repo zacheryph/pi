@@ -80,7 +80,7 @@ With notifications on, a new question notifies you with its text.
 
 | Section   | Source                                                                                                                                                                                                                |
 | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Todos     | `pi-todo:snapshot` on the session's `pi.events` bus (history from the same event)                                                                                                                                     |
+| Todos     | `todo:snapshot` on the session's `pi.events` bus (history from the same event)                                                                                                                                        |
 | Stash     | `stash:snapshot` on the session's `pi.events` bus; previews through pi-stash's `stash:preview` request on the same bus                                                                                                |
 | Subagents | pi-subagents' `subagents:*` lifecycle events on the same bus. Its `globalThis` service is not used: subagent children load the extension in-process and replace it. Agents started before a `/reload` are not listed. |
 | Blackhole | `om.observations.*` and `om.reflections.recorded` entries pi-blackhole saves on the branch (no public API; unknown shapes are skipped)                                                                                |

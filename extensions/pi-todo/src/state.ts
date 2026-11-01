@@ -1,7 +1,14 @@
 export const TODO_SCHEMA_VERSION = 2 as const;
 const LEGACY_TODO_SCHEMA_VERSION = 1 as const;
-export const TODO_TOOL_NAME = "todo";
-export const TODO_STATE_CUSTOM_TYPE = "pi-todo-state";
+/** Every todo tool; each result carries the full task state in its details. */
+export const TODO_TOOL_NAMES: ReadonlySet<string> = new Set([
+  "todo_list",
+  "todo_upsert",
+  "todo_replace",
+  "todo_remove",
+  "todo_clear",
+]);
+export const TODO_STATE_CUSTOM_TYPE = "todo:state";
 export const MAX_TODO_TASKS = 50;
 export const MAX_TASK_DEPENDENCIES = 20;
 
@@ -451,7 +458,12 @@ function readTodoStateEntry(rawEntry: unknown): TodoState | undefined {
   }
   if (rawEntry.type !== "message" || !isRecord(rawEntry.message)) return undefined;
   const message = rawEntry.message;
-  if (message.role !== "toolResult" || message.toolName !== TODO_TOOL_NAME) return undefined;
+  if (
+    message.role !== "toolResult" ||
+    typeof message.toolName !== "string" ||
+    !TODO_TOOL_NAMES.has(message.toolName)
+  )
+    return undefined;
   return readState(message.details);
 }
 
@@ -493,7 +505,11 @@ export function needsTodoContextCheckpoint(entries: Iterable<unknown>): boolean 
       modelFacing = true;
     } else if (rawEntry.type === "message" && isRecord(rawEntry.message)) {
       const message = rawEntry.message;
-      if (message.role === "toolResult" && message.toolName === TODO_TOOL_NAME) {
+      if (
+        message.role === "toolResult" &&
+        typeof message.toolName === "string" &&
+        TODO_TOOL_NAMES.has(message.toolName)
+      ) {
         persisted = message.details;
         modelFacing = true;
       }

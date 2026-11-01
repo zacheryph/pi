@@ -26,7 +26,7 @@ afterEach(() => {
 });
 
 type Handler = (event: ExtensionEvent, ctx: ExtensionContext) => unknown;
-const CONTEXT_TYPE = "pi-personal:todo-context";
+const CONTEXT_TYPE = "todo:context";
 
 /** One Pi session with pi-todo loaded and its own real event bus. */
 function session(config: Partial<TodoConfig> = {}) {
@@ -70,8 +70,13 @@ function session(config: Partial<TodoConfig> = {}) {
       result = await handler(event as ExtensionEvent, ctx);
     return result;
   };
-  const execute = (request: TodoRequest) =>
-    tools[0].execute("call", request, undefined, undefined, ctx);
+  /** Calls the per-action tool a request names, without its action field. */
+  const execute = (request: TodoRequest) => {
+    const { action, ...input } = request;
+    const tool = tools.find((candidate) => candidate.name === `todo_${action}`);
+    if (!tool) throw new Error(`No todo tool for action: ${String(action)}`);
+    return tool.execute("call", input, undefined, undefined, ctx);
+  };
   const text = async (request: TodoRequest) =>
     (await execute(request)).content
       .map((part) => (part.type === "text" ? part.text : ""))
@@ -129,7 +134,12 @@ const handoffCall = (toolCallId: string, todos: unknown) => ({
   type: "tool_call",
   toolName: "subagent",
   toolCallId,
-  input: { prompt: "x", description: "x", subagent_type: "general-purpose", handoff: { todos } },
+  input: {
+    prompt: "x",
+    description: "x",
+    subagent_type: "general-purpose",
+    handoff: { todo: todos },
+  },
 });
 
 /** What pi-subagents does: veto check, session-created on the parent's bus, then the child starts. */
@@ -148,7 +158,7 @@ async function spawn(
     parentSessionId: parent.id,
     agentId,
     toolCallId,
-    handoff: { todos, review: { other: "data" } },
+    handoff: { todo: todos, review: { other: "data" } },
   });
   await child.emit("session_start");
   return child;
@@ -161,7 +171,7 @@ const claimEntries = (s: Session) =>
     .map((entry) => (entry as { data: unknown }).data);
 
 describe("handing tasks to a subagent", () => {
-  it("vetoes a spawn whose handoff.todos cannot be claimed", async () => {
+  it("vetoes a spawn whose handoff.todo cannot be claimed", async () => {
     const parent = await planned();
     const veto = async (todos: unknown, id = "call") =>
       parent.emit("tool_call", handoffCall(id, todos)) as Promise<
@@ -177,7 +187,7 @@ describe("handing tasks to a subagent", () => {
     });
     expect(await veto(["a"])).toMatchObject({
       block: true,
-      reason: expect.stringContaining("handoff.todos must be"),
+      reason: expect.stringContaining("handoff.todo must be"),
     });
     expect(await veto({ keys: ["a"], scope: "everything" })).toMatchObject({
       block: true,
@@ -232,7 +242,7 @@ describe("handing tasks to a subagent", () => {
       parentSessionId: parent.id,
       agentId: "nested-agent",
       toolCallId: "call-other",
-      handoff: { todos: { keys: ["a"] } },
+      handoff: { todo: { keys: ["a"] } },
     });
     await child.emit("session_start");
     expect((await child.tasks()).map((task) => task.key)).toEqual(["a"]);

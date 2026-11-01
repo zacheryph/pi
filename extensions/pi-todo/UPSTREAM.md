@@ -27,25 +27,27 @@ Upstream extension entry/settings/UI are replaced locally:
 - `src/actions.ts`: explicit list/upsert/replace/remove/clear operations. Upsert
   preserves omitted keys and defaults new tasks to pending. Optional single-active
   policy never demotes another task implicitly.
-- `src/index.ts`: sequential tool, durable custom-entry journal for nested tools
+- `src/index.ts`: one sequential tool per action (`todo_list`, `todo_upsert`,
+  `todo_replace`, `todo_remove`, `todo_clear`) instead of upstream's single
+  action-dispatched tool, each with its own schema and annotations; durable custom-entry journal for nested tools
   and user commands, branch restoration, context-only current-state sync while
   model history lacks a current full result, independent rendering lifecycle.
   No forced continuation or steering messages.
-- `src/events.ts`: read-only `pi-todo:snapshot` emission on the session's
+- `src/events.ts`: read-only `todo:snapshot` emission on the session's
   `pi.events` bus after start, branch changes, plan changes, and reviews, for
   other extensions such as pi-dashboard.
-- `src/replay.ts`: validated local `pi-personal:todo-state` journals take precedence
+- `src/replay.ts`: validated local `todo:journal` entries take precedence
   over potentially delayed direct results; their `activity` restores leniently, and
-  `pi-personal:todo-review` entries restore review watermarks. Upstream snapshots remain a fallback
+  `todo:review` entries restore review watermarks. Results of the todo tools remain a fallback
   until a branch has a local checkpoint; pure engine remains unchanged.
 - `src/commands.ts`: browser/review/add/update/remove/clear/settings commands; revision
   and session/branch-generation guards around asynchronous dialogs; no prompt
   submission.
 - `src/claims.ts`, `src/delegation.ts`: task handoff to subagents through
-  pi-subagents' `handoff.todos`. A `tool_call` veto and reservation, claims journaled
-  in `pi-personal:todo-claims` (claim/release, branch-scoped, beside the engine),
+  pi-subagents' `handoff.todo`. A `tool_call` veto and reservation, claims journaled
+  in `todo:claim` entries (claim/release, branch-scoped, beside the engine),
   release on agent end, and a broker offered through `packages/pi-session-tree`. A
-  subagent with a claim routes its `todo` calls to it, scoped to its claim or the whole
+  subagent with a claim routes its todo tool calls to it, scoped to its claim or the whole
   ledger. Updates carry an optional `agent` attribution in history.
 - `src/config.ts`: independent global/project layered settings, no shared-settings
   package dependency. Project writes preserve unrelated settings fields.

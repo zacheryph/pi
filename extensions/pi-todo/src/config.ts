@@ -25,7 +25,7 @@ export const DEFAULT_CONFIG: TodoConfig = {
   contextSync: "changes",
   childPrerequisites: true,
 };
-export const CONFIG_FILE = "todos.json";
+export const CONFIG_FILE = "todo.json";
 
 export function sanitizeConfig(raw: unknown): Partial<TodoConfig> {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};

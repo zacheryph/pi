@@ -4,7 +4,6 @@ import {
   MAX_TODO_TASKS,
   TODO_SCHEMA_VERSION,
   TODO_STATE_CUSTOM_TYPE,
-  TODO_TOOL_NAME,
   TodoValidationError,
   cloneTodoState,
   createEmptyTodoState,
@@ -32,7 +31,7 @@ function customEntry(data: unknown) {
 }
 
 function toolEntry(details: unknown) {
-  return { type: "message", message: { role: "toolResult", toolName: TODO_TOOL_NAME, details } };
+  return { type: "message", message: { role: "toolResult", toolName: "todo_upsert", details } };
 }
 
 function replay(entries: unknown[]): TodoState {
@@ -505,7 +504,7 @@ describe("replayTodoState", () => {
       label: "wrong role",
       entry: (state: TodoState) => ({
         type: "message",
-        message: { role: "assistant", toolName: TODO_TOOL_NAME, details: state },
+        message: { role: "assistant", toolName: "todo_upsert", details: state },
       }),
     },
     {
@@ -528,7 +527,7 @@ describe("replayTodoState", () => {
       label: "tool content instead of details",
       entry: (state: TodoState) => ({
         type: "message",
-        message: { role: "toolResult", toolName: TODO_TOOL_NAME, content: JSON.stringify(state) },
+        message: { role: "toolResult", toolName: "todo_upsert", content: JSON.stringify(state) },
       }),
     },
   ])("ignores $label without replacing valid state", ({ entry }) => {

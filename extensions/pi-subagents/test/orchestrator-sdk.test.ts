@@ -65,7 +65,11 @@ it("a child orchestrator tracks work, delegates an implementation, and recalls t
       "grep",
       "find",
       "ls",
-      "todo",
+      "todo_list",
+      "todo_upsert",
+      "todo_replace",
+      "todo_remove",
+      "todo_clear",
       "subagent",
       "get_subagent_result",
       "steer_subagent",
@@ -117,8 +121,7 @@ it("a child orchestrator tracks work, delegates an implementation, and recalls t
     let workerId: string | undefined;
     const text = (value: unknown) => JSON.stringify(value);
     faux.setResponses([
-      call("todo", {
-        action: "upsert",
+      call("todo_upsert", {
         tasks: [
           { key: "implement", subject: "Implementation: create artifact", status: "in_progress" },
         ],
@@ -136,8 +139,7 @@ it("a child orchestrator tracks work, delegates an implementation, and recalls t
         expect(names).toContain("write");
         for (const name of ["subagent", "get_subagent_result", "steer_subagent"])
           expect(names).not.toContain(name);
-        return call("todo", {
-          action: "upsert",
+        return call("todo_upsert", {
           tasks: [{ key: "worker-private", subject: "Worker-only notes" }],
         });
       },
@@ -150,8 +152,7 @@ it("a child orchestrator tracks work, delegates an implementation, and recalls t
         expect(text(result)).toContain("Artifact implemented");
         workerId = /Agent ID: ([\w-]+)/.exec(text(result))?.[1];
         expect(workerId).toBeTruthy();
-        return call("todo", {
-          action: "upsert",
+        return call("todo_upsert", {
           tasks: [{ key: "implement", description: `Owner: ${workerId}; follow up on rationale` }],
         });
       },
@@ -171,8 +172,7 @@ it("a child orchestrator tracks work, delegates an implementation, and recalls t
       () => call("get_subagent_result", { agent_id: workerId!, verbose: true }),
       (context) => {
         expect(text(context.messages.at(-1))).toContain("Recalled rationale");
-        return call("todo", {
-          action: "upsert",
+        return call("todo_upsert", {
           tasks: [
             {
               key: "implement",
@@ -193,7 +193,7 @@ it("a child orchestrator tracks work, delegates an implementation, and recalls t
     expect(faux.getPendingResponseCount()).toBe(0);
     const journal = orchestrator.session.sessionManager
       .getBranch()
-      .filter((entry) => entry.type === "custom" && entry.customType === "pi-personal:todo-state");
+      .filter((entry) => entry.type === "custom" && entry.customType === "todo:journal");
     expect(journal.at(-1)).toMatchObject({
       data: {
         tasks: [

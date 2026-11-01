@@ -2,13 +2,13 @@ import type { TodoState } from "./state.ts";
 
 /**
  * Task delegation to subagents. A parent hands keys to a child through
- * pi-subagents' generic spawn `handoff` under the `todos` key; the claim is
+ * pi-subagents' generic spawn `handoff` under the `todo` key; the claim is
  * journaled here, beside the plan state (like review watermarks), so upstream's
  * state engine stays untouched.
  */
-export const TODO_CLAIMS_TYPE = "pi-personal:todo-claims";
+export const TODO_CLAIMS_TYPE = "todo:claim";
 /** The key pi-todo owns in pi-subagents' spawn `handoff`. */
-export const HANDOFF_KEY = "todos";
+export const HANDOFF_KEY = "todo";
 export const MAX_HANDOFF_TASKS = 50;
 
 export type TodoClaimScope = "assigned" | "ledger";
@@ -112,24 +112,23 @@ export interface TodoHandoff {
 }
 
 /**
- * Read `handoff.todos`: `{ keys: string[], scope?: "assigned" | "ledger" }`.
+ * Read `handoff.todo`: `{ keys: string[], scope?: "assigned" | "ledger" }`.
  * Undefined when the handoff hands no tasks; an error string when it is malformed.
  */
 export function readTodoHandoff(handoff: unknown): TodoHandoff | string | undefined {
   if (!isRecord(handoff) || handoff[HANDOFF_KEY] === undefined) return undefined;
   const raw = handoff[HANDOFF_KEY];
   if (!isRecord(raw) || !Array.isArray(raw.keys))
-    return 'handoff.todos must be { keys: string[], scope?: "assigned" | "ledger" }';
+    return 'handoff.todo must be { keys: string[], scope?: "assigned" | "ledger" }';
   if (raw.scope !== undefined && raw.scope !== "assigned" && raw.scope !== "ledger") {
-    return 'handoff.todos.scope must be "assigned" or "ledger"';
+    return 'handoff.todo.scope must be "assigned" or "ledger"';
   }
   const keys = [...new Set(raw.keys.map((key) => (typeof key === "string" ? key.trim() : "")))];
-  if (!keys.length) return "handoff.todos.keys must name at least one task";
+  if (!keys.length) return "handoff.todo.keys must name at least one task";
   if (keys.length > MAX_HANDOFF_TASKS)
-    return `handoff.todos.keys may name at most ${MAX_HANDOFF_TASKS} tasks`;
+    return `handoff.todo.keys may name at most ${MAX_HANDOFF_TASKS} tasks`;
   const bad = keys.find((key) => !KEY_PATTERN.test(key));
-  if (bad !== undefined)
-    return `handoff.todos.keys has an invalid task key: ${JSON.stringify(bad)}`;
+  if (bad !== undefined) return `handoff.todo.keys has an invalid task key: ${JSON.stringify(bad)}`;
   return { keys, scope: raw.scope ?? "assigned" };
 }
 

@@ -15,9 +15,9 @@ import {
 } from "./state.ts";
 
 /** Local journals are authoritative; direct results may arrive after newer edits. */
-export const TODO_JOURNAL_TYPE = "pi-personal:todo-state";
+export const TODO_JOURNAL_TYPE = "todo:journal";
 /** Append-only user review watermarks; never part of plan state or model context. */
-export const TODO_REVIEW_TYPE = "pi-personal:todo-review";
+export const TODO_REVIEW_TYPE = "todo:review";
 
 export interface TodoSessionSnapshot {
   state: TodoState;
