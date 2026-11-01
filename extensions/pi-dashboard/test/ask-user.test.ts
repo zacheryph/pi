@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  ASK_ANSWER_EVENT,
-  ASK_ANSWER_RESULT_EVENT,
-  ASK_CLOSED_EVENT,
-  ASK_OPENED_EVENT,
+  ASK_USER_ANSWER_EVENT,
+  ASK_USER_ANSWER_RESULT_EVENT,
+  ASK_USER_BLOCKED_EVENT,
+  ASK_USER_PROMPT_EVENT,
   AskUserTracker,
   readAnswer,
   readPrompt,
@@ -51,14 +51,11 @@ const prompt = (toolCallId = "call-1") => ({
   ],
 });
 
-/** Stands in for pi-ask's answer channel: answers verdicts the way it does. */
-function piAsk(
-  target: Bus,
-  verdict: (payload: Record<string, unknown>) => Record<string, unknown>,
-) {
-  target.on(ASK_ANSWER_EVENT, (data) => {
+/** Stands in for rpiv ask-user's answer channel: answers verdicts the way it does. */
+function rpiv(target: Bus, verdict: (payload: Record<string, unknown>) => Record<string, unknown>) {
+  target.on(ASK_USER_ANSWER_EVENT, (data) => {
     const payload = data as Record<string, unknown>;
-    target.emit(ASK_ANSWER_RESULT_EVENT, {
+    target.emit(ASK_USER_ANSWER_RESULT_EVENT, {
       requestId: payload.requestId,
       toolCallId: payload.toolCallId,
       ...verdict(payload),
@@ -150,37 +147,37 @@ describe("readAnswer", () => {
 });
 
 describe("AskUserTracker", () => {
-  it("lists open questionnaires until pi-ask reports they closed", () => {
+  it("lists open questionnaires until rpiv reports the wait is over", () => {
     const events = bus();
     const changed = vi.fn();
     const tracker = new AskUserTracker(events, changed, () => 7);
     expect(tracker.list()).toBeUndefined();
-    events.emit(ASK_OPENED_EVENT, prompt("a"));
-    events.emit(ASK_OPENED_EVENT, prompt("b"));
+    events.emit(ASK_USER_PROMPT_EVENT, prompt("a"));
+    events.emit(ASK_USER_PROMPT_EVENT, prompt("b"));
     expect(tracker.list()?.map((questionnaire) => questionnaire.id)).toEqual(["a", "b"]);
-    events.emit(ASK_CLOSED_EVENT, { toolCallId: "missing", outcome: "answered" });
+    events.emit(ASK_USER_BLOCKED_EVENT, { active: true, toolCallId: "a" });
     expect(tracker.list()).toHaveLength(2);
-    events.emit(ASK_CLOSED_EVENT, { toolCallId: "a", outcome: "answered" });
+    events.emit(ASK_USER_BLOCKED_EVENT, { active: false, toolCallId: "a" });
     expect(tracker.list()?.map((questionnaire) => questionnaire.id)).toEqual(["b"]);
     tracker.close("b");
     expect(tracker.list()).toBeUndefined();
     expect(changed).toHaveBeenCalledTimes(4);
   });
 
-  it("answers through pi-ask's channel and closes the questionnaire once accepted", async () => {
+  it("answers through rpiv's channel and closes the questionnaire once accepted", async () => {
     const events = bus();
-    piAsk(events, () => ({ ok: true }));
+    rpiv(events, () => ({ ok: true }));
     const tracker = new AskUserTracker(events, () => {});
-    events.emit(ASK_OPENED_EVENT, prompt());
+    events.emit(ASK_USER_PROMPT_EVENT, prompt());
     await tracker.answer("call-1", {
       answers: [
         { questionIndex: 0, optionIndexes: [0] },
         { questionIndex: 1, text: "smoke" },
       ],
     });
-    expect(events.sent.find(([channel]) => channel === ASK_ANSWER_EVENT)?.[1]).toEqual({
+    expect(events.sent.find(([channel]) => channel === ASK_USER_ANSWER_EVENT)?.[1]).toEqual({
       toolCallId: "call-1",
-      requestId: "dashboard:1",
+      requestId: "pi-dashboard-1",
       answers: [
         { questionIndex: 0, optionIndexes: [0] },
         { questionIndex: 1, text: "smoke" },
@@ -191,23 +188,23 @@ describe("AskUserTracker", () => {
 
   it("passes a decline through as cancel", async () => {
     const events = bus();
-    piAsk(events, () => ({ ok: true }));
+    rpiv(events, () => ({ ok: true }));
     const tracker = new AskUserTracker(events, () => {});
-    events.emit(ASK_OPENED_EVENT, prompt());
+    events.emit(ASK_USER_PROMPT_EVENT, prompt());
     await tracker.answer("call-1", { cancel: true });
-    expect(events.sent.find(([channel]) => channel === ASK_ANSWER_EVENT)?.[1]).toEqual({
+    expect(events.sent.find(([channel]) => channel === ASK_USER_ANSWER_EVENT)?.[1]).toEqual({
       toolCallId: "call-1",
-      requestId: "dashboard:1",
+      requestId: "pi-dashboard-1",
       cancel: true,
     });
   });
 
-  it("reports pi-ask's refusal and keeps the questionnaire open unless it is gone", async () => {
+  it("reports rpiv's refusal and keeps the questionnaire open unless it is gone", async () => {
     const events = bus();
     let code = "invalid_answer";
-    piAsk(events, () => ({ ok: false, code, reason: "question 2 is unanswered" }));
+    rpiv(events, () => ({ ok: false, code, reason: "question 2 is unanswered" }));
     const tracker = new AskUserTracker(events, () => {});
-    events.emit(ASK_OPENED_EVENT, prompt());
+    events.emit(ASK_USER_PROMPT_EVENT, prompt());
     await expect(
       tracker.answer("call-1", { answers: [{ questionIndex: 0, optionIndexes: [0] }] }),
     ).rejects.toThrow("Not accepted: question 2 is unanswered");
@@ -221,19 +218,19 @@ describe("AskUserTracker", () => {
     const events = bus();
     const tracker = new AskUserTracker(events, () => {});
     await expect(tracker.answer("missing", { cancel: true })).rejects.toThrow("no longer open");
-    events.emit(ASK_OPENED_EVENT, prompt());
+    events.emit(ASK_USER_PROMPT_EVENT, prompt());
     await expect(tracker.answer("call-1", { answers: [{ questionIndex: 9 }] })).rejects.toThrow(
       "does not exist",
     );
-    expect(events.sent.some(([channel]) => channel === ASK_ANSWER_EVENT)).toBe(false);
+    expect(events.sent.some(([channel]) => channel === ASK_USER_ANSWER_EVENT)).toBe(false);
   });
 
-  it("says when no pi-ask answer channel replies", async () => {
+  it("says when no rpiv answer channel replies", async () => {
     vi.useFakeTimers();
     try {
       const events = bus();
       const tracker = new AskUserTracker(events, () => {});
-      events.emit(ASK_OPENED_EVENT, prompt());
+      events.emit(ASK_USER_PROMPT_EVENT, prompt());
       const pending = expect(tracker.answer("call-1", { cancel: true })).rejects.toThrow(
         "did not answer",
       );
@@ -247,7 +244,8 @@ describe("AskUserTracker", () => {
   it("keeps at most 8 open questionnaires, dropping the oldest", () => {
     const events = bus();
     const tracker = new AskUserTracker(events, () => {});
-    for (let index = 0; index < 10; index += 1) events.emit(ASK_OPENED_EVENT, prompt(`c${index}`));
+    for (let index = 0; index < 10; index += 1)
+      events.emit(ASK_USER_PROMPT_EVENT, prompt(`c${index}`));
     expect(tracker.list()?.map((questionnaire) => questionnaire.id)).toEqual([
       "c2",
       "c3",

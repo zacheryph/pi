@@ -796,7 +796,7 @@ export class Subagent {
     // A completed child that declared a question is inviting a resume, so its
     // workspace stays live for the resume to re-enter. Every other outcome ends
     // the run for good and tears it down here, including a run that wrapped up
-    // at its turn limit. The question was recorded through `ask` during the
+    // at its turn limit. The question was recorded by ask_parent during the
     // run, so it is already on the record here.
     const holdForResume =
       finalStatus === "completed" &&

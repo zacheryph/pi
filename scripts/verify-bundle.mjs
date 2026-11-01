@@ -54,7 +54,6 @@ try {
     "stash_put",
     "stash_get",
     "stash_list",
-    "ask",
   ]) {
     assert.ok(tools.includes(name), `Missing tool: ${name}`);
   }

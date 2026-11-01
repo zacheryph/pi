@@ -1,12 +1,12 @@
 import type { Questionnaire, QuestionnaireAnswer } from "./protocol.ts";
 import { clip } from "./sections.ts";
 
-// pi-ask's event contract (extensions/pi-ask/src/events.ts): payloads are
-// JSON-safe and listeners tolerate unknown fields.
-export const ASK_OPENED_EVENT = "ask:opened";
-export const ASK_CLOSED_EVENT = "ask:closed";
-export const ASK_ANSWER_EVENT = "ask:answer";
-export const ASK_ANSWER_RESULT_EVENT = "ask:answer-result";
+// @juicesharp/rpiv-ask-user-question's public event contract (events.ts):
+// channel names are immutable and payloads append-only.
+export const ASK_USER_PROMPT_EVENT = "rpiv:ask-user:prompt";
+export const ASK_USER_BLOCKED_EVENT = "rpiv:ask-user:blocked";
+export const ASK_USER_ANSWER_EVENT = "rpiv:ask-user:answer";
+export const ASK_USER_ANSWER_RESULT_EVENT = "rpiv:ask-user:answer-result";
 
 const MAX_QUESTIONNAIRES = 8;
 const MAX_QUESTIONS = 8;
@@ -66,7 +66,7 @@ export function readPrompt(data: unknown, now: number): Questionnaire | undefine
 
 /**
  * Normalizes an answer from the page against the questionnaire it names.
- * pi-ask validates again, strictly and all-or-nothing; this only keeps the
+ * rpiv validates again, strictly and all-or-nothing; this only keeps the
  * payload to the documented fields and catches mistakes before they leave.
  */
 export function readAnswer(
@@ -101,8 +101,8 @@ export function readAnswer(
 }
 
 /**
- * Follows pi-ask questionnaires on the session's bus and answers them through
- * its inbound answer channel. The first answer wins, whether
+ * Follows rpiv ask-user questionnaires on the session's bus and answers them
+ * through the package's own inbound channel. The first answer wins, whether
  * typed in the terminal or sent from the dashboard.
  */
 export class AskUserTracker {
@@ -117,7 +117,7 @@ export class AskUserTracker {
     this.bus = bus;
     this.onChange = onChange;
     this.now = now;
-    bus.on(ASK_OPENED_EVENT, (data) => {
+    bus.on(ASK_USER_PROMPT_EVENT, (data) => {
       const questionnaire = readPrompt(data, this.now());
       if (!questionnaire) return;
       this.open.delete(questionnaire.id);
@@ -126,10 +126,11 @@ export class AskUserTracker {
       while (this.open.size > MAX_QUESTIONNAIRES) this.open.delete(this.open.keys().next().value!);
       this.onChange();
     });
-    bus.on(ASK_CLOSED_EVENT, (data) => {
-      if (isRecord(data) && typeof data.toolCallId === "string") this.close(data.toolCallId);
+    bus.on(ASK_USER_BLOCKED_EVENT, (data) => {
+      if (isRecord(data) && data.active === false && typeof data.toolCallId === "string")
+        this.close(data.toolCallId);
     });
-    bus.on(ASK_ANSWER_RESULT_EVENT, (data) => {
+    bus.on(ASK_USER_ANSWER_RESULT_EVENT, (data) => {
       if (isRecord(data) && typeof data.requestId === "string")
         this.verdicts.get(data.requestId)?.(data);
     });
@@ -150,7 +151,7 @@ export class AskUserTracker {
     this.open.clear();
   }
 
-  /** Sends an answer and resolves once pi-ask accepts it; rejects with its reason otherwise. */
+  /** Sends an answer and resolves once rpiv accepts it; rejects with its reason otherwise. */
   async answer(id: string, data: unknown): Promise<void> {
     const questionnaire = this.open.get(id);
     if (!questionnaire)
@@ -159,7 +160,7 @@ export class AskUserTracker {
       );
     const answer = readAnswer(data, questionnaire);
     if (typeof answer === "string") throw new Error(answer);
-    const requestId = `dashboard:${++this.requests}`;
+    const requestId = `pi-dashboard-${++this.requests}`;
     const verdict = new Promise<Record<string, unknown> | undefined>((resolve) => {
       const timer = setTimeout(() => resolve(undefined), VERDICT_TIMEOUT_MS);
       this.verdicts.set(requestId, (value) => {
@@ -168,15 +169,18 @@ export class AskUserTracker {
       });
     });
     try {
-      this.bus.emit(ASK_ANSWER_EVENT, { toolCallId: id, requestId, ...answer });
+      this.bus.emit(ASK_USER_ANSWER_EVENT, { toolCallId: id, requestId, ...answer });
       const result = await verdict;
-      if (!result) throw new Error("pi-ask did not answer; is the pi-ask extension loaded?");
+      if (!result)
+        throw new Error(
+          "rpiv ask-user did not answer; is @juicesharp/rpiv-ask-user-question 2.15 or newer loaded?",
+        );
       if (result.ok !== true) {
         if (result.code === "not_found") this.close(id);
         throw new Error(
           typeof result.reason === "string" && result.reason
             ? `Not accepted: ${result.reason.slice(0, 300)}`
-            : "pi-ask refused the answer.",
+            : "rpiv ask-user refused the answer.",
         );
       }
       this.close(id);

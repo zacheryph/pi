@@ -119,7 +119,7 @@ export type ActivitySection = Array<{
   error?: boolean;
 }>;
 
-/** An open pi-ask questionnaire, awaiting the user in the terminal or here. */
+/** An open rpiv ask-user questionnaire, awaiting the user in the terminal or here. */
 export interface Questionnaire {
   /** The asking tool call's id; names the questionnaire when answering. */
   id: string;
@@ -133,7 +133,7 @@ export interface Questionnaire {
   }>;
 }
 
-/** An answer as pi-ask's `ask:answer` takes it. */
+/** An answer as rpiv ask-user's `rpiv:ask-user:answer` takes it. */
 export interface QuestionnaireAnswer {
   answers?: Array<{
     questionIndex: number;

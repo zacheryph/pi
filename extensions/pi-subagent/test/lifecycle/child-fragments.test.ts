@@ -190,7 +190,11 @@ describe("child fragment spawn snapshots", () => {
       expect(manager.getRecord(queued)?.status).toBe("completed");
       expect(childPrompt(1)).toContain("AWS source instructions.\n\n---\n\nChild body.");
       expect(childPrompt(1)).not.toContain("Changed");
-      expect(io.createSession.mock.calls[1][0].tools).toEqual(["read", "ask", "parent_notify"]);
+      expect(io.createSession.mock.calls[1][0].tools).toEqual([
+        "read",
+        "ask_parent",
+        "parent_notify",
+      ]);
       const prepared = factory.mock.calls[1][0].agentConfig!;
       expect(Object.isFrozen(prepared)).toBe(true);
       expect(Object.isFrozen(prepared.toolNames)).toBe(true);
@@ -219,7 +223,11 @@ describe("child fragment spawn snapshots", () => {
 
     expect(factory.mock.calls[1][0].agentConfig).toBeUndefined();
     expect(childPrompt(1)).toContain("Updated legacy body.");
-    expect(io.createSession.mock.calls[1][0].tools).toEqual(["grep", "ask", "parent_notify"]);
+    expect(io.createSession.mock.calls[1][0].tools).toEqual([
+      "grep",
+      "ask_parent",
+      "parent_notify",
+    ]);
     expect(readFileSync).not.toHaveBeenCalled();
   });
 

@@ -479,7 +479,7 @@ function memoryPanel(session) {
   return node;
 }
 
-// Answering pi-ask questionnaires. The form lives in its own dialog
+// Answering rpiv ask-user questionnaires. The form lives in its own dialog
 // outside <main>, so live re-renders leave it alone, and each questionnaire's
 // form is kept: a draft survives closing and reopening it.
 const answerModal = document.getElementById("answer");

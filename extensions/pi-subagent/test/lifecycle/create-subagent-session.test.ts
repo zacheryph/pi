@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { service } from "../../../../packages/pi-session-tree/src/index.ts";
 import type {
   CreateSessionOptions,
   ResourceLoaderOptions,
@@ -7,7 +6,7 @@ import type {
 import { createSubagentSession } from "#src/lifecycle/create-subagent-session";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import { SubagentSession } from "#src/lifecycle/subagent-session";
-import { STUB_SNAPSHOT } from "#test/helpers/stub-ctx";
+import { STUB_CTX, STUB_SNAPSHOT } from "#test/helpers/stub-ctx";
 import {
   createAgentLookup,
   createChildLifecycleMock,
@@ -15,6 +14,14 @@ import {
   createSubagentSessionDeps,
   createSubagentSessionIO,
 } from "#test/helpers/subagent-session-io";
+
+/**
+ * The context a custom tool's `execute` receives, derived from the call it
+ * feeds so the stub fits whichever context type the installed SDK declares.
+ */
+type ExecuteCtx = Parameters<
+  NonNullable<CreateSessionOptions["customTools"]>[number]["execute"]
+>[4];
 
 /** Mock AgentConfigLookup. */
 const mockAgentLookup = createAgentLookup();
@@ -437,7 +444,7 @@ describe("createSubagentSession — the core's own child tools", () => {
   // asserted separately so dropping either one fails a test.
 
   describe("when the run supplies an ask-back recorder", () => {
-    it("appends pi-ask's ask to the allowlist the agent declared", async () => {
+    it("appends ask_parent to the allowlist the agent declared", async () => {
       arrangeFactory();
 
       await createSubagentSession(
@@ -446,10 +453,20 @@ describe("createSubagentSession — the core's own child tools", () => {
       );
 
       expect(io.createSession).toHaveBeenCalledWith(
-        expect.objectContaining({ tools: ["read", "ask"] }),
+        expect.objectContaining({ tools: ["read", "ask_parent"] }),
       );
+    });
+
+    it("passes the ask_parent definition as a custom tool", async () => {
+      arrangeFactory();
+
+      await createSubagentSession(
+        { snapshot: STUB_SNAPSHOT, type: "Explore", askParent: vi.fn() },
+        defaultDeps(),
+      );
+
       const opts = io.createSession.mock.calls[0][0] as CreateSessionOptions;
-      expect(opts.customTools).toEqual([]);
+      expect(opts.customTools?.map((tool) => tool.name)).toEqual(["ask_parent"]);
     });
 
     it("appends over an agent that declared no tools at all", async () => {
@@ -460,30 +477,29 @@ describe("createSubagentSession — the core's own child tools", () => {
         createSubagentSessionDeps({ io, exec, registry: createAgentLookup({ toolNames: [] }) }),
       );
 
-      expect(io.createSession).toHaveBeenCalledWith(expect.objectContaining({ tools: ["ask"] }));
+      expect(io.createSession).toHaveBeenCalledWith(
+        expect.objectContaining({ tools: ["ask_parent"] }),
+      );
     });
 
-    it("offers the recorder as the child's ask:route before its extensions bind, and withdraws it on dispose", async () => {
+    it("routes a call on the installed tool to the supplied recorder", async () => {
       arrangeFactory();
       const askParent = vi.fn<(question: string) => void>();
-      const deps = defaultDeps();
-      let sessionId = "";
-      let routeAtBind: { record(question: string): void } | undefined;
-      vi.mocked(deps.lifecycle.bound).mockImplementation((event) => {
-        sessionId = event.sessionId;
-        routeAtBind = service(event.sessionId, "ask:route");
-      });
 
-      const subagent = await createSubagentSession(
+      await createSubagentSession(
         { snapshot: STUB_SNAPSHOT, type: "Explore", askParent },
-        deps,
+        defaultDeps(),
       );
 
-      expect(routeAtBind).toBeDefined();
-      routeAtBind!.record("Which config wins?");
+      const opts = io.createSession.mock.calls[0][0] as CreateSessionOptions;
+      await opts.customTools?.[0]?.execute(
+        "tc-1",
+        { question: "Which config wins?" },
+        new AbortController().signal,
+        () => {},
+        STUB_CTX as ExecuteCtx,
+      );
       expect(askParent).toHaveBeenCalledWith("Which config wins?");
-      await subagent.dispose();
-      expect(service(sessionId, "ask:route")).toBeUndefined();
     });
   });
 

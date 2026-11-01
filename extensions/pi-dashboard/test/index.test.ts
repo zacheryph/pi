@@ -390,14 +390,14 @@ describe("pi-dashboard extension", () => {
     expect(JSON.parse(response.body).error).toBe("pi-stash did not answer; is it loaded?");
   });
 
-  it("shows pi-ask questionnaires and answers them through pi-ask's channel", async () => {
+  it("shows rpiv ask-user questionnaires and answers them through rpiv's channel", async () => {
     const env = setup({ detectTerminal: () => undefined });
     const fake = load(env.deps);
     const ctx = fakeCtx();
     onCleanup(() => quit(fake, ctx));
     const received: unknown[] = [];
-    // Stand-in for pi-ask's inbound answer channel.
-    fake.pi.events.on("ask:answer", (data) => {
+    // Stand-in for rpiv ask-user's inbound answer channel.
+    fake.pi.events.on("rpiv:ask-user:answer", (data) => {
       const payload = data as {
         requestId: string;
         toolCallId: string;
@@ -406,7 +406,7 @@ describe("pi-dashboard extension", () => {
       received.push(payload);
       const fits = payload.answers?.[0]?.optionIndexes?.[0] === 0;
       fake.publish(
-        "ask:answer-result",
+        "rpiv:ask-user:answer-result",
         fits
           ? { ok: true, requestId: payload.requestId, toolCallId: payload.toolCallId }
           : {
@@ -419,7 +419,7 @@ describe("pi-dashboard extension", () => {
       );
     });
     await fake.emit("session_start", { reason: "startup" }, ctx);
-    fake.publish("ask:opened", {
+    fake.publish("rpiv:ask-user:prompt", {
       toolCallId: "toolu_1",
       questions: [
         {
@@ -475,7 +475,7 @@ describe("pi-dashboard extension", () => {
     const ctx = fakeCtx();
     onCleanup(() => quit(fake, ctx));
     await fake.emit("session_start", { reason: "startup" }, ctx);
-    fake.publish("ask:opened", {
+    fake.publish("rpiv:ask-user:prompt", {
       toolCallId: "toolu_2",
       questions: [{ question: "Ok?", header: "", multiSelect: false, options: [] }],
     });

@@ -24,12 +24,12 @@ import { debugNote } from "#src/debug";
 import type { ChildLifecyclePublisher, SubagentHandoff } from "#src/lifecycle/child-lifecycle";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import { SubagentSession } from "#src/lifecycle/subagent-session";
+import { AskParentTool, type QuestionRecorder } from "#src/session/ask-parent-tool";
 import { builtinExtensionsFor } from "#src/session/builtin-extensions";
 import type { EnvInfo } from "#src/session/env";
 import { resolveToolSelection } from "#src/session/tool-selection";
 import type { ModelRegistry } from "#src/session/model-resolver";
 import { NotifyParentTool, type UpdateAnnouncer } from "#src/session/notify-parent-tool";
-import { provide } from "../../../../packages/pi-session-tree/src/index.ts";
 import { type AssemblerIO, assembleSessionConfig } from "#src/session/session-config";
 import type {
   AgentConfig,
@@ -48,13 +48,6 @@ import type {
  * after `bindExtensions` would be undone by that rebuild (#725).
  */
 const EXCLUDED_TOOL_NAMES = ["subagent_start", "subagent_get", "subagent_steer"];
-
-/** pi-ask's tool, and the session-tree service that routes it to this parent. */
-const ASK_TOOL_NAME = "ask";
-const ASK_ROUTE_SERVICE = "ask:route";
-
-/** Records a question a child asks; the parent answers by resuming it. */
-export type QuestionRecorder = (question: string) => void;
 
 // ── IO boundary ───────────────────────────────────────────────────────────────
 
@@ -190,9 +183,8 @@ export interface CreateSubagentSessionParams {
   model?: Model<any>;
   thinkingLevel?: ThinkingLevel;
   /**
-   * Records a question the child asks with pi-ask's `ask` tool. Supplied for
-   * every child; it is offered as the child's `ask:route` service, which turns
-   * `ask` toward this parent. Its absence leaves the child without a route.
+   * Records a question the child declares with `ask_parent`. Supplied for every
+   * child; its absence installs no ask-back tool.
    */
   askParent?: QuestionRecorder;
   /**
@@ -212,6 +204,7 @@ export interface CreateSubagentSessionParams {
  */
 function buildChildTools(params: CreateSubagentSessionParams): ToolDefinition[] {
   const tools: ToolDefinition[] = [];
+  if (params.askParent) tools.push(new AskParentTool(params.askParent).toToolDefinition());
   if (params.notifyParent) tools.push(new NotifyParentTool(params.notifyParent).toToolDefinition());
   return tools;
 }
@@ -300,12 +293,6 @@ export async function createSubagentSession(
   const sessionId = sessionManager.getSessionId();
 
   const childTools = buildChildTools(params);
-  // pi-ask's `ask` is protocol like the core's own child tools: a child with a
-  // route to its parent can always ask, whatever its tools: allowlist says.
-  const protocolTools = [
-    ...(params.askParent ? [ASK_TOOL_NAME] : []),
-    ...childTools.map((tool) => tool.name),
-  ];
   const { session } = await deps.io.createSession({
     cwd: cfg.effectiveCwd,
     agentDir,
@@ -313,7 +300,7 @@ export async function createSubagentSession(
     settingsManager: sessionSettings,
     modelRegistry: snapshot.modelRegistry,
     model: cfg.model,
-    tools: [...new Set([...toolNames, ...protocolTools])],
+    tools: [...toolNames, ...childTools.map((tool) => tool.name)],
     customTools: childTools,
     excludeTools: EXCLUDED_TOOL_NAMES.filter(
       (name) => !cfg.toolNames.includes(name) || !toolNames.includes(name),
@@ -328,11 +315,6 @@ export async function createSubagentSession(
       ? { toolCallId: params.parentSession.toolCallId }
       : {}),
   };
-  // Offered before the child's extensions bind, so pi-ask finds it on session_start.
-  const askParent = params.askParent;
-  const withdrawAskRoute = askParent
-    ? provide(sessionId, ASK_ROUTE_SERVICE, { record: (question: string) => askParent(question) })
-    : undefined;
   const subagentSession = new SubagentSession(session, {
     outputFile: sessionManager.getSessionFile(),
     sessionId,
@@ -342,7 +324,6 @@ export async function createSubagentSession(
     agentMaxTurns: cfg.agentMaxTurns,
     parentContext: snapshot.parentContext,
     lifecycle: deps.lifecycle,
-    ...(withdrawAskRoute ? { onDispose: withdrawAskRoute } : {}),
   });
 
   // Publish session-created before bindExtensions() so observers (e.g. the
