@@ -12,7 +12,7 @@ describe("summarize", () => {
       /^….*retry\.ts$/,
     );
     expect(summarize("write", { path: "a.ts", content: "SECRET=1" })).toBe("a.ts");
-    expect(summarize("todo", { action: "upsert", tasks: [{ subject: "x" }] })).toBeUndefined();
+    expect(summarize("todo_upsert", { tasks: [{ subject: "x" }] })).toBeUndefined();
     expect(summarize("bash", null)).toBeUndefined();
     expect(summarize("bash", { command: "echo \u001b[31mred" })).toBe("echo  [31mred");
   });
