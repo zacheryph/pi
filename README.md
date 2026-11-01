@@ -298,8 +298,8 @@ Multiple active tasks remain possible for parallel work. See
 ### pi-tldr
 
 `/tldr` displays a concise model-generated recap of the current session: initial
-premise, major findings/turning points, and current status. It uses a centered
-modal in fullscreen TUI, or a separate screen in regular TUI.
+premise, major findings/turning points, and current status. It uses the shared
+[pi-ui](packages/pi-ui/README.md) detail view as a centered modal (fullscreen TUI only).
 
 After the first user prompt of a new interactive session, it asynchronously
 suggests a short hyphen-separated name (2–4 words). `/tldr` opens immediately

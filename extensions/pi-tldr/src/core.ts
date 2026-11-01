@@ -1,4 +1,5 @@
 import { compareNewestFirst, findExactModel } from "../../../packages/pi-foundations/src/models.ts";
+import { sanitizeLine } from "../../../packages/pi-ui/src/index.ts";
 import type { Model } from "@earendil-works/pi-ai";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
@@ -52,18 +53,7 @@ export function titleSlug(value: string): string | undefined {
 /** Data returned by the summarizer is untrusted: never pass terminal escape codes through. */
 function cleanText(value: unknown, max = 800): string {
   if (typeof value !== "string") return "";
-  return (
-    value
-      // oxlint-disable-next-line no-control-regex -- Intentionally matches terminal control sequences.
-      .replace(/(?:\x1b[\]PX^_]|[\x90\x98\x9d\x9e\x9f])[^]*?(?:\x07|\x1b\\|\x9c|$)/g, "")
-      // oxlint-disable-next-line no-control-regex -- Intentionally matches terminal control sequences.
-      .replace(/(?:\x1b\[|\x9b)[0-?]*[ -/]*[@-~]/g, "")
-      // oxlint-disable-next-line no-control-regex -- Intentionally matches terminal control sequences.
-      .replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/g, " ")
-      .replace(/\s+/g, " ")
-      .trim()
-      .slice(0, max)
-  );
+  return sanitizeLine(value).replace(/\s+/g, " ").trim().slice(0, max);
 }
 
 export function parseTldrResponse(raw: string): TldrResult {
