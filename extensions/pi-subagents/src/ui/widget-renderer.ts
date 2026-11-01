@@ -3,7 +3,7 @@
  * row per agent. Pi owns the Working border, editor, and footer below it.
  */
 
-import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { truncateToWidth } from "@earendil-works/pi-tui";
 import type { AgentConfigLookup } from "#src/config/agent-types";
 import { isActiveStatus, type SubagentStatus } from "#src/lifecycle/subagent-state";
 import { type TurnBudget, wrappedUpAtTurnLimit } from "#src/lifecycle/turn-limits";
@@ -16,7 +16,15 @@ import {
   type ModelIdentity,
   type Theme,
 } from "#src/ui/display";
-import { GLYPHS, SPINNER } from "#src/ui/glyphs";
+import {
+  ICONS,
+  renderWidget,
+  sanitizeLine,
+  SPINNER,
+  type Line,
+  type Span,
+  type WidgetRow,
+} from "../../../../packages/pi-ui/src/index.ts";
 
 /** Minimal agent snapshot for rendering — no class methods or mutation surface. */
 export interface WidgetAgent {
@@ -39,13 +47,7 @@ export interface WidgetAgent {
 
 /** User/model-provided labels must never add rows or terminal control codes. */
 function singleLine(text: string): string {
-  return (
-    text
-      // oxlint-disable-next-line no-control-regex -- Intentionally matches terminal control characters.
-      .replace(/[\u0000-\u001f\u007f-\u009f]/g, " ")
-      .replace(/\s+/g, " ")
-      .trim()
-  );
+  return sanitizeLine(text).replace(/\s+/g, " ").trim();
 }
 
 /** Queued agents have not started; finished durations stay fixed while lingering. */
@@ -56,82 +58,58 @@ function elapsedLabel(agent: WidgetAgent, now: number): string {
   return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
-/** Activity for live agents; explicit outcome for agents still in their linger window. */
-function renderStatus(agent: WidgetAgent, spinnerFrame: number, theme: Theme): string {
+/**
+ * Activity for live agents; explicit outcome for agents still in their linger
+ * window. Plain text is pre-clipped to `max` cells so the status never takes
+ * more than its share of the row; the library styles and aligns it.
+ */
+function statusLine(agent: WidgetAgent, spinnerFrame: number, max: number): Line {
+  const fit = (text: string) => truncateToWidth(text, Math.max(1, max), "…");
   if (agent.status === "running") {
     const spinner = SPINNER[spinnerFrame % SPINNER.length];
     const activity = singleLine(describeActivity(agent.activeTools, agent.responseText));
-    return `${theme.fg("accent", spinner)} ${theme.fg("muted", activity)}`;
+    const clipped = fit(`${spinner} ${activity}`);
+    return [
+      { text: spinner, tone: "accent" },
+      { text: clipped.slice(spinner.length), tone: "muted" },
+    ];
   }
-  if (agent.status === "queued") return theme.fg("dim", `${GLYPHS.queued} queued`);
+  if (agent.status === "queued") return { text: fit(`${ICONS.queued} queued`), tone: "dim" };
   if (wrappedUpAtTurnLimit(agent))
-    return theme.fg("warning", `${GLYPHS.success} done (budget warning)`);
-  if (agent.status === "completed") return theme.fg("success", `${GLYPHS.success} done`);
-  if (agent.status === "stopped") return theme.fg("dim", `${GLYPHS.stopped} stopped`);
+    return { text: fit(`${ICONS.success} done (budget warning)`), tone: "warning" };
+  if (agent.status === "completed") return { text: fit(`${ICONS.success} done`), tone: "success" };
+  if (agent.status === "stopped") return { text: fit(`${ICONS.stopped} stopped`), tone: "dim" };
   if (agent.status === "error") {
     const error = agent.error ? `: ${singleLine(agent.error)}` : "";
-    return theme.fg("error", `${GLYPHS.failure} error${error}`);
+    return { text: fit(`${ICONS.failure} error${error}`), tone: "error" };
   }
-  return theme.fg("warning", `${GLYPHS.failure} aborted`);
-}
-
-/**
- * Align status to the right, truncating it before it consumes the task column.
- * Width is measured in terminal cells, including ANSI and wide Unicode labels.
- */
-function alignColumns(left: string, right: string, width: number): string {
-  if (width < 12) return truncateToWidth(left, width, "…");
-  const status = truncateToWidth(right, Math.floor(width * 0.4), "…");
-  const task = truncateToWidth(left, Math.max(0, width - visibleWidth(status) - 2), "…");
-  const gap = Math.max(0, width - visibleWidth(task) - visibleWidth(status));
-  return task + " ".repeat(gap) + status;
+  return { text: fit(`${ICONS.failure} aborted`), tone: "warning" };
 }
 
 /** One physical row, with optional elapsed time and prompt-mode tag when space permits. */
-function renderAgentRow(
+function agentRow(
   agent: WidgetAgent,
   registry: AgentConfigLookup,
   spinnerFrame: number,
-  theme: Theme,
   width: number,
   now: number,
-): string {
-  // Keep agent rows inset from Pi's full-width chrome, including after resize.
-  if (width <= 2) return " ".repeat(width);
-  width -= 2;
+): WidgetRow {
+  // Decisions use the inset content width, as before the shared renderer.
+  const content = Math.max(0, width - 2);
   const active = isActiveStatus(agent.status);
   const name = singleLine(getDisplayName(agent.type, registry));
-  const mode = width >= 60 ? getPromptModeLabel(agent.type, registry) : undefined;
-  const tag = mode ? theme.fg("dim", ` (${singleLine(mode)})`) : "";
-  const elapsed = width >= 40 ? `${theme.fg("dim", elapsedLabel(agent, now))}  ` : "";
-  const identity = active ? theme.bold(name) : theme.fg("dim", name);
-  const description = theme.fg(active ? "muted" : "dim", singleLine(agent.description));
-  const left = `${elapsed}${identity}${tag}: ${description}`;
-  return ` ${alignColumns(left, renderStatus(agent, spinnerFrame, theme), width)} `;
-}
-
-/**
- * Header icon stays static, even while individual agent status spinners animate.
- * Queued agents take no rows; their count rides the title bar, right-aligned.
- */
-function renderHeading(
-  width: number,
-  hasActive: boolean,
-  queuedCount: number,
-  theme: Theme,
-): string {
-  const label = theme.fg(hasActive ? "accent" : "dim", `${GLYPHS.agentsHeading}  Subagents`);
-  const prefix = `${theme.fg("border", "──")} ${label} `;
-  const queued = queuedCount > 0 ? theme.fg("dim", ` ${queuedCount} queued `) : "";
-  const suffix = queued ? queued + theme.fg("border", "──") : "";
-  // Drop the count rather than crowd or truncate the title on narrow terminals.
-  const showQueued = visibleWidth(prefix) + visibleWidth(suffix) + 1 <= width;
-  const tail = showQueued ? suffix : "";
-  const rule = theme.fg(
-    "border",
-    "─".repeat(Math.max(0, width - visibleWidth(prefix) - visibleWidth(tail))),
-  );
-  return truncateToWidth(prefix + rule + tail, width, "…");
+  const mode = content >= 60 ? getPromptModeLabel(agent.type, registry) : undefined;
+  const left: Span[] = [];
+  if (content >= 40) left.push({ text: elapsedLabel(agent, now), tone: "dim" }, "  ");
+  left.push(active ? { text: name, bold: true } : { text: name, tone: "dim" });
+  if (mode) left.push({ text: ` (${singleLine(mode)})`, tone: "dim" });
+  left.push(": ", { text: singleLine(agent.description), tone: active ? "muted" : "dim" });
+  return {
+    left,
+    // Below 12 columns the task keeps the row; the status is dropped.
+    right: content < 12 ? [] : [statusLine(agent, spinnerFrame, Math.floor(content * 0.4))],
+    group: agent.status === "running" ? "running" : "finished",
+  };
 }
 
 // Keep the viewport guard: Pi's regular renderer full-clears scrollback when the
@@ -145,12 +123,6 @@ export function widgetLineBudget(terminalRows: number): number {
     MIN_WIDGET_LINES,
     Math.min(MAX_WIDGET_LINES, terminalRows - DOCK_LINES_BELOW_WIDGET),
   );
-}
-
-/** Inset footer row; blank when the width cannot fit both padding spaces plus content. */
-function renderFooter(text: string, width: number): string {
-  if (width <= 2) return " ".repeat(width);
-  return ` ${truncateToWidth(text, width - 2, "…")} `;
 }
 
 /**
@@ -189,26 +161,17 @@ export function renderWidgetLines(params: {
   const ordered = [...running, ...finished];
   if (ordered.length === 0 && queuedCount === 0) return [];
 
-  const lines = [renderHeading(width, running.length + queuedCount > 0, queuedCount, theme)];
-  const bodyBudget = widgetLineBudget(terminalHeight) - 1;
-  const overflow = ordered.length > bodyBudget;
-  const shown = ordered.slice(0, overflow ? bodyBudget - 1 : bodyBudget);
   const now = Date.now();
-  for (const agent of shown) {
-    lines.push(renderAgentRow(agent, registry, spinnerFrame, theme, width, now));
-  }
-
-  if (overflow) {
-    const hidden = ordered.slice(shown.length);
-    const counts = [
-      ["running", hidden.filter((agent) => agent.status === "running").length],
-      ["finished", hidden.filter((agent) => !isActiveStatus(agent.status)).length],
-    ] as const;
-    const summary = counts
-      .filter(([, count]) => count > 0)
-      .map(([label, count]) => `${count} ${label}`)
-      .join(", ");
-    lines.push(theme.fg("dim", renderFooter(`+${hidden.length} more (${summary})`, width)));
-  }
-  return lines;
+  return renderWidget(
+    {
+      title: { label: "Subagents", icon: ICONS.agents },
+      active: running.length + queuedCount > 0,
+      // Queued agents take no rows; their count rides the title bar.
+      meta: queuedCount > 0 ? [{ text: `${queuedCount} queued`, tone: "dim" }] : [],
+      rows: ordered.map((agent) => agentRow(agent, registry, spinnerFrame, width, now)),
+      maxRows: widgetLineBudget(terminalHeight),
+    },
+    width,
+    theme,
+  );
 }

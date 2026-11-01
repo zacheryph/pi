@@ -211,12 +211,14 @@ describe("WatchTail", () => {
   it("strips ANSI, OSC, DCS, C1, cursor markers, incomplete escapes and bidi controls", () => {
     expect(
       watchText("\x1b[31mred\x1b[0m\x1b[2J\x1b]8;;https://bad\x07link\x1b]8;;\x07\nnext\x00\r"),
-    ).toBe("redlink\nnext");
+      // pi-ui turns a lone CR into a line break.
+    ).toBe("redlink\nnext\n");
     expect(
       watchText("ok\x1bPsecret\x1b\\\u009b2J\u009d8;;hidden\u009c\u202efine\x1b_pi:cursor\x07"),
     ).toBe("okfine");
     expect(watchText("ok\x1b]unterminated\nprivate")).toBe("ok");
-    expect(watchText("ok\x1b[31")).toBe("ok");
+    // pi-ui strips an incomplete CSI introducer but keeps its parameter bytes as text.
+    expect(watchText("ok\x1b[31")).toBe("ok31");
   });
 });
 

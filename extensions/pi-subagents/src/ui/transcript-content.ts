@@ -30,8 +30,8 @@ import {
 } from "@earendil-works/pi-tui";
 import type { AgentSessionEvent, SessionMessage } from "#src/types";
 import { describeActivity } from "#src/ui/display";
-import { GLYPHS } from "#src/ui/glyphs";
 import type { TranscriptSource } from "#src/ui/session-navigation";
+import { ICONS } from "../../../../packages/pi-ui/src/index.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -164,7 +164,7 @@ export class TranscriptContent {
     const rows = [...this.inFlightRendered(width)];
     const streaming = this.options.source.streaming();
     if (streaming) {
-      const activity = `${GLYPHS.streaming} ${describeActivity(streaming.activeTools, streaming.responseText)}`;
+      const activity = `${ICONS.streaming} ${describeActivity(streaming.activeTools, streaming.responseText)}`;
       rows.push("", truncateToWidth(activity, width));
     }
     return rows;

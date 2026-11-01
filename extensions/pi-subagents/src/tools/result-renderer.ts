@@ -10,7 +10,7 @@ import type { SubagentStatus } from "#src/lifecycle/subagent-state";
 import { type TurnBudget, wrappedUpAtTurnLimit } from "#src/lifecycle/turn-limits";
 import type { AgentDetails, Theme } from "#src/ui/display";
 import { formatMs, formatTurnBudget } from "#src/ui/display";
-import { GLYPHS, SPINNER } from "#src/ui/glyphs";
+import { ICONS, SPINNER } from "../../../../packages/pi-ui/src/index.ts";
 
 // ---- Dispatcher ----
 
@@ -36,13 +36,13 @@ export function renderRunning(details: AgentDetails, theme: Theme): string {
   const frame = SPINNER[details.spinnerFrame ?? 0];
   const s = renderStats(details, theme);
   let line = theme.fg("accent", frame) + (s ? " " + s : "");
-  line += "\n" + theme.fg("dim", `  ${GLYPHS.subLine}  ${details.activity ?? "thinking\u2026"}`);
+  line += "\n" + theme.fg("dim", `  ${ICONS.subLine}  ${details.activity ?? "thinking\u2026"}`);
   return line;
 }
 
 /** Render background launch status. */
 export function renderBackground(details: AgentDetails, theme: Theme): string {
-  return theme.fg("dim", `  ${GLYPHS.subLine}  Running in background (ID: ${details.agentId})`);
+  return theme.fg("dim", `  ${ICONS.subLine}  Running in background (ID: ${details.agentId})`);
 }
 
 /** Render completed status, with a turn-limit caveat when it wrapped up, and optional expanded result text. */
@@ -72,7 +72,7 @@ export function renderCompleted(
     }
   } else {
     const doneText = wrappedUp ? "Wrapped up (budget warning)" : "Done";
-    line += "\n" + theme.fg("dim", `  ${GLYPHS.subLine}  ${doneText}`);
+    line += "\n" + theme.fg("dim", `  ${ICONS.subLine}  ${doneText}`);
   }
   return line;
 }
@@ -81,7 +81,7 @@ export function renderCompleted(
 export function renderStopped(details: AgentDetails, theme: Theme): string {
   const s = renderStats(details, theme);
   let line = renderStatusIcon("stopped", theme) + (s ? " " + s : "");
-  line += "\n" + theme.fg("dim", `  ${GLYPHS.subLine}  Stopped`);
+  line += "\n" + theme.fg("dim", `  ${ICONS.subLine}  Stopped`);
   return line;
 }
 
@@ -92,9 +92,9 @@ export function renderFailed(details: AgentDetails, theme: Theme): string {
     renderStatusIcon(details.status === "error" ? "error" : "aborted", theme) + (s ? " " + s : "");
 
   if (details.status === "error") {
-    line += "\n" + theme.fg("error", `  ${GLYPHS.subLine}  Error: ${details.error ?? "unknown"}`);
+    line += "\n" + theme.fg("error", `  ${ICONS.subLine}  Error: ${details.error ?? "unknown"}`);
   } else {
-    line += "\n" + theme.fg("warning", `  ${GLYPHS.subLine}  Aborted (turn limit reached)`);
+    line += "\n" + theme.fg("warning", `  ${ICONS.subLine}  Aborted (turn limit reached)`);
   }
   return line;
 }
@@ -115,7 +115,7 @@ export function renderOutcomeIcon(
 
 /** A success glyph in the warning color: finished, with a turn-limit caveat. */
 function renderWrappedUpIcon(theme: Theme): string {
-  return theme.fg("warning", GLYPHS.success);
+  return theme.fg("warning", ICONS.success);
 }
 
 /**
@@ -128,16 +128,16 @@ function renderWrappedUpIcon(theme: Theme): string {
 export function renderStatusIcon(status: SubagentStatus, theme: Theme): string {
   switch (status) {
     case "completed":
-      return theme.fg("success", GLYPHS.success);
+      return theme.fg("success", ICONS.success);
     case "stopped":
-      return theme.fg("dim", GLYPHS.stopped);
+      return theme.fg("dim", ICONS.stopped);
     case "error":
     case "aborted":
-      return theme.fg("error", GLYPHS.failure);
+      return theme.fg("error", ICONS.failure);
     case "queued":
-      return theme.fg("dim", GLYPHS.queued);
+      return theme.fg("dim", ICONS.queued);
     case "running":
-      return theme.fg("dim", GLYPHS.streaming);
+      return theme.fg("dim", ICONS.streaming);
   }
 }
 

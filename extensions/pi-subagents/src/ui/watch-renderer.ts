@@ -2,8 +2,8 @@
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import type { SubagentStatus } from "#src/lifecycle/subagent-state";
 import type { Theme } from "#src/ui/display";
-import { GLYPHS } from "#src/ui/glyphs";
 import { watchText, type WatchBlock } from "#src/ui/watch-tail";
+import { ICONS } from "../../../../packages/pi-ui/src/index.ts";
 
 export interface WatchSection {
   id: string;
@@ -53,7 +53,7 @@ export function renderWatchOverlay(
     );
   };
   const queuedLabel = queuedCount > 0 ? theme.fg("dim", ` ${queuedCount} queued `) : "";
-  const title = theme.fg("accent", ` ${GLYPHS.agentsHeading}  Subagents · Ctrl+Alt+S `);
+  const title = theme.fg("accent", ` ${ICONS.agents}  Subagents · Ctrl+Alt+S `);
   const lines = [rule(title, "┌", "┐", queuedLabel)];
   const budget = height - 2;
   if (sections.length === 0) {
@@ -76,12 +76,12 @@ export function renderWatchOverlay(
       const allocation = Math.floor(body / count) + (index < body % count ? 1 : 0);
       const icon =
         section.status === "running"
-          ? "●"
+          ? ICONS.active
           : section.status === "queued"
-            ? "◦"
+            ? ICONS.queued
             : section.status === "completed"
-              ? "✓"
-              : "✗";
+              ? ICONS.success
+              : ICONS.failure;
       const color =
         section.status === "error" || section.status === "aborted" || section.status === "stopped"
           ? "error"

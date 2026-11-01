@@ -8,7 +8,7 @@ import type {
   WorkspaceNoticeDetails,
 } from "#src/observation/notification";
 import { formatMs, formatTokens, formatTurnBudget } from "#src/ui/display";
-import { GLYPHS } from "#src/ui/glyphs";
+import { ICONS } from "../../../../packages/pi-ui/src/index.ts";
 
 /** Narrow theme interface — only the methods the renderer actually calls. */
 interface RendererTheme {
@@ -50,9 +50,9 @@ export function resolveStatusPresentation(
   outcome: Pick<NotificationDetails, "status" | "turnBudget">,
 ): StatusPresentation {
   if (isTerminalErrorStatus(outcome.status))
-    return { iconGlyph: GLYPHS.failure, iconStyle: "error", statusText: outcome.status };
+    return { iconGlyph: ICONS.failure, iconStyle: "error", statusText: outcome.status };
   const statusText = wrappedUpAtTurnLimit(outcome) ? "completed (wrapped up)" : "completed";
-  return { iconGlyph: GLYPHS.success, iconStyle: "success", statusText };
+  return { iconGlyph: ICONS.success, iconStyle: "success", statusText };
 }
 
 /** Fields `buildStatsParts` reads from a `NotificationDetails`. */
@@ -109,7 +109,7 @@ export function createNotificationRenderer() {
     if (expanded) {
       for (const l of previewLines) line += "\n" + theme.fg("dim", `  ${l}`);
     } else {
-      line += "\n  " + theme.fg("dim", `${GLYPHS.subLine}  ${previewLines[0] ?? ""}`);
+      line += "\n  " + theme.fg("dim", `${ICONS.subLine}  ${previewLines[0] ?? ""}`);
     }
 
     // Line 4: output file link (if present)
@@ -137,9 +137,9 @@ export function createUpdateRenderer() {
     const d = message.details;
     if (!d) return undefined;
 
-    let line = `${theme.fg("accent", GLYPHS.agentsActive)} ${theme.bold(d.description)} ${theme.fg("dim", "update")}`;
+    let line = `${theme.fg("accent", ICONS.active)} ${theme.bold(d.description)} ${theme.fg("dim", "update")}`;
     for (const l of buildPreviewLines(d.message, expanded)) {
-      line += "\n  " + theme.fg("dim", expanded ? `  ${l}` : `${GLYPHS.subLine}  ${l}`);
+      line += "\n  " + theme.fg("dim", expanded ? `  ${l}` : `${ICONS.subLine}  ${l}`);
     }
     return new Text(line, 0, 0);
   };
@@ -161,9 +161,9 @@ export function createWorkspaceNoticeRenderer() {
     const d = message.details;
     if (!d) return undefined;
 
-    let line = `${theme.fg("warning", GLYPHS.success)} ${theme.bold(d.description)} ${theme.fg("dim", "workspace")}`;
+    let line = `${theme.fg("warning", ICONS.success)} ${theme.bold(d.description)} ${theme.fg("dim", "workspace")}`;
     for (const l of buildPreviewLines(d.notice.trim(), expanded)) {
-      line += "\n  " + theme.fg("dim", expanded ? `  ${l}` : `${GLYPHS.subLine}  ${l}`);
+      line += "\n  " + theme.fg("dim", expanded ? `  ${l}` : `${ICONS.subLine}  ${l}`);
     }
     return new Text(line, 0, 0);
   };

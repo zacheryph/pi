@@ -3,26 +3,14 @@ import { realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import type { AgentSessionEvent } from "#src/types";
+import { sanitizeText } from "../../../../packages/pi-ui/src/index.ts";
 
 const MAX_ENTRIES = 32;
 const MAX_TEXT = 4096;
 
-/** Strip terminal escapes and controls while preserving printable lines. */
+/** Shared pi-ui sanitizer, then the feed's own size cap. */
 export function watchText(text: string): string {
-  return (
-    text
-      // oxlint-disable-next-line no-control-regex -- Intentionally matches terminal control characters.
-      .replace(/(?:\x1b\]|\u009d)[\s\S]*?(?:\x07|\x1b\\|\u009c|$)/g, "")
-      // oxlint-disable-next-line no-control-regex -- Intentionally matches terminal control characters.
-      .replace(/(?:\x1b[P_X^]|[\u0090\u0098\u009e\u009f])[\s\S]*?(?:\x1b\\|\u009c|$)/g, "")
-      // oxlint-disable-next-line no-control-regex -- Intentionally matches terminal control characters.
-      .replace(/(?:\x1b\[|\u009b)[0-?]*[ -/]*[@-~]?/g, "")
-      // oxlint-disable-next-line no-control-regex -- Intentionally matches terminal control characters.
-      .replace(/\x1b[ -/]*[@-~]/g, "")
-      // oxlint-disable-next-line no-control-regex -- Intentionally matches terminal control characters.
-      .replace(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g, "")
-      .slice(-MAX_TEXT)
-  );
+  return sanitizeText(text).slice(-MAX_TEXT);
 }
 
 function oneLine(text: string): string {

@@ -17,7 +17,7 @@ import {
 import type { ResolvedSpawnConfig } from "#src/tools/spawn-config";
 import type { ParentSessionInfo, Subagent } from "#src/types";
 import { type AgentDetails, describeActivity, formatMs, modelLabel } from "#src/ui/display";
-import { SPINNER } from "#src/ui/glyphs";
+import { SPINNER } from "../../../../packages/pi-ui/src/index.ts";
 
 /** Narrow manager interface for the foreground runner. */
 export interface ForegroundManagerDeps {

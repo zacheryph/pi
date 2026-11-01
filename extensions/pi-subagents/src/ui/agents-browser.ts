@@ -6,10 +6,10 @@ import { composeAgentInstructions, parseFragments } from "#src/config/prompt-fra
 import { normalizeMaxTurns } from "#src/lifecycle/turn-limits";
 import type { AgentConfig } from "#src/types";
 import {
-  type BrowserView,
-  sanitizeBrowserText,
-  showReadOnlyBrowser,
-} from "#src/ui/read-only-browser";
+  showExplorer,
+  type Block,
+  type ExplorerView,
+} from "../../../../packages/pi-ui/src/index.ts";
 
 export type AgentsBrowserRegistry = Pick<
   AgentTypeRegistry,
@@ -27,6 +27,8 @@ export interface AgentsBrowserOptions {
 type BrowserContext = Pick<ExtensionContext, "mode" | "hasUI" | "ui"> &
   Partial<Pick<ExtensionContext, "isProjectTrusted">>;
 
+const UNAVAILABLE = "Agent definitions browser requires TUI mode.";
+
 /** Command entry point. Reads the current registry once; never reloads or mutates it. */
 export async function showAgentsBrowser(
   ctx: BrowserContext,
@@ -34,14 +36,15 @@ export async function showAgentsBrowser(
   defaults: AgentsBrowserDefaults = {},
 ): Promise<void> {
   if (ctx.mode !== "tui" || !ctx.hasUI) {
-    ctx.ui.notify("Agent definitions browser requires TUI mode.", "warning");
+    ctx.ui.notify(UNAVAILABLE, "warning");
     return;
   }
-  await showReadOnlyBrowser(
+  await showExplorer(
     ctx,
     buildAgentsView(registry, defaults, {
       projectTrusted: ctx.isProjectTrusted?.() === true,
     }),
+    { unavailableMessage: UNAVAILABLE },
   );
 }
 
@@ -50,10 +53,16 @@ export function buildAgentsView(
   registry: AgentsBrowserRegistry,
   defaults: AgentsBrowserDefaults = {},
   options: AgentsBrowserOptions = {},
-): BrowserView {
+): ExplorerView {
   return {
     title: "Subagents · Agents",
-    note: "Read-only effective definitions · unlocked fields may be overridden by callers",
+    noun: ["agent", "agents"],
+    notices: [
+      {
+        text: "Read-only effective definitions · unlocked fields may be overridden by callers",
+        tone: "muted",
+      },
+    ],
     items: [...registry.getAllTypes()]
       .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
       .map((name) => {
@@ -62,27 +71,15 @@ export function buildAgentsView(
         return {
           id: name,
           label: name,
-          status: enabled ? "enabled" : "disabled",
           badge: {
-            label: enabled ? "[enabled]" : "[disabled]",
-            color: enabled ? "success" : "dim",
+            text: enabled ? "[enabled]" : "[disabled]",
+            tone: enabled ? "success" : "dim",
           },
-          description: config.description,
+          search: `${enabled ? "enabled" : "disabled"} ${config.description}`,
           detail: agentDetail(config, registry.getToolNamesForType(name), defaults, options),
         };
       }),
   };
-}
-
-/** Align metadata only. Body is always its own full-width multiline section. */
-function detailFields(fields: readonly (readonly [string, string])[]): string[] {
-  const width = Math.max(...fields.map(([label]) => label.length)) + 2;
-  return fields.map(([label, value]) => {
-    // Sanitize before adding alignment, so a newline/control in an untrusted
-    // value cannot escape its field or forge another heading.
-    const [first, ...rest] = sanitizeBrowserText(value).split("\n");
-    return `${`${label}:`.padEnd(width)}${first}${rest.map((line) => `\n${" ".repeat(width)}${line}`).join("")}`;
-  });
 }
 
 const lockValues = (config: AgentConfig): Record<LockableField, unknown> => ({
@@ -110,71 +107,81 @@ function maxTurnsSummary(config: AgentConfig, defaults: AgentsBrowserDefaults): 
   return label;
 }
 
+/**
+ * Aligned single-line metadata, then multiline sections (description, tool
+ * guideline, body, fragments) as full-width text so newlines survive.
+ */
 function agentDetail(
   config: AgentConfig,
   tools: readonly string[],
   defaults: AgentsBrowserDefaults,
   options: AgentsBrowserOptions,
-): string {
-  const fields: [string, string][] = [
-    ["Name", config.name],
-    ["Display name", config.displayName ?? config.name],
-    ["Enabled", String(config.enabled !== false)],
-    ["Source", config.source ?? (config.isDefault ? "default (embedded)" : "(not available)")],
-    ["Source path", config.sourcePath ?? (config.isDefault ? "(embedded)" : "(not available)")],
-    ["Tools", tools.length ? tools.join(", ") : "(none)"],
-    ["Model", config.model ?? "(inherit parent)"],
-    ["Thinking", config.thinking ?? "(inherit parent)"],
-    ["Max turns", maxTurnsSummary(config, defaults)],
-    ["Prompt mode", config.promptMode],
-    [
-      "Inherit context",
-      config.inheritContext === undefined
-        ? "false (tool default; caller decides)"
-        : String(config.inheritContext),
-    ],
-    [
-      "Run in background",
-      config.runInBackground === undefined
-        ? "false (tool default; caller decides)"
-        : String(config.runInBackground),
-    ],
-    ["Locked", lockSummary(config)],
-    ["Tool guideline", config.toolGuideline ?? "(none)"],
-    ["Description", config.description],
+): Block[] {
+  const blocks: Block[] = [
+    {
+      fields: [
+        ["Name", config.name],
+        ["Display name", config.displayName ?? config.name],
+        ["Enabled", String(config.enabled !== false)],
+        ["Source", config.source ?? (config.isDefault ? "default (embedded)" : "(not available)")],
+        ["Source path", config.sourcePath ?? (config.isDefault ? "(embedded)" : "(not available)")],
+        ["Tools", tools.length ? tools.join(", ") : "(none)"],
+        ["Model", config.model ?? "(inherit parent)"],
+        ["Thinking", config.thinking ?? "(inherit parent)"],
+        ["Max turns", maxTurnsSummary(config, defaults)],
+        ["Prompt mode", config.promptMode],
+        [
+          "Inherit context",
+          config.inheritContext === undefined
+            ? "false (tool default; caller decides)"
+            : String(config.inheritContext),
+        ],
+        [
+          "Run in background",
+          config.runInBackground === undefined
+            ? "false (tool default; caller decides)"
+            : String(config.runInBackground),
+        ],
+        ["Locked", lockSummary(config)],
+      ],
+    },
+    { heading: "Description" },
+    { text: config.description || "(none)" },
+    { heading: "Tool guideline" },
+    { text: config.toolGuideline ?? "(none)" },
+    { heading: "Body" },
+    { text: config.systemPrompt || "(empty)" },
   ];
-  const body = sanitizeBrowserText(config.systemPrompt);
-  const sections = [...detailFields(fields), "", "Body", body || "(empty)"];
   if (config.fragmentError || config.fragments?.length) {
     // Provenance stays visible even when a fragment is missing or project trust
     // blocks preview. Validate names before deriving paths; never expand paths.
     const parsed = parseFragments(config.fragments);
     const names = parsed.fragments ?? [];
-    const provenance = names
-      .map(
-        (name, index) =>
-          `${index + 1}. ${name}\n   ${
-            config.sourcePath
-              ? join(dirname(config.sourcePath), "fragments", `${name}.md`)
-              : "(source path unavailable)"
-          }`,
-      )
-      .join("\n");
-    sections.push(
-      "",
-      "Fragments",
-      sanitizeBrowserText(provenance) || "(invalid)",
-      "",
-      "Composed instructions",
+    blocks.push(
+      { heading: "Fragments" },
+      names.length
+        ? {
+            lines: names.flatMap((name, index) => [
+              `${index + 1}. ${name}`,
+              `   ${
+                config.sourcePath
+                  ? join(dirname(config.sourcePath), "fragments", `${name}.md`)
+                  : "(source path unavailable)"
+              }`,
+            ]),
+          }
+        : { text: "(invalid)" },
+      { heading: "Composed instructions" },
     );
     try {
       const composed = composeAgentInstructions(config, options);
-      sections.push(sanitizeBrowserText(composed.systemPrompt) || "(empty)");
+      blocks.push({ text: composed.systemPrompt || "(empty)" });
     } catch (error) {
-      sections.push(
-        `Error: ${sanitizeBrowserText(error instanceof Error ? error.message : String(error))}`,
-      );
+      blocks.push({
+        text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+        tone: "error",
+      });
     }
   }
-  return sections.join("\n");
+  return blocks;
 }
