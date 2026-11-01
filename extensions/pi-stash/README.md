@@ -125,10 +125,11 @@ handles. See [`../pi-subagents/UPSTREAM.md`](../pi-subagents/UPSTREAM.md).
 
 ## Commands
 
-- `/stash` opens a modal in the fullscreen TUI: list → Enter shows the name,
-  full hash, description, then a numbered content preview (up to 2,000 lines /
-  50 KB). The regular TUI displays the same browser inline. Warns when the
-  store is over its size cap.
+- `/stash` opens the shared `packages/pi-ui` explorer as a modal (fullscreen TUI
+  only): a filterable list → Enter loads that entry's name, full hash,
+  description, origin, then a numbered content preview (up to 2,000 lines /
+  50 KB). Nothing is read from the store until an entry is opened; a read error
+  shows below the metadata. Warns when the store is over its size cap.
 - `/stash:gc` deletes content not read or written for `retentionDays` and reports
   what it freed.
 
