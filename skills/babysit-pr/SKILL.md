@@ -22,7 +22,7 @@ the checks finish, and the agent ends its turn in between.
   session or that the user told you to work on. For anyone else's branch, ask
   first. Never push to the default branch.
 
-Track the work with `todo`: one task per failing check or review thread, keyed
+Track the work with `todo_upsert`: one task per failing check or review thread, keyed
 `pr<number>-<slug>`, so a reload or compaction loses nothing.
 
 ## 1. Wait for CI on the head commit

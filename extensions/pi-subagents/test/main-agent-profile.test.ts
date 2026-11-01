@@ -130,12 +130,13 @@ describe("main profile defaults and persistent body", () => {
   it("selects the built-in orchestrator and restores its instructions without resetting tools", async () => {
     const h = harness();
     h.state.flag = "orchestrator";
-    h.state.all.push({ name: "todo", exposure: "direct" });
+    for (const name of ["todo_list", "todo_upsert", "todo_replace", "todo_remove", "todo_clear"])
+      h.state.all.push({ name, exposure: "direct" });
     h.resolve.mockImplementation(() => resolveMainAgentProfile("orchestrator", h.ctx));
     await h.start();
     const selected = h.state.branch.at(-1).data.profile;
     expect(selected.name).toBe("orchestrator");
-    expect(h.state.active).toContain("todo");
+    expect(h.state.active).toContain("todo_upsert");
     expect(h.state.active).toEqual(expect.arrayContaining([...MAIN_AGENT_REQUIRED_TOOLS]));
     expect((await h.prompt()).sections[MAIN_AGENT_SECTION]).toContain(selected.systemPrompt);
     h.manual();
@@ -150,7 +151,7 @@ describe("main profile defaults and persistent body", () => {
     h.resolve.mockImplementation(() => resolveMainAgentProfile("orchestrator", h.ctx));
     await h.start();
     expect(h.diagnostic).toHaveBeenCalledWith(
-      "Main agent blocked: Unavailable profile tools (check --tools/--exclude-tools): todo.",
+      "Main agent blocked: Unavailable profile tools (check --tools/--exclude-tools): todo_list, todo_upsert, todo_replace, todo_remove, todo_clear.",
     );
     expect(h.pi.appendEntry).not.toHaveBeenCalled();
   });

@@ -91,7 +91,7 @@ pi-personal/
 │   │   ├── src/index.ts                 # /tldr command + session naming
 │   │   └── test/
 │   └── pi-todo/                         # vendored engine, local UI
-│       ├── src/index.ts                 # todo tool + /todos:* commands
+│       ├── src/index.ts                 # todo_* tools + /todo:* commands
 │       ├── test/
 │       ├── docs/comparison.md           # base-selection report
 │       └── UPSTREAM.md
@@ -129,7 +129,7 @@ pi-blackhole memory counts. **Focus** jumps to the session's cmux panel and
 raises cmux. A filter box and opt-in browser notifications (waiting or
 finished sessions) round out the index. Questions the model asks through
 rpiv ask-user (`ask_user_question`) can be answered from the page. pi-todo and pi-stash publish their state as
-`pi-todo:snapshot` / `pi-stash:snapshot` events on the session's `pi.events`
+`todo:snapshot` / `pi-stash:snapshot` events on the session's `pi.events`
 bus for this and other extensions.
 
 The first interactive session starts a detached hub; sessions connect to it
@@ -267,9 +267,9 @@ Viewers never load skill instructions or change tools/settings. See
 ### pi-todo
 
 Dependency-aware task tracking built on
-[`@99percentpeople/pi-todo`](extensions/pi-todo/UPSTREAM.md). One atomic `todo`
-tool: additive `upsert` preserves omitted tasks; `replace`, `remove`, and `clear`
-make deletion explicit. Stable keys, cycle checks, optional revision guards, and
+[`@99percentpeople/pi-todo`](extensions/pi-todo/UPSTREAM.md). One tool per
+action: `todo_list` reads, additive `todo_upsert` preserves omitted tasks, and
+`todo_replace`, `todo_remove` and `todo_clear` make deletion explicit. Stable keys, cycle checks, optional revision guards, and
 branch-scoped persistence work with direct and nested codemode calls.
 
 Updates can carry a `message` (completion summary, findings, handoff). It is
@@ -278,13 +278,13 @@ subagent or tool output. The widget counts unreviewed messages, shows excerpts, 
 puts those tasks first.
 
 Above-editor widget and browser use the shared [pi-ui](packages/pi-ui/README.md)
-widget and explorer. `/todos` or `/todos:list` opens a searchable browser with All,
-Unreviewed and Recent views plus per-task activity timelines. `/todos:review` opens
-unreviewed messages. Commands: `/todos:add`, `/todos:update`, `/todos:remove`,
-`/todos:clear`, `/todos:settings`.
-Settings layer global `todos.json` with project `.pi/todos.json`.
+widget and explorer. `/todo` opens a searchable browser with All,
+Unreviewed and Recent views plus per-task activity timelines. `/todo:review` opens
+unreviewed messages. Commands: `/todo:add`, `/todo:update`, `/todo:remove`,
+`/todo:clear`, `/todo:settings`.
+Settings layer global `todo.json` with project `.pi/todo.json`.
 
-A parent hands tasks to a subagent with `handoff: { todos: { keys } }` on its
+A parent hands tasks to a subagent with `handoff: { todo: { keys } }` on its
 `subagent` call. The spawn is blocked if a key is unknown, completed or already
 handed out. The subagent then sees and updates only those tasks, directly in the
 parent's list (shown as `→ agent a3f2b1c4`). The claim is released when the agent ends.

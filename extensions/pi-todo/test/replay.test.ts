@@ -14,7 +14,7 @@ const two = writeTodoSnapshot(one, { tasks: [] });
 const local = (data: unknown) => ({ type: "custom", customType: TODO_JOURNAL_TYPE, data });
 const result = (details: unknown) => ({
   type: "message",
-  message: { role: "toolResult", toolName: "todo", details },
+  message: { role: "toolResult", toolName: "todo_upsert", details },
 });
 const replay = (branch: unknown[]) =>
   replayTaskState({ sessionManager: { getBranch: () => branch } });

@@ -351,7 +351,7 @@ describe("model-facing formatting", () => {
     );
     const text = formatTodoState(state);
     expect(text.length).toBeLessThanOrEqual(30_000);
-    expect(text).toContain("Output truncated. Use todo(action: list, key: <key>)");
+    expect(text).toContain("Output truncated. Use todo_list with key");
     const context = formatTodoContext(
       stateWith([
         task("root", { description: "Private details", status: "completed" }),

@@ -12,7 +12,7 @@ import { isTaskBlocked, type TodoState, type TodoStatus } from "./state.ts";
  * branch changes, every plan change and every review. Read-only data: each
  * emission is a fresh copy, and listeners cannot change tasks through it.
  */
-export const TODO_SNAPSHOT_EVENT = "pi-todo:snapshot";
+export const TODO_SNAPSHOT_EVENT = "todo:snapshot";
 export const TODO_SNAPSHOT_VERSION = 1;
 
 export interface TodoSnapshotTask {

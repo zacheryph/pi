@@ -61,7 +61,7 @@ export function todoExplorerView(state: TodoState, options: TodoBrowserOptions =
     title: "Todos",
     noun: ["task", "tasks"] as const,
     items,
-    hints: [{ keys: "/todos:add" }, { keys: "/todos:clear" }],
+    hints: [{ keys: "/todo:add" }, { keys: "/todo:clear" }],
   };
   if (!history) return { ...base, notices: [{ text: "Read-only task snapshot", tone: "muted" }] };
   const order = new Map(state.tasks.map((task, index) => [task.key, index]));
