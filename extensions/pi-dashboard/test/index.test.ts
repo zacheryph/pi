@@ -179,7 +179,7 @@ describe("pi-dashboard extension", () => {
     });
     expect(card?.stash).toBeUndefined();
 
-    fake.publish("pi-stash:snapshot", {
+    fake.publish("stash:snapshot", {
       version: 1,
       entries: [
         {
@@ -297,7 +297,7 @@ describe("pi-dashboard extension", () => {
     const ctx = fakeCtx();
     onCleanup(() => quit(fake, ctx));
     // Stand-in for pi-stash's synchronous responder on the same bus.
-    fake.pi.events.on("pi-stash:preview", (data) => {
+    fake.pi.events.on("stash:preview", (data) => {
       const request = data as { name: string; respond(value: unknown): void };
       request.respond(
         request.name === "notes"

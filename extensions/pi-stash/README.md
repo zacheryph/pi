@@ -71,7 +71,7 @@ the root is `$PI_STASH_DIR` or `~/.pi/agent/stash/`. Writes are atomic (temp fil
 rename), every path must resolve inside the root, and symlinks are refused. Reads
 verify the hash.
 
-**The index** is saved in the session as `pi-personal:stash-index` custom entries,
+**The index** is saved in the session as `stash:index` custom entries,
 one per change plus a checkpoint after compaction. It is rebuilt from the current
 branch on start, resume, reload and `/tree`, so abandoned branches drop out.
 
@@ -92,13 +92,13 @@ never written to the transcript or shown as a message.
 
 Other extensions can follow the index without parsing journal entries. On
 session start, branch changes, and every `stash_put` (codemode calls included),
-pi-stash emits `pi-stash:snapshot` on the session's `pi.events` bus
+pi-stash emits `stash:snapshot` on the session's `pi.events` bus
 (`src/events.ts`): `{ version: 1, entries, store }`, the latest version per
 name, newest first, in the same shape `stash_list` returns, plus the shared
 store's size and `maxStoreBytes` cap when they can be measured. Metadata only.
 Each subagent has its own bus.
 
-For a user who opens an entry, another extension can emit `pi-stash:preview`
+For a user who opens an entry, another extension can emit `stash:preview`
 with `{ name, maxLines?, maxBytes?, respond }`. pi-stash answers synchronously
 through `respond` with the head of that entry (at most 200 lines / 16 KB) read
 through the hash-checked store, or `{ ok: false, error }`. Only bare names of
@@ -111,7 +111,7 @@ for its stash panel and previews.
 entry, it hands the entry to its parent's pi-stash, which journals it on its own
 branch (`via: "adopt"`) and hands it to its own parent, and so on up to the root.
 The entry's `id` makes adoption idempotent, so a repeat ends the chain. It then shows up in their `stash_list`,
-`/stash`, index card and `pi-stash:snapshot`, marked with the agent that stored it
+`/stash`, index card and `stash:snapshot`, marked with the agent that stored it
 (`↑ agent a3f2b1c4`). Parent links come from pi-subagents' child lifecycle events
 through [`pi-session-tree`](../../packages/pi-session-tree/README.md). Because the
 entry is journaled where it lands, a parent `/tree` back to before the spawn drops it

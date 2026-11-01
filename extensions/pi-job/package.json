@@ -1,5 +1,5 @@
 {
-  "name": "@woksin/pi-jobs",
+  "name": "pi-job",
   "version": "0.3.1",
   "private": true,
   "description": "Background shell jobs and watches that wake the pi agent on completion",

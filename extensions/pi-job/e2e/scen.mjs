@@ -173,7 +173,7 @@ const scenarios = {
     const deadline = Date.now() + 20_000;
     while (!fs.existsSync(done) && Date.now() < deadline) await sleep(100);
     if (!fs.existsSync(done)) throw new Error("precondition failed: the job did not complete");
-    await sleep(500); // let pi-jobs see the job's exit (pipe close and status) before aborting
+    await sleep(500); // let pi-job see the job's exit (pipe close and status) before aborting
     // Precondition 2: the foreground bash is still running, i.e. the turn is still streaming.
     if (pi.events.some((e) => e.type === "tool_execution_end" && e.toolName === "bash"))
       throw new Error("precondition failed: the foreground bash already finished");

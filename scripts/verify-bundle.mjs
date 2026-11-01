@@ -53,7 +53,7 @@ try {
     "job_start",
     "job_watch",
     "job_list",
-    "job_output",
+    "job_read",
     "job_kill",
     "stash_put",
     "stash_get",
@@ -62,7 +62,7 @@ try {
     assert.ok(tools.includes(name), `Missing tool: ${name}`);
   }
   for (const name of [
-    "jobs",
+    "job",
     "subagents:settings",
     "subagents:sessions",
     "subagents:watch",

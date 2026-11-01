@@ -74,6 +74,12 @@ export function splitColumns(
   return clip(left, width);
 }
 
+/** Unlabeled border-colored rule, e.g. between panel header chrome and content. */
+export function divider(width: number, theme: UITheme): string {
+  width = cells(width);
+  return width ? theme.fg("border", "─".repeat(width)) : "";
+}
+
 /** MIT adaptation of subagents' labeled rule. Every width, including 0–8, is bounded. */
 export function labeledRule(
   width: number,
@@ -106,11 +112,16 @@ export interface PanelLayout {
   framed: boolean;
   contentWidth: number;
   beforeRows: number;
+  /** 1 when a divider separates header rows from the body, else 0. */
+  dividerRows: number;
   afterRows: number;
   bodyRows: number;
 }
 
-/** Reserve a body row, then footer actions, then optional header rows. */
+/**
+ * Reserve a body row, then footer actions, then optional header rows, then the
+ * divider under the header (dropped first when space runs out).
+ */
 export function layoutPanel(
   width: number,
   height: number,
@@ -124,18 +135,46 @@ export function layoutPanel(
   const inner = Math.max(0, height - (framed ? 2 : 0));
   const after = Math.min(cells(afterRows), Math.max(0, inner - 1));
   const before = Math.min(cells(beforeRows), Math.max(0, inner - after - 1));
+  const dividerRows = before && inner - after - before > 1 ? 1 : 0;
   return {
     width,
     height,
     framed,
     contentWidth: Math.max(0, width - (framed ? 6 : 2)),
     beforeRows: before,
+    dividerRows,
     afterRows: after,
-    bodyRows: inner - before - after,
+    bodyRows: inner - before - dividerRows - after,
   };
 }
 
-/** All lines are already styled. Title is plain/untrusted and is normalized here. */
+/**
+ * Smallest height, up to `maxHeight`, whose layout shows every requested header,
+ * divider and footer row plus `bodyRows` of content; `maxHeight` when none does.
+ * Overlays center on their rendered height, so short content gets a short panel.
+ */
+export function fitPanelHeight(
+  width: number,
+  maxHeight: number,
+  bodyRows: number,
+  beforeRows = 0,
+  afterRows = 0,
+): number {
+  maxHeight = cells(maxHeight);
+  const cap = layoutPanel(width, maxHeight);
+  // No layout at zero width can show the requested body; keep the cap.
+  if (!cap.width) return maxHeight;
+  const body = Math.max(1, cells(bodyRows)),
+    before = cells(beforeRows),
+    after = cells(afterRows);
+  // Keep the cap's frame so fitting height never changes the wrapping width.
+  return Math.min(maxHeight, body + before + (before ? 1 : 0) + after + (cap.framed ? 2 : 0));
+}
+
+/**
+ * All lines are already styled. Title is plain/untrusted and is normalized here.
+ * Header rows are followed by a divider when the layout reserved one.
+ */
 export function renderPanel(
   layout: PanelLayout,
   title: Title,
@@ -164,6 +203,7 @@ export function renderPanel(
       ? " " + theme.fg("border", "│") + bodyRow(text, width - 4) + theme.fg("border", "│") + " "
       : bodyRow(text, width);
   for (let i = 0; i < layout.beforeRows; i++) lines.push(row(chrome.before?.[i] ?? ""));
+  if (layout.dividerRows) lines.push(row(divider(layout.contentWidth, theme)));
   for (let i = 0; i < layout.bodyRows; i++) lines.push(row(body[i] ?? ""));
   for (let i = 0; i < layout.afterRows; i++) lines.push(row(chrome.after?.[i] ?? ""));
   if (framed) lines.push(" " + theme.fg("border", `╰${"─".repeat(width - 4)}╯`) + " ");

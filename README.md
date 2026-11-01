@@ -67,8 +67,8 @@ pi-personal/
 │   │   ├── src/hub/server.ts            # web hub (plain Node, not a Pi extension)
 │   │   ├── test/
 │   │   └── docs/plan.md                 # research and phased plan
-│   ├── pi-jobs/                         # vendored
-│   │   ├── src/extension.ts             # job_* tools + /jobs command
+│   ├── pi-job/                          # vendored
+│   │   ├── src/extension.ts             # job_* tools + /job command
 │   │   ├── test/
 │   │   └── UPSTREAM.md
 │   ├── pi-stash/
@@ -129,7 +129,7 @@ pi-blackhole memory counts. **Focus** jumps to the session's cmux panel and
 raises cmux. A filter box and opt-in browser notifications (waiting or
 finished sessions) round out the index. Questions the model asks through
 rpiv ask-user (`ask_user_question`) can be answered from the page. pi-todo and pi-stash publish their state as
-`todo:snapshot` / `pi-stash:snapshot` events on the session's `pi.events`
+`todo:snapshot` / `stash:snapshot` events on the session's `pi.events`
 bus for this and other extensions.
 
 The first interactive session starts a detached hub; sessions connect to it
@@ -139,20 +139,20 @@ and Node binary are set in `~/.pi/agent/dashboard.json`. Loopback only. See
 [extension docs](extensions/pi-dashboard/README.md) and the
 [plan](extensions/pi-dashboard/docs/plan.md).
 
-### pi-jobs
+### pi-job
 
 Background shell jobs and watches that wake the agent when they finish, vendored
-from [`woksin/pi-jobs`](extensions/pi-jobs/UPSTREAM.md) with local additions.
+from [`woksin/pi-jobs`](extensions/pi-job/UPSTREAM.md) with local additions.
 `job_start` runs a command in its own process group and returns immediately;
 `job_watch` re-runs a shell check until it succeeds, fails, or its output changes.
 With `toolCheck` it instead polls a read-only Pi tool, such as an MCP tool, until a
-condition on its result holds ([tool checks](extensions/pi-jobs/TOOL-CHECKS.md)).
+condition on its result holds ([tool checks](extensions/pi-job/TOOL-CHECKS.md)).
 The agent ends its turn instead of polling, and completions arrive as one batched
 follow-up message.
-`job_list`, `job_output`, and `job_kill` inspect and stop work; `/jobs` lists or
+`job_list`, `job_read`, and `job_kill` inspect and stop work; `/job` lists or
 kills jobs for the user. POSIX only. Logs live under `~/.pi/agent/jobs/` for seven
 days. Do not also install `npm:@woksin/pi-jobs`. See the
-[upstream README](extensions/pi-jobs/README.md) for delivery guarantees and limits.
+[upstream README](extensions/pi-job/README.md) for delivery guarantees and limits.
 
 ### pi-stash
 
@@ -434,5 +434,5 @@ To copy a third-party extension into the repository, use the
 
 Vendored subagents code retains its upstream [MIT license](extensions/pi-subagents/LICENSE).
 Vendored todo engine retains its upstream [MIT license](extensions/pi-todo/LICENSE).
-Vendored jobs code retains its upstream [MIT license](extensions/pi-jobs/LICENSE).
+Vendored jobs code retains its upstream [MIT license](extensions/pi-job/LICENSE).
 Vendored worktrees code retains its upstream [MIT license](extensions/pi-subagents-worktrees/LICENSE).

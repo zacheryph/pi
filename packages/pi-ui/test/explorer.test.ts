@@ -77,7 +77,9 @@ describe("Explorer", () => {
   });
   it("shows a live status row with the marker count, and wraps prioritized hints", () => {
     const { explorer, onClear } = setup();
-    expect(output(explorer)).toContain("1/2 tasks · 2 unreviewed");
+    expect(output(explorer)).toContain("│ ── 1/2 tasks · 2 unreviewed ──");
+    // Header chrome (filter, tabs, notices) is divided from the list.
+    expect(output(explorer)).toMatch(/Snapshot · old +│ \n │ ─+ │ \n │ → /);
     const wide = output(explorer, 200);
     for (const hint of [
       "Enter open",
@@ -138,6 +140,22 @@ describe("Explorer", () => {
     expect(output(explorer)).toContain("No recent tasks");
     explorer.handleInput("\x1b[Z");
     expect(output(explorer)).toContain("Beta");
+  });
+  it("keeps the full height and blanks the status row while a detail shows every line", () => {
+    const { explorer } = setup();
+    const rules = () => output(explorer).match(/│ ─{10,} │/g) ?? [];
+    expect(explorer.render(80)).toHaveLength(24);
+    explorer.handleInput("\x1b[B");
+    explorer.handleInput("\r");
+    expect(explorer.render(80)).toHaveLength(24);
+    expect(output(explorer)).toContain("Beta details");
+    // Only the header divider remains; a blank row separates the body from the hints.
+    expect(rules()).toHaveLength(1);
+    expect(output(explorer)).toMatch(/│ +│ \n │ Esc back/);
+    explorer.handleInput("\x1b");
+    explorer.handleInput("\x1b[A");
+    explorer.handleInput("\r");
+    expect(output(explorer)).toMatch(/── 1–\d+\/82 lines ──/);
   });
   it("uses view-level empty text and the noun", () => {
     expect(

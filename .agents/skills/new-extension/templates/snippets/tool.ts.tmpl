@@ -7,7 +7,7 @@
       "Say when the model should call {{tool}} and how to use its result.",
     ],
     parameters: Type.Object({}),
-    // Set readOnlyHint: true if the tool only reads; pi-jobs can then watch it.
+    // Set readOnlyHint: true if the tool only reads; pi-job can then watch it.
     annotations: { readOnlyHint: false },
     async execute(_id, _params, _signal, _update, _ctx) {
       return { content: [{ type: "text", text: "{{tool}}: not implemented yet" }], details: {} };
