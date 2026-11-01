@@ -13,7 +13,36 @@ import type { DisposableComponent, Title, UITheme } from "./types.ts";
 export type InlineWindowHost = Pick<TUI, "requestRender"> & {
   readonly isFollowingOutput?: boolean;
   scrollToBottom?(): void;
+  scrollBy?(lines: number): void;
 };
+
+/** Rows of the minimized window: title rule, summary and hint. */
+const MINIMIZED_ROWS = 3;
+
+// Pi loads every extension with its own module cache, so each has its own copy
+// of this library; the count of open windows lives on the shared global object.
+const OPEN_WINDOWS = Symbol.for("pi-ui.inline-window.open");
+type OpenWindows = { [OPEN_WINDOWS]?: number };
+const openWindows = () => (globalThis as OpenWindows)[OPEN_WINDOWS] ?? 0;
+
+/**
+ * True while any extension has an inline window open. Docked widgets read it
+ * (`WidgetView.docked`) to collapse to their heading so the window keeps its rows.
+ */
+export function inlineWindowOpen(): boolean {
+  return openWindows() > 0;
+}
+
+/** Counts one open window; the returned release is idempotent. */
+function trackOpenWindow(): () => void {
+  (globalThis as OpenWindows)[OPEN_WINDOWS] = openWindows() + 1;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    (globalThis as OpenWindows)[OPEN_WINDOWS] = Math.max(0, openWindows() - 1);
+  };
+}
 
 export interface InlineWindowOptions {
   title: Title;
@@ -36,11 +65,20 @@ export type InlineWindowBody = DisposableComponent &
  * back to the end and restores it. That key is not passed to the body, so a
  * keystroke typed without seeing the window never acts on it.
  *
+ * Minimizing frees rows at the bottom of the transcript. Left alone, the
+ * transcript would clamp to its new end, follow it again and restore the
+ * window, which then minimizes on the next scroll: a flicker until the user
+ * scrolls further than the freed rows at once. So the window scrolls the
+ * transcript back by the rows it freed, keeping the last line the user saw at
+ * the bottom of the view.
+ *
  * In regular mode the terminal owns scrollback and the window never minimizes;
  * scrolling the terminal already moves it out of view.
  */
 export class InlineWindow implements DisposableComponent, Focusable {
   private shownMinimized = false;
+  /** Rows of the last expanded render; what minimizing frees, plus the minimized rows. */
+  private expandedRows = 0;
   private readonly host: InlineWindowHost;
   private readonly theme: UITheme;
   private readonly body: InlineWindowBody;
@@ -79,6 +117,8 @@ export class InlineWindow implements DisposableComponent, Focusable {
     const minimized = this.minimized;
     if (minimized !== this.shownMinimized) {
       this.shownMinimized = minimized;
+      const freed = this.expandedRows - MINIMIZED_ROWS;
+      if (minimized && freed > 0) this.host.scrollBy?.(-freed);
       // The window's height changed, so the transcript above it needs another layout pass.
       this.host.requestRender();
     }
@@ -96,10 +136,12 @@ export class InlineWindow implements DisposableComponent, Focusable {
         bodyRow(paint(this.theme, "dim", hint), width),
       ];
     }
-    return [
+    const lines = [
       labeledRule(width, rule, [paint(this.theme, "accent", title)]),
       ...this.body.render(width),
     ];
+    this.expandedRows = lines.length;
+    return lines;
   }
 
   handleInput(data: string): void {
@@ -129,7 +171,8 @@ export class InlineWindow implements DisposableComponent, Focusable {
 /**
  * Open a focused inline window in the editor's place and resolve with the value
  * the body passes to `done`, or undefined without an interactive terminal. The
- * signal ends on close, host disposal or failure.
+ * signal ends on close, host disposal or failure. While it is open,
+ * `inlineWindowOpen()` is true.
  */
 export async function openInlineWindow<T>(
   ctx: ModalContext,
@@ -146,6 +189,7 @@ export async function openInlineWindow<T>(
   }
   const controller = new AbortController();
   let finished = false;
+  let release: (() => void) | undefined;
   try {
     return await ctx.ui.custom<T>(async (tui, theme, keys, done) => {
       const body = await factory(
@@ -165,6 +209,7 @@ export async function openInlineWindow<T>(
         title,
         ...(options.minimizedHint ? { minimizedHint: options.minimizedHint } : {}),
       });
+      release = trackOpenWindow();
       let disposed = false;
       // Explicit delegation retains method receivers, focus and Pi Input cursor behavior.
       const host: DisposableComponent & Focusable = {
@@ -185,6 +230,7 @@ export async function openInlineWindow<T>(
           if (!disposed) {
             disposed = true;
             controller.abort();
+            release?.();
             window.dispose();
           }
         },
@@ -193,5 +239,6 @@ export async function openInlineWindow<T>(
     });
   } finally {
     controller.abort();
+    release?.();
   }
 }

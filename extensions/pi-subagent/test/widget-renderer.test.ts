@@ -55,6 +55,21 @@ describe("compact widget heading and rows", () => {
     expect(lines.join("\n")).not.toMatch(/[╭╮╰╯│├└⎿]/);
   });
 
+  it("collapses to its heading while an inline window (an ask) is open", () => {
+    const open = Symbol.for("pi-ui.inline-window.open");
+    const slots = globalThis as Record<symbol, unknown>;
+    const agents = [makeAgent(), makeAgent({ id: "second", status: "queued" })];
+    const expanded = render({ agents });
+    slots[open] = 1;
+    try {
+      expect(render({ agents })).toEqual([expanded[0]]);
+      expect(expanded[0]).toContain("1 queued");
+    } finally {
+      // oxlint-disable-next-line no-dynamic-delete -- Remove this test's Symbol-keyed slot.
+      delete slots[open];
+    }
+  });
+
   it("keeps the header icon static while agent status spinners advance", () => {
     const first = render({ spinnerFrame: 0 });
     const next = render({ spinnerFrame: 1 });

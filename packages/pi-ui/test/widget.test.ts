@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { Widget, renderWidget, type WidgetView } from "../src/widget.ts";
 import { ICONS } from "../src/icons.ts";
 import { bounded, plain, theme } from "./helpers.ts";
@@ -78,5 +78,27 @@ describe("pure widget layout", () => {
     widget.setView({ ...v, emptyText: "No tasks\nin this view" });
     expect(plain(widget.render(60))).toContain("No tasks in this view");
     expect(plain(widget.render(60))).not.toContain("item0");
+  });
+  describe("docked widgets while an inline window is open", () => {
+    const open = Symbol.for("pi-ui.inline-window.open");
+    const slots = globalThis as Record<symbol, unknown>;
+    afterEach(() => {
+      // oxlint-disable-next-line no-dynamic-delete -- Remove this test's Symbol-keyed slot.
+      delete slots[open];
+    });
+    it("collapse to the heading rule, keeping its metadata, while other views keep their rows", () => {
+      const docked = { ...view(), docked: true };
+      expect(renderWidget(docked, 60, theme)).toHaveLength(5);
+      slots[open] = 1;
+      const collapsed = renderWidget(docked, 60, theme);
+      expect(collapsed).toEqual([renderWidget(view(), 60, theme)[0]]);
+      expect(plain(collapsed)).toContain("● 2 new");
+      expect(renderWidget(view(), 60, theme)).toHaveLength(5);
+      expect(renderWidget({ ...docked, maxRows: 0 }, 60, theme)).toEqual([]);
+      for (let width = 0; width <= 20; width++)
+        bounded(renderWidget(docked, width, theme), width, 1);
+      slots[open] = 0;
+      expect(renderWidget(docked, 60, theme)).toHaveLength(5);
+    });
   });
 });

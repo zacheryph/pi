@@ -55,11 +55,13 @@ import {
   renderTodoText,
   todoMessageLine,
   todoTaskPresentation,
+  todoWidgetView,
   type TodoRenderConfig,
 } from "./ui/render.ts";
 import {
   bodyRow,
   clip,
+  renderWidget,
   sanitizeLine,
   sanitizeText,
   styleLine,
@@ -244,14 +246,17 @@ export default function todoExtension(
             return {
               render: (width) => {
                 const view = delegatedView();
-                return renderTodoLines(
-                  widgetState(view),
+                return renderWidget(
                   {
-                    ...widgetConfig(view),
-                    maxVisible: Math.max(
-                      1,
-                      Math.min(config.maxVisible, (process.stdout.rows || 24) - 8),
-                    ),
+                    ...todoWidgetView(widgetState(view), {
+                      ...widgetConfig(view),
+                      maxVisible: Math.max(
+                        1,
+                        Math.min(config.maxVisible, (process.stdout.rows || 24) - 8),
+                      ),
+                    }),
+                    // Collapse to the heading while an inline window (an ask) is open.
+                    docked: true,
                   },
                   width,
                   theme,

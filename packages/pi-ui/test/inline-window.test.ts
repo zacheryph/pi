@@ -1,7 +1,12 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { visibleWidth, type Focusable, type TUI } from "@earendil-works/pi-tui";
+import { ScrollView, visibleWidth, type Focusable, type TUI } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
-import { InlineWindow, openInlineWindow, type InlineWindowHost } from "../src/inline-window.ts";
+import {
+  InlineWindow,
+  inlineWindowOpen,
+  openInlineWindow,
+  type InlineWindowHost,
+} from "../src/inline-window.ts";
 import { bodyRow } from "../src/layout.ts";
 import type { DisposableComponent } from "../src/types.ts";
 import { keys, plain, theme, wheel } from "./helpers.ts";
@@ -17,8 +22,37 @@ function host(following: boolean | undefined = true) {
     scrollToBottom: vi.fn(() => {
       state.following = true;
     }),
+    scrollBy: vi.fn(),
   };
   return { fake: fake as InlineWindowHost & typeof fake, state };
+}
+
+/**
+ * Pi's fullscreen layout around a real transcript ScrollView: the window sits
+ * under the transcript, which gets the screen rows the window leaves. Each frame
+ * renders the window, then lays the transcript out in the remaining rows.
+ */
+function screen(options: { rows: number; transcript: number; scrollBy: boolean }) {
+  const transcript = new ScrollView({ render: () => [], invalidate() {} }, { follow: "end" });
+  let window!: InlineWindow;
+  const fake: InlineWindowHost = {
+    requestRender: () => {},
+    get isFollowingOutput() {
+      return transcript.isFollowingEnd;
+    },
+    scrollToBottom: () => transcript.scrollToEnd(),
+    ...(options.scrollBy ? { scrollBy: (lines: number) => transcript.scrollBy(lines) } : {}),
+  };
+  const frame = () => {
+    const rows = window.render(40).length;
+    transcript.updateLayout(options.transcript, options.rows - rows, () => {});
+    return rows;
+  };
+  window = new InlineWindow(fake, theme, body(Array.from({ length: 11 }, (_, i) => `row ${i}`)), {
+    title: "Question",
+  });
+  frame();
+  return { transcript, frame };
 }
 
 function body(rows = ["first question", "second row", "third row", "fourth row"]) {
@@ -83,6 +117,46 @@ describe("InlineWindow", () => {
     expect(window.render(40)).toHaveLength(5);
     window.handleInput("2");
     expect(content.inputs).toEqual(["2"]);
+  });
+
+  it("scrolls the transcript back by the rows minimizing frees, so a small scroll does not clamp to the end and restore", () => {
+    const h = host();
+    const window = new InlineWindow(h.fake, theme, body(), { title: "Question" });
+    window.render(40);
+    h.state.following = false;
+    window.render(40);
+    // Five expanded rows (title and four body rows) become three.
+    expect(h.fake.scrollBy).toHaveBeenCalledExactlyOnceWith(-2);
+    window.render(40);
+    h.state.following = true;
+    window.render(40);
+    expect(h.fake.scrollBy).toHaveBeenCalledOnce();
+  });
+
+  it("does not scroll when it first renders minimized, having freed nothing", () => {
+    const h = host(false);
+    new InlineWindow(h.fake, theme, body(), { title: "Question" }).render(40);
+    expect(h.fake.scrollBy).not.toHaveBeenCalled();
+  });
+
+  it("stays minimized after a one-line scroll against Pi's real transcript ScrollView", () => {
+    const anchored = screen({ rows: 40, transcript: 200, scrollBy: true });
+    anchored.transcript.scrollBy(-1);
+    const heights = Array.from({ length: 4 }, anchored.frame);
+    expect(heights).toEqual([3, 3, 3, 3]);
+    expect(anchored.transcript.isFollowingEnd).toBe(false);
+    // The last line seen (one above the end with 28 transcript rows) stays at the bottom.
+    expect(anchored.transcript.scrollTop + anchored.transcript.viewportHeight).toBe(199);
+
+    // Scrolling back to the end restores it, and it stays restored.
+    anchored.transcript.scrollBy(100);
+    expect(Array.from({ length: 3 }, anchored.frame)).toEqual([12, 12, 12]);
+    expect(anchored.transcript.isFollowingEnd).toBe(true);
+
+    // Without scrollBy the transcript clamps to its new end and the window restores at once.
+    const clamped = screen({ rows: 40, transcript: 200, scrollBy: false });
+    clamped.transcript.scrollBy(-1);
+    expect(Array.from({ length: 3 }, clamped.frame)).toEqual([3, 12, 12]);
   });
 
   it("restores by itself when the transcript is scrolled back to its end", () => {
@@ -213,6 +287,31 @@ describe("openInlineWindow", () => {
     mounted.dispose?.();
     mounted.dispose?.();
     expect(content.dispose).toHaveBeenCalledOnce();
+  });
+
+  it("reports itself open from mount until disposal, across separate windows", async () => {
+    expect(inlineWindowOpen()).toBe(false);
+    const first = context();
+    const second = context();
+    const opening = [first, second].map((c) =>
+      openInlineWindow<string>(c.ctx, "Q", (_tui, _theme, _keys, done) => {
+        const content = body();
+        content.handleInput = (data: string) => done(data);
+        return content;
+      }),
+    );
+    const [one, two] = await Promise.all([first.mounted, second.mounted]);
+    expect(inlineWindowOpen()).toBe(true);
+    one.dispose?.();
+    one.dispose?.();
+    expect(inlineWindowOpen()).toBe(true);
+    two.handleInput?.("done");
+    one.handleInput?.("done");
+    await Promise.all(opening);
+    // Resolving releases it even if the host never disposes the component.
+    expect(inlineWindowOpen()).toBe(false);
+    two.dispose?.();
+    expect(inlineWindowOpen()).toBe(false);
   });
 
   it("notifies instead of opening without an interactive terminal", async () => {
