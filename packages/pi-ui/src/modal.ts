@@ -22,9 +22,10 @@ export interface ModalOptions {
   overlayOptions?: Omit<OverlayOptions, "nonCapturing">;
 }
 
-const NOTHING: DisposableComponent = { render: () => [], invalidate() {} };
-
-/** The signal ends on close, host disposal or failure; late async results can ignore it. */
+/**
+ * Open a capturing, centered overlay. Only Pi's fullscreen TUI is supported.
+ * The signal ends on close, host disposal or failure; late async results can ignore it.
+ */
 export async function openModal<T>(
   ctx: ModalContext,
   factory: ModalFactory<T>,
@@ -37,10 +38,6 @@ export async function openModal<T>(
     );
     return undefined;
   }
-  const mode = await ctx.ui.custom<TUI["mode"] | undefined>((tui, _theme, _keys, done) => {
-    done(tui.mode);
-    return NOTHING;
-  });
   const controller = new AbortController();
   let finished = false;
   try {
@@ -85,17 +82,15 @@ export async function openModal<T>(
         };
         return host;
       },
-      mode === "fullscreen"
-        ? {
-            overlay: true,
-            overlayOptions: {
-              anchor: "center",
-              width: "80%",
-              maxHeight: "80%",
-              ...options.overlayOptions,
-            },
-          }
-        : { overlay: false },
+      {
+        overlay: true,
+        overlayOptions: {
+          anchor: "center",
+          width: "80%",
+          maxHeight: "80%",
+          ...options.overlayOptions,
+        },
+      },
     );
   } finally {
     controller.abort();
@@ -107,12 +102,12 @@ export class PassiveOverlay {
   private handle?: OverlayHandle;
   private component?: DisposableComponent;
   private disposed = false;
-  constructor(private readonly tui: Pick<TUI, "mode" | "showOverlay">) {}
+  constructor(private readonly tui: Pick<TUI, "showOverlay">) {}
   show(
     component: DisposableComponent,
     options: Omit<OverlayOptions, "nonCapturing"> = {},
   ): boolean {
-    if (this.disposed || this.tui.mode !== "fullscreen") return false;
+    if (this.disposed) return false;
     if (this.component === component) {
       this.handle?.hide();
       this.handle = undefined;

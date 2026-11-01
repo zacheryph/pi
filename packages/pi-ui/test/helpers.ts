@@ -14,8 +14,8 @@ export const theme: UITheme = {
 };
 export const keys = () => new KeybindingsManager(TUI_KEYBINDINGS);
 export const plain = (lines: readonly string[]) => lines.map(sanitizeText).join("\n");
-export function surface(rows = 30, mode: UISurface["mode"] = "fullscreen") {
-  return { mode, terminal: { rows, columns: 80 }, requestRender: vi.fn() };
+export function surface(rows = 30) {
+  return { terminal: { rows, columns: 80 }, requestRender: vi.fn() } satisfies UISurface;
 }
 export function bounded(lines: readonly string[], width: number, height: number) {
   expect(lines.length).toBeLessThanOrEqual(height);

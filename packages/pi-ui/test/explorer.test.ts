@@ -3,49 +3,57 @@ import { describe, expect, it, vi } from "vitest";
 import { Explorer, type ExplorerView } from "../src/explorer.ts";
 import { bounded, flush, keys, plain, surface, theme, wheel } from "./helpers.ts";
 
+/** Tags each tone so tests can assert semantic styling. */
+const tagged = {
+  fg: (color: string, text: string) => `<${color}>${text}</${color}>`,
+  bold: (text: string) => `<b>${text}</b>`,
+};
 const long = Array.from({ length: 80 }, (_, i) => `line${i}`).join("\n");
-function setup(view?: Partial<ExplorerView>) {
+function setup(view?: Partial<ExplorerView>, style: object = theme) {
   const tui = surface(),
     done = vi.fn(),
     onOpen = vi.fn(),
-    onReview = vi.fn();
+    onClear = vi.fn();
   const data: ExplorerView = {
     title: { label: "Items", icon: "✓" },
-    note: "Snapshot",
+    noun: ["task", "tasks"],
+    notices: [[{ text: "Snapshot" }, { text: " · old", tone: "warning" }]],
     onOpen,
-    onReview,
+    marker: { label: "unreviewed", clearAction: "mark reviewed", onClear },
+    hints: [{ keys: "/todos:add", action: "add" }],
     items: [
       {
         id: "a",
-        label: "Alpha",
-        marker: true,
-        description: "needle",
-        badge: { label: "enabled", color: "success" },
+        label: [
+          { text: "Alpha", tone: "accent" },
+          { text: " — first", tone: "muted" },
+        ],
+        marked: true,
+        search: "needle",
+        badge: { text: "enabled", tone: "success" },
         detail: long,
       },
-      { id: "b", label: "Beta", marker: true, detail: "beta details" },
+      { id: "b", label: "Beta", marked: true, detail: [{ heading: "Beta details" }] },
     ],
     tabs: [
       { label: "All", ids: ["a", "b"] },
       { label: "Recent", ids: ["b"] },
-      { label: "Empty", ids: [], emptyText: "No recent items" },
+      { label: "Empty", ids: [], emptyText: "No recent tasks" },
     ],
-    legend: [{ label: "✓", color: "success", meaning: "enabled" }],
     ...view,
   };
-  const explorer = new Explorer({ tui, theme, keys: keys(), view: data, done });
+  const explorer = new Explorer({ tui, theme: style as never, keys: keys(), view: data, done });
   explorer.focused = true;
-  return { explorer, data, tui, done, onOpen, onReview };
+  return { explorer, data, tui, done, onOpen, onClear };
 }
 const output = (view: Explorer, width = 80) => plain(view.render(width));
 describe("Explorer", () => {
   it("copies snapshot presentation, keeps opaque ids, and preserves the focused input cursor", () => {
     const { explorer, data } = setup();
-    data.items[0].label = "mutated";
-    data.items[0].badge!.label = "changed";
-    expect(output(explorer)).toContain("Alpha");
+    data.items[0].badge!.text = "changed";
+    expect(output(explorer)).toContain("Alpha — first");
     expect(output(explorer)).toContain("enabled");
-    expect(output(explorer)).not.toContain("mutated");
+    expect(output(explorer)).not.toContain("changed");
     expect(explorer.render(80).some((row) => row.includes(CURSOR_MARKER))).toBe(true);
     const onOpen = vi.fn();
     const opaque = setup({
@@ -56,14 +64,56 @@ describe("Explorer", () => {
     opaque.handleInput("\r");
     expect(onOpen).toHaveBeenCalledWith("\nopaque");
   });
-  it("filters searchable metadata/paste, opens details, backs out, clears filter and closes", () => {
+  it("styles spans by tone, accents markers on every row and the whole selected label", () => {
+    const { explorer } = setup({}, tagged);
+    explorer.handleInput("\x1b[B");
+    // Tags inflate measured widths, so give tagged rows ample room.
+    const rows = explorer.render(300).join("\n");
+    expect(rows).toContain("<accent>Alpha</accent><muted> — first</muted>");
+    expect(rows).toContain("<accent>●</accent> <accent>Alpha");
+    expect(rows).toContain("<accent>→</accent> <accent>●</accent> <accent>Beta</accent>");
+    expect(rows).toContain("<success>enabled</success>");
+    expect(rows).toContain("<warning> · old</warning>");
+  });
+  it("shows a live status row with the marker count, and wraps prioritized hints", () => {
+    const { explorer, onClear } = setup();
+    expect(output(explorer)).toContain("1/2 tasks · 2 unreviewed");
+    const wide = output(explorer, 200);
+    for (const hint of [
+      "Enter open",
+      "Esc close",
+      "Tab view",
+      "Ctrl+R mark reviewed",
+      "/todos:add add",
+      "↑↓ PgUp/PgDn Home/End",
+    ])
+      expect(wide).toContain(hint);
+    // At 80 columns everything still fits across two hint rows.
+    expect(output(explorer)).toContain("/todos:add add");
+    expect(output(explorer)).toContain("PgUp/PgDn");
+    // Narrow: navigation goes first, actions never drop.
+    const narrow = output(explorer, 40);
+    expect(narrow).toContain("Enter open");
+    expect(narrow).not.toContain("PgUp");
+    explorer.handleInput("\r");
+    expect(onClear).toHaveBeenCalledWith(["a"]);
+    explorer.handleInput("\x1b");
+    expect(output(explorer)).toContain("1 unreviewed");
+    explorer.handleInput("\x12");
+    expect(onClear).toHaveBeenLastCalledWith(["b"]);
+    expect(output(explorer)).not.toContain("unreviewed");
+  });
+  it("filters searchable metadata/paste, opens details with a badge header, backs out, clears filter and closes", () => {
     const { explorer, onOpen, done } = setup();
     explorer.render(80);
     explorer.handleInput("\x1b[200~needle\x1b[201~");
     expect(output(explorer)).toContain("Alpha");
     expect(output(explorer)).not.toContain("Beta");
+    expect(output(explorer)).toContain("1/1 task · 2 total");
+    expect(output(explorer)).toContain("Esc clear filter");
     explorer.handleInput("\r");
     expect(onOpen).toHaveBeenCalledWith("a");
+    expect(plain(explorer.render(80))).toContain("Items / Alpha — first");
     expect(output(explorer)).toContain("line0");
     explorer.handleInput("\x1b[F");
     expect(output(explorer)).toContain("line79");
@@ -75,23 +125,36 @@ describe("Explorer", () => {
     explorer.handleInput("\x03");
     expect(done).toHaveBeenCalledOnce();
   });
-  it("supports tab order, filtered reviews and local marker clearing without mutating input", () => {
-    const { explorer, onReview, data } = setup();
+  it("supports tab order, filtered clears and local marker clearing without mutating input", () => {
+    const { explorer, onClear, data } = setup();
     explorer.handleInput("\t");
     expect(output(explorer)).not.toContain("Alpha");
     explorer.handleInput("\x12");
-    expect(onReview).toHaveBeenCalledWith(["b"]);
+    expect(onClear).toHaveBeenCalledWith(["b"]);
     explorer.handleInput("\x12");
-    expect(onReview).toHaveBeenCalledOnce();
-    expect(data.items[1].marker).toBe(true);
+    expect(onClear).toHaveBeenCalledOnce();
+    expect(data.items[1].marked).toBe(true);
     explorer.handleInput("\t");
-    expect(output(explorer)).toContain("No recent items");
+    expect(output(explorer)).toContain("No recent tasks");
     explorer.handleInput("\x1b[Z");
     expect(output(explorer)).toContain("Beta");
   });
+  it("uses view-level empty text and the noun", () => {
+    expect(
+      output(setup({ items: [], tabs: undefined, emptyText: "No stash entries." }).explorer),
+    ).toContain("No stash entries.");
+    expect(output(setup({ items: [], tabs: undefined }).explorer)).toContain("No tasks.");
+  });
   it("bounds malicious fields, themed rows and all narrow viewports in both list and detail", () => {
     const { explorer, tui } = setup({
-      items: [{ id: "x", label: "界👨‍👩‍👧‍👦\nlabel\x1b]52;c;bad\x07", detail: long }],
+      items: [
+        {
+          id: "x",
+          label: "界👨‍👩‍👧‍👦\nlabel\x1b]52;c;bad\x07",
+          detail: long,
+          badge: { text: "界 badge" },
+        },
+      ],
       tabs: undefined,
     });
     for (const state of ["list", "detail"]) {
@@ -102,14 +165,13 @@ describe("Explorer", () => {
           bounded(explorer.render(width), width, Math.floor(rows * 0.8));
         }
     }
+    expect(output(explorer)).not.toContain("52;c");
   });
-  it("handles wheel selection and ignores it in regular mode", () => {
-    const { explorer, onOpen, tui } = setup();
+  it("handles wheel selection", () => {
+    const { explorer, onOpen } = setup();
     expect(explorer.handleMouse(wheel(1))).toEqual({ handled: true });
     explorer.handleInput("\r");
     expect(onOpen).toHaveBeenCalledWith("b");
-    tui.mode = "regular";
-    expect(explorer.handleMouse(wheel(1))).toBeUndefined();
   });
   it("loads only opened details and rejects stale loads after back, reopen and disposal", async () => {
     const pending: Array<{ resolve: (text: string) => void; signal: AbortSignal }> = [];
@@ -140,19 +202,33 @@ describe("Explorer", () => {
     await flush();
     expect(explorer.render(80)).toEqual([]);
   });
-  it("renders synchronous and asynchronous detail failures safely", async () => {
+  it("renders synchronous and asynchronous detail failures with the message only", async () => {
     for (const loadDetail of [
       () => {
         throw new Error("sync\x1b]0;bad\x07");
       },
       () => Promise.reject(new Error("async")),
+      () => Promise.reject("plain"),
     ]) {
       const { explorer } = setup({ loadDetail });
       explorer.handleInput("\r");
       await flush();
-      expect(output(explorer)).toContain("Unable to load:");
+      expect(output(explorer)).toMatch(/Couldn't load: (sync|async|plain)/);
+      expect(output(explorer)).not.toContain("Error:");
       expect(output(explorer)).not.toContain("bad");
       explorer.dispose();
     }
   });
+});
+
+it("renders the detail header bold with its badge, and errors in the error tone", async () => {
+  const { explorer } = setup({}, tagged);
+  explorer.handleInput("\r");
+  const detail = explorer.render(300).join("\n");
+  expect(detail).toContain("<b>Alpha</b>");
+  expect(detail).toContain("<success>enabled</success>");
+  const failing = setup({ loadDetail: () => Promise.reject(new Error("nope")) }, tagged).explorer;
+  failing.handleInput("\r");
+  await flush();
+  expect(failing.render(300).join("\n")).toContain("<error>Couldn't load: nope</error>");
 });

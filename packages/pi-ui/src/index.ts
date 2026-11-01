@@ -1,5 +1,6 @@
 export * from "./types.ts";
 export * from "./text.ts";
+export * from "./style.ts";
 export * from "./icons.ts";
 export * from "./layout.ts";
 export * from "./navigation.ts";

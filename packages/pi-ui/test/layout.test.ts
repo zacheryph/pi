@@ -53,10 +53,16 @@ describe("terminal geometry", () => {
   });
   it("prioritizes right-hand fallbacks, clips left first and drops right before the minimum left", () => {
     expect(plain([splitColumns("long identity", ["too long a status", "ok"], 12)])).toBe(
-      "long iden ok",
+      "long ide… ok",
     );
-    expect(plain([splitColumns("identity", "ok", 3)])).toBe("ide");
-    expect(plain([splitColumns("identity", ["bad", "✓"], 4, { minLeftWidth: 2 })])).toBe("id ✓");
+    expect(plain([splitColumns("identity", "ok", 3)])).toBe("id…");
+    expect(plain([splitColumns("identity", ["long status"], 6, { keepRight: true })])).toBe(
+      "long …",
+    );
+    expect(plain([splitColumns("identity", ["ok"], 3, { minLeftWidth: 3, keepRight: true })])).toBe(
+      " ok",
+    );
+    expect(plain([splitColumns("identity", ["bad", "✓"], 4, { minLeftWidth: 2 })])).toBe("i… ✓");
   });
   it("does not reserve a right column for empty styled text", () => {
     expect(plain([splitColumns("abcdefgh", theme.fg("dim", ""), 8)])).toBe("abcdefgh");
@@ -68,13 +74,14 @@ describe("terminal geometry", () => {
     source.push("mutated");
     bounded(component.render(6), 6, 2);
     expect(plain(component.render(80))).not.toContain("second");
+    expect(plain(new BoundedLines(["abcdefgh"]).render(5))).toBe("abcd…");
     expect(component.render(0)).toEqual(["", ""]);
   });
   it("normalizes invalid dimensions and untrusted titles", () => {
     expect([NaN, Infinity, -1].map(cells)).toEqual([0, 0, 0]);
     expect(
       titleText({ label: "bad\x1b]52;c;secret\x07title", icon: "✓", detail: "one\ntwo" }),
-    ).toBe("✓ badtitle / one two");
+    ).toBe("✓  badtitle / one two");
     expect(layoutPanel(NaN, 10).height).toBe(0);
   });
 });

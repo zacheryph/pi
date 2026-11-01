@@ -11,7 +11,7 @@ import {
 
 /** Fixture only: imports the source barrel through Pi's real loader, without workspace resolution. */
 export default function probe(_pi: ExtensionAPI): void {
-  const tui = { mode: "regular" as const, terminal: { columns: 60, rows: 20 }, requestRender() {} };
+  const tui = { terminal: { columns: 60, rows: 20 }, requestRender() {} };
   const theme: UITheme = { fg: (_color, text) => text, bold: (text) => text };
   const keys = new KeybindingsManager(TUI_KEYBINDINGS);
   const detail = new DetailView({
@@ -27,10 +27,15 @@ export default function probe(_pi: ExtensionAPI): void {
     theme,
     keys,
     done() {},
-    view: { title: "SDK explorer", items: [{ id: "a", label: "One", detail: "First" }] },
+    view: {
+      title: "SDK explorer",
+      items: [
+        { id: "a", label: [{ text: "One", tone: "accent" }], detail: [{ heading: "First" }] },
+      ],
+    },
   });
   const widget = new Widget(
-    { title: { label: "SDK widget", icon: ICONS.tasks }, rows: ["One"], maxRows: 2 },
+    { title: { label: "SDK widget", icon: ICONS.tasks }, rows: [{ left: "One" }], maxRows: 2 },
     theme,
   );
   const slots = globalThis as Record<symbol, unknown>;

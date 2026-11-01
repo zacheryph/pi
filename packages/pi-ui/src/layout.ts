@@ -1,4 +1,5 @@
-import { truncateToWidth, visibleWidth, type Component } from "@earendil-works/pi-tui";
+import { visibleWidth, type Component } from "@earendil-works/pi-tui";
+import { clip } from "./style.ts";
 import { firstPhysicalLine, sanitizeLine } from "./text.ts";
 import type { Title, UITheme } from "./types.ts";
 
@@ -7,13 +8,16 @@ export function cells(value: number): number {
   return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
 }
 
+/** Nerd Font icons can overrun their measured cell, so they get two spaces of clearance. */
+export const ICON_GAP = "  ";
+
 export function titleText(title: Title): string {
   if (typeof title === "string") return sanitizeLine(title);
   return (
     [title.icon, title.label]
       .filter(Boolean)
       .map((part) => sanitizeLine(part!))
-      .join(" ") + (title.detail ? ` / ${sanitizeLine(title.detail)}` : "")
+      .join(ICON_GAP) + (title.detail ? ` / ${sanitizeLine(title.detail)}` : "")
   );
 }
 
@@ -21,7 +25,7 @@ export function titleText(title: Title): string {
 export function bodyRow(text: string, width: number): string {
   width = cells(width);
   if (width <= 2) return " ".repeat(width);
-  const fitted = truncateToWidth(firstPhysicalLine(text), width - 2, "");
+  const fitted = clip(firstPhysicalLine(text), width - 2);
   return ` ${fitted}${" ".repeat(Math.max(0, width - 2 - visibleWidth(fitted)))} `;
 }
 
@@ -30,9 +34,23 @@ export interface ColumnOptions {
   maxRightWidth?: number;
   minLeftWidth?: number;
   gap?: number;
+  /** When no candidate fits, keep the last one and give the left column what remains. */
+  keepRight?: boolean;
 }
 
-/** Right candidates are ordered fallbacks; drop right before sacrificing the minimum left width. */
+/** Clipped left, padding, then right; exactly `width` cells when right fits. */
+function joinColumns(left: string, right: string, width: number, gap: number): string {
+  const room = width - visibleWidth(right) - (right ? gap : 0);
+  const clipped = room > 0 ? clip(left, room) : "";
+  return (
+    clipped + " ".repeat(Math.max(0, width - visibleWidth(clipped) - visibleWidth(right))) + right
+  );
+}
+
+/**
+ * Right candidates are ordered fallbacks; drop right before sacrificing the
+ * minimum left width, unless `keepRight` asks for the last candidate to survive.
+ */
 export function splitColumns(
   left: string,
   right: string | readonly string[],
@@ -44,20 +62,16 @@ export function splitColumns(
   const gap = cells(options.gap ?? 1);
   const maxRight = Math.min(width, cells(options.maxRightWidth ?? width));
   const minLeft = Math.min(width, cells(options.minLeftWidth ?? 1));
-  const candidates = typeof right === "string" ? [right] : right;
-  const fitted = candidates
+  const candidates = (typeof right === "string" ? [right] : right)
     .map(firstPhysicalLine)
-    .find(
-      (text) =>
-        visibleWidth(text) > 0 &&
-        visibleWidth(text) <= maxRight &&
-        visibleWidth(text) + gap + minLeft <= width,
-    );
-  if (!fitted) return truncateToWidth(left, width, "");
-  const clipped = truncateToWidth(left, width - gap - visibleWidth(fitted), "");
-  return (
-    clipped + " ".repeat(Math.max(0, width - visibleWidth(clipped) - visibleWidth(fitted))) + fitted
+    .filter((text) => visibleWidth(text) > 0);
+  const fitted = candidates.find(
+    (text) => visibleWidth(text) <= maxRight && visibleWidth(text) + gap + minLeft <= width,
   );
+  if (fitted) return joinColumns(left, fitted, width, gap);
+  const last = candidates.at(-1);
+  if (options.keepRight && last) return joinColumns(left, clip(last, width), width, gap);
+  return clip(left, width);
 }
 
 /** MIT adaptation of subagents' labeled rule. Every width, including 0–8, is bounded. */
@@ -82,7 +96,7 @@ export function labeledRule(
     }
   }
   const label = firstPhysicalLine(left.at(-1) ?? "");
-  const clipped = truncateToWidth(label, width, "");
+  const clipped = clip(label, width);
   return clipped + paint("─".repeat(Math.max(0, width - visibleWidth(clipped))));
 }
 
@@ -134,7 +148,7 @@ export function renderPanel(
   const lines: string[] = [];
   if (framed) {
     const inner = width - 4;
-    const label = truncateToWidth(` ${titleText(title)} `, inner, "");
+    const label = clip(` ${titleText(title)} `, inner);
     const spare = Math.max(0, inner - visibleWidth(label)),
       left = Math.floor(spare / 2);
     lines.push(
@@ -163,7 +177,7 @@ export class BoundedLines implements Component {
     this.lines = [...lines];
   }
   render(width: number): string[] {
-    return this.lines.map((line) => truncateToWidth(firstPhysicalLine(line), cells(width), ""));
+    return this.lines.map((line) => clip(firstPhysicalLine(line), cells(width)));
   }
   invalidate(): void {}
 }

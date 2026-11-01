@@ -7,22 +7,41 @@ import {
   type TuiMouseEvent,
   type TuiMouseEventResult,
 } from "@earendil-works/pi-tui";
-import { TextViewport, viewHeight, type DetailContent } from "./detail.ts";
+import {
+  copyContent,
+  footerRows,
+  positionText,
+  renderDetail,
+  TextViewport,
+  viewHeight,
+  type DetailContent,
+} from "./detail.ts";
 import { ICONS } from "./icons.ts";
-import { cells, layoutPanel, renderPanel, splitColumns, titleText } from "./layout.ts";
+import { cells, layoutPanel, renderPanel, splitColumns } from "./layout.ts";
 import { openModal, type ModalContext, type ModalOptions } from "./modal.ts";
-import { navigationDelta, navigationHints } from "./navigation.ts";
+import { HINT_PRIORITY, navigationDelta, navigationHint, type Hint } from "./navigation.ts";
+import {
+  copyLine,
+  paint,
+  plainText,
+  styleBadge,
+  styleLine,
+  type Badge,
+  type Line,
+} from "./style.ts";
 import { sanitizeLine } from "./text.ts";
-import type { Title, UIColor, UIKeys, UISurface, UITheme } from "./types.ts";
+import type { Title, UIKeys, UISurface, UITheme } from "./types.ts";
 
 export interface ExplorerItem {
   /** Opaque identity, never rendered or normalized. */
   id: string;
-  label: string;
-  description?: string;
-  status?: string;
-  badge?: { label: string; color: UIColor };
-  marker?: boolean;
+  label: Line;
+  /** Extra searchable text that is not displayed. */
+  search?: string;
+  /** Right column in the list, and beside the label in the detail header. */
+  badge?: Badge;
+  /** Shown in the marker column while `ExplorerView.marker` is set. */
+  marked?: boolean;
   detail?: DetailContent;
 }
 export interface ExplorerTab {
@@ -30,17 +49,30 @@ export interface ExplorerTab {
   ids: readonly string[];
   emptyText?: string;
 }
+export interface ExplorerMarker {
+  /** What a mark means, counted in the status row: "unreviewed". */
+  label: string;
+  /** Ctrl+R hint, e.g. "mark reviewed". Present only with `onClear`. */
+  clearAction?: string;
+  /** Opening a marked item, or Ctrl+R on the filtered list, clears marks locally and reports them. */
+  onClear?: (ids: string[]) => void;
+}
 export interface ExplorerView {
   title: Title;
   items: readonly ExplorerItem[];
-  note?: string;
+  /** Counted noun for the status row and empty states. Default `["item", "items"]`. */
+  noun?: readonly [singular: string, plural: string];
+  /** One row each above the list, e.g. a scope note, warning or legend. */
+  notices?: readonly Line[];
   tabs?: readonly ExplorerTab[];
   initialTab?: number;
-  legend?: readonly { label: string; meaning: string; color: UIColor }[];
-  hints?: readonly string[];
+  marker?: ExplorerMarker;
+  /** Empty-list text when no tab supplies its own. */
+  emptyText?: string;
+  /** Extension hints, e.g. related commands. Default priority `HINT_PRIORITY.extension`. */
+  hints?: readonly Hint[];
   onOpen?: (id: string) => void;
-  onReview?: (ids: string[]) => void;
-  /** Called only on opening an item. Strings are sanitized; row renderers are trusted. */
+  /** Called only on opening an item; supersedes `item.detail`. */
   loadDetail?: (id: string, signal: AbortSignal) => DetailContent | Promise<DetailContent>;
 }
 export interface ExplorerOptions {
@@ -56,11 +88,22 @@ export function snapshotExplorer(view: ExplorerView): ExplorerView {
   return {
     ...view,
     title: typeof view.title === "string" ? view.title : { ...view.title },
-    items: view.items.map((item) => ({ ...item, badge: item.badge && { ...item.badge } })),
+    items: view.items.map((item) => ({
+      ...item,
+      label: copyLine(item.label),
+      badge: item.badge && { ...item.badge },
+      detail: item.detail === undefined ? undefined : copyContent(item.detail),
+    })),
+    noun: view.noun && [view.noun[0], view.noun[1]],
+    notices: view.notices?.map(copyLine),
     tabs: view.tabs?.map((tab) => ({ ...tab, ids: [...tab.ids] })),
-    legend: view.legend?.map((entry) => ({ ...entry })),
-    hints: view.hints && [...view.hints],
+    marker: view.marker && { ...view.marker },
+    hints: view.hints?.map((hint) => ({ ...hint })),
   };
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export class Explorer implements Component, Focusable {
@@ -68,7 +111,8 @@ export class Explorer implements Component, Focusable {
   private readonly view: ExplorerView;
   private readonly input: Input;
   private readonly viewport = new TextViewport();
-  private readonly markerGutter: boolean;
+  private readonly marked = new Set<string>();
+  private readonly search = new Map<string, string>();
   private filtered: ExplorerItem[] = [];
   private selected = 0;
   private tab: number;
@@ -79,14 +123,19 @@ export class Explorer implements Component, Focusable {
 
   constructor(private readonly options: ExplorerOptions) {
     this.view = snapshotExplorer(options.view);
-    this.view.items = this.view.items.map((item) => ({
-      ...item,
-      label: sanitizeLine(item.label),
-      description: sanitizeLine(item.description ?? ""),
-      status: item.status && sanitizeLine(item.status),
-      badge: item.badge && { ...item.badge, label: sanitizeLine(item.badge.label) },
-    }));
-    this.markerGutter = this.view.items.some((item) => item.marker);
+    for (const item of this.view.items) {
+      if (item.marked) this.marked.add(item.id);
+      this.search.set(
+        item.id,
+        [
+          plainText(item.label),
+          sanitizeLine(item.badge?.text ?? ""),
+          sanitizeLine(item.search ?? ""),
+        ]
+          .join(" ")
+          .toLocaleLowerCase(),
+      );
+    }
     this.tab = Math.min(
       cells(this.view.initialTab ?? 0),
       Math.max(0, (this.view.tabs?.length ?? 1) - 1),
@@ -99,6 +148,9 @@ export class Explorer implements Component, Focusable {
     });
     this.filter();
   }
+  private get plural(): string {
+    return sanitizeLine(this.view.noun?.[1] ?? "items");
+  }
   private tabItems(): readonly ExplorerItem[] {
     const tab = this.view.tabs?.[this.tab];
     if (!tab) return this.view.items;
@@ -107,55 +159,90 @@ export class Explorer implements Component, Focusable {
   }
   private filter(): void {
     const query = this.input.getValue().toLocaleLowerCase();
-    this.filtered = this.tabItems().filter((item) =>
-      `${item.label} ${item.status ?? ""} ${item.description}`.toLocaleLowerCase().includes(query),
-    );
+    this.filtered = this.tabItems().filter((item) => this.search.get(item.id)!.includes(query));
     this.selected = 0;
   }
-  private chrome() {
-    const { theme, keys } = this.options;
+  private clearMarks(ids: string[]): void {
+    const cleared = ids.filter((id) => this.marked.delete(id));
+    if (cleared.length && this.view.marker) this.view.marker.onClear?.(cleared);
+  }
+  private hints(): Hint[] {
+    const { marker, tabs } = this.view;
+    const actions: Hint[] = this.detail
+      ? [{ keys: "Esc", action: "back", priority: HINT_PRIORITY.action }]
+      : [
+          { keys: "Enter", action: "open", priority: HINT_PRIORITY.action },
+          {
+            keys: "Esc",
+            action: this.input.getValue() ? "clear filter" : "close",
+            priority: HINT_PRIORITY.action,
+          },
+          ...((tabs?.length ?? 0) > 1
+            ? [{ keys: "Tab", action: "view", priority: HINT_PRIORITY.view }]
+            : []),
+          ...(marker?.onClear
+            ? [
+                {
+                  keys: "Ctrl+R",
+                  action: marker.clearAction ?? "clear marks",
+                  priority: HINT_PRIORITY.view,
+                },
+              ]
+            : []),
+        ];
+    return [
+      ...actions,
+      ...(this.view.hints ?? []).map((hint) => ({
+        ...hint,
+        priority: hint.priority ?? HINT_PRIORITY.extension,
+      })),
+      navigationHint(this.options.keys),
+    ];
+  }
+  private status(): string {
+    if (this.detail) {
+      const { layout } = this.geometry();
+      return positionText(this.viewport.position(layout.contentWidth, layout.bodyRows));
+    }
+    const shown = this.filtered.length,
+      total = this.view.items.length;
+    const parts = [
+      `${shown ? this.selected + 1 : 0}/${shown} ${shown === 1 ? sanitizeLine(this.view.noun?.[0] ?? "item") : this.plural}`,
+    ];
+    if (shown !== total) parts.push(`${total} total`);
+    if (this.view.marker && this.marked.size)
+      parts.push(`${this.marked.size} ${sanitizeLine(this.view.marker.label)}`);
+    return parts.join(" · ");
+  }
+  private chrome(contentWidth: number, status: string) {
+    const { theme } = this.options;
     const before: string[] = [];
-    const width = layoutPanel(this.width, this.height()).contentWidth;
     if (!this.detail) {
-      before.push(width ? (this.input.render(width)[0] ?? "") : "");
+      before.push(contentWidth ? (this.input.render(contentWidth)[0] ?? "") : "");
       if ((this.view.tabs?.length ?? 0) > 1)
         before.push(
           this.view
             .tabs!.map((tab, i) =>
-              theme.fg(i === this.tab ? "accent" : "dim", sanitizeLine(tab.label)),
+              paint(
+                theme,
+                i === this.tab ? "accent" : "dim",
+                sanitizeLine(tab.label),
+                i === this.tab,
+              ),
             )
-            .join(" · "),
+            .join(paint(theme, "dim", " · ")),
         );
     }
-    if (this.view.note) before.push(theme.fg("muted", sanitizeLine(this.view.note)));
-    if (this.view.legend?.length)
-      before.push(
-        this.view.legend
-          .map(
-            (entry) =>
-              theme.fg(entry.color, sanitizeLine(entry.label)) + "=" + sanitizeLine(entry.meaning),
-          )
-          .join(" · "),
-      );
-    const actions = this.detail
-      ? "Esc back · Ctrl+C close"
-      : "Enter details · Esc clear/close · Ctrl+C close";
-    const navigation = [
-      navigationHints(keys),
-      !this.detail && (this.view.tabs?.length ?? 0) > 1 ? "Tab/Shift+Tab view" : "",
-      !this.detail && this.view.onReview ? "Ctrl+R review" : "",
-      ...(this.view.hints ?? []).map(sanitizeLine),
-    ]
-      .filter(Boolean)
-      .join(" · ");
-    const after = [theme.fg("dim", actions), "", theme.fg("dim", navigation)];
+    for (const notice of this.view.notices ?? []) before.push(styleLine(notice, theme));
+    const after = footerRows(status, this.hints(), contentWidth, theme);
     return { before, after };
   }
   private height(): number {
     return viewHeight(this.options.tui.terminal.rows, this.options.heightFraction);
   }
-  private geometry() {
-    const chrome = this.chrome();
+  private geometry(status = "") {
+    const { contentWidth } = layoutPanel(this.width, this.height());
+    const chrome = this.chrome(contentWidth, status);
     return {
       ...chrome,
       layout: layoutPanel(this.width, this.height(), chrome.before.length, chrome.after.length),
@@ -172,20 +259,26 @@ export class Explorer implements Component, Focusable {
         Math.min(Math.max(0, this.filtered.length - 1), Math.trunc(this.selected + delta)),
       );
   }
+  private showDetail(item: ExplorerItem, content: DetailContent): void {
+    const snapshot = copyContent(content);
+    this.viewport.setContent((width) =>
+      renderDetail(snapshot, width, this.options.theme, { label: item.label, badge: item.badge }),
+    );
+  }
   private openSelected(): void {
     const item = this.filtered[this.selected];
     if (!item) return;
     this.detail = item;
     this.view.onOpen?.(item.id);
-    item.marker = false;
+    this.clearMarks([item.id]);
     this.load?.abort();
     if (!this.view.loadDetail) {
-      this.viewport.setContent(item.detail ?? "");
+      this.showDetail(item, item.detail ?? "");
       return;
     }
     const controller = new AbortController();
     this.load = controller;
-    this.viewport.setContent("Loading…");
+    this.showDetail(item, [{ text: "Loading…", tone: "muted" }]);
     // Capture errors from synchronous loaders too, and reject stale results even when reopening the same id.
     void Promise.resolve()
       .then(() => {
@@ -195,13 +288,13 @@ export class Explorer implements Component, Focusable {
       .then(
         (content) => {
           if (!controller.signal.aborted && !this.closed) {
-            this.viewport.setContent(content);
+            this.showDetail(item, content);
             this.options.tui.requestRender();
           }
         },
         (error: unknown) => {
           if (!controller.signal.aborted && !this.closed) {
-            this.viewport.setContent(`Unable to load: ${String(error)}`);
+            this.showDetail(item, [{ text: `Couldn't load: ${errorText(error)}`, tone: "error" }]);
             this.options.tui.requestRender();
           }
         },
@@ -231,12 +324,8 @@ export class Explorer implements Component, Focusable {
       if (tabs?.length && (matchesKey(data, "tab") || matchesKey(data, "shift+tab"))) {
         this.tab = (this.tab + (matchesKey(data, "tab") ? 1 : -1) + tabs.length) % tabs.length;
         this.filter();
-      } else if (matchesKey(data, "ctrl+r") && this.view.onReview) {
-        const marked = this.filtered.filter((item) => item.marker);
-        if (marked.length) {
-          this.view.onReview(marked.map((item) => item.id));
-          for (const item of marked) item.marker = false;
-        }
+      } else if (matchesKey(data, "ctrl+r") && this.view.marker?.onClear) {
+        this.clearMarks(this.filtered.map((item) => item.id));
       } else if (matchesKey(data, "enter")) this.openSelected();
       else {
         const before = this.input.getValue();
@@ -250,29 +339,40 @@ export class Explorer implements Component, Focusable {
     this.options.tui.requestRender();
   }
   handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined {
-    if (this.closed || this.options.tui.mode !== "fullscreen" || event.type !== "wheel")
-      return undefined;
+    if (this.closed || event.type !== "wheel") return undefined;
     this.move(event.wheelDelta ?? 0);
     this.options.tui.requestRender();
     return { handled: true };
   }
+  private row(item: ExplorerItem, selected: boolean, width: number): string {
+    const { theme } = this.options;
+    const pointer = selected ? paint(theme, "accent", ICONS.selected) + " " : "  ";
+    const gutter = this.view.marker
+      ? this.marked.has(item.id)
+        ? paint(theme, "accent", ICONS.marker) + " "
+        : "  "
+      : "";
+    const label = styleLine(item.label, theme, selected ? { tone: "accent" } : {});
+    return splitColumns(pointer + gutter + label, styleBadge(item.badge, theme), width, {
+      minLeftWidth: Math.min(12, width),
+    });
+  }
   render(width: number): string[] {
     if (this.closed) return [];
     this.width = cells(width);
-    const { layout, before, after } = this.geometry(),
-      { theme } = this.options;
+    const { theme } = this.options;
+    const { layout, before, after } = this.geometry(this.status());
     this.input.focused =
       this.focused && !this.detail && layout.beforeRows > 0 && layout.contentWidth > 0;
     // Re-render Input after assigning its focus so Pi's cursor marker survives panel composition.
     if (!this.detail && layout.contentWidth)
       before[0] = this.input.render(layout.contentWidth)[0] ?? "";
-    let body: string[],
-      title = titleText(this.view.title);
+    let body: string[];
+    const title =
+      typeof this.view.title === "string" ? { label: this.view.title } : { ...this.view.title };
     if (this.detail) {
-      title += ` / ${this.detail.label}`;
+      title.detail = plainText(this.detail.label);
       body = this.viewport.render(layout.contentWidth, layout.bodyRows);
-      const position = this.viewport.position(layout.contentWidth, layout.bodyRows);
-      after[1] = theme.fg("dim", `${position.start}–${position.end}/${position.total} lines`);
     } else {
       const start = Math.max(
         0,
@@ -281,32 +381,15 @@ export class Explorer implements Component, Focusable {
           this.filtered.length - layout.bodyRows,
         ),
       );
-      body = this.filtered.slice(start, start + layout.bodyRows).map((item, i) => {
-        const selected = start + i === this.selected;
-        const marker = this.markerGutter ? (item.marker ? `${ICONS.marker} ` : "  ") : "";
-        const left = `${selected ? ICONS.selected : " "} ${marker}${item.label}`;
-        const right = item.badge?.label ?? item.status ?? "";
-        return splitColumns(
-          theme.fg(selected ? "accent" : "text", left),
-          theme.fg(item.badge?.color ?? "dim", right),
-          layout.contentWidth,
-        );
-      });
-      if (!body.length && layout.bodyRows)
-        body.push(
-          theme.fg(
-            "muted",
-            sanitizeLine(
-              this.input.getValue()
-                ? "No matching items."
-                : (this.view.tabs?.[this.tab]?.emptyText ?? "No items."),
-            ),
-          ),
-        );
-      after[1] = theme.fg(
-        "dim",
-        `${this.filtered.length ? this.selected + 1 : 0}/${this.filtered.length} items · ${this.view.items.length} total`,
-      );
+      body = this.filtered
+        .slice(start, start + layout.bodyRows)
+        .map((item, i) => this.row(item, start + i === this.selected, layout.contentWidth));
+      if (!body.length && layout.bodyRows) {
+        const empty = this.input.getValue()
+          ? `No matching ${this.plural}.`
+          : (this.view.tabs?.[this.tab]?.emptyText ?? this.view.emptyText ?? `No ${this.plural}.`);
+        body.push(paint(theme, "muted", sanitizeLine(empty)));
+      }
     }
     return renderPanel(layout, title, body, theme, { before, after });
   }

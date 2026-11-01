@@ -1,55 +1,84 @@
 import type { Component } from "@earendil-works/pi-tui";
-import {
-  bodyRow,
-  cells,
-  labeledRule,
-  splitColumns,
-  titleText,
-  type ColumnOptions,
-} from "./layout.ts";
+import { bodyRow, cells, labeledRule, splitColumns, titleText } from "./layout.ts";
+import { copyLine, paint, styleLine, type Line } from "./style.ts";
 import { sanitizeLine } from "./text.ts";
 import type { Title, UITheme } from "./types.ts";
 
-export interface WidgetRow extends ColumnOptions {
-  /** Trusted, already styled content. Domain state and status mapping stay with callers. */
-  left: string;
-  right?: string | readonly string[];
+export interface WidgetRow {
+  left: Line;
+  /** Ordered right-column fallbacks; the first that fits is shown. */
+  right?: readonly Line[];
+  /** At narrow widths keep the last right fallback and clip the left instead. */
+  keepRight?: boolean;
+  /** Category counted in the overflow row: `+3 more (2 running, 1 finished)`. */
+  group?: string;
 }
 export interface WidgetView {
   title: Title;
-  right?: readonly string[];
-  rows: readonly (string | WidgetRow)[];
+  /** Accent heading while active, dim while idle. Default true. */
+  active?: boolean;
+  /** Ordered fallbacks shown at the right of the heading rule; dropped before the title clips. */
+  meta?: readonly Line[];
+  rows: readonly WidgetRow[];
+  /** Total rows including the heading. `Infinity` means unbounded. */
   maxRows: number;
+  /** Body rows before overflow. `Infinity` or omitted means no limit. */
   maxVisible?: number;
-  /** Additional rows omitted by the caller before rendering. */
-  omitted?: number;
   emptyText?: string;
+}
+
+/** Row budgets: nonnegative integers, with `Infinity` meaning unbounded. */
+function budget(value: number | undefined): number {
+  return value === undefined || value === Infinity ? Infinity : cells(value);
+}
+
+/** Groups are listed in their order of first appearance across all rows. */
+function overflowText(rows: readonly WidgetRow[], hidden: readonly WidgetRow[]): string {
+  const groups = new Map<string, number>();
+  for (const row of rows) if (row.group) groups.set(sanitizeLine(row.group), 0);
+  for (const row of hidden)
+    if (row.group) groups.set(sanitizeLine(row.group), groups.get(sanitizeLine(row.group))! + 1);
+  const summary = [...groups]
+    .filter(([, count]) => count > 0)
+    .map(([group, count]) => `${count} ${group}`)
+    .join(", ");
+  return `+${hidden.length} more${summary ? ` (${summary})` : ""}`;
 }
 
 /** No sorting, timers, events, terminal reads, or task/agent lifecycle. */
 export function renderWidget(view: WidgetView, width: number, theme: UITheme): string[] {
   width = cells(width);
-  const budget = cells(view.maxRows);
-  if (!width || !budget) return [];
-  const heading = theme.fg("accent", titleText(view.title));
-  const lines = [labeledRule(width, (text) => theme.fg("border", text), [heading], view.right)];
-  const available = budget - 1,
-    limit = Math.min(view.rows.length, cells(view.maxVisible ?? view.rows.length));
-  const omitted = cells(view.omitted ?? 0);
-  const overflow = view.rows.length > Math.min(limit, available) || omitted > 0;
+  const rowsBudget = budget(view.maxRows);
+  if (!width || !rowsBudget) return [];
+  const tone = view.active === false ? "dim" : "accent";
+  const heading = [
+    paint(theme, tone, titleText(view.title)),
+    ...(typeof view.title === "string" || !view.title.icon
+      ? []
+      : [paint(theme, tone, titleText({ ...view.title, icon: undefined }))]),
+  ];
+  const meta = (view.meta ?? []).map((line) => styleLine(line, theme)).filter(Boolean);
+  const lines = [labeledRule(width, (text) => theme.fg("border", text), heading, meta)];
+  const available = rowsBudget - 1;
+  const limit = Math.min(view.rows.length, budget(view.maxVisible));
+  const overflow = view.rows.length > Math.min(limit, available);
   const count = Math.min(limit, Math.max(0, available - (overflow ? 1 : 0)));
   for (const row of view.rows.slice(0, count)) {
-    const text =
-      typeof row === "string"
-        ? row
-        : splitColumns(row.left, row.right ?? "", Math.max(0, width - 2), row);
-    lines.push(bodyRow(text, width));
+    const right = (row.right ?? []).map((line) => styleLine(line, theme));
+    lines.push(
+      bodyRow(
+        splitColumns(styleLine(row.left, theme), right, Math.max(0, width - 2), {
+          keepRight: row.keepRight,
+        }),
+        width,
+      ),
+    );
   }
-  const hidden = view.rows.length - count + omitted;
-  if (hidden && lines.length < budget)
-    lines.push(bodyRow(theme.fg("dim", `+${hidden} more`), width));
-  else if (!view.rows.length && !omitted && view.emptyText && lines.length < budget)
-    lines.push(bodyRow(theme.fg("muted", sanitizeLine(view.emptyText)), width));
+  const hidden = view.rows.slice(count);
+  if (hidden.length && lines.length < rowsBudget)
+    lines.push(bodyRow(paint(theme, "dim", overflowText(view.rows, hidden)), width));
+  else if (!view.rows.length && view.emptyText && lines.length < rowsBudget)
+    lines.push(bodyRow(paint(theme, "muted", sanitizeLine(view.emptyText)), width));
   return lines;
 }
 
@@ -74,14 +103,11 @@ function snapshot(view: WidgetView): WidgetView {
   return {
     ...view,
     title: typeof view.title === "string" ? view.title : { ...view.title },
-    right: view.right && [...view.right],
-    rows: view.rows.map((row) =>
-      typeof row === "string"
-        ? row
-        : {
-            ...row,
-            right: typeof row.right === "string" ? row.right : row.right && [...row.right],
-          },
-    ),
+    meta: view.meta?.map(copyLine),
+    rows: view.rows.map((row) => ({
+      ...row,
+      left: copyLine(row.left),
+      right: row.right?.map(copyLine),
+    })),
   };
 }
