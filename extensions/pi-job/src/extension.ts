@@ -1,8 +1,8 @@
 /**
- * pi-jobs — background shell jobs and watches that wake the agent when they finish.
+ * pi-job — background shell jobs and watches that wake the agent when they finish.
  *
  * Thin pi adapter over JobManager and Delivery: tool schemas, completion messages (see
- * delivery.ts for the delivery paths and the guarantee), the /jobs command and lifecycle
+ * delivery.ts for the delivery paths and the guarantee), the /job command and lifecycle
  * cleanup. Only type imports from pi, so tests can load it under plain `node` with a fake
  * ExtensionAPI.
  */
@@ -67,7 +67,7 @@ export interface JobsExtensionOptions {
 }
 
 const WAKE_NOTE =
-  "Returns immediately. End your turn after starting: you are woken automatically when it finishes. Do not poll with job_list/job_output, sleep or bash loops.";
+  "Returns immediately. End your turn after starting: you are woken automatically when it finishes. Do not poll with job_list/job_read, sleep or bash loops.";
 const CI_NOTE =
   "For CI, watch an immutable target: `gh run watch <run-id> --exit-status`, or the checks of a specific commit SHA — not a PR number, which can move to a newer commit while you wait.";
 
@@ -234,7 +234,7 @@ export function tailBudget(count: number): number {
   return Math.min(NOTIFY_BYTES, Math.floor(BATCH_BYTES / Math.max(1, count)));
 }
 
-export const LIVE_MANAGERS_KEY = Symbol.for("pi-jobs.liveManagers");
+export const LIVE_MANAGERS_KEY = Symbol.for("job:managers");
 
 /**
  * One process-wide 'exit' hook for all extension instances (main session and subagents), so
@@ -300,7 +300,7 @@ export function createJobsExtension(options: JobsExtensionOptions = {}) {
       lost: (items) => {
         try {
           ctxRef?.ui?.notify?.(
-            `pi-jobs: session context is gone; completion of ${items.map((i) => i.payload.id).join(", ")} was not delivered (see /jobs).`,
+            `pi-job: session context is gone; completion of ${items.map((i) => i.payload.id).join(", ")} was not delivered (see /job).`,
             "warning",
           );
         } catch {}
@@ -335,7 +335,7 @@ export function createJobsExtension(options: JobsExtensionOptions = {}) {
     const reportReloadLoss = (jobs: JobSnapshot[]) => {
       for (const job of jobs) {
         const message =
-          `pi-jobs: ${job.kind} ${job.id}${job.label ? ` (${job.label})` : ""} was not adopted. Last recorded as running; it may have finished or been stopped by the old version. Check before re-arming.\n` +
+          `pi-job: ${job.kind} ${job.id}${job.label ? ` (${job.label})` : ""} was not adopted. Last recorded as running; it may have finished or been stopped by the old version. Check before re-arming.\n` +
           `command: ${job.command}\ncwd: ${job.cwd}\nlog: ${job.logPath}\n` +
           `timeoutSeconds: ${job.timeoutSeconds}${job.kind === "watch" ? `; until: ${job.until}; intervalSeconds: ${job.intervalSeconds ?? "not recorded by old version"}` : ""}`;
         ctxRef?.ui?.notify?.(message, "warning");
@@ -343,7 +343,7 @@ export function createJobsExtension(options: JobsExtensionOptions = {}) {
         // starting a turn while other session_start handlers are still initializing.
         pi.sendMessage(
           {
-            customType: "pi-jobs-reload",
+            customType: "job:reload-notice",
             content: message,
             display: true,
             details: { unadopted: job },
@@ -403,7 +403,7 @@ export function createJobsExtension(options: JobsExtensionOptions = {}) {
           delivery = previous.delivery;
           options.onManager?.(manager);
           ctxRef?.ui?.notify?.(
-            `pi-jobs: re-adopted session ${sessionId}; job ids, watch loops and deadlines preserved (${
+            `pi-job: re-adopted session ${sessionId}; job ids, watch loops and deadlines preserved (${
               manager
                 .list()
                 .filter((j) => j.status === "running")
@@ -414,7 +414,7 @@ export function createJobsExtension(options: JobsExtensionOptions = {}) {
           );
         } else if (handoff.incompatible) {
           ctxRef?.ui?.notify?.(
-            "pi-jobs: incompatible reload handoff; stopped the old jobs/watches instead of adopting them. Inspect their recorded log paths.",
+            "pi-job: incompatible reload handoff; stopped the old jobs/watches instead of adopting them. Inspect their recorded log paths.",
             "warning",
           );
           reportReloadLoss(
@@ -428,7 +428,7 @@ export function createJobsExtension(options: JobsExtensionOptions = {}) {
           highestJobId(ctx.sessionManager.getEntries()) > 0
         ) {
           ctxRef?.ui?.notify?.(
-            "pi-jobs: no reload handoff exists for this session. Earlier jobs/watches cannot be re-adopted (the old version may have stopped them); inspect their recorded log paths. Id numbering will continue from session history.",
+            "pi-job: no reload handoff exists for this session. Earlier jobs/watches cannot be re-adopted (the old version may have stopped them); inspect their recorded log paths. Id numbering will continue from session history.",
             "warning",
           );
           reportReloadLoss(historicalRunningJobs(ctx.sessionManager.getEntries()));
@@ -453,7 +453,7 @@ export function createJobsExtension(options: JobsExtensionOptions = {}) {
       for (const [id, pending] of owners) {
         if (!pending.token)
           ctxRef?.ui?.notify?.(
-            `pi-jobs: session ${id} is awaiting reload handoff; ownership is unknown, so its jobs/watches were not stopped.`,
+            `pi-job: session ${id} is awaiting reload handoff; ownership is unknown, so its jobs/watches were not stopped.`,
             "warning",
           );
       }
@@ -611,7 +611,7 @@ export function createJobsExtension(options: JobsExtensionOptions = {}) {
     } as any);
 
     pi.registerTool({
-      name: "job_output",
+      name: "job_read",
       label: "Background job output",
       description: `Bounded tail of a background job's log (at most ${OUTPUT_MAX_LINES} lines / ${OUTPUT_BYTES / 1024} KB). Use after a completion notification when you need more output; do not use it to poll a running job.`,
       parameters: outputParams as any,
@@ -646,12 +646,12 @@ export function createJobsExtension(options: JobsExtensionOptions = {}) {
       },
     } as any);
 
-    pi.registerCommand("jobs", {
-      description: "List background jobs; `/jobs kill <id>` stops one",
+    pi.registerCommand("job", {
+      description: "List background jobs; `/job kill <id>` stops one",
       handler: async (args: string, ctx: any) => {
         const [sub, id] = args.trim().split(/\s+/);
         if (sub === "kill") {
-          if (!id) return ctx.ui.notify("Usage: /jobs kill <id>", "warning");
+          if (!id) return ctx.ui.notify("Usage: /job kill <id>", "warning");
           try {
             const job = await manager.kill(id);
             ctx.ui.notify(`Stopped: ${formatJobLine(job)}`, "info");
@@ -660,7 +660,7 @@ export function createJobsExtension(options: JobsExtensionOptions = {}) {
           }
           return;
         }
-        if (sub) return ctx.ui.notify("Usage: /jobs [kill <id>]", "warning");
+        if (sub) return ctx.ui.notify("Usage: /job [kill <id>]", "warning");
         ctx.ui.notify(`${formatJobList(manager.list())}\nlogs: ${logRoot}`, "info");
       },
     });

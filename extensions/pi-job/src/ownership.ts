@@ -12,7 +12,7 @@ export interface Owner {
   alive: () => boolean | undefined;
 }
 
-const KEY = Symbol.for("pi-jobs.sessionOwners.v2");
+const KEY = Symbol.for("job:owners");
 export function sessionOwners(): Map<string, Owner> {
   const global = globalThis as unknown as Record<symbol, Map<string, Owner>>;
   return (global[KEY] ??= new Map());
@@ -68,9 +68,8 @@ export async function takeReloadOwner(
   sessionId: string,
 ): Promise<{ owner?: Owner; incompatible?: boolean; dropped?: JobSnapshot[] }> {
   const owners = sessionOwners();
-  const legacy = (globalThis as any)[Symbol.for("pi-jobs.sessionOwners.v1")];
-  const source = owners.has(sessionId) ? owners : legacy instanceof Map ? legacy : undefined;
-  const owner = source?.get(sessionId);
+  // A suspended owner may come from an older module, so its shape is checked, not trusted.
+  const owner = owners.get(sessionId) as any;
   if (!owner || owner.token) return {};
   clearTimeout(owner.reloadTimer);
   if (compatibleOwner(owner)) return { owner };
@@ -78,7 +77,7 @@ export async function takeReloadOwner(
     typeof owner.manager?.list === "function"
       ? owner.manager.list().filter((job: JobSnapshot) => job.status === "running")
       : [];
-  source?.delete(sessionId);
+  owners.delete(sessionId);
   await stopOwner(owner);
   return { incompatible: true, dropped };
 }
@@ -94,11 +93,9 @@ export function expireReloadOwner(
   owner.reloadTimer = setTimeout(() => {
     if (owners.get(sessionId) !== owner || owner.token) return;
     owners.delete(sessionId);
-    console.warn(
-      `pi-jobs: session ${sessionId} reload handoff expired; stopping its jobs/watches.`,
-    );
+    console.warn(`pi-job: session ${sessionId} reload handoff expired; stopping its jobs/watches.`);
     void stopOwner(owner).catch((error) =>
-      console.error(`pi-jobs: reload cleanup failed for ${sessionId}: ${error}`),
+      console.error(`pi-job: reload cleanup failed for ${sessionId}: ${error}`),
     );
   }, timeoutMs);
   owner.reloadTimer.unref();
@@ -115,7 +112,7 @@ export async function stopOrphans(owners = sessionOwners()): Promise<string[]> {
     await owner.manager.shutdown();
     if (jobs.length)
       notices.push(
-        `pi-jobs: owner session ${sessionId} is gone; stopped orphaned ${jobs.map((job) => `${job.kind} ${job.id} (log: ${job.logPath})`).join(", ")}.`,
+        `pi-job: owner session ${sessionId} is gone; stopped orphaned ${jobs.map((job) => `${job.kind} ${job.id} (log: ${job.logPath})`).join(", ")}.`,
       );
   }
   return notices;
@@ -136,7 +133,7 @@ export function historicalRunningJobs(entries: readonly any[]): JobSnapshot[] {
           : undefined;
     if (
       message?.role === "toolResult" &&
-      ["job_start", "job_watch", "job_list", "job_output", "job_kill"].includes(message.toolName)
+      ["job_start", "job_watch", "job_list", "job_read", "job_kill"].includes(message.toolName)
     ) {
       record(message.details);
       for (const job of message.details?.jobs ?? []) record(job);
@@ -165,7 +162,7 @@ export function highestJobId(entries: readonly any[]): number {
           : undefined;
     if (
       m?.role === "toolResult" &&
-      ["job_start", "job_watch", "job_list", "job_output", "job_kill"].includes(m.toolName)
+      ["job_start", "job_watch", "job_list", "job_read", "job_kill"].includes(m.toolName)
     ) {
       consider(m.details?.id);
       for (const job of m.details?.jobs ?? []) consider(job?.id);

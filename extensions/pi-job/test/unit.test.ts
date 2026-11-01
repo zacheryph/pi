@@ -365,7 +365,7 @@ void test("LogWriter caps the file and records write errors without throwing", (
   w.close();
   assert.match(
     readFileSync(join(dir, "a.log"), "utf8"),
-    /^1234567890\n\[pi-jobs: log truncated at 10 bytes;/,
+    /^1234567890\n\[pi-job: log truncated at 10 bytes;/,
   );
   assert.equal(w.truncated, true);
   const e = new LogWriter(join(dir, "b.log"), 1000);

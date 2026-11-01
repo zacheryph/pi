@@ -23,9 +23,9 @@ const upstream = (n: number, what: string) =>
 let providerSeq = 0;
 
 interface HarnessOptions {
-  /** Extra extension, loaded after pi-jobs (so its handlers run after ours). */
+  /** Extra extension, loaded after pi-job (so its handlers run after ours). */
   extra?: (pi: any) => void;
-  /** Extra extension, loaded before pi-jobs (so its handlers run before ours). */
+  /** Extra extension, loaded before pi-job (so its handlers run before ours). */
   before?: (pi: any) => void;
   /** Prepare the session history before the session starts (resume/fork). */
   history?: (sessionManager: any) => void;
@@ -216,7 +216,7 @@ void test(
   async (t) => {
     let session: any;
     let armed = false;
-    // Runs after pi-jobs' agent_end handler, i.e. right after the follow-up was queued: Escape.
+    // Runs after pi-job' agent_end handler, i.e. right after the follow-up was queued: Escape.
     const escapeAfterQueue = (pi: any) =>
       pi.on("agent_end", async () => {
         if (armed) {
@@ -257,7 +257,7 @@ void test(
   async (t) => {
     let session: any;
     let armed = false;
-    // Abort right after pi-jobs queued its follow-up: the copy stays in pi's agent queue.
+    // Abort right after pi-job queued its follow-up: the copy stays in pi's agent queue.
     const abortAfterQueue = (pi: any) =>
       pi.on("agent_end", async () => {
         if (armed) {
@@ -415,8 +415,8 @@ void test(
   { skip },
   async (t) => {
     let compactOnSettle = false;
-    // Loaded before pi-jobs: starts a compaction from agent_settled, then yields, so pi is busy
-    // again by the time pi-jobs' agent_settled handler runs. The compaction is slowed down.
+    // Loaded before pi-job: starts a compaction from agent_settled, then yields, so pi is busy
+    // again by the time pi-job' agent_settled handler runs. The compaction is slowed down.
     const compactor = (pi: any) => {
       pi.on("agent_settled", async (_e: unknown, ctx: any) => {
         if (!compactOnSettle) return;
@@ -557,7 +557,7 @@ void test(
   "deferred settled action runs during a compaction started by a LATER agent_settled handler",
   { skip: upstream(2, "deferred actions are not revalidated") },
   async (t) => {
-    // Deterministic: one-shot compactor loaded AFTER pi-jobs, history that can be compacted
+    // Deterministic: one-shot compactor loaded AFTER pi-job, history that can be compacted
     // (keepRecentTokens: 1), and a compaction slowed by session_before_compact.
     let compactOnSettle = false;
     let compactionDone!: () => void;

@@ -42,7 +42,22 @@ Manifest only; this step changed no file under `src/`, `test/`, or `e2e/`.
   dev dependencies, matching the bundle's Pi pin (now 1.4.0), so upstream's
   `test/runtime.ts` resolves a local runtime instead of a user installation.
 - Root `package.json`: added the workspace and the `pi.extensions` entry.
-- `scripts/verify-bundle.mjs`: asserts the `job_*` tools and `/jobs` command.
+- `scripts/verify-bundle.mjs`: asserts the `job_*` tools and `/job` command.
+
+### Identifiers
+
+Renamed to this bundle's `resource:name` grammar, so session data and process
+globals from upstream builds are not recognised:
+
+- Directory and package: `extensions/pi-jobs` (`@woksin/pi-jobs`) became
+  `extensions/pi-job` (`pi-job`).
+- Global symbols: `pi-jobs.liveManagers` became `job:managers`, and
+  `pi-jobs.sessionOwners.v2` became `job:owners`. Owners keep their internal
+  protocol `version`, so the key carries none. The `.v1` migration is removed.
+- Message types: `pi-jobs` became `job:completion`, and `pi-jobs-reload` became
+  `job:reload-notice`.
+- Tool `job_output` became `job_read`; command `/jobs` became `/job`.
+- Display prefixes in notices and logs read `pi-job:`.
 
 ### Typecheck
 

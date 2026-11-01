@@ -105,13 +105,13 @@ void test("default export is an extension factory", () => {
   assert.equal(typeof defaultExtension, "function");
 });
 
-void test("registers the five tools and /jobs, with no-poll guidance", (t) => {
+void test("registers the five tools and /job, with no-poll guidance", (t) => {
   const { tools, commands } = setup(t);
   assert.deepEqual(
     [...tools.keys()],
-    ["job_start", "job_watch", "job_list", "job_output", "job_kill"],
+    ["job_start", "job_watch", "job_list", "job_read", "job_kill"],
   );
-  assert.ok(commands.has("jobs"));
+  assert.ok(commands.has("job"));
   for (const name of ["job_start", "job_watch"])
     assert.match(tools.get(name).description, /End your turn.*woken.*Do not poll/s);
   for (const tool of tools.values()) assert.equal(tool.parameters.type, "object");
@@ -189,7 +189,7 @@ void test("validation errors are thrown as tool failures", async (t) => {
     ),
     /until must be/,
   );
-  await assert.rejects(call("job_output", { id: "j42" }, dir), /No job with id j42/);
+  await assert.rejects(call("job_read", { id: "j42" }, dir), /No job with id j42/);
 });
 
 void test("production interval floor is 10 s", async (t) => {
@@ -209,7 +209,7 @@ void test("relative cwd resolves against the session cwd", async (t) => {
   assert.match(messageText(sent[0].message), /output:\n.*\/sub$/);
 });
 
-void test("job_list, job_output and job_kill", async (t) => {
+void test("job_list, job_read and job_kill", async (t) => {
   const { dir, call, sent } = setup(t);
   await call(
     "job_start",
@@ -223,7 +223,7 @@ void test("job_list, job_output and job_kill", async (t) => {
   await waitUntil(() => existsSync(join(dir, "gc.pid")));
   const list = await call("job_list", {}, dir);
   assert.match(list.content[0].text, /^Running \(1\):\n  j1 · job · running · \d+s — long$/);
-  const out = await call("job_output", { id: "j1", tailLines: 5 }, dir);
+  const out = await call("job_read", { id: "j1", tailLines: 5 }, dir);
   assert.match(out.content[0].text, /log: .*\noutput:\nstarted$/);
   const killed = await call("job_kill", { id: "j1" }, dir);
   assert.match(killed.content[0].text, /^Stopped: j1 · job · killed · exit 143 \(likely SIGTERM\)/);
@@ -243,14 +243,14 @@ void test("concurrency cap surfaces as a tool error", async (t) => {
   );
 });
 
-void test("/jobs command lists and kills", async (t) => {
+void test("/job command lists and kills", async (t) => {
   const { dir, call, commands, ctx, notes } = setup(t);
   await call("job_start", { command: "sleep 100", timeoutSeconds: 60 }, dir);
-  await commands.get("jobs").handler("", ctx(dir));
+  await commands.get("job").handler("", ctx(dir));
   assert.match(notes[0].text, /Running \(1\):\n  j1 · job · running/);
-  await commands.get("jobs").handler("kill j1", ctx(dir));
+  await commands.get("job").handler("kill j1", ctx(dir));
   assert.match(notes[1].text, /^Stopped: j1 · job · killed/);
-  await commands.get("jobs").handler("kill", ctx(dir));
+  await commands.get("job").handler("kill", ctx(dir));
   assert.equal(notes[2].level, "warning");
 });
 
@@ -514,7 +514,7 @@ void test("context handler: a whole repeat of a completion id is stubbed; a new 
   });
   assert.deepEqual(
     res.messages.map((m: any) => m.content?.[0]?.text ?? "user"),
-    ["user", "c1", "[pi-jobs: this completion was already delivered above; nothing new.]", "c2"],
+    ["user", "c1", "[pi-job: this completion was already delivered above; nothing new.]", "c2"],
   );
   assert.equal(
     await emit("context", { type: "context", messages: [user, msg("a", "c1"), msg("b", "c2")] }),
@@ -580,10 +580,10 @@ void test(
       timeoutSeconds: 60,
       until: "sometimes",
     });
-    ok("job_output", { id: "j1", tailLines: 200 });
-    bad("job_output", { id: "j1", tailLines: 2.5 });
-    bad("job_output", { id: "j1", tailLines: 201 });
-    bad("job_output", { id: "j1", tailLines: 0 });
+    ok("job_read", { id: "j1", tailLines: 200 });
+    bad("job_read", { id: "j1", tailLines: 2.5 });
+    bad("job_read", { id: "j1", tailLines: 201 });
+    bad("job_read", { id: "j1", tailLines: 0 });
     assert.match(
       tools.get("job_watch").parameters.properties.checkTimeoutSeconds.description,
       /Default: min\(120, timeoutSeconds\)/,
@@ -722,7 +722,7 @@ void test("a legacy upgrade that stops work without a handoff reports every full
   assert.equal(next.sent.length, 2);
   for (const [i, job] of [command, watch].entries()) {
     const notice = next.sent[i];
-    assert.equal(notice.message.customType, "pi-jobs-reload");
+    assert.equal(notice.message.customType, "job:reload-notice");
     assert.equal(notice.message.display, true);
     assert.equal(notice.options.triggerTurn, false);
     assert.ok(messageText(notice.message).includes(`command: ${job.command}\n`));
