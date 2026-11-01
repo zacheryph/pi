@@ -337,10 +337,10 @@ Explore, and Plan workers retain the recursion guard. Custom profiles opting in
 are responsible for limiting further delegation; there is no global depth limit
 or shared concurrency pool across managers.
 
-Two names are always **added**, whatever an agent lists: `ask_parent` and `parent_notify`.
+Two names are always **added**, whatever an agent lists: `ask` (from pi-ask) and `parent_notify`.
 These are the child's channel back to the agent that delegated to it — protocol the core installs in every child, like the `<active_agent>` tag and the parent-context prefix.
 Neither reaches the filesystem, the shell, or the network, so a read-only agent stays read-only.
-`ask_parent` records a question and tells the child to end its turn, so the delegating agent can answer by resuming it; `parent_notify` sends a one-way update and returns at once.
+`ask` reaches the parent through the `ask:route` service the core offers for every child: it records a question and tells the child to end its turn, so the delegating agent can answer by resuming it; `parent_notify` sends a one-way update and returns at once.
 A question outlives the window in which it can be answered — the session is released after its retention window, and a workspace is torn down at run end unless the child completed — so once a resume would be refused, the result reports the question and the reason rather than the `resume` call.
 Both go to every agent, `parent_notify` only while [`midRunUpdates`](#persistent-settings) is on.
 Where an update lands depends on whether an announcement can still reach you in time to act on it.
@@ -462,7 +462,7 @@ A completed subagent's record is kept for the whole parent session (so `subagent
 An agent that asked a question and has not been answered holds the safety cap rather than the consumed window, because reading a question is not finishing with the agent — the answer is delivered by resuming the very session the short window would release.
 
 Set `midRunUpdates` to `false` to withhold `parent_notify` from every agent, leaving them no way to tell you anything before they finish.
-`ask_parent` is unaffected: a blocked agent can still end its turn with a question.
+`ask` is unaffected: a blocked agent can still end its turn with a question.
 Two files, merged on load:
 
 - **Global:** `~/.pi/agent/subagent.json` — your machine-wide defaults.

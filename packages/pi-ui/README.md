@@ -239,6 +239,30 @@ can remount the same component without disposing it in between. `show` returns
 false after disposal; ownership transfers only on success. Callers still own
 session subscriptions, visibility policy and settings.
 
+## Inline windows
+
+`openInlineWindow(ctx, title, factory, options?)` opens a focused window in the
+editor's place, under the transcript, rather than an overlay: a widget that
+takes input. It shares `openModal`'s lifetime rules (TUI mode only, idempotent
+`done` and disposal, an abort signal, retained focus and receivers) and wraps the
+factory's component in `InlineWindow`, which draws a title rule above it.
+
+```ts
+const answer = await openInlineWindow<string>(
+  ctx,
+  { icon: "?", label: "Question" },
+  (tui, theme, keys, done) => new MyForm(theme, keys, tui, done),
+);
+```
+
+In fullscreen mode the window shrinks to one bar while the transcript is
+scrolled away from its end (`tui.isFollowingOutput` is false), so the session can
+be reviewed with the whole screen. It keeps focus: the next key calls
+`tui.scrollToBottom()` and restores it, and that key is not passed to the body,
+so a keystroke typed without seeing the window never acts on it. Scrolling back
+to the end restores it too. In regular mode the terminal owns scrollback and the
+window never minimizes. `minimizedHint` replaces the bar's "any key returns".
+
 ## Widgets
 
 ```ts
