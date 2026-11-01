@@ -268,9 +268,11 @@ const answer = await openInlineWindow<string>(
 );
 ```
 
-In fullscreen mode the window shrinks to one bar while the transcript is
-scrolled away from its end (`tui.isFollowingOutput` is false), so the session can
-be reviewed with the whole screen. It keeps focus: the next key calls
+In fullscreen mode the window shrinks to three rows while the transcript is
+scrolled away from its end (`tui.isFollowingOutput` is false): a dim title rule,
+the body's `summary()` (one line of plain text, optional) and the hint. Pi keeps
+three rows for the editor's place anyway, so this is the smallest it can get and
+the session can be reviewed with the rest of the screen. It keeps focus: the next key calls
 `tui.scrollToBottom()` and restores it, and that key is not passed to the body,
 so a keystroke typed without seeing the window never acts on it. Scrolling back
 to the end restores it too. In regular mode the terminal owns scrollback and the

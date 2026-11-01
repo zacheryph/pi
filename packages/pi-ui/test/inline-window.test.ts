@@ -21,9 +21,10 @@ function host(following: boolean | undefined = true) {
   return { fake: fake as InlineWindowHost & typeof fake, state };
 }
 
-function body(rows = ["first question", "second row"]) {
+function body(rows = ["first question", "second row", "third row", "fourth row"]) {
   return {
     focused: false,
+    summary: () => "Which database? (1 of 2)",
     inputs: [] as string[],
     render: (width: number) => rows.map((row) => bodyRow(row, width)),
     invalidate: vi.fn(),
@@ -46,13 +47,15 @@ describe("InlineWindow", () => {
         `── Question ${"─".repeat(28)}`,
         ` first question${" ".repeat(25)}`,
         ` second row${" ".repeat(29)}`,
+        ` third row${" ".repeat(30)}`,
+        ` fourth row${" ".repeat(29)}`,
       ].join("\n"),
     );
     expect(window.minimized).toBe(false);
     expect(h.fake.requestRender).not.toHaveBeenCalled();
   });
 
-  it("minimizes to one bar while scrolled, keeps focus, and restores on the next key without passing it on", () => {
+  it("minimizes to a bar, the body's summary and a hint while scrolled, keeps focus, and restores on the next key without passing it on", () => {
     const h = host();
     const content = body();
     const window = new InlineWindow(h.fake, theme, content, { title: "Question" });
@@ -62,9 +65,11 @@ describe("InlineWindow", () => {
 
     h.state.following = false;
     const minimized = window.render(40);
-    expect(minimized).toHaveLength(1);
-    expect(plain(minimized)).toContain("▸ Question");
-    expect(plain(minimized)).toContain("any key returns");
+    expect(
+      plain(minimized)
+        .split("\n")
+        .map((row) => row.trimEnd()),
+    ).toEqual([`── ▸ Question ${"─".repeat(26)}`, " Which database? (1 of 2)", " any key returns"]);
     expect(window.minimized).toBe(true);
     expect(window.focused).toBe(true);
     // The height change asks for another layout pass, once.
@@ -75,7 +80,7 @@ describe("InlineWindow", () => {
     window.handleInput("2");
     expect(content.inputs).toEqual([]);
     expect(h.fake.scrollToBottom).toHaveBeenCalledOnce();
-    expect(window.render(40)).toHaveLength(3);
+    expect(window.render(40)).toHaveLength(5);
     window.handleInput("2");
     expect(content.inputs).toEqual(["2"]);
   });
@@ -83,16 +88,16 @@ describe("InlineWindow", () => {
   it("restores by itself when the transcript is scrolled back to its end", () => {
     const h = host(false);
     const window = new InlineWindow(h.fake, theme, body(), { title: "Question" });
-    expect(window.render(30)).toHaveLength(1);
-    h.state.following = true;
     expect(window.render(30)).toHaveLength(3);
+    h.state.following = true;
+    expect(window.render(30)).toHaveLength(5);
   });
 
   it("never minimizes in regular mode, where the terminal owns scrollback", () => {
     const h = host(undefined);
     const content = body();
     const window = new InlineWindow(h.fake, theme, content, { title: "Question" });
-    expect(window.render(30)).toHaveLength(3);
+    expect(window.render(30)).toHaveLength(5);
     window.handleInput("x");
     expect(content.inputs).toEqual(["x"]);
     expect(h.fake.scrollToBottom).not.toHaveBeenCalled();
@@ -115,7 +120,10 @@ describe("InlineWindow", () => {
       const window = new InlineWindow(
         h.fake,
         theme,
-        body(["\x1b[31m日本語の質問 👩‍💻 é\x1b[39m", "plain"]),
+        {
+          ...body(["\x1b[31m日本語の質問 👩‍💻 é\x1b[39m", "plain"]),
+          summary: () => "\x1b[2J質問 👩‍💻 waiting\nsecond line",
+        },
         { title: { icon: "?", label: "質問 \x1b[2Jtitle", detail: "1/2" }, minimizedHint: "押す" },
       );
       for (let width = 0; width <= 40; width++) {
@@ -124,11 +132,14 @@ describe("InlineWindow", () => {
           expect(visibleWidth(line)).toBeLessThanOrEqual(width);
           expect(line).not.toContain("\x1b[2J");
         }
-        if (following && width >= 3)
-          for (const row of lines.slice(1)) {
-            expect(row.startsWith(" ")).toBe(true);
+        // Every row below the title rule is an inset body row, minimized or not.
+        for (const row of lines.slice(1)) {
+          if (width <= 2) expect(row).toBe(" ".repeat(width));
+          else {
+            expect(row.startsWith(" ") && row.endsWith(" ")).toBe(true);
             expect(visibleWidth(row)).toBe(width);
           }
+        }
       }
     }
   });

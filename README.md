@@ -124,7 +124,8 @@ nothing needs publishing.
 One `ask` tool for questions, routed by session. In the main session it asks you:
 up to four questions, each with optional choices and a free-text answer, in a
 window that opens under the transcript and keeps focus. In fullscreen mode the
-window shrinks to a one-line bar while you scroll back through the session, and
+window shrinks to three rows (title, waiting question, hint) while you scroll
+back through the session, and
 the next key brings it back. RPC hosts get their own dialogs instead, and the
 dashboard can answer from the browser. In a subagent, `ask` goes to the agent
 that delegated the task: the question is recorded on the run, the subagent ends

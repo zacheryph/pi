@@ -1,7 +1,8 @@
 import type { Focusable, TUI, TuiMouseEvent, TuiMouseEventResult } from "@earendil-works/pi-tui";
-import { labeledRule, titleText } from "./layout.ts";
+import { bodyRow, labeledRule, titleText } from "./layout.ts";
 import type { ModalContext, ModalFactory } from "./modal.ts";
 import { paint } from "./style.ts";
+import { sanitizeLine } from "./text.ts";
 import type { DisposableComponent, Title, UITheme } from "./types.ts";
 
 /**
@@ -16,15 +17,22 @@ export type InlineWindowHost = Pick<TUI, "requestRender"> & {
 
 export interface InlineWindowOptions {
   title: Title;
-  /** Right side of the minimized bar; defaults to "any key returns". */
+  /** The minimized window's hint row; defaults to "any key returns". */
   minimizedHint?: string;
 }
 
+/** A body may say, in one line of plain text, what the minimized window is waiting on. */
+export type InlineWindowBody = DisposableComponent &
+  Partial<Focusable> & {
+    summary?(): string;
+  };
+
 /**
  * A focused window in the editor's place, under the transcript, like a widget
- * that takes input. In fullscreen mode it shrinks to a one-row bar while the
- * transcript is scrolled away from its end, so the session can be reviewed
- * with the whole screen. It keeps focus while minimized: the next key scrolls
+ * that takes input. In fullscreen mode it shrinks to three rows (a dim title
+ * rule, the body's one-line summary and a hint) while the transcript is
+ * scrolled away from its end, so the session can be reviewed with the screen.
+ * Three rows is what Pi reserves for the editor's place anyway. It keeps focus while minimized: the next key scrolls
  * back to the end and restores it. That key is not passed to the body, so a
  * keystroke typed without seeing the window never acts on it.
  *
@@ -35,13 +43,13 @@ export class InlineWindow implements DisposableComponent, Focusable {
   private shownMinimized = false;
   private readonly host: InlineWindowHost;
   private readonly theme: UITheme;
-  private readonly body: DisposableComponent & Partial<Focusable>;
+  private readonly body: InlineWindowBody;
   private readonly options: InlineWindowOptions;
 
   constructor(
     host: InlineWindowHost,
     theme: UITheme,
-    body: DisposableComponent & Partial<Focusable>,
+    body: InlineWindowBody,
     options: InlineWindowOptions,
   ) {
     this.host = host;
@@ -77,14 +85,15 @@ export class InlineWindow implements DisposableComponent, Focusable {
     const title = titleText(this.options.title);
     const rule = (text: string) => paint(this.theme, minimized ? "dim" : "accent", text);
     if (minimized) {
-      const hint = this.options.minimizedHint ?? "any key returns";
+      const hint = sanitizeLine(this.options.minimizedHint ?? "any key returns");
+      const summary = sanitizeLine(this.body.summary?.() ?? "");
       return [
-        labeledRule(
-          width,
-          rule,
-          [paint(this.theme, "accent", `▸ ${title}`), paint(this.theme, "accent", "▸")],
-          [paint(this.theme, "muted", hint)],
-        ),
+        labeledRule(width, rule, [
+          paint(this.theme, "accent", `▸ ${title}`),
+          paint(this.theme, "accent", "▸"),
+        ]),
+        bodyRow(paint(this.theme, "muted", summary), width),
+        bodyRow(paint(this.theme, "dim", hint), width),
       ];
     }
     return [

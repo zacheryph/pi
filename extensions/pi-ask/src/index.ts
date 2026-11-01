@@ -203,7 +203,7 @@ export default function piAsk(pi: ExtensionAPI): void {
           if (early) queueMicrotask(() => done(early!));
           return new Questionnaire(questions, theme, keys, tui, done);
         },
-        { minimizedHint: "a question is waiting · any key returns" },
+        { minimizedHint: "waiting for your answer · any key returns" },
       );
       const result = outcome ?? { status: "cancelled" as const };
       closed = result.status;

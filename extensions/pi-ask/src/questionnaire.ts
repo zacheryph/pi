@@ -9,18 +9,23 @@ import {
 } from "@earendil-works/pi-tui";
 import {
   bodyRow,
-  clip,
+  divider,
+  footerRows,
+  HINT_PRIORITY,
   paint,
   sanitizeLine,
   sanitizeText,
   styleLine,
   type DisposableComponent,
+  type Hint,
   type UIKeys,
   type UITheme,
 } from "../../../packages/pi-ui/src/index.ts";
 import type { AskAnswer, AskOutcome, AskQuestion } from "./questions.ts";
 
 export const TYPE_LABEL = "Type something…";
+
+const firstLine = (text: string) => sanitizeLine(text.split("\n")[0] ?? "");
 
 interface QuestionState {
   cursor: number;
@@ -228,13 +233,21 @@ export class Questionnaire implements DisposableComponent, Focusable {
     this.refresh();
   }
 
+  /** One line for the minimized window: the question waiting on the user. */
+  summary(): string {
+    const position =
+      this.questions.length > 1 ? ` (${this.index + 1} of ${this.questions.length})` : "";
+    return `${firstLine(this.question.question)}${position}`;
+  }
+
   render(width: number): string[] {
-    const rows: string[] = [];
     const inner = Math.max(0, width - 2);
-    if (this.questions.length > 1) {
-      rows.push(
-        bodyRow(
-          this.questions
+    const rows: string[] = [];
+    const row = (text: string) => rows.push(bodyRow(text, width));
+    // Header: progress tabs (or the lone question's header), divided from the content.
+    const header =
+      this.questions.length > 1
+        ? this.questions
             .map((question, at) => {
               const done = this.states[at]!.answered;
               const label = sanitizeLine(question.header || `Q${at + 1}`);
@@ -242,20 +255,20 @@ export class Questionnaire implements DisposableComponent, Focusable {
               const tone = at === this.index ? "accent" : done ? "success" : "dim";
               return paint(this.theme, tone, `${mark} ${label}`, at === this.index);
             })
-            .join("  "),
-          width,
-        ),
-      );
-    } else if (this.question.header) {
-      rows.push(
-        bodyRow(paint(this.theme, "accent", sanitizeLine(this.question.header), true), width),
-      );
+            .join("  ")
+        : this.question.header
+          ? paint(this.theme, "accent", sanitizeLine(this.question.header), true)
+          : "";
+    if (header) {
+      row(header);
+      row(divider(inner, this.theme));
     }
     const text = sanitizeText(this.question.question);
     for (const line of inner > 0
       ? wrapTextWithAnsi(paint(this.theme, "default", text, true), inner)
       : [""])
-      rows.push(bodyRow(line, width));
+      row(line);
+    row("");
     const state = this.state;
     this.question.options.forEach((option, at) => {
       const current = at === state.cursor && !this.typing;
@@ -266,20 +279,17 @@ export class Questionnaire implements DisposableComponent, Focusable {
         : state.chosen === at
           ? "● "
           : "";
-      rows.push(
-        bodyRow(
-          styleLine(
-            [
-              { text: current ? "› " : "  ", tone: "accent" },
-              { text: `${at + 1}. ${box}`, tone: current ? "accent" : "dim" },
-              { text: option.label, tone: current ? "accent" : "default", bold: current },
-              ...(option.description
-                ? [{ text: ` — ${option.description}`, tone: "muted" as const }]
-                : []),
-            ],
-            this.theme,
-          ),
-          width,
+      row(
+        styleLine(
+          [
+            { text: current ? "› " : "  ", tone: "accent" },
+            { text: `${at + 1}. ${box}`, tone: current ? "accent" : "dim" },
+            { text: option.label, tone: current ? "accent" : "default", bold: current },
+            ...(option.description
+              ? [{ text: ` — ${option.description}`, tone: "muted" as const }]
+              : []),
+          ],
+          this.theme,
         ),
       );
     });
@@ -292,39 +302,59 @@ export class Questionnaire implements DisposableComponent, Focusable {
       );
     } else {
       const current = state.cursor === this.typeRow;
-      rows.push(
-        bodyRow(
-          styleLine(
-            [
-              { text: current ? "› " : "  ", tone: "accent" },
-              {
-                text: state.typed === undefined ? TYPE_LABEL : `✎ ${state.typed}`,
-                tone: current ? "accent" : "muted",
-                bold: current,
-              },
-            ],
-            this.theme,
-          ),
-          width,
+      row(
+        styleLine(
+          [
+            { text: current ? "› " : "  ", tone: "accent" },
+            {
+              text: state.typed === undefined ? TYPE_LABEL : `✎ ${state.typed}`,
+              tone: current ? "accent" : "muted",
+              bold: current,
+            },
+          ],
+          this.theme,
         ),
       );
     }
-    rows.push(bodyRow(paint(this.theme, "dim", clip(this.hint(), Math.max(0, inner))), width));
+    for (const line of footerRows(this.status(), this.hints(), inner, this.theme)) row(line);
     return rows;
   }
 
-  private hint(): string {
+  /** The footer rule: where the user is, and what this question takes. */
+  private status(): string {
+    const parts =
+      this.questions.length > 1 ? [`${this.index + 1} of ${this.questions.length}`] : [];
+    if (!this.question.options.length) parts.push("your own words");
+    else if (this.question.multiSelect)
+      parts.push(`choose any · ${this.state.checked.size} selected`);
+    else parts.push("choose one");
+    return parts.join(" · ");
+  }
+
+  private hints(): Hint[] {
+    const switching =
+      this.questions.length > 1
+        ? [{ keys: this.typing ? "tab" : "←→", action: "question", priority: HINT_PRIORITY.view }]
+        : [];
     if (this.typing)
-      return this.question.options.length
-        ? "enter submit · esc back to choices"
-        : "enter submit · esc dismiss";
+      return [
+        { keys: "enter", action: "submit", priority: HINT_PRIORITY.action },
+        ...switching,
+        {
+          keys: "esc",
+          action: this.question.options.length ? "back to choices" : "dismiss",
+          priority: HINT_PRIORITY.action,
+        },
+      ];
     return [
-      "↑↓ move",
-      "enter choose",
-      ...(this.question.multiSelect ? ["space toggle"] : []),
-      ...(this.questions.length > 1 ? ["←→ question"] : []),
-      "esc dismiss",
-    ].join(" · ");
+      { keys: "↑↓", action: "move", priority: HINT_PRIORITY.navigation },
+      { keys: "enter", action: "choose", priority: HINT_PRIORITY.action },
+      ...(this.question.multiSelect
+        ? [{ keys: "space", action: "toggle", priority: HINT_PRIORITY.action }]
+        : []),
+      ...switching,
+      { keys: "esc", action: "dismiss", priority: HINT_PRIORITY.action },
+    ];
   }
 
   invalidate(): void {

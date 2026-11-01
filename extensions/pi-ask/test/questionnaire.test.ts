@@ -130,6 +130,37 @@ describe("Questionnaire", () => {
     expect(finish).not.toHaveBeenCalled();
   });
 
+  it("lays out tabs, a divider, the question, a blank row, the choices and a status footer", () => {
+    const { q, screen } = open([
+      db,
+      { ...db, question: "Which cache?", header: "Cache", multiSelect: true },
+    ]);
+    const rows = screen(60)
+      .split("\n")
+      .map((row) => row.trimEnd());
+    expect(rows.slice(0, 4)).toEqual([
+      " ● Storage  ○ Cache",
+      ` ${"─".repeat(58)}`,
+      " Which database?",
+      "",
+    ]);
+    expect(rows.at(-2)).toBe(` ── 1 of 2 · choose one ${"─".repeat(35)}`);
+    expect(rows.at(-1)).toBe(" ↑↓ move · enter choose · ←→ question · esc dismiss");
+    expect(q.summary()).toBe("Which database? (1 of 2)");
+    q.handleInput("1");
+    q.handleInput(" ");
+    expect(screen(60)).toContain("2 of 2 · choose any · 1 selected");
+    expect(q.summary()).toBe("Which cache? (2 of 2)");
+  });
+
+  it("drops navigation hints before actions when the footer is narrow", () => {
+    const { screen } = open([db, { question: "Why?" }]);
+    const footer = screen(22).split("\n").slice(-2).join("\n");
+    expect(footer).toContain("enter choose");
+    expect(footer).toContain("esc dismiss");
+    expect(footer).not.toContain("move");
+  });
+
   it("pads every row and stays within narrow widths with ANSI and wide text", () => {
     const { q } = open([
       {

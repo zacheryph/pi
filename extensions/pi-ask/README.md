@@ -73,7 +73,8 @@ The window replaces the editor while it waits and keeps focus.
 - `esc` dismisses the questions; the model is told you declined.
 
 In fullscreen mode, scrolling the transcript (mouse wheel or `PageUp`) shrinks
-the window to a one-line bar so you can review the session. The next key scrolls
+the window to three rows (its title, the waiting question and a hint) so you can
+review the session. The next key scrolls
 back to the end and restores the window; that key is not used as an answer. In
 regular mode your terminal owns scrollback, so the window stays inline at the
 bottom.
