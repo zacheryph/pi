@@ -4,7 +4,7 @@ import {
   type ExtensionAPI,
   type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { Text, truncateToWidth, type TUI } from "@earendil-works/pi-tui";
+import { Text, type TUI } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import {
   applyTodoReview,
@@ -51,7 +51,13 @@ import {
   todoTaskPresentation,
   type TodoRenderConfig,
 } from "./ui/render.ts";
-import { safeTodoLine, sanitizeTodoText } from "./ui/text.ts";
+import {
+  bodyRow,
+  clip,
+  sanitizeLine,
+  sanitizeText,
+  styleLine,
+} from "../../../packages/pi-ui/src/index.ts";
 import { replayTodoSession, TODO_JOURNAL_TYPE, TODO_REVIEW_TYPE } from "./replay.ts";
 
 const WIDGET_KEY = "pi-personal:todos";
@@ -322,7 +328,7 @@ export default function todoExtension(
         ctx.ui.notify("Task settings saved to .pi/todos.json.", "info");
       } catch (error) {
         ctx.ui.notify(
-          sanitizeTodoText(
+          sanitizeText(
             `Task settings applied (session only; failed to persist): ${error instanceof Error ? error.message : String(error)}`,
           ),
           "warning",
@@ -402,7 +408,7 @@ export default function todoExtension(
             ).length
           : 0;
         const action =
-          typeof args.action === "string" ? safeTodoLine(args.action).slice(0, 80) : "…";
+          typeof args.action === "string" ? sanitizeLine(args.action).slice(0, 80) : "…";
         const summary =
           `${action}${count ? ` · ${count} task${count === 1 ? "" : "s"}` : ""}` +
           (messages ? ` · ${messages} message${messages === 1 ? "" : "s"}` : "");
@@ -418,7 +424,7 @@ export default function todoExtension(
           return new Text(
             theme.fg(
               "error",
-              sanitizeTodoText(
+              sanitizeText(
                 result.content
                   .filter((item) => item.type === "text")
                   .map((item) => item.text)
@@ -441,14 +447,19 @@ export default function todoExtension(
         // One inset row per recorded message, so outcomes read in the transcript too.
         const messageRows = (width: number) =>
           messages.map(({ key, message }) => {
-            if (width <= 2) return " ".repeat(Math.max(0, width));
             const task = snapshot.tasks.find((candidate) => candidate.key === key);
             const status = task ? todoTaskPresentation(task, snapshot) : undefined;
-            const text =
-              (status ? theme.fg(status.color, `${status.glyph} `) : "") +
-              theme.fg("text", safeTodoLine(key)) +
-              theme.fg("muted", `: ${todoMessageLine(message)}`);
-            return ` ${truncateToWidth(text, width - 2, "")} `;
+            return bodyRow(
+              styleLine(
+                [
+                  ...(status ? [{ text: `${status.glyph} `, tone: status.color }] : []),
+                  key,
+                  { text: `: ${todoMessageLine(message)}`, tone: "muted" as const },
+                ],
+                theme,
+              ),
+              width,
+            );
           });
         if (expanded)
           return {
@@ -465,10 +476,7 @@ export default function todoExtension(
           };
         if (!messages.length) return new Text(theme.fg("muted", summary), 0, 0);
         return {
-          render: (width) => [
-            truncateToWidth(theme.fg("muted", summary), Math.max(0, width), ""),
-            ...messageRows(width),
-          ],
+          render: (width) => [clip(theme.fg("muted", summary), width), ...messageRows(width)],
           invalidate() {},
         };
       },

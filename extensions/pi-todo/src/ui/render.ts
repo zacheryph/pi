@@ -1,5 +1,15 @@
-import type { Theme } from "@earendil-works/pi-coding-agent";
-import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import {
+  ICONS,
+  renderWidget,
+  sanitizeLine,
+  sanitizeText,
+  type Block,
+  type Line,
+  type Span,
+  type UITheme,
+  type WidgetRow,
+  type WidgetView,
+} from "../../../../packages/pi-ui/src/index.ts";
 import {
   isReviewable,
   type TodoActivity,
@@ -8,10 +18,6 @@ import {
   unreviewedTodoUpdates,
 } from "../activity.js";
 import { isTaskBlocked, type TodoState, type TodoTask } from "../state.js";
-import { safeTodoLine, sanitizeTodoText } from "./text.js";
-
-/** nf-fa-tasks (U+F0AE); themed titles require a patched Nerd Font. */
-const TODO_TITLE = "  Todos";
 
 export interface TodoRenderConfig {
   maxVisible: number;
@@ -25,7 +31,7 @@ export interface TodoRenderConfig {
 }
 
 /** Unreviewed rows: `●` in a two-column gutter, plus a one-line excerpt. */
-const UNREVIEWED_MARK = "●";
+const UNREVIEWED_MARK = ICONS.marker;
 
 export function todoTaskPresentation(
   task: TodoTask,
@@ -66,13 +72,13 @@ export function orderedTodoTasks(
 
 /** One physical, whitespace-collapsed row of untrusted message text. */
 export function todoMessageLine(message: string): string {
-  return safeTodoLine(message).replace(/\s+/g, " ").trim();
+  return sanitizeLine(message).replace(/\s+/g, " ").trim();
 }
 
 function taskLeft(task: TodoTask): string {
   return (
-    `${safeTodoLine(task.key)}: ${safeTodoLine(task.subject)}` +
-    (task.dependsOn?.length ? ` ← ${task.dependsOn.map(safeTodoLine).join(", ")}` : "")
+    `${sanitizeLine(task.key)}: ${sanitizeLine(task.subject)}` +
+    (task.dependsOn?.length ? ` ← ${task.dependsOn.map(sanitizeLine).join(", ")}` : "")
   );
 }
 
@@ -100,7 +106,7 @@ export function renderTodoText(
   const { tasks, maxVisible, unreviewed } = renderSelection(state, config);
   const done = state.tasks.filter((task) => task.status === "completed").length;
   const lines = [
-    `${safeTodoLine(config.title ?? "Todos")} ${done}/${state.tasks.length} completed${unreviewed.size ? ` · ${unreviewed.size} new` : ""}`,
+    `${sanitizeLine(config.title ?? "Todos")} ${done}/${state.tasks.length} completed${unreviewed.size ? ` · ${unreviewed.size} new` : ""}`,
   ];
   if (!tasks.length) {
     lines.push(state.tasks.length ? "No unfinished tasks" : "No tasks");
@@ -114,8 +120,8 @@ export function renderTodoText(
     const assignee = config.assignees?.get(task.key);
     lines.push(
       `${message === undefined ? "" : `${UNREVIEWED_MARK} `}${status.glyph} ${taskLeft(task)} [${status.label}]` +
-        (assignee ? ` → ${safeTodoLine(assignee)}` : "") +
-        (task.description ? ` — ${safeTodoLine(task.description)}` : "") +
+        (assignee ? ` → ${sanitizeLine(assignee)}` : "") +
+        (task.description ? ` — ${sanitizeLine(task.description)}` : "") +
         (message === undefined
           ? ""
           : ` · new: ${excerpt.length > 160 ? `${excerpt.slice(0, 159)}…` : excerpt}`),
@@ -154,7 +160,7 @@ function describeUpdate(update: TodoUpdate): string {
       : update.status;
   return (
     `r${update.revision} · ${change}${update.by === "user" ? " · you" : ""}` +
-    (update.agent ? ` · agent ${safeTodoLine(update.agent).slice(0, 8)}` : "")
+    (update.agent ? ` · agent ${sanitizeLine(update.agent).slice(0, 8)}` : "")
   );
 }
 
@@ -164,119 +170,136 @@ export interface TodoDetailHistory {
   now: number;
 }
 
-/** Plain detail text; optional history adds times, review state and a timeline. */
+/** Structured detail; optional history adds times, review state and a timeline. */
 export function todoTaskDetail(
   task: TodoTask,
   state: TodoState,
   history?: TodoDetailHistory,
   assignee?: string,
-): string[] {
+): Block[] {
   const byKey = new Map(state.tasks.map((item) => [item.key, item]));
-  const status = todoTaskPresentation(task, state);
   const entry = history?.activity.get(task.key);
   const updates = entry?.updates ?? [];
   const reviewed = history?.review.tasks.get(task.key);
   const unreviewed = new Set(
     history ? unreviewedTodoUpdates(task.key, history.activity, history.review) : [],
   );
-  const times = history
-    ? [
-        ...(entry?.createdAt !== undefined
-          ? [`Created: ${formatWhen(entry.createdAt, history.now)}`]
-          : []),
-        ...(updates.length ? [`Updated: ${formatWhen(updates.at(-1)!.at, history.now)}`] : []),
-        ...(updates.some(isReviewable)
-          ? [
-              `Reviewed: ${reviewed ? `${formatWhen(reviewed.at, history.now)} through r${reviewed.revision}` : "never"}`,
-            ]
-          : []),
-      ]
-    : [];
-  return [
-    `Key: ${safeTodoLine(task.key)}`,
-    `Subject: ${safeTodoLine(task.subject)}`,
-    `Status: ${status.glyph} ${status.label}`,
-    ...(assignee ? [`Assigned to: ${safeTodoLine(assignee)}`] : []),
-    ...times,
-    `Dependencies: ${task.dependsOn?.length ? "" : "none"}`,
-    ...(task.dependsOn ?? []).map((key) => {
-      const dependency = byKey.get(key);
-      return `  ${safeTodoLine(key)} — ${dependency?.status ?? "missing"}`;
-    }),
-    "",
-    "Description:",
-    sanitizeTodoText(task.description ?? "(none)"),
-    ...(history && updates.length
-      ? [
-          "",
-          `Activity (newest first${unreviewed.size ? `; ${UNREVIEWED_MARK} = unreviewed` : ""}):`,
-          ...updates.toReversed().flatMap((update) => [
-            `${unreviewed.has(update) ? UNREVIEWED_MARK : " "} ${formatWhen(update.at, history.now)} · ${describeUpdate(update)}`,
-            ...(update.message
-              ? sanitizeTodoText(update.message)
-                  .split("\n")
-                  .map((line) => `    ${line}`)
-              : []),
-          ]),
-        ]
-      : []),
-  ];
+  const fields: [string, Line][] = [];
+  if (assignee) fields.push(["Assigned to", assignee]);
+  if (history) {
+    if (entry?.createdAt !== undefined)
+      fields.push(["Created", formatWhen(entry.createdAt, history.now)]);
+    if (updates.length) fields.push(["Updated", formatWhen(updates.at(-1)!.at, history.now)]);
+    if (updates.some(isReviewable))
+      fields.push([
+        "Reviewed",
+        reviewed
+          ? `${formatWhen(reviewed.at, history.now)} through r${reviewed.revision}`
+          : { text: "never", tone: "warning" },
+      ]);
+  }
+  if (!task.dependsOn?.length) fields.push(["Dependencies", "none"]);
+  const blocks: Block[] = fields.length ? [{ fields }] : [];
+  if (task.dependsOn?.length)
+    blocks.push(
+      { heading: "Dependencies" },
+      { bullets: task.dependsOn.map((key) => `${key} — ${byKey.get(key)?.status ?? "missing"}`) },
+    );
+  blocks.push({ heading: "Description" }, { text: task.description ?? "(none)" });
+  if (history && updates.length) {
+    blocks.push({
+      heading: `Activity (newest first${unreviewed.size ? `; ${UNREVIEWED_MARK} = unreviewed` : ""})`,
+    });
+    for (const update of updates.toReversed()) {
+      const fresh = unreviewed.has(update);
+      blocks.push({
+        text: `${fresh ? UNREVIEWED_MARK : " "} ${formatWhen(update.at, history.now)} · ${describeUpdate(update)}`,
+        tone: fresh ? "accent" : "default",
+      });
+      if (update.message)
+        blocks.push({
+          lines: sanitizeText(update.message)
+            .split("\n")
+            .map((line) => `    ${line}`),
+        });
+    }
+  }
+  return blocks;
 }
 
 /**
- * One physical row per task. Status retains its columns; key clips last. With a
- * gutter, unreviewed rows show the marker and a dim message excerpt after the
- * identity; other rows keep a blank gutter so columns stay aligned.
+ * Status on the right in fallback order: assignee badge drops first, then the
+ * status label; the glyph always stays (`keepRight`).
  */
-function taskRow(
-  task: TodoTask,
-  state: TodoState,
-  width: number,
-  theme: Theme,
-  gutter = false,
-  message?: string,
-  assignee?: string,
-): string {
+function statusFallbacks(task: TodoTask, state: TodoState, assignee?: string): Line[] {
   const status = todoTaskPresentation(task, state);
-  const keyWidth = visibleWidth(safeTodoLine(task.key)) + (gutter ? 2 : 0);
-  // The assignee badge goes first when space runs out; the status glyph stays.
-  const badge = assignee ? `→ ${safeTodoLine(assignee)} · ` : "";
-  const right =
-    [
-      `${badge}${status.glyph} ${status.label}`,
-      `${badge}${status.glyph}`,
-      `${status.glyph} ${status.label}`,
-    ].find((candidate) => width >= keyWidth + visibleWidth(candidate) + 3) ?? status.glyph;
-  if (width < 3) return theme.fg(status.color, truncateToWidth(status.glyph, width, ""));
-  const rightWidth = visibleWidth(right);
-  const shownBadge = badge && right.startsWith(badge) ? badge : "";
-  const available = width - rightWidth - 1;
-  const marker =
-    gutter && available >= 2
-      ? message === undefined
-        ? "  "
-        : theme.fg("accent", `${UNREVIEWED_MARK} `)
-      : "";
-  const room = available - visibleWidth(marker);
-  const left = truncateToWidth(taskLeft(task), room, "");
-  const spare = room - visibleWidth(left);
-  const excerpt =
-    message !== undefined && spare > 3
-      ? truncateToWidth(` — ${todoMessageLine(message)}`, spare, "")
-      : "";
-  return (
-    marker +
-    theme.fg(task.status === "completed" && message === undefined ? "muted" : "text", left) +
-    theme.fg("dim", excerpt) +
-    " ".repeat(
-      Math.max(
-        1,
-        width - visibleWidth(marker) - visibleWidth(left) - visibleWidth(excerpt) - rightWidth,
-      ),
-    ) +
-    (shownBadge ? theme.fg("muted", shownBadge) : "") +
-    theme.fg(status.color, right.slice(shownBadge.length))
-  );
+  const badge: Span[] = assignee ? [{ text: `→ ${assignee} · `, tone: "muted" }] : [];
+  const glyph: Span = { text: status.glyph, tone: status.color };
+  const full: Span = { text: `${status.glyph} ${status.label}`, tone: status.color };
+  return [
+    ...(assignee
+      ? [
+          [...badge, full],
+          [...badge, glyph],
+        ]
+      : []),
+    [full],
+    [glyph],
+  ];
+}
+
+/** Shared widget description; selection, ordering and limits stay todo-owned. */
+export function todoWidgetView(
+  state: TodoState,
+  config: TodoRenderConfig,
+  maxRows = Infinity,
+): WidgetView {
+  const { tasks, maxVisible, unreviewed } = renderSelection(state, config);
+  const done = state.tasks.filter((task) => task.status === "completed").length;
+  const progress: Span = {
+    text: `${done}/${state.tasks.length}`,
+    tone: done === state.tasks.length && done > 0 ? "success" : "muted",
+  };
+  // Narrow terminals drop the unreviewed count before progress; rows keep markers.
+  const meta: Line[] = [
+    ...(unreviewed.size
+      ? [
+          [
+            { text: `${UNREVIEWED_MARK} ${unreviewed.size} new`, tone: "accent" as const },
+            { text: " · ", tone: "dim" as const },
+            progress,
+          ],
+        ]
+      : []),
+    [progress],
+  ];
+  // Only reserve a marker gutter when a visible row needs it.
+  const gutter = tasks.slice(0, maxVisible).some((task) => unreviewed.has(task.key));
+  const rows: WidgetRow[] = tasks.map((task) => {
+    const message = unreviewed.get(task.key);
+    const left: Span[] = [];
+    if (gutter)
+      left.push(message === undefined ? "  " : { text: `${UNREVIEWED_MARK} `, tone: "accent" });
+    left.push({
+      text: taskLeft(task),
+      tone: task.status === "completed" && message === undefined ? "muted" : "default",
+    });
+    if (message !== undefined) left.push({ text: ` — ${todoMessageLine(message)}`, tone: "dim" });
+    return {
+      left,
+      right: statusFallbacks(task, state, config.assignees?.get(task.key)),
+      keepRight: true,
+    };
+  });
+  return {
+    title: { label: config.title ?? "Todos", icon: ICONS.tasks },
+    active: state.tasks.some((task) => task.status === "in_progress"),
+    meta,
+    rows,
+    maxRows,
+    maxVisible,
+    emptyText: state.tasks.length ? "No unfinished tasks" : "No tasks",
+  };
 }
 
 /**
@@ -289,80 +312,8 @@ export function renderTodoLines(
   state: TodoState,
   config: TodoRenderConfig,
   width: number,
-  theme: Theme,
+  theme: UITheme,
   maxRows = Infinity,
 ): string[] {
-  width = Number.isFinite(width) ? Math.max(0, Math.floor(width)) : 0;
-  const rows =
-    maxRows === Infinity
-      ? Infinity
-      : Number.isFinite(maxRows)
-        ? Math.max(0, Math.floor(maxRows))
-        : 0;
-  if (!width || !rows) return [];
-  const { tasks, maxVisible, unreviewed } = renderSelection(state, config);
-  const done = state.tasks.filter((task) => task.status === "completed").length;
-  const progress = `${done}/${state.tasks.length}`;
-  const title = config.title ? `  ${safeTodoLine(config.title)}` : TODO_TITLE;
-  const label = `── ${title} `;
-  const tail = " ──";
-  const labelColor = state.tasks.some((task) => task.status === "in_progress") ? "accent" : "dim";
-  const fits = (right: string) =>
-    width >= visibleWidth(label) + visibleWidth(right) + 1 + visibleWidth(tail);
-  const progressText = theme.fg(
-    done === state.tasks.length && done > 0 ? "success" : "muted",
-    progress,
-  );
-  // Narrow terminals drop the unreviewed count before progress; rows keep markers.
-  const flag = unreviewed.size ? `${UNREVIEWED_MARK} ${unreviewed.size} new` : "";
-  const [right, rightText] =
-    flag && fits(`${flag} · ${progress}`)
-      ? [`${flag} · ${progress}`, theme.fg("accent", flag) + theme.fg("dim", " · ") + progressText]
-      : [progress, progressText];
-  const top = fits(right)
-    ? theme.fg("border", "── ") +
-      theme.fg(labelColor, title) +
-      theme.fg(
-        "border",
-        " " +
-          "─".repeat(width - visibleWidth(label) - visibleWidth(right) - 1 - visibleWidth(tail)) +
-          " ",
-      ) +
-      rightText +
-      theme.fg("border", tail)
-    : theme.fg(labelColor, truncateToWidth(title, width, ""));
-  // Inset body rows from full-width chrome, including after narrow resizes.
-  const bodyWidth = Math.max(0, width - 2);
-  const bodyRow = (text: string) =>
-    width <= 2 ? " ".repeat(width) : ` ${truncateToWidth(text, bodyWidth, "")} `;
-  const lines = [top];
-  if (!tasks.length && rows > 1) {
-    lines.push(bodyRow(theme.fg("muted", state.tasks.length ? "No unfinished tasks" : "No tasks")));
-    return lines;
-  }
-  // Reserve overflow row only when needed. Hidden completed tasks don't count.
-  const available = Math.max(0, rows - 1);
-  const count = Math.min(tasks.length, maxVisible, available);
-  const visible = tasks.length > count ? Math.max(0, Math.min(count, available - 1)) : count;
-  const shown = tasks.slice(0, visible);
-  const gutter = shown.some((task) => unreviewed.has(task.key));
-  for (const task of shown) {
-    lines.push(
-      bodyRow(
-        taskRow(
-          task,
-          state,
-          bodyWidth,
-          theme,
-          gutter,
-          unreviewed.get(task.key),
-          config.assignees?.get(task.key),
-        ),
-      ),
-    );
-  }
-  if (tasks.length > visible && lines.length < rows) {
-    lines.push(bodyRow(theme.fg("dim", `+${tasks.length - visible} more`)));
-  }
-  return lines;
+  return renderWidget(todoWidgetView(state, config, maxRows), width, theme);
 }

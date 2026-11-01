@@ -1222,7 +1222,8 @@ describe("task messages and review", () => {
       );
       // oxlint-disable-next-line no-control-regex -- Intentionally matches terminal control characters.
       const lines = component.render(80).map((line) => line.replace(/\x1b\[[0-9;]*m/g, ""));
-      expect(lines.at(-1)).toBe(" ✓ a: bad日本語 \u{1f469}\u200d\u{1f4bb} e\u0301 next ");
+      // pi-ui pads inset rows to the full width.
+      expect(lines.at(-1)!.trimEnd()).toBe(" ✓ a: bad日本語 \u{1f469}\u200d\u{1f4bb} e\u0301 next");
       for (let width = 1; width <= 30; width++) {
         for (const line of component.render(width).slice(expanded ? 0 : 1)) {
           expect(visibleWidth(line)).toBeLessThanOrEqual(width);
@@ -1258,7 +1259,10 @@ it("result renderer ignores malformed persisted message details", async () => {
     theme,
     {} as Parameters<NonNullable<typeof tool.renderCall>>[2],
   ).render(80);
-  expect(lines).toEqual(["0/1 completed · revision 1", " ○ a: ok "]);
+  expect(lines.map((line: string) => line.trimEnd())).toEqual([
+    "0/1 completed · revision 1",
+    " ○ a: ok",
+  ]);
 });
 
 describe("snapshot events", () => {

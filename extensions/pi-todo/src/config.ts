@@ -4,7 +4,7 @@ import {
 } from "../../../packages/pi-foundations/src/settings.ts";
 import { join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
-import { sanitizeTodoText } from "./ui/text.ts";
+import { sanitizeText } from "../../../packages/pi-ui/src/index.ts";
 
 export interface TodoConfig {
   widget: boolean;
@@ -65,7 +65,7 @@ export function loadTodoConfig(cwd: string, agentDir = getAgentDir()): TodoConfi
       warnLabel: "pi-todo",
       onError: (path, error) =>
         console.warn(
-          sanitizeTodoText(
+          sanitizeText(
             `[pi-todo] Ignoring settings at ${path}: ${error instanceof Error ? error.message : String(error)}`,
           ),
         ),

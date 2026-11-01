@@ -204,6 +204,10 @@ subagent({
 
 ## UI
 
+The widget and browser render through the bundle's shared `packages/pi-ui`
+library (`renderWidget` and `showExplorer`); this extension supplies task
+selection, ordering, status colors and review callbacks.
+
 Above-editor widget uses a static top rule with the Nerd Font tasks icon
 (`nf-fa-tasks`, U+F0AE); use a patched Nerd Font, preferably its Mono variant.
 Each task occupies one physical row, with identity left and lifecycle status
@@ -222,7 +226,9 @@ explicitly cleared; hiding them affects display only.
 Unreviewed messages add `● N new` to the header. Their tasks move to the top, newest
 first, and stay visible when completed tasks are hidden. Those rows get a `●`
 marker and a dim message excerpt; other rows get a blank two-column gutter so
-columns stay aligned. Narrow terminals drop the count before the progress.
+columns stay aligned. Narrow terminals drop the count before the progress, then
+the icon; on narrow rows the assignee badge drops first, then the task identity
+clips before the status label, and the status glyph always stays.
 
 ```text
 ──   Todos ─────────────────────────────────────────── ● 1 new · 1/3 ──
@@ -231,15 +237,16 @@ columns stay aligned. Narrow terminals drop the count before the progress.
    verify: Verify change ← build                              ○ blocked
 ```
 
-Browser follows subagents/system-insights controls: type to filter, arrows select,
-Enter details, Esc backs out/clears filter/closes, Ctrl+C closes. Tab and Shift+Tab
+Browser uses the shared explorer controls: type to filter, arrows/PgUp/PgDn/Home/End
+and the mouse wheel select, Enter details, Esc backs out/clears filter/closes,
+Ctrl+C closes. Tab and Shift+Tab
 cycle three views: All (status order), Unreviewed (newest first), and Recent (all
 tasks by last activity). The filter also matches message text. Details add
 created, updated, and reviewed times, plus an activity timeline, newest first,
-with unreviewed entries marked `●`. The note shows when you last reviewed and how
-many tasks remain unreviewed. Fullscreen uses a
-centered overlay; regular mode uses a bounded custom screen, not an overlay that
-can contaminate scrollback. Task text is sanitized before terminal rendering.
+with unreviewed entries marked `●`. The note shows when you last reviewed; the
+status row counts tasks still unreviewed. The browser is a centered overlay in
+Pi's fullscreen TUI (the regular renderer is not supported). Task text is
+sanitized before terminal rendering.
 Tool output is compact by default; expand it for task rows. Calls show how many
 messages they carry, and results list each recorded message on its own row. RPC
 gets plain-text widget output; task tools remain usable without terminal UI.
