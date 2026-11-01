@@ -13,7 +13,6 @@ import {
   positionText,
   renderDetail,
   TextViewport,
-  titleIcon,
   viewHeight,
   type DetailContent,
 } from "./detail.ts";
@@ -235,7 +234,7 @@ export class Explorer implements Component, Focusable {
         );
     }
     for (const notice of this.view.notices ?? []) before.push(styleLine(notice, theme));
-    const after = footerRows(status, this.hints(), contentWidth, theme, titleIcon(this.view.title));
+    const after = footerRows(status, this.hints(), contentWidth, theme);
     return { before, after };
   }
   private height(): number {

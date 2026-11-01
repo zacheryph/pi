@@ -77,7 +77,7 @@ describe("Explorer", () => {
   });
   it("shows a live status row with the marker count, and wraps prioritized hints", () => {
     const { explorer, onClear } = setup();
-    expect(output(explorer)).toContain("│ ── ✓  1/2 tasks · 2 unreviewed ──");
+    expect(output(explorer)).toContain("│ ── 1/2 tasks · 2 unreviewed ──");
     // Header chrome (filter, tabs, notices) is divided from the list.
     expect(output(explorer)).toMatch(/Snapshot · old +│ \n │ ─+ │ \n │ → /);
     const wide = output(explorer, 200);

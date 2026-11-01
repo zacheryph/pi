@@ -162,7 +162,7 @@ export function statusRule(status: string, width: number, theme: UITheme, icon?:
   );
 }
 
-/** Shared footer: a status divider, then up to two rows of prioritized hints. */
+/** Shared footer: a status divider (icon optional), then up to two rows of prioritized hints. */
 export function footerRows(
   status: string,
   hints: readonly Hint[],
@@ -176,11 +176,6 @@ export function footerRows(
       paint(theme, "dim", sanitizeLine(row)),
     ),
   ];
-}
-
-/** The icon of an object title, if any. */
-export function titleIcon(title: Title): string | undefined {
-  return typeof title === "string" ? undefined : title.icon;
 }
 
 /** Reusable scrolling model for detail panels, explorers and caller-owned passive views. */
@@ -340,13 +335,7 @@ export class DetailView implements Component, Focusable {
       { theme } = this.options;
     const body = this.viewport.render(layout.contentWidth, layout.bodyRows);
     const position = this.viewport.position(layout.contentWidth, layout.bodyRows);
-    const after = footerRows(
-      positionText(position),
-      this.hints(),
-      layout.contentWidth,
-      theme,
-      titleIcon(this.title),
-    );
+    const after = footerRows(positionText(position), this.hints(), layout.contentWidth, theme);
     return renderPanel(layout, this.title, body, theme, { after });
   }
   invalidate(): void {

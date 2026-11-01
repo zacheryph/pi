@@ -61,8 +61,9 @@ Shared conventions the library enforces:
 - Header rows (filter, tabs, notices) are separated from the content by a plain
   border-colored divider, dropped first when the panel is short.
 - Footers start with a status divider styled like a widget heading
-  (`── icon  1/5 tasks ─────`; the view's title icon is optional and dropped
-  before the status clips), followed by at most two rows of hints. Hints wrap
+  (`── 1/5 tasks ─────`), followed by at most two rows of hints. Explorers and
+  detail views show no icon; `statusRule`/`footerRows` accept an optional one
+  (`── icon  1/5 tasks ─────`) that is dropped before the status clips. Hints wrap
   between entries and the least important are dropped first (`HINT_PRIORITY`:
   actions 0 never drop, view 1, extension 2, navigation 3).
 - Keys are formatted once (`formatKey`: `PgUp`, `Ctrl+R`, `Esc`). Navigation is
