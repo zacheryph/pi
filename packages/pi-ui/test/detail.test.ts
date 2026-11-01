@@ -135,6 +135,24 @@ describe("DetailView", () => {
     view.setTitle("late");
     expect(tui.requestRender).toHaveBeenCalledTimes(requests);
   });
+  it("takes only the rows short content needs and hides the line count when all of it is shown", () => {
+    const view = new DetailView({
+      tui: surface(30),
+      theme,
+      keys: keys(),
+      title: "Short",
+      content: "one\ntwo\nthree",
+      done: vi.fn(),
+    });
+    const rows = view.render(60);
+    // Frame 2 + body 3 + status divider 1 + hints 1.
+    expect(rows).toHaveLength(7);
+    expect(plain(rows)).not.toContain("lines");
+    expect(plain(rows)).toContain(" │ " + "─".repeat(54) + " │ ");
+    view.setContent(text);
+    expect(view.render(60)).toHaveLength(24);
+    expect(plain(view.render(60))).toContain("── 1–20/80 lines ──");
+  });
   it("scrolls by keyboard and wheel, honors key remapping, and shows formatted hints", () => {
     const tui = surface(15),
       bindings = keys();

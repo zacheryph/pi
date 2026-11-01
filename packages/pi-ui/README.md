@@ -72,18 +72,18 @@ Shared conventions the library enforces:
 
 ## API
 
-| Module          | Exports                                                                                                                             | Responsibility                                                                  |
-| --------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| `text.ts`       | `sanitizeText`, `sanitizeLine`, `firstPhysicalLine`                                                                                 | Untrusted plain text normalization; separate trusted-row clipping               |
-| `style.ts`      | `Tone`, `Span`, `Line`, `Badge`, `styleLine`, `styleBadge`, `plainText`, `paint`, `copyLine`, `clip`, `ELLIPSIS`                    | The single tone → theme mapping and the shared ellipsis                         |
-| `layout.ts`     | `bodyRow`, `splitColumns`, `labeledRule`, `divider`, `layoutPanel`, `renderPanel`, `BoundedLines`, `cells`, `titleText`, `ICON_GAP` | Low-level width-aware rows, frames, titles, rules and column fallback           |
-| `icons.ts`      | `ICONS`, `SPINNER`                                                                                                                  | Shared semantic vocabulary; callers schedule animation                          |
-| `navigation.ts` | `navigationDelta`, `navigationHint`, `formatKey`, `layoutHints`, `hintText`, `Hint`, `HINT_PRIORITY`                                | Navigation and prioritized, wrapped footer hints from the same keybindings      |
-| `modal.ts`      | `openModal`, `PassiveOverlay`                                                                                                       | Capturing centered overlays and separately owned noncapturing overlays          |
-| `detail.ts`     | `DetailView`, `showDetail`, `Block`, `renderBlocks`, `renderDetail`, `footerRows`, `statusRule`, `TextViewport`, `viewHeight`       | Structured detail content, live loading/results/errors, scrolling               |
-| `explorer.ts`   | `Explorer`, `showExplorer`, `snapshotExplorer`                                                                                      | Snapshot filtering, tabs, badges, markers, status row and lazy detail drilldown |
-| `widget.ts`     | `renderWidget`, `Widget`                                                                                                            | Pure compact heading/body/overflow rendering                                    |
-| `types.ts`      | `UITheme`, `UIColor`, `UIKeys`, `UISurface`, `Title`, `DisposableComponent`                                                         | Narrow SDK collaborators and presentation types                                 |
+| Module          | Exports                                                                                                                                               | Responsibility                                                                  |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `text.ts`       | `sanitizeText`, `sanitizeLine`, `firstPhysicalLine`                                                                                                   | Untrusted plain text normalization; separate trusted-row clipping               |
+| `style.ts`      | `Tone`, `Span`, `Line`, `Badge`, `styleLine`, `styleBadge`, `plainText`, `paint`, `copyLine`, `clip`, `ELLIPSIS`                                      | The single tone → theme mapping and the shared ellipsis                         |
+| `layout.ts`     | `bodyRow`, `splitColumns`, `labeledRule`, `divider`, `layoutPanel`, `fitPanelHeight`, `renderPanel`, `BoundedLines`, `cells`, `titleText`, `ICON_GAP` | Low-level width-aware rows, frames, titles, rules and column fallback           |
+| `icons.ts`      | `ICONS`, `SPINNER`                                                                                                                                    | Shared semantic vocabulary; callers schedule animation                          |
+| `navigation.ts` | `navigationDelta`, `navigationHint`, `formatKey`, `layoutHints`, `hintText`, `Hint`, `HINT_PRIORITY`                                                  | Navigation and prioritized, wrapped footer hints from the same keybindings      |
+| `modal.ts`      | `openModal`, `PassiveOverlay`                                                                                                                         | Capturing centered overlays and separately owned noncapturing overlays          |
+| `detail.ts`     | `DetailView`, `showDetail`, `Block`, `renderBlocks`, `renderDetail`, `footerRows`, `statusRule`, `TextViewport`, `viewHeight`                         | Structured detail content, live loading/results/errors, scrolling               |
+| `explorer.ts`   | `Explorer`, `showExplorer`, `snapshotExplorer`                                                                                                        | Snapshot filtering, tabs, badges, markers, status row and lazy detail drilldown |
+| `widget.ts`     | `renderWidget`, `Widget`                                                                                                                              | Pure compact heading/body/overflow rendering                                    |
+| `types.ts`      | `UITheme`, `UIColor`, `UIKeys`, `UISurface`, `Title`, `DisposableComponent`                                                                           | Narrow SDK collaborators and presentation types                                 |
 
 ## Explorers
 
@@ -221,8 +221,12 @@ factory. `done` and disposal are idempotent; the factory's abort signal ends on
 completion, disposal or failure. Focus, key-release preferences, cursor markers
 and method receivers are retained by the lifecycle wrapper.
 
-Views default to 80% of terminal rows. A direct `DetailView`/`Explorer` constructor
-accepts `heightFraction`. If customizing `overlayOptions.maxHeight`, give the view
+Views take only the rows their content needs, capped at 80% of terminal rows
+(`fitPanelHeight`); the overlay stays centered on whatever height renders. An
+explorer list is sized for its longest tab so filtering and tab switches never
+resize it; an opened detail keeps at least that height and grows to fit its
+content. The footer's `n–m/N lines` position appears only when content scrolls.
+A direct `DetailView`/`Explorer` constructor accepts `heightFraction` for the cap. If customizing `overlayOptions.maxHeight`, give the view
 a matching fraction so its footer fits without renderer cropping.
 
 Use `PassiveOverlay` with the TUI obtained from the host:
@@ -288,6 +292,8 @@ last. Heading metadata is dropped before the title falls back to its label alone
 
 ## Low-level layout
 
+`fitPanelHeight` returns the smallest height (up to a cap) whose layout shows a
+given body plus all header, divider and footer rows.
 `layoutPanel` reserves one body row, then footer rows, then optional header rows,
 then a divider below the header rows (`dividerRows`) when one still fits.
 At widths below seven or heights below three it uses padded unframed rows.

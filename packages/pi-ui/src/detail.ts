@@ -10,6 +10,7 @@ import {
 import {
   cells,
   divider,
+  fitPanelHeight,
   ICON_GAP,
   labeledRule,
   layoutPanel,
@@ -195,6 +196,10 @@ export class TextViewport {
   invalidate(): void {
     this.cached = undefined;
   }
+  /** Physical rows the content wraps to at `width`. */
+  lineCount(width: number): number {
+    return this.lines(width).length;
+  }
   private lines(width: number): readonly string[] {
     width = cells(width);
     if (!width) return [];
@@ -237,7 +242,9 @@ export class TextViewport {
   }
 }
 
+/** Scroll position, or empty when every line is visible (nothing to scroll). */
 export function positionText(position: { start: number; end: number; total: number }): string {
+  if (position.start <= 1 && position.end >= position.total) return "";
   return `${position.start}–${position.end}/${position.total} lines`;
 }
 
@@ -298,11 +305,13 @@ export class DetailView implements Component, Focusable {
     ];
   }
   private geometry() {
-    const height = viewHeight(this.options.tui.terminal.rows, this.options.heightFraction);
-    const { contentWidth } = layoutPanel(this.width, height);
+    const max = viewHeight(this.options.tui.terminal.rows, this.options.heightFraction);
+    const { contentWidth } = layoutPanel(this.width, max);
     // Footer height never depends on the status text, which is always one row.
-    const after = footerRows("", this.hints(), contentWidth, this.options.theme);
-    return { layout: layoutPanel(this.width, height, 0, after.length) };
+    const after = footerRows("", this.hints(), contentWidth, this.options.theme).length;
+    // Take only the rows the content needs, up to the height cap.
+    const height = fitPanelHeight(this.width, max, this.viewport.lineCount(contentWidth), 0, after);
+    return { layout: layoutPanel(this.width, height, 0, after) };
   }
   handleInput(data: string): void {
     if (this.closed) return;

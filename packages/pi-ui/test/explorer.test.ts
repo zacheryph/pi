@@ -141,6 +141,25 @@ describe("Explorer", () => {
     explorer.handleInput("\x1b[Z");
     expect(output(explorer)).toContain("Beta");
   });
+  it("takes only the rows it needs, keeps its size while filtering, and grows for long details", () => {
+    const { explorer } = setup();
+    const height = explorer.render(80).length;
+    expect(height).toBeLessThan(24);
+    explorer.handleInput("z");
+    expect(output(explorer)).toContain("No matching tasks.");
+    expect(explorer.render(80)).toHaveLength(height);
+    explorer.handleInput("\x1b");
+    explorer.handleInput("\x1b[B");
+    explorer.handleInput("\r");
+    expect(output(explorer)).toContain("Beta details");
+    expect(explorer.render(80)).toHaveLength(height);
+    expect(output(explorer)).not.toContain(" lines");
+    explorer.handleInput("\x1b");
+    explorer.handleInput("\x1b[A");
+    explorer.handleInput("\r");
+    expect(explorer.render(80)).toHaveLength(24);
+    expect(output(explorer)).toMatch(/── 1–\d+\/82 lines ──/);
+  });
   it("uses view-level empty text and the noun", () => {
     expect(
       output(setup({ items: [], tabs: undefined, emptyText: "No stash entries." }).explorer),

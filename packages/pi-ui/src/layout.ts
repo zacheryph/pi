@@ -149,6 +149,37 @@ export function layoutPanel(
 }
 
 /**
+ * Smallest height, up to `maxHeight`, whose layout shows every requested header,
+ * divider and footer row plus `bodyRows` of content; `maxHeight` when none does.
+ * Overlays center on their rendered height, so short content gets a short panel.
+ */
+export function fitPanelHeight(
+  width: number,
+  maxHeight: number,
+  bodyRows: number,
+  beforeRows = 0,
+  afterRows = 0,
+): number {
+  maxHeight = cells(maxHeight);
+  const body = Math.max(1, cells(bodyRows)),
+    before = cells(beforeRows),
+    after = cells(afterRows),
+    framed = layoutPanel(width, maxHeight).framed;
+  for (let height = Math.min(maxHeight, body + before + after); height < maxHeight; height++) {
+    const layout = layoutPanel(width, height, before, after);
+    if (
+      layout.framed === framed &&
+      layout.bodyRows >= body &&
+      layout.beforeRows === before &&
+      layout.afterRows === after &&
+      layout.dividerRows === (before ? 1 : 0)
+    )
+      return height;
+  }
+  return maxHeight;
+}
+
+/**
  * All lines are already styled. Title is plain/untrusted and is normalized here.
  * Header rows are followed by a divider when the layout reserved one.
  */
