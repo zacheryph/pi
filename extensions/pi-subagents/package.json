@@ -5,17 +5,16 @@
   "type": "module",
   "exports": {
     ".": {
-      "types": "./dist/public.d.ts",
+      "types": "./src/service/service.ts",
       "default": "./src/service/service.ts"
     },
     "./settings": {
-      "types": "./dist/settings.d.ts",
+      "types": "./src/layered-settings.ts",
       "default": "./src/layered-settings.ts"
     }
   },
   "files": [
     "src",
-    "dist",
     "docs/*.md",
     "docs/architecture",
     "docs/decisions",
@@ -31,7 +30,7 @@
       "default": "./test/*.ts"
     }
   },
-  "description": "A focused, in-process sub-agent core for pi — autonomous agents plus a typed API and lifecycle events other extensions build on. Friendly fork of @tintinweb/pi-subagents.",
+  "description": "A focused, in-process sub-agent core for pi \u2014 autonomous agents plus a typed API and lifecycle events other extensions build on. Friendly fork of @tintinweb/pi-subagents.",
   "author": {
     "name": "Chris Lasher"
   },
@@ -64,8 +63,6 @@
   },
   "scripts": {
     "check": "oxfmt --check . && oxlint --deny-warnings . && npm run typecheck",
-    "build:types": "rolldown -c rolldown.dts.config.mjs",
-    "prepack": "npm run build:types",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
