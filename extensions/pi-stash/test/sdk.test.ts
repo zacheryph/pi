@@ -496,7 +496,7 @@ describe("subagent entries reach ancestors (pi-session-tree)", () => {
     spawn(child, grandchild, "c07e0000-1111-2222");
     // The child's pi-stash is replaced by one that records calls and passes nothing on.
     const adopted: unknown[] = [];
-    provide(child.manager.getSessionId(), "pi-stash", {
+    provide(child.manager.getSessionId(), "stash:service", {
       version: 1,
       adopt: (record: unknown) => {
         adopted.push(record);
@@ -560,7 +560,7 @@ describe("subagent entries reach ancestors (pi-session-tree)", () => {
     spawn(parent, child, "a3f2b1c4-9d8e-4f6a");
     parent.session.dispose(); // session_shutdown withdraws the parent's service
     // A stale instance still registered for the parent throws, as Pi does after a reload.
-    provide(parent.manager.getSessionId(), "pi-stash", {
+    provide(parent.manager.getSessionId(), "stash:service", {
       version: 1,
       adopt: () => {
         throw new Error("This extension ctx is stale");
@@ -582,7 +582,7 @@ describe("subagent entries reach ancestors (pi-session-tree)", () => {
     const parent = await fixture({ store });
     const adopt = service<{ adopt(record: unknown): boolean }>(
       parent.manager.getSessionId(),
-      "pi-stash",
+      "stash:service",
     )!;
     const hash = store.put("x").hash;
     const record = {

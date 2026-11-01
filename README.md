@@ -129,7 +129,7 @@ pi-blackhole memory counts. **Focus** jumps to the session's cmux panel and
 raises cmux. A filter box and opt-in browser notifications (waiting or
 finished sessions) round out the index. Questions the model asks through
 rpiv ask-user (`ask_user_question`) can be answered from the page. pi-todo and pi-stash publish their state as
-`pi-todo:snapshot` / `pi-stash:snapshot` events on the session's `pi.events`
+`pi-todo:snapshot` / `stash:snapshot` events on the session's `pi.events`
 bus for this and other extensions.
 
 The first interactive session starts a detached hub; sessions connect to it
