@@ -4,22 +4,14 @@ import type {
   Theme,
   ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import { visibleWidth } from "@earendil-works/pi-tui";
+import { KeybindingsManager, TUI_KEYBINDINGS, visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 import stashExtension from "#src/index";
 import type { StashRecord } from "#src/state";
-import { StashBrowser, showStashBrowser, type StashPreview } from "#src/ui/browser";
-import {
-  bodyRow,
-  entryRow,
-  formatAge,
-  formatBytes,
-  headerRule,
-  originLabel,
-  previewRows,
-} from "#src/ui/render";
+import { Explorer } from "../../../packages/pi-ui/src/index.ts";
+import { showStashBrowser, stashExplorerView, type StashPreview } from "#src/ui/browser";
+import { formatAge, formatBytes, originLabel, previewRows } from "#src/ui/render";
 
-const plain = { fg: (_token: string, text: string) => text } as Theme;
 // Colors every token so width math must ignore escape sequences.
 const ansi = {
   fg: (_token: string, text: string) => `\x1b[31m${text}\x1b[0m`,
@@ -70,43 +62,10 @@ describe("render helpers", () => {
     ]).toEqual(["30s", "2m", "2h", "2d"]);
   });
 
-  it("pads body rows and blanks them when padding cannot fit", () => {
-    for (const width of WIDTHS) {
-      for (const text of ["plain", ansi.fg("accent", WIDE), ""]) {
-        const row = bodyRow(text, width);
-        expect(visibleWidth(row)).toBe(width);
-        expectPadded(row, width);
-      }
-    }
-    expect(bodyRow("abc", 2)).toBe("  ");
-    expect(strip(bodyRow("abcdef", 5))).toBe(" abc ");
-  });
-
-  it("fits entry rows and header rules at every width with ANSI and wide text", () => {
-    for (const width of WIDTHS) {
-      expect(visibleWidth(entryRow(record(), width, ansi))).toBeLessThanOrEqual(width);
-      expect(visibleWidth(headerRule(WIDE, "3 · 1.2 KB", width, ansi))).toBeLessThanOrEqual(width);
-    }
-    expect(strip(entryRow(record(), 120, ansi))).toMatch(
-      /^stash:auth-findings@3f9a1c2b7d01 — 検索結果😀データ description +12 KB · 340 lines · 1h$/,
-    );
-    expect(headerRule("Stash", "2", 20, plain)).toBe("── Stash ────── 2 ──");
-  });
-
-  it("labels origins and shows them on adopted rows at every width with ANSI and wide text", () => {
+  it("labels origins", () => {
     expect(originLabel(record())).toBe("session-");
     expect(originLabel(record({ agent: "a3f2b1c4-9d8e-4f6a" }))).toBe("agent a3f2b1c4");
     expect(originLabel(record({ agent: "\x1b[2J" }))).toBe("agent ?");
-    const adopted = record({ agent: `${WIDE}-agent`, via: "adopt" });
-    for (const width of WIDTHS) {
-      expect(visibleWidth(entryRow(adopted, width, ansi))).toBeLessThanOrEqual(width);
-      expectPadded(bodyRow(entryRow(adopted, Math.max(0, width - 2), ansi), width), width);
-    }
-    expect(strip(entryRow(record({ agent: "a3f2b1c4-9d8e", via: "adopt" }), 140, ansi))).toMatch(
-      / ↑ agent a3f2b1c4 · 12 KB · 340 lines · 1h$/,
-    );
-    // Only adopted rows name their origin; a session's own entries stay as they were.
-    expect(strip(entryRow(record({ agent: "a3f2b1c4-9d8e" }), 140, ansi))).not.toContain("agent");
   });
 
   it("numbers preview rows and strips control sequences", () => {
@@ -117,7 +76,8 @@ describe("render helpers", () => {
   });
 });
 
-describe("StashBrowser", () => {
+describe("stash explorer", () => {
+  const NOW = Date.now();
   const make = (
     entries: StashRecord[],
     rows = 12,
@@ -127,19 +87,36 @@ describe("StashBrowser", () => {
     })),
   ) => {
     const done = vi.fn();
-    const requestRender = vi.fn();
-    const browser = new StashBrowser({
-      tui: { requestRender, terminal: { rows } },
+    const browser = new Explorer({
+      tui: { requestRender: vi.fn(), terminal: { rows, columns: 80 } },
       theme: ansi,
-      entries,
-      load,
-      warning: "Store is over the cap",
+      keys: new KeybindingsManager(TUI_KEYBINDINGS),
+      view: stashExplorerView(entries, load, "Store is over the cap", NOW),
       done,
     });
     return { browser, done, load };
   };
+  const flush = async () => {
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+  };
 
-  it("lists entries, previews with line numbers, and goes back and closes with Esc", () => {
+  it("maps entries to accent handles, muted descriptions and dim size/age badges", () => {
+    const view = stashExplorerView([record({ agent: "a3f2b1c4-9d8e", via: "adopt" })], vi.fn());
+    expect(view.items[0]).toMatchObject({
+      id: "stash:auth-findings@3f9a1c2b7d01",
+      label: [
+        { text: "stash:auth-findings@3f9a1c2b7d01", tone: "accent" },
+        { text: ` — ${WIDE} \x1b[2Jdescription`, tone: "muted" },
+      ],
+      badge: { text: "↑ agent a3f2b1c4 · 12 KB · 340 lines · 1h" },
+    });
+    // Only adopted rows name their origin; a session's own entries stay as they were.
+    expect(stashExplorerView([record({ agent: "a3f2b1c4" })], vi.fn()).items[0].badge!.text).toBe(
+      "12 KB · 340 lines · 1h",
+    );
+  });
+
+  it("lists entries, previews lazily with line numbers, and goes back and closes with Esc", async () => {
     const load = vi.fn(() => ({
       lines: [`${WIDE} line`, "\x1b]52;c;evil\x07second"],
       note: "Preview stops here",
@@ -151,80 +128,66 @@ describe("StashBrowser", () => {
     );
     const list = browser.render(80).map(strip);
     expect(list[0]).toMatch(/^ ╭─+ Stash ─+╮ $/);
-    expect(list[1]).toContain("Store is over the cap");
-    expect(list[2]).toContain("2 entries · 24 KB");
-    expect(list[3]).toContain("→ stash:auth-findings@3f9a1c2b7d01");
-    expect(list.at(-2)).toContain("Enter details · Esc close");
+    expect(list.join("\n")).toContain("Store is over the cap");
+    expect(list.join("\n")).toContain("24 KB stored on this branch");
+    expect(list.join("\n")).toContain("→ stash:auth-findings@3f9a1c2b7d01");
+    expect(list.join("\n")).toContain("1/2 entries");
+    expect(load).not.toHaveBeenCalled();
     browser.handleInput("\x1b[B");
     browser.handleInput("\r");
+    await flush();
     expect(load).toHaveBeenCalledWith(expect.objectContaining({ name: "second" }));
-    const preview = browser.render(80).map(strip);
-    expect(preview[0]).toMatch(/^ ╭─+ Stash \/ second ─+╮ $/);
-    expect(preview.join("\n")).toContain("Name: second");
-    expect(preview.join("\n")).toContain(`Hash: ${"b".repeat(64)}`);
-    expect(preview.join("\n")).toContain("Description: 検索結果😀データ description");
-    expect(preview.join("\n")).toMatch(/Contents:[^\n]*\n[^\n]*1  検索結果😀データ line/);
-    expect(preview.join("\n")).toContain("2  second");
-    expect(preview.join("\n")).toContain("Preview stops here");
+    const preview = browser.render(80).map(strip).join("\n");
+    // The breadcrumb names the selected entry (its label, clipped to the frame).
+    expect(preview).toMatch(/╭─+ Stash \/ stash:second@b+/);
+    expect(preview).toMatch(/Name +second/);
+    expect(preview).toMatch(/Hash +b{20}/);
+    expect(preview).toMatch(/Description +検索結果😀データ description/);
+    expect(preview).toMatch(/Contents[^\n]*\n[^\n]*1  検索結果😀データ line/);
+    expect(preview).toContain("2  second");
+    expect(preview).not.toContain("evil");
+    expect(preview).toContain("Preview stops here");
     browser.handleInput("\x1b");
     expect(strip(browser.render(80)[0])).toMatch(/Stash/);
     browser.handleInput("\x1b");
     expect(done).toHaveBeenCalledTimes(1);
   });
 
-  it("shows who stored an adopted entry in its details", () => {
-    const load = vi.fn(() => ({ lines: ["x"] }));
+  it("shows who stored an adopted entry in its details", async () => {
     const { browser } = make(
       [
         record({ agent: "a3f2b1c4-9d8e", via: "adopt" }),
         record({ name: "own", hash: "c".repeat(64) }),
       ],
       30,
-      load,
+      vi.fn(() => ({ lines: ["x"] })),
     );
     browser.handleInput("\r");
-    expect(browser.render(80).map(strip).join("\n")).toContain(
-      "Stored by: agent a3f2b1c4 (session session-) · adopted from a subagent",
+    await flush();
+    expect(browser.render(80).map(strip).join("\n")).toMatch(
+      /Stored by +agent a3f2b1c4 \(session session-\) · adopted from a subagent/,
     );
     browser.handleInput("\x1b");
     browser.handleInput("\x1b[B");
     browser.handleInput("\r");
-    expect(browser.render(80).map(strip).join("\n")).toMatch(/Stored by: session- *│/);
+    await flush();
+    expect(browser.render(80).map(strip).join("\n")).toMatch(/Stored by +session- *│/);
   });
 
-  it("stays within width and pads every body row at narrow widths", () => {
+  it("stays within width at narrow widths", async () => {
     for (const view of ["list", "preview"] as const) {
       const { browser } = make([record()], 8);
-      if (view === "preview") browser.handleInput("\r");
-      for (const width of WIDTHS) {
-        const lines = browser.render(width);
-        if (!width) {
-          expect(lines).toEqual([]);
-          continue;
-        }
-        for (const line of lines) expect(visibleWidth(line)).toBeLessThanOrEqual(width);
-        for (const line of lines.slice(1)) expectPadded(line, width);
+      if (view === "preview") {
+        browser.handleInput("\r");
+        await flush();
       }
+      for (const width of WIDTHS)
+        for (const line of browser.render(width))
+          expect(visibleWidth(line)).toBeLessThanOrEqual(width);
     }
   });
 
-  it("bounds rows to the terminal and scrolls the preview", () => {
-    const lines = Array.from({ length: 100 }, (_, i) => `row ${i + 1}`);
-    const { browser } = make(
-      [record()],
-      10,
-      vi.fn(() => ({ lines })),
-    );
-    browser.handleInput("\r");
-    const first = browser.render(40);
-    expect(first.length).toBe(8);
-    browser.handleInput("\x1b[6~");
-    expect(browser.render(40).map(strip).join("\n")).toContain("Description:");
-    browser.handleInput("\x1b[F");
-    expect(browser.render(40).map(strip).join("\n")).toContain("row 100");
-  });
-
-  it("shows an empty state and read errors", () => {
+  it("shows an empty state, and read errors below the metadata", async () => {
     expect(make([]).browser.render(60).map(strip)).toContainEqual(
       expect.stringMatching(/No stash entries on this branch/),
     );
@@ -236,46 +199,31 @@ describe("StashBrowser", () => {
       }),
     );
     browser.handleInput("\r");
-    expect(browser.render(60).map(strip)).toContainEqual(
-      expect.stringMatching(/Unable to read: missing blob/),
-    );
+    await flush();
+    const detail = browser.render(60).map(strip).join("\n");
+    expect(detail).toMatch(/Hash +3f9a1c2b7d01/);
+    expect(detail).toContain("Couldn't read: missing blob");
   });
 
-  it.each(["fullscreen", "regular"] as const)(
-    "opens in the %s renderer like /todo",
-    async (mode) => {
-      const components: { render: (width: number) => string[] }[] = [];
-      type Factory = Parameters<ExtensionContext["ui"]["custom"]>[0];
-      const custom = vi.fn(async (factory: Factory) => {
-        let result: unknown;
-        const component = await factory(
-          {
-            mode,
-            terminal: { rows: 30 },
-            requestRender: vi.fn(),
-          } as unknown as Parameters<Factory>[0],
-          plain as Parameters<Factory>[1],
-          {} as Parameters<Factory>[2],
-          (value) => {
-            result = value;
-          },
-        );
-        components.push(component);
-        return result;
-      });
-      const ctx = { ui: { custom } } as unknown as ExtensionContext;
-      await showStashBrowser(ctx, [record()], () => ({ lines: ["content"] }));
-      expect(custom).toHaveBeenCalledTimes(2);
-      expect(components[0].render(80)).toEqual([]);
-      expect(custom).toHaveBeenLastCalledWith(
-        expect.any(Function),
-        mode === "fullscreen"
-          ? { overlay: true, overlayOptions: { anchor: "center", width: "80%", maxHeight: "80%" } }
-          : { overlay: false },
-      );
-      expect(components[1].render(80).map(strip).join("\n")).toContain("╭");
-    },
-  );
+  it("opens the shared centered overlay and refuses non-interactive modes", async () => {
+    type Factory = Parameters<ExtensionContext["ui"]["custom"]>[0];
+    const custom = vi.fn(async (_factory: Factory, _options?: unknown) => undefined);
+    const notify = vi.fn();
+    await showStashBrowser(
+      { mode: "tui", hasUI: true, ui: { custom, notify } } as unknown as ExtensionContext,
+      [record()],
+      () => ({ lines: ["content"] }),
+    );
+    expect(custom).toHaveBeenCalledOnce();
+    expect(custom.mock.calls[0][1]).toMatchObject({ overlay: true });
+    await showStashBrowser(
+      { mode: "rpc", hasUI: false, ui: { custom, notify } } as unknown as ExtensionContext,
+      [record()],
+      () => ({ lines: ["content"] }),
+    );
+    expect(custom).toHaveBeenCalledOnce();
+    expect(notify).toHaveBeenCalledWith("/stash requires interactive terminal mode.", "warning");
+  });
 });
 
 describe("tool renderers", () => {
