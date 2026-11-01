@@ -133,7 +133,7 @@ describe("piSubagentsWorktrees extension entry", () => {
   it("registers the preserved-worktree command", () => {
     const { pi } = startWithService();
 
-    expect(pi.registerCommand).toHaveBeenCalledWith("subagents-worktrees", expect.any(Object));
+    expect(pi.registerCommand).toHaveBeenCalledWith("subagent:worktrees", expect.any(Object));
   });
 
   it("unregisters the provider on session_shutdown", () => {

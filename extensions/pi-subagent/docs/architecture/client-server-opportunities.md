@@ -112,7 +112,7 @@ Being honest about the constraints the plan itself raises:
 2. **The recursion guard stays pi-subagent's invariant.**
    A subagent session created through the server must still have pi-subagent's three tools stripped, and an operator-joined subagent must not be able to spawn observers of itself in a loop.
 3. **Workspace context must travel in the snapshot.**
-   Subagents can run in a different cwd or git worktree (`pi-subagents-worktrees`).
+   Subagents can run in a different cwd or git worktree (`pi-subagent-worktree`).
    The plan's `SessionSnapshot.cwd` field already accounts for this, so an operator's client renders and interacts in the correct workspace.
 4. **Operator-submitted versus parent-submitted command permissions.**
    Commands an operator joins and submits flow through the subagent's `AgentSession`, so pi-permission-system's in-child gating still applies — but whether an operator's `run bash` or `prompt` should carry a different permission posture than the parent agent's is a genuine open design question, not something to assume.

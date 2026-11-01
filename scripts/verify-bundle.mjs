@@ -63,7 +63,7 @@ try {
     "subagent:sessions",
     "subagent:watch",
     "agent",
-    "subagents-worktrees",
+    "subagent:worktrees",
     "tldr",
     "system:prompt",
     "system:tools",

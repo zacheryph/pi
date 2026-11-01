@@ -1,8 +1,8 @@
 {
-  "name": "@gotgenes/pi-subagents-worktrees",
+  "name": "pi-subagent-worktree",
   "version": "0.3.3",
   "private": true,
-  "description": "Git worktree isolation for @gotgenes/pi-subagents — a WorkspaceProvider that runs subagents in isolated worktrees.",
+  "description": "Git worktree isolation for pi-subagent — a WorkspaceProvider that runs subagents in isolated worktrees.",
   "keywords": [
     "pi-package",
     "pi",

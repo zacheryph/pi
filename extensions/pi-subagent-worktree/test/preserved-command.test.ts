@@ -38,7 +38,7 @@ describe("registerPreservedWorktreesCommand", () => {
 
   it("registers under the package's own command name", () => {
     expect(command.pi.registerCommand).toHaveBeenCalledWith(
-      "subagents-worktrees",
+      "subagent:worktrees",
       expect.objectContaining({ description: expect.any(String) }),
     );
   });

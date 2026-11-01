@@ -1,5 +1,5 @@
 /**
- * pi-subagents-worktrees — git worktree isolation for pi-subagent.
+ * pi-subagent-worktree — git worktree isolation for pi-subagent.
  *
  * Registers a WorkspaceProvider (ADR 0002, Phase 16 Step 3) that runs opted-in
  * subagents in a temporary git worktree. The core consults the provider for

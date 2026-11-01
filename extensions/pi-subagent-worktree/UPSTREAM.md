@@ -77,7 +77,7 @@ would have found the parent's service, which already has a provider and throws.
   service in the real registry; each registers with its own, and the child's
   shutdown leaves the parent's provider in place. Fails against upstream's
   load-time lookup.
-- `scripts/verify-bundle.mjs`: asserts the `/subagents-worktrees` command.
+- `scripts/verify-bundle.mjs`: asserts the `/subagent:worktrees` command.
 
 ## Known gaps
 
@@ -103,3 +103,17 @@ Source, tests, and documentation follow the bundle's formatting and lint rules.
 Private import maps target explicit `.ts` files. Tests use those package-local
 maps instead of a global `#src` alias, which redirected the sibling subagents
 service's imports into this workspace and broke its session-services tests.
+
+## Identifiers
+
+Renamed to this bundle's `resource:name` grammar. The directory and package
+moved from `extensions/pi-subagents-worktrees` (`@gotgenes/pi-subagents-worktrees`)
+to `extensions/pi-subagent-worktree` (`pi-subagent-worktree`), dropping the
+double plural.
+
+- Command: `/subagents-worktrees` became `/subagent:worktrees` (it lists the
+  preserved worktrees, a collection).
+- Settings file: `subagents-worktrees.json` became `subagent-worktree.json`.
+- Diagnostic labels read `pi-subagent-worktree`.
+- The `pi-agent-` worktree and branch prefix is unchanged, so worktrees preserved
+  before the rename are still listed.
