@@ -273,7 +273,7 @@ describe("pi-dashboard extension", () => {
       usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, cost: { total: 0.05 } },
     });
     await fake.emit("session_compact", {}, ctx);
-    fake.publish("subagents:started", {
+    fake.publish("subagent:started", {
       id: "agent-1",
       type: "Explore",
       description: "Find auth files",

@@ -20,7 +20,7 @@ export interface StashRecord {
   source: string;
   /** Stable identity of this version, kept when ancestors adopt it. */
   id?: string;
-  /** pi-subagents agent id of the session that stored it, when that was a subagent. */
+  /** pi-subagent agent id of the session that stored it, when that was a subagent. */
   agent?: string;
   /** `adopt`: journaled here because a descendant stored it. */
   via?: "adopt";

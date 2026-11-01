@@ -19,7 +19,7 @@ export interface TodoUpdate {
   message?: string;
   /** User command; absent for model tool calls. */
   by?: "user";
-  /** pi-subagents agent id, when a subagent made the update through a delegated claim. */
+  /** pi-subagent agent id, when a subagent made the update through a delegated claim. */
   agent?: string;
 }
 

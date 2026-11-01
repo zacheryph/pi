@@ -243,7 +243,7 @@ describe("session cleanup", () => {
     expect(sessionTree().nodes.size).toBe(0);
   });
 
-  it("keeps a linked child's node until pi-subagents reports it disposed", () => {
+  it("keeps a linked child's node until pi-subagent reports it disposed", () => {
     const parent = sessionBus();
     trackChildren(parent.pi);
     parent.bus.emit(CHILD_SESSION_CREATED, {
@@ -278,7 +278,7 @@ describe("trackChildren", () => {
     const parent = sessionBus();
     trackChildren(parent.pi);
 
-    // pi-subagents emits session-created on the parent's bus, then binds the
+    // pi-subagent emits session-created on the parent's bus, then binds the
     // child, whose session_start reads the link.
     parent.bus.emit(CHILD_SESSION_CREATED, {
       sessionId: "child",

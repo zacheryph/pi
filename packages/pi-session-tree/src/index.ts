@@ -8,7 +8,7 @@
  * channel every copy of every extension sees is `globalThis`, so the registry
  * lives there under a versioned `Symbol.for` key.
  *
- * Links come from pi-subagents' `subagents:child:session-created` event, which
+ * Links come from pi-subagent's `subagent:session:created` event, which
  * fires synchronously on the parent's bus before the child binds its
  * extensions. A child's `session_start` handlers therefore always find their
  * parent link.
@@ -17,12 +17,12 @@
 export const SESSION_TREE_KEY = Symbol.for("session-tree:registry");
 export const SESSION_TREE_VERSION = 1;
 
-/** pi-subagents lifecycle channels this registry follows (on the parent's bus). */
-export const CHILD_SESSION_CREATED = "subagents:child:session-created";
-export const CHILD_SESSION_DISPOSED = "subagents:child:disposed";
+/** pi-subagent lifecycle channels this registry follows (on the parent's bus). */
+export const CHILD_SESSION_CREATED = "subagent:session:created";
+export const CHILD_SESSION_DISPOSED = "subagent:session:disposed";
 
 /**
- * What a parent handed a child at spawn (pi-subagents' `handoff`), keyed by the
+ * What a parent handed a child at spawn (pi-subagent's `handoff`), keyed by the
  * extension that reads it; for example pi-todo reads `todos`. Each key's owner
  * validates its own shape.
  */
@@ -37,7 +37,7 @@ export interface SessionNode {
   readonly id: string;
   /** Parent session id; absent for a top-level session. */
   parent?: string;
-  /** pi-subagents record id; stable across resume. */
+  /** pi-subagent record id; stable across resume. */
   agentId?: string;
   handoff?: Handoff;
   services: Map<string, ServiceEntry>;
@@ -241,7 +241,7 @@ function readHandoff(value: unknown): Handoff | undefined {
 }
 
 /**
- * Follow this session's children: link each one as pi-subagents creates it and
+ * Follow this session's children: link each one as pi-subagent creates it and
  * forget it once disposed. Call from the extension factory so the subscription
  * exists before any spawn. Several extensions may call it for the same session;
  * linking is idempotent. Returns the unsubscriber (Pi also drops bus

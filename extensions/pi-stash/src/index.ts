@@ -272,7 +272,7 @@ export default function stashExtension(
   let showCard = false;
   let sessionId: string | undefined;
   let withdraw: (() => void) | undefined;
-  // Link this session's subagents as pi-subagents creates them.
+  // Link this session's subagents as pi-subagent creates them.
   trackChildren(pi);
 
   /**

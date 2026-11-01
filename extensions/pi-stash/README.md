@@ -112,16 +112,16 @@ entry, it hands the entry to its parent's pi-stash, which journals it on its own
 branch (`via: "adopt"`) and hands it to its own parent, and so on up to the root.
 The entry's `id` makes adoption idempotent, so a repeat ends the chain. It then shows up in their `stash_list`,
 `/stash`, index card and `stash:snapshot`, marked with the agent that stored it
-(`↑ agent a3f2b1c4`). Parent links come from pi-subagents' child lifecycle events
+(`↑ agent a3f2b1c4`). Parent links come from pi-subagent's child lifecycle events
 through [`pi-session-tree`](../../packages/pi-session-tree/README.md). Because the
 entry is journaled where it lands, a parent `/tree` back to before the spawn drops it
 like any other entry. A parent that is reloading or gone ends the chain there, and
 every session below it keeps its copy either way. A top-level session's entries stay its own.
 
-The bundled `pi-subagents` lets Explore and Plan call `stash_get` and `stash_list`;
+The bundled `pi-subagent` lets Explore and Plan call `stash_get` and `stash_list`;
 Explore can also call `stash_put` to return large findings as a handle. The
 orchestrator is told to brief workers with handles and ask for large results as
-handles. See [`../pi-subagents/UPSTREAM.md`](../pi-subagents/UPSTREAM.md).
+handles. See [`../pi-subagent/UPSTREAM.md`](../pi-subagent/UPSTREAM.md).
 
 ## Commands
 

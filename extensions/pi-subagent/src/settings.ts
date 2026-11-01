@@ -1,0 +1,570 @@
+// Persistence for pi-subagent operational settings.
+// - Global:  ~/.pi/agent/subagent.json (agentDir injected at construction) — manual defaults, never written here
+// - Project: <cwd>/.pi/subagent.json — written by /agents → Settings; overrides global on load
+
+import { join } from "node:path";
+import {
+  type LayeredSettingsSource,
+  loadLayeredSettings,
+  writeSettingsFile,
+} from "../../../packages/pi-foundations/src/settings.ts";
+import { isBelowMinimumTurns, MIN_MAX_TURNS } from "#src/lifecycle/turn-limits";
+import type { PromptInheritance } from "#src/types";
+
+export type OverlayWidth = "quarter" | "third" | "half" | "two-thirds";
+
+/** Shared settings choices and exact terminal-width fractions for the overlay. */
+export const OVERLAY_WIDTH_PRESETS = {
+  quarter: { label: "Quarter (1/4)", fraction: 1 / 4 },
+  third: { label: "Third (1/3)", fraction: 1 / 3 },
+  half: { label: "Half (1/2)", fraction: 1 / 2 },
+  "two-thirds": { label: "Two-thirds (2/3)", fraction: 2 / 3 },
+} as const satisfies Record<OverlayWidth, { label: string; fraction: number }>;
+
+/** Pi overlay sizing percentages, shared with the overlay controller. */
+export const OVERLAY_WIDTH_PERCENT = {
+  quarter: "25%",
+  third: "33.333%",
+  half: "50%",
+  "two-thirds": "66.667%",
+} as const satisfies Record<OverlayWidth, `${number}%`>;
+
+function isOverlayWidth(value: unknown): value is OverlayWidth {
+  return typeof value === "string" && Object.hasOwn(OVERLAY_WIDTH_PRESETS, value);
+}
+
+export interface SubagentsSettings {
+  /** Overlay width as a fraction of the terminal width. */
+  overlayWidth?: OverlayWidth;
+  /** Fullscreen default visibility only before an explicit show/hide in the current session. */
+  overlayDefaultOpen?: boolean;
+  /** Show provider-emitted thinking in the watch feed; hidden thinking remains bounded and retained. */
+  overlayShowThinking?: boolean;
+  maxConcurrent?: number;
+  /**
+   * 0 = unlimited — the extension's single source of truth for that convention:
+   * `normalizeMaxTurns()` in turn-limits.ts treats 0 → `undefined`, and the
+   * `/agents` → Settings input prompt explicitly says "0 = unlimited".
+   */
+  defaultMaxTurns?: number;
+  /** Turns left when a subagent is warned about its budget. */
+  wrapUpTurns?: number;
+  /**
+   * Load-only marker: a settings file still names the removed `graceTurns`.
+   * `load()` warns and strips it, so it is never applied, emitted, or saved.
+   */
+  legacyGraceTurns?: true;
+  /** Minutes a consumed agent's session is retained after its last relevance event. */
+  consumedSessionRetentionMinutes?: number;
+  /** Minutes an unconsumed agent's session is retained (safety cap). */
+  unconsumedSessionRetentionMinutes?: number;
+  /**
+   * When false, a parent interrupt (ESC) leaves background and queued subagents
+   * running. Foreground agents hold the parent's run signal directly, so they
+   * abort on ESC either way.
+   */
+  abortAllOnInterrupt?: boolean;
+  /**
+   * When false, a background child is not given the `parent_notify` tool, so it
+   * cannot interrupt the parent with a mid-run finding. Ask-back is unaffected.
+   */
+  midRunUpdates?: boolean;
+  /**
+   * Pi package sources whose extensions child sessions must not load, matched
+   * against Pi's configured source string exactly (e.g. `npm:@scope/pkg`).
+   * The package's skills, prompts, and themes stay available to children.
+   */
+  excludedExtensionPackages?: string[];
+  /**
+   * Prompt-inheritance strategy per provider, keyed by the provider id of the
+   * child's resolved model. Every provider not listed inherits `"full"`.
+   * The key is the provider rather than the agent because re-homing is a
+   * property of the transport, and a per-spawn `model` override moves a child
+   * between transports (ADR 0009).
+   */
+  promptInheritance?: Record<string, PromptInheritance>;
+}
+
+/**
+ * The persisted form of the in-memory settings values.
+ * `saveSettings` rewrites the whole project file from this shape, so every key
+ * that must survive a `/subagent:settings` edit has to appear here.
+ */
+export interface SettingsSnapshot {
+  overlayWidth: OverlayWidth;
+  overlayDefaultOpen: boolean;
+  overlayShowThinking: boolean;
+  maxConcurrent: number;
+  defaultMaxTurns: number;
+  wrapUpTurns: number;
+  consumedSessionRetentionMinutes: number;
+  unconsumedSessionRetentionMinutes: number;
+  abortAllOnInterrupt: boolean;
+  midRunUpdates: boolean;
+  /**
+   * Present only when non-empty, so files that never set it gain no noise.
+   * It must round-trip: the key has no `/subagent:settings` affordance, so a
+   * hand-edited value would otherwise be erased by any unrelated setting change.
+   */
+  excludedExtensionPackages?: string[];
+  /** Present only when non-empty, and round-tripped for the same reason. */
+  promptInheritance?: Record<string, PromptInheritance>;
+}
+
+/** Emit callback — a subset of `pi.events.emit` to keep helpers testable. */
+export type SettingsEmit = (event: string, payload: unknown) => void;
+
+const DEFAULT_MAX_CONCURRENT = 4;
+const DEFAULT_WRAP_UP_TURNS = 2;
+const DEFAULT_CONSUMED_RETENTION_MINUTES = 10;
+const DEFAULT_UNCONSUMED_RETENTION_MINUTES = 720;
+const DEFAULT_ABORT_ALL_ON_INTERRUPT = true;
+const DEFAULT_MID_RUN_UPDATES = true;
+const DEFAULT_OVERLAY_WIDTH: OverlayWidth = "third";
+const DEFAULT_OVERLAY_DEFAULT_OPEN = false;
+
+/**
+ * Owns in-memory settings values and their load/save/persist cycle.
+ * Replaces the scattered free-function + SettingsAppliers callback pattern.
+ */
+export class SettingsManager {
+  private _overlayWidth: OverlayWidth = DEFAULT_OVERLAY_WIDTH;
+  private _overlayDefaultOpen: boolean = DEFAULT_OVERLAY_DEFAULT_OPEN;
+  private _overlayShowThinking = true;
+  private _defaultMaxTurns: number | undefined = undefined;
+  private _wrapUpTurns: number = DEFAULT_WRAP_UP_TURNS;
+  private _maxConcurrent: number = DEFAULT_MAX_CONCURRENT;
+  private _consumedSessionRetentionMinutes: number = DEFAULT_CONSUMED_RETENTION_MINUTES;
+  private _unconsumedSessionRetentionMinutes: number = DEFAULT_UNCONSUMED_RETENTION_MINUTES;
+  private _abortAllOnInterrupt: boolean = DEFAULT_ABORT_ALL_ON_INTERRUPT;
+  private _midRunUpdates: boolean = DEFAULT_MID_RUN_UPDATES;
+  private _excludedExtensionPackages: string[] = [];
+  private _promptInheritance: Record<string, PromptInheritance> = {};
+
+  private readonly emit: SettingsEmit;
+  private readonly cwd: string;
+  private readonly agentDir: string;
+  private readonly onMaxConcurrentChanged: (() => void) | undefined;
+
+  constructor(deps: {
+    emit: SettingsEmit;
+    cwd: string;
+    agentDir: string;
+    onMaxConcurrentChanged?: () => void;
+  }) {
+    this.emit = deps.emit;
+    this.cwd = deps.cwd;
+    this.agentDir = deps.agentDir;
+    this.onMaxConcurrentChanged = deps.onMaxConcurrentChanged;
+  }
+
+  get overlayWidth(): OverlayWidth {
+    return this._overlayWidth;
+  }
+
+  /** Applies in fullscreen only, before an explicit show/hide in the current session. */
+  get overlayDefaultOpen(): boolean {
+    return this._overlayDefaultOpen;
+  }
+
+  get overlayShowThinking(): boolean {
+    return this._overlayShowThinking;
+  }
+
+  // ── defaultMaxTurns: 0 or undefined → unlimited (undefined); else at least MIN_MAX_TURNS ──
+
+  get defaultMaxTurns(): number | undefined {
+    return this._defaultMaxTurns;
+  }
+
+  set defaultMaxTurns(n: number | undefined) {
+    if (n == null || n === 0) {
+      this._defaultMaxTurns = undefined;
+    } else {
+      this._defaultMaxTurns = Math.max(MIN_MAX_TURNS, n);
+    }
+  }
+
+  // ── wrapUpTurns: minimum 1 ──
+
+  get wrapUpTurns(): number {
+    return this._wrapUpTurns;
+  }
+
+  set wrapUpTurns(n: number) {
+    this._wrapUpTurns = Math.max(1, n);
+  }
+
+  // ── maxConcurrent: minimum 1 ──
+
+  get maxConcurrent(): number {
+    return this._maxConcurrent;
+  }
+
+  set maxConcurrent(n: number) {
+    this._maxConcurrent = Math.max(1, n);
+  }
+
+  // ── retention windows: clamped to [1, RETENTION_MINUTES_CEILING] minutes ──
+
+  get consumedSessionRetentionMinutes(): number {
+    return this._consumedSessionRetentionMinutes;
+  }
+
+  set consumedSessionRetentionMinutes(n: number) {
+    this._consumedSessionRetentionMinutes = clampRetentionMinutes(n);
+  }
+
+  get unconsumedSessionRetentionMinutes(): number {
+    return this._unconsumedSessionRetentionMinutes;
+  }
+
+  set unconsumedSessionRetentionMinutes(n: number) {
+    this._unconsumedSessionRetentionMinutes = clampRetentionMinutes(n);
+  }
+
+  // ── abortAllOnInterrupt: flipped via toggleAbortAllOnInterrupt(); no normalization ──
+
+  get abortAllOnInterrupt(): boolean {
+    return this._abortAllOnInterrupt;
+  }
+
+  // ── excludedExtensionPackages: hand-edited only; no /subagent:settings affordance ──
+
+  get excludedExtensionPackages(): readonly string[] {
+    return this._excludedExtensionPackages;
+  }
+
+  // ── promptInheritance: hand-edited only; no /subagent:settings affordance ──
+
+  /**
+   * The prompt-inheritance strategy a child on `provider` adopts.
+   *
+   * Unlisted providers, and a child that resolved no model at all, inherit
+   * `"full"` — the default, which changes no existing child's prompt.
+   */
+  promptInheritanceFor(provider: string | undefined): PromptInheritance {
+    if (provider === undefined) return "full";
+    return this._promptInheritance[provider] ?? "full";
+  }
+
+  // ── Lifecycle methods ──
+
+  /**
+   * Load merged settings (global + project), apply to in-memory values,
+   * and emit the `subagent:settings:loaded` lifecycle event.
+   * Returns the raw loaded settings object.
+   */
+  load(): SubagentsSettings {
+    const { legacyGraceTurns, ...settings } = loadSettings(this.agentDir, this.cwd);
+    warnAboutRetiredSettings(settings, legacyGraceTurns === true);
+    if (settings.overlayWidth !== undefined) this._overlayWidth = settings.overlayWidth;
+    if (typeof settings.overlayDefaultOpen === "boolean")
+      this._overlayDefaultOpen = settings.overlayDefaultOpen;
+    if (typeof settings.overlayShowThinking === "boolean")
+      this._overlayShowThinking = settings.overlayShowThinking;
+    if (typeof settings.maxConcurrent === "number") this.maxConcurrent = settings.maxConcurrent;
+    if (typeof settings.defaultMaxTurns === "number")
+      this.defaultMaxTurns = settings.defaultMaxTurns;
+    if (typeof settings.wrapUpTurns === "number") this.wrapUpTurns = settings.wrapUpTurns;
+    if (typeof settings.consumedSessionRetentionMinutes === "number")
+      this.consumedSessionRetentionMinutes = settings.consumedSessionRetentionMinutes;
+    if (typeof settings.unconsumedSessionRetentionMinutes === "number")
+      this.unconsumedSessionRetentionMinutes = settings.unconsumedSessionRetentionMinutes;
+    if (typeof settings.abortAllOnInterrupt === "boolean")
+      this._abortAllOnInterrupt = settings.abortAllOnInterrupt;
+    if (typeof settings.midRunUpdates === "boolean") this._midRunUpdates = settings.midRunUpdates;
+    // Assigned unconditionally: removing the key from disk must clear the value.
+    this._excludedExtensionPackages = [...(settings.excludedExtensionPackages ?? [])];
+    this._promptInheritance = { ...settings.promptInheritance };
+    this.emit("subagent:settings:loaded", { settings });
+    return settings;
+  }
+
+  /**
+   * Snapshot current in-memory values for persistence.
+   * `defaultMaxTurns` uses 0 as the on-disk marker for unlimited (undefined).
+   */
+  snapshot(): SettingsSnapshot {
+    const snapshot: SettingsSnapshot = {
+      overlayWidth: this._overlayWidth,
+      overlayDefaultOpen: this._overlayDefaultOpen,
+      overlayShowThinking: this._overlayShowThinking,
+      maxConcurrent: this._maxConcurrent,
+      defaultMaxTurns: this._defaultMaxTurns ?? 0,
+      wrapUpTurns: this._wrapUpTurns,
+      consumedSessionRetentionMinutes: this._consumedSessionRetentionMinutes,
+      unconsumedSessionRetentionMinutes: this._unconsumedSessionRetentionMinutes,
+      abortAllOnInterrupt: this._abortAllOnInterrupt,
+      midRunUpdates: this._midRunUpdates,
+    };
+    if (this._excludedExtensionPackages.length > 0) {
+      snapshot.excludedExtensionPackages = [...this._excludedExtensionPackages];
+    }
+    if (Object.keys(this._promptInheritance).length > 0) {
+      snapshot.promptInheritance = { ...this._promptInheritance };
+    }
+    return snapshot;
+  }
+
+  /** Set the overlay width preset, persist, and return the toast. */
+  applyOverlayWidth(width: OverlayWidth): { message: string; level: "info" | "warning" } {
+    this._overlayWidth = width;
+    return this.saveAndNotify(`Overlay width set to ${width}`);
+  }
+
+  /** Filter live without discarding retained thinking; existing settings event repaints the overlay. */
+  toggleOverlayShowThinking(): { message: string; level: "info" | "warning" } {
+    this._overlayShowThinking = !this._overlayShowThinking;
+    return this.saveAndNotify(
+      `Overlay thinking: ${this._overlayShowThinking ? "shown" : "hidden"}`,
+    );
+  }
+
+  /** Flip default visibility; explicit session show/hide still takes precedence. */
+  toggleOverlayDefaultOpen(): { message: string; level: "info" | "warning" } {
+    this._overlayDefaultOpen = !this._overlayDefaultOpen;
+    return this.saveAndNotify(
+      `Overlay default visibility: ${this._overlayDefaultOpen ? "shown" : "hidden"} (before explicit show/hide this session)`,
+    );
+  }
+
+  /**
+   * Set maxConcurrent, notify interested parties, persist, and return the toast.
+   * Owns the full consequence chain so callers just say what they want.
+   */
+  applyMaxConcurrent(n: number): { message: string; level: "info" | "warning" } {
+    this.maxConcurrent = n; // setter normalizes: max(1, n)
+    this.onMaxConcurrentChanged?.();
+    return this.saveAndNotify(`Max concurrency set to ${this.maxConcurrent}`);
+  }
+
+  /**
+   * Set defaultMaxTurns, persist, and return the toast.
+   * Pass 0 for unlimited (maps to undefined internally).
+   */
+  applyDefaultMaxTurns(n: number): { message: string; level: "info" | "warning" } {
+    this.defaultMaxTurns = n === 0 ? undefined : n; // setter normalizes further
+    const label = this.defaultMaxTurns == null ? "unlimited" : String(this.defaultMaxTurns);
+    return this.saveAndNotify(`Default max turns set to ${label}`);
+  }
+
+  /**
+   * Set wrapUpTurns, persist, and return the toast.
+   */
+  applyWrapUpTurns(n: number): { message: string; level: "info" | "warning" } {
+    this.wrapUpTurns = n; // setter normalizes: max(1, n)
+    return this.saveAndNotify(`Wrap-up turns set to ${this.wrapUpTurns}`);
+  }
+
+  /** Set the consumed-session retention window (minutes), persist, and return the toast. */
+  applyConsumedSessionRetentionMinutes(n: number): { message: string; level: "info" | "warning" } {
+    this.consumedSessionRetentionMinutes = n; // setter normalizes: clamp [1, ceiling]
+    return this.saveAndNotify(
+      `Consumed-session retention set to ${this.consumedSessionRetentionMinutes} min`,
+    );
+  }
+
+  /** Set the unconsumed-session retention window (minutes), persist, and return the toast. */
+  applyUnconsumedSessionRetentionMinutes(n: number): {
+    message: string;
+    level: "info" | "warning";
+  } {
+    this.unconsumedSessionRetentionMinutes = n; // setter normalizes: clamp [1, ceiling]
+    return this.saveAndNotify(
+      `Unconsumed-session retention set to ${this.unconsumedSessionRetentionMinutes} min`,
+    );
+  }
+
+  /**
+   * Flip whether a parent interrupt (ESC) aborts every subagent, persist, and
+   * return the toast. The manager owns the negation so callers just say "flip it".
+   */
+  toggleAbortAllOnInterrupt(): { message: string; level: "info" | "warning" } {
+    this._abortAllOnInterrupt = !this._abortAllOnInterrupt;
+    return this.saveAndNotify(
+      `Abort all subagents on ESC: ${this._abortAllOnInterrupt ? "on" : "off"}`,
+    );
+  }
+
+  get midRunUpdates(): boolean {
+    return this._midRunUpdates;
+  }
+
+  /**
+   * Flip whether a background child may interrupt the parent with a mid-run
+   * update, persist, and return the toast.
+   */
+  toggleMidRunUpdates(): { message: string; level: "info" | "warning" } {
+    this._midRunUpdates = !this._midRunUpdates;
+    return this.saveAndNotify(
+      `Mid-run updates from background subagents: ${this._midRunUpdates ? "on" : "off"}`,
+    );
+  }
+
+  /**
+   * Persist the current snapshot, emit `subagent:settings:changed`,
+   * and return the toast the UI should display.
+   */
+  saveAndNotify(successMsg: string): { message: string; level: "info" | "warning" } {
+    const snap = this.snapshot();
+    const persisted = saveSettings(snap, this.cwd);
+    this.emit("subagent:settings:changed", { settings: snap, persisted });
+    return persistToastFor(successMsg, persisted);
+  }
+}
+
+// Sanity ceilings — prevent hand-edited configs from asking for values that
+// make no operational sense (e.g. 1e6 concurrent subagents). Permissive enough
+// that any realistic power-user setting passes through.
+const MAX_CONCURRENT_CEILING = 1024;
+const MAX_TURNS_CEILING = 10_000;
+const WRAP_UP_TURNS_CEILING = 1_000;
+// Retention windows: 1 minute floor, two-week ceiling (60 * 24 * 14).
+const RETENTION_MINUTES_CEILING = 20_160;
+
+/** Clamp a retention window to [1, RETENTION_MINUTES_CEILING] minutes. */
+function clampRetentionMinutes(n: number): number {
+  return Math.min(RETENTION_MINUTES_CEILING, Math.max(1, n));
+}
+
+/** True when a value is an integer minute count within the accepted retention range. */
+function isRetentionMinutes(n: unknown): n is number {
+  return Number.isInteger(n) && (n as number) >= 1 && (n as number) <= RETENTION_MINUTES_CEILING;
+}
+
+/**
+ * Tell the operator about settings this version reads differently, so a value
+ * that stopped meaning what they wrote does not change behavior silently.
+ */
+function warnAboutRetiredSettings(settings: SubagentsSettings, hasGraceTurns: boolean): void {
+  if (hasGraceTurns) {
+    console.warn(
+      `[pi-subagent] graceTurns was removed; set wrapUpTurns (turns left when a subagent is warned, default ${DEFAULT_WRAP_UP_TURNS}) instead.`,
+    );
+  }
+  if (isBelowMinimumTurns(settings.defaultMaxTurns)) {
+    console.warn(
+      `[pi-subagent] defaultMaxTurns ${settings.defaultMaxTurns} is below the minimum of ${MIN_MAX_TURNS}; using ${MIN_MAX_TURNS}.`,
+    );
+  }
+}
+
+/** Drop fields that don't match the expected shape. Silent — garbage becomes absent. */
+function sanitize(raw: unknown): SubagentsSettings {
+  if (!raw || typeof raw !== "object") return {};
+  const r = raw as Record<string, unknown>;
+  const out: SubagentsSettings = {};
+  if (isOverlayWidth(r.overlayWidth)) out.overlayWidth = r.overlayWidth;
+  if (typeof r.overlayDefaultOpen === "boolean") out.overlayDefaultOpen = r.overlayDefaultOpen;
+  if (typeof r.overlayShowThinking === "boolean") out.overlayShowThinking = r.overlayShowThinking;
+  if (
+    Number.isInteger(r.maxConcurrent) &&
+    (r.maxConcurrent as number) >= 1 &&
+    (r.maxConcurrent as number) <= MAX_CONCURRENT_CEILING
+  ) {
+    out.maxConcurrent = r.maxConcurrent as number;
+  }
+  if (
+    Number.isInteger(r.defaultMaxTurns) &&
+    (r.defaultMaxTurns as number) >= 0 &&
+    (r.defaultMaxTurns as number) <= MAX_TURNS_CEILING
+  ) {
+    out.defaultMaxTurns = r.defaultMaxTurns as number;
+  }
+  if (
+    Number.isInteger(r.wrapUpTurns) &&
+    (r.wrapUpTurns as number) >= 1 &&
+    (r.wrapUpTurns as number) <= WRAP_UP_TURNS_CEILING
+  ) {
+    out.wrapUpTurns = r.wrapUpTurns as number;
+  }
+  if ("graceTurns" in r) {
+    out.legacyGraceTurns = true;
+  }
+  if (isRetentionMinutes(r.consumedSessionRetentionMinutes)) {
+    out.consumedSessionRetentionMinutes = r.consumedSessionRetentionMinutes;
+  }
+  if (isRetentionMinutes(r.unconsumedSessionRetentionMinutes)) {
+    out.unconsumedSessionRetentionMinutes = r.unconsumedSessionRetentionMinutes;
+  }
+  if (typeof r.abortAllOnInterrupt === "boolean") {
+    out.abortAllOnInterrupt = r.abortAllOnInterrupt;
+  }
+  if (typeof r.midRunUpdates === "boolean") {
+    out.midRunUpdates = r.midRunUpdates;
+  }
+  if (Array.isArray(r.excludedExtensionPackages)) {
+    const sources = r.excludedExtensionPackages
+      .filter((value): value is string => typeof value === "string")
+      .map((value) => value.trim())
+      .filter(Boolean);
+    out.excludedExtensionPackages = [...new Set(sources)];
+  }
+  const promptInheritance = sanitizePromptInheritance(r.promptInheritance);
+  if (promptInheritance) {
+    out.promptInheritance = promptInheritance;
+  }
+  return out;
+}
+
+/**
+ * Keep only provider entries naming a known strategy, absent when none survive.
+ *
+ * Settings arrive from JSON, where the declared types are aspirations, so the
+ * strategy is checked at run time rather than trusted.
+ */
+function sanitizePromptInheritance(raw: unknown): Record<string, PromptInheritance> | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const rules: Record<string, PromptInheritance> = {};
+  for (const [provider, strategy] of Object.entries(raw as Record<string, unknown>)) {
+    if (strategy === "full" || strategy === "portable") {
+      rules[provider] = strategy;
+    }
+  }
+  return Object.keys(rules).length > 0 ? rules : undefined;
+}
+
+function projectPath(cwd: string): string {
+  return join(cwd, ".pi", "subagent.json");
+}
+
+/** Load merged settings: global provides defaults, project overrides. */
+export function loadSettings(agentDir: string, cwd: string): SubagentsSettings {
+  return loadLayeredSettings({
+    agentDir,
+    cwd,
+    filename: "subagent.json",
+    sanitize,
+    warnLabel: "pi-subagent",
+  } satisfies LayeredSettingsSource<SubagentsSettings>);
+}
+
+/**
+ * Write project-local settings. Global is never touched from code.
+ * Returns `true` on success, `false` if the write (or mkdir) failed so the
+ * caller can surface a warning — persistence isn't fatal but isn't silent.
+ */
+export function saveSettings(s: SubagentsSettings, cwd: string = process.cwd()): boolean {
+  const path = projectPath(cwd);
+  try {
+    writeSettingsFile(path, s);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Format the user-facing toast for a settings mutation. Pure function —
+ * routes the success/failure of `saveSettings` into the right message + level
+ * so the UI layer (index.ts) stays a thin wire between input and notification.
+ */
+export function persistToastFor(
+  successMsg: string,
+  persisted: boolean,
+): { message: string; level: "info" | "warning" } {
+  return persisted
+    ? { message: successMsg, level: "info" }
+    : { message: `${successMsg} (session only; failed to persist)`, level: "warning" };
+}

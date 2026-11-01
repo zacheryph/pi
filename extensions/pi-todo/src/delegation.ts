@@ -212,7 +212,7 @@ const errorText = (error: unknown) => (error instanceof Error ? error.message : 
  * find this session's claim and route the todo tool to the parent's broker.
  */
 export function createTodoDelegation(pi: ExtensionAPI, host: DelegationHost) {
-  // Link this session's subagents as pi-subagents creates them.
+  // Link this session's subagents as pi-subagent creates them.
   trackChildren(pi);
   const pending = new Map<string, { handoff: TodoHandoff; at: number }>();
   /** Last claim of each ended agent, for a resume. */
@@ -305,7 +305,7 @@ export function createTodoDelegation(pi: ExtensionAPI, host: DelegationHost) {
   };
 
   pi.on("tool_call", (event) => {
-    if (event.toolName !== "subagent") return undefined;
+    if (event.toolName !== "subagent_start") return undefined;
     const handoff = readTodoHandoff((event.input as Record<string, unknown> | undefined)?.handoff);
     if (handoff === undefined) return undefined;
     if (typeof handoff === "string") return { block: true, reason: handoff };
@@ -325,7 +325,7 @@ export function createTodoDelegation(pi: ExtensionAPI, host: DelegationHost) {
     if (event.isError) pending.delete(event.toolCallId);
   });
 
-  pi.events.on("subagents:child:session-created", (data) => {
+  pi.events.on("subagent:session:created", (data) => {
     const raw = (data ?? {}) as Record<string, unknown>;
     const agent = typeof raw.agentId === "string" ? raw.agentId : undefined;
     const session = typeof raw.sessionId === "string" ? raw.sessionId : undefined;
@@ -367,23 +367,23 @@ export function createTodoDelegation(pi: ExtensionAPI, host: DelegationHost) {
     const status = (data as { status?: unknown } | undefined)?.status;
     return typeof status === "string" ? status : "completed";
   };
-  pi.events.on("subagents:completed", (data) => {
+  pi.events.on("subagent:completed", (data) => {
     const agent = agentOf(data);
     if (agent) release(agent, statusOf(data));
   });
-  pi.events.on("subagents:failed", (data) => {
+  pi.events.on("subagent:failed", (data) => {
     const agent = agentOf(data);
     if (agent) release(agent, "failed");
   });
-  pi.events.on("subagents:resumed", (data) => {
+  pi.events.on("subagent:resumed", (data) => {
     const agent = agentOf(data);
     if (agent) release(agent, statusOf(data));
   });
-  pi.events.on("subagents:child:disposed", (data) => {
+  pi.events.on("subagent:session:disposed", (data) => {
     const agent = agentOf(data);
     if (agent) release(agent, "ended");
   });
-  pi.events.on("subagents:resuming", (data) => {
+  pi.events.on("subagent:resuming", (data) => {
     const agent = agentOf(data);
     const last = agent ? ended.get(agent) : undefined;
     if (!agent || !last || host.claims().has(agent)) return;

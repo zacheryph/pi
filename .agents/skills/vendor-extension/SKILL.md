@@ -10,7 +10,7 @@ submodule, no nested `.git`, no npm runtime dependency. Every one has an
 `UPSTREAM.md` that records where it came from and every local change. Examples:
 `extensions/pi-job/UPSTREAM.md` (unchanged import),
 `extensions/pi-todo/UPSTREAM.md` (engine kept, UI replaced),
-`extensions/pi-subagents/UPSTREAM.md` (heavily customised fork).
+`extensions/pi-subagent/UPSTREAM.md` (heavily customised fork).
 
 ## Rules
 

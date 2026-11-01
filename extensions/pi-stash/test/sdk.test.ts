@@ -428,9 +428,9 @@ describe("pi-stash in a real AgentSession (offline faux provider)", () => {
 
 describe("subagent entries reach ancestors (pi-session-tree)", () => {
   type Fixture = Awaited<ReturnType<typeof fixture>>;
-  /** What pi-subagents emits on the parent's bus before the child binds. */
+  /** What pi-subagent emits on the parent's bus before the child binds. */
   const spawn = (parent: Fixture, child: Fixture, agentId: string) =>
-    parent.bus.emit("subagents:child:session-created", {
+    parent.bus.emit("subagent:session:created", {
       sessionId: child.manager.getSessionId(),
       parentSessionId: parent.manager.getSessionId(),
       agentId,

@@ -74,14 +74,14 @@ pi-personal/
 │   ├── pi-stash/
 │   │   ├── src/index.ts                 # stash_* tools + /stash commands
 │   │   └── test/
-│   ├── pi-subagents/                    # vendored fork
-│   │   ├── src/index.ts                 # subagent tools + /subagents:* commands
+│   ├── pi-subagent/                     # vendored fork
+│   │   ├── src/index.ts                 # subagent tools + /subagent:* commands
 │   │   ├── test/
 │   │   ├── docs/
 │   │   ├── LICENSE
 │   │   └── UPSTREAM.md
-│   ├── pi-subagents-worktrees/          # vendored
-│   │   ├── src/index.ts                 # worktree WorkspaceProvider + /subagents-worktrees
+│   ├── pi-subagent-worktree/            # vendored
+│   │   ├── src/index.ts                 # worktree WorkspaceProvider + /subagent:worktrees
 │   │   ├── test/
 │   │   └── UPSTREAM.md
 │   ├── pi-system-insights/
@@ -179,7 +179,7 @@ also stash large findings. `/stash` browses entries and `/stash:gc` expires unus
 Stashed text is plaintext on local disk and is not redacted. See
 [extension docs](extensions/pi-stash/README.md).
 
-### pi-subagents
+### pi-subagent
 
 The built-in `orchestrator` profile manages long-running projects with categorized
 todos, specialist delegation, and follow-ups in prior workers' sessions. Use
@@ -191,10 +191,10 @@ checks, judges each acceptance criterion with evidence, and reports
 completes an implementation task only after a reviewer that did not do the work
 passes it.
 
-Personal copy of [`gotgenes/pi-packages/packages/pi-subagents`](https://github.com/gotgenes/pi-packages/tree/main/packages/pi-subagents).
-Provides `subagent`, `get_subagent_result`, and `steer_subagent`, plus
-`/subagents:settings`, `/subagents:sessions`, `/subagents:watch`, and
-`/subagents:agents` (read-only browser for agent definitions).
+Personal copy of [`gotgenes/pi-packages/packages/pi-subagent`](https://github.com/gotgenes/pi-packages/tree/main/packages/pi-subagent).
+Provides `subagent_start`, `subagent_get`, and `subagent_steer`, plus
+`/subagent:settings`, `/subagent:sessions`, `/subagent:watch`, and
+`/agent` (read-only browser for agent definitions).
 
 Background agents use a compact widget above Pi's editor:
 
@@ -210,27 +210,27 @@ Each agent occupies one row, with task identity left and activity/outcome right.
 Model/token/turn stats remain in tool results, not the widget. Finished agents keep
 upstream linger behavior. Short terminals collapse overflow into a `+N more` row.
 
-In Pi fullscreen mode, `Ctrl+Alt+S` or `/subagents:watch` toggles a passive
+In Pi fullscreen mode, `Ctrl+Alt+S` or `/subagent:watch` toggles a passive
 right-side watch overlay. It tails assistant text and compact tool summaries in
 stacked agent sections, without taking editor focus or changing agent execution.
-It starts closed. `/subagents:settings` selects quarter, third (default), half, or
+It starts closed. `/subagent:settings` selects quarter, third (default), half, or
 two-thirds width and default visibility. Explicit show/hide wins for the current
 session, including later agent runs. Regular mode keeps the compact widget only:
 Pi 1.1.0 overlays can contaminate terminal scrollback there.
 
 Custom agents are read from `.pi/agents/<name>.md` in the project where Pi runs, or
 `~/.pi/agent/agents/<name>.md`; they are not definitions inside this bundle.
-See [upstream README](extensions/pi-subagents/README.md),
-[configuration](extensions/pi-subagents/docs/configuration.md), and
-[provenance/local changes](extensions/pi-subagents/UPSTREAM.md).
+See [upstream README](extensions/pi-subagent/README.md),
+[configuration](extensions/pi-subagent/docs/configuration.md), and
+[provenance/local changes](extensions/pi-subagent/UPSTREAM.md).
 
-### pi-subagents-worktrees
+### pi-subagent-worktree
 
 Runs opted-in subagent types in a temporary git worktree, so parallel
 implementation workers never edit the same checkout. Vendored from
-[`gotgenes/pi-packages`](extensions/pi-subagents-worktrees/UPSTREAM.md). List the
-agent types to isolate in `~/.pi/agent/subagents-worktrees.json` or the project's
-`.pi/subagents-worktrees.json`:
+[`gotgenes/pi-packages`](extensions/pi-subagent-worktree/UPSTREAM.md). List the
+agent types to isolate in `~/.pi/agent/subagent-worktree.json` or the project's
+`.pi/subagent-worktree.json`:
 
 ```json
 { "worktreeAgents": ["general-purpose"] }
@@ -240,10 +240,10 @@ A child that changes nothing leaves no trace. A child with changes has them
 committed to a `pi-agent-<id>` branch, and its result says how to merge it. A
 failed cleanup leaves the worktree on disk instead of deleting work; session
 start warns about such worktrees and about unmerged `pi-agent-` branches, and
-`/subagents-worktrees` lists preserved worktrees and removes one after
+`/subagent:worktrees` lists preserved worktrees and removes one after
 confirmation. Without a config file nothing is isolated. Do not also install
 `npm:@gotgenes/pi-subagents-worktrees`. See the
-[upstream README](extensions/pi-subagents-worktrees/README.md).
+[upstream README](extensions/pi-subagent-worktree/README.md).
 
 ### pi-system-insights
 
@@ -285,7 +285,7 @@ unreviewed messages. Commands: `/todo:add`, `/todo:update`, `/todo:remove`,
 Settings layer global `todo.json` with project `.pi/todo.json`.
 
 A parent hands tasks to a subagent with `handoff: { todo: { keys } }` on its
-`subagent` call. The spawn is blocked if a key is unknown, completed or already
+`subagent_start` call. The spawn is blocked if a key is unknown, completed or already
 handed out. The subagent then sees and updates only those tasks, directly in the
 parent's list (shown as `→ agent a3f2b1c4`). The claim is released when the agent ends.
 
@@ -420,7 +420,7 @@ Public API type exports reference TypeScript source directly; no declaration bui
 To work on one extension without other configured extensions:
 
 ```bash
-pi --no-extensions -e ./extensions/pi-subagents/src/index.ts
+pi --no-extensions -e ./extensions/pi-subagent/src/index.ts
 ```
 
 ### Add another extension
@@ -432,7 +432,7 @@ To copy a third-party extension into the repository, use the
 
 ## License
 
-Vendored subagents code retains its upstream [MIT license](extensions/pi-subagents/LICENSE).
+Vendored subagents code retains its upstream [MIT license](extensions/pi-subagent/LICENSE).
 Vendored todo engine retains its upstream [MIT license](extensions/pi-todo/LICENSE).
 Vendored jobs code retains its upstream [MIT license](extensions/pi-job/LICENSE).
-Vendored worktrees code retains its upstream [MIT license](extensions/pi-subagents-worktrees/LICENSE).
+Vendored worktrees code retains its upstream [MIT license](extensions/pi-subagent-worktree/LICENSE).

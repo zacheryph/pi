@@ -10,7 +10,7 @@ build on it.
 
 ## Why `globalThis`
 
-pi-subagents runs every subagent as a full in-process Pi session:
+pi-subagent runs every subagent as a full in-process Pi session:
 
 |                                 | Scope                                                                                                                                                           |
 | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -25,15 +25,15 @@ A value of another shape under that key is replaced, not trusted.
 
 ## Links
 
-pi-subagents emits `subagents:child:session-created { sessionId, parentSessionId,
+pi-subagent emits `subagent:session:created { sessionId, parentSessionId,
 agentId, toolCallId?, handoff? }` synchronously on the **parent's** bus, before the
-child binds its extensions, and `subagents:child:disposed { sessionId, ... }` after
+child binds its extensions, and `subagent:session:disposed { sessionId, ... }` after
 the child shut down.
 `trackChildren(pi)` follows both, so a child's `session_start` handlers always
 find their parent link. Call it from the extension factory, so the subscription
 exists before any spawn. Calling it from several extensions is harmless.
 
-Do not use the child's `header.parentSession` instead: pi-subagents writes a
+Do not use the child's `header.parentSession` instead: pi-subagent writes a
 session id there, but Pi writes a file path there for forks.
 
 ## Services
@@ -88,7 +88,7 @@ for (const id of ancestors(childSessionId)) {
   error result, because it cannot check it synchronously.
 - A top-level session's node is removed when its last service is withdrawn,
   because no child-disposed event will ever arrive for it. A linked child's node
-  stays until `subagents:child:disposed`, so its parent link and handoff survive
+  stays until `subagent:session:disposed`, so its parent link and handoff survive
   the gap between the child's `session_shutdown` and its disposal.
 - `appendEntry` on the receiving session's own `pi` is safe even while that
   session is mid-turn. It appends at the current leaf, which pi-stash and
@@ -97,13 +97,13 @@ for (const id of ancestors(childSessionId)) {
 Navigation: `parentOf`, `ancestors` (nearest first), `root`, `children`,
 `descendants` (breadth first), `node` (with the child's `agentId` and `handoff`).
 
-When pi-subagents' parent session shuts down for any reason, including
+When pi-subagent's parent session shuts down for any reason, including
 `/reload`, it aborts and disposes every child. So every ancestor of a live
 session is itself live.
 
 ## Importing
 
-Extensions import the source by relative path, as they do for pi-subagents'
+Extensions import the source by relative path, as they do for pi-subagent'
 vendored service. Node subpath `imports` cannot point outside a package, and a
 Git-installed bundle does not link workspaces. `test/sdk.test.ts` loads two
 fixture extensions through Pi's real loader to check that the relative import

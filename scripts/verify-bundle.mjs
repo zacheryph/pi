@@ -42,9 +42,9 @@ try {
   assert.equal(new Set(tools).size, tools.length, "Tool names must be unique");
   assert.equal(new Set(commands).size, commands.length, "Command names must be unique");
   for (const name of [
-    "subagent",
-    "get_subagent_result",
-    "steer_subagent",
+    "subagent_start",
+    "subagent_get",
+    "subagent_steer",
     "todo_list",
     "todo_upsert",
     "todo_replace",
@@ -63,11 +63,11 @@ try {
   }
   for (const name of [
     "job",
-    "subagents:settings",
-    "subagents:sessions",
-    "subagents:watch",
-    "subagents:agents",
-    "subagents-worktrees",
+    "subagent:settings",
+    "subagent:sessions",
+    "subagent:watch",
+    "agent",
+    "subagent:worktrees",
     "tldr",
     "system:prompt",
     "system:tools",

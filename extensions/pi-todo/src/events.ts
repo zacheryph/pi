@@ -28,7 +28,7 @@ export interface TodoSnapshotTask {
   updates: TodoUpdate[];
   /** Messages the user has not reviewed yet. */
   unreviewed: number;
-  /** pi-subagents agent id of the subagent this task is handed to, if any. */
+  /** pi-subagent agent id of the subagent this task is handed to, if any. */
   claimedBy?: string;
 }
 

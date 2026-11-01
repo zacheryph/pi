@@ -159,11 +159,11 @@ the outcome to its task, and review tracking keeps it flagged until you have see
 
 ## Handing tasks to subagents
 
-A parent can hand specific tasks to a subagent through pi-subagents' generic spawn
+A parent can hand specific tasks to a subagent through pi-subagent's generic spawn
 `handoff`, under the `todo` key that pi-todo owns:
 
 ```ts
-subagent({
+subagent_start({
   subagent_type: "general-purpose",
   description: "Audit auth",
   prompt: "…",
@@ -171,12 +171,12 @@ subagent({
 });
 ```
 
-- **Checked before the spawn.** pi-todo's `tool_call` handler blocks the `subagent`
+- **Checked before the spawn.** pi-todo's `tool_call` handler blocks the `subagent_start`
   call, with a reason, when a key is unknown, already completed, or held by another
   subagent. A call that passes reserves its keys, so two spawns in one turn cannot
   take the same task. A malformed `handoff.todo` is blocked too.
-- **Claimed before the child starts.** When pi-subagents reports the child session
-  (`subagents:child:session-created`, with its agent id and the same tool call id), the
+- **Claimed before the child starts.** When pi-subagent reports the child session
+  (`subagent:session:created`, with its agent id and the same tool call id), the
   parent journals a claim in `todo:claim` entries. Claims follow the branch like
   review marks; the plan state engine is unchanged.
 - **The subagent works in your list.** Its todo tools, context snapshot and widget
@@ -195,14 +195,14 @@ subagent({
   in history), and its messages are flagged for review like any model message. Your
   widget and browser show `→ agent a3f2b1c4` on handed-over tasks; `todo:snapshot`
   tasks carry `claimedBy`.
-- **Released when the agent ends.** On `subagents:completed`, `failed`, `resumed` or
+- **Released when the agent ends.** On `subagent:completed`, `failed`, `resumed` or
   `child:disposed`, the claim is released and tasks it left `in_progress` get a
   flagged message ("agent a3f2b1c4 ended (failed) with this task in progress"). A
   resume reclaims the agent's tasks that nobody else holds. Claims replayed at a later
   session start are released, since no subagent survives one.
 - You can still edit any task yourself, handed over or not.
 - A subagent working on handed-over tasks cannot hand them on to its own subagents
-  yet; that `subagent` call is blocked. Without a handoff, a subagent keeps its own
+  yet; that `subagent_start` call is blocked. Without a handoff, a subagent keeps its own
   separate list as before.
 
 ## UI
