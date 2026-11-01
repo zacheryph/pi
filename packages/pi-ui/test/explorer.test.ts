@@ -141,7 +141,7 @@ describe("Explorer", () => {
     explorer.handleInput("\x1b[Z");
     expect(output(explorer)).toContain("Beta");
   });
-  it("keeps the full height and hides the status row while a detail shows every line", () => {
+  it("keeps the full height and blanks the status row while a detail shows every line", () => {
     const { explorer } = setup();
     const rules = () => output(explorer).match(/│ ─{10,} │/g) ?? [];
     expect(explorer.render(80)).toHaveLength(24);
@@ -149,7 +149,7 @@ describe("Explorer", () => {
     explorer.handleInput("\r");
     expect(explorer.render(80)).toHaveLength(24);
     expect(output(explorer)).toContain("Beta details");
-    // Only the header divider remains; the hints follow the body directly.
+    // Only the header divider remains; a blank row separates the body from the hints.
     expect(rules()).toHaveLength(1);
     expect(output(explorer)).toMatch(/│ +│ \n │ Esc back/);
     explorer.handleInput("\x1b");

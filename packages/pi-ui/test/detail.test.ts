@@ -135,7 +135,7 @@ describe("DetailView", () => {
     view.setTitle("late");
     expect(tui.requestRender).toHaveBeenCalledTimes(requests);
   });
-  it("takes only the rows short content needs and drops the status row when all of it is shown", () => {
+  it("takes only the rows short content needs and blanks the status row when all of it is shown", () => {
     const view = new DetailView({
       tui: surface(30),
       theme,
@@ -145,11 +145,12 @@ describe("DetailView", () => {
       done: vi.fn(),
     });
     const rows = view.render(60);
-    // Frame 2 + body 3 + hints 1: no header divider, so no bare footer divider either.
-    expect(rows).toHaveLength(6);
+    // Frame 2 + body 3 + blank status row 1 + hints 1: no header divider, so no
+    // bare footer divider either, but a blank row keeps the hints off the content.
+    expect(rows).toHaveLength(7);
     expect(plain(rows)).not.toContain("lines");
     expect(plain(rows)).not.toMatch(/│ ─+ │/);
-    expect(plain(rows)).toMatch(/│ three +│ \n │ Esc close/);
+    expect(plain(rows)).toMatch(/│ three +│ \n │ +│ \n │ Esc close/);
     view.setContent(text);
     expect(view.render(60)).toHaveLength(24);
     expect(plain(view.render(60))).toContain("── 1–20/80 lines ──");

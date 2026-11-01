@@ -225,8 +225,9 @@ Explorers use 80% of terminal rows. A `DetailView` takes only the rows its
 content needs, capped at the same 80% (`fitPanelHeight`); the overlay stays
 centered on whatever height renders. The footer's `n–m/N lines` status row
 appears only when content scrolls; when every line is visible, a `DetailView`
-and an explorer's item detail drop it entirely, so a panel without a header
-divider shows no bare footer divider either. A direct `DetailView`/`Explorer`
+and an explorer's item detail show a blank row in its place, so a panel without
+a header divider shows no bare footer divider either but the hints keep their
+breathing room. A direct `DetailView`/`Explorer`
 constructor accepts `heightFraction` for the height (the cap, for `DetailView`).
 If customizing `overlayOptions.maxHeight`, give the view
 a matching fraction so its footer fits without renderer cropping.
