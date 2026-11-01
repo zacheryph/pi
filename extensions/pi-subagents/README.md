@@ -277,16 +277,17 @@ Changes persist across pi restarts (see [Persistent Settings](./docs/configurati
 
 Search agent names, status, and descriptions; Enter opens details. All effective
 profiles are listed, including disabled profiles, with project overrides taking
-precedence over global and built-in definitions. Details show name, effective
-fields and source, description, then a separate **Body** heading followed by the
-full multiline instructions. Browsing never launches an agent or changes settings.
+precedence over global and built-in definitions. Details show the name with its
+`[enabled]`/`[disabled]` badge, effective fields and source, then **Description**,
+**Tool guideline** and **Body** sections with the full multiline text. Browsing
+never launches an agent or changes settings.
 
-The viewer follows `pi-system-insights`: centered rounded frame with padding,
-contextual footer help, an 80% fullscreen overlay, and a bounded custom screen in
-regular mode. Arrow keys navigate; PageUp/PageDown and Home/End page or jump;
-fullscreen mouse wheel scrolls. Esc returns from details, clears an active filter,
-or closes; Ctrl+C closes from either view. Non-TUI modes do not open the browser.
-Reopen to refresh the snapshot.
+The viewer is the bundle's shared `packages/pi-ui` explorer: centered rounded
+frame with padding, prioritized footer hints and an 80% overlay in Pi's
+fullscreen TUI (the regular renderer is not supported). Arrow keys navigate;
+PgUp/PgDn and Home/End page or jump; the mouse wheel scrolls. Esc returns from
+details, clears an active filter, or closes; Ctrl+C closes from either view.
+Non-TUI modes do not open the browser. Reopen to refresh the snapshot.
 
 ### `/subagents:watch`
 

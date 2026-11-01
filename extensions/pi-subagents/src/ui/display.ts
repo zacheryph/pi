@@ -9,7 +9,7 @@ import type { ThemeColor } from "@earendil-works/pi-coding-agent";
 import type { AgentConfigLookup } from "#src/config/agent-types";
 import type { TurnBudget } from "#src/lifecycle/turn-limits";
 import type { AgentInvocation, SubagentType } from "#src/types";
-import { GLYPHS } from "#src/ui/glyphs";
+import { ICONS } from "../../../../packages/pi-ui/src/index.ts";
 
 // ---- Types ----
 
@@ -95,7 +95,7 @@ export function formatSessionTokens(
     annot.push(theme.fg(color, `${Math.round(percent)}%`));
   }
   if (compactions > 0) {
-    annot.push(theme.fg("dim", `${GLYPHS.compactions}${compactions}`));
+    annot.push(theme.fg("dim", `${ICONS.compactions}${compactions}`));
   }
   if (annot.length === 0) return tokenStr;
   const sep = theme.fg("dim", " · ");
@@ -105,8 +105,8 @@ export function formatSessionTokens(
 /** Format a turn budget as turns used against the ceiling: "↻5≤30", or "↻5" when unlimited. */
 export function formatTurnBudget(budget: TurnBudget): string {
   return budget.maxTurns != null
-    ? `${GLYPHS.turns}${budget.used}≤${budget.maxTurns}`
-    : `${GLYPHS.turns}${budget.used}`;
+    ? `${ICONS.turns}${budget.used}≤${budget.maxTurns}`
+    : `${ICONS.turns}${budget.used}`;
 }
 
 /** Format milliseconds as human-readable duration. */

@@ -11,7 +11,10 @@ import {
   showAgentsBrowser,
   type AgentsBrowserOptions,
 } from "#src/ui/agents-browser";
-import { ReadOnlyBrowser } from "#src/ui/read-only-browser";
+import { Explorer, renderBlocks, type Block } from "../../../../packages/pi-ui/src/index.ts";
+
+const identity = { fg: (_color: string, text: string) => text, bold: (text: string) => text };
+const plainDetail = (blocks: unknown) => renderBlocks(blocks as Block[], 1000, identity).join("\n");
 
 function agent(overrides: Partial<AgentConfig> = {}): AgentConfig {
   return {
@@ -26,10 +29,12 @@ function agent(overrides: Partial<AgentConfig> = {}): AgentConfig {
 const registry = (config = agent()) =>
   new AgentTypeRegistry(() => new Map([[config.name, config]]));
 const detail = (config = agent(), defaults = {}, options: AgentsBrowserOptions = {}) =>
-  buildAgentsView(registry(config), defaults, options).items.find(
-    (item) => item.id === config.name,
-  )!.detail;
-const field = (text: string, label: string) => new RegExp(`^${label}: +(.+)$`, "m").exec(text)?.[1];
+  plainDetail(
+    buildAgentsView(registry(config), defaults, options).items.find(
+      (item) => item.id === config.name,
+    )!.detail,
+  );
+const field = (text: string, label: string) => new RegExp(`^${label} +(.+)$`, "m").exec(text)?.[1];
 
 describe("effective agent definitions", () => {
   it("sorts built-in and custom agents alphabetically, ignoring case, without changing registry order", () => {
@@ -69,15 +74,14 @@ describe("effective agent definitions", () => {
       "reviewer",
     ]);
     expect(view.items.find((item) => item.label === "Explore")).toMatchObject({
-      status: "disabled",
-      badge: { label: "[disabled]", color: "dim" },
-      description: "First line\nSecond line",
+      badge: { text: "[disabled]", tone: "dim" },
+      search: "disabled First line\nSecond line",
     });
     expect(view.items.find((item) => item.id === "general-purpose")!.badge).toEqual({
-      label: "[enabled]",
-      color: "success",
+      text: "[enabled]",
+      tone: "success",
     });
-    const config = view.items.find((item) => item.label === "Explore")!.detail;
+    const config = plainDetail(view.items.find((item) => item.label === "Explore")!.detail);
     expect(field(config, "Enabled")).toBe("false");
     expect(field(config, "Source")).toBe("project");
     expect(field(config, "Tools")).toBe("(none)");
@@ -99,7 +103,7 @@ describe("effective agent definitions", () => {
       toolGuideline: "Pick auditor for reviews.",
     });
     const text = detail(config);
-    expect(text.split("\n")[0]).toMatch(/^Name: +auditor$/);
+    expect(text.split("\n")[0]).toMatch(/^Name +auditor$/);
     expect(field(text, "Display name")).toBe("Auditor");
     expect(field(text, "Source path")).toBe(config.sourcePath);
     expect(field(text, "Tools")).toBe("read, mcp__github__*");
@@ -110,13 +114,13 @@ describe("effective agent definitions", () => {
     expect(field(text, "Inherit context")).toBe("true");
     expect(field(text, "Run in background")).toBe("false");
     expect(field(text, "Locked")).toBe("model, thinking");
-    expect(field(text, "Tool guideline")).toBe(config.toolGuideline);
     const lines = text.split("\n");
-    const description = lines.findIndex((line) => line.startsWith("Description:"));
+    expect(lines[lines.indexOf("Tool guideline") + 1]).toBe(config.toolGuideline);
+    const description = lines.indexOf("Description");
     const heading = lines.indexOf("Body");
-    expect(description).toBeGreaterThan(lines.findIndex((line) => line.startsWith("Locked:")));
-    expect(lines[description + 1]).toMatch(/^ +Second line$/);
-    expect(heading).toBe(description + 3); // continuation, blank, Body
+    expect(description).toBeGreaterThan(lines.findIndex((line) => line.startsWith("Locked ")));
+    expect(lines.slice(description + 1, description + 3)).toEqual(["First line", "Second line"]);
+    expect(heading).toBeGreaterThan(description);
     expect(lines.slice(heading + 1).join("\n")).toBe(config.systemPrompt);
     expect(lines[heading + 1]).toBe("# Instructions");
     expect(text).not.toMatch(/^Body: +\S/m);
@@ -141,9 +145,9 @@ describe("effective agent definitions", () => {
     expect(field(detail(agent(), { defaultMaxTurns: 1 }), "Max turns")).toBe(
       "2 (configured: 1) (extension default)",
     );
-    const embedded = buildAgentsView(registry()).items.find(
-      (item) => item.id === "general-purpose",
-    )!.detail;
+    const embedded = plainDetail(
+      buildAgentsView(registry()).items.find((item) => item.id === "general-purpose")!.detail,
+    );
     expect(field(embedded, "Source")).toBe("default (embedded)");
     expect(field(embedded, "Source path")).toBe("(embedded)");
   });
@@ -168,9 +172,9 @@ describe("effective agent definitions", () => {
     config.enabled = false;
     config.description = "changed";
     const item = view.items.find((item) => item.id === config.name)!;
-    expect(item.detail).not.toContain("changed");
-    expect(field(item.detail, "Tools")).toBe("read");
-    expect(item.status).toBe("enabled");
+    expect(plainDetail(item.detail)).not.toContain("changed");
+    expect(field(plainDetail(item.detail), "Tools")).toBe("read");
+    expect(item.badge!.text).toBe("[enabled]");
   });
 
   it("preserves body whitespace/literal Markdown, strips unsafe terminal text before alignment", () => {
@@ -282,9 +286,9 @@ describe("effective agent definitions", () => {
     const readFile = vi.fn(() => "ORIGINAL");
     const view = buildAgentsView(registry(config), {}, { readFile });
     readFile.mockReturnValue("EDITED");
-    const item = view.items.find((item) => item.id === config.name)!;
-    expect(item.detail).toContain("ORIGINAL");
-    expect(item.detail).not.toContain("EDITED");
+    const item = plainDetail(view.items.find((item) => item.id === config.name)!.detail);
+    expect(item).toContain("ORIGINAL");
+    expect(item).not.toContain("EDITED");
     expect(readFile).toHaveBeenCalledTimes(1);
   });
 
@@ -303,22 +307,22 @@ describe("effective agent definitions", () => {
       writeFileSync(path, "---\nenabled: false\n---\nProject body");
       const old = new AgentTypeRegistry(() => loadCustomAgents(project));
       const view = buildAgentsView(old);
-      const item = view.items.find((item) => item.id === "Explore")!;
-      expect(field(item.detail, "Source path")).toBe(path);
-      expect(field(item.detail, "Source")).toBe("project");
-      expect(item.detail.endsWith("\nBody\nProject body")).toBe(true);
+      const item = plainDetail(view.items.find((item) => item.id === "Explore")!.detail);
+      expect(field(item, "Source path")).toBe(path);
+      expect(field(item, "Source")).toBe("project");
+      expect(item.endsWith("\nBody\nProject body")).toBe(true);
       writeFileSync(path, "New project body");
       const fresh = new AgentTypeRegistry(() => loadCustomAgents(project));
       expect(
-        buildAgentsView(fresh)
-          .items.find((item) => item.id === "Explore")!
-          .detail.endsWith("\nBody\nNew project body"),
+        plainDetail(
+          buildAgentsView(fresh).items.find((item) => item.id === "Explore")!.detail,
+        ).endsWith("\nBody\nNew project body"),
       ).toBe(true);
       expect(old.resolveAgentConfig("Explore").enabled).toBe(false);
       const global = new AgentTypeRegistry(() => loadCustomAgents(root));
       expect(
         field(
-          buildAgentsView(global).items.find((item) => item.id === "Explore")!.detail,
+          plainDetail(buildAgentsView(global).items.find((item) => item.id === "Explore")!.detail),
           "Source path",
         ),
       ).toBe(join(globalDir, "Explore.md"));
@@ -364,7 +368,7 @@ describe("showAgentsBrowser", () => {
         const components: Awaited<ReturnType<Factory>>[] = [];
         const ui = {
           notify: vi.fn(),
-          custom: vi.fn(async (factory: Factory) => {
+          custom: vi.fn(async (factory: Factory, _options?: unknown) => {
             let result: unknown;
             components.push(
               await factory(
@@ -396,7 +400,7 @@ describe("showAgentsBrowser", () => {
           },
           r,
         );
-        const browser = components[1] as ReadOnlyBrowser;
+        const browser = components[0] as Explorer;
         browser.handleInput("auditor");
         browser.handleInput("\r");
         const text = browser.render(160).join("\n");
@@ -420,7 +424,7 @@ describe("showAgentsBrowser", () => {
     const components: Awaited<ReturnType<Factory>>[] = [];
     const ui = {
       notify: vi.fn(),
-      custom: vi.fn(async (factory: Factory) => {
+      custom: vi.fn(async (factory: Factory, _options?: unknown) => {
         const tui = { mode: "regular", terminal: { rows: 100, columns: 120 }, requestRender() {} };
         let result: unknown;
         components.push(
@@ -443,8 +447,9 @@ describe("showAgentsBrowser", () => {
     await showAgentsBrowser(ctx, r);
     expect(ui.custom).not.toHaveBeenCalled();
     await showAgentsBrowser({ ...ctx, hasUI: true }, r, { defaultMaxTurns: 20 });
-    const browser = components[1] as ReadOnlyBrowser;
-    expect(browser).toBeInstanceOf(ReadOnlyBrowser);
+    expect(ui.custom).toHaveBeenCalledOnce();
+    expect(ui.custom.mock.calls[0][1]).toMatchObject({ overlay: true });
+    const browser = components[0] as Explorer;
     browser.handleInput("auditor");
     browser.handleInput("\r");
     expect(browser.render(120).join("\n")).toContain("20 (extension default)");

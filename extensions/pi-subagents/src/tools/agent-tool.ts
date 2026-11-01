@@ -37,7 +37,7 @@ import {
 } from "#src/tools/spawn-config";
 import type { ParentSessionInfo, Subagent } from "#src/types";
 import { type AgentDetails, getDisplayName, type Theme } from "#src/ui/display";
-import { GLYPHS } from "#src/ui/glyphs";
+import { ICONS } from "../../../../packages/pi-ui/src/index.ts";
 
 // ---- Deps interfaces ----
 
@@ -288,7 +288,7 @@ ${guidelines}
           : "Subagent";
         const desc = (args.description as string | undefined) ?? "";
         return new Text(
-          `${GLYPHS.toolCall} ` +
+          `${ICONS.tool} ` +
             theme.fg("toolTitle", theme.bold(displayName)) +
             (desc ? "  " + theme.fg("muted", desc) : ""),
           0,

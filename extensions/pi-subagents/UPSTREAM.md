@@ -122,10 +122,10 @@ No upstream runtime behavior was intentionally changed during import.
 - `engines.node` raised from `>=22` to `>=24` and `@types/node` to `^24`, matching
   the bundle's supported Node.js version.
 - `vitest` dev dependency raised from `^4.1.11` to `^5.0.5`; no test changes needed.
-- `test/ui/read-only-browser.test.ts`: the `plain()` helper also strips Pi's
-  fake-cursor markers. pi-tui 1.4.0's `Input` wraps its cursor cell in zero-width
-  APC markers that the TUI resolves to the same reverse video 1.1.0 emitted
-  directly, so the rendered output is unchanged.
+- `test/ui/read-only-browser.test.ts` (since removed, see "Shared pi-ui"): the
+  `plain()` helper also stripped Pi's fake-cursor markers. pi-tui 1.4.0's `Input`
+  wraps its cursor cell in zero-width APC markers that the TUI resolves to the
+  same reverse video 1.1.0 emitted directly, so the rendered output is unchanged.
 
 ## Shared compiler and test config
 
@@ -250,3 +250,30 @@ updates the bundle's Git checkout; it does not merge upstream into this vendored
   consumers can load the service through standard package import resolution.
 - Generate public declarations with TypeScript 7 and bundle them with Rolldown;
   no TypeScript 6 compiler API is required.
+
+## Shared pi-ui
+
+UI primitives now come from the bundle's `packages/pi-ui` library instead of
+local copies:
+
+- `src/ui/read-only-browser.ts` (the adapted `pi-system-insights` viewer) is
+  removed. `/subagents:agents` builds an `ExplorerView` and opens it with
+  `showExplorer`; details are structured blocks (fields, then Description, Tool
+  guideline, Body, Fragments and Composed instructions sections). The regular
+  renderer fallback is gone: pi-ui supports Pi's fullscreen TUI only.
+- `src/ui/widget-renderer.ts` keeps ordering, linger, queued counts, budgets and
+  the elapsed/prompt-mode width thresholds, and describes rows as a `WidgetView`
+  for `renderWidget` (overflow groups `running`/`finished`). Status text is
+  pre-clipped to 40% of the row as before.
+- `src/ui/glyphs.ts`, `src/ui/labeled-rule.ts` and `src/ui/bounded-lines.ts` are
+  removed in favor of pi-ui's `ICONS`/`SPINNER`, `labeledRule` and `BoundedLines`
+  (renamed glyphs: `toolCall` → `tool`, `agentsHeading` → `agents`,
+  `agentsActive` → `active`, `agentsIdle` → `idle`).
+- `watchText` and the main-profile notice use pi-ui's `sanitizeText`; lone CR now
+  becomes a line break, tabs expand to four spaces, and an incomplete CSI keeps
+  its parameter bytes as plain text.
+- `src/ui/watch-overlay.ts` owns its passive overlay through `PassiveOverlay`
+  (non-capturing, own handle, hide on width change). Visibility, linger and
+  repaint cadence are unchanged.
+- The `/subagents:sessions` navigator, `/subagents:settings` dialogs and tool/
+  notification renderers keep their own presentation.

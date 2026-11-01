@@ -46,7 +46,6 @@ import {
 import type { AgentConfigLookup } from "#src/config/agent-types";
 import { readPersistedRuns, type SessionEntryLike } from "#src/persisted-record";
 import { formatModel, type ModelIdentity, type Theme } from "#src/ui/display";
-import { labeledRule } from "#src/ui/labeled-rule";
 import {
   type EntryHeading,
   fileSnapshotSource,
@@ -56,6 +55,7 @@ import {
   type TranscriptSource,
 } from "#src/ui/session-navigation";
 import { TranscriptContent } from "#src/ui/transcript-content";
+import { labeledRule } from "../../../../packages/pi-ui/src/index.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 

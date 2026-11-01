@@ -12,9 +12,8 @@ import {
 import { type AgentReport, formatAgentReport } from "#src/tools/get-result-report";
 import { formatLifetimeTokens, textResult } from "#src/tools/helpers";
 import type { Subagent } from "#src/types";
-import { BoundedLines } from "#src/ui/bounded-lines";
 import { formatDuration, getDisplayName, modelLabel, type Theme } from "#src/ui/display";
-import { GLYPHS } from "#src/ui/glyphs";
+import { BoundedLines, ICONS } from "../../../../packages/pi-ui/src/index.ts";
 
 // ---- Deps interfaces ----
 
@@ -176,7 +175,7 @@ export class GetResultTool {
           .filter(Boolean)
           .join(", ");
         return new Text(
-          `${GLYPHS.toolCall} ` +
+          `${ICONS.tool} ` +
             theme.fg("toolTitle", theme.bold("Get Agent Result")) +
             "  " +
             theme.fg("muted", args.agent_id) +

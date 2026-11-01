@@ -12,7 +12,7 @@ import type { SubagentStatus } from "#src/lifecycle/subagent-state";
 import type { TurnBudget } from "#src/lifecycle/turn-limits";
 import { renderOutcomeIcon } from "#src/tools/result-renderer";
 import type { Theme } from "#src/ui/display";
-import { GLYPHS } from "#src/ui/glyphs";
+import { ICONS } from "../../../../packages/pi-ui/src/index.ts";
 
 /** How many report lines the expanded view draws before it defers to the transcript. */
 export const MAX_EXPANDED_LINES = 50;
@@ -107,7 +107,7 @@ function renderOverflowNotice(details: GetResultDetails, dropped: number): strin
 
 /** The dim continuation line beneath the status line. */
 function subLine(text: string, color: Parameters<Theme["fg"]>[0], theme: Theme): string {
-  return theme.fg(color, `  ${GLYPHS.subLine}  ${text}`);
+  return theme.fg(color, `  ${ICONS.subLine}  ${text}`);
 }
 
 /** Build the stats string: "Explore · anthropic/claude-haiku-4-5 · 44 tool uses · 95.9k token · 9% · ⇊3 · 213.0s". */
@@ -119,7 +119,7 @@ function renderStats(details: GetResultDetails, theme: Theme): string {
   }
   if (details.tokens) parts.push(details.tokens);
   if (details.contextPercent !== null) parts.push(`${Math.round(details.contextPercent)}%`);
-  if (details.compactionCount > 0) parts.push(`${GLYPHS.compactions}${details.compactionCount}`);
+  if (details.compactionCount > 0) parts.push(`${ICONS.compactions}${details.compactionCount}`);
   parts.push(details.duration);
   return parts.map((part) => theme.fg("dim", part)).join(" " + theme.fg("dim", "\u00B7") + " ");
 }

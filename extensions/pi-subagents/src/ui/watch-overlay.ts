@@ -1,6 +1,6 @@
 /** Read-only, non-capturing Pi overlay. Child agents remain in-process. */
 import type { ExtensionContext, ExtensionUIContext } from "@earendil-works/pi-coding-agent";
-import type { OverlayHandle, TUI } from "@earendil-works/pi-tui";
+import type { TUI } from "@earendil-works/pi-tui";
 import { debugLog } from "#src/debug";
 import type { AgentConfigLookup } from "#src/config/agent-types";
 import type { SubagentManagerObserver } from "#src/lifecycle/subagent-manager";
@@ -9,6 +9,7 @@ import { OVERLAY_WIDTH_PERCENT, type OverlayWidth } from "#src/settings";
 import { getDisplayName } from "#src/ui/display";
 import { renderWatchOverlay, watchHeight, type WatchSection } from "#src/ui/watch-renderer";
 import { WatchTail, type WatchResources } from "#src/ui/watch-tail";
+import { PassiveOverlay } from "../../../../packages/pi-ui/src/index.ts";
 
 export type WatchAgent = Pick<
   Subagent,
@@ -52,7 +53,9 @@ const REPAINT_MS = 100;
 export class WatchOverlay implements SubagentManagerObserver {
   private context?: WatchContext;
   private tui?: WatchTUI;
-  private handle?: OverlayHandle;
+  /** Owns only this overlay's handle; never focuses or captures input. */
+  private overlay?: PassiveOverlay;
+  private shown = false;
   private appliedWidth?: OverlayWidth;
   private watched = new Map<string, Watched>();
   // Explicit session choice wins over persisted default; automatic idle hiding does not change it.
@@ -75,6 +78,11 @@ export class WatchOverlay implements SubagentManagerObserver {
     // opening an unresolved custom dialog. We own the low-level overlay handle,
     // so hide() removes THIS overlay, even when another extension is above it.
     context.ui.setWidget(HOST_KEY, (tui) => {
+      if (this.tui !== tui) {
+        this.overlay?.dispose();
+        this.overlay = new PassiveOverlay(tui);
+        this.shown = false;
+      }
       this.tui = tui;
       this.refresh();
       let mode = tui.mode;
@@ -208,13 +216,13 @@ export class WatchOverlay implements SubagentManagerObserver {
       this.tui.mode === "fullscreen" &&
       wanted &&
       (this.lastVisibility === true || this.watched.size > 0);
-    if (this.handle && this.appliedWidth !== this.settings.overlayWidth) {
-      this.handle.hide();
-      this.handle = undefined;
+    if (this.shown && this.appliedWidth !== this.settings.overlayWidth) {
+      this.overlay?.hide();
+      this.shown = false;
     }
-    if (!this.handle && this.visible) {
+    if (!this.shown && this.visible && this.overlay) {
       try {
-        this.handle = this.tui.showOverlay(
+        this.shown = this.overlay.show(
           {
             render: (width) =>
               renderWatchOverlay(
@@ -229,7 +237,6 @@ export class WatchOverlay implements SubagentManagerObserver {
             anchor: "top-right",
             width: OVERLAY_WIDTH_PERCENT[this.settings.overlayWidth],
             maxHeight: "100%",
-            nonCapturing: true,
             // Tiny terminals cannot afford a panel; retain visibility preference on resize.
             visible: (width, height) =>
               this.tui?.mode === "fullscreen" && width >= 20 && height >= 10,
@@ -242,7 +249,7 @@ export class WatchOverlay implements SubagentManagerObserver {
         this.context.ui.notify("Could not open subagent watch overlay.", "warning");
       }
     }
-    this.handle?.setHidden(!this.visible);
+    this.overlay?.setHidden(!this.visible);
     this.requestRepaint();
   }
 
@@ -286,8 +293,9 @@ export class WatchOverlay implements SubagentManagerObserver {
     this.repaint = this.expiry = undefined;
     for (const item of this.watched.values()) item.unsubscribe?.();
     this.watched.clear();
-    this.handle?.hide();
-    this.handle = undefined;
+    this.overlay?.dispose();
+    this.overlay = undefined;
+    this.shown = false;
     this.context?.ui.setWidget(HOST_KEY, undefined);
     this.context = undefined;
     this.tui = undefined;

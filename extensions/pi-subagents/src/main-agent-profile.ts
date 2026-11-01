@@ -17,7 +17,7 @@ import { MAIN_AGENT_SECTION } from "#src/session/main-profile-prompt";
 import { resolveToolSelection } from "#src/session/tool-selection";
 import { LATEST_SUFFIX, resolveModel } from "#src/session/model-resolver";
 import type { AgentConfig } from "#src/types";
-import { sanitizeBrowserText } from "#src/ui/read-only-browser";
+import { sanitizeText } from "../../../packages/pi-ui/src/index.ts";
 
 export const MAIN_AGENT_ENTRY = "pi-subagents:main-agent-profile";
 export { MAIN_AGENT_SECTION } from "#src/session/main-profile-prompt";
@@ -149,7 +149,7 @@ export function registerMainAgentProfile(
   function notice(ctx: ExtensionContext, message: string, error = false): void {
     if (lastNotice === message) return;
     lastNotice = message;
-    const safe = sanitizeBrowserText(message);
+    const safe = sanitizeText(message);
     if (ctx.hasUI) ctx.ui.notify(safe, error ? "error" : "info");
     else io.diagnostic(safe);
   }
@@ -288,7 +288,7 @@ export function registerMainAgentProfile(
       const defaults = override ? await applyDefaults(selected.profile, ctx) : undefined;
       if (!saved || JSON.stringify(saved) !== JSON.stringify(selected))
         pi.appendEntry(MAIN_AGENT_ENTRY, structuredClone(selected));
-      const name = sanitizeBrowserText(selected.profile.name).replace(/\s+/g, " ").trim();
+      const name = sanitizeText(selected.profile.name).replace(/\s+/g, " ").trim();
       ctx.ui.setStatus("main-agent", `Agent · ${name}`);
       const skipped = [
         selected.profile.maxTurns !== undefined && "max_turns",

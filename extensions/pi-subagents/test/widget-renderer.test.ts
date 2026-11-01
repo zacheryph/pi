@@ -343,7 +343,7 @@ describe("terminal layout safety", () => {
     const lines = render({ agents });
     expect(lines).toHaveLength(12);
     expect(lines[0]).toMatch(/ 1 queued ──$/);
-    expect(lines.at(-1)).toBe(" +3 more (2 running, 1 finished) ");
+    expect(lines.at(-1)).toMatch(/^ \+3 more \(2 running, 1 finished\) +$/);
   });
 
   it("prioritizes running over finished on short terminals", () => {
@@ -361,6 +361,6 @@ describe("terminal layout safety", () => {
     expect(lines).toHaveLength(3);
     expect(lines[0]).toMatch(/ 3 queued ──$/);
     expect(lines[1]).toContain("live task");
-    expect(lines[2]).toBe(" +2 more (2 finished) ");
+    expect(lines[2]).toMatch(/^ \+2 more \(2 finished\) +$/);
   });
 });
