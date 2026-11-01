@@ -13,9 +13,9 @@ import type {
 /** pi-todo: `src/events.ts`. */
 export const TODO_SNAPSHOT_EVENT = "pi-todo:snapshot";
 /** pi-stash: `src/events.ts`. */
-export const STASH_SNAPSHOT_EVENT = "pi-stash:snapshot";
+export const STASH_SNAPSHOT_EVENT = "stash:snapshot";
 /** pi-stash: synchronous request for the head of one entry on this branch. */
-export const STASH_PREVIEW_REQUEST = "pi-stash:preview";
+export const STASH_PREVIEW_REQUEST = "stash:preview";
 const MAX_MESSAGE = 2_000;
 const MAX_UPDATES = 20;
 

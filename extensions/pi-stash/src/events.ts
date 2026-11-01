@@ -11,7 +11,7 @@ import {
  * in the same session (each subagent has its own bus). Emitted on session
  * start, branch changes and every `stash_put`. Metadata only, never content.
  */
-export const STASH_SNAPSHOT_EVENT = "pi-stash:snapshot";
+export const STASH_SNAPSHOT_EVENT = "stash:snapshot";
 export const STASH_SNAPSHOT_VERSION = 1;
 
 export interface StashSnapshotEntry {
@@ -49,7 +49,7 @@ export interface StashSnapshotEvent {
  * lines and `maxBytes` bytes (capped at 200 / 16 KB), read through the
  * hash-verified store. Full handles and other branches' entries are refused.
  */
-export const STASH_PREVIEW_REQUEST = "pi-stash:preview";
+export const STASH_PREVIEW_REQUEST = "stash:preview";
 export const PREVIEW_MAX_LINES = 200;
 export const PREVIEW_MAX_BYTES = 16 * 1024;
 
