@@ -223,9 +223,11 @@ and method receivers are retained by the lifecycle wrapper.
 
 Explorers use 80% of terminal rows. A `DetailView` takes only the rows its
 content needs, capped at the same 80% (`fitPanelHeight`); the overlay stays
-centered on whatever height renders. In both, the footer's `n–m/N lines`
-position appears only when content scrolls. A direct `DetailView`/`Explorer`
-constructor accepts `heightFraction` for the height (the cap, for `DetailView`). If customizing `overlayOptions.maxHeight`, give the view
+centered on whatever height renders. The footer's `n–m/N lines` position
+appears only when content scrolls; otherwise a `DetailView` shows a plain
+divider and an explorer's item detail drops the status row entirely. A direct
+`DetailView`/`Explorer` constructor accepts `heightFraction` for the height (the
+cap, for `DetailView`). If customizing `overlayOptions.maxHeight`, give the view
 a matching fraction so its footer fits without renderer cropping.
 
 Use `PassiveOverlay` with the TUI obtained from the host:

@@ -141,14 +141,21 @@ describe("Explorer", () => {
     explorer.handleInput("\x1b[Z");
     expect(output(explorer)).toContain("Beta");
   });
-  it("keeps the full height and hides the line count when a detail fits", () => {
+  it("keeps the full height and hides the status row while a detail shows every line", () => {
     const { explorer } = setup();
+    const rules = () => output(explorer).match(/│ ─{10,} │/g) ?? [];
     expect(explorer.render(80)).toHaveLength(24);
     explorer.handleInput("\x1b[B");
     explorer.handleInput("\r");
     expect(explorer.render(80)).toHaveLength(24);
     expect(output(explorer)).toContain("Beta details");
-    expect(output(explorer)).not.toContain(" lines");
+    // Only the header divider remains; the hints follow the body directly.
+    expect(rules()).toHaveLength(1);
+    expect(output(explorer)).toMatch(/│ +│ \n │ Esc back/);
+    explorer.handleInput("\x1b");
+    explorer.handleInput("\x1b[A");
+    explorer.handleInput("\r");
+    expect(output(explorer)).toMatch(/── 1–\d+\/82 lines ──/);
   });
   it("uses view-level empty text and the noun", () => {
     expect(

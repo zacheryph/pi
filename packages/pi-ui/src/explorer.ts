@@ -243,10 +243,13 @@ export class Explorer implements Component, Focusable {
   private geometry(status = "") {
     const { contentWidth } = layoutPanel(this.width, this.height());
     const chrome = this.chrome(contentWidth, status);
-    return {
-      ...chrome,
-      layout: layoutPanel(this.width, this.height(), chrome.before.length, chrome.after.length),
-    };
+    let layout = layoutPanel(this.width, this.height(), chrome.before.length, chrome.after.length);
+    // An item detail that shows every line has no position to report: drop its status row.
+    if (this.detail && this.viewport.lineCount(layout.contentWidth) <= layout.bodyRows) {
+      chrome.after.shift();
+      layout = layoutPanel(this.width, this.height(), chrome.before.length, chrome.after.length);
+    }
+    return { ...chrome, layout };
   }
   private move(delta: number): void {
     if (Number.isNaN(delta)) return;
