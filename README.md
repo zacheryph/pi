@@ -403,7 +403,7 @@ are dev dependencies for testing and peer dependencies for runtime; Pi supplies 
 own modules when loading extensions.
 
 GitHub Actions runs `check` and `test` in parallel jobs per extension workspace,
-plus declaration generation and `verify:bundle` whenever any extension is selected.
+plus `verify:bundle` whenever any extension is selected.
 A repository-wide job always checks formatting and lint, including scripts. Pull requests
 select extensions with changes under their directory; changes to root
 manifests/lockfiles, `.nvmrc`, shared TypeScript or Oxc settings, workflows, or scripts
@@ -412,16 +412,7 @@ Unrelated PR changes skip the extension matrix. Matrix selection is tested with
 `node --test scripts/select-test-extensions.test.mjs`. CI reads its Node.js
 version from `.nvmrc`; `nvm use` or `fnm use` picks up the same version locally.
 
-Optional public API declaration generation (not needed for extension loading):
-
-```bash
-npm run build:types
-```
-
-Declarations are generated with TypeScript 7 and bundled with Rolldown. The pinned
-`rolldown-plugin-dts` release supports TS 7.0 through its CLI backend; upgrading
-that plugin requires checking compatibility with the stable TypeScript release.
-No TypeScript 6 compatibility package is needed.
+Public API type exports reference TypeScript source directly; no declaration build is needed.
 
 To work on one extension without other configured extensions:
 

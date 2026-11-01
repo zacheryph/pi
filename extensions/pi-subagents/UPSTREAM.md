@@ -228,8 +228,8 @@ npm run check
 npm test
 ```
 
-`npm run build:types` optionally creates the declaration bundles referenced by
-`exports.types`. Pi loads TypeScript source directly and does not need those files.
+Public API type exports reference TypeScript source directly. Pi loads that source
+without a declaration or JavaScript build.
 Companion extensions should import this vendored source through a relative path,
 e.g. `../pi-subagents/src/service/service.ts`, rather than assuming the published
 `@gotgenes/pi-subagents` package is installed in a Git-installed bundle.
