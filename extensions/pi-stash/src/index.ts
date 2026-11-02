@@ -104,7 +104,10 @@ const GetParameters = Type.Object(
   {
     ref: Type.String({ description: "Handle (stash:<name>@<hash>) or a name on this branch" }),
     lines: Type.Optional(
-      Type.Tuple([Type.Integer({ minimum: 1 }), Type.Integer({ minimum: 1 })], {
+      // Type.Tuple emits legacy array-valued `items`, rejected by draft 2020-12 providers.
+      Type.Array(Type.Integer({ minimum: 1 }), {
+        minItems: 2,
+        maxItems: 2,
         description: "1-based inclusive [start, end]",
       }),
     ),
@@ -188,8 +191,8 @@ const GetOutput = Type.Object({
   bytes: Type.Integer(),
   truncated: Type.Boolean(),
   clipped: Type.Optional(Type.Boolean()),
-  range: Type.Optional(Type.Tuple([Type.Integer(), Type.Integer()])),
-  next: Type.Optional(Type.Tuple([Type.Integer(), Type.Integer()])),
+  range: Type.Optional(Type.Array(Type.Integer(), { minItems: 2, maxItems: 2 })),
+  next: Type.Optional(Type.Array(Type.Integer(), { minItems: 2, maxItems: 2 })),
   matches: Type.Optional(Type.Integer()),
   matchesShown: Type.Optional(Type.Integer()),
   hint: Type.Optional(Type.String()),
@@ -531,7 +534,10 @@ export default function stashExtension(
         }
         const resolved = resolveRef(params.ref, index, getStore());
         const text = getStore().read(resolved.hash);
-        const result = sliceText(text, params);
+        const result = sliceText(text, {
+          ...params,
+          lines: params.lines ? [params.lines[0], params.lines[1]] : undefined,
+        });
         const handle = handleFor(resolved);
         const summary = getSummary(result);
         const header = `${handle} · ${summary}${result.hint ? ` · ${result.hint}` : ""}`;
