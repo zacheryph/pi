@@ -325,4 +325,4 @@ npm run verify:bundle
 ```
 
 MIT upstream license retained in [LICENSE](LICENSE). See [UPSTREAM.md](UPSTREAM.md)
-for pinned source and local adaptations.
+for the pinned source and [CHANGELOG.md](CHANGELOG.md) for local adaptations.

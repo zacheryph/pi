@@ -1,5 +1,5 @@
 /**
- * Watch checks that are not shell commands (local addition, see UPSTREAM.md). A probe is an async
+ * Watch checks that are not shell commands (local addition, see CHANGELOG.md). A probe is an async
  * function; startProbe() runs it with the same contract runCheck() expects from a SupervisedRun:
  * output arrives through onOutput, exactly one outcome through onDone, and terminate() ends the
  * check now (its late result is ignored).

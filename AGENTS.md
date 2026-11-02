@@ -9,6 +9,18 @@ available width. Subtract padding before layout/truncation, and render blank bod
 rows when the width cannot fit both padding spaces plus content. Cover narrow
 widths and ANSI/wide Unicode text in rendering tests.
 
+## Vendored extensions
+
+Each vendored extension keeps two records (see the `vendor-extension` skill):
+
+- `UPSTREAM.md` holds only the vendoring details: source, pinned commit, version,
+  license, how it was copied, and the sync history. Change it only when importing
+  or syncing with upstream.
+- `CHANGELOG.md` holds every local change, newest first, added in the same commit
+  as the change. Its first (oldest) entry only points at `UPSTREAM.md`. If
+  upstream shipped a changelog, its content is cleared at import and that entry
+  links the source changelog at the pinned commit instead.
+
 ## Git commits
 
 Always disable GPG signing explicitly for every commit:
