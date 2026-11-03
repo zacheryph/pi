@@ -473,14 +473,14 @@ They declare this package as an optional peer dependency and use dynamic import 
   Reactive consumers subscribe: `@gotgenes/pi-permission-system` registers each child session on `session-created`, audits it for a permission node of its own on `bound`, and unregisters it on `disposed`.
   This replaced the former outbound `permission-bridge` (#261, [ADR-0002]) — the core no longer looks up a named consumer.
 - `workspace` — the single generative seam (#262, [ADR-0002]): a registered `WorkspaceProvider` supplies a child's cwd plus bracketed `dispose()` at run-start.
-  With no provider, children run in the parent cwd (default unchanged); the git worktree strategy lives behind this seam in `@gotgenes/pi-subagents-worktrees` (#263, the seam's first consumer).
+  With no provider, children run in the parent cwd (default unchanged). A caller-chosen `cwd` (for example a git worktree the caller created) bypasses the provider.
 - `session-config` — pure configuration assembler (called by `createSubagentSession`).
 - `SubagentRuntime` — session-scoped state bag with methods.
 - `ParentSnapshot` — immutable snapshot of parent session state, captured once at spawn time.
 - `record-observer` — session-event observer that updates record statistics without callback threading.
 - Agent type registry — default agents, custom `.md` file loading.
 - Prompt assembly, context extraction, skills, environment.
-- Worktree isolation — evicted to `@gotgenes/pi-subagents-worktrees` via the workspace provider seam in Phase 16 (#263, [ADR-0002]); `git` no longer appears in the core.
+- Worktree isolation — evicted from the core in Phase 16 (#263, [ADR-0002]); a child runs in a caller-chosen `cwd` or a provider's directory, and `git` no longer appears in the core.
 - Token usage tracking.
 - Session directory derivation and persisted `SessionManager` for subagent transcripts.
 - Settings persistence.
@@ -572,7 +572,7 @@ Each publication is _pending_ from the extension factory until its session's `se
 
 - The extension publishes `publishSubagentsService(service)` in its factory and `publishSubagentsService(service, sessionId)` on `session_start`, under `Symbol.for("@gotgenes/pi-subagent:services.v1")`.
 - While a load is pending, the newest pending service is the default.
-  Companion extensions such as `@gotgenes/pi-subagents-worktrees` call `getSubagentsService()` from their own factory, right after this one, and must get the service of the session that is loading.
+  Companion extensions such as a workspace provider call `getSubagentsService()` from their own factory, right after this one, and must get the service of the session that is loading.
   That includes each child session, whose companion copy would otherwise try to register a second provider on the parent's service.
 - Otherwise the default is the outermost started service: a child starts after its parent and shuts down before it, so a child never displaces its parent.
 - The legacy slot `Symbol.for("@gotgenes/pi-subagent:service")` mirrors the default, for consumers of the published package that read it directly.
@@ -678,7 +678,7 @@ The observational surface then carries only fire-and-forget broadcasts of immuta
 These policy and environment concerns were removed so the core stays narrow; each now lives in a consumer or behind the workspace seam:
 
 - **Tool policy** (`disallowed_tools`) and **extension filtering** (`extensions: string[]`) — access control and tool visibility belong in pi-permission-system's `permission:` frontmatter (Phase 14, #237/#238).
-- **Worktree isolation** (`GitWorktreeManager`, the `isolation: "worktree"` mode) — one _strategy_ for choosing the child's cwd, evicted to `@gotgenes/pi-subagents-worktrees` (#263), the first consumer of the workspace provider seam.
+- **Worktree isolation** (`GitWorktreeManager`, the `isolation: "worktree"` mode) — one _strategy_ for choosing the child's cwd, evicted from the core (#263); a caller passes a prepared directory as `cwd`, or a workspace provider supplies one.
 - **Per-agent extension lifecycle control** (`extensions: false`, `isolated`, `noSkills`) — removed in #264; deny-at-use covers what `isolated` pretended to do for tools.
   Prevent-load ships instead as the global/project `excludedExtensionPackages` setting (#696): a provider seam was declined because no _extension_ wants to supply the policy, which would make the seam a vacant hook.
 
@@ -687,7 +687,7 @@ These policy and environment concerns were removed so the core stays narrow; eac
 In the target state, pi-subagent publishes events and a provider seam; other packages hook in:
 
 - **pi-permission-system** (observational) subscribes to child-session lifecycle events, detects subagent execution context in the child, and gates tool calls at runtime.
-- **pi-subagent-worktree** (generative) registers a `WorkspaceProvider` that prepares a git worktree at run-start and tears it down after, supplying the child's cwd.
+- **A workspace provider** (generative) registers a `WorkspaceProvider` that prepares a directory at run-start and tears it down after, supplying the child's cwd.
 - **pi-subagent-ui** (future, under reconsideration — see the [first-principles refinement](#first-principles-refinement-and-the-deeper-target)) subscribes to the broadcast and the query/behavior interfaces; the conversation viewer and `/agents` menu were removed in Phase 19 per [ADR-0004]; the surviving UI (widget, session navigator, settings command) stays in-core.
 - **Any future extension** (OTel, auditing, cost tracking) subscribes to the same events without pi-subagent knowing.
 

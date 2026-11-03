@@ -427,8 +427,9 @@ Use `contextUsage.percent` (surfaced as `(NN%)` in the widget) for current conte
 
 ## Worktree Isolation
 
-Worktree isolation lives in a companion package, not this core.
-Install [`@gotgenes/pi-subagents-worktrees`](https://github.com/gotgenes/pi-packages/tree/main/packages/pi-subagents-worktrees) and list the agent types you want isolated in its `worktreeAgents` config — opted-in agents run in a temporary git worktree, and their changes are saved to a branch on completion.
+Worktree isolation is not part of this core.
+A caller that prepared a directory, such as a git worktree, passes it as `subagent_start`'s `cwd`; the child runs there and stays resumable, and the directory is never removed for it.
+A `WorkspaceProvider` registered through the service can instead choose a child's directory itself.
 The earlier `isolation: "worktree"` spawn flag and `isolation:` frontmatter key were removed from the core.
 
 ## Removed: agent memory and skill preloading
@@ -632,7 +633,7 @@ The [architecture doc](./docs/architecture/architecture.md#scope-and-non-goals) 
 
 **Where adjacent requests belong.**
 Tool restriction and per-agent permission policy → [@gotgenes/pi-permission-system](https://www.npmjs.com/package/@gotgenes/pi-permission-system).
-Worktree isolation → [@gotgenes/pi-subagents-worktrees](https://www.npmjs.com/package/@gotgenes/pi-subagents-worktrees).
+Worktree isolation → a git worktree passed as `cwd`, or a `WorkspaceProvider`.
 Timed dispatch, telemetry, and alternate UIs → a consumer over the lifecycle events and the typed service.
 A batteries-included alternative → upstream [`tintinweb/pi-subagent`](https://github.com/tintinweb/pi-subagent).
 
