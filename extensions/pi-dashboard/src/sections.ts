@@ -167,6 +167,8 @@ export function readPreview(data: unknown): StashPreview | string {
 
 const MAX_WORKTREES = 50;
 const MAX_PRS = 50;
+/** PRs read for the card's counts; a ledger beyond this is not a session's working set. */
+const MAX_PRS_READ = 1000;
 const PR_URL = /^https:\/\/[A-Za-z0-9.-]+(?::\d+)?\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/pull\/\d+$/;
 const PR_STATES: ReadonlySet<unknown> = new Set(["open", "closed", "merged"]);
 const REVIEWS: ReadonlySet<unknown> = new Set(["approved", "changes_requested", "review_required"]);
@@ -178,7 +180,8 @@ function lastSegment(path: string): string {
 /**
  * pi-git's snapshot: worktrees not yet removed, and pull requests. PR links
  * become anchors on the page, so only plain `https` pull request URLs pass.
- * Absent when there is nothing to show.
+ * Open and failing counts cover every PR; the list sent holds the first
+ * {@link MAX_PRS}, PRs opened here first. Absent when there is nothing to show.
  */
 export function readGit(data: unknown): GitSection | undefined {
   if (!isRecord(data) || data.version !== 1 || !Array.isArray(data.worktrees)) return undefined;
@@ -208,8 +211,10 @@ export function readGit(data: unknown): GitSection | undefined {
     });
   }
   const rawPrs = Array.isArray(data.prs) ? data.prs : [];
-  const prs: GitSection["prs"] = [];
-  for (const raw of rawPrs.slice(0, MAX_PRS)) {
+  // Every PR is read (within a bound) so the card's counts cover them all;
+  // only MAX_PRS are sent for the detail panel.
+  const all: GitSection["prs"] = [];
+  for (const raw of rawPrs.slice(0, MAX_PRS_READ)) {
     if (!isRecord(raw)) continue;
     const url = typeof raw.url === "string" && PR_URL.test(raw.url) ? raw.url : undefined;
     const owner = clip(raw.owner, MAX_KEY);
@@ -224,7 +229,7 @@ export function readGit(data: unknown): GitSection | undefined {
     const pending = count(checks?.pending);
     const title = clip(raw.title, MAX_SUBJECT);
     const observedAt = time(status?.observedAt);
-    prs.push({
+    all.push({
       label: `${owner}/${repo}#${number}`,
       url,
       ...(title ? { title } : {}),
@@ -241,6 +246,14 @@ export function readGit(data: unknown): GitSection | undefined {
       ...(observedAt ? { observedAt } : {}),
     });
   }
+  const openCreated = all.filter(
+    (pr) => pr.origin === "created" && pr.state !== "merged" && pr.state !== "closed",
+  );
+  // Opened here first, each group keeping pi-git's most-recently-touched order.
+  const prs = [
+    ...all.filter((pr) => pr.origin === "created"),
+    ...all.filter((pr) => pr.origin === "referenced"),
+  ].slice(0, MAX_PRS);
   const removed = data.worktrees.filter((raw) => isRecord(raw) && raw.state === "removed").length;
   const other = Array.isArray(data.found) ? data.found.length : 0;
   if (live.length === 0 && rawPrs.length === 0 && removed === 0 && other === 0) return undefined;
@@ -251,5 +264,7 @@ export function readGit(data: unknown): GitSection | undefined {
     other,
     prs,
     prTotal: rawPrs.length,
+    openCreated: openCreated.length,
+    failingCreated: openCreated.filter((pr) => (pr.checks?.failed ?? 0) > 0).length,
   };
 }

@@ -89,7 +89,10 @@ export interface GitSection {
   removed: number;
   /** Worktrees under pi-git's root that another session created. */
   other: number;
-  /** Most recently touched first; `prTotal` counts them all. */
+  /**
+   * At most 50: PRs opened here first, then referenced ones, each most
+   * recently touched first. `prTotal` counts them all.
+   */
   prs: Array<{
     /** `owner/repo#12`. */
     label: string;
@@ -107,6 +110,10 @@ export interface GitSection {
     observedAt?: number;
   }>;
   prTotal: number;
+  /** PRs opened here and not merged or closed, over every PR (not just `prs`). */
+  openCreated: number;
+  /** Of those, the ones with a failed check. */
+  failingCreated: number;
 }
 
 /** Token and cost totals for the whole session, as Pi's /session reports them. */
