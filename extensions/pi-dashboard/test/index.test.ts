@@ -274,6 +274,8 @@ describe("pi-dashboard extension", () => {
         },
       ],
       prTotal: 1,
+      openCreated: 1,
+      failingCreated: 0,
     });
   });
 

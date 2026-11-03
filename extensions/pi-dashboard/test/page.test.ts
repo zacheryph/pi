@@ -29,6 +29,8 @@ describe("renderPage", () => {
     expect(page).toContain('if (typeof pr.url === "string" && pr.url.startsWith("https://")) {');
     expect(page).toContain('link.rel = "noopener noreferrer";');
     expect(page).toContain("left.append(prPanel(session))");
+    // The card counts come from the reporter, which sees every PR, not the capped list.
+    expect(page).toContain("const open = Number(session.git.openCreated) || 0;");
     expect(page).toContain("left.append(worktreePanel(session))");
   });
 

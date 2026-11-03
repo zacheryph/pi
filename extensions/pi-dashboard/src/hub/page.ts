@@ -298,9 +298,10 @@ function card(session) {
   const stashed = session.stash ? Number(session.stash.total) || 0 : 0;
   if (stashed) work.push("stash " + stashed);
   if (session.git) {
-    const open = list(session.git.prs).filter((pr) => pr.origin === "created" && pr.state !== "merged" && pr.state !== "closed");
-    const failing = open.filter((pr) => pr.checks && pr.checks.failed > 0).length;
-    if (open.length) work.push("PRs " + open.length + " open" + (failing ? " · " + failing + " failing" : ""));
+    // Counted by the reporter over every PR; the list itself is capped.
+    const open = Number(session.git.openCreated) || 0;
+    const failing = Number(session.git.failingCreated) || 0;
+    if (open) work.push("PRs " + open + " open" + (failing ? " · " + failing + " failing" : ""));
     const trees = Number(session.git.worktreeTotal) || 0;
     if (trees) work.push(trees === 1 ? "1 worktree" : trees + " worktrees");
   }

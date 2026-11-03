@@ -294,6 +294,8 @@ describe("readGit", () => {
       other: 1,
       prs: [],
       prTotal: 0,
+      openCreated: 0,
+      failingCreated: 0,
     });
   });
 
@@ -347,6 +349,45 @@ describe("readGit", () => {
       },
     ]);
     expect(result?.prTotal).toBe(6);
+  });
+
+  it("counts open and failing PRs opened here over every PR, not only the ones it sends", () => {
+    const referenced = Array.from({ length: 50 }, (_, i) =>
+      pr({ number: i + 1, url: `https://github.com/acme/api/pull/${i + 1}`, origin: "referenced" }),
+    );
+    const failing = pr({
+      number: 99,
+      url: "https://github.com/acme/api/pull/99",
+      status: {
+        state: "open",
+        checks: { passed: 1, failed: 2, pending: 0 },
+        observedAt: 1,
+        source: "bash",
+      },
+    });
+    const merged = pr({
+      number: 98,
+      url: "https://github.com/acme/api/pull/98",
+      status: {
+        state: "merged",
+        checks: { passed: 0, failed: 1, pending: 0 },
+        observedAt: 1,
+        source: "bash",
+      },
+    });
+    const result = readGit({
+      version: 1,
+      worktrees: [],
+      found: [],
+      prs: [...referenced, failing, merged],
+    });
+    expect(result).toMatchObject({ prTotal: 52, openCreated: 1, failingCreated: 1 });
+    // PRs opened here are sent first, so the detail panel shows them too.
+    expect(result?.prs.slice(0, 2).map((item) => item.label)).toEqual([
+      "acme/api#99",
+      "acme/api#98",
+    ]);
+    expect(result?.prs).toHaveLength(50);
   });
 
   it("caps long lists and is absent when there is nothing to show or the shape is wrong", () => {
