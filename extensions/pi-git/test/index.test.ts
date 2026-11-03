@@ -16,6 +16,8 @@ interface Tool {
 
 /** One wall clock for every session in a test, as in a real process. */
 let clock = 1_000;
+/** While true, every session reads the same millisecond, as within one synchronous burst. */
+let frozen = false;
 
 /** A fake ExtensionAPI and session for one pi-git instance. */
 function harness(options: { sessionId: string; cwd: string; root: string; entries?: unknown[] }) {
@@ -49,7 +51,7 @@ function harness(options: { sessionId: string; cwd: string; root: string; entrie
   pi.events.on(GIT_SNAPSHOT_EVENT, (data) => snapshots.push(data as GitSnapshotEvent));
   piGit(pi as unknown as ExtensionAPI, {
     loadConfig: () => ({ worktreeRoot: options.root }),
-    now: () => (clock += 1),
+    now: () => (frozen ? clock : (clock += 1)),
   });
   const ui = {
     notify: vi.fn(),
@@ -82,6 +84,7 @@ let box: Sandbox;
 beforeEach(() => {
   box = sandbox();
   clock = 1_000;
+  frozen = false;
 });
 afterEach(() => {
   box.cleanup();
@@ -294,6 +297,34 @@ describe("subagents", () => {
 
     await child.tool("git_worktree_remove", { path });
     expect(parent.ledger().at(-1)).toMatchObject({ state: "removed", agents: ["agent-9"] });
+  });
+
+  it("merges a child's new agent even when the parent's record is newer", async () => {
+    const parent = await start("parent");
+    parent.pi.events.emit("subagent:session:created", {
+      sessionId: "child",
+      parentSessionId: "parent",
+      agentId: "agent-7",
+      cwd: box.dir,
+    });
+    const child = await start("child");
+    await child.tool("git_worktree_create", { repo: "src/api", branch: "race" });
+    const path = join(box.root, "api", "race");
+
+    // One millisecond: the parent records two workers, which pushes its
+    // record's time ahead of the child's, then the child records its own.
+    frozen = true;
+    for (const agentId of ["agent-a", "agent-b"])
+      parent.pi.events.emit("subagent:session:created", { sessionId: agentId, agentId, cwd: path });
+    child.pi.events.emit("subagent:session:created", {
+      sessionId: "agent-c",
+      agentId: "agent-c",
+      cwd: path,
+    });
+    frozen = false;
+
+    expect(child.ledger().at(-1)?.agents).toEqual(["agent-c"]);
+    expect(parent.ledger().at(-1)?.agents).toEqual(["agent-a", "agent-b", "agent-c"]);
   });
 
   it("adopts a change made in the same millisecond as its own, but not a repeat", async () => {
