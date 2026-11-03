@@ -70,6 +70,9 @@ pi-personal/
 │   │   ├── src/hub/server.ts            # web hub (plain Node, not a Pi extension)
 │   │   ├── test/
 │   │   └── docs/plan.md                 # research and phased plan
+│   ├── pi-git/
+│   │   ├── src/index.ts                 # git_worktree_* tools + /git:worktrees
+│   │   └── test/
 │   ├── pi-job/                          # vendored
 │   │   ├── src/extension.ts             # job_* tools + /job command
 │   │   ├── test/
@@ -158,6 +161,27 @@ the last one quits. Print-mode runs and subagent children are not shown. Port
 and Node binary are set in `~/.pi/agent/dashboard.json`. Loopback only. See
 [extension docs](extensions/pi-dashboard/README.md) and the
 [plan](extensions/pi-dashboard/docs/plan.md).
+
+### pi-git
+
+Git worktrees an orchestrator creates and hands to subagents, kept in the
+session ledger. `git_worktree_create` makes a worktree on a named branch in any
+repository (an existing branch is checked out as it is) under
+`~/.pi/agent/worktrees/`, and returns the path to pass as `cwd` to
+`subagent_start`. A `workspace` groups worktrees of several repositories in one
+directory, so one subagent can work across them. A worktree stays until
+`git_worktree_remove` or `/git:worktrees remove` removes it; finishing or
+releasing a subagent never does, so the next one continues in the same place.
+Removal keeps the branch and refuses to lose uncommitted changes unless forced.
+
+Every worktree is recorded as a `git:ledger` session entry with its repository,
+branch, workspace, state and the subagents that ran in it, so `git_worktree_list`
+and `/git:worktrees` still show it after a reload or resume. Worktrees a subagent
+creates are handed up to its parent's ledger; worktrees under the root from
+other sessions are listed separately. State is published as `git:snapshot` for
+the dashboard. The root is set by `worktreeRoot` in `~/.pi/agent/git.json` or
+`.pi/git.json`. See [extension docs](extensions/pi-git/README.md) and the
+[plan](docs/plans/git-github-ledger.md).
 
 ### pi-job
 
