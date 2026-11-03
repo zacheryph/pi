@@ -223,6 +223,101 @@ describe("observe: gh in a shell", () => {
     expect(await run(tool)).toEqual(expected);
   });
 
+  it("does not credit one command's output to another PR in the same call", async () => {
+    const output = [
+      "lint\tpass\t32s\thttps://github.com/acme/api/actions/runs/1/job/11\t",
+      "test\tfail\t1m2s\thttps://github.com/acme/api/actions/runs/2/job/21\t",
+    ].join("\n");
+    const observations = await run(
+      bash("gh pr checks 69 -R acme/api; gh pr checks 70 -R acme/api", output),
+    );
+    expect(observations).toEqual([
+      {
+        ref: { ...ORIGIN, number: 69 },
+        url: "https://github.com/acme/api/pull/69",
+        origin: "referenced",
+      },
+      {
+        ref: { ...ORIGIN, number: 70 },
+        url: "https://github.com/acme/api/pull/70",
+        origin: "referenced",
+      },
+    ]);
+  });
+
+  it("takes a batched gh pr create's URL only when the output holds exactly one", async () => {
+    const one = await run(
+      bash(
+        "gh pr create --fill && gh pr checks 12 -R acme/api",
+        "https://github.com/acme/api/pull/12\nlint\tpending\t0\thttps://x\t",
+      ),
+    );
+    expect(one).toEqual([
+      {
+        ref: { ...ORIGIN, number: 12 },
+        url: "https://github.com/acme/api/pull/12",
+        origin: "created",
+        // From gh pr create's own arguments, not the shared output.
+        facts: { state: "open" },
+      },
+    ]);
+    const two = await run(
+      bash(
+        "gh pr create --fill && gh pr view 3 -R acme/api",
+        "https://github.com/acme/api/pull/12\nurl:\thttps://github.com/acme/api/pull/3",
+      ),
+    );
+    expect(two).toEqual([
+      {
+        ref: { ...ORIGIN, number: 3 },
+        url: "https://github.com/acme/api/pull/3",
+        origin: "referenced",
+      },
+    ]);
+  });
+
+  it("does not infer a batched command's repository from shared output", async () => {
+    resolveRepo.mockClear();
+    const observations = await run(
+      bash(
+        "gh pr checks 5; gh pr checks 6",
+        "ci\tpass\t1s\thttps://github.com/other/thing/actions/runs/1\t",
+      ),
+    );
+    expect(observations.map((o) => o.ref)).toEqual([
+      { ...ORIGIN, number: 5 },
+      { ...ORIGIN, number: 6 },
+    ]);
+    expect(resolveRepo).toHaveBeenCalled();
+  });
+
+  it("records an explicit no-decision review when every decision was dismissed", async () => {
+    const [observation] = await run(
+      bash(
+        "gh api repos/acme/api/pulls/69/reviews",
+        JSON.stringify([
+          { user: { login: "alice" }, state: "DISMISSED", submitted_at: "2" },
+          { user: { login: "bob" }, state: "COMMENTED", submitted_at: "3" },
+        ]),
+      ),
+    );
+    expect(observation?.facts).toEqual({ review: "none" });
+    const [empty] = await run(bash("gh api repos/acme/api/pulls/69/reviews", "[]"));
+    expect(empty?.facts).toEqual({ review: "none" });
+    const [viewed] = await run(
+      bash("gh pr view 69 -R acme/api --json reviewDecision", '{"reviewDecision":""}'),
+    );
+    expect(viewed?.facts).toEqual({ review: "none" });
+    const [mcp] = await run(
+      result(
+        "mcp__github__pull_request_read",
+        { method: "get_reviews", owner: "acme", repo: "api", pullNumber: 69 },
+        "[]",
+      ),
+    );
+    expect(mcp?.facts).toEqual({ review: "none" });
+  });
+
   it("resolves a bare number from the origin remote of the directory a leading cd moves to", async () => {
     resolveRepo.mockClear();
     await run(bash("cd ../web && gh pr view 5 --json state", '{"state":"OPEN"}'));

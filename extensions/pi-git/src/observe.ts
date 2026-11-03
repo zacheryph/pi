@@ -99,7 +99,15 @@ async function observeShell(
   const json = parseJson(output);
   const observations: Observation[] = [];
 
-  for (const match of command.matchAll(GH_PR)) {
+  const prCommands = [...command.matchAll(GH_PR)];
+  const apiCommands = [...command.matchAll(GH_API_PULL)];
+  // The output belongs to the whole call. With one PR command it is that
+  // command's; with several, which part belongs to which is unknown, so
+  // status and repositories come only from what each command names itself.
+  const shared = prCommands.length + apiCommands.length > 1;
+  const creates = prCommands.filter((match) => match[1] === "create").length;
+
+  for (const match of prCommands) {
     const verb = match[1];
     const args = match[2];
     // A nonzero exit is a failure, except for `gh pr checks`, which exits 1
@@ -112,21 +120,28 @@ async function observeShell(
     const repoFlag = /(?:^|\s)(?:-R|--repo)[=\s]+(\S+)/.exec(args)?.[1];
     if (argUrl) ({ ref, url } = argUrl);
     else if (verb === "create") {
-      const created = parsePrUrls(output).at(-1);
+      // Batched, the printed URL is the create's only when it is the only one.
+      const printed = parsePrUrls(output);
+      const created = shared
+        ? creates === 1 && printed.length === 1
+          ? printed[0]
+          : undefined
+        : printed.at(-1);
       if (created) ({ ref, url } = created);
     } else if (number) {
       const repo =
         (repoFlag && parseRepoFlag(repoFlag)) ??
-        repoFromOutput(output) ??
+        (shared ? undefined : repoFromOutput(output)) ??
         (await options.resolveRepo(cdTarget(command, options.cwd)));
       if (repo) ref = { ...repo, number: Number(number) };
-    } else {
+    } else if (!shared) {
       // The current branch's PR: its URL is in `--json url` or plain output.
       const shown = jsonPr(json) ?? parsePrUrls(output)[0];
       if (shown) ({ ref, url } = shown);
     }
     if (!ref) continue;
-    const facts = ghFacts(verb, args, output, json);
+    // `gh pr create`'s facts come from its own arguments; every other verb's from the output.
+    const facts = shared && verb !== "create" ? {} : ghFacts(verb, args, output, json);
     // A failed `gh pr checks` counts only when it listed checks.
     if (result.isError && !facts.facts?.checks) continue;
     observations.push({
@@ -137,12 +152,12 @@ async function observeShell(
     });
   }
 
-  for (const match of command.matchAll(GH_API_PULL)) {
+  for (const match of apiCommands) {
     if (result.isError) break;
     const host = /--hostname[=\s]+(\S+)/.exec(command)?.[1] ?? "github.com";
     const ref = { host, owner: match[1], repo: match[2], number: Number(match[3]) };
-    const sub = match[4] ?? "";
-    observations.push({ ref, url: prUrl(ref), origin: "referenced", ...restFacts(json, sub) });
+    const facts = shared ? {} : restFacts(json, match[4] ?? "");
+    observations.push({ ref, url: prUrl(ref), origin: "referenced", ...facts });
   }
   return dedupe(observations);
 }
@@ -243,7 +258,10 @@ function graphqlFacts(json: Record<string, unknown>): { title?: string; facts?: 
   if (state === "CLOSED") facts.state = "closed";
   if (state === "MERGED") facts.state = "merged";
   if (typeof json.isDraft === "boolean") facts.draft = json.isDraft;
-  const review = typeof json.reviewDecision === "string" ? json.reviewDecision.toUpperCase() : "";
+  const review =
+    typeof json.reviewDecision === "string" ? json.reviewDecision.toUpperCase() : undefined;
+  // An empty decision is gh saying no decision stands, not that it was not asked.
+  if (review === "") facts.review = "none";
   if (review === "APPROVED") facts.review = "approved";
   if (review === "CHANGES_REQUESTED") facts.review = "changes_requested";
   if (review === "REVIEW_REQUIRED") facts.review = "review_required";
@@ -333,7 +351,9 @@ function observeGithubTool(result: ToolResultLike): Observation[] {
   if (ref) {
     const merged =
       /merge_pull_request/i.test(result.toolName) && isRecord(json) && json.merged === true;
-    const facts = restFacts(json, "");
+    // pull_request_read's `method` says what the result is, even when it is an empty list.
+    const method = typeof result.input.method === "string" ? result.input.method : "";
+    const facts = restFacts(json, /review/i.test(method) ? "/reviews" : "");
     return [
       {
         ref,
@@ -395,7 +415,8 @@ function reviewFromList(items: readonly unknown[]): PrFacts["review"] {
   const states = [...latest.values()];
   if (states.includes("CHANGES_REQUESTED")) return "changes_requested";
   if (states.includes("APPROVED")) return "approved";
-  return undefined;
+  // The reviews were read and no decision stands: none given, or all dismissed.
+  return "none";
 }
 
 /** A PR named by a JSON result: `{ number, url }` (gh) or `{ number, html_url }` (REST). */

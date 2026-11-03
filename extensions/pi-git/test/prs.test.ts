@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mergePr, mergeStatus, type PrRecord, type PrStatus } from "../src/prs.ts";
+import { describePr, mergePr, mergeStatus, type PrRecord, type PrStatus } from "../src/prs.ts";
 
 /** A status as one observation at `at` records it: each field stamped with that time. */
 const seen = (
@@ -49,6 +49,15 @@ describe("mergeStatus", () => {
     const legacy: PrStatus = { state: "open", observedAt: 40, source: "bash" };
     expect(mergeStatus(seen(20, { state: "merged" }), legacy)?.state).toBe("open");
     expect(mergeStatus(legacy, seen(50, { state: "merged" }))?.state).toBe("merged");
+  });
+});
+
+describe("reviews", () => {
+  it("lets a later no-decision read clear an earlier approval", () => {
+    const merged = mergeStatus(seen(10, { review: "approved" }), seen(20, { review: "none" }));
+    expect(merged?.review).toBe("none");
+    expect(describePr(merged)).toBe("no status seen yet");
+    expect(describePr(mergeStatus(merged, seen(30, { state: "open" })))).toBe("open");
   });
 });
 
