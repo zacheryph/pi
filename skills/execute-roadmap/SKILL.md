@@ -65,9 +65,18 @@ each ready step:
      anything the step did not anticipate. Large output as a `stash_put` handle.
 3. Record the agent ID on the task with a `message`.
 
-Run independent ready steps in parallel (`run_in_background`) only when their
-file scopes do not overlap. When unsure, run them one at a time. Never run a
-tidy step and a behavior step on the same files at once.
+A single ready step runs in the main checkout. When several steps are ready at
+once, run them in parallel (`run_in_background`), each in its own worktree:
+
+- Create it with `git_worktree_create`, branch `<key>` (the task key), from the
+  roadmap branch's current `HEAD`. A step that spans repositories gets one
+  worktree per repository with the same `workspace`.
+- Pass the returned path as `subagent_start`'s `cwd`, and record the path and
+  branch on the task with a `message`.
+
+Worktrees let parallel steps touch the same files; they may then conflict when
+they land (section 4). Still never run a tidy step and a behavior step on the
+same files at once.
 
 ## 3. Verify each step
 
@@ -78,7 +87,8 @@ A worker finishing is not proof. For every implementation step:
 2. Spawn a `reviewer` (never the worker that implemented the step). Give it the
    task key, the step's `Done when` lines as its acceptance criteria, the
    `Verification` lines as the checks to run, and the diff range (the step's
-   starting commit to the working tree).
+   starting commit to the working tree). A step that ran in a worktree is
+   reviewed there: pass the same `cwd`.
 3. On `Verdict: PASS`: commit (see below), then mark the task `completed` with a
    `message` that names the commit and the reviewer's evidence.
 4. On `Verdict: FAIL`: resume the original worker (`subagent_start` with `resume` set
@@ -97,6 +107,13 @@ tests) run in every verification, whether or not the step lists them.
   body names the roadmap and step number. Follow the repository's commit rules
   (for this repository: `git -c commit.gpgsign=false commit`).
 - Never combine a tidy step and a behavior step in one commit.
+- A step that ran in a worktree is committed there, on its branch, then landed
+  on the roadmap branch in roadmap order with `git cherry-pick`. Hold a later
+  step's commit in its worktree until every earlier step has landed. If the
+  pick conflicts, rebase the step's branch onto the roadmap branch, resume its
+  worker in the same `cwd` to resolve, and verify again before landing. Once it
+  has landed, remove the worktree with `git_worktree_remove` (its branch is
+  kept; delete it with `git branch -d`).
 - Do not push or open pull requests unless the user asked for it. If they did,
   default to one branch for the roadmap and one pull request per step that
   `Ships alone: yes`.
@@ -117,14 +134,15 @@ Workers will find things the roadmap did not. Classify each finding:
 ## 6. Finish or stop
 
 When `<prefix>-done` is ready, set the document's `Status:` to `done`, complete
-the task, and report: steps landed with their commits, verification evidence,
-anything noted for later.
+the task, check `git_worktree_list` for worktrees this run left behind, and
+report: steps landed with their commits, verification evidence, anything noted
+for later.
 
 When you stop early (blocked, limit reached, a question), leave the ledger and
 the document consistent and report:
 
 - which steps landed, which is blocked and why, which are ready next;
-- the agent IDs worth resuming;
+- the agent IDs worth resuming, and the worktree each step's work is in;
 - the exact question or decision you need from the user.
 
 Resuming later is the same skill: step 1 reconciles the existing tasks with the
