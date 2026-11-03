@@ -41,10 +41,26 @@ export interface PrStatus {
   observedAt: number;
   /** The tool whose output last changed them. */
   source: string;
+  /**
+   * When each field was observed. A field without a time here counts as seen
+   * at `observedAt`.
+   */
+  fieldAt?: Partial<Record<PrField, number>>;
 }
 
 /** The part of a status a single observation carries. */
-export type PrFacts = Omit<PrStatus, "observedAt" | "source">;
+export type PrFacts = Omit<PrStatus, "observedAt" | "source" | "fieldAt">;
+export type PrField = keyof PrFacts;
+
+const FIELDS: readonly PrField[] = [
+  "state",
+  "draft",
+  "review",
+  "checks",
+  "mergeable",
+  "headSha",
+  "headRef",
+];
 
 export interface PrCall {
   tool: string;
@@ -113,7 +129,15 @@ function isStatus(value: unknown): value is PrStatus {
     (status.headSha === undefined || isString(status.headSha)) &&
     (status.headRef === undefined || isString(status.headRef)) &&
     (checks === undefined ||
-      (isCount(checks.passed) && isCount(checks.failed) && isCount(checks.pending)))
+      (isCount(checks.passed) && isCount(checks.failed) && isCount(checks.pending))) &&
+    (status.fieldAt === undefined || isFieldTimes(status.fieldAt))
+  );
+}
+
+function isFieldTimes(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  return Object.entries(value).every(
+    ([key, at]) => (FIELDS as readonly string[]).includes(key) && typeof at === "number",
   );
 }
 
@@ -155,18 +179,40 @@ export function isPrRecord(value: unknown): value is PrRecord {
   );
 }
 
+/** A status recording `facts` as seen at `at`, each field stamped with that time. */
+export function observedStatus(facts: PrFacts, at: number, source: string): PrStatus {
+  const fieldAt: Partial<Record<PrField, number>> = {};
+  for (const field of FIELDS) if (facts[field] !== undefined) fieldAt[field] = at;
+  return { ...facts, observedAt: at, source, fieldAt };
+}
+
 /**
- * Combine two statuses field by field: a newer observation wins only for the
- * fields it carries, so reading the checks does not forget the review.
+ * Combine two statuses field by field, each from whichever side saw that field
+ * last (a tie goes to `b`). Reading the checks neither forgets the review nor
+ * refreshes an older state: a status's `observedAt` moves with its newest
+ * field, but each field keeps its own time.
  */
 export function mergeStatus(a: PrStatus | undefined, b: PrStatus | undefined) {
   if (!a) return b;
   if (!b) return a;
-  const [older, newer] = b.observedAt >= a.observedAt ? [a, b] : [b, a];
-  const defined = Object.fromEntries(
-    Object.entries(newer).filter(([, value]) => value !== undefined),
-  ) as PrStatus;
-  return { ...older, ...defined };
+  const timeOf = (status: PrStatus, field: PrField) => status.fieldAt?.[field] ?? status.observedAt;
+  const merged: Record<string, unknown> = {};
+  const fieldAt: Partial<Record<PrField, number>> = {};
+  for (const field of FIELDS) {
+    const fromA = a[field] !== undefined;
+    const fromB = b[field] !== undefined;
+    if (!fromA && !fromB) continue;
+    const side = fromB && (!fromA || timeOf(b, field) >= timeOf(a, field)) ? b : a;
+    merged[field] = side[field];
+    fieldAt[field] = timeOf(side, field);
+  }
+  const newer = b.observedAt >= a.observedAt ? b : a;
+  return {
+    ...(merged as PrFacts),
+    observedAt: Math.max(a.observedAt, b.observedAt),
+    source: newer.source,
+    fieldAt,
+  } satisfies PrStatus;
 }
 
 /** Both call lists, once each, oldest first, keeping the newest {@link MAX_CALLS}. */

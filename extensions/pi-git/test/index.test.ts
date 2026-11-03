@@ -588,6 +588,26 @@ describe("pull requests", () => {
     });
   });
 
+  it("does not let a subagent's later checks read reopen a PR its parent saw merged", async () => {
+    const parent = await start("parent");
+    parent.pi.events.emit("subagent:session:created", {
+      sessionId: "child",
+      parentSessionId: "parent",
+      agentId: "agent-7",
+      cwd: box.dir,
+    });
+    const child = await start("child");
+    await child.fire("tool_result", ghResult("gh pr view 20 -R acme/api", "state:\tOPEN", "k1"));
+    await parent.fire("tool_result", ghResult("gh pr view 20 -R acme/api", "state:\tMERGED", "p1"));
+    await child.fire(
+      "tool_result",
+      ghResult("gh pr checks 20 -R acme/api", "ci\tpass\t1s\thttps://x\t", "k2"),
+    );
+    expect(prs(parent).at(-1)).toMatchObject({
+      status: { state: "merged", checks: { passed: 1, failed: 0, pending: 0 } },
+    });
+  });
+
   it("never fails a tool result it cannot read", async () => {
     const h = await start();
     await expect(h.fire("tool_result", { toolName: "bash", input: null })).resolves.toBeUndefined();
