@@ -20,29 +20,21 @@ Status: research · Pi SDK checked: `@earendil-works/pi-coding-agent` 1.4.0
 Non-goals for a first version: moving your own session into a worktree (see
 "Other extensions"), a general GitHub client, polling GitHub in the background.
 
-## Why not pi-subagent-worktree
+## What worktrees need here
 
-How it works: an opted-in subagent type (`worktreeAgents` in
-`subagent-worktree.json`; without the file it does nothing) gets
-`git worktree add --detach $TMPDIR/pi-agent-<id>-<rand> HEAD` before it runs. When
-the run ends, a clean worktree is deleted; a dirty one is committed to a local
-`pi-agent-<id>` branch and deleted; a failed cleanup leaves it on disk. Session
-start scans git for leftovers. It never writes to the session.
+The orchestrator decides where each worker runs, so a worktree must:
 
-It does not fit an orchestrator-driven workflow:
-
-| Problem                                     | Evidence                                                                                                                                                                                                                                                                                          |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| The worktree dies with the run.             | The workspace is disposed when the child's run ends. After that, `resumeRefusal` returns `"workspace-disposed"` (`extensions/pi-subagent/src/lifecycle/subagent.ts:342`), so the orchestrator's "follow up in the prior worker's session" is refused for exactly the workers that had a worktree. |
-| The subagent decides, not the orchestrator. | The provider picks by agent **type**. The orchestrator cannot say "these two workers share this worktree" or "this one gets a fresh one on branch `feat/x`".                                                                                                                                      |
-| One repository: the parent's cwd.           | `prepare()` gets `baseCwd`, the parent's working directory. A session started above several repositories cannot isolate anything; an opted-in agent's run fails.                                                                                                                                  |
-| Work lands on throwaway branches.           | Detached `HEAD` from the parent's last **commit** (uncommitted parent changes are missing), committed as one `pi-agent: <description>` commit on `pi-agent-<id>`, plain `git commit` (fails under a prompting `commit.gpgsign`, against `AGENTS.md`).                                             |
-| Lives in `$TMPDIR`.                         | Cleared by the OS on its own schedule; the startup warning exists because of this.                                                                                                                                                                                                                |
-
-Recommendation: **remove pi-subagent-worktree from the bundle** once the
-replacement below lands. It is inert without its config file, so nothing breaks
-in between. Two of its ideas carry over: never delete a worktree whose state is
-uncertain, and reconcile against git on session start.
+- **Outlive the run.** A worker that finishes or is released leaves its
+  worktree, so the orchestrator can resume it there or start another worker in
+  the same place.
+- **Be chosen per task, not per agent type.** Two workers can share one; another
+  gets a fresh one on its own branch.
+- **Work in any repository,** and across several in one task, not only the
+  parent's working directory.
+- **Use a named branch** that is pushed and opened as a PR as usual.
+- **Live outside `$TMPDIR`,** which the OS clears on its own schedule.
+- **Never be deleted while its state is uncertain,** and be reconciled against
+  git on session start.
 
 ## Candidates
 
@@ -271,16 +263,13 @@ Each is shippable alone.
    `git_worktree_create/list/remove`, workspaces, reconciliation,
    `/git:worktrees`, `git:snapshot`. SDK test with the real loader for reload and
    resume; tests with two repositories.
-3. **Remove pi-subagent-worktree** from the bundle (workspace, `pi.extensions`,
-   `verify-bundle`, README). Its warnings about leftover `pi-agent-*` worktrees
-   and branches are not carried over; delete those by hand once.
-4. **PR observer:** `tool_result` extraction for bash/`gh`, GitHub MCP tools and
+3. **PR observer:** `tool_result` extraction for bash/`gh`, GitHub MCP tools and
    URLs; the two groups; `/git:prs`; adoption from children. Table-driven tests
    from captured outputs.
-5. **Status:** `git_pr_status` and `/git:refresh`, `gh` first, MCP fallback,
+4. **Status:** `git_pr_status` and `/git:refresh`, `gh` first, MCP fallback,
    retry classifier copied from pi-github-tools with attribution.
-6. **Dashboard:** `git:snapshot` reader, card counts, detail section.
-7. **Orchestrator and skills:** the `orchestrator` profile creates a worktree per
+5. **Dashboard:** `git:snapshot` reader, card counts, detail section.
+6. **Orchestrator and skills:** the `orchestrator` profile creates a worktree per
    implementation task (or a workspace when the task spans repositories) and
    passes `cwd`; `babysit-pr` uses `git_pr_status`; `execute-roadmap` uses
    worktrees for parallel steps instead of requiring non-overlapping files.

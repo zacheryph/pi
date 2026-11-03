@@ -3,6 +3,19 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-03: pi-subagent-worktree removed from the bundle
+
+The vendored `pi-subagent-worktree` companion was removed from the bundle; a
+caller now prepares a directory and passes it as `cwd`. The `WorkspaceProvider`
+seam is unchanged.
+
+- `README.md`, `docs/architecture/architecture.md`,
+  `docs/architecture/client-server-opportunities.md`,
+  `docs/comparison-with-upstream.md`: worktree isolation is described as a
+  caller-chosen `cwd` or a workspace provider, not a companion package.
+- `src/service/service.ts`, `test/composition-root.test.ts`: comments name a
+  workspace provider in general.
+
 ## 2026-11-03: Caller-chosen working directory
 
 `subagent_start` takes an optional `cwd`: an existing directory, absolute or

@@ -566,7 +566,7 @@ describe("composition root: service publication", () => {
   });
 
   it("lets a companion register its workspace provider from its factory, in the parent and in a child", async () => {
-    // Mirrors pi-subagent-worktree: its factory reads the published service
+    // Mirrors a companion workspace provider: its factory reads the published service
     // right after pi-subagent loads and registers one provider, unregistering
     // it on session_shutdown.
     const companion = (pi: ReturnType<typeof makePi>["pi"]) => {

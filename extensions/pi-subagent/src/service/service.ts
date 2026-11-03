@@ -207,8 +207,8 @@ interface Publications {
  * services are published at once.
  *
  * A service is published *pending* when its extension factory runs and
- * *started* on `session_start`. Companion extensions (e.g.
- * `pi-subagent-worktree`) call `getSubagentsService()` from their
+ * *started* on `session_start`. Companion extensions (e.g. a workspace
+ * provider) call `getSubagentsService()` from their
  * own factory, right after this one, and must get the service of the session
  * that is loading, so the newest pending publication is the default. Once no
  * load is pending, the default is the outermost started service: a child starts
