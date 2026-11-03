@@ -13,7 +13,8 @@
     "packages/pi-session-tree",
     "packages/pi-foundations",
     "packages/pi-ui",
-    "extensions/pi-ask"
+    "extensions/pi-ask",
+    "extensions/pi-git"
   ],
   "scripts": {
     "check": "npm run format:check && npm run lint && npm run typecheck",
@@ -44,6 +45,7 @@
       "./extensions/pi-system-insights/src/index.ts",
       "./extensions/pi-todo/src/index.ts",
       "./extensions/pi-tldr/src/index.ts",
+      "./extensions/pi-git/src/index.ts",
       "./extensions/pi-dashboard/src/index.ts",
       "./extensions/pi-ask/src/index.ts"
     ],

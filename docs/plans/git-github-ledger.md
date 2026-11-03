@@ -98,11 +98,13 @@ Tools (any session may call them; a child's records are adopted by its parent):
     directory, see below.
   - Returns the path to give a subagent as `cwd`, and records the worktree.
 - `git_worktree_list` reads the ledger, reconciled against git.
-- `git_worktree_remove { path, force? }` refuses when the worktree has uncommitted
-  changes or commits not on any remote, unless `force`. It never deletes the
-  branch.
+- `git_worktree_remove { path, force? }` never deletes the branch, so committed
+  work survives it whether pushed or not. It refuses only what removal would
+  lose: uncommitted changes, or commits on a detached `HEAD` that no branch has,
+  unless `force`. Unpushed commits are reported, not refused.
 
-Location: `~/.pi/agent/worktrees/<workspace-or-repo>/<repo>-<branch>` by default,
+Location: `~/.pi/agent/worktrees/<repo>/<branch>` (with `/` in the branch as
+`-`), or `~/.pi/agent/worktrees/<workspace>/<repo>` in a workspace. The root is
 `worktreeRoot` in `~/.pi/agent/git.json` (project `.pi/git.json` overrides).
 Outside every repository, never in `$TMPDIR`.
 
