@@ -14,6 +14,11 @@ export interface GitConfig {
    * Default: `<agent dir>/worktrees`.
    */
   worktreeRoot: string;
+  /**
+   * Record pull requests the session only looked at, not just the ones it
+   * opened. Default true.
+   */
+  trackReferenced: boolean;
 }
 
 export const CONFIG_FILE = "git.json";
@@ -24,6 +29,7 @@ export function sanitizeConfig(raw: unknown): Partial<GitConfig> {
   const config: Partial<GitConfig> = {};
   if (typeof input.worktreeRoot === "string" && input.worktreeRoot.trim())
     config.worktreeRoot = input.worktreeRoot.trim();
+  if (typeof input.trackReferenced === "boolean") config.trackReferenced = input.trackReferenced;
   return config;
 }
 
@@ -42,5 +48,8 @@ export function loadGitConfig(cwd: string, agentDir = getAgentDir()): GitConfig 
     sanitize: sanitizeConfig,
     warnLabel: "pi-git",
   });
-  return { worktreeRoot: resolveRoot(loaded.worktreeRoot ?? join(agentDir, "worktrees"), cwd) };
+  return {
+    worktreeRoot: resolveRoot(loaded.worktreeRoot ?? join(agentDir, "worktrees"), cwd),
+    trackReferenced: loaded.trackReferenced ?? true,
+  };
 }

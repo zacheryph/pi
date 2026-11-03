@@ -20,7 +20,13 @@ let clock = 1_000;
 let frozen = false;
 
 /** A fake ExtensionAPI and session for one pi-git instance. */
-function harness(options: { sessionId: string; cwd: string; root: string; entries?: unknown[] }) {
+function harness(options: {
+  sessionId: string;
+  cwd: string;
+  root: string;
+  entries?: unknown[];
+  trackReferenced?: boolean;
+}) {
   const handlers = new Map<string, Handler[]>();
   const listeners = new Map<string, Handler[]>();
   const tools = new Map<string, Tool>();
@@ -50,7 +56,10 @@ function harness(options: { sessionId: string; cwd: string; root: string; entrie
   };
   pi.events.on(GIT_SNAPSHOT_EVENT, (data) => snapshots.push(data as GitSnapshotEvent));
   piGit(pi as unknown as ExtensionAPI, {
-    loadConfig: () => ({ worktreeRoot: options.root }),
+    loadConfig: () => ({
+      worktreeRoot: options.root,
+      trackReferenced: options.trackReferenced ?? true,
+    }),
     now: () => (frozen ? clock : (clock += 1)),
   });
   const ui = {
@@ -105,9 +114,11 @@ describe("pi-git registration", () => {
       "git_worktree_create",
       "git_worktree_list",
       "git_worktree_remove",
+      "git_pr_list",
     ]);
     expect(h.commands.has("git:worktrees")).toBe(true);
-    for (const event of ["session_start", "session_tree", "session_shutdown"])
+    expect(h.commands.has("git:prs")).toBe(true);
+    for (const event of ["session_start", "session_tree", "session_shutdown", "tool_result"])
       expect(h.pi.on).toHaveBeenCalledWith(event, expect.any(Function));
   });
 });
@@ -381,5 +392,137 @@ describe("/git:worktrees", () => {
     h.ui.confirm.mockResolvedValueOnce(false);
     await h.commands.get("git:worktrees")!.handler("remove", h.ctx);
     expect(h.ledger().at(-1)?.state).toBe("active");
+  });
+});
+
+describe("pull requests", () => {
+  const ghResult = (command: string, output: string, toolCallId = `call-${Math.random()}`) => ({
+    type: "tool_result",
+    toolName: "bash",
+    toolCallId,
+    input: { command },
+    content: [{ type: "text", text: output }],
+    isError: false,
+  });
+  const prs = (h: Awaited<ReturnType<typeof start>>) =>
+    h.entries
+      .filter((entry) => (entry as { data?: { kind?: string } }).data?.kind === "pr")
+      .map((entry) => (entry as { data: Record<string, unknown> }).data);
+
+  it("records a PR opened here, then what later checks showed, keeping both", async () => {
+    const h = await start();
+    await h.fire(
+      "tool_result",
+      ghResult("gh pr create --fill", "https://github.com/acme/api/pull/12", "c1"),
+    );
+    await h.fire(
+      "tool_result",
+      ghResult(
+        "gh pr view 12 -R acme/api --json url,reviewDecision",
+        '{"url":"https://github.com/acme/api/pull/12","reviewDecision":"APPROVED"}',
+        "c2",
+      ),
+    );
+    const latest = prs(h).at(-1)!;
+    expect(latest).toMatchObject({
+      kind: "pr",
+      key: "github.com/acme/api#12",
+      origin: "created",
+      status: { state: "open", review: "approved", source: "bash" },
+      calls: [
+        { tool: "bash", toolCallId: "c1" },
+        { tool: "bash", toolCallId: "c2" },
+      ],
+    });
+    expect(h.snapshots.at(-1)?.prs.map((pr) => pr.key)).toEqual(["github.com/acme/api#12"]);
+  });
+
+  it("upgrades a referenced PR to opened here when this session is seen opening it", async () => {
+    const h = await start();
+    await h.fire("tool_result", {
+      type: "tool_result",
+      toolName: "WebFetch",
+      toolCallId: "w1",
+      input: { url: "https://github.com/acme/api/pull/3" },
+      content: [],
+      isError: false,
+    });
+    expect(prs(h).at(-1)?.origin).toBe("referenced");
+    await h.fire("tool_result", ghResult("gh pr create", "https://github.com/acme/api/pull/3"));
+    expect(prs(h).at(-1)?.origin).toBe("created");
+  });
+
+  it("skips PRs only looked at when trackReferenced is off", async () => {
+    const h = harness({ sessionId: "s", cwd: box.dir, root: box.root, trackReferenced: false });
+    await h.fire("session_start");
+    await h.fire("tool_result", ghResult("gh pr view https://github.com/acme/api/pull/4", ""));
+    expect(prs(h)).toEqual([]);
+    await h.fire("tool_result", ghResult("gh pr create", "https://github.com/acme/api/pull/5"));
+    expect(prs(h).map((pr) => pr.key)).toEqual(["github.com/acme/api#5"]);
+  });
+
+  it("restores PRs after a reload and lists them in two groups", async () => {
+    const first = await start();
+    await first.fire(
+      "tool_result",
+      ghResult("gh pr create --title 'Add login'", "https://github.com/acme/api/pull/12"),
+    );
+    await first.fire(
+      "tool_result",
+      ghResult(
+        "gh pr view https://github.com/acme/web/pull/7",
+        "title:\tFix nav\nstate:\tMERGED\n",
+      ),
+    );
+    const reloaded = await start("parent", first.entries);
+    const list = await reloaded.tool("git_pr_list", {});
+    expect(list.content[0].text).toMatch(
+      /^Opened here:\n- acme\/api#12\n {2}open \(seen \d+s ago via bash\)\n {2}https:\/\/github.com\/acme\/api\/pull\/12\n\nReferenced:\n- acme\/web#7 — Fix nav\n {2}merged \(seen \d+s ago via bash\)\n {2}https:\/\/github.com\/acme\/web\/pull\/7$/,
+    );
+    const opened = await reloaded.tool("git_pr_list", { includeReferenced: false });
+    expect(opened.content[0].text).not.toContain("Referenced");
+    await reloaded.commands.get("git:prs")!.handler("", reloaded.ctx);
+    expect(reloaded.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("- acme/api#12"),
+      "info",
+    );
+  });
+
+  it("hands a PR a subagent opened up to its parent, with the subagent's id", async () => {
+    const parent = await start("parent");
+    parent.pi.events.emit("subagent:session:created", {
+      sessionId: "child",
+      parentSessionId: "parent",
+      agentId: "agent-7",
+      cwd: box.dir,
+    });
+    const child = await start("child");
+    await child.fire(
+      "tool_result",
+      ghResult("gh pr create", "https://github.com/acme/api/pull/20", "k1"),
+    );
+    await parent.fire(
+      "tool_result",
+      ghResult("gh pr checks 20 -R acme/api", "ci\tpass\t1s\thttps://x\t", "p1"),
+    );
+    await child.fire("tool_result", ghResult("gh pr view 20 -R acme/api", "state:\tMERGED", "k2"));
+
+    expect(prs(parent).at(-1)).toMatchObject({
+      origin: "created",
+      createdBy: "agent-7",
+      via: "adopt",
+      status: { state: "merged", checks: { passed: 1, failed: 0, pending: 0 } },
+      calls: [
+        { toolCallId: "k1", agentId: "agent-7" },
+        { toolCallId: "p1" },
+        { toolCallId: "k2", agentId: "agent-7" },
+      ],
+    });
+  });
+
+  it("never fails a tool result it cannot read", async () => {
+    const h = await start();
+    await expect(h.fire("tool_result", { toolName: "bash", input: null })).resolves.toBeUndefined();
+    expect(prs(h)).toEqual([]);
   });
 });

@@ -71,7 +71,7 @@ pi-personal/
 │   │   ├── test/
 │   │   └── docs/plan.md                 # research and phased plan
 │   ├── pi-git/
-│   │   ├── src/index.ts                 # git_worktree_* tools + /git:worktrees
+│   │   ├── src/index.ts                 # git_* tools + /git:worktrees, /git:prs
 │   │   └── test/
 │   ├── pi-job/                          # vendored
 │   │   ├── src/extension.ts             # job_* tools + /job command
@@ -173,9 +173,16 @@ Every worktree is recorded as a `git:ledger` session entry with its repository,
 branch, workspace, state and the subagents that ran in it, so `git_worktree_list`
 and `/git:worktrees` still show it after a reload or resume. Worktrees a subagent
 creates are handed up to its parent's ledger; worktrees under the root from
-other sessions are listed separately. State is published as `git:snapshot` for
-the dashboard. The root is set by `worktreeRoot` in `~/.pi/agent/git.json` or
-`.pi/git.json`. See [extension docs](extensions/pi-git/README.md) and the
+other sessions are listed separately.
+
+Pull requests are recorded the same way whenever a tool touches one: `gh pr`
+and `gh api …/pulls/<n>` in bash, the GitHub MCP tools, or a PR URL passed to any
+tool. Each is **opened here** or **referenced**, with the last state, review,
+checks and conflicts its output showed and the tool calls that touched it.
+`git_pr_list` and `/git:prs` list them after a reload; pi-git never queries
+GitHub itself. State is published as `git:snapshot` for the dashboard. The root
+is set by `worktreeRoot` in `~/.pi/agent/git.json` or `.pi/git.json`;
+`trackReferenced: false` keeps only PRs opened here. See [extension docs](extensions/pi-git/README.md) and the
 [plan](docs/plans/git-github-ledger.md).
 
 ### pi-job
