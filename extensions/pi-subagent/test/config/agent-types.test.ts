@@ -351,6 +351,15 @@ describe("AgentTypeRegistry", () => {
       });
     });
 
+    it("runs implementation tasks in worktrees it hands to workers as cwd", () => {
+      const prompt = makeRegistry().resolveAgentConfig("orchestrator").systemPrompt;
+      expect(prompt).toContain("Give each implementation task its own git worktree");
+      expect(prompt).toContain("pass the returned path as subagent_start's cwd");
+      expect(prompt).toContain("send the reviewer and any follow-up worker to the same cwd");
+      expect(prompt).toContain("remove it with git_worktree_remove");
+      expect(prompt).toContain("call todo_list and git_worktree_list");
+    });
+
     it("can be overridden or disabled like every other built-in", () => {
       const custom = makeAgentConfig({
         name: "orchestrator",

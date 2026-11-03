@@ -3,6 +3,18 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-03: Orchestrator runs implementation tasks in worktrees
+
+`src/config/default-agents.ts`: the built-in `orchestrator` profile gives each
+implementation task its own git worktree (`git_worktree_create`, one per
+repository with a shared workspace when a task spans several) unless it is a
+small change verified in place, passes it as `subagent_start`'s `cwd`, sends
+the reviewer and follow-up workers to the same `cwd`, and removes it with
+`git_worktree_remove` once its branch is merged or pushed. After compaction or
+a reload it calls `git_worktree_list` beside `todo_list`. The profile already
+had every parent tool through `all`; only its instructions changed.
+`test/config/agent-types.test.ts` asserts the new instructions.
+
 ## 2026-11-03: pi-subagent-worktree removed from the bundle
 
 The vendored `pi-subagent-worktree` companion was removed from the bundle; a

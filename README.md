@@ -230,8 +230,11 @@ Stashed text is plaintext on local disk and is not redacted. See
 ### pi-subagent
 
 The built-in `orchestrator` profile manages long-running projects with categorized
-todos, specialist delegation, and follow-ups in prior workers' sessions. Use
-`pi --agent orchestrator` or delegate with `subagent_type: "orchestrator"`.
+todos, specialist delegation, and follow-ups in prior workers' sessions. It
+gives each implementation task its own git worktree from pi-git (one per
+repository when a task spans several) and runs the task's workers there, so
+parallel workers never share a checkout. Use `pi --agent orchestrator` or
+delegate with `subagent_type: "orchestrator"`.
 
 The built-in `reviewer` profile verifies finished work: it runs the project's
 checks, judges each acceptance criterion with evidence, and reports
@@ -399,8 +402,9 @@ Nothing here depends on it.
 ### execute-roadmap
 
 Carries out a chosen make-it-easy roadmap. Each step becomes a `todo` with its
-`Depends on` mapped to `dependsOn`; ready steps go to subagents (in parallel only
-when their files do not overlap); a `reviewer` that did not do the work checks
+`Depends on` mapped to `dependsOn`; ready steps go to subagents (steps that run
+in parallel each get their own git worktree from pi-git, and land on the roadmap
+branch in roadmap order); a `reviewer` that did not do the work checks
 every step against its "Done when" and "Verification" lines before it is
 committed and completed. Two failed repair rounds block a step. A finding the roadmap did not anticipate
 stops the run and lands in the document's open questions instead of an
