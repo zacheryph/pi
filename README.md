@@ -216,6 +216,9 @@ Personal copy of [`gotgenes/pi-packages/packages/pi-subagent`](https://github.co
 Provides `subagent_start`, `subagent_get`, and `subagent_steer`, plus
 `/subagent:settings`, `/subagent:sessions`, `/subagent:watch`, and
 `/agent` (read-only browser for agent definitions).
+`subagent_start` takes a `cwd`, so an orchestrator can run a worker in a
+directory it prepared, such as a git worktree; that directory is never removed
+for it and the worker stays resumable there.
 
 Background agents use a compact widget above Pi's editor:
 

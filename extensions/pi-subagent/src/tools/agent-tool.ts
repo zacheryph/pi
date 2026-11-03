@@ -8,6 +8,7 @@ import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
+import { resolveSpawnCwd } from "#src/lifecycle/spawn-cwd";
 import type {
   AgentSpawnConfig,
   ResumeCallOptions,
@@ -98,16 +99,28 @@ export class AgentTool {
     this.registry.reload();
 
     // ---- Config resolution (pure) ----
-    const config = resolveSpawnConfig(
+    const resolved = resolveSpawnConfig(
       params,
       this.registry,
       this.runtime.getModelInfo(),
       this.settings,
     );
-    if ("error" in config) return textResult(config.error);
+    if ("error" in resolved) return textResult(resolved.error);
 
     // ---- Boundary extraction (after config so inheritContext is resolved) ----
-    const snapshot = this.runtime.buildSnapshot(config.execution.inheritContext);
+    const snapshot = this.runtime.buildSnapshot(resolved.execution.inheritContext);
+
+    // ---- Caller-chosen cwd (local change), relative to the parent's cwd ----
+    if (params.resume && params.cwd != null) {
+      return textResult(
+        "cwd applies only to a new agent; a resumed agent keeps the directory it started in.",
+      );
+    }
+    const cwd = resolveSpawnCwd(params.cwd, snapshot.cwd);
+    if ("error" in cwd) return textResult(cwd.error);
+    const config: ResolvedSpawnConfig = cwd.cwd
+      ? { ...resolved, execution: { ...resolved.execution, cwd: cwd.cwd } }
+      : resolved;
     const { parentSessionFile, parentSessionId } = this.runtime.getSessionInfo();
     const parentSession: ParentSessionInfo = { parentSessionFile, parentSessionId, toolCallId };
 
@@ -205,6 +218,7 @@ export class AgentTool {
       '- Use model to specify a different model (as "provider/modelId", or fuzzy e.g. "haiku", "sonnet").',
       "- Use thinking to control extended thinking level.",
       "- Use inherit_context if the agent needs the parent conversation history.",
+      "- Use cwd to run the agent in another existing directory, such as a git worktree you created for it. You own that directory: it is not removed when the agent finishes, and the agent can be resumed there.",
     ].join("\n");
 
     return defineTool({
@@ -266,6 +280,12 @@ ${guidelines}
           Type.Boolean({
             description:
               "If true, fork parent conversation into the agent. Omit to use the agent's own default, which is fresh context unless it declares otherwise.",
+          }),
+        ),
+        cwd: Type.Optional(
+          Type.String({
+            description:
+              "Existing directory the agent runs in, absolute or relative to your working directory, such as a git worktree. Omit to run in your working directory. Not allowed with resume.",
           }),
         ),
         handoff: Type.Optional(

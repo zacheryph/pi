@@ -14,6 +14,7 @@ import type {
   ResumeCallOptions,
   ResumeOutcome,
 } from "#src/lifecycle/subagent-manager";
+import { resolveSpawnCwd } from "#src/lifecycle/spawn-cwd";
 import type { WorkspaceProvider } from "#src/lifecycle/workspace";
 import type {
   ResumeOptions,
@@ -77,6 +78,7 @@ export class SubagentsServiceAdapter implements SubagentsService {
       inheritContext: options?.inheritContext,
       bypassQueue: options?.bypassQueue,
       handoff: this.resolveHandoff(options?.handoff),
+      cwd: this.resolveCwd(options?.cwd, snapshot.cwd),
       // A caller that names `foreground` has committed; one that omits it has
       // not, so the agent's own frontmatter decides and background is the
       // SDK-door default.
@@ -131,6 +133,13 @@ export class SubagentsServiceAdapter implements SubagentsService {
 
   registerWorkspaceProvider(provider: WorkspaceProvider): () => void {
     return this.manager.registerWorkspaceProvider(provider);
+  }
+
+  /** Check a caller's cwd; a bad one throws, like the adapter's other input failures. */
+  private resolveCwd(input: unknown, baseCwd: string): string | undefined {
+    const checked = resolveSpawnCwd(input, baseCwd);
+    if ("error" in checked) throw new Error(checked.error);
+    return checked.cwd;
   }
 
   /** Check a caller's handoff; a bad one throws, like the adapter's other input failures. */

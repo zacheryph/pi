@@ -124,6 +124,12 @@ export interface SpawnOptions {
    * Must be a JSON object within `MAX_HANDOFF_BYTES`.
    */
   handoff?: Record<string, unknown>;
+  /**
+   * Existing directory the child runs in, relative to the session's cwd or
+   * absolute. The caller owns it: no workspace provider is consulted and
+   * nothing is removed when the run ends.
+   */
+  cwd?: string;
 }
 
 /** The public service contract for cross-extension subagent access. */

@@ -49,6 +49,8 @@ export interface SpawnExecution {
   agentInvocation: AgentInvocation;
   /** The call's `handoff`, checked and frozen; forwarded to the child's `session-created` event. */
   handoff?: SubagentHandoff;
+  /** The call's `cwd`, resolved and checked by the tool; the child runs there. */
+  cwd?: string;
 }
 
 /** Presentation: display/UI values derived from identity and execution. */

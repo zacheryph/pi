@@ -243,7 +243,18 @@ describe("createSubagentSession — lifecycle ordering", () => {
     expect(lifecycle.sessionCreated).toHaveBeenCalledWith({
       sessionId: "child-session-id",
       parentSessionId: "parent-session-42",
+      cwd: STUB_SNAPSHOT.cwd,
     });
+  });
+
+  it("announces the effective cwd on session-created", async () => {
+    await createSubagentSession(
+      { snapshot: STUB_SNAPSHOT, type: "Explore", cwd: "/tmp/worktree" },
+      createSubagentSessionDeps({ io, exec, registry: mockAgentLookup, lifecycle }),
+    );
+    expect(lifecycle.sessionCreated).toHaveBeenCalledWith(
+      expect.objectContaining({ cwd: "/tmp/worktree" }),
+    );
   });
 
   it("carries the agent id on every event, but no tool call id or handoff a service spawn did not give", async () => {
@@ -265,6 +276,7 @@ describe("createSubagentSession — lifecycle ordering", () => {
     expect(lifecycle.sessionCreated).toHaveBeenCalledWith({
       ...identity,
       parentSessionId: "parent-session-42",
+      cwd: STUB_SNAPSHOT.cwd,
     });
     expect(lifecycle.bound).toHaveBeenCalledWith({
       ...identity,

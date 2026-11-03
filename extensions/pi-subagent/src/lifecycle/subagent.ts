@@ -129,6 +129,11 @@ export interface SubagentExecution {
   parentSession?: ParentSessionInfo;
   /** Forwarded to the child's `session-created` event. */
   handoff?: SubagentHandoff;
+  /**
+   * Caller-chosen directory the child runs in. When set, no workspace provider
+   * is consulted, so `workspaceDisposed` stays false and resume keeps working.
+   */
+  cwd?: string;
   signal?: AbortSignal;
 }
 
@@ -434,8 +439,10 @@ export class Subagent {
     // Guard the await so the no-provider path stays synchronous, preserving
     // the original run() timing: the factory is called in the same turn as
     // spawn() when no workspace provider is registered.
-    let cwd: string | undefined;
-    if (this.workspaceBracket.hasProvider()) {
+    // A caller-chosen cwd belongs to the caller: no provider prepares or
+    // disposes it (local change).
+    let cwd: string | undefined = this.execution.cwd;
+    if (cwd === undefined && this.workspaceBracket.hasProvider()) {
       try {
         cwd = await this.workspaceBracket.prepare({
           agentId: this.id,

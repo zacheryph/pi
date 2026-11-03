@@ -221,9 +221,12 @@ Launch a sub-agent.
 | `run_in_background` | boolean | no       | Run without blocking                                                                                                   |
 | `resume`            | string  | no       | Agent ID to resume a previous session                                                                                  |
 | `inherit_context`   | boolean | no       | Fork parent conversation into agent                                                                                    |
+| `cwd`               | string  | no       | Existing directory the agent runs in, such as a git worktree (see below)                                               |
 | `handoff`           | object  | no       | Data for extensions in the agent's session (see below)                                                                 |
 
 `handoff` is a JSON object (at most 16 KB) whose top-level keys belong to other extensions, each documenting its key's shape in its own tool guidance. For example, pi-todo reads `todo`. This package does not interpret it: it copies and freezes the object and forwards it on `subagent:session:created`, so an extension can add handoff data without changing pi-subagent. `SpawnOptions.handoff` does the same for service spawns.
+
+`cwd` runs the agent in an existing directory, absolute or relative to the parent's working directory; a missing one is refused before anything is spawned. The caller owns that directory: no workspace provider is consulted for the agent and nothing is removed when it finishes, so the agent can still be resumed there. It is refused together with `resume`, because a resumed agent keeps the directory it started in. `SpawnOptions.cwd` does the same for service spawns, and `subagent:session:created` carries the child's `cwd` whichever way it was chosen.
 
 These five parameters win over the agent file's own values, which fill whichever the call leaves unset.
 An agent file can withhold one with [`locked`](./docs/configuration.md#locking-fields-against-callers); the result then names the agent and the parameters it ignored.
