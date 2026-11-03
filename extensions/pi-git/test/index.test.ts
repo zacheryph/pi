@@ -26,6 +26,7 @@ function harness(options: {
   root: string;
   entries?: unknown[];
   trackReferenced?: boolean;
+  loadConfig?: () => { worktreeRoot: string; trackReferenced: boolean };
 }) {
   const handlers = new Map<string, Handler[]>();
   const listeners = new Map<string, Handler[]>();
@@ -56,10 +57,12 @@ function harness(options: {
   };
   pi.events.on(GIT_SNAPSHOT_EVENT, (data) => snapshots.push(data as GitSnapshotEvent));
   piGit(pi as unknown as ExtensionAPI, {
-    loadConfig: () => ({
-      worktreeRoot: options.root,
-      trackReferenced: options.trackReferenced ?? true,
-    }),
+    loadConfig:
+      options.loadConfig ??
+      (() => ({
+        worktreeRoot: options.root,
+        trackReferenced: options.trackReferenced ?? true,
+      })),
     now: () => (frozen ? clock : (clock += 1)),
   });
   const ui = {
@@ -194,6 +197,71 @@ describe("ledger", () => {
     const list = await h.tool("git_worktree_list", {});
     expect(list.content[0].text).toContain("missing: deleted outside Pi");
     expect(h.ledger().at(-1)?.state).toBe("missing");
+  });
+});
+
+describe("background refresh", () => {
+  /** A context that throws on every read, as Pi's does once its session is replaced. */
+  const stale = (ctx: object) => {
+    for (const key of ["hasUI", "ui", "cwd"])
+      Object.defineProperty(ctx, key, {
+        get() {
+          throw new Error("This extension ctx is stale after session replacement or reload.");
+        },
+      });
+  };
+
+  it.each([
+    ["after a shutdown event", true],
+    ["when the ctx goes stale without one", false],
+  ])("drops a failure that arrives %s", async (_name, shutdown) => {
+    const first = await start();
+    await first.tool("git_worktree_create", { repo: "src/api", branch: "slow" });
+    const rejections: unknown[] = [];
+    const onRejection = (reason: unknown) => rejections.push(reason);
+    process.on("unhandledRejection", onRejection);
+    try {
+      // The refresh awaits git for the worktree, then reads the config, which fails.
+      const h = harness({
+        sessionId: "parent",
+        cwd: box.dir,
+        root: box.root,
+        entries: first.entries,
+        loadConfig: () => {
+          throw new Error("config unreadable");
+        },
+      });
+      const started = h.fire("session_start");
+      if (shutdown) await h.fire("session_shutdown");
+      stale(h.ctx);
+      await started;
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      expect(rejections).toEqual([]);
+      expect(h.ui.notify).not.toHaveBeenCalled();
+    } finally {
+      process.off("unhandledRejection", onRejection);
+    }
+  });
+
+  it("still reports a failure to a live session", async () => {
+    const first = await start();
+    await first.tool("git_worktree_create", { repo: "src/api", branch: "slow" });
+    const h = harness({
+      sessionId: "parent",
+      cwd: box.dir,
+      root: box.root,
+      entries: first.entries,
+      loadConfig: () => {
+        throw new Error("config unreadable");
+      },
+    });
+    await h.fire("session_start");
+    await vi.waitFor(() =>
+      expect(h.ui.notify).toHaveBeenCalledWith(
+        "pi-git: could not check worktrees: config unreadable",
+        "warning",
+      ),
+    );
   });
 });
 

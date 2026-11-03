@@ -180,13 +180,25 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
     publish();
   };
 
+  /**
+   * Refresh without blocking the event. A failure is reported only while the
+   * session that started it is still current: after a shutdown or reload its
+   * ctx is stale, and touching it throws, which would escape as an unhandled
+   * rejection.
+   */
   const backgroundRefresh = (ctx: ExtensionContext) => {
+    const started = generation;
     refresh().catch((error: unknown) => {
-      if (ctx.hasUI)
-        ctx.ui.notify(
-          sanitizeText(`pi-git: could not check worktrees: ${errorText(error)}`),
-          "warning",
-        );
+      if (started !== generation) return;
+      try {
+        if (ctx.hasUI)
+          ctx.ui.notify(
+            sanitizeText(`pi-git: could not check worktrees: ${errorText(error)}`),
+            "warning",
+          );
+      } catch {
+        // The ctx went stale without a shutdown event reaching this extension.
+      }
     });
   };
 
