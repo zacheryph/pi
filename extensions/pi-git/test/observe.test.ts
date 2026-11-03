@@ -230,7 +230,54 @@ describe("observe: gh in a shell", () => {
   });
 
   it.each([
+    ["checks failing (gh exits 1)", CHECKS_ROWS, { passed: 2, failed: 1, pending: 1 }],
+    [
+      "checks pending (gh exits 8)",
+      "lint\tpass\t32s\thttps://github.com/acme/api/actions/runs/1/job/11\t\ndeploy\tpending\t0\thttps://github.com/acme/api/actions/runs/1/job/13\t",
+      { passed: 1, failed: 0, pending: 1 },
+    ],
+  ])("keeps the rows of gh pr checks when %s", async (_name, output, checks) => {
+    expect(
+      await run(bash("gh pr checks 12", `${output}\n\nCommand exited with code 1`, true)),
+    ).toEqual([
+      {
+        ref: { ...ORIGIN, number: 12 },
+        url: "https://github.com/acme/api/pull/12",
+        origin: "referenced",
+        facts: { checks },
+      },
+    ]);
+  });
+
+  it("keeps gh pr checks --json output when a check failed", async () => {
+    const json = JSON.stringify([
+      { name: "a", bucket: "pass" },
+      { name: "b", bucket: "fail" },
+    ]);
+    const [observation] = await run(
+      bash("gh pr checks 12 --json name,bucket", `${json}\n\nCommand exited with code 1`, true),
+    );
+    expect(observation?.facts).toEqual({ checks: { passed: 1, failed: 1, pending: 0 } });
+  });
+
+  it.each([
     ["a failed command", bash("gh pr view 12", "no pull requests found", true)],
+    [
+      "a failed gh api read",
+      bash("gh api repos/acme/web/pulls/7", '{"message":"Not Found"}', true),
+    ],
+    [
+      "gh pr checks that failed before listing any check",
+      bash("gh pr checks 12", "no checks reported on the 'feat/x' branch", true),
+    ],
+    [
+      "gh pr checks that could not find the PR",
+      bash(
+        "gh pr checks 99",
+        "GraphQL: Could not resolve to a PullRequest with the number of 99.",
+        true,
+      ),
+    ],
     ["gh pr list (a listing, not a PR)", bash("gh pr list", "12\tAdd login\tfeat/login\tOPEN")],
     [
       "git log mentioning PRs",

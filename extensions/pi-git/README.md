@@ -82,11 +82,16 @@ it:
 | Any other tool                                                                                   | A pull request URL in its input, referenced. A `job_watch` that polls a GitHub tool for a PR counts too.                                                                                                                                           |
 
 Output of other commands and tools is never scanned, so a `git log` or a file
-that mentions PRs records nothing. A failed call records nothing.
+that mentions PRs records nothing. A failed call records nothing, except
+`gh pr checks`, which exits 1 when a check failed and 8 while checks are
+pending: its rows (or `--json` output) still count when it listed any checks.
 
-Each record keeps the last status seen, field by field (a later check-runs read
-does not forget an earlier review), when and through which tool it was seen,
-and the last 20 tool calls that touched it, with the subagent that made each.
+Each record keeps the last status seen, field by field, and each field keeps
+the time it was seen: a later check-runs read neither forgets an earlier
+review nor makes an older state look new, so a subagent's checks read cannot
+reopen a PR its parent saw merged. The record also keeps when and through which
+tool it was last seen, and the last 20 tool calls that touched it, with the
+subagent that made each.
 pi-git never asks GitHub itself: check a PR again for fresh status. A PR seen in
 a subagent is handed up to its parent, and opened-here wins when the two
 disagree.

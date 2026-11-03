@@ -46,6 +46,7 @@ import {
   mergeCalls,
   mergePr,
   mergeStatus,
+  observedStatus,
   prKey,
   type PrCall,
   type PrRecord,
@@ -263,7 +264,7 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
     const at = toolCall.at;
     const facts =
       observation.facts && Object.keys(observation.facts).length ? observation.facts : undefined;
-    const seen = facts ? { ...facts, observedAt: at, source: toolCall.tool } : undefined;
+    const seen = facts ? observedStatus(facts, at, toolCall.tool) : undefined;
     const base: PrRecord = existing ?? {
       v: 1,
       kind: "pr",

@@ -78,8 +78,10 @@ export async function observe(
   result: ToolResultLike,
   options: { cwd: string; resolveRepo: RepoResolver },
 ): Promise<Observation[]> {
-  if (result.isError) return [];
+  // A shell command can exit nonzero and still report: `gh pr checks` exits 1
+  // when a check failed and 8 while checks are pending.
   if (result.toolName === "bash") return observeShell(result, options);
+  if (result.isError) return [];
   if (/github/i.test(result.toolName)) return observeGithubTool(result);
   return observeInput(result.input);
 }
@@ -92,13 +94,17 @@ async function observeShell(
 ): Promise<Observation[]> {
   const command = typeof result.input.command === "string" ? result.input.command : "";
   if (!/\bgh\s+(?:pr|api)\b/.test(command)) return [];
-  const output = outputText(result.content);
+  // Pi's bash tool appends the exit status to a failed command's output.
+  const output = outputText(result.content).replace(/\n*Command exited with code \d+\s*$/, "");
   const json = parseJson(output);
   const observations: Observation[] = [];
 
   for (const match of command.matchAll(GH_PR)) {
     const verb = match[1];
     const args = match[2];
+    // A nonzero exit is a failure, except for `gh pr checks`, which exits 1
+    // when a check failed and 8 while checks are pending.
+    if (result.isError && verb !== "checks") continue;
     let ref: PrRef | undefined;
     let url: string | undefined;
     const argUrl = parsePrUrls(args)[0];
@@ -120,15 +126,19 @@ async function observeShell(
       if (shown) ({ ref, url } = shown);
     }
     if (!ref) continue;
+    const facts = ghFacts(verb, args, output, json);
+    // A failed `gh pr checks` counts only when it listed checks.
+    if (result.isError && !facts.facts?.checks) continue;
     observations.push({
       ref,
       url: url ?? prUrl(ref),
       origin: verb === "create" ? "created" : "referenced",
-      ...ghFacts(verb, args, output, json),
+      ...facts,
     });
   }
 
   for (const match of command.matchAll(GH_API_PULL)) {
+    if (result.isError) break;
     const host = /--hostname[=\s]+(\S+)/.exec(command)?.[1] ?? "github.com";
     const ref = { host, owner: match[1], repo: match[2], number: Number(match[3]) };
     const sub = match[4] ?? "";
