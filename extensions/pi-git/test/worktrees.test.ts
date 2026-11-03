@@ -246,6 +246,15 @@ describe("removeWorktree", () => {
     expect(branches(box.api)).toContain("wip");
   });
 
+  it("counts untracked files even when the repository hides them from status", async () => {
+    const record = await create({ repo: "src/api", branch: "hidden" });
+    run(box.api, "config", "status.showUntrackedFiles", "no");
+    writeFileSync(join(record.path, "important.txt"), "keep me");
+    expect((await worktreeStatus(record.path, record.base)).dirty).toBe(true);
+    await expect(remove(record)).rejects.toThrow(/has uncommitted changes/);
+    expect(existsSync(join(record.path, "important.txt"))).toBe(true);
+  });
+
   it("removes a worktree whose work is committed but unpushed, keeping it on the branch", async () => {
     const record = await create({ repo: "src/api", branch: "committed" });
     const tip = commit(record.path, "c.txt", "c");

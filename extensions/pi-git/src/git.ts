@@ -198,7 +198,10 @@ export async function worktreeStatus(
   base: BaseRef,
   options?: GitOptions,
 ): Promise<WorktreeStatus> {
-  const dirty = (await git(path, ["status", "--porcelain"], options)).trim().length > 0;
+  // Explicit, so `status.showUntrackedFiles=no` cannot hide files removal would delete.
+  const dirty =
+    (await git(path, ["status", "--porcelain", "--untracked-files=all"], options)).trim().length >
+    0;
   const baseRef = base.ref && (await resolveCommit(path, base.ref, options)) ? base.ref : undefined;
   const exclude = [
     "--not",

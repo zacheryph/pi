@@ -100,11 +100,19 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
   const service: GitTreeService = {
     version: 1,
     adopt(candidate) {
-      // updatedAt makes adoption idempotent, which also ends any loop in the chain.
       if (!isWorktreeRecord(candidate)) return false;
       const existing = records.get(candidate.path);
-      if (existing && existing.updatedAt >= candidate.updatedAt) return false;
-      append({ ...candidate, via: "adopt" });
+      // An older version never replaces a newer one. Sessions share one clock,
+      // so an equal time is a change made in the same millisecond, kept only if
+      // it changes something; that also ends any loop up the chain.
+      if (existing && existing.updatedAt > candidate.updatedAt) return false;
+      // Keep agents only this session saw run there: the child does not know them.
+      const agents = existing
+        ? [...existing.agents, ...candidate.agents.filter((id) => !existing.agents.includes(id))]
+        : candidate.agents;
+      const adopted: WorktreeRecord = { ...candidate, agents, via: "adopt" };
+      if (existing && sameContent(existing, adopted)) return false;
+      append(adopted);
       return true;
     },
   };
@@ -127,9 +135,12 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
       if (record.state !== "active") changes.push([record, { state: "active" }]);
       nextMeasured.set(record.path, await inspect(record.path, record.base, { signal }));
     }
-    const nextFound = await findWorktrees(getConfig().worktreeRoot, new Set(records.keys()), {
-      signal,
-    });
+    // A removed path is not this session's any more: if a worktree is back
+    // there (another session made it again), list it with the others.
+    const known = new Set(
+      [...records.values()].filter((r) => r.state !== "removed").map((r) => r.path),
+    );
+    const nextFound = await findWorktrees(getConfig().worktreeRoot, known, { signal });
     if (started !== generation) return;
     measured = nextMeasured;
     found = nextFound;
@@ -205,7 +216,10 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
       { signal },
     );
     measured.delete(record.path);
-    update(records.get(record.path) ?? record, { state: "removed" });
+    // The ledger's newest version of this record (agents may have been added
+    // meanwhile), unless the ledger only holds an older, removed one.
+    const latest = records.get(record.path);
+    update(latest && latest.state !== "removed" ? latest : record, { state: "removed" });
     return status && status.unpushed > 0
       ? ` It holds ${status.unpushed} commit${status.unpushed === 1 ? "" : "s"} that no remote has.`
       : "";
@@ -219,7 +233,7 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
   const target = async (path: string): Promise<Target | undefined> => {
     const resolved = realPath(path);
     const record = records.get(resolved);
-    if (record) return { record, base: record.base };
+    if (record && record.state !== "removed") return { record, base: record.base };
     const root = realPath(getConfig().worktreeRoot);
     if (!within(root, resolved)) return undefined;
     const hit = (await findWorktrees(root, new Set())).find((entry) => entry.path === resolved);
@@ -377,10 +391,11 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
           const found = await target(path);
           if (!found)
             throw new Error(
-              `${path} is not a worktree in this session's ledger or under ${getConfig().worktreeRoot}`,
+              records.get(path)?.state === "removed"
+                ? `${path} was already removed`
+                : `${path} is not a worktree in this session's ledger or under ${getConfig().worktreeRoot}`,
             );
           const { record } = found;
-          if (record.state === "removed") throw new Error(`${path} was already removed`);
           const unpushed = await remove(found, params.force === true, signal);
           return {
             content: [
@@ -480,6 +495,12 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
       ctx.ui.notify(sanitizeText(`Could not remove ${record.path}: ${errorText(error)}`), "error");
     }
   };
+}
+
+/** Equal apart from when and how the record arrived. */
+function sameContent(a: WorktreeRecord, b: WorktreeRecord): boolean {
+  const strip = ({ updatedAt: _at, via: _via, ...rest }: WorktreeRecord) => JSON.stringify(rest);
+  return strip(a) === strip(b);
 }
 
 function errorText(error: unknown): string {

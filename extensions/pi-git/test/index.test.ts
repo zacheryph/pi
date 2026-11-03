@@ -1,4 +1,4 @@
-import { rmSync, writeFileSync } from "node:fs";
+import { existsSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -14,6 +14,9 @@ interface Tool {
   execute: (...args: unknown[]) => Promise<{ content: { text: string }[]; details: unknown }>;
 }
 
+/** One wall clock for every session in a test, as in a real process. */
+let clock = 1_000;
+
 /** A fake ExtensionAPI and session for one pi-git instance. */
 function harness(options: { sessionId: string; cwd: string; root: string; entries?: unknown[] }) {
   const handlers = new Map<string, Handler[]>();
@@ -22,7 +25,6 @@ function harness(options: { sessionId: string; cwd: string; root: string; entrie
   const commands = new Map<string, { handler: Handler }>();
   const entries: unknown[] = [...(options.entries ?? [])];
   const snapshots: GitSnapshotEvent[] = [];
-  let clock = 1_000;
   const pi = {
     on: vi.fn((event: string, handler: Handler) =>
       handlers.set(event, [...(handlers.get(event) ?? []), handler]),
@@ -79,6 +81,7 @@ function harness(options: { sessionId: string; cwd: string; root: string; entrie
 let box: Sandbox;
 beforeEach(() => {
   box = sandbox();
+  clock = 1_000;
 });
 afterEach(() => {
   box.cleanup();
@@ -218,6 +221,23 @@ describe("git_worktree_remove", () => {
     });
   });
 
+  it("finds and removes a worktree another session recreated at a path this one removed", async () => {
+    const a = await start("session-a");
+    await a.tool("git_worktree_create", { repo: "src/api", branch: "reuse" });
+    const path = join(box.root, "api", "reuse");
+    await a.tool("git_worktree_remove", { path });
+    const b = await start("session-b");
+    await b.tool("git_worktree_create", { repo: "src/api", branch: "reuse" });
+
+    const list = await a.tool("git_worktree_list", {});
+    expect(list.content[0].text).toContain(
+      `Under the worktree root but not in this session's ledger:\n- ${path} — api @ reuse`,
+    );
+    await a.tool("git_worktree_remove", { path });
+    expect(existsSync(path)).toBe(false);
+    await expect(a.tool("git_worktree_remove", { path })).rejects.toThrow(/was already removed/);
+  });
+
   it("refuses a path that is neither in the ledger nor under the root", async () => {
     const h = await start();
     await expect(h.tool("git_worktree_remove", { path: box.api })).rejects.toThrow(
@@ -251,6 +271,52 @@ describe("subagents", () => {
     await child.tool("git_worktree_remove", { path: join(box.root, "api", "child-work") });
     expect(parent.ledger().at(-1)?.state).toBe("removed");
     expect(parent.ledger()).toHaveLength(2);
+  });
+
+  it("keeps the agents the parent recorded when it adopts a child's later change", async () => {
+    const parent = await start("parent");
+    parent.pi.events.emit("subagent:session:created", {
+      sessionId: "child",
+      parentSessionId: "parent",
+      agentId: "agent-7",
+      cwd: box.dir,
+    });
+    const child = await start("child");
+    await child.tool("git_worktree_create", { repo: "src/api", branch: "shared" });
+    const path = join(box.root, "api", "shared");
+    // The parent starts another worker in the child's worktree.
+    parent.pi.events.emit("subagent:session:created", {
+      sessionId: "worker",
+      agentId: "agent-9",
+      cwd: path,
+    });
+    expect(parent.ledger().at(-1)?.agents).toEqual(["agent-9"]);
+
+    await child.tool("git_worktree_remove", { path });
+    expect(parent.ledger().at(-1)).toMatchObject({ state: "removed", agents: ["agent-9"] });
+  });
+
+  it("adopts a change made in the same millisecond as its own, but not a repeat", async () => {
+    const parent = await start("parent");
+    parent.pi.events.emit("subagent:session:created", {
+      sessionId: "child",
+      parentSessionId: "parent",
+      agentId: "agent-7",
+      cwd: box.dir,
+    });
+    const child = await start("child");
+    await child.tool("git_worktree_create", { repo: "src/api", branch: "tie" });
+    const adopted = parent.ledger().at(-1)!;
+    const service = (await import("../../../packages/pi-session-tree/src/index.ts")).service<{
+      adopt(record: unknown): boolean;
+    }>("parent", "pi-git")!;
+
+    expect(service.adopt({ ...adopted, via: undefined })).toBe(false);
+    expect(service.adopt({ ...adopted, state: "missing" })).toBe(true);
+    expect(service.adopt({ ...adopted, updatedAt: adopted.updatedAt - 1, state: "removed" })).toBe(
+      false,
+    );
+    expect(parent.ledger().at(-1)?.state).toBe("missing");
   });
 });
 

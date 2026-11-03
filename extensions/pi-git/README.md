@@ -56,8 +56,13 @@ Reload, resume and compaction keep them.
   creating subagent's id.
 - On session start, `/tree`, `git_worktree_list` and `/git:worktrees`, each
   record is checked against disk. One deleted outside Pi becomes `missing`.
-  Worktrees under the root that the ledger does not name (another session's)
-  are listed separately and can still be removed.
+  Worktrees under the root that the ledger does not name (another session's,
+  including one recreated at a path this session removed) are listed separately
+  and can still be removed.
+- Adopting a subagent's change keeps the agents this session recorded on that
+  worktree, which the subagent never saw.
+- Untracked files count as uncommitted changes even when
+  `status.showUntrackedFiles` hides them.
 
 ## Command
 
