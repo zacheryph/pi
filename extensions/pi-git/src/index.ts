@@ -102,15 +102,10 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
     adopt(candidate) {
       if (!isWorktreeRecord(candidate)) return false;
       const existing = records.get(candidate.path);
-      // An older version never replaces a newer one. Sessions share one clock,
-      // so an equal time is a change made in the same millisecond, kept only if
-      // it changes something; that also ends any loop up the chain.
-      if (existing && existing.updatedAt > candidate.updatedAt) return false;
-      // Keep agents only this session saw run there: the child does not know them.
-      const agents = existing
-        ? [...existing.agents, ...candidate.agents.filter((id) => !existing.agents.includes(id))]
-        : candidate.agents;
-      const adopted: WorktreeRecord = { ...candidate, agents, via: "adopt" };
+      const adopted = existing
+        ? mergeWorktree(existing, candidate)
+        : { ...candidate, via: "adopt" as const };
+      // Nothing new ends the hand-up, which also ends any loop in the chain.
       if (existing && sameContent(existing, adopted)) return false;
       append(adopted);
       return true;
@@ -494,6 +489,28 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
     } catch (error) {
       ctx.ui.notify(sanitizeText(`Could not remove ${record.path}: ${errorText(error)}`), "error");
     }
+  };
+}
+
+/**
+ * Combine this session's record with a descendant's version of it. Agent ids
+ * accumulate from both: each session only sees the subagents it starts, and
+ * timestamps from separate sessions cannot order those. Every other field
+ * comes from the newer version; an equal time (the same millisecond) favours
+ * the descendant's, which made the later change.
+ */
+export function mergeWorktree(existing: WorktreeRecord, candidate: WorktreeRecord): WorktreeRecord {
+  const candidateNewer = candidate.updatedAt >= existing.updatedAt;
+  const newer = candidateNewer ? candidate : existing;
+  const agents = [
+    ...existing.agents,
+    ...candidate.agents.filter((id) => !existing.agents.includes(id)),
+  ];
+  return {
+    ...newer,
+    agents,
+    updatedAt: Math.max(existing.updatedAt, candidate.updatedAt),
+    ...(candidateNewer ? { via: "adopt" as const } : {}),
   };
 }
 
