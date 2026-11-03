@@ -62,6 +62,7 @@ try {
     "git_worktree_create",
     "git_worktree_list",
     "git_worktree_remove",
+    "git_pr_list",
   ]) {
     assert.ok(tools.includes(name), `Missing tool: ${name}`);
   }
@@ -86,6 +87,7 @@ try {
     "stash:gc",
     "dashboard",
     "git:worktrees",
+    "git:prs",
   ]) {
     assert.ok(commands.includes(name), `Missing command: ${name}`);
   }

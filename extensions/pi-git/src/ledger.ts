@@ -75,15 +75,3 @@ export function isWorktreeRecord(value: unknown): value is WorktreeRecord {
     typeof record.updatedAt === "number"
   );
 }
-
-/** Latest record per path, in creation order. */
-export function foldLedger(entries: Iterable<unknown>): Map<string, WorktreeRecord> {
-  const records = new Map<string, WorktreeRecord>();
-  for (const entry of entries) {
-    const item = entry as { type?: unknown; customType?: unknown; data?: unknown };
-    if (item.type !== "custom" || item.customType !== LEDGER_TYPE) continue;
-    if (!isWorktreeRecord(item.data)) continue;
-    records.set(item.data.path, item.data);
-  }
-  return records;
-}

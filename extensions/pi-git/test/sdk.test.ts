@@ -6,17 +6,19 @@ import {
 } from "@earendil-works/pi-ai/providers/faux";
 import {
   createAgentSession,
+  defineTool,
   DefaultResourceLoader,
   type EventBus,
   ModelRuntime,
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import { SESSION_TREE_KEY } from "../../../packages/pi-session-tree/src/index.ts";
 import { GIT_SNAPSHOT_EVENT, type GitSnapshotEvent } from "../src/events.ts";
 import piGit from "../src/index.ts";
-import { foldLedger } from "../src/ledger.ts";
+import { foldLedger } from "../src/fold.ts";
 import { sandbox, type Sandbox } from "./support/repos.ts";
 
 const cleanups: Array<() => void | Promise<void>> = [];
@@ -51,7 +53,32 @@ async function fixture(box: Sandbox, manager: SessionManager) {
     noThemes: true,
     noContextFiles: true,
     extensionFactories: [
-      (pi) => piGit(pi, { loadConfig: () => ({ worktreeRoot: box.root }) }),
+      (pi) => piGit(pi, { loadConfig: () => ({ worktreeRoot: box.root, trackReferenced: true }) }),
+      // Stands in for the GitHub MCP server's tool: same name, same result shape.
+      (pi) =>
+        pi.registerTool(
+          defineTool({
+            name: "mcp__github__create_pull_request",
+            label: "Create PR",
+            description: "Create a pull request.",
+            parameters: Type.Object({
+              owner: Type.String(),
+              repo: Type.String(),
+              title: Type.String(),
+            }),
+            async execute(_id, params) {
+              return {
+                content: [
+                  {
+                    type: "text",
+                    text: `{"id":"1","url":"https://github.com/${params.owner}/${params.repo}/pull/66"}`,
+                  },
+                ],
+                details: {},
+              };
+            },
+          }),
+        ),
       // Another extension on the same session bus, as pi-dashboard listens.
       (pi) => {
         bus = pi.events;
@@ -71,7 +98,13 @@ async function fixture(box: Sandbox, manager: SessionManager) {
       compaction: { enabled: false },
       retry: { enabled: false },
     }),
-    tools: ["git_worktree_create", "git_worktree_list", "git_worktree_remove"],
+    tools: [
+      "git_worktree_create",
+      "git_worktree_list",
+      "git_worktree_remove",
+      "git_pr_list",
+      "mcp__github__create_pull_request",
+    ],
   });
   cleanups.push(() => session.dispose());
   await session.bindExtensions({ mode: "print" });
@@ -134,6 +167,39 @@ describe("pi-git in a real AgentSession (offline faux provider)", () => {
     expect(listed).toContain("agents: agent-1");
 
     const ledger = foldLedger(manager.getEntries());
-    expect([...ledger.keys()]).toEqual([api, web]);
+    expect([...ledger.worktrees.keys()]).toEqual([api, web]);
+  }, 30_000);
+
+  it("records a PR a tool opened and lists it after a resume", async () => {
+    const box = sandbox();
+    cleanups.push(() => box.cleanup());
+    const manager = SessionManager.inMemory(box.dir);
+
+    const first = await fixture(box, manager);
+    first.faux.setResponses([
+      call("mcp__github__create_pull_request", { owner: "acme", repo: "api", title: "Add login" }),
+      fauxAssistantMessage("Opened."),
+    ]);
+    await first.session.prompt("Open the PR.");
+    expect(first.snapshots.at(-1)?.prs).toEqual([
+      expect.objectContaining({
+        key: "github.com/acme/api#66",
+        origin: "created",
+        status: expect.objectContaining({
+          state: "open",
+          source: "mcp__github__create_pull_request",
+        }),
+      }),
+    ]);
+    first.session.dispose();
+
+    const resumed = await fixture(box, manager);
+    expect(resumed.snapshots[0].prs.map((pr) => pr.key)).toEqual(["github.com/acme/api#66"]);
+    resumed.faux.setResponses([call("git_pr_list", {}), fauxAssistantMessage("Listed.")]);
+    await resumed.session.prompt("Which PRs did we open?");
+    const listed = toolText(manager, "git_pr_list").at(-1)!;
+    expect(listed).toContain("Opened here:");
+    expect(listed).toContain("acme/api#66");
+    expect([...foldLedger(manager.getEntries()).prs.keys()]).toEqual(["github.com/acme/api#66"]);
   }, 30_000);
 });

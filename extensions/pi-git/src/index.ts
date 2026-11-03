@@ -1,12 +1,17 @@
 /**
  * pi-git — git worktrees an orchestrator creates in any repository and hands to
- * subagents, recorded in the session ledger.
+ * subagents, and the pull requests the session touches, recorded in the
+ * session ledger.
  *
  * Worktrees outlive the subagents that use them: pi-git creates them on named
  * branches under a configured root, records each in the session (`git:ledger`
  * entries, folded across every branch of the session), notes which subagents
- * ran in them, and removes them only when asked. A worktree a subagent creates
- * is handed up to its parent's ledger. State is published as `git:snapshot`.
+ * ran in them, and removes them only when asked.
+ *
+ * Pull requests are recorded from the session's own tool calls (`gh` in bash,
+ * GitHub MCP tools, PR URLs passed to any tool), with the status their output
+ * showed. Records a subagent makes are handed up to its parent's ledger. State
+ * is published as `git:snapshot`.
  */
 
 import {
@@ -26,9 +31,26 @@ import {
 } from "../../../packages/pi-session-tree/src/index.ts";
 import { loadGitConfig, type GitConfig } from "./config.ts";
 import { GIT_SNAPSHOT_EVENT, snapshotEvent, type GitSnapshotEvent } from "./events.ts";
-import { realPath, resolveCommit, type BaseRef, type WorktreeStatus } from "./git.ts";
-import { foldLedger, isWorktreeRecord, LEDGER_TYPE, type WorktreeRecord } from "./ledger.ts";
-import { explorerView, listText, statusText } from "./view.ts";
+import { foldLedger } from "./fold.ts";
+import { git, realPath, resolveCommit, type BaseRef, type WorktreeStatus } from "./git.ts";
+import { isWorktreeRecord, LEDGER_TYPE, type WorktreeRecord } from "./ledger.ts";
+import {
+  observe,
+  parseRemote,
+  type Observation,
+  type RepoResolver,
+  type ToolResultLike,
+} from "./observe.ts";
+import {
+  isPrRecord,
+  mergeCalls,
+  mergePr,
+  mergeStatus,
+  prKey,
+  type PrCall,
+  type PrRecord,
+} from "./prs.ts";
+import { explorerView, listText, prExplorerView, prListText, statusText } from "./view.ts";
 import {
   atRisk,
   createWorktree,
@@ -66,6 +88,7 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
   // this module with its parent.
   const now = dependencies.now ?? Date.now;
   let records = new Map<string, WorktreeRecord>();
+  let prs = new Map<string, PrRecord>();
   let measured = new Map<string, Measured>();
   let found: FoundWorktree[] = [];
   let config: GitConfig | undefined;
@@ -78,18 +101,20 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
   trackChildren(pi);
 
   const getConfig = () => (config ??= (dependencies.loadConfig ?? loadGitConfig)(cwd));
-  const snapshot = (): GitSnapshotEvent => snapshotEvent(records.values(), measured, found);
+  const snapshot = (): GitSnapshotEvent =>
+    snapshotEvent(records.values(), measured, found, prs.values());
   const publish = () => pi.events.emit(GIT_SNAPSHOT_EVENT, snapshot());
 
   /** Hand a record to `from`'s parent, which adopts it and passes it on up. */
-  const passUp = (from: string, record: WorktreeRecord) => {
+  const passUp = (from: string, record: LedgerRecord) => {
     const parent = parentOf(from);
     if (parent) call<GitTreeService, boolean>(parent, SERVICE_NAME, (s) => s.adopt(record));
   };
 
-  const append = (record: WorktreeRecord) => {
-    pi.appendEntry<WorktreeRecord>(LEDGER_TYPE, record);
-    records.set(record.path, record);
+  const append = (record: LedgerRecord) => {
+    pi.appendEntry<LedgerRecord>(LEDGER_TYPE, record);
+    if (record.kind === "pr") prs.set(record.key, record);
+    else records.set(record.path, record);
     publish();
     if (sessionId) passUp(sessionId, record);
   };
@@ -100,6 +125,15 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
   const service: GitTreeService = {
     version: 1,
     adopt(candidate) {
+      if (isPrRecord(candidate)) {
+        const existing = prs.get(candidate.key);
+        const adopted = existing
+          ? mergePr(existing, candidate)
+          : { ...candidate, via: "adopt" as const };
+        if (existing && sameContent(existing, adopted)) return false;
+        append(adopted);
+        return true;
+      }
       if (!isWorktreeRecord(candidate)) return false;
       const existing = records.get(candidate.path);
       const adopted = existing
@@ -158,7 +192,9 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
 
   /** Rebuild state from the session (start, resume, reload, /tree). */
   const restore = (ctx: ExtensionContext): void => {
-    records = foldLedger(ctx.sessionManager.getEntries());
+    const ledger = foldLedger(ctx.sessionManager.getEntries());
+    records = ledger.worktrees;
+    prs = ledger.prs;
     measured = new Map();
     publish();
   };
@@ -195,6 +231,66 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
       const inWorktree = within(record.path, childCwd);
       const isWorkspace = record.workspacePath !== undefined && record.workspacePath === childCwd;
       if (inWorktree || isWorkspace) update(record, { agents: [...record.agents, agentId] });
+    }
+  });
+
+  /** The GitHub repository a directory's `origin` remote names, for `gh pr <number>`. */
+  const resolveRepo: RepoResolver = async (dir) => {
+    try {
+      return parseRemote(await git(dir, ["remote", "get-url", "origin"], { timeoutMs: 5_000 }));
+    } catch {
+      return undefined;
+    }
+  };
+
+  /** Record what one tool call showed about one pull request. */
+  const recordPr = (observation: Observation, toolCall: PrCall) => {
+    const key = prKey(observation.ref);
+    const existing = prs.get(key);
+    if (!existing && observation.origin === "referenced" && !getConfig().trackReferenced) return;
+    const at = toolCall.at;
+    const facts =
+      observation.facts && Object.keys(observation.facts).length ? observation.facts : undefined;
+    const seen = facts ? { ...facts, observedAt: at, source: toolCall.tool } : undefined;
+    const base: PrRecord = existing ?? {
+      v: 1,
+      kind: "pr",
+      key,
+      ...observation.ref,
+      url: observation.url,
+      origin: observation.origin,
+      calls: [],
+      createdAt: at,
+      updatedAt: at,
+      ...(toolCall.agentId ? { createdBy: toolCall.agentId } : {}),
+    };
+    const status = mergeStatus(base.status, seen);
+    append({
+      ...base,
+      origin:
+        base.origin === "created" || observation.origin === "created" ? "created" : "referenced",
+      ...(observation.title ? { title: observation.title } : {}),
+      ...(status ? { status } : {}),
+      calls: mergeCalls(base.calls, [toolCall]),
+      updatedAt: existing ? Math.max(at, existing.updatedAt + 1) : at,
+    });
+  };
+
+  // Every tool call: did it touch a pull request? Parsing only; never changes the result.
+  pi.on("tool_result", async (event, ctx) => {
+    try {
+      const observations = await observe(event as ToolResultLike, { cwd: ctx.cwd, resolveRepo });
+      if (observations.length === 0) return;
+      const agentId = sessionId ? node(sessionId)?.agentId : undefined;
+      for (const observation of observations)
+        recordPr(observation, {
+          tool: event.toolName,
+          toolCallId: event.toolCallId,
+          at: now(),
+          ...(agentId ? { agentId } : {}),
+        });
+    } catch {
+      // Recording is best effort; a tool's result must never fail because of it.
     }
   });
 
@@ -408,6 +504,55 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
     }),
   );
 
+  pi.registerTool(
+    defineTool({
+      name: "git_pr_list",
+      label: "Git PR List",
+      description:
+        "List the pull requests this session (and its subagents) opened or looked at, with the last status a tool showed for each: state, review, checks, conflicts, and when and how it was seen. " +
+        "Reads the session ledger only; it does not query GitHub, so check a PR again for fresh status.",
+      promptSnippet: "List the pull requests this session opened or looked at.",
+      promptGuidelines: [
+        "Use git_pr_list after a reload, compaction or resume to find the pull requests this session opened before checking or changing them again.",
+      ],
+      parameters: Type.Object({
+        includeReferenced: Type.Optional(
+          Type.Boolean({
+            description: "Also list pull requests the session only looked at. Default true.",
+          }),
+        ),
+      }),
+      annotations: { readOnlyHint: true },
+      async execute(_id, params) {
+        const current = snapshot();
+        return {
+          content: [
+            {
+              type: "text",
+              text: prListText(current.prs, params.includeReferenced !== false, now()),
+            },
+          ],
+          details: current.prs,
+        };
+      },
+    }),
+  );
+
+  pi.registerCommand("git:prs", {
+    description:
+      "Browse the pull requests this session opened or looked at, with the last status its tools showed",
+    handler: async (_args, ctx) => {
+      const current = snapshot();
+      if (!ctx.hasUI || ctx.mode !== "tui") {
+        ctx.ui.notify(sanitizeText(prListText(current.prs, true, now())), "info");
+        return;
+      }
+      await showExplorer(ctx, prExplorerView(current.prs, now()), {
+        unavailableMessage: "/git:prs requires interactive terminal mode.",
+      });
+    },
+  });
+
   pi.registerCommand("git:worktrees", {
     description:
       "Browse this session's git worktrees; `/git:worktrees remove` picks one to remove (its branch is kept)",
@@ -514,9 +659,11 @@ export function mergeWorktree(existing: WorktreeRecord, candidate: WorktreeRecor
   };
 }
 
+type LedgerRecord = WorktreeRecord | PrRecord;
+
 /** Equal apart from when and how the record arrived. */
-function sameContent(a: WorktreeRecord, b: WorktreeRecord): boolean {
-  const strip = ({ updatedAt: _at, via: _via, ...rest }: WorktreeRecord) => JSON.stringify(rest);
+function sameContent(a: LedgerRecord, b: LedgerRecord): boolean {
+  const strip = ({ updatedAt: _at, via: _via, ...rest }: LedgerRecord) => JSON.stringify(rest);
   return strip(a) === strip(b);
 }
 

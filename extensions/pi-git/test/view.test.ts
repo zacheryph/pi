@@ -2,8 +2,8 @@ import type { Theme } from "@earendil-works/pi-coding-agent";
 import { KeybindingsManager, TUI_KEYBINDINGS, visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 import { Explorer } from "../../../packages/pi-ui/src/index.ts";
-import type { GitSnapshotEvent, GitSnapshotWorktree } from "../src/events.ts";
-import { explorerView, LIST_LIMIT, listText, statusText } from "../src/view.ts";
+import type { GitSnapshotEvent, GitSnapshotPr, GitSnapshotWorktree } from "../src/events.ts";
+import { explorerView, LIST_LIMIT, listText, prExplorerView, statusText } from "../src/view.ts";
 
 // Colors every token so width math must ignore escape sequences.
 const ansi = {
@@ -30,7 +30,7 @@ const worktree = (overrides: Partial<GitSnapshotWorktree> = {}): GitSnapshotWork
 const snapshot = (
   worktrees: GitSnapshotWorktree[],
   found: GitSnapshotEvent["found"] = [],
-): GitSnapshotEvent => ({ version: 1, worktrees, found });
+): GitSnapshotEvent => ({ version: 1, worktrees, found, prs: [] });
 
 /** Every body row keeps one space at each edge, or is blank when too narrow. */
 function expectPadded(row: string, width: number): void {
@@ -151,6 +151,91 @@ describe("/git:worktrees explorer", () => {
         snapshot([worktree({ branch: `${WIDE}\x1b[2J`, path: `/w/${WIDE}/\x1b]52;c;evil\x07x` })]),
       ),
     );
+    for (const width of WIDTHS) {
+      const rows = browser.render(width);
+      for (const row of rows.slice(1, -1)) expectPadded(row, width);
+      expect(rows.join("\n")).not.toContain("evil");
+    }
+  });
+});
+
+describe("/git:prs explorer", () => {
+  const NOW = Date.UTC(2026, 10, 3, 12);
+  const pr = (overrides: Partial<GitSnapshotPr> = {}): GitSnapshotPr => ({
+    key: "github.com/acme/api#12",
+    host: "github.com",
+    owner: "acme",
+    repo: "api",
+    number: 12,
+    url: "https://github.com/acme/api/pull/12",
+    origin: "created",
+    title: "Add login",
+    status: {
+      state: "open",
+      review: "approved",
+      checks: { passed: 3, failed: 1, pending: 0 },
+      headRef: "feat/login",
+      observedAt: NOW - 120_000,
+      source: "bash",
+    },
+    calls: [{ tool: "bash", toolCallId: "c1", at: NOW - 120_000, agentId: "agent-7" }],
+    createdAt: NOW - 600_000,
+    updatedAt: NOW - 120_000,
+    ...overrides,
+  });
+
+  it("splits opened and referenced PRs and colors failing checks", () => {
+    const view = prExplorerView(
+      [
+        pr(),
+        pr({
+          key: "github.com/acme/web#7",
+          repo: "web",
+          number: 7,
+          origin: "referenced",
+          status: undefined,
+        }),
+      ],
+      NOW,
+    );
+    expect(view.tabs?.map((tab) => [tab.label, tab.ids])).toEqual([
+      ["Opened here", ["github.com/acme/api#12"]],
+      ["Referenced", ["github.com/acme/web#7"]],
+    ]);
+    expect(view.items[0]).toMatchObject({
+      label: [
+        { text: "acme/api#12", tone: "accent" },
+        { text: " — Add login", tone: "muted" },
+      ],
+      badge: { text: "open · approved · checks 1 failed, 3 passed", tone: "error" },
+    });
+    expect(view.items[1].badge).toEqual({ text: "no status seen yet", tone: "dim" });
+  });
+
+  it("shows the tool calls that touched a PR in its details", async () => {
+    const browser = new Explorer({
+      tui: { requestRender: vi.fn(), terminal: { rows: 30, columns: 80 } },
+      theme: ansi,
+      keys: new KeybindingsManager(TUI_KEYBINDINGS),
+      view: prExplorerView([pr()], NOW),
+      done: vi.fn(),
+    });
+    browser.handleInput("\r");
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+    const detail = browser.render(80).map(strip).join("\n");
+    expect(detail).toMatch(/Branch +feat\/login/);
+    expect(detail).toMatch(/Observed +seen 2m ago via bash/);
+    expect(detail).toContain("bash · 2m ago · subagent agent-7");
+  });
+
+  it("keeps body rows padded at every width, with wide and control-laden titles", () => {
+    const browser = new Explorer({
+      tui: { requestRender: vi.fn(), terminal: { rows: 30, columns: 80 } },
+      theme: ansi,
+      keys: new KeybindingsManager(TUI_KEYBINDINGS),
+      view: prExplorerView([pr({ title: `${WIDE}\x1b]52;c;evil\x07 title` })], NOW),
+      done: vi.fn(),
+    });
     for (const width of WIDTHS) {
       const rows = browser.render(width);
       for (const row of rows.slice(1, -1)) expectPadded(row, width);

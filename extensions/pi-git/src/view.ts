@@ -6,7 +6,8 @@
 
 import { basename } from "node:path";
 import type { Block, ExplorerItem, ExplorerView, Tone } from "../../../packages/pi-ui/src/index.ts";
-import type { GitSnapshotEvent, GitSnapshotWorktree } from "./events.ts";
+import type { GitSnapshotEvent, GitSnapshotPr, GitSnapshotWorktree } from "./events.ts";
+import { describePr, prLabel } from "./prs.ts";
 import type { FoundWorktree } from "./worktrees.ts";
 import { atRisk, describeStatus } from "./worktrees.ts";
 
@@ -151,5 +152,122 @@ export function explorerView(snapshot: GitSnapshotEvent): ExplorerView {
       },
     ],
     hints: [{ keys: "/git:worktrees remove", action: "remove one" }],
+  };
+}
+
+// ── Pull requests ──────────────────────────────────────────────────────────
+
+function prTone(pr: GitSnapshotPr): Tone {
+  const status = pr.status;
+  if (!status) return "dim";
+  if (status.state === "merged") return "success";
+  if (status.state === "closed") return "dim";
+  if ((status.checks?.failed ?? 0) > 0 || status.mergeable === false) return "error";
+  if (status.review === "changes_requested") return "warning";
+  if (status.review === "approved" && !status.checks?.pending) return "success";
+  return "default";
+}
+
+function observed(pr: GitSnapshotPr, now: number): string {
+  return pr.status ? `seen ${age(pr.status.observedAt, now)} ago via ${pr.status.source}` : "";
+}
+
+function age(at: number, now: number): string {
+  const seconds = Math.max(0, Math.round((now - at) / 1000));
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
+  if (seconds < 86_400) return `${Math.round(seconds / 3600)}h`;
+  return `${Math.round(seconds / 86_400)}d`;
+}
+
+/** The text `git_pr_list` returns and non-interactive `/git:prs` shows. */
+export function prListText(
+  prs: readonly GitSnapshotPr[],
+  includeReferenced: boolean,
+  now = Date.now(),
+): string {
+  const groups: Array<[string, GitSnapshotPr[]]> = [
+    ["Opened here", prs.filter((pr) => pr.origin === "created")],
+    ...(includeReferenced
+      ? ([["Referenced", prs.filter((pr) => pr.origin === "referenced")]] as Array<
+          [string, GitSnapshotPr[]]
+        >)
+      : []),
+  ];
+  const lines: string[] = [];
+  for (const [heading, group] of groups) {
+    if (lines.length) lines.push("");
+    lines.push(`${heading}:`);
+    if (group.length === 0) lines.push("  (none)");
+    for (const pr of group.slice(0, LIST_LIMIT)) {
+      lines.push(`- ${prLabel(pr)}${pr.title ? ` — ${pr.title}` : ""}`);
+      const seen = observed(pr, now);
+      lines.push(`  ${describePr(pr.status)}${seen ? ` (${seen})` : ""}`);
+      lines.push(`  ${pr.url}`);
+    }
+    if (group.length > LIST_LIMIT) lines.push(`…and ${group.length - LIST_LIMIT} more`);
+  }
+  return lines.join("\n");
+}
+
+function prDetail(pr: GitSnapshotPr, now: number): Block[] {
+  const status = pr.status;
+  return [
+    {
+      fields: [
+        ["URL", pr.url],
+        ...(pr.title ? ([["Title", pr.title]] as const) : []),
+        ["Status", { text: describePr(status), tone: prTone(pr) }],
+        ...(status?.headRef ? ([["Branch", status.headRef]] as const) : []),
+        ...(status?.headSha ? ([["Head", status.headSha.slice(0, 12)]] as const) : []),
+        ...(status ? ([["Observed", observed(pr, now)]] as const) : []),
+        ["Origin", pr.origin === "created" ? "opened in this session" : "referenced"],
+        ...(pr.createdBy ? ([["Recorded by", `subagent ${pr.createdBy}`]] as const) : []),
+      ],
+    },
+    { heading: "Tool calls" },
+    {
+      bullets: pr.calls
+        .slice()
+        .reverse()
+        .map(
+          (call) =>
+            `${call.tool} · ${age(call.at, now)} ago${call.agentId ? ` · subagent ${call.agentId}` : ""}`,
+        ),
+    },
+    {
+      text: "Status is what the session's own tools last showed; pi-git does not query GitHub.",
+      tone: "muted",
+    },
+  ];
+}
+
+export function prExplorerView(prs: readonly GitSnapshotPr[], now = Date.now()): ExplorerView {
+  const items: ExplorerItem[] = prs.map((pr) => ({
+    id: pr.key,
+    label: [
+      { text: prLabel(pr), tone: "accent" },
+      ...(pr.title ? [{ text: ` — ${pr.title}`, tone: "muted" as const }] : []),
+    ],
+    search: `${pr.url} ${pr.status?.headRef ?? ""}`,
+    badge: { text: describePr(pr.status), tone: prTone(pr) },
+    detail: prDetail(pr, now),
+  }));
+  return {
+    title: "Pull requests",
+    noun: ["pull request", "pull requests"],
+    items,
+    tabs: [
+      {
+        label: "Opened here",
+        ids: prs.filter((pr) => pr.origin === "created").map((pr) => pr.key),
+        emptyText: "No pull requests opened in this session.",
+      },
+      {
+        label: "Referenced",
+        ids: prs.filter((pr) => pr.origin === "referenced").map((pr) => pr.key),
+        emptyText: "No other pull requests looked at in this session.",
+      },
+    ],
   };
 }
