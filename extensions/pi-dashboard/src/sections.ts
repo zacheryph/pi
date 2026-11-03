@@ -1,4 +1,6 @@
 import type {
+  GitPrState,
+  GitSection,
   StashPreview,
   StashSection,
   TodoHistory,
@@ -14,6 +16,8 @@ import type {
 export const TODO_SNAPSHOT_EVENT = "todo:snapshot";
 /** pi-stash: `src/events.ts`. */
 export const STASH_SNAPSHOT_EVENT = "stash:snapshot";
+/** pi-git: `src/events.ts`. */
+export const GIT_SNAPSHOT_EVENT = "git:snapshot";
 /** pi-stash: synchronous request for the head of one entry on this branch. */
 export const STASH_PREVIEW_REQUEST = "stash:preview";
 const MAX_MESSAGE = 2_000;
@@ -158,5 +162,94 @@ export function readPreview(data: unknown): StashPreview | string {
     lines,
     total: count(data.total) ?? lines.length,
     complete: data.complete === true,
+  };
+}
+
+const MAX_WORKTREES = 50;
+const MAX_PRS = 50;
+const PR_URL = /^https:\/\/[A-Za-z0-9.-]+(?::\d+)?\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/pull\/\d+$/;
+const PR_STATES: ReadonlySet<unknown> = new Set(["open", "closed", "merged"]);
+const REVIEWS: ReadonlySet<unknown> = new Set(["approved", "changes_requested", "review_required"]);
+
+function lastSegment(path: string): string {
+  return path.split(/[\\/]/).findLast(Boolean) ?? path;
+}
+
+/**
+ * pi-git's snapshot: worktrees not yet removed, and pull requests. PR links
+ * become anchors on the page, so only plain `https` pull request URLs pass.
+ * Absent when there is nothing to show.
+ */
+export function readGit(data: unknown): GitSection | undefined {
+  if (!isRecord(data) || data.version !== 1 || !Array.isArray(data.worktrees)) return undefined;
+  const live = data.worktrees.filter(
+    (raw) => isRecord(raw) && (raw.state === "active" || raw.state === "missing"),
+  ) as Record<string, unknown>[];
+  const worktrees: GitSection["worktrees"] = [];
+  for (const raw of live.slice(0, MAX_WORKTREES)) {
+    const path = clip(raw.path, MAX_TEXT);
+    const repo = typeof raw.repo === "string" ? clip(lastSegment(raw.repo), MAX_KEY) : undefined;
+    const branch = clip(raw.branch, MAX_SUBJECT);
+    if (!path || !repo || !branch) continue;
+    const workspace = clip(raw.workspace, MAX_KEY);
+    const status = isRecord(raw.status) ? raw.status : undefined;
+    const unpushed = count(status?.unpushed);
+    const base = isRecord(raw.base) ? clip(raw.base.ref, MAX_SUBJECT) : undefined;
+    worktrees.push({
+      path,
+      repo,
+      branch,
+      ...(workspace ? { workspace } : {}),
+      state: raw.state as "active" | "missing",
+      agents: Array.isArray(raw.agents) ? raw.agents.length : 0,
+      ...(typeof status?.dirty === "boolean" ? { dirty: status.dirty } : {}),
+      ...(unpushed ? { unpushed } : {}),
+      ...(status?.merged === true && base ? { mergedInto: base } : {}),
+    });
+  }
+  const rawPrs = Array.isArray(data.prs) ? data.prs : [];
+  const prs: GitSection["prs"] = [];
+  for (const raw of rawPrs.slice(0, MAX_PRS)) {
+    if (!isRecord(raw)) continue;
+    const url = typeof raw.url === "string" && PR_URL.test(raw.url) ? raw.url : undefined;
+    const owner = clip(raw.owner, MAX_KEY);
+    const repo = clip(raw.repo, MAX_KEY);
+    const number = count(raw.number);
+    if (!url || !owner || !repo || !number) continue;
+    if (raw.origin !== "created" && raw.origin !== "referenced") continue;
+    const status = isRecord(raw.status) ? raw.status : undefined;
+    const checks = isRecord(status?.checks) ? status.checks : undefined;
+    const passed = count(checks?.passed);
+    const failed = count(checks?.failed);
+    const pending = count(checks?.pending);
+    const title = clip(raw.title, MAX_SUBJECT);
+    const observedAt = time(status?.observedAt);
+    prs.push({
+      label: `${owner}/${repo}#${number}`,
+      url,
+      ...(title ? { title } : {}),
+      origin: raw.origin,
+      ...(PR_STATES.has(status?.state) ? { state: status?.state as GitPrState } : {}),
+      ...(typeof status?.draft === "boolean" ? { draft: status.draft } : {}),
+      ...(REVIEWS.has(status?.review)
+        ? { review: status?.review as NonNullable<GitSection["prs"][number]["review"]> }
+        : {}),
+      ...(passed !== undefined && failed !== undefined && pending !== undefined
+        ? { checks: { passed, failed, pending } }
+        : {}),
+      ...(typeof status?.mergeable === "boolean" ? { mergeable: status.mergeable } : {}),
+      ...(observedAt ? { observedAt } : {}),
+    });
+  }
+  const removed = data.worktrees.filter((raw) => isRecord(raw) && raw.state === "removed").length;
+  const other = Array.isArray(data.found) ? data.found.length : 0;
+  if (live.length === 0 && rawPrs.length === 0 && removed === 0 && other === 0) return undefined;
+  return {
+    worktrees,
+    worktreeTotal: live.length,
+    removed,
+    other,
+    prs,
+    prTotal: rawPrs.length,
   };
 }

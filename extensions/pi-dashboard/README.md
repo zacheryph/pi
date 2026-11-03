@@ -13,8 +13,9 @@ when one is active, model and thinking level, context usage, and status:
 blocked on a dialog. Waiting sessions sort first and get a highlighted edge.
 
 Cards also count todos (`todos <done>/<total>`, unreviewed messages as `N
-new`), running subagents and stash entries. Click a card for its detail page
-(`#<pid>`):
+new`), running subagents, stash entries, open pull requests opened in the
+session (`PRs N open · M failing`) and worktrees. Click a card for its detail
+page (`#<pid>`):
 
 - **Header**: directory, agent, session id, pid, uptime, and **Focus**.
 - **Strip**: model and provider, thinking level, status and how long it has
@@ -24,6 +25,14 @@ new`), running subagents and stash entries. Click a card for its detail page
   message history (fetched when you expand it).
 - **Subagents**: agents seen since the session's runtime loaded, with state,
   duration, tool uses, tokens and the latest progress note or error.
+- **Pull requests**: from pi-git, **Opened here** and **Referenced**, each
+  linking to GitHub in a new tab, with a badge for what matters first (merged,
+  checks failing, conflicts, changes requested, draft, approved), the review
+  and check counts, and how long ago a tool last showed its status.
+- **Worktrees**: from pi-git, worktrees not yet removed, with repository,
+  branch, path, workspace, how many subagents ran there, uncommitted changes,
+  unpushed commits, and whether the branch is merged; plus how many were
+  removed and how many other sessions' worktrees are under the root.
 - **Blackhole**: observations kept of recorded (and their tokens), dropped,
   reflections, compactions and the last one. Without pi-blackhole entries the
   panel shows compactions only.
@@ -81,6 +90,7 @@ With notifications on, a new question notifies you with its text.
 | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Todos     | `todo:snapshot` on the session's `pi.events` bus (history from the same event)                                                                                                                                       |
 | Stash     | `stash:snapshot` on the session's `pi.events` bus; previews through pi-stash's `stash:preview` request on the same bus                                                                                               |
+| Git       | `git:snapshot` on the session's `pi.events` bus. Only `https://<host>/<owner>/<repo>/pull/<n>` URLs become links; any other PR is dropped                                                                            |
 | Subagents | pi-subagent's `subagent:*` lifecycle events on the same bus. Its `globalThis` service is not used: subagent children load the extension in-process and replace it. Agents started before a `/reload` are not listed. |
 | Blackhole | `om.observations.*` and `om.reflections.recorded` entries pi-blackhole saves on the branch (no public API; unknown shapes are skipped)                                                                               |
 | Usage     | Usage on every entry in the session file, as Pi's `/session` sums it                                                                                                                                                 |
@@ -133,7 +143,8 @@ The hub listens on `127.0.0.1` only and rejects requests whose `Host` header is
 not `127.0.0.1:<port>` or `localhost:<port>`, which blocks DNS-rebinding pages.
 The socket lives in a `0700` directory. The live session list shows
 directories, session names, model names, dialog titles, task text, subagent
-descriptions, stash entry names and descriptions, and recent tool calls
+descriptions, stash entry names and descriptions, worktree paths and branches,
+pull request titles and links, and recent tool calls
 (including the first line of bash commands, clipped to 80 characters). It
 carries no transcript or stash content.
 

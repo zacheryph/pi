@@ -13,6 +13,7 @@ import { memoryStats } from "./memory.ts";
 import {
   hubPaths,
   type CommandRequest,
+  type GitSection,
   type HubPaths,
   type MemorySection,
   type StashSection,
@@ -21,6 +22,8 @@ import {
 } from "./protocol.ts";
 import { Reporter } from "./reporter.ts";
 import {
+  GIT_SNAPSHOT_EVENT,
+  readGit,
   readPreview,
   readStash,
   readTodoHistory,
@@ -82,6 +85,7 @@ export default function dashboardExtension(
   /** pi-todo's latest event as sent, for task history requests; never sent whole. */
   let todoEvent: unknown;
   let stash: StashSection | undefined;
+  let git: GitSection | undefined;
   let subagents = new SubagentTracker();
   let activity = new ActivityTracker();
   // Usage and memory scan the session file, so they refresh only after events that change them.
@@ -110,6 +114,7 @@ export default function dashboardExtension(
       status: status.current(),
       todos,
       stash,
+      git,
       usage,
       memory,
       subagents: subagents.section(),
@@ -152,6 +157,7 @@ export default function dashboardExtension(
     todos = undefined;
     todoEvent = undefined;
     stash = undefined;
+    git = undefined;
     subagents = new SubagentTracker();
     activity = new ActivityTracker();
     askUser.clear();
@@ -162,7 +168,7 @@ export default function dashboardExtension(
     if (slots[SLOT] === token) delete slots[SLOT];
   };
 
-  // pi-todo and pi-stash publish on session start (before this extension's,
+  // pi-todo, pi-stash and pi-git publish on session start (before this extension's,
   // which loads last), so the first snapshot already carries their state.
   pi.events.on(TODO_SNAPSHOT_EVENT, (data) => {
     todoEvent = data;
@@ -204,6 +210,10 @@ export default function dashboardExtension(
   };
   pi.events.on(STASH_SNAPSHOT_EVENT, (data) => {
     stash = readStash(data);
+    schedule();
+  });
+  pi.events.on(GIT_SNAPSHOT_EVENT, (data) => {
+    git = readGit(data);
     schedule();
   });
   for (const channel of SUBAGENT_CHANNELS)

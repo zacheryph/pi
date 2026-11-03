@@ -4,7 +4,7 @@ import { join } from "node:path";
 // Keep this file free of Pi imports and of TypeScript syntax Node cannot strip.
 
 /** Bump when the hub must be replaced to understand newer reporters. */
-export const PROTOCOL_VERSION = 5;
+export const PROTOCOL_VERSION = 6;
 export const DEFAULT_PORT = 7317;
 /** How long the hub waits with no sessions, or keeps a restarting session's card. */
 export const IDLE_GRACE_MS = 15_000;
@@ -60,6 +60,53 @@ export interface StashSection {
   }>;
   /** Size of pi-stash's shared content store and its configured cap. */
   store?: { bytes: number; maxBytes: number };
+}
+
+export type GitWorktreeState = "active" | "missing";
+export type GitPrState = "open" | "closed" | "merged";
+
+/** From pi-git's snapshot event: worktrees and pull requests the session touched. */
+export interface GitSection {
+  /** Worktrees not yet removed, newest first; `worktreeTotal` counts them all. */
+  worktrees: Array<{
+    path: string;
+    /** Directory name of the repository's main working tree. */
+    repo: string;
+    branch: string;
+    workspace?: string;
+    state: GitWorktreeState;
+    /** Subagents that ran in it. */
+    agents: number;
+    /** Uncommitted changes. */
+    dirty?: boolean;
+    /** Commits on its branch that no remote has. */
+    unpushed?: number;
+    /** Merged into the branch it was cut from, named here. */
+    mergedInto?: string;
+  }>;
+  worktreeTotal: number;
+  /** Removed worktrees still in the ledger. */
+  removed: number;
+  /** Worktrees under pi-git's root that another session created. */
+  other: number;
+  /** Most recently touched first; `prTotal` counts them all. */
+  prs: Array<{
+    /** `owner/repo#12`. */
+    label: string;
+    /** Always an `https://<host>/<owner>/<repo>/pull/<n>` URL. */
+    url: string;
+    title?: string;
+    /** Opened in this session or one of its subagents, or only looked at. */
+    origin: "created" | "referenced";
+    state?: GitPrState;
+    draft?: boolean;
+    review?: "approved" | "changes_requested" | "review_required";
+    checks?: { passed: number; failed: number; pending: number };
+    /** False when GitHub reports merge conflicts. */
+    mergeable?: boolean;
+    observedAt?: number;
+  }>;
+  prTotal: number;
 }
 
 /** Token and cost totals for the whole session, as Pi's /session reports them. */
@@ -170,6 +217,8 @@ export interface SessionSnapshot {
   todos?: TodoSection;
   /** Absent when pi-stash is not loaded. */
   stash?: StashSection;
+  /** Absent when pi-git is not loaded or has nothing to show. */
+  git?: GitSection;
   usage?: UsageSection;
   memory?: MemorySection;
   /** Absent when pi-subagent is not loaded or nothing has run yet. */

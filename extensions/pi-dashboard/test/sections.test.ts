@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clip, readPreview, readStash, readTodoHistory, readTodos } from "#src/sections";
+import { clip, readGit, readPreview, readStash, readTodoHistory, readTodos } from "#src/sections";
 
 const task = (overrides: Record<string, unknown> = {}) => ({
   key: "a",
@@ -236,5 +236,136 @@ describe("readPreview", () => {
     );
     expect(readPreview(undefined)).toBe("pi-stash did not answer; is it loaded?");
     expect(readPreview({ ok: true, lines: "nope" })).toBe("pi-stash sent an unreadable preview.");
+  });
+});
+
+describe("readGit", () => {
+  const worktree = (overrides: Record<string, unknown> = {}) => ({
+    path: "/w/api/feat-login",
+    repo: "/src/api",
+    branch: "feat/login",
+    base: { ref: "main", sha: "a" },
+    agents: [],
+    state: "active",
+    ...overrides,
+  });
+  const pr = (overrides: Record<string, unknown> = {}) => ({
+    key: "github.com/acme/api#12",
+    host: "github.com",
+    owner: "acme",
+    repo: "api",
+    number: 12,
+    url: "https://github.com/acme/api/pull/12",
+    origin: "created",
+    calls: [],
+    ...overrides,
+  });
+
+  it("keeps live worktrees and counts removed and other ones", () => {
+    const result = readGit({
+      version: 1,
+      worktrees: [
+        worktree({
+          status: { dirty: false, detached: 0, unpushed: 0, merged: true },
+          workspace: "auth",
+        }),
+        worktree({ path: "/w/gone", state: "missing" }),
+        worktree({ path: "/w/old", state: "removed" }),
+      ],
+      found: [{ path: "/w/x", repo: "/src/web" }],
+      prs: [],
+    });
+    expect(result).toEqual({
+      worktrees: [
+        {
+          path: "/w/api/feat-login",
+          repo: "api",
+          branch: "feat/login",
+          workspace: "auth",
+          state: "active",
+          agents: 0,
+          dirty: false,
+          mergedInto: "main",
+        },
+        { path: "/w/gone", repo: "api", branch: "feat/login", state: "missing", agents: 0 },
+      ],
+      worktreeTotal: 2,
+      removed: 1,
+      other: 1,
+      prs: [],
+      prTotal: 0,
+    });
+  });
+
+  it("maps pull request status and drops anything that could not be a safe PR link", () => {
+    const result = readGit({
+      version: 1,
+      worktrees: [],
+      found: [],
+      prs: [
+        pr({
+          title: "Add\u001b[2J login",
+          status: {
+            state: "open",
+            draft: true,
+            review: "approved",
+            checks: { passed: 3, failed: 1, pending: 0 },
+            mergeable: false,
+            observedAt: 9,
+            source: "bash",
+          },
+        }),
+        pr({ url: "javascript:alert(1)//github.com/a/b/pull/1" }),
+        pr({ url: "http://github.com/acme/api/pull/12" }),
+        pr({ url: 'https://github.com/acme/api/pull/12#x" onclick=' }),
+        pr({ origin: "elsewhere" }),
+        pr({
+          status: { state: "weird", review: "lgtm", observedAt: 1, source: "bash" },
+          number: 13,
+          url: "https://github.com/acme/api/pull/13",
+        }),
+      ],
+    });
+    expect(result?.prs).toEqual([
+      {
+        label: "acme/api#12",
+        url: "https://github.com/acme/api/pull/12",
+        title: "Add [2J login",
+        origin: "created",
+        state: "open",
+        draft: true,
+        review: "approved",
+        checks: { passed: 3, failed: 1, pending: 0 },
+        mergeable: false,
+        observedAt: 9,
+      },
+      {
+        label: "acme/api#13",
+        url: "https://github.com/acme/api/pull/13",
+        origin: "created",
+        observedAt: 1,
+      },
+    ]);
+    expect(result?.prTotal).toBe(6);
+  });
+
+  it("caps long lists and is absent when there is nothing to show or the shape is wrong", () => {
+    const many = readGit({
+      version: 1,
+      worktrees: Array.from({ length: 60 }, (_, i) => worktree({ path: `/w/${i}` })),
+      found: [],
+      prs: Array.from({ length: 60 }, (_, i) =>
+        pr({ number: i + 1, url: `https://github.com/acme/api/pull/${i + 1}` }),
+      ),
+    });
+    expect(many?.worktrees).toHaveLength(50);
+    expect(many?.worktreeTotal).toBe(60);
+    expect(many?.prs).toHaveLength(50);
+    expect(many?.prTotal).toBe(60);
+    expect(readGit({ version: 1, worktrees: [], found: [], prs: [] })).toBeUndefined();
+    expect(readGit({ version: 2, worktrees: [worktree()] })).toBeUndefined();
+    expect(readGit(null)).toBeUndefined();
+    // A snapshot from a pi-git without pull requests still reads.
+    expect(readGit({ version: 1, worktrees: [worktree()], found: [] })?.prTotal).toBe(0);
   });
 });

@@ -297,6 +297,13 @@ function card(session) {
   if (running) work.push(running + (running === 1 ? " subagent" : " subagents"));
   const stashed = session.stash ? Number(session.stash.total) || 0 : 0;
   if (stashed) work.push("stash " + stashed);
+  if (session.git) {
+    const open = list(session.git.prs).filter((pr) => pr.origin === "created" && pr.state !== "merged" && pr.state !== "closed");
+    const failing = open.filter((pr) => pr.checks && pr.checks.failed > 0).length;
+    if (open.length) work.push("PRs " + open.length + " open" + (failing ? " · " + failing + " failing" : ""));
+    const trees = Number(session.git.worktreeTotal) || 0;
+    if (trees) work.push(trees === 1 ? "1 worktree" : trees + " worktrees");
+  }
   if (work.length) node.append(el("span", "clip", work.join(" · ")));
   const foot = el("div", "row");
   foot.append(el("span", "mono muted clip", "up " + ago(session.startedAt) + " · " + statusLabel(session) + " " + ago(session.status.since)));
@@ -774,6 +781,94 @@ function stashPanel(session) {
   return node;
 }
 
+/** A pull request's link; the hub only passes https pull request URLs through. */
+function prLink(pr) {
+  const link = el("a", "mono clip", pr.label);
+  if (typeof pr.url === "string" && pr.url.startsWith("https://")) {
+    link.href = pr.url;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+  }
+  return link;
+}
+
+/** The one thing to know about a PR first: merged, failing, blocked, or waiting. */
+function prPill(pr) {
+  if (pr.state === "merged") return pill("completed", "merged");
+  if (pr.state === "closed") return pill("", "closed");
+  if (pr.checks && pr.checks.failed) return pill("failed", "checks failing");
+  if (pr.mergeable === false) return pill("failed", "conflicts");
+  if (pr.review === "changes_requested") return pill("waiting", "changes requested");
+  if (pr.draft) return pill("queued", "draft");
+  if (pr.review === "approved") return pill("completed", "approved");
+  return pill("running", pr.state || "seen");
+}
+
+function prFacts(pr) {
+  const facts = [];
+  if (pr.review) facts.push(pr.review.replace("_", " "));
+  if (pr.checks) {
+    const counts = [pr.checks.failed ? pr.checks.failed + " failed" : "", pr.checks.pending ? pr.checks.pending + " pending" : "", pr.checks.passed ? pr.checks.passed + " passed" : ""].filter(Boolean);
+    facts.push("checks " + (counts.length ? counts.join(", ") : "none"));
+  }
+  if (pr.observedAt) facts.push("seen " + ago(pr.observedAt) + " ago");
+  return facts.join(" · ");
+}
+
+function prPanel(session) {
+  const prs = list(session.git.prs);
+  const opened = prs.filter((pr) => pr.origin === "created");
+  const referenced = prs.filter((pr) => pr.origin === "referenced");
+  const node = panel("Pull requests", [opened.length ? opened.length + " opened here" : "", referenced.length ? referenced.length + " referenced" : ""].filter(Boolean).join(" · "));
+  for (const [label, group] of [["Opened here", opened], ["Referenced", referenced]]) {
+    if (!group.length) continue;
+    node.append(el("span", "label", label));
+    const ul = el("ul", "items");
+    for (const pr of group) {
+      const li = el("li");
+      const row = el("div", "row");
+      row.append(prLink(pr), prPill(pr));
+      li.append(row);
+      if (pr.title) li.append(el("span", "clip", pr.title));
+      const facts = prFacts(pr);
+      if (facts) li.append(el("span", "mono muted clip", facts));
+      ul.append(li);
+    }
+    node.append(ul);
+  }
+  const hidden = (Number(session.git.prTotal) || 0) - prs.length;
+  if (hidden > 0) node.append(el("span", "muted", "…and " + hidden + " more; /git:prs lists them all."));
+  node.append(el("span", "muted", "Status is what the session's tools last showed."));
+  return node;
+}
+
+function worktreePanel(session) {
+  const git = session.git;
+  const items = list(git.worktrees);
+  const total = Number(git.worktreeTotal) || 0;
+  const node = panel("Worktrees", [total ? total + (total === 1 ? " worktree" : " worktrees") : "", git.removed ? git.removed + " removed" : ""].filter(Boolean).join(" · "));
+  if (!items.length) node.append(el("span", "muted", "No worktrees in use."));
+  else {
+    const ul = el("ul", "items");
+    for (const tree of items) {
+      const li = el("li");
+      const row = el("div", "row");
+      const badge = tree.state === "missing" ? pill("failed", "missing") : tree.dirty ? pill("waiting", "uncommitted") : pill("running", "active");
+      row.append(el("span", "mono clip", tree.repo + " @ " + tree.branch), badge);
+      li.append(row);
+      li.append(el("span", "mono muted clip", tilde(tree.path)));
+      const facts = [tree.workspace ? "workspace " + tree.workspace : "", tree.agents ? tree.agents + (tree.agents === 1 ? " subagent" : " subagents") : "",
+        tree.unpushed ? tree.unpushed + " unpushed" : "", tree.mergedInto ? "merged into " + tree.mergedInto : ""].filter(Boolean);
+      if (facts.length) li.append(el("span", "mono muted clip", facts.join(" · ")));
+      ul.append(li);
+    }
+    node.append(ul);
+  }
+  if (total > items.length) node.append(el("span", "muted", "…and " + (total - items.length) + " more; /git:worktrees lists them all."));
+  if (git.other) node.append(el("span", "muted", git.other + (git.other === 1 ? " other worktree" : " other worktrees") + " under the root from other sessions."));
+  return node;
+}
+
 function usagePanel(session) {
   const usage = session.usage;
   const node = panel("Usage", money(usage.cost));
@@ -831,6 +926,8 @@ function renderDetail(id) {
   const right = el("div", "col");
   if (session.todos) left.append(todoPanel(session));
   if (session.subagents) left.append(subagentPanel(session));
+  if (session.git && session.git.prTotal) left.append(prPanel(session));
+  if (session.git && (session.git.worktreeTotal || session.git.removed || session.git.other)) left.append(worktreePanel(session));
   if (session.activity) left.append(activityPanel(session));
   if (session.memory) right.append(memoryPanel(session));
   if (session.stash) right.append(stashPanel(session));
