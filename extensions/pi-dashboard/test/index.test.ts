@@ -209,6 +209,74 @@ describe("pi-dashboard extension", () => {
     });
   });
 
+  it("carries pi-git's worktrees and pull requests published on the session bus", async () => {
+    const env = setup();
+    const fake = load(env.deps);
+    const ctx = fakeCtx();
+    onCleanup(() => quit(fake, ctx));
+    await fake.emit("session_start", { reason: "startup" }, ctx);
+    fake.publish("git:snapshot", {
+      version: 1,
+      worktrees: [
+        {
+          path: "/w/api/feat-login",
+          repo: "/src/api",
+          branch: "feat/login",
+          base: { ref: "main", sha: "a" },
+          agents: ["agent-1"],
+          state: "active",
+          status: { dirty: true, detached: 0, unpushed: 2, merged: false },
+        },
+      ],
+      found: [],
+      prs: [
+        {
+          key: "github.com/acme/api#12",
+          host: "github.com",
+          owner: "acme",
+          repo: "api",
+          number: 12,
+          url: "https://github.com/acme/api/pull/12",
+          origin: "created",
+          title: "Add login",
+          status: { state: "open", observedAt: 5, source: "bash" },
+          calls: [],
+        },
+      ],
+    });
+    const [card] = await waitFor(async () => {
+      const [current] = await env.sessions();
+      return current?.git ? [current] : undefined;
+    });
+    expect(card?.git).toEqual({
+      worktrees: [
+        {
+          path: "/w/api/feat-login",
+          repo: "api",
+          branch: "feat/login",
+          state: "active",
+          agents: 1,
+          dirty: true,
+          unpushed: 2,
+        },
+      ],
+      worktreeTotal: 1,
+      removed: 0,
+      other: 0,
+      prs: [
+        {
+          label: "acme/api#12",
+          url: "https://github.com/acme/api/pull/12",
+          title: "Add login",
+          origin: "created",
+          state: "open",
+          observedAt: 5,
+        },
+      ],
+      prTotal: 1,
+    });
+  });
+
   it("Focus from the page runs the session's terminal adapter and reports failures", async () => {
     const adapter = { info: { kind: "cmux", label: "cmux" }, focus: vi.fn(async () => {}) };
     const env = setup({ detectTerminal: () => adapter });

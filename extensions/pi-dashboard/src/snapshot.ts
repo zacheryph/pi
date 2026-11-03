@@ -1,5 +1,6 @@
 import type {
   ActivitySection,
+  GitSection,
   MemorySection,
   Questionnaire,
   SessionSnapshot,
@@ -35,6 +36,7 @@ export interface SnapshotInput {
   status: SessionStatus & { since: number };
   todos?: TodoSection;
   stash?: StashSection;
+  git?: GitSection;
   usage?: UsageSection;
   memory?: MemorySection;
   subagents?: SubagentsSection;
@@ -102,6 +104,7 @@ export function buildSnapshot(input: SnapshotInput): SessionSnapshot {
     ...(input.piVersion ? { piVersion: input.piVersion } : {}),
     ...(input.todos ? { todos: input.todos } : {}),
     ...(input.stash ? { stash: input.stash } : {}),
+    ...(input.git ? { git: input.git } : {}),
     ...(input.usage ? { usage: input.usage } : {}),
     ...(input.memory ? { memory: input.memory } : {}),
     ...(input.subagents ? { subagents: input.subagents } : {}),

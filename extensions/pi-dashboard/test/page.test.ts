@@ -25,6 +25,13 @@ describe("renderPage", () => {
     expect(page).toContain("if (event.target === modal) modal.close();");
   });
 
+  it("links pull requests only to https URLs, in a new tab without an opener", () => {
+    expect(page).toContain('if (typeof pr.url === "string" && pr.url.startsWith("https://")) {');
+    expect(page).toContain('link.rel = "noopener noreferrer";');
+    expect(page).toContain("left.append(prPanel(session))");
+    expect(page).toContain("left.append(worktreePanel(session))");
+  });
+
   it("renders session text through textContent, never innerHTML", () => {
     expect(page).not.toMatch(/innerHTML|insertAdjacentHTML|document\.write/);
     expect(page).toContain("textContent");
