@@ -3,6 +3,31 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-03: Caller-chosen working directory
+
+`subagent_start` takes an optional `cwd`: an existing directory, absolute or
+relative to the parent's, that the child runs in. It lets an orchestrator hand a
+worker a git worktree it created, in any repository, instead of relying on a
+workspace provider chosen per agent type.
+
+- `src/lifecycle/spawn-cwd.ts` (new): resolves and checks the path. A missing
+  directory or a non-string is refused before anything is spawned.
+- `src/tools/agent-tool.ts`: the `cwd` parameter and its guidance line; refused
+  together with `resume`, since a resumed agent keeps its directory.
+- `src/tools/spawn-config.ts`, `background-spawner.ts`, `foreground-runner.ts`,
+  `src/lifecycle/subagent-manager.ts`: thread `cwd` like `handoff`.
+- `src/lifecycle/subagent.ts`: with a `cwd`, `run()` skips the workspace provider,
+  so nothing is disposed when the run ends and `resumeRefusal` never reports
+  `workspace-disposed` for it.
+- `src/service/service.ts`, `service-adapter.ts`: `SpawnOptions.cwd`, checked
+  against the session's cwd; a bad one throws.
+- `src/lifecycle/child-lifecycle.ts`, `create-subagent-session.ts`:
+  `subagent:session:created` carries the child's effective `cwd`.
+- Tests: `test/lifecycle/spawn-cwd.test.ts` (new), `test/cwd-sdk.test.ts` (new:
+  a real orchestrator session spawns a worker with a relative `cwd` and resumes
+  it), and cases in `subagent.test.ts`, `agent-tool.test.ts`,
+  `service-adapter.test.ts`; `handoff-sdk.test.ts` expects the new `cwd` field.
+
 ## 2026-11-01: Questions through pi-ask (#62)
 
 The `ask_parent` tool is gone. A child asks with the bundled pi-ask's `ask`,

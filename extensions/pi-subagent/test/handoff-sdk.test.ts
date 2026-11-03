@@ -155,6 +155,7 @@ it("carries the agent id, tool call id and any extension's handoff on a tool-spa
         todos: { keys: ["auth-audit", "auth-tests"], scope: "ledger" },
         review: { ticket: "AUTH-12" },
       },
+      cwd: dir,
     });
     for (const channel of ["subagent:session:bound", "subagent:session:disposed"]) {
       expect(log.find((entry) => entry.channel === channel)?.data, channel).toMatchObject({

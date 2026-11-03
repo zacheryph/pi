@@ -225,6 +225,11 @@ export interface AgentSpawnConfig {
   parentSession?: ParentSessionInfo;
   /** What the parent hands the child; forwarded on its `session-created` event. */
   handoff?: SubagentHandoff;
+  /**
+   * Existing directory the child runs in, chosen by the caller. Skips the
+   * workspace provider: the caller owns the directory, so nothing is disposed.
+   */
+  cwd?: string;
 }
 
 export class SubagentManager {
@@ -447,6 +452,7 @@ export class SubagentManager {
         thinkingLevel: options.thinkingLevel,
         parentSession: options.parentSession,
         ...(options.handoff ? { handoff: options.handoff } : {}),
+        ...(options.cwd ? { cwd: options.cwd } : {}),
         signal: options.signal,
       },
     });

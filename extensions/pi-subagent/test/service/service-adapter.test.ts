@@ -1,3 +1,5 @@
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import { SubagentState } from "#src/lifecycle/subagent-state";
@@ -403,6 +405,23 @@ describe("SubagentsServiceAdapter — spawn", () => {
       expect(() =>
         svc.spawn("Explore", "bad", { handoff: ["x"] as unknown as Record<string, unknown> }),
       ).toThrow(/handoff must be an object/);
+    });
+  });
+
+  describe("cwd", () => {
+    it("forwards an existing directory and refuses a missing one", () => {
+      const mgr = createManagerStub();
+      const svc = new SubagentsServiceAdapter(mgr, vi.fn(), makeRuntimeStub());
+      const dir = tmpdir();
+
+      svc.spawn("Explore", "audit", { cwd: dir });
+      svc.spawn("Explore", "plain");
+
+      expect(vi.mocked(mgr.spawn).mock.calls[0][3].cwd).toBe(dir);
+      expect(vi.mocked(mgr.spawn).mock.calls[1][3].cwd).toBeUndefined();
+      expect(() => svc.spawn("Explore", "bad", { cwd: join(dir, "no-such-dir-xyz") })).toThrow(
+        /is not an existing directory/,
+      );
     });
   });
 

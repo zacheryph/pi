@@ -94,6 +94,7 @@ export async function runForeground(
       signal,
       parentSession: params.parentSession,
       ...(execution.handoff ? { handoff: execution.handoff } : {}),
+      ...(execution.cwd ? { cwd: execution.cwd } : {}),
       observer: {
         onSessionCreated: (agent) => {
           recordRef = agent;

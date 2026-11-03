@@ -680,6 +680,7 @@ function createRunnableAgent(overrides?: {
   baseCwd?: string;
   workspaceProvider?: WorkspaceProvider;
   isBackground?: boolean;
+  cwd?: string;
 }) {
   const createSubagentSession = overrides?.createSubagentSession ?? defaultFactory();
   const observer = overrides?.observer ?? {};
@@ -698,6 +699,7 @@ function createRunnableAgent(overrides?: {
       signal: overrides?.signal,
       baseCwd: overrides?.baseCwd ?? "/base",
       getWorkspaceProvider: provider ? () => provider : undefined,
+      ...(overrides?.cwd ? { cwd: overrides.cwd } : {}),
     },
   });
 }
@@ -849,6 +851,34 @@ describe("Subagent — workspaceDisposed", () => {
     const agent = createRunnableAgent({ workspaceProvider: makeWorkspaceProvider(undefined) });
     await agent.run();
     expect(agent.workspaceDisposed).toBe(false);
+  });
+});
+
+describe("Subagent.run() — caller-chosen cwd", () => {
+  it("runs the child in the caller's directory without consulting the provider", async () => {
+    const { factory } = createFactory();
+    const workspace = makeWorkspace("/ws/dir");
+    const prepare = vi.fn(() => Promise.resolve(workspace));
+    const agent = createRunnableAgent({
+      createSubagentSession: factory,
+      workspaceProvider: { prepare },
+      cwd: "/worktrees/feat-x",
+    });
+    await agent.run();
+    const params = (factory as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(params.cwd).toBe("/worktrees/feat-x");
+    expect(prepare).not.toHaveBeenCalled();
+    expect(workspace.dispose).not.toHaveBeenCalled();
+  });
+
+  it("leaves the agent resumable after the run ends", async () => {
+    const agent = createRunnableAgent({
+      workspaceProvider: makeWorkspaceProvider(makeWorkspace("/ws/dir")),
+      cwd: "/worktrees/feat-x",
+    });
+    await agent.run();
+    expect(agent.workspaceDisposed).toBe(false);
+    expect(agent.resumeRefusal).toBeUndefined();
   });
 });
 

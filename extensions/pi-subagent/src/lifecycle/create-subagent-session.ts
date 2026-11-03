@@ -355,6 +355,7 @@ export async function createSubagentSession(
     parentSessionId,
     ...run,
     ...(params.handoff ? { handoff: params.handoff } : {}),
+    cwd: cfg.effectiveCwd,
   });
 
   try {

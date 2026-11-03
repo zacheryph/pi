@@ -1,5 +1,8 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import { AgentTool } from "#src/tools/agent-tool";
 import {
@@ -573,5 +576,84 @@ describe("AgentTool — foreground execution", () => {
       subagent_type: "general-purpose",
     });
     expect(result.content[0].text).toContain("Agent ID: agent-1");
+  });
+});
+
+describe("AgentTool — cwd", () => {
+  const dir = mkdtempSync(join(tmpdir(), "agent-tool-cwd-"));
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  it("passes an existing directory to a background spawn", async () => {
+    const deps = createToolDeps();
+    deps.manager.getRecord = vi.fn().mockReturnValue(createTestSubagent({ status: "running" }));
+    await execute(deps, {
+      prompt: "do something",
+      description: "bg task",
+      subagent_type: "general-purpose",
+      run_in_background: true,
+      cwd: dir,
+    });
+    const spawnOpts = (deps.manager.spawn as ReturnType<typeof vi.fn>).mock.calls[0][3];
+    expect(spawnOpts.cwd).toBe(dir);
+  });
+
+  it("passes an existing directory to a foreground spawn", async () => {
+    const deps = createToolDeps();
+    deps.manager.spawnAndWait = vi.fn().mockResolvedValue(createTestSubagent({ result: "ok" }));
+    await execute(deps, {
+      prompt: "do task",
+      description: "fg task",
+      subagent_type: "general-purpose",
+      cwd: dir,
+    });
+    const spawnOpts = (deps.manager.spawnAndWait as ReturnType<typeof vi.fn>).mock.calls[0][3];
+    expect(spawnOpts.cwd).toBe(dir);
+  });
+
+  it("omits cwd when the call does not set one", async () => {
+    const deps = createToolDeps();
+    deps.manager.getRecord = vi.fn().mockReturnValue(createTestSubagent({ status: "running" }));
+    await execute(deps, {
+      prompt: "do something",
+      description: "bg task",
+      subagent_type: "general-purpose",
+      run_in_background: true,
+    });
+    const spawnOpts = (deps.manager.spawn as ReturnType<typeof vi.fn>).mock.calls[0][3];
+    expect(spawnOpts).not.toHaveProperty("cwd");
+  });
+
+  it("refuses a directory that does not exist and spawns nothing", async () => {
+    const deps = createToolDeps();
+    const result = await execute(deps, {
+      prompt: "do something",
+      description: "bg task",
+      subagent_type: "general-purpose",
+      run_in_background: true,
+      cwd: join(dir, "missing"),
+    });
+    expect(result.content[0].text).toBe(`cwd ${join(dir, "missing")} is not an existing directory`);
+    expect(deps.manager.spawn).not.toHaveBeenCalled();
+  });
+
+  it("refuses cwd on a resume", async () => {
+    const deps = createToolDeps();
+    const result = await execute(deps, {
+      prompt: "continue",
+      description: "resume",
+      subagent_type: "general-purpose",
+      resume: "agent-1",
+      cwd: dir,
+    });
+    expect(result.content[0].text).toContain("cwd applies only to a new agent");
+    expect(deps.manager.resume).not.toHaveBeenCalled();
+  });
+
+  it("documents cwd in the tool guidance and schema", () => {
+    const def = makeTool(createToolDeps()).toToolDefinition();
+    expect(def.description).toContain("- Use cwd to run the agent in another existing directory");
+    expect((def.parameters as { properties: Record<string, unknown> }).properties).toHaveProperty(
+      "cwd",
+    );
   });
 });
