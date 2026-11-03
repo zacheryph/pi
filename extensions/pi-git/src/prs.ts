@@ -12,7 +12,11 @@ import { LEDGER_VERSION } from "./ledger.ts";
 
 export type PrOrigin = "created" | "referenced";
 export type PrState = "open" | "closed" | "merged";
-export type PrReview = "approved" | "changes_requested" | "review_required";
+/**
+ * `none`: reviews were read and no decision stands (none given, or every one
+ * dismissed). Unlike an absent field, it replaces an older decision.
+ */
+export type PrReview = "approved" | "changes_requested" | "review_required" | "none";
 
 export interface PrRef {
   /** `github.com`, or a GitHub Enterprise host. */
@@ -105,7 +109,12 @@ export function prLabel(ref: PrRef): string {
 }
 
 const STATES: ReadonlySet<unknown> = new Set(["open", "closed", "merged"]);
-const REVIEWS: ReadonlySet<unknown> = new Set(["approved", "changes_requested", "review_required"]);
+const REVIEWS: ReadonlySet<unknown> = new Set([
+  "approved",
+  "changes_requested",
+  "review_required",
+  "none",
+]);
 
 function isString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
@@ -254,7 +263,7 @@ export function describePr(status: PrStatus | undefined): string {
   const parts: string[] = [];
   if (status.state) parts.push(status.draft && status.state === "open" ? "draft" : status.state);
   else if (status.draft) parts.push("draft");
-  if (status.review) parts.push(status.review.replace("_", " "));
+  if (status.review && status.review !== "none") parts.push(status.review.replace("_", " "));
   if (status.checks) {
     const { passed, failed, pending } = status.checks;
     const counts = [

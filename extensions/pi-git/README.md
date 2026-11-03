@@ -86,6 +86,15 @@ that mentions PRs records nothing. A failed call records nothing, except
 `gh pr checks`, which exits 1 when a check failed and 8 while checks are
 pending: its rows (or `--json` output) still count when it listed any checks.
 
+One bash call running several `gh pr`/`gh api …/pulls` commands records each PR
+it names, but no status: the output belongs to the whole call, so which part is
+whose is unknown. A batched `gh pr create` keeps its URL only when the output
+holds exactly one.
+
+A reviews read where no decision stands (none given, or every one dismissed)
+records the review as `none`, which replaces an earlier approval or change
+request instead of leaving it in place.
+
 Each record keeps the last status seen, field by field, and each field keeps
 the time it was seen: a later check-runs read neither forgets an earlier
 review nor makes an older state look new, so a subagent's checks read cannot
