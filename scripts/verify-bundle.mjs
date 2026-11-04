@@ -72,7 +72,7 @@ try {
     "subagent:settings",
     "subagent:sessions",
     "subagent:watch",
-    "agent",
+    "agents",
     "tldr",
     "system:prompt",
     "system:tools",
