@@ -184,8 +184,10 @@ checks and conflicts its output showed and the tool calls that touched it.
 PR's current state, review, checks and head from GitHub (through `gh`, or the
 GitHub MCP tools without it, retrying transient failures) and records it; it is
 read-only, so `job_watch` can poll it until `ciDone`. `/git:refresh` re-reads
-every open PR and re-checks every worktree. State is published as `git:snapshot`
-for the dashboard. The root
+every open PR and re-checks every worktree. After a compaction, reload, resume or
+`/tree`, a context-only card lists open PRs and worktrees until the model reads
+`git_pr_list` or `git_worktree_list`. State is published as `git:snapshot` for the
+dashboard. The root
 is set by `worktreeRoot` in `~/.pi/agent/git.json` or `.pi/git.json`;
 `trackReferenced: false` keeps only PRs opened here. See [extension docs](extensions/pi-git/README.md) and the
 [plan](docs/plans/git-github-ledger.md).

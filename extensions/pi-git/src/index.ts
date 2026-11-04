@@ -11,7 +11,8 @@
  * Pull requests are recorded from the session's own tool calls (`gh` in bash,
  * GitHub MCP tools, PR URLs passed to any tool), with the status their output
  * showed. Records a subagent makes are handed up to its parent's ledger. State
- * is published as `git:snapshot`.
+ * is published as `git:snapshot`, and a context-only card restores it for the
+ * model after a compaction, reload, resume or `/tree`.
  */
 
 import {
@@ -30,6 +31,7 @@ import {
   provide,
   trackChildren,
 } from "../../../packages/pi-session-tree/src/index.ts";
+import { CARD_TYPE, contextCard } from "./card.ts";
 import { loadGitConfig, type GitConfig } from "./config.ts";
 import { GIT_SNAPSHOT_EVENT, snapshotEvent, type GitSnapshotEvent } from "./events.ts";
 import { foldLedger } from "./fold.ts";
@@ -169,6 +171,11 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
   let withdraw: (() => void) | undefined;
   /** Bumped on every session start and shutdown, so a stale refresh drops its results. */
   let generation = 0;
+  /**
+   * The model may have lost this state: set by a compaction, reload, resume or
+   * /tree when there is something to restore, cleared by a list result it can see.
+   */
+  let showCard = false;
 
   trackChildren(pi);
 
@@ -287,6 +294,7 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
     records = ledger.worktrees;
     prs = ledger.prs;
     measured = new Map();
+    showCard = contextCard(ledger) !== undefined;
     publish();
   };
 
@@ -304,10 +312,33 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
     restore(ctx);
     backgroundRefresh(ctx);
   });
+  pi.on("session_compact", (_event, ctx) => {
+    showCard = contextCard(foldLedger(ctx.sessionManager.getEntries())) !== undefined;
+  });
+  pi.on("context", (event, ctx) => {
+    const messages = event.messages.filter(
+      (message) => !(message.role === "custom" && message.customType === CARD_TYPE),
+    );
+    const card = showCard ? contextCard(foldLedger(ctx.sessionManager.getEntries())) : undefined;
+    if (!card) return messages.length === event.messages.length ? undefined : { messages };
+    return {
+      messages: [
+        ...messages,
+        {
+          role: "custom" as const,
+          customType: CARD_TYPE,
+          content: card,
+          display: false,
+          timestamp: now(),
+        },
+      ],
+    };
+  });
   pi.on("session_shutdown", () => {
     generation += 1;
     withdraw?.();
     withdraw = undefined;
+    showCard = false;
   });
 
   // Note which subagents run in a worktree: pi-subagent announces each child's
@@ -463,6 +494,13 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
 
   // Every tool call: did it touch a pull request? Parsing only; never changes the result.
   pi.on("tool_result", async (event, ctx) => {
+    // The model reads a list result only when it made the call itself and it worked.
+    if (
+      (event.toolName === "git_pr_list" || event.toolName === "git_worktree_list") &&
+      !event.isError &&
+      !event.parentToolCallId
+    )
+      showCard = false;
     // git_pr_status records what it read itself, including through nested MCP calls.
     if (event.toolName === "git_pr_status") return;
     if (event.parentToolCallId && ownCalls.has(event.parentToolCallId)) return;
