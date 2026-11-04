@@ -16,7 +16,11 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import subagentExtension from "#src/index";
-import { SUBAGENT_RECORD_ENTRY } from "#src/persisted-record";
+import {
+  readPersistedRecords,
+  type PersistedSubagentRecord,
+  SUBAGENT_RECORD_ENTRY,
+} from "#src/persisted-record";
 
 // A real parent session loads this extension and spawns real child sessions
 // through it, all answered by one scripted faux provider in call order. The
@@ -146,6 +150,34 @@ function capture(requests: Context[], reply: ReturnType<typeof fauxAssistantMess
 const tail = (context: Context | undefined) => JSON.stringify(context?.messages.at(-1));
 
 describe("subagent records in a real parent session (offline faux provider)", () => {
+  it("restores a transcript path from a record captured before the child finishes", async () => {
+    const h = await parent();
+    let running: PersistedSubagentRecord | undefined;
+    h.faux.setResponses([
+      spawn("Interrupted work"),
+      () => {
+        running = readPersistedRecords(h.manager.getBranch())[0];
+        return fauxAssistantMessage("finished later");
+      },
+      fauxAssistantMessage("ok"),
+    ]);
+    await h.session.prompt("Delegate");
+    expect(running).toMatchObject({ status: "running", model: "records-test/worker", cwd: dir });
+    expect(running?.outputFile).toBeTruthy();
+    const saved = SessionManager.inMemory(dir);
+    saved.appendCustomEntry(SUBAGENT_RECORD_ENTRY, running);
+    const restored = await parent(saved);
+    const requests: Context[] = [];
+    restored.faux.setResponses([
+      call("subagent_get", { agent_id: running!.id }),
+      capture(requests, fauxAssistantMessage("recovered")),
+    ]);
+    await restored.session.prompt("Recover interrupted work");
+    const report = lastResult(requests[0], "subagent_get");
+    expect(report).toContain("Status: interrupted");
+    expect(report).toContain(`Full transcript available at: ${running!.outputFile}`);
+  }, 30_000);
+
   it("answers subagent_get from the record after a reload, and shows the card until a list", async () => {
     const h = await parent();
     h.faux.setResponses([
@@ -163,7 +195,7 @@ describe("subagent records in a real parent session (offline faux provider)", ()
           ? [(entry.data as { status: string }).status]
           : [],
       );
-    expect(statuses).toEqual(["running", "completed"]);
+    expect(statuses).toEqual(["running", "running", "completed"]);
 
     await h.session.reload();
 

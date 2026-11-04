@@ -418,6 +418,8 @@ The parent session appends a `subagent:record` custom entry for every lifecycle 
 Each entry carries the agent's ID, type, description, status, result, error, turn budget, timings, tool count and transcript path, plus the question it is waiting on, its model and thinking level, the turn ceiling the spawn asked for, and the directory it runs in.
 The last entry for an ID wins.
 The entries sit on the branch that started the agent, so they follow it through `/tree` and forks, and entries written by older versions without the newer fields still load.
+Once the child session is ready, another running entry saves its resolved model, directory and transcript path so an interrupted run can be inspected.
+Lifecycle updates from an agent hidden by `/tree` do not add it to the new branch; the latest update is held in memory and written when `/tree` returns to a branch containing that agent.
 
 After a compaction, `/reload`, `/resume` or `/tree`, the model may have lost track of the agents it started.
 Until it lists them with `subagent_get` (no `agent_id`), each request ends with a roster card built from the branch's records and any still-live agents:

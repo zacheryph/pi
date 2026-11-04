@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { readPersistedRecords } from "#src/persisted-record";
 import { buildEventData, type NotificationSystem } from "#src/observation/notification";
 import { SubagentEventsObserver } from "#src/observation/subagent-events-observer";
 import type { CompactionInfo } from "#src/types";
@@ -22,6 +24,56 @@ function makeObserver(overrides?: Partial<{ notifications: NotificationSystem }>
 }
 
 describe("SubagentEventsObserver", () => {
+  it.each(["start", "session", "complete", "resume", "resumed"] as const)(
+    "defers %s updates after /tree leaves the spawn branch, then restores the latest state",
+    (transition) => {
+      const manager = SessionManager.inMemory("/tmp");
+      const target = manager.appendMessage({ role: "user", content: "before spawn", timestamp: 1 });
+      const observer = new SubagentEventsObserver({
+        emit: vi.fn(),
+        appendEntry: (type, data) => {
+          manager.appendCustomEntry(type, data);
+        },
+        notifications: makeNotifications(),
+        isOnBranch: (id) =>
+          readPersistedRecords(manager.getBranch()).some((record) => record.id === id),
+      });
+      observer.onSubagentCreated(createTestSubagent({ status: "queued" }));
+      const spawnLeaf = manager.getLeafId()!;
+      manager.branch(target);
+      const record = createTestSubagent({
+        status: transition === "complete" || transition === "resumed" ? "completed" : "running",
+      });
+      switch (transition) {
+        case "start":
+          observer.onSubagentStarted(record);
+          break;
+        case "session":
+          observer.onSubagentSessionCreated(record);
+          break;
+        case "complete":
+          observer.onSubagentCompleted(record);
+          break;
+        case "resume":
+          observer.onSubagentResuming(record);
+          break;
+        case "resumed":
+          observer.onSubagentResumed(record);
+          break;
+      }
+      observer.refreshBranch();
+      expect(readPersistedRecords(manager.getBranch())).toEqual([]);
+      manager.branch(spawnLeaf);
+      observer.refreshBranch();
+      expect(readPersistedRecords(manager.getBranch())).toMatchObject([
+        { id: record.id, status: record.status },
+      ]);
+      const count = manager.getEntries().length;
+      observer.refreshBranch();
+      expect(manager.getEntries()).toHaveLength(count);
+    },
+  );
+
   describe("onSubagentStarted", () => {
     it("emits subagent:started with id, type, description", () => {
       const { observer, emit } = makeObserver();

@@ -54,6 +54,7 @@ import {
 import { SubagentEventsObserver } from "#src/observation/subagent-events-observer";
 import { registerMainAgentProfile } from "#src/main-agent-profile";
 import { createSubagentRuntime } from "#src/runtime";
+import { readBranchRecords } from "#src/roster";
 import {
   discardPendingSince,
   markPendingPublications,
@@ -124,6 +125,8 @@ export default function (pi: ExtensionAPI) {
     emit: (channel, data) => pi.events.emit(channel, data),
     appendEntry: (customType, data) => pi.appendEntry(customType, data),
     notifications,
+    isOnBranch: (id) =>
+      readBranchRecords(runtime.currentCtx)?.some((record) => record.id === id) ?? false,
   });
 
   // Fan-out observer: lets the widget subscribe as a second lifecycle consumer
@@ -270,7 +273,10 @@ export default function (pi: ExtensionAPI) {
   // them, until it lists them itself (see RosterCard).
   const rosterCard = new RosterCard((id) => manager.getRecord(id));
   pi.on("session_start", (event, ctx) => rosterCard.handleSessionStart(event, ctx));
-  pi.on("session_tree", (_event, ctx) => rosterCard.handleSessionTree(ctx));
+  pi.on("session_tree", (_event, ctx) => {
+    eventsObserver.refreshBranch();
+    rosterCard.handleSessionTree(ctx);
+  });
   pi.on("session_compact", (_event, ctx) => rosterCard.handleSessionCompact(ctx));
   pi.on("context", (event, ctx) => rosterCard.handleContext(event, ctx));
   pi.on("session_shutdown", () => rosterCard.handleSessionShutdown());

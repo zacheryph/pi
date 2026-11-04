@@ -1,6 +1,10 @@
 import type { SubagentManagerObserver } from "#src/lifecycle/subagent-manager";
 import { buildEventData, type NotificationSystem } from "#src/observation/notification";
-import { SUBAGENT_RECORD_ENTRY, toPersistedRecord } from "#src/persisted-record";
+import {
+  type PersistedSubagentRecord,
+  SUBAGENT_RECORD_ENTRY,
+  toPersistedRecord,
+} from "#src/persisted-record";
 import type { CompactionInfo, Subagent } from "#src/types";
 
 /** Emit callback — a subset of `pi.events.emit`. */
@@ -13,6 +17,8 @@ export interface SubagentEventsObserverDeps {
   emit: EventEmit;
   appendEntry: AppendEntry;
   notifications: NotificationSystem;
+  /** Whether the current branch already contains this agent's initial record. */
+  isOnBranch?: (id: string) => boolean;
 }
 
 /**
@@ -27,11 +33,15 @@ export class SubagentEventsObserver implements SubagentManagerObserver {
   private readonly emit: EventEmit;
   private readonly appendEntry: AppendEntry;
   private readonly notifications: NotificationSystem;
+  private readonly isOnBranch: (id: string) => boolean;
+  private readonly recorded = new Set<string>();
+  private readonly pending = new Map<string, PersistedSubagentRecord>();
 
   constructor(deps: SubagentEventsObserverDeps) {
     this.emit = deps.emit;
     this.appendEntry = deps.appendEntry;
     this.notifications = deps.notifications;
+    this.isOnBranch = deps.isOnBranch ?? (() => true);
   }
 
   onSubagentStarted(record: Subagent): void {
@@ -55,6 +65,20 @@ export class SubagentEventsObserver implements SubagentManagerObserver {
     }
 
     this.persistAndNotify(record);
+  }
+
+  /** The transcript, inherited model and workspace are known before the first prompt. */
+  onSubagentSessionCreated(record: Subagent): void {
+    this.persist(record);
+  }
+
+  /** Apply deferred updates when /tree returns to a branch that contains the agent. */
+  refreshBranch(): void {
+    for (const [id, record] of this.pending) {
+      if (!this.isOnBranch(id)) continue;
+      this.appendEntry(SUBAGENT_RECORD_ENTRY, record);
+      this.pending.delete(id);
+    }
   }
 
   /**
@@ -87,7 +111,16 @@ export class SubagentEventsObserver implements SubagentManagerObserver {
    * this session started, after a reload or resume as much as before it.
    */
   private persist(record: Subagent): void {
-    this.appendEntry(SUBAGENT_RECORD_ENTRY, toPersistedRecord(record));
+    const data = toPersistedRecord(record);
+    // Only the first lifecycle entry admits an ID to the branch. Later events
+    // can arrive after /tree has left it; keep their latest data until it returns.
+    if (this.recorded.has(record.id) && !this.isOnBranch(record.id)) {
+      this.pending.set(record.id, data);
+      return;
+    }
+    this.appendEntry(SUBAGENT_RECORD_ENTRY, data);
+    this.recorded.add(record.id);
+    this.pending.delete(record.id);
   }
 
   /**
