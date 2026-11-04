@@ -1,6 +1,6 @@
 # Git and GitHub ledger: worktrees and pull requests
 
-Status: research · Pi SDK checked: `@earendil-works/pi-coding-agent` 1.4.0
+Status: done; every step below has landed · Pi SDK checked: `@earendil-works/pi-coding-agent` 1.4.0
 
 ## Goal
 
@@ -276,5 +276,6 @@ Each is shippable alone.
    passes `cwd`; `babysit-pr` uses `git_pr_status`; `execute-roadmap` uses
    worktrees for parallel steps instead of requiring non-overlapping files.
 
-Run `make-it-easy` on this document to turn it into a roadmap under
-`docs/roadmaps/` once the dependency-setup question is answered.
+All six steps have landed, including `babysit-pr` reading and waiting on
+`git_pr_status` (step 6, which waited for step 4). Dependency setup in new
+worktrees was left out by choice.

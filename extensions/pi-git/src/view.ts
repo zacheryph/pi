@@ -7,7 +7,7 @@
 import { basename } from "node:path";
 import type { Block, ExplorerItem, ExplorerView, Tone } from "../../../packages/pi-ui/src/index.ts";
 import type { GitSnapshotEvent, GitSnapshotPr, GitSnapshotWorktree } from "./events.ts";
-import { describePr, prLabel } from "./prs.ts";
+import { describePr, prLabel, type PrReview, type PrState } from "./prs.ts";
 import type { FoundWorktree } from "./worktrees.ts";
 import { atRisk, describeStatus } from "./worktrees.ts";
 
@@ -236,7 +236,7 @@ function prDetail(pr: GitSnapshotPr, now: number): Block[] {
         ),
     },
     {
-      text: "Status is what the session's own tools last showed; pi-git does not query GitHub.",
+      text: "Status is what the session's tools last showed. git_pr_status or /git:refresh reads it fresh from GitHub.",
       tone: "muted",
     },
   ];
@@ -270,4 +270,41 @@ export function prExplorerView(prs: readonly GitSnapshotPr[], now = Date.now()):
       },
     ],
   };
+}
+
+/** The text `git_pr_status` returns: one block per pull request read. */
+export function prStatusText(
+  entries: ReadonlyArray<{
+    label: string;
+    url: string;
+    title?: string;
+    state?: string;
+    draft?: boolean;
+    review?: string;
+    checks?: { passed: number; failed: number; pending: number };
+    mergeable?: boolean;
+    headSha?: string;
+    source?: string;
+    error?: string;
+  }>,
+): string {
+  const blocks = entries.map((entry) => {
+    if (entry.error)
+      return `- ${entry.label}: could not read status: ${entry.error}\n  ${entry.url}`;
+    const facts = {
+      ...(entry.state ? { state: entry.state as PrState } : {}),
+      ...(entry.draft !== undefined ? { draft: entry.draft } : {}),
+      ...(entry.review ? { review: entry.review as PrReview } : {}),
+      ...(entry.checks ? { checks: entry.checks } : {}),
+      ...(entry.mergeable !== undefined ? { mergeable: entry.mergeable } : {}),
+    };
+    const summary = describePr({ ...facts, observedAt: 0, source: entry.source ?? "" });
+    const head = entry.headSha ? ` · head ${entry.headSha.slice(0, 12)}` : "";
+    return [
+      `- ${entry.label}${entry.title ? ` — ${entry.title}` : ""}`,
+      `  ${summary}${head} (via ${entry.source ?? "unknown"})`,
+      `  ${entry.url}`,
+    ].join("\n");
+  });
+  return blocks.join("\n");
 }

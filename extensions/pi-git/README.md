@@ -16,6 +16,7 @@ Subagents come and go; the next one continues in the same directory.
 | `git_worktree_list`   | `{ includeRemoved? }`. This session's worktrees with repository, branch, workspace, the subagents that ran there, and git status. Read-only.                                   |
 | `git_worktree_remove` | `{ path, force? }`. Removes a worktree; the branch is always kept. Refuses when removal would lose work (uncommitted changes, or commits on a detached `HEAD`) unless `force`. |
 | `git_pr_list`         | `{ includeReferenced? }`. The pull requests this session opened or looked at, with the last status a tool showed for each. Read-only; reads the ledger, not GitHub.            |
+| `git_pr_status`       | `{ pr?, includeReferenced? }`. Reads pull requests' current status from GitHub and records it. Read-only on GitHub; see [Fresh status](#fresh-status).                         |
 
 `git_worktree_create`:
 
@@ -101,9 +102,55 @@ review nor makes an older state look new, so a subagent's checks read cannot
 reopen a PR its parent saw merged. The record also keeps when and through which
 tool it was last seen, and the last 20 tool calls that touched it, with the
 subagent that made each.
-pi-git never asks GitHub itself: check a PR again for fresh status. A PR seen in
-a subagent is handed up to its parent, and opened-here wins when the two
-disagree.
+The observer never asks GitHub itself; `git_pr_status` and `/git:refresh` do.
+A PR seen in a subagent is handed up to its parent, and opened-here wins when
+the two disagree. A read that only confirms what the ledger holds (a watch
+polling the same status) updates the record in memory without writing another
+ledger entry.
+
+## Fresh status
+
+`git_pr_status` reads a pull request's state, draft, review decision, check
+counts, conflicts and head commit from GitHub and records them:
+
+- `pr`: a PR URL, `owner/repo#12`, or `12` / `#12` in the session's
+  repository (its `origin` remote). Without it, every PR opened here that is
+  not merged or closed, at most 20; `includeReferenced` adds the ones only
+  looked at.
+- It reads through `gh pr view <url> --json …` when `gh` is installed and
+  signed in, and otherwise through a GitHub MCP `pull_request_read` tool (its
+  PR object, check runs and reviews). Calls it makes through that tool are not
+  recorded a second time by the observer.
+- Transient failures (HTTP 5xx, GitHub's GraphQL unavailability, connection
+  resets and timeouts) are retried three times after 1, 4 and 9 seconds; a 4xx
+  never is. It never writes to GitHub.
+- Its structured result is `{ prs: [{ key, label, url, title, state, draft,
+  review, checks, mergeable, headSha, headRef, ciDone, source, error }] }`.
+  `ciDone` is true once checks were reported and none is pending. A call where
+  every PR failed to read is an error.
+
+It is read-only, so `job_watch` can poll it while the agent ends its turn:
+
+```json
+{
+  "toolCheck": {
+    "tool": "git_pr_status",
+    "args": { "pr": "https://github.com/acme/api/pull/12" },
+    "match": { "path": "prs.0.ciDone", "equals": true }
+  },
+  "intervalSeconds": 60,
+  "timeoutSeconds": 3600,
+  "label": "CI for acme/api#12"
+}
+```
+
+`/git:refresh` re-reads every open PR in the ledger (at most 20) and re-checks
+every worktree. A command cannot run other tools, so it reads through `gh`
+only; without `gh` it says so and points at `git_pr_status`.
+
+The retry classifier in `src/retry.ts` is copied from
+[`@gotgenes/pi-github-tools`](https://github.com/gotgenes/pi-packages/tree/main/packages/pi-github-tools)
+6.1.0 and keeps its MIT notice.
 
 ## Commands
 
@@ -114,6 +161,8 @@ disagree.
 - `/git:prs` opens a browser with **Opened here** and **Referenced** tabs;
   Enter shows a PR's status, branch, when it was seen, and the tool calls that
   touched it. Outside the interactive terminal it prints the list.
+- `/git:refresh` reads every open PR fresh through `gh` and re-checks every
+  worktree, then reports what it could not read.
 
 ## Events
 

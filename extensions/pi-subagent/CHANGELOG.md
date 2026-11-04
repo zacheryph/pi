@@ -3,6 +3,17 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-04: Orchestrator checks pull requests with git_pr_status
+
+`src/config/default-agents.ts`: the built-in `orchestrator` profile records the
+URL of a pull request a worker opens on its task, reads its state, review and
+checks with pi-git's `git_pr_status` instead of `gh` or the GitHub MCP tools,
+waits for CI with `job_watch` on `git_pr_status` (or hands the PR to a worker
+with the babysit-pr skill), and completes the task and removes its worktree
+once the PR is merged. After compaction or a reload it calls `git_pr_list`
+beside `todo_list` and `git_worktree_list`. `test/config/agent-types.test.ts`
+asserts the new instructions.
+
 ## 2026-11-03: Orchestrator runs implementation tasks in worktrees
 
 `src/config/default-agents.ts`: the built-in `orchestrator` profile gives each
