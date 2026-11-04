@@ -115,7 +115,7 @@ describe("settings persistence", () => {
   });
 
   describe("sanitizer", () => {
-    it.each<OverlayWidth>(["quarter", "third", "half", "two-thirds"])(
+    it.each<OverlayWidth>(["quarter", "third", "half", "two-thirds", "four-fifths"])(
       "accepts overlayWidth: %s",
       (overlayWidth) => {
         writeProject({ overlayWidth });
@@ -432,18 +432,21 @@ describe("SettingsManager", () => {
         "third",
         "half",
         "two-thirds",
+        "four-fifths",
       ]);
       expect(Object.values(OVERLAY_WIDTH_PRESETS).map((preset) => preset.fraction)).toEqual([
         1 / 4,
         1 / 3,
         1 / 2,
         2 / 3,
+        4 / 5,
       ]);
       expect(OVERLAY_WIDTH_PERCENT).toEqual({
         quarter: "25%",
         third: "33.333%",
         half: "50%",
         "two-thirds": "66.667%",
+        "four-fifths": "80%",
       });
     });
 
@@ -1344,7 +1347,7 @@ describe("SettingsManager", () => {
       expect(sm.overlayDefaultOpen).toBe(false);
     });
 
-    it.each<OverlayWidth>(["quarter", "third", "half", "two-thirds"])(
+    it.each<OverlayWidth>(["quarter", "third", "half", "two-thirds", "four-fifths"])(
       "applies %s, persists a snapshot, and emits settings_changed",
       (width) => {
         const emit = vi.fn();

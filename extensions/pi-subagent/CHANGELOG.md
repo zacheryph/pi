@@ -3,6 +3,11 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-04: Add a four-fifths watch-overlay width preset
+
+- Add `four-fifths` (80%) to the overlay width selector and persisted settings.
+- Extend settings and overlay tests to cover selection, persistence, and live resizing.
+
 ## 2026-11-04: Serialize cold-resume setup and preserve resolved turn limits
 
 - Wait for a released session's shutdown before reopening its transcript, so

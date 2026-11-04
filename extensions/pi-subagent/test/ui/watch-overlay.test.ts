@@ -291,17 +291,23 @@ describe("WatchOverlay lifecycle and visibility", () => {
     f.watch.dispose();
   });
 
-  it("changes width live without taking focus or creating duplicate overlays", () => {
-    const f = fixture();
-    f.watch.onSubagentStarted(agent().record);
-    f.settings.overlayWidth = "half";
-    f.watch.settingsChanged();
-    expect(f.overlays).toHaveLength(2);
-    expect(f.overlays[0].handle.hide).toHaveBeenCalledTimes(1);
-    expect(f.overlays[1].options!.width).toBe("50%");
-    expect(f.overlays[1].handle.focus).not.toHaveBeenCalled();
-    f.watch.dispose();
-  });
+  it.each([
+    ["half", "50%"],
+    ["four-fifths", "80%"],
+  ] as const)(
+    "changes width to %s live without taking focus or creating duplicate overlays",
+    (width, percent) => {
+      const f = fixture();
+      f.watch.onSubagentStarted(agent().record);
+      f.settings.overlayWidth = width;
+      f.watch.settingsChanged();
+      expect(f.overlays).toHaveLength(2);
+      expect(f.overlays[0].handle.hide).toHaveBeenCalledTimes(1);
+      expect(f.overlays[1].options!.width).toBe(percent);
+      expect(f.overlays[1].handle.focus).not.toHaveBeenCalled();
+      f.watch.dispose();
+    },
+  );
 
   it("coalesces output repaint requests and stops repainting while hidden", () => {
     const f = fixture();
