@@ -37,14 +37,18 @@ export interface TurnLoopResult {
   turnBudget: TurnBudget;
 }
 
-/** Per-call options for the initial run's turn loop. */
-export interface TurnLoopOptions {
+/** What a session's turn limits are resolved from. */
+export interface TurnLimitOptions {
   /** Per-call max-turns override — highest precedence. */
   maxTurns?: number;
   /** Runtime-config fallback when neither per-call nor per-agent limit is set. */
   defaultMaxTurns?: number;
   /** Turns left when the child is warned about its budget (`wrapUpTurns` setting). */
   wrapUpTurns?: number;
+}
+
+/** Per-call options for the initial run's turn loop. */
+export interface TurnLoopOptions extends TurnLimitOptions {
   signal?: AbortSignal;
   /** Receives the budget at the start and after every turn boundary that changes it. */
   onTurnBudget?: (budget: TurnBudget) => void;
@@ -129,13 +133,22 @@ export class SubagentSession {
     return this._session.thinkingLevel;
   }
 
-  /** Drive the initial run's turn loop; emits `completed` on success. */
-  async runTurnLoop(prompt: string, opts: TurnLoopOptions): Promise<TurnLoopResult> {
-    const session = this._session;
+  /**
+   * Resolve the limits every run of this session runs under. The initial run
+   * does so itself; a session reopened from its transcript has no initial run,
+   * so its first resume needs them set first.
+   */
+  applyTurnLimits(opts: TurnLimitOptions): void {
     this.turnLimits = {
       maxTurns: normalizeMaxTurns(opts.maxTurns ?? this.meta.agentMaxTurns ?? opts.defaultMaxTurns),
       wrapUpTurns: opts.wrapUpTurns ?? DEFAULT_WRAP_UP_TURNS,
     };
+  }
+
+  /** Drive the initial run's turn loop; emits `completed` on success. */
+  async runTurnLoop(prompt: string, opts: TurnLoopOptions): Promise<TurnLoopResult> {
+    const session = this._session;
+    this.applyTurnLimits(opts);
     const tracker = new TurnBudgetTracker(this.turnLimits);
     const unsubTurns = this.enforceTurnBudget(tracker, opts.onTurnBudget);
     const collector = collectResponseText(session);

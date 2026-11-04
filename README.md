@@ -259,6 +259,8 @@ The session records every agent's lifecycle, so `subagent_get` still answers for
 an agent's ID after a reload or resume (status, result, question, transcript
 path), lists the branch's agents when called without one, and a context-only
 roster card restores them to the model after compaction, reload, resume or `/tree`.
+A resume reopens the agent's saved transcript once its live session is gone, as
+long as that transcript and the agent's directory still exist.
 
 Background agents use a compact widget above Pi's editor:
 

@@ -45,7 +45,12 @@ export interface LiveAgentLike {
   readonly error?: string | undefined;
   readonly startedAt: number;
   readonly completedAt?: number | undefined;
+  readonly outputFile?: string | undefined;
+  readonly cwd?: string | undefined;
 }
+
+/** Whether `resume` would accept this agent: the same check `resume` makes. */
+export type ResumableCheck = (agent: LiveAgentLike) => boolean;
 
 export interface RosterEntry {
   readonly id: string;
@@ -58,6 +63,8 @@ export interface RosterEntry {
   readonly completedAt: number | undefined;
   /** Whether a live agent in this runtime backs the entry. */
   readonly live: boolean;
+  /** Whether it can be resumed; undefined when the state makes it moot or nobody checked. */
+  readonly resumable?: boolean;
 }
 
 /** Card limits from the issue that introduced it: whole lines, cut at grapheme boundaries. */
@@ -77,6 +84,9 @@ export function rosterState(
   if (status === "completed" && pendingQuestion !== undefined) return "waiting";
   return status;
 }
+
+/** The states whose roster line says whether `resume` would accept the agent. */
+const RESUME_MATTERS: ReadonlySet<RosterState> = new Set(["waiting", "interrupted", "completed"]);
 
 /** 0 waiting, 1 queued or running, 2 failed or stopped, 3 completed. */
 function rosterGroup(state: RosterState): number {
@@ -105,20 +115,23 @@ function isPinned(entry: RosterEntry): boolean {
 export function buildRoster(
   records: readonly LiveAgentLike[],
   getLive: (id: string) => LiveAgentLike | undefined,
+  isResumable?: ResumableCheck,
 ): RosterEntry[] {
   const entries = records.map((record): RosterEntry => {
     const live = getLive(record.id);
     const source: LiveAgentLike = live ?? record;
+    const state = rosterState(source.status, source.pendingQuestion, live !== undefined);
     return {
       id: record.id,
       type: source.type,
       description: source.description,
-      state: rosterState(source.status, source.pendingQuestion, live !== undefined),
+      state,
       pendingQuestion: source.pendingQuestion,
       error: source.error,
       startedAt: source.startedAt,
       completedAt: source.completedAt,
       live: live !== undefined,
+      ...(isResumable && RESUME_MATTERS.has(state) ? { resumable: isResumable(source) } : {}),
     };
   });
   return entries.sort((a, b) => {
@@ -157,13 +170,19 @@ export function formatClock(at: number): string {
 function stateText(entry: RosterEntry): string {
   switch (entry.state) {
     case "waiting":
-      return `waiting for your answer: "${clipText(entry.pendingQuestion ?? "", QUESTION_MAX_CHARS)}"`;
+      return (
+        `waiting for your answer: "${clipText(entry.pendingQuestion ?? "", QUESTION_MAX_CHARS)}"` +
+        (entry.resumable === false ? " (cannot be resumed)" : "")
+      );
     case "queued":
       return "queued";
     case "running":
       return "running";
     case "interrupted":
-      return "interrupted: the session was reloaded or replaced before it finished";
+      return (
+        "interrupted: the session was reloaded or replaced before it finished" +
+        resumableSuffix(entry)
+      );
     case "error":
       return `failed: ${clipText(entry.error ?? "unknown error", QUESTION_MAX_CHARS)}`;
     case "aborted":
@@ -171,10 +190,16 @@ function stateText(entry: RosterEntry): string {
     case "stopped":
       return "stopped before it finished";
     case "completed":
-      return entry.completedAt === undefined
-        ? "completed"
-        : `completed ${formatClock(entry.completedAt)}`;
+      return (
+        (entry.completedAt === undefined
+          ? "completed"
+          : `completed ${formatClock(entry.completedAt)}`) + resumableSuffix(entry)
+      );
   }
+}
+
+function resumableSuffix(entry: RosterEntry): string {
+  return entry.resumable ? ", resumable" : "";
 }
 
 /** One roster line: ID, type, description, state, and the question or error. */

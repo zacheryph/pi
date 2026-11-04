@@ -213,7 +213,7 @@ describe("subagent records in a real parent session (offline faux provider)", ()
     const report = lastResult(requests[1], "subagent_get");
     expect(report).toContain("Mapped auth call sites.");
     expect(report).toContain("Full transcript available at: ");
-    expect(report).toContain("Resume: not available.");
+    expect(report).toContain("Resume: available.");
     expect(lastResult(requests[2], "subagent_get")).toContain(
       `- ${id} general-purpose \\"Map auth\\": completed`,
     );
@@ -254,9 +254,9 @@ describe("subagent records in a real parent session (offline faux provider)", ()
       `${id} general-purpose \\"Pick storage\\": waiting for your answer: \\"[Storage] Which database?`,
     );
     const report = lastResult(requests[1], "subagent_get");
-    expect(report).toContain("This agent ended its run with a question:");
+    expect(report).toContain("This agent is waiting on an answer:");
     expect(report).toContain("Which database?");
-    expect(report).toContain("Resume: not available.");
+    expect(report).toContain(`resume: \\"${id}\\"`);
   }, 30_000);
 
   it("follows /tree: an agent spawned after the target point is gone from the list, by ID and on the card", async () => {

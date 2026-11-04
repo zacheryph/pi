@@ -117,7 +117,7 @@ describe("formatAgentReport", () => {
     );
 
     expect(text).toContain("can no longer be answered");
-    expect(text).toContain("its session was released after its retention window");
+    expect(text).toContain("its session was released and its saved transcript is gone");
     expect(text).toContain("Which config?");
     expect(text).not.toContain("resume:");
   });

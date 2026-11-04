@@ -36,6 +36,11 @@ export function createSubagentSessionIO() {
     getAgentDir: vi.fn().mockReturnValue("/mock/agent-dir"),
     createResourceLoader: vi.fn().mockReturnValue({ reload: vi.fn().mockResolvedValue(undefined) }),
     deriveSessionDir: vi.fn().mockReturnValue("/mock/session-dir/tasks"),
+    openSessionManager: vi.fn().mockReturnValue({
+      newSession: vi.fn(),
+      getSessionFile: vi.fn().mockReturnValue("/mock/session-dir/tasks/reopened.jsonl"),
+      getSessionId: vi.fn().mockReturnValue("reopened-session-id"),
+    }),
     createSessionManager: vi.fn().mockReturnValue({
       newSession: vi.fn(),
       getSessionFile: vi.fn().mockReturnValue("/sessions/child.jsonl"),

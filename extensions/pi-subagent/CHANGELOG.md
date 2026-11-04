@@ -3,6 +3,34 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-04: Cold resume a released subagent from its saved transcript
+
+`resume` only continued an agent's live `AgentSession`, and was refused once
+that was gone: after a retention window, or at once after a reload, resume,
+restart or session switch. The transcript was still on disk. A resume now
+reopens it and continues, automatically, inside the existing `resume` call.
+
+- `src/lifecycle/cold-resume.ts`: `reopenRefusal`, the check of whether a
+  transcript can be reopened (it still exists, the recorded directory still
+  exists, the agent type is still usable), and `resolveSavedModel`.
+- `src/lifecycle/subagent-manager.ts`: `resumeRefusalFor` is the one check
+  `startResume`, `subagent_get` and the roster card share. An ID with no live
+  record but a saved one on the branch gets a record rebuilt from it, through a
+  new `savedAgents` option. A refusal for good names the transcript.
+- `src/lifecycle/subagent.ts`: a resume of a released session builds a new one
+  around the transcript, then runs as any resume does. A steer sent meanwhile is
+  buffered; a stop sent meanwhile disposes the new session instead of running it.
+  A released record whose workspace was torn down stays `workspace-disposed`.
+- `src/lifecycle/create-subagent-session.ts`: `transcriptPath` reopens through a
+  new `openSessionManager` dependency, and the child's `session_start` reports
+  `resume`. Pi appends to the reopened file, so the transcript stays one file.
+- `src/lifecycle/subagent-session.ts`: `applyTurnLimits`, so a session with no
+  initial run still resumes under its recorded ceiling.
+- `ResumeRefusal` gains `directory-unavailable` and `agent-type-unavailable`;
+  `session-released` now means the transcript is gone too.
+- `subagent_get` and the roster card report whether an agent can be resumed, and
+  the README, tool guidance and orchestrator profile describe all of this.
+
 ## 2026-11-04: Keep lifecycle records on their branch and save ready-session metadata
 
 - Off-branch start, session-ready, resume and terminal events no longer admit

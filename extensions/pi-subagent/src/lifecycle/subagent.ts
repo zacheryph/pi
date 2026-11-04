@@ -10,6 +10,7 @@ import type { Model } from "@earendil-works/pi-ai";
 import type { AgentSessionEvent, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { debugLog } from "#src/debug";
 import type { SubagentHandoff } from "#src/lifecycle/child-lifecycle";
+import type { ReopenRefusal, ReopenSource } from "#src/lifecycle/cold-resume";
 import type { CreateSubagentSessionParams } from "#src/lifecycle/create-subagent-session";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import { RunListeners } from "#src/lifecycle/run-listeners";
@@ -75,11 +76,7 @@ export type { SubagentStatus } from "#src/lifecycle/subagent-state";
  * `still-running` is the one transient member: it is a refusal of *now* rather
  * than of ever, and the carriers word it accordingly.
  */
-export type ResumeRefusal =
-  | "still-running"
-  | "no-session"
-  | "session-released"
-  | "workspace-disposed";
+export type ResumeRefusal = "still-running" | "no-session" | "workspace-disposed" | ReopenRefusal;
 
 /**
  * The result of a steer attempt. `Subagent.steer` owns the non-running
@@ -135,6 +132,18 @@ export interface SubagentExecution {
    */
   cwd?: string;
   signal?: AbortSignal;
+  /**
+   * Why a released session's transcript cannot be reopened, or undefined when it
+   * can. Absent, a released session stays released.
+   */
+  checkReopen?: (source: ReopenSource) => ReopenRefusal | undefined;
+}
+
+/** What a record built from a saved entry knows about the session it no longer has. */
+export interface ReleasedSessionInfo {
+  outputFile: string | undefined;
+  model: Model<any> | undefined;
+  thinkingLevel: ThinkingLevel | undefined;
 }
 
 export interface SubagentInit {
@@ -150,6 +159,9 @@ export interface SubagentInit {
 
   /** Lifecycle status and metrics. Defaults to a fresh queued state. */
   state?: SubagentState;
+
+  /** Present on a record rebuilt from a saved entry: its session is already gone. */
+  released?: ReleasedSessionInfo;
 }
 
 export class Subagent {
@@ -342,11 +354,10 @@ export class Subagent {
    * Why a resume of this agent would be refused, or undefined when one would be
    * accepted.
    *
-   * The conditions are checked in the order the resume door checks them, so a
-   * record whose session was released *and* whose workspace is gone reports the
-   * session — the door's message for it names the retention window, which is
-   * the fact that explains both. A live run outranks all of them: nothing about
-   * a settled record is decided yet.
+   * A live run outranks everything: nothing about a settled record is decided
+   * yet. A live session is resumable unless its workspace is gone. A released
+   * one is resumable if its transcript can be reopened, which a removed
+   * workspace rules out first.
    *
    * A getter rather than a predicate method because the result carriers read it
    * as a field: `OutcomeAddenda` and `AgentReport` both declare it, and a live
@@ -358,9 +369,11 @@ export class Subagent {
     // session" does. A queued agent is not running and keeps the no-session
     // answer, which is the truth about it.
     if (this.isRunning()) return "still-running";
-    if (!this.isSessionReady()) return this._sessionReleased ? "session-released" : "no-session";
-    if (this.workspaceDisposed) return "workspace-disposed";
-    return undefined;
+    if (this.isSessionReady()) return this.workspaceDisposed ? "workspace-disposed" : undefined;
+    if (!this._sessionReleased) return "no-session";
+    const { checkReopen } = this.execution;
+    if (!checkReopen) return "session-released";
+    return this.workspaceDisposed ? "workspace-disposed" : checkReopen(this);
   }
 
   /**
@@ -434,6 +447,13 @@ export class Subagent {
     this.workspaceBracket = new WorkspaceBracket(
       this.execution.getWorkspaceProvider ?? (() => undefined),
     );
+
+    if (init.released) {
+      this._releasedOutputFile = init.released.outputFile;
+      this._releasedModel = init.released.model;
+      this._releasedThinkingLevel = init.released.thinkingLevel;
+      this._sessionReleased = true;
+    }
   }
 
   /**
@@ -476,23 +496,10 @@ export class Subagent {
     const runConfig = this.execution.getRunConfig?.();
     try {
       this.subagentSession = await this.execution.createSubagentSession({
-        snapshot: this.execution.snapshot,
-        agentConfig: this.execution.agentConfig,
-        type: this.type,
+        ...this.sessionParams(runConfig),
         cwd,
-        parentSession: this.execution.parentSession,
-        agentId: this.id,
-        ...(this.execution.handoff ? { handoff: this.execution.handoff } : {}),
         model: this.execution.model,
         thinkingLevel: this.execution.thinkingLevel,
-        askParent: (question) => {
-          this.state.setPendingQuestion(question);
-        },
-        notifyParent: this.canSendUpdates(runConfig)
-          ? (message) => {
-              this.announceUpdate(message);
-            }
-          : undefined,
       });
     } catch (err) {
       // The factory disposed its own session on a post-creation failure.
@@ -522,6 +529,26 @@ export class Subagent {
     } catch (err) {
       this.failRun(err);
     }
+  }
+
+  /** What every session this agent creates shares, new or reopened. */
+  private sessionParams(runConfig: RunConfig | undefined): CreateSubagentSessionParams {
+    return {
+      snapshot: this.execution.snapshot,
+      agentConfig: this.execution.agentConfig,
+      type: this.type,
+      parentSession: this.execution.parentSession,
+      agentId: this.id,
+      ...(this.execution.handoff ? { handoff: this.execution.handoff } : {}),
+      askParent: (question) => {
+        this.state.setPendingQuestion(question);
+      },
+      notifyParent: this.canSendUpdates(runConfig)
+        ? (message) => {
+            this.announceUpdate(message);
+          }
+        : undefined,
+    };
   }
 
   /**
@@ -613,8 +640,8 @@ export class Subagent {
    * Resume an existing session with a new prompt, managing the observer
    * subscription lifecycle internally (same wiring as run()).
    *
-   * Requires an existing SubagentSession (set when the original run created it).
-   * The returned promise always resolves (errors are captured internally) and is
+   * Continues the live SubagentSession, or a released one whose transcript can be
+   * reopened (`resumeRefusal` is the check). The returned promise always resolves (errors are captured internally) and is
    * published as the `promise` getter, so waiters track the resume rather than
    * the settled handle of the original run.
    *
@@ -626,7 +653,7 @@ export class Subagent {
    */
   resume(prompt: string, signal?: AbortSignal): Promise<void> {
     const subagentSession = this.subagentSession;
-    if (!subagentSession) {
+    if (!subagentSession && !(this._sessionReleased && this.resumeRefusal === undefined)) {
       // Rejection, not a throw: this method is not async, and a synchronous
       // throw would escape a caller's `.rejects` assertion.
       return Promise.reject(new Error("Subagent not configured for resume — missing session"));
@@ -638,7 +665,7 @@ export class Subagent {
 
   /** The resume body. Always resolves — errors terminate through failResume(). */
   private async runResume(
-    subagentSession: SubagentSession,
+    liveSession: SubagentSession | undefined,
     prompt: string,
     signal?: AbortSignal,
   ): Promise<void> {
@@ -647,13 +674,22 @@ export class Subagent {
     this.resetForResume(Date.now());
     this.listeners.wireSignal(signal, () => this.abort());
     this.execution.observer?.onResumeStarted?.(this);
-    this.listeners.attachObserver(
-      subscribeSubagentObserver(subagentSession, this.state, {
-        onCompact: (info) => this.execution.observer?.onCompacted?.(this, info),
-      }),
-    );
 
     try {
+      // Only a cold resume awaits here, so a live resume keeps its timing.
+      const subagentSession = liveSession ?? (await this.reopenSession());
+      if (!subagentSession) {
+        // Stopped while the session was being rebuilt; abort() marked the record.
+        this.listeners.release();
+        this.execution.observer?.onResumeFinished?.(this);
+        return;
+      }
+      this.listeners.attachObserver(
+        subscribeSubagentObserver(subagentSession, this.state, {
+          onCompact: (info) => this.execution.observer?.onCompacted?.(this, info),
+        }),
+      );
+      if (!liveSession) this.execution.observer?.onSessionCreated?.(this);
       this.completeResume(
         await subagentSession.resumeTurnLoop(prompt, {
           signal: this.abortController.signal,
@@ -665,6 +701,38 @@ export class Subagent {
     } catch (err) {
       this.failResume(err);
     }
+  }
+
+  /**
+   * Build a new session around the saved transcript, with what this agent last
+   * ran on. Its limits are set here because no initial run will set them.
+   *
+   * Undefined when the agent was stopped meanwhile. That also covers a parent
+   * shutdown, which has already torn down every session it could see, so the new
+   * one is disposed rather than kept.
+   */
+  private async reopenSession(): Promise<SubagentSession | undefined> {
+    const runConfig = this.execution.getRunConfig?.();
+    const session = await this.execution.createSubagentSession({
+      ...this.sessionParams(runConfig),
+      ...(this.cwd !== undefined ? { cwd: this.cwd } : {}),
+      ...(this.outputFile !== undefined ? { transcriptPath: this.outputFile } : {}),
+      model: this.model,
+      thinkingLevel: this.thinkingLevel,
+    });
+    if (this.abortController.signal.aborted) {
+      await disposeQuietly(session, "stopped cold resume");
+      return undefined;
+    }
+    session.applyTurnLimits({
+      maxTurns: this.execution.maxTurns,
+      defaultMaxTurns: runConfig?.defaultMaxTurns,
+      wrapUpTurns: runConfig?.wrapUpTurns,
+    });
+    this.subagentSession = session;
+    this._sessionReleased = false;
+    this.flushPendingSteers();
+    return session;
   }
 
   /** Terminate a resume as completed: mark, dispose or hold the workspace, release listeners, notify observer. */

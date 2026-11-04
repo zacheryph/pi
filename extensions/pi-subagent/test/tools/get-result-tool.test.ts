@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
+import type { ResumeRefusal } from "#src/lifecycle/subagent";
 import type { TurnLoopResult } from "#src/lifecycle/subagent-session";
 import { MAX_EXPANDED_LINES, PREVIEW_CHARS } from "#src/tools/get-result-renderer";
 import { visibleWidth } from "@earendil-works/pi-tui";
@@ -28,8 +29,18 @@ function longResult(lines: number): string {
   return Array.from({ length: lines }, (_, i) => `report line ${i + 1}`).join("\n");
 }
 
-function makeManager(records: Map<string, Subagent> = new Map()): GetResultToolManager {
-  return { getRecord: (id: string) => records.get(id), listAgents: () => [...records.values()] };
+function makeManager(
+  records: Map<string, Subagent> = new Map(),
+  savedRefusal?: ResumeRefusal,
+): GetResultToolManager {
+  return {
+    getRecord: (id: string) => records.get(id),
+    listAgents: () => [...records.values()],
+    resumeRefusalFor: ({ id }) => {
+      const live = records.get(id);
+      return live ? live.resumeRefusal : savedRefusal;
+    },
+  };
 }
 
 async function execute(
@@ -361,7 +372,7 @@ describe("GetResultTool", () => {
 
       expect(result.content[0].text).toContain("Which config?");
       expect(result.content[0].text).toContain(
-        "its session was released after its retention window",
+        "its session was released and its saved transcript is gone",
       );
       expect(result.content[0].text).not.toContain("resume:");
     });
@@ -655,8 +666,8 @@ describe("GetResultTool — the branch's saved records", () => {
     } as never;
   }
 
-  const tool = (records: Map<string, Subagent> = new Map()) =>
-    new GetResultTool(makeManager(records), testRegistry);
+  const tool = (records: Map<string, Subagent> = new Map(), savedRefusal?: ResumeRefusal) =>
+    new GetResultTool(makeManager(records, savedRefusal), testRegistry);
   const signal = new AbortController().signal;
 
   it("answers from the saved record once no live agent has the ID", async () => {
@@ -673,12 +684,28 @@ describe("GetResultTool — the branch's saved records", () => {
     expect(text).toContain("Tool uses: 7");
     expect(text).toContain("Model: anthropic/claude-x (thinking high)");
     expect(text).toContain("Mapped it.");
-    expect(text).toContain("Resume: not available.");
+    expect(text).toContain('Resume: available. Call subagent_start with resume: "saved-1"');
     expect(text).toContain("Full transcript available at: /tasks/saved-1.jsonl");
     expect(result.details).toMatchObject({ agentId: "saved-1", status: "completed" });
   });
 
-  it("shows the question a saved agent ended with", async () => {
+  it("says why a saved agent cannot be resumed, and still names its transcript", async () => {
+    const result = await tool(new Map(), "directory-unavailable").execute(
+      "tc",
+      { agent_id: "saved-1" },
+      signal,
+      undefined,
+      branchCtx([savedRecord()]),
+    );
+    const text = result.content[0].text;
+    expect(text).toContain(
+      "Resume: not available, because the directory it ran in no longer exists.",
+    );
+    expect(text).not.toContain('resume: "saved-1"');
+    expect(text).toContain("Full transcript available at: /tasks/saved-1.jsonl");
+  });
+
+  it("names the call that answers a saved agent's question when it can be resumed", async () => {
     const result = await tool().execute(
       "tc",
       { agent_id: "saved-1" },
@@ -686,10 +713,31 @@ describe("GetResultTool — the branch's saved records", () => {
       undefined,
       branchCtx([savedRecord({ pendingQuestion: "Postgres or SQLite?" })]),
     );
-    expect(result.content[0].text).toContain(
-      "This agent ended its run with a question:\n\n  Postgres or SQLite?",
+    const text = result.content[0].text;
+    expect(text).toContain("This agent is waiting on an answer:\n\n  Postgres or SQLite?");
+    expect(text).toContain('Answer by calling subagent_start with resume: "saved-1"');
+  });
+
+  it("says a saved agent's question cannot be answered when it cannot be resumed", async () => {
+    const result = await tool(new Map(), "session-released").execute(
+      "tc",
+      { agent_id: "saved-1" },
+      signal,
+      undefined,
+      branchCtx([savedRecord({ pendingQuestion: "Postgres or SQLite?" })]),
     );
-    expect(result.content[0].text).not.toContain('resume: "saved-1"');
+    const text = result.content[0].text;
+    expect(text).toContain("can no longer be answered");
+    expect(text).toContain("  Postgres or SQLite?");
+    expect(text).not.toContain('resume: "saved-1"');
+  });
+
+  it("marks a listed agent resumable only when resume's own check agrees", () => {
+    const line = (refusal?: ResumeRefusal) =>
+      (tool(new Map(), refusal).list(branchCtx([savedRecord()])).content[0] as { text: string })
+        .text;
+    expect(line()).toContain(", resumable");
+    expect(line("session-released")).not.toContain("resumable");
   });
 
   it("reports a saved run that never finished as interrupted", async () => {

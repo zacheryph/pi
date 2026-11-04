@@ -104,7 +104,7 @@ describe("renderQuestionAffordance", () => {
     it("reports a released session without naming a resume", () => {
       expect(renderQuestionAffordance("agent-7", "Which config?", "session-released")).toBe(
         "\n\nThis agent ended its run with a question that can no longer be answered \u2014 " +
-          "its session was released after its retention window:\n\n  Which config?\n\n" +
+          "its session was released and its saved transcript is gone:\n\n  Which config?\n\n" +
           "Spawn a new agent with the context it needs; this one cannot be resumed.",
       );
     });

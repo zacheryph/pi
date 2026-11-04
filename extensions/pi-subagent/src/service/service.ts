@@ -102,7 +102,7 @@ export interface ResumeOptions {
  */
 export type ResumeResult =
   | { kind: "resumed"; record: SubagentRecord }
-  | { kind: "refused"; reason: ResumeRefusalReason };
+  | { kind: "refused"; reason: ResumeRefusalReason; transcriptPath?: string };
 
 /** Options for spawning an agent via the service. */
 export interface SpawnOptions {

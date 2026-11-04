@@ -87,9 +87,21 @@ const RESUME_REFUSAL_CLAUSES: Record<Exclude<ResumeRefusal, "still-running">, st
   // Deliberately not "...no session to resume": the clause is followed by a
   // colon, and "resume:" is the exact token the parent must not see here.
   "no-session": "it has no active session",
-  "session-released": "its session was released after its retention window",
+  "session-released": "its session was released and its saved transcript is gone",
   "workspace-disposed": "it ran in an isolated workspace that has since been removed",
+  "directory-unavailable": "the directory it ran in no longer exists",
+  "agent-type-unavailable": "its agent type is no longer available",
 };
+
+/**
+ * One line on why this settled agent cannot be resumed; empty when it can, or
+ * when it is simply not finished. A carrier with a question to report uses
+ * `renderQuestionAffordance` instead, which says the same thing about the question.
+ */
+export function renderResumeUnavailable(refusal: ResumeRefusal | undefined): string {
+  if (!refusal || refusal === "still-running") return "";
+  return `Resume: not available, because ${RESUME_REFUSAL_CLAUSES[refusal]}. Spawn a new agent with the context it needs.`;
+}
 
 /**
  * Standalone label form, e.g. "Wrapped up (after turn-budget warning)".

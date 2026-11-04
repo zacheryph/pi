@@ -12,6 +12,8 @@ import type { TurnBudget } from "#src/lifecycle/turn-limits";
 import {
   renderOutcomeAddenda,
   renderOutcomeBody,
+  renderQuestionAffordance,
+  renderResumeUnavailable,
   renderStatusNote,
 } from "#src/observation/outcome-delivery";
 
@@ -88,6 +90,10 @@ export function formatAgentReport(report: AgentReport): string {
     `Description: ${report.description}\n\n`;
   output += renderReportBody(report);
   output += renderOutcomeAddenda(report);
+  if (!report.pendingQuestion && report.resumeRefusal && report.resumeRefusal !== "no-session") {
+    const unavailable = renderResumeUnavailable(report.resumeRefusal);
+    if (unavailable) output += `\n\n${unavailable}`;
+  }
   if (report.resumedWhileWaiting) {
     output +=
       "\n\nThis agent was resumed before this wait returned and is running again \u2014 " +
@@ -126,13 +132,17 @@ export interface SavedAgentReport {
   transcriptPath?: string;
   /** The call asked for the conversation, which only a live record holds. */
   verbose: boolean;
+  /** Why a resume would be refused; undefined when one would be accepted. */
+  resumeRefusal: ResumeRefusal | undefined;
 }
 
-/** Why a saved record cannot be resumed, as one sentence. */
-export const SAVED_RECORD_RESUME_NOTE =
-  "Resume: not available. Only this agent's saved record remains; its live session ended " +
-  "when this session was reloaded, resumed or switched. Spawn a new agent with the context " +
-  "it needs.";
+/** Whether a resume would reopen this agent's transcript, as one sentence. */
+function renderSavedResumeNote(report: SavedAgentReport): string {
+  return report.resumeRefusal
+    ? renderResumeUnavailable(report.resumeRefusal)
+    : `Resume: available. Call subagent_start with resume: "${report.id}" to reopen its saved ` +
+        "transcript and continue where it left off.";
+}
 
 /** Assemble the subagent_get report for a saved record. */
 export function formatSavedAgentReport(report: SavedAgentReport): string {
@@ -150,14 +160,10 @@ export function formatSavedAgentReport(report: SavedAgentReport): string {
     ? "This agent was still running when this session was reloaded or replaced, so it never " +
       "finished. Its transcript shows how far it got."
     : renderOutcomeBody({ ...report, stoppedWhileQueued: false });
-  if (report.pendingQuestion && report.status === "completed") {
-    const quoted = report.pendingQuestion
-      .split("\n")
-      .map((line) => `  ${line}`)
-      .join("\n");
-    output += `\n\nThis agent ended its run with a question:\n\n${quoted}`;
-  }
-  output += `\n\n${SAVED_RECORD_RESUME_NOTE}`;
+  output +=
+    report.pendingQuestion && report.status === "completed"
+      ? renderQuestionAffordance(report.id, report.pendingQuestion, report.resumeRefusal)
+      : `\n\n${renderSavedResumeNote(report)}`;
   if (report.verbose) {
     output += "\n\nThe conversation is not in memory any more; read the transcript instead.";
   }

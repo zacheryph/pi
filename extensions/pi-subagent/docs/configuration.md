@@ -72,9 +72,10 @@ results and updates. The profile rereads todo after compaction/reload and record
 concise recovery notes. Live worker sessions remain subject to retention and
 runtime lifetime. After a reload or resume, `subagent_get` still answers for a
 worker's ID from its saved record (status, result, question, transcript path) and
-lists every worker the branch started, but a worker from before the reload cannot
-be resumed. If resume is refused, the orchestrator uses saved task notes, results,
-transcripts, and artifacts to brief a replacement. Required work stays open until verified or explicitly rescoped.
+lists every worker the branch started, and a resume reopens the worker's saved
+transcript as long as it and the worker's directory still exist. If resume is
+refused, the orchestrator uses saved task notes, results, transcripts, and artifacts
+to brief a replacement. Required work stays open until verified or explicitly rescoped.
 
 All available tools remain selected so the orchestrator can pass specialist
 capabilities to its workers. Delegating implementation and avoiding recursive
@@ -347,7 +348,7 @@ Two names are always **added**, whatever an agent lists: `ask` (from pi-ask) and
 These are the child's channel back to the agent that delegated to it — protocol the core installs in every child, like the `<active_agent>` tag and the parent-context prefix.
 Neither reaches the filesystem, the shell, or the network, so a read-only agent stays read-only.
 `ask` reaches the parent through the `ask:route` service the core offers for every child: it records a question and tells the child to end its turn, so the delegating agent can answer by resuming it; `parent_notify` sends a one-way update and returns at once.
-A question outlives the window in which it can be answered — the session is released after its retention window, and a workspace is torn down at run end unless the child completed — so once a resume would be refused, the result reports the question and the reason rather than the `resume` call.
+A question can outlive the chance to answer it — the saved transcript or the child's directory can go away, and a workspace is torn down at run end unless the child completed — so once a resume would be refused, the result reports the question and the reason rather than the `resume` call.
 Both go to every agent, `parent_notify` only while [`midRunUpdates`](#persistent-settings) is on.
 Where an update lands depends on whether an announcement can still reach you in time to act on it.
 It arrives as its own message when you are idle and the agent is still running — the one case where steering it is still possible.

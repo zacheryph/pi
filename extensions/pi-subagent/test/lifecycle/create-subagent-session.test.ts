@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import { service } from "../../../../packages/pi-session-tree/src/index.ts";
 import type {
   CreateSessionOptions,
@@ -55,6 +55,56 @@ describe("createSubagentSession — assembly", () => {
 
     expect(sub).toBeInstanceOf(SubagentSession);
     expect(sub.session).toBe(session);
+  });
+
+  describe("reopening a saved transcript", () => {
+    const reopen = () =>
+      createSubagentSession(
+        {
+          snapshot: STUB_SNAPSHOT,
+          type: "Explore",
+          cwd: "/worktree",
+          transcriptPath: "/old-parent/tasks/agent.jsonl",
+        },
+        createSubagentSessionDeps({ io, exec, registry: mockAgentLookup }),
+      );
+
+    it("opens that file in the agent's directory instead of starting a new one", async () => {
+      const sub = await reopen();
+      expect(io.openSessionManager).toHaveBeenCalledWith(
+        "/old-parent/tasks/agent.jsonl",
+        "/worktree",
+      );
+      expect(io.createSessionManager).not.toHaveBeenCalled();
+      expect(sub.outputFile).toBe("/mock/session-dir/tasks/reopened.jsonl");
+    });
+
+    it("starts no new session in it", async () => {
+      await reopen();
+      const manager = io.openSessionManager.mock.results[0].value as { newSession: Mock };
+      expect(manager.newSession).not.toHaveBeenCalled();
+    });
+
+    it("tells the child's extensions it is a resume", async () => {
+      await reopen();
+      expect(io.createSession.mock.calls[0][0]).toMatchObject({
+        sessionStartEvent: { type: "session_start", reason: "resume" },
+      });
+    });
+
+    it("reports the transcript's own directory, not one derived from the parent", async () => {
+      await reopen();
+      expect(io.deriveSessionDir).not.toHaveBeenCalled();
+    });
+
+    it("leaves a new session as a plain startup", async () => {
+      await createSubagentSession(
+        { snapshot: STUB_SNAPSHOT, type: "Explore" },
+        createSubagentSessionDeps({ io, exec, registry: mockAgentLookup }),
+      );
+      expect(io.openSessionManager).not.toHaveBeenCalled();
+      expect(io.createSession.mock.calls[0][0]).not.toHaveProperty("sessionStartEvent");
+    });
   });
 
   it("exposes the persisted session file as outputFile", async () => {
