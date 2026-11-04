@@ -3,6 +3,17 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-04: Keep lifecycle records on their branch and save ready-session metadata
+
+- Off-branch start, session-ready, resume and terminal events no longer admit
+  hidden agents to the current branch. Their latest saved state is deferred
+  until `/tree` returns to a branch containing the agent.
+- Session creation now appends the resolved model, directory and transcript
+  path while the agent is still running, so interrupted runs retain a path to
+  their partial work.
+- Added branch-transition regressions using the real session manager and an
+  SDK recovery test for a record captured before a child finishes.
+
 ## 2026-11-04: Record the whole agent lifecycle, answer `subagent_get` from it, and restore a roster card
 
 After a reload, resume or session switch, `subagent_get` answered `Agent not
