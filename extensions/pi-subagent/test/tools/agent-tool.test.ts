@@ -103,6 +103,7 @@ describe("AgentTool — resume path", () => {
         description: "resume",
         subagent_type: "general-purpose",
         resume: "nonexistent",
+        foreground: true,
       });
       expect(result.content[0].text).toBe(
         'Agent not found: "nonexistent". Records are cleared at session start/switch, so it ' +
@@ -118,6 +119,7 @@ describe("AgentTool — resume path", () => {
         description: "resume",
         subagent_type: "general-purpose",
         resume: "agent-1",
+        foreground: true,
       });
       expect(result.content[0].text).toBe('Agent "agent-1" has no active session to resume.');
     });
@@ -130,6 +132,7 @@ describe("AgentTool — resume path", () => {
         description: "resume",
         subagent_type: "general-purpose",
         resume: "agent-1",
+        foreground: true,
       });
       expect(result.content[0].text).toBe(
         'Agent "agent-1" had its session released after its retention window; resume is ' +
@@ -146,6 +149,7 @@ describe("AgentTool — resume path", () => {
         description: "resume",
         subagent_type: "general-purpose",
         resume: "agent-1",
+        foreground: true,
       });
 
       expect(result.content[0].text).toBe(
@@ -163,6 +167,7 @@ describe("AgentTool — resume path", () => {
         description: "resume",
         subagent_type: "general-purpose",
         resume: "agent-1",
+        foreground: true,
       });
 
       expect(result.content[0].text).toBe(
@@ -186,6 +191,7 @@ describe("AgentTool — resume path", () => {
         description: "resume",
         subagent_type: "general-purpose",
         resume: "agent-1",
+        foreground: true,
       });
 
       expect(deps.manager.resume).toHaveBeenCalledOnce();
@@ -200,6 +206,7 @@ describe("AgentTool — resume path", () => {
         description: "resume",
         subagent_type: "general-purpose",
         resume: "agent-1",
+        foreground: true,
       });
       expect(result.content[0].text).toContain("Resumed output.");
     });
@@ -218,6 +225,7 @@ describe("AgentTool — resume path", () => {
         description: "resume",
         subagent_type: "general-purpose",
         resume: "agent-1",
+        foreground: true,
       });
 
       expect(result.content[0].text).toContain("This agent is waiting on an answer:");
@@ -240,6 +248,7 @@ describe("AgentTool — resume path", () => {
         description: "resume",
         subagent_type: "general-purpose",
         resume: "agent-1",
+        foreground: true,
       });
 
       expect(result.content[0].text).toContain("And the fallback?");
@@ -258,6 +267,7 @@ describe("AgentTool — resume path", () => {
         description: "resume",
         subagent_type: "general-purpose",
         resume: "agent-1",
+        foreground: true,
       });
 
       expect(result.content[0].text).toContain("Updates this agent sent while it worked:");
@@ -278,6 +288,7 @@ describe("AgentTool — resume path", () => {
         description: "resume",
         subagent_type: "general-purpose",
         resume: "agent-1",
+        foreground: true,
       });
 
       expect(result.content[0].text).toContain("Changes saved to branch `pi-agent-9`.");
@@ -292,6 +303,7 @@ describe("AgentTool — resume path", () => {
         description: "resume",
         subagent_type: "general-purpose",
         resume: "agent-1",
+        foreground: true,
       });
 
       expect(result.content[0].text).toContain(
@@ -309,6 +321,7 @@ describe("AgentTool — resume path", () => {
         description: "resume",
         subagent_type: "general-purpose",
         resume: "agent-1",
+        foreground: true,
       });
 
       // The claim is the manager's to take, at the one edge it can be taken:
@@ -329,6 +342,7 @@ describe("AgentTool — resume path", () => {
         description: "resume",
         subagent_type: "general-purpose",
         resume: "agent-1",
+        foreground: true,
       });
 
       expect(result.content[0].text).toContain("resume exploded");
@@ -342,6 +356,7 @@ describe("AgentTool — resume path", () => {
         description: "resume",
         subagent_type: "general-purpose",
         resume: "agent-1",
+        foreground: true,
       });
       expect(resumed.consumed).toBe(true);
     });
@@ -354,6 +369,7 @@ describe("AgentTool — resume path", () => {
         description: "resume",
         subagent_type: "general-purpose",
         resume: "agent-1",
+        foreground: true,
       });
       expect(result.content[0].text).toContain("Agent ID: agent-1");
     });
@@ -365,7 +381,6 @@ describe("AgentTool — resume path", () => {
       description: "answer",
       subagent_type: "general-purpose",
       resume: "agent-1",
-      run_in_background: true,
     };
 
     it("starts the resume without waiting for it, unclaimed and with no signal", async () => {
@@ -413,26 +428,35 @@ describe("AgentTool — resume path", () => {
         const background = createToolDeps();
         mockResumeStartRefusal(background, reason);
 
-        const expected = await execute(foreground, {
-          ...backgroundResume,
-          run_in_background: undefined,
-        });
+        const expected = await execute(foreground, { ...backgroundResume, foreground: true });
         const result = await execute(background, backgroundResume);
 
         expect(result.content[0].text).toBe(expected.content[0].text);
       },
     );
 
-    it("resumes in the foreground when the call says run_in_background: false", async () => {
+    it("resumes in the foreground when the call says foreground: true", async () => {
       const deps = createToolDeps();
 
-      await execute(deps, { ...backgroundResume, run_in_background: false });
+      await execute(deps, { ...backgroundResume, foreground: true });
 
       expect(deps.manager.resume).toHaveBeenCalledOnce();
       expect(deps.manager.startResume).not.toHaveBeenCalled();
     });
 
-    it("ignores an agent file's run_in_background default, resuming in the foreground", async () => {
+    it.for(["print", "json"])(
+      "resumes in the foreground in %s mode when the call does not choose",
+      async (mode) => {
+        const deps = createToolDeps();
+
+        await execute(deps, backgroundResume, makeCtx({ mode }));
+
+        expect(deps.manager.resume).toHaveBeenCalledOnce();
+        expect(deps.manager.startResume).not.toHaveBeenCalled();
+      },
+    );
+
+    it("ignores an agent file's foreground default, resuming in the background", async () => {
       const deps = createToolDeps({
         registry: new AgentTypeRegistry(
           () =>
@@ -441,24 +465,22 @@ describe("AgentTool — resume path", () => {
                 "watcher",
                 {
                   name: "watcher",
-                  description: "background by default",
+                  description: "foreground by default",
                   promptMode: "append" as const,
                   systemPrompt: "",
-                  runInBackground: true,
+                  foreground: true,
                 },
               ],
             ]),
         ),
       });
 
-      await execute(deps, {
-        ...backgroundResume,
-        subagent_type: "watcher",
-        run_in_background: undefined,
-      });
+      mockResumeStart(deps);
 
-      expect(deps.manager.resume).toHaveBeenCalledOnce();
-      expect(deps.manager.startResume).not.toHaveBeenCalled();
+      await execute(deps, { ...backgroundResume, subagent_type: "watcher" });
+
+      expect(deps.manager.startResume).toHaveBeenCalledOnce();
+      expect(deps.manager.resume).not.toHaveBeenCalled();
     });
   });
 });
@@ -486,7 +508,6 @@ describe("AgentTool — background execution", () => {
       prompt: "do something",
       description: "bg task",
       subagent_type: "general-purpose",
-      run_in_background: true,
     });
     const text = result.content[0].text;
     expect(text).toContain("background");
@@ -504,7 +525,6 @@ describe("AgentTool — background execution", () => {
       prompt: "do something",
       description: "bg task",
       subagent_type: "general-purpose",
-      run_in_background: true,
     });
     // Background spawn succeeds — no emitEvent dep required
     expect(result.content[0].text).toContain("background");
@@ -517,10 +537,65 @@ describe("AgentTool — background execution", () => {
       prompt: "do something",
       description: "bg task",
       subagent_type: "general-purpose",
-      run_in_background: true,
     });
     const spawnOpts = (deps.manager.spawn as ReturnType<typeof vi.fn>).mock.calls[0][3];
     expect(spawnOpts.parentSession?.toolCallId).toBe("tc-1");
+  });
+});
+
+describe("AgentTool — execution mode", () => {
+  const params = { prompt: "do task", description: "task", subagent_type: "general-purpose" };
+
+  it("runs in the background when the call does not choose", async () => {
+    const deps = createToolDeps();
+    deps.manager.getRecord = vi.fn().mockReturnValue(createTestSubagent({ status: "running" }));
+
+    await execute(deps, params);
+
+    expect(deps.manager.spawn).toHaveBeenCalledOnce();
+    expect(deps.manager.spawnAndWait).not.toHaveBeenCalled();
+  });
+
+  it("runs in the foreground when the call says foreground: true", async () => {
+    const deps = createToolDeps();
+    deps.manager.spawnAndWait = vi.fn().mockResolvedValue(createTestSubagent({ result: "ok" }));
+
+    await execute(deps, { ...params, foreground: true });
+
+    expect(deps.manager.spawnAndWait).toHaveBeenCalledOnce();
+    expect(deps.manager.spawn).not.toHaveBeenCalled();
+  });
+
+  it.for(["print", "json"])(
+    "runs in the foreground in %s mode, where no notification could wake the parent",
+    async (mode) => {
+      const deps = createToolDeps();
+      deps.manager.spawnAndWait = vi.fn().mockResolvedValue(createTestSubagent({ result: "ok" }));
+
+      await execute(deps, params, makeCtx({ mode }));
+
+      expect(deps.manager.spawnAndWait).toHaveBeenCalledOnce();
+      expect(deps.manager.spawn).not.toHaveBeenCalled();
+    },
+  );
+
+  it("still backgrounds an explicit foreground: false in print mode", async () => {
+    const deps = createToolDeps();
+    deps.manager.getRecord = vi.fn().mockReturnValue(createTestSubagent({ status: "running" }));
+
+    await execute(deps, { ...params, foreground: false }, makeCtx({ mode: "print" }));
+
+    expect(deps.manager.spawn).toHaveBeenCalledOnce();
+  });
+
+  it("offers foreground, not run_in_background, and tells the model to end its turn", () => {
+    const def = makeTool(createToolDeps()).toToolDefinition();
+    const properties = (def.parameters as { properties: Record<string, unknown> }).properties;
+
+    expect(properties).toHaveProperty("foreground");
+    expect(properties).not.toHaveProperty("run_in_background");
+    expect(def.description).toContain("then end your turn instead of waiting");
+    expect(def.description).not.toContain("run_in_background");
   });
 });
 
@@ -534,6 +609,7 @@ describe("AgentTool — foreground execution", () => {
       prompt: "do task",
       description: "fg task",
       subagent_type: "general-purpose",
+      foreground: true,
     });
     const text = result.content[0].text;
     expect(text).toContain("Agent completed");
@@ -549,6 +625,7 @@ describe("AgentTool — foreground execution", () => {
       prompt: "do task",
       description: "fg task",
       subagent_type: "general-purpose",
+      foreground: true,
     });
     expect(result.content[0].text).toContain("Agent failed");
     expect(result.content[0].text).toContain("Out of context");
@@ -561,6 +638,7 @@ describe("AgentTool — foreground execution", () => {
       prompt: "do task",
       description: "fg task",
       subagent_type: "general-purpose",
+      foreground: true,
     });
     expect(result.content[0].text).toContain("spawn failure");
   });
@@ -574,6 +652,7 @@ describe("AgentTool — foreground execution", () => {
       prompt: "do task",
       description: "fg task",
       subagent_type: "general-purpose",
+      foreground: true,
     });
     expect(result.content[0].text).toContain("Agent ID: agent-1");
   });
@@ -590,7 +669,6 @@ describe("AgentTool — cwd", () => {
       prompt: "do something",
       description: "bg task",
       subagent_type: "general-purpose",
-      run_in_background: true,
       cwd: dir,
     });
     const spawnOpts = (deps.manager.spawn as ReturnType<typeof vi.fn>).mock.calls[0][3];
@@ -604,6 +682,7 @@ describe("AgentTool — cwd", () => {
       prompt: "do task",
       description: "fg task",
       subagent_type: "general-purpose",
+      foreground: true,
       cwd: dir,
     });
     const spawnOpts = (deps.manager.spawnAndWait as ReturnType<typeof vi.fn>).mock.calls[0][3];
@@ -617,7 +696,6 @@ describe("AgentTool — cwd", () => {
       prompt: "do something",
       description: "bg task",
       subagent_type: "general-purpose",
-      run_in_background: true,
     });
     const spawnOpts = (deps.manager.spawn as ReturnType<typeof vi.fn>).mock.calls[0][3];
     expect(spawnOpts).not.toHaveProperty("cwd");
@@ -629,7 +707,6 @@ describe("AgentTool — cwd", () => {
       prompt: "do something",
       description: "bg task",
       subagent_type: "general-purpose",
-      run_in_background: true,
       cwd: join(dir, "missing"),
     });
     expect(result.content[0].text).toBe(`cwd ${join(dir, "missing")} is not an existing directory`);

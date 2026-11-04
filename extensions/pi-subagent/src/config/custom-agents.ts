@@ -71,7 +71,7 @@ function loadFromDir(
       ...parseFragments(fm.fragments),
       promptMode: fm.prompt_mode === "replace" ? "replace" : "append",
       inheritContext: fm.inherit_context != null ? fm.inherit_context === true : undefined,
-      runInBackground: fm.run_in_background != null ? fm.run_in_background === true : undefined,
+      foreground: fm.foreground != null ? fm.foreground === true : undefined,
       locked: lockDeclaration(fm.locked, name),
       enabled: fm.enabled !== false, // default true; explicitly false disables
       source,

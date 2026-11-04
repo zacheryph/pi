@@ -43,7 +43,7 @@ thinking: high
 max_turns: 30
 prompt_mode: replace
 inherit_context: true
-run_in_background: true
+foreground: true
 ---
 
 You are a security auditor.`,
@@ -61,7 +61,7 @@ You are a security auditor.`,
     expect(agent.maxTurns).toBe(30);
     expect(agent.promptMode).toBe("replace");
     expect(agent.inheritContext).toBe(true);
-    expect(agent.runInBackground).toBe(true);
+    expect(agent.foreground).toBe(true);
     expect(agent.systemPrompt).toBe("You are a security auditor.");
   });
 
@@ -85,8 +85,14 @@ Just a prompt.`,
     expect(agent.maxTurns).toBeUndefined();
     expect(agent.promptMode).toBe("append");
     expect(agent.inheritContext).toBeUndefined();
-    expect(agent.runInBackground).toBeUndefined();
+    expect(agent.foreground).toBeUndefined();
     expect(agent.systemPrompt).toBe("Just a prompt.");
+  });
+
+  it("no longer reads the retired run_in_background key", () => {
+    writeAgent("legacy", `---\nrun_in_background: false\n---\n\nLegacy.`);
+
+    expect(loadCustomAgents(tmpDir).get("legacy")!.foreground).toBeUndefined();
   });
 
   it("uses sensible defaults when no frontmatter at all", () => {
@@ -270,7 +276,7 @@ Comma entry.`,
     it("reads every lockable field name", () => {
       writeAgent(
         "all",
-        `---\nlocked: [model, thinking, max_turns, inherit_context, run_in_background]\n---\n\nAll.`,
+        `---\nlocked: [model, thinking, max_turns, inherit_context, foreground]\n---\n\nAll.`,
       );
 
       expect(loadCustomAgents(tmpDir).get("all")!.locked).toEqual([
@@ -278,7 +284,7 @@ Comma entry.`,
         "thinking",
         "max_turns",
         "inherit_context",
-        "run_in_background",
+        "foreground",
       ]);
     });
 

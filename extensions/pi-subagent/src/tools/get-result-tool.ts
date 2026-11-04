@@ -150,7 +150,7 @@ export class GetResultTool {
       label: "Get Agent Result",
       promptSnippet: "Check status and retrieve results from a background agent.",
       description:
-        "Check status and retrieve results from a background agent. Use the agent ID returned by Agent with run_in_background.",
+        "Check status and retrieve results from a background agent. Use the agent ID returned by subagent_start.",
       parameters: Type.Object({
         agent_id: Type.String({
           description: "The agent ID to check.",
@@ -158,7 +158,7 @@ export class GetResultTool {
         wait: Type.Optional(
           Type.Boolean({
             description:
-              "If true, wait for the agent to complete before returning. Default: false.",
+              "If true, block until the agent completes, which also keeps the user waiting. Prefer ending your turn: the completion notification wakes you. Default: false.",
           }),
         ),
         verbose: Type.Optional(

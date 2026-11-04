@@ -8,7 +8,11 @@
 
 import type { Model } from "@earendil-works/pi-ai";
 import type { AgentTypeRegistry } from "#src/config/agent-types";
-import { type LockableField, resolveAgentInvocationConfig } from "#src/config/invocation-config";
+import {
+  type AgentInvocationDefaults,
+  type LockableField,
+  resolveAgentInvocationConfig,
+} from "#src/config/invocation-config";
 import { parseThinkingLevel, thinkingLevelError } from "#src/config/thinking-level";
 import { normalizeHandoff, type SubagentHandoff } from "#src/lifecycle/child-lifecycle";
 import { isBelowMinimumTurns, MIN_MAX_TURNS, normalizeMaxTurns } from "#src/lifecycle/turn-limits";
@@ -87,6 +91,7 @@ export function resolveSpawnConfig(
   registry: AgentTypeRegistry,
   modelInfo: ModelInfo,
   settings: { readonly defaultMaxTurns: number | undefined },
+  defaults?: AgentInvocationDefaults,
 ): ResolvedSpawnConfig | SpawnConfigError {
   // Validated at the door, so the merge below and every layer past it receive a
   // level the SDK recognizes rather than one it would clamp to "off" (Refs #834).
@@ -108,10 +113,11 @@ export function resolveSpawnConfig(
 
   // Merge agent config defaults with tool-call params
   const customConfig = registry.resolveAgentConfig(subagentType);
-  const resolvedConfig = resolveAgentInvocationConfig(customConfig, {
-    ...params,
-    thinking: thinkingFromParams,
-  });
+  const resolvedConfig = resolveAgentInvocationConfig(
+    customConfig,
+    { ...params, thinking: thinkingFromParams },
+    defaults,
+  );
 
   // Resolve model
   const resolution = resolveInvocationModel(

@@ -102,7 +102,7 @@ describe("buildAgentPrompt", () => {
       systemPrompt: "Extra custom instructions here.",
       promptMode: "append",
       inheritContext: false,
-      runInBackground: false,
+      foreground: true,
     };
     const parentPrompt = "You are a parent coding agent with special powers.";
     const prompt = buildAgentPrompt(config, "/workspace", env, {
@@ -125,7 +125,7 @@ describe("buildAgentPrompt", () => {
       systemPrompt: "Extra custom instructions here.",
       promptMode: "append",
       inheritContext: false,
-      runInBackground: false,
+      foreground: true,
     };
     const prompt = buildAgentPrompt(config, "/workspace", env);
     expect(prompt).toContain("/workspace");
@@ -141,7 +141,7 @@ describe("buildAgentPrompt", () => {
       systemPrompt: "",
       promptMode: "append",
       inheritContext: false,
-      runInBackground: false,
+      foreground: true,
     };
     const parentPrompt = "You are a parent coding agent.";
     const prompt = buildAgentPrompt(config, "/workspace", env, {
@@ -162,7 +162,7 @@ describe("buildAgentPrompt", () => {
       systemPrompt: "You are a specialized agent.",
       promptMode: "replace",
       inheritContext: false,
-      runInBackground: false,
+      foreground: true,
     };
     const prompt = buildAgentPrompt(config, "/workspace", env);
     expect(prompt).toContain("You are a specialized agent.");
@@ -179,7 +179,7 @@ describe("buildAgentPrompt", () => {
       systemPrompt: "You are a standalone agent.",
       promptMode: "replace",
       inheritContext: false,
-      runInBackground: false,
+      foreground: true,
     };
     const prompt = buildAgentPrompt(config, "/workspace", env, {
       systemPrompt: "PARENT parent prompt content",
@@ -201,7 +201,7 @@ describe("buildAgentPrompt", () => {
       systemPrompt: "Custom standalone instructions.",
       promptMode: "replace",
       inheritContext: false,
-      runInBackground: false,
+      foreground: true,
     };
     const prompt = buildAgentPrompt(config, "/workspace", env);
     // Should use genericBase as the prefix (same fallback as append mode).
@@ -218,7 +218,7 @@ describe("buildAgentPrompt", () => {
       systemPrompt: "Final custom instructions.",
       promptMode: "replace",
       inheritContext: false,
-      runInBackground: false,
+      foreground: true,
     };
     const prompt = buildAgentPrompt(config, "/workspace", env, {
       systemPrompt: "IDENTITY parent content",
@@ -257,7 +257,7 @@ describe("buildAgentPrompt", () => {
       systemPrompt: "Extra stuff.",
       promptMode: "append",
       inheritContext: false,
-      runInBackground: false,
+      foreground: true,
     };
     const prompt = buildAgentPrompt(config, "/workspace", env);
     expect(prompt).not.toContain("<sub_agent_context>");
@@ -278,7 +278,7 @@ describe("buildAgentPrompt", () => {
         systemPrompt: "You are an explorer.",
         promptMode: "replace",
         inheritContext: false,
-        runInBackground: false,
+        foreground: true,
       };
       // Replace mode now places identity (parent/genericBase) first for KV
       // cache reuse; the tag follows after the cacheable prefix.
@@ -300,7 +300,7 @@ describe("buildAgentPrompt", () => {
         systemPrompt: "",
         promptMode: "append",
         inheritContext: false,
-        runInBackground: false,
+        foreground: true,
       };
       const prompt = buildAgentPrompt(config, "/workspace", env, {
         systemPrompt: "Parent prompt content.",
@@ -322,7 +322,7 @@ describe("buildAgentPrompt", () => {
         systemPrompt: "You are custom.",
         promptMode: "replace",
         inheritContext: false,
-        runInBackground: false,
+        foreground: true,
       };
       const prompt = buildAgentPrompt(config, "/workspace", env);
       expect(prompt).toContain('<active_agent name="my-custom-agent"/>');
@@ -336,7 +336,7 @@ describe("buildAgentPrompt", () => {
         systemPrompt: "Replace agent.",
         promptMode: "replace",
         inheritContext: false,
-        runInBackground: false,
+        foreground: true,
       };
       const replacePrompt = buildAgentPrompt(replaceConfig, "/workspace", env);
       const tagIdx = replacePrompt.indexOf('<active_agent name="agent-a"/>');
@@ -353,7 +353,7 @@ describe("buildAgentPrompt", () => {
         systemPrompt: "",
         promptMode: "append",
         inheritContext: false,
-        runInBackground: false,
+        foreground: true,
       };
       const appendPrompt = buildAgentPrompt(appendConfig, "/workspace", env, {
         systemPrompt: "Parent.",
@@ -449,7 +449,7 @@ describe("buildAgentPrompt", () => {
         systemPrompt: "",
         promptMode: "append",
         inheritContext: false,
-        runInBackground: false,
+        foreground: true,
       };
     }
 
@@ -461,7 +461,7 @@ describe("buildAgentPrompt", () => {
         systemPrompt: "You are a specialist.",
         promptMode: "replace",
         inheritContext: false,
-        runInBackground: false,
+        foreground: true,
       };
     }
 
@@ -1294,7 +1294,7 @@ describe("buildAgentPrompt", () => {
         systemPrompt: "",
         promptMode,
         inheritContext: false,
-        runInBackground: false,
+        foreground: true,
       };
     }
 

@@ -45,7 +45,7 @@ function makeAgentConfig(overrides: Partial<AgentConfig> = {}): AgentConfig {
     systemPrompt: "You are a test agent.",
     promptMode: "replace",
     inheritContext: false,
-    runInBackground: false,
+    foreground: true,
     ...overrides,
   };
 }
@@ -257,10 +257,13 @@ describe("SubagentManager", () => {
     describe("background-mode resolution", () => {
       let onCreated: Mock<(record: Subagent) => void>;
 
-      function spawnExplore(background: AgentSpawnConfig["background"], runInBackground: boolean) {
+      function spawnExplore(
+        background: AgentSpawnConfig["background"],
+        declaresBackground: boolean,
+      ) {
         onCreated = vi.fn();
         ({ manager } = createManager({
-          registry: registryWith("Explore", { runInBackground }),
+          registry: registryWith("Explore", { foreground: !declaresBackground }),
           observer: { onSubagentCreated: onCreated },
         }));
         return manager.spawn(STUB_SNAPSHOT, "Explore", "test", { description: "d", background });
@@ -305,7 +308,7 @@ describe("SubagentManager", () => {
       it("queues a resolved-background agent behind a full concurrency limit", () => {
         onCreated = vi.fn();
         ({ manager } = createManager({
-          registry: registryWith("Explore", { runInBackground: true }),
+          registry: registryWith("Explore", { foreground: false }),
           getMaxConcurrent: () => 1,
           createSubagentSession: createBlockingFactory(),
         }));
@@ -351,7 +354,7 @@ describe("SubagentManager", () => {
     describe("foreground commitment", () => {
       it("stamps isBackground false on the record", async () => {
         ({ manager } = createManager({
-          registry: registryWith("Explore", { runInBackground: true }),
+          registry: registryWith("Explore", { foreground: false }),
         }));
 
         const record = await manager.spawnAndWait(STUB_SNAPSHOT, "Explore", "test", {
@@ -361,10 +364,10 @@ describe("SubagentManager", () => {
         expect(record.isBackground).toBe(false);
       });
 
-      it("stays foreground for an agent whose frontmatter declares runInBackground: true", async () => {
+      it("stays foreground for an agent whose frontmatter declares foreground: false", async () => {
         const onCreated = vi.fn();
         ({ manager } = createManager({
-          registry: registryWith("Explore", { runInBackground: true }),
+          registry: registryWith("Explore", { foreground: false }),
           observer: { onSubagentCreated: onCreated },
         }));
 
@@ -411,7 +414,7 @@ describe("SubagentManager", () => {
             : Promise.resolve(toSubagentSession(createSubagentSessionStub()));
         });
         ({ manager } = createManager({
-          registry: registryWith("Explore", { runInBackground: true }),
+          registry: registryWith("Explore", { foreground: false }),
           getMaxConcurrent: () => 1,
           createSubagentSession: factory,
         }));

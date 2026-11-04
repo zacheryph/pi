@@ -40,8 +40,7 @@ Or delegate a bounded project or workstream to it:
 {
   "subagent_type": "orchestrator",
   "description": "Coordinate authentication migration",
-  "prompt": "Plan and coordinate the authentication migration. Track implementation, verification, decisions, and follow-ups with todo. Return outcomes, open items, and next actions.",
-  "run_in_background": true
+  "prompt": "Plan and coordinate the authentication migration. Track implementation, verification, decisions, and follow-ups with todo. Return outcomes, open items, and next actions."
 }
 ```
 
@@ -52,6 +51,11 @@ The profile's instructions establish this working loop:
 2. Delegate focused assignments to the available specialists. Keep owners,
    worker IDs, transcript/artifact references, decisions, blockers, and next actions
    in task descriptions. Keep raw implementation detail in the worker sessions.
+   Workers run in the background and the orchestrator ends its turn instead of
+   waiting on them, so you can talk to it while they work; each completion
+   notification wakes it. It waits for a pull request's CI the same way, with
+   `job_watch`, and hands only the fixes to workers. Run as a subagent, it
+   collects its workers with `subagent_get` before finishing instead.
 3. Collect results and verify acceptance criteria before completing todos: a
    `reviewer` that did not do the work checks each implementation task. A
    `FAIL` goes back to the implementer by resume; after two failed rounds the
@@ -197,23 +201,23 @@ subagent_start({ subagent_type: "auditor", prompt: "Review the auth module", des
 
 All fields are optional — sensible defaults for everything.
 
-| Field               | Default        | Description                                                                                                                                                                                                                                   |
-| ------------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `fragments`         | —              | Ordered fragment names from the winning profile's `agents/fragments/<name>.md`; combined before the profile body. See [Prompt fragments](#prompt-fragments).                                                                                  |
-| `description`       | filename       | Agent description shown in tool listings                                                                                                                                                                                                      |
-| `display_name`      | —              | Display name for UI (e.g. widget, agent list)                                                                                                                                                                                                 |
-| `tools`             | all available  | `all` for registered tools; explicit names restrict; `-name` removes; `none` disables tools. See [Tool selection](#tool-selection)                                                                                                            |
-| `model`             | inherit parent | Model — `provider/modelId`, fuzzy name (`"haiku"`, `"sonnet"`), or `[provider/]family@latest` for the newest available model whose id contains `family`                                                                                       |
-| `thinking`          | inherit        | off, minimal, low, medium, high, xhigh, max. An unrecognized value is dropped, and the agent inherits the parent's level                                                                                                                      |
-| `max_turns`         | unlimited      | Turn ceiling: the harness stops the agent after this many turns (minimum 2). `0` or omit for unlimited                                                                                                                                        |
-| `prompt_mode`       | `append`       | `replace`: parent prompt is the cacheable base; body is appended last with full control and no `<agent_instructions>` wrapper. `append`: parent prompt is the base; body is wrapped in `<agent_instructions>` (agent acts as a "parent twin") |
-| `inherit_context`   | `false`        | Fork parent conversation into agent                                                                                                                                                                                                           |
-| `run_in_background` | `false`        | Run in background by default                                                                                                                                                                                                                  |
-| `enabled`           | `true`         | Set to `false` to disable an agent (useful for hiding a default agent per-project)                                                                                                                                                            |
-| `locked`            | —              | Fields a `subagent_start` tool caller may not override. `true` or a list of field names. See [Locking fields against callers](#locking-fields-against-callers)                                                                                |
+| Field             | Default        | Description                                                                                                                                                                                                                                   |
+| ----------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fragments`       | —              | Ordered fragment names from the winning profile's `agents/fragments/<name>.md`; combined before the profile body. See [Prompt fragments](#prompt-fragments).                                                                                  |
+| `description`     | filename       | Agent description shown in tool listings                                                                                                                                                                                                      |
+| `display_name`    | —              | Display name for UI (e.g. widget, agent list)                                                                                                                                                                                                 |
+| `tools`           | all available  | `all` for registered tools; explicit names restrict; `-name` removes; `none` disables tools. See [Tool selection](#tool-selection)                                                                                                            |
+| `model`           | inherit parent | Model — `provider/modelId`, fuzzy name (`"haiku"`, `"sonnet"`), or `[provider/]family@latest` for the newest available model whose id contains `family`                                                                                       |
+| `thinking`        | inherit        | off, minimal, low, medium, high, xhigh, max. An unrecognized value is dropped, and the agent inherits the parent's level                                                                                                                      |
+| `max_turns`       | unlimited      | Turn ceiling: the harness stops the agent after this many turns (minimum 2). `0` or omit for unlimited                                                                                                                                        |
+| `prompt_mode`     | `append`       | `replace`: parent prompt is the cacheable base; body is appended last with full control and no `<agent_instructions>` wrapper. `append`: parent prompt is the base; body is wrapped in `<agent_instructions>` (agent acts as a "parent twin") |
+| `inherit_context` | `false`        | Fork parent conversation into agent                                                                                                                                                                                                           |
+| `foreground`      | `false`        | Run in the foreground by default: the caller blocks until the agent completes. Omit to run in the background, which `subagent_start` does unless asked                                                                                        |
+| `enabled`         | `true`         | Set to `false` to disable an agent (useful for hiding a default agent per-project)                                                                                                                                                            |
+| `locked`          | —              | Fields a `subagent_start` tool caller may not override. `true` or a list of field names. See [Locking fields against callers](#locking-fields-against-callers)                                                                                |
 
 The caller decides, and the agent file fills the gaps.
-A `subagent_start` tool parameter wins over the agent file's value for `model`, `thinking`, `max_turns`, `inherit_context`, and `run_in_background`; the agent file supplies whichever of those the caller left unset.
+A `subagent_start` tool parameter wins over the agent file's value for `model`, `thinking`, `max_turns`, `inherit_context`, and `foreground`; the agent file supplies whichever of those the caller left unset.
 
 ### Locking fields against callers
 
@@ -227,7 +231,7 @@ locked: true
 ---
 ```
 
-`locked: true` withholds every field this file sets — here `model` and `max_turns`, while `thinking`, `inherit_context`, and `run_in_background` stay open because the file names no value for them.
+`locked: true` withholds every field this file sets — here `model` and `max_turns`, while `thinking`, `inherit_context`, and `foreground` stay open because the file names no value for them.
 This is the behavior every agent file had before locking became opt-in, so it is the one-line way to keep an existing file working unchanged.
 
 A list withholds exactly the fields it names, in either YAML spelling:
@@ -238,7 +242,7 @@ locked: [model, max_turns] # flow sequence
 ```
 
 The list form also withholds a field this file leaves unset — `locked: [model]` with no `model:` denies the caller a model override and lets the child inherit the parent's.
-An entry naming anything other than `model`, `thinking`, `max_turns`, `inherit_context`, or `run_in_background` is ignored.
+An entry naming anything other than `model`, `thinking`, `max_turns`, `inherit_context`, or `foreground` is ignored.
 
 A lock is never silent: when a caller passes a value for a locked field, the tool result says which agent locked which parameters.
 
@@ -451,7 +455,7 @@ parent model normally.
 
 Project profiles require Pi project trust. Delegation tools are included by default, unless a profile explicitly excludes them (`-subagent_start`, `-subagent_get`, or `-subagent_steer`);
 child settings and prompt construction are unchanged. `locked`, `max_turns`,
-`run_in_background`, and `inherit_context` retain their child meanings rather
+`foreground`, and `inherit_context` retain their child meanings rather
 than imposing main-session restrictions. See [main-session profile usage](../README.md#main-session-profile---agent)
 for validation, tool-access, and automation limitations.
 
