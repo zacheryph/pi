@@ -7,7 +7,7 @@ import { GIT_SNAPSHOT_EVENT, type GitSnapshotEvent } from "../src/events.ts";
 import piGit from "../src/index.ts";
 import { GhUnavailable, type GhRunner } from "../src/status.ts";
 import { LEDGER_TYPE, type WorktreeRecord } from "../src/ledger.ts";
-import { commit, sandbox, type Sandbox } from "./support/repos.ts";
+import { commit, run, sandbox, type Sandbox } from "./support/repos.ts";
 
 type Handler = (...args: unknown[]) => unknown;
 interface Tool {
@@ -169,10 +169,56 @@ describe("context card", () => {
     const handler = context[1] as (
       event: unknown,
       ctx: unknown,
-    ) => { messages: Message[] } | undefined;
-    return handler({ type: "context", messages }, h.ctx)?.messages ?? messages;
+    ) => Promise<{ messages: Message[] } | undefined>;
+    return (await handler({ type: "context", messages }, h.ctx))?.messages ?? messages;
   };
   const cards = (messages: Message[]) => messages.filter((m) => m.customType === "git:context");
+  it("uses the worktree repository's remote rather than its directory name", async () => {
+    run(box.api, "remote", "add", "origin", "https://github.com/acme/api.git");
+    const h = await start();
+    await h.tool("git_worktree_create", { repo: "src/api", branch: "fix" });
+    const path = join(box.root, "api", "fix");
+    h.pi.events.emit("subagent:session:created", { agentId: "agent-1", cwd: path });
+    const entry = prEntry();
+    h.entries.push({
+      ...entry,
+      data: {
+        ...entry.data,
+        owner: "other-org",
+        key: "github.com/other-org/api#12",
+        status: { state: "merged", headRef: "fix", observedAt: 1, source: "bash" },
+      },
+    });
+    await h.fire("session_compact");
+    expect(cards(await contextOf(h))[0]?.content).toContain(`worktree ${path} on fix: no PR yet`);
+    h.entries.push({
+      ...entry,
+      data: { ...entry.data, status: { ...entry.data.status, headRef: "fix" } },
+    });
+    expect(cards(await contextOf(h))[0]?.content).toContain(
+      `PR 12 "Add login": open, worktree ${path}`,
+    );
+  });
+
+  it("arms the card for a worktree with a closed PR even without recorded agents", async () => {
+    run(box.api, "remote", "add", "origin", "https://github.com/acme/api.git");
+    const h = await start();
+    await h.tool("git_worktree_create", { repo: "src/api", branch: "fix" });
+    const entry = prEntry();
+    h.entries.push({
+      ...entry,
+      data: {
+        ...entry.data,
+        status: { state: "closed", headRef: "fix", observedAt: 1, source: "bash" },
+      },
+    });
+    for (const event of ["session_compact", "session_tree", "session_start"]) {
+      await h.fire(event);
+      expect(cards(await contextOf(h))[0]?.content).toContain(
+        `worktree ${join(box.root, "api", "fix")} on fix: no open PR`,
+      );
+    }
+  });
   const listResult = (toolName: string, extra: Record<string, unknown> = {}) => ({
     toolName,
     toolCallId: "call-1",

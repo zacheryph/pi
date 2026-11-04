@@ -43,11 +43,54 @@ const pr = (
 const card = (...records: Array<WorktreeRecord | PrRecord>) =>
   contextCard(
     foldLedger(records.map((data) => ({ type: "custom", customType: LEDGER_TYPE, data }))),
+    new Map([
+      ["/src/api", { host: "github.com", owner: "acme", repo: "api" }],
+      ["/src/web", { host: "github.com", owner: "acme", repo: "web" }],
+    ]),
   );
 
 const bodyOf = (text: string | undefined) => text!.split("\n").slice(1);
 
 describe("contextCard", () => {
+  it.each([{ owner: "other-org" }, { host: "github.example.com" }])(
+    "does not link a same-named repository with a different identity: %j",
+    (identity) => {
+      const active = worktree("fix", { agents: ["agent-1"] });
+      const merged = pr(1, { state: "merged", headRef: "fix" }, identity);
+      merged.key = prKey(merged);
+      expect(bodyOf(card(active, merged))).toEqual([
+        "- worktree /w/api/fix on fix: no PR yet (agent agent-1)",
+      ]);
+      const open = { ...merged, status: { ...merged.status!, state: "open" as const } };
+      const lines = bodyOf(card(active, open));
+      expect(lines[0]).not.toContain("worktree");
+      expect(lines[1]).toContain("worktree /w/api/fix");
+    },
+  );
+
+  it("keeps a worktree visible when its remote identity is unknown", () => {
+    const active = worktree("fix", { agents: ["agent-1"] });
+    const merged = pr(1, { state: "merged", headRef: "fix" });
+    const ledger = foldLedger(
+      [active, merged].map((data) => ({ type: "custom", customType: LEDGER_TYPE, data })),
+    );
+    expect(contextCard(ledger)).toContain("worktree /w/api/fix");
+  });
+
+  it("links a renamed checkout through its verified remote identity", () => {
+    const active = worktree("fix", { repo: "/src/renamed", agents: ["agent-1"] });
+    const open = pr(1, { state: "open", headRef: "fix" });
+    const ledger = foldLedger(
+      [active, open].map((data) => ({ type: "custom", customType: LEDGER_TYPE, data })),
+    );
+    expect(
+      contextCard(
+        ledger,
+        new Map([[active.repo, { host: "github.com", owner: "acme", repo: "api" }]]),
+      ),
+    ).toContain("PR 1: open, worktree /w/api/fix");
+  });
+
   it("is absent with nothing to restore", () => {
     expect(card()).toBeUndefined();
     expect(card(worktree("no-agents"))).toBeUndefined();

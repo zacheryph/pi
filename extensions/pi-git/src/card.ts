@@ -6,11 +6,13 @@
  * stay absolute and agent ids whole, so both can be passed straight to a tool.
  */
 
-import { basename } from "node:path";
 import { sanitizeLine } from "../../../packages/pi-ui/src/index.ts";
 import type { Ledger } from "./fold.ts";
 import type { WorktreeRecord } from "./ledger.ts";
-import { describePr, type PrRecord } from "./prs.ts";
+import { describePr, type PrRecord, type PrRef } from "./prs.ts";
+
+/** Local repository paths mapped to the verified identity of their origin remote. */
+export type CardRepositories = ReadonlyMap<string, Omit<PrRef, "number">>;
 
 export const CARD_TYPE = "git:context";
 /** The whole card, its header and the count of what was left out included. */
@@ -38,10 +40,22 @@ const isOpen = (pr: PrRecord) => pr.status?.state !== "merged" && pr.status?.sta
 /**
  * Whether a pull request is this worktree's: its head branch when a tool showed
  * it, otherwise a PR opened by a subagent that ran here. The ledger has no
- * remote for a worktree, so the repository is matched by directory name.
+ * remote for a worktree, so callers resolve it before matching. An unknown
+ * remote leaves the worktree unlinked rather than guessing from its name.
  */
-function belongsTo(pr: PrRecord, worktree: WorktreeRecord): boolean {
-  if (basename(worktree.repo).toLowerCase() !== pr.repo.toLowerCase()) return false;
+function belongsTo(
+  pr: PrRecord,
+  worktree: WorktreeRecord,
+  repositories: CardRepositories,
+): boolean {
+  const repository = repositories.get(worktree.repo);
+  if (
+    !repository ||
+    !(["host", "owner", "repo"] as const).every(
+      (key) => repository[key].toLowerCase() === pr[key].toLowerCase(),
+    )
+  )
+    return false;
   const head = pr.status?.headRef;
   if (head) return head === worktree.branch;
   return pr.origin === "created" && !!pr.createdBy && worktree.agents.includes(pr.createdBy);
@@ -73,7 +87,10 @@ function prLine(pr: PrRecord, worktrees: readonly WorktreeRecord[]): string {
  * reached, PRs opened here or tied to a worktree come first, then worktrees,
  * then PRs the session only looked at, each newest first.
  */
-export function contextCard(ledger: Ledger): string | undefined {
+export function contextCard(
+  ledger: Ledger,
+  repositories: CardRepositories = new Map(),
+): string | undefined {
   const prs = [...ledger.prs.values()];
   const worktrees = [...ledger.worktrees.values()].filter((w) => w.state !== "removed");
   const newestFirst = <T extends { updatedAt: number }>(items: readonly T[]) =>
@@ -82,11 +99,11 @@ export function contextCard(ledger: Ledger): string | undefined {
   const first: string[] = [];
   const last: string[] = [];
   for (const pr of newestFirst(prs.filter(isOpen))) {
-    const own = worktrees.filter((worktree) => belongsTo(pr, worktree));
+    const own = worktrees.filter((worktree) => belongsTo(pr, worktree, repositories));
     (pr.origin === "created" || own.length ? first : last).push(prLine(pr, own));
   }
   const middle = newestFirst(worktrees).flatMap((worktree) => {
-    const own = prs.filter((pr) => belongsTo(pr, worktree));
+    const own = prs.filter((pr) => belongsTo(pr, worktree, repositories));
     if (own.some((pr) => isOpen(pr) || pr.status?.state === "merged")) return [];
     if (own.length === 0 && worktree.agents.length === 0) return [];
     const note = own.length ? "no open PR" : "no PR yet";

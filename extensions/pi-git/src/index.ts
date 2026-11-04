@@ -34,7 +34,7 @@ import {
 import { CARD_TYPE, contextCard } from "./card.ts";
 import { loadGitConfig, type GitConfig } from "./config.ts";
 import { GIT_SNAPSHOT_EVENT, snapshotEvent, type GitSnapshotEvent } from "./events.ts";
-import { foldLedger } from "./fold.ts";
+import { foldLedger, type Ledger } from "./fold.ts";
 import { git, realPath, resolveCommit, type BaseRef, type WorktreeStatus } from "./git.ts";
 import { isWorktreeRecord, LEDGER_TYPE, type WorktreeRecord } from "./ledger.ts";
 import {
@@ -288,38 +288,64 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
     });
   };
 
+  /** Resolve identities from local origin remotes; unknown repositories remain unlinked. */
+  const cardForLedger = async (ledger: Ledger): Promise<string | undefined> => {
+    const repositories = new Map<string, Omit<PrRef, "number">>();
+    if (ledger.prs.size) {
+      const paths = new Set(
+        [...ledger.worktrees.values()].filter((w) => w.state !== "removed").map((w) => w.repo),
+      );
+      await Promise.all(
+        [...paths].map(async (path) => {
+          const repository = await resolveRepo(path);
+          if (repository) repositories.set(path, repository);
+        }),
+      );
+    }
+    return contextCard(ledger, repositories);
+  };
+
   /** Rebuild state from the session (start, resume, reload, /tree). */
-  const restore = (ctx: ExtensionContext): void => {
+  const restore = async (ctx: ExtensionContext): Promise<void> => {
+    const started = generation;
     const ledger = foldLedger(ctx.sessionManager.getEntries());
     records = ledger.worktrees;
     prs = ledger.prs;
     measured = new Map();
-    showCard = contextCard(ledger) !== undefined;
+    const card = await cardForLedger(ledger);
+    if (started !== generation) return;
+    showCard = card !== undefined;
     publish();
   };
 
-  pi.on("session_start", (_event, ctx) => {
+  pi.on("session_start", async (_event, ctx) => {
     generation += 1;
     cwd = ctx.cwd;
     config = undefined;
     sessionId = ctx.sessionManager.getSessionId();
     withdraw?.();
     withdraw = provide(sessionId, SERVICE_NAME, service);
-    restore(ctx);
+    await restore(ctx);
     backgroundRefresh(ctx);
   });
-  pi.on("session_tree", (_event, ctx) => {
-    restore(ctx);
+  pi.on("session_tree", async (_event, ctx) => {
+    await restore(ctx);
     backgroundRefresh(ctx);
   });
-  pi.on("session_compact", (_event, ctx) => {
-    showCard = contextCard(foldLedger(ctx.sessionManager.getEntries())) !== undefined;
+  pi.on("session_compact", async (_event, ctx) => {
+    const started = generation;
+    const card = await cardForLedger(foldLedger(ctx.sessionManager.getEntries()));
+    if (started === generation) showCard = card !== undefined;
   });
-  pi.on("context", (event, ctx) => {
+  pi.on("context", async (event, ctx) => {
     const messages = event.messages.filter(
       (message) => !(message.role === "custom" && message.customType === CARD_TYPE),
     );
-    const card = showCard ? contextCard(foldLedger(ctx.sessionManager.getEntries())) : undefined;
+    const started = generation;
+    const built = showCard
+      ? await cardForLedger(foldLedger(ctx.sessionManager.getEntries()))
+      : undefined;
+    const card = started === generation && showCard ? built : undefined;
     if (!card) return messages.length === event.messages.length ? undefined : { messages };
     return {
       messages: [

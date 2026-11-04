@@ -175,11 +175,13 @@ Pull requests and worktrees in this session (restored after compaction; stored d
   recorded subagent. A worktree is marked `missing` if it was deleted outside Pi.
   Removed worktrees are left out, and so is a worktree whose only PRs are merged.
   With nothing to list there is no card.
-- **Links** a PR to a worktree in the repository of the same directory name, by
-  its head branch. When no tool has shown the head branch, it links a PR opened
-  by a subagent that ran in the worktree. A PR opened any other way, or from a
-  checkout named differently, stays unlinked until `git_pr_status` reads its
-  head, and its worktree may say `no PR yet` until then.
+- **Links** a PR to a worktree only after the repository's `origin` remote
+  confirms its host, owner and repository, then matches its head branch.
+  When no tool has shown the head branch, it links a PR opened by a subagent
+  that ran in the worktree. Unknown or mismatched remotes leave worktrees
+  unlinked and visible; directory names are never used to guess identity.
+  Without a known head or matching subagent, a worktree may say `no PR yet`
+  until `git_pr_status` reads the head.
 - **Caps** at 10 lines, header included, in whole lines; the last line counts what
   was left out. PRs opened here or tied to a worktree come first, then worktrees,
   then PRs the session only looked at, each newest first. Titles are cut to 80
