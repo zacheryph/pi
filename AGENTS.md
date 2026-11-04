@@ -17,9 +17,9 @@ first-party code, shaped by what is best for the code. Do not weigh, mention or
 avoid changes because of upstream sync cost, divergence from upstream, or
 contributing changes back.
 
-Import with the `vendor-extension` skill: the first commit is a verbatim copy of
-upstream, verifiable by tree hash; integration and changes follow in later
-commits. Each vendored extension keeps two records:
+Import with the `import-extension` skill and its script: the first commit is a
+verbatim copy of upstream, verified by tree hash; integration and changes follow
+in later commits. Each vendored extension keeps two records:
 
 - `UPSTREAM.md` holds only provenance: source, pinned commit, tree hash, version,
   license and import date. It is written at import and not edited after.
