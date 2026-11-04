@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { isTransientError, withRetry } from "../src/retry.ts";
+import { checksSettled } from "../src/prs.ts";
 import {
   fetchWithGh,
   fetchWithMcp,
@@ -103,6 +104,13 @@ describe("fetchWithGh", () => {
     });
     await expect(fetchWithGh(REF, { run: missing })).rejects.toBeInstanceOf(GhUnavailable);
   });
+
+  it("reports zero checks for a newly pushed head with an empty rollup", async () => {
+    const run = async () => JSON.stringify({ ...JSON.parse(VIEW), statusCheckRollup: [] });
+    const { facts } = await fetchWithGh(REF, { run });
+    expect(facts.checks).toEqual({ passed: 0, failed: 0, pending: 0 });
+    expect(checksSettled(facts)).toBe(false);
+  });
 });
 
 describe("runGh", () => {
@@ -158,6 +166,10 @@ describe("fetchWithMcp", () => {
       text: JSON.stringify({ check_runs: [{ status: "in_progress", conclusion: null }] }),
     },
     get_reviews: { isError: false, text: "[]" },
+    get_status: {
+      isError: false,
+      text: JSON.stringify({ state: "pending", sha: "def456", total_count: 0, statuses: [] }),
+    },
   };
 
   it("combines the PR object, its check runs and its reviews", async () => {
@@ -197,6 +209,168 @@ describe("fetchWithMcp", () => {
     });
   });
 
+  it.each(["pending", "failure"])(
+    "includes a legacy %s status alongside successful check runs",
+    async (state) => {
+      const runTool: ToolRunner = async (_name, args) => ({
+        isError: false,
+        text:
+          args.method === "get_check_runs"
+            ? JSON.stringify({
+                total_count: 1,
+                check_runs: [{ status: "completed", conclusion: "success" }],
+              })
+            : args.method === "get_status"
+              ? JSON.stringify({ state, sha: "def456", total_count: 1, statuses: [{ state }] })
+              : replies[String(args.method)].text,
+      });
+      const { facts } = await fetchWithMcp(REF, "t", runTool);
+      expect(facts.checks).toEqual({
+        passed: 1,
+        failed: state === "failure" ? 1 : 0,
+        pending: state === "pending" ? 1 : 0,
+      });
+      expect(checksSettled(facts)).toBe(state === "failure");
+    },
+  );
+
+  it("supports repositories that use only legacy status checks", async () => {
+    const runTool: ToolRunner = async (_name, args) => ({
+      isError: false,
+      text:
+        args.method === "get_check_runs"
+          ? JSON.stringify({ total_count: 0, check_runs: [] })
+          : args.method === "get_status"
+            ? JSON.stringify({
+                state: "success",
+                sha: "def456",
+                total_count: 1,
+                statuses: [{ state: "success" }],
+              })
+            : replies[String(args.method)].text,
+    });
+    const { facts } = await fetchWithMcp(REF, "t", runTool);
+    expect(facts.checks).toEqual({ passed: 1, failed: 0, pending: 0 });
+    expect(checksSettled(facts)).toBe(true);
+  });
+
+  it("reads all pages before deriving check counts or review decisions", async () => {
+    const runTool: ToolRunner = vi.fn(async (_name, args) => {
+      if (args.method === "get_check_runs")
+        return {
+          isError: false,
+          text: JSON.stringify({
+            total_count: 101,
+            check_runs:
+              args.page === 1
+                ? Array.from({ length: 100 }, () => ({
+                    status: "completed",
+                    conclusion: "success",
+                  }))
+                : [{ status: "queued", conclusion: null }],
+          }),
+        };
+      if (args.method === "get_reviews")
+        return {
+          isError: false,
+          text: JSON.stringify(
+            args.page === 1
+              ? Array.from({ length: 100 }, () => ({ user: { login: "a" }, state: "APPROVED" }))
+              : [{ user: { login: "a" }, state: "CHANGES_REQUESTED" }],
+          ),
+        };
+      return replies[String(args.method)];
+    });
+    const { facts } = await fetchWithMcp(REF, "t", runTool);
+    expect(facts.checks).toEqual({ passed: 100, failed: 0, pending: 1 });
+    expect(facts.review).toBe("changes_requested");
+    expect(checksSettled(facts)).toBe(false);
+    expect(runTool).toHaveBeenCalledWith(
+      "t",
+      expect.objectContaining({ method: "get_check_runs", page: 2, perPage: 100 }),
+    );
+  });
+
+  it.each(["missing", "truncated"])(
+    "leaves checks unknown if legacy statuses are %s",
+    async (kind) => {
+      const runTool: ToolRunner = async (_name, args) => {
+        if (args.method === "get_check_runs")
+          return {
+            isError: false,
+            text: JSON.stringify({ check_runs: [{ status: "completed", conclusion: "success" }] }),
+          };
+        if (args.method === "get_status")
+          return kind === "missing"
+            ? { isError: true, text: "forbidden" }
+            : {
+                isError: false,
+                text: JSON.stringify({ total_count: 31, statuses: [{ state: "success" }] }),
+              };
+        return replies[String(args.method)];
+      };
+      const { facts } = await fetchWithMcp(REF, "t", runTool);
+      expect(facts.state).toBe("open");
+      expect(facts.checks).toBeUndefined();
+      expect(checksSettled(facts)).toBe(false);
+    },
+  );
+
+  it("does not publish counts from an incomplete check-run page", async () => {
+    const runTool: ToolRunner = async (_name, args) =>
+      args.method === "get_check_runs"
+        ? args.page === 1
+          ? {
+              isError: false,
+              text: JSON.stringify({
+                total_count: 101,
+                check_runs: [{ status: "completed", conclusion: "success" }],
+              }),
+            }
+          : { isError: true, text: "forbidden" }
+        : replies[String(args.method)];
+    const { facts } = await fetchWithMcp(REF, "t", runTool);
+    expect(facts.checks).toBeUndefined();
+    expect(facts.review).toBe("none");
+  });
+
+  it("rejects mixed-head reads if a push happens between MCP requests", async () => {
+    let gets = 0;
+    const runTool: ToolRunner = async (_name, args) => {
+      if (args.method === "get" && ++gets === 2)
+        return {
+          isError: false,
+          text: JSON.stringify({ ...JSON.parse(replies.get.text), head: { sha: "new-head" } }),
+        };
+      return replies[String(args.method)];
+    };
+    await expect(fetchWithMcp(REF, "t", runTool)).rejects.toThrow("head changed");
+  });
+
+  it("rejects an MCP reader connected to a different GitHub host", async () => {
+    const runTool: ToolRunner = async (_name, args) => replies[String(args.method)];
+    await expect(
+      fetchWithMcp({ ...REF, host: "github.example.com" }, "t", runTool),
+    ).rejects.toThrow("different repository or host");
+  });
+
+  it("propagates cancellation during an optional MCP read without more requests or backoff", async () => {
+    const controller = new AbortController();
+    const sleep = vi.fn(async () => undefined);
+    const runTool: ToolRunner = vi.fn(async (_name, args) => {
+      if (args.method === "get_check_runs") {
+        controller.abort(new Error("cancelled"));
+        throw new Error("HTTP 502");
+      }
+      return replies[String(args.method)];
+    });
+    await expect(
+      fetchWithMcp(REF, "t", runTool, { signal: controller.signal, sleep }),
+    ).rejects.toThrow("cancelled");
+    expect(runTool).toHaveBeenCalledTimes(2);
+    expect(sleep).not.toHaveBeenCalled();
+  });
+
   it("finds the GitHub MCP reader among the reachable tools", () => {
     expect(findPullRequestReader(["bash", "mcp__github__pull_request_read"])).toBe(
       "mcp__github__pull_request_read",
@@ -229,5 +403,12 @@ describe("withRetry (from pi-github-tools)", () => {
     await expect(withRetry(fn, noSleep)).rejects.toThrow("HTTP 500");
     expect(fn).toHaveBeenCalledTimes(4);
     expect(noSleep.sleep).toHaveBeenCalledWith(9000, undefined);
+  });
+
+  it("does not start a request with an already cancelled signal", async () => {
+    const fn = vi.fn(async () => "ok");
+    const signal = AbortSignal.abort(new Error("cancelled"));
+    await expect(withRetry(fn, { signal })).rejects.toThrow("cancelled");
+    expect(fn).not.toHaveBeenCalled();
   });
 });

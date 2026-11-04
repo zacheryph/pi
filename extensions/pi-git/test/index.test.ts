@@ -619,6 +619,23 @@ describe("pull requests", () => {
     await expect(h.fire("tool_result", { toolName: "bash", input: null })).resolves.toBeUndefined();
     expect(prs(h)).toEqual([]);
   });
+
+  it("persists ordinary tool calls even when they do not change PR status", async () => {
+    const h = await start();
+    await h.fire(
+      "tool_result",
+      ghResult("gh pr create", "https://github.com/acme/api/pull/12", "create"),
+    );
+    await h.fire(
+      "tool_result",
+      ghResult("gh pr comment 12 -R acme/api --body 'Reviewed'", "", "comment"),
+    );
+    const reloaded = await start("parent", h.entries);
+    expect(reloaded.snapshots.at(-1)?.prs[0].calls.map((call) => call.toolCallId)).toEqual([
+      "create",
+      "comment",
+    ]);
+  });
 });
 
 describe("git_pr_status and /git:refresh", () => {
@@ -755,7 +772,11 @@ describe("git_pr_status and /git:refresh", () => {
                   state: "closed",
                   merged: true,
                 })
-              : "[]",
+              : args.method === "get_check_runs"
+                ? JSON.stringify({ total_count: 0, check_runs: [] })
+                : args.method === "get_status"
+                  ? JSON.stringify({ total_count: 0, statuses: [] })
+                  : "[]",
         },
       ];
       await h.fire("tool_result", {
@@ -780,7 +801,9 @@ describe("git_pr_status and /git:refresh", () => {
     expect(executeTool.mock.calls.map((call) => call[1].method)).toEqual([
       "get",
       "get_check_runs",
+      "get_status",
       "get_reviews",
+      "get",
     ]);
     const recorded = prEntries(h);
     expect(recorded).toHaveLength(1);
@@ -804,6 +827,86 @@ describe("git_pr_status and /git:refresh", () => {
     expect(prEntries(h)).toHaveLength(1);
     // The in-memory record still moves on: the snapshot shows the newer read.
     expect(h.snapshots.at(-1)!.prs[0].status!.observedAt).toBeGreaterThan(first);
+  });
+
+  it("hands unchanged polling observations up without growing either session's ledger", async () => {
+    const parent = await withGh(async () => view({ state: "CLOSED" }));
+    parent.pi.events.emit("subagent:session:created", {
+      sessionId: "child",
+      parentSessionId: "parent",
+      agentId: "agent-7",
+      cwd: box.dir,
+    });
+    const child = harness({
+      sessionId: "child",
+      cwd: box.dir,
+      root: box.root,
+      runGh: async () => view(),
+    });
+    await child.fire("session_start");
+    await child.tool("git_pr_status", { pr: "acme/api#12" });
+    const first = parent.snapshots.at(-1)!.prs[0].status!.observedAt;
+    await child.tool("git_pr_status", { pr: "acme/api#12" });
+    expect(prEntries(child)).toHaveLength(1);
+    expect(prEntries(parent)).toHaveLength(1);
+    expect(parent.snapshots.at(-1)!.prs[0].status!.observedAt).toBeGreaterThan(first);
+
+    // A read unchanged from the child's point of view can still correct a
+    // different observation in its parent, and that change must persist.
+    await parent.tool("git_pr_status", { pr: "acme/api#12" });
+    expect(parent.snapshots.at(-1)!.prs[0].status!.state).toBe("closed");
+    await child.tool("git_pr_status", { pr: "acme/api#12" });
+    expect(prEntries(child)).toHaveLength(1);
+    const reloaded = await start("parent", parent.entries);
+    expect(reloaded.snapshots.at(-1)!.prs[0].status!.state).toBe("open");
+  });
+
+  it("clears old green counts when a new head has no checks yet", async () => {
+    let pushed = false;
+    const h = await withGh(async () =>
+      view({
+        headRefOid: pushed ? "new-head" : "old-head",
+        statusCheckRollup: pushed ? [] : [{ status: "COMPLETED", conclusion: "SUCCESS" }],
+      }),
+    );
+    await h.tool("git_pr_status", { pr: "acme/api#12" });
+    pushed = true;
+    const result = await h.tool("git_pr_status", { pr: "acme/api#12" });
+    expect(result.details).toMatchObject({ prs: [{ headSha: "new-head", ciDone: false }] });
+    const reloaded = await start("parent", h.entries);
+    expect(reloaded.snapshots.at(-1)?.prs[0].status).toMatchObject({
+      headSha: "new-head",
+      checks: { passed: 0, failed: 0, pending: 0 },
+    });
+  });
+
+  it("does not record a cancelled read even if the backend returns successfully", async () => {
+    const controller = new AbortController();
+    const h = await withGh(async () => {
+      controller.abort(new Error("cancelled"));
+      return view();
+    });
+    await expect(
+      h.tools
+        .get("git_pr_status")!
+        .execute("cancel", { pr: "acme/api#12" }, controller.signal, undefined, h.ctx),
+    ).rejects.toThrow("cancelled");
+    expect(prEntries(h)).toEqual([]);
+  });
+
+  it("discards a response from the session that shut down while the read was in flight", async () => {
+    let answer!: (text: string) => void;
+    const h = await withGh(
+      () =>
+        new Promise<string>((resolve) => {
+          answer = resolve;
+        }),
+    );
+    const reading = h.tool("git_pr_status", { pr: "acme/api#12" });
+    await h.fire("session_shutdown");
+    answer(view());
+    await expect(reading).rejects.toThrow("session changed");
+    expect(prEntries(h)).toEqual([]);
   });
 
   it("ignores its own result in the observer", async () => {

@@ -9,7 +9,7 @@
 
 import { execFile } from "node:child_process";
 import { graphqlFacts, parsePrUrls, restFacts } from "./observe.ts";
-import { prUrl, type PrFacts, type PrRef } from "./prs.ts";
+import { prKey, prUrl, type PrFacts, type PrRef } from "./prs.ts";
 import { withRetry, type RetryOptions } from "./retry.ts";
 
 /** The fields `gh pr view --json` is asked for. */
@@ -106,9 +106,9 @@ export async function fetchWithGh(
 }
 
 /**
- * Read through a GitHub MCP `pull_request_read` tool: the PR object, then its
- * check runs and reviews. The PR object must come back; the other two add
- * what they can.
+ * Read through a GitHub MCP `pull_request_read` tool. Only complete check-run
+ * and commit-status reads can establish CI completion. Reviews are paginated
+ * before deriving the latest decision per reviewer.
  */
 export async function fetchWithMcp(
   ref: PrRef,
@@ -116,13 +116,14 @@ export async function fetchWithMcp(
   runTool: ToolRunner,
   retry: RetryOptions = {},
 ): Promise<Fetched> {
-  const read = async (method: string) => {
+  const read = async (method: string, page?: number) => {
     const outcome = await withRetry(async () => {
       const result = await runTool(tool, {
         method,
         owner: ref.owner,
         repo: ref.repo,
         pullNumber: ref.number,
+        ...(page !== undefined ? { page, perPage: 100 } : {}),
       });
       if (result.isError) throw new Error(result.text || `${tool} ${method} failed`);
       return result.text;
@@ -133,20 +134,68 @@ export async function fetchWithMcp(
       return undefined;
     }
   };
-  const pr = restFacts(await read("get"), "");
-  if (!pr.facts && !pr.title) throw new Error(`${tool} returned no pull request`);
+  const getPr = async () => {
+    const json = await read("get");
+    const parsed = restFacts(json, "");
+    if (!parsed.facts?.state) throw new Error(`${tool} returned no pull request`);
+    const url = isRecord(json) && typeof json.html_url === "string" ? json.html_url : "";
+    const shown = parsePrUrls(url)[0]?.ref;
+    if ((shown && prKey(shown) !== prKey(ref)) || (!shown && ref.host !== "github.com"))
+      throw new Error(`${tool} returned a pull request from a different repository or host`);
+    return parsed;
+  };
+  const pr = await getPr();
   const facts: PrFacts = { ...pr.facts };
-  for (const [method, sub] of [
-    ["get_check_runs", ""],
-    ["get_reviews", "/reviews"],
-  ] as const) {
-    try {
-      Object.assign(facts, restFacts(await read(method), sub).facts);
-    } catch {
-      // Partial status beats none; the PR object already came back.
+
+  // Bound a single status read. Hitting the bound leaves that field unknown,
+  // rather than reporting a possibly incomplete CI/review result.
+  const pages = async (method: "get_check_runs" | "get_reviews") => {
+    const items: unknown[] = [];
+    for (let page = 1; page <= 20; page++) {
+      const json = await read(method, page);
+      const rows = method === "get_reviews" ? json : isRecord(json) ? json.check_runs : undefined;
+      if (!Array.isArray(rows)) throw new Error(`${tool} returned no ${method}`);
+      items.push(...rows);
+      const total =
+        isRecord(json) && typeof json.total_count === "number" ? json.total_count : undefined;
+      if (total !== undefined ? items.length >= total : rows.length < 100) return items;
+      if (rows.length === 0) break;
     }
+    throw new Error(`${tool} returned incomplete ${method}`);
+  };
+  try {
+    const runs = await pages("get_check_runs");
+    const status = await read("get_status");
+    if (!isRecord(status) || !Array.isArray(status.statuses))
+      throw new Error(`${tool} returned no commit status`);
+    // The MCP server's get_status does not expose pagination. If its combined
+    // response is truncated, do not infer completion from the visible checks.
+    if (typeof status.total_count === "number" && status.total_count > status.statuses.length)
+      throw new Error(`${tool} returned incomplete commit statuses`);
+    if (typeof status.sha === "string" && status.sha !== facts.headSha)
+      throw new Error(`${tool} returned commit statuses for a different head`);
+    facts.checks = restFacts({ check_runs: [...runs, ...status.statuses] }, "").facts?.checks;
+  } catch {
+    retry.signal?.throwIfAborted();
+    // Partial metadata is useful, but partial checks must never wake a CI watch.
   }
+  try {
+    Object.assign(facts, restFacts(await pages("get_reviews"), "/reviews").facts);
+  } catch {
+    retry.signal?.throwIfAborted();
+  }
+
+  // Each MCP method resolves the PR head independently. Do not attach a newer
+  // commit's checks to the original head SHA when a push races these reads.
+  const latest = await getPr();
+  if (latest.facts?.headSha !== facts.headSha)
+    throw new Error(`${tool}: pull request head changed while reading status; read it again`);
+  retry.signal?.throwIfAborted();
   return { ...(pr.title ? { title: pr.title } : {}), facts, source: tool };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
 /** The GitHub MCP tool that reads pull requests, among the tools a call can reach. */
