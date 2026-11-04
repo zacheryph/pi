@@ -472,9 +472,10 @@ pi --no-extensions -e ./extensions/pi-subagent/src/index.ts
 Use the [`new-extension` skill](.agents/skills/new-extension/SKILL.md).
 
 To copy a third-party extension into the repository, use the
-[`vendor-extension` skill](.agents/skills/vendor-extension/SKILL.md). Each vendored
-extension records its provenance in `UPSTREAM.md` and its local changes in
-`CHANGELOG.md`.
+[`import-extension` skill](.agents/skills/import-extension/SKILL.md). Its script
+commits a verbatim copy of upstream, verified by tree hash, and prepares the
+integration. Each imported extension records its provenance in `UPSTREAM.md` and
+its local changes in `CHANGELOG.md`.
 
 ## License
 
