@@ -27,9 +27,10 @@ Examples: `extensions/pi-job/` (small additions),
   license does not allow copying and modifying (MIT, Apache-2.0, BSD are fine).
 - **Record every local change in `CHANGELOG.md` in the same commit as the change.**
   Never record local changes, known gaps or plans in `UPSTREAM.md`.
-- **Prefer sidecar modules over edits.** Put new behaviour in new files and keep
-  upstream files byte-for-byte where possible, so syncs stay cheap. Each
-  changelog entry names the upstream files it edits.
+- **Vendored code is ours.** `UPSTREAM.md` records provenance only; syncing
+  with upstream is not a goal. Edit upstream files as freely as first-party code
+  and structure changes by what is best for the code, never by future sync cost
+  or divergence. Each changelog entry names the files it edits.
 - Commit with `git -c commit.gpgsign=false commit …`. Never change global Git config.
 - Anything the extension renders follows the terminal UI spacing rules in `AGENTS.md`.
 
@@ -187,13 +188,14 @@ untouched copy, and list each integration change.
 
 ## Changing a vendored extension later
 
-1. Put new behaviour in sidecar modules when you can; edit upstream files only
-   when necessary.
+1. Make the change where it belongs, editing upstream files as needed.
 2. In the same commit, add an entry at the top of `CHANGELOG.md`
    (`## <date>: <summary> (#<pr>)`) listing each file or area and what changed,
    and naming any known gap it fixes or introduces. Do not touch `UPSTREAM.md`.
 
 ## Syncing with a newer upstream
+
+Only when explicitly asked. Never suggest a sync or plan changes around one.
 
 1. Clone upstream and diff the pinned SHA against the new one:
    `git -C <scratch>/<repo> diff <old sha> <new sha> -- . ':!.github'`.

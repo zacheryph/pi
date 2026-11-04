@@ -11,6 +11,12 @@ widths and ANSI/wide Unicode text in rendering tests.
 
 ## Vendored extensions
 
+Vendored code is ours. Upstream is recorded only so we know where the code came
+from; syncing with it is not a goal. Change a vendored extension as freely as
+first-party code, shaped by what is best for the code. Do not weigh, mention or
+avoid changes because of upstream sync cost, divergence from upstream, or
+contributing changes back.
+
 Each vendored extension keeps two records (see the `vendor-extension` skill):
 
 - `UPSTREAM.md` holds only the vendoring details: source, pinned commit, version,
