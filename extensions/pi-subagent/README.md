@@ -199,7 +199,7 @@ body, for both `pi --agent <name>` and child agents. No paths or `.md` suffix
 in declarations; no cross-scope fallback. Invalid/missing fragments block the
 selected profile rather than silently dropping instructions.
 
-`/agents` previews source paths and composed instructions.
+`/subagent:agents` previews source paths and composed instructions.
 Execution snapshots keep existing content across queueing and resume; new
 selection/spawn reads current fragments. See [configuration](./docs/configuration.md#prompt-fragments)
 for naming, trust and snapshot rules. Fragments grant no tools or permissions.
@@ -278,7 +278,7 @@ The message interrupts after the current tool execution.
 | -------------------- | ----------------------------------------------------------------------------------- |
 | `/subagent:settings` | Configure subagent settings (concurrency, turn limits, retention, interrupt policy) |
 | `/subagent:sessions` | View a subagent's session transcript (read-only)                                    |
-| `/agents`            | Browse agent profiles and inspect effective settings and instructions (read-only)   |
+| `/subagent:agents`   | Browse agent profiles and inspect effective settings and instructions (read-only)   |
 | `/subagent:watch`    | Toggle the passive, tailing watch overlay (Pi fullscreen mode only)                 |
 
 ### `/subagent:settings`
@@ -290,7 +290,7 @@ default visibility and thinking visibility are toggles. The overlay starts close
 at third width, with thinking enabled.
 Changes persist across pi restarts (see [Persistent Settings](./docs/configuration.md#persistent-settings)).
 
-### `/agents`
+### `/subagent:agents`
 
 Search agent names, status, and descriptions; Enter opens details. All effective
 profiles are listed, including disabled profiles, with project overrides taking

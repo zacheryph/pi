@@ -256,7 +256,7 @@ describe("composition root: message renderers", () => {
 });
 
 describe("composition root: commands", () => {
-  it("registers the agent definitions browser as /agents", () => {
+  it("registers every command under the subagent: prefix", () => {
     const { pi } = makePi();
     subagentsExtension(pi);
 
@@ -267,7 +267,7 @@ describe("composition root: commands", () => {
     expect(registered).toEqual([
       "subagent:watch",
       "subagent:settings",
-      "agents",
+      "subagent:agents",
       "subagent:sessions",
     ]);
   });

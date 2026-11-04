@@ -3,13 +3,14 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
-## 2026-11-04: Restore the agent definitions browser as `/agents`
+## 2026-11-04: Register the agent definitions browser as `/subagent:agents`
 
 The read-only agent profile browser was still registered, but as `/agent`
 after the identifier rename, so `/agents` (and its old `/subagents:agents`
 name) no longer matched any command and the browser looked gone.
 
-- Register the browser as `/agents` again.
+- Register the browser as `/subagent:agents`, under the extension's prefix
+  like its other commands.
 - Pin the extension's command names in a composition-root test.
 
 ## 2026-11-04: Add a four-fifths watch-overlay width preset

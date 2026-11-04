@@ -251,7 +251,7 @@ passes it.
 Personal copy of [`gotgenes/pi-packages/packages/pi-subagent`](https://github.com/gotgenes/pi-packages/tree/main/packages/pi-subagent).
 Provides `subagent_start`, `subagent_get`, and `subagent_steer`, plus
 `/subagent:settings`, `/subagent:sessions`, `/subagent:watch`, and
-`/agents` (read-only browser for agent definitions).
+`/subagent:agents` (read-only browser for agent definitions).
 `subagent_start` takes a `cwd`, so an orchestrator can run a worker in a
 directory it prepared, such as a git worktree; that directory is never removed
 for it and the worker stays resumable there.
