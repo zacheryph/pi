@@ -364,9 +364,9 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  // ---- /agents command ----
+  // ---- /subagent:agents command ----
 
-  pi.registerCommand("agents", {
+  pi.registerCommand("subagent:agents", {
     description: "Browse agent definitions, effective settings, and instructions (read-only)",
     handler: async (_args, ctx) => {
       // Fresh definitions for this cwd; never mutate the registry of running children.

@@ -9,6 +9,14 @@ available width. Subtract padding before layout/truncation, and render blank bod
 rows when the width cannot fit both padding spaces plus content. Cover narrow
 widths and ANSI/wide Unicode text in rendering tests.
 
+## Extension commands
+
+Prefix every slash command an extension registers with the extension's name
+less the `pi-` prefix: `pi-subagent` registers `/subagent:agents` and
+`/subagent:settings`, `pi-git` registers `/git:prs`. An extension's main command
+may be the bare name (`/stash`, `/todo`); every other command is
+`<name>:<action>`. Command names are lowercase.
+
 ## Vendored extensions
 
 Vendored code is ours. Upstream is recorded only so we know where the code came

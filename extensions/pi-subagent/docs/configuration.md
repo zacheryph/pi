@@ -304,7 +304,7 @@ Rules:
 - No `fragments` key, or `fragments: []`, preserves existing behavior.
   Files under `agents/fragments/` are not discovered as agent types.
 
-`/agents` shows the profile body, ordered fragment source paths and
+`/subagent:agents` shows the profile body, ordered fragment source paths and
 composed instructions (or a composition/trust error). This previews current
 definitions, not a running session's saved snapshot. `/system:prompt`, when
 pi-system-insights is installed, inspects the effective main-session prompt.
