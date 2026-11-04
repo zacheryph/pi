@@ -12,6 +12,7 @@ import { type BackgroundRequest, resolveBackgroundMode } from "#src/config/invoc
 import { composeAgentInstructions } from "#src/config/prompt-fragments";
 import { debugLog } from "#src/debug";
 import type { SubagentHandoff } from "#src/lifecycle/child-lifecycle";
+import { type ReopenSource, reopenRefusal, resolveSavedModel } from "#src/lifecycle/cold-resume";
 import type { ConcurrencyLimiter } from "#src/lifecycle/concurrency-limiter";
 import type { CreateSubagentSessionParams } from "#src/lifecycle/create-subagent-session";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
@@ -23,6 +24,7 @@ import {
 import type { SubagentSession } from "#src/lifecycle/subagent-session";
 import { SubagentState } from "#src/lifecycle/subagent-state";
 import type { WorkspaceProvider } from "#src/lifecycle/workspace";
+import type { PersistedSubagentRecord } from "#src/persisted-record";
 
 import type { RunConfig } from "#src/runtime";
 import type {
@@ -58,9 +60,17 @@ export type ResumeRefusalReason = ResumeRefusal | "unknown-agent";
  * A resumed run that *failed* is still `resumed` — the record carries the
  * error. `refused` means the turn loop never ran.
  */
-export type ResumeOutcome =
-  | { kind: "resumed"; record: Subagent }
-  | { kind: "refused"; reason: ResumeRefusalReason };
+export type ResumeOutcome = { kind: "resumed"; record: Subagent } | ResumeRefused;
+
+/**
+ * Nothing was started. A refusal for good names the transcript when the agent
+ * has one, which still holds what it did.
+ */
+export interface ResumeRefused {
+  kind: "refused";
+  reason: ResumeRefusalReason;
+  transcriptPath?: string;
+}
 
 /**
  * What starting a resume produced: the record now running it, or the reason
@@ -69,9 +79,17 @@ export type ResumeOutcome =
  * The run itself continues on the record; its `promise` settles when the
  * resumed run reaches a terminal state.
  */
-export type ResumeStart =
-  | { kind: "started"; record: Subagent }
-  | { kind: "refused"; reason: ResumeRefusalReason };
+export type ResumeStart = { kind: "started"; record: Subagent } | ResumeRefused;
+
+/**
+ * Where a resume finds an agent this runtime holds no record of: the session's
+ * saved records, and the parent a rebuilt agent then belongs to.
+ */
+export interface SavedAgents {
+  /** The latest record for this ID on the current branch. */
+  find(id: string): PersistedSubagentRecord | undefined;
+  parent(): { snapshot: ParentSnapshot; parentSession: ParentSessionInfo };
+}
 
 /** Per-call knobs for a resume; both doors pass their own. */
 export interface ResumeCallOptions {
@@ -197,6 +215,8 @@ export interface SubagentManagerOptions {
   observer?: SubagentManagerObserver;
   /** Agent registry, consulted to canonicalize a spawn's type and resolve its config. */
   registry: SpawnTypeResolver;
+  /** Absent, an agent with no live record is an unknown one. */
+  savedAgents?: SavedAgents;
 }
 
 export interface AgentSpawnConfig {
@@ -232,6 +252,15 @@ export interface AgentSpawnConfig {
   cwd?: string;
 }
 
+/** A refusal, naming the transcript unless it is only a refusal of now. */
+function refused(reason: ResumeRefusal, transcriptPath: string | undefined): ResumeRefused {
+  return {
+    kind: "refused",
+    reason,
+    ...(transcriptPath && reason !== "still-running" ? { transcriptPath } : {}),
+  };
+}
+
 export class SubagentManager {
   private agents = new Map<string, Subagent>();
   private sweepInterval: ReturnType<typeof setInterval>;
@@ -244,6 +273,7 @@ export class SubagentManager {
   private getRunConfig?: () => RunConfig;
   private getRetentionPolicy?: () => RetentionPolicy;
   private readonly registry: SpawnTypeResolver;
+  private readonly savedAgents?: SavedAgents;
   private _workspaceProvider?: WorkspaceProvider;
 
   /** The registered workspace provider, or undefined when none is registered. */
@@ -259,6 +289,7 @@ export class SubagentManager {
     this.getRunConfig = options.getRunConfig;
     this.getRetentionPolicy = options.getRetentionPolicy;
     this.registry = options.registry;
+    this.savedAgents = options.savedAgents;
     // Periodically release the heavy session of terminal agents past their
     // retention window. The lightweight record (with its result) is kept for the
     // session lifetime, so subagent_get never misses in-session.
@@ -282,7 +313,7 @@ export class SubagentManager {
   }
 
   /** Compose a per-agent lifecycle observer from manager and spawn-config concerns. */
-  private buildObserver(options: AgentSpawnConfig): SubagentLifecycleObserver {
+  private buildObserver(options: Pick<AgentSpawnConfig, "observer">): SubagentLifecycleObserver {
     return {
       onStarted: (agent) => {
         this.observer?.onSubagentStarted(agent);
@@ -454,6 +485,7 @@ export class SubagentManager {
         ...(options.handoff ? { handoff: options.handoff } : {}),
         ...(options.cwd ? { cwd: options.cwd } : {}),
         signal: options.signal,
+        checkReopen: (source) => this.checkReopen(source),
       },
     });
     this.agents.set(id, record);
@@ -480,7 +512,7 @@ export class SubagentManager {
    * The refusal policy lives here rather than in a caller, so every front door
    * declines the same resumes for the same reasons; a door owns only how it
    * words the answer. Delegates to Subagent.resume(), which owns the observer
-   * subscription lifecycle.
+   * subscription lifecycle, and reopens the transcript when the session is gone.
    */
   async resume(
     id: string,
@@ -498,10 +530,20 @@ export class SubagentManager {
    * resumed run ends. Refuses synchronously, for the same reasons `resume` does.
    */
   startResume(id: string, prompt: string, options: ResumeCallOptions = {}): ResumeStart {
-    const agent = this.agents.get(id);
-    if (!agent) return { kind: "refused", reason: "unknown-agent" };
-    const refusal = agent.resumeRefusal;
-    if (refusal) return { kind: "refused", reason: refusal };
+    const live = this.agents.get(id);
+    const saved = live ? undefined : this.savedAgents?.find(id);
+    if (!live && !saved) return { kind: "refused", reason: "unknown-agent" };
+    const source = live ?? saved!;
+    const refusal = this.resumeRefusalFor(source);
+    if (refusal) return refused(refusal, source.outputFile);
+    let agent: Subagent;
+    try {
+      agent = live ?? this.rebuildFromSaved(saved!);
+    } catch (err) {
+      // Its profile no longer composes (say, a fragment file went away).
+      debugLog(`rebuild agent ${id}`, err);
+      return refused("agent-type-unavailable", source.outputFile);
+    }
     // Before the resume starts: resetForResume runs synchronously inside
     // resume(), so a claim taken afterwards would miss the terminal edge.
     // Each resume's caller decides who carries this run's outcome; a claim a
@@ -513,6 +555,80 @@ export class SubagentManager {
     // missing session, which resumeRefusal has already refused as no-session.
     void agent.resume(prompt, options.signal);
     return { kind: "started", record: agent };
+  }
+
+  /**
+   * Why a resume of this agent would be refused, or undefined when one would be
+   * accepted: the one check `startResume` and every report on an agent share.
+   * A live record answers for itself, whatever `source` says.
+   */
+  resumeRefusalFor(source: { id: string } & ReopenSource): ResumeRefusal | undefined {
+    const live = this.agents.get(source.id);
+    if (live) return live.resumeRefusal;
+    return source.outputFile ? this.checkReopen(source) : "no-session";
+  }
+
+  private checkReopen(source: ReopenSource) {
+    return reopenRefusal(source, (type) => {
+      const canonical = this.registry.resolveType(type);
+      return canonical !== undefined && this.registry.isValidType(canonical);
+    });
+  }
+
+  /**
+   * A record for an agent the runtime has forgotten, whose session is already
+   * released: resuming it reopens the saved transcript. Under the agent's own ID,
+   * so results, steering and notifications work as they did. The profile is the
+   * current one for its type; the transcript carries everything else it knew.
+   */
+  private rebuildFromSaved(saved: PersistedSubagentRecord): Subagent {
+    const { snapshot, parentSession } = this.savedAgents!.parent();
+    const resolved = this.resolveSpawn(
+      saved.type,
+      { kind: "explicit", isBackground: true },
+      snapshot,
+    );
+    const model = resolveSavedModel(saved.model, snapshot.modelRegistry);
+    const record = new Subagent({
+      id: saved.id,
+      type: resolved.type,
+      description: saved.description,
+      isBackground: resolved.isBackground,
+      state: new SubagentState({
+        // A record still reading queued or running was interrupted.
+        status: saved.status === "queued" || saved.status === "running" ? "stopped" : saved.status,
+        result: saved.result,
+        error: saved.error,
+        startedAt: saved.startedAt,
+        completedAt: saved.completedAt,
+        toolUses: saved.toolUses,
+        pendingQuestion: saved.pendingQuestion,
+        turnBudget: saved.turnBudget,
+      }),
+      released: {
+        outputFile: saved.outputFile,
+        model,
+        thinkingLevel: saved.thinkingLevel,
+      },
+      execution: {
+        createSubagentSession: this.createSubagentSession,
+        snapshot,
+        agentConfig: resolved.agentConfig,
+        prompt: "",
+        baseCwd: this.baseCwd,
+        observer: this.buildObserver({}),
+        getRunConfig: this.getRunConfig,
+        getWorkspaceProvider: () => this._workspaceProvider,
+        model,
+        maxTurns: saved.maxTurns,
+        thinkingLevel: saved.thinkingLevel,
+        parentSession,
+        cwd: saved.cwd,
+        checkReopen: (source) => this.checkReopen(source),
+      },
+    });
+    this.agents.set(saved.id, record);
+    return record;
   }
 
   getRecord(id: string): Subagent | undefined {

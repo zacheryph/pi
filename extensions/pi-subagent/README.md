@@ -28,7 +28,7 @@ Run them in foreground or background, steer them mid-run, resume completed sessi
 - **Custom agent types** — define agents in `.pi/agents/<name>.md` with YAML frontmatter: custom system prompts, model selection, thinking levels, tool restrictions
 - **Orchestrator profile** — coordinate long-running projects with categorized todos, delegated work, and follow-ups in prior workers' sessions; available as a subagent or with `pi --agent orchestrator` ([usage and continuity](docs/configuration.md#orchestrator))
 - **Mid-run steering** — inject messages into running agents to redirect their work without restarting
-- **Session resume** — pick up where an agent left off, preserving full conversation context.
+- **Session resume** — pick up where an agent left off, preserving full conversation context, even after a reload or once its session was released: the saved transcript is reopened.
   An agent given an isolated workspace by a `WorkspaceProvider` is resumable while that workspace is live — which, for an agent that ended its turn with a question, lasts until you answer it
 - **Ask-back** — an agent that needs information only you have calls `ask` (from the bundled pi-ask) and ends its turn, and every result surfaces the question with the exact `resume` call that answers it; once that agent can no longer be resumed, the result says so and why instead of naming a call that would be refused
 - **Mid-run updates** — an agent that finds something material calls `parent_notify` and keeps working; the message arrives on its own while you are idle and that agent is still running, and otherwise rides that agent's own result, so you hear it exactly once and never as a stale prompt to steer an agent that has finished
@@ -235,6 +235,13 @@ A call with `resume` resumes the agent in the background: it returns the agent I
 Add `foreground: true` to wait for the resumed outcome instead.
 Only the call's own flag decides this; an agent file's `foreground` default does not apply to a resume.
 
+A resume continues the agent's live session while it has one.
+Once that is gone — the retention window released it, or a `/reload`, `/resume` or session switch dropped it — the agent's saved transcript is reopened instead, with the type, model, thinking level, turn ceiling and directory on its last saved record.
+It continues under the same ID and appends to the same transcript file, so results, steering and notifications work as usual, and a record still reading queued or running (a run a reload interrupted) can be resumed the same way.
+This rebuilds a full session, so the first turn starts more slowly than a live resume.
+The agent's current profile for its type applies, and what the spawn passed in `handoff` is not saved, so after a reload a worker does not regain the todo tasks it was handed.
+A resume is refused when the transcript is gone, when the directory no longer exists (such as a worktree removed with `git_worktree_remove`), or when the agent type is no longer available; the refusal names the transcript when there is one.
+
 ### `subagent_get`
 
 Check status and retrieve results from a background agent, or list the agents this branch started.
@@ -247,7 +254,7 @@ Check status and retrieve results from a background agent, or list the agents th
 
 Without `agent_id`, the result lists every agent started on the current branch — ID, type, description, status, and the question or error when there is one — waiting on a question first, then running, failed, and completed newest first.
 
-An agent's ID keeps working after `/reload`, `/resume` or a session switch: when no live agent has it, `subagent_get` answers from the agent's last saved record — status, result, error, the question it ended with, and its transcript path — and says that it cannot be resumed, because its live session ended with the runtime that ran it.
+An agent's ID keeps working after `/reload`, `/resume` or a session switch: when no live agent has it, `subagent_get` answers from the agent's last saved record — status, result, error, the question it ended with, and its transcript path — and says whether it can be resumed, using the same check `resume` makes.
 An agent still running when that runtime went away is reported as interrupted.
 `Agent not found` means the current branch never started that ID, including an agent started on a branch `/tree` has since left.
 
@@ -396,14 +403,14 @@ Because that agent never started, the notification says so and offers no result 
 A child session runs in the parent's process but is a full Pi session with its own extension set.
 It receives the standard pair of session lifecycle events:
 
-| Event              | When                                                | Reason      |
-| ------------------ | --------------------------------------------------- | ----------- |
-| `session_start`    | Extensions are bound, before the child's first turn | `"startup"` |
-| `session_shutdown` | The child session is disposed                       | `"quit"`    |
+| Event              | When                                                | Reason                                                      |
+| ------------------ | --------------------------------------------------- | ----------------------------------------------------------- |
+| `session_start`    | Extensions are bound, before the child's first turn | `"startup"`, or `"resume"` when its transcript was reopened |
+| `session_shutdown` | The child session is disposed                       | `"quit"`                                                    |
 
 Disposal happens when the retention window for a finished agent expires, when the in-memory records of finished agents are cleared at session start or switch, when the parent session shuts down, or when child extension binding fails partway.
 Clearing them loses no history: the session keeps every agent's saved record (see [Saved records and the roster card](#saved-records-and-the-roster-card)).
-It does **not** happen the moment an agent finishes: the session is retained so the agent can be resumed, per the `consumedSessionRetentionMinutes` and `unconsumedSessionRetentionMinutes` settings above.
+It does **not** happen the moment an agent finishes: the session is retained so a resume is cheap, per the `consumedSessionRetentionMinutes` and `unconsumedSessionRetentionMinutes` settings above. A released agent can still be resumed from its transcript, at the cost of rebuilding the session.
 
 The shutdown event is dispatched and awaited **before** the child's `AgentSession` is disposed, so a handler still has a live context and can close what it opened — stdio subprocesses, sockets, timers, file handles.
 Each child's shutdown is bounded: a handler that never resolves is abandoned after a few seconds and disposal proceeds, so one misbehaving extension cannot stall the parent's teardown or Pi's exit.
@@ -428,7 +435,7 @@ Until it lists them with `subagent_get` (no `agent_id`), each request ends with 
 Subagents started by this session (restored after compaction; subagent_get <id> for details):
 - 9a8b7c implementer "Migrate session store": waiting for your answer: "Postgres or SQLite?"
 - d4e5f6 reviewer "Review roadmap step 3": running
-- a1b2c3 implementer "Add token refresh": completed 14:10
+- a1b2c3 implementer "Add token refresh": completed 14:10, resumable
 - 77e0aa explorer "Map auth call sites": failed: turn budget exhausted
 - 2 older completed agents not shown
 ```
@@ -564,15 +571,18 @@ A new field is therefore a minor release; use a cast or a `Partial<>` for a test
 A caller that does not need the outcome can ignore the promise.
 
 It never throws and never rejects.
-A resume that could not start resolves to `{ kind: "refused", reason }` instead, promptly — the checks are synchronous and no turn loop runs:
+An agent whose live session is gone is resumed from its saved transcript when it can be.
+A resume that could not start resolves to `{ kind: "refused", reason, transcriptPath? }` instead, promptly — the checks are synchronous and no turn loop runs. `transcriptPath` names the transcript of an agent refused for good, when it has one:
 
-| `reason`             | Meaning                                                        |
-| -------------------- | -------------------------------------------------------------- |
-| `unknown-agent`      | No record answers to that id (records are cleared per session) |
-| `still-running`      | The agent has not settled; wait, or `steer` it while it runs   |
-| `no-session`         | The agent never had a session to continue                      |
-| `session-released`   | Its session was released after the retention window            |
-| `workspace-disposed` | Its isolated workspace is gone, so a resume cannot re-enter it |
+| `reason`                 | Meaning                                                          |
+| ------------------------ | ---------------------------------------------------------------- |
+| `unknown-agent`          | No live record or saved record on this branch answers to that id |
+| `still-running`          | The agent has not settled; wait, or `steer` it while it runs     |
+| `no-session`             | The agent never had a session to continue                        |
+| `session-released`       | Its session was released and its saved transcript is gone        |
+| `workspace-disposed`     | Its isolated workspace is gone, so a resume cannot re-enter it   |
+| `directory-unavailable`  | The directory it ran in no longer exists, or was never recorded  |
+| `agent-type-unavailable` | Its agent type is no longer available                            |
 
 A resumed run that _fails_ is still `{ kind: "resumed" }`; the snapshot carries `status: "error"` and the message.
 Refused means nothing started.

@@ -142,6 +142,7 @@ export default function (pi: ExtensionAPI) {
       createResourceLoader: (opts) => new DefaultResourceLoader(opts),
       deriveSessionDir: deriveSubagentSessionDir,
       createSessionManager: (cwd, dir) => SessionManager.create(cwd, dir),
+      openSessionManager: (path, cwd) => SessionManager.open(path, undefined, cwd),
       createSettingsManager: (cwd, dir) => SdkSettingsManager.create(cwd, dir),
       // The exclusion policy is resolved here, at the composition root, so the
       // assembly factory stays free of it and gets a ready-made settings view.
@@ -229,6 +230,13 @@ export default function (pi: ExtensionAPI) {
     getRunConfig: () => settings,
     getRetentionPolicy: () => settings,
     registry,
+    savedAgents: {
+      find: (id) => readBranchRecords(runtime.currentCtx)?.find((record) => record.id === id),
+      parent: () => ({
+        snapshot: runtime.buildSnapshot(false),
+        parentSession: runtime.getSessionInfo(),
+      }),
+    },
   });
 
   // Typed service published via Symbol.for() for cross-extension access.
@@ -271,7 +279,11 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_start", (_event, ctx) => watch.setContext(ctx));
   // Restore the branch's agents to the model's context after it may have lost
   // them, until it lists them itself (see RosterCard).
-  const rosterCard = new RosterCard((id) => manager.getRecord(id));
+  const rosterCard = new RosterCard(
+    (id) => manager.getRecord(id),
+    Date.now,
+    (source) => manager.resumeRefusalFor(source) === undefined,
+  );
   pi.on("session_start", (event, ctx) => rosterCard.handleSessionStart(event, ctx));
   pi.on("session_tree", (_event, ctx) => {
     eventsObserver.refreshBranch();

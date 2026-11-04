@@ -106,6 +106,7 @@ async function child(type: "Explore" | "Plan") {
         getAgentDir: () => dir,
         deriveSessionDir: () => join(dir, "sessions"),
         createSessionManager: (cwd, sessionDir) => SessionManager.create(cwd, sessionDir),
+        openSessionManager: (path, cwd) => SessionManager.open(path, undefined, cwd),
         createSettingsManager: (cwd, agentDir) => SettingsManager.create(cwd, agentDir),
         createLoaderSettingsManager: (settings) => settings,
         createResourceLoader: (options) =>

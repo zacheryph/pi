@@ -65,7 +65,9 @@ describe("runForeground", () => {
     const result = await runForeground(manager, makeParams(), undefined, undefined);
 
     expect(result.content[0].text).toContain("Which config?");
-    expect(result.content[0].text).toContain("its session was released after its retention window");
+    expect(result.content[0].text).toContain(
+      "its session was released and its saved transcript is gone",
+    );
     expect(result.content[0].text).not.toContain("resume:");
   });
 

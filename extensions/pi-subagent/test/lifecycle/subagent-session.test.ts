@@ -435,6 +435,26 @@ describe("SubagentSession — runTurnLoop turn budget", () => {
   });
 });
 
+describe("SubagentSession — applyTurnLimits", () => {
+  it("gives a resume with no initial run the limits that run would have resolved", async () => {
+    const { session, listeners } = createSession("done");
+    programTurns(session, listeners, 1);
+    const { sub } = makeSubagentSession(session, { agentMaxTurns: 7 });
+    sub.applyTurnLimits({ defaultMaxTurns: 9 });
+    const result = await sub.resumeTurnLoop("Continue", {});
+    expect(result.turnBudget.maxTurns).toBe(7);
+  });
+
+  it("lets the recorded ceiling win over the agent's own", async () => {
+    const { session, listeners } = createSession("done");
+    programTurns(session, listeners, 1);
+    const { sub } = makeSubagentSession(session, { agentMaxTurns: 7 });
+    sub.applyTurnLimits({ maxTurns: 3 });
+    const result = await sub.resumeTurnLoop("Continue", {});
+    expect(result.turnBudget.maxTurns).toBe(3);
+  });
+});
+
 describe("SubagentSession — runTurnLoop parent abort signal", () => {
   it("aborts the session when the parent signal fires mid-prompt", async () => {
     const controller = new AbortController();

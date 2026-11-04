@@ -12,6 +12,7 @@
  * createSession), so threading the provider through here would be a relay smell.
  */
 
+import { dirname } from "node:path";
 import type { Model } from "@earendil-works/pi-ai";
 import {
   type AgentSession,
@@ -106,6 +107,8 @@ export interface CreateSessionOptions {
   excludeTools?: string[];
   resourceLoader: ResourceLoaderLike;
   thinkingLevel?: ThinkingLevel;
+  /** Why the session starts, when it is not a fresh `startup`. */
+  sessionStartEvent?: { type: "session_start"; reason: "resume" };
 }
 
 /**
@@ -129,6 +132,8 @@ export interface EnvironmentIO {
 export interface SessionFactoryIO {
   createResourceLoader: (opts: ResourceLoaderOptions) => ResourceLoaderLike;
   createSessionManager: (cwd: string, sessionDir: string) => SessionManagerLike;
+  /** Reopen a saved transcript, which further entries then append to. */
+  openSessionManager: (path: string, cwd: string) => SessionManagerLike;
   createSettingsManager: (cwd: string, agentDir: string) => SettingsManager;
   /**
    * Settings view the child's resource loader resolves packages from.
@@ -201,6 +206,11 @@ export interface CreateSubagentSessionParams {
    * installs no update tool.
    */
   notifyParent?: UpdateAnnouncer;
+  /**
+   * The transcript to continue instead of starting a new one (a cold resume).
+   * Its messages are the child's history, so `snapshot.parentContext` is unused.
+   */
+  transcriptPath?: string;
 }
 
 /**
@@ -290,13 +300,18 @@ export async function createSubagentSession(
 
   // Create a persisted SessionManager so transcripts are written in Pi's
   // official JSONL format. Falls back to a temp directory when the parent
-  // session is not persisted (e.g. headless/API mode).
-  const sessionDir = deps.io.deriveSessionDir(
-    params.parentSession?.parentSessionFile,
-    cfg.effectiveCwd,
-  );
-  const sessionManager = deps.io.createSessionManager(cfg.effectiveCwd, sessionDir);
-  sessionManager.newSession({ parentSession: params.parentSession?.parentSessionId });
+  // session is not persisted (e.g. headless/API mode). A cold resume reopens the
+  // transcript where it is: the parent may have moved or forked since it was made.
+  const { transcriptPath } = params;
+  const sessionDir = transcriptPath
+    ? dirname(transcriptPath)
+    : deps.io.deriveSessionDir(params.parentSession?.parentSessionFile, cfg.effectiveCwd);
+  const sessionManager = transcriptPath
+    ? deps.io.openSessionManager(transcriptPath, cfg.effectiveCwd)
+    : deps.io.createSessionManager(cfg.effectiveCwd, sessionDir);
+  if (!transcriptPath) {
+    sessionManager.newSession({ parentSession: params.parentSession?.parentSessionId });
+  }
   const sessionId = sessionManager.getSessionId();
 
   const childTools = buildChildTools(params);
@@ -320,6 +335,9 @@ export async function createSubagentSession(
     ),
     resourceLoader: loader,
     thinkingLevel: cfg.thinkingLevel,
+    ...(transcriptPath
+      ? { sessionStartEvent: { type: "session_start" as const, reason: "resume" as const } }
+      : {}),
   });
 
   const run = {

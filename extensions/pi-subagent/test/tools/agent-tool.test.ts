@@ -135,7 +135,7 @@ describe("AgentTool — resume path", () => {
         foreground: true,
       });
       expect(result.content[0].text).toBe(
-        'Agent "agent-1" had its session released after its retention window; resume is ' +
+        'Agent "agent-1" had its session released and its saved transcript is gone; resume is ' +
           "unavailable, but its result is still retrievable via subagent_get.",
       );
     });
@@ -253,7 +253,7 @@ describe("AgentTool — resume path", () => {
 
       expect(result.content[0].text).toContain("And the fallback?");
       expect(result.content[0].text).toContain(
-        "its session was released after its retention window",
+        "its session was released and its saved transcript is gone",
       );
       expect(result.content[0].text).not.toContain("resume:");
     });

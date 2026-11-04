@@ -1,8 +1,11 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import { ConcurrencyLimiter } from "#src/lifecycle/concurrency-limiter";
 import type { CreateSubagentSessionParams } from "#src/lifecycle/create-subagent-session";
-import type { AgentSpawnConfig } from "#src/lifecycle/subagent-manager";
+import type { AgentSpawnConfig, SavedAgents } from "#src/lifecycle/subagent-manager";
 import {
   resolveRetentionWindow,
   SubagentManager,
@@ -11,10 +14,12 @@ import {
 import type { SubagentSession, TurnLoopResult } from "#src/lifecycle/subagent-session";
 import type { WorkspaceProvider } from "#src/lifecycle/workspace";
 import { NotificationManager } from "#src/observation/notification";
+import type { PersistedSubagentRecord } from "#src/persisted-record";
 import type { RunConfig } from "#src/runtime";
 import { GetResultTool } from "#src/tools/get-result-tool";
 import type { AgentConfig, Subagent } from "#src/types";
 import { makeWorkspace, makeWorkspaceProvider } from "#test/helpers/make-workspace";
+import { makeModel } from "#test/helpers/make-model";
 import { createBlockingFactory, createSessionFactory } from "#test/helpers/manager-stubs";
 import {
   createMockSession,
@@ -72,6 +77,7 @@ function createManager(overrides?: {
   };
   baseCwd?: string;
   registry?: AgentTypeRegistry;
+  savedAgents?: SavedAgents;
 }) {
   const createSubagentSession: SessionFactory =
     overrides?.createSubagentSession ?? defaultFactory();
@@ -97,6 +103,7 @@ function createManager(overrides?: {
     getRunConfig: overrides?.getRunConfig,
     getRetentionPolicy: overrides?.getRetentionPolicy,
     registry: overrides?.registry ?? defaultRegistry(),
+    savedAgents: overrides?.savedAgents,
   });
   return { manager: mgr, createSubagentSession, limiter };
 }
@@ -1943,6 +1950,320 @@ describe("resolveRetentionWindow", () => {
           policy,
         ),
       ).toEqual({ referenceAt: 9_000, windowMinutes: 720 });
+    });
+  });
+});
+
+describe("SubagentManager — cold resume", () => {
+  let dir: string;
+  let transcript: string;
+  let cwd: string;
+  let manager: SubagentManager;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "cold-resume-manager-"));
+    transcript = join(dir, "agent.jsonl");
+    writeFileSync(transcript, "{}\n");
+    cwd = join(dir, "worktree");
+    mkdirSync(cwd);
+  });
+
+  afterEach(async () => {
+    await manager.dispose();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  const savedRecord = (
+    overrides: Partial<PersistedSubagentRecord> = {},
+  ): PersistedSubagentRecord => ({
+    id: "saved-1",
+    type: "Explore",
+    description: "map the module",
+    status: "completed",
+    result: "Mapped it.",
+    error: undefined,
+    turnBudget: undefined,
+    startedAt: 1_000,
+    completedAt: 4_000,
+    outputFile: transcript,
+    toolUses: 7,
+    cwd,
+    ...overrides,
+  });
+
+  const savedAgents = (...records: PersistedSubagentRecord[]): SavedAgents => ({
+    find: (id) => records.find((record) => record.id === id),
+    parent: () => ({
+      snapshot: STUB_SNAPSHOT,
+      parentSession: { parentSessionFile: "/parent.jsonl", parentSessionId: "parent" },
+    }),
+  });
+
+  describe("an agent whose session the sweep released", () => {
+    async function releasedAgent(factory: SessionFactory) {
+      ({ manager } = createManager({ createSubagentSession: factory }));
+      const id = manager.spawn(STUB_SNAPSHOT, "general-purpose", "work", {
+        description: "work",
+        background: { kind: "explicit", isBackground: true },
+        cwd,
+        maxTurns: 5,
+      });
+      const record = manager.getRecord(id)!;
+      await record.promise;
+      await record.releaseSession();
+      return { id, record };
+    }
+
+    it("reopens the transcript on the same record", async () => {
+      const first = createSessionFactory(createMockSession(), transcript);
+      const second = createSubagentSessionStub(createMockSession(), transcript);
+      const factory = vi
+        .fn<SessionFactory>()
+        .mockImplementationOnce(first.factory)
+        .mockResolvedValueOnce(toSubagentSession(second));
+      const { id, record } = await releasedAgent(factory);
+
+      const outcome = await manager.resume(id, "continue");
+
+      expect(outcome).toEqual({ kind: "resumed", record });
+      expect(factory).toHaveBeenCalledTimes(2);
+      expect(factory.mock.calls[1][0]).toMatchObject({ transcriptPath: transcript, cwd });
+      expect(second.applyTurnLimits).toHaveBeenCalledWith(expect.objectContaining({ maxTurns: 5 }));
+      expect(second.resumeTurnLoop).toHaveBeenCalledWith("continue", expect.anything());
+      expect(record.status).toBe("completed");
+      expect(record.result).toBe("resumed");
+      expect(record.sessionReleased).toBe(false);
+      expect(record.outputFile).toBe(transcript);
+    });
+
+    it("stays refused once the transcript is gone, and names it", async () => {
+      const { factory } = createSessionFactory(createMockSession(), transcript);
+      const { id } = await releasedAgent(factory);
+      rmSync(transcript);
+      expect(await manager.resume(id, "continue")).toEqual({
+        kind: "refused",
+        reason: "session-released",
+        transcriptPath: transcript,
+      });
+    });
+
+    it("stays refused once its directory is gone, and names the transcript", async () => {
+      const { factory, stub } = createSessionFactory(createMockSession(), transcript);
+      const { id } = await releasedAgent(factory);
+      rmSync(cwd, { recursive: true });
+      expect(await manager.resume(id, "continue")).toEqual({
+        kind: "refused",
+        reason: "directory-unavailable",
+        transcriptPath: transcript,
+      });
+      expect(stub.resumeTurnLoop).not.toHaveBeenCalled();
+    });
+
+    it("keeps refusing an isolated workspace that was torn down", async () => {
+      const { factory } = createSessionFactory(createMockSession(), transcript);
+      ({ manager } = createManager({ createSubagentSession: factory }));
+      manager.registerWorkspaceProvider(makeWorkspaceProvider(makeWorkspace(cwd)));
+      const id = spawnBg(manager);
+      const record = manager.getRecord(id)!;
+      await record.promise;
+      await record.releaseSession();
+      expect(await manager.resume(id, "continue")).toMatchObject({
+        kind: "refused",
+        reason: "workspace-disposed",
+      });
+    });
+
+    it("refuses a second resume while the first is still rebuilding", async () => {
+      const first = createSessionFactory(createMockSession(), transcript);
+      const factory = vi
+        .fn<SessionFactory>()
+        .mockImplementationOnce(first.factory)
+        .mockImplementationOnce(() => new Promise<SubagentSession>(() => {}));
+      const { id } = await releasedAgent(factory);
+      expect(manager.startResume(id, "continue").kind).toBe("started");
+      expect(manager.startResume(id, "again")).toEqual({
+        kind: "refused",
+        reason: "still-running",
+      });
+    });
+
+    it("buffers a steer sent during the rebuild and delivers it to the new session", async () => {
+      const first = createSessionFactory(createMockSession(), transcript);
+      const second = createSubagentSessionStub(createMockSession(), transcript);
+      let finish = (_session: SubagentSession) => {};
+      const factory = vi
+        .fn<SessionFactory>()
+        .mockImplementationOnce(first.factory)
+        .mockImplementationOnce(
+          () =>
+            new Promise<SubagentSession>((resolve) => {
+              finish = resolve;
+            }),
+        );
+      const { id, record } = await releasedAgent(factory);
+      manager.startResume(id, "continue");
+      await vi.waitFor(() => expect(factory).toHaveBeenCalledTimes(2));
+
+      expect(await record.steer("also this")).toEqual({ kind: "buffered" });
+      finish(toSubagentSession(second));
+      await record.promise;
+
+      expect(second.steer).toHaveBeenCalledWith("also this");
+    });
+
+    it("disposes a session that finishes rebuilding after the agent was stopped", async () => {
+      const first = createSessionFactory(createMockSession(), transcript);
+      const second = createSubagentSessionStub(createMockSession(), transcript);
+      let finish = (_session: SubagentSession) => {};
+      const factory = vi
+        .fn<SessionFactory>()
+        .mockImplementationOnce(first.factory)
+        .mockImplementationOnce(
+          () =>
+            new Promise<SubagentSession>((resolve) => {
+              finish = resolve;
+            }),
+        );
+      const { id, record } = await releasedAgent(factory);
+      manager.startResume(id, "continue");
+      await vi.waitFor(() => expect(factory).toHaveBeenCalledTimes(2));
+
+      expect(manager.abort(id)).toBe(true);
+      finish(toSubagentSession(second));
+      await record.promise;
+
+      expect(record.status).toBe("stopped");
+      expect(second.dispose).toHaveBeenCalledTimes(1);
+      expect(second.resumeTurnLoop).not.toHaveBeenCalled();
+      expect(record.isSessionReady()).toBe(false);
+      expect(record.resumeRefusal).toBeUndefined();
+    });
+
+    it("reports a failed rebuild as the run's error and can try again", async () => {
+      const first = createSessionFactory(createMockSession(), transcript);
+      const third = createSubagentSessionStub(createMockSession(), transcript);
+      const factory = vi
+        .fn<SessionFactory>()
+        .mockImplementationOnce(first.factory)
+        .mockRejectedValueOnce(new Error("not a valid session"))
+        .mockResolvedValueOnce(toSubagentSession(third));
+      const { id, record } = await releasedAgent(factory);
+
+      await manager.resume(id, "continue");
+      expect(record.status).toBe("error");
+      expect(record.error).toContain("not a valid session");
+
+      await manager.resume(id, "try again");
+      expect(third.resumeTurnLoop).toHaveBeenCalledWith("try again", expect.anything());
+      expect(record.status).toBe("completed");
+    });
+  });
+
+  describe("an agent this runtime has no record of", () => {
+    const model = makeModel({ provider: "open", id: "model-1" });
+    const snapshotWithModel = {
+      ...STUB_SNAPSHOT,
+      modelRegistry: { find: () => model, getAll: () => [model] },
+    };
+
+    it("rebuilds a record from the saved entry and reopens the transcript", async () => {
+      const { factory, stub } = createSessionFactory(createMockSession(), transcript);
+      const observer = { onSubagentResuming: vi.fn(), onSubagentResumed: vi.fn() };
+      const saved = savedRecord({ model: "open/model-1", thinkingLevel: "high", maxTurns: 4 });
+      ({ manager } = createManager({
+        createSubagentSession: factory,
+        observer,
+        savedAgents: {
+          ...savedAgents(saved),
+          parent: () => ({
+            snapshot: snapshotWithModel,
+            parentSession: { parentSessionFile: "/parent.jsonl", parentSessionId: "parent" },
+          }),
+        },
+      }));
+      expect(manager.getRecord("saved-1")).toBeUndefined();
+
+      const outcome = await manager.resume("saved-1", "continue");
+
+      const record = manager.getRecord("saved-1")!;
+      expect(outcome).toEqual({ kind: "resumed", record });
+      expect(factory.mock.calls[0][0]).toMatchObject({
+        type: "Explore",
+        transcriptPath: transcript,
+        cwd,
+        model,
+        thinkingLevel: "high",
+        agentId: "saved-1",
+      });
+      expect(stub.applyTurnLimits).toHaveBeenCalledWith(expect.objectContaining({ maxTurns: 4 }));
+      expect(stub.runTurnLoop).not.toHaveBeenCalled();
+      expect(stub.resumeTurnLoop).toHaveBeenCalledWith("continue", expect.anything());
+      expect(record.result).toBe("resumed");
+      expect(record.toolUses).toBe(7);
+      expect(observer.onSubagentResuming).toHaveBeenCalledWith(record);
+      expect(observer.onSubagentResumed).toHaveBeenCalledWith(record);
+    });
+
+    it("resumes an agent that was interrupted mid-run", async () => {
+      const { factory, stub } = createSessionFactory(createMockSession(), transcript);
+      ({ manager } = createManager({
+        createSubagentSession: factory,
+        savedAgents: savedAgents(savedRecord({ status: "running", completedAt: undefined })),
+      }));
+      expect((await manager.resume("saved-1", "continue")).kind).toBe("resumed");
+      expect(stub.resumeTurnLoop).toHaveBeenCalled();
+    });
+
+    it.each([
+      ["no entry at all", undefined, "unknown-agent", false],
+      ["no transcript recorded", { outputFile: undefined }, "no-session", false],
+      ["a transcript that is gone", { outputFile: "/nope.jsonl" }, "session-released", true],
+      ["a directory that is gone", { cwd: "/nope" }, "directory-unavailable", true],
+      ["no directory recorded", { cwd: undefined }, "directory-unavailable", true],
+      ["an unknown agent type", { type: "Vanished" }, "agent-type-unavailable", true],
+    ] as const)("refuses %s", async (_name, overrides, reason, namesTranscript) => {
+      const { factory } = createSessionFactory();
+      const record = savedRecord(overrides ?? {});
+      ({ manager } = createManager({
+        createSubagentSession: factory,
+        savedAgents: savedAgents(...(overrides ? [record] : [])),
+      }));
+      const outcome = await manager.resume("saved-1", "continue");
+      expect(outcome).toEqual({
+        kind: "refused",
+        reason,
+        ...(namesTranscript ? { transcriptPath: record.outputFile } : {}),
+      });
+      expect(factory).not.toHaveBeenCalled();
+      expect(manager.getRecord("saved-1")).toBeUndefined();
+    });
+
+    it("refuses a disabled agent type rather than falling back to another", async () => {
+      const { factory } = createSessionFactory();
+      ({ manager } = createManager({
+        createSubagentSession: factory,
+        registry: registryWith("custom", { enabled: false }),
+        savedAgents: savedAgents(savedRecord({ type: "custom" })),
+      }));
+      expect(await manager.resume("saved-1", "continue")).toMatchObject({
+        kind: "refused",
+        reason: "agent-type-unavailable",
+      });
+    });
+
+    it("answers from the same check it would resume on", () => {
+      ({ manager } = createManager({ savedAgents: savedAgents() }));
+      expect(manager.resumeRefusalFor(savedRecord())).toBeUndefined();
+      expect(manager.resumeRefusalFor(savedRecord({ cwd: "/nope" }))).toBe("directory-unavailable");
+      expect(manager.resumeRefusalFor(savedRecord({ outputFile: undefined }))).toBe("no-session");
+    });
+
+    it("lets a live record answer for itself, whatever the saved entry says", async () => {
+      const { factory } = createSessionFactory();
+      ({ manager } = createManager({ createSubagentSession: factory, savedAgents: savedAgents() }));
+      const id = spawnBg(manager);
+      await manager.getRecord(id)!.promise;
+      expect(manager.resumeRefusalFor(savedRecord({ id, cwd: "/nope" }))).toBeUndefined();
     });
   });
 });

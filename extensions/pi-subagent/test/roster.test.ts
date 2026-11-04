@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { PersistedSubagentRecord } from "#src/persisted-record";
 import {
   buildRoster,
@@ -292,5 +292,51 @@ describe("readBranchRecords", () => {
       },
     };
     expect(readBranchRecords(ctx)).toStrictEqual([saved()]);
+  });
+});
+
+describe("buildRoster — whether an agent can be resumed", () => {
+  const line = (record: PersistedSubagentRecord, resumable: boolean) =>
+    formatRosterLine(
+      buildRoster(
+        [record],
+        () => undefined,
+        () => resumable,
+      )[0],
+    );
+
+  it("says so on a completed line", () => {
+    expect(line(saved(), true)).toMatch(/: completed \d\d:\d\d, resumable$/);
+    expect(line(saved(), false)).toMatch(/: completed \d\d:\d\d$/);
+  });
+
+  it("says so on an interrupted line", () => {
+    const interrupted = saved({ status: "running", completedAt: undefined });
+    expect(line(interrupted, true)).toMatch(/before it finished, resumable$/);
+    expect(line(interrupted, false)).toMatch(/before it finished$/);
+  });
+
+  it("warns only when a question cannot be answered", () => {
+    const waiting = saved({ pendingQuestion: "Which DB?" });
+    expect(line(waiting, true)).toMatch(/"Which DB\?"$/);
+    expect(line(waiting, false)).toMatch(/"Which DB\?" \(cannot be resumed\)$/);
+  });
+
+  it("does not ask about a failed agent", () => {
+    const check = vi.fn(() => true);
+    const [entry] = buildRoster(
+      [saved({ status: "error", error: "boom" })],
+      () => undefined,
+      check,
+    );
+    expect(check).not.toHaveBeenCalled();
+    expect(entry.resumable).toBeUndefined();
+  });
+
+  it("asks about the live agent when one backs the record", () => {
+    const check = vi.fn(() => true);
+    const live: LiveAgentLike = { ...saved(), outputFile: "/live.jsonl" };
+    buildRoster([saved()], () => live, check);
+    expect(check).toHaveBeenCalledWith(live);
   });
 });

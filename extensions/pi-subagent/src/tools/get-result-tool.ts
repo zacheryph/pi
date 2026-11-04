@@ -3,6 +3,8 @@ import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import type { AgentConfigLookup } from "#src/config/agent-types";
+import type { ReopenSource } from "#src/lifecycle/cold-resume";
+import type { ResumeRefusal } from "#src/lifecycle/subagent";
 import type { SettledOutcome } from "#src/lifecycle/subagent-state";
 import { SUBAGENT_LIST_KIND } from "#src/handlers/roster-card";
 import type { PersistedSubagentRecord } from "#src/persisted-record";
@@ -27,6 +29,8 @@ import { BoundedLines, bodyRow, ICONS } from "../../../../packages/pi-ui/src/ind
 export interface GetResultToolManager {
   getRecord(id: string): Subagent | undefined;
   listAgents(): Subagent[];
+  /** The check `resume` itself makes, so this report cannot promise what it refuses. */
+  resumeRefusalFor(source: { id: string } & ReopenSource): ResumeRefusal | undefined;
 }
 
 /** What a `subagent_get` list result carries for the TUI and the roster card's stop rule. */
@@ -118,7 +122,11 @@ export class GetResultTool {
   list(ctx: unknown) {
     const branch = readBranchRecords(ctx);
     const getLive = (id: string) => this.manager.getRecord(id);
-    const entries = buildRoster(branch ?? this.manager.listAgents(), getLive);
+    const entries = buildRoster(
+      branch ?? this.manager.listAgents(),
+      getLive,
+      (source) => this.manager.resumeRefusalFor(source) === undefined,
+    );
     return textResult<GetListDetails>(formatRosterList(entries), {
       kind: SUBAGENT_LIST_KIND,
       total: entries.length,
@@ -149,6 +157,7 @@ export class GetResultTool {
       cwd: saved.cwd,
       transcriptPath: saved.outputFile,
       verbose,
+      resumeRefusal: this.manager.resumeRefusalFor(saved),
     });
     return textResult<GetResultDetails>(text, {
       agentId: saved.id,
@@ -241,7 +250,7 @@ export class GetResultTool {
         "Check status and retrieve results from a background agent, or list this branch's agents.",
       description:
         "Check status and retrieve results from a background agent. Use the agent ID returned by subagent_start. " +
-        "Agents from before a reload, resume or compaction keep their saved result, question and transcript path. " +
+        "Agents from before a reload, resume or compaction keep their saved result, question and transcript path, and the report says whether they can still be resumed. " +
         "Without agent_id, lists the agents started on this branch: waiting on a question first, then running, failed, and completed newest first.",
       parameters: Type.Object({
         agent_id: Type.Optional(

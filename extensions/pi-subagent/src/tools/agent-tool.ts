@@ -13,6 +13,7 @@ import type {
   AgentSpawnConfig,
   ResumeCallOptions,
   ResumeOutcome,
+  ResumeRefused,
   ResumeRefusalReason,
   ResumeStart,
 } from "#src/lifecycle/subagent-manager";
@@ -176,7 +177,7 @@ export class AgentTool {
       claimOutcome: true,
     });
     if (outcome.kind === "refused") {
-      return textResult(resumeRefusalMessage(outcome.reason, id));
+      return textResult(resumeRefusalMessage(outcome, id));
     }
     const record = outcome.record;
     // Resume-return delivery edge: the resumed outcome is returned directly.
@@ -197,7 +198,7 @@ export class AgentTool {
   private resumeInBackground(id: string, prompt: string, config: ResolvedSpawnConfig) {
     const start = this.manager.startResume(id, prompt, {});
     if (start.kind === "refused") {
-      return textResult(resumeRefusalMessage(start.reason, id));
+      return textResult(resumeRefusalMessage(start, id));
     }
     return renderBackgroundLaunch({
       headline: "Agent resumed in background.",
@@ -221,7 +222,7 @@ export class AgentTool {
       ...this.agentGuidelines,
       "- Provide clear, detailed prompts so the agent can work autonomously.",
       "- Subagent results are returned as text — summarize them for the user.",
-      "- Use resume with an agent ID to continue a previous agent's work, or to answer an agent that ended its turn with a question.",
+      "- Use resume with an agent ID to continue a previous agent's work, or to answer an agent that ended its turn with a question. This also works after a reload or once its session was released, as long as its transcript and directory still exist: its saved transcript is reopened.",
       "- Use subagent_steer to send mid-run messages to a running background agent.",
       '- Use model to specify a different model (as "provider/modelId", or fuzzy e.g. "haiku", "sonnet").',
       "- Use thinking to control extended thinking level.",
@@ -281,7 +282,7 @@ ${guidelines}
         resume: Type.Optional(
           Type.String({
             description:
-              "Optional agent ID to resume from. Continues from previous context in the background; you are notified when it finishes. Combine with foreground: true to wait for the resumed result.",
+              "Optional agent ID to resume from. Continues from previous context in the background, reopening the saved transcript if the live session is gone; you are notified when it finishes. Combine with foreground: true to wait for the resumed result.",
           }),
         ),
         inherit_context: Type.Optional(
@@ -355,7 +356,14 @@ ${guidelines}
  * Exhaustive over `ResumeRefusalReason`, so a reason added later fails to
  * compile here rather than falling through to an attempted resume.
  */
-function resumeRefusalMessage(refusal: ResumeRefusalReason, id: string): string {
+function resumeRefusalMessage(refusal: ResumeRefused, id: string): string {
+  const message = resumeRefusalSentence(refusal.reason, id);
+  return refusal.transcriptPath
+    ? `${message}\n\nIts transcript is at: ${refusal.transcriptPath}`
+    : message;
+}
+
+function resumeRefusalSentence(refusal: ResumeRefusalReason, id: string): string {
   switch (refusal) {
     case "unknown-agent":
       return `Agent not found: "${id}". It is not live in this session; subagent_get without agent_id lists the agents started on this branch, including any from before a reload or resume.`;
@@ -365,7 +373,7 @@ function resumeRefusalMessage(refusal: ResumeRefusalReason, id: string): string 
         "Use subagent_steer to send it a message while it runs."
       );
     case "session-released":
-      return `Agent "${id}" had its session released after its retention window; resume is unavailable, but its result is still retrievable via subagent_get.`;
+      return `Agent "${id}" had its session released and its saved transcript is gone; resume is unavailable, but its result is still retrievable via subagent_get.`;
     case "no-session":
       return `Agent "${id}" has no active session to resume.`;
     case "workspace-disposed":
@@ -374,6 +382,16 @@ function resumeRefusalMessage(refusal: ResumeRefusalReason, id: string): string 
         "exists; resume is unavailable because the agent would re-enter a directory that " +
         "has been removed. Spawn a new agent instead — the agent's result records where " +
         "any work was saved."
+      );
+    case "directory-unavailable":
+      return (
+        `Agent "${id}" cannot be resumed: the directory it ran in no longer exists. ` +
+        "Spawn a new agent with the context it needs."
+      );
+    case "agent-type-unavailable":
+      return (
+        `Agent "${id}" cannot be resumed: its agent type is no longer available. ` +
+        "Spawn a new agent with the context it needs."
       );
   }
 }
