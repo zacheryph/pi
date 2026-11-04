@@ -681,6 +681,7 @@ function createRunnableAgent(overrides?: {
   workspaceProvider?: WorkspaceProvider;
   isBackground?: boolean;
   cwd?: string;
+  maxTurns?: number;
 }) {
   const createSubagentSession = overrides?.createSubagentSession ?? defaultFactory();
   const observer = overrides?.observer ?? {};
@@ -697,6 +698,7 @@ function createRunnableAgent(overrides?: {
       getRunConfig: overrides?.getRunConfig,
       parentSession: overrides?.parentSession,
       signal: overrides?.signal,
+      ...(overrides?.maxTurns !== undefined ? { maxTurns: overrides.maxTurns } : {}),
       baseCwd: overrides?.baseCwd ?? "/base",
       getWorkspaceProvider: provider ? () => provider : undefined,
       ...(overrides?.cwd ? { cwd: overrides.cwd } : {}),
@@ -879,6 +881,32 @@ describe("Subagent.run() — caller-chosen cwd", () => {
     await agent.run();
     expect(agent.workspaceDisposed).toBe(false);
     expect(agent.resumeRefusal).toBeUndefined();
+  });
+});
+
+describe("Subagent — recorded run settings", () => {
+  it("reports the turn ceiling the spawn asked for", () => {
+    expect(createRunnableAgent({ maxTurns: 9 }).maxTurns).toBe(9);
+    expect(createRunnableAgent().maxTurns).toBeUndefined();
+  });
+
+  it("knows a caller-chosen directory before the run starts", () => {
+    expect(createRunnableAgent({ cwd: "/worktrees/feat-x" }).cwd).toBe("/worktrees/feat-x");
+  });
+
+  it("learns a provider's workspace directory once the run prepares it", async () => {
+    const agent = createRunnableAgent({
+      workspaceProvider: makeWorkspaceProvider(makeWorkspace("/ws/dir")),
+    });
+    expect(agent.cwd).toBeUndefined();
+    await agent.run();
+    expect(agent.cwd).toBe("/ws/dir");
+  });
+
+  it("falls back to the parent's directory when no workspace is prepared", async () => {
+    const agent = createRunnableAgent();
+    await agent.run();
+    expect(agent.cwd).toBe(STUB_SNAPSHOT.cwd);
   });
 });
 

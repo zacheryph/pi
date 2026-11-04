@@ -40,10 +40,15 @@ describe("SubagentEventsObserver", () => {
       });
     });
 
-    it("does not call appendEntry or notifications", () => {
+    it("appends a running subagent:record and sends no notification", () => {
       const { observer, appendEntry, notifications } = makeObserver();
-      observer.onSubagentStarted(createTestSubagent());
-      expect(appendEntry).not.toHaveBeenCalled();
+      observer.onSubagentStarted(
+        createTestSubagent({ id: "agent-1", status: "running", completedAt: undefined }),
+      );
+      expect(appendEntry).toHaveBeenCalledExactlyOnceWith(
+        "subagent:record",
+        expect.objectContaining({ id: "agent-1", status: "running" }),
+      );
       expect(notifications.sendCompletion).not.toHaveBeenCalled();
     });
   });
@@ -161,12 +166,18 @@ describe("SubagentEventsObserver", () => {
       });
     });
 
-    it("persists nothing and announces nothing: a run that started is not an outcome", () => {
+    it("records the agent running again, without its old question, and announces nothing", () => {
       const { observer, appendEntry, notifications } = makeObserver();
 
-      observer.onSubagentResuming(createTestSubagent());
+      observer.onSubagentResuming(
+        createTestSubagent({ id: "agent-1", status: "running", completedAt: undefined }),
+      );
 
-      expect(appendEntry).not.toHaveBeenCalled();
+      expect(appendEntry).toHaveBeenCalledExactlyOnceWith(
+        "subagent:record",
+        expect.objectContaining({ id: "agent-1", status: "running" }),
+      );
+      expect(appendEntry.mock.calls[0]?.[1]).not.toHaveProperty("pendingQuestion");
       expect(notifications.sendCompletion).not.toHaveBeenCalled();
     });
   });
@@ -288,10 +299,15 @@ describe("SubagentEventsObserver", () => {
       });
     });
 
-    it("does not call appendEntry or notifications", () => {
+    it("appends a queued subagent:record, so the agent belongs to the branch before it runs", () => {
       const { observer, appendEntry, notifications } = makeObserver();
-      observer.onSubagentCreated(createTestSubagent());
-      expect(appendEntry).not.toHaveBeenCalled();
+      observer.onSubagentCreated(
+        createTestSubagent({ id: "agent-1", status: "queued", completedAt: undefined }),
+      );
+      expect(appendEntry).toHaveBeenCalledExactlyOnceWith(
+        "subagent:record",
+        expect.objectContaining({ id: "agent-1", status: "queued" }),
+      );
       expect(notifications.sendCompletion).not.toHaveBeenCalled();
     });
   });
@@ -315,7 +331,8 @@ describe("SubagentEventsObserver", () => {
       observer.onSubagentCompacted(createTestSubagent(), info);
       observer.onSubagentCreated(createTestSubagent());
       expect(emit).toHaveBeenCalledTimes(4);
-      expect(appendEntry).toHaveBeenCalledTimes(1);
+      // Created, started and completed are lifecycle steps; compaction is not.
+      expect(appendEntry).toHaveBeenCalledTimes(3);
       // Notifications were called as a side-effect of onSubagentCompleted.
       expect(notifications.sendCompletion).toHaveBeenCalledTimes(1);
     });

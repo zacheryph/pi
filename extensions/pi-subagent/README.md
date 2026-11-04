@@ -237,13 +237,19 @@ Only the call's own flag decides this; an agent file's `foreground` default does
 
 ### `subagent_get`
 
-Check status and retrieve results from a background agent.
+Check status and retrieve results from a background agent, or list the agents this branch started.
 
-| Parameter  | Type    | Required | Description                   |
-| ---------- | ------- | -------- | ----------------------------- |
-| `agent_id` | string  | yes      | Agent ID to check             |
-| `wait`     | boolean | no       | Wait for completion           |
-| `verbose`  | boolean | no       | Include full conversation log |
+| Parameter  | Type    | Required | Description                                          |
+| ---------- | ------- | -------- | ---------------------------------------------------- |
+| `agent_id` | string  | no       | Agent ID to check; omit to list this branch's agents |
+| `wait`     | boolean | no       | Wait for completion                                  |
+| `verbose`  | boolean | no       | Include full conversation log                        |
+
+Without `agent_id`, the result lists every agent started on the current branch — ID, type, description, status, and the question or error when there is one — waiting on a question first, then running, failed, and completed newest first.
+
+An agent's ID keeps working after `/reload`, `/resume` or a session switch: when no live agent has it, `subagent_get` answers from the agent's last saved record — status, result, error, the question it ended with, and its transcript path — and says that it cannot be resumed, because its live session ended with the runtime that ran it.
+An agent still running when that runtime went away is reported as interrupted.
+`Agent not found` means the current branch never started that ID, including an agent started on a branch `/tree` has since left.
 
 The result renders as a compact three-line summary — status, stats, description, and a one-line preview.
 Press `Ctrl+O` to expand it to the full report, bounded so a long result cannot fill the terminal; the expanded view names the transcript path when it withholds anything.
@@ -395,7 +401,8 @@ It receives the standard pair of session lifecycle events:
 | `session_start`    | Extensions are bound, before the child's first turn | `"startup"` |
 | `session_shutdown` | The child session is disposed                       | `"quit"`    |
 
-Disposal happens when the retention window for a finished agent expires, when completed records are cleared at session start or switch, when the parent session shuts down, or when child extension binding fails partway.
+Disposal happens when the retention window for a finished agent expires, when the in-memory records of finished agents are cleared at session start or switch, when the parent session shuts down, or when child extension binding fails partway.
+Clearing them loses no history: the session keeps every agent's saved record (see [Saved records and the roster card](#saved-records-and-the-roster-card)).
 It does **not** happen the moment an agent finishes: the session is retained so the agent can be resumed, per the `consumedSessionRetentionMinutes` and `unconsumedSessionRetentionMinutes` settings above.
 
 The shutdown event is dispatched and awaited **before** the child's `AgentSession` is disposed, so a handler still has a live context and can close what it opened — stdio subprocesses, sockets, timers, file handles.
@@ -404,6 +411,30 @@ Each child's shutdown is bounded: a handler that never resolves is abandoned aft
 If you author an extension that runs in children, note that its `session_shutdown` handler now fires **once per child session** in addition to once for the parent.
 A handler that flushes a log, writes a summary, or closes a shared resource should be safe to run repeatedly within one process.
 Before this behavior existed, children fired `session_start` with no matching shutdown, so extension-owned resources accumulated for the life of the parent process.
+
+## Saved records and the roster card
+
+The parent session appends a `subagent:record` custom entry for every lifecycle step of each agent it starts: when the agent is queued or starts running, when a resume starts, and when a run settles — including a run that ended its turn with a question.
+Each entry carries the agent's ID, type, description, status, result, error, turn budget, timings, tool count and transcript path, plus the question it is waiting on, its model and thinking level, the turn ceiling the spawn asked for, and the directory it runs in.
+The last entry for an ID wins.
+The entries sit on the branch that started the agent, so they follow it through `/tree` and forks, and entries written by older versions without the newer fields still load.
+
+After a compaction, `/reload`, `/resume` or `/tree`, the model may have lost track of the agents it started.
+Until it lists them with `subagent_get` (no `agent_id`), each request ends with a roster card built from the branch's records and any still-live agents:
+
+```text
+Subagents started by this session (restored after compaction; subagent_get <id> for details):
+- 9a8b7c implementer "Migrate session store": waiting for your answer: "Postgres or SQLite?"
+- d4e5f6 reviewer "Review roadmap step 3": running
+- a1b2c3 implementer "Add token refresh": completed 14:10
+- 77e0aa explorer "Map auth call sites": failed: turn budget exhausted
+- 2 older completed agents not shown
+```
+
+The card is added to the request only: it is never written to the transcript or shown in the terminal.
+It holds at most 20 agent lines, dropping the oldest failed and completed agents first and counting them on the last line; waiting and running agents are never dropped.
+Descriptions are cut to 80 characters and questions to 160, without splitting a wide character or emoji.
+A branch that started no agents gets no card.
 
 ## Events
 

@@ -31,6 +31,7 @@ import {
   SessionLifecycleHandler,
   WidgetEventsHandler,
 } from "#src/handlers/index";
+import { RosterCard } from "#src/handlers/roster-card";
 import { createChildLifecyclePublisher } from "#src/lifecycle/child-lifecycle";
 import { ConcurrencyLimiter } from "#src/lifecycle/concurrency-limiter";
 import {
@@ -265,6 +266,14 @@ export default function (pi: ExtensionAPI) {
   );
   pi.on("session_start", (event, ctx) => widgetEvents.handleSessionStart(event, ctx));
   pi.on("session_start", (_event, ctx) => watch.setContext(ctx));
+  // Restore the branch's agents to the model's context after it may have lost
+  // them, until it lists them itself (see RosterCard).
+  const rosterCard = new RosterCard((id) => manager.getRecord(id));
+  pi.on("session_start", (event, ctx) => rosterCard.handleSessionStart(event, ctx));
+  pi.on("session_tree", (_event, ctx) => rosterCard.handleSessionTree(ctx));
+  pi.on("session_compact", (_event, ctx) => rosterCard.handleSessionCompact(ctx));
+  pi.on("context", (event, ctx) => rosterCard.handleContext(event, ctx));
+  pi.on("session_shutdown", () => rosterCard.handleSessionShutdown());
   pi.on("session_before_switch", () => lifecycle.handleSessionBeforeSwitch());
   pi.on("session_shutdown", () => lifecycle.handleSessionShutdown());
   // Registered after the lifecycle handler on purpose. Pi awaits an extension's

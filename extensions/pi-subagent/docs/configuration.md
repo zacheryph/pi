@@ -70,9 +70,11 @@ separate scheduler or memory store. Todo lists are session-local: an orchestrato
 subagent owns its own ledger, and the parent receives its status through normal
 results and updates. The profile rereads todo after compaction/reload and records
 concise recovery notes. Live worker sessions remain subject to retention and
-runtime lifetime; reload does not reconnect live agent IDs. If resume is refused,
-the orchestrator uses saved task notes, results, transcripts, and artifacts to
-brief a replacement. Required work stays open until verified or explicitly rescoped.
+runtime lifetime. After a reload or resume, `subagent_get` still answers for a
+worker's ID from its saved record (status, result, question, transcript path) and
+lists every worker the branch started, but a worker from before the reload cannot
+be resumed. If resume is refused, the orchestrator uses saved task notes, results,
+transcripts, and artifacts to brief a replacement. Required work stays open until verified or explicitly rescoped.
 
 All available tools remain selected so the orchestrator can pass specialist
 capabilities to its workers. Delegating implementation and avoiding recursive
@@ -462,7 +464,7 @@ for validation, tool-access, and automation limitations.
 ## Persistent Settings
 
 Runtime tuning values set via `/subagent:settings` (max concurrency, default max turns, wrap-up turns, the two session-retention windows, the abort-on-interrupt policy, and the mid-run update channel) persist across pi restarts.
-A completed subagent's record is kept for the whole parent session (so `subagent_get` never misses); only its heavy in-memory session is released — after `consumedSessionRetentionMinutes` once the result has been collected, or after the `unconsumedSessionRetentionMinutes` safety cap if it never was.
+A completed subagent's record is kept for the whole parent session (so `subagent_get` never misses), and its saved `subagent:record` entry outlives a reload or resume; only its heavy in-memory session is released — after `consumedSessionRetentionMinutes` once the result has been collected, or after the `unconsumedSessionRetentionMinutes` safety cap if it never was.
 An agent that asked a question and has not been answered holds the safety cap rather than the consumed window, because reading a question is not finishing with the agent — the answer is delivered by resuming the very session the short window would release.
 
 Set `midRunUpdates` to `false` to withhold `parent_notify` from every agent, leaving them no way to tell you anything before they finish.

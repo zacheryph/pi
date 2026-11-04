@@ -2,7 +2,13 @@ import { describe, expect, it } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import type { TurnLoopResult } from "#src/lifecycle/subagent-session";
 import { MAX_EXPANDED_LINES, PREVIEW_CHARS } from "#src/tools/get-result-renderer";
-import { GetResultTool, type GetResultToolManager } from "#src/tools/get-result-tool";
+import { visibleWidth } from "@earendil-works/pi-tui";
+import { type PersistedSubagentRecord, SUBAGENT_RECORD_ENTRY } from "#src/persisted-record";
+import {
+  agentNotFoundMessage,
+  GetResultTool,
+  type GetResultToolManager,
+} from "#src/tools/get-result-tool";
 import type { Subagent } from "#src/types";
 import type { Theme } from "#src/ui/display";
 import { makeModel } from "#test/helpers/make-model";
@@ -23,7 +29,7 @@ function longResult(lines: number): string {
 }
 
 function makeManager(records: Map<string, Subagent> = new Map()): GetResultToolManager {
-  return { getRecord: (id: string) => records.get(id) };
+  return { getRecord: (id: string) => records.get(id), listAgents: () => [...records.values()] };
 }
 
 async function execute(
@@ -260,7 +266,7 @@ describe("GetResultTool", () => {
   it("includes promptSnippet", () => {
     const tool = new GetResultTool(makeManager(), testRegistry);
     expect(tool.toToolDefinition().promptSnippet).toBe(
-      "Check status and retrieve results from a background agent.",
+      "Check status and retrieve results from a background agent, or list this branch's agents.",
     );
   });
 
@@ -617,6 +623,204 @@ describe("GetResultTool — TUI rendering", () => {
       const result = await execute(makeManager(), { agent_id: "ghost" });
 
       expect(result.details).toBeUndefined();
+    });
+  });
+});
+
+describe("GetResultTool — the branch's saved records", () => {
+  function savedRecord(overrides: Partial<PersistedSubagentRecord> = {}): PersistedSubagentRecord {
+    return {
+      id: "saved-1",
+      type: "Explore",
+      description: "map the module",
+      status: "completed",
+      result: "Mapped it.",
+      error: undefined,
+      turnBudget: undefined,
+      startedAt: 1_000,
+      completedAt: 4_000,
+      outputFile: "/tasks/saved-1.jsonl",
+      toolUses: 7,
+      ...overrides,
+    };
+  }
+
+  /** A Pi context whose current branch holds these records, last step last. */
+  function branchCtx(records: PersistedSubagentRecord[]) {
+    return {
+      sessionManager: {
+        getBranch: () =>
+          records.map((data) => ({ type: "custom", customType: SUBAGENT_RECORD_ENTRY, data })),
+      },
+    } as never;
+  }
+
+  const tool = (records: Map<string, Subagent> = new Map()) =>
+    new GetResultTool(makeManager(records), testRegistry);
+  const signal = new AbortController().signal;
+
+  it("answers from the saved record once no live agent has the ID", async () => {
+    const result = await tool().execute(
+      "tc",
+      { agent_id: "saved-1" },
+      signal,
+      undefined,
+      branchCtx([savedRecord({ model: "anthropic/claude-x", thinkingLevel: "high" })]),
+    );
+    const text = result.content[0].text;
+    expect(text).toContain("Agent: saved-1");
+    expect(text).toContain("Status: completed");
+    expect(text).toContain("Tool uses: 7");
+    expect(text).toContain("Model: anthropic/claude-x (thinking high)");
+    expect(text).toContain("Mapped it.");
+    expect(text).toContain("Resume: not available.");
+    expect(text).toContain("Full transcript available at: /tasks/saved-1.jsonl");
+    expect(result.details).toMatchObject({ agentId: "saved-1", status: "completed" });
+  });
+
+  it("shows the question a saved agent ended with", async () => {
+    const result = await tool().execute(
+      "tc",
+      { agent_id: "saved-1" },
+      signal,
+      undefined,
+      branchCtx([savedRecord({ pendingQuestion: "Postgres or SQLite?" })]),
+    );
+    expect(result.content[0].text).toContain(
+      "This agent ended its run with a question:\n\n  Postgres or SQLite?",
+    );
+    expect(result.content[0].text).not.toContain('resume: "saved-1"');
+  });
+
+  it("reports a saved run that never finished as interrupted", async () => {
+    const result = await tool().execute(
+      "tc",
+      { agent_id: "saved-1" },
+      signal,
+      undefined,
+      branchCtx([savedRecord({ status: "running", result: undefined, completedAt: undefined })]),
+    );
+    expect(result.content[0].text).toContain("Status: interrupted");
+    expect(result.content[0].text).toContain("never finished");
+    expect(result.content[0].text).not.toContain("Agent is still running");
+  });
+
+  it("says where the conversation went when verbose asks for it", async () => {
+    const result = await tool().execute(
+      "tc",
+      { agent_id: "saved-1", verbose: true },
+      signal,
+      undefined,
+      branchCtx([savedRecord()]),
+    );
+    expect(result.content[0].text).toContain("read the transcript instead");
+  });
+
+  it("prefers the live record when both exist", async () => {
+    const live = createTestSubagent({ id: "saved-1", status: "completed", result: "Live result." });
+    const result = await tool(new Map([["saved-1", live]])).execute(
+      "tc",
+      { agent_id: "saved-1" },
+      signal,
+      undefined,
+      branchCtx([savedRecord({ result: "Saved result." })]),
+    );
+    expect(result.content[0].text).toContain("Live result.");
+    expect(result.content[0].text).not.toContain("Resume: not available.");
+  });
+
+  it("hides a live agent the current branch did not start", async () => {
+    const live = createTestSubagent({ id: "elsewhere", status: "completed" });
+    const result = await tool(new Map([["elsewhere", live]])).execute(
+      "tc",
+      { agent_id: "elsewhere" },
+      signal,
+      undefined,
+      branchCtx([]),
+    );
+    expect(result.content[0].text).toBe(agentNotFoundMessage("elsewhere"));
+  });
+
+  it("words not-found as a fact about the branch, not a cleared record", () => {
+    expect(agentNotFoundMessage("x")).toBe(
+      'Agent not found: "x". No agent with this ID was started on this branch of the session. ' +
+        "Call subagent_get without agent_id to list the agents that were.",
+    );
+  });
+
+  describe("listing (no agent_id)", () => {
+    const list = (records: Map<string, Subagent>, ctx: unknown) =>
+      tool(records)
+        .toToolDefinition()
+        .execute("tc", {}, signal, undefined, ctx as never);
+
+    it("lists the branch's agents in roster order with live state overlaid", async () => {
+      const running = createTestSubagent({
+        id: "run-1",
+        status: "running",
+        completedAt: undefined,
+        description: "still going",
+      });
+      const result = await list(
+        new Map([["run-1", running]]),
+        branchCtx([
+          savedRecord({ id: "done-1", completedAt: 5_000 }),
+          savedRecord({ id: "run-1", status: "running", description: "still going" }),
+          savedRecord({ id: "ask-1", pendingQuestion: "Which DB?" }),
+          savedRecord({ id: "bad-1", status: "error", error: "boom" }),
+        ]),
+      );
+      const lines = (result.content[0] as { text: string }).text.split("\n");
+      expect(lines[0]).toBe("Agents started on this branch (4; subagent_get <id> for details):");
+      expect(lines.slice(1).map((line) => line.split(" ")[1])).toEqual([
+        "ask-1",
+        "run-1",
+        "bad-1",
+        "done-1",
+      ]);
+      expect(lines[1]).toContain('waiting for your answer: "Which DB?"');
+      expect(lines[2]).toContain(": running");
+      expect(result.details).toEqual({ kind: "list", total: 4 });
+    });
+
+    it("leaves out live agents the branch did not start", async () => {
+      const live = createTestSubagent({ id: "elsewhere", status: "running" });
+      const result = await list(new Map([["elsewhere", live]]), branchCtx([]));
+      expect((result.content[0] as { text: string }).text).toBe(
+        "No agents were started on this branch of the session.",
+      );
+      expect(result.details).toEqual({ kind: "list", total: 0 });
+    });
+
+    it("lists live agents when there is no session to read", async () => {
+      const live = createTestSubagent({ id: "only-live", status: "completed", completedAt: 9 });
+      const result = await list(new Map([["only-live", live]]), STUB_CTX);
+      expect((result.content[0] as { text: string }).text).toContain("- only-live ");
+    });
+
+    it("renders padded rows, collapsed to a count and expanded to the lines", async () => {
+      const result = await list(new Map(), branchCtx([savedRecord({ description: "漢字 🎉" })]));
+      const theme = { fg: (_c: string, text: string) => text, bold: (text: string) => text };
+      const { renderResult } = tool().toToolDefinition();
+      const render = (expanded: boolean, width: number) =>
+        renderResult!(
+          result,
+          { expanded, isPartial: false },
+          theme as never,
+          undefined as never,
+        ).render(width);
+      expect(render(false, 40)).toEqual([` ${"1 agent on this branch".padEnd(38)} `]);
+      const expanded = render(true, 60);
+      expect(expanded).toHaveLength(2);
+      for (const row of expanded) {
+        expect(row.startsWith(" ")).toBe(true);
+        expect(row.endsWith(" ")).toBe(true);
+        expect(visibleWidth(row)).toBe(60);
+      }
+      expect(expanded[1]).toContain("漢字 🎉");
+      // Too narrow for padding plus content: blank rows, never overflow.
+      expect(render(true, 2)).toEqual(["  ", "  "]);
+      for (const row of render(true, 12)) expect(visibleWidth(row)).toBe(12);
     });
   });
 });

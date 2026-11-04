@@ -358,6 +358,7 @@ describe("AgentTypeRegistry", () => {
       expect(prompt).toContain("send the reviewer and any follow-up worker to the same cwd");
       expect(prompt).toContain("remove it with git_worktree_remove");
       expect(prompt).toContain("call todo_list, git_worktree_list and git_pr_list");
+      expect(prompt).toContain("subagent_get without agent_id for the workers you started");
     });
 
     it("checks pull requests with git_pr_status and waits for CI without polling", () => {

@@ -358,7 +358,7 @@ ${guidelines}
 function resumeRefusalMessage(refusal: ResumeRefusalReason, id: string): string {
   switch (refusal) {
     case "unknown-agent":
-      return `Agent not found: "${id}". Records are cleared at session start/switch, so it may be from a previous session.`;
+      return `Agent not found: "${id}". It is not live in this session; subagent_get without agent_id lists the agents started on this branch, including any from before a reload or resume.`;
     case "still-running":
       return (
         `Agent "${id}" is still running; wait for it to finish before resuming. ` +

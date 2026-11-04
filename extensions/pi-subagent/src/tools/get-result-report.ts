@@ -101,3 +101,68 @@ export function formatAgentReport(report: AgentReport): string {
   }
   return output;
 }
+
+/**
+ * The data a report on a saved record renders from: an agent this branch
+ * started whose live record is gone, so only its last `subagent:record` entry
+ * speaks for it.
+ */
+export interface SavedAgentReport {
+  id: string;
+  displayName: string;
+  status: SubagentStatus;
+  /** The record still read queued or running, but no live agent backs it. */
+  interrupted: boolean;
+  toolUses: number;
+  duration: string;
+  description: string;
+  result: string | undefined;
+  error: string | undefined;
+  turnBudget?: TurnBudget;
+  pendingQuestion?: string;
+  model: string | undefined;
+  thinkingLevel?: string;
+  cwd?: string;
+  transcriptPath?: string;
+  /** The call asked for the conversation, which only a live record holds. */
+  verbose: boolean;
+}
+
+/** Why a saved record cannot be resumed, as one sentence. */
+export const SAVED_RECORD_RESUME_NOTE =
+  "Resume: not available. Only this agent's saved record remains; its live session ended " +
+  "when this session was reloaded, resumed or switched. Spawn a new agent with the context " +
+  "it needs.";
+
+/** Assemble the subagent_get report for a saved record. */
+export function formatSavedAgentReport(report: SavedAgentReport): string {
+  const status = report.interrupted ? "interrupted" : report.status;
+  const note = report.interrupted ? "" : renderStatusNote(report);
+  let output =
+    `Agent: ${report.id}\n` +
+    `Type: ${report.displayName} | Status: ${status}${note} | Tool uses: ${report.toolUses} | Duration: ${report.duration}\n` +
+    (report.model
+      ? `Model: ${report.model}${report.thinkingLevel ? ` (thinking ${report.thinkingLevel})` : ""}\n`
+      : "") +
+    (report.cwd ? `Directory: ${report.cwd}\n` : "") +
+    `Description: ${report.description}\n\n`;
+  output += report.interrupted
+    ? "This agent was still running when this session was reloaded or replaced, so it never " +
+      "finished. Its transcript shows how far it got."
+    : renderOutcomeBody({ ...report, stoppedWhileQueued: false });
+  if (report.pendingQuestion && report.status === "completed") {
+    const quoted = report.pendingQuestion
+      .split("\n")
+      .map((line) => `  ${line}`)
+      .join("\n");
+    output += `\n\nThis agent ended its run with a question:\n\n${quoted}`;
+  }
+  output += `\n\n${SAVED_RECORD_RESUME_NOTE}`;
+  if (report.verbose) {
+    output += "\n\nThe conversation is not in memory any more; read the transcript instead.";
+  }
+  if (report.transcriptPath) {
+    output += `\n\nFull transcript available at: ${report.transcriptPath}`;
+  }
+  return output;
+}

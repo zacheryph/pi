@@ -106,8 +106,8 @@ describe("AgentTool — resume path", () => {
         foreground: true,
       });
       expect(result.content[0].text).toBe(
-        'Agent not found: "nonexistent". Records are cleared at session start/switch, so it ' +
-          "may be from a previous session.",
+        'Agent not found: "nonexistent". It is not live in this session; subagent_get without ' +
+          "agent_id lists the agents started on this branch, including any from before a reload or resume.",
       );
     });
 

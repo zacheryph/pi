@@ -4,21 +4,45 @@ import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import type { AgentConfigLookup } from "#src/config/agent-types";
 import type { SettledOutcome } from "#src/lifecycle/subagent-state";
+import { SUBAGENT_LIST_KIND } from "#src/handlers/roster-card";
+import type { PersistedSubagentRecord } from "#src/persisted-record";
+import { buildRoster, formatRosterList, readBranchRecords } from "#src/roster";
 import {
   type GetResultDetails,
   PREVIEW_CHARS,
   renderGetResultLines,
 } from "#src/tools/get-result-renderer";
-import { type AgentReport, formatAgentReport } from "#src/tools/get-result-report";
+import {
+  type AgentReport,
+  formatAgentReport,
+  formatSavedAgentReport,
+} from "#src/tools/get-result-report";
 import { formatLifetimeTokens, textResult } from "#src/tools/helpers";
 import type { Subagent } from "#src/types";
 import { formatDuration, getDisplayName, modelLabel, type Theme } from "#src/ui/display";
-import { BoundedLines, ICONS } from "../../../../packages/pi-ui/src/index.ts";
+import { BoundedLines, bodyRow, ICONS } from "../../../../packages/pi-ui/src/index.ts";
 
 // ---- Deps interfaces ----
 
 export interface GetResultToolManager {
   getRecord(id: string): Subagent | undefined;
+  listAgents(): Subagent[];
+}
+
+/** What a `subagent_get` list result carries for the TUI and the roster card's stop rule. */
+export interface GetListDetails {
+  kind: typeof SUBAGENT_LIST_KIND;
+  total: number;
+}
+
+type GetParams = { agent_id?: string; wait?: boolean; verbose?: boolean };
+
+/** The reply for an ID this branch never started. */
+export function agentNotFoundMessage(id: string): string {
+  return (
+    `Agent not found: "${id}". No agent with this ID was started on this branch of the ` +
+    "session. Call subagent_get without agent_id to list the agents that were."
+  );
 }
 
 // ---- Class ----
@@ -29,18 +53,28 @@ export class GetResultTool {
     private readonly registry: AgentConfigLookup,
   ) {}
 
+  /**
+   * Report on one agent.
+   *
+   * The branch decides which agents this call can see: an agent started on a
+   * branch /tree has left is gone with it, live or not. Without a session to
+   * read (a bare call outside Pi), every live agent is visible.
+   */
   async execute(
     _toolCallId: string,
-    params: { agent_id: string; wait?: boolean; verbose?: boolean },
+    params: GetParams & { agent_id: string },
     signal: AbortSignal,
     _onUpdate: unknown,
-    _ctx: unknown,
+    ctx: unknown,
   ) {
-    const record = this.manager.getRecord(params.agent_id);
+    const branch = readBranchRecords(ctx);
+    const id = params.agent_id;
+    const saved = branch?.find((candidate) => candidate.id === id);
+    const live = this.manager.getRecord(id);
+    const record = live && (branch === undefined || saved) ? live : undefined;
     if (!record) {
-      return textResult<GetResultDetails>(
-        `Agent not found: "${params.agent_id}". Records are cleared at session start/switch, so it may be from a previous session.`,
-      );
+      if (saved) return this.savedResult(saved, params.verbose === true);
+      return textResult<GetResultDetails>(agentNotFoundMessage(id));
     }
 
     // Wait for completion if requested. The record owns the decision of whether
@@ -78,6 +112,61 @@ export class GetResultTool {
       formatAgentReport(this.buildReport(record, outcome, verbose, superseded !== undefined)),
       this.buildGetResultDetails(record, outcome, verbose),
     );
+  }
+
+  /** List the branch's agents, with live state wherever a live agent backs one. */
+  list(ctx: unknown) {
+    const branch = readBranchRecords(ctx);
+    const getLive = (id: string) => this.manager.getRecord(id);
+    const entries = buildRoster(branch ?? this.manager.listAgents(), getLive);
+    return textResult<GetListDetails>(formatRosterList(entries), {
+      kind: SUBAGENT_LIST_KIND,
+      total: entries.length,
+    });
+  }
+
+  /** Answer from the branch's last record for an agent no live record backs. */
+  private savedResult(saved: PersistedSubagentRecord, verbose: boolean) {
+    const interrupted = saved.status === "queued" || saved.status === "running";
+    const displayName = getDisplayName(saved.type, this.registry);
+    const duration = interrupted
+      ? "unknown"
+      : formatDuration(saved.startedAt, saved.completedAt ?? saved.startedAt);
+    const text = formatSavedAgentReport({
+      id: saved.id,
+      displayName,
+      status: saved.status,
+      interrupted,
+      toolUses: saved.toolUses,
+      duration,
+      description: saved.description,
+      result: saved.result,
+      error: saved.error,
+      turnBudget: saved.turnBudget,
+      pendingQuestion: saved.pendingQuestion,
+      model: saved.model,
+      thinkingLevel: saved.thinkingLevel,
+      cwd: saved.cwd,
+      transcriptPath: saved.outputFile,
+      verbose,
+    });
+    return textResult<GetResultDetails>(text, {
+      agentId: saved.id,
+      displayName,
+      status: interrupted ? "stopped" : saved.status,
+      description: saved.description,
+      toolUses: saved.toolUses,
+      tokens: "",
+      contextPercent: null,
+      compactionCount: 0,
+      duration,
+      preview: buildPreview(saved.result),
+      error: interrupted ? "Interrupted: the session was reloaded or replaced" : saved.error,
+      turnBudget: saved.turnBudget,
+      verbose,
+      transcriptPath: saved.outputFile,
+      modelName: saved.model,
+    });
   }
 
   /** The report: outcome fields from `outcome`, everything else from the live record. */
@@ -148,13 +237,18 @@ export class GetResultTool {
     return defineTool({
       name: "subagent_get" as const,
       label: "Get Agent Result",
-      promptSnippet: "Check status and retrieve results from a background agent.",
+      promptSnippet:
+        "Check status and retrieve results from a background agent, or list this branch's agents.",
       description:
-        "Check status and retrieve results from a background agent. Use the agent ID returned by subagent_start.",
+        "Check status and retrieve results from a background agent. Use the agent ID returned by subagent_start. " +
+        "Agents from before a reload, resume or compaction keep their saved result, question and transcript path. " +
+        "Without agent_id, lists the agents started on this branch: waiting on a question first, then running, failed, and completed newest first.",
       parameters: Type.Object({
-        agent_id: Type.String({
-          description: "The agent ID to check.",
-        }),
+        agent_id: Type.Optional(
+          Type.String({
+            description: "The agent ID to check. Omit to list this branch's agents.",
+          }),
+        ),
         wait: Type.Optional(
           Type.Boolean({
             description:
@@ -170,7 +264,7 @@ export class GetResultTool {
       }),
       // ---- Custom rendering: a bounded, Ctrl+O-expandable retrieval row ----
 
-      renderCall(args: { agent_id: string; wait?: boolean; verbose?: boolean }, theme: Theme) {
+      renderCall(args: GetParams, theme: Theme) {
         const notes = [args.wait === true ? "waiting" : "", args.verbose === true ? "verbose" : ""]
           .filter(Boolean)
           .join(", ");
@@ -178,7 +272,7 @@ export class GetResultTool {
           `${ICONS.tool} ` +
             theme.fg("toolTitle", theme.bold("Get Agent Result")) +
             "  " +
-            theme.fg("muted", args.agent_id) +
+            theme.fg("muted", args.agent_id ?? "list") +
             (notes ? " " + theme.fg("muted", `(${notes})`) : ""),
           0,
           0,
@@ -186,25 +280,53 @@ export class GetResultTool {
       },
 
       renderResult(
-        result: AgentToolResult<GetResultDetails | undefined>,
+        result: AgentToolResult<GetResultDetails | GetListDetails | undefined>,
         { expanded }: ToolRenderResultOptions,
         theme: Theme,
       ) {
         const reportText = result.content[0]?.type === "text" ? result.content[0].text : "";
         const details = result.details;
         if (!details) return new Text(reportText, 0, 0);
+        if ("kind" in details) {
+          const summary = theme.fg(
+            "muted",
+            `${details.total} agent${details.total === 1 ? "" : "s"} on this branch`,
+          );
+          const lines = expanded
+            ? [
+                summary,
+                ...reportText
+                  .split("\n")
+                  .slice(1)
+                  .map((line) => theme.fg("dim", line)),
+              ]
+            : [summary];
+          return { render: (width: number) => renderListRows(lines, width), invalidate() {} };
+        }
         return new BoundedLines(renderGetResultLines(details, reportText, expanded, theme));
       },
 
-      execute: (
+      execute: async (
         toolCallId: string,
-        params: { agent_id: string; wait?: boolean; verbose?: boolean },
+        params: GetParams,
         signal: AbortSignal,
         onUpdate: unknown,
         ctx: unknown,
-      ) => this.execute(toolCallId, params, signal, onUpdate, ctx),
+      ): Promise<AgentToolResult<GetResultDetails | GetListDetails | undefined>> => {
+        const { agent_id } = params;
+        if (agent_id === undefined) return this.list(ctx);
+        return this.execute(toolCallId, { ...params, agent_id }, signal, onUpdate, ctx);
+      },
     });
   }
+}
+
+/**
+ * One padded row per list line, each kept to a single terminal row; a width
+ * too narrow for the padding renders blank rows.
+ */
+export function renderListRows(lines: readonly string[], width: number): string[] {
+  return lines.map((line) => bodyRow(line, width));
 }
 
 /** The live record's current outcome fields. */
