@@ -3,6 +3,63 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-04: Record the whole agent lifecycle, answer `subagent_get` from it, and restore a roster card
+
+After a reload, resume or session switch, `subagent_get` answered `Agent not
+found` for every agent the parent had started, and a worker waiting on a
+question lost both the question and the way to see it. After compaction the
+parent kept only the worker IDs its summary happened to mention. The
+`subagent:record` entry now records every lifecycle step, `subagent_get`
+answers from it and lists the branch's agents, and a context-only card
+restores them to the model.
+
+- `src/persisted-record.ts`: the parent appends `subagent:record` when an
+  agent is queued or starts running, when a resume starts, and at every
+  terminal state, as before. Entries gain optional `pendingQuestion`, `model`
+  (`provider/id`), `thinkingLevel`, `maxTurns` and `cwd`; an unknown one is
+  left off rather than written as `undefined`. `readPersistedRecords` folds a
+  branch's entries into the last valid record per ID; entries without the new
+  fields still validate, and malformed ones are skipped. `readPersistedRuns`
+  is built on it.
+- `src/observation/subagent-events-observer.ts`: `onSubagentCreated`,
+  `onSubagentStarted` and `onSubagentResuming` persist the record too. The
+  parent session writes them, so they follow its branch through `/tree` and
+  forks.
+- `src/lifecycle/subagent.ts`: `maxTurns` and `cwd` getters (`cwd` is the
+  caller's directory, or once the run starts the provider's workspace or the
+  parent's directory).
+- `src/roster.ts` (new): the branch's agents, folded from its records and
+  overlaid with live state, ordered waiting on a question, running, failed,
+  then completed newest first. A record still reading queued or running with
+  no live agent is reported as interrupted. Formats the roster line, the card
+  (20 whole lines at most; waiting and running agents never dropped; the last
+  line counts what was left out) and the list. Descriptions are cut to 80
+  characters and questions and errors to 160, after stripping terminal
+  controls, at grapheme boundaries so wide characters and emoji stay whole.
+- `src/tools/get-result-tool.ts`, `src/tools/get-result-report.ts`:
+  `agent_id` is optional; without it `subagent_get` lists the branch's agents
+  with `details.kind: "list"`. An ID is visible only if the current branch
+  holds a record for it, so a live agent started on a branch `/tree` has left
+  is hidden. When no live agent has the ID, the report comes from the saved
+  record — status, result, error, question, model, directory and transcript
+  path — and says the agent cannot be resumed because its live session ended.
+  `Agent not found` now says the branch never started the ID.
+- `src/handlers/roster-card.ts` (new), `src/index.ts`: a `context` handler,
+  following pi-stash's pattern, strips its own card and appends a fresh one as
+  a `custom` message with `display: false`, never written to the transcript.
+  It is armed by `session_start` (reload, resume, fork), `session_tree` and
+  `session_compact` when the branch already has agents, and stops once a
+  successful `subagent_get` list result arrives after that event. A branch
+  with no agents gets no card.
+- `src/tools/agent-tool.ts`, `src/tools/steer-tool.ts`: the resume and steer
+  doors no longer claim records are cleared at session start; they point at
+  `subagent_get` without `agent_id`.
+- `src/config/default-agents.ts`: the orchestrator profile lists its workers
+  with `subagent_get` after compaction, reload or a handoff.
+- `README.md`, `docs/configuration.md`: document the records, the list, the
+  record-backed reports and the card, and replace the note that a reload does
+  not reconnect agent IDs.
+
 ## 2026-11-04: Agents run in the background by default; `foreground` replaces `run_in_background`
 
 `subagent_start` returns an agent ID at once and announces the result with a

@@ -313,6 +313,21 @@ export class Subagent {
     );
   }
 
+  /** The turn ceiling the spawn asked for; undefined when it left the agent's own limit. */
+  get maxTurns(): number | undefined {
+    return this.execution.maxTurns;
+  }
+
+  /**
+   * The directory this agent runs in: the caller's choice, or once the run has
+   * started, the workspace provider's or the parent's. Undefined before a
+   * provider has prepared a workspace.
+   */
+  get cwd(): string | undefined {
+    return this._runCwd ?? this.execution.cwd;
+  }
+  private _runCwd?: string;
+
   /** The tool call ID that spawned this background agent, if any. */
   get toolCallId(): string | undefined {
     return this.execution.parentSession?.toolCallId;
@@ -457,6 +472,7 @@ export class Subagent {
       }
     }
 
+    this._runCwd = cwd ?? this.execution.snapshot.cwd;
     const runConfig = this.execution.getRunConfig?.();
     try {
       this.subagentSession = await this.execution.createSubagentSession({

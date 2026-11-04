@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   type PersistedSubagentRecord,
+  readPersistedRecords,
   readPersistedRuns,
   type SessionEntryLike,
   SUBAGENT_RECORD_ENTRY,
@@ -61,7 +62,98 @@ describe("toPersistedRecord", () => {
       completedAt: 2500,
       outputFile: "/tasks/a.jsonl",
       toolUses: 7,
+      // The attached session stub reports its thinking level.
+      thinkingLevel: "off",
     });
+  });
+
+  it("records the question, model label, thinking level, turn ceiling and directory", () => {
+    const record = toPersistedRecord({
+      ...persistedRecord(),
+      pendingQuestion: "Postgres or SQLite?",
+      model: { provider: "anthropic", id: "claude-x" },
+      thinkingLevel: "high",
+      maxTurns: 12,
+      cwd: "/work/tree",
+    });
+    expect(record).toMatchObject({
+      pendingQuestion: "Postgres or SQLite?",
+      model: "anthropic/claude-x",
+      thinkingLevel: "high",
+      maxTurns: 12,
+      cwd: "/work/tree",
+    });
+  });
+
+  it("leaves unknown optional fields off the entry instead of writing undefined", () => {
+    const record = toPersistedRecord({ ...persistedRecord(), model: undefined });
+    for (const key of ["pendingQuestion", "model", "thinkingLevel", "maxTurns", "cwd"]) {
+      expect(record).not.toHaveProperty(key);
+    }
+  });
+});
+
+describe("readPersistedRecords", () => {
+  it("folds every lifecycle step into the last one per id", () => {
+    const entries = [
+      recordEntry(
+        persistedRecord({ status: "running", result: undefined, completedAt: undefined }),
+      ),
+      recordEntry(persistedRecord({ status: "completed", pendingQuestion: "Which DB?" })),
+      recordEntry(persistedRecord({ id: "run-2", startedAt: 2000, status: "running" })),
+      // A resume clears the question and runs again.
+      recordEntry(persistedRecord({ status: "running", completedAt: undefined })),
+    ];
+    const records = readPersistedRecords(entries);
+    expect(records.map((record) => [record.id, record.status])).toEqual([
+      ["run-2", "running"],
+      ["run-1", "running"],
+    ]);
+    expect(records[1]).not.toHaveProperty("pendingQuestion");
+  });
+
+  it("reads an entry written before the optional fields existed", () => {
+    const [record] = readPersistedRecords([recordEntry(persistedRecord())]);
+    expect(record).toStrictEqual(persistedRecord());
+  });
+
+  it("returns every optional field it validated", () => {
+    const full = {
+      ...persistedRecord(),
+      pendingQuestion: "Which DB?",
+      model: "anthropic/claude-x",
+      thinkingLevel: "medium",
+      maxTurns: 4,
+      cwd: "/w",
+    };
+    expect(readPersistedRecords([recordEntry(full)])).toStrictEqual([full]);
+  });
+
+  it("treats JSON nulls as absent", () => {
+    const [record] = readPersistedRecords([
+      recordEntry({ ...persistedRecord(), result: null, error: null, completedAt: null }),
+    ]);
+    expect(record).toMatchObject({ result: undefined, error: undefined, completedAt: undefined });
+  });
+
+  it.each([
+    ["a numeric question", { pendingQuestion: 7 }],
+    ["a model object", { model: { provider: "a", id: "b" } }],
+    ["a string turn ceiling", { maxTurns: "12" }],
+    ["a numeric directory", { cwd: 1 }],
+    ["a string completion time", { completedAt: "later" }],
+    ["a string turn budget", { turnBudget: "lots" }],
+    ["a numeric result", { result: 42 }],
+  ])("skips an entry with %s", (_label, override) => {
+    expect(readPersistedRecords([recordEntry({ ...persistedRecord(), ...override })])).toEqual([]);
+  });
+
+  it("keeps the last valid record when a later entry for the id is malformed", () => {
+    const entries = [
+      recordEntry(persistedRecord({ status: "completed" })),
+      recordEntry({ ...persistedRecord(), status: "bogus" }),
+    ];
+    expect(readPersistedRecords(entries).map((record) => record.status)).toEqual(["completed"]);
   });
 });
 

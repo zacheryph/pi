@@ -253,6 +253,10 @@ Provides `subagent_start`, `subagent_get`, and `subagent_steer`, plus
 `subagent_start` takes a `cwd`, so an orchestrator can run a worker in a
 directory it prepared, such as a git worktree; that directory is never removed
 for it and the worker stays resumable there.
+The session records every agent's lifecycle, so `subagent_get` still answers for
+an agent's ID after a reload or resume (status, result, question, transcript
+path), lists the branch's agents when called without one, and a context-only
+roster card restores them to the model after compaction, reload, resume or `/tree`.
 
 Background agents use a compact widget above Pi's editor:
 

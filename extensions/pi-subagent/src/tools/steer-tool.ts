@@ -31,7 +31,7 @@ export class SteerTool {
     const record = this.manager.getRecord(params.agent_id);
     if (!record) {
       return textResult(
-        `Agent not found: "${params.agent_id}". Records are cleared at session start/switch, so it may be from a previous session.`,
+        `Agent not found: "${params.agent_id}". It is not live in this session; subagent_get without agent_id lists the agents started on this branch, including any from before a reload or resume.`,
       );
     }
 
