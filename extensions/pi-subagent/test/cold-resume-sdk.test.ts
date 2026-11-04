@@ -253,6 +253,25 @@ describe("cold resume in a real parent session (offline faux provider)", () => {
     expect(latestRecord(h.manager).outputFile).toBe(transcript);
   }, 30_000);
 
+  it.each([3, 0])(
+    "keeps a resolved turn limit of %s after a reload changes the default",
+    async (maxTurns) => {
+      const settings = join(dir, "subagent.json");
+      writeFileSync(settings, JSON.stringify({ defaultMaxTurns: maxTurns }));
+      const h = await parent();
+      const { id, record } = await finishedWorker(h);
+      expect(record.maxTurns).toBe(maxTurns || undefined);
+      expect(record.turnBudget?.maxTurns).toBe(maxTurns || undefined);
+
+      writeFileSync(settings, JSON.stringify({ defaultMaxTurns: 20 }));
+      await h.session.reload();
+      await resumeForeground(h, id);
+
+      expect(latestRecord(h.manager).turnBudget?.maxTurns).toBe(maxTurns || undefined);
+    },
+    30_000,
+  );
+
   it("stays refused when its directory was removed, and names the transcript", async () => {
     const worktree = join(dir, "worktree");
     mkdirSync(worktree);
