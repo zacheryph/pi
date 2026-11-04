@@ -255,6 +255,24 @@ describe("composition root: message renderers", () => {
   });
 });
 
+describe("composition root: commands", () => {
+  it("registers the agent definitions browser as /agents", () => {
+    const { pi } = makePi();
+    subagentsExtension(pi);
+
+    const registered = vi
+      .mocked(pi.registerCommand)
+      .mock.calls.map((call: unknown[]) => call[0] as string);
+
+    expect(registered).toEqual([
+      "subagent:watch",
+      "subagent:settings",
+      "agents",
+      "subagent:sessions",
+    ]);
+  });
+});
+
 describe("composition root: widget activation", () => {
   beforeEach(() => {
     vi.useFakeTimers();

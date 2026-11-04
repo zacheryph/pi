@@ -3,6 +3,15 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-04: Restore the agent definitions browser as `/agents`
+
+The read-only agent profile browser was still registered, but as `/agent`
+after the identifier rename, so `/agents` (and its old `/subagents:agents`
+name) no longer matched any command and the browser looked gone.
+
+- Register the browser as `/agents` again.
+- Pin the extension's command names in a composition-root test.
+
 ## 2026-11-04: Add a four-fifths watch-overlay width preset
 
 - Add `four-fifths` (80%) to the overlay width selector and persisted settings.
