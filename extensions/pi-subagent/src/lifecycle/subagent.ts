@@ -277,6 +277,12 @@ export class Subagent {
   private _releasedModel?: Model<any>;
   private _releasedThinkingLevel?: ThinkingLevel;
   private _sessionReleased = false;
+  /** A reopened transcript must not share its session ID with a dying session. */
+  private sessionRelease?: Promise<void>;
+  /** A stopped rebuild still owns the transcript until its setup has unwound. */
+  private reopening = false;
+  /** Resolved ceiling carried across cold resumes, including 0 for unlimited. */
+  private resumeMaxTurns?: number;
   /** True once releaseSession() has freed a live session (distinct from never having had one). */
   get sessionReleased(): boolean {
     return this._sessionReleased;
@@ -368,7 +374,7 @@ export class Subagent {
     // its session, and "still running" describes that record better than "no
     // session" does. A queued agent is not running and keeps the no-session
     // answer, which is the truth about it.
-    if (this.isRunning()) return "still-running";
+    if (this.isRunning() || this.reopening) return "still-running";
     if (this.isSessionReady()) return this.workspaceDisposed ? "workspace-disposed" : undefined;
     if (!this._sessionReleased) return "no-session";
     const { checkReopen } = this.execution;
@@ -670,6 +676,8 @@ export class Subagent {
     signal?: AbortSignal,
   ): Promise<void> {
     this._abortController = new AbortController();
+    if (this.turnBudget) this.resumeMaxTurns = this.turnBudget.maxTurns ?? 0;
+    this.reopening = liveSession === undefined;
     // After resetForResume, which releases the previous run's listener handles.
     this.resetForResume(Date.now());
     this.listeners.wireSignal(signal, () => this.abort());
@@ -681,9 +689,11 @@ export class Subagent {
       if (!subagentSession) {
         // Stopped while the session was being rebuilt; abort() marked the record.
         this.listeners.release();
+        this.reopening = false;
         this.execution.observer?.onResumeFinished?.(this);
         return;
       }
+      this.reopening = false;
       this.listeners.attachObserver(
         subscribeSubagentObserver(subagentSession, this.state, {
           onCompact: (info) => this.execution.observer?.onCompacted?.(this, info),
@@ -699,6 +709,7 @@ export class Subagent {
         }),
       );
     } catch (err) {
+      this.reopening = false;
       this.failResume(err);
     }
   }
@@ -712,6 +723,8 @@ export class Subagent {
    * one is disposed rather than kept.
    */
   private async reopenSession(): Promise<SubagentSession | undefined> {
+    if (this.sessionRelease) await this.sessionRelease;
+    if (this.abortController.signal.aborted) return undefined;
     const runConfig = this.execution.getRunConfig?.();
     const session = await this.execution.createSubagentSession({
       ...this.sessionParams(runConfig),
@@ -725,7 +738,7 @@ export class Subagent {
       return undefined;
     }
     session.applyTurnLimits({
-      maxTurns: this.execution.maxTurns,
+      maxTurns: this.resumeMaxTurns ?? this.execution.maxTurns,
       defaultMaxTurns: runConfig?.defaultMaxTurns,
       wrapUpTurns: runConfig?.wrapUpTurns,
     });
@@ -912,6 +925,9 @@ export class Subagent {
   async disposeSession(): Promise<void> {
     this.disposeHeldWorkspace();
     await disposeQuietly(this.subagentSession, "child session dispose");
+    // A retention release already cleared subagentSession, but its shutdown
+    // must finish before a reload can reopen the same transcript/session ID.
+    await this.sessionRelease;
   }
 
   /**
@@ -932,7 +948,9 @@ export class Subagent {
     this._releasedThinkingLevel = session.thinkingLevel;
     this.subagentSession = undefined;
     this._sessionReleased = true;
-    await disposeQuietly(session, "child session release");
+    this.sessionRelease = disposeQuietly(session, "child session release");
+    await this.sessionRelease;
+    this.sessionRelease = undefined;
   }
 
   /** Fail a run: mark error, release listeners, best-effort workspace dispose, notify observer. */

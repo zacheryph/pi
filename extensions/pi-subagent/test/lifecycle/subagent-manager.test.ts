@@ -2047,6 +2047,81 @@ describe("SubagentManager — cold resume", () => {
       });
     });
 
+    it("waits for the released session's shutdown before reopening its transcript", async () => {
+      const first = createSessionFactory(createMockSession(), transcript);
+      const shutdown = Promise.withResolvers<void>();
+      first.stub.dispose.mockImplementation(() => shutdown.promise);
+      const second = createSubagentSessionStub(createMockSession(), transcript);
+      const factory = vi
+        .fn<SessionFactory>()
+        .mockImplementationOnce(first.factory)
+        .mockResolvedValueOnce(toSubagentSession(second));
+      ({ manager } = createManager({ createSubagentSession: factory }));
+      const id = manager.spawn(STUB_SNAPSHOT, "general-purpose", "work", {
+        description: "work",
+        background: { kind: "explicit", isBackground: true },
+        cwd,
+      });
+      const record = manager.getRecord(id)!;
+      await record.promise;
+      const released = record.releaseSession();
+      manager.startResume(id, "continue");
+      expect(record.status).toBe("running");
+      expect(factory).toHaveBeenCalledTimes(1);
+      shutdown.resolve();
+      await released;
+      await record.promise;
+      expect(factory).toHaveBeenCalledTimes(2);
+      expect(second.resumeTurnLoop).toHaveBeenCalled();
+    });
+
+    it("keeps the original resolved turn ceiling after the runtime default changes", async () => {
+      const first = createSessionFactory(createMockSession(), transcript);
+      first.stub.runTurnLoop.mockImplementation(async (_prompt, opts) => {
+        const result = turnLoopResult({ turnBudget: { maxTurns: 3, used: 1, phase: "within" } });
+        opts.onTurnBudget?.(result.turnBudget);
+        return result;
+      });
+      const second = createSubagentSessionStub(createMockSession(), transcript);
+      const factory = vi
+        .fn<SessionFactory>()
+        .mockImplementationOnce(first.factory)
+        .mockResolvedValueOnce(toSubagentSession(second));
+      ({ manager } = createManager({
+        createSubagentSession: factory,
+        getRunConfig: () => ({ defaultMaxTurns: 20 }) as RunConfig,
+      }));
+      const id = manager.spawn(STUB_SNAPSHOT, "general-purpose", "work", {
+        description: "work",
+        background: { kind: "explicit", isBackground: true },
+        cwd,
+      });
+      const record = manager.getRecord(id)!;
+      await record.promise;
+      await record.releaseSession();
+      await manager.resume(id, "continue");
+      expect(second.applyTurnLimits).toHaveBeenCalledWith(expect.objectContaining({ maxTurns: 3 }));
+    });
+
+    it("waits for an ongoing retention release when disposing the manager for a reload", async () => {
+      const { factory, stub } = createSessionFactory(createMockSession(), transcript);
+      ({ manager } = createManager({ createSubagentSession: factory }));
+      const id = spawnBg(manager);
+      const record = manager.getRecord(id)!;
+      await record.promise;
+      const shutdown = Promise.withResolvers<void>();
+      stub.dispose.mockImplementation(() => shutdown.promise);
+      const released = record.releaseSession();
+      const disposed = vi.fn();
+      const teardown = manager.dispose().then(disposed);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(disposed).not.toHaveBeenCalled();
+      shutdown.resolve();
+      await released;
+      await teardown;
+      expect(disposed).toHaveBeenCalledOnce();
+    });
+
     it("stays refused once its directory is gone, and names the transcript", async () => {
       const { factory, stub } = createSessionFactory(createMockSession(), transcript);
       const { id } = await releasedAgent(factory);
@@ -2129,6 +2204,10 @@ describe("SubagentManager — cold resume", () => {
       await vi.waitFor(() => expect(factory).toHaveBeenCalledTimes(2));
 
       expect(manager.abort(id)).toBe(true);
+      expect(manager.startResume(id, "too soon")).toEqual({
+        kind: "refused",
+        reason: "still-running",
+      });
       finish(toSubagentSession(second));
       await record.promise;
 
@@ -2212,6 +2291,21 @@ describe("SubagentManager — cold resume", () => {
       }));
       expect((await manager.resume("saved-1", "continue")).kind).toBe("resumed");
       expect(stub.resumeTurnLoop).toHaveBeenCalled();
+    });
+
+    it.each([3, undefined])("keeps a saved resolved turn ceiling of %s", async (maxTurns) => {
+      const { factory, stub } = createSessionFactory(createMockSession(), transcript);
+      ({ manager } = createManager({
+        createSubagentSession: factory,
+        getRunConfig: () => ({ defaultMaxTurns: 20 }) as RunConfig,
+        savedAgents: savedAgents(
+          savedRecord({ turnBudget: { maxTurns, used: 1, phase: "within" } }),
+        ),
+      }));
+      await manager.resume("saved-1", "continue");
+      expect(stub.applyTurnLimits).toHaveBeenCalledWith(
+        expect.objectContaining({ maxTurns: maxTurns ?? 0 }),
+      );
     });
 
     it.each([

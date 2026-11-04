@@ -3,6 +3,16 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-04: Serialize cold-resume setup and preserve resolved turn limits
+
+- Wait for a released session's shutdown before reopening its transcript, so
+  its late disposal cannot unregister the new session under the same ID.
+- Refuse another resume while a stopped cold rebuild is still unwinding; the
+  stopped setup must dispose its session before a replacement can start.
+- Keep the previous run's resolved turn ceiling, including unlimited runs,
+  across release and reload rather than resolving it from changed defaults.
+- Add lifecycle regressions and real SDK reload coverage for these paths.
+
 ## 2026-11-04: Cold resume a released subagent from its saved transcript
 
 `resume` only continued an agent's live `AgentSession`, and was refused once
