@@ -565,4 +565,3 @@ describe("parsing helpers", () => {
     expect(parseRemote(url)).toEqual(expected);
   });
 });
-
