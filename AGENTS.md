@@ -17,11 +17,12 @@ first-party code, shaped by what is best for the code. Do not weigh, mention or
 avoid changes because of upstream sync cost, divergence from upstream, or
 contributing changes back.
 
-Each vendored extension keeps two records (see the `vendor-extension` skill):
+Import with the `vendor-extension` skill: the first commit is a verbatim copy of
+upstream, verifiable by tree hash; integration and changes follow in later
+commits. Each vendored extension keeps two records:
 
-- `UPSTREAM.md` holds only the vendoring details: source, pinned commit, version,
-  license, how it was copied, and the sync history. Change it only when importing
-  or syncing with upstream.
+- `UPSTREAM.md` holds only provenance: source, pinned commit, tree hash, version,
+  license and import date. It is written at import and not edited after.
 - `CHANGELOG.md` holds every local change, newest first, added in the same commit
   as the change. Its first (oldest) entry only points at `UPSTREAM.md`. If
   upstream shipped a changelog, its content is cleared at import and that entry
