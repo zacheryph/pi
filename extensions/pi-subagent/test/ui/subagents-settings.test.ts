@@ -165,7 +165,7 @@ describe("SubagentsSettingsHandler — overlay settings", () => {
       "warning",
     );
   });
-  it.each<OverlayWidth>(["quarter", "third", "half", "two-thirds"])(
+  it.each<OverlayWidth>(["quarter", "third", "half", "two-thirds", "four-fifths"])(
     "selects width preset %s without freeform input",
     async (width) => {
       const { handler, settings } = makeHandler();
@@ -176,6 +176,7 @@ describe("SubagentsSettingsHandler — overlay settings", () => {
         "Third (1/3)",
         "Half (1/2)",
         "Two-thirds (2/3)",
+        "Four-fifths (4/5)",
       ]);
       expect(settings.applyOverlayWidth).toHaveBeenCalledExactlyOnceWith(width);
       expect(ui.input).not.toHaveBeenCalled();

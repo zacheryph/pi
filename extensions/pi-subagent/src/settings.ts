@@ -11,7 +11,7 @@ import {
 import { isBelowMinimumTurns, MIN_MAX_TURNS } from "#src/lifecycle/turn-limits";
 import type { PromptInheritance } from "#src/types";
 
-export type OverlayWidth = "quarter" | "third" | "half" | "two-thirds";
+export type OverlayWidth = "quarter" | "third" | "half" | "two-thirds" | "four-fifths";
 
 /** Shared settings choices and exact terminal-width fractions for the overlay. */
 export const OVERLAY_WIDTH_PRESETS = {
@@ -19,6 +19,7 @@ export const OVERLAY_WIDTH_PRESETS = {
   third: { label: "Third (1/3)", fraction: 1 / 3 },
   half: { label: "Half (1/2)", fraction: 1 / 2 },
   "two-thirds": { label: "Two-thirds (2/3)", fraction: 2 / 3 },
+  "four-fifths": { label: "Four-fifths (4/5)", fraction: 4 / 5 },
 } as const satisfies Record<OverlayWidth, { label: string; fraction: number }>;
 
 /** Pi overlay sizing percentages, shared with the overlay controller. */
@@ -27,6 +28,7 @@ export const OVERLAY_WIDTH_PERCENT = {
   third: "33.333%",
   half: "50%",
   "two-thirds": "66.667%",
+  "four-fifths": "80%",
 } as const satisfies Record<OverlayWidth, `${number}%`>;
 
 function isOverlayWidth(value: unknown): value is OverlayWidth {

@@ -285,7 +285,7 @@ The message interrupts after the current tool execution.
 
 Interactive list to tune runtime settings — max concurrency, default max turns, wrap-up turns, the two session-retention windows, and whether ESC aborts every subagent.
 The numeric settings open an input prompt; the abort-on-ESC entry is a direct flip.
-Watch-overlay width uses a preset selector (quarter, third, half, two-thirds);
+Watch-overlay width uses a preset selector (quarter, third, half, two-thirds, four-fifths);
 default visibility and thinking visibility are toggles. The overlay starts closed
 at third width, with thinking enabled.
 Changes persist across pi restarts (see [Persistent Settings](./docs/configuration.md#persistent-settings)).

@@ -520,7 +520,7 @@ or the layered `subagent.json` files:
 
 | Setting               | Default | Accepted values                                                                         |
 | --------------------- | ------- | --------------------------------------------------------------------------------------- |
-| `overlayWidth`        | `third` | `quarter` (25%), `third` (~33%), `half` (50%), `two-thirds` (~67%)                      |
+| `overlayWidth`        | `third` | `quarter` (25%), `third` (~33%), `half` (50%), `two-thirds` (~67%), `four-fifths` (80%) |
 | `overlayDefaultOpen`  | `false` | Boolean: show automatically while agents are active, before any explicit session choice |
 | `overlayShowThinking` | `true`  | Boolean: display provider-emitted thinking in the watch feed                            |
 
