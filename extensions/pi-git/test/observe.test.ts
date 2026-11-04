@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { observe, parsePrUrls, parseRemote, type ToolResultLike } from "../src/observe.ts";
+import { mergeStatus, observedStatus } from "../src/prs.ts";
 
 const text = (value: string) => [{ type: "text", text: value }];
 const result = (
@@ -318,6 +319,41 @@ describe("observe: gh in a shell", () => {
     expect(mcp?.facts).toEqual({ review: "none" });
   });
 
+  it.each([
+    "[]",
+    JSON.stringify([
+      {
+        id: 321,
+        user: { login: "alice" },
+        body: "Please rename this variable",
+        path: "src/index.ts",
+        pull_request_review_id: 123,
+      },
+    ]),
+  ])("preserves review decisions when reading inline comments: %s", async (output) => {
+    const reads = [
+      bash("gh api repos/acme/api/pulls/69/reviews/123/comments", output),
+      bash("gh api 'repos/acme/api/pulls/69/reviews/123/comments?per_page=100'", output),
+      result(
+        "mcp__github__pull_request_read",
+        { method: "get_review_comments", owner: "acme", repo: "api", pullNumber: 69 },
+        output,
+      ),
+    ];
+    for (const read of reads) {
+      const [observation] = await run(read);
+      expect(observation).toMatchObject({ ref: { ...ORIGIN, number: 69 }, origin: "referenced" });
+      expect(observation?.facts?.review).toBeUndefined();
+      for (const review of ["approved", "changes_requested"] as const) {
+        const status = mergeStatus(
+          observedStatus({ review }, 10, "bash"),
+          observation?.facts ? observedStatus(observation.facts, 20, read.toolName) : undefined,
+        );
+        expect(status?.review).toBe(review);
+      }
+    }
+  });
+
   it("resolves a bare number from the origin remote of the directory a leading cd moves to", async () => {
     resolveRepo.mockClear();
     await run(bash("cd ../web && gh pr view 5 --json state", '{"state":"OPEN"}'));
@@ -529,3 +565,4 @@ describe("parsing helpers", () => {
     expect(parseRemote(url)).toEqual(expected);
   });
 });
+
