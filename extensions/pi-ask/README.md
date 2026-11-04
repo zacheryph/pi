@@ -29,8 +29,8 @@ delegated to it, and the main session asks you.
 | `options[].label`         | 60 characters   | Labels must be distinct within a question              |
 | `questions[].multiSelect` | default `false` | Allows several choices                                 |
 
-Every question also takes a free-text answer, so the model never needs an
-"Other" option. `ask` is `model-only`: codemode scripts and `job_watch` checks
+Every question also takes a free-text answer, so prompts never need to add an
+"Other" option by hand. `ask` is `model-only`: codemode scripts and `job_watch` checks
 cannot call it.
 
 ## Routes
