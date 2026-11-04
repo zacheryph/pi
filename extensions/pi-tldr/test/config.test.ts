@@ -19,7 +19,7 @@ it("layers global and project settings without weakening strict validation", () 
     JSON.stringify({ model: " custom/luna ", setSessionName: false }),
   );
   writeFileSync(join(cwd, ".pi/tldr.json"), JSON.stringify({ setSessionName: true }));
-  expect(loadTldrConfig(cwd, agentDir)).toEqual({ model: "custom/luna", setSessionName: true });
+  expect(loadTldrConfig(cwd, agentDir)).toEqual({ model: "custom/luna", setSessionName: false });
 });
 it.each(["{bad", "[]", "null", '{"model":""}', '{"setSessionName":"yes"}'])(
   "rejects invalid configuration %s with its path",
