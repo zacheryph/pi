@@ -46,7 +46,7 @@ const REPO_URL =
 const GH_PR_VERBS = "view|checks|merge|review|ready|edit|comment|close|reopen|create|diff";
 const GH_PR = new RegExp(String.raw`(?:^|[\s;&|(])gh\s+pr\s+(${GH_PR_VERBS})\b([^\n;&|]*)`, "g");
 const GH_API_PULL =
-  /(?:^|[\s;&|(])gh\s+api\b[^\n;&|]*?['"]?\/?repos\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)\/pulls\/(\d+)(\/[A-Za-z_/-]*)?/g;
+  /(?:^|[\s;&|(])gh\s+api\b[^\n;&|]*?['"]?\/?repos\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)\/pulls\/(\d+)(\/[A-Za-z0-9_/-]*)?/g;
 
 export function outputText(content: ToolResultLike["content"]): string {
   return content
@@ -353,7 +353,7 @@ function observeGithubTool(result: ToolResultLike): Observation[] {
       /merge_pull_request/i.test(result.toolName) && isRecord(json) && json.merged === true;
     // pull_request_read's `method` says what the result is, even when it is an empty list.
     const method = typeof result.input.method === "string" ? result.input.method : "";
-    const facts = restFacts(json, /review/i.test(method) ? "/reviews" : "");
+    const facts = restFacts(json, method === "get_reviews" ? "/reviews" : "");
     return [
       {
         ref,
@@ -373,7 +373,12 @@ function observeGithubTool(result: ToolResultLike): Observation[] {
  */
 function restFacts(json: unknown, sub: string): { title?: string; facts?: PrFacts } {
   if (Array.isArray(json)) {
-    if (/reviews/.test(sub) || json.some((item) => isRecord(item) && "submitted_at" in item)) {
+    // Only the reviews list can establish that no decision stands. A review's
+    // comments are a different endpoint and carry no decision, even when empty.
+    if (
+      /^\/reviews\/?$/.test(sub) ||
+      json.some((item) => isRecord(item) && "submitted_at" in item)
+    ) {
       const review = reviewFromList(json);
       return review ? { facts: { review } } : {};
     }
@@ -492,3 +497,4 @@ function dedupe(observations: Observation[]): Observation[] {
   }
   return [...byKey.values()];
 }
+
