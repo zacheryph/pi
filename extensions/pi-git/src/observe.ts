@@ -251,7 +251,7 @@ function checksFromBuckets(items: readonly unknown[]): PrChecks | undefined {
 }
 
 /** `gh pr view --json …` fields. */
-function graphqlFacts(json: Record<string, unknown>): { title?: string; facts?: PrFacts } {
+export function graphqlFacts(json: Record<string, unknown>): { title?: string; facts?: PrFacts } {
   const facts: PrFacts = {};
   const state = typeof json.state === "string" ? json.state.toUpperCase() : undefined;
   if (state === "OPEN") facts.state = "open";
@@ -371,7 +371,7 @@ function observeGithubTool(result: ToolResultLike): Observation[] {
  * Status from a REST-shaped result: a pull request object, its reviews, its
  * check runs, or its combined status. `sub` is the path after `pulls/<n>`.
  */
-function restFacts(json: unknown, sub: string): { title?: string; facts?: PrFacts } {
+export function restFacts(json: unknown, sub: string): { title?: string; facts?: PrFacts } {
   if (Array.isArray(json)) {
     // Only the reviews list can establish that no decision stands. A review's
     // comments are a different endpoint and carry no decision, even when empty.

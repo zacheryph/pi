@@ -12,26 +12,48 @@ the checks finish, and the agent ends its turn in between.
 ## Input and setup
 
 - The PR: a number or URL from the user, or the PR whose head is the current
-  branch. Record `owner`, `repo`, the PR number, the head branch, and the **head
-  commit SHA**.
-- How you reach GitHub. Prefer the `gh` CLI when `gh auth status` succeeds. If the
+  branch. Read it with `git_pr_status { pr }`: it returns the head branch
+  (`headRef`), the **head commit SHA** (`headSha`), state, review decision and
+  check counts, through `gh` or the GitHub MCP tools, whichever works, and
+  records the PR in the session's ledger. Record `owner`, `repo`, the PR
+  number, the head branch and the head SHA. If it fails because neither `gh`
+  nor a GitHub MCP reader is available, stop and say so.
+- How you reach GitHub for everything else (failed logs, reruns, review
+  threads, replies). Prefer the `gh` CLI when `gh auth status` succeeds. If the
   GitHub MCP tools (`mcp__github__*`) are connected instead, use those; their
-  exact names and arguments are in `/system:tools`. If neither works, stop and say
-  so.
+  exact names and arguments are in `/system:tools`.
 - Whether you may push. You may push fixes to a branch you created in this
   session or that the user told you to work on. For anyone else's branch, ask
   first. Never push to the default branch.
 
 Track the work with `todo_upsert`: one task per failing check or review thread, keyed
-`pr<number>-<slug>`, so a reload or compaction loses nothing.
+`pr<number>-<slug>`, so a reload or compaction loses nothing. After a reload,
+`git_pr_list` names the PRs this session opened and `git_pr_status` reads them
+again.
 
 ## 1. Wait for CI on the head commit
 
-Watch the **head commit SHA**, never the PR number: a push moves the PR to a new
-commit, and a wake-up for the PR could describe code you did not mean.
+Watch `git_pr_status` until its checks settle. It works with `gh` and with the
+MCP tools alike, and succeeds once checks were reported and none is pending:
 
-With `gh`, one shell watch covers every check on the commit. It succeeds once
-checks exist and none is still queued or running:
+```json
+{
+  "toolCheck": {
+    "tool": "git_pr_status",
+    "args": { "pr": "https://github.com/OWNER/REPO/pull/NUMBER" },
+    "match": { "path": "prs.0.ciDone", "equals": true }
+  },
+  "intervalSeconds": 60,
+  "timeoutSeconds": 3600,
+  "label": "CI for PR NUMBER at SHA"
+}
+```
+
+It polls the PR, so the commit it settles on may not be the one you pushed:
+step 2 checks `headSha` before trusting the result. When someone else pushes to
+the branch often, pin the watch to the commit instead with a shell watch (`gh`
+only), which succeeds once checks exist on the SHA and none is still queued or
+running:
 
 ```json
 {
@@ -45,22 +67,6 @@ checks exist and none is still queued or running:
 When a single workflow run carries everything, `job_start` with
 `gh run watch RUN_ID --exit-status` is cheaper.
 
-With the MCP tools only, list the check runs for the head commit, then start one
-tool watch per check that is not yet completed:
-
-```json
-{
-  "toolCheck": {
-    "tool": "mcp__github__get_check_run",
-    "args": { "owner": "OWNER", "repo": "REPO", "check_run_id": 123 },
-    "match": { "path": "status", "equals": "completed" }
-  },
-  "intervalSeconds": 60,
-  "timeoutSeconds": 3600,
-  "label": "CHECK NAME at SHA"
-}
-```
-
 Then **end your turn**. Do not poll, sleep, or call the check yourself while the
 watch runs. Completions arrive as one follow-up message.
 
@@ -70,10 +76,12 @@ any job.
 
 ## 2. Triage the results
 
-When woken, confirm the PR head is still the SHA you watched. If someone else
-pushed, start again from step 1 with the new SHA and tell the user.
+When woken, call `git_pr_status { pr }` and confirm `headSha` is still the SHA
+you watched. If someone else pushed, start again from step 1 with the new SHA
+and tell the user. If `checks.failed` is 0, CI is green; go to step 4.
 
-For every check that did not succeed:
+Otherwise list the failing checks with `gh pr checks NUMBER` (or the MCP check
+runs for the head SHA). For every check that did not succeed:
 
 1. Read its failing log: `gh run view RUN_ID --log-failed`, or the MCP job-logs
    tool. Find the first real error, not the last line.
@@ -120,8 +128,8 @@ Never resolve someone else's thread on their behalf, and never approve or merge.
 
 ## 5. Finish
 
-Stop when every check on the head commit succeeded and no review thread is
-waiting on you. Report:
+Stop when `git_pr_status` shows the head SHA you pushed with `ciDone` true and
+no failed checks, and no review thread is waiting on you. Report:
 
 - the final head SHA and its check results;
 - each fix with its commit, and each rerun with its reason;

@@ -357,7 +357,14 @@ describe("AgentTypeRegistry", () => {
       expect(prompt).toContain("pass the returned path as subagent_start's cwd");
       expect(prompt).toContain("send the reviewer and any follow-up worker to the same cwd");
       expect(prompt).toContain("remove it with git_worktree_remove");
-      expect(prompt).toContain("call todo_list and git_worktree_list");
+      expect(prompt).toContain("call todo_list, git_worktree_list and git_pr_list");
+    });
+
+    it("checks pull requests with git_pr_status and waits for CI without polling", () => {
+      const prompt = makeRegistry().resolveAgentConfig("orchestrator").systemPrompt;
+      expect(prompt).toContain("Read its state, review decision and checks with git_pr_status");
+      expect(prompt).toContain("start job_watch on git_pr_status (match prs.0.ciDone)");
+      expect(prompt).toContain("once git_pr_status shows the PR merged");
     });
 
     it("can be overridden or disabled like every other built-in", () => {

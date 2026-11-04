@@ -18,6 +18,7 @@ import {
   defineTool,
   type ExtensionAPI,
   type ExtensionContext,
+  type ExtensionToolContext,
 } from "@earendil-works/pi-coding-agent";
 import { resolve } from "node:path";
 import { Type } from "typebox";
@@ -36,22 +37,47 @@ import { git, realPath, resolveCommit, type BaseRef, type WorktreeStatus } from 
 import { isWorktreeRecord, LEDGER_TYPE, type WorktreeRecord } from "./ledger.ts";
 import {
   observe,
+  outputText,
   parseRemote,
   type Observation,
   type RepoResolver,
   type ToolResultLike,
 } from "./observe.ts";
 import {
+  checksSettled,
   isPrRecord,
   mergeCalls,
   mergePr,
   mergeStatus,
   observedStatus,
   prKey,
+  prLabel,
+  prUrl,
+  sameFacts,
   type PrCall,
+  type PrFacts,
   type PrRecord,
+  type PrRef,
 } from "./prs.ts";
-import { explorerView, listText, prExplorerView, prListText, statusText } from "./view.ts";
+import type { RetryOptions } from "./retry.ts";
+import {
+  fetchWithGh,
+  fetchWithMcp,
+  findPullRequestReader,
+  GhUnavailable,
+  parsePrTarget,
+  type Fetched,
+  type GhRunner,
+  type ToolRunner,
+} from "./status.ts";
+import {
+  explorerView,
+  listText,
+  prExplorerView,
+  prListText,
+  prStatusText,
+  statusText,
+} from "./view.ts";
 import {
   atRisk,
   createWorktree,
@@ -77,7 +103,52 @@ export interface GitTreeService {
 export interface GitExtensionDependencies {
   loadConfig?: (cwd: string) => GitConfig;
   now?: () => number;
+  /** Runs `gh`; defaults to the real binary. */
+  runGh?: GhRunner;
+  /** Retry options for GitHub reads; tests replace the backoff sleep. */
+  retry?: RetryOptions;
 }
+
+/** At most this many pull requests are read in one git_pr_status or /git:refresh. */
+const MAX_STATUS_READS = 20;
+
+const StatusEntry = Type.Object({
+  key: Type.String(),
+  label: Type.String({ description: "owner/repo#number" }),
+  url: Type.String(),
+  title: Type.Optional(Type.String()),
+  state: Type.Optional(Type.String({ description: "open, closed or merged" })),
+  draft: Type.Optional(Type.Boolean()),
+  review: Type.Optional(
+    Type.String({ description: "approved, changes_requested, review_required or none" }),
+  ),
+  checks: Type.Optional(
+    Type.Object({ passed: Type.Integer(), failed: Type.Integer(), pending: Type.Integer() }),
+  ),
+  mergeable: Type.Optional(Type.Boolean({ description: "false when there are merge conflicts" })),
+  headSha: Type.Optional(Type.String()),
+  headRef: Type.Optional(Type.String()),
+  ciDone: Type.Boolean({ description: "Checks were reported and none is still pending." }),
+  source: Type.Optional(Type.String({ description: "gh, or the MCP tool that answered" })),
+  error: Type.Optional(Type.String({ description: "Why the status could not be read." })),
+});
+const StatusOutput = Type.Object({ prs: Type.Array(StatusEntry) });
+type StatusEntryValue = {
+  key: string;
+  label: string;
+  url: string;
+  title?: string;
+  state?: string;
+  draft?: boolean;
+  review?: string;
+  checks?: { passed: number; failed: number; pending: number };
+  mergeable?: boolean;
+  headSha?: string;
+  headRef?: string;
+  ciDone: boolean;
+  source?: string;
+  error?: string;
+};
 
 type Measured = { status: WorktreeStatus } | { error: string };
 /** A worktree to act on, with the base its unsaved work is measured against. */
@@ -256,15 +327,19 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
     }
   };
 
-  /** Record what one tool call showed about one pull request. */
-  const recordPr = (observation: Observation, toolCall: PrCall) => {
+  /**
+   * Record what one tool call showed about one pull request. A call that only
+   * confirms what the ledger already holds (a watch polling the same status)
+   * refreshes the record in memory without writing another entry.
+   */
+  const recordPr = (observation: Observation, toolCall: PrCall, source = toolCall.tool) => {
     const key = prKey(observation.ref);
     const existing = prs.get(key);
     if (!existing && observation.origin === "referenced" && !getConfig().trackReferenced) return;
     const at = toolCall.at;
     const facts =
       observation.facts && Object.keys(observation.facts).length ? observation.facts : undefined;
-    const seen = facts ? observedStatus(facts, at, toolCall.tool) : undefined;
+    const seen = facts ? observedStatus(facts, at, source) : undefined;
     const base: PrRecord = existing ?? {
       v: 1,
       kind: "pr",
@@ -278,7 +353,7 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
       ...(toolCall.agentId ? { createdBy: toolCall.agentId } : {}),
     };
     const status = mergeStatus(base.status, seen);
-    append({
+    const next: PrRecord = {
       ...base,
       origin:
         base.origin === "created" || observation.origin === "created" ? "created" : "referenced",
@@ -286,11 +361,93 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
       ...(status ? { status } : {}),
       calls: mergeCalls(base.calls, [toolCall]),
       updatedAt: existing ? Math.max(at, existing.updatedAt + 1) : at,
-    });
+    };
+    if (
+      existing &&
+      existing.origin === next.origin &&
+      existing.title === next.title &&
+      sameFacts(existing.status, next.status)
+    ) {
+      prs.set(key, next);
+      publish();
+      return next;
+    }
+    append(next);
+    return next;
+  };
+
+  /** git_pr_status calls in flight; their nested MCP calls are recorded by the tool itself. */
+  const ownCalls = new Set<string>();
+
+  /**
+   * Read one PR's status: `gh` first, then the GitHub MCP reader when `gh`
+   * cannot answer and the caller can run tools.
+   */
+  const readStatus = async (
+    ref: PrRef,
+    options: { signal?: AbortSignal; reader?: string; runTool?: ToolRunner },
+  ): Promise<Fetched> => {
+    try {
+      return await fetchWithGh(ref, {
+        signal: options.signal,
+        ...(dependencies.runGh ? { run: dependencies.runGh } : {}),
+        ...(dependencies.retry ? { retry: dependencies.retry } : {}),
+      });
+    } catch (error) {
+      if (!(error instanceof GhUnavailable)) throw error;
+      if (!options.reader || !options.runTool)
+        throw new Error(
+          `${error.message}, and no GitHub MCP pull_request_read tool is available to read it instead`,
+        );
+      return fetchWithMcp(ref, options.reader, options.runTool, dependencies.retry);
+    }
+  };
+
+  /** Read and record each PR; failures become entries with an error, never throws. */
+  const readAndRecord = async (
+    refs: readonly PrRef[],
+    toolCall: Omit<PrCall, "at">,
+    options: { signal?: AbortSignal; reader?: string; runTool?: ToolRunner },
+  ): Promise<StatusEntryValue[]> => {
+    const entries: StatusEntryValue[] = [];
+    for (const ref of refs) {
+      const key = prKey(ref);
+      const existing = prs.get(key);
+      const base = { key, label: prLabel(ref), url: existing?.url ?? prUrl(ref) };
+      try {
+        const fetched = await readStatus(ref, options);
+        const recorded = recordPr(
+          {
+            ref,
+            url: base.url,
+            origin: existing?.origin ?? "referenced",
+            ...(fetched.title ? { title: fetched.title } : {}),
+            facts: fetched.facts,
+          },
+          { ...toolCall, at: now() },
+          fetched.source,
+        );
+        entries.push({
+          ...base,
+          ...((recorded?.title ?? fetched.title)
+            ? { title: recorded?.title ?? fetched.title }
+            : {}),
+          ...pickFacts(fetched.facts),
+          ciDone: checksSettled(fetched.facts),
+          source: fetched.source,
+        });
+      } catch (error) {
+        entries.push({ ...base, ciDone: false, error: errorText(error) });
+      }
+    }
+    return entries;
   };
 
   // Every tool call: did it touch a pull request? Parsing only; never changes the result.
   pi.on("tool_result", async (event, ctx) => {
+    // git_pr_status records what it read itself, including through nested MCP calls.
+    if (event.toolName === "git_pr_status") return;
+    if (event.parentToolCallId && ownCalls.has(event.parentToolCallId)) return;
     try {
       const observations = await observe(event as ToolResultLike, { cwd: ctx.cwd, resolveRepo });
       if (observations.length === 0) return;
@@ -523,7 +680,7 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
       label: "Git PR List",
       description:
         "List the pull requests this session (and its subagents) opened or looked at, with the last status a tool showed for each: state, review, checks, conflicts, and when and how it was seen. " +
-        "Reads the session ledger only; it does not query GitHub, so check a PR again for fresh status.",
+        "Reads the session ledger only; it does not query GitHub. Use git_pr_status for fresh status.",
       promptSnippet: "List the pull requests this session opened or looked at.",
       promptGuidelines: [
         "Use git_pr_list after a reload, compaction or resume to find the pull requests this session opened before checking or changing them again.",
@@ -550,6 +707,142 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
       },
     }),
   );
+
+  pi.registerTool(
+    defineTool({
+      name: "git_pr_status",
+      label: "Git PR Status",
+      description:
+        "Read pull requests' current status from GitHub (state, draft, review decision, check counts, conflicts, head commit) and record it in the session ledger. " +
+        "Uses gh when it is installed and signed in, otherwise a GitHub MCP pull_request_read tool. Retries transient GitHub failures; never writes to GitHub. " +
+        `With pr, reads that PR; without it, every pull request this session opened that is not merged or closed (at most ${MAX_STATUS_READS}). ` +
+        "The result's ciDone is true once checks were reported and none is pending.",
+      promptSnippet: "Read a pull request's current state, review and checks from GitHub.",
+      promptGuidelines: [
+        "Use git_pr_status to check a pull request's state, review decision, checks or conflicts, instead of reading them with gh or the GitHub MCP tools.",
+        'To wait for CI, start job_watch with toolCheck { tool: "git_pr_status", args: { pr }, match: { path: "prs.0.ciDone", equals: true } } and end your turn; then call git_pr_status again and compare headSha with the commit you pushed.',
+      ],
+      parameters: Type.Object({
+        pr: Type.Optional(
+          Type.String({
+            description:
+              "A pull request URL, owner/repo#number, or a number in the current repository. Omit for every open PR this session opened.",
+          }),
+        ),
+        includeReferenced: Type.Optional(
+          Type.Boolean({
+            description:
+              "Without pr, also read open pull requests the session only looked at. Default false.",
+          }),
+        ),
+      }),
+      outputSchema: StatusOutput,
+      annotations: { readOnlyHint: true, openWorldHint: true },
+      async execute(id, params, signal, _update, ctx) {
+        let refs: PrRef[];
+        if (params.pr !== undefined) {
+          const repo = /^#?\d+$/.test(params.pr.trim()) ? await resolveRepo(ctx.cwd) : undefined;
+          const ref = parsePrTarget(params.pr, repo);
+          if (!ref)
+            throw new Error(
+              `git_pr_status: "${params.pr}" is not a pull request URL, owner/repo#number, or a number in this repository`,
+            );
+          refs = [ref];
+        } else {
+          refs = [...prs.values()]
+            .filter(
+              (pr) =>
+                (params.includeReferenced === true || pr.origin === "created") &&
+                pr.status?.state !== "merged" &&
+                pr.status?.state !== "closed",
+            )
+            .sort((a, b) => b.updatedAt - a.updatedAt)
+            .slice(0, MAX_STATUS_READS)
+            .map(({ host, owner, repo, number }) => ({ host, owner, repo, number }));
+        }
+        if (refs.length === 0) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: "No open pull requests in this session's ledger. Pass pr to read one.",
+              },
+            ],
+            details: { prs: [] },
+            structuredContent: { prs: [] },
+          };
+        }
+        const toolCtx = ctx as Partial<ExtensionToolContext>;
+        const canRun = typeof toolCtx.executeTool === "function";
+        const reader = canRun
+          ? findPullRequestReader((toolCtx.tools ?? []).map((tool) => tool.name))
+          : undefined;
+        const runTool: ToolRunner | undefined = canRun
+          ? async (name, args) => {
+              const outcome = await toolCtx.executeTool!(name, args, { signal });
+              return { isError: outcome.isError, text: outputText(outcome.result.content) };
+            }
+          : undefined;
+        const agentId = sessionId ? node(sessionId)?.agentId : undefined;
+        ownCalls.add(id);
+        let entries: StatusEntryValue[];
+        try {
+          entries = await readAndRecord(
+            refs,
+            { tool: "git_pr_status", toolCallId: id, ...(agentId ? { agentId } : {}) },
+            { signal, ...(reader ? { reader } : {}), ...(runTool ? { runTool } : {}) },
+          );
+        } finally {
+          ownCalls.delete(id);
+        }
+        // One PR that could not be read is a failed call (a watch counts it inconclusive).
+        if (entries.every((entry) => entry.error))
+          throw new Error(
+            `git_pr_status: ${entries.map((entry) => `${entry.label}: ${entry.error}`).join("; ")}`,
+          );
+        return {
+          content: [{ type: "text", text: prStatusText(entries) }],
+          details: { prs: entries },
+          structuredContent: { prs: entries },
+        };
+      },
+    }),
+  );
+
+  pi.registerCommand("git:refresh", {
+    description:
+      "Re-read every open pull request in this session's ledger from GitHub (through gh) and re-check every worktree",
+    handler: async (_args, ctx) => {
+      const open = [...prs.values()]
+        .filter((pr) => pr.status?.state !== "merged" && pr.status?.state !== "closed")
+        .sort((a, b) => b.updatedAt - a.updatedAt)
+        .slice(0, MAX_STATUS_READS)
+        .map(({ host, owner, repo, number }) => ({ host, owner, repo, number }));
+      let worktrees = "worktrees checked";
+      try {
+        await refresh();
+      } catch (error) {
+        worktrees = `worktrees not checked: ${errorText(error)}`;
+      }
+      // A command cannot run tools, so this reads through gh only.
+      const entries = await readAndRecord(
+        open,
+        { tool: "/git:refresh", toolCallId: `refresh-${now()}` },
+        {},
+      );
+      const failed = entries.filter((entry) => entry.error);
+      const lines = [
+        `Refreshed ${entries.length - failed.length} of ${entries.length} open pull request${entries.length === 1 ? "" : "s"}; ${worktrees}.`,
+        ...failed.map((entry) => `${entry.label}: ${entry.error}`),
+        ...(failed.some((entry) => /no GitHub MCP/.test(entry.error ?? ""))
+          ? [
+              "Without gh, ask the agent to run git_pr_status, which can read through the GitHub MCP tools.",
+            ]
+          : []),
+      ];
+      ctx.ui.notify(sanitizeText(lines.join("\n")), failed.length ? "warning" : "info");
+    },
+  });
 
   pi.registerCommand("git:prs", {
     description:
@@ -678,6 +971,19 @@ type LedgerRecord = WorktreeRecord | PrRecord;
 function sameContent(a: LedgerRecord, b: LedgerRecord): boolean {
   const strip = ({ updatedAt: _at, via: _via, ...rest }: LedgerRecord) => JSON.stringify(rest);
   return strip(a) === strip(b);
+}
+
+/** The status fields a git_pr_status entry reports. */
+function pickFacts(facts: PrFacts): Partial<StatusEntryValue> {
+  return {
+    ...(facts.state ? { state: facts.state } : {}),
+    ...(facts.draft !== undefined ? { draft: facts.draft } : {}),
+    ...(facts.review ? { review: facts.review } : {}),
+    ...(facts.checks ? { checks: facts.checks } : {}),
+    ...(facts.mergeable !== undefined ? { mergeable: facts.mergeable } : {}),
+    ...(facts.headSha ? { headSha: facts.headSha } : {}),
+    ...(facts.headRef ? { headRef: facts.headRef } : {}),
+  };
 }
 
 function errorText(error: unknown): string {

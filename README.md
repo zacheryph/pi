@@ -71,7 +71,7 @@ pi-personal/
 │   │   ├── test/
 │   │   └── docs/plan.md                 # research and phased plan
 │   ├── pi-git/
-│   │   ├── src/index.ts                 # git_* tools + /git:worktrees, /git:prs
+│   │   ├── src/index.ts                 # git_* tools + /git:worktrees, /git:prs, /git:refresh
 │   │   └── test/
 │   ├── pi-job/                          # vendored
 │   │   ├── src/extension.ts             # job_* tools + /job command
@@ -180,8 +180,12 @@ Pull requests are recorded the same way whenever a tool touches one: `gh pr`
 and `gh api …/pulls/<n>` in bash, the GitHub MCP tools, or a PR URL passed to any
 tool. Each is **opened here** or **referenced**, with the last state, review,
 checks and conflicts its output showed and the tool calls that touched it.
-`git_pr_list` and `/git:prs` list them after a reload; pi-git never queries
-GitHub itself. State is published as `git:snapshot` for the dashboard. The root
+`git_pr_list` and `/git:prs` list them after a reload. `git_pr_status` reads a
+PR's current state, review, checks and head from GitHub (through `gh`, or the
+GitHub MCP tools without it, retrying transient failures) and records it; it is
+read-only, so `job_watch` can poll it until `ciDone`. `/git:refresh` re-reads
+every open PR and re-checks every worktree. State is published as `git:snapshot`
+for the dashboard. The root
 is set by `worktreeRoot` in `~/.pi/agent/git.json` or `.pi/git.json`;
 `trackReferenced: false` keeps only PRs opened here. See [extension docs](extensions/pi-git/README.md) and the
 [plan](docs/plans/git-github-ledger.md).
@@ -360,16 +364,18 @@ with `/skill:<name>`. Skills for working on this repository itself live in
 ### babysit-pr
 
 Drives one pull request to green CI with every review comment handled, without
-polling. It watches the checks of the PR's head commit SHA (never the moving PR
-number) with `job_watch`, or `job_start` with `gh run watch`, and ends its turn
-until they finish. A failed check gets its log read and is classified: caused by
+polling. It reads the PR with pi-git's `git_pr_status` and waits with
+`job_watch` polling it until checks settle (or a shell watch pinned to the head
+commit SHA, or `job_start` with `gh run watch`), ending its turn until they
+finish, then confirms the head SHA is still the one it pushed. A failed check
+gets its log read and is classified: caused by
 the PR (reproduce locally with the same command, smallest fix, rerun, push),
 infrastructure (rerun the failed jobs once), or pre-existing (reported, not
 fixed). Review comments in scope are fixed and answered; larger asks go back to
 you. It stops after three attempts per check, on a decision only you can make, or
 on a conflict with the base branch. Never skips tests, pushes empty commits,
 rewrites others' history, approves, or merges. Uses `gh` when authenticated,
-otherwise the GitHub MCP tools.
+otherwise the GitHub MCP tools, for logs, reruns and replies.
 
 ### make-it-easy
 
@@ -475,3 +481,4 @@ extension records its provenance in `UPSTREAM.md` and its local changes in
 Vendored subagents code retains its upstream [MIT license](extensions/pi-subagent/LICENSE).
 Vendored todo engine retains its upstream [MIT license](extensions/pi-todo/LICENSE).
 Vendored jobs code retains its upstream [MIT license](extensions/pi-job/LICENSE).
+pi-git's GitHub retry classifier (`extensions/pi-git/src/retry.ts`) is copied from `@gotgenes/pi-github-tools` and keeps its MIT notice in the file.

@@ -116,7 +116,9 @@ tests) run in every verification, whether or not the step lists them.
   kept; delete it with `git branch -d`).
 - Do not push or open pull requests unless the user asked for it. If they did,
   default to one branch for the roadmap and one pull request per step that
-  `Ships alone: yes`.
+  `Ships alone: yes`. Record each pull request's URL on its step's task, read
+  its status with `git_pr_status`, and hand one that needs to get green to a
+  worker with the babysit-pr skill.
 - In the roadmap document, add a line under the step:
   `**Landed:** <short sha> · <date>`.
 

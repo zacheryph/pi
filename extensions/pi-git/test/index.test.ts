@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SESSION_TREE_KEY } from "../../../packages/pi-session-tree/src/index.ts";
 import { GIT_SNAPSHOT_EVENT, type GitSnapshotEvent } from "../src/events.ts";
 import piGit from "../src/index.ts";
+import { GhUnavailable, type GhRunner } from "../src/status.ts";
 import { LEDGER_TYPE, type WorktreeRecord } from "../src/ledger.ts";
 import { commit, sandbox, type Sandbox } from "./support/repos.ts";
 
@@ -27,6 +28,7 @@ function harness(options: {
   entries?: unknown[];
   trackReferenced?: boolean;
   loadConfig?: () => { worktreeRoot: string; trackReferenced: boolean };
+  runGh?: GhRunner;
 }) {
   const handlers = new Map<string, Handler[]>();
   const listeners = new Map<string, Handler[]>();
@@ -64,6 +66,8 @@ function harness(options: {
         trackReferenced: options.trackReferenced ?? true,
       })),
     now: () => (frozen ? clock : (clock += 1)),
+    ...(options.runGh ? { runGh: options.runGh } : {}),
+    retry: { sleep: async () => undefined },
   });
   const ui = {
     notify: vi.fn(),
@@ -118,7 +122,9 @@ describe("pi-git registration", () => {
       "git_worktree_list",
       "git_worktree_remove",
       "git_pr_list",
+      "git_pr_status",
     ]);
+    expect(h.commands.has("git:refresh")).toBe(true);
     expect(h.commands.has("git:worktrees")).toBe(true);
     expect(h.commands.has("git:prs")).toBe(true);
     for (const event of ["session_start", "session_tree", "session_shutdown", "tool_result"])
@@ -612,5 +618,240 @@ describe("pull requests", () => {
     const h = await start();
     await expect(h.fire("tool_result", { toolName: "bash", input: null })).resolves.toBeUndefined();
     expect(prs(h)).toEqual([]);
+  });
+});
+
+describe("git_pr_status and /git:refresh", () => {
+  const view = (overrides: Record<string, unknown> = {}) =>
+    JSON.stringify({
+      number: 12,
+      url: "https://github.com/acme/api/pull/12",
+      title: "Add login",
+      state: "OPEN",
+      isDraft: false,
+      reviewDecision: "REVIEW_REQUIRED",
+      mergeable: "MERGEABLE",
+      headRefName: "feat/login",
+      headRefOid: "abc123",
+      statusCheckRollup: [{ __typename: "CheckRun", status: "IN_PROGRESS", conclusion: "" }],
+      ...overrides,
+    });
+  const prEntries = (h: Awaited<ReturnType<typeof start>>) =>
+    h.entries
+      .filter((entry) => (entry as { data?: { kind?: string } }).data?.kind === "pr")
+      .map((entry) => (entry as { data: Record<string, unknown> }).data);
+  const withGh = async (runGh: GhRunner, entries?: unknown[]) => {
+    const h = harness({ sessionId: "parent", cwd: box.dir, root: box.root, runGh, entries });
+    await h.fire("session_start");
+    return h;
+  };
+
+  it("reads a PR through gh, records it, and returns structured status", async () => {
+    const runGh = vi.fn(async () => view());
+    const h = await withGh(runGh);
+    const result = (await h.tool("git_pr_status", { pr: "acme/api#12" })) as unknown as {
+      content: { text: string }[];
+      structuredContent: { prs: Record<string, unknown>[] };
+    };
+    expect(result.structuredContent.prs).toEqual([
+      {
+        key: "github.com/acme/api#12",
+        label: "acme/api#12",
+        url: "https://github.com/acme/api/pull/12",
+        title: "Add login",
+        state: "open",
+        draft: false,
+        review: "review_required",
+        mergeable: true,
+        headRef: "feat/login",
+        headSha: "abc123",
+        checks: { passed: 0, failed: 0, pending: 1 },
+        ciDone: false,
+        source: "gh",
+      },
+    ]);
+    expect(result.content[0].text).toBe(
+      [
+        "- acme/api#12 — Add login",
+        "  open · review required · checks 1 pending · head abc123 (via gh)",
+        "  https://github.com/acme/api/pull/12",
+      ].join("\n"),
+    );
+    expect(prEntries(h).at(-1)).toMatchObject({
+      origin: "referenced",
+      status: { state: "open", source: "gh" },
+      calls: [{ tool: "git_pr_status", toolCallId: "call-1" }],
+    });
+  });
+
+  it("without pr, reads every open PR opened here, and none that is merged or only referenced", async () => {
+    const runGh = vi.fn(async (args: readonly string[]) =>
+      view({ number: Number(/pull\/(\d+)/.exec(args[2])?.[1]), url: args[2] }),
+    );
+    const h = await withGh(runGh);
+    const created = (n: number, state?: string) =>
+      h
+        .fire("tool_result", {
+          toolName: "bash",
+          toolCallId: `c${n}`,
+          input: { command: "gh pr create --fill" },
+          content: [{ type: "text", text: `https://github.com/acme/api/pull/${n}` }],
+          isError: false,
+        })
+        .then(() =>
+          state
+            ? h.fire("tool_result", {
+                toolName: "bash",
+                toolCallId: `m${n}`,
+                input: { command: `gh pr view ${n} -R acme/api` },
+                content: [{ type: "text", text: `state:\t${state}` }],
+                isError: false,
+              })
+            : undefined,
+        );
+    await created(1);
+    await created(2, "MERGED");
+    await h.fire("tool_result", {
+      toolName: "WebFetch",
+      toolCallId: "w3",
+      input: { url: "https://github.com/acme/api/pull/3" },
+      content: [],
+      isError: false,
+    });
+    await h.tool("git_pr_status", {});
+    expect(runGh.mock.calls.map((call) => call[0][2])).toEqual([
+      "https://github.com/acme/api/pull/1",
+    ]);
+    runGh.mockClear();
+    await h.tool("git_pr_status", { includeReferenced: true });
+    expect(runGh.mock.calls.map((call) => call[0][2]).sort()).toEqual([
+      "https://github.com/acme/api/pull/1",
+      "https://github.com/acme/api/pull/3",
+    ]);
+  });
+
+  it("says when there is nothing to read", async () => {
+    const h = await withGh(vi.fn());
+    const result = await h.tool("git_pr_status", {});
+    expect(result.content[0].text).toBe(
+      "No open pull requests in this session's ledger. Pass pr to read one.",
+    );
+  });
+
+  it("falls back to the GitHub MCP reader when gh cannot answer, recording each read once", async () => {
+    const h = await withGh(async () => {
+      throw new GhUnavailable("gh is not installed");
+    });
+    const executeTool = vi.fn(async (name: string, args: Record<string, unknown>) => {
+      // Pi fires tool_result for the nested call, with the caller as parent.
+      const content = [
+        {
+          type: "text",
+          text:
+            args.method === "get"
+              ? JSON.stringify({
+                  number: 12,
+                  html_url: "https://github.com/acme/api/pull/12",
+                  state: "closed",
+                  merged: true,
+                })
+              : "[]",
+        },
+      ];
+      await h.fire("tool_result", {
+        toolName: name,
+        toolCallId: `call-1/${String(args.method)}`,
+        parentToolCallId: "call-1",
+        input: args,
+        content,
+        isError: false,
+      });
+      return { isError: false, result: { content } };
+    });
+    Object.assign(h.ctx, { executeTool, tools: [{ name: "mcp__github__pull_request_read" }] });
+    const result = (await h.tool("git_pr_status", {
+      pr: "https://github.com/acme/api/pull/12",
+    })) as unknown as { structuredContent: { prs: Record<string, unknown>[] } };
+    expect(result.structuredContent.prs[0]).toMatchObject({
+      state: "merged",
+      review: "none",
+      source: "mcp__github__pull_request_read",
+    });
+    expect(executeTool.mock.calls.map((call) => call[1].method)).toEqual([
+      "get",
+      "get_check_runs",
+      "get_reviews",
+    ]);
+    const recorded = prEntries(h);
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]).toMatchObject({ calls: [{ tool: "git_pr_status" }] });
+  });
+
+  it("fails when gh cannot answer and no MCP reader is reachable", async () => {
+    const h = await withGh(async () => {
+      throw new GhUnavailable("gh is not signed in");
+    });
+    await expect(h.tool("git_pr_status", { pr: "acme/api#12" })).rejects.toThrow(
+      "acme/api#12: gh is not signed in, and no GitHub MCP pull_request_read tool is available to read it instead",
+    );
+  });
+
+  it("does not write another ledger entry when a watch reads the same status again", async () => {
+    const h = await withGh(async () => view());
+    await h.tool("git_pr_status", { pr: "acme/api#12" });
+    const first = h.snapshots.at(-1)!.prs[0].status!.observedAt;
+    await h.tool("git_pr_status", { pr: "acme/api#12" });
+    expect(prEntries(h)).toHaveLength(1);
+    // The in-memory record still moves on: the snapshot shows the newer read.
+    expect(h.snapshots.at(-1)!.prs[0].status!.observedAt).toBeGreaterThan(first);
+  });
+
+  it("ignores its own result in the observer", async () => {
+    const h = await withGh(async () => view());
+    await h.fire("tool_result", {
+      toolName: "git_pr_status",
+      toolCallId: "x",
+      input: { pr: "https://github.com/acme/api/pull/99" },
+      content: [],
+      isError: false,
+    });
+    expect(prEntries(h)).toEqual([]);
+  });
+
+  it("/git:refresh re-reads open PRs through gh and reports what it could not read", async () => {
+    let fail = false;
+    const runGh = vi.fn(async () => {
+      if (fail) throw new GhUnavailable("gh is not installed");
+      return view({
+        statusCheckRollup: [{ __typename: "CheckRun", status: "COMPLETED", conclusion: "SUCCESS" }],
+      });
+    });
+    const h = await withGh(runGh);
+    await h.fire("tool_result", {
+      toolName: "bash",
+      toolCallId: "c1",
+      input: { command: "gh pr create" },
+      content: [{ type: "text", text: "https://github.com/acme/api/pull/12" }],
+      isError: false,
+    });
+    await h.commands.get("git:refresh")!.handler("", h.ctx);
+    expect(h.ui.notify).toHaveBeenLastCalledWith(
+      "Refreshed 1 of 1 open pull request; worktrees checked.",
+      "info",
+    );
+    expect(prEntries(h).at(-1)).toMatchObject({
+      status: { checks: { passed: 1, failed: 0, pending: 0 } },
+      calls: [{ toolCallId: "c1" }, { tool: "/git:refresh" }],
+    });
+    fail = true;
+    await h.commands.get("git:refresh")!.handler("", h.ctx);
+    expect(h.ui.notify).toHaveBeenLastCalledWith(
+      [
+        "Refreshed 0 of 1 open pull request; worktrees checked.",
+        "acme/api#12: gh is not installed, and no GitHub MCP pull_request_read tool is available to read it instead",
+        "Without gh, ask the agent to run git_pr_status, which can read through the GitHub MCP tools.",
+      ].join("\n"),
+      "warning",
+    );
   });
 });

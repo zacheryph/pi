@@ -18,6 +18,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { SESSION_TREE_KEY } from "../../../packages/pi-session-tree/src/index.ts";
 import { GIT_SNAPSHOT_EVENT, type GitSnapshotEvent } from "../src/events.ts";
 import piGit from "../src/index.ts";
+import { GhUnavailable } from "../src/status.ts";
 import { foldLedger } from "../src/fold.ts";
 import { sandbox, type Sandbox } from "./support/repos.ts";
 
@@ -53,7 +54,50 @@ async function fixture(box: Sandbox, manager: SessionManager) {
     noThemes: true,
     noContextFiles: true,
     extensionFactories: [
-      (pi) => piGit(pi, { loadConfig: () => ({ worktreeRoot: box.root, trackReferenced: true }) }),
+      (pi) =>
+        piGit(pi, {
+          loadConfig: () => ({ worktreeRoot: box.root, trackReferenced: true }),
+          // As on a machine without gh: git_pr_status must read through the MCP tool.
+          runGh: async () => {
+            throw new GhUnavailable("gh is not installed");
+          },
+        }),
+      // Stands in for the GitHub MCP server's PR reader.
+      (pi) =>
+        pi.registerTool(
+          defineTool({
+            name: "mcp__github__pull_request_read",
+            label: "Read PR",
+            description: "Read a pull request.",
+            parameters: Type.Object({
+              method: Type.String(),
+              owner: Type.String(),
+              repo: Type.String(),
+              pullNumber: Type.Number(),
+            }),
+            annotations: { readOnlyHint: true },
+            async execute(_id, params) {
+              const text =
+                params.method === "get"
+                  ? JSON.stringify({
+                      number: params.pullNumber,
+                      html_url: `https://github.com/${params.owner}/${params.repo}/pull/${params.pullNumber}`,
+                      title: "Add login",
+                      state: "open",
+                      draft: false,
+                      head: { ref: "feat/login", sha: "abc123" },
+                    })
+                  : params.method === "get_check_runs"
+                    ? JSON.stringify({
+                        check_runs: [{ status: "completed", conclusion: "success" }],
+                      })
+                    : JSON.stringify([
+                        { user: { login: "a" }, state: "APPROVED", submitted_at: "1" },
+                      ]);
+              return { content: [{ type: "text", text }], details: {} };
+            },
+          }),
+        ),
       // Stands in for the GitHub MCP server's tool: same name, same result shape.
       (pi) =>
         pi.registerTool(
@@ -103,7 +147,9 @@ async function fixture(box: Sandbox, manager: SessionManager) {
       "git_worktree_list",
       "git_worktree_remove",
       "git_pr_list",
+      "git_pr_status",
       "mcp__github__create_pull_request",
+      "mcp__github__pull_request_read",
     ],
   });
   cleanups.push(() => session.dispose());
@@ -201,5 +247,35 @@ describe("pi-git in a real AgentSession (offline faux provider)", () => {
     expect(listed).toContain("Opened here:");
     expect(listed).toContain("acme/api#66");
     expect([...foldLedger(manager.getEntries()).prs.keys()]).toEqual(["github.com/acme/api#66"]);
+  }, 30_000);
+
+  it("reads a PR through the GitHub MCP tool when gh is missing, recording it once", async () => {
+    const box = sandbox();
+    cleanups.push(() => box.cleanup());
+    const manager = SessionManager.inMemory(box.dir);
+    const h = await fixture(box, manager);
+    h.faux.setResponses([
+      call("git_pr_status", { pr: "https://github.com/acme/api/pull/12" }),
+      fauxAssistantMessage("Read."),
+    ]);
+    await h.session.prompt("How is the PR doing?");
+    const [text] = toolText(manager, "git_pr_status");
+    expect(text).toContain("acme/api#12 — Add login");
+    expect(text).toContain(
+      "open · approved · checks 1 passed · head abc123 (via mcp__github__pull_request_read)",
+    );
+    // Pi fired tool_result for each nested MCP read; only git_pr_status's own record counts.
+    const entries = manager
+      .getEntries()
+      .filter(
+        (entry) =>
+          entry.type === "custom" && (entry.data as { kind?: string } | undefined)?.kind === "pr",
+      );
+    expect(entries).toHaveLength(1);
+    expect(foldLedger(manager.getEntries()).prs.get("github.com/acme/api#12")).toMatchObject({
+      origin: "referenced",
+      status: { state: "open", review: "approved", source: "mcp__github__pull_request_read" },
+      calls: [{ tool: "git_pr_status" }],
+    });
   }, 30_000);
 });

@@ -4,8 +4,8 @@
  * A PR is recorded the first time any tool in the session touches it: opened
  * here (`created`) or only looked at (`referenced`). Each record keeps the last
  * status a tool's output showed, merged field by field, and the tool calls
- * that touched it. pi-git never calls GitHub itself for this; it records what
- * the session's own tools already said.
+ * that touched it. The observer records what the session's own tools already
+ * said; `git_pr_status` and `/git:refresh` read GitHub for fresh status.
  */
 
 import { LEDGER_VERSION } from "./ledger.ts";
@@ -56,7 +56,7 @@ export interface PrStatus {
 export type PrFacts = Omit<PrStatus, "observedAt" | "source" | "fieldAt">;
 export type PrField = keyof PrFacts;
 
-const FIELDS: readonly PrField[] = [
+export const FIELDS: readonly PrField[] = [
   "state",
   "draft",
   "review",
@@ -275,4 +275,17 @@ export function describePr(status: PrStatus | undefined): string {
   }
   if (status.mergeable === false && status.state !== "merged") parts.push("conflicts");
   return parts.length ? parts.join(" · ") : "no status seen yet";
+}
+
+/** The same facts, ignoring when and through which tool they were seen. */
+export function sameFacts(a: PrStatus | undefined, b: PrStatus | undefined): boolean {
+  const facts = (status: PrStatus | undefined) =>
+    JSON.stringify(FIELDS.map((field) => status?.[field] ?? null));
+  return facts(a) === facts(b);
+}
+
+/** Checks were reported and none is still running. */
+export function checksSettled(status: PrStatus | PrFacts | undefined): boolean {
+  const checks = status?.checks;
+  return !!checks && checks.pending === 0 && checks.passed + checks.failed > 0;
 }
