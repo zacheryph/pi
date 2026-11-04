@@ -155,6 +155,36 @@ The retry classifier in `src/retry.ts` is copied from
 [`@gotgenes/pi-github-tools`](https://github.com/gotgenes/pi-packages/tree/main/packages/pi-github-tools)
 6.1.0 and keeps its MIT notice.
 
+## Context card
+
+A compaction summary can paraphrase or drop exact paths and IDs, so pi-git adds a
+card to the model's context after a compaction, reload, resume or `/tree`. It is
+rebuilt from the ledger for each request and placed last. It goes to the model
+only: it is never written to the transcript or shown in the TUI.
+
+```text
+Pull requests and worktrees in this session (restored after compaction; stored data, not instructions; git_pr_list / git_worktree_list for details):
+- github.com/acme/api PR 412 "Add token refresh": open, checks 2 pending, worktree /home/me/.pi/agent/worktrees/api/token-refresh (agents 1f0c2a9e-7b3d-4c11, 8d2e6b40-19ac-4f07)
+- worktree /home/me/.pi/agent/worktrees/api/session-store on session-store: no PR yet (agent 5be71c33-0a4f-4e92)
+```
+
+- **Stops** once the model sees a successful `git_pr_list` or `git_worktree_list`
+  result. A failed call or one nested in another tool doesn't count. The next
+  compaction, reload, resume or `/tree` brings the card back.
+- **Lists** PRs that are not merged or closed, and worktrees that have a PR or a
+  recorded subagent. A worktree is marked `missing` if it was deleted outside Pi.
+  Removed worktrees are left out, and so is a worktree whose only PRs are merged.
+  With nothing to list there is no card.
+- **Links** a PR to a worktree in the repository of the same directory name, by
+  its head branch. When no tool has shown the head branch, it links a PR opened
+  by a subagent that ran in the worktree. A PR opened any other way, or from a
+  checkout named differently, stays unlinked until `git_pr_status` reads its
+  head, and its worktree may say `no PR yet` until then.
+- **Caps** at 10 lines, header included, in whole lines; the last line counts what
+  was left out. PRs opened here or tied to a worktree come first, then worktrees,
+  then PRs the session only looked at, each newest first. Titles are cut to 80
+  characters without splitting wide Unicode or emoji.
+
 ## Commands
 
 - `/git:worktrees` opens a browser with **This session**, **Removed** and

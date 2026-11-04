@@ -14,7 +14,7 @@ import {
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { SESSION_TREE_KEY } from "../../../packages/pi-session-tree/src/index.ts";
 import { GIT_SNAPSHOT_EVENT, type GitSnapshotEvent } from "../src/events.ts";
 import piGit from "../src/index.ts";
@@ -29,10 +29,15 @@ afterEach(async () => {
   delete (globalThis as Record<symbol, unknown>)[SESSION_TREE_KEY];
 });
 
-async function fixture(box: Sandbox, manager: SessionManager) {
+async function fixture(
+  box: Sandbox,
+  manager: SessionManager,
+  options: { keepRecentTokens?: number } = {},
+) {
   const snapshots: GitSnapshotEvent[] = [];
   let bus: EventBus | undefined;
   const faux = createFauxCore({ provider: "git-test", models: [{ id: "test" }] });
+  const calls = vi.fn(faux.streamSimple);
   const modelRuntime = await ModelRuntime.create({
     authPath: join(box.dir, "auth.json"),
     modelsPath: null,
@@ -43,7 +48,7 @@ async function fixture(box: Sandbox, manager: SessionManager) {
     api: faux.api,
     apiKey: "test-key",
     models: faux.models,
-    streamSimple: faux.streamSimple,
+    streamSimple: calls,
   });
   const loader = new DefaultResourceLoader({
     cwd: box.dir,
@@ -148,7 +153,7 @@ async function fixture(box: Sandbox, manager: SessionManager) {
     resourceLoader: loader,
     sessionManager: manager,
     settingsManager: SettingsManager.inMemory({
-      compaction: { enabled: false },
+      compaction: { enabled: false, keepRecentTokens: options.keepRecentTokens },
       retry: { enabled: false },
     }),
     tools: [
@@ -163,7 +168,7 @@ async function fixture(box: Sandbox, manager: SessionManager) {
   });
   cleanups.push(() => session.dispose());
   await session.bindExtensions({ mode: "print" });
-  return { session, faux, snapshots, bus: bus! };
+  return { session, faux, calls, snapshots, bus: bus! };
 }
 
 const call = (name: string, args: Parameters<typeof fauxToolCall>[1]) =>
@@ -180,7 +185,101 @@ const toolText = (manager: SessionManager, name: string) =>
         : [],
     );
 
+const CARD = "Pull requests and worktrees in this session";
+/** The messages of each model request made so far, as the provider got them. */
+const requests = (calls: { mock: { calls: unknown[][] } }) =>
+  calls.mock.calls.map((args) => (args[1] as { messages: unknown[] }).messages);
+const cardCount = (messages: unknown[]) =>
+  messages.filter((message) => JSON.stringify(message).includes(CARD)).length;
+
 describe("pi-git in a real AgentSession (offline faux provider)", () => {
+  it("restores PRs and worktrees with a context card after compaction, until a list result", async () => {
+    const box = sandbox();
+    cleanups.push(() => box.cleanup());
+    const manager = SessionManager.inMemory(box.dir);
+    const worktree = join(box.root, "api", "feat-login");
+
+    const h = await fixture(box, manager, { keepRecentTokens: 1 });
+    h.faux.setResponses([
+      call("git_worktree_create", { repo: "src/api", branch: "feat/login" }),
+      call("mcp__github__create_pull_request", { owner: "acme", repo: "api", title: "Add login" }),
+      fauxAssistantMessage("Opened."),
+    ]);
+    await h.session.prompt("Open the PR.");
+    h.bus.emit("subagent:session:created", { agentId: "agent-1", cwd: worktree });
+    h.faux.setResponses([fauxAssistantMessage("More.")]);
+    await h.session.prompt("More work.");
+    expect(requests(h.calls).map(cardCount)).toEqual([0, 0, 0, 0]);
+
+    h.faux.setResponses([
+      fauxAssistantMessage("Compacted summary"),
+      fauxAssistantMessage("Prefix summary"),
+    ]);
+    await h.session.compact();
+
+    h.calls.mockClear();
+    h.faux.setResponses([
+      fauxAssistantMessage("Still here."),
+      call("git_pr_list", {}),
+      fauxAssistantMessage("Listed."),
+    ]);
+    await h.session.prompt("After compaction.");
+    await h.session.prompt("Which PRs?");
+    const [first, withList, afterList] = requests(h.calls);
+    // Once per request, as its last message, on each request until the list result.
+    expect(cardCount(first)).toBe(1);
+    expect(cardCount(withList)).toBe(1);
+    const card = JSON.stringify(first.at(-1));
+    expect(card).toContain(CARD);
+    expect(card).toContain("github.com/acme/api PR 66: open");
+    expect(card).toContain(`worktree ${worktree} on feat/login: no PR yet (agent agent-1)`);
+    expect(JSON.stringify(withList.at(-1))).toContain(CARD);
+    expect(cardCount(afterList)).toBe(0);
+    // Context-only: never written to the transcript.
+    expect(JSON.stringify(manager.getEntries())).not.toContain(CARD);
+
+    h.calls.mockClear();
+    h.faux.setResponses([fauxAssistantMessage("No card.")]);
+    await h.session.prompt("And now?");
+    expect(requests(h.calls).map(cardCount)).toEqual([0]);
+
+    // /tree brings it back.
+    const target = manager.getBranch().find((entry) => entry.type === "message")!;
+    await h.session.navigateTree(target.id);
+    h.calls.mockClear();
+    h.faux.setResponses([fauxAssistantMessage("Card again.")]);
+    await h.session.prompt("After /tree.");
+    expect(requests(h.calls).map(cardCount)).toEqual([1]);
+    h.session.dispose();
+
+    // A reload does too: a new session on the same session file.
+    const reloaded = await fixture(box, manager);
+    reloaded.faux.setResponses([fauxAssistantMessage("Card again.")]);
+    await reloaded.session.prompt("After reload.");
+    const [afterReload] = requests(reloaded.calls);
+    expect(cardCount(afterReload)).toBe(1);
+    expect(JSON.stringify(afterReload.at(-1))).toContain(CARD);
+  }, 30_000);
+
+  it("gives a session with no ledger entries no card, even after compaction", async () => {
+    const box = sandbox();
+    cleanups.push(() => box.cleanup());
+    const manager = SessionManager.inMemory(box.dir);
+    const h = await fixture(box, manager, { keepRecentTokens: 1 });
+    h.faux.setResponses([fauxAssistantMessage("One.")]);
+    await h.session.prompt("Work.");
+    h.faux.setResponses([fauxAssistantMessage("Two.")]);
+    await h.session.prompt("More work.");
+    h.faux.setResponses([
+      fauxAssistantMessage("Compacted summary"),
+      fauxAssistantMessage("Prefix summary"),
+    ]);
+    await h.session.compact();
+    h.faux.setResponses([fauxAssistantMessage("Three.")]);
+    await h.session.prompt("After compaction.");
+    expect(requests(h.calls).filter((messages) => cardCount(messages) > 0)).toEqual([]);
+  }, 30_000);
+
   it("keeps worktrees and the subagents that used them across a resume", async () => {
     const box = sandbox();
     cleanups.push(() => box.cleanup());
