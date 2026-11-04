@@ -47,11 +47,11 @@ import {
   MAX_TASK_DEPENDENCIES,
   MAX_TODO_TASKS,
   TODO_TOOL_NAMES,
+  type TodoChangeSummary,
   type TodoDetails,
   type TodoState,
 } from "./state.ts";
 import {
-  renderTodoLines,
   renderTodoText,
   todoMessageLine,
   todoTaskPresentation,
@@ -451,22 +451,56 @@ export default function todoExtension(
           width,
         );
       });
-    if (expanded)
-      return {
-        render: (width) => [
-          ...renderTodoLines(
-            snapshot,
-            { maxVisible: MAX_TODO_TASKS, showCompleted: true },
-            width,
+    // Expanded results list only the tasks this call changed. The full list stays
+    // in the widget; repeating it here copied the widget into the transcript.
+    // Persisted details may predate the change summary or be malformed.
+    const change: Partial<Record<keyof TodoChangeSummary, unknown>> = result.details.change ?? {};
+    const changed = (kind: keyof TodoChangeSummary): string[] => {
+      const keys = change[kind];
+      return Array.isArray(keys) ? keys.filter((key) => typeof key === "string") : [];
+    };
+    const changeRows = (width: number) => [
+      ...(["added", "updated"] as const).flatMap((kind) =>
+        changed(kind).flatMap((key) => {
+          const task = snapshot.tasks.find((candidate) => candidate.key === key);
+          if (!task) return [];
+          const status = todoTaskPresentation(task, snapshot);
+          return [
+            bodyRow(
+              styleLine(
+                [
+                  { text: `${status.glyph} `, tone: status.color },
+                  `${task.key}: ${task.subject}`,
+                  { text: ` · ${kind}`, tone: "dim" },
+                ],
+                theme,
+              ),
+              width,
+            ),
+          ];
+        }),
+      ),
+      ...changed("removed").map((key) =>
+        bodyRow(
+          styleLine(
+            [
+              { text: "✗ ", tone: "dim" },
+              { text: key, tone: "muted" },
+              { text: " · removed", tone: "dim" },
+            ],
             theme,
           ),
-          ...messageRows(width),
-        ],
-        invalidate() {},
-      };
-    if (!messages.length) return new Text(theme.fg("muted", summary), 0, 0);
+          width,
+        ),
+      ),
+    ];
+    if (!expanded && !messages.length) return new Text(theme.fg("muted", summary), 0, 0);
     return {
-      render: (width) => [clip(theme.fg("muted", summary), width), ...messageRows(width)],
+      render: (width) => [
+        clip(theme.fg("muted", summary), width),
+        ...(expanded ? changeRows(width) : []),
+        ...messageRows(width),
+      ],
       invalidate() {},
     };
   };

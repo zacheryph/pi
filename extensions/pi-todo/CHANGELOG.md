@@ -3,6 +3,13 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-04: Expanded tool results list only changed tasks
+
+- `src/index.ts`: an expanded todo tool result shows its summary and one inset
+  row per task the call added, updated or removed, instead of the whole task
+  list rendered as a widget. Each upsert no longer repeats the widget's heading
+  and list in the transcript; the docked widget is the one full view.
+
 ## 2026-11-01: One tool per action and resource-scoped identifiers (#57)
 
 - `src/index.ts`: one sequential tool per action (`todo_list`, `todo_upsert`,

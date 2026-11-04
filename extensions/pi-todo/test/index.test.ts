@@ -1318,6 +1318,60 @@ it("result renderer ignores malformed persisted message details", async () => {
   ]);
 });
 
+it("expanded results list only the tasks a call changed, never the widget", async () => {
+  const env = await started();
+  const theme = {
+    fg: (_color: string, text: string) => `\x1b[32m${text}\x1b[0m`,
+    bold: (text: string) => text,
+  } as Parameters<NonNullable<ReturnType<typeof env.tool>["renderCall"]>>[1];
+  const renderContext = {} as Parameters<NonNullable<ReturnType<typeof env.tool>["renderCall"]>>[2];
+  // oxlint-disable-next-line no-control-regex -- Intentionally strips SGR styling.
+  const plain = (line: string) => line.replace(/\x1b\[[0-9;]*m/g, "").trimEnd();
+  await env.execute({
+    action: "upsert",
+    tasks: [
+      { key: "a", subject: "A" },
+      { key: "b", subject: "B" },
+      { key: "c", subject: "C" },
+    ],
+  });
+  const upsert = await env.execute({
+    action: "upsert",
+    tasks: [
+      { key: "a", status: "in_progress" },
+      { key: "wide", subject: "日本語 👩‍💻 é" },
+    ],
+  });
+  const removal = await env.execute({ action: "remove", keys: ["c"] });
+  const render = (result: typeof upsert, width: number) =>
+    env.tool("upsert").renderResult!(
+      result,
+      { expanded: true, isPartial: false },
+      theme,
+      renderContext,
+    ).render(width);
+
+  expect(render(upsert, 80).map(plain)).toEqual([
+    "0/4 completed · revision 2",
+    " ○ wide: 日本語 \u{1f469}‍\u{1f4bb} é · added",
+    " ▸ a: A · updated",
+  ]);
+  expect(render(removal, 80).map(plain)).toEqual(["0/3 completed · revision 3", " ✗ c · removed"]);
+  // No widget heading or untouched tasks in the transcript.
+  expect(render(upsert, 80).join("\n")).not.toContain("Todos");
+  expect(render(upsert, 80).map(plain).join("\n")).not.toMatch(/ b: B/);
+  // Older or malformed persisted details carry no change summary.
+  const legacy = { ...upsert, details: { ...upsert.details, change: undefined } };
+  expect(render(legacy as never, 80).map(plain)).toEqual(["0/4 completed · revision 2"]);
+  for (let width = 1; width <= 30; width++) {
+    for (const row of render(upsert, width)) expect(visibleWidth(row)).toBeLessThanOrEqual(width);
+    for (const row of render(upsert, width).slice(1)) {
+      if (width <= 2) expect(row).toBe(" ".repeat(width));
+      else expect(row.startsWith(" ") && row.endsWith(" ")).toBe(true);
+    }
+  }
+});
+
 describe("snapshot events", () => {
   const published = (env: Awaited<ReturnType<typeof started>>) =>
     env.pi.events.emit.mock.calls

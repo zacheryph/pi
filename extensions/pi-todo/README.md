@@ -250,7 +250,8 @@ with unreviewed entries marked `●`. The note shows when you last reviewed; the
 status row counts tasks still unreviewed. The browser is a centered overlay in
 Pi's fullscreen TUI (the regular renderer is not supported). Task text is
 sanitized before terminal rendering.
-Tool output is compact by default; expand it for task rows. Calls show how many
+Tool output is compact by default; expand it to list the tasks the call added,
+updated or removed (the full list stays in the widget). Calls show how many
 messages they carry, and results list each recorded message on its own row. RPC
 gets plain-text widget output; task tools remain usable without terminal UI.
 
