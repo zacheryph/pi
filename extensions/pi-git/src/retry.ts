@@ -3,8 +3,8 @@
  *
  * Copied from `@gotgenes/pi-github-tools` 6.1.0, `src/lib/retry.ts`
  * (https://github.com/gotgenes/pi-packages/tree/main/packages/pi-github-tools),
- * with its `sleep` inlined and the progress notice dropped. Reads only: a
- * mutation is never retried.
+ * with its `sleep` inlined, the progress notice dropped, and cancellation
+ * checked before each attempt. Reads only: a mutation is never retried.
  *
  * MIT License
  *
@@ -83,15 +83,18 @@ export function transientRetryDelay(attempt: number): number {
 export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions = {}): Promise<T> {
   const wait = options.sleep ?? sleep;
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    options.signal?.throwIfAborted();
     try {
       return await fn();
     } catch (error) {
+      options.signal?.throwIfAborted();
       if (!isTransientError(error)) throw error;
       const delayMs = transientRetryDelay(attempt);
       options.onRetry?.({ attempt, delayMs, error: asError(error) });
       await wait(delayMs, options.signal);
     }
   }
+  options.signal?.throwIfAborted();
   return fn();
 }
 

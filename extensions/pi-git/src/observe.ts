@@ -288,7 +288,7 @@ function checksFromRollup(items: readonly unknown[]): PrChecks | undefined {
     checks[outcome] += 1;
     seen = true;
   }
-  return seen ? checks : undefined;
+  return seen || items.length === 0 ? checks : undefined;
 }
 
 /** One check run or status context, from GraphQL or REST, as passed, failed or pending. */

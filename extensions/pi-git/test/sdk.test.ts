@@ -74,6 +74,8 @@ async function fixture(box: Sandbox, manager: SessionManager) {
               owner: Type.String(),
               repo: Type.String(),
               pullNumber: Type.Number(),
+              page: Type.Optional(Type.Number()),
+              perPage: Type.Optional(Type.Number()),
             }),
             annotations: { readOnlyHint: true },
             async execute(_id, params) {
@@ -91,9 +93,16 @@ async function fixture(box: Sandbox, manager: SessionManager) {
                     ? JSON.stringify({
                         check_runs: [{ status: "completed", conclusion: "success" }],
                       })
-                    : JSON.stringify([
-                        { user: { login: "a" }, state: "APPROVED", submitted_at: "1" },
-                      ]);
+                    : params.method === "get_status"
+                      ? JSON.stringify({
+                          state: "pending",
+                          sha: "abc123",
+                          total_count: 0,
+                          statuses: [],
+                        })
+                      : JSON.stringify([
+                          { user: { login: "a" }, state: "APPROVED", submitted_at: "1" },
+                        ]);
               return { content: [{ type: "text", text }], details: {} };
             },
           }),

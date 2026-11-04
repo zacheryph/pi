@@ -119,8 +119,11 @@ counts, conflicts and head commit from GitHub and records them:
   looked at.
 - It reads through `gh pr view <url> --json …` when `gh` is installed and
   signed in, and otherwise through a GitHub MCP `pull_request_read` tool (its
-  PR object, check runs and reviews). Calls it makes through that tool are not
-  recorded a second time by the observer.
+  PR object, check runs, legacy commit statuses and reviews). Checks and reviews
+  are paginated (up to 20 pages of 100); incomplete check reads leave CI unknown.
+  It verifies the head did not move between MCP reads and rejects responses from
+  a different GitHub host. Calls it makes through that tool are not recorded a
+  second time by the observer.
 - Transient failures (HTTP 5xx, GitHub's GraphQL unavailability, connection
   resets and timeouts) are retried three times after 1, 4 and 9 seconds; a 4xx
   never is. It never writes to GitHub.

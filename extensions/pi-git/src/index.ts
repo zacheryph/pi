@@ -96,8 +96,8 @@ const CHILD_SESSION_CREATED = "subagent:session:created";
 
 export interface GitTreeService {
   version: 1;
-  /** Take a descendant's record into this ledger; false when it adds nothing new. */
-  adopt(record: unknown): boolean;
+  /** Take a descendant's record; persist=false suppresses unchanged polling entries only. */
+  adopt(record: unknown, persist?: boolean): boolean;
 }
 
 export interface GitExtensionDependencies {
@@ -178,9 +178,10 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
   const publish = () => pi.events.emit(GIT_SNAPSHOT_EVENT, snapshot());
 
   /** Hand a record to `from`'s parent, which adopts it and passes it on up. */
-  const passUp = (from: string, record: LedgerRecord) => {
+  const passUp = (from: string, record: LedgerRecord, persist = true) => {
     const parent = parentOf(from);
-    if (parent) call<GitTreeService, boolean>(parent, SERVICE_NAME, (s) => s.adopt(record));
+    if (parent)
+      call<GitTreeService, boolean>(parent, SERVICE_NAME, (s) => s.adopt(record, persist));
   };
 
   const append = (record: LedgerRecord) => {
@@ -196,13 +197,19 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
 
   const service: GitTreeService = {
     version: 1,
-    adopt(candidate) {
+    adopt(candidate, persist = true) {
       if (isPrRecord(candidate)) {
         const existing = prs.get(candidate.key);
         const adopted = existing
           ? mergePr(existing, candidate)
           : { ...candidate, via: "adopt" as const };
         if (existing && sameContent(existing, adopted)) return false;
+        if (!persist && existing && samePrFacts(existing, adopted)) {
+          prs.set(adopted.key, adopted);
+          publish();
+          if (sessionId) passUp(sessionId, adopted, false);
+          return true;
+        }
         append(adopted);
         return true;
       }
@@ -364,12 +371,12 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
     };
     if (
       existing &&
-      existing.origin === next.origin &&
-      existing.title === next.title &&
-      sameFacts(existing.status, next.status)
+      (toolCall.tool === "git_pr_status" || toolCall.tool === "/git:refresh") &&
+      samePrFacts(existing, next)
     ) {
       prs.set(key, next);
       publish();
+      if (sessionId) passUp(sessionId, next, false);
       return next;
     }
     append(next);
@@ -399,23 +406,33 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
         throw new Error(
           `${error.message}, and no GitHub MCP pull_request_read tool is available to read it instead`,
         );
-      return fetchWithMcp(ref, options.reader, options.runTool, dependencies.retry);
+      return fetchWithMcp(ref, options.reader, options.runTool, {
+        ...dependencies.retry,
+        signal: options.signal,
+      });
     }
   };
 
-  /** Read and record each PR; failures become entries with an error, never throws. */
+  /** Read and record each PR; read failures become entries, cancellation/session changes throw. */
   const readAndRecord = async (
     refs: readonly PrRef[],
     toolCall: Omit<PrCall, "at">,
     options: { signal?: AbortSignal; reader?: string; runTool?: ToolRunner },
   ): Promise<StatusEntryValue[]> => {
+    const started = generation;
+    const ensureCurrent = () => {
+      options.signal?.throwIfAborted();
+      if (started !== generation) throw new Error("The session changed while reading PR status.");
+    };
     const entries: StatusEntryValue[] = [];
     for (const ref of refs) {
+      ensureCurrent();
       const key = prKey(ref);
       const existing = prs.get(key);
       const base = { key, label: prLabel(ref), url: existing?.url ?? prUrl(ref) };
       try {
         const fetched = await readStatus(ref, options);
+        ensureCurrent();
         const recorded = recordPr(
           {
             ref,
@@ -437,6 +454,7 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
           source: fetched.source,
         });
       } catch (error) {
+        ensureCurrent();
         entries.push({ ...base, ciDone: false, error: errorText(error) });
       }
     }
@@ -971,6 +989,12 @@ type LedgerRecord = WorktreeRecord | PrRecord;
 function sameContent(a: LedgerRecord, b: LedgerRecord): boolean {
   const strip = ({ updatedAt: _at, via: _via, ...rest }: LedgerRecord) => JSON.stringify(rest);
   return strip(a) === strip(b);
+}
+
+function samePrFacts(a: PrRecord, b: PrRecord): boolean {
+  return (
+    a.origin === b.origin && a.title === b.title && a.url === b.url && sameFacts(a.status, b.status)
+  );
 }
 
 /** The status fields a git_pr_status entry reports. */
