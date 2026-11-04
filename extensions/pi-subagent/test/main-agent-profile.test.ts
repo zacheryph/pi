@@ -728,13 +728,13 @@ describe("main profile defaults and persistent body", () => {
 
   it("child-only fields produce compact skipped notice, never turn restrictions", async () => {
     const h = harness();
-    Object.assign(h.state.profile, { maxTurns: 1, runInBackground: true, inheritContext: false });
+    Object.assign(h.state.profile, { maxTurns: 1, foreground: true, inheritContext: false });
     await h.start();
     for (let i = 0; i < 5; i++) await h.fire("turn_start");
     expect(h.ctx.ui.notify).toHaveBeenCalledTimes(1);
     expect(h.ctx.ui.notify).toHaveBeenCalledWith(
       expect.stringContaining(
-        "Subagent-only fields skipped: max_turns, run_in_background, inherit_context",
+        "Subagent-only fields skipped: max_turns, foreground, inherit_context",
       ),
       "info",
     );

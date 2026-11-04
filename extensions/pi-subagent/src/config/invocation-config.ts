@@ -9,7 +9,7 @@ export const LOCKABLE_FIELDS = [
   "thinking",
   "max_turns",
   "inherit_context",
-  "run_in_background",
+  "foreground",
 ] as const;
 
 /** One field an agent file may withhold from its callers. */
@@ -35,7 +35,7 @@ export function isLockableField(name: string): name is LockableField {
  * `explicit` is a commitment the door has already acted on — the foreground
  * runner holds the result promise, or the tool door merged frontmatter itself
  * and routed on the answer. `default` is a door with no commitment, so the
- * agent's own `runInBackground` frontmatter fills it.
+ * agent's own `foreground` frontmatter fills it.
  */
 export type BackgroundRequest =
   | { kind: "explicit"; isBackground: boolean }
@@ -43,12 +43,11 @@ export type BackgroundRequest =
 
 /** Resolve the effective background mode. Explicit answers are honored verbatim. */
 export function resolveBackgroundMode(
-  agentConfig: Pick<AgentConfig, "runInBackground">,
+  agentConfig: Pick<AgentConfig, "foreground">,
   request: BackgroundRequest,
 ): boolean {
-  return request.kind === "explicit"
-    ? request.isBackground
-    : (agentConfig.runInBackground ?? request.isBackground);
+  if (request.kind === "explicit") return request.isBackground;
+  return agentConfig.foreground === undefined ? request.isBackground : !agentConfig.foreground;
 }
 
 interface AgentInvocationParams {
@@ -56,8 +55,18 @@ interface AgentInvocationParams {
   /** Already validated by the door — see `parseThinkingLevel`. */
   thinking?: ThinkingLevel;
   max_turns?: number;
-  run_in_background?: boolean;
+  foreground?: boolean;
   inherit_context?: boolean;
+}
+
+/** What the door assumes when neither the caller nor the agent file picks a mode. */
+export interface AgentInvocationDefaults {
+  /**
+   * Run in the foreground when nothing chooses. False everywhere but a run mode
+   * that cannot be woken once its turn ends (print, json), where a background
+   * agent's result would never reach the parent.
+   */
+  foreground: boolean;
 }
 
 /** The per-call values the Agent tool door resolved from its caller and the agent file. */
@@ -94,6 +103,7 @@ export interface AgentInvocationConfig {
 export function resolveAgentInvocationConfig(
   agentConfig: AgentConfig,
   params: AgentInvocationParams,
+  defaults: AgentInvocationDefaults = { foreground: false },
 ): AgentInvocationConfig {
   const locked = agentConfig.locked;
   const model = resolveField("model", agentConfig.model, params.model, locked);
@@ -105,12 +115,7 @@ export function resolveAgentInvocationConfig(
     params.inherit_context,
     locked,
   );
-  const runInBackground = resolveField(
-    "run_in_background",
-    agentConfig.runInBackground,
-    params.run_in_background,
-    locked,
-  );
+  const foreground = resolveField("foreground", agentConfig.foreground, params.foreground, locked);
 
   return {
     modelInput: model.value,
@@ -118,8 +123,8 @@ export function resolveAgentInvocationConfig(
     thinking: thinking.value,
     maxTurns: maxTurns.value,
     inheritContext: inheritContext.value ?? false,
-    runInBackground: runInBackground.value ?? false,
-    discarded: [model, thinking, maxTurns, inheritContext, runInBackground]
+    runInBackground: !(foreground.value ?? defaults.foreground),
+    discarded: [model, thinking, maxTurns, inheritContext, foreground]
       .filter((resolution) => resolution.discarded)
       .map((resolution) => resolution.field),
   };

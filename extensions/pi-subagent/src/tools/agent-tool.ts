@@ -93,10 +93,15 @@ export class AgentTool {
     params: Record<string, unknown>,
     signal: AbortSignal | undefined,
     onUpdate: ((update: AgentToolResult<AgentDetails>) => void) | undefined,
-    _ctx: ExtensionContext,
+    ctx: ExtensionContext,
   ) {
     // Reload custom agents so new .pi/agents/*.md files are picked up without restart
     this.registry.reload();
+
+    // Agents run in the background unless something asks for the foreground. A
+    // one-shot run mode cannot be woken after its turn ends, so there the
+    // foreground is the default instead (local change).
+    const defaultForeground = isOneShotMode(ctx);
 
     // ---- Config resolution (pure) ----
     const resolved = resolveSpawnConfig(
@@ -104,6 +109,7 @@ export class AgentTool {
       this.registry,
       this.runtime.getModelInfo(),
       this.settings,
+      { foreground: defaultForeground },
     );
     if ("error" in resolved) return textResult(resolved.error);
 
@@ -128,12 +134,14 @@ export class AgentTool {
     if (params.resume) {
       const id = params.resume as string;
       const prompt = params.prompt as string;
-      // Only the caller's explicit flag: an agent file's run_in_background
-      // default describes how that type spawns, not how a resume is collected.
-      if (params.run_in_background === true) {
-        return this.resumeInBackground(id, prompt, config);
+      // Only the caller's explicit flag: an agent file's foreground default
+      // describes how that type spawns, not how a resume is collected.
+      const foreground =
+        typeof params.foreground === "boolean" ? params.foreground : defaultForeground;
+      if (foreground) {
+        return this.resumeExisting(id, prompt, signal, config.presentation.detailBase);
       }
-      return this.resumeExisting(id, prompt, signal, config.presentation.detailBase);
+      return this.resumeInBackground(id, prompt, config);
     }
 
     // ---- Background execution ----
@@ -208,11 +216,11 @@ export class AgentTool {
     const registry = this.registry;
 
     const guidelines = [
-      "- For parallel work, use run_in_background: true on each agent. Foreground calls run sequentially — only one executes at a time.",
+      "- Agents run in the background: the call returns an agent ID at once, and a completion notification arrives when the agent finishes. Start every independent agent, then end your turn instead of waiting; the notification wakes you, and the user can talk to you in the meantime.",
+      "- Set foreground: true only when you cannot take your next step without the result. A foreground call blocks you, and the user, until the agent finishes; foreground calls run one at a time.",
       ...this.agentGuidelines,
       "- Provide clear, detailed prompts so the agent can work autonomously.",
       "- Subagent results are returned as text — summarize them for the user.",
-      "- Use run_in_background for work you don't need immediately. You will be notified when it completes.",
       "- Use resume with an agent ID to continue a previous agent's work, or to answer an agent that ended its turn with a question.",
       "- Use subagent_steer to send mid-run messages to a running background agent.",
       '- Use model to specify a different model (as "provider/modelId", or fuzzy e.g. "haiku", "sonnet").',
@@ -264,16 +272,16 @@ ${guidelines}
             minimum: 1,
           }),
         ),
-        run_in_background: Type.Optional(
+        foreground: Type.Optional(
           Type.Boolean({
             description:
-              "Set to true to run in background. Returns agent ID immediately. You will be notified when it completes. Omit to use the agent's own default.",
+              "Set to true to wait for the agent and get its result in this call, blocking you until it finishes. Omit to run in the background: the call returns the agent ID at once and you are notified when it completes (unless the agent's own file says foreground).",
           }),
         ),
         resume: Type.Optional(
           Type.String({
             description:
-              "Optional agent ID to resume from. Continues from previous context. Combine with run_in_background: true to resume without waiting.",
+              "Optional agent ID to resume from. Continues from previous context in the background; you are notified when it finishes. Combine with foreground: true to wait for the resumed result.",
           }),
         ),
         inherit_context: Type.Optional(
@@ -368,4 +376,12 @@ function resumeRefusalMessage(refusal: ResumeRefusalReason, id: string): string 
         "any work was saved."
       );
   }
+}
+
+/**
+ * Whether the parent runs in a mode that ends with its turn (`pi -p`, `--mode json`).
+ * Nothing can wake it afterwards, so a background agent's result would be lost.
+ */
+function isOneShotMode(ctx: ExtensionContext | undefined): boolean {
+  return ctx?.mode === "print" || ctx?.mode === "json";
 }

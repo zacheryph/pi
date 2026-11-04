@@ -65,8 +65,11 @@ each ready step:
      anything the step did not anticipate. Large output as a `stash_put` handle.
 3. Record the agent ID on the task with a `message`.
 
+Subagents run in the background: after starting the ready steps' workers, end
+your turn, and each completion notification wakes you to verify that step.
+
 A single ready step runs in the main checkout. When several steps are ready at
-once, run them in parallel (`run_in_background`), each in its own worktree:
+once, run them in parallel, each in its own worktree:
 
 - Create it with `git_worktree_create`, branch `<key>` (the task key), from the
   roadmap branch's current `HEAD`. A step that spans repositories gets one

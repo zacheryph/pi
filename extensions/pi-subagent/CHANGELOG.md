@@ -3,6 +3,52 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-04: Agents run in the background by default; `foreground` replaces `run_in_background`
+
+`subagent_start` returns an agent ID at once and announces the result with a
+completion notification unless the call passes `foreground: true`, so a parent
+can end its turn and stay available while agents work. The `run_in_background`
+parameter and frontmatter key are removed, with no alias.
+
+- `src/tools/agent-tool.ts`: the `foreground` parameter replaces
+  `run_in_background`. A new agent and a resume both run in the background
+  unless the call sets `foreground: true`; a resume still ignores the agent
+  file's default. In print and json mode, where nothing can wake the parent
+  after its turn, an omitted flag runs in the foreground. The tool guidelines
+  tell the model to start its agents, end its turn and let the notification
+  wake it, and to use `foreground: true` only when its next step needs the
+  result.
+- `src/config/invocation-config.ts`, `src/tools/spawn-config.ts`: `foreground`
+  is the lockable field, and the merge takes the door's default (background
+  unless a one-shot mode says otherwise). `resolveBackgroundMode` reads the
+  agent's `foreground` frontmatter for service spawns, whose `foreground`
+  option is unchanged.
+- `src/types.ts`, `src/config/custom-agents.ts`: agent files declare
+  `foreground: true|false`; `AgentConfig.foreground` replaces
+  `runInBackground`. A `run_in_background` key, or a `locked` entry naming it,
+  is no longer read.
+- `src/ui/display.ts`: a foreground run is tagged `foreground`; background runs
+  carry no tag. `src/ui/agents-browser.ts` shows a `Foreground` field.
+  `src/main-agent-profile.ts` reports `foreground` among the skipped
+  child-only fields.
+- `src/tools/get-result-tool.ts`: `subagent_get`'s `wait` warns that it blocks
+  the user too and points at the completion notification.
+- `src/config/default-agents.ts`: the `orchestrator` profile stays available.
+  It starts workers in the background, records their IDs, ends its turn, and
+  never passes `foreground: true`, waits with `subagent_get` or polls. Run as a
+  subagent, it collects its workers with `subagent_get` and `wait` before it
+  finishes, because its run ends with its turn. It waits for a pull request's CI
+  itself with `job_watch` and hands only the fixes to a worker in the PR's
+  worktree. It no longer hands the waiting to a babysit-pr worker, because a
+  subagent finishes when it ends its turn and its watch would wake no one.
+- `README.md`, `docs/configuration.md`, `docs/architecture/architecture.md`:
+  document the new default and flag.
+- Tests: `test/tools/agent-tool.test.ts` covers the background default, the
+  print/json fallback and the `foreground` flag for new agents and resumes;
+  `test/ui/invocation-tags.test.ts` covers the tags;
+  `test/config/agent-types.test.ts` asserts the orchestrator instructions. The
+  other suites use the new field names.
+
 ## 2026-11-04: Orchestrator checks pull requests with git_pr_status
 
 `src/config/default-agents.ts`: the built-in `orchestrator` profile records the

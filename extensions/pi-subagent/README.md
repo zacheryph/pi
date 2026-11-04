@@ -62,12 +62,12 @@ subagent_start({
   subagent_type: "Explore",
   prompt: "Find all files that handle authentication",
   description: "Find auth files",
-  run_in_background: true,
 })
 ```
 
-Foreground agents block until complete and return results inline.
-Background agents return an ID immediately and notify you on completion.
+Agents run in the background: the call returns an ID immediately and you are notified on completion, so the parent can end its turn and stay available while the agent works.
+Pass `foreground: true` to block until the agent completes and get its result inline.
+In print and json mode (`pi -p`, `--mode json`) nothing can wake the parent once its turn ends, so there an agent runs in the foreground unless the call or its agent file says otherwise.
 
 ## UI
 
@@ -173,7 +173,7 @@ status for a handled startup failure; automation must check diagnostics too.
 main profile's initial tool list. Children keep existing profile settings and
 prompt construction; the main profile body is not inherited. Normal child
 defaults that inherit the current parent model or thinking still work as before.
-`max_turns`, `run_in_background`, and `inherit_context` are child-only and reported
+`max_turns`, `foreground`, and `inherit_context` are child-only and reported
 as skipped for the main session. `locked` controls child caller overrides, not
 manual main-session changes.
 
@@ -210,19 +210,19 @@ for naming, trust and snapshot rules. Fragments grant no tools or permissions.
 
 Launch a sub-agent.
 
-| Parameter           | Type    | Required | Description                                                                                                            |
-| ------------------- | ------- | -------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `prompt`            | string  | yes      | The task for the agent                                                                                                 |
-| `description`       | string  | yes      | Short 3-5 word summary (shown in UI)                                                                                   |
-| `subagent_type`     | string  | yes      | Agent type (built-in or custom)                                                                                        |
-| `model`             | string  | no       | Model — `provider/modelId`, fuzzy name (`"haiku"`, `"sonnet"`), or `[provider/]family@latest` (newest available match) |
-| `thinking`          | string  | no       | Thinking level: off, minimal, low, medium, high, xhigh, max                                                            |
-| `max_turns`         | number  | no       | Turn ceiling (minimum 2). Omit for the agent's own limit                                                               |
-| `run_in_background` | boolean | no       | Run without blocking                                                                                                   |
-| `resume`            | string  | no       | Agent ID to resume a previous session                                                                                  |
-| `inherit_context`   | boolean | no       | Fork parent conversation into agent                                                                                    |
-| `cwd`               | string  | no       | Existing directory the agent runs in, such as a git worktree (see below)                                               |
-| `handoff`           | object  | no       | Data for extensions in the agent's session (see below)                                                                 |
+| Parameter         | Type    | Required | Description                                                                                                            |
+| ----------------- | ------- | -------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `prompt`          | string  | yes      | The task for the agent                                                                                                 |
+| `description`     | string  | yes      | Short 3-5 word summary (shown in UI)                                                                                   |
+| `subagent_type`   | string  | yes      | Agent type (built-in or custom)                                                                                        |
+| `model`           | string  | no       | Model — `provider/modelId`, fuzzy name (`"haiku"`, `"sonnet"`), or `[provider/]family@latest` (newest available match) |
+| `thinking`        | string  | no       | Thinking level: off, minimal, low, medium, high, xhigh, max                                                            |
+| `max_turns`       | number  | no       | Turn ceiling (minimum 2). Omit for the agent's own limit                                                               |
+| `foreground`      | boolean | no       | Block until the agent completes and return its result inline. Omit to run in the background                            |
+| `resume`          | string  | no       | Agent ID to resume a previous session                                                                                  |
+| `inherit_context` | boolean | no       | Fork parent conversation into agent                                                                                    |
+| `cwd`             | string  | no       | Existing directory the agent runs in, such as a git worktree (see below)                                               |
+| `handoff`         | object  | no       | Data for extensions in the agent's session (see below)                                                                 |
 
 `handoff` is a JSON object (at most 16 KB) whose top-level keys belong to other extensions, each documenting its key's shape in its own tool guidance. For example, pi-todo reads `todo`. This package does not interpret it: it copies and freezes the object and forwards it on `subagent:session:created`, so an extension can add handoff data without changing pi-subagent. `SpawnOptions.handoff` does the same for service spawns.
 
@@ -231,8 +231,9 @@ Launch a sub-agent.
 These five parameters win over the agent file's own values, which fill whichever the call leaves unset.
 An agent file can withhold one with [`locked`](./docs/configuration.md#locking-fields-against-callers); the result then names the agent and the parameters it ignored.
 
-A call with `resume` and `run_in_background: true` resumes the agent without waiting: it returns the agent ID at once, and you are notified when the resumed run finishes.
-Only the call's own flag does this; an agent file's `run_in_background` default does not apply to a resume.
+A call with `resume` resumes the agent in the background: it returns the agent ID at once, and you are notified when the resumed run finishes.
+Add `foreground: true` to wait for the resumed outcome instead.
+Only the call's own flag decides this; an agent file's `foreground` default does not apply to a resume.
 
 ### `subagent_get`
 
@@ -506,7 +507,7 @@ It fills `model`, `thinkingLevel`, and `maxTurns` when you omit them; `inheritCo
 An agent file's [`locked`](./docs/configuration.md#locking-fields-against-callers) frontmatter does not apply here — it guards against a model guessing harness settings, and an SDK caller is not that.
 
 Background mode follows the caller's degree of commitment.
-Omit `foreground` and the agent's own `run_in_background` frontmatter decides, defaulting to background when the agent declares nothing.
+Omit `foreground` and the agent's own `foreground` frontmatter decides, defaulting to background when the agent declares nothing.
 Pass `foreground` explicitly and it wins outright, whatever the frontmatter says.
 
 A spawned agent is a first-class citizen of the runtime: it appears in the background widget, carries its parent's session identity so permission prompts route correctly, and nests its session file under the parent's.

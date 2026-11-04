@@ -10,7 +10,7 @@ function makeAgentConfig(overrides: Partial<AgentConfig> = {}): AgentConfig {
     systemPrompt: "You are a test agent.",
     promptMode: "replace",
     inheritContext: false,
-    runInBackground: false,
+    foreground: true,
     ...overrides,
   };
 }
@@ -365,6 +365,25 @@ describe("AgentTypeRegistry", () => {
       expect(prompt).toContain("Read its state, review decision and checks with git_pr_status");
       expect(prompt).toContain("start job_watch on git_pr_status (match prs.0.ciDone)");
       expect(prompt).toContain("once git_pr_status shows the PR merged");
+    });
+
+    it("waits for CI itself and hands only the fixes to workers", () => {
+      const prompt = makeRegistry().resolveAgentConfig("orchestrator").systemPrompt;
+      expect(prompt).toContain("Wait for CI yourself");
+      expect(prompt).toContain("hand that work to a worker in the PR's worktree");
+      expect(prompt).toContain("Do not hand the waiting to a worker");
+      expect(prompt).not.toContain("babysit-pr");
+    });
+
+    it("stays available: delegates in the background and ends its turn instead of waiting", () => {
+      const prompt = makeRegistry().resolveAgentConfig("orchestrator").systemPrompt;
+      expect(prompt).toContain("Stay available to the user. Subagents run in the background");
+      expect(prompt).toContain("then end your turn. Each completion notification wakes you");
+      expect(prompt).toContain(
+        "Do not pass foreground: true, call subagent_get with wait, or poll.",
+      );
+      expect(prompt).toContain("When you run as a subagent yourself");
+      expect(prompt).not.toContain("wait when progress depends on a worker");
     });
 
     it("can be overridden or disabled like every other built-in", () => {
