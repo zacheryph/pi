@@ -7,7 +7,12 @@
  *     --prompt "Audit the TUI widget padding and add tests" \
  *     --wait-for "2 running agents" --out todo-subagent.png
  */
-import { defineScenario, startAgent, text, tool } from "./scenario.ts";
+import {
+  defineScenario,
+  startAgent,
+  text,
+  tool,
+} from "../../../../packages/pi-scripted-model/src/scenario.ts";
 
 export default defineScenario({
   title: "widget-padding-audit",

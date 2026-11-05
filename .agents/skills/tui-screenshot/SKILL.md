@@ -14,8 +14,8 @@ Nothing here can reach a production session:
 
 - The scenario is loaded only by the driver, with `-e`. `.agents/` is not in
   the bundle manifest, and `scripts/verify-bundle.mjs` fails if it ever is.
-- A scenario registers nothing unless `PI_TUI_SCREENSHOT=1` is set. Only the
-  driver sets it.
+- A scenario registers nothing unless `PI_SCRIPTED_MODEL=1` is set. Only the
+  driver and the test harness set it.
 - Pi runs under `env -i` with a fresh agent directory and `TMPDIR`, which are
   deleted afterwards. No API keys or tokens get through, so no real provider is
   available, and your settings, sessions and trust list are never read.
@@ -26,13 +26,22 @@ Nerd Font icons need a Nerd Font v3 symbols font. See step 3.
 
 ## 1. Script the scenario
 
-A scenario is a Pi extension built with `scenarios/scenario.ts`. Start from
-`scenarios/todo-subagent.ts`, which opens the Todos and Subagents widgets.
-Keep a reusable scenario in `scenarios/`. A one-off scenario can go in a
-scratch directory and import the library by absolute path.
+A scenario is a Pi extension built with the scenario library in
+`packages/pi-scripted-model/src/scenario.ts`, the same one the in-process test
+harness uses (see its [README](../../../packages/pi-scripted-model/README.md)).
+Start from `scenarios/todo-subagent.ts`, which opens the Todos and Subagents
+widgets. Keep a reusable scenario in `scenarios/`. A one-off scenario can go in
+a scratch directory and import the library by absolute path.
 
 ```ts
-import { defineScenario, startAgent, text, thinking, tool, HOLD } from "./scenario.ts";
+import {
+  defineScenario,
+  startAgent,
+  text,
+  thinking,
+  tool,
+  HOLD,
+} from "../../../../packages/pi-scripted-model/src/scenario.ts";
 
 export default defineScenario({
   title: "fix-login-redirect", // session name pi-tldr shows in the footer
@@ -63,7 +72,8 @@ export default defineScenario({
   validation error instead. Read the tool's parameters in its extension first.
 - **User turns** include the follow-ups Pi starts on its own, such as a
   subagent completion notice. Add a reply for them if the screenshot is taken
-  afterwards.
+  afterwards. Context an extension adds mid-turn, such as pi-todo's task list
+  after a tool result, does not start a turn.
 - **Subagents.** `startAgent` builds a `subagent_start` call. The child is
   matched by its `prompt`, so keep prompts unique. It plays `steps`, then holds
   and stays running, which keeps it in the Subagents widget. A string step
@@ -81,7 +91,7 @@ node .agents/skills/tui-screenshot/scripts/screenshot.mjs \
   --out /path/to/todo-subagent.png
 ```
 
-The driver waits until Pi's footer shows `screenshot-model`, then runs the
+The driver waits until Pi's footer shows `scripted-model`, then runs the
 actions in the order given:
 
 | Action            | Effect                                                                   |
@@ -109,7 +119,7 @@ and renders it.
 Wait for text that appears only once the state you want is on screen, such as
 a footer count or a widget row. Do not wait on a spinner frame or a timer.
 
-On failure the driver prints the last screen. A timeout on `screenshot-model`
+On failure the driver prints the last screen. A timeout on `scripted-model`
 means Pi did not start: the screen shows why (a prompt, an extension error).
 
 ## 3. Look at the image
@@ -137,5 +147,6 @@ as a component's `render()` lines joined with newlines:
 node .agents/skills/tui-screenshot/scripts/render-ansi.mjs capture.ansi out.png [--no-frame]
 ```
 
-The renderer and the scenario library are tested by
-`scripts/tui-screenshot.test.mjs`.
+The renderer and the example scenario are tested by
+`scripts/tui-screenshot.test.mjs`; the scenario library by
+`packages/pi-scripted-model`.

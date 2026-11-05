@@ -53,88 +53,22 @@ void test("non-ASCII graphemes are boxed at their terminal cell width", () => {
   assert.match(ansiToHtml("\x1b[1m<x>\x1b[0m"), /^<span style="[^"]*font-weight:700">&lt;x&gt;/);
 });
 
-void test("the scenario registers nothing unless the screenshot driver enables it", async () => {
+// The scenario library itself is tested in packages/pi-scripted-model.
+void test("the example scenario loads and registers only when enabled", async () => {
   const { default: scenario } = await import(`${skill}/todo-subagent.ts`);
   const providers = [];
   const pi = { registerProvider: (provider) => providers.push(provider) };
-  delete process.env.PI_TUI_SCREENSHOT;
+  delete process.env.PI_SCRIPTED_MODEL;
   scenario(pi);
   assert.equal(providers.length, 0);
-  process.env.PI_TUI_SCREENSHOT = "1";
+  process.env.PI_SCRIPTED_MODEL = "1";
   try {
     scenario(pi);
   } finally {
-    delete process.env.PI_TUI_SCREENSHOT;
+    delete process.env.PI_SCRIPTED_MODEL;
   }
   assert.deepEqual(
     providers.map((p) => p.id),
-    ["pi-screenshot"],
-  );
-});
-
-void test("scripted replies follow the transcript for the main session and subagents", async () => {
-  const { defineScenario, startAgent, tool, HOLD } = await import(`${skill}/scenario.ts`);
-  const scenario = defineScenario({
-    title: "demo-title",
-    replies: [[[tool("todo_list", {})], "first done"], [HOLD]],
-  });
-  // Defined after the scenario: agents are looked up when a request arrives.
-  startAgent({
-    type: "Plan",
-    description: "child",
-    prompt: "Child task.",
-    steps: [[tool("read", { path: "a" })], "child done"],
-  });
-  let provider;
-  process.env.PI_TUI_SCREENSHOT = "1";
-  try {
-    scenario({ registerProvider: (p) => (provider = p) });
-  } finally {
-    delete process.env.PI_TUI_SCREENSHOT;
-  }
-  const models = provider.getModels();
-  const model = (id) => models.find((m) => m.id === id);
-  const user = (text) => ({ role: "user", content: [{ type: "text", text }], timestamp: 0 });
-  const assistant = { role: "assistant", content: [], timestamp: 0 };
-  const ask = async (messages, id = "screenshot-model", signal) => {
-    const result = await provider
-      .streamSimple(model(id), { systemPrompt: "", messages }, { signal })
-      .result();
-    return { stop: result.stopReason, content: result.content };
-  };
-  const toolNames = ({ content }) =>
-    content.filter((c) => c.type === "toolCall").map((c) => c.name);
-  const text = ({ content }) => content.map((c) => c.text ?? "").join("");
-
-  assert.deepEqual(toolNames(await ask([user("go")])), ["todo_list"]);
-  assert.equal(text(await ask([user("go"), assistant])), "first done");
-  assert.equal(
-    text(await ask([user("go"), assistant, assistant])),
-    "",
-    "a turn with no steps ends",
-  );
-  assert.deepEqual(toolNames(await ask([user("Context.\n\nChild task.")])), ["read"]);
-  assert.equal(text(await ask([user("Child task."), assistant])), "child done");
-
-  // HOLD, and a subagent with no steps left, wait until the request is aborted.
-  for (const messages of [
-    [user("go"), assistant, user("again")],
-    [user("Child task."), assistant, assistant],
-  ]) {
-    const controller = new AbortController();
-    const pending = ask(messages, undefined, controller.signal);
-    const raced = await Promise.race([pending, new Promise((r) => setTimeout(r, 50, "held"))]);
-    assert.equal(raced, "held");
-    controller.abort();
-    assert.equal((await pending).stop, "aborted");
-  }
-
-  assert.equal(
-    text(await ask([user("<user_request>\ngo\n</user_request>")], "screenshot-haiku")),
-    "demo-title",
-  );
-  assert.equal(
-    JSON.parse(text(await ask([user("summarize")], "screenshot-haiku"))).title,
-    "demo-title",
+    ["pi-scripted"],
   );
 });

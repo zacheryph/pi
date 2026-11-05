@@ -41,6 +41,19 @@ void test("unrelated, removed, and similarly prefixed extensions do not match", 
   assert.deepEqual(selectExtensions(workspaces, []), []);
 });
 
+void test("any selected extension also selects the bundle tests", () => {
+  const withBundle = [...workspaces, "packages/pi-scripted-model"];
+  assert.deepEqual(selectExtensions(withBundle, ["extensions/pi-todo/src/index.ts"]), [
+    "extensions/pi-todo",
+    "packages/pi-scripted-model",
+  ]);
+  assert.deepEqual(selectExtensions(withBundle, ["README.md"]), []);
+  assert.deepEqual(
+    selectExtensions(withBundle, ["packages/pi-scripted-model/src/harness.ts"]),
+    [...withBundle].sort(),
+  );
+});
+
 void test("shared dependency, compiler, and CI changes select all extensions", () => {
   for (const path of [
     ".nvmrc",

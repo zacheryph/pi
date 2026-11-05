@@ -1,0 +1,26 @@
+{
+  "name": "pi-scripted-model",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "Scripted fake model and in-process session harness for testing the personal Pi bundle without an API key.",
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "imports": {
+    "#src/*": "./src/*",
+    "#test/*": "./test/*"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "check": "oxfmt --check . && oxlint --deny-warnings . && npm run typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "fix": "oxfmt --write . && oxlint --fix . && oxfmt --write ."
+  }
+}
