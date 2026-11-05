@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { JobManager, type JobSnapshot } from "../src/jobs.ts";
 import { rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { alive, readPid, sleep, tempDir, waitUntil } from "./helpers.ts";
+import { alive, readPid, sleep, tempDir, waitForPid, waitUntil } from "./helpers.ts";
 
 function setup(
   t: Parameters<typeof tempDir>[0],
@@ -302,8 +302,7 @@ void test("shutdown kills every running group silently and refuses new jobs", as
     timeoutSeconds: 60,
   });
   manager.watch({ ...watchDefaults, check: `sleep 100`, cwd: dir, checkTimeoutSeconds: 60 });
-  await waitUntil(() => existsSync(join(dir, "a.pid")) && existsSync(join(dir, "b.pid")));
-  const pids = [readPid(join(dir, "a.pid")), readPid(join(dir, "b.pid"))];
+  const pids = await Promise.all(["a.pid", "b.pid"].map((file) => waitForPid(join(dir, file))));
   await sleep(100);
   await manager.shutdown(200);
   await waitUntil(() => pids.every((p) => !alive(p)), 3000, "all groups to die");

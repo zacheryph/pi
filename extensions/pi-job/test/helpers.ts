@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { TestContext } from "node:test";
@@ -32,6 +32,21 @@ export function alive(pid: number): boolean {
 
 export function readPid(path: string): number {
   return Number(readFileSync(path, "utf8").trim());
+}
+
+/** Shell redirection creates the file before echo writes the PID into it. */
+export async function waitForPid(path: string): Promise<number> {
+  let pid = 0;
+  await waitUntil(
+    () => {
+      if (!existsSync(path)) return false;
+      pid = readPid(path);
+      return Number.isSafeInteger(pid) && pid > 0;
+    },
+    5000,
+    `PID in ${path}`,
+  );
+  return pid;
 }
 
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
