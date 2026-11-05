@@ -212,6 +212,7 @@ subagent_start({ subagent_type: "auditor", prompt: "Review the auth module", des
 ### Frontmatter Fields
 
 All fields are optional — sensible defaults for everything.
+A file whose frontmatter is not valid YAML still takes its name, so it still overrides a lower-priority agent, but it is left out of the `subagent_start` list and refused at spawn with the parse error; `/subagent:agents` marks it `[invalid]`.
 
 | Field             | Default        | Description                                                                                                                                                                                                                                                               |
 | ----------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

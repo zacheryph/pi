@@ -104,6 +104,12 @@ export interface AgentConfig extends AgentIdentity, AgentPromptConfig {
   sourcePath?: string;
   /** Ordered fragment names in the winning profile's agents/fragments directory. */
   fragments?: string[];
+  /**
+   * The file could not be parsed. The agent is kept so it still overrides a
+   * lower-priority one, but it is unlisted, refused at spawn, and shown with
+   * this message in /subagent:agents.
+   */
+  definitionError?: string;
   /** Invalid fragment declaration: discoverable, but refused at execution/preview. */
   fragmentError?: string;
 }

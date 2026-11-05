@@ -163,6 +163,25 @@ describe("AgentTypeRegistry", () => {
     });
   });
 
+  describe("an agent whose file does not parse", () => {
+    const broken = makeAgentConfig({ name: "auditor", definitionError: "invalid frontmatter" });
+
+    it("is not valid, available or listed", () => {
+      const registry = makeRegistry(new Map([["auditor", broken]]));
+      expect(registry.isValidType("auditor")).toBe(false);
+      expect(registry.getAvailableTypes()).not.toContain("auditor");
+      expect(registry.getListedTypes()).not.toContain("auditor");
+    });
+
+    it("still shadows the built-in it names", () => {
+      const registry = makeRegistry(
+        new Map([["Plan", makeAgentConfig({ name: "Plan", definitionError: "bad" })]]),
+      );
+      expect(registry.resolveAgentConfig("Plan").definitionError).toBe("bad");
+      expect(registry.isValidType("Plan")).toBe(false);
+    });
+  });
+
   describe("getListedTypes", () => {
     it("lists visible agents and those that declare no visibility", () => {
       const registry = makeRegistry(

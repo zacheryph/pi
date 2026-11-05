@@ -244,6 +244,19 @@ describe("SubagentManager", () => {
         ).toThrow('Agent type "Plan" is disabled');
       });
 
+      it("throws with the parse error for a type whose file does not parse", () => {
+        ({ manager } = createManager({
+          registry: registryWith("Plan", {
+            definitionError: "invalid frontmatter in /p/Plan.md: x",
+          }),
+        }));
+
+        expect(() =>
+          manager.spawn(STUB_SNAPSHOT, "Plan", "test", { description: "d", background: true }),
+        ).toThrow('Agent type "Plan" cannot load: invalid frontmatter in /p/Plan.md: x');
+        expect(manager.listAgents()).toEqual([]);
+      });
+
       it("spawns a hidden type by name", () => {
         ({ manager } = createManager({ registry: registryWith("Plan", { visibility: "hidden" }) }));
 

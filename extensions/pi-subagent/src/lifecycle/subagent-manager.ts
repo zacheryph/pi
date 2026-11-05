@@ -368,7 +368,7 @@ export class SubagentManager {
    * Spawn an agent and return its ID immediately (for background use).
    * If the concurrency limit is reached, the agent is queued.
    *
-   * Throws when the named agent type is disabled.
+   * Throws when the named agent type is disabled or its file does not parse.
    */
   spawn(
     snapshot: ParentSnapshot,
@@ -391,7 +391,7 @@ export class SubagentManager {
    * The caller holds the result, which is a delivery commitment: the agent must
    * not be queued and must not be announced, whatever its frontmatter declares.
    *
-   * Rejects when the named agent type is disabled.
+   * Rejects when the named agent type is disabled or its file does not parse.
    */
   async spawnAndWait(
     snapshot: ParentSnapshot,
@@ -418,7 +418,12 @@ export class SubagentManager {
   private resolveSpawn(type: string, background: boolean, snapshot: ParentSnapshot): ResolvedSpawn {
     const canonical = this.registry.resolveType(type);
     if (canonical !== undefined && !this.registry.isValidType(canonical)) {
-      throw new Error(`Agent type "${canonical}" is disabled`);
+      const { definitionError } = this.registry.resolveAgentConfig(canonical);
+      throw new Error(
+        definitionError
+          ? `Agent type "${canonical}" cannot load: ${definitionError}`
+          : `Agent type "${canonical}" is disabled`,
+      );
     }
     const resolvedType = canonical ?? "general-purpose";
     // Validate every selected declaration now. Resolve fragments while the

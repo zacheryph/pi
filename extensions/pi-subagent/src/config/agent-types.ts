@@ -74,7 +74,7 @@ export class AgentTypeRegistry implements AgentConfigLookup {
     return [...this.agents.keys()];
   }
 
-  /** Check if a type exists and is not disabled (case-insensitive). Hidden types are valid. */
+  /** Check if a type exists, is not disabled, and parsed (case-insensitive). Hidden types are valid. */
   isValidType(type: string): boolean {
     const key = this.resolveKey(type);
     if (!key) return false;
@@ -123,14 +123,14 @@ export class AgentTypeRegistry implements AgentConfigLookup {
   }
 }
 
-/** True unless the agent is disabled. */
-export function isSpawnable(config: Pick<AgentConfig, "visibility">): boolean {
-  return config.visibility !== "disabled";
+/** True unless the agent is disabled or its file failed to parse. */
+export function isSpawnable(config: Pick<AgentConfig, "visibility" | "definitionError">): boolean {
+  return config.visibility !== "disabled" && config.definitionError === undefined;
 }
 
-/** True when the agent belongs in the subagent_start list: visible, or no visibility set. */
-export function isListed(config: Pick<AgentConfig, "visibility">): boolean {
-  return (config.visibility ?? "visible") === "visible";
+/** True when the agent belongs in the subagent_start list: spawnable, and visible or no visibility set. */
+export function isListed(config: Pick<AgentConfig, "visibility" | "definitionError">): boolean {
+  return isSpawnable(config) && (config.visibility ?? "visible") === "visible";
 }
 
 /** All known built-in tool names. */

@@ -44,6 +44,8 @@ export function resolveMainAgentProfile(name: string, ctx: ExtensionContext): Ag
   const key = registry.resolveType(name);
   if (!key) throw new Error(`Unknown main agent profile: "${name}".`);
   const profile = structuredClone(registry.resolveAgentConfig(key));
+  if (profile.definitionError)
+    throw new Error(`Main agent profile "${key}" cannot load: ${profile.definitionError}`);
   if (profile.visibility === "disabled")
     throw new Error(`Main agent profile "${key}" is disabled.`);
   validateTrust(profile, ctx);
@@ -179,6 +181,10 @@ export function registerMainAgentProfile(
 
   /** Apply defaults once for explicit selection. Never called on restoration or a turn. */
   async function applyDefaults(profile: AgentConfig, ctx: ExtensionContext): Promise<string> {
+    if (profile.definitionError)
+      throw new Error(
+        `Main agent profile "${profile.name}" cannot load: ${profile.definitionError}`,
+      );
     if (profile.visibility === "disabled")
       throw new Error(`Main agent profile "${profile.name}" is disabled.`);
     validateTrust(profile, ctx);
