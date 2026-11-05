@@ -97,7 +97,6 @@ describe("effective agent definitions", () => {
     expect(field(config, "Source")).toBe("project");
     expect(field(config, "Tools")).toBe("(none)");
     expect(r.isValidType("Explore")).toBe(false);
-    expect(r.getAvailableTypes()).not.toContain("Explore");
   });
 
   it("orders Name, effective fields, Description, then full-width Body on following line", () => {

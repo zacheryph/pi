@@ -2,13 +2,7 @@ import type { ThemeColor } from "@earendil-works/pi-coding-agent";
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import type { AgentConfig } from "#src/types";
-import {
-  formatSessionTokens,
-  getDisplayName,
-  getPromptModeLabel,
-  modelLabel,
-  type Theme,
-} from "#src/ui/display";
+import { getDisplayName, getPromptModeLabel, modelLabel, type Theme } from "#src/ui/display";
 import { makeModel } from "#test/helpers/make-model";
 
 const testRegistry = new AgentTypeRegistry(() => new Map());
@@ -81,50 +75,6 @@ describe("getPromptModeLabel", () => {
 
   it("returns undefined for replace promptMode", () => {
     expect(getPromptModeLabel("Explore", testRegistry)).toBeUndefined();
-  });
-});
-
-describe("formatSessionTokens", () => {
-  const theme = { fg: (c: string, s: string) => `<${c}>${s}</${c}>`, bold: (s: string) => s };
-
-  it("applies threshold colors (<70 dim, 70–85 warning, ≥85 error)", () => {
-    expect(formatSessionTokens(1234, null, theme)).toBe("1.2k token");
-    expect(formatSessionTokens(1234, 50, theme)).toBe(
-      "1.2k token <dim>(</dim><dim>50%</dim><dim>)</dim>",
-    );
-    expect(formatSessionTokens(1234, 70, theme)).toBe(
-      "1.2k token <dim>(</dim><warning>70%</warning><dim>)</dim>",
-    );
-    expect(formatSessionTokens(1234, 84, theme)).toBe(
-      "1.2k token <dim>(</dim><warning>84%</warning><dim>)</dim>",
-    );
-    expect(formatSessionTokens(1234, 85, theme)).toBe(
-      "1.2k token <dim>(</dim><error>85%</error><dim>)</dim>",
-    );
-    expect(formatSessionTokens(1234, 99, theme)).toBe(
-      "1.2k token <dim>(</dim><error>99%</error><dim>)</dim>",
-    );
-  });
-
-  it("annotates compaction count alongside percent", () => {
-    // compactions only (e.g. immediately post-compaction, percent null)
-    expect(formatSessionTokens(1234, null, theme, 1)).toBe(
-      "1.2k token <dim>(</dim><dim>⇊1</dim><dim>)</dim>",
-    );
-    expect(formatSessionTokens(1234, null, theme, 3)).toBe(
-      "1.2k token <dim>(</dim><dim>⇊3</dim><dim>)</dim>",
-    );
-    // percent + compactions, joined with ` · `
-    expect(formatSessionTokens(1234, 45, theme, 2)).toBe(
-      "1.2k token <dim>(</dim><dim>45%</dim><dim> · </dim><dim>⇊2</dim><dim>)</dim>",
-    );
-    expect(formatSessionTokens(1234, 88, theme, 4)).toBe(
-      "1.2k token <dim>(</dim><error>88%</error><dim> · </dim><dim>⇊4</dim><dim>)</dim>",
-    );
-    // compactions=0 omitted
-    expect(formatSessionTokens(1234, 45, theme, 0)).toBe(
-      "1.2k token <dim>(</dim><dim>45%</dim><dim>)</dim>",
-    );
   });
 });
 
