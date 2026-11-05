@@ -3,6 +3,20 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-05: The caller alone decides foreground or background
+
+An agent file's `foreground` key let a profile pick how it ran whenever the
+caller left `foreground` unset. How an agent runs is the caller's decision, so
+the key is gone.
+
+- Drop `foreground` from agent frontmatter, `AgentConfig`, and the lockable
+  fields. A file that still sets it, or locks it, has that entry ignored.
+- Collapse `BackgroundRequest`'s `explicit`/`default` union to a boolean
+  `background`, and remove `resolveBackgroundMode`, which existed only to let
+  the profile fill a `default` request.
+- Remove the Foreground row from the `/subagent:agents` detail view and the
+  main-profile "subagent-only fields skipped" notice.
+
 ## 2026-11-04: Register the agent definitions browser as `/subagent:agents`
 
 The read-only agent profile browser was still registered, but as `/agent`

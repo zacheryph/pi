@@ -78,8 +78,6 @@ export interface AgentConfig extends AgentIdentity, AgentPromptConfig {
   maxTurns?: number;
   /** Default for spawn: fork parent conversation. undefined = caller decides. */
   inheritContext?: boolean;
-  /** Default for spawn: true runs in the foreground, false in the background. undefined = caller decides (background unless asked). */
-  foreground?: boolean;
   /** Fields a `subagent_start` tool caller may not override. Omitted — every field is overridable. */
   locked?: LockDeclaration;
   /** One-line usage guideline for the subagent_start tool's Guidelines: block. Omitted — no guideline line. */

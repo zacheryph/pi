@@ -13,7 +13,6 @@ const DEFAULT_AGENT_CONFIG: AgentConfig = {
   systemPrompt: "You are Explore.",
   promptMode: "replace",
   inheritContext: false,
-  foreground: true,
 };
 
 /**

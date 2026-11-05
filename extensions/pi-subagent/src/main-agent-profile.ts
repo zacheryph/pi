@@ -292,7 +292,6 @@ export function registerMainAgentProfile(
       ctx.ui.setStatus("agent:status", `Agent · ${name}`);
       const skipped = [
         selected.profile.maxTurns !== undefined && "max_turns",
-        selected.profile.foreground !== undefined && "foreground",
         selected.profile.inheritContext !== undefined && "inherit_context",
       ].filter(Boolean);
       notice(

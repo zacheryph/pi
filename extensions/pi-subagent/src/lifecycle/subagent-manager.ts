@@ -8,7 +8,6 @@
 
 import { randomUUID } from "node:crypto";
 import type { Model } from "@earendil-works/pi-ai";
-import { type BackgroundRequest, resolveBackgroundMode } from "#src/config/invocation-config";
 import { composeAgentInstructions } from "#src/config/prompt-fragments";
 import { debugLog } from "#src/debug";
 import type { SubagentHandoff } from "#src/lifecycle/child-lifecycle";
@@ -226,11 +225,11 @@ export interface AgentSpawnConfig {
   inheritContext?: boolean;
   thinkingLevel?: ThinkingLevel;
   /**
-   * Whether this door has committed to a background mode or is offering a
-   * default the agent's frontmatter may override. Required so a new front door
-   * cannot silently inherit another's policy.
+   * Whether the agent runs in the background. The caller decides; an agent
+   * profile has no say. Required so a new front door cannot silently inherit
+   * another's policy.
    */
-  background: BackgroundRequest;
+  background: boolean;
   /**
    * Skip the maxConcurrent queue check for this spawn - start immediately even
    * if the configured concurrency limit would otherwise queue it. Useful for
@@ -400,10 +399,9 @@ export class SubagentManager {
     prompt: string,
     options: Omit<AgentSpawnConfig, "background">,
   ): Promise<Subagent> {
-    const foreground: BackgroundRequest = { kind: "explicit", isBackground: false };
-    const id = this.create(snapshot, this.resolveSpawn(type, foreground, snapshot), prompt, {
+    const id = this.create(snapshot, this.resolveSpawn(type, false, snapshot), prompt, {
       ...options,
-      background: foreground,
+      background: false,
     });
     const record = this.agents.get(id)!;
     // The caller holds the result, so this call is the carrier: claim the outcome
@@ -415,13 +413,9 @@ export class SubagentManager {
 
   /**
    * Stamp the invariants every front door shares: a canonical agent type, a
-   * rejection for a disabled one, and the effective background mode.
+   * rejection for a disabled one, and the background mode.
    */
-  private resolveSpawn(
-    type: string,
-    background: BackgroundRequest,
-    snapshot: ParentSnapshot,
-  ): ResolvedSpawn {
+  private resolveSpawn(type: string, background: boolean, snapshot: ParentSnapshot): ResolvedSpawn {
     const canonical = this.registry.resolveType(type);
     if (canonical !== undefined && !this.registry.isValidType(canonical)) {
       throw new Error(`Agent type "${canonical}" is disabled`);
@@ -446,7 +440,7 @@ export class SubagentManager {
     }
     return {
       type: resolvedType,
-      isBackground: resolveBackgroundMode(profile, background),
+      isBackground: background,
       agentConfig,
     };
   }
@@ -583,11 +577,7 @@ export class SubagentManager {
    */
   private rebuildFromSaved(saved: PersistedSubagentRecord): Subagent {
     const { snapshot, parentSession } = this.savedAgents!.parent();
-    const resolved = this.resolveSpawn(
-      saved.type,
-      { kind: "explicit", isBackground: true },
-      snapshot,
-    );
+    const resolved = this.resolveSpawn(saved.type, true, snapshot);
     const model = resolveSavedModel(saved.model, snapshot.modelRegistry);
     const record = new Subagent({
       id: saved.id,

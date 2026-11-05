@@ -215,12 +215,12 @@ All fields are optional — sensible defaults for everything.
 | `max_turns`       | unlimited      | Turn ceiling: the harness stops the agent after this many turns (minimum 2). `0` or omit for unlimited                                                                                                                                        |
 | `prompt_mode`     | `append`       | `replace`: parent prompt is the cacheable base; body is appended last with full control and no `<agent_instructions>` wrapper. `append`: parent prompt is the base; body is wrapped in `<agent_instructions>` (agent acts as a "parent twin") |
 | `inherit_context` | `false`        | Fork parent conversation into agent                                                                                                                                                                                                           |
-| `foreground`      | `false`        | Run in the foreground by default: the caller blocks until the agent completes. Omit to run in the background, which `subagent_start` does unless asked                                                                                        |
 | `enabled`         | `true`         | Set to `false` to disable an agent (useful for hiding a default agent per-project)                                                                                                                                                            |
 | `locked`          | —              | Fields a `subagent_start` tool caller may not override. `true` or a list of field names. See [Locking fields against callers](#locking-fields-against-callers)                                                                                |
 
 The caller decides, and the agent file fills the gaps.
-A `subagent_start` tool parameter wins over the agent file's value for `model`, `thinking`, `max_turns`, `inherit_context`, and `foreground`; the agent file supplies whichever of those the caller left unset.
+A `subagent_start` tool parameter wins over the agent file's value for `model`, `thinking`, `max_turns`, and `inherit_context`; the agent file supplies whichever of those the caller left unset.
+Whether an agent runs in the foreground or the background is the caller's choice alone; an agent file has no say.
 
 ### Locking fields against callers
 
@@ -234,7 +234,7 @@ locked: true
 ---
 ```
 
-`locked: true` withholds every field this file sets — here `model` and `max_turns`, while `thinking`, `inherit_context`, and `foreground` stay open because the file names no value for them.
+`locked: true` withholds every field this file sets — here `model` and `max_turns`, while `thinking` and `inherit_context` stay open because the file names no value for them.
 This is the behavior every agent file had before locking became opt-in, so it is the one-line way to keep an existing file working unchanged.
 
 A list withholds exactly the fields it names, in either YAML spelling:
@@ -245,7 +245,7 @@ locked: [model, max_turns] # flow sequence
 ```
 
 The list form also withholds a field this file leaves unset — `locked: [model]` with no `model:` denies the caller a model override and lets the child inherit the parent's.
-An entry naming anything other than `model`, `thinking`, `max_turns`, `inherit_context`, or `foreground` is ignored.
+An entry naming anything other than `model`, `thinking`, `max_turns`, or `inherit_context` is ignored.
 
 A lock is never silent: when a caller passes a value for a locked field, the tool result says which agent locked which parameters.
 
@@ -458,7 +458,7 @@ parent model normally.
 
 Project profiles require Pi project trust. Delegation tools are included by default, unless a profile explicitly excludes them (`-subagent_start`, `-subagent_get`, or `-subagent_steer`);
 child settings and prompt construction are unchanged. `locked`, `max_turns`,
-`foreground`, and `inherit_context` retain their child meanings rather
+and `inherit_context` retain their child meanings rather
 than imposing main-session restrictions. See [main-session profile usage](../README.md#main-session-profile---agent)
 for validation, tool-access, and automation limitations.
 

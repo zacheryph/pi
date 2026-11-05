@@ -79,13 +79,8 @@ export class SubagentsServiceAdapter implements SubagentsService {
       bypassQueue: options?.bypassQueue,
       handoff: this.resolveHandoff(options?.handoff),
       cwd: this.resolveCwd(options?.cwd, snapshot.cwd),
-      // A caller that names `foreground` has committed; one that omits it has
-      // not, so the agent's own frontmatter decides and background is the
-      // SDK-door default.
-      background:
-        options?.foreground === undefined
-          ? { kind: "default", isBackground: true }
-          : { kind: "explicit", isBackground: !options.foreground },
+      // The caller decides; background is the SDK-door default.
+      background: options?.foreground !== true,
     });
   }
 

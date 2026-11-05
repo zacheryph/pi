@@ -98,7 +98,6 @@ describe("effective agent definitions", () => {
       thinking: "high",
       maxTurns: 30,
       inheritContext: true,
-      foreground: true,
       locked: ["model", "thinking"],
       toolGuideline: "Pick auditor for reviews.",
     });
@@ -112,7 +111,6 @@ describe("effective agent definitions", () => {
     expect(field(text, "Max turns")).toBe("30");
     expect(field(text, "Prompt mode")).toBe("append");
     expect(field(text, "Inherit context")).toBe("true");
-    expect(field(text, "Foreground")).toBe("true");
     expect(field(text, "Locked")).toBe("model, thinking");
     const lines = text.split("\n");
     expect(lines[lines.indexOf("Tool guideline") + 1]).toBe(config.toolGuideline);
@@ -134,7 +132,6 @@ describe("effective agent definitions", () => {
     expect(field(text, "Thinking")).toBe("(inherit parent)");
     expect(field(text, "Max turns")).toBe("unlimited");
     expect(field(text, "Inherit context")).toBe("false (tool default; caller decides)");
-    expect(field(text, "Foreground")).toBe("false (tool default; caller decides)");
     expect(field(text, "Locked")).toBe("(none)");
     expect(field(text, "Source path")).toBe("(not available)");
     expect(text.endsWith("\n\nBody\n(empty)")).toBe(true);

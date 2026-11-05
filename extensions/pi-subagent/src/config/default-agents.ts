@@ -19,7 +19,7 @@ export const DEFAULT_AGENTS: Map<string, AgentConfig> = new Map([
       description: "General-purpose agent for complex, multi-step tasks",
       toolGuideline: "- Use general-purpose for complex tasks that need file editing.",
       // toolNames omitted — means every available parent tool (resolved at spawn time)
-      // inheritContext / foreground omitted — strategy fields, callers decide per-call.
+      // inheritContext omitted — a strategy field, callers decide per-call.
       // No built-in declares `locked`: Explore's haiku is a cost default, not a
       // correctness one, so a caller that knows better may override it (#829).
       systemPrompt: "",

@@ -24,7 +24,7 @@ vi.mock("node:fs", async (importOriginal) => {
   return { ...actual, readFileSync: vi.fn(actual.readFileSync) };
 });
 
-const background = { kind: "explicit", isBackground: true } as const;
+const background = true;
 
 describe("child fragment spawn snapshots", () => {
   let root: string;

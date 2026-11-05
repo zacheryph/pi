@@ -468,7 +468,7 @@ describe("SubagentsServiceAdapter — spawn", () => {
         expect.anything(), // snapshot
         "Plan",
         "plan work",
-        expect.objectContaining({ background: { kind: "default", isBackground: true } }),
+        expect.objectContaining({ background: true }),
       );
     });
 
@@ -479,7 +479,7 @@ describe("SubagentsServiceAdapter — spawn", () => {
         expect.anything(), // snapshot
         "Plan",
         "plan work",
-        expect.objectContaining({ background: { kind: "explicit", isBackground: false } }),
+        expect.objectContaining({ background: false }),
       );
     });
 
@@ -490,7 +490,7 @@ describe("SubagentsServiceAdapter — spawn", () => {
         expect.anything(), // snapshot
         "Plan",
         "plan work",
-        expect.objectContaining({ background: { kind: "explicit", isBackground: true } }),
+        expect.objectContaining({ background: true }),
       );
     });
   });

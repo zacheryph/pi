@@ -56,7 +56,7 @@ describe("watch readiness through manager and composite observer", () => {
       try {
         const id = manager.spawn(STUB_SNAPSHOT, "general-purpose", "work", {
           description: "watch",
-          background: { kind: "explicit", isBackground: !foreground },
+          background: !foreground,
           observer: {
             onSessionCreated: () => {
               order.push("spawn-ready");
@@ -91,7 +91,7 @@ describe("watch readiness through manager and composite observer", () => {
     try {
       const id = manager.spawn(STUB_SNAPSHOT, "general-purpose", "work", {
         description: "watch",
-        background: { kind: "explicit", isBackground: true },
+        background: true,
         observer: { onSessionCreated: perSpawn },
       });
       await manager.getRecord(id)!.promise;

@@ -87,7 +87,6 @@ const lockValues = (config: AgentConfig): Record<LockableField, unknown> => ({
   thinking: config.thinking,
   max_turns: config.maxTurns,
   inherit_context: config.inheritContext,
-  foreground: config.foreground,
 });
 
 function lockSummary(config: AgentConfig): string {
@@ -135,12 +134,6 @@ function agentDetail(
           config.inheritContext === undefined
             ? "false (tool default; caller decides)"
             : String(config.inheritContext),
-        ],
-        [
-          "Foreground",
-          config.foreground === undefined
-            ? "false (tool default; caller decides)"
-            : String(config.foreground),
         ],
         ["Locked", lockSummary(config)],
       ],

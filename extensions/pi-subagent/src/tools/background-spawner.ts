@@ -52,9 +52,8 @@ export function spawnBackground(manager: BackgroundManagerDeps, params: Backgrou
       thinkingLevel: execution.thinking,
       ...(execution.handoff ? { handoff: execution.handoff } : {}),
       ...(execution.cwd ? { cwd: execution.cwd } : {}),
-      // resolveSpawnConfig already merged the agent's frontmatter and AgentTool
-      // routed here on the result, so this door has committed.
-      background: { kind: "explicit", isBackground: true },
+      // AgentTool routed here because the call runs in the background.
+      background: true,
     });
   } catch (err) {
     return textResult(err instanceof Error ? err.message : String(err));
