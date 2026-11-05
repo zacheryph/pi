@@ -2,18 +2,8 @@
 description: "Project manager for long-running work: tracks todos, delegates, recalls workers"
 display_name: Orchestrator
 guidance: Use to coordinate a project or workstream across multiple subagents.
-tools:
-  [
-    all,
-    todo_list,
-    todo_upsert,
-    todo_replace,
-    todo_remove,
-    todo_clear,
-    subagent_start,
-    subagent_get,
-    subagent_steer,
-  ]
+tools: [all, todo_list, todo_upsert, todo_replace, todo_remove, todo_clear]
+delegate: true
 prompt_mode: replace
 ---
 

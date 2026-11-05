@@ -370,7 +370,7 @@ describe("AgentTypeRegistry", () => {
   });
 
   describe("orchestrator profile", () => {
-    it("is discoverable case-insensitively with explicit delegation and todo tools", () => {
+    it("is discoverable case-insensitively, delegates, and names its todo tools", () => {
       const registry = makeRegistry();
       expect(registry.resolveType("Orchestrator")).toBe("orchestrator");
       expect(registry.getListedTypes()).toContain("orchestrator");
@@ -379,17 +379,8 @@ describe("AgentTypeRegistry", () => {
         displayName: "Orchestrator",
         source: "default",
         promptMode: "replace",
-        toolNames: [
-          "all",
-          "todo_list",
-          "todo_upsert",
-          "todo_replace",
-          "todo_remove",
-          "todo_clear",
-          "subagent_start",
-          "subagent_get",
-          "subagent_steer",
-        ],
+        delegate: true,
+        toolNames: ["all", "todo_list", "todo_upsert", "todo_replace", "todo_remove", "todo_clear"],
       });
     });
 
