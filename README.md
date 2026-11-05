@@ -477,7 +477,11 @@ A repository-wide job always checks formatting and lint, including scripts. Pull
 select extensions with changes under their directory; changes to root
 manifests/lockfiles, `.nvmrc`, shared TypeScript or Oxc settings, workflows, or scripts
 select all extensions. Pushes to `main` always check and test all extensions.
-Unrelated PR changes skip the extension matrix. Matrix selection is tested with
+Unrelated PR changes skip the extension matrix.
+The repository job also checks registration
+(`scripts/bundle-manifest.test.mjs`): every directory under `extensions/` and
+`packages/` is a workspace named after it with `check` and `test` scripts, and root
+`pi.extensions` and `pi.skills` are exactly what the extension workspaces declare. Matrix selection is tested with
 `node --test scripts/select-test-extensions.test.mjs`. CI reads its Node.js
 version from `.nvmrc`; `nvm use` or `fnm use` picks up the same version locally.
 
