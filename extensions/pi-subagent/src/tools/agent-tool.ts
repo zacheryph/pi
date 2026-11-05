@@ -135,8 +135,6 @@ export class AgentTool {
     if (params.resume) {
       const id = params.resume as string;
       const prompt = params.prompt as string;
-      // Only the caller's explicit flag: an agent file's foreground default
-      // describes how that type spawns, not how a resume is collected.
       const foreground =
         typeof params.foreground === "boolean" ? params.foreground : defaultForeground;
       if (foreground) {
@@ -276,7 +274,7 @@ ${guidelines}
         foreground: Type.Optional(
           Type.Boolean({
             description:
-              "Set to true to wait for the agent and get its result in this call, blocking you until it finishes. Omit to run in the background: the call returns the agent ID at once and you are notified when it completes (unless the agent's own file says foreground).",
+              "Set to true to wait for the agent and get its result in this call, blocking you until it finishes. Omit to run in the background: the call returns the agent ID at once and you are notified when it completes.",
           }),
         ),
         resume: Type.Optional(

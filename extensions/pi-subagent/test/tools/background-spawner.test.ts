@@ -117,7 +117,7 @@ describe("spawnBackground", () => {
       expect.anything(), // snapshot
       expect.any(String),
       "do something",
-      expect.objectContaining({ background: { kind: "explicit", isBackground: true } }),
+      expect.objectContaining({ background: true }),
     );
   });
 

@@ -67,7 +67,7 @@ subagent_start({
 
 Agents run in the background: the call returns an ID immediately and you are notified on completion, so the parent can end its turn and stay available while the agent works.
 Pass `foreground: true` to block until the agent completes and get its result inline.
-In print and json mode (`pi -p`, `--mode json`) nothing can wake the parent once its turn ends, so there an agent runs in the foreground unless the call or its agent file says otherwise.
+In print and json mode (`pi -p`, `--mode json`) nothing can wake the parent once its turn ends, so there an agent runs in the foreground unless the call says otherwise.
 
 ## UI
 
@@ -173,7 +173,7 @@ status for a handled startup failure; automation must check diagnostics too.
 main profile's initial tool list. Children keep existing profile settings and
 prompt construction; the main profile body is not inherited. Normal child
 defaults that inherit the current parent model or thinking still work as before.
-`max_turns`, `foreground`, and `inherit_context` are child-only and reported
+`max_turns` and `inherit_context` are child-only and reported
 as skipped for the main session. `locked` controls child caller overrides, not
 manual main-session changes.
 
@@ -233,7 +233,6 @@ An agent file can withhold one with [`locked`](./docs/configuration.md#locking-f
 
 A call with `resume` resumes the agent in the background: it returns the agent ID at once, and you are notified when the resumed run finishes.
 Add `foreground: true` to wait for the resumed outcome instead.
-Only the call's own flag decides this; an agent file's `foreground` default does not apply to a resume.
 
 A resume continues the agent's live session while it has one.
 Once that is gone — the retention window released it, or a `/reload`, `/resume` or session switch dropped it — the agent's saved transcript is reopened instead, with the type, model, thinking level, turn ceiling and directory on its last saved record.
@@ -546,9 +545,7 @@ Agent frontmatter never overrides an option you pass.
 It fills `model`, `thinkingLevel`, and `maxTurns` when you omit them; `inheritContext` is the exception, and defaults to `false` whatever the agent file declares.
 An agent file's [`locked`](./docs/configuration.md#locking-fields-against-callers) frontmatter does not apply here — it guards against a model guessing harness settings, and an SDK caller is not that.
 
-Background mode follows the caller's degree of commitment.
-Omit `foreground` and the agent's own `foreground` frontmatter decides, defaulting to background when the agent declares nothing.
-Pass `foreground` explicitly and it wins outright, whatever the frontmatter says.
+The caller alone picks the mode: omit `foreground` to run in the background, pass `foreground: true` to run in the foreground.
 
 A spawned agent is a first-class citizen of the runtime: it appears in the background widget, carries its parent's session identity so permission prompts route correctly, and nests its session file under the parent's.
 

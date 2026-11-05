@@ -10,7 +10,6 @@ function makeConfig(overrides: Partial<AgentConfig> = {}): AgentConfig {
     systemPrompt: "Test agent",
     promptMode: "replace",
     inheritContext: false,
-    foreground: true,
     ...overrides,
   };
 }
@@ -22,7 +21,6 @@ function makeOpinionatedConfig(overrides: Partial<AgentConfig> = {}): AgentConfi
     thinking: "high",
     maxTurns: 42,
     inheritContext: false,
-    foreground: true,
     ...overrides,
   });
 }
@@ -55,53 +53,40 @@ describe("resolveAgentInvocationConfig", () => {
       expect(resolved.thinking).toBe("high");
       expect(resolved.maxTurns).toBe(42);
       expect(resolved.inheritContext).toBe(false);
-      expect(resolved.runInBackground).toBe(false);
+      expect(resolved.runInBackground).toBe(true);
     });
 
     it("lets the caller fill booleans the agent leaves undefined", () => {
-      const resolved = resolveAgentInvocationConfig(
-        makeConfig({ inheritContext: undefined, foreground: undefined }),
-        { inherit_context: true, foreground: true },
-      );
+      const resolved = resolveAgentInvocationConfig(makeConfig({ inheritContext: undefined }), {
+        inherit_context: true,
+        foreground: true,
+      });
 
       expect(resolved.inheritContext).toBe(true);
       expect(resolved.runInBackground).toBe(false);
     });
 
     it("defaults to fresh context in the background when neither side sets them", () => {
-      const resolved = resolveAgentInvocationConfig(
-        makeConfig({ inheritContext: undefined, foreground: undefined }),
-        {},
-      );
+      const resolved = resolveAgentInvocationConfig(makeConfig({ inheritContext: undefined }), {});
 
       expect(resolved.inheritContext).toBe(false);
       expect(resolved.runInBackground).toBe(true);
     });
 
     it("runs in the foreground when the door's default says so and neither side sets it", () => {
-      const resolved = resolveAgentInvocationConfig(
-        makeConfig({ foreground: undefined }),
-        {},
-        { foreground: true },
-      );
+      const resolved = resolveAgentInvocationConfig(makeConfig(), {}, { foreground: true });
 
       expect(resolved.runInBackground).toBe(false);
     });
 
-    it("lets either side override the door's foreground default", () => {
-      const fromCaller = resolveAgentInvocationConfig(
-        makeConfig({ foreground: undefined }),
+    it("lets the caller override the door's foreground default", () => {
+      const resolved = resolveAgentInvocationConfig(
+        makeConfig(),
         { foreground: false },
         { foreground: true },
       );
-      const fromAgent = resolveAgentInvocationConfig(
-        makeConfig({ foreground: false }),
-        {},
-        { foreground: true },
-      );
 
-      expect(fromCaller.runInBackground).toBe(true);
-      expect(fromAgent.runInBackground).toBe(true);
+      expect(resolved.runInBackground).toBe(true);
     });
   });
 
@@ -125,13 +110,11 @@ describe("resolveAgentInvocationConfig", () => {
     });
 
     it("lets the caller switch off booleans the agent turned on", () => {
-      const resolved = resolveAgentInvocationConfig(
-        makeConfig({ inheritContext: true, foreground: true }),
-        { inherit_context: false, foreground: false },
-      );
+      const resolved = resolveAgentInvocationConfig(makeConfig({ inheritContext: true }), {
+        inherit_context: false,
+      });
 
       expect(resolved.inheritContext).toBe(false);
-      expect(resolved.runInBackground).toBe(true);
     });
 
     it("lets the caller clear an agent's model with an empty string", () => {
@@ -142,14 +125,12 @@ describe("resolveAgentInvocationConfig", () => {
     });
 
     it("reports a discarded falsy override rather than reading it as absent", () => {
-      const resolved = resolveAgentInvocationConfig(
-        makeConfig({ locked: true, maxTurns: 42, foreground: true }),
-        { max_turns: 0, foreground: false },
-      );
+      const resolved = resolveAgentInvocationConfig(makeConfig({ locked: true, maxTurns: 42 }), {
+        max_turns: 0,
+      });
 
       expect(resolved.maxTurns).toBe(42);
-      expect(resolved.runInBackground).toBe(false);
-      expect(resolved.discarded).toEqual(["max_turns", "foreground"]);
+      expect(resolved.discarded).toEqual(["max_turns"]);
     });
   });
 
@@ -164,7 +145,8 @@ describe("resolveAgentInvocationConfig", () => {
       expect(resolved.thinking).toBe("high");
       expect(resolved.maxTurns).toBe(42);
       expect(resolved.inheritContext).toBe(false);
-      expect(resolved.runInBackground).toBe(false);
+      // How an agent runs is the caller's alone; no lock reaches it.
+      expect(resolved.runInBackground).toBe(true);
     });
 
     it("leaves a field the agent file does not set open to the caller", () => {
@@ -205,15 +187,13 @@ describe("resolveAgentInvocationConfig", () => {
     it("defaults a locked boolean the agent file never sets", () => {
       const resolved = resolveAgentInvocationConfig(
         makeConfig({
-          locked: ["inherit_context", "foreground"],
+          locked: ["inherit_context"],
           inheritContext: undefined,
-          foreground: undefined,
         }),
-        { ...overridingParams, foreground: true },
+        overridingParams,
       );
 
       expect(resolved.inheritContext).toBe(false);
-      expect(resolved.runInBackground).toBe(true);
     });
   });
 
@@ -236,13 +216,7 @@ describe("resolveAgentInvocationConfig", () => {
         overridingParams,
       );
 
-      expect(resolved.discarded).toEqual([
-        "model",
-        "thinking",
-        "max_turns",
-        "inherit_context",
-        "foreground",
-      ]);
+      expect(resolved.discarded).toEqual(["model", "thinking", "max_turns", "inherit_context"]);
     });
 
     it("lists only the fields the lock names", () => {

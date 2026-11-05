@@ -50,7 +50,6 @@ function makeAgentConfig(overrides: Partial<AgentConfig> = {}): AgentConfig {
     systemPrompt: "You are a test agent.",
     promptMode: "replace",
     inheritContext: false,
-    foreground: true,
     ...overrides,
   };
 }
@@ -112,7 +111,7 @@ function createManager(overrides?: {
 function spawnBg(mgr: SubagentManager, prompt = "test", desc = prompt) {
   return mgr.spawn(STUB_SNAPSHOT, "general-purpose", prompt, {
     description: desc,
-    background: { kind: "explicit", isBackground: true },
+    background: true,
   });
 }
 
@@ -132,7 +131,7 @@ function spawnBgWithToolCall(
 ) {
   return mgr.spawn(STUB_SNAPSHOT, "general-purpose", prompt, {
     description: desc,
-    background: { kind: "explicit", isBackground: true },
+    background: true,
     parentSession: { toolCallId },
   });
 }
@@ -202,7 +201,7 @@ describe("SubagentManager", () => {
 
         const id = manager.spawn(STUB_SNAPSHOT, "explore", "test", {
           description: "d",
-          background: { kind: "explicit", isBackground: true },
+          background: true,
         });
 
         expect(manager.getRecord(id)!.type).toBe("Explore");
@@ -213,7 +212,7 @@ describe("SubagentManager", () => {
 
         const id = manager.spawn(STUB_SNAPSHOT, "no-such-agent", "test", {
           description: "d",
-          background: { kind: "explicit", isBackground: true },
+          background: true,
         });
 
         expect(manager.getRecord(id)!.type).toBe("general-purpose");
@@ -225,7 +224,7 @@ describe("SubagentManager", () => {
         expect(() =>
           manager.spawn(STUB_SNAPSHOT, "Plan", "test", {
             description: "d",
-            background: { kind: "explicit", isBackground: true },
+            background: true,
           }),
         ).toThrow('Agent type "Plan" is disabled');
       });
@@ -236,7 +235,7 @@ describe("SubagentManager", () => {
         expect(() =>
           manager.spawn(STUB_SNAPSHOT, "plan", "test", {
             description: "d",
-            background: { kind: "explicit", isBackground: true },
+            background: true,
           }),
         ).toThrow('Agent type "Plan" is disabled');
       });
@@ -247,7 +246,7 @@ describe("SubagentManager", () => {
         expect(() =>
           manager.spawn(STUB_SNAPSHOT, "Plan", "test", {
             description: "d",
-            background: { kind: "explicit", isBackground: true },
+            background: true,
           }),
         ).toThrow();
 
@@ -264,58 +263,33 @@ describe("SubagentManager", () => {
     describe("background-mode resolution", () => {
       let onCreated: Mock<(record: Subagent) => void>;
 
-      function spawnExplore(
-        background: AgentSpawnConfig["background"],
-        declaresBackground: boolean,
-      ) {
+      function spawnExplore(background: AgentSpawnConfig["background"]) {
         onCreated = vi.fn();
         ({ manager } = createManager({
-          registry: registryWith("Explore", { foreground: !declaresBackground }),
+          registry: registryWith("Explore", {}),
           observer: { onSubagentCreated: onCreated },
         }));
         return manager.spawn(STUB_SNAPSHOT, "Explore", "test", { description: "d", background });
       }
 
-      it("defers to frontmatter declaring background when the request is a default", () => {
-        spawnExplore({ kind: "default", isBackground: false }, true);
+      it("runs a background request in the background", () => {
+        const id = spawnExplore(true);
 
         expect(onCreated).toHaveBeenCalledOnce();
-      });
-
-      it("defers to frontmatter declaring foreground when the request is a default", () => {
-        spawnExplore({ kind: "default", isBackground: true }, false);
-
-        expect(onCreated).not.toHaveBeenCalled();
-      });
-
-      it("ignores frontmatter declaring foreground when the request is explicit", () => {
-        spawnExplore({ kind: "explicit", isBackground: true }, false);
-
-        expect(onCreated).toHaveBeenCalledOnce();
-      });
-
-      it("ignores frontmatter declaring background when the request is explicit", () => {
-        spawnExplore({ kind: "explicit", isBackground: false }, true);
-
-        expect(onCreated).not.toHaveBeenCalled();
-      });
-
-      it("stamps the resolved mode on the record when it resolves to background", () => {
-        const id = spawnExplore({ kind: "default", isBackground: false }, true);
-
         expect(manager.getRecord(id)!.isBackground).toBe(true);
       });
 
-      it("stamps the resolved mode on the record when it resolves to foreground", () => {
-        const id = spawnExplore({ kind: "default", isBackground: true }, false);
+      it("runs a foreground request in the foreground", () => {
+        const id = spawnExplore(false);
 
+        expect(onCreated).not.toHaveBeenCalled();
         expect(manager.getRecord(id)!.isBackground).toBe(false);
       });
 
-      it("queues a resolved-background agent behind a full concurrency limit", () => {
+      it("queues a background agent behind a full concurrency limit", () => {
         onCreated = vi.fn();
         ({ manager } = createManager({
-          registry: registryWith("Explore", { foreground: false }),
+          registry: registryWith("Explore", {}),
           getMaxConcurrent: () => 1,
           createSubagentSession: createBlockingFactory(),
         }));
@@ -323,7 +297,7 @@ describe("SubagentManager", () => {
 
         const id = manager.spawn(STUB_SNAPSHOT, "Explore", "test", {
           description: "d",
-          background: { kind: "default", isBackground: false },
+          background: true,
         });
 
         expect(manager.getRecord(id)!.status).toBe("queued");
@@ -361,7 +335,7 @@ describe("SubagentManager", () => {
     describe("foreground commitment", () => {
       it("stamps isBackground false on the record", async () => {
         ({ manager } = createManager({
-          registry: registryWith("Explore", { foreground: false }),
+          registry: registryWith("Explore", {}),
         }));
 
         const record = await manager.spawnAndWait(STUB_SNAPSHOT, "Explore", "test", {
@@ -371,10 +345,10 @@ describe("SubagentManager", () => {
         expect(record.isBackground).toBe(false);
       });
 
-      it("stays foreground for an agent whose frontmatter declares foreground: false", async () => {
+      it("does not route a foreground run through the limiter", async () => {
         const onCreated = vi.fn();
         ({ manager } = createManager({
-          registry: registryWith("Explore", { foreground: false }),
+          registry: registryWith("Explore", {}),
           observer: { onSubagentCreated: onCreated },
         }));
 
@@ -382,8 +356,8 @@ describe("SubagentManager", () => {
           description: "d",
         });
 
-        // The caller holds the result promise, so the frontmatter must not route
-        // it through the limiter or announce it as a background agent.
+        // The caller holds the result promise, so nothing may route it through
+        // the limiter or announce it as a background agent.
         expect(record.status).toBe("completed");
         expect(onCreated).not.toHaveBeenCalled();
       });
@@ -421,7 +395,7 @@ describe("SubagentManager", () => {
             : Promise.resolve(toSubagentSession(createSubagentSessionStub()));
         });
         ({ manager } = createManager({
-          registry: registryWith("Explore", { foreground: false }),
+          registry: registryWith("Explore", {}),
           getMaxConcurrent: () => 1,
           createSubagentSession: factory,
         }));
@@ -685,7 +659,7 @@ describe("SubagentManager", () => {
 
         const id = manager.spawn(STUB_SNAPSHOT, "general-purpose", "test", {
           description: "test agent",
-          background: { kind: "explicit", isBackground: true },
+          background: true,
         });
 
         expect(onCreated).toHaveBeenCalledOnce();
@@ -720,7 +694,7 @@ describe("SubagentManager", () => {
 
         const id = manager.spawn(STUB_SNAPSHOT, "general-purpose", "test", {
           description: "bg agent",
-          background: { kind: "explicit", isBackground: true },
+          background: true,
         });
         await manager.getRecord(id)!.promise;
 
@@ -745,7 +719,7 @@ describe("SubagentManager", () => {
 
         const id = manager.spawn(STUB_SNAPSHOT, "general-purpose", "test", {
           description: "test",
-          background: { kind: "explicit", isBackground: true },
+          background: true,
           observer: {
             onSessionCreated: (agent) => {
               received.agent = agent;
@@ -797,7 +771,7 @@ describe("SubagentManager", () => {
 
         const id = manager.spawn(STUB_SNAPSHOT, "general-purpose", "test", {
           description: "bg",
-          background: { kind: "explicit", isBackground: true },
+          background: true,
         });
         const record = manager.getRecord(id)!;
 
@@ -1370,7 +1344,7 @@ describe("SubagentManager", () => {
 
         manager.spawn(STUB_SNAPSHOT, "general-purpose", "test", {
           description: "test",
-          background: { kind: "explicit", isBackground: true },
+          background: true,
           parentSession: {
             parentSessionFile: "/sessions/parent.jsonl",
             parentSessionId: "parent-session-123",
@@ -1520,7 +1494,7 @@ describe("SubagentManager", () => {
 
       const id = manager.spawn(STUB_SNAPSHOT, "general-purpose", "test", {
         description: "held agent",
-        background: { kind: "explicit", isBackground: true },
+        background: true,
       });
       const record = manager.getRecord(id)!;
       await record.promise;
@@ -2004,7 +1978,7 @@ describe("SubagentManager — cold resume", () => {
       ({ manager } = createManager({ createSubagentSession: factory }));
       const id = manager.spawn(STUB_SNAPSHOT, "general-purpose", "work", {
         description: "work",
-        background: { kind: "explicit", isBackground: true },
+        background: true,
         cwd,
         maxTurns: 5,
       });
@@ -2059,7 +2033,7 @@ describe("SubagentManager — cold resume", () => {
       ({ manager } = createManager({ createSubagentSession: factory }));
       const id = manager.spawn(STUB_SNAPSHOT, "general-purpose", "work", {
         description: "work",
-        background: { kind: "explicit", isBackground: true },
+        background: true,
         cwd,
       });
       const record = manager.getRecord(id)!;
@@ -2093,7 +2067,7 @@ describe("SubagentManager — cold resume", () => {
       }));
       const id = manager.spawn(STUB_SNAPSHOT, "general-purpose", "work", {
         description: "work",
-        background: { kind: "explicit", isBackground: true },
+        background: true,
         cwd,
       });
       const record = manager.getRecord(id)!;

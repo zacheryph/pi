@@ -4,13 +4,7 @@ import type { AgentConfig, ThinkingLevel } from "#src/types";
  * The fields a `subagent_start` tool caller may pass, spelled as the frontmatter key an
  * agent author writes rather than the camelCase `AgentConfig` property.
  */
-export const LOCKABLE_FIELDS = [
-  "model",
-  "thinking",
-  "max_turns",
-  "inherit_context",
-  "foreground",
-] as const;
+export const LOCKABLE_FIELDS = ["model", "thinking", "max_turns", "inherit_context"] as const;
 
 /** One field an agent file may withhold from its callers. */
 export type LockableField = (typeof LOCKABLE_FIELDS)[number];
@@ -29,27 +23,6 @@ export function isLockableField(name: string): name is LockableField {
   return (LOCKABLE_FIELDS as readonly string[]).includes(name);
 }
 
-/**
- * A front door's answer to "should this agent run in the background?".
- *
- * `explicit` is a commitment the door has already acted on — the foreground
- * runner holds the result promise, or the tool door merged frontmatter itself
- * and routed on the answer. `default` is a door with no commitment, so the
- * agent's own `foreground` frontmatter fills it.
- */
-export type BackgroundRequest =
-  | { kind: "explicit"; isBackground: boolean }
-  | { kind: "default"; isBackground: boolean };
-
-/** Resolve the effective background mode. Explicit answers are honored verbatim. */
-export function resolveBackgroundMode(
-  agentConfig: Pick<AgentConfig, "foreground">,
-  request: BackgroundRequest,
-): boolean {
-  if (request.kind === "explicit") return request.isBackground;
-  return agentConfig.foreground === undefined ? request.isBackground : !agentConfig.foreground;
-}
-
 interface AgentInvocationParams {
   model?: string;
   /** Already validated by the door — see `parseThinkingLevel`. */
@@ -59,7 +32,7 @@ interface AgentInvocationParams {
   inherit_context?: boolean;
 }
 
-/** What the door assumes when neither the caller nor the agent file picks a mode. */
+/** What the door assumes when the caller does not pick a mode. */
 export interface AgentInvocationDefaults {
   /**
    * Run in the foreground when nothing chooses. False everywhere but a run mode
@@ -115,7 +88,6 @@ export function resolveAgentInvocationConfig(
     params.inherit_context,
     locked,
   );
-  const foreground = resolveField("foreground", agentConfig.foreground, params.foreground, locked);
 
   return {
     modelInput: model.value,
@@ -123,8 +95,9 @@ export function resolveAgentInvocationConfig(
     thinking: thinking.value,
     maxTurns: maxTurns.value,
     inheritContext: inheritContext.value ?? false,
-    runInBackground: !(foreground.value ?? defaults.foreground),
-    discarded: [model, thinking, maxTurns, inheritContext, foreground]
+    // The caller alone decides how an agent runs; its profile has no say.
+    runInBackground: !(params.foreground ?? defaults.foreground),
+    discarded: [model, thinking, maxTurns, inheritContext]
       .filter((resolution) => resolution.discarded)
       .map((resolution) => resolution.field),
   };

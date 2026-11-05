@@ -11,7 +11,7 @@ describe("createToolDeps", () => {
       expect(
         manager.spawn(STUB_SNAPSHOT, "general-purpose", "prompt", {
           description: "test",
-          background: { kind: "explicit", isBackground: true },
+          background: true,
         }),
       ).toBe("agent-1");
     });
@@ -70,7 +70,7 @@ describe("createToolDeps", () => {
       });
       deps.manager.spawn(STUB_SNAPSHOT, "t", "p", {
         description: "test",
-        background: { kind: "explicit", isBackground: true },
+        background: true,
       });
       expect(customSpawn).toHaveBeenCalledOnce();
     });
