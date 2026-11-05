@@ -1,5 +1,7 @@
 /**
- * custom-agents.ts — Load user-defined agents from project (.pi/agents/) and global ($PI_CODING_AGENT_DIR/agents/, default ~/.pi/agent/agents/) locations.
+ * custom-agents.ts — Load agent definition files: the extension's built-ins
+ * (agents/) and user-defined agents from project (.pi/agents/) and global
+ * ($PI_CODING_AGENT_DIR/agents/, default ~/.pi/agent/agents/) locations.
  */
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
@@ -9,7 +11,12 @@ import { isLockableField, type LockDeclaration } from "#src/config/invocation-co
 import { parseThinkingLevel, thinkingLevelError } from "#src/config/thinking-level";
 import { parseFragments } from "#src/config/prompt-fragments";
 import { debugLog } from "#src/debug";
-import { AGENT_VISIBILITIES, type AgentConfig, type AgentVisibility } from "#src/types";
+import {
+  AGENT_VISIBILITIES,
+  type AgentConfig,
+  type AgentSource,
+  type AgentVisibility,
+} from "#src/types";
 
 /**
  * Scan for custom agent .md files from multiple locations.
@@ -30,17 +37,22 @@ export function loadCustomAgents(cwd: string): Map<string, AgentConfig> {
   return agents;
 }
 
+/** Load every agent file in one directory, in case-insensitive name order. */
+export function loadAgentsFromDir(dir: string, source: AgentSource): Map<string, AgentConfig> {
+  const agents = new Map<string, AgentConfig>();
+  loadFromDir(dir, agents, source);
+  return agents;
+}
+
 /** Load agent configs from a directory into the map. */
-function loadFromDir(
-  dir: string,
-  agents: Map<string, AgentConfig>,
-  source: "project" | "global",
-): void {
+function loadFromDir(dir: string, agents: Map<string, AgentConfig>, source: AgentSource): void {
   if (!existsSync(dir)) return;
 
   let files: string[];
   try {
-    files = readdirSync(dir).filter((f) => f.endsWith(".md"));
+    files = readdirSync(dir)
+      .filter((f) => f.endsWith(".md"))
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
   } catch (err) {
     debugLog("readdirSync agents dir", err);
     return;

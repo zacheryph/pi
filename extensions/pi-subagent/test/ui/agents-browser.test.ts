@@ -5,6 +5,7 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import { loadCustomAgents } from "#src/config/custom-agents";
+import { BUILTIN_AGENTS_DIR } from "#src/config/default-agents";
 import type { AgentConfig } from "#src/types";
 import {
   buildAgentsView,
@@ -145,8 +146,8 @@ describe("effective agent definitions", () => {
     const embedded = plainDetail(
       buildAgentsView(registry()).items.find((item) => item.id === "general-purpose")!.detail,
     );
-    expect(field(embedded, "Source")).toBe("default (embedded)");
-    expect(field(embedded, "Source path")).toBe("(embedded)");
+    expect(field(embedded, "Source")).toBe("built-in");
+    expect(field(embedded, "Source path")).toBe(join(BUILTIN_AGENTS_DIR, "general-purpose.md"));
   });
 
   it("whole-file locks only claim declared fields, explicit lists also lock absent fields", () => {

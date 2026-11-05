@@ -1,7 +1,7 @@
 /**
  * agent-types.ts — Unified agent type registry.
  *
- * Merges embedded default agents with user-defined agents from .pi/agents/*.md.
+ * Merges the built-in agents (agents/*.md) with user-defined agents from .pi/agents/*.md.
  * User agents override defaults with the same name. Disabled agents are kept but
  * refused at spawn; hidden agents spawn by name but stay out of the tool's list.
  */
@@ -31,15 +31,6 @@ export interface AgentConfigLookup {
  */
 export class AgentTypeRegistry implements AgentConfigLookup {
   private agents = new Map<string, AgentConfig>();
-
-  /** The embedded default agent names. */
-  static readonly DEFAULT_AGENT_NAMES = [
-    "general-purpose",
-    "orchestrator",
-    "Explore",
-    "Plan",
-    "reviewer",
-  ] as const;
 
   constructor(private loadUserAgents: () => Map<string, AgentConfig>) {
     this.reload();

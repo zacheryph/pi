@@ -69,6 +69,9 @@ export interface AgentPromptConfig {
   systemPrompt: string;
 }
 
+/** Where an agent definition file was found. `default` is the extension's own agents/ directory. */
+export type AgentSource = "default" | "project" | "global";
+
 /** The `visibility` values an agent file may declare. */
 export const AGENT_VISIBILITIES = ["visible", "hidden", "disabled"] as const;
 
@@ -87,8 +90,6 @@ export interface AgentConfig extends AgentIdentity, AgentPromptConfig {
   locked?: LockDeclaration;
   /** When to pick this agent, shown after its description in the subagent_start list. */
   guidance?: string;
-  /** true = this is an embedded default agent (informational) */
-  isDefault?: boolean;
   /**
    * Who can see and run this agent. Omitted means `visible`.
    * - `visible`: listed in the subagent_start description and spawnable.
@@ -97,9 +98,9 @@ export interface AgentConfig extends AgentIdentity, AgentPromptConfig {
    * - `disabled`: refused everywhere.
    */
   visibility?: AgentVisibility;
-  /** Where this agent was loaded from */
-  source?: "default" | "project" | "global";
-  /** Path of the winning custom-agent definition, when loaded from a file. */
+  /** Where this agent was loaded from: the extension's built-ins, or a user directory. */
+  source?: AgentSource;
+  /** Path of the winning agent definition file. */
   sourcePath?: string;
   /** Ordered fragment names in the winning profile's agents/fragments directory. */
   fragments?: string[];
