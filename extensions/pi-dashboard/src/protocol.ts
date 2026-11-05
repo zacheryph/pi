@@ -126,22 +126,6 @@ export interface UsageSection {
   cost: number;
 }
 
-/** Compaction history on the branch, plus pi-blackhole's memory ledger when present. */
-export interface MemorySection {
-  compactions: number;
-  lastCompactionAt?: number;
-  blackhole?: {
-    /** Observations recorded on the branch. */
-    observations: number;
-    /** Recorded observations not dropped since. */
-    kept: number;
-    dropped: number;
-    reflections: number;
-    /** Tokens held by the kept observations. */
-    keptTokens: number;
-  };
-}
-
 export type SubagentState = "queued" | "running" | "completed" | "failed" | "stopped";
 
 /** Subagents seen on this session's bus while the dashboard was loaded, newest first. */
@@ -227,7 +211,6 @@ export interface SessionSnapshot {
   /** Absent when pi-git is not loaded or has nothing to show. */
   git?: GitSection;
   usage?: UsageSection;
-  memory?: MemorySection;
   /** Absent when pi-subagent is not loaded or nothing has run yet. */
   subagents?: SubagentsSection;
   terminal?: TerminalInfo;

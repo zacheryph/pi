@@ -143,8 +143,8 @@ context usage, live status (idle, working, running a tool, compacting, or
 waiting on a dialog, which sorts first), and task, subagent, stash, open PR and
 worktree counts. A card opens a detail page with the task list and history,
 subagents, pull requests (opened here and referenced) and worktrees from
-pi-git, recent tool calls, stash index with on-demand previews, usage and cost,
-and pi-blackhole memory counts. **Focus** jumps to the session's cmux panel and
+pi-git, recent tool calls and stash index with on-demand previews, in two even
+columns with finished items folded away; usage and cost open from the header. **Focus** jumps to the session's cmux panel and
 raises cmux. A filter box and opt-in browser notifications (waiting or
 finished sessions) round out the index. Questions the model asks through
 pi-ask's `ask` can be answered from the page. pi-todo, pi-stash and pi-git publish

@@ -334,7 +334,6 @@ describe("pi-dashboard extension", () => {
       return list.length ? list : undefined;
     });
     expect(card?.usage).toEqual({ input: 10, output: 5, cacheRead: 0, cacheWrite: 0, cost: 0.25 });
-    expect(card?.memory).toEqual({ compactions: 0 });
     expect(card?.subagents).toBeUndefined();
 
     entries.push({
@@ -350,11 +349,9 @@ describe("pi-dashboard extension", () => {
     });
     await waitFor(async () => {
       const [current] = await env.sessions();
-      const memory = current?.memory as { compactions: number } | undefined;
       const agents = (current?.subagents as { agents: Array<{ state: string }> } | undefined)
         ?.agents;
       return (
-        memory?.compactions === 1 &&
         agents?.[0]?.state === "running" &&
         (current?.usage as { cost: number } | undefined)?.cost === 0.3
       );
