@@ -192,31 +192,6 @@ describe("AgentTypeRegistry", () => {
     });
   });
 
-  describe("getDefaultAgentNames", () => {
-    it("returns only default agents", () => {
-      const registry = makeRegistry(new Map([["auditor", makeAgentConfig({ name: "auditor" })]]));
-      const names = registry.getDefaultAgentNames();
-      expect(names).toContain("general-purpose");
-      expect(names).toContain("Explore");
-      expect(names).toContain("Plan");
-      expect(names).not.toContain("auditor");
-    });
-  });
-
-  describe("getUserAgentNames", () => {
-    it("returns only user agents", () => {
-      const registry = makeRegistry(
-        new Map([
-          ["auditor", makeAgentConfig({ name: "auditor" })],
-          ["linter", makeAgentConfig({ name: "linter" })],
-        ]),
-      );
-      const names = registry.getUserAgentNames();
-      expect(names).toEqual(["auditor", "linter"]);
-      expect(names).not.toContain("general-purpose");
-    });
-  });
-
   describe("isValidType", () => {
     it("returns true for enabled defaults", () => {
       const registry = makeRegistry();
@@ -367,7 +342,7 @@ describe("AgentTypeRegistry", () => {
     it("is discoverable case-insensitively with explicit delegation and todo tools", () => {
       const registry = makeRegistry();
       expect(registry.resolveType("Orchestrator")).toBe("orchestrator");
-      expect(registry.getDefaultAgentNames()).toContain("orchestrator");
+      expect(registry.getListedTypes()).toContain("orchestrator");
       expect(registry.resolveAgentConfig("orchestrator")).toMatchObject({
         name: "orchestrator",
         displayName: "Orchestrator",

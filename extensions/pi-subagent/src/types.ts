@@ -85,8 +85,8 @@ export interface AgentConfig extends AgentIdentity, AgentPromptConfig {
   inheritContext?: boolean;
   /** Fields a `subagent_start` tool caller may not override. Omitted — every field is overridable. */
   locked?: LockDeclaration;
-  /** One-line usage guideline for the subagent_start tool's Guidelines: block. Omitted — no guideline line. */
-  toolGuideline?: string;
+  /** When to pick this agent, shown after its description in the subagent_start list. */
+  guidance?: string;
   /** true = this is an embedded default agent (informational) */
   isDefault?: boolean;
   /**

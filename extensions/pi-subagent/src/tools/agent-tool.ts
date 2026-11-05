@@ -24,12 +24,7 @@ import {
 } from "#src/observation/outcome-delivery";
 import { renderBackgroundLaunch, spawnBackground } from "#src/tools/background-spawner";
 import { runForeground } from "#src/tools/foreground-runner";
-import {
-  buildAgentGuidelines,
-  buildDetails,
-  buildTypeListText,
-  textResult,
-} from "#src/tools/helpers";
+import { buildDetails, buildTypeListText, textResult } from "#src/tools/helpers";
 import { renderAgentResult } from "#src/tools/result-renderer";
 import {
   type ModelInfo,
@@ -74,19 +69,14 @@ export type AgentToolSettings = {
 
 export class AgentTool {
   private readonly typeListText: string;
-  private readonly availableTypesText: string;
-  private readonly agentGuidelines: string[];
 
   constructor(
     private readonly manager: AgentToolManager,
     private readonly runtime: AgentToolRuntime,
     private readonly settings: AgentToolSettings,
     private readonly registry: AgentTypeRegistry,
-    private readonly agentDir: string,
   ) {
-    this.typeListText = buildTypeListText(registry, agentDir);
-    this.availableTypesText = registry.getListedTypes().join(", ");
-    this.agentGuidelines = buildAgentGuidelines(registry);
+    this.typeListText = buildTypeListText(registry);
   }
 
   async execute(
@@ -210,14 +200,11 @@ export class AgentTool {
 
   toToolDefinition() {
     const typeListText = this.typeListText;
-    const availableTypesText = this.availableTypesText;
-    const agentDir = this.agentDir;
     const registry = this.registry;
 
     const guidelines = [
       "- Agents run in the background: the call returns an agent ID at once, and a completion notification arrives when the agent finishes. Start every independent agent, then end your turn instead of waiting; the notification wakes you, and the user can talk to you in the meantime.",
       "- Set foreground: true only when you cannot take your next step without the result. A foreground call blocks you, and the user, until the agent finishes; foreground calls run one at a time.",
-      ...this.agentGuidelines,
       "- Provide clear, detailed prompts so the agent can work autonomously.",
       "- Subagent results are returned as text — summarize them for the user.",
       "- Use resume with an agent ID to continue a previous agent's work, or to answer an agent that ended its turn with a question. This also works after a reload or once its session was released, as long as its transcript and directory still exist: its saved transcript is reopened.",
@@ -232,11 +219,9 @@ export class AgentTool {
       name: "subagent_start" as const,
       label: "Subagent",
       promptSnippet: "Launch a specialized agent for complex, multi-step tasks.",
-      description: `Launch a new agent to handle complex, multi-step tasks autonomously.
+      description: `Launch an agent that works on a task autonomously, with its own instructions, tools and model.
 
-The subagent_start tool launches specialized agents that autonomously handle complex tasks. Each agent type has specific capabilities and tools available to it.
-
-Available agent types:
+Agent types:
 ${typeListText}
 
 Guidelines:
@@ -250,7 +235,8 @@ ${guidelines}
           description: "A short (3-5 word) description of the task (shown in UI).",
         }),
         subagent_type: Type.String({
-          description: `The type of specialized agent to use. Available types: ${availableTypesText}. Custom agents from .pi/agents/<name>.md (project) or ${agentDir}/agents/<name>.md (global) are also available.`,
+          description:
+            "The agent type: a name from this tool's list, or an unlisted type you were told to use by name.",
         }),
         model: Type.Optional(
           Type.String({

@@ -176,7 +176,8 @@ The global location follows the upstream `PI_CODING_AGENT_DIR` env var — set i
 
 ```markdown
 ---
-description: Security Code Reviewer
+description: Security auditor
+guidance: Use to review changes that touch authentication, input handling or secrets.
 tools: read, grep, find, bash
 model: anthropic/claude-opus-4-6
 thinking: high
@@ -194,6 +195,12 @@ Review code for vulnerabilities including:
 Report findings with file paths, line numbers, severity, and remediation advice.
 ```
 
+It appears in the `subagent_start` description as one line, the same as a built-in type — name, the model if it pins one, then its `description` and `guidance`:
+
+```text
+- auditor (claude-opus-4-6): Security auditor. Use to review changes that touch authentication, input handling or secrets.
+```
+
 Then spawn it like any built-in type:
 
 ```text
@@ -207,7 +214,8 @@ All fields are optional — sensible defaults for everything.
 | Field             | Default        | Description                                                                                                                                                                                                                                                               |
 | ----------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `fragments`       | —              | Ordered fragment names from the winning profile's `agents/fragments/<name>.md`; combined before the profile body. See [Prompt fragments](#prompt-fragments).                                                                                                              |
-| `description`     | filename       | Agent description shown in tool listings                                                                                                                                                                                                                                  |
+| `description`     | filename       | What the agent is. Shown after its name in the `subagent_start` agent list                                                                                                                                                                                                |
+| `guidance`        | —              | When to pick the agent, as a sentence (`Use for …`). Shown after the description on the same line of the list, so the name is not repeated                                                                                                                                |
 | `display_name`    | —              | Display name for UI (e.g. widget, agent list)                                                                                                                                                                                                                             |
 | `tools`           | all available  | `all` for registered tools; explicit names restrict; `-name` removes; `none` disables tools. See [Tool selection](#tool-selection)                                                                                                                                        |
 | `model`           | inherit parent | Model — `provider/modelId`, fuzzy name (`"haiku"`, `"sonnet"`), or `[provider/]family@latest` for the newest available model whose id contains `family`                                                                                                                   |

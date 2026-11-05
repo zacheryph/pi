@@ -3,6 +3,29 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-05: One dense agent list in the `subagent_start` description
+
+The description split agents under "Default agents:" and "Custom agents:",
+showed a model only for built-ins, repeated each built-in's name in a separate
+"Use X for …" guideline line, listed the type names a third time in the
+`subagent_type` parameter, and carried instructions for writing agent files.
+Whether an agent is built in or custom does not help a caller choose one.
+
+- Add `guidance` frontmatter: when to pick the agent. It replaces the built-in
+  only `toolGuideline`, so custom agents can carry it too.
+- `buildTypeListText` renders one line per listed agent, built-in and custom
+  alike: `- name (model): description. guidance`. Multi-line values collapse
+  onto the line; the model shows for any agent that pins one.
+- Remove `buildAgentGuidelines`, the registry's `getDefaultAgentNames` and
+  `getUserAgentNames`, the type names in `subagent_type`'s description, and
+  the agent-authoring paragraph. `AgentTool` no longer takes `agentDir`.
+- Reword the built-ins so description and guidance do not repeat each other,
+  and describe `general-purpose` as a copy of the caller to use only when no
+  other type fits. The orchestrator now picks workers by that guidance and
+  falls back to `general-purpose` last.
+- The `/subagent:agents` detail view shows a Guidance section in place of
+  Tool guideline.
+
 ## 2026-11-05: Replace `enabled` with `visibility`
 
 `enabled: false` was the only way to take an agent out of the

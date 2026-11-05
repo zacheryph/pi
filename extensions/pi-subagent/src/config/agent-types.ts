@@ -83,20 +83,6 @@ export class AgentTypeRegistry implements AgentConfigLookup {
     return [...this.agents.keys()];
   }
 
-  /** Get names of default agents currently in the registry. */
-  getDefaultAgentNames(): string[] {
-    return [...this.agents.entries()]
-      .filter(([, config]) => config.isDefault === true)
-      .map(([name]) => name);
-  }
-
-  /** Get names of user-defined agents (non-defaults) currently in the registry. */
-  getUserAgentNames(): string[] {
-    return [...this.agents.entries()]
-      .filter(([, config]) => config.isDefault !== true)
-      .map(([name]) => name);
-  }
-
   /** Check if a type exists and is not disabled (case-insensitive). Hidden types are valid. */
   isValidType(type: string): boolean {
     const key = this.resolveKey(type);

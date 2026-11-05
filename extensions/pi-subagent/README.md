@@ -214,7 +214,7 @@ Launch a sub-agent.
 | ----------------- | ------- | -------- | ---------------------------------------------------------------------------------------------------------------------- |
 | `prompt`          | string  | yes      | The task for the agent                                                                                                 |
 | `description`     | string  | yes      | Short 3-5 word summary (shown in UI)                                                                                   |
-| `subagent_type`   | string  | yes      | Agent type (built-in or custom)                                                                                        |
+| `subagent_type`   | string  | yes      | Agent type: one from the tool's list, or a hidden type named elsewhere                                                 |
 | `model`           | string  | no       | Model — `provider/modelId`, fuzzy name (`"haiku"`, `"sonnet"`), or `[provider/]family@latest` (newest available match) |
 | `thinking`        | string  | no       | Thinking level: off, minimal, low, medium, high, xhigh, max                                                            |
 | `max_turns`       | number  | no       | Turn ceiling (minimum 2). Omit for the agent's own limit                                                               |
@@ -295,7 +295,7 @@ Search agent names, status, and descriptions; Enter opens details. All effective
 profiles are listed, including disabled profiles, with project overrides taking
 precedence over global and built-in definitions. Details show the name with its
 `[visible]`/`[hidden]`/`[disabled]` badge, effective fields and source, then **Description**,
-**Tool guideline** and **Body** sections with the full multiline text. Browsing
+**Guidance** and **Body** sections with the full multiline text. Browsing
 never launches an agent or changes settings.
 
 The viewer is the bundle's shared `packages/pi-ui` explorer: centered rounded

@@ -16,8 +16,8 @@ export const DEFAULT_AGENTS: Map<string, AgentConfig> = new Map([
     {
       name: "general-purpose",
       displayName: "Agent",
-      description: "General-purpose agent for complex, multi-step tasks",
-      toolGuideline: "- Use general-purpose for complex tasks that need file editing.",
+      description: "Copy of you: your own instructions and every tool, with no role of its own",
+      guidance: "Use only when no other agent type fits the task.",
       // toolNames omitted — means every available parent tool (resolved at spawn time)
       // inheritContext omitted — a strategy field, callers decide per-call.
       // No built-in declares `locked`: Explore's haiku is a cost default, not a
@@ -33,9 +33,8 @@ export const DEFAULT_AGENTS: Map<string, AgentConfig> = new Map([
       name: "orchestrator",
       displayName: "Orchestrator",
       description:
-        "Project manager for long-running work: organizes todos, delegates, and recalls prior subagents",
-      toolGuideline:
-        "- Use orchestrator to coordinate a project or workstream across multiple subagents and track open items with todo.",
+        "Project manager for long-running work: tracks todos, delegates, recalls workers",
+      guidance: "Use to coordinate a project or workstream across multiple subagents.",
       // `all` keeps specialist tools available to workers. Naming the delegation
       // tools explicitly opts this profile into child delegation; `all` alone does not.
       toolNames: [
@@ -65,7 +64,7 @@ These project-manager instructions apply only when the most recent active_agent 
 - Record new questions, defects, and follow-ups as soon as they emerge. Reconcile the ledger after delegation results and user changes. Read the current revision before a potentially stale update and use baseRevision; on conflict, re-read and reconcile.
 
 # Delegate and coordinate
-- Use the available agent types that fit the work: Explore for investigation, Plan for design, general-purpose or a suitable custom specialist for implementation, and reviewer for verification.
+- Pick each worker's agent type by the guidance in subagent_start's list: Explore for investigation, Plan for design, a specialist that fits for implementation, and reviewer for verification. Use general-purpose only when no listed type fits.
 - Give each worker a focused assignment containing its task key, objective, scope or file ownership, constraints, relevant decisions, expected deliverable, and completion criteria. Request a concise result with evidence, changed files or artifacts, verification, unresolved items, and its session/output reference when available.
 - Hand each worker the todo tasks it owns by adding handoff: { todo: { keys: [...] } } to its subagent_start call (scope "ledger" when it should read the rest of the ledger and may add prerequisites it discovers). The worker then updates those tasks, their outcome messages, and any follow-up tasks it creates directly in your ledger, which shows it as their owner. You still verify before completing a task.
 - Share large material (findings, file snapshots, logs) with workers as stash handles (stash:<name>@<hash>) rather than pasting it, and ask workers to return large results as stash handles with a short summary.
@@ -94,8 +93,8 @@ These project-manager instructions apply only when the most recent active_agent 
     {
       name: "Explore",
       displayName: "Explore",
-      description: "Fast codebase exploration agent (read-only)",
-      toolGuideline: "- Use Explore for codebase searches and code understanding.",
+      description: "Fast codebase exploration (read-only)",
+      guidance: "Use for codebase searches and code understanding.",
       toolNames: [...READ_ONLY_TOOLS, "stash_put"],
       // Newest available Haiku, so the default never pins a retired model.
       model: "anthropic/claude-haiku@latest",
@@ -139,8 +138,8 @@ Use Bash ONLY for read-only operations: ls, git status, git log, git diff, find,
     {
       name: "Plan",
       displayName: "Plan",
-      description: "Software architect for implementation planning (read-only)",
-      toolGuideline: "- Use Plan for architecture and implementation planning.",
+      description: "Software architect (read-only)",
+      guidance: "Use for architecture and implementation planning.",
       toolNames: READ_ONLY_TOOLS,
       systemPrompt: `# CRITICAL: READ-ONLY MODE - NO FILE MODIFICATIONS
 You are a software architect and planning specialist.
@@ -192,9 +191,9 @@ List 3-5 files most critical for implementing this plan:
       name: "reviewer",
       displayName: "Reviewer",
       description:
-        "Verifies finished work against its acceptance criteria and reports pass or fail with evidence (read-only; runs checks)",
-      toolGuideline:
-        "- Use reviewer to verify a finished change against its acceptance criteria before treating the work as done.",
+        "Verifier: runs checks, reports pass or fail with evidence, never fixes (read-only)",
+      guidance:
+        "Use to verify a finished change against its acceptance criteria before treating the work as done.",
       toolNames: READ_ONLY_TOOLS,
       systemPrompt: `# CRITICAL: VERIFY ONLY - NO FIXES
 You are a reviewer. You check whether finished work meets its acceptance criteria and report what you find.
