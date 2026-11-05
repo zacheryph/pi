@@ -100,14 +100,13 @@ The layers after it are resolved against one session, so Pi and the child's own 
 | `Current working directory:` | rebuilt by Pi for the child's own directory                                                                  |
 | Extension-appended blocks    | rebuilt by the child's own extensions                                                                        |
 
-This matters most for a child that runs somewhere other than the parent — one given an isolated workspace by a `WorkspaceProvider`.
-Its skills resolve from its own workspace, and its working-directory claim names that workspace.
-Inheriting the parent's copies instead would give such a child a catalogue of skills it may not have and a directory claim that walks it back out of its workspace.
+This matters most for a child that runs somewhere other than the parent — one started with a `cwd`, such as a git worktree.
+Its skills resolve from its own directory, and its working-directory claim names that directory.
+Inheriting the parent's copies instead would give such a child a catalogue of skills it may not have and a directory claim that walks it back out of its directory.
 
 Project context is the same kind of claim, which is why such a child resolves it too: `<project_context>` names each context file by absolute path, and the parent's paths point into the parent's checkout ([#918]).
-A relocated child's block is built from its own directory — the same discovery Pi runs for a session, so an `AGENTS.md` in the workspace, in any ancestor of it, or in `~/.pi/agent/` is found.
+A relocated child's block is built from its own directory — the same discovery Pi runs for a session, so an `AGENTS.md` in that directory, in any ancestor of it, or in `~/.pi/agent/` is found.
 If **none** of those carries one, the child receives no project instructions at all rather than the parent's; run with `PI_SUBAGENTS_DEBUG=1` to see that reported.
-A `WorkspaceProvider` whose workspace is not a checkout — a bare sandbox directory — should place the instructions it wants its children to follow inside that workspace.
 
 Inheriting the identity rather than the whole prompt also gives the child a leading prefix it shares with the parent, which local inference engines reuse instead of reprocessing.
 How much that is worth depends on the host: a provider whose cache prefix covers the tool definitions ahead of the system prompt — Anthropic's does — reuses nothing for a child, because a child's tool set always differs from its parent's.
@@ -260,9 +259,6 @@ The list form also withholds a field this file leaves unset — `locked: [model]
 An entry naming anything other than `model`, `thinking`, `max_turns`, or `inherit_context` is ignored.
 
 A lock is never silent: when a caller passes a value for a locked field, the tool result says which agent locked which parameters.
-
-A lock binds the `subagent_start` tool only.
-[`SubagentsService.spawn`](../README.md#for-extension-authors) is a programmatic caller rather than a model guessing at harness settings, so its options win regardless.
 
 ### Prompt fragments
 

@@ -27,14 +27,12 @@ export interface LifecycleRuntime {
  * - `runtime` — owns session context state
  * - `manager` — manages agent lifecycle (clear, abort, dispose)
  * - `disposeNotifications` — tears down the notification system on shutdown
- * - `unpublishService` — unpublishes the SubagentsService symbol on shutdown
  */
 export class SessionLifecycleHandler {
   constructor(
     private readonly runtime: LifecycleRuntime,
     private readonly manager: LifecycleManager,
     private readonly disposeNotifications: () => void,
-    private readonly unpublishService: () => void,
   ) {}
 
   handleSessionStart(_event: unknown, ctx: unknown): Promise<void> {
@@ -47,16 +45,14 @@ export class SessionLifecycleHandler {
   }
 
   // Cleanup order matters:
-  // 1. Unpublish service — prevent new cross-extension calls
-  // 2. Clear session context — no more session state
-  // 3. Dispose notifications — silence nudges *before* the aborts that would
+  // 1. Clear session context — no more session state
+  // 2. Dispose notifications — silence nudges *before* the aborts that would
   //    raise them: no parent run is active at shutdown, so a terminal
   //    transition delivers its nudge synchronously and Pi cannot recall it
-  // 4. Abort all agents — stop running and queued work
-  // 5. Dispose manager — final cleanup, awaited so each child's extensions get
+  // 3. Abort all agents — stop running and queued work
+  // 4. Dispose manager — final cleanup, awaited so each child's extensions get
   //    their `session_shutdown` before Pi tears the parent down (#709)
   handleSessionShutdown(): Promise<void> {
-    this.unpublishService();
     this.runtime.clearSessionContext();
     this.disposeNotifications();
     this.manager.abortAll();

@@ -670,7 +670,7 @@ describe("buildAgentPrompt", () => {
     });
 
     // Issue #918: `<project_context>` names each context file by absolute path,
-    // so a child a WorkspaceProvider relocated inherits a machine-structured
+    // so a child started in another directory inherits a machine-structured
     // claim about a directory that is not its own — the #640 defect in the one
     // per-session layer that sits inside the shared prefix.
     describe("project-context anchor", () => {

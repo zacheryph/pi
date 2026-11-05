@@ -72,7 +72,6 @@ describe("child fragment spawn snapshots", () => {
       registry,
       createSubagentSession: factory,
       limiter: new ConcurrencyLimiter(() => 1),
-      baseCwd: STUB_SNAPSHOT.cwd,
     });
     vi.mocked(readFileSync).mockClear();
   });
@@ -94,16 +93,14 @@ describe("child fragment spawn snapshots", () => {
     return io.createResourceLoader.mock.calls[index][0].systemPromptOverride();
   }
 
-  it("composes [aws] relative to source profile, not child workspace cwd", async () => {
+  it("composes [aws] relative to source profile, not the child's cwd", async () => {
     const childCwd = join(root, "different-workspace");
     mkdirSync(join(childCwd, "fragments"), { recursive: true });
     writeFileSync(join(childCwd, "fragments", "aws.md"), "Wrong workspace instructions.");
-    manager.registerWorkspaceProvider({
-      prepare: async () => ({ cwd: childCwd, dispose: () => ({}) }),
-    });
 
     const record = await manager.spawnAndWait(STUB_SNAPSHOT, profile.name, "Task", {
       description: "Task",
+      cwd: childCwd,
     });
 
     expect(record.status).toBe("completed");

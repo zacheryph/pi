@@ -1,16 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
+import { SubagentState } from "#src/lifecycle/subagent-state";
 import {
   buildEventData,
   buildNotificationDetails,
   escapeXml,
   formatTaskNotification,
-  formatWorkspaceNotice,
   NotificationManager,
 } from "#src/observation/notification";
-import { createTestSubagent, makeStubExecution } from "#test/helpers/make-subagent";
-import { makeWorkspace, makeWorkspaceProvider } from "#test/helpers/make-workspace";
-import { createSubagentSessionStub, toSubagentSession } from "#test/helpers/mock-session";
-import { turnLoopResult } from "#test/helpers/turn-loop-result";
+import { createTestSubagent } from "#test/helpers/make-subagent";
 
 /** Options a notification carrier hands `pi.sendMessage`. */
 interface SendOptions {
@@ -126,26 +123,6 @@ describe("formatTaskNotification", () => {
       });
       expect(formatTaskNotification(record, 500)).not.toContain("tool-use-id");
     });
-  });
-});
-
-describe("formatWorkspaceNotice", () => {
-  const NOTICE = "\n\n---\nChanges saved to branch `pi-agent-3`.";
-
-  it("names the agent, its description, and what the teardown reported", () => {
-    const record = createTestSubagent({ id: "agent-3", description: "Port the parser" });
-    const block = formatWorkspaceNotice(record, NOTICE);
-
-    expect(block).toContain("<task-id>agent-3</task-id>");
-    expect(block).toContain("Port the parser");
-    expect(block).toContain("Changes saved to branch `pi-agent-3`.");
-  });
-
-  it("escapes a notice so a provider's wording cannot forge markup", () => {
-    const record = createTestSubagent({ id: "agent-3" });
-    const block = formatWorkspaceNotice(record, "saved to <branch> & more");
-
-    expect(block).toContain("saved to &lt;branch&gt; &amp; more");
   });
 });
 
@@ -308,111 +285,6 @@ describe("NotificationManager", () => {
     expect(content).toContain("This agent is waiting on an answer:");
     expect(content).toContain("Which config?");
     expect(content).toContain('resume: "agent-3"');
-  });
-
-  it("reports a question the torn-down workspace can no longer answer, without a resume call", async () => {
-    // An aborted child keeps its question but does not hold its workspace, so
-    // the disposal is driven by the production path rather than seeded state.
-    const stub = createSubagentSessionStub();
-    let askParent: ((question: string) => void) | undefined;
-    stub.runTurnLoop.mockImplementation(() => {
-      askParent?.("Which config?");
-      return Promise.resolve(
-        turnLoopResult({
-          responseText: "Got partway.",
-          turnBudget: { maxTurns: 2, used: 7, phase: "exhausted" },
-        }),
-      );
-    });
-    const disposed = createTestSubagent({
-      id: "agent-3",
-      execution: makeStubExecution({
-        createSubagentSession: (params) => {
-          askParent = params.askParent;
-          return Promise.resolve(toSubagentSession(stub));
-        },
-        getWorkspaceProvider: () => makeWorkspaceProvider(makeWorkspace("/ws/dir")),
-      }),
-    });
-    await disposed.run();
-    expect(disposed.pendingQuestion).toBe("Which config?");
-    expect(disposed.workspaceDisposed).toBe(true);
-    const args = makeArgs();
-    const system = makeManager(args);
-
-    system.sendCompletion(disposed);
-
-    const content = (args.sendMessage.mock.calls[0][0] as { content: string }).content;
-    expect(content).toContain("Which config?");
-    expect(content).toContain("it ran in an isolated workspace that has since been removed");
-    expect(content).not.toContain("resume:");
-  });
-
-  it("names where a teardown saved the agent's work", () => {
-    const args = makeArgs();
-    const system = makeManager(args);
-    system.sendCompletion(
-      createTestSubagent({ workspaceNotice: "\n\n---\nChanges saved to branch `pi-agent-3`." }),
-    );
-    const content = (args.sendMessage.mock.calls[0][0] as { content: string }).content;
-    expect(content).toContain("Changes saved to branch `pi-agent-3`.");
-  });
-
-  describe("sendWorkspaceNotice", () => {
-    const NOTICE = "\n\n---\nChanges saved to branch `pi-agent-3`.";
-
-    /** The options the manager handed `sendMessage` on its first call. */
-    function optionsOf(args: ReturnType<typeof makeArgs>) {
-      return args.sendMessage.mock.calls[0][1] as {
-        triggerTurn?: boolean;
-        deliverAs?: string;
-      };
-    }
-
-    it("appends without starting a turn, so a swept agent never drives one", () => {
-      const args = makeArgs();
-      makeManager(args).sendWorkspaceNotice(baseRecord, NOTICE);
-
-      expect(optionsOf(args)).toEqual({ triggerTurn: false });
-    });
-
-    it("announces for a record whose outcome a carrier already claimed", () => {
-      const args = makeArgs();
-      const record = createTestSubagent({ id: "claimed-1" });
-      record.claim();
-      makeManager(args).sendWorkspaceNotice(record, NOTICE);
-
-      expect(args.sendMessage).toHaveBeenCalledOnce();
-    });
-
-    it("announces for a record whose outcome the parent already collected", () => {
-      const args = makeArgs();
-      const record = createTestSubagent({ id: "consumed-1" });
-      record.markConsumed();
-      makeManager(args).sendWorkspaceNotice(record, NOTICE);
-
-      expect(args.sendMessage).toHaveBeenCalledOnce();
-    });
-
-    it("is silent once the manager is disposed", () => {
-      const args = makeArgs();
-      const system = makeManager(args);
-      system.dispose();
-      system.sendWorkspaceNotice(baseRecord, NOTICE);
-
-      expect(args.sendMessage).not.toHaveBeenCalled();
-    });
-
-    it("hands the notice over during the parent's run rather than withholding it", () => {
-      // The withheld queue exists for the unrecallable followUp a mid-run send
-      // becomes. This delivery mode never reaches it, so there is nothing to hold.
-      const args = makeArgs();
-      const system = makeManager(args);
-      system.onParentAgentStart();
-      system.sendWorkspaceNotice(baseRecord, NOTICE);
-
-      expect(args.sendMessage).toHaveBeenCalledOnce();
-    });
   });
 
   it("omits the retrieval instruction for an agent that never started", () => {
@@ -616,8 +488,11 @@ describe("NotificationManager", () => {
      * leaves it: `Subagent.announceUpdate` records the message on the run, then
      * the observer offers it to the manager.
      */
+    /** A running child that sent `message`, and the state a test completes it through. */
     function liveChildThatSent(message: string) {
-      return createTestSubagent({ id: "live-1", status: "running", runUpdates: [message] });
+      const state = new SubagentState({ status: "running", startedAt: 1000 });
+      state.recordUpdate(message);
+      return { record: createTestSubagent({ id: "live-1", state }), state };
     }
 
     describe("a running child's mid-run update", () => {
@@ -650,19 +525,6 @@ describe("NotificationManager", () => {
           "Course change.",
         );
         expect(parent.deliveredToLlm).toHaveLength(0);
-      });
-
-      it("reaches a parent that was mid-run, once that run ends", () => {
-        // Pi defers it to turn end so it cannot land between a tool call and its
-        // result; the manager itself does not hold it (see sendWorkspaceNotice).
-        const parent = makePiParent();
-        parent.startRun();
-        parent.manager.sendWorkspaceNotice(
-          createTestSubagent({ id: "swept-1" }),
-          "\n\n---\nChanges saved to branch `pi-agent-1`.",
-        );
-        parent.settleRun();
-        expect(parent.deliveredToLlm).toHaveLength(1);
       });
 
       it("keeps every update, because two updates are two facts", () => {
@@ -738,7 +600,7 @@ describe("NotificationManager", () => {
 
       it("is announced when the child is still running as the run settles", () => {
         const parent = makePiParent();
-        const record = liveChildThatSent("Course change.");
+        const { record } = liveChildThatSent("Course change.");
 
         parent.startRun();
         parent.manager.sendUpdate(record, "Course change.");
@@ -755,7 +617,7 @@ describe("NotificationManager", () => {
     describe("a withheld update whose child terminates before the flush", () => {
       it("rides the outcome the parent collected, rather than arriving after it", () => {
         const parent = makePiParent();
-        const record = liveChildThatSent("Course change.");
+        const { record, state } = liveChildThatSent("Course change.");
 
         parent.startRun();
         parent.manager.sendUpdate(record, "Course change.");
@@ -763,7 +625,7 @@ describe("NotificationManager", () => {
         // What subagent_get({ wait: true }) does: claim the outcome, wait
         // for it, then record the collection.
         record.claim();
-        record.markCompleted("Done.");
+        state.markCompleted("Done.");
         record.markConsumed();
 
         // The report it returns renders what the run still owes.
@@ -775,14 +637,14 @@ describe("NotificationManager", () => {
 
       it("stays quiet once a pull without wait has rendered it", () => {
         const parent = makePiParent();
-        const record = liveChildThatSent("Course change.");
+        const { record, state } = liveChildThatSent("Course change.");
 
         parent.startRun();
         parent.manager.sendUpdate(record, "Course change.");
 
         // subagent_get without wait claims nothing; it renders the run's
         // owed updates and marks the settled outcome collected.
-        record.markCompleted("Done.");
+        state.markCompleted("Done.");
         record.markConsumed();
 
         parent.settleRun();
@@ -791,11 +653,11 @@ describe("NotificationManager", () => {
 
       it("rides the completion nudge when nothing collected the outcome", () => {
         const parent = makePiParent();
-        const record = liveChildThatSent("Course change.");
+        const { record, state } = liveChildThatSent("Course change.");
 
         parent.startRun();
         parent.manager.sendUpdate(record, "Course change.");
-        record.markCompleted("Done.");
+        state.markCompleted("Done.");
         parent.manager.sendCompletion(record);
         parent.settleRun();
 

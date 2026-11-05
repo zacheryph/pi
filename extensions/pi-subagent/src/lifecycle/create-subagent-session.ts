@@ -6,10 +6,6 @@
  * create the SDK session (with the recursion guard as a tool denylist), publish
  * `spawning`/`session-created`, and bind extensions. It returns a fully usable
  * `SubagentSession` — `Subagent` then only coordinates (turn loop, steer, dispose).
- *
- * The factory takes a resolved `cwd` value, never the WorkspaceProvider: `cwd`
- * is a value the factory consumes directly (detectEnv, assembleSessionConfig,
- * createSession), so threading the provider through here would be a relay smell.
  */
 
 import { dirname } from "node:path";
@@ -185,7 +181,7 @@ export interface CreateSubagentSessionParams {
   type: SubagentType;
   /** Composed config from the spawn boundary; no fragment IO occurs here. */
   agentConfig?: AgentConfig;
-  /** Resolved workspace cwd; undefined → parent cwd. */
+  /** The directory the child runs in; undefined → parent cwd. */
   cwd?: string;
   /** Parent session identity (file path + session ID). */
   parentSession?: ParentSessionInfo;

@@ -45,7 +45,7 @@ export interface PersistedSubagentRecord {
   readonly thinkingLevel?: ThinkingLevel;
   /** The turn ceiling the spawn asked for; absent when it left the agent's own limit. */
   readonly maxTurns?: number;
-  /** The directory the agent runs in; absent until a workspace provider has chosen it. */
+  /** The directory the agent runs in; absent in entries written before it was recorded. */
   readonly cwd?: string;
 }
 

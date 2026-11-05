@@ -3,6 +3,28 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-05: Remove the typed service API and the workspace-provider seam
+
+No extension in this repository called `getSubagentsService()`; dashboard, git,
+todo and stash follow agents through the `subagent:*` events. The
+`WorkspaceProvider` seam lost its only consumer when `pi-subagent-worktree`
+was removed, so the core carried a prepare/dispose bracket, a held-workspace
+rule, a `workspace-disposed` resume refusal and a workspace-notice message
+that nothing could trigger.
+
+- Delete `src/service/` (`SubagentsService`, its adapter and the
+  `globalThis` publication registry) and the package's `exports`, including
+  the `./settings` re-export of `loadLayeredSettings` nobody imported.
+- Delete `WorkspaceProvider`, `WorkspaceBracket`, `Subagent.workspaceDisposed`
+  and `workspaceNotice`, the `subagent:workspace-notice` message and renderer,
+  and the `workspace-disposed` refusal. A child runs in the parent's cwd or a
+  caller-chosen `cwd`, as before.
+- `SubagentManager` loses `registerWorkspaceProvider`, `waitForAll`,
+  `hasRunning` and its `baseCwd` option.
+- `Subagent.cwd` is always defined: the caller's directory, else the parent's.
+  Saved records now carry it for agents that never started.
+- README, configuration and architecture docs no longer describe either API.
+
 ## 2026-11-05: Drop upstream's development history from docs
 
 `docs/` carried upstream's working history: 186 plans, 189 retros, 21

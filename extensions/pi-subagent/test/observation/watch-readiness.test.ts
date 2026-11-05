@@ -30,7 +30,6 @@ describe("watch readiness through manager and composite observer", () => {
       let unsubscribe: (() => void) | undefined;
       const manager = new SubagentManager({
         createSubagentSession: factory,
-        baseCwd: "/repo",
         limiter: new ConcurrencyLimiter(() => 4),
         registry: new AgentTypeRegistry(() => new Map()),
         observer: new CompositeSubagentObserver([
@@ -79,7 +78,6 @@ describe("watch readiness through manager and composite observer", () => {
     const perSpawn = vi.fn();
     const manager = new SubagentManager({
       createSubagentSession: factory,
-      baseCwd: "/repo",
       limiter: new ConcurrencyLimiter(() => 4),
       registry: new AgentTypeRegistry(() => new Map()),
       observer: observer({

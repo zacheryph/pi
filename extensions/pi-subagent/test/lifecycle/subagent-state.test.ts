@@ -352,7 +352,6 @@ describe("SubagentState — resetForResume", () => {
         startedAt: 1000,
         completedAt: 5000,
         pendingQuestion: "Which one?",
-        workspaceNotice: "Saved to branch x.",
       });
       state.recordUpdate("owed");
       state.recordUpdate("announced");
@@ -367,7 +366,6 @@ describe("SubagentState — resetForResume", () => {
         startedAt: 1000,
         completedAt: 5000,
         pendingQuestion: "Which one?",
-        workspaceNotice: "Saved to branch x.",
         runUpdates: ["owed"],
       });
     });

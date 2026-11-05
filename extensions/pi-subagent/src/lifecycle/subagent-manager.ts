@@ -18,11 +18,11 @@ import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import {
   type ResumeRefusal,
   Subagent,
+  type SubagentExecution,
   type SubagentLifecycleObserver,
 } from "#src/lifecycle/subagent";
 import type { SubagentSession } from "#src/lifecycle/subagent-session";
 import { SubagentState } from "#src/lifecycle/subagent-state";
-import type { WorkspaceProvider } from "#src/lifecycle/workspace";
 import type { PersistedSubagentRecord } from "#src/persisted-record";
 
 import type { RunConfig } from "#src/runtime";
@@ -189,13 +189,6 @@ export interface SubagentManagerObserver {
    * vacant one.
    */
   onSubagentUpdate?(record: Subagent, message: string): void;
-  /**
-   * Fires when a teardown after the record's result was delivered reported
-   * where its work went.
-   * Optional for the same reason as `onSubagentUpdate`: the widget has no use
-   * for it, and a hook nobody supplies is a vacant one.
-   */
-  onSubagentWorkspaceNotice?(record: Subagent, notice: string): void;
   onSubagentCompacted(record: Subagent, info: CompactionInfo): void;
   /** Fires synchronously after a background agent record is created (before run). */
   onSubagentCreated(record: Subagent): void;
@@ -206,8 +199,6 @@ export interface SubagentManagerOptions {
   createSubagentSession: (params: CreateSubagentSessionParams) => Promise<SubagentSession>;
   /** Concurrency limiter — schedules background run thunks FIFO against the limit. */
   limiter: ConcurrencyLimiter;
-  /** Base working directory handed to a workspace provider (the parent cwd). */
-  baseCwd: string;
   getRunConfig?: () => RunConfig;
   /** Live accessor for the session-retention windows; defaults applied when absent. */
   getRetentionPolicy?: () => RetentionPolicy;
@@ -244,10 +235,7 @@ export interface AgentSpawnConfig {
   parentSession?: ParentSessionInfo;
   /** What the parent hands the child; forwarded on its `session-created` event. */
   handoff?: SubagentHandoff;
-  /**
-   * Existing directory the child runs in, chosen by the caller. Skips the
-   * workspace provider: the caller owns the directory, so nothing is disposed.
-   */
+  /** Existing directory the child runs in, chosen by the caller; absent, the parent's. */
   cwd?: string;
 }
 
@@ -268,22 +256,14 @@ export class SubagentManager {
     params: CreateSubagentSessionParams,
   ) => Promise<SubagentSession>;
   private readonly limiter: ConcurrencyLimiter;
-  private readonly baseCwd: string;
   private getRunConfig?: () => RunConfig;
   private getRetentionPolicy?: () => RetentionPolicy;
   private readonly registry: SpawnTypeResolver;
   private readonly savedAgents?: SavedAgents;
-  private _workspaceProvider?: WorkspaceProvider;
-
-  /** The registered workspace provider, or undefined when none is registered. */
-  get workspaceProvider(): WorkspaceProvider | undefined {
-    return this._workspaceProvider;
-  }
 
   constructor(options: SubagentManagerOptions) {
     this.createSubagentSession = options.createSubagentSession;
     this.limiter = options.limiter;
-    this.baseCwd = options.baseCwd;
     this.observer = options.observer;
     this.getRunConfig = options.getRunConfig;
     this.getRetentionPolicy = options.getRetentionPolicy;
@@ -297,70 +277,42 @@ export class SubagentManager {
   }
 
   /**
-   * Register the single workspace provider. Throws if one is already
-   * registered (chaining is out of scope — see ADR 0002). Returns a disposer
-   * that clears the slot only if this provider is still the active one.
+   * Compose a per-agent lifecycle observer from manager and spawn-config concerns.
+   *
+   * Terminal transitions are reported for every agent. Whether the parent needs
+   * telling is the notification layer's decision, made from the carrier claim;
+   * suppressing the observer here would also suppress the lifecycle event and
+   * the session-history record, which are facts about the run rather than
+   * announcements. Observer faults on the session-created and terminal hooks
+   * must not fail the run.
    */
-  registerWorkspaceProvider(provider: WorkspaceProvider): () => void {
-    if (this._workspaceProvider) {
-      throw new Error("A WorkspaceProvider is already registered; only one is supported.");
-    }
-    this._workspaceProvider = provider;
-    return () => {
-      if (this._workspaceProvider === provider) this._workspaceProvider = undefined;
+  private buildObserver(spawnObserver?: SubagentLifecycleObserver): SubagentLifecycleObserver {
+    const observer = this.observer;
+    const guarded = (name: string, notify: (agent: Subagent) => void) => (agent: Subagent) => {
+      try {
+        notify(agent);
+      } catch (err) {
+        debugLog(`${name} observer`, err);
+      }
     };
-  }
-
-  /** Compose a per-agent lifecycle observer from manager and spawn-config concerns. */
-  private buildObserver(options: Pick<AgentSpawnConfig, "observer">): SubagentLifecycleObserver {
+    const sessionCreated = guarded("onSubagentSessionCreated", (agent) =>
+      observer?.onSubagentSessionCreated?.(agent),
+    );
     return {
-      onStarted: (agent) => {
-        this.observer?.onSubagentStarted(agent);
-      },
+      onStarted: (agent) => observer?.onSubagentStarted(agent),
       onSessionCreated: (agent) => {
-        // Viewer faults must not suppress the per-spawn observer or fail the run.
-        try {
-          this.observer?.onSubagentSessionCreated?.(agent);
-        } catch (err) {
-          debugLog("onSubagentSessionCreated observer", err);
-        }
-        options.observer?.onSessionCreated?.(agent);
+        sessionCreated(agent);
+        spawnObserver?.onSessionCreated?.(agent);
       },
-      // Terminal transitions are reported for every agent. Whether the parent
-      // needs telling is the notification layer's decision, made from the
-      // carrier claim; suppressing the observer here would also suppress the
-      // lifecycle event and the session-history record, which are facts about
-      // the run rather than announcements.
-      onRunFinished: (agent) => {
-        try {
-          this.observer?.onSubagentCompleted(agent);
-        } catch (err) {
-          debugLog("onSubagentCompleted observer", err);
-        }
-      },
-      onResumeStarted: (agent) => {
-        try {
-          this.observer?.onSubagentResuming(agent);
-        } catch (err) {
-          debugLog("onSubagentResuming observer", err);
-        }
-      },
-      onResumeFinished: (agent) => {
-        try {
-          this.observer?.onSubagentResumed(agent);
-        } catch (err) {
-          debugLog("onSubagentResumed observer", err);
-        }
-      },
-      onUpdateSent: (agent, message) => {
-        this.observer?.onSubagentUpdate?.(agent, message);
-      },
-      onWorkspaceNotice: (agent, notice) => {
-        this.observer?.onSubagentWorkspaceNotice?.(agent, notice);
-      },
-      onCompacted: (agent, info) => {
-        this.observer?.onSubagentCompacted(agent, info);
-      },
+      onRunFinished: guarded("onSubagentCompleted", (agent) =>
+        observer?.onSubagentCompleted(agent),
+      ),
+      onResumeStarted: guarded("onSubagentResuming", (agent) =>
+        observer?.onSubagentResuming(agent),
+      ),
+      onResumeFinished: guarded("onSubagentResumed", (agent) => observer?.onSubagentResumed(agent)),
+      onUpdateSent: (agent, message) => observer?.onSubagentUpdate?.(agent, message),
+      onCompacted: (agent, info) => observer?.onSubagentCompacted(agent, info),
     };
   }
 
@@ -450,6 +402,32 @@ export class SubagentManager {
     };
   }
 
+  /** The execution machinery every record shares, around its own per-run knobs. */
+  private execution(
+    snapshot: ParentSnapshot,
+    resolved: ResolvedSpawn,
+    prompt: string,
+    knobs: Omit<
+      SubagentExecution,
+      | "createSubagentSession"
+      | "snapshot"
+      | "agentConfig"
+      | "prompt"
+      | "getRunConfig"
+      | "checkReopen"
+    >,
+  ): SubagentExecution {
+    return {
+      createSubagentSession: this.createSubagentSession,
+      snapshot,
+      agentConfig: resolved.agentConfig,
+      prompt,
+      getRunConfig: this.getRunConfig,
+      checkReopen: (source) => this.checkReopen(source),
+      ...knobs,
+    };
+  }
+
   /** Create, register, and start (or queue) a record for an already-resolved spawn. */
   private create(
     snapshot: ParentSnapshot,
@@ -468,15 +446,8 @@ export class SubagentManager {
         status: isBackground ? "queued" : "running",
         startedAt: Date.now(),
       }),
-      execution: {
-        createSubagentSession: this.createSubagentSession,
-        snapshot,
-        agentConfig: resolved.agentConfig,
-        prompt,
-        baseCwd: this.baseCwd,
-        observer: this.buildObserver(options),
-        getRunConfig: this.getRunConfig,
-        getWorkspaceProvider: () => this._workspaceProvider,
+      execution: this.execution(snapshot, resolved, prompt, {
+        observer: this.buildObserver(options.observer),
         model: options.model,
         maxTurns: options.maxTurns,
         thinkingLevel: options.thinkingLevel,
@@ -484,8 +455,7 @@ export class SubagentManager {
         ...(options.handoff ? { handoff: options.handoff } : {}),
         ...(options.cwd ? { cwd: options.cwd } : {}),
         signal: options.signal,
-        checkReopen: (source) => this.checkReopen(source),
-      },
+      }),
     });
     this.agents.set(id, record);
 
@@ -605,22 +575,14 @@ export class SubagentManager {
         model,
         thinkingLevel: saved.thinkingLevel,
       },
-      execution: {
-        createSubagentSession: this.createSubagentSession,
-        snapshot,
-        agentConfig: resolved.agentConfig,
-        prompt: "",
-        baseCwd: this.baseCwd,
-        observer: this.buildObserver({}),
-        getRunConfig: this.getRunConfig,
-        getWorkspaceProvider: () => this._workspaceProvider,
+      execution: this.execution(snapshot, resolved, "", {
+        observer: this.buildObserver(),
         model,
         maxTurns: saved.maxTurns,
         thinkingLevel: saved.thinkingLevel,
         parentSession,
         cwd: saved.cwd,
-        checkReopen: (source) => this.checkReopen(source),
-      },
+      }),
     });
     this.agents.set(saved.id, record);
     return record;
@@ -635,18 +597,7 @@ export class SubagentManager {
   }
 
   abort(id: string): boolean {
-    const record = this.agents.get(id);
-    if (!record) return false;
-
-    // A queued agent has not started; stop it through the same terminal funnel
-    // a running agent's stop uses. Its scheduled thunk becomes a no-op (status
-    // guard) when its slot finally opens.
-    if (record.status === "queued") {
-      record.stopQueued();
-      return true;
-    }
-
-    return record.abort();
+    return this.agents.get(id)?.abort() ?? false;
   }
 
   /**
@@ -691,47 +642,15 @@ export class SubagentManager {
     await Promise.all(teardowns);
   }
 
-  /** Whether any agents are still running or queued. */
-  // fallow-ignore-next-line unused-class-member
-  hasRunning(): boolean {
-    return [...this.agents.values()].some((r) => r.isActive());
-  }
-
   /** Abort all running and queued agents immediately. */
   abortAll(): number {
     let count = 0;
     for (const record of this.agents.values()) {
-      if (record.status === "queued") {
-        record.stopQueued();
-        count++;
-      } else if (record.abort()) {
-        count++;
-      }
+      if (record.abort()) count++;
     }
     // Drop pending thunks (their promises resolve).
     this.limiter.clear();
     return count;
-  }
-
-  /** Wait for all running and queued agents to complete (including queued ones). */
-  // fallow-ignore-next-line unused-class-member
-  async waitForAll(): Promise<void> {
-    // Every spawned agent has a settled-on-completion promise (the limiter starts
-    // queued ones as slots free), so a single allSettled covers the queued case.
-    // The loop only catches agents spawned during the wait.
-    let pending = this.pendingPromises();
-    while (pending.length > 0) {
-      await Promise.allSettled(pending);
-      pending = this.pendingPromises();
-    }
-  }
-
-  /** Promises of all running/queued agents that have one. */
-  private pendingPromises(): Promise<void>[] {
-    return [...this.agents.values()]
-      .filter((r) => r.isActive())
-      .map((r) => r.promise)
-      .filter((p): p is Promise<void> => p != null);
   }
 
   /**

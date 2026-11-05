@@ -40,7 +40,6 @@ export interface SettledOutcome {
   startedAt: number;
   completedAt: number | undefined;
   pendingQuestion: string | undefined;
-  workspaceNotice: string | undefined;
   /** The updates no announcement delivered; what the carrier still owes. */
   runUpdates: readonly string[];
   /** The run's turn limit and its use; absent when no limit applied. */
@@ -78,8 +77,6 @@ export interface SubagentStateInit {
   result?: string;
   /** The question the agent ended its turn with — an outcome fact, like result. */
   pendingQuestion?: string;
-  /** What a teardown with no result text reported — an outcome fact, like result. */
-  workspaceNotice?: string;
   /** The run's turn limit and its use — an outcome fact, like result. */
   turnBudget?: TurnBudget;
   error?: string;
@@ -178,14 +175,6 @@ export class SubagentState {
     return this._pendingQuestion;
   }
 
-  // What the workspace reported at a teardown with no result text to fold it
-  // into. Part of the outcome like _result, and set at the disposal that
-  // produced it. Undefined for a run whose addendum rode the result instead.
-  private _workspaceNotice?: string;
-  get workspaceNotice(): string | undefined {
-    return this._workspaceNotice;
-  }
-
   // The run's turn budget, live: the turn loop reports it before the first turn
   // and after each boundary, so the last report is already the outcome's. Part
   // of the outcome like _result, and cleared where a run begins (resetForResume).
@@ -239,7 +228,6 @@ export class SubagentState {
     this._status = init.status ?? "queued";
     this._result = init.result;
     this._pendingQuestion = init.pendingQuestion;
-    this._workspaceNotice = init.workspaceNotice;
     this._turnBudget = init.turnBudget;
     this._error = init.error;
     this._stoppedWhileQueued = init.stoppedWhileQueued ?? false;
@@ -394,11 +382,6 @@ export class SubagentState {
     this._pendingQuestion = question;
   }
 
-  /** Record what a teardown reported when no result text could carry it. */
-  setWorkspaceNotice(notice: string): void {
-    this._workspaceNotice = notice;
-  }
-
   /**
    * A carrier has committed to delivering this outcome, so nothing else should
    * announce it. Unlike every other transition here, this one is revocable.
@@ -479,7 +462,6 @@ export class SubagentState {
       startedAt: this._startedAt,
       completedAt: this._completedAt,
       pendingQuestion: this._pendingQuestion,
-      workspaceNotice: this._workspaceNotice,
       runUpdates: this.runUpdates,
       turnBudget: this._turnBudget,
     };

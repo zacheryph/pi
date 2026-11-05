@@ -11,7 +11,6 @@ describe("SessionLifecycleHandler", () => {
   let mockAbortAll: ReturnType<typeof vi.fn<LifecycleManager["abortAll"]>>;
   let mockDispose: ReturnType<typeof vi.fn<LifecycleManager["dispose"]>>;
   let mockDisposeNotifications: ReturnType<typeof vi.fn<() => void>>;
-  let mockUnpublishService: ReturnType<typeof vi.fn<() => void>>;
   let handler: SessionLifecycleHandler;
 
   beforeEach(() => {
@@ -21,7 +20,6 @@ describe("SessionLifecycleHandler", () => {
     mockAbortAll = vi.fn();
     mockDispose = vi.fn(() => Promise.resolve());
     mockDisposeNotifications = vi.fn();
-    mockUnpublishService = vi.fn();
 
     runtime = {
       setSessionContext: mockSetSessionContext,
@@ -33,12 +31,7 @@ describe("SessionLifecycleHandler", () => {
       dispose: mockDispose,
     };
 
-    handler = new SessionLifecycleHandler(
-      runtime,
-      manager,
-      mockDisposeNotifications,
-      mockUnpublishService,
-    );
+    handler = new SessionLifecycleHandler(runtime, manager, mockDisposeNotifications);
   });
 
   describe("handleSessionStart", () => {
@@ -108,21 +101,8 @@ describe("SessionLifecycleHandler", () => {
   });
 
   describe("handleSessionShutdown", () => {
-    it("calls all cleanup steps", async () => {
-      await handler.handleSessionShutdown();
-
-      expect(mockUnpublishService).toHaveBeenCalled();
-      expect(mockClearSessionContext).toHaveBeenCalled();
-      expect(mockAbortAll).toHaveBeenCalled();
-      expect(mockDisposeNotifications).toHaveBeenCalled();
-      expect(mockDispose).toHaveBeenCalled();
-    });
-
     it("calls cleanup in correct order", async () => {
       const callOrder: string[] = [];
-      mockUnpublishService.mockImplementation(() => {
-        callOrder.push("unpublishService");
-      });
       mockClearSessionContext.mockImplementation(() => {
         callOrder.push("clearSessionContext");
       });
@@ -143,7 +123,6 @@ describe("SessionLifecycleHandler", () => {
       // fires its nudge synchronously when no parent run is active, and Pi
       // cannot recall a message already handed to it.
       expect(callOrder).toEqual([
-        "unpublishService",
         "clearSessionContext",
         "disposeNotifications",
         "abortAll",

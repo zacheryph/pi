@@ -17,7 +17,6 @@ export function makeStubExecution(overrides: Partial<SubagentExecution> = {}): S
       toSubagentSession(createSubagentSessionStub()),
     snapshot: STUB_SNAPSHOT,
     prompt: "do something",
-    baseCwd: "",
     ...overrides,
   };
 }
@@ -36,8 +35,6 @@ export interface TestSubagentOptions {
   result?: string;
   /** Seed the question the agent ended its turn with. */
   pendingQuestion?: string;
-  /** Seed what a teardown with no result text reported. */
-  workspaceNotice?: string;
   /** Seed the run's turn limit and its use. */
   turnBudget?: TurnBudget;
   error?: string;
@@ -70,6 +67,8 @@ export interface TestSubagentOptions {
    * `sessionReady` is set — a record with no session has no transcript.
    */
   outputFile?: string;
+  /** Use this state as-is, for a test that drives its transitions; the seeds are ignored. */
+  state?: SubagentState;
 }
 
 export function createTestSubagent(overrides: TestSubagentOptions = {}): Subagent {
@@ -88,21 +87,24 @@ export function createTestSubagent(overrides: TestSubagentOptions = {}): Subagen
     runUpdates,
     sessionReady,
     outputFile,
+    state: suppliedState,
     ...stateOverrides
   } = overrides;
-  const state = new SubagentState({
-    status: "completed",
-    result: "All done.",
-    startedAt: 1000,
-    completedAt: 2000,
-    toolUses: toolUses ?? 3,
-    lifetimeUsage: lifetimeUsage ?? { input: 500, output: 500, cacheWrite: 0 },
-    ...(compactionCount !== undefined ? { compactionCount } : {}),
-    ...(activeTools !== undefined ? { activeTools } : {}),
-    ...(responseText !== undefined ? { responseText } : {}),
-    ...stateOverrides,
-  });
-  for (const update of runUpdates ?? []) state.recordUpdate(update);
+  const state =
+    suppliedState ??
+    new SubagentState({
+      status: "completed",
+      result: "All done.",
+      startedAt: 1000,
+      completedAt: 2000,
+      toolUses: toolUses ?? 3,
+      lifetimeUsage: lifetimeUsage ?? { input: 500, output: 500, cacheWrite: 0 },
+      ...(compactionCount !== undefined ? { compactionCount } : {}),
+      ...(activeTools !== undefined ? { activeTools } : {}),
+      ...(responseText !== undefined ? { responseText } : {}),
+      ...stateOverrides,
+    });
+  if (!suppliedState) for (const update of runUpdates ?? []) state.recordUpdate(update);
   const agent = new Subagent({
     id: id ?? "agent-1",
     type: type ?? "general-purpose",

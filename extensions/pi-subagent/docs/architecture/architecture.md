@@ -1,17 +1,15 @@
 # Architecture
 
-This document describes the architecture of the pi-subagent fork: a focused, composable core with a stable API boundary that other extensions can build on.
+This document describes the architecture of the pi-subagent fork: a focused, composable core whose lifecycle events other extensions build on.
 
 ## Design principles
 
 1. **Narrow core** — the extension owns agent spawning, execution, and result retrieval.
    Everything else is a consumer.
-2. **Composable by default** — other extensions can spawn agents, observe their lifecycle, and display their state without importing this package directly.
-3. **Typed API boundary** — this package exports a `SubagentsService` interface and `Symbol.for()` accessors (`publishSubagentsService` / `getSubagentsService`).
-   Consumers declare this package as an optional peer dependency and use dynamic import for compile-time types.
-   The runtime bridge is `Symbol.for("@gotgenes/pi-subagent:service")` on `globalThis` — no separate API package.
+2. **Composable by default** — other extensions observe agents' lifecycle and display their state through `pi.events`, without importing this package.
+3. **No programmatic API** — the model-facing tools are the only way to start, steer and resume agents.
+   The typed `SubagentsService` upstream published on `globalThis` had no consumer here and was removed.
 4. **No time-based scheduling** — cron-style timed dispatch (upstream's `schedule.ts` subsystem) is removed from the core (#52).
-   Timed dispatch is a separate concern that any extension can implement by calling `spawn()` on the published API.
    The max-concurrent admission gate is not scheduling in this sense — concurrency management stays in core.
 5. **UI is an in-core, substitutable consumer** — [ADR-0004](../decisions/0004-reconsider-ui-direction.md) records the per-component decision: the widget shrinks to background agents only, the bespoke conversation viewer is replaced by native session navigation, the `/agents` command is dissolved into focused surfaces, and the surviving UI stays in the core as a reactive consumer (not extracted to a separate package).
    Extraction remains an available future option because the composition invariant holds — the core is byte-for-byte identical with or without a given UI consumer.
@@ -201,10 +199,8 @@ classDiagram
         +createSubagentSession(params)
         +snapshot: ParentSnapshot
         +prompt: string
-        +baseCwd: string
         +observer?: SubagentLifecycleObserver
         +getRunConfig?()
-        +getWorkspaceProvider?()
         +model?, maxTurns?, thinkingLevel?
         +parentSession?, signal?
     }
@@ -235,21 +231,10 @@ classDiagram
         +parentContext?: string
     }
 
-    class SubagentsService {
-        +spawn(type, prompt, options?)
-        +getRecord(id): SubagentRecord
-        +listAgents(): SubagentRecord[]
-        +abort(id)
-        +steer(id, message)
-        +waitForAll()
-        +hasRunning(): boolean
-    }
-
     SubagentManager --> Subagent : creates/manages
     Subagent --> SubagentState : owns (private)
     Subagent --> SubagentExecution : runs via (mandatory)
     SubagentManager --> ParentSnapshot : receives at spawn
-    SubagentsService --> SubagentManager : wraps via adapter
     SubagentManager --> AgentTypeRegistry : resolves types
 ```
 
@@ -281,10 +266,10 @@ stateDiagram-v2
     end note
 ```
 
-A steer (`subagent_steer`, `SubagentsService.steer()`) redirects a running agent and changes no status.
+A steer (`subagent_steer`) redirects a running agent and changes no status.
 The turn budget is not a status either: it is the live `turnBudget` (`{ used, maxTurns, phase }`) the turn loop reports to the record before the first turn and after each turn boundary.
 A `TurnBudgetTracker` (`turn-limits.ts`) counts successful turns and decides when `SubagentSession` warns the child (a context-only custom message once `wrapUpTurns` turns remain, which forces no turn) and when it stops the run (after a ceiling turn that ran tools, or as a turn starts past the ceiling).
-`phase` is `warned` once the warning went out and `exhausted` when the harness stopped the run: the one case `completeRun` and `completeResume` end `aborted`.
+`phase` is `warned` once the warning went out and `exhausted` when the harness stopped the run: the one case a run or resume that returned ends `aborted`.
 A resume runs a fresh tracker under the initial run's limits.
 
 Note: `markStopped` always succeeds regardless of current status.
@@ -328,7 +313,7 @@ sequenceDiagram
 
 ## Module organization
 
-The extension's source files are organized into domain directories — `config/`, `session/`, `lifecycle/`, `observation/`, `service/`, `tools/`, `ui/`, and `handlers/` — plus a handful of root-level entry-point and shared modules.
+The extension's source files are organized into domain directories — `config/`, `session/`, `lifecycle/`, `observation/`, `tools/`, `ui/`, and `handlers/` — plus a handful of root-level entry-point and shared modules.
 
 Two cross-directory edges are not sanctioned by anything above: `lifecycle/` imports `subscribeSubagentObserver` from `observation/` (`subagent.ts`), and `observation/` imports `display` and `glyphs` from `ui/` (`renderer.ts`).
 The ratchet admits them because they predate it; this document states no ordering between those directories, so whether they should exist is a question for a later discovery round rather than a violation today.
@@ -343,7 +328,6 @@ src/
 ├── persisted-record.ts             subagent:record session-entry contract (writer's builder, reader's parser)
 ├── settings.ts                     SettingsManager (persistent operational settings)
 ├── debug.ts                        debug logging utility
-├── layered-settings.ts             loadLayeredSettings helper (published as @gotgenes/pi-subagents/settings)
 │
 ├── config/                         agent type definitions and resolution
 │   ├── agent-types.ts              AgentTypeRegistry class
@@ -373,28 +357,22 @@ src/
 │   ├── create-subagent-session.ts  assembly factory: MCP pattern expansion, Pi built-in selection, session creation, spawn-tool denylist, core child-tool install, binding
 │   ├── subagent-session.ts         born-complete child session: turn loop, steer, shutdown-then-dispose teardown
 │   ├── turn-limits.ts              turn-budget policy: TurnBudget, the TurnBudgetTracker that decides warnings and stops, normalizeMaxTurns (minimum 2)
-│   ├── subagent.ts                 owns full execution lifecycle (run, resume, abort, steer, wait-until-settled); a teardown with no result text to carry its addendum records it as a notice and announces one produced after delivery; answers why a resume would be refused (resumeRefusal, including a live run), which the resume choke point and every result carrier read rather than re-deriving; reports a resume's start as well as its end; wait-until-settled reports whether the waited run settled, has not, or was replaced by a resume (carrying what it ended with)
+│   ├── subagent.ts                 owns full execution lifecycle (run, resume, abort, steer, wait-until-settled); answers why a resume would be refused (resumeRefusal, including a live run), which the resume choke point and every result carrier read rather than re-deriving; reports a resume's start as well as its end; wait-until-settled reports whether the waited run settled, has not, or was replaced by a resume (carrying what it ended with)
 │   ├── subagent-state.ts           lifecycle status + metrics + result-delivery value object (transitions, accumulators, classification predicates); delivery carries a revocable claim per carrier (each releases only its own handle), a one-way consumption latch, and a per-run update ledger that renders only what no announcement delivered; numbers its runs and keeps the outcome of the run the latest resume replaced
 │   ├── run-listeners.ts            per-run observer-unsub and signal-detach handles
-│   ├── workspace-bracket.ts        child workspace prepare/dispose lifecycle; idempotent dispose, reports a torn-down workspace
 │   ├── concurrency-limiter.ts       background admission gate: schedules run thunks FIFO against the limit
 │   ├── parent-snapshot.ts          immutable spawn-time parent state, including the parent's operator-authored prompt parts composed in Pi's own order
 │   ├── child-lifecycle.ts          child-execution lifecycle event publisher
 │   ├── child-shutdown.ts           bounded session_shutdown emit for a child being disposed
-│   ├── workspace.ts                workspace provider seam (generative extension surface)
 │   └── usage.ts                    token usage tracking
 │
 ├── observation/                    progress tracking and notification
 │   ├── record-observer.ts          session-event stats observer
-│   ├── notification.ts             completion nudges and mid-run updates, in one arrival-ordered withheld queue (announce-only; withheld during the parent's agent run and flushed on agent_settled, each re-checking its gates at emit rather than replaying them from enqueue — a completion on claim and consumption, an update on the claim and on the child still running, since a terminated run's updates ride its outcome and this nudge is one of their carriers), plus workspace notices, which are announced straight through
-│   ├── outcome-delivery.ts         shared outcome rendering every result carrier composes: one status vocabulary in two presentations, body, and the addenda tail (mid-run updates, workspace notice, ask-back affordance — which names a resume only when the record says one would be accepted, and asks the parent to wait when the child has merely not settled) in one fixed order
-│   ├── renderer.ts                 notification, mid-run-update, and workspace-notice TUI components
+│   ├── notification.ts             completion nudges and mid-run updates, in one arrival-ordered withheld queue (announce-only; withheld during the parent's agent run and flushed on agent_settled, each re-checking its gates at emit rather than replaying them from enqueue — a completion on claim and consumption, an update on the claim and on the child still running, since a terminated run's updates ride its outcome and this nudge is one of their carriers)
+│   ├── outcome-delivery.ts         shared outcome rendering every result carrier composes: one status vocabulary in two presentations, body, and the addenda tail (mid-run updates, then the ask-back affordance — which names a resume only when the record says one would be accepted, and asks the parent to wait when the child has merely not settled) in one fixed order
+│   ├── renderer.ts                 notification and mid-run-update TUI components
 │   ├── composite-subagent-observer.ts fans manager notifications out to multiple observers; enumerates every member, so an optional one it omits is dropped silently
 │   └── subagent-events-observer.ts manager lifecycle observer (event emission + persistence + notification)
-│
-├── service/                        cross-extension API boundary
-│   ├── service.ts                  SubagentsService interface (spawn, query, abort, steer, resume, workspace seam) + Symbol.for() accessors
-│   └── service-adapter.ts          SubagentsServiceAdapter class wrapping SubagentManager; maps live records to by-value snapshots at the boundary
 │
 ├── tools/                          LLM-facing tool implementations
 │   ├── agent-tool.ts               subagent tool definition, validation, dispatch
@@ -441,22 +419,8 @@ It also reads the parent session's `subagent:record` entries (`persisted-record.
 
 ## Cross-extension architecture
 
-```mermaid
-flowchart TD
-    subgraph core["@gotgenes/pi-subagents"]
-        direction TB
-        exports["SubagentsService API<br/>publish / getSubagentsService<br/>SubagentRecord, SubagentStatus"]
-        engine["Tools: subagent, subagent_get,<br/>subagent_steer<br/>SubagentManager, createSubagentSession, SubagentSession"]
-        ui_int["Internal UI: widget, session-navigator,<br/>subagents-settings"]
-    end
-
-    core -- "Symbol.for on globalThis" --> sched["scheduling extension<br/>(hypothetical)"]
-    core -- "Symbol.for on globalThis" --> subui["pi-subagent-ui<br/>(deferred)"]
-    core -- "Symbol.for on globalThis" --> future["any future extension"]
-```
-
-Consumers call `getSubagentsService()?.spawn(...)` at runtime.
-They declare this package as an optional peer dependency and use dynamic import for compile-time types.
+Other extensions reach subagents only through the lifecycle events on `pi.events` (see [Lifecycle events](#lifecycle-events)): pi-dashboard follows agents through them, pi-git notes each child's `cwd` from `subagent:session:created`, and pi-todo hands work to a child through `subagent_start`'s `handoff`.
+Nothing is published on `globalThis` for them to call.
 
 ### What the core owns
 
@@ -468,15 +432,14 @@ They declare this package as an optional peer dependency and use dynamic import 
 - `child-lifecycle` — publishes the child-execution lifecycle (`spawning`, `session-created` before `bindExtensions()`, `bound` after it resolves, `completed`, `disposed`) on `pi.events`.
   Reactive consumers subscribe: `@gotgenes/pi-permission-system` registers each child session on `session-created`, audits it for a permission node of its own on `bound`, and unregisters it on `disposed`.
   This replaced the former outbound `permission-bridge` (#261, [ADR-0002]) — the core no longer looks up a named consumer.
-- `workspace` — the single generative seam (#262, [ADR-0002]): a registered `WorkspaceProvider` supplies a child's cwd plus bracketed `dispose()` at run-start.
-  With no provider, children run in the parent cwd (default unchanged). A caller-chosen `cwd` (for example a git worktree the caller created) bypasses the provider.
+- `spawn-cwd` — a child runs in the parent's cwd, or in an existing directory the caller passes as `cwd` (for example a git worktree pi-git created); the core never prepares or removes one.
 - `session-config` — pure configuration assembler (called by `createSubagentSession`).
 - `SubagentRuntime` — session-scoped state bag with methods.
 - `ParentSnapshot` — immutable snapshot of parent session state, captured once at spawn time.
 - `record-observer` — session-event observer that updates record statistics without callback threading.
 - Agent type registry — default agents, custom `.md` file loading.
 - Prompt assembly, context extraction, skills, environment.
-- Worktree isolation — evicted from the core in Phase 16 (#263, [ADR-0002]); a child runs in a caller-chosen `cwd` or a provider's directory, and `git` no longer appears in the core.
+- Worktree isolation — evicted from the core in Phase 16 (#263, [ADR-0002]); a child runs in a caller-chosen `cwd`, and `git` no longer appears in the core.
 - Token usage tracking.
 - Session directory derivation and persisted `SessionManager` for subagent transcripts.
 - Settings persistence.
@@ -510,82 +473,13 @@ It reaches the SDK as the `excludeTools` denylist, which Pi reapplies on every t
 ### What the core dropped
 
 - **Scheduling** (`schedule.ts`, `schedule-store.ts`, `ui/schedule-menu.ts`) — removed (#52).
-- **Ad-hoc RPC** (`cross-extension-rpc.ts`) — replaced by the typed `SubagentsService` published via `Symbol.for()` (#49).
+- **Ad-hoc RPC** (`cross-extension-rpc.ts`) — removed (#49); upstream's typed `SubagentsService` that replaced it was removed here too, having no consumer.
 - **Group join** (`group-join.ts`) — removed (#49).
 - **Output file** (`output-file.ts`) — replaced by `session-dir.ts` + `SessionManager.create()` (#61).
 - **Callback threading** — the three-layer `on*` callback chain was replaced by direct session-event subscriptions (#100).
 - **Live `ctx` capture** — replaced by `ParentSnapshot`, an immutable data object captured once at spawn time (#99).
 
-## SubagentsService
-
-The `SubagentsService` interface, accessor functions, and serializable types are exported from `@gotgenes/pi-subagents` via the `./service` export map entry.
-No separate API package is needed.
-
-Consumers declare this package as an optional peer dependency:
-
-```json
-{
-  "peerDependencies": {
-    "@gotgenes/pi-subagents": ">=5.0.0"
-  },
-  "peerDependenciesMeta": {
-    "@gotgenes/pi-subagents": { "optional": true }
-  }
-}
-```
-
-At runtime, consumers use dynamic import for type-safe access to the accessor functions:
-
-```typescript
-const { getSubagentsService } = await import("@gotgenes/pi-subagents");
-const svc = getSubagentsService();
-if (svc) {
-  svc.spawn("Explore", "Check for stale TODOs");
-}
-```
-
-Pi's extension loader imports each extension with its own `jiti` instance (`moduleCache: false`), so module-scoped singletons are not a reliable channel between extensions.
-(Pi 1.4.0 does cache each extension's factory by path while the cwd is unchanged, so a same-cwd child session may reuse the parent's module; a reload or a child in another cwd does not.)
-The accessor functions use `Symbol.for()` keys on `globalThis`, which is process-global by spec, to bridge this gap.
-The dynamic import provides compile-time types; the `Symbol.for()` key is the actual runtime channel.
-
-### Interface
-
-See `src/service.ts` for the canonical definition.
-Key types:
-
-- `SubagentsService` — `spawn`, `getRecord`, `listAgents`, `abort`, `steer`, `resume`, `waitForAll`, `hasRunning`.
-- `ResumeOptions` — `claimOutcome`, `signal`; `ResumeResult` — the resumed snapshot or a `ResumeRefusalReason`.
-- `SubagentRecord` — serializable by-value agent snapshot; admission policy in [decision 0005](../decisions/0005-subagent-record-admission-policy.md).
-- `SpawnOptions` — `description`, `model`, `maxTurns`, `thinkingLevel`, `inheritContext`, `foreground`, `bypassQueue`, `handoff`.
-- `SubagentHandoff` — extension-defined data a spawn hands the child, keyed by the extension that reads it; a frozen JSON object of at most `MAX_HANDOFF_BYTES`, forwarded on `subagent:session:created`.
-- `SUBAGENT_EVENTS` — channel constants for `pi.events` subscriptions.
-
-### Accessor pattern
-
-Every child session loads this extension again in the same process, so several services are published at once.
-Each publication is _pending_ from the extension factory until its session's `session_start`, then _started_:
-
-- The extension publishes `publishSubagentsService(service)` in its factory and `publishSubagentsService(service, sessionId)` on `session_start`, under `Symbol.for("@gotgenes/pi-subagent:services.v1")`.
-- While a load is pending, the newest pending service is the default.
-  Companion extensions such as a workspace provider call `getSubagentsService()` from their own factory, right after this one, and must get the service of the session that is loading.
-  That includes each child session, whose companion copy would otherwise try to register a second provider on the parent's service.
-- Otherwise the default is the outermost started service: a child starts after its parent and shuts down before it, so a child never displaces its parent.
-- The legacy slot `Symbol.for("@gotgenes/pi-subagent:service")` mirrors the default, for consumers of the published package that read it directly.
-- Pi can run factories without starting that session (a project-trust bootstrap pass, a child whose creation failed), so no shutdown ever removes such a publication.
-  A session that starts drops every pending publication older than its own, and a failed child creation discards the pending publications made since it began (`markPendingPublications` / `discardPendingSince`, wired in `src/index.ts`).
-- Publishing a started service for a session id that is already listed replaces that entry in place.
-- `getSubagentsService(sessionId)` returns that session's own started service.
-- `unpublishSubagentsService(service)` removes only that publication.
-
-```typescript
-const parent = getSubagentsService(); // top-level session's service
-const own = getSubagentsService(ctx.sessionManager.getSessionId());
-```
-
-If Pi gains a native service registry ([earendil-works/pi#4207]), these accessors can be updated to delegate to `pi.registerService()` / `pi.getService()` internally while keeping the same consumer API.
-
-### Lifecycle events
+## Lifecycle events
 
 The core emits events on `pi.events` that any extension can observe:
 
@@ -637,8 +531,8 @@ Extensions attach through exactly two surfaces, distinguished by the direction o
    Reactive concerns live here: permission detection, telemetry, UI, notifications.
    Adding a reactive concern never modifies the core.
 2. **Provider seams (generative) — rationed.**
-   The rare concern that must _inject_ a value the core consumes synchronously registers a provider the core consults.
-   Today there is exactly one: the **workspace provider** (returns the child's working directory plus bracketed setup/teardown).
+   The rare concern that must _inject_ a value the core consumes synchronously would register a provider the core consults.
+   Today there are none: the workspace provider was removed once a caller-chosen `cwd` replaced its only consumer.
    A provider seam is the only place the core is "open," so the list is kept as small as possible.
 
 The discriminator when deciding how a concern attaches:
@@ -666,28 +560,25 @@ The observational surface then carries only fire-and-forget broadcasts of immuta
 - **Package-extension exclusion** — filter the child's package view by the `excludedExtensionPackages` setting before resource loading, so an excluded package's extensions are never imported in children (#696).
   Resolved at the composition root; the assembly factory receives a ready-made settings view and holds no policy.
 - **Lifecycle events** — emit awaited, ordered events when child sessions spawn, are created, complete, and are disposed.
-- **Workspace provider seam** — accept a registered `WorkspaceProvider` and consult it for the child's cwd; default to the parent's cwd when none is registered.
-- **Service API** — publish `SubagentsService` via `Symbol.for()` for cross-extension access.
 
 ### Responsibilities removed from the core
 
-These policy and environment concerns were removed so the core stays narrow; each now lives in a consumer or behind the workspace seam:
+These policy and environment concerns were removed so the core stays narrow; each now lives in a consumer:
 
 - **Tool policy** (`disallowed_tools`) and **extension filtering** (`extensions: string[]`) — access control and tool visibility belong in pi-permission-system's `permission:` frontmatter (Phase 14, #237/#238).
-- **Worktree isolation** (`GitWorktreeManager`, the `isolation: "worktree"` mode) — one _strategy_ for choosing the child's cwd, evicted from the core (#263); a caller passes a prepared directory as `cwd`, or a workspace provider supplies one.
+- **Worktree isolation** (`GitWorktreeManager`, the `isolation: "worktree"` mode) — one _strategy_ for choosing the child's cwd, evicted from the core (#263); a caller passes a prepared directory as `cwd`.
 - **Per-agent extension lifecycle control** (`extensions: false`, `isolated`, `noSkills`) — removed in #264; deny-at-use covers what `isolated` pretended to do for tools.
   Prevent-load ships instead as the global/project `excludedExtensionPackages` setting (#696): a provider seam was declined because no _extension_ wants to supply the policy, which would make the seam a vacant hook.
 
 ### Composition model
 
-In the target state, pi-subagent publishes events and a provider seam; other packages hook in:
+pi-subagent publishes events; other packages hook in:
 
 - **pi-permission-system** (observational) subscribes to child-session lifecycle events, detects subagent execution context in the child, and gates tool calls at runtime.
-- **A workspace provider** (generative) registers a `WorkspaceProvider` that prepares a directory at run-start and tears it down after, supplying the child's cwd.
 - **pi-subagent-ui** (future, under reconsideration — see the [first-principles refinement](#first-principles-refinement-and-the-deeper-target)) subscribes to the broadcast and the query/behavior interfaces; the conversation viewer and `/agents` menu were removed in Phase 19 per [ADR-0004]; the surviving UI (widget, session navigator, settings command) stays in-core.
 - **Any future extension** (OTel, auditing, cost tracking) subscribes to the same events without pi-subagent knowing.
 
-Composition test: install neither extension, only permissions, only workspaces, or both — the core is byte-for-byte identical in all four cases, and the two extensions never reference each other.
+Composition test: install any set of consumers — the core is byte-for-byte identical whichever are present, and they never reference each other.
 
 This is achieved across phases: Phase 14 (strip policy), Phase 16 (invert dependencies — extensions on a minimal core), and Phase 18 (reconsider UI).
 
@@ -729,7 +620,7 @@ This splits the current "lifecycle events" surface cleanly in two:
    Carries immutable snapshots for telemetry, notification, and any renderer.
    No consumer holds a live `Subagent`.
 2. **Hooks** (generative, awaited, ordered) — the recursive Pi extension surface where workspace, permissions, and future concerns attach to the child.
-   The `WorkspaceProvider` is one _typed_ hook; the general form is "be an extension of the child session."
+   A typed provider would be one such hook; the general form is "be an extension of the child session."
 
 The "no vacant hooks" rule still governs the generative side: admit the surface, ship a hook only when a real consumer exists.
 
@@ -740,7 +631,7 @@ The axis that decides push versus pull is whether a need is reactive or discrete
 - **Reactive** (ambient state that changes underneath you) → subscribe to the broadcast; be told.
   The state-owner announces; the consumer maintains its own read-model; nobody pulls.
 - **Discrete** (a one-shot question: current value, full transcript) → pull a query.
-  `subagent_get`, opening a transcript, and the external `SubagentsService.getRecord` are queries by nature and stay pull, in-package or not.
+  `subagent_get` and opening a transcript are queries by nature and stay pull, in-package or not.
 
 Behavior is a third interface: **tell by id, with outcomes**.
 `steer` and `abort` own their own rules — a non-running agent rejects a steer from inside `steer`, not via a caller's status pre-check — so coordinators never ask-then-tell.
@@ -780,7 +671,6 @@ This fork continues independently regardless.
 Upstream fixes and ideas are cherry-picked when they align with this fork's scope.
 The upstream test suite is run periodically as a regression canary for the session assembly core.
 
-[earendil-works/pi#4207]: https://github.com/earendil-works/pi/issues/4207
 [gotgenes/pi-packages]: https://github.com/gotgenes/pi-packages
 [tintinweb/pi-subagent]: https://github.com/tintinweb/pi-subagent
 [#441]: https://github.com/gotgenes/pi-packages/issues/441

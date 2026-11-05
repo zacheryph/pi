@@ -67,7 +67,7 @@ export class SubagentEventsObserver implements SubagentManagerObserver {
     this.persistAndNotify(record);
   }
 
-  /** The transcript, inherited model and workspace are known before the first prompt. */
+  /** The transcript, inherited model and cwd are known before the first prompt. */
   onSubagentSessionCreated(record: Subagent): void {
     this.persist(record);
   }
@@ -149,16 +149,6 @@ export class SubagentEventsObserver implements SubagentManagerObserver {
       message,
     });
     this.notifications.sendUpdate(record, message);
-  }
-
-  /**
-   * A teardown after the child's result was delivered reported where its work
-   * went. Announced only: no event channel, because no consumer asks for one,
-   * and nothing is persisted — the outcome this belongs to was recorded when
-   * the run ended.
-   */
-  onSubagentWorkspaceNotice(record: Subagent, notice: string): void {
-    this.notifications.sendWorkspaceNotice(record, notice);
   }
 
   onSubagentCompacted(record: Subagent, info: CompactionInfo): void {

@@ -12,13 +12,11 @@ import {
   type SubagentManagerObserver,
 } from "#src/lifecycle/subagent-manager";
 import type { SubagentSession, TurnLoopResult } from "#src/lifecycle/subagent-session";
-import type { WorkspaceProvider } from "#src/lifecycle/workspace";
 import { NotificationManager } from "#src/observation/notification";
 import type { PersistedSubagentRecord } from "#src/persisted-record";
 import type { RunConfig } from "#src/runtime";
 import { GetResultTool } from "#src/tools/get-result-tool";
 import type { AgentConfig, Subagent } from "#src/types";
-import { makeWorkspace, makeWorkspaceProvider } from "#test/helpers/make-workspace";
 import { makeModel } from "#test/helpers/make-model";
 import { createBlockingFactory, createSessionFactory } from "#test/helpers/manager-stubs";
 import {
@@ -74,7 +72,6 @@ function createManager(overrides?: {
     consumedSessionRetentionMinutes: number;
     unconsumedSessionRetentionMinutes: number;
   };
-  baseCwd?: string;
   registry?: AgentTypeRegistry;
   savedAgents?: SavedAgents;
 }) {
@@ -88,7 +85,6 @@ function createManager(overrides?: {
         onSubagentResuming: overrides.observer.onSubagentResuming ?? (() => {}),
         onSubagentCompacted: overrides.observer.onSubagentCompacted ?? (() => {}),
         onSubagentCreated: overrides.observer.onSubagentCreated ?? (() => {}),
-        onSubagentWorkspaceNotice: overrides.observer.onSubagentWorkspaceNotice,
       }
     : undefined;
   const limiter = new ConcurrencyLimiter(
@@ -98,7 +94,6 @@ function createManager(overrides?: {
     createSubagentSession,
     observer,
     limiter,
-    baseCwd: overrides?.baseCwd ?? "/repo",
     getRunConfig: overrides?.getRunConfig,
     getRetentionPolicy: overrides?.getRetentionPolicy,
     registry: overrides?.registry ?? defaultRegistry(),
@@ -1458,98 +1453,6 @@ describe("SubagentManager", () => {
     });
   });
 
-  describe("registerWorkspaceProvider", () => {
-    let manager: SubagentManager;
-
-    afterEach(async () => {
-      await manager.dispose();
-    });
-
-    function makeProvider(): WorkspaceProvider {
-      return { prepare: vi.fn(async () => undefined) };
-    }
-
-    it("returns a disposer and exposes the registered provider via getter", () => {
-      ({ manager } = createManager());
-      const provider = makeProvider();
-
-      const dispose = manager.registerWorkspaceProvider(provider);
-
-      expect(typeof dispose).toBe("function");
-      expect(manager.workspaceProvider).toBe(provider);
-    });
-
-    it("throws when a provider is already registered", () => {
-      ({ manager } = createManager());
-      manager.registerWorkspaceProvider(makeProvider());
-
-      expect(() => manager.registerWorkspaceProvider(makeProvider())).toThrow(
-        /already registered/i,
-      );
-    });
-
-    it("disposer clears the slot, allowing re-registration", () => {
-      ({ manager } = createManager());
-      const first = makeProvider();
-      const dispose = manager.registerWorkspaceProvider(first);
-
-      dispose();
-
-      expect(manager.workspaceProvider).toBeUndefined();
-      const second = makeProvider();
-      manager.registerWorkspaceProvider(second);
-      expect(manager.workspaceProvider).toBe(second);
-    });
-
-    it("relays a held workspace's notice to the manager observer when the session is released", async () => {
-      const onSubagentWorkspaceNotice = vi.fn<(record: Subagent, notice: string) => void>();
-      const notice = "\n\n---\nChanges saved to branch `pi-agent-1`.";
-      const stub = createSubagentSessionStub();
-      let askParent: ((question: string) => void) | undefined;
-      stub.runTurnLoop.mockImplementation(() => {
-        askParent?.("Which config?");
-        return Promise.resolve(turnLoopResult({ responseText: "Mapped them." }));
-      });
-      ({ manager } = createManager({
-        createSubagentSession: vi.fn(async (params: CreateSubagentSessionParams) => {
-          askParent = params.askParent;
-          return toSubagentSession(stub);
-        }),
-        observer: { onSubagentWorkspaceNotice },
-      }));
-      manager.registerWorkspaceProvider({
-        prepare: vi.fn(async () => ({
-          cwd: "/ws/dir",
-          dispose: vi.fn(() => ({ resultAddendum: notice })),
-        })),
-      });
-
-      const id = manager.spawn(STUB_SNAPSHOT, "general-purpose", "test", {
-        description: "held agent",
-        background: true,
-      });
-      const record = manager.getRecord(id)!;
-      await record.promise;
-      await record.releaseSession();
-
-      expect(onSubagentWorkspaceNotice).toHaveBeenCalledExactlyOnceWith(record, notice);
-    });
-
-    it("stale disposer does not evict a later provider", () => {
-      ({ manager } = createManager());
-      const first = makeProvider();
-      const disposeFirst = manager.registerWorkspaceProvider(first);
-      disposeFirst();
-      const second = makeProvider();
-      manager.registerWorkspaceProvider(second);
-
-      // Calling the first disposer again must not clear the second provider.
-      disposeFirst();
-
-      expect(manager.workspaceProvider).toBe(second);
-    });
-  });
-
   describe("resume", () => {
     let manager: SubagentManager;
 
@@ -1589,19 +1492,6 @@ describe("SubagentManager", () => {
         expect(await manager.resume(id, "continue")).toEqual({
           kind: "refused",
           reason: "session-released",
-        });
-      });
-
-      it("reports a workspace torn down at run end, which the old guard let through", async () => {
-        const { factory } = createSessionFactory();
-        ({ manager } = createManager({ createSubagentSession: factory }));
-        manager.registerWorkspaceProvider(makeWorkspaceProvider(makeWorkspace("/ws/dir")));
-        const id = spawnBg(manager);
-        await manager.getRecord(id)!.promise;
-
-        expect(await manager.resume(id, "continue")).toEqual({
-          kind: "refused",
-          reason: "workspace-disposed",
         });
       });
 
@@ -2138,20 +2028,6 @@ describe("SubagentManager — cold resume", () => {
         transcriptPath: transcript,
       });
       expect(stub.resumeTurnLoop).not.toHaveBeenCalled();
-    });
-
-    it("keeps refusing an isolated workspace that was torn down", async () => {
-      const { factory } = createSessionFactory(createMockSession(), transcript);
-      ({ manager } = createManager({ createSubagentSession: factory }));
-      manager.registerWorkspaceProvider(makeWorkspaceProvider(makeWorkspace(cwd)));
-      const id = spawnBg(manager);
-      const record = manager.getRecord(id)!;
-      await record.promise;
-      await record.releaseSession();
-      expect(await manager.resume(id, "continue")).toMatchObject({
-        kind: "refused",
-        reason: "workspace-disposed",
-      });
     });
 
     it("refuses a second resume while the first is still rebuilding", async () => {

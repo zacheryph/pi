@@ -1,11 +1,10 @@
 /**
  * spawn-cwd.ts — Check a caller's working directory for a new subagent.
  *
- * Local change: `subagent_start` and `SpawnOptions` accept a `cwd`, so the
- * caller (an orchestrator holding a worktree) chooses where the child runs. A
- * caller-chosen directory belongs to the caller: no workspace provider is
- * consulted and nothing is disposed when the run ends, so the child stays
- * resumable for as long as its session is kept.
+ * Local change: `subagent_start` accepts a `cwd`, so the caller (an
+ * orchestrator holding a worktree) chooses where the child runs. The directory
+ * belongs to the caller: nothing is disposed when the run ends, so the child
+ * stays resumable for as long as its session is kept.
  */
 
 import { statSync } from "node:fs";
