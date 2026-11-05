@@ -82,7 +82,7 @@ function loadFromDir(dir: string, agents: Map<string, AgentConfig>, source: Agen
       maxTurns: nonNegativeInt(fm.max_turns),
       systemPrompt: body.trim(),
       ...parseFragments(fm.fragments),
-      promptMode: fm.prompt_mode === "replace" ? "replace" : "append",
+      promptMode: fm.prompt_mode === "append" ? "append" : "replace",
       inheritContext: fm.inherit_context != null ? fm.inherit_context === true : undefined,
       locked: lockDeclaration(fm.locked, name),
       visibility: visibility(fm.visibility, name),

@@ -53,7 +53,7 @@ Every field is optional. Unknown keys are ignored silently, so check spelling.
 | `model`           | `provider/modelId`, `haiku`/`sonnet`/…, or `family@latest`            | the caller's model        |
 | `thinking`        | `off` `minimal` `low` `medium` `high` `xhigh` `max`                   | the caller's level        |
 | `max_turns`       | whole number; `0` is unlimited; a limit must be at least 2            | unlimited                 |
-| `prompt_mode`     | `replace` or `append`                                                 | `append`                  |
+| `prompt_mode`     | `replace` or `append`                                                 | `replace`                 |
 | `inherit_context` | `true` copies the caller's conversation into the agent                | `false`                   |
 | `locked`          | `true`, or a list of `model` `thinking` `max_turns` `inherit_context` | caller may override all   |
 | `visibility`      | `visible`, `hidden`, `disabled`                                       | `visible`                 |
@@ -96,14 +96,14 @@ lines.
 Both modes put the caller's own system prompt first, then an
 `<active_agent name="…"/>` tag and the environment, then the file's body.
 
-- `replace` (recommended for specialists): the body goes last with no
-  wrapper, so the agent's own role and rules have the final say.
-- `append` (the default): the body is wrapped in `<agent_instructions>`. With
-  an empty body the agent is a plain copy of its caller, which is what the
-  built-in `general-purpose` is. The widget labels `append` agents `(twin)`.
+- `replace` (the default): the body goes last with no wrapper, so the
+  agent's own role and rules have the final say.
+- `append`: the body is wrapped in `<agent_instructions>`. With an empty body
+  the agent is a plain copy of its caller, which is what the built-in
+  `general-purpose` is. The widget labels `append` agents `(twin)`.
 
-Set `prompt_mode: replace` for any agent with a role of its own; leave
-`append` for a near-copy of the caller with a small addition.
+Leave `prompt_mode` out for any agent with a role of its own. Set `append`
+only for a near-copy of the caller with a small addition.
 
 ## Tools
 
@@ -179,7 +179,6 @@ description: Database migration author
 guidance: Use to write or change a schema migration and its rollback.
 tools: [read, grep, find, ls, bash, edit, write]
 thinking: high
-prompt_mode: replace
 ---
 
 You write database migrations for this project, and nothing else.

@@ -3,6 +3,17 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-05: Agent files default to `prompt_mode: replace`
+
+An agent file without `prompt_mode` was an `append` agent: its body wrapped in
+`<agent_instructions>` beneath the caller's prompt and labelled `(twin)` in
+the widget. Nearly every agent with a role of its own wants `replace`, so a
+file that forgot the key quietly behaved, and looked, like a parent twin.
+
+- An omitted or unrecognized `prompt_mode` now means `replace`. Only
+  `prompt_mode: append` selects `append`; `general-purpose` already sets it.
+- Update the configuration docs and the `creating-agents` skill.
+
 ## 2026-11-05: Add the `creating-agents` skill
 
 The `subagent_start` description no longer explains where agent files live,
