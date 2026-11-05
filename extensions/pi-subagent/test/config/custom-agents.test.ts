@@ -448,9 +448,9 @@ Real.`,
 
   it("allows agents with names matching defaults (overrides them)", () => {
     writeAgent(
-      "Explore",
+      "explore",
       `---
-description: Custom Explore
+description: Custom explore
 ---
 
 Custom explore agent.`,
@@ -465,8 +465,8 @@ Should be loaded.`,
     );
 
     const result = loadCustomAgents(tmpDir);
-    expect(result.has("Explore")).toBe(true);
-    expect(result.get("Explore")!.description).toBe("Custom Explore");
+    expect(result.has("explore")).toBe(true);
+    expect(result.get("explore")!.description).toBe("Custom explore");
     expect(result.has("custom")).toBe(true);
   });
 

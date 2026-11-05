@@ -24,35 +24,35 @@ describe("reopenRefusal", () => {
   });
 
   it("accepts a transcript and directory that both exist", () => {
-    expect(reopenRefusal({ type: "Explore", outputFile: transcript, cwd }, usable)).toBeUndefined();
+    expect(reopenRefusal({ type: "explore", outputFile: transcript, cwd }, usable)).toBeUndefined();
   });
 
   it("refuses when no transcript was recorded", () => {
-    expect(reopenRefusal({ type: "Explore", cwd }, usable)).toBe("session-released");
+    expect(reopenRefusal({ type: "explore", cwd }, usable)).toBe("session-released");
   });
 
   it("refuses when the transcript is gone", () => {
     rmSync(transcript);
-    expect(reopenRefusal({ type: "Explore", outputFile: transcript, cwd }, usable)).toBe(
+    expect(reopenRefusal({ type: "explore", outputFile: transcript, cwd }, usable)).toBe(
       "session-released",
     );
   });
 
   it("refuses a transcript path that is not a file", () => {
-    expect(reopenRefusal({ type: "Explore", outputFile: cwd, cwd }, usable)).toBe(
+    expect(reopenRefusal({ type: "explore", outputFile: cwd, cwd }, usable)).toBe(
       "session-released",
     );
   });
 
   it("refuses when the directory was removed", () => {
     rmSync(cwd, { recursive: true });
-    expect(reopenRefusal({ type: "Explore", outputFile: transcript, cwd }, usable)).toBe(
+    expect(reopenRefusal({ type: "explore", outputFile: transcript, cwd }, usable)).toBe(
       "directory-unavailable",
     );
   });
 
   it("refuses a record that never named its directory", () => {
-    expect(reopenRefusal({ type: "Explore", outputFile: transcript }, usable)).toBe(
+    expect(reopenRefusal({ type: "explore", outputFile: transcript }, usable)).toBe(
       "directory-unavailable",
     );
   });

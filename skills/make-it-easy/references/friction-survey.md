@@ -19,7 +19,7 @@ Cover, with evidence for each claim:
 6. **History.** Recent churn and past attempts in the area (`git log`, issues).
    They show what hurts and what was tried.
 
-Delegate wide sweeps to read-only `Explore` subagents.
+Delegate wide sweeps to read-only `explore` subagents.
 
 ## Friction
 

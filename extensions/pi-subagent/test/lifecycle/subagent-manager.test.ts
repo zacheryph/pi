@@ -199,7 +199,7 @@ describe("SubagentManager", () => {
           background: true,
         });
 
-        expect(manager.getRecord(id)!.type).toBe("Explore");
+        expect(manager.getRecord(id)!.type).toBe("explore");
       });
 
       it("falls back to general-purpose for an unknown type", () => {
@@ -215,20 +215,7 @@ describe("SubagentManager", () => {
 
       it("throws for a known-but-disabled type", () => {
         ({ manager } = createManager({
-          registry: registryWith("Plan", { visibility: "disabled" }),
-        }));
-
-        expect(() =>
-          manager.spawn(STUB_SNAPSHOT, "Plan", "test", {
-            description: "d",
-            background: true,
-          }),
-        ).toThrow('Agent type "Plan" is disabled');
-      });
-
-      it("reports the canonical casing in the disabled-agent error for case-insensitive input", () => {
-        ({ manager } = createManager({
-          registry: registryWith("Plan", { visibility: "disabled" }),
+          registry: registryWith("plan", { visibility: "disabled" }),
         }));
 
         expect(() =>
@@ -236,40 +223,53 @@ describe("SubagentManager", () => {
             description: "d",
             background: true,
           }),
-        ).toThrow('Agent type "Plan" is disabled');
+        ).toThrow('Agent type "plan" is disabled');
+      });
+
+      it("reports the canonical casing in the disabled-agent error for case-insensitive input", () => {
+        ({ manager } = createManager({
+          registry: registryWith("plan", { visibility: "disabled" }),
+        }));
+
+        expect(() =>
+          manager.spawn(STUB_SNAPSHOT, "plan", "test", {
+            description: "d",
+            background: true,
+          }),
+        ).toThrow('Agent type "plan" is disabled');
       });
 
       it("throws with the parse error for a type whose file does not parse", () => {
         ({ manager } = createManager({
-          registry: registryWith("Plan", {
-            definitionError: "invalid frontmatter in /p/Plan.md: x",
+          registry: registryWith("plan", {
+            definitionError: "invalid frontmatter in /p/plan.md: x",
           }),
         }));
 
         expect(() =>
-          manager.spawn(STUB_SNAPSHOT, "Plan", "test", { description: "d", background: true }),
-        ).toThrow('Agent type "Plan" cannot load: invalid frontmatter in /p/Plan.md: x');
+          manager.spawn(STUB_SNAPSHOT, "plan", "test", { description: "d", background: true }),
+        ).toThrow('Agent type "plan" cannot load: invalid frontmatter in /p/plan.md: x');
         expect(manager.listAgents()).toEqual([]);
       });
 
       it("spawns a hidden type by name", () => {
-        ({ manager } = createManager({ registry: registryWith("Plan", { visibility: "hidden" }) }));
+        ({ manager } = createManager({ registry: registryWith("plan", { visibility: "hidden" }) }));
 
-        const id = manager.spawn(STUB_SNAPSHOT, "Plan", "test", {
+        const id = manager.spawn(STUB_SNAPSHOT, "plan", "test", {
           description: "d",
           background: true,
         });
 
-        expect(manager.getRecord(id)!.type).toBe("Plan");
+        expect(manager.getRecord(id)!.type).toBe("plan");
       });
 
       it("does not create a record for a rejected spawn", () => {
         ({ manager } = createManager({
-          registry: registryWith("Plan", { visibility: "disabled" }),
+          registry: registryWith("plan", { visibility: "disabled" }),
         }));
 
         expect(() =>
-          manager.spawn(STUB_SNAPSHOT, "Plan", "test", {
+          manager.spawn(STUB_SNAPSHOT, "plan", "test", {
             description: "d",
             background: true,
           }),
@@ -291,10 +291,10 @@ describe("SubagentManager", () => {
       function spawnExplore(background: AgentSpawnConfig["background"]) {
         onCreated = vi.fn();
         ({ manager } = createManager({
-          registry: registryWith("Explore", {}),
+          registry: registryWith("explore", {}),
           observer: { onSubagentCreated: onCreated },
         }));
-        return manager.spawn(STUB_SNAPSHOT, "Explore", "test", { description: "d", background });
+        return manager.spawn(STUB_SNAPSHOT, "explore", "test", { description: "d", background });
       }
 
       it("runs a background request in the background", () => {
@@ -314,13 +314,13 @@ describe("SubagentManager", () => {
       it("queues a background agent behind a full concurrency limit", () => {
         onCreated = vi.fn();
         ({ manager } = createManager({
-          registry: registryWith("Explore", {}),
+          registry: registryWith("explore", {}),
           getMaxConcurrent: () => 1,
           createSubagentSession: createBlockingFactory(),
         }));
         spawnBg(manager, "occupies-the-only-slot");
 
-        const id = manager.spawn(STUB_SNAPSHOT, "Explore", "test", {
+        const id = manager.spawn(STUB_SNAPSHOT, "explore", "test", {
           description: "d",
           background: true,
         });
@@ -345,27 +345,27 @@ describe("SubagentManager", () => {
           description: "d",
         });
 
-        expect(record.type).toBe("Explore");
+        expect(record.type).toBe("explore");
       });
 
       it("rejects for a known-but-disabled type", async () => {
         ({ manager } = createManager({
-          registry: registryWith("Plan", { visibility: "disabled" }),
+          registry: registryWith("plan", { visibility: "disabled" }),
         }));
 
         await expect(
-          manager.spawnAndWait(STUB_SNAPSHOT, "Plan", "test", { description: "d" }),
-        ).rejects.toThrow('Agent type "Plan" is disabled');
+          manager.spawnAndWait(STUB_SNAPSHOT, "plan", "test", { description: "d" }),
+        ).rejects.toThrow('Agent type "plan" is disabled');
       });
     });
 
     describe("foreground commitment", () => {
       it("stamps isBackground false on the record", async () => {
         ({ manager } = createManager({
-          registry: registryWith("Explore", {}),
+          registry: registryWith("explore", {}),
         }));
 
-        const record = await manager.spawnAndWait(STUB_SNAPSHOT, "Explore", "test", {
+        const record = await manager.spawnAndWait(STUB_SNAPSHOT, "explore", "test", {
           description: "d",
         });
 
@@ -375,11 +375,11 @@ describe("SubagentManager", () => {
       it("does not route a foreground run through the limiter", async () => {
         const onCreated = vi.fn();
         ({ manager } = createManager({
-          registry: registryWith("Explore", {}),
+          registry: registryWith("explore", {}),
           observer: { onSubagentCreated: onCreated },
         }));
 
-        const record = await manager.spawnAndWait(STUB_SNAPSHOT, "Explore", "test", {
+        const record = await manager.spawnAndWait(STUB_SNAPSHOT, "explore", "test", {
           description: "d",
         });
 
@@ -400,7 +400,7 @@ describe("SubagentManager", () => {
           }),
         }));
 
-        const pending = manager.spawnAndWait(STUB_SNAPSHOT, "Explore", "test", {
+        const pending = manager.spawnAndWait(STUB_SNAPSHOT, "explore", "test", {
           description: "d",
         });
 
@@ -422,14 +422,14 @@ describe("SubagentManager", () => {
             : Promise.resolve(toSubagentSession(createSubagentSessionStub()));
         });
         ({ manager } = createManager({
-          registry: registryWith("Explore", {}),
+          registry: registryWith("explore", {}),
           getMaxConcurrent: () => 1,
           createSubagentSession: factory,
         }));
         spawnBg(manager, "occupies-the-only-slot");
 
         // Were this routed through the limiter, the await would never settle.
-        const record = await manager.spawnAndWait(STUB_SNAPSHOT, "Explore", "test", {
+        const record = await manager.spawnAndWait(STUB_SNAPSHOT, "explore", "test", {
           description: "d",
         });
 
@@ -1873,7 +1873,7 @@ describe("SubagentManager — cold resume", () => {
     overrides: Partial<PersistedSubagentRecord> = {},
   ): PersistedSubagentRecord => ({
     id: "saved-1",
-    type: "Explore",
+    type: "explore",
     description: "map the module",
     status: "completed",
     result: "Mapped it.",
@@ -2149,7 +2149,7 @@ describe("SubagentManager — cold resume", () => {
       const record = manager.getRecord("saved-1")!;
       expect(outcome).toEqual({ kind: "resumed", record });
       expect(factory.mock.calls[0][0]).toMatchObject({
-        type: "Explore",
+        type: "explore",
         transcriptPath: transcript,
         cwd,
         model,

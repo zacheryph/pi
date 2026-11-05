@@ -37,7 +37,7 @@ describe("textResult", () => {
 
   it("includes details when provided", () => {
     const details: AgentDetails = {
-      displayName: "Agent",
+      displayName: "agent",
       description: "",
       subagentType: "general-purpose",
       toolUses: 0,
@@ -97,18 +97,18 @@ describe("buildTypeListText", () => {
   it("renders one line per listed agent, in registry order", () => {
     const text = buildTypeListText(
       makeRegistry({
-        Explore: { description: "Fast exploration" },
+        explore: { description: "Fast exploration" },
         auditor: { description: "Security auditor" },
       }),
     );
-    expect(text).toBe("- Explore: Fast exploration\n- auditor: Security auditor");
+    expect(text).toBe("- explore: Fast exploration\n- auditor: Security auditor");
   });
 
   it("follows the description with the guidance, so the name appears once", () => {
     const text = buildTypeListText(
-      makeRegistry({ Explore: { description: "Fast exploration", guidance: "Use for searches." } }),
+      makeRegistry({ explore: { description: "Fast exploration", guidance: "Use for searches." } }),
     );
-    expect(text).toBe("- Explore: Fast exploration. Use for searches.");
+    expect(text).toBe("- explore: Fast exploration. Use for searches.");
   });
 
   it("does not double a description's own trailing period", () => {
@@ -130,11 +130,11 @@ describe("buildTypeListText", () => {
   it("shows the model for any agent that pins one, built-in or custom", () => {
     const text = buildTypeListText(
       makeRegistry({
-        Explore: { description: "Fast", model: "anthropic/claude-haiku-4-5-20251001" },
+        explore: { description: "Fast", model: "anthropic/claude-haiku-4-5-20251001" },
         auditor: { description: "Audits", model: "anthropic/claude-opus-4-6" },
       }),
     );
-    expect(text).toContain("- Explore (claude-haiku-4-5): Fast");
+    expect(text).toContain("- explore (claude-haiku-4-5): Fast");
     expect(text).toContain("- auditor (claude-opus-4-6): Audits");
   });
 

@@ -201,7 +201,7 @@ function makeSubagentSession(
     outputFile: hasOutputFile ? metaOverrides.outputFile : "/sessions/child.jsonl",
     sessionId: metaOverrides?.sessionId ?? "child-session-default",
     sessionDir: metaOverrides?.sessionDir ?? "/sessions/dir",
-    agentName: metaOverrides?.agentName ?? "Explore",
+    agentName: metaOverrides?.agentName ?? "explore",
     agentMaxTurns: metaOverrides?.agentMaxTurns,
     parentContext: metaOverrides?.parentContext,
     lifecycle,
@@ -487,7 +487,7 @@ describe("SubagentSession — runTurnLoop lifecycle events", () => {
     const { session } = createSession("OK");
     const { sub } = makeSubagentSession(session, {
       sessionDir: "/d",
-      agentName: "Explore",
+      agentName: "explore",
       lifecycle,
     });
     await sub.runTurnLoop("go", {});
@@ -495,7 +495,7 @@ describe("SubagentSession — runTurnLoop lifecycle events", () => {
     expect(lifecycle.completed).toHaveBeenCalledWith(
       childCompletedEvent({
         sessionDir: "/d",
-        agentName: "Explore",
+        agentName: "explore",
         turnBudget: { used: 0, phase: "within" },
       }),
     );
@@ -506,13 +506,13 @@ describe("SubagentSession — runTurnLoop lifecycle events", () => {
     programTurns(session, listeners, 3);
     const { sub } = makeSubagentSession(session, {
       sessionDir: "/d",
-      agentName: "Explore",
+      agentName: "explore",
       lifecycle,
     });
     await sub.runTurnLoop("go", { maxTurns: 5, wrapUpTurns: 2 });
     expect(lifecycle.completed).toHaveBeenCalledWith({
       sessionDir: "/d",
-      agentName: "Explore",
+      agentName: "explore",
       turnBudget: { maxTurns: 5, used: 3, phase: "warned" },
     });
   });

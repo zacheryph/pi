@@ -1,6 +1,6 @@
 ---
 name: creating-agents
-description: Create, edit, override, hide or disable a pi-subagent agent type (an agent profile file in .pi/agents/<name>.md or ~/.pi/agent/agents/<name>.md). Covers where files live and which one wins, every frontmatter field, writing a description and guidance the orchestrator can choose by, prompt_mode, tool selection, visibility for skill-only agents, locked fields, fragments, and how to check the result. Use when asked to add a specialist or custom subagent, change or replace a built-in agent (general-purpose, orchestrator, Explore, Plan, reviewer), make an agent a skill can call without listing it, or when subagent_start keeps picking general-purpose because no specialist fits.
+description: Create, edit, override, hide or disable a pi-subagent agent type (an agent profile file in .pi/agents/<name>.md or ~/.pi/agent/agents/<name>.md). Covers where files live and which one wins, every frontmatter field, writing a description and guidance the orchestrator can choose by, prompt_mode, tool selection, visibility for skill-only agents, locked fields, fragments, and how to check the result. Use when asked to add a specialist or custom subagent, change or replace a built-in agent (general-purpose, orchestrate, explore, plan, review), make an agent a skill can call without listing it, or when subagent_start keeps picking general-purpose because no specialist fits.
 ---
 
 # Creating agents
@@ -31,7 +31,7 @@ better `guidance`, or an override.
 | `extensions/pi-subagent/agents/` | built-in, ships with Pi | —                |
 
 - The file name is the type name. There is no `name` field. Lookups ignore
-  case, so `Explore` and `explore` are the same type; keep names lowercase
+  case, so `EXPLORE` and `explore` are the same type; keep names lowercase
   with hyphens unless overriding a built-in.
 - A file with a built-in's name replaces that built-in entirely. Copy the
   built-in from `extensions/pi-subagent/agents/` and edit it; a file with only
@@ -88,7 +88,7 @@ lines.
   `Use for architecture and implementation planning.` reads cleanly;
   `Architect for planning` with `Use for planning.` wastes the line.
 - Draw the boundary with neighbouring types. If a caller could confuse it with
-  `general-purpose` or `reviewer`, the guidance should say which work is this
+  `general-purpose` or `review`, the guidance should say which work is this
   one's.
 - Multi-line YAML values are joined into one line, so keep each to a sentence.
 
@@ -101,7 +101,7 @@ Both modes put the caller's own system prompt first, then an
   agent's own role and rules have the final say.
 - `append`: the body is wrapped in `<agent_instructions>`. With an empty body
   the agent is a plain copy of its caller, which is what the built-in
-  `general-purpose` is. The widget labels `append` agents `(twin)`.
+  `general-purpose` is.
 
 Leave `prompt_mode` out for any agent with a role of its own. Set `append`
 only for a near-copy of the caller with a small addition.
@@ -171,8 +171,8 @@ so the body only adds the role:
    when the caller only needs a verdict.
 
 The built-ins in `extensions/pi-subagent/agents/` are worked examples:
-`reviewer.md` for a verifier with a fixed output format, `Explore.md` for a
-read-only searcher, `orchestrator.md` for a coordinator that delegates.
+`review.md` for a verifier with a fixed output format, `explore.md` for a
+read-only searcher, `orchestrate.md` for a coordinator that delegates.
 
 ## Example: `.pi/agents/migration-writer.md`
 

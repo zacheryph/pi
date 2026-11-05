@@ -7,23 +7,28 @@ For the tools, commands, events, and service API, see the [README](../README.md)
 
 ## Default Agent Types
 
-| Type              | Tools                                          | Model                                                                 | Prompt Mode            | Description                                                                                                                          |
-| ----------------- | ---------------------------------------------- | --------------------------------------------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `general-purpose` | all available                                  | inherit                                                               | `append` (parent twin) | Inherits the parent's prompt identity — same rules, CLAUDE.md, project conventions                                                   |
-| `orchestrator`    | all available; explicit todo tools; `delegate` | inherit                                                               | `replace`              | Project manager: categorizes tasks, delegates work, tracks open items, and recalls prior workers                                     |
-| `Explore`         | read, bash, grep, find, ls                     | newest Haiku (`anthropic/claude-haiku@latest`; falls back to inherit) | `replace`              | Fast codebase exploration (read-only); inherits the parent prompt as a base                                                          |
-| `Plan`            | read, bash, grep, find, ls                     | inherit                                                               | `replace`              | Software architect for implementation planning (read-only); inherits the parent prompt as a base                                     |
-| `reviewer`        | read, bash, grep, find, ls                     | inherit                                                               | `replace`              | Verifies finished work against its acceptance criteria; runs checks, reports `Verdict: PASS/FAIL/BLOCKED` with evidence, never fixes |
+Built-in names are `general-purpose`, `explore`, `plan`, `orchestrate`, and `review`.
+The general-purpose profile displays as `agent`. If you override a renamed profile,
+rename its file to match (for example, `orchestrator.md` → `orchestrate.md`) and
+update `--agent` and `subagent_type` references.
 
-The `general-purpose` agent is a **parent twin** — it receives the parent's inherited identity and nothing of its own, so it follows the same rules the parent does.
+| Type              | Tools                                          | Model                                                                 | Prompt Mode | Description                                                                                                                          |
+| ----------------- | ---------------------------------------------- | --------------------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `general-purpose` | all available                                  | inherit                                                               | `append`    | Inherits the parent's prompt identity — same rules, CLAUDE.md, project conventions                                                   |
+| `orchestrate`     | all available; explicit todo tools; `delegate` | inherit                                                               | `replace`   | Project manager: categorizes tasks, delegates work, tracks open items, and recalls prior workers                                     |
+| `explore`         | read, bash, grep, find, ls                     | newest Haiku (`anthropic/claude-haiku@latest`; falls back to inherit) | `replace`   | Fast codebase exploration (read-only); inherits the parent prompt as a base                                                          |
+| `plan`            | read, bash, grep, find, ls                     | inherit                                                               | `replace`   | Software architect for implementation planning (read-only); inherits the parent prompt as a base                                     |
+| `review`          | read, bash, grep, find, ls                     | inherit                                                               | `replace`   | Verifies finished work against its acceptance criteria; runs checks, reports `Verdict: PASS/FAIL/BLOCKED` with evidence, never fixes |
+
+The `general-purpose` agent is a copy of its parent — it receives the parent's inherited identity and nothing of its own, so it follows the same rules the parent does.
 Every other agent, and any agent file that does not set `prompt_mode`, uses `replace` mode: the parent prompt is the cacheable base and the agent's own instructions are appended last, giving them the final say.
 
 The built-in agents are ordinary agent files in this extension's [`agents/`](../agents) directory, in the same format and read by the same parser as your own.
 Override one by creating a `.md` file with the same name (e.g. `.pi/agents/general-purpose.md`), or **hide** or **disable** it per-project with `visibility` frontmatter.
 
-### Orchestrator
+### orchestrate
 
-Use the bundled `orchestrator` for projects that need sustained coordination.
+Use the bundled `orchestrate` for projects that need sustained coordination.
 It uses the existing `todo`, `subagent_start`, `subagent_get`, and
 `subagent_steer` tools; the root bundle includes all of them. When loading
 pi-subagent separately, also load pi-todo. Model, thinking, context inheritance,
@@ -32,16 +37,16 @@ background execution, and turn limits follow the existing caller/runtime default
 Run the main session as the project manager:
 
 ```bash
-pi --agent orchestrator "Coordinate the authentication migration"
+pi --agent orchestrate "Coordinate the authentication migration"
 ```
 
 Or delegate a bounded project or workstream to it:
 
 ```json
 {
-  "subagent_type": "orchestrator",
+  "subagent_type": "orchestrate",
   "description": "Coordinate authentication migration",
-  "prompt": "Plan and coordinate the authentication migration. Track implementation, verification, decisions, and follow-ups with todo. Return outcomes, open items, and next actions."
+  "prompt": "plan and coordinate the authentication migration. Track implementation, verification, decisions, and follow-ups with todo. Return outcomes, open items, and next actions."
 }
 ```
 
@@ -58,7 +63,7 @@ The profile's instructions establish this working loop:
    `job_watch`, and hands only the fixes to workers. Run as a subagent, it
    collects its workers with `subagent_get` before finishing instead.
 3. Collect results and verify acceptance criteria before completing todos: a
-   `reviewer` that did not do the work checks each implementation task. A
+   `review` that did not do the work checks each implementation task. A
    `FAIL` goes back to the implementer by resume; after two failed rounds the
    task stays `pending` with the findings. Record questions and follow-ups immediately. Waiting items stay `pending`
    with a described blocker; todo has no separate waiting/blocked status.
@@ -81,7 +86,7 @@ to brief a replacement. Required work stays open until verified or explicitly re
 All available tools remain selected so the orchestrator can pass specialist
 capabilities to its workers. Delegating implementation and avoiding recursive
 orchestrator chains are profile instructions, not additional capability locks.
-Override `.pi/agents/orchestrator.md` to customize the profile.
+Override `.pi/agents/orchestrate.md` to customize the profile.
 
 ## What a child inherits from the parent's prompt
 
@@ -224,7 +229,7 @@ A file whose frontmatter is not valid YAML still takes its name, so it still ove
 | `model`           | inherit parent | Model — `provider/modelId`, fuzzy name (`"haiku"`, `"sonnet"`), or `[provider/]family@latest` for the newest available model whose id contains `family`                                                                                                                   |
 | `thinking`        | inherit        | off, minimal, low, medium, high, xhigh, max. An unrecognized value is dropped, and the agent inherits the parent's level                                                                                                                                                  |
 | `max_turns`       | unlimited      | Turn ceiling: the harness stops the agent after this many turns (minimum 2). `0` or omit for unlimited                                                                                                                                                                    |
-| `prompt_mode`     | `replace`      | `replace`: parent prompt is the cacheable base; body is appended last with full control and no `<agent_instructions>` wrapper. `append`: parent prompt is the base; body is wrapped in `<agent_instructions>` (agent acts as a "parent twin")                             |
+| `prompt_mode`     | `replace`      | `replace`: parent prompt is the cacheable base; body is appended last with full control and no `<agent_instructions>` wrapper. `append`: parent prompt is the base; body is wrapped in `<agent_instructions>`                                                             |
 | `inherit_context` | `false`        | Fork parent conversation into agent                                                                                                                                                                                                                                       |
 | `visibility`      | `visible`      | `visible`: listed in the `subagent_start` description and spawnable. `hidden`: left out of that list but still spawnable by name, for agents a skill or another agent names. `disabled`: refused everywhere. An unrecognized value is dropped and the agent stays visible |
 | `locked`          | —              | Fields a `subagent_start` tool caller may not override. `true` or a list of field names. See [Locking fields against callers](#locking-fields-against-callers)                                                                                                            |
@@ -350,7 +355,7 @@ delegate: true
 ```
 
 The built-in orchestrator uses this selection. Ordinary general-purpose,
-Explore, Plan and reviewer workers retain the recursion guard. Custom profiles opting in
+explore, plan and review workers retain the recursion guard. Custom profiles opting in
 are responsible for limiting further delegation; there is no global depth limit
 or shared concurrency pool across managers.
 

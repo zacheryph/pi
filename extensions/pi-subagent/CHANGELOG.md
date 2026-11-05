@@ -3,6 +3,14 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-05: Lowercase agent names and remove twin labels
+
+- Rename built-in types to `explore`, `plan`, `orchestrate`, and `review`;
+  display `general-purpose` as `agent`. Update callers and agent-file examples.
+- Remove prompt-mode labels from widgets, session headers, and tool result tags.
+  Prompt inheritance and custom display names keep their existing behavior.
+- Update naming and rendering coverage, including the tag-free append profile.
+
 ## 2026-11-05: Fold duplicated paths and tests
 
 - `SubagentSession.runTurnLoop` and `resumeTurnLoop` share one turn driver;

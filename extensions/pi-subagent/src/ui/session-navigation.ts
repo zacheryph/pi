@@ -22,12 +22,7 @@ import type { AgentConfigLookup } from "#src/config/agent-types";
 import { isRunningStatus, type SubagentStatus } from "#src/lifecycle/subagent-state";
 import type { PersistedRunSummary } from "#src/persisted-record";
 import type { AgentSessionEvent, SessionMessage, SubagentType } from "#src/types";
-import {
-  formatDuration,
-  getDisplayName,
-  getPromptModeLabel,
-  type ModelIdentity,
-} from "#src/ui/display";
+import { formatDuration, getDisplayName, type ModelIdentity } from "#src/ui/display";
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -78,8 +73,6 @@ export type NavigationEntry =
 /** Who produced a transcript, for the pane's header. Fixed for the life of the entry. */
 export interface EntryHeading {
   readonly name: string;
-  /** `twin` for an append-mode agent; undefined otherwise. */
-  readonly modeLabel: string | undefined;
   readonly description: string;
 }
 
@@ -222,7 +215,6 @@ function buildHeading(
 ): EntryHeading {
   return {
     name: getDisplayName(fields.type, registry),
-    modeLabel: getPromptModeLabel(fields.type, registry),
     description: fields.description,
   };
 }

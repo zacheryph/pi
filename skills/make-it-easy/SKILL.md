@@ -111,7 +111,7 @@ roadmap out with the `execute-roadmap` skill.
 
 ## Delegation
 
-Fan phase 3 recon out to read-only `Explore` subagents, one per input or
+Fan phase 3 recon out to read-only `explore` subagents, one per input or
 component. Ask each for evidence with `file:line` and a short conclusion, not
 file dumps. Have them return large findings as `stash_put` handles, and keep
 the handles in the document.

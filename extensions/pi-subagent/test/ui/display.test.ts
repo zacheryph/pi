@@ -2,7 +2,7 @@ import type { ThemeColor } from "@earendil-works/pi-coding-agent";
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import type { AgentConfig } from "#src/types";
-import { getDisplayName, getPromptModeLabel, modelLabel, type Theme } from "#src/ui/display";
+import { getDisplayName, modelLabel, type Theme } from "#src/ui/display";
 import { makeModel } from "#test/helpers/make-model";
 
 const testRegistry = new AgentTypeRegistry(() => new Map());
@@ -47,34 +47,14 @@ describe("getDisplayName", () => {
     expect(getDisplayName("my-agent", registry)).toBe("my-agent");
   });
 
-  it("uses registry to resolve Explore displayName", () => {
-    expect(getDisplayName("Explore", testRegistry)).toBe("Explore");
-  });
-
-  it("uses registry to resolve general-purpose displayName", () => {
-    expect(getDisplayName("general-purpose", testRegistry)).toBe("Agent");
-  });
-});
-
-describe("getPromptModeLabel", () => {
-  it("returns 'twin' for append promptMode", () => {
-    const customAgents = new Map<string, AgentConfig>([
-      [
-        "twin-agent",
-        {
-          name: "twin-agent",
-          description: "test",
-          systemPrompt: "",
-          promptMode: "append",
-        },
-      ],
-    ]);
-    const registry = new AgentTypeRegistry(() => customAgents);
-    expect(getPromptModeLabel("twin-agent", registry)).toBe("twin");
-  });
-
-  it("returns undefined for replace promptMode", () => {
-    expect(getPromptModeLabel("Explore", testRegistry)).toBeUndefined();
+  it.each([
+    ["explore", "explore"],
+    ["plan", "plan"],
+    ["orchestrate", "orchestrate"],
+    ["review", "review"],
+    ["general-purpose", "agent"],
+  ])("displays built-in %s as %s", (type, expected) => {
+    expect(getDisplayName(type, testRegistry)).toBe(expected);
   });
 });
 

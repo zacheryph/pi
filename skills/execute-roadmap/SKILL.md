@@ -55,8 +55,8 @@ A step is ready when it is `pending` and every `dependsOn` is `completed`. For
 each ready step:
 
 1. Mark it `in_progress`.
-2. Spawn a worker. Use `general-purpose` for implementation, `Explore` for a
-   step that only investigates, `Plan` for a step that only designs. The brief
+2. Spawn a worker. Use `general-purpose` for implementation, `explore` for a
+   step that only investigates, `plan` for a step that only designs. The brief
    is the step itself, plus:
    - the task key and the roadmap path, so the worker can read context;
    - the step's file scope, and the files other running workers own;
@@ -87,7 +87,7 @@ A worker finishing is not proof. For every implementation step:
 
 1. Read the worker's report. If it changed files outside its scope, treat the
    step as failed.
-2. Spawn a `reviewer` (never the worker that implemented the step). Give it the
+2. Spawn a `review` (never the worker that implemented the step). Give it the
    task key, the step's `Done when` lines as its acceptance criteria, the
    `Verification` lines as the checks to run, and the diff range (the step's
    starting commit to the working tree). A step that ran in a worktree is

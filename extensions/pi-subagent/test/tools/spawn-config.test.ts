@@ -46,13 +46,13 @@ describe("resolveSpawnConfig — type resolution", () => {
 
   it("sets displayName from registry", () => {
     const result = resolveSpawnConfig(
-      { subagent_type: "Explore", prompt: "test", description: "d" },
+      { subagent_type: "explore", prompt: "test", description: "d" },
       testRegistry,
       makeModelInfo(),
       defaultSettings,
     );
     if ("error" in result) return;
-    expect(result.identity.displayName).toBe("Explore");
+    expect(result.identity.displayName).toBe("explore");
   });
 
   it("uses displayName from agent config when available", () => {
@@ -63,8 +63,8 @@ describe("resolveSpawnConfig — type resolution", () => {
       defaultSettings,
     );
     if ("error" in result) return;
-    // general-purpose config has displayName: "Agent"
-    expect(result.identity.displayName).toBe("Agent");
+    // general-purpose config has displayName: "agent"
+    expect(result.identity.displayName).toBe("agent");
   });
 });
 
@@ -239,7 +239,7 @@ describe("resolveSpawnConfig — detailBase and tags", () => {
     if ("error" in result) return;
     expect(result.presentation.detailBase.description).toBe("my task");
     expect(result.presentation.detailBase.subagentType).toBe("general-purpose");
-    expect(result.presentation.detailBase.displayName).toBe("Agent");
+    expect(result.presentation.detailBase.displayName).toBe("agent");
   });
 
   it("includes thinking tag when thinking is set", () => {
@@ -255,17 +255,17 @@ describe("resolveSpawnConfig — detailBase and tags", () => {
 
   it("omits mode label for replace-mode agents", () => {
     const result = resolveSpawnConfig(
-      { subagent_type: "Explore", prompt: "test", description: "d" },
+      { subagent_type: "explore", prompt: "test", description: "d" },
       testRegistry,
       makeModelInfo(),
       defaultSettings,
     );
     if ("error" in result) return;
-    // Explore has promptMode: "replace" → no mode label, no invocation overrides
+    // explore has promptMode: "replace" → no mode label, no invocation overrides
     expect(result.presentation.agentTags).toEqual([]);
   });
 
-  it("includes twin tag for append-mode agents like general-purpose", () => {
+  it("omits prompt-mode tags for append-mode agents like general-purpose", () => {
     const result = resolveSpawnConfig(
       { subagent_type: "general-purpose", prompt: "test", description: "d" },
       testRegistry,
@@ -273,19 +273,20 @@ describe("resolveSpawnConfig — detailBase and tags", () => {
       defaultSettings,
     );
     if ("error" in result) return;
-    // general-purpose has promptMode: "append" → gets "twin" label
-    expect(result.presentation.agentTags).toContain("twin");
+    // Prompt inheritance does not add a presentation tag.
+    expect(result.presentation.agentTags).toEqual([]);
+    expect(result.presentation.detailBase.tags).toBeUndefined();
   });
 
   it("sets tags to undefined on detailBase for replace-mode agents with no invocation overrides", () => {
     const result = resolveSpawnConfig(
-      { subagent_type: "Explore", prompt: "test", description: "d" },
+      { subagent_type: "explore", prompt: "test", description: "d" },
       testRegistry,
       makeModelInfo(),
       defaultSettings,
     );
     if ("error" in result) return;
-    // Explore has promptMode: "replace" and no invocation overrides → no tags
+    // explore has promptMode: "replace" and no invocation overrides → no tags
     expect(result.presentation.detailBase.tags).toBeUndefined();
   });
 });
@@ -293,7 +294,7 @@ describe("resolveSpawnConfig — detailBase and tags", () => {
 describe("resolveSpawnConfig — thinking level", () => {
   it("returns an error naming the valid levels for an unrecognized thinking param", () => {
     const result = resolveSpawnConfig(
-      { subagent_type: "Explore", prompt: "test", description: "d", thinking: "turbo" },
+      { subagent_type: "explore", prompt: "test", description: "d", thinking: "turbo" },
       testRegistry,
       makeModelInfo(),
       defaultSettings,
@@ -306,7 +307,7 @@ describe("resolveSpawnConfig — thinking level", () => {
 
   it("resolves a recognized thinking param", () => {
     const result = resolveSpawnConfig(
-      { subagent_type: "Explore", prompt: "test", description: "d", thinking: "xhigh" },
+      { subagent_type: "explore", prompt: "test", description: "d", thinking: "xhigh" },
       testRegistry,
       makeModelInfo(),
       defaultSettings,
@@ -322,7 +323,7 @@ describe("resolveSpawnConfig — minimum turns note", () => {
 
   it("notes a max_turns parameter below the minimum and runs with 2", () => {
     const result = resolveSpawnConfig(
-      { subagent_type: "Explore", prompt: "test", description: "d", max_turns: 1 },
+      { subagent_type: "explore", prompt: "test", description: "d", max_turns: 1 },
       testRegistry,
       makeModelInfo(),
       defaultSettings,
@@ -360,7 +361,7 @@ describe("resolveSpawnConfig — minimum turns note", () => {
 
   it("adds no note at the minimum", () => {
     const result = resolveSpawnConfig(
-      { subagent_type: "Explore", prompt: "test", description: "d", max_turns: 2 },
+      { subagent_type: "explore", prompt: "test", description: "d", max_turns: 2 },
       testRegistry,
       makeModelInfo(),
       defaultSettings,
@@ -373,7 +374,7 @@ describe("resolveSpawnConfig — minimum turns note", () => {
 describe("resolveSpawnConfig — notes", () => {
   it("carries no note for a known agent type", () => {
     const result = resolveSpawnConfig(
-      { subagent_type: "Explore", prompt: "test", description: "d" },
+      { subagent_type: "explore", prompt: "test", description: "d" },
       testRegistry,
       makeModelInfo(),
       defaultSettings,
@@ -494,14 +495,14 @@ describe("resolveSpawnConfig — notes", () => {
 describe("resolveSpawnConfig — prompt and rawType passthrough", () => {
   it("passes through prompt and rawType", () => {
     const result = resolveSpawnConfig(
-      { subagent_type: "Explore", prompt: "search for bugs", description: "bug search" },
+      { subagent_type: "explore", prompt: "search for bugs", description: "bug search" },
       testRegistry,
       makeModelInfo(),
       defaultSettings,
     );
     if ("error" in result) return;
     expect(result.execution.prompt).toBe("search for bugs");
-    expect(result.identity.rawType).toBe("Explore");
+    expect(result.identity.rawType).toBe("explore");
   });
 });
 

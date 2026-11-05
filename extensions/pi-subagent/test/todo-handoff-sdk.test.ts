@@ -75,7 +75,7 @@ it("hands todo tasks to a worker that sees and updates only those, in the orches
     ];
     orchestrator = await createSubagentSession(
       {
-        type: "orchestrator",
+        type: "orchestrate",
         snapshot: {
           cwd: dir,
           systemPrompt: "PROJECT BASE",

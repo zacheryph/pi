@@ -39,7 +39,7 @@ describe("listNavigableAgents", () => {
     expect(entry.kind).toBe("snapshot");
     expect(entry.kind === "snapshot" && entry.outputFile).toBe("/tasks/released-1.jsonl");
     expect(entry.label).toBe(
-      "Agent (Investigate the bug) · 3 tools · completed · 3.0s · session released (snapshot)",
+      "agent (Investigate the bug) · 3 tools · completed · 3.0s · session released (snapshot)",
     );
   });
 
@@ -59,21 +59,20 @@ describe("listNavigableAgents", () => {
     });
     const [entry] = listNavigableAgents([record], registry, []);
     // getDisplayName resolves "general-purpose" against the empty registry to its fallback display name.
-    expect(entry.label).toBe("Agent (Investigate the bug) · 3 tools · completed · 3.0s");
+    expect(entry.label).toBe("agent (Investigate the bug) · 3 tools · completed · 3.0s");
   });
 
   describe("heading", () => {
-    it("names a live entry's agent, mode, and task", () => {
+    it("names a live entry's agent and task", () => {
       const record = makeNavigable({ type: "general-purpose", description: "Investigate the bug" });
       const [entry] = listNavigableAgents([record], registry, []);
       expect(entry.heading).toEqual({
-        name: "Agent",
-        modeLabel: "twin",
+        name: "agent",
         description: "Investigate the bug",
       });
     });
 
-    it("names a snapshot entry's agent, mode, and task", () => {
+    it("names a snapshot entry's agent and task", () => {
       const released = makeNavigable({
         isSessionReady: () => false,
         outputFile: "/tasks/released-1.jsonl",
@@ -81,21 +80,19 @@ describe("listNavigableAgents", () => {
       });
       const [entry] = listNavigableAgents([released], registry, []);
       expect(entry.heading).toEqual({
-        name: "Agent",
-        modeLabel: "twin",
+        name: "agent",
         description: "Investigate the bug",
       });
     });
 
     it("carries no mode label for a replace-mode agent", () => {
       const [entry] = listNavigableAgents(
-        [makeNavigable({ type: "Explore", description: "Find auth files" })],
+        [makeNavigable({ type: "explore", description: "Find auth files" })],
         registry,
         [],
       );
       expect(entry.heading).toEqual({
-        name: "Explore",
-        modeLabel: undefined,
+        name: "explore",
         description: "Find auth files",
       });
     });
@@ -122,8 +119,8 @@ describe("listNavigableAgents", () => {
         {
           kind: "snapshot",
           outputFile: "/tasks/earlier.jsonl",
-          heading: { name: "Agent", modeLabel: "twin", description: "Earlier task" },
-          label: "Agent (Earlier task) · 7 tools · completed · 3.0s · session released (snapshot)",
+          heading: { name: "agent", description: "Earlier task" },
+          label: "agent (Earlier task) · 7 tools · completed · 3.0s · session released (snapshot)",
         },
       ]);
     });

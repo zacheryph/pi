@@ -57,8 +57,7 @@ function ansiTheme() {
 }
 
 const DEFAULT_HEADING: EntryHeading = {
-  name: "Explore",
-  modeLabel: undefined,
+  name: "explore",
   description: "Find auth files",
 };
 
@@ -185,7 +184,7 @@ describe("TranscriptPane", () => {
       for (const width of [6, 20, 57, 80]) {
         const pane = makePane({
           source,
-          heading: { name: "Agent", modeLabel: "twin", description: "Refactor the auth module" },
+          heading: { name: "agent", description: "Refactor the auth module" },
         });
         for (const line of pane.render(width))
           expect(visibleWidth(line), `width ${width}`).toBeLessThanOrEqual(width);
@@ -207,8 +206,7 @@ describe("TranscriptPane", () => {
 
   describe("header rule", () => {
     const heading: EntryHeading = {
-      name: "Agent",
-      modeLabel: "twin",
+      name: "agent",
       description: "Refactor auth",
     };
     const headerAt = (width: number, sessionModel: SessionModel = SONNET_HIGH): string =>
@@ -218,9 +216,9 @@ describe("TranscriptPane", () => {
         )[0] ?? "",
       );
 
-    it("names the agent, its mode, its task, its model, and its thinking level", () => {
+    it("names the agent, its task, its model, and its thinking level", () => {
       expect(headerAt(80)).toBe(
-        `── Agent (twin)  Refactor auth · anthropic/claude-sonnet-5 • high ${"─".repeat(14)}`,
+        `── agent  Refactor auth · anthropic/claude-sonnet-5 • high ${"─".repeat(21)}`,
       );
     });
 
@@ -237,13 +235,11 @@ describe("TranscriptPane", () => {
     });
 
     it("drops the task first as the width shrinks", () => {
-      expect(headerAt(55)).toBe(
-        `── Agent (twin) · anthropic/claude-sonnet-5 • high ${"─".repeat(4)}`,
-      );
+      expect(headerAt(55)).toBe(`── agent · anthropic/claude-sonnet-5 • high ${"─".repeat(11)}`);
     });
 
     it("drops the model next, keeping the agent's name", () => {
-      expect(headerAt(30)).toBe(`── Agent (twin) ${"─".repeat(14)}`);
+      expect(headerAt(30)).toBe(`── agent ${"─".repeat(21)}`);
     });
   });
 
@@ -613,7 +609,7 @@ describe("SessionNavigatorHandler", () => {
     const record = makeNavigable({ agentMessages: messages });
     const [label] = (() => {
       // The handler labels entries identically to listNavigableAgents.
-      return ["Agent (Test task) · 2 tools · completed · 3.0s"];
+      return ["agent (Test task) · 2 tools · completed · 3.0s"];
     })();
     const ui = makeUI(label);
 
@@ -629,17 +625,17 @@ describe("SessionNavigatorHandler", () => {
   });
 
   it("heads the pane with the picked agent's name and task", async () => {
-    const ui = makeUI("Agent (Test task) · 2 tools · completed · 3.0s");
+    const ui = makeUI("agent (Test task) · 2 tools · completed · 3.0s");
     await handleWith(ui, [makeNavigable()]);
-    expect(
-      stripAnsi(renderCapturedPane(ui)[0] ?? "").startsWith("── Agent (twin)  Test task "),
-    ).toBe(true);
+    expect(stripAnsi(renderCapturedPane(ui)[0] ?? "").startsWith("── agent  Test task ")).toBe(
+      true,
+    );
   });
 
   it("mounts the transcript outside Pi's overlay compositor", async () => {
     // Regular-mode overlays are composited into the buffer that backs scrollback,
     // so an overlay mount bakes the pane's chrome into terminal history (#733).
-    const ui = makeUI("Agent (Test task) · 2 tools · completed · 3.0s");
+    const ui = makeUI("agent (Test task) · 2 tools · completed · 3.0s");
 
     await handleWith(ui, [makeNavigable()]);
 
@@ -706,7 +702,7 @@ describe("SessionNavigatorHandler", () => {
       outputFile: "/tasks/e1.jsonl",
     });
     const ui = makeUI(
-      "Agent (Old task) · 5 tools · completed · 3.0s · session released (snapshot)",
+      "agent (Old task) · 5 tools · completed · 3.0s · session released (snapshot)",
     );
 
     await handleWith(ui, [released], { readFile });
@@ -732,7 +728,7 @@ describe("SessionNavigatorHandler", () => {
         toolUses: 5,
       },
     };
-    const label = "Agent (Old task) · 5 tools · completed · 3.0s · session released (snapshot)";
+    const label = "agent (Old task) · 5 tools · completed · 3.0s · session released (snapshot)";
 
     it("offers the runs the session recorded", async () => {
       const ui = makeUI(undefined);
@@ -773,7 +769,7 @@ describe("SessionNavigatorHandler", () => {
       outputFile: "/tasks/e1.jsonl",
     });
     const ui = makeUI(
-      "Agent (Old task) · 5 tools · completed · 3.0s · session released (snapshot)",
+      "agent (Old task) · 5 tools · completed · 3.0s · session released (snapshot)",
     );
 
     await handleWith(ui, [released], { readFile });

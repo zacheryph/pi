@@ -24,7 +24,7 @@ export function createResolvedSpawnConfig(
   options: ResolvedSpawnConfigOptions = {},
 ): ResolvedSpawnConfig {
   const subagentType = options.subagentType ?? "general-purpose";
-  const displayName = options.displayName ?? "Agent";
+  const displayName = options.displayName ?? "agent";
   const description = options.description ?? "task";
   const runInBackground = options.runInBackground ?? false;
   const modelName = options.model;

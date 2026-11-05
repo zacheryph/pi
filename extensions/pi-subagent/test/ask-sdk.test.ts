@@ -71,7 +71,7 @@ it("routes a child's ask to its parent through pi-ask", async () => {
     ];
     orchestrator = await createSubagentSession(
       {
-        type: "orchestrator",
+        type: "orchestrate",
         snapshot: {
           cwd: dir,
           systemPrompt: "PROJECT BASE",

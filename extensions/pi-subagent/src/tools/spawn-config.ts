@@ -23,7 +23,6 @@ import {
   type AgentDetails,
   buildInvocationTags,
   getDisplayName,
-  getPromptModeLabel,
   modelLabel,
 } from "#src/ui/display";
 
@@ -147,9 +146,7 @@ export function resolveSpawnConfig(
     runInBackground,
   };
 
-  const modeLabel = getPromptModeLabel(subagentType, registry);
-  const { tags: invocationTags } = buildInvocationTags(agentInvocation);
-  const agentTags = modeLabel ? [modeLabel, ...invocationTags] : invocationTags;
+  const { tags: agentTags } = buildInvocationTags(agentInvocation);
 
   const detailBase = {
     displayName,

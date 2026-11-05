@@ -25,11 +25,11 @@ describe("createChildLifecyclePublisher", () => {
   it("emits subagent:session:spawning with the agent identity", () => {
     const { emit, publisher } = setup();
 
-    publisher.spawning({ agentName: "Explore", parentSessionId: "parent-42" });
+    publisher.spawning({ agentName: "explore", parentSessionId: "parent-42" });
 
     expect(emit).toHaveBeenCalledOnce();
     expect(emit).toHaveBeenCalledWith(SUBAGENT_CHILD_SPAWNING, {
-      agentName: "Explore",
+      agentName: "explore",
       parentSessionId: "parent-42",
     });
   });

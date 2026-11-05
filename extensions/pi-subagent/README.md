@@ -26,13 +26,13 @@ Run them in foreground or background, steer them mid-run, resume completed sessi
 - **Live widget UI** — compact above-editor widget with a static Subagents header rule and one line per agent: elapsed time, task, and live activity or outcome
 - **Session transcripts** — open any subagent's full session transcript (running or with its session released) in pi's native read-only viewer via `/subagent:sessions`
 - **Custom agent types** — define agents in `.pi/agents/<name>.md` with YAML frontmatter: custom system prompts, model selection, thinking levels, tool restrictions
-- **Orchestrator profile** — coordinate long-running projects with categorized todos, delegated work, and follow-ups in prior workers' sessions; available as a subagent or with `pi --agent orchestrator` ([usage and continuity](docs/configuration.md#orchestrator))
+- **orchestrate profile** — coordinate long-running projects with categorized todos, delegated work, and follow-ups in prior workers' sessions; available as a subagent or with `pi --agent orchestrate` ([usage and continuity](docs/configuration.md#orchestrate))
 - **Mid-run steering** — inject messages into running agents to redirect their work without restarting
 - **Session resume** — pick up where an agent left off, preserving full conversation context, even after a reload or once its session was released: the saved transcript is reopened.
 - **Ask-back** — an agent that needs information only you have calls `ask` (from the bundled pi-ask) and ends its turn, and every result surfaces the question with the exact `resume` call that answers it; once that agent can no longer be resumed, the result says so and why instead of naming a call that would be refused
 - **Mid-run updates** — an agent that finds something material calls `parent_notify` and keeps working; the message arrives on its own while you are idle and that agent is still running, and otherwise rides that agent's own result, so you hear it exactly once and never as a stale prompt to steer an agent that has finished
 - **Turn budgets** — `max_turns` is a hard ceiling, and an agent is told how many turns it has left while it still has room to wrap up, so it answers instead of being cut off
-- **Case-insensitive agent types** — `"explore"`, `"Explore"`, `"EXPLORE"` all work.
+- **Case-insensitive agent types** — `"explore"`, `"explore"`, `"EXPLORE"` all work.
   Unknown types fall back to general-purpose with a note
 - **Fuzzy model selection** — specify models by name (`"haiku"`, `"sonnet"`) instead of full IDs, with automatic filtering to only available/configured models
 - **Context inheritance** — optionally fork the parent conversation into a sub-agent so it knows what's been discussed
@@ -58,7 +58,7 @@ The parent agent spawns sub-agents using the `subagent_start` tool:
 
 ```text
 subagent_start({
-  subagent_type: "Explore",
+  subagent_type: "explore",
   prompt: "Find all files that handle authentication",
   description: "Find auth files",
 })
@@ -74,8 +74,8 @@ The extension renders a persistent widget above the editor showing active backgr
 
 ```text
 ──   Subagents ────────────────────────────────────────────
-00:12  Agent (twin): Refactor auth module         ⠹ editing…
-00:04  Explore: Find auth files                ⠹ searching…
+00:12  agent: Refactor auth module                ⠹ editing…
+00:04  explore: Find auth files                ⠹ searching…
  ◦ 1 queued
 ```
 
@@ -122,8 +122,8 @@ The LLM receives structured `<task-notification>` XML for parsing, while the use
 ## Main-session profile: `--agent`
 
 ```bash
-pi --agent Explore
-pi --agent orchestrator "Coordinate the authentication migration"
+pi --agent explore
+pi --agent orchestrate "Coordinate the authentication migration"
 pi --agent my-profile "Review the authentication flow"
 pi --agent my-profile --agent-model anthropic/claude-opus-4-6
 ```
@@ -346,7 +346,7 @@ Runs that finished earlier in the session stay listed after a `/reload`, and a r
 The viewer is framed by two rules in the style of pi's editor border, coloured for the agent's thinking level:
 
 ```text
-── Agent (twin)  Refactor auth module · anthropic/claude-sonnet-5 • high ───────
+── agent  Refactor auth module · anthropic/claude-sonnet-5 • high ───────
 … transcript …
 ── 142 lines · 87% ──────── ↑↓ scroll · PageUp/PageDown · Home/End · Esc close ──
 ```
@@ -432,7 +432,7 @@ Until it lists them with `subagent_get` (no `agent_id`), each request ends with 
 ```text
 Subagents started by this session (restored after compaction; subagent_get <id> for details):
 - 9a8b7c implementer "Migrate session store": waiting for your answer: "Postgres or SQLite?"
-- d4e5f6 reviewer "Review roadmap step 3": running
+- d4e5f6 review "Review roadmap step 3": running
 - a1b2c3 implementer "Add token refresh": completed 14:10, resumable
 - 77e0aa explorer "Map auth call sites": failed: turn budget exhausted
 - 2 older completed agents not shown
@@ -547,7 +547,7 @@ Anything attaching to the core subscribes to a lifecycle event — see [ADR-0002
 - _Policy about what a child may do._
   Tool restriction is allow/ask/deny in a permission layer, not a binary hide in a spawner — see [Migrating from `disallowed_tools`](#migrating-from-disallowed_tools).
 - _Settings-level overrides of an agent's tool selection._
-  An agent's `tools:` frontmatter chooses its capabilities: omitted or `all` includes currently registered built-in and extension tools; explicit names restrict them; `-name` excludes. A global setting that widens a read-only `Explore` agent's declared tools would violate its contract.
+  An agent's `tools:` frontmatter chooses its capabilities: omitted or `all` includes currently registered built-in and extension tools; explicit names restrict them; `-name` excludes. A global setting that widens a read-only `explore` agent's declared tools would violate its contract.
   The core does install its own protocol in every child — the `<active_agent>` tag, the parent-context prefix, the `ask:route` that points pi-ask's `ask` at the parent, and the `parent_notify` tool — none of which reaches the filesystem, the shell, or the network.
 - _A global run-mode default._
   Foreground or background is a per-invocation argument and a per-agent frontmatter key; a global flip changes every existing agent file at once.

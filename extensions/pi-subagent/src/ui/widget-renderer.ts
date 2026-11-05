@@ -9,13 +9,7 @@ import { isActiveStatus, type SubagentStatus } from "#src/lifecycle/subagent-sta
 import { type TurnBudget, wrappedUpAtTurnLimit } from "#src/lifecycle/turn-limits";
 import type { LifetimeUsage } from "#src/lifecycle/usage";
 import type { SubagentType } from "#src/types";
-import {
-  describeActivity,
-  getDisplayName,
-  getPromptModeLabel,
-  type ModelIdentity,
-  type Theme,
-} from "#src/ui/display";
+import { describeActivity, getDisplayName, type ModelIdentity, type Theme } from "#src/ui/display";
 import {
   ICONS,
   renderWidget,
@@ -86,7 +80,7 @@ function statusLine(agent: WidgetAgent, spinnerFrame: number, max: number): Line
   return { text: fit(`${ICONS.failure} aborted`), tone: "warning" };
 }
 
-/** One physical row, with optional elapsed time and prompt-mode tag when space permits. */
+/** One physical row, with optional elapsed time when space permits. */
 function agentRow(
   agent: WidgetAgent,
   registry: AgentConfigLookup,
@@ -98,11 +92,9 @@ function agentRow(
   const content = Math.max(0, width - 2);
   const active = isActiveStatus(agent.status);
   const name = singleLine(getDisplayName(agent.type, registry));
-  const mode = content >= 60 ? getPromptModeLabel(agent.type, registry) : undefined;
   const left: Span[] = [];
   if (content >= 40) left.push({ text: elapsedLabel(agent, now), tone: "dim" }, "  ");
   left.push(active ? { text: name, bold: true } : { text: name, tone: "dim" });
-  if (mode) left.push({ text: ` (${singleLine(mode)})`, tone: "dim" });
   left.push(": ", { text: singleLine(agent.description), tone: active ? "muted" : "dim" });
   return {
     left,
