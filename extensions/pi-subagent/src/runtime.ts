@@ -28,7 +28,7 @@ export interface RunConfig {
 /**
  * All mutable state owned by the pi-subagent extension.
  *
- * Created once inside `piSubagentsExtension()` via `createSubagentRuntime()`.
+ * Created once by the extension factory in `index.ts`.
  * Tests construct a fresh runtime per test for full isolation.
  */
 export class SubagentRuntime {
@@ -88,13 +88,4 @@ export class SubagentRuntime {
       parentSessionId: this.currentCtx?.sessionManager.getSessionId() ?? "",
     };
   }
-}
-
-/**
- * Create a fully-initialized SubagentRuntime with default values.
- *
- * Call once at extension startup; pass the result to factories and handlers.
- */
-export function createSubagentRuntime(): SubagentRuntime {
-  return new SubagentRuntime();
 }

@@ -840,68 +840,6 @@ function createSpyFactory() {
   return { factory, stub };
 }
 
-describe("Subagent — the ask-back recorder", () => {
-  it("hands the session factory a recorder for the child's question", async () => {
-    const { factory } = createSpyFactory();
-    const agent = createRunnableAgent({ createSubagentSession: factory });
-
-    await agent.run();
-
-    expect(factory.mock.calls[0][0].askParent).toBeTypeOf("function");
-  });
-
-  it("records a question the child declares mid-run", async () => {
-    const { factory } = createSpyFactory();
-    const agent = createRunnableAgent({ createSubagentSession: factory });
-    await agent.run();
-
-    factory.mock.calls[0][0].askParent?.("Which config wins?");
-
-    expect(agent.pendingQuestion).toBe("Which config wins?");
-  });
-
-  it("keeps only the last question when the child asks twice", async () => {
-    const { factory } = createSpyFactory();
-    const agent = createRunnableAgent({ createSubagentSession: factory });
-    await agent.run();
-    const ask = factory.mock.calls[0][0].askParent;
-
-    ask?.("first");
-    ask?.("second");
-
-    expect(agent.pendingQuestion).toBe("second");
-  });
-
-  it("drops a recorded question when the run fails, so no carrier invites a resume", async () => {
-    const { factory, stub } = createSpyFactory();
-    stub.runTurnLoop.mockImplementation(() => {
-      factory.mock.calls[0][0].askParent?.("Which config wins?");
-      return Promise.reject(new Error("boom"));
-    });
-    const agent = createRunnableAgent({ createSubagentSession: factory });
-
-    await agent.run();
-
-    expect(agent.status).toBe("error");
-    expect(agent.pendingQuestion).toBeUndefined();
-  });
-
-  it("drops a recorded question when a resumed run fails", async () => {
-    const { factory, stub } = createSpyFactory();
-    const agent = createRunnableAgent({ createSubagentSession: factory });
-    await agent.run();
-    stub.resumeTurnLoop.mockImplementation(() => {
-      factory.mock.calls[0][0].askParent?.("Which config wins?");
-      return Promise.reject(new Error("boom"));
-    });
-
-    await agent.resume("continue");
-
-    expect(agent.status).toBe("error");
-    expect(agent.pendingQuestion).toBeUndefined();
-  });
-});
-
 describe("Subagent — the mid-run update channel", () => {
   const updatesOn = { defaultMaxTurns: undefined, wrapUpTurns: 5, midRunUpdates: true };
 
@@ -1248,6 +1186,56 @@ async function runAsking(
 }
 
 describe("Subagent — ask-back", () => {
+  it("hands the session factory a recorder for the child's question", async () => {
+    const { factory } = createSpyFactory();
+    const agent = createRunnableAgent({ createSubagentSession: factory });
+
+    await agent.run();
+
+    expect(factory.mock.calls[0][0].askParent).toBeTypeOf("function");
+  });
+
+  it("keeps only the last question when the child asks twice", async () => {
+    const { factory } = createSpyFactory();
+    const agent = createRunnableAgent({ createSubagentSession: factory });
+    await agent.run();
+    const ask = factory.mock.calls[0][0].askParent;
+
+    ask?.("first");
+    ask?.("second");
+
+    expect(agent.pendingQuestion).toBe("second");
+  });
+
+  it("drops a recorded question when the run fails, so no carrier invites a resume", async () => {
+    const { factory, stub } = createSpyFactory();
+    stub.runTurnLoop.mockImplementation(() => {
+      factory.mock.calls[0][0].askParent?.("Which config wins?");
+      return Promise.reject(new Error("boom"));
+    });
+    const agent = createRunnableAgent({ createSubagentSession: factory });
+
+    await agent.run();
+
+    expect(agent.status).toBe("error");
+    expect(agent.pendingQuestion).toBeUndefined();
+  });
+
+  it("drops a recorded question when a resumed run fails", async () => {
+    const { factory, stub } = createSpyFactory();
+    const agent = createRunnableAgent({ createSubagentSession: factory });
+    await agent.run();
+    stub.resumeTurnLoop.mockImplementation(() => {
+      factory.mock.calls[0][0].askParent?.("Which config wins?");
+      return Promise.reject(new Error("boom"));
+    });
+
+    await agent.resume("continue");
+
+    expect(agent.status).toBe("error");
+    expect(agent.pendingQuestion).toBeUndefined();
+  });
+
   it("records a declared question and leaves the result body untouched", async () => {
     const { agent } = await runAsking({
       responseText: "I mapped the configs.",

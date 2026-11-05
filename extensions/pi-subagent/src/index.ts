@@ -22,11 +22,9 @@ import {
 import { Key } from "@earendil-works/pi-tui";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import { loadCustomAgents } from "#src/config/custom-agents";
-import {
-  InterruptHandler,
-  SessionLifecycleHandler,
-  WidgetEventsHandler,
-} from "#src/handlers/index";
+import { InterruptHandler } from "#src/handlers/interrupt";
+import { SessionLifecycleHandler } from "#src/handlers/lifecycle";
+import { WidgetEventsHandler } from "#src/handlers/widget-events";
 import { RosterCard } from "#src/handlers/roster-card";
 import { createChildLifecyclePublisher } from "#src/lifecycle/child-lifecycle";
 import { ConcurrencyLimiter } from "#src/lifecycle/concurrency-limiter";
@@ -44,7 +42,7 @@ import {
 import { createNotificationRenderer, createUpdateRenderer } from "#src/observation/renderer";
 import { SubagentEventsObserver } from "#src/observation/subagent-events-observer";
 import { registerMainAgentProfile } from "#src/main-agent-profile";
-import { createSubagentRuntime } from "#src/runtime";
+import { SubagentRuntime } from "#src/runtime";
 import { readBranchRecords } from "#src/roster";
 import { detectEnv } from "#src/session/env";
 import { createExcludedPackagesStorage } from "#src/session/package-exclusions";
@@ -73,7 +71,7 @@ export default function (pi: ExtensionAPI) {
   const registry = new AgentTypeRegistry(() => loadCustomAgents(process.cwd()));
 
   // ---- Runtime: all mutable extension state in one place ----
-  const runtime = createSubagentRuntime();
+  const runtime = new SubagentRuntime();
 
   // ---- Notification system ----
   // Owns completion nudges and live-activity cleanup. The widget detects finished

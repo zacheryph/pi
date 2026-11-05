@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ParentPromptOptions, ParentSnapshot } from "#src/lifecycle/parent-snapshot";
-import { createSubagentRuntime, SubagentRuntime } from "#src/runtime";
+import { SubagentRuntime } from "#src/runtime";
 import type { SessionContext } from "#src/types";
 import { makeModel } from "#test/helpers/make-model";
 import { STUB_SNAPSHOT } from "#test/helpers/stub-ctx";
@@ -34,50 +34,9 @@ function makeSessionCtx(overrides?: Partial<SessionContext>): SessionContext {
   };
 }
 
-describe("createSubagentRuntime", () => {
-  it("returns correct defaults", () => {
-    const runtime = createSubagentRuntime();
-    expect(runtime.currentCtx).toBeUndefined();
-  });
-
-  it("currentCtx is the stored SessionContext after setSessionContext", () => {
-    const runtime = createSubagentRuntime();
-    const ctx = makeSessionCtx();
-    runtime.setSessionContext(ctx);
-    expect(runtime.currentCtx).toBe(ctx);
-  });
-});
-
-describe("SubagentRuntime class", () => {
-  it("is a class — instances are created with new", () => {
+describe("SubagentRuntime session context", () => {
+  it("starts empty, stores the context it is given, and clears it", () => {
     const runtime = new SubagentRuntime();
-    expect(runtime).toBeInstanceOf(SubagentRuntime);
-  });
-
-  it("createSubagentRuntime returns an instance of the class", () => {
-    const runtime = createSubagentRuntime();
-    expect(runtime).toBeInstanceOf(SubagentRuntime);
-  });
-});
-
-describe("SubagentRuntime session-context methods", () => {
-  it("setSessionContext stores the provided SessionContext directly", () => {
-    const runtime = createSubagentRuntime();
-    const ctx = makeSessionCtx();
-    runtime.setSessionContext(ctx);
-    expect(runtime.currentCtx).toBe(ctx);
-  });
-
-  it("clearSessionContext resets currentCtx to undefined", () => {
-    const runtime = createSubagentRuntime();
-    runtime.setSessionContext(makeSessionCtx());
-    expect(runtime.currentCtx).toBeDefined();
-    runtime.clearSessionContext();
-    expect(runtime.currentCtx).toBeUndefined();
-  });
-
-  it("round-trip: set then clear returns to initial state", () => {
-    const runtime = createSubagentRuntime();
     expect(runtime.currentCtx).toBeUndefined();
     const ctx = makeSessionCtx();
     runtime.setSessionContext(ctx);
@@ -93,7 +52,7 @@ describe("SubagentRuntime context query methods", () => {
   });
 
   it("buildSnapshot delegates to buildParentSnapshot with the current context and inheritContext flag", () => {
-    const runtime = createSubagentRuntime();
+    const runtime = new SubagentRuntime();
     const ctx = makeSessionCtx();
     runtime.setSessionContext(ctx);
     mockBuildParentSnapshot.mockReturnValueOnce(STUB_SNAPSHOT);
@@ -103,7 +62,7 @@ describe("SubagentRuntime context query methods", () => {
   });
 
   it("buildSnapshot passes false inheritContext correctly", () => {
-    const runtime = createSubagentRuntime();
+    const runtime = new SubagentRuntime();
     const ctx = makeSessionCtx();
     runtime.setSessionContext(ctx);
     mockBuildParentSnapshot.mockReturnValueOnce(STUB_SNAPSHOT);
@@ -113,7 +72,7 @@ describe("SubagentRuntime context query methods", () => {
 
   describe("prompt-options capture", () => {
     it("passes the latest captured options to buildParentSnapshot", () => {
-      const runtime = createSubagentRuntime();
+      const runtime = new SubagentRuntime();
       const ctx = makeSessionCtx();
       runtime.setSessionContext(ctx);
       const options: ParentPromptOptions = { customPrompt: "You are a specialist." };
@@ -126,7 +85,7 @@ describe("SubagentRuntime context query methods", () => {
     });
 
     it("keeps only the most recent capture", () => {
-      const runtime = createSubagentRuntime();
+      const runtime = new SubagentRuntime();
       const ctx = makeSessionCtx();
       runtime.setSessionContext(ctx);
       const latest: ParentPromptOptions = { customPrompt: "second" };
@@ -141,7 +100,7 @@ describe("SubagentRuntime context query methods", () => {
   });
 
   it("getModelInfo returns model and modelRegistry from current context", () => {
-    const runtime = createSubagentRuntime();
+    const runtime = new SubagentRuntime();
     const registry = { find: () => undefined, getAll: () => [], getAvailable: () => [] };
     const model = makeModel({ id: "claude-sonnet", name: "Claude Sonnet" });
     const ctx = makeSessionCtx({ model, modelRegistry: registry });
@@ -152,7 +111,7 @@ describe("SubagentRuntime context query methods", () => {
   });
 
   it("getModelInfo returns undefined parentModel when context model is undefined", () => {
-    const runtime = createSubagentRuntime();
+    const runtime = new SubagentRuntime();
     const ctx = makeSessionCtx({ model: undefined });
     runtime.setSessionContext(ctx);
     const info = runtime.getModelInfo();
@@ -160,7 +119,7 @@ describe("SubagentRuntime context query methods", () => {
   });
 
   it("getSessionInfo returns session file and id from sessionManager", () => {
-    const runtime = createSubagentRuntime();
+    const runtime = new SubagentRuntime();
     const ctx = makeSessionCtx({
       sessionManager: {
         getSessionFile: () => "/sessions/parent.jsonl",
@@ -175,7 +134,7 @@ describe("SubagentRuntime context query methods", () => {
   });
 
   it("getSessionInfo uses empty string when getSessionFile returns undefined", () => {
-    const runtime = createSubagentRuntime();
+    const runtime = new SubagentRuntime();
     const ctx = makeSessionCtx({
       sessionManager: {
         getSessionFile: () => undefined,
