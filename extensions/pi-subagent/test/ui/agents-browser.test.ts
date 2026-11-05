@@ -99,7 +99,7 @@ describe("effective agent definitions", () => {
       maxTurns: 30,
       inheritContext: true,
       locked: ["model", "thinking"],
-      toolGuideline: "Pick auditor for reviews.",
+      guidance: "Pick auditor for reviews.",
     });
     const text = detail(config);
     expect(text.split("\n")[0]).toMatch(/^Name +auditor$/);
@@ -113,7 +113,7 @@ describe("effective agent definitions", () => {
     expect(field(text, "Inherit context")).toBe("true");
     expect(field(text, "Locked")).toBe("model, thinking");
     const lines = text.split("\n");
-    expect(lines[lines.indexOf("Tool guideline") + 1]).toBe(config.toolGuideline);
+    expect(lines[lines.indexOf("Guidance") + 1]).toBe(config.guidance);
     const description = lines.indexOf("Description");
     const heading = lines.indexOf("Body");
     expect(description).toBeGreaterThan(lines.findIndex((line) => line.startsWith("Locked ")));

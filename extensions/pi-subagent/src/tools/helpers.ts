@@ -1,6 +1,7 @@
-import { type AgentConfigLookup, isListed } from "#src/config/agent-types";
+import type { AgentConfigLookup } from "#src/config/agent-types";
 import type { TurnBudget } from "#src/lifecycle/turn-limits";
 import { getLifetimeTotal, type LifetimeUsage } from "#src/lifecycle/usage";
+import type { AgentConfig } from "#src/types";
 import { type AgentDetails, formatTokens, type ModelIdentity, modelLabel } from "#src/ui/display";
 
 /** Build AgentDetails from a base + record-specific fields. */
@@ -56,60 +57,35 @@ export function formatLifetimeTokens(o: { lifetimeUsage: LifetimeUsage }): strin
   return t > 0 ? formatTokens(t) : "";
 }
 
-/**
- * Narrow registry interface needed by buildTypeListText.
- * Extends AgentConfigLookup with the two name-listing methods.
- */
+/** Narrow registry interface needed by buildTypeListText. */
 export interface TypeListRegistry extends AgentConfigLookup {
-  getDefaultAgentNames(): string[];
-  getUserAgentNames(): string[];
+  getListedTypes(): string[];
 }
 
 /**
- * Build the full agent-type list text for the Agent tool description.
- * Extracted from index.ts so it can be called inside createAgentTool.
+ * Build the agent-type list for the subagent_start tool description: one line
+ * per listed agent, built-in and custom alike, in registry order.
+ *
+ * Each line carries the name, the model when the agent pins one, what the agent
+ * is (`description`) and when to pick it (`guidance`), so the name appears once.
  */
-export function buildTypeListText(registry: TypeListRegistry, agentDir: string): string {
-  const defaultNames = registry
-    .getDefaultAgentNames()
-    .filter((name) => isEnabledAgent(registry, name));
-  const userNames = registry.getUserAgentNames().filter((name) => isEnabledAgent(registry, name));
-
-  const defaultDescs = defaultNames.map((name) => {
-    const cfg = registry.resolveAgentConfig(name);
-    const modelSuffix = cfg.model ? ` (${getModelLabelFromConfig(cfg.model)})` : "";
-    return `- ${name}: ${cfg.description}${modelSuffix}`;
-  });
-
-  const customDescs = userNames.map((name) => {
-    const cfg = registry.resolveAgentConfig(name);
-    return `- ${name}: ${cfg.description}`;
-  });
-
-  return [
-    ...(defaultDescs.length > 0 ? ["Default agents:", ...defaultDescs] : []),
-    ...(customDescs.length > 0 ? ["", "Custom agents:", ...customDescs] : []),
-    "",
-    `Custom agents can be defined in .pi/agents/<name>.md (project) or ${agentDir}/agents/<name>.md (global) — they are picked up automatically. Project-level agents override global ones. Creating a .md file with the same name as a default agent overrides it.`,
-  ].join("\n");
-}
-
-/** True when an agent belongs in the subagent_start list (not hidden or disabled). */
-function isEnabledAgent(registry: AgentConfigLookup, name: string): boolean {
-  return isListed(registry.resolveAgentConfig(name));
-}
-
-/**
- * Collect the per-agent usage guidelines for the subagent_start tool's Guidelines: block.
- * Sourced from each enabled default agent's `toolGuideline`, in registry order,
- * so a disabled built-in drops its guideline automatically.
- */
-export function buildAgentGuidelines(registry: TypeListRegistry): string[] {
+export function buildTypeListText(registry: TypeListRegistry): string {
   return registry
-    .getDefaultAgentNames()
-    .filter((name) => isEnabledAgent(registry, name))
-    .map((name) => registry.resolveAgentConfig(name).toolGuideline)
-    .filter((line): line is string => line !== undefined);
+    .getListedTypes()
+    .map((name) => formatTypeEntry(name, registry.resolveAgentConfig(name)))
+    .join("\n");
+}
+
+function formatTypeEntry(name: string, config: AgentConfig): string {
+  const model = config.model ? ` (${getModelLabelFromConfig(config.model)})` : "";
+  const description = oneLine(config.description).replace(/\.$/, "");
+  const guidance = config.guidance ? oneLine(config.guidance) : "";
+  return `- ${name}${model}: ${description}${guidance ? `. ${guidance}` : ""}`;
+}
+
+/** Collapse a frontmatter value that may span lines into a single trimmed line. */
+function oneLine(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
 }
 
 /** Derive a short model label from a model string. */

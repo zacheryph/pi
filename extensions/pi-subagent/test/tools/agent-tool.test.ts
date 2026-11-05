@@ -23,7 +23,7 @@ function makeCtx(overrides: Record<string, unknown> = {}) {
 }
 
 function makeTool(deps: ReturnType<typeof createToolDeps>) {
-  return new AgentTool(deps.manager, deps.runtime, deps.settings, deps.registry, deps.agentDir);
+  return new AgentTool(deps.manager, deps.runtime, deps.settings, deps.registry);
 }
 
 async function execute(
@@ -52,31 +52,36 @@ describe("AgentTool", () => {
     expect(def.promptSnippet).toBe("Launch a specialized agent for complex, multi-step tasks.");
   });
 
-  it("derives type list from registry — includes default agents in description", () => {
+  it("lists every built-in agent with its guidance on one line", () => {
     const def = makeTool(createToolDeps()).toToolDefinition();
-    // testRegistry loads default agents: general-purpose, Explore, Plan
-    expect(def.description).toContain("- general-purpose: General-purpose agent");
-    expect(def.description).toContain("- Explore: Fast codebase exploration agent");
+    expect(def.description).toContain(
+      "- Explore (claude-haiku@latest): Fast codebase exploration (read-only). Use for codebase searches and code understanding.",
+    );
+    expect(def.description).toContain(
+      "- general-purpose: Copy of you: your own instructions and every tool, with no role of its own. Use only when no other agent type fits the task.",
+    );
   });
 
-  it("lists the built-in agent guidelines in registry order", () => {
+  it.for(["general-purpose", "orchestrator", "Explore", "Plan", "reviewer"])(
+    "names %s once",
+    (name) => {
+      const def = makeTool(createToolDeps()).toToolDefinition();
+      expect(def.description.match(new RegExp(`\\b${name}\\b`, "g"))).toHaveLength(1);
+    },
+  );
+
+  it("leaves agent authoring out of the tool's description and parameters", () => {
     const def = makeTool(createToolDeps()).toToolDefinition();
-    const guidelines = [
-      "- Use general-purpose for complex tasks that need file editing.",
-      "- Use Explore for codebase searches and code understanding.",
-      "- Use Plan for architecture and implementation planning.",
-    ];
-    for (const line of guidelines) expect(def.description).toContain(line);
-    const positions = guidelines.map((line) => def.description.indexOf(line));
-    expect(positions).toEqual([...positions].sort((a, b) => a - b));
+    const text = JSON.stringify(def.parameters) + def.description;
+    expect(text).not.toContain(".pi/agents");
+    expect(text).not.toMatch(/Default agents|Custom agents/);
   });
 
   it.for(["Explore", "Plan", "general-purpose"])(
-    "omits the type-list entry and guideline for a disabled built-in %s",
+    "omits the type-list entry for a disabled built-in %s",
     (name) => {
       const def = makeTool(createToolDepsWithDisabledBuiltInAgents(name)).toToolDefinition();
-      expect(def.description).not.toContain(`- ${name}:`);
-      expect(def.description).not.toContain(`- Use ${name} for `);
+      expect(def.description).not.toContain(`- ${name}`);
     },
   );
 

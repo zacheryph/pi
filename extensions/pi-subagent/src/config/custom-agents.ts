@@ -63,6 +63,7 @@ function loadFromDir(
       name,
       displayName: str(fm.display_name),
       description: str(fm.description) ?? name,
+      guidance: str(fm.guidance),
       toolNames: listField(fm.tools, ["all"]),
       model: str(fm.model),
       thinking: thinkingLevel(fm.thinking, name),

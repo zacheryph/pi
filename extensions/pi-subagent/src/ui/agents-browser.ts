@@ -115,7 +115,7 @@ function maxTurnsSummary(config: AgentConfig, defaults: AgentsBrowserDefaults): 
 
 /**
  * Aligned single-line metadata, then multiline sections (description, tool
- * guideline, body, fragments) as full-width text so newlines survive.
+ * guidance, body, fragments) as full-width text so newlines survive.
  */
 function agentDetail(
   config: AgentConfig,
@@ -147,8 +147,8 @@ function agentDetail(
     },
     { heading: "Description" },
     { text: config.description || "(none)" },
-    { heading: "Tool guideline" },
-    { text: config.toolGuideline ?? "(none)" },
+    { heading: "Guidance" },
+    { text: config.guidance ?? "(none)" },
     { heading: "Body" },
     { text: config.systemPrompt || "(empty)" },
   ];

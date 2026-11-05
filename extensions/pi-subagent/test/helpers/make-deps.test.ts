@@ -39,10 +39,6 @@ describe("createToolDeps", () => {
   });
 
   describe("other fields", () => {
-    it("agentDir is a non-empty string", () => {
-      expect(createToolDeps().agentDir).toBeTypeOf("string");
-    });
-
     it("settings.defaultMaxTurns is undefined by default", () => {
       expect(createToolDeps().settings.defaultMaxTurns).toBeUndefined();
     });
@@ -59,8 +55,9 @@ describe("createToolDeps", () => {
 
   describe("override merging", () => {
     it("replaces a top-level field when overridden", () => {
-      const deps = createToolDeps({ agentDir: "/custom/dir" });
-      expect(deps.agentDir).toBe("/custom/dir");
+      const settings = { defaultMaxTurns: 7, maxConcurrent: 2 };
+      const deps = createToolDeps({ settings });
+      expect(deps.settings).toBe(settings);
     });
 
     it("replaces the manager when overridden", () => {

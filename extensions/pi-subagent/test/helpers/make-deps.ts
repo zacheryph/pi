@@ -17,7 +17,7 @@ const defaultRegistry = new AgentTypeRegistry(() => new Map());
 
 /**
  * Fixture shape returned by `createToolDeps`.
- * Contains the five `AgentTool` constructor params as separate fields so tests
+ * Contains the four `AgentTool` constructor params as separate fields so tests
  * can construct the class directly or use individual pieces for spawner/runner tests.
  */
 export type AgentToolFixture = {
@@ -26,7 +26,6 @@ export type AgentToolFixture = {
   runtime: AgentToolRuntime;
   settings: AgentToolSettings;
   registry: AgentTypeRegistry;
-  agentDir: string;
 };
 
 /**
@@ -62,7 +61,6 @@ export function createToolDeps(overrides: Partial<AgentToolFixture> = {}): Agent
     runtime,
     settings: { defaultMaxTurns: undefined as number | undefined, maxConcurrent: 4 },
     registry: defaultRegistry,
-    agentDir: "/home/user/.pi",
     ...overrides,
   };
 }
@@ -111,8 +109,8 @@ export function mockResumeStartRefusal(deps: AgentToolFixture, reason: ResumeRef
 
 /**
  * Build a tool fixture whose named built-in default agents are disabled.
- * Overlays a same-named user config with `enabled: false` onto each default,
- * so the registry keeps the name but excludes it from the enabled surface.
+ * Overlays a same-named user config with `visibility: disabled` onto each
+ * default, so the registry keeps the name but refuses and unlists it.
  */
 export function createToolDepsWithDisabledBuiltInAgents(...names: string[]): AgentToolFixture {
   const registry = new AgentTypeRegistry(
