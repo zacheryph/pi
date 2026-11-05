@@ -3,6 +3,13 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-04: Shutdown test PID readiness
+
+- Wait for positive PIDs in the shutdown test, rather than just PID file existence.
+  Shell redirection can expose an empty file before `echo` writes; reading it as
+  PID 0 made the liveness assertion probe the test's own process group.
+- Add regression coverage for missing, empty, zero, and invalid PID files.
+
 ## 2026-11-01: Identifiers (#58)
 
 Renamed to this bundle's `resource:name` grammar, so session data and process
