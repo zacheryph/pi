@@ -69,7 +69,18 @@ function loadFromDir(dir: string, agents: Map<string, AgentConfig>, source: Agen
       continue;
     }
 
-    const { frontmatter: fm, body } = parseFrontmatter(content);
+    let parsed: { frontmatter: Record<string, unknown>; body: string };
+    try {
+      parsed = parseFrontmatter(content);
+    } catch (err) {
+      // One bad file must not take every other agent down with it. Keep the
+      // name so it still overrides a lower-priority agent, but refuse it with
+      // the parse error rather than spawn something its author did not write.
+      debugLog("parseFrontmatter agent file", err);
+      agents.set(name, brokenAgent(name, source, join(dir, file), err));
+      continue;
+    }
+    const { frontmatter: fm, body } = parsed;
 
     agents.set(name, {
       name,
@@ -90,6 +101,26 @@ function loadFromDir(dir: string, agents: Map<string, AgentConfig>, source: Agen
       sourcePath: join(dir, file),
     });
   }
+}
+
+/** The record for a file whose frontmatter does not parse. */
+function brokenAgent(
+  name: string,
+  source: AgentSource,
+  sourcePath: string,
+  err: unknown,
+): AgentConfig {
+  const reason = err instanceof Error ? err.message : String(err);
+  return {
+    name,
+    description: name,
+    systemPrompt: "",
+    promptMode: "replace",
+    toolNames: [],
+    source,
+    sourcePath,
+    definitionError: `invalid frontmatter in ${sourcePath}: ${reason.split("\n")[0]}`,
+  };
 }
 
 // ---- Field parsers ----

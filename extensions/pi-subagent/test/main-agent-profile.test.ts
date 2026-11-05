@@ -618,6 +618,7 @@ describe("main profile defaults and persistent body", () => {
   it.each([
     "unknown",
     "disabled",
+    "invalid definition",
     "unavailable model",
     "unavailable tools",
     "missing orchestration",
@@ -638,6 +639,9 @@ describe("main profile defaults and persistent body", () => {
         break;
       case "disabled":
         h.state.profile.visibility = "disabled";
+        break;
+      case "invalid definition":
+        h.state.profile.definitionError = "invalid frontmatter in /x.md: bad";
         break;
       case "unavailable model":
         h.state.profile.model = "anthropic/missing";

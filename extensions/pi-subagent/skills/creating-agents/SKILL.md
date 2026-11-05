@@ -198,6 +198,9 @@ the caller must change in application code.
 
 1. Open `/subagent:agents` and select the agent: confirm the source path,
    visibility, tools, model, prompt mode and that the body is the one you wrote.
+   An `[invalid]` badge means the frontmatter is not valid YAML; its detail
+   shows the parse error. Until it is fixed the agent is unlisted and refused,
+   and it still hides any global or built-in agent of the same name.
 2. Read the agent's line as a caller would. Could it be confused with another
    line? Sharpen `guidance` until it could not.
 3. A new or edited file is used at the next spawn, but the `subagent_start`

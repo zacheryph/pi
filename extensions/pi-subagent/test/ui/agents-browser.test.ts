@@ -62,6 +62,16 @@ describe("effective agent definitions", () => {
     expect(names).toEqual(originalOrder);
   });
 
+  it("marks an agent whose file does not parse and shows the error before its description", () => {
+    const config = agent({ definitionError: "invalid frontmatter in /p/auditor.md: bad" });
+    const item = buildAgentsView(registry(config)).items.find((i) => i.id === "auditor")!;
+    expect(item.badge).toEqual({ text: "[invalid]", tone: "error" });
+    const lines = plainDetail(item.detail).split("\n");
+    const heading = lines.indexOf("Definition error");
+    expect(lines[heading + 1]).toBe("invalid frontmatter in /p/auditor.md: bad");
+    expect(heading).toBeLessThan(lines.indexOf("Description"));
+  });
+
   it("lists defaults and disabled overrides without description rows", () => {
     const r = registry(
       agent({ name: "Explore", visibility: "disabled", source: "project", toolNames: [] }),

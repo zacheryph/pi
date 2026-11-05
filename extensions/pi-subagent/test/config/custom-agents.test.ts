@@ -502,6 +502,45 @@ tools: read
     expect(loadCustomAgents(tmpDir).get("agent")!.visibility).toBeUndefined();
   });
 
+  describe("a file whose frontmatter does not parse", () => {
+    const broken = "---\ndescription: [unclosed\n---\n\nBody.";
+
+    it("does not stop the other files loading", () => {
+      writeAgent("broken", broken);
+      writeAgent("fine", "---\ndescription: Fine\n---\n\nBody.");
+
+      const agents = loadCustomAgents(tmpDir);
+      expect(agents.get("fine")!.description).toBe("Fine");
+    });
+
+    it("loads as a record carrying the parse error and its path", () => {
+      writeAgent("broken", broken);
+
+      const agent = loadCustomAgents(tmpDir).get("broken")!;
+      expect(agent.definitionError).toContain(join(tmpDir, ".pi", "agents", "broken.md"));
+      expect(agent.definitionError).toMatch(/invalid frontmatter/);
+      expect(agent.definitionError).not.toContain("\n");
+      expect(agent.systemPrompt).toBe("");
+      expect(agent.toolNames).toEqual([]);
+    });
+
+    it("still overrides a lower-priority agent of the same name", () => {
+      const globalAgents = join(tmpDir, "agent-dir", "agents");
+      mkdirSync(globalAgents, { recursive: true });
+      writeFileSync(join(globalAgents, "auditor.md"), "---\ndescription: Global\n---\n\nG.");
+      const previous = process.env.PI_CODING_AGENT_DIR;
+      process.env.PI_CODING_AGENT_DIR = join(tmpDir, "agent-dir");
+      try {
+        expect(loadCustomAgents(tmpDir).get("auditor")!.description).toBe("Global");
+        writeAgent("auditor", broken);
+        expect(loadCustomAgents(tmpDir).get("auditor")!.definitionError).toBeDefined();
+      } finally {
+        if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR;
+        else process.env.PI_CODING_AGENT_DIR = previous;
+      }
+    });
+  });
+
   it("ignores the retired enabled key", () => {
     writeAgent("agent", `---\nenabled: false\n---\n`);
 

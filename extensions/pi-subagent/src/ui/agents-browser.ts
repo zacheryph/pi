@@ -78,10 +78,9 @@ export function buildAgentsView(
         return {
           id: name,
           label: name,
-          badge: {
-            text: `[${visibility}]`,
-            tone: VISIBILITY_TONE[visibility],
-          },
+          badge: config.definitionError
+            ? { text: "[invalid]", tone: "error" }
+            : { text: `[${visibility}]`, tone: VISIBILITY_TONE[visibility] },
           search: `${visibility} ${config.description}`,
           detail: agentDetail(config, registry.getToolNamesForType(name), defaults, options),
         };
@@ -145,6 +144,9 @@ function agentDetail(
         ["Locked", lockSummary(config)],
       ],
     },
+    ...(config.definitionError
+      ? [{ heading: "Definition error" }, { text: config.definitionError, tone: "error" as const }]
+      : []),
     { heading: "Description" },
     { text: config.description || "(none)" },
     { heading: "Guidance" },

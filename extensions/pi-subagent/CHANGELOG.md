@@ -3,6 +3,23 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-05: A malformed agent file no longer breaks every agent
+
+`parseFrontmatter` throws on invalid YAML, and nothing caught it. One bad file
+in `.pi/agents/` or the global agents directory made the whole registry load
+throw, and `subagent_start` reloads the registry on every call, so every spawn
+failed (and extension load could too).
+
+- Catch the parse error per file. The file still registers under its name,
+  with `definitionError` naming the path and the first line of the error, so
+  it keeps overriding a lower-priority agent rather than silently handing the
+  name back to a global or built-in one.
+- An agent with `definitionError` is not listed, not available, fails
+  `isValidType`, and its spawn throws `Agent type "<name>" cannot load: …`.
+  Selecting it as the main profile fails the same way.
+- `/subagent:agents` badges it `[invalid]` and shows a Definition error
+  section above its description.
+
 ## 2026-11-05: Agent files default to `prompt_mode: replace`
 
 An agent file without `prompt_mode` was an `append` agent: its body wrapped in
