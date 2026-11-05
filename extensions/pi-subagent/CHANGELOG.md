@@ -3,6 +3,19 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-05: Drop upstream's development history from docs
+
+`docs/` carried upstream's working history: 186 plans, 189 retros, 21
+per-phase architecture histories and a fallow metrics snapshot, about 70k
+lines that nothing in the extension reads. They remain at the pinned commit
+in [UPSTREAM.md](UPSTREAM.md).
+
+- Delete `docs/plans/`, `docs/retro/`, `docs/architecture/history/` and
+  `docs/fallow-snapshot.json`.
+- `docs/architecture/architecture.md`: drop the fallow health metrics,
+  boundary-zone instructions and the refactoring-history tables, and the
+  links into the deleted files.
+
 ## 2026-11-04: Refuse invalid definitions when queued agents start
 
 A queued agent without fragments reads its profile again when a slot opens.

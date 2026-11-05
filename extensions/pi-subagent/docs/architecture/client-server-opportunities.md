@@ -85,7 +85,7 @@ The plan's `join` versus `watch` split is the right primitive:
 This validates and sharpens the direction the architecture doc is already heading. pi-subagent's stated core job — spawn a child session derived from the parent, run the turn loop, track and stream and collect the result, gate concurrency, support resume, and publish its lifecycle — is almost exactly the `AgentSessionServer`'s job for child sessions.
 
 - **The observation tier dissolves.**
-  This confirms [Phase 18]'s own finding that "the activity/metrics push tier is provisional" — under the server it genuinely does not need to exist in pi-subagent.
+  This confirms upstream's Phase 18 finding that "the activity/metrics push tier is provisional" — under the server it genuinely does not need to exist in pi-subagent.
 - **The recursion principle gets its real substrate.**
   The architecture doc's "a subagent is a recursive Pi" framing maps directly onto the plan's session model: a subagent session is just another session in the server, with the same snapshot, delta, and command surface.
 - **pi-subagent keeps only its semantic layer** — agent type, description, result text, token totals, concurrency admission, and the recursion guard — the things a generic session server does not know.
@@ -123,5 +123,4 @@ This architecture turns all three capabilities from bespoke, fragile features pi
 
 [session-sync]: https://jot.mariozechner.at/s/zgzbq9n4f4mfck
 [ADR-0004]: ../decisions/0004-reconsider-ui-direction.md
-[Phase 18]: ./history/phase-18-reconsider-ui.md
 [#277]: https://github.com/gotgenes/pi-packages/issues/277

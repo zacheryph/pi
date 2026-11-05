@@ -34,9 +34,9 @@ This is the full inventory, with the decision record or design principle each re
 
 | Non-goal                                                                      | Rests on                                                                                             |
 | ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| Time-based scheduling (cron / interval / one-shot dispatch)                   | Design principle 4; `history/phase-2-remove-scheduling.md`                                           |
+| Time-based scheduling (cron / interval / one-shot dispatch)                   | Design principle 4                                                                                   |
 | Ad-hoc cross-extension event RPC (`subagent:rpc:*`)                           | Design principle 3; §"What the core dropped"                                                         |
-| Group-join / consolidated completion notifications                            | §"What the core dropped"; `history/phase-3-remove-rpc-groupjoin.md`                                  |
+| Group-join / consolidated completion notifications                            | §"What the core dropped"                                                                             |
 | Model-scope enforcement (an `enabledModels` allowlist in the core)            | `docs/comparison-with-upstream.md` only — the weakest entry here                                     |
 | Per-agent tool restriction policy (`disallowed_tools`, a built-in denylist)   | [ADR-0002](../decisions/0002-extensions-on-a-minimal-core.md); §"Child tool selection"               |
 | Widening a child's tool allowlist with capability tools on the agent's behalf | §"Child tool selection"; operator position on the additive-key case                                  |
@@ -330,11 +330,7 @@ sequenceDiagram
 
 The extension's source files are organized into domain directories — `config/`, `session/`, `lifecycle/`, `observation/`, `service/`, `tools/`, `ui/`, and `handlers/` — plus a handful of root-level entry-point and shared modules.
 
-Those directories are fallow boundary **zones** (`boundaries` in the repo-root `.fallowrc.json`), one zone per directory plus a `pi-subagent/core` zone for the root modules.
-Each zone's `allow` list is the set of zones it imported when the zones were encoded, so the baseline reports zero violations and a **new** cross-zone edge is a finding (`boundary-violation`, severity `warn`, reported by `fallow dead-code` and `fallow audit` without failing either) and a `fallow decision-surface` `coupling-boundary` question in review.
-Run `pnpm --silent fallow guard <file>` before adding a cross-directory import to see what the file's zone may import; when the new edge is intended, extend that zone's `allow` list in the same commit and say why in the commit body.
-
-Two allowed edges are not sanctioned by anything above: `lifecycle/` imports `subscribeSubagentObserver` from `observation/` (`subagent.ts`), and `observation/` imports `display` and `glyphs` from `ui/` (`renderer.ts`).
+Two cross-directory edges are not sanctioned by anything above: `lifecycle/` imports `subscribeSubagentObserver` from `observation/` (`subagent.ts`), and `observation/` imports `display` and `glyphs` from `ui/` (`renderer.ts`).
 The ratchet admits them because they predate it; this document states no ordering between those directories, so whether they should exist is a question for a later discovery round rather than a violation today.
 
 ### Current layout
@@ -651,7 +647,7 @@ The discriminator when deciding how a concern attaches:
 - It must **return a value the core consumes** → register a provider (generative, rationed).
 
 The governing rule — **no vacant hooks**: the architecture must _admit_ a seam without _shipping_ it until a concrete consumer exists.
-A provider seam with no consumer is a speculative abstraction that taxes every reader and that `fallow` flags as dead.
+A provider seam with no consumer is a speculative abstraction that taxes every reader and that dead-code analysis flags as dead.
 Latent extensibility is the deliverable; a vacant hook is not.
 
 The [first-principles refinement](#first-principles-refinement-and-the-deeper-target) below sharpens this two-surface split.
@@ -772,120 +768,6 @@ The boundaries above were not deduced top-down; they were surfaced by friction.
 Each place the target got _harder_ to test marked a domain seam drawn through the middle of a class.
 That method — testability friction as a boundary probe, with its limits — is recorded in the `improvement-discovery` skill so it outlives this phase.
 
-## Current structural analysis
-
-### Health metrics
-
-| Metric                     | Value                                                                   |
-| -------------------------- | ----------------------------------------------------------------------- |
-| Health score               | 78/100 (B), end of Phase 22                                             |
-| Total LOC                  | 11,048 (69 files)                                                       |
-| Dead code                  | 0 files, 0 exports                                                      |
-| Maintainability index      | 91.2 (good)                                                             |
-| Avg cyclomatic complexity  | 1.3                                                                     |
-| P90 cyclomatic complexity  | 2                                                                       |
-| Production duplication     | 0 lines                                                                 |
-| Test duplication           | retired (fallow 3.2.0 excludes test files; see Phase 20 Step 9 history) |
-| Fallow refactoring targets | 0                                                                       |
-
-Recompute `Total LOC` with `find src -name '*.ts' | wc -l` and `cat $(find src -name '*.ts') | wc -l` — it counts `src/` only, so `fallow health`'s package-wide total is the wrong source.
-Every other row is a `fallow health` field.
-The values as of the last phase close are also committed as a machine-readable snapshot at `docs/fallow-snapshot.json`, written by `pnpm --silent fallow health --save-snapshot packages/pi-subagent/docs/fallow-snapshot.json --workspace @gotgenes/pi-subagents`; `fallow health --trend` reads it for per-metric deltas.
-
-### Dependency bag inventory
-
-The 10+-field dependency bags flagged in prior phases (`ResolvedSpawnConfig`, `AgentSpawnConfig`, `RunOptions`, `SessionConfig`, `SubagentSessionIO`, `SubagentExecution`) were all decomposed into focused value objects; the remaining wide interfaces (`NotificationDetails`, `ResourceLoaderOptions`, `CreateSessionOptions`) are DTO/SDK-boundary types accepted as-is.
-
-### Complexity hotspots
-
-Functions with cyclomatic complexity ≥ 21 (critical threshold):
-
-No functions remain above the critical threshold — all hotspots resolved in Phase 12. 1 function remains at HIGH severity (a test helper, `subagent-manager.test.ts`'s `createManager`); 14 at moderate.
-No `src/` function reaches HIGH severity or CRAP ≥ 60 (Phase 20 target met).
-
-### Churn hotspots
-
-Files with highest commit frequency × complexity:
-
-| Score | File                         | Commits | Trend     |
-| ----- | ---------------------------- | ------- | --------- |
-| 41.9  | `index.ts`                   | 125     | ▼ cooling |
-| 39.9  | `lifecycle/subagent.ts`      | 52      | ─ stable  |
-| 19.9  | `tools/agent-tool.ts`        | 76      | ▼ cooling |
-| 17.7  | `service/service-adapter.ts` | 25      | ▼ cooling |
-| 15.7  | `tools/foreground-runner.ts` | 35      | ▼ cooling |
-| 15.2  | `ui/agent-widget.ts`         | 29      | ▼ cooling |
-
-`index.ts` remains the top churn hotspot but has cooled further; `lifecycle/subagent.ts` moved from third to second, its commit count more than doubling across Phase 22's delivery-boundary steps (10, 11, 14, 15, 17, 19, 21, 22 all touch it); no `src/` file among the top six is currently accelerating.
-
-### Production duplication
-
-Production duplication is 0 lines — the last clone group was eliminated in Phase 19 Step 6 ([#441]).
-
-## Refactoring history
-
-The architecture above is the product of twenty-one completed improvement phases; Phase 6 (UI extraction to a separate package) was folded into [ADR-0004] rather than executed.
-Each phase's findings, numbered plan, dependency diagram, and health metrics are preserved in a per-phase history file under [`history/`](history/).
-
-| Phase | Theme                                                        | History                                                                                        |
-| ----- | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
-| 1     | Export SubagentsService API boundary                         | [phase-1-api-boundary.md](history/phase-1-api-boundary.md)                                     |
-| 2     | Remove scheduling subsystem                                  | [phase-2-remove-scheduling.md](history/phase-2-remove-scheduling.md)                           |
-| 3     | Remove group-join, RPC; replace output-file                  | [phase-3-remove-rpc-groupjoin.md](history/phase-3-remove-rpc-groupjoin.md)                     |
-| 4     | Implement and publish SubagentsService                       | [phase-4-implement-service.md](history/phase-4-implement-service.md)                           |
-| 5     | Decompose index.ts                                           | [phase-5-decompose-index.md](history/phase-5-decompose-index.md)                               |
-| 6     | Extract UI to separate package                               | Superseded by [ADR-0004]                                                                       |
-| 7     | Encapsulation and dependency narrowing                       | [phase-7-encapsulation.md](history/phase-7-encapsulation.md)                                   |
-| 8     | Testability, display extraction, menu decomposition          | [phase-8-testability.md](history/phase-8-testability.md)                                       |
-| 9     | Observation consolidation, ctx elimination                   | [phase-9-observation-ctx.md](history/phase-9-observation-ctx.md)                               |
-| 10    | Domain organization, bag decomposition, complexity           | [phase-10-structural-decomposition.md](history/phase-10-structural-decomposition.md)           |
-| 11    | Closure factories to classes                                 | [phase-11-closure-to-class.md](history/phase-11-closure-to-class.md)                           |
-| 12    | Complexity reduction and test fixture extraction             | [phase-12-complexity-test-fixtures.md](history/phase-12-complexity-test-fixtures.md)           |
-| 13    | Remaining structural smells                                  | [phase-13-remaining-smells.md](history/phase-13-remaining-smells.md)                           |
-| 14    | Strip policy from core                                       | [phase-14-strip-policy.md](history/phase-14-strip-policy.md)                                   |
-| 15    | Domain model evolution                                       | [phase-15-domain-model-evolution.md](history/phase-15-domain-model-evolution.md)               |
-| 16    | Invert dependencies (extensions on a minimal core)           | [phase-16-invert-dependencies.md](history/phase-16-invert-dependencies.md)                     |
-| 17    | Core consolidation                                           | [phase-17-core-consolidation.md](history/phase-17-core-consolidation.md)                       |
-| 18    | Reconsider UI (first principles)                             | [phase-18-reconsider-ui.md](history/phase-18-reconsider-ui.md)                                 |
-| 19    | Implement ADR-0004 UI decisions                              | [phase-19-implement-ui-decisions.md](history/phase-19-implement-ui-decisions.md)               |
-| 20    | Result delivery extraction and boundary cleanup              | [phase-20-result-delivery.md](history/phase-20-result-delivery.md)                             |
-| 21    | Classification predicates, resume completion, model boundary | [phase-21-classification-model-boundary.md](history/phase-21-classification-model-boundary.md) |
-| 22    | Front-door contract parity and delivery fixes                | [phase-22-front-door-delivery.md](history/phase-22-front-door-delivery.md)                     |
-
-### Structural refactoring issues
-
-| Phase                | Issue                                                                                                                              | Summary                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Foundation           | #69, #71, #76, #80                                                                                                                 | SubagentRuntime, pure assembler, cwd injection, config consolidation                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| Core decomposition   | #84, #72, #87, #70                                                                                                                 | WorktreeManager, AgentManager DI, runtime methods, handler extraction                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| Interface polish     | #66, #77                                                                                                                           | SDK types, projectAgentsDir                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| Features             | #61                                                                                                                                | JSONL session transcripts                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| AgentManager         | #98, #99, #100, #102                                                                                                               | Record state machine, ParentSnapshot, session-event observation, test factory                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| Encapsulation        | #108, #109, #110, #111, #112, #113, #114, #115, #116, #118                                                                         | Registry, settings, activity tracker, record lifecycle, observer, spawn options, deps narrowing, tool split, type housekeeping                                                                                                                                                                                                                                                                                                                                                                 |
-| Testability          | #131, #132, #133, #134, #135, #136                                                                                                 | Shared fixtures, session-config IO, runner SDK boundary, as-any reduction, display extraction, menu decomposition                                                                                                                                                                                                                                                                                                                                                                              |
-| Observation/ctx      | #144, #145, #146, #147, #148                                                                                                       | Observation consolidation, execute decomposition, UI context, text wrapping injection, widget rendering split                                                                                                                                                                                                                                                                                                                                                                                  |
-| Phase 10             | #164, #165, #166, #167, #168, #169, #170, #171, #172                                                                               | Domain directories, ResolvedSpawnConfig, ParentSessionInfo, RunnerIO split, ToolFilterConfig, RunContext, buildContentLines, renderResult, content-items                                                                                                                                                                                                                                                                                                                                       |
-| Phase 11             | #192, #193, #194, #195, #196                                                                                                       | SessionContext, runtime queries, interface alignment, tool classes, runner/menu classes, index.ts simplification                                                                                                                                                                                                                                                                                                                                                                               |
-| Phase 12             | #205, #206, #207, #208                                                                                                             | renderWidgetLines, showAgentDetail, widget update, shared test fixtures                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| Phase 13             | #214, #215, #216, #217, #218, #219                                                                                                 | Closure-to-class, buildParentContext, startAgent decomp, overwrite guard, settings SDK, test duplication                                                                                                                                                                                                                                                                                                                                                                                       |
-| Phase 14             | #237, #238, #239, #242                                                                                                             | Remove disallowed_tools, remove extensions filtering, collapse filterActiveTools, rename Agent to subagent                                                                                                                                                                                                                                                                                                                                                                                     |
-| Phase 15             | #227, #228, #231, #229, #230, #232                                                                                                 | Agent domain model, async startAgent, runner self-contained, Agent.run(), ConcurrencyQueue, Agent.resume()                                                                                                                                                                                                                                                                                                                                                                                     |
-| Phase 16             | #261, #262, #263, #264, #265                                                                                                       | Lifecycle events (retire permission-bridge), WorkspaceProvider seam, extract worktrees package, remove isolated, born-complete execution / dissolve runner                                                                                                                                                                                                                                                                                                                                     |
-| Phase 16 (abandoned) | #256 (superseded), #257 (parked), #258, #259 (not planned)                                                                         | Agent collaborator architecture — replaced by the inversion approach above ([ADR-0002])                                                                                                                                                                                                                                                                                                                                                                                                        |
-| Phase 17             | #381, #373, #374, #375, #376, #377, #378, #379, #380                                                                               | ConcurrencyLimiter, SubagentState, run-start encapsulation, run collaborators, events observer, widget decoupling, lifecycle test fixtures, UI/tools test fixtures, settings-loader extraction                                                                                                                                                                                                                                                                                                 |
-| Phase 17 (follow-on) | #412, #415                                                                                                                         | Session-mock builder unification, worktrees settings-helper migration                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| Phase 18             | #420, #421, #422, #423, #424, #425, #426, #427                                                                                     | Fold metrics onto record, migrate readers, delete activity tier, widget self-drives, drop widget from tool, reconcile event contract, consolidate test clones, UI-direction ADR                                                                                                                                                                                                                                                                                                                |
-| Phase 19             | #446, #447, #444, #445, #462, #463, #442, #441, #443                                                                               | ADR-0004 spike, settings command, background widget, native session nav slice, TUI renderer, file-snapshot source, dissolve /agents + viewer, remove definition mgmt, consolidate test clones                                                                                                                                                                                                                                                                                                  |
-| Phase 19 (follow-on) | #470                                                                                                                               | README refresh for the removed /agents command surface                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| Phase 20             | #535, #536, #537, #538, #539, #540, #541, #542, #543                                                                               | Extract result delivery, decompose get-result-tool, steer outcome, type model boundary, narrow tui/theme, table-driven settings, decompose notification renderer, full-value SubagentStateInit, consolidate test clones                                                                                                                                                                                                                                                                        |
-| Phase 21             | #563, #466, #611                                                                                                                   | Classification predicates, resume completion channel, model boundary typing                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| Phase 22             | #724, #830, #829, #828, #801, #827, #798, #465, #849, #857, #858, #870, #871, #872, #878, #885, #889, #890, #898, #904, #903, #913 | Front-door choke-point parity, SubagentRecord policy, locked-fields precedence, dead workspace field, skills-block strip, UICtx capture, resume handle, ask-back, widget teardown, workspace-backed resume, mid-run channel, post-result addendum, empty tool allowlist, update-gate on resume, resume-affordance honesty, service resume, failed-run reporting, inherited-region guarantee, compaction turn-error, capability-free fallback, exactly-once update delivery, resume abort lever |
-| Phase 22 (follow-on) | #883, #918                                                                                                                         | Portable prompt inheritance for re-homed providers (ADR-0009), project-context directory resolution for workspace-relocated children (ADR-0010)                                                                                                                                                                                                                                                                                                                                                |
-
-Issue #22 (parent-session resolution) has been closed.
-Of the tracks recorded under Phase 21's deferred-work dispositions, [#482], [#600], and [#610] have since closed; [#451] was relabeled `scope:repo` at Phase 22 planning; [#465] became Phase 22 Step 8; [#519] and [#608] remain open and still do not gate a package structural phase.
-[#877] was relabeled `scope:repo` at Phase 22 close, the same disposition [#451] received.
-
 ## Relationship with upstream
 
 This fork (`@gotgenes/pi-subagents` in the [gotgenes/pi-packages] monorepo) is a hard fork of [tintinweb/pi-subagent].
@@ -903,14 +785,6 @@ The upstream test suite is run periodically as a regression canary for the sessi
 [tintinweb/pi-subagent]: https://github.com/tintinweb/pi-subagent
 [#441]: https://github.com/gotgenes/pi-packages/issues/441
 [#442]: https://github.com/gotgenes/pi-packages/issues/442
-[#451]: https://github.com/gotgenes/pi-packages/issues/451
-[#465]: https://github.com/gotgenes/pi-packages/issues/465
-[#482]: https://github.com/gotgenes/pi-packages/issues/482
-[#519]: https://github.com/gotgenes/pi-packages/issues/519
-[#600]: https://github.com/gotgenes/pi-packages/issues/600
-[#608]: https://github.com/gotgenes/pi-packages/issues/608
-[#610]: https://github.com/gotgenes/pi-packages/issues/610
 [#864]: https://github.com/gotgenes/pi-packages/issues/864
-[#877]: https://github.com/gotgenes/pi-packages/issues/877
 [ADR-0002]: ../decisions/0002-extensions-on-a-minimal-core.md
 [ADR-0004]: ../decisions/0004-reconsider-ui-direction.md

@@ -64,7 +64,7 @@ Workspaces are generative: the core cannot default the cwd away when an isolatio
 ### The governing rule: no vacant hooks
 
 The architecture must _admit_ a seam without _shipping_ it until a concrete consumer exists.
-A provider seam with no consumer is not extensibility — it is a speculative abstraction that taxes every reader, and `fallow` flags it as dead.
+A provider seam with no consumer is not extensibility — it is a speculative abstraction that taxes every reader, and dead-code analysis flags it as dead.
 Latent extensibility (the design can host the seam additively) is the deliverable; a vacant hook is not.
 
 ### What leaves the core
