@@ -3,6 +3,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { commandNameProblems, extensionName } from "./command-names.mjs";
 
 // Load the root package exactly as a local personal install, but never read or
 // modify the user's settings, project resources, or credentials. No model calls.
@@ -49,6 +50,13 @@ try {
   assert.ok(flags.includes("agent"), "Missing flag: --agent");
   assert.equal(new Set(tools).size, tools.length, "Tool names must be unique");
   assert.equal(new Set(commands).size, commands.length, "Command names must be unique");
+  // AGENTS.md: every command is the extension's name less pi-, or <name>:<action>.
+  const namingProblems = extensions.flatMap((extension) => {
+    const name = extensionName(extension.resolvedPath);
+    assert.ok(name, `Entry point outside extensions/pi-*/: ${extension.resolvedPath}`);
+    return commandNameProblems(name, extension.commands.keys());
+  });
+  assert.deepEqual(namingProblems, [], "Command names must follow the AGENTS.md prefix rule");
   for (const name of [
     "subagent_start",
     "subagent_get",
