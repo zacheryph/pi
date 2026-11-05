@@ -3,6 +3,23 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-05: Replace `enabled` with `visibility`
+
+`enabled: false` was the only way to take an agent out of the
+`subagent_start` list, and it also refused every spawn. An agent meant only
+for a skill or another agent to name had no way to stay unlisted yet
+runnable.
+
+- Add `visibility: visible | hidden | disabled` to agent frontmatter and
+  `AgentConfig`. `hidden` leaves the agent out of the tool's type list but
+  spawns it by name; `disabled` refuses it as `enabled: false` did. An
+  unrecognized value is dropped and the agent stays visible.
+- Remove `enabled`; a file that still sets it has the key ignored.
+- `AgentTypeRegistry.getListedTypes()` returns the visible types;
+  `getAvailableTypes()` and `isValidType()` accept hidden ones.
+- The `/subagent:agents` browser badges each agent `[visible]`, `[hidden]`
+  or `[disabled]` and shows a Visibility field in place of Enabled.
+
 ## 2026-11-05: The caller alone decides foreground or background
 
 An agent file's `foreground` key let a profile pick how it ran whenever the

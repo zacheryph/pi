@@ -107,12 +107,15 @@ describe("AgentTypeRegistry", () => {
     it("returns config for disabled type (no fallback for existing disabled)", () => {
       const registry = makeRegistry(
         new Map([
-          ["Plan", makeAgentConfig({ name: "Plan", description: "Disabled", enabled: false })],
+          [
+            "Plan",
+            makeAgentConfig({ name: "Plan", description: "Disabled", visibility: "disabled" }),
+          ],
         ]),
       );
       const config = registry.resolveAgentConfig("Plan");
       expect(config.name).toBe("Plan");
-      expect(config.enabled).toBe(false);
+      expect(config.visibility).toBe("disabled");
     });
 
     it("returns user-defined agent config", () => {
@@ -138,7 +141,7 @@ describe("AgentTypeRegistry", () => {
 
     it("excludes disabled agents", () => {
       const registry = makeRegistry(
-        new Map([["Plan", makeAgentConfig({ name: "Plan", enabled: false })]]),
+        new Map([["Plan", makeAgentConfig({ name: "Plan", visibility: "disabled" })]]),
       );
       expect(registry.getAvailableTypes()).not.toContain("Plan");
     });
@@ -147,12 +150,43 @@ describe("AgentTypeRegistry", () => {
       const registry = makeRegistry(new Map([["auditor", makeAgentConfig({ name: "auditor" })]]));
       expect(registry.getAvailableTypes()).toContain("auditor");
     });
+
+    it("includes hidden agents, which spawn by name", () => {
+      const registry = makeRegistry(
+        new Map([["auditor", makeAgentConfig({ name: "auditor", visibility: "hidden" })]]),
+      );
+      expect(registry.getAvailableTypes()).toContain("auditor");
+      expect(registry.isValidType("auditor")).toBe(true);
+    });
+  });
+
+  describe("getListedTypes", () => {
+    it("lists visible agents and those that declare no visibility", () => {
+      const registry = makeRegistry(
+        new Map([
+          ["auditor", makeAgentConfig({ name: "auditor", visibility: "visible" })],
+          ["linter", makeAgentConfig({ name: "linter" })],
+        ]),
+      );
+      expect(registry.getListedTypes()).toEqual(expect.arrayContaining(["auditor", "linter"]));
+    });
+
+    it("leaves out hidden and disabled agents", () => {
+      const registry = makeRegistry(
+        new Map([
+          ["auditor", makeAgentConfig({ name: "auditor", visibility: "hidden" })],
+          ["Plan", makeAgentConfig({ name: "Plan", visibility: "disabled" })],
+        ]),
+      );
+      expect(registry.getListedTypes()).not.toContain("auditor");
+      expect(registry.getListedTypes()).not.toContain("Plan");
+    });
   });
 
   describe("getAllTypes", () => {
     it("includes disabled agents", () => {
       const registry = makeRegistry(
-        new Map([["Plan", makeAgentConfig({ name: "Plan", enabled: false })]]),
+        new Map([["Plan", makeAgentConfig({ name: "Plan", visibility: "disabled" })]]),
       );
       expect(registry.getAllTypes()).toContain("Plan");
     });
@@ -198,7 +232,7 @@ describe("AgentTypeRegistry", () => {
 
     it("returns false for disabled agents", () => {
       const registry = makeRegistry(
-        new Map([["Plan", makeAgentConfig({ name: "Plan", enabled: false })]]),
+        new Map([["Plan", makeAgentConfig({ name: "Plan", visibility: "disabled" })]]),
       );
       expect(registry.isValidType("Plan")).toBe(false);
     });
@@ -296,7 +330,10 @@ describe("AgentTypeRegistry", () => {
     it("returns a disabled agent's own list rather than the built-ins", () => {
       const registry = makeRegistry(
         new Map([
-          ["retired", makeAgentConfig({ name: "retired", toolNames: ["read"], enabled: false })],
+          [
+            "retired",
+            makeAgentConfig({ name: "retired", toolNames: ["read"], visibility: "disabled" }),
+          ],
         ]),
       );
       expect(registry.getToolNamesForType("retired")).toEqual(["read"]);
@@ -390,7 +427,7 @@ describe("AgentTypeRegistry", () => {
       const custom = makeAgentConfig({
         name: "orchestrator",
         systemPrompt: "Custom PM",
-        enabled: false,
+        visibility: "disabled",
       });
       const registry = makeRegistry(new Map([["orchestrator", custom]]));
       expect(registry.resolveAgentConfig("orchestrator")).toBe(custom);

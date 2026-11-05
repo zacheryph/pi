@@ -69,6 +69,11 @@ export interface AgentPromptConfig {
   systemPrompt: string;
 }
 
+/** The `visibility` values an agent file may declare. */
+export const AGENT_VISIBILITIES = ["visible", "hidden", "disabled"] as const;
+
+export type AgentVisibility = (typeof AGENT_VISIBILITIES)[number];
+
 /** Unified agent configuration — used for both default and user-defined agents. */
 export interface AgentConfig extends AgentIdentity, AgentPromptConfig {
   /** Tool selectors: omitted or `all` inherits available tools; explicit names restrict, `-name` excludes (MCP globs supported). */
@@ -84,8 +89,14 @@ export interface AgentConfig extends AgentIdentity, AgentPromptConfig {
   toolGuideline?: string;
   /** true = this is an embedded default agent (informational) */
   isDefault?: boolean;
-  /** false = agent is hidden from the registry */
-  enabled?: boolean;
+  /**
+   * Who can see and run this agent. Omitted means `visible`.
+   * - `visible`: listed in the subagent_start description and spawnable.
+   * - `hidden`: spawnable by name, but left out of the list, for agents a
+   *   skill or another agent names explicitly.
+   * - `disabled`: refused everywhere.
+   */
+  visibility?: AgentVisibility;
   /** Where this agent was loaded from */
   source?: "default" | "project" | "global";
   /** Path of the winning custom-agent definition, when loaded from a file. */

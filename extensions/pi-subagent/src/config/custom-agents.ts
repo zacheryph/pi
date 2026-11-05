@@ -9,7 +9,7 @@ import { isLockableField, type LockDeclaration } from "#src/config/invocation-co
 import { parseThinkingLevel, thinkingLevelError } from "#src/config/thinking-level";
 import { parseFragments } from "#src/config/prompt-fragments";
 import { debugLog } from "#src/debug";
-import type { AgentConfig } from "#src/types";
+import { AGENT_VISIBILITIES, type AgentConfig, type AgentVisibility } from "#src/types";
 
 /**
  * Scan for custom agent .md files from multiple locations.
@@ -72,7 +72,7 @@ function loadFromDir(
       promptMode: fm.prompt_mode === "replace" ? "replace" : "append",
       inheritContext: fm.inherit_context != null ? fm.inherit_context === true : undefined,
       locked: lockDeclaration(fm.locked, name),
-      enabled: fm.enabled !== false, // default true; explicitly false disables
+      visibility: visibility(fm.visibility, name),
       source,
       sourcePath: join(dir, file),
     });
@@ -124,6 +124,19 @@ function thinkingLevel(val: unknown, agentName: string): AgentConfig["thinking"]
     debugLog(`agent ${agentName} frontmatter thinking`, thinkingLevelError(val));
   }
   return level;
+}
+
+/** Extract a visibility, dropping an unrecognized one so the agent stays visible. */
+function visibility(val: unknown, agentName: string): AgentVisibility | undefined {
+  if (val == null) return undefined;
+  const match = AGENT_VISIBILITIES.find((v) => v === val);
+  if (match === undefined) {
+    debugLog(
+      `agent ${agentName} frontmatter visibility`,
+      `unknown value: ${JSON.stringify(val)} (expected ${AGENT_VISIBILITIES.join(", ")})`,
+    );
+  }
+  return match;
 }
 
 /** Extract a non-negative integer or undefined. 0 means unlimited for max_turns. */

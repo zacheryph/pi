@@ -85,7 +85,7 @@ export class AgentTool {
     private readonly agentDir: string,
   ) {
     this.typeListText = buildTypeListText(registry, agentDir);
-    this.availableTypesText = registry.getAvailableTypes().join(", ");
+    this.availableTypesText = registry.getListedTypes().join(", ");
     this.agentGuidelines = buildAgentGuidelines(registry);
   }
 

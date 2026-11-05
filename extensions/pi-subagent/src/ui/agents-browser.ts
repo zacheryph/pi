@@ -4,11 +4,12 @@ import type { AgentTypeRegistry } from "#src/config/agent-types";
 import { LOCKABLE_FIELDS, type LockableField } from "#src/config/invocation-config";
 import { composeAgentInstructions, parseFragments } from "#src/config/prompt-fragments";
 import { normalizeMaxTurns } from "#src/lifecycle/turn-limits";
-import type { AgentConfig } from "#src/types";
+import type { AgentConfig, AgentVisibility } from "#src/types";
 import {
   showExplorer,
   type Block,
   type ExplorerView,
+  type Tone,
 } from "../../../../packages/pi-ui/src/index.ts";
 
 export type AgentsBrowserRegistry = Pick<
@@ -28,6 +29,12 @@ type BrowserContext = Pick<ExtensionContext, "mode" | "hasUI" | "ui"> &
   Partial<Pick<ExtensionContext, "isProjectTrusted">>;
 
 const UNAVAILABLE = "Agent definitions browser requires TUI mode.";
+
+const VISIBILITY_TONE: Record<AgentVisibility, Tone> = {
+  visible: "success",
+  hidden: "muted",
+  disabled: "dim",
+};
 
 /** Command entry point. Reads the current registry once; never reloads or mutates it. */
 export async function showAgentsBrowser(
@@ -67,15 +74,15 @@ export function buildAgentsView(
       .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
       .map((name) => {
         const config = registry.resolveAgentConfig(name);
-        const enabled = config.enabled !== false;
+        const visibility = config.visibility ?? "visible";
         return {
           id: name,
           label: name,
           badge: {
-            text: enabled ? "[enabled]" : "[disabled]",
-            tone: enabled ? "success" : "dim",
+            text: `[${visibility}]`,
+            tone: VISIBILITY_TONE[visibility],
           },
-          search: `${enabled ? "enabled" : "disabled"} ${config.description}`,
+          search: `${visibility} ${config.description}`,
           detail: agentDetail(config, registry.getToolNamesForType(name), defaults, options),
         };
       }),
@@ -121,7 +128,7 @@ function agentDetail(
       fields: [
         ["Name", config.name],
         ["Display name", config.displayName ?? config.name],
-        ["Enabled", String(config.enabled !== false)],
+        ["Visibility", config.visibility ?? "visible"],
         ["Source", config.source ?? (config.isDefault ? "default (embedded)" : "(not available)")],
         ["Source path", config.sourcePath ?? (config.isDefault ? "(embedded)" : "(not available)")],
         ["Tools", tools.length ? tools.join(", ") : "(none)"],

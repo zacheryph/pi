@@ -219,7 +219,9 @@ describe("SubagentManager", () => {
       });
 
       it("throws for a known-but-disabled type", () => {
-        ({ manager } = createManager({ registry: registryWith("Plan", { enabled: false }) }));
+        ({ manager } = createManager({
+          registry: registryWith("Plan", { visibility: "disabled" }),
+        }));
 
         expect(() =>
           manager.spawn(STUB_SNAPSHOT, "Plan", "test", {
@@ -230,7 +232,9 @@ describe("SubagentManager", () => {
       });
 
       it("reports the canonical casing in the disabled-agent error for case-insensitive input", () => {
-        ({ manager } = createManager({ registry: registryWith("Plan", { enabled: false }) }));
+        ({ manager } = createManager({
+          registry: registryWith("Plan", { visibility: "disabled" }),
+        }));
 
         expect(() =>
           manager.spawn(STUB_SNAPSHOT, "plan", "test", {
@@ -240,8 +244,21 @@ describe("SubagentManager", () => {
         ).toThrow('Agent type "Plan" is disabled');
       });
 
+      it("spawns a hidden type by name", () => {
+        ({ manager } = createManager({ registry: registryWith("Plan", { visibility: "hidden" }) }));
+
+        const id = manager.spawn(STUB_SNAPSHOT, "Plan", "test", {
+          description: "d",
+          background: true,
+        });
+
+        expect(manager.getRecord(id)!.type).toBe("Plan");
+      });
+
       it("does not create a record for a rejected spawn", () => {
-        ({ manager } = createManager({ registry: registryWith("Plan", { enabled: false }) }));
+        ({ manager } = createManager({
+          registry: registryWith("Plan", { visibility: "disabled" }),
+        }));
 
         expect(() =>
           manager.spawn(STUB_SNAPSHOT, "Plan", "test", {
@@ -324,7 +341,9 @@ describe("SubagentManager", () => {
       });
 
       it("rejects for a known-but-disabled type", async () => {
-        ({ manager } = createManager({ registry: registryWith("Plan", { enabled: false }) }));
+        ({ manager } = createManager({
+          registry: registryWith("Plan", { visibility: "disabled" }),
+        }));
 
         await expect(
           manager.spawnAndWait(STUB_SNAPSHOT, "Plan", "test", { description: "d" }),
@@ -2310,7 +2329,7 @@ describe("SubagentManager — cold resume", () => {
       const { factory } = createSessionFactory();
       ({ manager } = createManager({
         createSubagentSession: factory,
-        registry: registryWith("custom", { enabled: false }),
+        registry: registryWith("custom", { visibility: "disabled" }),
         savedAgents: savedAgents(savedRecord({ type: "custom" })),
       }));
       expect(await manager.resume("saved-1", "continue")).toMatchObject({
