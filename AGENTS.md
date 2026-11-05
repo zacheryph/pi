@@ -16,6 +16,8 @@ less the `pi-` prefix: `pi-subagent` registers `/subagent:agents` and
 `/subagent:settings`, `pi-git` registers `/git:prs`. An extension's main command
 may be the bare name (`/stash`, `/todo`); every other command is
 `<name>:<action>`. Command names are lowercase.
+`npm run verify:bundle` enforces this. The only exception, `pi-system-insights`
+using `/system:*`, is listed in `scripts/command-names.mjs`.
 
 ## Vendored extensions
 
