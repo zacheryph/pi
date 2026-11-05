@@ -3,6 +3,16 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-05: Remove members nothing reads
+
+- `getSessionTokens`, `formatSessionTokens`, `BUILTIN_TOOL_NAMES`,
+  `AgentTypeRegistry.getAvailableTypes`, `SubagentSession.getSessionStats`
+  and `messages`, `Subagent.messages` and `sessionReleased`: no production
+  caller. Their tests go too; the `getAvailableTypes` hidden-agent case moves
+  to `isValidType`.
+- `Subagent` keeps one optional `released` snapshot of the disposed session
+  instead of three captured fields and a flag.
+
 ## 2026-11-05: Drop the tests of test helpers
 
 `test/helpers/` carried a test file per fixture (803 lines) asserting that a

@@ -843,21 +843,6 @@ describe("SubagentSession — delegate methods", () => {
     expect(typeof unsub).toBe("function");
   });
 
-  it("getSessionStats delegates to the underlying session", () => {
-    const { session } = createSession("X");
-    const { sub } = makeSubagentSession(session);
-    const stats = sub.getSessionStats();
-    expect(session.getSessionStats).toHaveBeenCalled();
-    expect(stats.tokens.input).toBe(100);
-  });
-
-  it("messages returns the underlying session messages", () => {
-    const { session } = createSession("X");
-    session.messages.push({ role: "user", content: "hi" });
-    const { sub } = makeSubagentSession(session);
-    expect(sub.messages).toBe(session.messages);
-  });
-
   it("agentMessages returns the underlying session messages typed", () => {
     const { session } = createSession("X");
     session.messages.push({ role: "user", content: "hi" });

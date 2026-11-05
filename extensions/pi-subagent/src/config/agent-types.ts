@@ -55,13 +55,6 @@ export class AgentTypeRegistry implements AgentConfigLookup {
     return this.resolveKey(name);
   }
 
-  /** Get every type that can be spawned: visible and hidden, not disabled. */
-  getAvailableTypes(): string[] {
-    return [...this.agents.entries()]
-      .filter(([, config]) => isSpawnable(config))
-      .map(([name]) => name);
-  }
-
   /** Get the types the subagent_start description lists: visible only. */
   getListedTypes(): string[] {
     return [...this.agents.entries()]
@@ -132,6 +125,3 @@ export function isSpawnable(config: Pick<AgentConfig, "visibility" | "definition
 export function isListed(config: Pick<AgentConfig, "visibility" | "definitionError">): boolean {
   return isSpawnable(config) && (config.visibility ?? "visible") === "visible";
 }
-
-/** All known built-in tool names. */
-export const BUILTIN_TOOL_NAMES: string[] = ["read", "bash", "edit", "write", "grep", "find", "ls"];

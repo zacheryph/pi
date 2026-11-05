@@ -239,23 +239,19 @@ export class Subagent {
 
   subagentSession?: SubagentSession;
 
-  // Retained after releaseSession() disposes the heavy session, so outputFile
-  // (transcript pointer) survives and the resume path can tell "released" from
-  // "never had a session."
-  private _releasedOutputFile?: string;
-  private _releasedModel?: Model<any>;
-  private _releasedThinkingLevel?: ThinkingLevel;
-  private _sessionReleased = false;
+  /**
+   * What the session knew, captured when releaseSession() disposed it (or from a
+   * saved entry), so the transcript pointer survives and the resume path can
+   * tell "released" from "never had a session". Cleared when a session is
+   * attached again.
+   */
+  private released?: ReleasedSessionInfo;
   /** A reopened transcript must not share its session ID with a dying session. */
   private sessionRelease?: Promise<void>;
   /** A stopped rebuild still owns the transcript until its setup has unwound. */
   private reopening = false;
   /** Resolved ceiling carried across cold resumes, including 0 for unlimited. */
   private resumeMaxTurns?: number;
-  /** True once releaseSession() has freed a live session (distinct from never having had one). */
-  get sessionReleased(): boolean {
-    return this._sessionReleased;
-  }
 
   // Steer buffer — messages queued before the session is ready
   private _pendingSteers: string[] = [];
@@ -269,7 +265,7 @@ export class Subagent {
    * Falls back to the path captured at releaseSession() once the live session is gone.
    */
   get outputFile(): string | undefined {
-    return this.subagentSession?.outputFile ?? this._releasedOutputFile;
+    return this.subagentSession?.outputFile ?? this.released?.outputFile;
   }
 
   /**
@@ -278,14 +274,14 @@ export class Subagent {
    * Undefined for an inherited model until the session exists.
    */
   get model(): Model<any> | undefined {
-    return this.subagentSession?.model ?? this._releasedModel ?? this.execution.model;
+    return this.subagentSession?.model ?? this.released?.model ?? this.execution.model;
   }
 
   /** The thinking level this agent runs at, resolved in the same order as `model`. */
   get thinkingLevel(): ThinkingLevel | undefined {
     return (
       this.subagentSession?.thinkingLevel ??
-      this._releasedThinkingLevel ??
+      this.released?.thinkingLevel ??
       this.execution.thinkingLevel
     );
   }
@@ -329,7 +325,7 @@ export class Subagent {
     // answer, which is the truth about it.
     if (this.isRunning() || this.reopening) return "still-running";
     if (this.isSessionReady()) return undefined;
-    if (!this._sessionReleased) return "no-session";
+    if (!this.released) return "no-session";
     const { checkReopen } = this.execution;
     return checkReopen ? checkReopen(this) : "session-released";
   }
@@ -370,11 +366,6 @@ export class Subagent {
     return this.subagentSession?.subscribe(fn);
   }
 
-  /** The session's message history, or an empty array if no session. */
-  get messages(): readonly unknown[] {
-    return this.subagentSession?.messages ?? [];
-  }
-
   /** The session's message history typed for Pi's session-rendering machinery, or empty if no session. */
   get agentMessages(): readonly SessionMessage[] {
     return this.subagentSession?.agentMessages ?? [];
@@ -400,13 +391,7 @@ export class Subagent {
 
     // Execution machinery — a single mandatory collaborator
     this.execution = init.execution;
-
-    if (init.released) {
-      this._releasedOutputFile = init.released.outputFile;
-      this._releasedModel = init.released.model;
-      this._releasedThinkingLevel = init.released.thinkingLevel;
-      this._sessionReleased = true;
-    }
+    this.released = init.released;
   }
 
   /**
@@ -488,7 +473,7 @@ export class Subagent {
   /** Adopt a new or reopened session: deliver buffered steers, observe it, announce it. */
   private attachSession(session: SubagentSession): void {
     this.subagentSession = session;
-    this._sessionReleased = false;
+    this.released = undefined;
     this.flushPendingSteers();
     this.observeSession(session);
     this.execution.observer?.onSessionCreated?.(this);
@@ -586,7 +571,7 @@ export class Subagent {
    */
   resume(prompt: string, signal?: AbortSignal): Promise<void> {
     const subagentSession = this.subagentSession;
-    if (!subagentSession && !(this._sessionReleased && this.resumeRefusal === undefined)) {
+    if (!subagentSession && !(this.released && this.resumeRefusal === undefined)) {
       // Rejection, not a throw: this method is not async, and a synchronous
       // throw would escape a caller's `.rejects` assertion.
       return Promise.reject(new Error("Subagent not configured for resume — missing session"));
@@ -775,11 +760,12 @@ export class Subagent {
   async releaseSession(): Promise<void> {
     const session = this.subagentSession;
     if (!session) return;
-    this._releasedOutputFile = session.outputFile;
-    this._releasedModel = session.model;
-    this._releasedThinkingLevel = session.thinkingLevel;
+    this.released = {
+      outputFile: session.outputFile,
+      model: session.model,
+      thinkingLevel: session.thinkingLevel,
+    };
     this.subagentSession = undefined;
-    this._sessionReleased = true;
     this.sessionRelease = disposeQuietly(session, "child session release");
     await this.sessionRelease;
     this.sessionRelease = undefined;

@@ -133,43 +133,12 @@ describe("AgentTypeRegistry", () => {
     });
   });
 
-  describe("getAvailableTypes", () => {
-    it("includes all enabled defaults", () => {
-      const registry = makeRegistry();
-      const types = registry.getAvailableTypes();
-      expect(types).toContain("general-purpose");
-      expect(types).toContain("Explore");
-      expect(types).toContain("Plan");
-    });
-
-    it("excludes disabled agents", () => {
-      const registry = makeRegistry(
-        new Map([["Plan", makeAgentConfig({ name: "Plan", visibility: "disabled" })]]),
-      );
-      expect(registry.getAvailableTypes()).not.toContain("Plan");
-    });
-
-    it("includes user agents", () => {
-      const registry = makeRegistry(new Map([["auditor", makeAgentConfig({ name: "auditor" })]]));
-      expect(registry.getAvailableTypes()).toContain("auditor");
-    });
-
-    it("includes hidden agents, which spawn by name", () => {
-      const registry = makeRegistry(
-        new Map([["auditor", makeAgentConfig({ name: "auditor", visibility: "hidden" })]]),
-      );
-      expect(registry.getAvailableTypes()).toContain("auditor");
-      expect(registry.isValidType("auditor")).toBe(true);
-    });
-  });
-
   describe("an agent whose file does not parse", () => {
     const broken = makeAgentConfig({ name: "auditor", definitionError: "invalid frontmatter" });
 
     it("is not valid, available or listed", () => {
       const registry = makeRegistry(new Map([["auditor", broken]]));
       expect(registry.isValidType("auditor")).toBe(false);
-      expect(registry.getAvailableTypes()).not.toContain("auditor");
       expect(registry.getListedTypes()).not.toContain("auditor");
     });
 
@@ -232,6 +201,17 @@ describe("AgentTypeRegistry", () => {
         new Map([["Plan", makeAgentConfig({ name: "Plan", visibility: "disabled" })]]),
       );
       expect(registry.isValidType("Plan")).toBe(false);
+    });
+
+    it("returns true for user agents, and for hidden ones, which spawn by name", () => {
+      const registry = makeRegistry(
+        new Map([
+          ["auditor", makeAgentConfig({ name: "auditor" })],
+          ["scout", makeAgentConfig({ name: "scout", visibility: "hidden" })],
+        ]),
+      );
+      expect(registry.isValidType("auditor")).toBe(true);
+      expect(registry.isValidType("scout")).toBe(true);
     });
 
     it("returns false for unknown types", () => {
@@ -302,7 +282,7 @@ describe("AgentTypeRegistry", () => {
       expect(registry.getToolNamesForType("auditor")).toEqual(["read", "grep"]);
     });
 
-    it("returns BUILTIN_TOOL_NAMES for unknown type", () => {
+    it("selects all tools for an unknown type", () => {
       const registry = makeRegistry();
       const names = registry.getToolNamesForType("nonexistent");
       expect(names).toEqual(["all"]);
@@ -429,7 +409,6 @@ describe("AgentTypeRegistry", () => {
       const registry = makeRegistry(new Map([["orchestrator", custom]]));
       expect(registry.resolveAgentConfig("orchestrator")).toBe(custom);
       expect(registry.isValidType("orchestrator")).toBe(false);
-      expect(registry.getAvailableTypes()).not.toContain("orchestrator");
     });
   });
 

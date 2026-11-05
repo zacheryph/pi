@@ -1928,7 +1928,7 @@ describe("SubagentManager — cold resume", () => {
       expect(second.resumeTurnLoop).toHaveBeenCalledWith("continue", expect.anything());
       expect(record.status).toBe("completed");
       expect(record.result).toBe("resumed");
-      expect(record.sessionReleased).toBe(false);
+      expect(record.isSessionReady()).toBe(true);
       expect(record.outputFile).toBe(transcript);
     });
 

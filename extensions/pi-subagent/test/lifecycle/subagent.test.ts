@@ -306,18 +306,6 @@ describe("Subagent — session-encapsulation methods", () => {
     });
   });
 
-  describe("messages", () => {
-    it("returns empty array when no session", () => {
-      const agent = makeSubagent();
-      expect(agent.messages).toEqual([]);
-    });
-
-    it("delegates to SubagentSession.messages when session is ready", () => {
-      const { agent } = makeReadySubagent();
-      expect(agent.messages).toEqual([{ role: "user", content: "hi" }]);
-    });
-  });
-
   describe("agentMessages", () => {
     it("returns empty array when no session", () => {
       const agent = makeSubagent();
@@ -507,14 +495,14 @@ describe("Subagent — releaseSession", () => {
     expect(record.outputFile).toBe("/path/to/session.jsonl");
   });
 
-  it("sets sessionReleased (default false)", async () => {
+  it("marks the record released, distinct from never having had a session", async () => {
     const record = makeSubagent();
-    expect(record.sessionReleased).toBe(false);
+    expect(record.resumeRefusal).toBe("no-session");
     record.subagentSession = toSubagentSession(
       createSubagentSessionStub(createMockSession(), "/path/to/session.jsonl"),
     );
     await record.releaseSession();
-    expect(record.sessionReleased).toBe(true);
+    expect(record.resumeRefusal).toBe("session-released");
   });
 
   it("clears the session before awaiting teardown, so a racing sweep releases once", async () => {
@@ -558,13 +546,13 @@ describe("Subagent — releaseSession", () => {
     stub.dispose = vi.fn((): Promise<void> => Promise.reject(new Error("teardown failed")));
     record.subagentSession = toSubagentSession(stub);
     await expect(record.releaseSession()).resolves.toBeUndefined();
-    expect(record.sessionReleased).toBe(true);
+    expect(record.resumeRefusal).toBe("session-released");
   });
 
-  it("is a no-op when no session was created (sessionReleased stays false)", async () => {
+  it("is a no-op when no session was created", async () => {
     const record = makeSubagent();
     await expect(record.releaseSession()).resolves.toBeUndefined();
-    expect(record.sessionReleased).toBe(false);
+    expect(record.resumeRefusal).toBe("no-session");
   });
 });
 
