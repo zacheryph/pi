@@ -473,7 +473,9 @@ own modules when loading extensions.
 
 GitHub Actions runs `check` and `test` in parallel jobs per extension workspace,
 plus `verify:bundle` whenever any extension is selected.
-A repository-wide job always checks formatting and lint, including scripts. Pull requests
+A repository-wide job always checks formatting, lint and types of the repository
+scripts (`scripts/` and `.agents/skills/*/scripts/`, type-checked from JSDoc with
+`checkJs`). Pull requests
 select extensions with changes under their directory; changes to root
 manifests/lockfiles, `.nvmrc`, shared TypeScript or Oxc settings, workflows, or scripts
 select all extensions. Pushes to `main` always check and test all extensions.

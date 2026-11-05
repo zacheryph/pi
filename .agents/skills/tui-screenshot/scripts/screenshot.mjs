@@ -70,9 +70,9 @@ if (!existsSync(values.pi)) {
   process.exit(2);
 }
 
-const actions = tokens
-  .filter((t) => t.kind === "option" && ACTIONS.includes(t.name))
-  .map((t) => ({ name: t.name, value: t.value }));
+const actions = tokens.flatMap((t) =>
+  t.kind === "option" && ACTIONS.includes(t.name) ? [{ name: t.name, value: t.value ?? "" }] : [],
+);
 const timeout = Number(values.timeout);
 const quote = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

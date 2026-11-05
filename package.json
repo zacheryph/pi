@@ -23,7 +23,8 @@
     "format:check": "oxfmt --check .",
     "lint": "oxlint --deny-warnings .",
     "lint:fix": "oxlint --fix .",
-    "typecheck": "tsc --noEmit && npm run typecheck --workspaces --if-present",
+    "typecheck": "npm run typecheck:scripts && npm run typecheck --workspaces --if-present",
+    "typecheck:scripts": "tsc --noEmit",
     "test": "node --test scripts/*.test.mjs && npm run test --workspaces --if-present",
     "verify:bundle": "node scripts/verify-bundle.mjs"
   },
