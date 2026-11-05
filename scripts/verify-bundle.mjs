@@ -97,10 +97,12 @@ try {
   assert.deepEqual(diagnostics, [], "Bundle skills must load without diagnostics");
   const skillNames = skills.map((skill) => skill.name);
   assert.equal(new Set(skillNames).size, skillNames.length, "Skill names must be unique");
-  // Every directory under skills/ must load as a skill of the same name.
-  const bundledSkills = readdirSync(join(root, "skills"), { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => entry.name);
+  // Every directory under each manifest skills root must load as a skill of the same name.
+  const bundledSkills = manifest.pi.skills.flatMap((dir) =>
+    readdirSync(resolve(root, dir), { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name),
+  );
   for (const name of bundledSkills) {
     assert.ok(skillNames.includes(name), `Missing skill: ${name}`);
   }

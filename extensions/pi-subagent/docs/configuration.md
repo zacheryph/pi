@@ -160,6 +160,7 @@ The reasoning is recorded in [ADR 0009](decisions/0009-portable-inheritance-is-p
 ## Custom Agents
 
 Define custom agent types by creating `.md` files.
+The bundled `creating-agents` skill walks through writing one.
 The filename becomes the agent type name.
 Any name is allowed — using a default agent's name overrides it.
 

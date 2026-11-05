@@ -50,7 +50,8 @@
       "./extensions/pi-ask/src/index.ts"
     ],
     "skills": [
-      "./skills"
+      "./skills",
+      "./extensions/pi-subagent/skills"
     ]
   },
   "engines": {
