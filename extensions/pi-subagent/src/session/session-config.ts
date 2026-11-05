@@ -175,6 +175,10 @@ export function assembleSessionConfig(
   io: AssemblerIO,
 ): SessionConfig {
   const agentConfig = options.agentConfig ?? registry.resolveAgentConfig(type);
+  // A queued agent may pick up a broken definition after the spawn-time check.
+  if (agentConfig.definitionError !== undefined) {
+    throw new Error(`Agent type "${agentConfig.name}" cannot load: ${agentConfig.definitionError}`);
+  }
   // A legacy/no-fragment queued spawn may see a registry reload at run-start.
   // Never silently omit newly declared fragments or read them in this assembler.
   if (!options.agentConfig && (agentConfig.fragmentError || agentConfig.fragments?.length)) {
