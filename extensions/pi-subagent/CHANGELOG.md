@@ -3,6 +3,14 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-05: Drop the tests of test helpers
+
+`test/helpers/` carried a test file per fixture (803 lines) asserting that a
+stub is a stub and a default is a default. Every helper is exercised by the
+tests that use it, which fail when a fixture breaks.
+
+- Delete `test/helpers/*.test.ts`.
+
 ## 2026-11-05: Remove the typed service API and the workspace-provider seam
 
 No extension in this repository called `getSubagentsService()`; dashboard, git,
