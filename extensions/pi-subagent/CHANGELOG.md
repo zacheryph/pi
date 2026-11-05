@@ -3,6 +3,20 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-05: Fold duplicated paths and tests
+
+- `SubagentSession.runTurnLoop` and `resumeTurnLoop` share one turn driver;
+  only the initial run emits `completed`. `TurnLoopOptions` extends
+  `ResumeTurnLoopOptions` instead of restating it.
+- `settings.ts`: one `Toast` type for every mutator (the settings UI reuses
+  it) and one integer-range check for every numeric key in `sanitize`.
+- Drop `createSubagentRuntime()`, a wrapper around `new SubagentRuntime()`,
+  and the `handlers/index.ts` barrel.
+- Tests: merge `runtime.test.ts`'s three set/clear describes into one, and
+  the two ask-back describes in `subagent.test.ts`, dropping the case they
+  both covered. Move `display`, `widget-renderer` and `agent-conversation`
+  tests next to the modules they cover.
+
 ## 2026-11-05: Remove members nothing reads
 
 - `getSessionTokens`, `formatSessionTokens`, `BUILTIN_TOOL_NAMES`,

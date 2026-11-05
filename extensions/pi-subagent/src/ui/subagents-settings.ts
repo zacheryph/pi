@@ -1,12 +1,6 @@
-import { type OverlayWidth, OVERLAY_WIDTH_PRESETS } from "#src/settings";
+import { type OverlayWidth, OVERLAY_WIDTH_PRESETS, type Toast } from "#src/settings";
 
 // ---- Narrow interfaces ----
-
-/** The toast a settings mutation returns for the UI to display. */
-export interface SettingsToast {
-  message: string;
-  level: "info" | "warning";
-}
 
 /** Narrow settings interface required by the subagent:settings command. */
 export interface SubagentsSettingsManager {
@@ -20,16 +14,16 @@ export interface SubagentsSettingsManager {
   readonly overlayWidth: OverlayWidth;
   readonly overlayDefaultOpen: boolean;
   readonly overlayShowThinking: boolean;
-  applyOverlayWidth(width: OverlayWidth): SettingsToast;
-  toggleOverlayDefaultOpen(): SettingsToast;
-  toggleOverlayShowThinking(): SettingsToast;
-  applyMaxConcurrent(n: number): SettingsToast;
-  applyDefaultMaxTurns(n: number): SettingsToast;
-  applyWrapUpTurns(n: number): SettingsToast;
-  applyConsumedSessionRetentionMinutes(n: number): SettingsToast;
-  applyUnconsumedSessionRetentionMinutes(n: number): SettingsToast;
-  toggleAbortAllOnInterrupt(): SettingsToast;
-  toggleMidRunUpdates(): SettingsToast;
+  applyOverlayWidth(width: OverlayWidth): Toast;
+  toggleOverlayDefaultOpen(): Toast;
+  toggleOverlayShowThinking(): Toast;
+  applyMaxConcurrent(n: number): Toast;
+  applyDefaultMaxTurns(n: number): Toast;
+  applyWrapUpTurns(n: number): Toast;
+  applyConsumedSessionRetentionMinutes(n: number): Toast;
+  applyUnconsumedSessionRetentionMinutes(n: number): Toast;
+  toggleAbortAllOnInterrupt(): Toast;
+  toggleMidRunUpdates(): Toast;
 }
 
 /** Narrow UI interface — only the ctx.ui methods the settings handler calls. */
@@ -61,14 +55,14 @@ interface NumericSettingDescriptor extends SettingDescriptorBase {
   /** Warning shown when the parsed value is below the minimum. */
   validationMessage: string;
   /** Applies the validated value and returns the toast to display. */
-  apply: (settings: SubagentsSettingsManager, n: number) => SettingsToast;
+  apply: (settings: SubagentsSettingsManager, n: number) => Toast;
 }
 
 /** Describes one boolean setting, flipped directly from the select list. */
 interface ToggleSettingDescriptor extends SettingDescriptorBase {
   kind: "toggle";
   /** Flips the setting and returns the toast to display. */
-  toggle: (settings: SubagentsSettingsManager) => SettingsToast;
+  toggle: (settings: SubagentsSettingsManager) => Toast;
 }
 
 /** Describes an enum setting selected from a fixed list, never freeform input. */
@@ -76,7 +70,7 @@ interface EnumSettingDescriptor extends SettingDescriptorBase {
   kind: "enum";
   selectTitle: string;
   choices: readonly { value: OverlayWidth; label: string }[];
-  apply: (settings: SubagentsSettingsManager, value: OverlayWidth) => SettingsToast;
+  apply: (settings: SubagentsSettingsManager, value: OverlayWidth) => Toast;
 }
 
 type SettingDescriptor = NumericSettingDescriptor | ToggleSettingDescriptor | EnumSettingDescriptor;

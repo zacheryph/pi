@@ -113,6 +113,12 @@ export interface SettingsSnapshot {
   promptInheritance?: Record<string, PromptInheritance>;
 }
 
+/** What a settings change tells the user, and how loudly. */
+export interface Toast {
+  message: string;
+  level: "info" | "warning";
+}
+
 /** Emit callback — a subset of `pi.events.emit` to keep helpers testable. */
 export type SettingsEmit = (event: string, payload: unknown) => void;
 
@@ -310,13 +316,13 @@ export class SettingsManager {
   }
 
   /** Set the overlay width preset, persist, and return the toast. */
-  applyOverlayWidth(width: OverlayWidth): { message: string; level: "info" | "warning" } {
+  applyOverlayWidth(width: OverlayWidth): Toast {
     this._overlayWidth = width;
     return this.saveAndNotify(`Overlay width set to ${width}`);
   }
 
   /** Filter live without discarding retained thinking; existing settings event repaints the overlay. */
-  toggleOverlayShowThinking(): { message: string; level: "info" | "warning" } {
+  toggleOverlayShowThinking(): Toast {
     this._overlayShowThinking = !this._overlayShowThinking;
     return this.saveAndNotify(
       `Overlay thinking: ${this._overlayShowThinking ? "shown" : "hidden"}`,
@@ -324,7 +330,7 @@ export class SettingsManager {
   }
 
   /** Flip default visibility; explicit session show/hide still takes precedence. */
-  toggleOverlayDefaultOpen(): { message: string; level: "info" | "warning" } {
+  toggleOverlayDefaultOpen(): Toast {
     this._overlayDefaultOpen = !this._overlayDefaultOpen;
     return this.saveAndNotify(
       `Overlay default visibility: ${this._overlayDefaultOpen ? "shown" : "hidden"} (before explicit show/hide this session)`,
@@ -335,7 +341,7 @@ export class SettingsManager {
    * Set maxConcurrent, notify interested parties, persist, and return the toast.
    * Owns the full consequence chain so callers just say what they want.
    */
-  applyMaxConcurrent(n: number): { message: string; level: "info" | "warning" } {
+  applyMaxConcurrent(n: number): Toast {
     this.maxConcurrent = n; // setter normalizes: max(1, n)
     this.onMaxConcurrentChanged?.();
     return this.saveAndNotify(`Max concurrency set to ${this.maxConcurrent}`);
@@ -345,7 +351,7 @@ export class SettingsManager {
    * Set defaultMaxTurns, persist, and return the toast.
    * Pass 0 for unlimited (maps to undefined internally).
    */
-  applyDefaultMaxTurns(n: number): { message: string; level: "info" | "warning" } {
+  applyDefaultMaxTurns(n: number): Toast {
     this.defaultMaxTurns = n === 0 ? undefined : n; // setter normalizes further
     const label = this.defaultMaxTurns == null ? "unlimited" : String(this.defaultMaxTurns);
     return this.saveAndNotify(`Default max turns set to ${label}`);
@@ -354,13 +360,13 @@ export class SettingsManager {
   /**
    * Set wrapUpTurns, persist, and return the toast.
    */
-  applyWrapUpTurns(n: number): { message: string; level: "info" | "warning" } {
+  applyWrapUpTurns(n: number): Toast {
     this.wrapUpTurns = n; // setter normalizes: max(1, n)
     return this.saveAndNotify(`Wrap-up turns set to ${this.wrapUpTurns}`);
   }
 
   /** Set the consumed-session retention window (minutes), persist, and return the toast. */
-  applyConsumedSessionRetentionMinutes(n: number): { message: string; level: "info" | "warning" } {
+  applyConsumedSessionRetentionMinutes(n: number): Toast {
     this.consumedSessionRetentionMinutes = n; // setter normalizes: clamp [1, ceiling]
     return this.saveAndNotify(
       `Consumed-session retention set to ${this.consumedSessionRetentionMinutes} min`,
@@ -368,10 +374,7 @@ export class SettingsManager {
   }
 
   /** Set the unconsumed-session retention window (minutes), persist, and return the toast. */
-  applyUnconsumedSessionRetentionMinutes(n: number): {
-    message: string;
-    level: "info" | "warning";
-  } {
+  applyUnconsumedSessionRetentionMinutes(n: number): Toast {
     this.unconsumedSessionRetentionMinutes = n; // setter normalizes: clamp [1, ceiling]
     return this.saveAndNotify(
       `Unconsumed-session retention set to ${this.unconsumedSessionRetentionMinutes} min`,
@@ -382,7 +385,7 @@ export class SettingsManager {
    * Flip whether a parent interrupt (ESC) aborts every subagent, persist, and
    * return the toast. The manager owns the negation so callers just say "flip it".
    */
-  toggleAbortAllOnInterrupt(): { message: string; level: "info" | "warning" } {
+  toggleAbortAllOnInterrupt(): Toast {
     this._abortAllOnInterrupt = !this._abortAllOnInterrupt;
     return this.saveAndNotify(
       `Abort all subagents on ESC: ${this._abortAllOnInterrupt ? "on" : "off"}`,
@@ -397,7 +400,7 @@ export class SettingsManager {
    * Flip whether a background child may interrupt the parent with a mid-run
    * update, persist, and return the toast.
    */
-  toggleMidRunUpdates(): { message: string; level: "info" | "warning" } {
+  toggleMidRunUpdates(): Toast {
     this._midRunUpdates = !this._midRunUpdates;
     return this.saveAndNotify(
       `Mid-run updates from background subagents: ${this._midRunUpdates ? "on" : "off"}`,
@@ -408,7 +411,7 @@ export class SettingsManager {
    * Persist the current snapshot, emit `subagent:settings:changed`,
    * and return the toast the UI should display.
    */
-  saveAndNotify(successMsg: string): { message: string; level: "info" | "warning" } {
+  saveAndNotify(successMsg: string): Toast {
     const snap = this.snapshot();
     const persisted = saveSettings(snap, this.cwd);
     this.emit("subagent:settings:changed", { settings: snap, persisted });
@@ -430,9 +433,9 @@ function clampRetentionMinutes(n: number): number {
   return Math.min(RETENTION_MINUTES_CEILING, Math.max(1, n));
 }
 
-/** True when a value is an integer minute count within the accepted retention range. */
-function isRetentionMinutes(n: unknown): n is number {
-  return Number.isInteger(n) && (n as number) >= 1 && (n as number) <= RETENTION_MINUTES_CEILING;
+/** True when a value is an integer within [min, max]. */
+function isIntegerIn(n: unknown, min: number, max: number): n is number {
+  return Number.isInteger(n) && (n as number) >= min && (n as number) <= max;
 }
 
 /**
@@ -460,34 +463,16 @@ function sanitize(raw: unknown): SubagentsSettings {
   if (isOverlayWidth(r.overlayWidth)) out.overlayWidth = r.overlayWidth;
   if (typeof r.overlayDefaultOpen === "boolean") out.overlayDefaultOpen = r.overlayDefaultOpen;
   if (typeof r.overlayShowThinking === "boolean") out.overlayShowThinking = r.overlayShowThinking;
-  if (
-    Number.isInteger(r.maxConcurrent) &&
-    (r.maxConcurrent as number) >= 1 &&
-    (r.maxConcurrent as number) <= MAX_CONCURRENT_CEILING
-  ) {
-    out.maxConcurrent = r.maxConcurrent as number;
-  }
-  if (
-    Number.isInteger(r.defaultMaxTurns) &&
-    (r.defaultMaxTurns as number) >= 0 &&
-    (r.defaultMaxTurns as number) <= MAX_TURNS_CEILING
-  ) {
-    out.defaultMaxTurns = r.defaultMaxTurns as number;
-  }
-  if (
-    Number.isInteger(r.wrapUpTurns) &&
-    (r.wrapUpTurns as number) >= 1 &&
-    (r.wrapUpTurns as number) <= WRAP_UP_TURNS_CEILING
-  ) {
-    out.wrapUpTurns = r.wrapUpTurns as number;
-  }
+  if (isIntegerIn(r.maxConcurrent, 1, MAX_CONCURRENT_CEILING)) out.maxConcurrent = r.maxConcurrent;
+  if (isIntegerIn(r.defaultMaxTurns, 0, MAX_TURNS_CEILING)) out.defaultMaxTurns = r.defaultMaxTurns;
+  if (isIntegerIn(r.wrapUpTurns, 1, WRAP_UP_TURNS_CEILING)) out.wrapUpTurns = r.wrapUpTurns;
   if ("graceTurns" in r) {
     out.legacyGraceTurns = true;
   }
-  if (isRetentionMinutes(r.consumedSessionRetentionMinutes)) {
+  if (isIntegerIn(r.consumedSessionRetentionMinutes, 1, RETENTION_MINUTES_CEILING)) {
     out.consumedSessionRetentionMinutes = r.consumedSessionRetentionMinutes;
   }
-  if (isRetentionMinutes(r.unconsumedSessionRetentionMinutes)) {
+  if (isIntegerIn(r.unconsumedSessionRetentionMinutes, 1, RETENTION_MINUTES_CEILING)) {
     out.unconsumedSessionRetentionMinutes = r.unconsumedSessionRetentionMinutes;
   }
   if (typeof r.abortAllOnInterrupt === "boolean") {
@@ -562,10 +547,7 @@ export function saveSettings(s: SubagentsSettings, cwd: string = process.cwd()):
  * routes the success/failure of `saveSettings` into the right message + level
  * so the UI layer (index.ts) stays a thin wire between input and notification.
  */
-export function persistToastFor(
-  successMsg: string,
-  persisted: boolean,
-): { message: string; level: "info" | "warning" } {
+export function persistToastFor(successMsg: string, persisted: boolean): Toast {
   return persisted
     ? { message: successMsg, level: "info" }
     : { message: `${successMsg} (session only; failed to persist)`, level: "warning" };

@@ -128,10 +128,6 @@ export interface AgentInvocation {
 }
 
 /**
- * Narrow shell-exec callback replacing `ExtensionAPI` in `detectEnv()`.
- * Matches the shape of `pi.exec()` without carrying an SDK dependency.
- */
-/**
  * Narrow interface capturing the ExtensionContext fields SubagentRuntime needs.
  * Avoids coupling runtime to the full SDK ExtensionContext surface (ISP).
  */

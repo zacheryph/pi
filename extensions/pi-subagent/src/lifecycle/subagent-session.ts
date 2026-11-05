@@ -48,16 +48,12 @@ export interface TurnLimitOptions {
 }
 
 /** Per-call options for the initial run's turn loop. */
-export interface TurnLoopOptions extends TurnLimitOptions {
-  signal?: AbortSignal;
-  /** Receives the budget at the start and after every turn boundary that changes it. */
-  onTurnBudget?: (budget: TurnBudget) => void;
-}
+export interface TurnLoopOptions extends TurnLimitOptions, ResumeTurnLoopOptions {}
 
 /** Per-call options for a resumed run's turn loop. */
 export interface ResumeTurnLoopOptions {
   signal?: AbortSignal;
-  /** Receives the resumed run's budget at the start and after every turn boundary that changes it. */
+  /** Receives the run's budget at the start and after every turn boundary that changes it. */
   onTurnBudget?: (budget: TurnBudget) => void;
 }
 
@@ -146,25 +142,48 @@ export class SubagentSession {
   }
 
   /** Drive the initial run's turn loop; emits `completed` on success. */
-  async runTurnLoop(prompt: string, opts: TurnLoopOptions): Promise<TurnLoopResult> {
-    const session = this._session;
+  runTurnLoop(prompt: string, opts: TurnLoopOptions): Promise<TurnLoopResult> {
     this.applyTurnLimits(opts);
+    // Prepend parent context if it was captured at spawn time.
+    const effectivePrompt = this.meta.parentContext ? this.meta.parentContext + prompt : prompt;
+    return this.driveTurns(effectivePrompt, opts, (turnBudget) => {
+      this.meta.lifecycle.completed({
+        sessionDir: this.meta.sessionDir,
+        agentName: this.meta.agentName,
+        turnBudget,
+      });
+    });
+  }
+
+  /**
+   * Re-prompt the same session (resume); does not emit `completed`.
+   *
+   * The resumed run gets a fresh budget under the initial run's limits: the
+   * parent asked for more work, and an exhausted run's remainder would be none.
+   */
+  resumeTurnLoop(prompt: string, opts: ResumeTurnLoopOptions): Promise<TurnLoopResult> {
+    return this.driveTurns(prompt, opts);
+  }
+
+  /**
+   * Prompt the session under a fresh turn budget and collect its answer.
+   * `onSucceeded` runs once the prompt resolved without a provider error.
+   */
+  private async driveTurns(
+    prompt: string,
+    opts: ResumeTurnLoopOptions,
+    onSucceeded?: (budget: TurnBudget) => void,
+  ): Promise<TurnLoopResult> {
+    const session = this._session;
     const tracker = new TurnBudgetTracker(this.turnLimits);
     const unsubTurns = this.enforceTurnBudget(tracker, opts.onTurnBudget);
     const collector = collectResponseText(session);
     const cleanupAbort = forwardAbortSignal(session, opts.signal);
 
-    // Prepend parent context if it was captured at spawn time.
-    const effectivePrompt = this.meta.parentContext ? this.meta.parentContext + prompt : prompt;
-
     try {
-      await session.prompt(effectivePrompt);
+      await session.prompt(prompt);
       failIfProviderErrored(this.turnFailure.getFailure());
-      this.meta.lifecycle.completed({
-        sessionDir: this.meta.sessionDir,
-        agentName: this.meta.agentName,
-        turnBudget: tracker.budget,
-      });
+      onSucceeded?.(tracker.budget);
     } finally {
       unsubTurns();
       collector.unsubscribe();
@@ -220,32 +239,6 @@ export class SubagentSession {
       },
       { triggerTurn: false },
     );
-  }
-
-  /**
-   * Re-prompt the same session (resume); does not emit `completed`.
-   *
-   * The resumed run gets a fresh budget under the initial run's limits: the
-   * parent asked for more work, and an exhausted run's remainder would be none.
-   */
-  async resumeTurnLoop(prompt: string, opts: ResumeTurnLoopOptions): Promise<TurnLoopResult> {
-    const session = this._session;
-    const tracker = new TurnBudgetTracker(this.turnLimits);
-    const unsubTurns = this.enforceTurnBudget(tracker, opts.onTurnBudget);
-    const collector = collectResponseText(session);
-    const cleanupAbort = forwardAbortSignal(session, opts.signal);
-
-    try {
-      await session.prompt(prompt);
-      failIfProviderErrored(this.turnFailure.getFailure());
-    } finally {
-      unsubTurns();
-      collector.unsubscribe();
-      cleanupAbort();
-    }
-
-    const responseText = collector.getText().trim() || getLastAssistantText(session);
-    return { responseText, turnBudget: tracker.budget };
   }
 
   /** Deliver a steer to the live session. */
