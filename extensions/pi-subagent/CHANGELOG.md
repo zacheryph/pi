@@ -3,6 +3,16 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-04: Refuse invalid definitions when queued agents start
+
+A queued agent without fragments reads its profile again when a slot opens.
+If its file became invalid and the registry reloaded while it waited, it could
+run with the broken definition's empty instructions and capability tools.
+
+- Recheck `definitionError` during session assembly and report the original
+  parse error before building a prompt or creating a session.
+- Cover a queued profile whose YAML becomes invalid before its slot opens.
+
 ## 2026-11-05: Opt into delegation with `delegate: true`
 
 A child could start agents of its own only if its `tools` named each of

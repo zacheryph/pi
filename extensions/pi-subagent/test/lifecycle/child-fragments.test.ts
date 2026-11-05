@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
+import { loadAgentsFromDir } from "#src/config/custom-agents";
 import { ConcurrencyLimiter } from "#src/lifecycle/concurrency-limiter";
 import {
   createSubagentSession,
@@ -221,6 +222,32 @@ describe("child fragment spawn snapshots", () => {
     expect(childPrompt(1)).toContain("Updated legacy body.");
     expect(io.createSession.mock.calls[1][0].tools).toEqual(["grep", "ask", "parent_notify"]);
     expect(readFileSync).not.toHaveBeenCalled();
+  });
+
+  it("refuses queued no-fragment profiles whose YAML becomes invalid", async () => {
+    profile.fragments = [];
+    const gate = Promise.withResolvers<void>();
+    const firstSession = createFactorySession();
+    firstSession.prompt.mockImplementation(async () => gate.promise);
+    io.createSession.mockResolvedValueOnce({ session: firstSession });
+    const first = manager.spawn(STUB_SNAPSHOT, "general-purpose", "Hold slot", {
+      description: "Hold",
+      background,
+    });
+    const queued = spawn();
+    expect(manager.getRecord(queued)?.status).toBe("queued");
+
+    writeFileSync(profile.sourcePath!, "---\ndescription: [unclosed\n---\n");
+    profile = loadAgentsFromDir(join(root, "source", "agents"), "global").get(profile.name)!;
+    registry.reload();
+    gate.resolve();
+    await manager.getRecord(first)!.promise;
+    await manager.getRecord(queued)!.promise;
+
+    expect(manager.getRecord(queued)?.status).toBe("error");
+    expect(manager.getRecord(queued)?.error).toContain(profile.definitionError!);
+    expect(io.createSession).toHaveBeenCalledTimes(1);
+    expect(io.assemblerIO.buildAgentPrompt).toHaveBeenCalledTimes(1);
   });
 
   it.each([{ fragments: ["aws"] }, { fragmentError: "Invalid declaration" }])(
