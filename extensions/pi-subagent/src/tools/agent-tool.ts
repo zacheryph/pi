@@ -360,13 +360,6 @@ function resumeRefusalSentence(refusal: ResumeRefusalReason, id: string): string
       return `Agent "${id}" had its session released and its saved transcript is gone; resume is unavailable, but its result is still retrievable via subagent_get.`;
     case "no-session":
       return `Agent "${id}" has no active session to resume.`;
-    case "workspace-disposed":
-      return (
-        `Agent "${id}" ran in an isolated workspace that no longer ` +
-        "exists; resume is unavailable because the agent would re-enter a directory that " +
-        "has been removed. Spawn a new agent instead — the agent's result records where " +
-        "any work was saved."
-      );
     case "directory-unavailable":
       return (
         `Agent "${id}" cannot be resumed: the directory it ran in no longer exists. ` +

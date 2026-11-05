@@ -112,7 +112,7 @@ export interface ChildSessionCreatedEvent extends ChildRunIdentity {
   sessionId: string;
   parentSessionId?: string;
   handoff?: SubagentHandoff;
-  /** The directory the child runs in: a caller's `cwd`, a workspace's, or the parent's. */
+  /** The directory the child runs in: a caller's `cwd`, or the parent's. */
   cwd?: string;
 }
 

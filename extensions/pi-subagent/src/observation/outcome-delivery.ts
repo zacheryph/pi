@@ -8,19 +8,13 @@
  * truncation — a nudge is a preview, a pull is the full text — but the body
  * they wrap is the same fact, so it is rendered here rather than four times.
  *
- * A workspace notice rides the same four carriers without being part of the
- * outcome: it reports where a teardown put the child's work, which the parent
- * needs whether the run succeeded or failed. A notice produced after the
- * result was already delivered reaches none of them and is announced on its
- * own instead.
- *
  * The updates a child sent mid-run ride the carriers too, for the runs whose
  * outcome a blocked carrier holds: the announcement channel would deliver them
  * after that carrier's own return, so it renders them itself instead.
  *
- * The updates, the notice, and the ask-back affordance are appended in one
- * fixed order by `renderOutcomeAddenda`, so the three carriers that compose
- * them cannot disagree about what follows the body. The affordance is the one
+ * The updates and the ask-back affordance are appended in one fixed order by
+ * `renderOutcomeAddenda`, so the three carriers that compose them cannot
+ * disagree about what follows the body. The affordance is the one
  * addendum that asks the parent to call back, so it is also the one that has
  * to know whether that call would be accepted.
  *
@@ -88,7 +82,6 @@ const RESUME_REFUSAL_CLAUSES: Record<Exclude<ResumeRefusal, "still-running">, st
   // colon, and "resume:" is the exact token the parent must not see here.
   "no-session": "it has no active session",
   "session-released": "its session was released and its saved transcript is gone",
-  "workspace-disposed": "it ran in an isolated workspace that has since been removed",
   "directory-unavailable": "the directory it ran in no longer exists",
   "agent-type-unavailable": "its agent type is no longer available",
 };
@@ -182,20 +175,8 @@ export function renderQuestionAffordance(
 }
 
 /**
- * The provider's own wording for where a teardown left the child's work, for a
- * carrier appending it after the outcome body. Empty when no teardown reported
- * anything — including every run whose addendum rode the result text instead.
- *
- * Takes the notice rather than a record, so a carrier holding any shape can
- * call it, and so the framing has one home if a carrier ever needs its own.
- */
-export function renderWorkspaceNotice(notice: string | undefined): string {
-  return notice ?? "";
-}
-
-/**
- * What a carrier appends after the outcome body: where the work went, then the
- * call to action that follows it.
+ * What a carrier appends after the outcome body: the run's updates, then the
+ * call to action.
  *
  * The fields rather than a record, so a carrier holding any shape can call it
  * — both `Subagent` and `AgentReport` satisfy this structurally.
@@ -203,7 +184,6 @@ export function renderWorkspaceNotice(notice: string | undefined): string {
 export interface OutcomeAddenda {
   id: string;
   runUpdates?: readonly string[];
-  workspaceNotice?: string;
   pendingQuestion?: string;
   /**
    * Why a resume would be refused; undefined when one would be accepted.
@@ -218,10 +198,8 @@ export interface OutcomeAddenda {
 /** The addenda tail every outcome carrier appends, in one order. */
 export function renderOutcomeAddenda(outcome: OutcomeAddenda): string {
   return (
-    // What the agent flagged along the way, then where the work went, then the
-    // call to action that follows both.
+    // What the agent flagged along the way, then the call to action.
     renderRunUpdates(outcome.runUpdates) +
-    renderWorkspaceNotice(outcome.workspaceNotice) +
     renderQuestionAffordance(outcome.id, outcome.pendingQuestion, outcome.resumeRefusal)
   );
 }

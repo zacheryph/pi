@@ -39,11 +39,11 @@ It keeps several subsystems built in that this fork deliberately removed or dele
 | Capability              | @tintinweb/pi-subagents                           | @gotgenes/pi-subagents                                                                                                                            |
 | ----------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Tool restrictions       | `disallowed_tools` frontmatter (denylist)         | Delegated — `permission:` via [`@gotgenes/pi-permission-system`](https://github.com/gotgenes/pi-packages/tree/main/packages/pi-permission-system) |
-| Worktree isolation      | Built-in                                          | Delegated — a caller-chosen `cwd`, or a `WorkspaceProvider`                                                                                       |
+| Worktree isolation      | Built-in                                          | Delegated — a caller-chosen `cwd`                                                                                                                 |
 | Persistent agent memory | `memory:` frontmatter (project / local / user)    | Removed                                                                                                                                           |
 | Skill preloading        | `skills:` frontmatter (preload named skills)      | Removed — children always inherit the parent's skills                                                                                             |
 | Scheduling              | Cron / interval / one-shot subagents (`schedule`) | Removed                                                                                                                                           |
-| Cross-extension control | `subagents:rpc:*` event RPC                       | Replaced by a typed service (below)                                                                                                               |
+| Cross-extension control | `subagents:rpc:*` event RPC                       | Removed; lifecycle events (below)                                                                                                                 |
 | Model-scope enforcement | `enabledModels` allowlist validation              | Not included                                                                                                                                      |
 | Notifications           | Smart group-join consolidation                    | Individual per-agent notifications                                                                                                                |
 
@@ -51,7 +51,6 @@ It keeps several subsystems built in that this fork deliberately removed or dele
 
 This fork is a minimal core that other extensions build on, plus a small companion ecosystem:
 
-- **Typed service API** — `SubagentsService` exposed via `Symbol.for()` accessors, so another extension can spawn and manage subagents without importing this package or relying on ad-hoc event RPC.
 - **Child-session lifecycle events** — `subagents:child:spawning` / `session-created` / `bound` / `completed` / `disposed`, with `session-created` firing synchronously before `bindExtensions()` so consumers can register the child session deterministically, and `bound` firing after it resolves so they can observe what the child's extensions installed.
 - **`<active_agent>` system-prompt tag** — lets [`@gotgenes/pi-permission-system`](https://github.com/gotgenes/pi-packages/tree/main/packages/pi-permission-system) resolve per-agent `permission:` frontmatter (allow / ask / deny — richer than a binary denylist) inside the child session.
 - **Turn budgets** — `max_turns` is a hard ceiling rather than a wrap-up point followed by grace turns, the child is told its remaining turns while it still has room to answer, and the budget is live on the record and in the widget.

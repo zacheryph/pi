@@ -49,8 +49,6 @@ export interface AgentReport {
    * Required, for the reason `OutcomeAddenda` gives.
    */
   resumeRefusal: ResumeRefusal | undefined;
-  /** Where a teardown with no result text to carry it saved the agent's work. */
-  workspaceNotice?: string;
   /**
    * The model's `provider/id`; undefined while an inherited model is still unknown.
    * Required, so a report builder cannot leave it out by omission.

@@ -10,7 +10,6 @@ import {
   renderRunUpdates,
   renderStatusLabel,
   renderStatusNote,
-  renderWorkspaceNotice,
 } from "#src/observation/outcome-delivery";
 
 function makeOutcome(overrides: Partial<OutcomeBody> = {}): OutcomeBody {
@@ -109,12 +108,6 @@ describe("renderQuestionAffordance", () => {
       );
     });
 
-    it("names a removed workspace as the reason", () => {
-      expect(renderQuestionAffordance("agent-7", "Which config?", "workspace-disposed")).toContain(
-        "it ran in an isolated workspace that has since been removed",
-      );
-    });
-
     it("names a missing session as the reason", () => {
       expect(renderQuestionAffordance("agent-7", "Which config?", "no-session")).toContain(
         "it has no active session",
@@ -134,12 +127,7 @@ describe("renderQuestionAffordance", () => {
     });
 
     it("names no resume call for any reason", () => {
-      for (const refusal of [
-        "still-running",
-        "no-session",
-        "session-released",
-        "workspace-disposed",
-      ] as const) {
+      for (const refusal of ["still-running", "no-session", "session-released"] as const) {
         expect(renderQuestionAffordance("agent-7", "Which config?", refusal)).not.toContain(
           "resume:",
         );
@@ -180,18 +168,6 @@ describe("renderQuestionAffordance", () => {
 
   it("renders nothing for an unanswerable agent that asked nothing", () => {
     expect(renderQuestionAffordance("agent-1", undefined, "session-released")).toBe("");
-  });
-});
-
-describe("renderWorkspaceNotice", () => {
-  it("returns the provider's wording verbatim", () => {
-    const notice =
-      "\n\n---\nChanges saved to branch `pi-agent-7`. Merge with: `git merge pi-agent-7`";
-    expect(renderWorkspaceNotice(notice)).toBe(notice);
-  });
-
-  it("returns an empty string when the teardown reported nothing", () => {
-    expect(renderWorkspaceNotice(undefined)).toBe("");
   });
 });
 
@@ -252,27 +228,14 @@ describe("renderOutcomeAddenda", () => {
     expect(renderOutcomeAddenda(makeAddenda())).toBe("");
   });
 
-  it("puts where the work went before the call to action that follows it", () => {
-    const rendered = renderOutcomeAddenda(
-      makeAddenda({
-        workspaceNotice: "\n\n---\nChanges saved to branch `pi-agent-1`.",
-        pendingQuestion: "Which config?",
-      }),
-    );
-
-    expect(rendered.indexOf("Changes saved")).toBeLessThan(
-      rendered.indexOf("waiting on an answer"),
-    );
-  });
-
   it("composes the same text the carriers built by hand", () => {
     const addenda = makeAddenda({
-      workspaceNotice: "\n\n---\nChanges saved to branch `pi-agent-1`.",
+      runUpdates: ["The bug is in the retry wrapper."],
       pendingQuestion: "Which config?",
     });
 
     expect(renderOutcomeAddenda(addenda)).toBe(
-      renderWorkspaceNotice(addenda.workspaceNotice) +
+      renderRunUpdates(addenda.runUpdates) +
         renderQuestionAffordance(addenda.id, addenda.pendingQuestion, addenda.resumeRefusal),
     );
   });
@@ -290,15 +253,17 @@ describe("renderOutcomeAddenda", () => {
     const rendered = renderOutcomeAddenda(
       makeAddenda({
         runUpdates: ["The bug is in the retry wrapper."],
-        workspaceNotice: "\n\n---\nChanges saved to branch `pi-agent-1`.",
+        pendingQuestion: "Which config?",
       }),
     );
 
     // Both must be present, or the index comparison passes on a -1 that means
     // "absent" rather than "earlier".
     expect(rendered).toContain("retry wrapper");
-    expect(rendered).toContain("Changes saved");
-    expect(rendered.indexOf("retry wrapper")).toBeLessThan(rendered.indexOf("Changes saved"));
+    expect(rendered).toContain("waiting on an answer");
+    expect(rendered.indexOf("retry wrapper")).toBeLessThan(
+      rendered.indexOf("waiting on an answer"),
+    );
   });
 });
 

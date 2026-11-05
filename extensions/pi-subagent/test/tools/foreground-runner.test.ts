@@ -77,19 +77,6 @@ describe("runForeground", () => {
     expect(result.content[0].text).not.toContain("waiting on an answer");
   });
 
-  it("names where a teardown saved the work of an agent that completed", async () => {
-    const { manager } = createToolDeps();
-    manager.spawnAndWait = vi
-      .fn()
-      .mockResolvedValue(
-        createTestSubagent({ workspaceNotice: "\n\n---\nChanges saved to branch `pi-agent-5`." }),
-      );
-
-    const result = await runForeground(manager, makeParams(), undefined, undefined);
-
-    expect(result.content[0].text).toContain("Changes saved to branch `pi-agent-5`.");
-  });
-
   it("reports the updates the agent sent while the parent was blocked", async () => {
     const { manager } = createToolDeps();
     manager.spawnAndWait = vi
@@ -115,22 +102,6 @@ describe("runForeground", () => {
     const result = await runForeground(manager, makeParams(), undefined, undefined);
 
     expect(result.content[0].text).toContain("The premise is wrong.");
-  });
-
-  it("names where a teardown saved the work of an agent that failed", async () => {
-    const { manager } = createToolDeps();
-    manager.spawnAndWait = vi.fn().mockResolvedValue(
-      createTestSubagent({
-        status: "error",
-        error: "turn loop exploded",
-        workspaceNotice: "\n\n---\nChanges saved to branch `pi-agent-5`.",
-      }),
-    );
-
-    const result = await runForeground(manager, makeParams(), undefined, undefined);
-
-    expect(result.content[0].text).toContain("Agent failed: turn loop exploded");
-    expect(result.content[0].text).toContain("Changes saved to branch `pi-agent-5`.");
   });
 
   // A failed run's body carries no result, so the transcript is the only route

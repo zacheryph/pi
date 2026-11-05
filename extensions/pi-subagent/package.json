@@ -3,16 +3,6 @@
   "version": "23.2.0",
   "private": true,
   "type": "module",
-  "exports": {
-    ".": {
-      "types": "./src/service/service.ts",
-      "default": "./src/service/service.ts"
-    },
-    "./settings": {
-      "types": "./src/layered-settings.ts",
-      "default": "./src/layered-settings.ts"
-    }
-  },
   "files": [
     "src",
     "agents",
@@ -32,7 +22,7 @@
       "default": "./test/*.ts"
     }
   },
-  "description": "A focused, in-process sub-agent core for pi — autonomous agents plus a typed API and lifecycle events other extensions build on. Friendly fork of @tintinweb/pi-subagents.",
+  "description": "A focused, in-process sub-agent core for pi — autonomous agents plus lifecycle events other extensions build on. Friendly fork of @tintinweb/pi-subagents.",
   "author": {
     "name": "Chris Lasher"
   },

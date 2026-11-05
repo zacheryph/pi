@@ -1,12 +1,8 @@
 /**
- * pi-agents — A pi extension providing focused, in-process autonomous sub-agents.
+ * pi-subagent — focused, in-process autonomous sub-agents.
  *
- * Tools:
- *   Agent             — LLM-callable: spawn a sub-agent
- *   subagent_get  — LLM-callable: check background agent status/result
- *   subagent_steer       — LLM-callable: send a steering message to a running agent
- *
- * Commands:
+ * Tools: subagent_start, subagent_get, subagent_steer.
+ * Commands: /subagent:watch, /subagent:settings, /subagent:agents, /subagent:sessions.
  */
 
 import { readFileSync } from "node:fs";
@@ -44,27 +40,13 @@ import {
   type NotificationDetails,
   NotificationManager,
   type UpdateDetails,
-  type WorkspaceNoticeDetails,
 } from "#src/observation/notification";
-import {
-  createNotificationRenderer,
-  createUpdateRenderer,
-  createWorkspaceNoticeRenderer,
-} from "#src/observation/renderer";
+import { createNotificationRenderer, createUpdateRenderer } from "#src/observation/renderer";
 import { SubagentEventsObserver } from "#src/observation/subagent-events-observer";
 import { registerMainAgentProfile } from "#src/main-agent-profile";
 import { createSubagentRuntime } from "#src/runtime";
 import { readBranchRecords } from "#src/roster";
-import {
-  discardPendingSince,
-  markPendingPublications,
-  publishSubagentsService,
-  unpublishSubagentsService,
-} from "#src/service/service";
-import { SubagentsServiceAdapter } from "#src/service/service-adapter";
 import { detectEnv } from "#src/session/env";
-
-import { resolveModel } from "#src/session/model-resolver";
 import { createExcludedPackagesStorage } from "#src/session/package-exclusions";
 import { createProjectContextLoader } from "#src/session/project-context";
 import { buildAgentPrompt } from "#src/session/prompts";
@@ -87,10 +69,6 @@ export default function (pi: ExtensionAPI) {
     createNotificationRenderer(),
   );
   pi.registerMessageRenderer<UpdateDetails>("subagent:update", createUpdateRenderer());
-  pi.registerMessageRenderer<WorkspaceNoticeDetails>(
-    "subagent:workspace-notice",
-    createWorkspaceNoticeRenderer(),
-  );
 
   const registry = new AgentTypeRegistry(() => loadCustomAgents(process.cwd()));
 
@@ -213,18 +191,7 @@ export default function (pi: ExtensionAPI) {
   const limiter = new ConcurrencyLimiter(() => settings.maxConcurrent);
 
   const manager = new SubagentManager({
-    // A child that fails before its session starts leaves the service its own
-    // copy of this extension published at load pending forever; discard it.
-    createSubagentSession: async (params) => {
-      const mark = markPendingPublications();
-      try {
-        return await createSubagentSession(params, subagentSessionDeps);
-      } catch (err) {
-        discardPendingSince(mark);
-        throw err;
-      }
-    },
-    baseCwd: process.cwd(),
+    createSubagentSession: (params) => createSubagentSession(params, subagentSessionDeps),
     observer,
     limiter,
     getRunConfig: () => settings,
@@ -239,19 +206,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  // Typed service published via Symbol.for() for cross-extension access.
-  // Consumers: const { getSubagentsService } = await import("pi-subagent");
-  // Pending now, so companion factories loading next can register on it;
-  // started on session_start (below).
-  const service = new SubagentsServiceAdapter(manager, resolveModel, runtime);
-  publishSubagentsService(service);
-
-  const lifecycle = new SessionLifecycleHandler(
-    runtime,
-    manager,
-    () => notifications.dispose(),
-    () => unpublishSubagentsService(service),
-  );
+  const lifecycle = new SessionLifecycleHandler(runtime, manager, () => notifications.dispose());
 
   // Live widget: constructed after the manager (it polls listAgents()) and
   // registered as a lifecycle observer so it self-drives its update timer.
@@ -270,11 +225,6 @@ export default function (pi: ExtensionAPI) {
   const widgetEvents = new WidgetEventsHandler(widget);
 
   pi.on("session_start", (event, ctx) => lifecycle.handleSessionStart(event, ctx));
-  // Start the publication: it becomes the default once no load is pending, and
-  // getSubagentsService(sessionId) finds it.
-  pi.on("session_start", (_event, ctx) =>
-    publishSubagentsService(service, ctx.sessionManager.getSessionId()),
-  );
   pi.on("session_start", (event, ctx) => widgetEvents.handleSessionStart(event, ctx));
   pi.on("session_start", (_event, ctx) => watch.setContext(ctx));
   // Restore the branch's agents to the model's context after it may have lost

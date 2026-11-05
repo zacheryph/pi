@@ -64,6 +64,8 @@ describe("toPersistedRecord", () => {
       toolUses: 7,
       // The attached session stub reports its thinking level.
       thinkingLevel: "off",
+      // The parent's directory: the spawn chose none.
+      cwd: "/test",
     });
   });
 

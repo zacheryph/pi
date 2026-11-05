@@ -163,46 +163,6 @@ describe("AgentTool — resume path", () => {
       );
     });
 
-    it("names a torn-down workspace as the reason a resume cannot re-enter it", async () => {
-      const deps = createToolDeps();
-      mockResumeRefusal(deps, "workspace-disposed");
-
-      const result = await execute(deps, {
-        prompt: "continue",
-        description: "resume",
-        subagent_type: "general-purpose",
-        resume: "agent-1",
-        foreground: true,
-      });
-
-      expect(result.content[0].text).toBe(
-        'Agent "agent-1" ran in an isolated workspace that no longer exists; resume is ' +
-          "unavailable because the agent would re-enter a directory that has been removed. " +
-          "Spawn a new agent instead — the agent's result records where any work was saved.",
-      );
-    });
-  });
-
-  describe("accepted", () => {
-    it("resumes an agent whose run never had a workspace", async () => {
-      const deps = createToolDeps();
-      const noWorkspace = createTestSubagent();
-      await noWorkspace.run();
-      deps.manager.getRecord = vi.fn().mockReturnValue(noWorkspace);
-      mockResumeRecord(deps, { result: "Resumed output." });
-
-      const result = await execute(deps, {
-        prompt: "continue",
-        description: "resume",
-        subagent_type: "general-purpose",
-        resume: "agent-1",
-        foreground: true,
-      });
-
-      expect(deps.manager.resume).toHaveBeenCalledOnce();
-      expect(result.content[0].text).toContain("Resumed output.");
-    });
-
     it("returns result text on successful resume", async () => {
       const deps = createToolDeps();
       mockResumeRecord(deps, { result: "Resumed output." });
@@ -277,26 +237,6 @@ describe("AgentTool — resume path", () => {
 
       expect(result.content[0].text).toContain("Updates this agent sent while it worked:");
       expect(result.content[0].text).toContain("The bug is in the retry wrapper.");
-    });
-
-    it("names where a teardown saved the work of a resumed child", async () => {
-      const deps = createToolDeps();
-      mockResumeRecord(deps, {
-        id: "agent-9",
-        status: "error",
-        error: "resume exploded",
-        workspaceNotice: "\n\n---\nChanges saved to branch `pi-agent-9`.",
-      });
-
-      const result = await execute(deps, {
-        prompt: "continue",
-        description: "resume",
-        subagent_type: "general-purpose",
-        resume: "agent-1",
-        foreground: true,
-      });
-
-      expect(result.content[0].text).toContain("Changes saved to branch `pi-agent-9`.");
     });
 
     it("names an abort on the resume return, which previously reported nothing", async () => {

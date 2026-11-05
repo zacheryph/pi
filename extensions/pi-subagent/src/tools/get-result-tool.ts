@@ -206,7 +206,6 @@ export class GetResultTool {
       runUpdates: outcome.runUpdates,
       pendingQuestion: outcome.pendingQuestion,
       resumeRefusal: record.resumeRefusal,
-      workspaceNotice: outcome.workspaceNotice,
       model: modelLabel(record.model),
       resumedWhileWaiting,
     };
@@ -347,7 +346,6 @@ function liveOutcome(record: Subagent): SettledOutcome {
     startedAt: record.startedAt,
     completedAt: record.completedAt,
     pendingQuestion: record.pendingQuestion,
-    workspaceNotice: record.workspaceNotice,
     runUpdates: record.runUpdates,
     turnBudget: record.turnBudget,
   };

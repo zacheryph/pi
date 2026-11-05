@@ -29,7 +29,6 @@ Run them in foreground or background, steer them mid-run, resume completed sessi
 - **Orchestrator profile** — coordinate long-running projects with categorized todos, delegated work, and follow-ups in prior workers' sessions; available as a subagent or with `pi --agent orchestrator` ([usage and continuity](docs/configuration.md#orchestrator))
 - **Mid-run steering** — inject messages into running agents to redirect their work without restarting
 - **Session resume** — pick up where an agent left off, preserving full conversation context, even after a reload or once its session was released: the saved transcript is reopened.
-  An agent given an isolated workspace by a `WorkspaceProvider` is resumable while that workspace is live — which, for an agent that ended its turn with a question, lasts until you answer it
 - **Ask-back** — an agent that needs information only you have calls `ask` (from the bundled pi-ask) and ends its turn, and every result surfaces the question with the exact `resume` call that answers it; once that agent can no longer be resumed, the result says so and why instead of naming a call that would be refused
 - **Mid-run updates** — an agent that finds something material calls `parent_notify` and keeps working; the message arrives on its own while you are idle and that agent is still running, and otherwise rides that agent's own result, so you hear it exactly once and never as a stale prompt to steer an agent that has finished
 - **Turn budgets** — `max_turns` is a hard ceiling, and an agent is told how many turns it has left while it still has room to wrap up, so it answers instead of being cut off
@@ -224,9 +223,9 @@ Launch a sub-agent.
 | `cwd`             | string  | no       | Existing directory the agent runs in, such as a git worktree (see below)                                               |
 | `handoff`         | object  | no       | Data for extensions in the agent's session (see below)                                                                 |
 
-`handoff` is a JSON object (at most 16 KB) whose top-level keys belong to other extensions, each documenting its key's shape in its own tool guidance. For example, pi-todo reads `todo`. This package does not interpret it: it copies and freezes the object and forwards it on `subagent:session:created`, so an extension can add handoff data without changing pi-subagent. `SpawnOptions.handoff` does the same for service spawns.
+`handoff` is a JSON object (at most 16 KB) whose top-level keys belong to other extensions, each documenting its key's shape in its own tool guidance. For example, pi-todo reads `todo`. This package does not interpret it: it copies and freezes the object and forwards it on `subagent:session:created`, so an extension can add handoff data without changing pi-subagent.
 
-`cwd` runs the agent in an existing directory, absolute or relative to the parent's working directory; a missing one is refused before anything is spawned. The caller owns that directory: no workspace provider is consulted for the agent and nothing is removed when it finishes, so the agent can still be resumed there. It is refused together with `resume`, because a resumed agent keeps the directory it started in. `SpawnOptions.cwd` does the same for service spawns, and `subagent:session:created` carries the child's `cwd` whichever way it was chosen.
+`cwd` runs the agent in an existing directory, absolute or relative to the parent's working directory; a missing one is refused before anything is spawned. The caller owns that directory: nothing is removed when the agent finishes, so it can still be resumed there. It is refused together with `resume`, because a resumed agent keeps the directory it started in. `subagent:session:created` carries the child's `cwd`, chosen or inherited.
 
 These five parameters win over the agent file's own values, which fill whichever the call leaves unset.
 An agent file can withhold one with [`locked`](./docs/configuration.md#locking-fields-against-callers); the result then names the agent and the parameters it ignored.
@@ -469,7 +468,6 @@ Use `contextUsage.percent` (surfaced as `(NN%)` in the widget) for current conte
 
 Worktree isolation is not part of this core.
 A caller that prepared a directory, such as a git worktree, passes it as `subagent_start`'s `cwd`; the child runs there and stays resumable, and the directory is never removed for it.
-A `WorkspaceProvider` registered through the service can instead choose a child's directory itself.
 The earlier `isolation: "worktree"` spawn flag and `isolation:` frontmatter key were removed from the core.
 
 ## Removed: agent memory and skill preloading
@@ -509,124 +507,10 @@ When `@gotgenes/pi-permission-system` is not installed, the lifecycle events hav
 
 ## For Extension Authors
 
-This package exposes two public subpath exports for companion extensions to import from the published tarball.
-
-### `@gotgenes/pi-subagents` — cross-extension service contract
-
-Access the subagent service from another extension at runtime:
-
-```typescript
-const { getSubagentsService } = await import("@gotgenes/pi-subagents");
-const svc = getSubagentsService();
-svc?.spawn("Explore", "Check for stale TODOs");
-```
-
-`getSubagentsService()` returns the top-level session's service even while child sessions (which load this extension too) are running. The one exception is while a session's extensions are loading: then it returns that session's service, so a companion can register on it from its own factory (list the companion after this package). Pass a session id, `getSubagentsService(ctx.sessionManager.getSessionId())`, to get a specific started session's own service.
-
-Declare this package as an optional peer dependency.
-See `src/service/service.ts` for the full `SubagentsService` interface and the `WorkspaceProvider` seam.
-
-#### `spawn` contract
-
-`spawn` returns the new agent's id immediately — it never waits for the run.
-Use `getRecord(id)` to poll, `steer` to send a message, and the `subagent:completed` event to learn when it finished.
-
-The agent type is canonicalized, so `"explore"` and `"Explore"` reach the same agent.
-An unrecognized type falls back to `general-purpose` rather than throwing, matching the `subagent_start` tool's behavior.
-
-It throws in four cases:
-
-- there is no active session, so there is no parent to spawn from;
-- a `model` string does not resolve against the session's model registry;
-- a `thinkingLevel` is not one of `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`;
-- the named agent type exists but is disabled (`visibility: disabled`).
-
-Agent frontmatter never overrides an option you pass.
-It fills `model`, `thinkingLevel`, and `maxTurns` when you omit them; `inheritContext` is the exception, and defaults to `false` whatever the agent file declares.
-An agent file's [`locked`](./docs/configuration.md#locking-fields-against-callers) frontmatter does not apply here — it guards against a model guessing harness settings, and an SDK caller is not that.
-
-The caller alone picks the mode: omit `foreground` to run in the background, pass `foreground: true` to run in the foreground.
-
-A spawned agent is a first-class citizen of the runtime: it appears in the background widget, carries its parent's session identity so permission prompts route correctly, and nests its session file under the parent's.
-
-#### `getRecord` / `listAgents` contract
-
-Both return `SubagentRecord`, a by-value snapshot: nothing in it changes after you receive it, and writing to it cannot reach the agent.
-Poll again for fresh data.
-
-The snapshot carries identity (`id`, `type`, `description`), lifecycle status (`status`, `startedAt`, `completedAt`, `result`, `error`), the resolved spawn fact `isBackground`, the current run's `turnBudget`, cumulative metrics (`toolUses`, `compactionCount`, `lifetimeUsage`), and `outputFile` — the path to the agent's session JSONL, which you can read with Pi's own `parseSessionEntries`.
-
-It deliberately withholds momentary activity (the tools running right now, the partial response text) and this package's internal bookkeeping.
-A pulled snapshot of momentary state would be stale on arrival; [decision 0005](docs/decisions/0005-subagent-record-admission-policy.md) records the full policy and what would reopen it.
-
-`SubagentRecord` and `SubagentsService` are types this package produces and you read — not contracts to implement.
-A new field is therefore a minor release; use a cast or a `Partial<>` for a test double rather than implementing either type.
-
-#### `resume` contract
-
-`resume(id, prompt, options?)` continues a settled agent's session, and is the one service call that waits: it resolves when the resumed run reaches a terminal state, carrying the terminal snapshot.
-A caller that does not need the outcome can ignore the promise.
-
-It never throws and never rejects.
-An agent whose live session is gone is resumed from its saved transcript when it can be.
-A resume that could not start resolves to `{ kind: "refused", reason, transcriptPath? }` instead, promptly — the checks are synchronous and no turn loop runs. `transcriptPath` names the transcript of an agent refused for good, when it has one:
-
-| `reason`                 | Meaning                                                          |
-| ------------------------ | ---------------------------------------------------------------- |
-| `unknown-agent`          | No live record or saved record on this branch answers to that id |
-| `still-running`          | The agent has not settled; wait, or `steer` it while it runs     |
-| `no-session`             | The agent never had a session to continue                        |
-| `session-released`       | Its session was released and its saved transcript is gone        |
-| `workspace-disposed`     | Its isolated workspace is gone, so a resume cannot re-enter it   |
-| `directory-unavailable`  | The directory it ran in no longer exists, or was never recorded  |
-| `agent-type-unavailable` | Its agent type is no longer available                            |
-
-A resumed run that _fails_ is still `{ kind: "resumed" }`; the snapshot carries `status: "error"` and the message.
-Refused means nothing started.
-
-By default the resumed outcome is announced to the parent like any other background completion.
-Pass `claimOutcome: true` to declare that your extension is delivering it, which suppresses that announcement — do this only if you will actually carry the result to the parent, or it reaches nobody.
-
-Pass `signal` to cancel the resumed turn loop.
-It is wired through the record's own lever, so it ends the resume exactly as `abort(id)` does — either cancel reaches the same run, and the record reads `stopped`.
-
-### `@gotgenes/pi-subagents/settings` — layered config loader
-
-Extensions that store configuration in JSON files can use the shared layered loader, which reads a global file (`<agentDir>/<filename>`) and a project file (`<cwd>/.pi/<filename>`) and merges them — project wins on conflicts, missing files are silent, malformed files warn and fall back:
-
-```typescript
-import { loadLayeredSettings, type LayeredSettingsSource } from "@gotgenes/pi-subagents/settings";
-
-interface MyConfig {
-  enabled?: boolean;
-  limit?: number;
-}
-
-function sanitize(raw: unknown): Partial<MyConfig> {
-  if (!raw || typeof raw !== "object") return {};
-  const r = raw as Record<string, unknown>;
-  const out: Partial<MyConfig> = {};
-  if (typeof r.enabled === "boolean") out.enabled = r.enabled;
-  if (typeof r.limit === "number") out.limit = r.limit;
-  return out;
-}
-
-const config = loadLayeredSettings<MyConfig>({
-  agentDir, // Pi runtime agent home directory
-  cwd, // project root — project file lives at <cwd>/.pi/<filename>
-  filename: "my-extension.json",
-  sanitize,
-  warnLabel: "my-extension", // prefix for the malformed-file stderr warning
-});
-```
-
-`loadLayeredSettings` returns `Partial<T>` (all fields optional); apply your defaults after the call.
-It never throws — all error conditions produce a `console.warn` and return `{}`.
-
 ### Extensions that append to the system prompt
 
 If your extension appends to the system prompt from a `before_agent_start` handler, your parent-session block does **not** ride into child sessions.
-A child inherits only the stable part of the parent's prompt — everything Pi assembled ahead of the skills catalogue, and ahead of `<project_context>` too for a child running in its own workspace — so anything appended after that is dropped.
+A child inherits only the stable part of the parent's prompt — everything Pi assembled ahead of the skills catalogue, and ahead of `<project_context>` too for a child running in another directory — so anything appended after that is dropped.
 See [What a child inherits from the parent's prompt](./docs/configuration.md#what-a-child-inherits-from-the-parents-prompt) for the full layer breakdown.
 
 This is usually invisible to you, because your handler runs in the child too: a child binds the parent's extension set, and its turn loop fires `before_agent_start` the same way the parent's does.
@@ -654,7 +538,7 @@ Everything else is a consumer.
 
 **In scope.**
 Defects in the surfaces the core already owns, completeness of the public lifecycle-event contract, and internal work toward the minimal-core target.
-Anything attaching to the core either subscribes to a lifecycle event, or registers a provider if it must return a value the core consumes — see [ADR-0002](./docs/decisions/0002-extensions-on-a-minimal-core.md).
+Anything attaching to the core subscribes to a lifecycle event — see [ADR-0002](./docs/decisions/0002-extensions-on-a-minimal-core.md).
 
 **Non-goals.**
 
@@ -674,8 +558,8 @@ The [architecture doc](./docs/architecture/architecture.md#scope-and-non-goals) 
 
 **Where adjacent requests belong.**
 Tool restriction and per-agent permission policy → [@gotgenes/pi-permission-system](https://www.npmjs.com/package/@gotgenes/pi-permission-system).
-Worktree isolation → a git worktree passed as `cwd`, or a `WorkspaceProvider`.
-Timed dispatch, telemetry, and alternate UIs → a consumer over the lifecycle events and the typed service.
+Worktree isolation → a git worktree passed as `cwd` (pi-git's `git_worktree_create`).
+Timed dispatch, telemetry, and alternate UIs → a consumer over the lifecycle events.
 A batteries-included alternative → upstream [`tintinweb/pi-subagent`](https://github.com/tintinweb/pi-subagent).
 
 ## Documentation
@@ -688,12 +572,12 @@ A batteries-included alternative → upstream [`tintinweb/pi-subagent`](https://
 
 ## Architecture
 
-This extension is a minimal, composable core: it owns agent spawning, execution, and result retrieval, and exposes a typed `SubagentsService` plus lifecycle events that other extensions build on.
+This extension is a minimal, composable core: it owns agent spawning, execution, and result retrieval, and publishes lifecycle events that other extensions build on.
 
 ## Relationship to upstream
 
 This package is an independently maintained hard fork of [`tintinweb/pi-subagent`](https://github.com/tintinweb/pi-subagent) by [@tintinweb](https://github.com/tintinweb).
-It has diverged substantially in scope and architecture: a minimal core with a typed service API and lifecycle events, with tool-restriction policy and worktree isolation delegated to companion packages.
+It has diverged substantially in scope and architecture: a minimal core with lifecycle events, with tool-restriction policy and worktree isolation delegated to companion packages.
 Upstream remains the batteries-included option, keeping scheduling, cross-extension RPC, model-scope enforcement, and a built-in tool denylist in a single package.
 
 See [Comparison with upstream](./docs/comparison-with-upstream.md) for a full feature-by-feature comparison against the current upstream release and guidance on which to choose.

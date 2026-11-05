@@ -10,7 +10,6 @@ function makeNotifications(): NotificationSystem {
   return {
     sendCompletion: vi.fn(),
     sendUpdate: vi.fn(),
-    sendWorkspaceNotice: vi.fn(),
     dispose: vi.fn(),
   };
 }
@@ -179,6 +178,7 @@ describe("SubagentEventsObserver", () => {
         completedAt: 2000,
         outputFile: undefined,
         toolUses: 3,
+        cwd: "/test",
       });
     });
 
@@ -279,6 +279,7 @@ describe("SubagentEventsObserver", () => {
         completedAt: 4000,
         outputFile: undefined,
         toolUses: 3,
+        cwd: "/test",
       });
     });
 
@@ -422,35 +423,6 @@ describe("SubagentEventsObserver", () => {
       const { observer, appendEntry } = makeObserver();
 
       observer.onSubagentUpdate(createTestSubagent(), "Course change.");
-
-      expect(appendEntry).not.toHaveBeenCalled();
-    });
-  });
-
-  describe("onSubagentWorkspaceNotice", () => {
-    const NOTICE = "\n\n---\nChanges saved to branch `pi-agent-1`.";
-
-    it("announces where the teardown left the child's work", () => {
-      const { observer, notifications } = makeObserver();
-      const record = createTestSubagent({ id: "agent-1" });
-
-      observer.onSubagentWorkspaceNotice(record, NOTICE);
-
-      expect(notifications.sendWorkspaceNotice).toHaveBeenCalledExactlyOnceWith(record, NOTICE);
-    });
-
-    it("emits no event — no consumer asks for one, and a vacant channel is not added", () => {
-      const { observer, emit } = makeObserver();
-
-      observer.onSubagentWorkspaceNotice(createTestSubagent(), NOTICE);
-
-      expect(emit).not.toHaveBeenCalled();
-    });
-
-    it("persists nothing — the outcome it belongs to was recorded long ago", () => {
-      const { observer, appendEntry } = makeObserver();
-
-      observer.onSubagentWorkspaceNotice(createTestSubagent(), NOTICE);
 
       expect(appendEntry).not.toHaveBeenCalled();
     });

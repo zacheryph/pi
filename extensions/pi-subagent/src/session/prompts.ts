@@ -93,7 +93,7 @@ export function buildAgentPrompt(
  * The project-context section a child contributes for itself, or "" when the
  * identity it adopted already describes its directory.
  *
- * Two children need one. A child a `WorkspaceProvider` relocated had its
+ * Two children need one. A child started in another directory had its
  * inherited block cut with the rest of the session-resolved tail, because that
  * block named the parent's files by absolute path (#918); and a `portable`
  * child adopts operator-authored text that carries no project context at all
