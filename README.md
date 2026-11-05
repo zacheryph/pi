@@ -83,6 +83,8 @@ pi-personal/
 │   │   └── test/
 │   ├── pi-subagent/                     # vendored fork
 │   │   ├── src/index.ts                 # subagent tools + /subagent:* commands
+│   │   ├── agents/                      # built-in agent types as .md files
+│   │   ├── skills/creating-agents/      # agent authoring skill
 │   │   ├── test/
 │   │   ├── docs/
 │   │   ├── LICENSE
@@ -365,7 +367,8 @@ session naming. See [extension docs](extensions/pi-tldr/README.md).
 
 ## Skills
 
-Root `pi.skills` loads `skills/`, so a bundle install provides these. Force one
+Root `pi.skills` loads `skills/` and the skills an extension ships in its own
+`skills/` directory, so a bundle install provides these. Force one
 with `/skill:<name>`. Skills for working on this repository itself live in
 `.agents/skills/` and are not part of the bundle.
 
@@ -425,6 +428,15 @@ stops the run and lands in the document's open questions instead of an
 improvised plan. The roadmap document stays the plan of record: its `Status:`
 and per-step `Landed:` lines are updated as work lands, so a later run resumes
 from the first unfinished step. It commits locally and pushes only when asked.
+
+### creating-agents
+
+Shipped by pi-subagent (`extensions/pi-subagent/skills/`). Creates, overrides,
+hides or disables an agent type: where the file goes and which one wins, every
+frontmatter field, how to write the `description` and `guidance` that make up
+the agent's line in `subagent_start`, `prompt_mode`, tool selection,
+`visibility: hidden` for agents only a skill calls, locked fields, fragments,
+and how to check the result in `/subagent:agents`.
 
 ## Development
 

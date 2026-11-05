@@ -3,6 +3,19 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-05: Add the `creating-agents` skill
+
+The `subagent_start` description no longer explains where agent files live,
+and that one sentence was never enough to write a good agent.
+
+- Add `skills/creating-agents/SKILL.md`: when an agent type beats a skill,
+  file locations and precedence, every frontmatter field, writing
+  `description` and `guidance` for the type list, `prompt_mode`, tools,
+  `visibility`, `locked`, fragments, body structure, an example, and how to
+  check the result.
+- Ship `skills/` in the package and declare it in `pi.skills`, so a
+  standalone install loads the skill as well as the bundle.
+
 ## 2026-11-05: Built-in agents are markdown files
 
 The five built-in agents were TypeScript object literals, in a different shape
