@@ -13,6 +13,7 @@
     "packages/pi-session-tree",
     "packages/pi-foundations",
     "packages/pi-ui",
+    "packages/pi-scripted-model",
     "extensions/pi-ask",
     "extensions/pi-git"
   ],

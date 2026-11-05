@@ -29,11 +29,12 @@ try {
   assert.deepEqual(errors, [], "Bundle must load without extension errors");
 
   const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
-  // .agents/ holds development-only skills and code, such as the scripted
-  // screenshot model; none of it may ship in the bundle.
+  // .agents/ holds development-only skills and code, and pi-scripted-model is the
+  // fake model tests and screenshots use; none of it may ship in the bundle.
+  const devOnly = [join(root, ".agents"), join(root, "packages", "pi-scripted-model")];
   for (const entry of [...manifest.pi.extensions, ...manifest.pi.skills]) {
     assert.ok(
-      !resolve(root, entry).startsWith(join(root, ".agents")),
+      !devOnly.some((dir) => resolve(root, entry).startsWith(dir)),
       `Manifest must not load development-only code: ${entry}`,
     );
   }

@@ -107,6 +107,7 @@ pi-personal/
 └── packages/
     ├── pi-ui/                           # shared terminal UI library (no migrations yet)
     ├── pi-foundations/                  # shared settings + model lookup
+    ├── pi-scripted-model/               # fake model + bundle test harness (dev only)
     └── pi-session-tree/                 # shared library, not an extension
         ├── src/index.ts                 # cross-session registry (globalThis)
         └── test/
@@ -499,10 +500,19 @@ commits a verbatim copy of upstream, verified by tree hash, and prepares the
 integration. Each imported extension records its provenance in `UPSTREAM.md` and
 its local changes in `CHANGELOG.md`.
 
+### Test the bundle end to end
+
+[`packages/pi-scripted-model`](packages/pi-scripted-model/README.md) runs the
+whole bundle in-process against a scripted fake model: real tools, extensions
+and subagents, no API key or network. A scenario scripts each model response;
+`startSession` loads the bundle, `prompt` runs a turn, and `toolRuns()` returns
+every call with its result. Use it for behavior that spans extensions, such as
+todo handoff to a subagent. CI runs it whenever any extension changes.
+
 ### Screenshot the TUI
 
 Use the [`tui-screenshot` skill](.agents/skills/tui-screenshot/SKILL.md). A
-scenario file scripts a fake model, and a driver runs Pi with the bundle in a
+scenario file scripts the same fake model, and a driver runs Pi with the bundle in a
 private tmux server and renders the screen to PNG. No API key is needed. It is
 development-only: nothing under `.agents/` is in the bundle manifest, and
 `verify:bundle` fails if it ever is.

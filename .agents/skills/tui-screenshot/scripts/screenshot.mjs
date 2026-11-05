@@ -4,8 +4,8 @@
  *
  * Runs Pi in a private tmux server with a throwaway agent directory, so the
  * user's settings, sessions and credentials are never read or written. The
- * scenario extension is passed with `-e` and enabled with PI_TUI_SCREENSHOT=1;
- * nothing here is in the bundle manifest.
+ * scenario extension (packages/pi-scripted-model) is passed with `-e` and
+ * enabled with PI_SCRIPTED_MODEL=1; nothing here is in the bundle manifest.
  *
  *   node screenshot.mjs --scenario <file.ts> --out <file.png> \
  *     [--prompt <text> | --keys <tmux keys> | --wait-for <regex> | --sleep <ms>]... \
@@ -31,7 +31,7 @@ import { parseArgs } from "node:util";
 import { findSymbolsFont, renderPng } from "./render-ansi.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../../..");
-const MODEL = "pi-screenshot/screenshot-model";
+const MODEL = "pi-scripted/scripted-model";
 const ACTIONS = ["prompt", "keys", "wait-for", "sleep"];
 
 const { values, positionals, tokens } = parseArgs({
@@ -103,7 +103,7 @@ const env = [
   // Subagent transcripts and other scratch files land here and are removed with it.
   `TMPDIR=${join(work, "tmp")}`,
   `PI_CODING_AGENT_DIR=${agentDir}`,
-  "PI_TUI_SCREENSHOT=1",
+  "PI_SCRIPTED_MODEL=1",
   "PI_OFFLINE=1",
 ];
 const piArgs = ["-e", resolve(values.scenario), "--model", MODEL, "--no-session", ...positionals];
@@ -150,7 +150,7 @@ try {
     cwd,
     join(work, "launch.sh"),
   );
-  await waitFor("screenshot-model");
+  await waitFor("scripted-model");
   for (const { name, value } of actions) {
     if (name === "prompt") {
       tmux("send-keys", "-t", "pi", "-l", value);

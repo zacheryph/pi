@@ -13,6 +13,10 @@ const sharedFiles = new Set([
   ".oxfmtrc.json",
 ]);
 
+// Runs the whole bundle in-process, so it tests every extension: select it
+// whenever any workspace is selected.
+const BUNDLE_TESTS = "packages/pi-scripted-model";
+
 // Extensions import shared libraries from packages/ by relative path, so a change
 // there re-tests every workspace.
 export function selectExtensions(workspaces, changedFiles, all = false) {
@@ -25,10 +29,20 @@ export function selectExtensions(workspaces, changedFiles, all = false) {
         path.startsWith("scripts/") ||
         /^packages\/[^/]+\//.test(path),
     );
-  return workspaces
-    .filter((workspace) => /^(extensions|packages)\/[^/]+$/.test(workspace))
-    .filter((workspace) => runAll || changedFiles.some((path) => path.startsWith(`${workspace}/`)))
-    .sort();
+  const candidates = workspaces.filter((workspace) =>
+    /^(extensions|packages)\/[^/]+$/.test(workspace),
+  );
+  const selected = candidates.filter(
+    (workspace) => runAll || changedFiles.some((path) => path.startsWith(`${workspace}/`)),
+  );
+  if (
+    selected.length > 0 &&
+    candidates.includes(BUNDLE_TESTS) &&
+    !selected.includes(BUNDLE_TESTS)
+  ) {
+    selected.push(BUNDLE_TESTS);
+  }
+  return selected.sort();
 }
 
 export function changedFiles(base, head, cwd = process.cwd()) {
