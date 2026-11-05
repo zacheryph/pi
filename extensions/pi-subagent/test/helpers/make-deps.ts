@@ -126,7 +126,7 @@ export function createToolDepsWithDisabledBuiltInAgents(...names: string[]): Age
             promptMode: "append" as const,
             systemPrompt: "",
             isDefault: true,
-            enabled: false,
+            visibility: "disabled",
           },
         ]),
       ),

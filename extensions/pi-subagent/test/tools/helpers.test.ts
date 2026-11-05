@@ -8,6 +8,7 @@ import {
   getModelLabelFromConfig,
   textResult,
 } from "#src/tools/helpers";
+import type { AgentVisibility } from "#src/types";
 import type { AgentDetails } from "#src/ui/display";
 import { createTestSubagent } from "#test/helpers/make-subagent";
 
@@ -18,7 +19,7 @@ function makeRegistry(opts: {
   resolve?: (name: string) => {
     description: string;
     model: string | undefined;
-    enabled?: boolean;
+    visibility?: AgentVisibility;
     toolGuideline?: string;
   };
 }): TypeListRegistry {
@@ -144,7 +145,7 @@ describe("buildTypeListText", () => {
       defaults: ["general-purpose", "Plan"],
       resolve: (name) =>
         name === "Plan"
-          ? { description: "Planning agent", model: undefined, enabled: false }
+          ? { description: "Planning agent", model: undefined, visibility: "disabled" }
           : { description: "General purpose agent", model: undefined },
     });
     const result = buildTypeListText(registry, "/home/.pi");
@@ -158,12 +159,26 @@ describe("buildTypeListText", () => {
       users: ["my-agent", "disabled-custom"],
       resolve: (name) =>
         name === "disabled-custom"
-          ? { description: "disabled custom agent", model: undefined, enabled: false }
+          ? { description: "disabled custom agent", model: undefined, visibility: "disabled" }
           : { description: "My custom agent", model: undefined },
     });
     const result = buildTypeListText(registry, "/home/.pi");
     expect(result).toContain("- my-agent: My custom agent");
     expect(result).not.toContain("disabled-custom");
+  });
+
+  it("excludes hidden agents from the list", () => {
+    const registry = makeRegistry({
+      defaults: ["general-purpose"],
+      users: ["my-agent", "hidden-helper"],
+      resolve: (name) =>
+        name === "hidden-helper"
+          ? { description: "only a skill names me", model: undefined, visibility: "hidden" }
+          : { description: "My custom agent", model: undefined },
+    });
+    const result = buildTypeListText(registry, "/home/.pi");
+    expect(result).toContain("- my-agent: My custom agent");
+    expect(result).not.toContain("hidden-helper");
   });
 
   it("omits Custom agents section when no user agents exist", () => {
@@ -208,7 +223,7 @@ describe("buildAgentGuidelines", () => {
       resolve: (name) => ({
         description: `${name} agent`,
         model: undefined,
-        enabled: name === "Explore" ? false : undefined,
+        visibility: name === "Explore" ? "disabled" : undefined,
         toolGuideline: `- Use ${name} for stuff.`,
       }),
     });
@@ -233,7 +248,7 @@ describe("buildAgentGuidelines", () => {
       resolve: (name) => ({
         description: `${name} agent`,
         model: undefined,
-        enabled: false,
+        visibility: "disabled",
         toolGuideline: `- Use ${name} for stuff.`,
       }),
     });

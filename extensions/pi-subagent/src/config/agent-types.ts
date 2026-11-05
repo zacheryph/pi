@@ -2,7 +2,8 @@
  * agent-types.ts — Unified agent type registry.
  *
  * Merges embedded default agents with user-defined agents from .pi/agents/*.md.
- * User agents override defaults with the same name. Disabled agents are kept but excluded from spawning.
+ * User agents override defaults with the same name. Disabled agents are kept but
+ * refused at spawn; hidden agents spawn by name but stay out of the tool's list.
  */
 
 import { DEFAULT_AGENTS } from "#src/config/default-agents";
@@ -63,14 +64,21 @@ export class AgentTypeRegistry implements AgentConfigLookup {
     return this.resolveKey(name);
   }
 
-  /** Get all enabled type names (for spawning and tool descriptions). */
+  /** Get every type that can be spawned: visible and hidden, not disabled. */
   getAvailableTypes(): string[] {
     return [...this.agents.entries()]
-      .filter(([, config]) => config.enabled !== false)
+      .filter(([, config]) => isSpawnable(config))
       .map(([name]) => name);
   }
 
-  /** Get all type names including disabled (for UI listing). */
+  /** Get the types the subagent_start description lists: visible only. */
+  getListedTypes(): string[] {
+    return [...this.agents.entries()]
+      .filter(([, config]) => isListed(config))
+      .map(([name]) => name);
+  }
+
+  /** Get all type names, hidden and disabled included (for UI listing). */
   getAllTypes(): string[] {
     return [...this.agents.keys()];
   }
@@ -89,11 +97,12 @@ export class AgentTypeRegistry implements AgentConfigLookup {
       .map(([name]) => name);
   }
 
-  /** Check if a type is valid and enabled (case-insensitive). */
+  /** Check if a type exists and is not disabled (case-insensitive). Hidden types are valid. */
   isValidType(type: string): boolean {
     const key = this.resolveKey(type);
     if (!key) return false;
-    return this.agents.get(key)?.enabled !== false;
+    const config = this.agents.get(key);
+    return config !== undefined && isSpawnable(config);
   }
 
   /**
@@ -135,6 +144,16 @@ export class AgentTypeRegistry implements AgentConfigLookup {
     }
     return undefined;
   }
+}
+
+/** True unless the agent is disabled. */
+export function isSpawnable(config: Pick<AgentConfig, "visibility">): boolean {
+  return config.visibility !== "disabled";
+}
+
+/** True when the agent belongs in the subagent_start list: visible, or no visibility set. */
+export function isListed(config: Pick<AgentConfig, "visibility">): boolean {
+  return (config.visibility ?? "visible") === "visible";
 }
 
 /** All known built-in tool names. */

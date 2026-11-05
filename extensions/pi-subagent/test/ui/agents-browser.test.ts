@@ -40,7 +40,7 @@ describe("effective agent definitions", () => {
   it("sorts built-in and custom agents alphabetically, ignoring case, without changing registry order", () => {
     const configs = [
       agent({ name: "zebra" }),
-      agent({ name: "Alpha", enabled: false }),
+      agent({ name: "Alpha", visibility: "disabled" }),
       agent({ name: "beta" }),
     ];
     const r = new AgentTypeRegistry(() => new Map(configs.map((config) => [config.name, config])));
@@ -63,7 +63,7 @@ describe("effective agent definitions", () => {
 
   it("lists defaults and disabled overrides without description rows", () => {
     const r = registry(
-      agent({ name: "Explore", enabled: false, source: "project", toolNames: [] }),
+      agent({ name: "Explore", visibility: "disabled", source: "project", toolNames: [] }),
     );
     const view = buildAgentsView(r);
     expect(view.items.map((item) => item.label)).toEqual([
@@ -78,11 +78,11 @@ describe("effective agent definitions", () => {
       search: "disabled First line\nSecond line",
     });
     expect(view.items.find((item) => item.id === "general-purpose")!.badge).toEqual({
-      text: "[enabled]",
+      text: "[visible]",
       tone: "success",
     });
     const config = plainDetail(view.items.find((item) => item.label === "Explore")!.detail);
-    expect(field(config, "Enabled")).toBe("false");
+    expect(field(config, "Visibility")).toBe("disabled");
     expect(field(config, "Source")).toBe("project");
     expect(field(config, "Tools")).toBe("(none)");
     expect(r.isValidType("Explore")).toBe(false);
@@ -166,12 +166,12 @@ describe("effective agent definitions", () => {
     const view = buildAgentsView(r);
     config.toolNames!.push("write");
     config.systemPrompt = "changed";
-    config.enabled = false;
+    config.visibility = "disabled";
     config.description = "changed";
     const item = view.items.find((item) => item.id === config.name)!;
     expect(plainDetail(item.detail)).not.toContain("changed");
     expect(field(plainDetail(item.detail), "Tools")).toBe("read");
-    expect(item.badge!.text).toBe("[enabled]");
+    expect(item.badge!.text).toBe("[visible]");
   });
 
   it("preserves body whitespace/literal Markdown, strips unsafe terminal text before alignment", () => {
@@ -301,7 +301,7 @@ describe("effective agent definitions", () => {
       mkdirSync(projectDir, { recursive: true });
       writeFileSync(join(globalDir, "Explore.md"), "Global body");
       const path = join(projectDir, "Explore.md");
-      writeFileSync(path, "---\nenabled: false\n---\nProject body");
+      writeFileSync(path, "---\nvisibility: disabled\n---\nProject body");
       const old = new AgentTypeRegistry(() => loadCustomAgents(project));
       const view = buildAgentsView(old);
       const item = plainDetail(view.items.find((item) => item.id === "Explore")!.detail);
@@ -315,7 +315,7 @@ describe("effective agent definitions", () => {
           buildAgentsView(fresh).items.find((item) => item.id === "Explore")!.detail,
         ).endsWith("\nBody\nNew project body"),
       ).toBe(true);
-      expect(old.resolveAgentConfig("Explore").enabled).toBe(false);
+      expect(old.resolveAgentConfig("Explore").visibility).toBe("disabled");
       const global = new AgentTypeRegistry(() => loadCustomAgents(root));
       expect(
         field(

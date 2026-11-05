@@ -484,18 +484,30 @@ tools: read
     expect(result.get("nobody")!.systemPrompt).toBe("");
   });
 
-  it("handles enabled: false frontmatter", () => {
-    writeAgent(
-      "disabled",
-      `---
-enabled: false
----
-`,
-    );
+  it.each(["visible", "hidden", "disabled"] as const)("reads visibility: %s", (value) => {
+    writeAgent("agent", `---\nvisibility: ${value}\n---\n`);
 
-    const result = loadCustomAgents(tmpDir);
-    const agent = result.get("disabled")!;
-    expect(agent.enabled).toBe(false);
+    expect(loadCustomAgents(tmpDir).get("agent")!.visibility).toBe(value);
+  });
+
+  it("leaves visibility unset when the key is absent", () => {
+    writeAgent("agent", `---\ndescription: d\n---\n`);
+
+    expect(loadCustomAgents(tmpDir).get("agent")!.visibility).toBeUndefined();
+  });
+
+  it("drops an unrecognized visibility, leaving the agent visible", () => {
+    writeAgent("agent", `---\nvisibility: secret\n---\n`);
+
+    expect(loadCustomAgents(tmpDir).get("agent")!.visibility).toBeUndefined();
+  });
+
+  it("ignores the retired enabled key", () => {
+    writeAgent("agent", `---\nenabled: false\n---\n`);
+
+    const agent = loadCustomAgents(tmpDir).get("agent")!;
+    expect(agent.visibility).toBeUndefined();
+    expect(agent).not.toHaveProperty("enabled");
   });
 
   it("parses display_name frontmatter", () => {

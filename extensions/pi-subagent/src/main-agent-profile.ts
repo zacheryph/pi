@@ -44,7 +44,8 @@ export function resolveMainAgentProfile(name: string, ctx: ExtensionContext): Ag
   const key = registry.resolveType(name);
   if (!key) throw new Error(`Unknown main agent profile: "${name}".`);
   const profile = structuredClone(registry.resolveAgentConfig(key));
-  if (profile.enabled === false) throw new Error(`Main agent profile "${key}" is disabled.`);
+  if (profile.visibility === "disabled")
+    throw new Error(`Main agent profile "${key}" is disabled.`);
   validateTrust(profile, ctx);
   // Children intentionally tolerate malformed thinking frontmatter. Explicit main
   // defaults must reject it; preserve the existing child-loader policy unchanged.
@@ -90,7 +91,7 @@ function restoredSnapshot(data: unknown): MainAgentSnapshot {
     typeof s.profile.systemPrompt !== "string" ||
     typeof s.profile.description !== "string" ||
     !["append", "replace"].includes(s.profile.promptMode) ||
-    s.profile.enabled === false ||
+    s.profile.visibility === "disabled" ||
     ![undefined, "default", "global", "project"].includes(s.profile.source)
   ) {
     throw new Error("Invalid saved main agent profile snapshot; refusing to run.");
@@ -178,7 +179,7 @@ export function registerMainAgentProfile(
 
   /** Apply defaults once for explicit selection. Never called on restoration or a turn. */
   async function applyDefaults(profile: AgentConfig, ctx: ExtensionContext): Promise<string> {
-    if (profile.enabled === false)
+    if (profile.visibility === "disabled")
       throw new Error(`Main agent profile "${profile.name}" is disabled.`);
     validateTrust(profile, ctx);
     let model = ctx.model;

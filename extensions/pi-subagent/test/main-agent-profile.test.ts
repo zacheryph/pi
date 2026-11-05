@@ -637,7 +637,7 @@ describe("main profile defaults and persistent body", () => {
         });
         break;
       case "disabled":
-        h.state.profile.enabled = false;
+        h.state.profile.visibility = "disabled";
         break;
       case "unavailable model":
         h.state.profile.model = "anthropic/missing";

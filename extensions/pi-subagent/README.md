@@ -294,7 +294,7 @@ Changes persist across pi restarts (see [Persistent Settings](./docs/configurati
 Search agent names, status, and descriptions; Enter opens details. All effective
 profiles are listed, including disabled profiles, with project overrides taking
 precedence over global and built-in definitions. Details show the name with its
-`[enabled]`/`[disabled]` badge, effective fields and source, then **Description**,
+`[visible]`/`[hidden]`/`[disabled]` badge, effective fields and source, then **Description**,
 **Tool guideline** and **Body** sections with the full multiline text. Browsing
 never launches an agent or changes settings.
 
@@ -539,7 +539,7 @@ It throws in four cases:
 - there is no active session, so there is no parent to spawn from;
 - a `model` string does not resolve against the session's model registry;
 - a `thinkingLevel` is not one of `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`;
-- the named agent type exists but is disabled (`enabled: false`).
+- the named agent type exists but is disabled (`visibility: disabled`).
 
 Agent frontmatter never overrides an option you pass.
 It fills `model`, `thinkingLevel`, and `maxTurns` when you omit them; `inheritContext` is the exception, and defaults to `false` whatever the agent file declares.

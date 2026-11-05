@@ -1,4 +1,4 @@
-import type { AgentConfigLookup } from "#src/config/agent-types";
+import { type AgentConfigLookup, isListed } from "#src/config/agent-types";
 import type { TurnBudget } from "#src/lifecycle/turn-limits";
 import { getLifetimeTotal, type LifetimeUsage } from "#src/lifecycle/usage";
 import { type AgentDetails, formatTokens, type ModelIdentity, modelLabel } from "#src/ui/display";
@@ -94,9 +94,9 @@ export function buildTypeListText(registry: TypeListRegistry, agentDir: string):
   ].join("\n");
 }
 
-/** True when an agent config is present and not explicitly disabled. */
+/** True when an agent belongs in the subagent_start list (not hidden or disabled). */
 function isEnabledAgent(registry: AgentConfigLookup, name: string): boolean {
-  return registry.resolveAgentConfig(name).enabled !== false;
+  return isListed(registry.resolveAgentConfig(name));
 }
 
 /**
