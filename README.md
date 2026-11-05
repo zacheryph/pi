@@ -1,5 +1,7 @@
 # Personal Pi Extensions
 
+![Pi's todo and subagent widgets tracking a rendering audit](docs/images/banner.png)
+
 Personal Pi bundle: one install, multiple independent extensions. No npm publication
 or TypeScript build required. Requires Pi 1.4.0+ and Node.js 24+.
 
