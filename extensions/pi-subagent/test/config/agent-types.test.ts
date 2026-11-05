@@ -1,5 +1,8 @@
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
+import { BUILTIN_AGENTS_DIR, DEFAULT_AGENTS } from "#src/config/default-agents";
 import type { AgentConfig } from "#src/types";
 
 function makeAgentConfig(overrides: Partial<AgentConfig> = {}): AgentConfig {
@@ -315,26 +318,35 @@ describe("AgentTypeRegistry", () => {
     });
   });
 
-  describe("DEFAULT_AGENT_NAMES static property", () => {
-    it("is defined on the class", () => {
-      expect(AgentTypeRegistry.DEFAULT_AGENT_NAMES).toBeDefined();
+  describe("built-in agents", () => {
+    it("are loaded from the extension's agents/*.md files", () => {
+      const files = readdirSync(BUILTIN_AGENTS_DIR)
+        .filter((file) => file.endsWith(".md"))
+        .map((file) => file.slice(0, -3));
+      expect([...DEFAULT_AGENTS.keys()].sort()).toEqual(files.sort());
+      expect([...DEFAULT_AGENTS.keys()]).toEqual(
+        expect.arrayContaining(["general-purpose", "orchestrator", "Explore", "Plan", "reviewer"]),
+      );
     });
 
-    it("contains the built-in default names", () => {
-      expect(AgentTypeRegistry.DEFAULT_AGENT_NAMES).toEqual([
-        "general-purpose",
-        "orchestrator",
-        "Explore",
-        "Plan",
-        "reviewer",
-      ]);
+    it.each([...DEFAULT_AGENTS.keys()])("%s records its built-in source and file", (name) => {
+      const config = DEFAULT_AGENTS.get(name)!;
+      expect(config.source).toBe("default");
+      expect(config.sourcePath).toBe(join(BUILTIN_AGENTS_DIR, `${name}.md`));
     });
 
-    it("is no longer exported from types.ts", async () => {
-      // DEFAULT_AGENT_NAMES was moved to AgentTypeRegistry; it must NOT appear
-      // as a named export from types.ts anymore.
-      const typesModule = await import("#src/types");
-      expect((typesModule as Record<string, unknown>).DEFAULT_AGENT_NAMES).toBeUndefined();
+    it.each([...DEFAULT_AGENTS.keys()])("%s carries a description and guidance", (name) => {
+      const config = DEFAULT_AGENTS.get(name)!;
+      expect(config.description).not.toBe(name);
+      expect(config.guidance).toMatch(/^Use /);
+    });
+
+    it("keeps general-purpose a pure copy of its parent", () => {
+      expect(DEFAULT_AGENTS.get("general-purpose")).toMatchObject({
+        promptMode: "append",
+        systemPrompt: "",
+        toolNames: ["all"],
+      });
     });
   });
 
@@ -346,7 +358,7 @@ describe("AgentTypeRegistry", () => {
       expect(registry.resolveAgentConfig("orchestrator")).toMatchObject({
         name: "orchestrator",
         displayName: "Orchestrator",
-        isDefault: true,
+        source: "default",
         promptMode: "replace",
         toolNames: [
           "all",
@@ -419,7 +431,7 @@ describe("AgentTypeRegistry", () => {
       expect(config).toMatchObject({
         name: "reviewer",
         displayName: "Reviewer",
-        isDefault: true,
+        source: "default",
         promptMode: "replace",
       });
       expect(config.model).toBeUndefined();

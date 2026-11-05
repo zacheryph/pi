@@ -18,7 +18,8 @@ For the tools, commands, events, and service API, see the [README](../README.md)
 The `general-purpose` agent is a **parent twin** — it receives the parent's inherited identity and nothing of its own, so it follows the same rules the parent does.
 Explore, Plan and reviewer use `replace` mode: the parent prompt is the cacheable base and their specialist read-only instructions are appended last, giving them the final say.
 
-Default agents can be **overridden** by creating a `.md` file with the same name (e.g. `.pi/agents/general-purpose.md`), or **hidden** or **disabled** per-project with `visibility` frontmatter.
+The built-in agents are ordinary agent files in this extension's [`agents/`](../agents) directory, in the same format and read by the same parser as your own.
+Override one by creating a `.md` file with the same name (e.g. `.pi/agents/general-purpose.md`), or **hide** or **disable** it per-project with `visibility` frontmatter.
 
 ### Orchestrator
 

@@ -3,6 +3,24 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-05: Built-in agents are markdown files
+
+The five built-in agents were TypeScript object literals, in a different shape
+from the `.md` files users write, with a separate `isDefault` flag.
+
+- Move `general-purpose`, `orchestrator`, `Explore`, `Plan` and `reviewer` to
+  `agents/<name>.md`, loaded by the same parser as `.pi/agents/*.md` with
+  `source: "default"` and a real `sourcePath`, so a built-in can also use
+  prompt fragments from `agents/fragments/`. Ship `agents/` in the package.
+- `default-agents.ts` only loads that directory. Every directory now loads in
+  case-insensitive name order, so the built-ins list as Explore,
+  general-purpose, orchestrator, Plan, reviewer.
+- Remove `AgentConfig.isDefault` and `AgentTypeRegistry.DEFAULT_AGENT_NAMES`;
+  `source === "default"` identifies a built-in. `/subagent:agents` shows its
+  source as `built-in` and its file path.
+- The prompts are unchanged in wording; the formatter adds the blank lines
+  Markdown expects after headings and around lists.
+
 ## 2026-11-05: One dense agent list in the `subagent_start` description
 
 The description split agents under "Default agents:" and "Custom agents:",

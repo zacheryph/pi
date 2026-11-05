@@ -351,7 +351,7 @@ src/
 │
 ├── config/                         agent type definitions and resolution
 │   ├── agent-types.ts              AgentTypeRegistry class
-│   ├── default-agents.ts           built-in agent configs (general-purpose, Explore, Plan)
+│   ├── default-agents.ts           loads the built-in agents from agents/*.md
 │   ├── custom-agents.ts            user-defined agent .md file loader
 │   ├── invocation-config.ts        per-call config merge (caller wins unless `locked`); background-mode resolution
 │   └── thinking-level.ts           thinking-level vocabulary and parser, wider than pi-ai's `ThinkingLevel`
