@@ -497,6 +497,14 @@ commits a verbatim copy of upstream, verified by tree hash, and prepares the
 integration. Each imported extension records its provenance in `UPSTREAM.md` and
 its local changes in `CHANGELOG.md`.
 
+### Screenshot the TUI
+
+Use the [`tui-screenshot` skill](.agents/skills/tui-screenshot/SKILL.md). A
+scenario file scripts a fake model, and a driver runs Pi with the bundle in a
+private tmux server and renders the screen to PNG. No API key is needed. It is
+development-only: nothing under `.agents/` is in the bundle manifest, and
+`verify:bundle` fails if it ever is.
+
 ## License
 
 Vendored subagents code retains its upstream [MIT license](extensions/pi-subagent/LICENSE).
