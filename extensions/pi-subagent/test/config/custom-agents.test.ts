@@ -541,6 +541,16 @@ tools: read
     });
   });
 
+  it.each([
+    ["true", true],
+    ["false", undefined],
+    ["yes", undefined],
+  ])("reads delegate: %s as %s", (value, expected) => {
+    writeAgent("agent", `---\ndelegate: ${value}\n---\n`);
+
+    expect(loadCustomAgents(tmpDir).get("agent")!.delegate).toBe(expected);
+  });
+
   it("ignores the retired enabled key", () => {
     writeAgent("agent", `---\nenabled: false\n---\n`);
 

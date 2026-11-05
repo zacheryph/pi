@@ -81,6 +81,12 @@ export type AgentVisibility = (typeof AGENT_VISIBILITIES)[number];
 export interface AgentConfig extends AgentIdentity, AgentPromptConfig {
   /** Tool selectors: omitted or `all` inherits available tools; explicit names restrict, `-name` excludes (MCP globs supported). */
   toolNames?: string[];
+  /**
+   * true lets a child start, read and steer agents of its own (subagent_start,
+   * subagent_get, subagent_steer). Omitted or false withholds them, whatever
+   * `toolNames` selects. A main session always has them unless `tools` excludes them.
+   */
+  delegate?: boolean;
   model?: string;
   thinking?: ThinkingLevel;
   maxTurns?: number;

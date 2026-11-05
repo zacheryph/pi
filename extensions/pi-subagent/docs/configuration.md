@@ -7,13 +7,13 @@ For the tools, commands, events, and service API, see the [README](../README.md)
 
 ## Default Agent Types
 
-| Type              | Tools                                             | Model                                                                 | Prompt Mode            | Description                                                                                                                          |
-| ----------------- | ------------------------------------------------- | --------------------------------------------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `general-purpose` | all available                                     | inherit                                                               | `append` (parent twin) | Inherits the parent's prompt identity — same rules, CLAUDE.md, project conventions                                                   |
-| `orchestrator`    | all available; explicit todo and delegation tools | inherit                                                               | `replace`              | Project manager: categorizes tasks, delegates work, tracks open items, and recalls prior workers                                     |
-| `Explore`         | read, bash, grep, find, ls                        | newest Haiku (`anthropic/claude-haiku@latest`; falls back to inherit) | `replace`              | Fast codebase exploration (read-only); inherits the parent prompt as a base                                                          |
-| `Plan`            | read, bash, grep, find, ls                        | inherit                                                               | `replace`              | Software architect for implementation planning (read-only); inherits the parent prompt as a base                                     |
-| `reviewer`        | read, bash, grep, find, ls                        | inherit                                                               | `replace`              | Verifies finished work against its acceptance criteria; runs checks, reports `Verdict: PASS/FAIL/BLOCKED` with evidence, never fixes |
+| Type              | Tools                                          | Model                                                                 | Prompt Mode            | Description                                                                                                                          |
+| ----------------- | ---------------------------------------------- | --------------------------------------------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `general-purpose` | all available                                  | inherit                                                               | `append` (parent twin) | Inherits the parent's prompt identity — same rules, CLAUDE.md, project conventions                                                   |
+| `orchestrator`    | all available; explicit todo tools; `delegate` | inherit                                                               | `replace`              | Project manager: categorizes tasks, delegates work, tracks open items, and recalls prior workers                                     |
+| `Explore`         | read, bash, grep, find, ls                     | newest Haiku (`anthropic/claude-haiku@latest`; falls back to inherit) | `replace`              | Fast codebase exploration (read-only); inherits the parent prompt as a base                                                          |
+| `Plan`            | read, bash, grep, find, ls                     | inherit                                                               | `replace`              | Software architect for implementation planning (read-only); inherits the parent prompt as a base                                     |
+| `reviewer`        | read, bash, grep, find, ls                     | inherit                                                               | `replace`              | Verifies finished work against its acceptance criteria; runs checks, reports `Verdict: PASS/FAIL/BLOCKED` with evidence, never fixes |
 
 The `general-purpose` agent is a **parent twin** — it receives the parent's inherited identity and nothing of its own, so it follows the same rules the parent does.
 Every other agent, and any agent file that does not set `prompt_mode`, uses `replace` mode: the parent prompt is the cacheable base and the agent's own instructions are appended last, giving them the final say.
@@ -221,6 +221,7 @@ A file whose frontmatter is not valid YAML still takes its name, so it still ove
 | `guidance`        | —              | When to pick the agent, as a sentence (`Use for …`). Shown after the description on the same line of the list, so the name is not repeated                                                                                                                                |
 | `display_name`    | —              | Display name for UI (e.g. widget, agent list)                                                                                                                                                                                                                             |
 | `tools`           | all available  | `all` for registered tools; explicit names restrict; `-name` removes; `none` disables tools. See [Tool selection](#tool-selection)                                                                                                                                        |
+| `delegate`        | `false`        | `true` lets the agent start, read and steer agents of its own (`subagent_start`, `subagent_get`, `subagent_steer`). Without it they are withheld, whatever `tools` selects. See [Tool selection](#tool-selection)                                                         |
 | `model`           | inherit parent | Model — `provider/modelId`, fuzzy name (`"haiku"`, `"sonnet"`), or `[provider/]family@latest` for the newest available model whose id contains `family`                                                                                                                   |
 | `thinking`        | inherit        | off, minimal, low, medium, high, xhigh, max. An unrecognized value is dropped, and the agent inherits the parent's level                                                                                                                                                  |
 | `max_turns`       | unlimited      | Turn ceiling: the harness stops the agent after this many turns (minimum 2). `0` or omit for unlimited                                                                                                                                                                    |
@@ -340,18 +341,20 @@ tools: read, grep, find, agent_browser
 
 An explicit allowlist must still name an extension's tool to admit it. Children load the parent's extensions, but the SDK filters those tools against the resolved selection when their registrations arrive.
 
-Three names are removed from a child by default: `subagent_start`,
-`subagent_get`, and `subagent_steer`. To opt a coordinating profile into
-delegation, name each required tool explicitly. `all`, omitted tools, and
-negative-only selections do not opt in; explicit exclusions still win.
-The denylist remains enforced by the SDK across tool-registry refreshes.
+Three names are removed from a child unless its profile sets `delegate: true`:
+`subagent_start`, `subagent_get`, and `subagent_steer`. `delegate` is the only
+switch; naming them in `tools` does not opt in. With it, all three are added
+to the child's tools, even under an allowlist that names none of them, and an
+explicit exclusion such as `-subagent_steer` still wins. The denylist remains
+enforced by the SDK across tool-registry refreshes.
 
 ```yaml
-tools: [all, todo, subagent, subagent_get, subagent_steer]
+tools: [all, todo_list, todo_upsert, todo_replace, todo_remove, todo_clear]
+delegate: true
 ```
 
 The built-in orchestrator uses this selection. Ordinary general-purpose,
-Explore, and Plan workers retain the recursion guard. Custom profiles opting in
+Explore, Plan and reviewer workers retain the recursion guard. Custom profiles opting in
 are responsible for limiting further delegation; there is no global depth limit
 or shared concurrency pool across managers.
 

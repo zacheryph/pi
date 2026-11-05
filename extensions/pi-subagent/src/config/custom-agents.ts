@@ -88,6 +88,7 @@ function loadFromDir(dir: string, agents: Map<string, AgentConfig>, source: Agen
       description: str(fm.description) ?? name,
       guidance: str(fm.guidance),
       toolNames: listField(fm.tools, ["all"]),
+      delegate: fm.delegate === true ? true : undefined,
       model: str(fm.model),
       thinking: thinkingLevel(fm.thinking, name),
       maxTurns: nonNegativeInt(fm.max_turns),

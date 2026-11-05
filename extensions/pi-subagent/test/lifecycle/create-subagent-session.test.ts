@@ -7,6 +7,7 @@ import type {
 import { createSubagentSession } from "#src/lifecycle/create-subagent-session";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import { SubagentSession } from "#src/lifecycle/subagent-session";
+import type { AgentConfig } from "#src/types";
 import { STUB_SNAPSHOT } from "#test/helpers/stub-ctx";
 import {
   createAgentLookup,
@@ -478,23 +479,66 @@ describe("createSubagentSession — recursion guard", () => {
     );
   });
 
-  it("admits only explicitly named delegation tools and honors exclusions in the captured profile", async () => {
+  function orchestratorWith(overrides: Partial<AgentConfig>) {
+    return {
+      ...new AgentTypeRegistry(() => new Map()).resolveAgentConfig("orchestrator"),
+      ...overrides,
+    };
+  }
+
+  it("withholds delegation tools a profile names in tools without delegate", async () => {
     arrangeFactory();
     await createSubagentSession(
       {
         snapshot: STUB_SNAPSHOT,
         type: "orchestrator",
-        agentConfig: {
-          ...new AgentTypeRegistry(() => new Map()).resolveAgentConfig("orchestrator"),
-          toolNames: ["all", "subagent_start", "subagent_steer", "-subagent_steer"],
-        },
+        agentConfig: orchestratorWith({
+          delegate: undefined,
+          toolNames: ["read", "subagent_start", "subagent_get", "subagent_steer"],
+        }),
       },
       defaultDeps(),
     );
     expect(io.createSession).toHaveBeenCalledWith(
       expect.objectContaining({
-        tools: ["subagent_start"],
-        excludeTools: ["subagent_get", "subagent_steer"],
+        tools: ["read"],
+        excludeTools: ["subagent_start", "subagent_get", "subagent_steer"],
+      }),
+    );
+  });
+
+  it("adds every delegation tool to an allowlist that names none of them", async () => {
+    arrangeFactory();
+    await createSubagentSession(
+      {
+        snapshot: STUB_SNAPSHOT,
+        type: "orchestrator",
+        agentConfig: orchestratorWith({ delegate: true, toolNames: ["read"] }),
+      },
+      defaultDeps(),
+    );
+    expect(io.createSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tools: ["read", "subagent_start", "subagent_get", "subagent_steer"],
+        excludeTools: [],
+      }),
+    );
+  });
+
+  it("lets an explicit exclusion win over delegate", async () => {
+    arrangeFactory();
+    await createSubagentSession(
+      {
+        snapshot: STUB_SNAPSHOT,
+        type: "orchestrator",
+        agentConfig: orchestratorWith({ delegate: true, toolNames: ["all", "-subagent_steer"] }),
+      },
+      defaultDeps(),
+    );
+    expect(io.createSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tools: ["subagent_start", "subagent_get"],
+        excludeTools: ["subagent_steer"],
       }),
     );
   });

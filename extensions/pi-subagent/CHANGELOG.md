@@ -3,6 +3,25 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-05: Opt into delegation with `delegate: true`
+
+A child could start agents of its own only if its `tools` named each of
+`subagent_start`, `subagent_get` and `subagent_steer`, while `all` did not
+count. The one capability that needs a deliberate choice was hidden in an
+allowlist quirk, and the docs' own example misnamed the tools.
+
+- Add `delegate: true` frontmatter. It adds all three delegation tools to the
+  child, even under an allowlist that names none of them; an explicit
+  `-subagent_*` exclusion still wins. Without it they are withheld, including
+  when `tools` names them.
+- The built-in orchestrator declares `delegate: true` and no longer lists the
+  delegation tools in `tools`.
+- `SessionConfig` carries `delegate`; `/subagent:agents` shows a Delegate
+  field. A main session is unchanged: it always has the delegation tools
+  unless `tools` excludes them.
+- Fix the configuration docs' example, which named `todo` and `subagent`
+  rather than the real tool names.
+
 ## 2026-11-05: A malformed agent file no longer breaks every agent
 
 `parseFrontmatter` throws on invalid YAML, and nothing caught it. One bad file

@@ -42,13 +42,14 @@ import type {
 } from "#src/types";
 
 /**
- * Recursion guard: delegation tools are denied unless the profile explicitly
- * names them (`all` alone does not opt in). The SDK applies the denylist whenever
- * it rebuilds the child's tool registry — including the rebuild triggered by a
- * child extension registering a tool of its own. Filtering the active set once
- * after `bindExtensions` would be undone by that rebuild (#725).
+ * Recursion guard: delegation tools are denied unless the profile declares
+ * `delegate: true`; naming them in `tools` does not opt in. The SDK applies the
+ * denylist whenever it rebuilds the child's tool registry — including the
+ * rebuild triggered by a child extension registering a tool of its own.
+ * Filtering the active set once after `bindExtensions` would be undone by that
+ * rebuild (#725).
  */
-const EXCLUDED_TOOL_NAMES = ["subagent_start", "subagent_get", "subagent_steer"];
+const DELEGATION_TOOL_NAMES = ["subagent_start", "subagent_get", "subagent_steer"];
 
 /** pi-ask's tool, and the session-tree service that routes it to this parent. */
 const ASK_TOOL_NAME = "ask";
@@ -264,9 +265,15 @@ export async function createSubagentSession(
     deps.io.assemblerIO,
   );
 
-  const { toolNames, unmatchedPatterns } = resolveToolSelection(
-    cfg.toolNames,
-    deps.listParentToolNames(),
+  const selection = resolveToolSelection(cfg.toolNames, deps.listParentToolNames());
+  const { unmatchedPatterns } = selection;
+  // `delegate: true` adds the delegation tools; a `-subagent_*` exclusion still
+  // wins. Without it they are stripped whatever `tools` selected.
+  const delegationTools = cfg.delegate
+    ? DELEGATION_TOOL_NAMES.filter((name) => !selection.excludedToolNames.includes(name))
+    : [];
+  const toolNames = [...new Set([...selection.toolNames, ...delegationTools])].filter(
+    (name) => !DELEGATION_TOOL_NAMES.includes(name) || delegationTools.includes(name),
   );
   for (const pattern of unmatchedPatterns) {
     debugNote(`agent ${type}: tools pattern ${pattern} matched no tool the parent has`);
@@ -330,9 +337,7 @@ export async function createSubagentSession(
     model: cfg.model,
     tools: [...new Set([...toolNames, ...protocolTools])],
     customTools: childTools,
-    excludeTools: EXCLUDED_TOOL_NAMES.filter(
-      (name) => !cfg.toolNames.includes(name) || !toolNames.includes(name),
-    ),
+    excludeTools: DELEGATION_TOOL_NAMES.filter((name) => !delegationTools.includes(name)),
     resourceLoader: loader,
     thinkingLevel: cfg.thinkingLevel,
     ...(transcriptPath
