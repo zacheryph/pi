@@ -19,32 +19,41 @@ page (`#<pid>`):
 
 - **Header**: directory, agent, session id, pid, uptime, and **Focus**.
 - **Strip**: model and provider, thinking level, status and how long it has
-  held, context usage, session cost.
-- **Todos**: every task with status, blocked state and unreviewed messages;
-  expand one for its description, prerequisites and its full status and
+  held, context usage, and usage: the session cost as a button, with total
+  tokens under it. The button opens input, output, cache read, cache write and
+  total tokens and the cost for the whole session file, matching `/session`,
+  in an overlay that stays live; Esc, the × button or a click outside closes it.
+
+Below the strip, two even columns: what the session is doing (todos, subagents,
+recent activity) on the left, and what it produced (pull requests, worktrees,
+stash) on the right. When one side has nothing to show, its panels are split
+across both. Finished items fold behind one row per panel (`▸ 32 completed`,
+`▸ 16 finished · 1 failed`, `▸ 5 merged · 1 closed`); a fold you open stays
+open across live updates.
+
+- **Todos**: open tasks with status, blocked state and unreviewed messages;
+  completed ones fold away, except while they have unreviewed messages.
+  Expand a task for its description, prerequisites and its full status and
   message history (fetched when you expand it).
-- **Subagents**: agents seen since the session's runtime loaded, with state,
-  duration, tool uses, tokens and the latest progress note or error.
+- **Subagents**: running and queued agents seen since the session's runtime
+  loaded, with duration, tool uses, tokens and the latest progress note;
+  completed, failed and stopped ones fold away, with their error.
+- **Recent activity**: the last 12 tool calls with duration, failures, and
+  what they touched: a file tool's path, or a bash command's first line.
 - **Pull requests**: from pi-git, **Opened here** and **Referenced**, each
   linking to GitHub in a new tab, with a badge for what matters first (merged,
   checks failing, conflicts, changes requested, draft, approved), the review
-  and check counts, and how long ago a tool last showed its status.
+  and check counts, and how long ago a tool last showed its status. Merged and
+  closed ones fold away.
 - **Worktrees**: from pi-git, worktrees not yet removed, with repository,
   branch, path, workspace, how many subagents ran there, uncommitted changes,
   unpushed commits, and whether the branch is merged; plus how many were
   removed and how many other sessions' worktrees are under the root.
-- **Blackhole**: observations kept of recorded (and their tokens), dropped,
-  reflections, compactions and the last one. Without pi-blackhole entries the
-  panel shows compactions only.
 - **Stash**: this branch's entries with size, lines, source, whether this
   session or a subagent stored them, age, versions and handle, plus the shared
   store's size against its cap (with a warning when over). **Preview** opens
   the first 200 lines / 16 KB of an entry in an overlay headed by its name,
   handle, description and facts; Esc, the × button or a click outside closes it.
-- **Recent activity**: the last 12 tool calls with duration, failures, and
-  what they touched: a file tool's path, or a bash command's first line.
-- **Usage**: input, output and cache tokens and cost for the whole session
-  file, matching `/session`.
 
 The index has a filter box (every word must match the name, directory, agent,
 model or status) and a **Notifications** toggle. With notifications on, the
@@ -92,7 +101,6 @@ With notifications on, a new question notifies you with its text.
 | Stash     | `stash:snapshot` on the session's `pi.events` bus; previews through pi-stash's `stash:preview` request on the same bus                                                                                               |
 | Git       | `git:snapshot` on the session's `pi.events` bus. Only `https://<host>/<owner>/<repo>/pull/<n>` URLs become links; any other PR is dropped                                                                            |
 | Subagents | pi-subagent's `subagent:*` lifecycle events on the same bus. Its `globalThis` service is not used: subagent children load the extension in-process and replace it. Agents started before a `/reload` are not listed. |
-| Blackhole | `om.observations.*` and `om.reflections.recorded` entries pi-blackhole saves on the branch (no public API; unknown shapes are skipped)                                                                               |
 | Usage     | Usage on every entry in the session file, as Pi's `/session` sums it                                                                                                                                                 |
 | Activity  | Pi's `tool_execution_start` / `_end` for top-level calls (codemode's nested calls are left out)                                                                                                                      |
 | Questions | pi-ask's `ask:opened` and `ask:closed` events on the session's bus; answers through its `ask:answer` / `ask:answer-result` contract                                                                                  |

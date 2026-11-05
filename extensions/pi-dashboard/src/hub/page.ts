@@ -115,7 +115,7 @@ button.focus:disabled { opacity: 0.6; cursor: progress; }
 .strip .ctx { justify-self: stretch; }
 .strip > div:last-child { border-right: 0; }
 .label { font: 500 11px var(--mono); letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
-.cols { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
 .col { display: grid; gap: 16px; min-width: 0; }
 section.panel { padding: 12px 16px 14px; display: grid; gap: 8px; }
 section.panel h3 { margin: 0; display: flex; justify-content: space-between; gap: 8px; font: 600 12px var(--mono); letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
@@ -126,6 +126,19 @@ section.panel h3 span { text-transform: none; letter-spacing: 0; font-weight: 50
 details > summary { cursor: pointer; list-style: none; display: grid; grid-template-columns: 18px 1fr auto; gap: 6px; align-items: start; }
 details > summary::-webkit-details-marker { display: none; }
 details > .more { padding: 4px 0 2px 24px; display: grid; gap: 4px; font-size: 13px; }
+details.fold { border-top: 1px solid var(--line); }
+details.fold > summary { display: flex; gap: 6px; align-items: center; padding: 7px 0; font: 500 12px var(--mono); color: var(--muted); }
+details.fold > summary::before { content: "▸"; width: 18px; flex: none; }
+details.fold[open] > summary::before { content: "▾"; }
+details.fold > summary:hover { color: var(--ink); }
+details.fold > .items > li:first-child { border-top: 1px solid var(--line); }
+details.fold > .label { padding-top: 6px; }
+button.usage { font: 600 14px var(--mono); font-variant-numeric: tabular-nums; color: var(--accent); background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 0 8px; cursor: pointer; }
+button.usage:hover { border-color: var(--accent); }
+dialog.modal.narrow { width: min(440px, calc(100vw - 32px)); }
+.modal-body .kv { padding: 14px 18px; column-gap: 0; }
+.modal-body .kv dd { padding-left: 14px; }
+.modal-body .kv dt.total, .modal-body .kv dd.total { border-top: 1px solid var(--line); padding-top: 6px; font-weight: 600; color: var(--ink); }
 .glyph { font-family: var(--mono); }
 .done { color: var(--muted); text-decoration: line-through; }
 .new { font: 600 11px var(--mono); color: var(--warn); white-space: nowrap; }
@@ -365,47 +378,74 @@ function kv(rows) {
   return dl;
 }
 
+/** A list of rows, one per item. */
+function itemList(items, row) {
+  const ul = el("ul", "items");
+  for (const item of items) ul.append(row(item));
+  return ul;
+}
+
+/**
+ * Finished rows behind one expandable line, so a long session's panels show
+ * what is still in flight; whether it is open survives live re-renders.
+ */
+function fold(node, key, label, ...children) {
+  const details = el("details", "fold");
+  details.open = expanded.has(key);
+  details.addEventListener("toggle", () => { if (details.open) expanded.add(key); else expanded.delete(key); });
+  const summary = el("summary", "", label);
+  summary.dataset.key = key;
+  details.append(summary, ...children);
+  node.append(details);
+}
+
 function todoPanel(session) {
   const tasks = list(session.todos.tasks);
-  const done = tasks.filter((task) => task.status === "completed").length;
   const fresh = tasks.reduce((sum, task) => sum + (Number(task.unreviewed) || 0), 0);
+  // A completed task with unread messages stays out until they are reviewed.
+  const finished = tasks.filter((task) => task.status === "completed" && !task.unreviewed);
+  const open = tasks.filter((task) => !finished.includes(task));
+  const done = tasks.filter((task) => task.status === "completed").length;
   const node = panel("Todos", tasks.length ? done + "/" + session.todos.total + " done" + (fresh ? " · " + fresh + " new" : "") : "");
   if (!tasks.length) { node.append(el("span", "muted", "No tasks on this branch.")); return node; }
-  const ul = el("ul", "items");
-  for (const task of tasks) {
-    const li = el("li");
-    const key = session.id + ":" + task.key;
-    const details = el("details");
-    details.open = expanded.has(key);
-    const historyKey = key + ":" + (task.updatedAt || 0);
-    details.addEventListener("toggle", () => {
-      if (details.open) expanded.add(key); else expanded.delete(key);
-      if (details.open && !histories.has(historyKey)) fetchInto(histories, historyKey, session, "todos/" + encodeURIComponent(task.key) + "/history");
-    });
-    const summary = el("summary");
-    summary.dataset.key = "todo:" + key;
-    const glyph = task.blocked ? "⊘" : TODO_GLYPH[task.status] || "○";
-    summary.append(
-      el("span", "glyph" + (task.blocked ? " muted" : ""), glyph),
-      el("span", task.status === "completed" ? "done" : task.blocked ? "muted" : "", task.subject),
-      task.unreviewed ? el("span", "new", task.unreviewed + " new") : el("span"),
-    );
-    details.append(summary);
-    const more = el("div", "more");
-    more.append(el("span", "mono muted", task.key + " · " + task.status.replace("_", " ") + (task.blocked ? " · blocked" : "") + (task.updatedAt ? " · " + ago(task.updatedAt) + " ago" : "")));
-    if (task.description) more.append(el("span", "wrap", task.description));
-    if (list(task.dependsOn).length) more.append(el("span", "muted", "after: " + task.dependsOn.join(", ")));
-    const history = histories.get(historyKey);
-    if (history && history.data) more.append(timeline(history.data));
-    else if (history && history.error) more.append(el("span", "bad", history.error));
-    else if (task.message) more.append(el("span", "wrap", "“" + task.message.text + "”" + (task.message.at ? " · " + ago(task.message.at) + " ago" : "")));
-    if (history && history.loading) more.append(el("span", "muted", "Loading history…"));
-    details.append(more);
-    li.append(details);
-    ul.append(li);
-  }
-  node.append(ul);
+  const row = (task) => todoItem(session, task);
+  if (open.length) node.append(itemList(open, row));
+  else node.append(el("span", "muted", "No open tasks."));
+  if (finished.length) fold(node, "fold:" + session.id + ":todos", finished.length + " completed", itemList(finished, row));
   return node;
+}
+
+function todoItem(session, task) {
+  const li = el("li");
+  const key = session.id + ":" + task.key;
+  const details = el("details");
+  details.open = expanded.has(key);
+  const historyKey = key + ":" + (task.updatedAt || 0);
+  details.addEventListener("toggle", () => {
+    if (details.open) expanded.add(key); else expanded.delete(key);
+    if (details.open && !histories.has(historyKey)) fetchInto(histories, historyKey, session, "todos/" + encodeURIComponent(task.key) + "/history");
+  });
+  const summary = el("summary");
+  summary.dataset.key = "todo:" + key;
+  const glyph = task.blocked ? "⊘" : TODO_GLYPH[task.status] || "○";
+  summary.append(
+    el("span", "glyph" + (task.blocked ? " muted" : ""), glyph),
+    el("span", task.status === "completed" ? "done" : task.blocked ? "muted" : "", task.subject),
+    task.unreviewed ? el("span", "new", task.unreviewed + " new") : el("span"),
+  );
+  details.append(summary);
+  const more = el("div", "more");
+  more.append(el("span", "mono muted", task.key + " · " + task.status.replace("_", " ") + (task.blocked ? " · blocked" : "") + (task.updatedAt ? " · " + ago(task.updatedAt) + " ago" : "")));
+  if (task.description) more.append(el("span", "wrap", task.description));
+  if (list(task.dependsOn).length) more.append(el("span", "muted", "after: " + task.dependsOn.join(", ")));
+  const history = histories.get(historyKey);
+  if (history && history.data) more.append(timeline(history.data));
+  else if (history && history.error) more.append(el("span", "bad", history.error));
+  else if (task.message) more.append(el("span", "wrap", "“" + task.message.text + "”" + (task.message.at ? " · " + ago(task.message.at) + " ago" : "")));
+  if (history && history.loading) more.append(el("span", "muted", "Loading history…"));
+  details.append(more);
+  li.append(details);
+  return li;
 }
 
 const STATUS_WORDS = { pending: "pending", in_progress: "in progress", completed: "completed" };
@@ -451,40 +491,28 @@ function activityPanel(session) {
 
 function subagentPanel(session) {
   const agents = list(session.subagents.agents);
-  const running = agents.filter((agent) => agent.state === "running").length;
-  const node = panel("Subagents", running ? running + " running" : agents.length + " recent");
-  const ul = el("ul", "items");
-  for (const agent of agents) {
-    const li = el("li");
-    const row = el("div", "row");
-    row.append(el("span", "clip", agent.type + ": " + (agent.description || agent.id)), pill(agent.state, agent.state));
-    li.append(row);
-    const facts = [agent.state === "running" || agent.state === "queued" ? ago(agent.since) : agent.durationMs !== undefined ? duration(agent.durationMs) : null,
-      agent.toolUses ? agent.toolUses + " tools" : null, agent.tokens ? tokens(agent.tokens) + " tok" : null].filter(Boolean);
-    if (facts.length) li.append(el("span", "mono muted", facts.join(" · ")));
-    if (agent.note) li.append(el("span", "muted wrap", agent.note));
-    ul.append(li);
+  const live = agents.filter((agent) => agent.state === "running" || agent.state === "queued");
+  const finished = agents.filter((agent) => !live.includes(agent));
+  const node = panel("Subagents", live.length ? live.length + " running" : agents.length + " recent");
+  if (live.length) node.append(itemList(live, subagentItem));
+  else node.append(el("span", "muted", "Nothing running."));
+  if (finished.length) {
+    const failed = finished.filter((agent) => agent.state === "failed").length;
+    fold(node, "fold:" + session.id + ":subagents", finished.length + " finished" + (failed ? " · " + failed + " failed" : ""), itemList(finished, subagentItem));
   }
-  node.append(ul);
   return node;
 }
 
-function memoryPanel(session) {
-  const memory = session.memory;
-  const bh = memory.blackhole;
-  const node = panel(bh ? "Blackhole" : "Compaction");
-  const rows = [];
-  if (bh) {
-    rows.push(["Observations kept", bh.kept + " of " + bh.observations + " · " + tokens(bh.keptTokens) + " tok"]);
-    rows.push(["Dropped", String(bh.dropped)]);
-    rows.push(["Reflections", String(bh.reflections)]);
-  }
-  rows.push(["Compactions", String(memory.compactions)]);
-  if (memory.lastCompactionAt) rows.push(["Last compaction", ago(memory.lastCompactionAt) + " ago"]);
-  if (session.context && session.context.tokens !== null) rows.push(["Context now", tokens(session.context.tokens) + " tok"]);
-  node.append(kv(rows));
-  if (!bh) node.append(el("span", "muted", "No pi-blackhole memory entries on this branch."));
-  return node;
+function subagentItem(agent) {
+  const li = el("li");
+  const row = el("div", "row");
+  row.append(el("span", "clip", agent.type + ": " + (agent.description || agent.id)), pill(agent.state, agent.state));
+  li.append(row);
+  const facts = [agent.state === "running" || agent.state === "queued" ? ago(agent.since) : agent.durationMs !== undefined ? duration(agent.durationMs) : null,
+    agent.toolUses ? agent.toolUses + " tools" : null, agent.tokens ? tokens(agent.tokens) + " tok" : null].filter(Boolean);
+  if (facts.length) li.append(el("span", "mono muted", facts.join(" · ")));
+  if (agent.note) li.append(el("span", "muted wrap", agent.note));
+  return li;
 }
 
 // Answering pi-ask questionnaires. The form lives in its own dialog
@@ -816,26 +844,41 @@ function prFacts(pr) {
   return facts.join(" · ");
 }
 
+/** PRs under "Opened here" and "Referenced" labels, each group in the order given. */
+function prGroups(prs) {
+  const nodes = [];
+  for (const [label, origin] of [["Opened here", "created"], ["Referenced", "referenced"]]) {
+    const group = prs.filter((pr) => pr.origin === origin);
+    if (!group.length) continue;
+    nodes.push(el("span", "label", label), itemList(group, prItem));
+  }
+  return nodes;
+}
+
+function prItem(pr) {
+  const li = el("li");
+  const row = el("div", "row");
+  row.append(prLink(pr), prPill(pr));
+  li.append(row);
+  if (pr.title) li.append(el("span", "clip", pr.title));
+  const facts = prFacts(pr);
+  if (facts) li.append(el("span", "mono muted clip", facts));
+  return li;
+}
+
 function prPanel(session) {
   const prs = list(session.git.prs);
-  const opened = prs.filter((pr) => pr.origin === "created");
-  const referenced = prs.filter((pr) => pr.origin === "referenced");
-  const node = panel("Pull requests", [opened.length ? opened.length + " opened here" : "", referenced.length ? referenced.length + " referenced" : ""].filter(Boolean).join(" · "));
-  for (const [label, group] of [["Opened here", opened], ["Referenced", referenced]]) {
-    if (!group.length) continue;
-    node.append(el("span", "label", label));
-    const ul = el("ul", "items");
-    for (const pr of group) {
-      const li = el("li");
-      const row = el("div", "row");
-      row.append(prLink(pr), prPill(pr));
-      li.append(row);
-      if (pr.title) li.append(el("span", "clip", pr.title));
-      const facts = prFacts(pr);
-      if (facts) li.append(el("span", "mono muted clip", facts));
-      ul.append(li);
-    }
-    node.append(ul);
+  const opened = prs.filter((pr) => pr.origin === "created").length;
+  const referenced = prs.length - opened;
+  const node = panel("Pull requests", [opened ? opened + " opened here" : "", referenced ? referenced + " referenced" : ""].filter(Boolean).join(" · "));
+  const ended = prs.filter((pr) => pr.state === "merged" || pr.state === "closed");
+  const open = prs.filter((pr) => !ended.includes(pr));
+  if (open.length) node.append(...prGroups(open));
+  else if (prs.length) node.append(el("span", "muted", "No open pull requests."));
+  if (ended.length) {
+    const merged = ended.filter((pr) => pr.state === "merged").length;
+    const label = [merged ? merged + " merged" : "", ended.length - merged ? ended.length - merged + " closed" : ""].filter(Boolean).join(" · ");
+    fold(node, "fold:" + session.id + ":prs", label, ...prGroups(ended));
   }
   const hidden = (Number(session.git.prTotal) || 0) - prs.length;
   if (hidden > 0) node.append(el("span", "muted", "…and " + hidden + " more; /git:prs lists them all."));
@@ -870,15 +913,63 @@ function worktreePanel(session) {
   return node;
 }
 
-function usagePanel(session) {
-  const usage = session.usage;
-  const node = panel("Usage", money(usage.cost));
-  node.append(kv([
-    ["Input", tokens(usage.input) + " tok"], ["Output", tokens(usage.output) + " tok"],
-    ["Cache read", tokens(usage.cacheRead) + " tok"], ["Cache write", tokens(usage.cacheWrite) + " tok"],
-  ]));
-  return node;
+// Usage opens from the strip in its own dialog outside <main>; its body is
+// refilled on each update while open, so the numbers stay live.
+const usageModal = document.getElementById("usage");
+let usageFor = "";
+let usageBody;
+
+function usageButton(session) {
+  const button = el("button", "usage", money(session.usage.cost));
+  button.type = "button";
+  button.title = "Token usage and cost for this session";
+  button.setAttribute("aria-haspopup", "dialog");
+  button.dataset.key = "usage:" + session.id;
+  button.addEventListener("click", () => openUsage(session));
+  return button;
 }
+
+function openUsage(session) {
+  usageFor = session.id;
+  const head = el("div", "modal-head");
+  const heading = el("div", "modal-title");
+  const name = el("h2", "", "Usage");
+  name.id = "usage-title";
+  heading.append(name, el("span", "mono muted wrap", title(session) + " · the whole session file, as /session counts it"));
+  const close = el("button", "close", "×");
+  close.type = "button";
+  close.setAttribute("aria-label", "Close usage");
+  close.addEventListener("click", () => usageModal.close());
+  head.append(heading, close);
+  usageBody = el("div", "modal-body");
+  usageModal.replaceChildren(head, usageBody);
+  fillUsage();
+  if (!usageModal.open) usageModal.showModal();
+}
+
+function fillUsage() {
+  if (!usageBody) return;
+  const session = state.sessions.find((candidate) => candidate.id === usageFor);
+  const usage = session && session.usage;
+  if (!usage) { usageBody.replaceChildren(el("p", "muted pad", "This session is no longer running.")); return; }
+  const exact = (n) => Math.round(n).toLocaleString() + " tok";
+  const dl = kv([
+    ["Input", exact(usage.input)], ["Output", exact(usage.output)],
+    ["Cache read", exact(usage.cacheRead)], ["Cache write", exact(usage.cacheWrite)],
+  ]);
+  dl.append(el("dt", "total", "Total"), el("dd", "total", exact(usage.input + usage.output + usage.cacheRead + usage.cacheWrite)));
+  dl.append(el("dt", "", "Cost"), el("dd", "", money(usage.cost)));
+  usageBody.replaceChildren(dl);
+}
+
+usageModal.addEventListener("click", (event) => { if (event.target === usageModal) usageModal.close(); });
+usageModal.addEventListener("close", () => {
+  const back = [...main.querySelectorAll("[data-key]")].find((node) => node.dataset.key === "usage:" + usageFor);
+  usageFor = "";
+  usageBody = undefined;
+  usageModal.replaceChildren();
+  if (back) back.focus();
+});
 
 function renderDetail(id) {
   const back = el("a", "back", "← All sessions");
@@ -916,7 +1007,9 @@ function renderDetail(id) {
     cell("Thinking", el("span", "", session.thinking || "off")),
     cell("Status", pill(session.restarting ? "idle" : session.status.kind, statusLabel(session)), el("span", "mono muted", "for " + ago(session.status.since))),
     cell("Context", meter(session.context)),
-    cell("Cost", el("span", "num", session.usage ? money(session.usage.cost) : "–")),
+    session.usage
+      ? cell("Usage", usageButton(session), el("span", "mono muted", tokens(session.usage.input + session.usage.output + session.usage.cacheRead + session.usage.cacheWrite) + " tok"))
+      : cell("Usage", el("span", "muted", "–")),
   );
   if (session.status.kind === "waiting" && session.status.title) strip.append(cell("Waiting on", el("span", "wrap", session.status.title)));
   head.append(strip);
@@ -925,14 +1018,16 @@ function renderDetail(id) {
   const cols = el("div", "cols");
   const left = el("div", "col");
   const right = el("div", "col");
+  // Two even columns: what the session is doing, and what it has produced.
   if (session.todos) left.append(todoPanel(session));
   if (session.subagents) left.append(subagentPanel(session));
-  if (session.git && session.git.prTotal) left.append(prPanel(session));
-  if (session.git && (session.git.worktreeTotal || session.git.removed || session.git.other)) left.append(worktreePanel(session));
   if (session.activity) left.append(activityPanel(session));
-  if (session.memory) right.append(memoryPanel(session));
+  if (session.git && session.git.prTotal) right.append(prPanel(session));
+  if (session.git && (session.git.worktreeTotal || session.git.removed || session.git.other)) right.append(worktreePanel(session));
   if (session.stash) right.append(stashPanel(session));
-  if (session.usage) right.append(usagePanel(session));
+  // Without one side's extensions, split the other side rather than leave half the page empty.
+  if (!right.childElementCount && left.childElementCount > 1) right.append(left.lastElementChild);
+  if (!left.childElementCount && right.childElementCount > 1) left.append(right.firstElementChild);
   cols.append(left, right);
   wrap.append(cols);
   main.append(wrap);
@@ -1010,6 +1105,7 @@ events.addEventListener("sessions", (event) => {
   state = next;
   render();
   checkAnswerStillOpen();
+  fillUsage();
 });
 events.onopen = () => { connected = true; conn.textContent = "● live"; conn.classList.add("live"); render(); };
 // Cards from a lost hub would go stale; the full list returns on reconnect.
@@ -1035,6 +1131,7 @@ export function renderPage(token: string): string {
 <main></main>
 <dialog id="preview" class="modal" aria-labelledby="preview-title"></dialog>
 <dialog id="answer" class="modal" aria-labelledby="answer-title"></dialog>
+<dialog id="usage" class="modal narrow" aria-labelledby="usage-title"></dialog>
 <script>${SCRIPT}</script>
 </body>
 </html>

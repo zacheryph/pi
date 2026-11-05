@@ -9,13 +9,11 @@ import { ActivityTracker } from "./activity.ts";
 import { AskUserTracker } from "./ask-user.ts";
 import { loadDashboardConfig, type DashboardConfig } from "./config.ts";
 import { nodeRuntime, spawnHub } from "./launch.ts";
-import { memoryStats } from "./memory.ts";
 import {
   hubPaths,
   type CommandRequest,
   type GitSection,
   type HubPaths,
-  type MemorySection,
   type StashSection,
   type TodoSection,
   type UsageSection,
@@ -88,9 +86,8 @@ export default function dashboardExtension(
   let git: GitSection | undefined;
   let subagents = new SubagentTracker();
   let activity = new ActivityTracker();
-  // Usage and memory scan the session file, so they refresh only after events that change them.
+  // Usage scans the session file, so it refreshes only after events that change it.
   let usage: UsageSection | undefined;
-  let memory: MemorySection | undefined;
   let ledgerStale = true;
   let terminal: TerminalAdapter | undefined;
 
@@ -100,7 +97,6 @@ export default function dashboardExtension(
   const snapshot = (ctx: ExtensionContext) => {
     if (ledgerStale) {
       usage = sessionUsage(ctx.sessionManager.getEntries());
-      memory = memoryStats(ctx.sessionManager.getBranch());
       ledgerStale = false;
     }
     return buildSnapshot({
@@ -116,7 +112,6 @@ export default function dashboardExtension(
       stash,
       git,
       usage,
-      memory,
       subagents: subagents.section(),
       terminal: terminal?.info,
       activity: activity.section(),
@@ -124,7 +119,7 @@ export default function dashboardExtension(
     });
   };
 
-  /** The session file changed: usage, compactions or memory entries may have moved. */
+  /** The session file changed: usage may have moved. */
   const ledger = (ctx: ExtensionContext) => {
     ledgerStale = true;
     schedule(ctx);
@@ -162,7 +157,6 @@ export default function dashboardExtension(
     activity = new ActivityTracker();
     askUser.clear();
     usage = undefined;
-    memory = undefined;
     ledgerStale = true;
     terminal = undefined;
     if (slots[SLOT] === token) delete slots[SLOT];

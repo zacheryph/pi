@@ -1,7 +1,6 @@
 import type {
   ActivitySection,
   GitSection,
-  MemorySection,
   Questionnaire,
   SessionSnapshot,
   SessionStatus,
@@ -38,7 +37,6 @@ export interface SnapshotInput {
   stash?: StashSection;
   git?: GitSection;
   usage?: UsageSection;
-  memory?: MemorySection;
   subagents?: SubagentsSection;
   terminal?: TerminalInfo;
   activity?: ActivitySection;
@@ -106,7 +104,6 @@ export function buildSnapshot(input: SnapshotInput): SessionSnapshot {
     ...(input.stash ? { stash: input.stash } : {}),
     ...(input.git ? { git: input.git } : {}),
     ...(input.usage ? { usage: input.usage } : {}),
-    ...(input.memory ? { memory: input.memory } : {}),
     ...(input.subagents ? { subagents: input.subagents } : {}),
     ...(input.terminal ? { terminal: input.terminal } : {}),
     ...(input.activity ? { activity: input.activity } : {}),
