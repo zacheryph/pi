@@ -89,11 +89,11 @@ describe("Subagent — constructor", () => {
   it("sets required fields from init", () => {
     const record = makeSubagent({
       id: "abc-123",
-      type: "Explore",
+      type: "explore",
       description: "Find stale TODOs",
     });
     expect(record.id).toBe("abc-123");
-    expect(record.type).toBe("Explore");
+    expect(record.type).toBe("explore");
     expect(record.description).toBe("Find stale TODOs");
   });
 
@@ -1550,7 +1550,7 @@ describe("Subagent — provider failures reach the record", () => {
           outputFile: "/sessions/child.jsonl",
           sessionId: "child-1",
           sessionDir: "/sessions",
-          agentName: "Explore",
+          agentName: "explore",
           agentMaxTurns: undefined,
           parentContext: undefined,
           lifecycle: createChildLifecycleMock(),

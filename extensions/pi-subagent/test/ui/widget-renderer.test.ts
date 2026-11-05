@@ -47,11 +47,11 @@ afterEach(() => vi.useRealTimers());
 
 describe("compact widget heading and rows", () => {
   it("renders a top rule and exactly one row per agent, without a box or bottom rule", () => {
-    const lines = render({ agents: [makeAgent(), makeAgent({ id: "second", type: "Explore" })] });
+    const lines = render({ agents: [makeAgent(), makeAgent({ id: "second", type: "explore" })] });
     expect(lines).toHaveLength(3);
     expect(lines[0]).toBe(`──   Subagents ${"─".repeat(64)}`);
-    expect(lines[1]).toContain("01:23  Agent (twin): test task");
-    expect(lines[2]).toContain("Explore: test task");
+    expect(lines[1]).toContain("01:23  agent: test task");
+    expect(lines[2]).toContain("explore: test task");
     expect(lines.join("\n")).not.toMatch(/[╭╮╰╯│├└⎿]/);
   });
 
@@ -295,15 +295,15 @@ describe("terminal layout safety", () => {
         }),
       ],
     })[1];
-    expect(row).toContain("Agent");
+    expect(row).toContain("agent");
     expect(row).toContain("Streaming");
     expect(row).toContain("…");
     expect(visibleWidth(row)).toBe(80);
   });
 
-  it("drops elapsed time and prompt mode on narrow screens, keeping task and status", () => {
+  it("drops elapsed time on narrow screens, keeping task and status", () => {
     const row = render({ terminalWidth: 30 })[1];
-    expect(row).toContain("Agent: test");
+    expect(row).toContain("agent: test");
     expect(row).toContain("thinking…");
     expect(row).not.toContain("01:23");
     expect(row).not.toContain("twin");

@@ -156,7 +156,7 @@ describe("SubagentEventsObserver", () => {
       const { observer, appendEntry } = makeObserver();
       const record = createTestSubagent({
         id: "agent-2",
-        type: "Explore",
+        type: "explore",
         description: "explore code",
         status: "completed",
         result: "found it",
@@ -169,7 +169,7 @@ describe("SubagentEventsObserver", () => {
 
       expect(appendEntry).toHaveBeenCalledExactlyOnceWith("subagent:record", {
         id: "agent-2",
-        type: "Explore",
+        type: "explore",
         description: "explore code",
         status: "completed",
         result: "found it",
@@ -257,7 +257,7 @@ describe("SubagentEventsObserver", () => {
       const { observer, appendEntry } = makeObserver();
       const record = createTestSubagent({
         id: "agent-5",
-        type: "Explore",
+        type: "explore",
         description: "resume explore",
         status: "completed",
         result: "resumed it",
@@ -270,7 +270,7 @@ describe("SubagentEventsObserver", () => {
 
       expect(appendEntry).toHaveBeenCalledExactlyOnceWith("subagent:record", {
         id: "agent-5",
-        type: "Explore",
+        type: "explore",
         description: "resume explore",
         status: "completed",
         result: "resumed it",
@@ -306,7 +306,7 @@ describe("SubagentEventsObserver", () => {
       const { observer, emit } = makeObserver();
       const record = createTestSubagent({
         id: "agent-3",
-        type: "Plan",
+        type: "plan",
         description: "plan work",
         compactionCount: 1,
       });
@@ -316,7 +316,7 @@ describe("SubagentEventsObserver", () => {
 
       expect(emit).toHaveBeenCalledExactlyOnceWith("subagent:compacted", {
         id: "agent-3",
-        type: "Plan",
+        type: "plan",
         description: "plan work",
         reason: "threshold",
         tokensBefore: 50_000,

@@ -52,27 +52,27 @@ describe("buildAgentPrompt", () => {
   });
 
   it("handles non-git repos", () => {
-    const config = getDefaultConfig("Explore");
+    const config = getDefaultConfig("explore");
     const prompt = buildAgentPrompt(config, "/workspace", envNoGit);
     expect(prompt).toContain("Not a git repository");
     expect(prompt).not.toContain("Branch:");
   });
 
-  it("Explore prompt is read-only", () => {
-    const config = getDefaultConfig("Explore");
+  it("explore prompt is read-only", () => {
+    const config = getDefaultConfig("explore");
     const prompt = buildAgentPrompt(config, "/workspace", env);
     expect(prompt).toContain("READ-ONLY");
     expect(prompt).toContain("file search specialist");
   });
 
   it("Plan prompt is read-only", () => {
-    const config = getDefaultConfig("Plan");
+    const config = getDefaultConfig("plan");
     const prompt = buildAgentPrompt(config, "/workspace", env);
     expect(prompt).toContain("READ-ONLY");
     expect(prompt).toContain("software architect");
   });
 
-  it("general-purpose uses append mode (parent twin)", () => {
+  it("general-purpose inherits its parent instructions with append mode", () => {
     const config = getDefaultConfig("general-purpose");
     const parentPrompt = "You are a parent coding agent with full powers.";
     const prompt = buildAgentPrompt(config, "/workspace", env, {
@@ -264,8 +264,8 @@ describe("buildAgentPrompt", () => {
   describe("active_agent tag injection", () => {
     it("includes <active_agent name=...> tag in replace mode after identity prefix", () => {
       const config: AgentConfig = {
-        name: "Explore",
-        description: "Explore",
+        name: "explore",
+        description: "explore",
         toolNames: [],
         systemPrompt: "You are an explorer.",
         promptMode: "replace",
@@ -278,7 +278,7 @@ describe("buildAgentPrompt", () => {
         cwd: PARENT_CWD,
       });
       const idxIdentity = prompt.indexOf("Parent identity prefix.");
-      const idxTag = prompt.indexOf('<active_agent name="Explore"/>');
+      const idxTag = prompt.indexOf('<active_agent name="explore"/>');
       expect(idxTag).toBeGreaterThan(-1);
       expect(idxTag).toBeGreaterThan(idxIdentity);
     });
@@ -1390,17 +1390,17 @@ describe("buildAgentPrompt", () => {
       });
 
       // #904: the fallback is the identity of every agent type, so it cannot
-      // know which tools the child holds. Explore holds neither `edit` nor
+      // know which tools the child holds. explore holds neither `edit` nor
       // `write`, and says so itself twelve lines further down the prompt.
       it("asserts no capability the child may not hold", () => {
-        const prompt = buildAgentPrompt(getDefaultConfig("Explore"), "/workspace", env, {
+        const prompt = buildAgentPrompt(getDefaultConfig("explore"), "/workspace", env, {
           systemPrompt: PI_BASE,
           cwd: PARENT_CWD,
           strategy: "portable",
         });
 
         // Scoped to the adopted identity, which ends at the per-call header:
-        // Explore's own prompt names writing legitimately, to prohibit it.
+        // explore's own prompt names writing legitimately, to prohibit it.
         const identity = prompt.slice(0, prompt.indexOf("<active_agent"));
         expect(identity).not.toMatch(/\bwrite\b/i);
         expect(identity).not.toMatch(/\bedit\b/i);

@@ -108,16 +108,7 @@ export function getDisplayName(type: SubagentType, registry: AgentConfigLookup):
   return config.displayName ?? config.name;
 }
 
-/** Short label for prompt mode: "twin" for append, nothing for replace (the default). */
-export function getPromptModeLabel(
-  type: SubagentType,
-  registry: AgentConfigLookup,
-): string | undefined {
-  const config = registry.resolveAgentConfig(type);
-  return config.promptMode === "append" ? "twin" : undefined;
-}
-
-/** Mode label is not included — callers add it where they want it. */
+/** Tags describing invocation overrides. */
 export function buildInvocationTags(invocation: AgentInvocation | undefined): { tags: string[] } {
   const tags: string[] = [];
   if (!invocation) return { tags };

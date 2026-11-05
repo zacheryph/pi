@@ -26,9 +26,9 @@ describe("AgentTypeRegistry", () => {
     it("loads default agents on construction", () => {
       const registry = makeRegistry();
       expect(registry.isValidType("general-purpose")).toBe(true);
-      expect(registry.isValidType("orchestrator")).toBe(true);
-      expect(registry.isValidType("Explore")).toBe(true);
-      expect(registry.isValidType("Plan")).toBe(true);
+      expect(registry.isValidType("orchestrate")).toBe(true);
+      expect(registry.isValidType("explore")).toBe(true);
+      expect(registry.isValidType("plan")).toBe(true);
     });
 
     it("does not call loadUserAgents until construction", () => {
@@ -71,13 +71,13 @@ describe("AgentTypeRegistry", () => {
   describe("resolveType", () => {
     it("returns canonical key for exact match", () => {
       const registry = makeRegistry();
-      expect(registry.resolveType("Explore")).toBe("Explore");
+      expect(registry.resolveType("explore")).toBe("explore");
       expect(registry.resolveType("general-purpose")).toBe("general-purpose");
     });
 
     it("returns canonical key for case-insensitive match", () => {
       const registry = makeRegistry();
-      expect(registry.resolveType("explore")).toBe("Explore");
+      expect(registry.resolveType("EXPLORE")).toBe("explore");
       expect(registry.resolveType("GENERAL-PURPOSE")).toBe("general-purpose");
     });
 
@@ -90,15 +90,15 @@ describe("AgentTypeRegistry", () => {
   describe("resolveAgentConfig", () => {
     it("returns config for a known enabled type", () => {
       const registry = makeRegistry();
-      const config = registry.resolveAgentConfig("Explore");
-      expect(config.name).toBe("Explore");
+      const config = registry.resolveAgentConfig("explore");
+      expect(config.name).toBe("explore");
       expect(config.promptMode).toBe("replace");
     });
 
     it("performs case-insensitive lookup", () => {
       const registry = makeRegistry();
-      const config = registry.resolveAgentConfig("explore");
-      expect(config.name).toBe("Explore");
+      const config = registry.resolveAgentConfig("EXPLORE");
+      expect(config.name).toBe("explore");
     });
 
     it("falls back to general-purpose for unknown type", () => {
@@ -111,13 +111,13 @@ describe("AgentTypeRegistry", () => {
       const registry = makeRegistry(
         new Map([
           [
-            "Plan",
-            makeAgentConfig({ name: "Plan", description: "Disabled", visibility: "disabled" }),
+            "plan",
+            makeAgentConfig({ name: "plan", description: "Disabled", visibility: "disabled" }),
           ],
         ]),
       );
-      const config = registry.resolveAgentConfig("Plan");
-      expect(config.name).toBe("Plan");
+      const config = registry.resolveAgentConfig("plan");
+      expect(config.name).toBe("plan");
       expect(config.visibility).toBe("disabled");
     });
 
@@ -144,10 +144,10 @@ describe("AgentTypeRegistry", () => {
 
     it("still shadows the built-in it names", () => {
       const registry = makeRegistry(
-        new Map([["Plan", makeAgentConfig({ name: "Plan", definitionError: "bad" })]]),
+        new Map([["plan", makeAgentConfig({ name: "plan", definitionError: "bad" })]]),
       );
-      expect(registry.resolveAgentConfig("Plan").definitionError).toBe("bad");
-      expect(registry.isValidType("Plan")).toBe(false);
+      expect(registry.resolveAgentConfig("plan").definitionError).toBe("bad");
+      expect(registry.isValidType("plan")).toBe(false);
     });
   });
 
@@ -166,20 +166,20 @@ describe("AgentTypeRegistry", () => {
       const registry = makeRegistry(
         new Map([
           ["auditor", makeAgentConfig({ name: "auditor", visibility: "hidden" })],
-          ["Plan", makeAgentConfig({ name: "Plan", visibility: "disabled" })],
+          ["plan", makeAgentConfig({ name: "plan", visibility: "disabled" })],
         ]),
       );
       expect(registry.getListedTypes()).not.toContain("auditor");
-      expect(registry.getListedTypes()).not.toContain("Plan");
+      expect(registry.getListedTypes()).not.toContain("plan");
     });
   });
 
   describe("getAllTypes", () => {
     it("includes disabled agents", () => {
       const registry = makeRegistry(
-        new Map([["Plan", makeAgentConfig({ name: "Plan", visibility: "disabled" })]]),
+        new Map([["plan", makeAgentConfig({ name: "plan", visibility: "disabled" })]]),
       );
-      expect(registry.getAllTypes()).toContain("Plan");
+      expect(registry.getAllTypes()).toContain("plan");
     });
   });
 
@@ -187,7 +187,7 @@ describe("AgentTypeRegistry", () => {
     it("returns true for enabled defaults", () => {
       const registry = makeRegistry();
       expect(registry.isValidType("general-purpose")).toBe(true);
-      expect(registry.isValidType("Explore")).toBe(true);
+      expect(registry.isValidType("explore")).toBe(true);
     });
 
     it("returns true case-insensitively", () => {
@@ -198,9 +198,9 @@ describe("AgentTypeRegistry", () => {
 
     it("returns false for disabled agents", () => {
       const registry = makeRegistry(
-        new Map([["Plan", makeAgentConfig({ name: "Plan", visibility: "disabled" })]]),
+        new Map([["plan", makeAgentConfig({ name: "plan", visibility: "disabled" })]]),
       );
-      expect(registry.isValidType("Plan")).toBe(false);
+      expect(registry.isValidType("plan")).toBe(false);
     });
 
     it("returns true for user agents, and for hidden ones, which spawn by name", () => {
@@ -228,9 +228,9 @@ describe("AgentTypeRegistry", () => {
       expect(names).toEqual(["all"]);
     });
 
-    it("returns restricted tools for Explore", () => {
+    it("returns restricted tools for explore", () => {
       const registry = makeRegistry();
-      const names = registry.getToolNamesForType("Explore");
+      const names = registry.getToolNamesForType("explore");
       expect(names).toEqual([
         "read",
         "bash",
@@ -243,15 +243,15 @@ describe("AgentTypeRegistry", () => {
       ]);
     });
 
-    it("defaults Explore to the newest available Haiku rather than a pinned version", () => {
-      expect(makeRegistry().resolveAgentConfig("Explore").model).toBe(
+    it("defaults explore to the newest available Haiku rather than a pinned version", () => {
+      expect(makeRegistry().resolveAgentConfig("explore").model).toBe(
         "anthropic/claude-haiku@latest",
       );
     });
 
     it("lets Plan read the stash but not write to it", () => {
       const registry = makeRegistry();
-      expect(registry.getToolNamesForType("Plan")).toEqual([
+      expect(registry.getToolNamesForType("plan")).toEqual([
         "read",
         "bash",
         "grep",
@@ -264,7 +264,7 @@ describe("AgentTypeRegistry", () => {
 
     it("lets reviewer read and run checks without stash or edit tools", () => {
       const registry = makeRegistry();
-      expect(registry.getToolNamesForType("reviewer")).toEqual([
+      expect(registry.getToolNamesForType("review")).toEqual([
         "read",
         "bash",
         "grep",
@@ -324,7 +324,7 @@ describe("AgentTypeRegistry", () => {
         .map((file) => file.slice(0, -3));
       expect([...DEFAULT_AGENTS.keys()].sort()).toEqual(files.sort());
       expect([...DEFAULT_AGENTS.keys()]).toEqual(
-        expect.arrayContaining(["general-purpose", "orchestrator", "Explore", "Plan", "reviewer"]),
+        expect.arrayContaining(["general-purpose", "orchestrate", "explore", "plan", "review"]),
       );
     });
 
@@ -352,11 +352,11 @@ describe("AgentTypeRegistry", () => {
   describe("orchestrator profile", () => {
     it("is discoverable case-insensitively, delegates, and names its todo tools", () => {
       const registry = makeRegistry();
-      expect(registry.resolveType("Orchestrator")).toBe("orchestrator");
-      expect(registry.getListedTypes()).toContain("orchestrator");
-      expect(registry.resolveAgentConfig("orchestrator")).toMatchObject({
-        name: "orchestrator",
-        displayName: "Orchestrator",
+      expect(registry.resolveType("orchestrate")).toBe("orchestrate");
+      expect(registry.getListedTypes()).toContain("orchestrate");
+      expect(registry.resolveAgentConfig("orchestrate")).toMatchObject({
+        name: "orchestrate",
+        displayName: "orchestrate",
         source: "default",
         promptMode: "replace",
         delegate: true,
@@ -365,7 +365,7 @@ describe("AgentTypeRegistry", () => {
     });
 
     it("runs implementation tasks in worktrees it hands to workers as cwd", () => {
-      const prompt = makeRegistry().resolveAgentConfig("orchestrator").systemPrompt;
+      const prompt = makeRegistry().resolveAgentConfig("orchestrate").systemPrompt;
       expect(prompt).toContain("Give each implementation task its own git worktree");
       expect(prompt).toContain("pass the returned path as subagent_start's cwd");
       expect(prompt).toContain("send the reviewer and any follow-up worker to the same cwd");
@@ -375,14 +375,14 @@ describe("AgentTypeRegistry", () => {
     });
 
     it("checks pull requests with git_pr_status and waits for CI without polling", () => {
-      const prompt = makeRegistry().resolveAgentConfig("orchestrator").systemPrompt;
+      const prompt = makeRegistry().resolveAgentConfig("orchestrate").systemPrompt;
       expect(prompt).toContain("Read its state, review decision and checks with git_pr_status");
       expect(prompt).toContain("start job_watch on git_pr_status (match prs.0.ciDone)");
       expect(prompt).toContain("once git_pr_status shows the PR merged");
     });
 
     it("waits for CI itself and hands only the fixes to workers", () => {
-      const prompt = makeRegistry().resolveAgentConfig("orchestrator").systemPrompt;
+      const prompt = makeRegistry().resolveAgentConfig("orchestrate").systemPrompt;
       expect(prompt).toContain("Wait for CI yourself");
       expect(prompt).toContain("hand that work to a worker in the PR's worktree");
       expect(prompt).toContain("Do not hand the waiting to a worker");
@@ -390,7 +390,7 @@ describe("AgentTypeRegistry", () => {
     });
 
     it("stays available: delegates in the background and ends its turn instead of waiting", () => {
-      const prompt = makeRegistry().resolveAgentConfig("orchestrator").systemPrompt;
+      const prompt = makeRegistry().resolveAgentConfig("orchestrate").systemPrompt;
       expect(prompt).toContain("Stay available to the user. Subagents run in the background");
       expect(prompt).toContain("then end your turn. Each completion notification wakes you");
       expect(prompt).toContain(
@@ -402,24 +402,24 @@ describe("AgentTypeRegistry", () => {
 
     it("can be overridden or disabled like every other built-in", () => {
       const custom = makeAgentConfig({
-        name: "orchestrator",
+        name: "orchestrate",
         systemPrompt: "Custom PM",
         visibility: "disabled",
       });
-      const registry = makeRegistry(new Map([["orchestrator", custom]]));
-      expect(registry.resolveAgentConfig("orchestrator")).toBe(custom);
-      expect(registry.isValidType("orchestrator")).toBe(false);
+      const registry = makeRegistry(new Map([["orchestrate", custom]]));
+      expect(registry.resolveAgentConfig("orchestrate")).toBe(custom);
+      expect(registry.isValidType("orchestrate")).toBe(false);
     });
   });
 
   describe("reviewer profile", () => {
     it("is a read-only built-in that reports a verdict without fixing", () => {
       const registry = makeRegistry();
-      expect(registry.resolveType("Reviewer")).toBe("reviewer");
-      const config = registry.resolveAgentConfig("reviewer");
+      expect(registry.resolveType("review")).toBe("review");
+      const config = registry.resolveAgentConfig("review");
       expect(config).toMatchObject({
-        name: "reviewer",
-        displayName: "Reviewer",
+        name: "review",
+        displayName: "review",
         source: "default",
         promptMode: "replace",
       });
@@ -431,18 +431,16 @@ describe("AgentTypeRegistry", () => {
     });
 
     it("is the orchestrator's verifier", () => {
-      const prompt = makeRegistry().resolveAgentConfig("orchestrator").systemPrompt;
-      expect(prompt).toContain("reviewer for verification");
+      const prompt = makeRegistry().resolveAgentConfig("orchestrate").systemPrompt;
+      expect(prompt).toContain("review for verification");
       expect(prompt).toContain(
         "Verify implementation tasks with a reviewer worker that did not do the work",
       );
     });
 
     it("yields to a user definition with the same name", () => {
-      const custom = makeAgentConfig({ name: "reviewer", systemPrompt: "My review rules" });
-      expect(makeRegistry(new Map([["reviewer", custom]])).resolveAgentConfig("reviewer")).toBe(
-        custom,
-      );
+      const custom = makeAgentConfig({ name: "review", systemPrompt: "My review rules" });
+      expect(makeRegistry(new Map([["review", custom]])).resolveAgentConfig("review")).toBe(custom);
     });
   });
 

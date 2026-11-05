@@ -40,9 +40,9 @@ function makeParams(overrides: Partial<BackgroundParams> = {}): BackgroundParams
 
 describe("renderBackgroundLaunch", () => {
   const detailBase = {
-    displayName: "Explore",
+    displayName: "explore",
     description: "answer",
-    subagentType: "Explore",
+    subagentType: "explore",
     modelName: undefined,
     tags: undefined,
   };
@@ -51,7 +51,7 @@ describe("renderBackgroundLaunch", () => {
     const result = renderBackgroundLaunch({
       headline: "Agent resumed in background.",
       id: "agent-7",
-      displayName: "Explore",
+      displayName: "explore",
       description: "answer",
       detailBase,
       outputFile: "/sessions/agent-7.jsonl",
@@ -60,7 +60,7 @@ describe("renderBackgroundLaunch", () => {
     expect(result.content[0].text).toBe(
       "Agent resumed in background.\n" +
         "Agent ID: agent-7\n" +
-        "Type: Explore\n" +
+        "Type: explore\n" +
         "Description: answer\n" +
         "Output file: /sessions/agent-7.jsonl\n" +
         "\nYou will be notified when this agent completes.\n" +
@@ -81,7 +81,7 @@ describe("renderBackgroundLaunch", () => {
     const result = renderBackgroundLaunch({
       headline: "Agent resumed in background.",
       id: "agent-7",
-      displayName: "Explore",
+      displayName: "explore",
       description: "answer",
       detailBase,
     });
@@ -89,7 +89,7 @@ describe("renderBackgroundLaunch", () => {
     expect(result.content[0].text).toBe(
       "Agent resumed in background.\n" +
         "Agent ID: agent-7\n" +
-        "Type: Explore\n" +
+        "Type: explore\n" +
         "Description: answer\n" +
         "\nYou will be notified when this agent completes.\n" +
         "Use subagent_get to retrieve full results, or subagent_steer to send it messages.\n" +

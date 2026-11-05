@@ -14,7 +14,7 @@ function persistedRecord(
 ): PersistedSubagentRecord {
   return {
     id: "run-1",
-    type: "Explore",
+    type: "explore",
     description: "map the module",
     status: "completed",
     result: "done",
@@ -37,7 +37,7 @@ describe("toPersistedRecord", () => {
     const turnBudget = { maxTurns: 5, used: 2, phase: "within" } as const;
     const record = createTestSubagent({
       id: "agent-9",
-      type: "Explore",
+      type: "explore",
       description: "map the module",
       status: "error",
       result: "partial",
@@ -52,7 +52,7 @@ describe("toPersistedRecord", () => {
 
     expect(toPersistedRecord(record)).toStrictEqual({
       id: "agent-9",
-      type: "Explore",
+      type: "explore",
       description: "map the module",
       status: "error",
       result: "partial",
@@ -162,7 +162,7 @@ describe("readPersistedRecords", () => {
 describe("readPersistedRuns", () => {
   const summary = {
     id: "run-1",
-    type: "Explore",
+    type: "explore",
     description: "map the module",
     status: "completed",
     startedAt: 1000,
@@ -234,7 +234,7 @@ describe("readPersistedRuns", () => {
   it("reads back what toPersistedRecord wrote", () => {
     const record = createTestSubagent({
       id: "round-trip",
-      type: "Explore",
+      type: "explore",
       description: "map the module",
       status: "completed",
       startedAt: 1000,

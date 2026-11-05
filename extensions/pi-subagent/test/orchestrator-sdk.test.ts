@@ -76,7 +76,7 @@ it("a child orchestrator tracks work, delegates an implementation, and recalls t
     ];
     orchestrator = await createSubagentSession(
       {
-        type: "orchestrator",
+        type: "orchestrate",
         snapshot: {
           cwd: dir,
           systemPrompt: `PROJECT BASE\nCurrent working directory: ${dir}`,

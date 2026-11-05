@@ -390,8 +390,8 @@ export class TranscriptPane implements Component {
     thinkingLevel: string | undefined,
   ): string[] {
     const th = this.theme;
-    const { name, modeLabel, description } = this.heading;
-    const identity = th.bold(name) + (modeLabel ? ` ${th.fg("muted", `(${modeLabel})`)}` : "");
+    const { name, description } = this.heading;
+    const identity = th.bold(name);
     const runtime = describeRuntime(model, thinkingLevel);
     const runtimeTag = runtime ? th.fg("muted", ` · ${runtime}`) : "";
     return [

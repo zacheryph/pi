@@ -59,7 +59,7 @@ afterEach(async () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-async function child(type: "Explore" | "Plan") {
+async function child(type: "explore" | "plan") {
   const faux = createFauxCore({ provider: "stash-subagent-test", models: [{ id: "worker" }] });
   const runtime = await ModelRuntime.create({
     authPath: join(dir, "auth.json"),
@@ -136,8 +136,8 @@ const results = (session: Awaited<ReturnType<typeof child>>["session"], name: st
     message.role === "toolResult" && message.toolName === name ? [message] : [],
   );
 
-it("Explore can stash large findings and read them back by handle", async () => {
-  const { session, faux } = await child("Explore");
+it("explore can stash large findings and read them back by handle", async () => {
+  const { session, faux } = await child("explore");
   expect(session.session.getActiveToolNames()).toEqual(
     expect.arrayContaining(["read", "stash_put", "stash_get", "stash_list"]),
   );
@@ -164,7 +164,7 @@ it("Explore can stash large findings and read them back by handle", async () => 
 }, 20_000);
 
 it("Plan can read the stash but cannot write to it", async () => {
-  const { session, faux } = await child("Plan");
+  const { session, faux } = await child("plan");
   const active = session.session.getActiveToolNames();
   expect(active).toEqual(expect.arrayContaining(["stash_get", "stash_list"]));
   expect(active).not.toContain("stash_put");

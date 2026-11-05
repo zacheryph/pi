@@ -73,7 +73,7 @@ it("carries the agent id, tool call id and any extension's handoff on a tool-spa
     ];
     orchestrator = await createSubagentSession(
       {
-        type: "orchestrator",
+        type: "orchestrate",
         snapshot: {
           cwd: dir,
           systemPrompt: "PROJECT BASE",

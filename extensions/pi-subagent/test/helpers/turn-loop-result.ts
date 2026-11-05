@@ -16,7 +16,7 @@ export function childCompletedEvent(
 ): ChildCompletedEvent {
   return {
     sessionDir: "/sessions/child",
-    agentName: "Explore",
+    agentName: "explore",
     ...overrides,
   };
 }

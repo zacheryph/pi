@@ -54,7 +54,7 @@ Concretely:
 ### The bridge block goes with it
 
 The `<sub_agent_context>` block append mode injected is removed in the same change.
-It named `read`, `edit`, `write`, `find`, and `grep` unconditionally — instructing an `Explore` child, which has neither `edit` nor `write`, to use them — and duplicated the `promptGuidelines` Pi's own tools already contribute to every child's prompt.
+It named `read`, `edit`, `write`, `find`, and `grep` unconditionally — instructing an `explore` child, which has neither `edit` nor `write`, to use them — and duplicated the `promptGuidelines` Pi's own tools already contribute to every child's prompt.
 It was inherited verbatim from the upstream fork with no decision behind it.
 
 It sat after the identity, so removing it costs no prefix.

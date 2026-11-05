@@ -55,14 +55,14 @@ describe("AgentTool", () => {
   it("lists every built-in agent with its guidance on one line", () => {
     const def = makeTool(createToolDeps()).toToolDefinition();
     expect(def.description).toContain(
-      "- Explore (claude-haiku@latest): Fast codebase exploration (read-only). Use for codebase searches and code understanding.",
+      "- explore (claude-haiku@latest): Fast codebase exploration (read-only). Use for codebase searches and code understanding.",
     );
     expect(def.description).toContain(
       "- general-purpose: Copy of you: your own instructions and every tool, with no role of its own. Use only when no other agent type fits the task.",
     );
   });
 
-  it.for(["general-purpose", "orchestrator", "Explore", "Plan", "reviewer"])(
+  it.for(["general-purpose", "orchestrate", "explore", "plan", "review"])(
     "names %s once",
     (name) => {
       const def = makeTool(createToolDeps()).toToolDefinition();
@@ -77,7 +77,7 @@ describe("AgentTool", () => {
     expect(text).not.toMatch(/Default agents|Custom agents/);
   });
 
-  it.for(["Explore", "Plan", "general-purpose"])(
+  it.for(["explore", "plan", "general-purpose"])(
     "omits the type-list entry for a disabled built-in %s",
     (name) => {
       const def = makeTool(createToolDepsWithDisabledBuiltInAgents(name)).toToolDefinition();
@@ -347,7 +347,7 @@ describe("AgentTool — resume path", () => {
       expect(result.content[0].text).toBe(
         "Agent resumed in background.\n" +
           "Agent ID: agent-1\n" +
-          "Type: Agent\n" +
+          "Type: agent\n" +
           "Description: answer\n" +
           "\nYou will be notified when this agent completes.\n" +
           "Use subagent_get to retrieve full results, or subagent_steer to send it messages.\n" +

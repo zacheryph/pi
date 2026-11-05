@@ -52,11 +52,11 @@ describe("effective agent definitions", () => {
     expect(buildAgentsView(r).items.map((item) => item.label)).toEqual([
       "Alpha",
       "beta",
-      "Explore",
+      "explore",
       "general-purpose",
-      "orchestrator",
-      "Plan",
-      "reviewer",
+      "orchestrate",
+      "plan",
+      "review",
       "zebra",
     ]);
     expect(names).toEqual(originalOrder);
@@ -74,17 +74,17 @@ describe("effective agent definitions", () => {
 
   it("lists defaults and disabled overrides without description rows", () => {
     const r = registry(
-      agent({ name: "Explore", visibility: "disabled", source: "project", toolNames: [] }),
+      agent({ name: "explore", visibility: "disabled", source: "project", toolNames: [] }),
     );
     const view = buildAgentsView(r);
     expect(view.items.map((item) => item.label)).toEqual([
-      "Explore",
+      "explore",
       "general-purpose",
-      "orchestrator",
-      "Plan",
-      "reviewer",
+      "orchestrate",
+      "plan",
+      "review",
     ]);
-    expect(view.items.find((item) => item.label === "Explore")).toMatchObject({
+    expect(view.items.find((item) => item.label === "explore")).toMatchObject({
       badge: { text: "[disabled]", tone: "dim" },
       search: "disabled First line\nSecond line",
     });
@@ -92,11 +92,11 @@ describe("effective agent definitions", () => {
       text: "[visible]",
       tone: "success",
     });
-    const config = plainDetail(view.items.find((item) => item.label === "Explore")!.detail);
+    const config = plainDetail(view.items.find((item) => item.label === "explore")!.detail);
     expect(field(config, "Visibility")).toBe("disabled");
     expect(field(config, "Source")).toBe("project");
     expect(field(config, "Tools")).toBe("(none)");
-    expect(r.isValidType("Explore")).toBe(false);
+    expect(r.isValidType("explore")).toBe(false);
   });
 
   it("orders Name, effective fields, Description, then full-width Body on following line", () => {
@@ -310,12 +310,12 @@ describe("effective agent definitions", () => {
       const projectDir = join(project, ".pi", "agents");
       mkdirSync(globalDir, { recursive: true });
       mkdirSync(projectDir, { recursive: true });
-      writeFileSync(join(globalDir, "Explore.md"), "Global body");
-      const path = join(projectDir, "Explore.md");
+      writeFileSync(join(globalDir, "explore.md"), "Global body");
+      const path = join(projectDir, "explore.md");
       writeFileSync(path, "---\nvisibility: disabled\n---\nProject body");
       const old = new AgentTypeRegistry(() => loadCustomAgents(project));
       const view = buildAgentsView(old);
-      const item = plainDetail(view.items.find((item) => item.id === "Explore")!.detail);
+      const item = plainDetail(view.items.find((item) => item.id === "explore")!.detail);
       expect(field(item, "Source path")).toBe(path);
       expect(field(item, "Source")).toBe("project");
       expect(item.endsWith("\nBody\nProject body")).toBe(true);
@@ -323,17 +323,17 @@ describe("effective agent definitions", () => {
       const fresh = new AgentTypeRegistry(() => loadCustomAgents(project));
       expect(
         plainDetail(
-          buildAgentsView(fresh).items.find((item) => item.id === "Explore")!.detail,
+          buildAgentsView(fresh).items.find((item) => item.id === "explore")!.detail,
         ).endsWith("\nBody\nNew project body"),
       ).toBe(true);
-      expect(old.resolveAgentConfig("Explore").visibility).toBe("disabled");
+      expect(old.resolveAgentConfig("explore").visibility).toBe("disabled");
       const global = new AgentTypeRegistry(() => loadCustomAgents(root));
       expect(
         field(
-          plainDetail(buildAgentsView(global).items.find((item) => item.id === "Explore")!.detail),
+          plainDetail(buildAgentsView(global).items.find((item) => item.id === "explore")!.detail),
           "Source path",
         ),
-      ).toBe(join(globalDir, "Explore.md"));
+      ).toBe(join(globalDir, "explore.md"));
     } finally {
       if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR;
       else process.env.PI_CODING_AGENT_DIR = previous;

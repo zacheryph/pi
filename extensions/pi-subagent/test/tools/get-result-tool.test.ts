@@ -642,7 +642,7 @@ describe("GetResultTool — the branch's saved records", () => {
   function savedRecord(overrides: Partial<PersistedSubagentRecord> = {}): PersistedSubagentRecord {
     return {
       id: "saved-1",
-      type: "Explore",
+      type: "explore",
       description: "map the module",
       status: "completed",
       result: "Mapped it.",

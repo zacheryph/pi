@@ -73,7 +73,7 @@ it("runs a tool-spawned child in the caller's cwd and keeps it resumable", async
     ];
     orchestrator = await createSubagentSession(
       {
-        type: "orchestrator",
+        type: "orchestrate",
         snapshot: {
           cwd: dir,
           systemPrompt: "PROJECT BASE",

@@ -127,8 +127,8 @@ describe("formatRosterLine", () => {
   });
 
   it("labels a running agent", () => {
-    const record = saved({ id: "d4e5f6", type: "reviewer", status: "running" });
-    expect(line(record, record)).toBe('- d4e5f6 reviewer "Add token refresh": running');
+    const record = saved({ id: "d4e5f6", type: "review", status: "running" });
+    expect(line(record, record)).toBe('- d4e5f6 review "Add token refresh": running');
   });
 
   it("gives a completed agent its local finish time", () => {
@@ -176,7 +176,7 @@ describe("formatRosterCard", () => {
         status: "aborted",
         startedAt: 3_000,
       }),
-      saved({ id: "d4e5f6", type: "reviewer", description: "Review step 3", status: "running" }),
+      saved({ id: "d4e5f6", type: "review", description: "Review step 3", status: "running" }),
       saved({ id: "9a8b7c", description: "Migrate store", pendingQuestion: "Postgres?" }),
     ];
     const live = (id: string) => (id === "d4e5f6" ? records[2] : undefined);
@@ -184,7 +184,7 @@ describe("formatRosterCard", () => {
       [
         "Subagents started by this session (restored after compaction; subagent_get <id> for details):",
         '- 9a8b7c implementer "Migrate store": waiting for your answer: "Postgres?"',
-        '- d4e5f6 reviewer "Review step 3": running',
+        '- d4e5f6 review "Review step 3": running',
         '- 77e0aa explorer "Map auth call sites": failed: turn budget exhausted',
         `- a1b2c3 implementer "Add token refresh": completed ${formatClock(50_000_000)}`,
       ].join("\n"),

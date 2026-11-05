@@ -1,6 +1,6 @@
 ---
 description: "Verifier: runs checks, reports pass or fail with evidence, never fixes (read-only)"
-display_name: Reviewer
+display_name: review
 guidance: Use to verify a finished change against its acceptance criteria before treating the work as done.
 # stash_get and stash_list only read pi-stash handles.
 tools: [read, bash, grep, find, ls, stash_get, stash_list]

@@ -98,7 +98,7 @@ export class AgentTypeRegistry implements AgentConfigLookup {
     // Absolute fallback (should never happen in practice)
     return {
       name: type,
-      displayName: "Agent",
+      displayName: "agent",
       description: "General-purpose agent for complex, multi-step tasks",
       toolNames: ["all"],
       systemPrompt: "",

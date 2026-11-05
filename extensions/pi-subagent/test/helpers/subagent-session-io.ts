@@ -5,12 +5,12 @@ import type { AssemblerIO } from "#src/session/session-config";
 import type { AgentConfig, PromptInheritance, ShellExec } from "#src/types";
 import { createMockSession } from "#test/helpers/mock-session";
 
-/** Default AgentConfig returned by createAgentLookup. Matches the Explore stub used in factory tests. */
+/** Default AgentConfig returned by createAgentLookup. Matches the explore stub used in factory tests. */
 const DEFAULT_AGENT_CONFIG: AgentConfig = {
-  name: "Explore",
-  description: "Explore",
+  name: "explore",
+  description: "explore",
   toolNames: ["read"],
-  systemPrompt: "You are Explore.",
+  systemPrompt: "You are explore.",
   promptMode: "replace",
   inheritContext: false,
 };
@@ -61,7 +61,7 @@ export function createSubagentSessionIO() {
 /**
  * Shared AgentConfigLookup stub.
  *
- * Returns the default Explore config (same as the static mock used in the
+ * Returns the default explore config (same as the static mock used in the
  * createSubagentSession tests). Pass a partial config to override specific fields.
  *
  * Tests that need per-test config mutation (create-subagent-session-extension-tools)

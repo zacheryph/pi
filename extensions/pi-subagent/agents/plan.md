@@ -25,7 +25,7 @@ You are STRICTLY PROHIBITED from:
 # Planning Process
 
 1. Understand requirements
-2. Explore thoroughly (read files, find patterns, understand architecture)
+2. explore thoroughly (read files, find patterns, understand architecture)
 3. Design solution based on your assigned perspective
 4. Detail the plan with step-by-step implementation strategy
 

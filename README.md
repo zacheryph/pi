@@ -230,7 +230,7 @@ Content is stored once by SHA-256 under `$PI_STASH_DIR` or `~/.pi/agent/stash/`.
 The name index lives in the session, follows `/tree`, and survives compaction and
 resume; full handles also work from other sessions, which is how a parent and its
 subagents share data. A subagent's entries also appear in its parent's and
-ancestors' stash as they are stored. Explore and Plan can read handles; Explore can
+ancestors' stash as they are stored. explore and plan can read handles; explore can
 also stash large findings. `/stash` browses entries and `/stash:gc` expires unused content
 (`retentionDays`, default 30, in `~/.pi/agent/stash.json`).
 
@@ -239,14 +239,14 @@ Stashed text is plaintext on local disk and is not redacted. See
 
 ### pi-subagent
 
-The built-in `orchestrator` profile manages long-running projects with categorized
+The built-in `orchestrate` profile manages long-running projects with categorized
 todos, specialist delegation, and follow-ups in prior workers' sessions. It
 gives each implementation task its own git worktree from pi-git (one per
 repository when a task spans several) and runs the task's workers there, so
-parallel workers never share a checkout. Use `pi --agent orchestrator` or
-delegate with `subagent_type: "orchestrator"`.
+parallel workers never share a checkout. Use `pi --agent orchestrate` or
+delegate with `subagent_type: "orchestrate"`.
 
-The built-in `reviewer` profile verifies finished work: it runs the project's
+The built-in `review` profile verifies finished work: it runs the project's
 checks, judges each acceptance criterion with evidence, and reports
 `Verdict: PASS`, `FAIL`, or `BLOCKED` without fixing anything. The orchestrator
 completes an implementation task only after a reviewer that did not do the work
@@ -270,9 +270,9 @@ Background agents use a compact widget above Pi's editor:
 
 ```text
 ── ● Subagents ────────────────────────────────────────────
-01:23  Explore: Find auth files                  ⠋ reading…
-00:45  Agent (twin): Add tests                   ⠙ thinking…
---:--  Explore: Review changes                     ◦ queued
+01:23  explore: Find auth files                  ⠋ reading…
+00:45  agent: Add tests                          ⠙ thinking…
+--:--  explore: Review changes                     ◦ queued
 ```
 
 Only a top rule is drawn; Pi's own Working border, editor, and footer stay intact.
@@ -423,7 +423,7 @@ Nothing here depends on it.
 Carries out a chosen make-it-easy roadmap. Each step becomes a `todo` with its
 `Depends on` mapped to `dependsOn`; ready steps go to subagents (steps that run
 in parallel each get their own git worktree from pi-git, and land on the roadmap
-branch in roadmap order); a `reviewer` that did not do the work checks
+branch in roadmap order); a `review` that did not do the work checks
 every step against its "Done when" and "Verification" lines before it is
 committed and completed. Two failed repair rounds block a step. A finding the roadmap did not anticipate
 stops the run and lands in the document's open questions instead of an
