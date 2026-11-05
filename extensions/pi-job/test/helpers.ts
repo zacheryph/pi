@@ -21,12 +21,23 @@ export async function waitUntil(
   }
 }
 
+/**
+ * Whether `pid` is still running. A zombie counts as dead: a killed orphan is
+ * reparented to PID 1 and stays a zombie until PID 1 reaps it, and some
+ * container inits never do, while `kill(pid, 0)` still succeeds on it.
+ */
 export function alive(pid: number): boolean {
   try {
     process.kill(pid, 0);
-    return true;
   } catch {
     return false;
+  }
+  try {
+    // /proc/<pid>/stat is "pid (comm) state ..."; comm may contain spaces or parens.
+    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+    return stat.slice(stat.lastIndexOf(")") + 2, stat.lastIndexOf(")") + 3) !== "Z";
+  } catch {
+    return true; // no procfs (macOS): kill(pid, 0) is the best answer there
   }
 }
 

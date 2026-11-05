@@ -335,22 +335,29 @@ void test("until change detects a change outside the retained output tail", asyn
   assert.equal(done[0].status, "matched");
 });
 
-void test("a log file that cannot be opened rolls the job back", async (t) => {
-  const { dir, manager } = setup(t, { maxRunning: 1 });
-  const dayDir = join(dir, "logs", today());
-  mkdirSync(dayDir, { recursive: true });
-  chmodSync(dayDir, 0o500);
-  t.after(() => {
-    try {
-      chmodSync(dayDir, 0o700);
-    } catch {}
-  });
-  assert.throws(() => manager.start({ command: "true", cwd: dir, timeoutSeconds: 5 }), /EACCES/);
-  assert.equal(manager.runningCount, 0);
-  assert.deepEqual(manager.list(), []);
-  chmodSync(dayDir, 0o700);
-  manager.start({ command: "true", cwd: dir, timeoutSeconds: 5 }); // the cap slot was not leaked
-});
+void test(
+  "a log file that cannot be opened rolls the job back",
+  // Root ignores directory permissions, so chmod cannot make the log unopenable.
+  {
+    skip: process.getuid?.() === 0 ? "running as root: directory permissions do not apply" : false,
+  },
+  async (t) => {
+    const { dir, manager } = setup(t, { maxRunning: 1 });
+    const dayDir = join(dir, "logs", today());
+    mkdirSync(dayDir, { recursive: true });
+    chmodSync(dayDir, 0o500);
+    t.after(() => {
+      try {
+        chmodSync(dayDir, 0o700);
+      } catch {}
+    });
+    assert.throws(() => manager.start({ command: "true", cwd: dir, timeoutSeconds: 5 }), /EACCES/);
+    assert.equal(manager.runningCount, 0);
+    assert.deepEqual(manager.list(), []);
+    chmodSync(dayDir, 0o700);
+    manager.start({ command: "true", cwd: dir, timeoutSeconds: 5 }); // the cap slot was not leaked
+  },
+);
 
 void test("a synchronous spawn failure (NUL byte) rolls back and closes the log fd", (t) => {
   const { dir, manager, done } = setup(t, { maxRunning: 1 });
