@@ -97,6 +97,16 @@ export interface AgentConfig extends AgentIdentity, AgentPromptConfig {
   /** When to pick this agent, shown after its description in the subagent_start list. */
   guidance?: string;
   /**
+   * Short text restated right after the latest user message on every request,
+   * for rules that must keep their weight as the conversation grows.
+   */
+  reminder?: string;
+  /**
+   * Tools the agent may not call itself; a call is refused with a reason that
+   * points at delegation. They stay registered, so its workers inherit them.
+   */
+  reservedTools?: string[];
+  /**
    * Who can see and run this agent. Omitted means `visible`.
    * - `visible`: listed in the subagent_start description and spawnable.
    * - `hidden`: spawnable by name, but left out of the list, for agents a

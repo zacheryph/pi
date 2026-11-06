@@ -682,6 +682,39 @@ describe("createSubagentSession — Pi built-in extensions", () => {
     expect(loadedBuiltinNames()).toEqual(["codemode", "mcp"]);
   });
 
+  it("adds the profile guards after the built-ins when the agent declares a reminder", async () => {
+    arrangeFactory();
+
+    await createSubagentSession(
+      { snapshot: STUB_SNAPSHOT, type: "explore" },
+      createSubagentSessionDeps({
+        io,
+        exec,
+        registry: createAgentLookup({ toolNames: ["read", "codemode"], reminder: "Delegate." }),
+      }),
+    );
+
+    expect(loadedBuiltinNames()).toEqual(["codemode", "<factory>"]);
+  });
+
+  it("adds the profile guards for reserved tools, which stay in the child's allowlist", async () => {
+    arrangeFactory();
+
+    await createSubagentSession(
+      { snapshot: STUB_SNAPSHOT, type: "explore" },
+      createSubagentSessionDeps({
+        io,
+        exec,
+        registry: createAgentLookup({ toolNames: ["read", "write"], reservedTools: ["write"] }),
+      }),
+    );
+
+    expect(loadedBuiltinNames()).toEqual(["<factory>"]);
+    expect(io.createSession).toHaveBeenCalledWith(
+      expect.objectContaining({ tools: expect.arrayContaining(["read", "write"]) }),
+    );
+  });
+
   it("hands the loader no built-ins when the agent's tools call for none", async () => {
     arrangeFactory();
 

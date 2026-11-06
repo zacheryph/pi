@@ -16,6 +16,7 @@ import { composeAgentInstructions, parseFragments } from "#src/config/prompt-fra
 import { MAIN_AGENT_SECTION } from "#src/session/main-profile-prompt";
 import { resolveToolSelection } from "#src/session/tool-selection";
 import { LATEST_SUFFIX, resolveModel } from "#src/session/model-resolver";
+import { reservedToolRefusal, withAgentReminder } from "#src/session/profile-guards";
 import type { AgentConfig } from "#src/types";
 import { sanitizeText } from "../../../packages/pi-ui/src/index.ts";
 
@@ -93,6 +94,12 @@ function restoredSnapshot(data: unknown): MainAgentSnapshot {
     typeof s.profile.systemPrompt !== "string" ||
     typeof s.profile.description !== "string" ||
     !["append", "replace"].includes(s.profile.promptMode) ||
+    (s.profile.reminder !== undefined && typeof s.profile.reminder !== "string") ||
+    (s.profile.reservedTools !== undefined &&
+      !(
+        Array.isArray(s.profile.reservedTools) &&
+        s.profile.reservedTools.every((name) => typeof name === "string")
+      )) ||
     s.profile.visibility === "disabled" ||
     ![undefined, "default", "global", "project"].includes(s.profile.source)
   ) {
@@ -224,8 +231,11 @@ export function registerMainAgentProfile(
       configured.filter((t) => t.exposure !== "hidden").map((t) => t.name),
     );
     // Explicit exclusions also apply to otherwise mandatory orchestration defaults.
+    // Reserved tools leave the active set only: they stay registered, and workers
+    // resolve their tools against the registered set, so they still receive them.
     const tools = [...new Set([...expanded.toolNames, ...MAIN_AGENT_REQUIRED_TOOLS])].filter(
-      (name) => !expanded.excludedToolNames.includes(name),
+      (name) =>
+        !expanded.excludedToolNames.includes(name) && !profile.reservedTools?.includes(name),
     );
     const missing = tools.filter(
       (name) => !configured.some((t) => t.name === name && t.exposure !== "hidden"),
@@ -340,6 +350,22 @@ export function registerMainAgentProfile(
     event.systemPromptOptions.sections[MAIN_AGENT_SECTION] = renderMainAgentSection(
       selected.profile,
     );
+  });
+  // Restates the profile's reminder beside the latest user message, where it
+  // keeps its weight however long the conversation grows.
+  pi.on("context", (event) => {
+    const reminder = selected?.profile.reminder;
+    return !failure && reminder
+      ? { messages: withAgentReminder(event.messages, reminder) }
+      : undefined;
+  });
+  // Reserved tools are off at selection, but the user can turn them back on and a
+  // restored session keeps its own tool set: refuse the call whatever is active.
+  pi.on("tool_call", (event) => {
+    const profile = selected?.profile;
+    return profile?.reservedTools
+      ? reservedToolRefusal(event, profile.reservedTools, profile.name)
+      : undefined;
   });
   pi.on("context_with_system", (event, ctx) => {
     if (!ready(ctx) || !selected) return;
