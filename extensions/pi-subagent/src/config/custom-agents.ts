@@ -87,6 +87,8 @@ function loadFromDir(dir: string, agents: Map<string, AgentConfig>, source: Agen
       displayName: str(fm.display_name),
       description: str(fm.description) ?? name,
       guidance: str(fm.guidance),
+      reminder: str(fm.reminder),
+      reservedTools: optionalList(fm.reserved_tools),
       toolNames: listField(fm.tools, ["all"]),
       delegate: fm.delegate === true ? true : undefined,
       model: str(fm.model),
@@ -215,6 +217,12 @@ function parseListField(val: unknown): string[] | undefined {
  * Parse a list field with defaults.
  * omitted → defaults; "none"/empty → []; otherwise → listed items.
  */
+/** A list field with no default: omitted or empty is undefined. */
+function optionalList(val: unknown): string[] | undefined {
+  const list = listField(val, []);
+  return list.length ? list : undefined;
+}
+
 function listField(val: unknown, defaults: string[]): string[] {
   if (val === undefined || val === null) return defaults;
   return parseListField(val) ?? [];

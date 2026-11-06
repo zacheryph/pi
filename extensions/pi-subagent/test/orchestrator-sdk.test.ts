@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
@@ -122,11 +122,18 @@ it("a child orchestrator tracks work, delegates an implementation, and recalls t
     let workerId: string | undefined;
     const text = (value: unknown) => JSON.stringify(value);
     faux.setResponses([
-      call("todo_upsert", {
-        tasks: [
-          { key: "implement", subject: "Implementation: create artifact", status: "in_progress" },
-        ],
-      }),
+      // Its own write is refused and sent to a worker; the tool stays for its workers.
+      call("write", { path: join(dir, "direct.txt"), content: "done myself" }),
+      (context) => {
+        const refusal = context.messages.at(-1);
+        expect(refusal).toMatchObject({ role: "toolResult", toolName: "write", isError: true });
+        expect(text(refusal)).toContain("write is reserved for workers");
+        return call("todo_upsert", {
+          tasks: [
+            { key: "implement", subject: "Implementation: create artifact", status: "in_progress" },
+          ],
+        });
+      },
       call("subagent_start", {
         subagent_type: "general-purpose",
         description: "Implement artifact",
@@ -191,6 +198,7 @@ it("a child orchestrator tracks work, delegates an implementation, and recalls t
       text(orchestrator.session.messages.filter((message) => message.role === "toolResult")),
     ).toContain("Project complete");
     expect(readFileSync(join(dir, "artifact.txt"), "utf8")).toBe("verified content");
+    expect(existsSync(join(dir, "direct.txt"))).toBe(false);
     expect(faux.getPendingResponseCount()).toBe(0);
     const journal = orchestrator.session.sessionManager
       .getBranch()

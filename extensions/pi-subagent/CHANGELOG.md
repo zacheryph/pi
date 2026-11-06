@@ -3,6 +3,21 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-06: Keep orchestrate delegating in long conversations
+
+- `orchestrate` gains a "Delegation boundary" section: "can you", "can we" and
+  "let's" ask for an outcome, not for the orchestrator to do the work. It
+  answers only from what it holds or one or two quick reads, and delegates
+  research, design, implementation, debugging, testing and review.
+- New `reserved_tools` frontmatter: the agent's own calls to these tools are
+  refused with a reason pointing at `subagent_start`. They stay registered, so
+  its workers still receive them; a main session also leaves them inactive.
+  `orchestrate` reserves `edit`, `write` and `bash`. `/subagent:agents` shows
+  the field.
+- New `reminder` frontmatter: restated after the latest user message on every
+  request (hidden, never saved), so a long history does not outweigh it.
+  `orchestrate` uses it for the delegation rule.
+
 ## 2026-11-06: Supply tools required by todo handoffs
 
 - Add synchronous `subagent:session:prepare` with `requireTools(names)` so handoff

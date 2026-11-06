@@ -22,6 +22,7 @@ import type { ChildLifecyclePublisher, SubagentHandoff } from "#src/lifecycle/ch
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import { SubagentSession } from "#src/lifecycle/subagent-session";
 import { builtinExtensionsFor } from "#src/session/builtin-extensions";
+import { hasProfileGuards, profileGuardsExtension } from "#src/session/profile-guards";
 import type { EnvInfo } from "#src/session/env";
 import { resolveToolSelection } from "#src/session/tool-selection";
 import type { ModelRegistry } from "#src/session/model-resolver";
@@ -314,6 +315,9 @@ export async function createSubagentSession(
   // would defeat prompt_mode: replace. Parent context, if wanted, reaches the
   // subagent via prompt_mode: append (parentSystemPrompt is embedded in
   // systemPromptOverride) or inherit_context (conversation).
+  // The profile's reminder and reserved tools. Reserved tools stay in the
+  // child's allowlist, so its own workers can still be given them.
+  const guards = { name: type, reminder: cfg.reminder, reservedTools: cfg.reservedTools };
   const loader = deps.io.createResourceLoader({
     cwd: cfg.effectiveCwd,
     agentDir,
@@ -323,7 +327,10 @@ export async function createSubagentSession(
     noContextFiles: true,
     systemPromptOverride: () => cfg.systemPrompt,
     appendSystemPromptOverride: () => [],
-    extensionFactories: builtinExtensionsFor(toolNames),
+    extensionFactories: [
+      ...builtinExtensionsFor(toolNames),
+      ...(hasProfileGuards(guards) ? [profileGuardsExtension(guards)] : []),
+    ],
   });
   await loader.reload();
 
