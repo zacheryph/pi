@@ -361,7 +361,20 @@ describe("AgentTypeRegistry", () => {
         promptMode: "replace",
         delegate: true,
         toolNames: ["all", "todo_list", "todo_upsert", "todo_replace", "todo_remove", "todo_clear"],
+        reservedTools: ["edit", "write", "bash"],
       });
+    });
+
+    it("delegates the work however the request is phrased, and is reminded every turn", () => {
+      const config = makeRegistry().resolveAgentConfig("orchestrate");
+      expect(config.systemPrompt).toContain("# Delegation boundary");
+      expect(config.systemPrompt).toContain(
+        "as a request for the outcome, not an instruction to do it yourself",
+      );
+      expect(config.systemPrompt).toContain("edit, write and bash are reserved for your workers");
+      expect(config.reminder).toContain('"can you", "can we", "could you" or "let\'s"');
+      expect(config.reminder).toContain("to a worker with subagent_start");
+      expect(config.reminder).not.toContain("\n");
     });
 
     it("runs implementation tasks in worktrees it hands to workers as cwd", () => {

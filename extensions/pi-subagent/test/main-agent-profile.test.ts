@@ -17,6 +17,7 @@ import {
 } from "#src/main-agent-profile";
 import { buildParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import { buildAgentPrompt } from "#src/session/prompts";
+import { AGENT_REMINDER_TYPE } from "#src/session/profile-guards";
 import { loadCustomAgents } from "#src/config/custom-agents";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import type { AgentConfig } from "#src/types";
@@ -138,12 +139,56 @@ describe("main profile defaults and persistent body", () => {
     expect(selected.name).toBe("orchestrate");
     expect(h.state.active).toContain("todo_upsert");
     expect(h.state.active).toEqual(expect.arrayContaining([...MAIN_AGENT_REQUIRED_TOOLS]));
+    expect(h.state.active).not.toContain("write");
     expect((await h.prompt()).sections[MAIN_AGENT_SECTION]).toContain(selected.systemPrompt);
     h.manual();
     await h.start("reload");
     expect(h.state.active).toEqual(["write", "tool_search"]);
     expect((await h.prompt()).sections[MAIN_AGENT_SECTION]).toContain(selected.systemPrompt);
     expect(h.ctx.shutdown).not.toHaveBeenCalled();
+  });
+
+  it("restates the profile's reminder after the latest user message on every request", async () => {
+    const h = harness();
+    h.state.profile.reminder = "Delegate the work.";
+    await h.start();
+    const user = { role: "user", content: "can you fix it?", timestamp: 0 };
+    const out = await h.fire("context", { messages: [user] });
+    expect(out.messages).toEqual([
+      user,
+      expect.objectContaining({
+        role: "custom",
+        customType: AGENT_REMINDER_TYPE,
+        content: "<agent_reminder>\nDelegate the work.\n</agent_reminder>",
+        display: false,
+      }),
+    ]);
+    await h.start("reload");
+    expect((await h.fire("context", { messages: [user] })).messages).toHaveLength(2);
+  });
+
+  it("takes reserved tools out of the active set and refuses calls to them", async () => {
+    const h = harness();
+    h.state.profile.toolNames = ["read", "write"];
+    h.state.profile.reservedTools = ["write"];
+    await h.start();
+    expect(h.state.active).toEqual(["read", ...MAIN_AGENT_REQUIRED_TOOLS]);
+    expect(await h.fire("tool_call", { toolName: "write", input: {} })).toEqual({
+      block: true,
+      reason: expect.stringContaining("write is reserved for workers: as reader you coordinate"),
+    });
+    expect(await h.fire("tool_call", { toolName: "read", input: {} })).toBeUndefined();
+    // A restored session keeps the user's tools, but the refusal still holds.
+    h.manual();
+    await h.start("reload");
+    expect(h.state.active).toContain("write");
+    expect((await h.fire("tool_call", { toolName: "write", input: {} })).block).toBe(true);
+  });
+
+  it("leaves the context alone for a profile without a reminder", async () => {
+    const h = harness();
+    await h.start();
+    expect(await h.fire("context", { messages: [] })).toBeUndefined();
   });
 
   it("reports missing todo when selecting the orchestrator without pi-todo", async () => {
@@ -604,13 +649,12 @@ describe("main profile defaults and persistent body", () => {
     expect(h.pi.appendEntry).toHaveBeenCalledTimes(2);
   });
 
-  it("tool defaults are not policy; deferred/codemode and manually added tools have no deny gate", async () => {
+  it("tool defaults are not policy; without reserved_tools no call is refused", async () => {
     const h = harness();
     await h.start();
     h.manual();
     for (const toolName of ["write", "secret", "codemode", "tool_search"])
       expect(await h.fire("tool_call", { toolName, parentToolCallId: "nested" })).toBeUndefined();
-    expect(h.handlers.has("tool_call")).toBe(false);
     expect(h.handlers.has("turn_start")).toBe(false);
     expect(h.handlers.has("cache_warming_decision")).toBe(false);
   });

@@ -105,6 +105,10 @@ export interface SessionConfig {
   toolNames: string[];
   /** The profile's `delegate`: whether the child may start, read and steer agents of its own. */
   delegate: boolean;
+  /** The profile's `reminder`, restated after the latest user message on every request. */
+  reminder?: string;
+  /** The profile's `reserved_tools`: tools the child may not call itself. */
+  reservedTools?: string[];
   /**
    * Resolved model instance (undefined → use parent model as passed to SDK).
    * The assembler passes it through without inspection.
@@ -227,6 +231,8 @@ export function assembleSessionConfig(
     systemPrompt,
     toolNames,
     delegate: agentConfig.delegate === true,
+    reminder: agentConfig.reminder,
+    reservedTools: agentConfig.reservedTools,
     model,
     thinkingLevel,
     agentMaxTurns,

@@ -131,6 +131,10 @@ function agentDetail(
         ["Source", config.source === "default" ? "built-in" : (config.source ?? "(not available)")],
         ["Source path", config.sourcePath ?? "(not available)"],
         ["Tools", tools.length ? tools.join(", ") : "(none)"],
+        [
+          "Reserved tools",
+          config.reservedTools?.length ? config.reservedTools.join(", ") : "(none)",
+        ],
         ["Delegate", config.delegate ? "yes" : "no"],
         ["Model", config.model ?? "(inherit parent)"],
         ["Thinking", config.thinking ?? "(inherit parent)"],
