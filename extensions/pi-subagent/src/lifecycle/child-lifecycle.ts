@@ -12,13 +12,17 @@
  * `spawning`, `session-created`, `completed`, and `disposed` are the announcement
  * a consumer may rely on. `bound` is additional: it reports that a child finished
  * binding its extensions, which is the only moment a parent can observe what those
- * extensions did or did not install.
+ * extensions did or did not install. `prepare` is a synchronous contribution hook:
+ * extensions require tools before SDK creation, without the core knowing their keys.
  */
 
 import type { TurnBudget } from "#src/lifecycle/turn-limits";
 
 /** Emitted at the start of a child run, before the session is created. */
 export const SUBAGENT_CHILD_SPAWNING = "subagent:session:spawning";
+
+/** Synchronous extension tool contributions, before the SDK fixes the child's allowlist. */
+export const SUBAGENT_CHILD_PREPARE = "subagent:session:prepare";
 
 /**
  * Emitted after the child session is created, immediately before
@@ -54,8 +58,8 @@ export interface ChildSpawningEvent {
  * Extension-defined data a spawn hands its child, keyed by the extension that
  * reads it (pi-todo reads `todo`). The core never interprets it: it checks the
  * value is a plain JSON object within `MAX_HANDOFF_BYTES`, copies and deep-freezes
- * it, and forwards it on `session-created`. Each key's owner documents and
- * validates its own shape.
+ * it, and forwards it on `prepare` and `session-created`. Each key's owner
+ * documents and validates its own shape.
  */
 export type SubagentHandoff = Readonly<Record<string, unknown>>;
 
@@ -105,6 +109,20 @@ export interface ChildRunIdentity {
   toolCallId?: string;
 }
 
+/** Inputs available before a child session exists. */
+export interface ChildPreparation extends ChildRunIdentity {
+  agentName: string;
+  parentSessionId?: string;
+  handoff?: SubagentHandoff;
+  cwd: string;
+}
+
+/** Payload for `subagent:session:prepare`. Handlers must contribute synchronously. */
+export interface ChildPrepareEvent extends ChildPreparation {
+  /** Exact tool names required by this handoff, not patterns or profile selectors. */
+  requireTools(names: readonly string[]): void;
+}
+
 /** Payload for `subagent:session:created`. */
 export interface ChildSessionCreatedEvent extends ChildRunIdentity {
   /** Child session id — the registry key. Unique per child; concurrent
@@ -143,6 +161,7 @@ export type LifecycleEmit = (channel: string, data: unknown) => void;
 /** Publishes the child-execution lifecycle on the event bus. */
 export interface ChildLifecyclePublisher {
   spawning(event: ChildSpawningEvent): void;
+  prepare(event: ChildPreparation): string[];
   sessionCreated(event: ChildSessionCreatedEvent): void;
   bound(event: ChildBoundEvent): void;
   completed(event: ChildCompletedEvent): void;
@@ -154,6 +173,29 @@ export function createChildLifecyclePublisher(emit: LifecycleEmit): ChildLifecyc
   return {
     spawning(event) {
       emit(SUBAGENT_CHILD_SPAWNING, event);
+    },
+    prepare(event) {
+      const requested: string[] = [];
+      emit(SUBAGENT_CHILD_PREPARE, {
+        ...event,
+        requireTools: (names: readonly string[]) => requested.push(...names),
+      } satisfies ChildPrepareEvent);
+      // Snapshot synchronous contributions. Later async handlers cannot change
+      // this run's allowlist. Selectors would accidentally widen SDK capabilities.
+      const names = [...new Set(requested)];
+      for (const name of names) {
+        if (
+          typeof name !== "string" ||
+          !name.trim() ||
+          name !== name.trim() ||
+          name === "all" ||
+          name === "none" ||
+          /^[+-]/.test(name) ||
+          /[\s*?]/.test(name)
+        )
+          throw new Error(`Handoff requires an invalid tool name: ${JSON.stringify(name)}`);
+      }
+      return names;
     },
     sessionCreated(event) {
       emit(SUBAGENT_CHILD_SESSION_CREATED, event);

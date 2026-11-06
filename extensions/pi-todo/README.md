@@ -175,6 +175,13 @@ subagent_start({
   call, with a reason, when a key is unknown, already completed, or held by another
   subagent. A call that passes reserves its keys, so two spawns in one turn cannot
   take the same task. A malformed `handoff.todo` is blocked too.
+- **Tools supplied with the handoff.** On `subagent:session:prepare`, pi-todo requests
+  `todo_list` and `todo_upsert` before the SDK fixes the child's tool allowlist.
+  Restricted profiles (`explore`, `plan`, `review`, even `tools: none`) get these
+  two tools for assigned work without gaining file-editing or destructive todo
+  tools. Existing tools are preserved; no handoff leaves the profile unchanged.
+  An explicit exclusion such as `-todo_upsert`, or pi-todo not loading in the
+  child, fails initialization with a required-tools error instead of stranding work.
 - **Claimed before the child starts.** When pi-subagent reports the child session
   (`subagent:session:created`, with its agent id and the same tool call id), the
   parent journals a claim in `todo:claim` entries. Claims follow the branch like

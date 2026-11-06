@@ -498,16 +498,33 @@ These are fire-and-forget broadcast events — no request IDs, no reply channels
 
 The child-execution lifecycle (`src/lifecycle/child-lifecycle.ts`) is published on the same bus, keyed by the child's session id:
 
-| Channel                      | Payload                                                            | When                                                         |
-| ---------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------ |
-| `subagent:session:spawning`  | `{ agentName, parentSessionId? }`                                  | A child run starts, before its session exists                |
-| `subagent:session:created`   | `{ sessionId, parentSessionId?, agentId?, toolCallId?, handoff? }` | Synchronously, before the child binds its extensions         |
-| `subagent:session:bound`     | `{ sessionId, parentSessionId?, agentId?, toolCallId? }`           | Every child `session_start` handler has run                  |
-| `subagent:session:completed` | `{ sessionDir, agentName, turnBudget? }`                           | The child's prompt resolved                                  |
-| `subagent:session:disposed`  | `{ sessionId, agentId?, toolCallId? }`                             | After the child's `session_shutdown` and `session.dispose()` |
+| Channel                      | Payload                                                                               | When                                                         |
+| ---------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `subagent:session:spawning`  | `{ agentName, parentSessionId? }`                                                     | A child run starts, before its session exists                |
+| `subagent:session:prepare`   | `{ agentName, cwd, parentSessionId?, agentId?, toolCallId?, handoff?, requireTools }` | Synchronously, before SDK creation fixes the tool allowlist  |
+| `subagent:session:created`   | `{ sessionId, parentSessionId?, agentId?, toolCallId?, handoff? }`                    | Synchronously, before the child binds its extensions         |
+| `subagent:session:bound`     | `{ sessionId, parentSessionId?, agentId?, toolCallId? }`                              | Every child `session_start` handler has run                  |
+| `subagent:session:completed` | `{ sessionDir, agentName, turnBudget? }`                                              | The child's prompt resolved                                  |
+| `subagent:session:disposed`  | `{ sessionId, agentId?, toolCallId? }`                                                | After the child's `session_shutdown` and `session.dispose()` |
 
 `agentId` is the record id (`getRecord(id)`), `toolCallId` the parent's `subagent_start` call (absent for a service spawn), and `handoff` the spawn's extension-defined data.
-The core forwards `handoff` without interpreting it, so a companion extension can define a new key (pi-todo reads `todos`) without a core change. The key's owner documents its shape in its own tool guidance and validates it.
+The core forwards `handoff` without interpreting it, so a companion extension can define a new key (pi-todo reads `todo`) without a core change. The key's owner documents its shape in its own tool guidance and validates it.
+
+`prepare` is the one generative hook on this bus: a parent extension must call
+`requireTools(["exact_tool_name"])` synchronously, before its handler returns or
+awaits. Contributions are deduplicated and added to the child's SDK allowlist;
+selectors (`all`, `none`, exclusions, wildcards) are rejected. Explicit profile
+exclusions and the delegation guard cannot be bypassed. After binding, every
+required tool must be active or initialization fails and disposes the child.
+
+```ts
+pi.events.on("subagent:session:prepare", (event) => {
+  if (event.handoff?.my_extension) event.requireTools(["my_extension_tool"]);
+});
+```
+
+pi-todo uses this to request only `todo_list` and `todo_upsert` for a todo handoff.
+This changes neither the profile nor sessions without a matching handoff.
 
 ## Architecture direction
 
@@ -531,9 +548,10 @@ Extensions attach through exactly two surfaces, distinguished by the direction o
    Reactive concerns live here: permission detection, telemetry, UI, notifications.
    Adding a reactive concern never modifies the core.
 2. **Provider seams (generative) — rationed.**
-   The rare concern that must _inject_ a value the core consumes synchronously would register a provider the core consults.
-   Today there are none: the workspace provider was removed once a caller-chosen `cwd` replaced its only consumer.
-   A provider seam is the only place the core is "open," so the list is kept as small as possible.
+   The rare concern that must _inject_ a value the core consumes synchronously uses a narrow contribution seam.
+   Today there is one: `subagent:session:prepare` collects required tool names before the SDK fixes its allowlist; pi-todo is its concrete consumer.
+   Unlike observational lifecycle events, its callback contributes data the core consumes. The workspace provider remains removed; a caller-chosen `cwd` replaced its only consumer.
+   Generative seams are the only places the core is "open," so the list is kept as small as possible.
 
 The discriminator when deciding how a concern attaches:
 

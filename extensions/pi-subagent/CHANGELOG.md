@@ -3,6 +3,17 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-06: Supply tools required by todo handoffs
+
+- Add synchronous `subagent:session:prepare` with `requireTools(names)` so handoff
+  owners can contribute exact tool names before SDK creation without core-specific
+  knowledge of their payloads. Deduplicate contributions; reject tool selectors.
+- Keep explicit profile exclusions and the delegation guard; fail initialization
+  when required tools are excluded or unavailable after binding, disposing any
+  created child. Agents without contributions keep their existing tool selection.
+- Cover contribution collection, initialization failures, and real SDK handoffs
+  to general-purpose, explore, plan, review, and tools-none workers.
+
 ## 2026-11-05: Lowercase agent names and remove twin labels
 
 - Rename built-in types to `explore`, `plan`, `orchestrate`, and `review`;

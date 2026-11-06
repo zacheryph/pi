@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   type ChildLifecyclePublisher,
+  type ChildPrepareEvent,
   createChildLifecyclePublisher,
   SUBAGENT_CHILD_BOUND,
+  SUBAGENT_CHILD_PREPARE,
   SUBAGENT_CHILD_COMPLETED,
   SUBAGENT_CHILD_DISPOSED,
   SUBAGENT_CHILD_SESSION_CREATED,
@@ -106,6 +108,53 @@ describe("createChildLifecyclePublisher", () => {
     expect(SUBAGENT_CHILD_COMPLETED).toBe("subagent:session:completed");
     expect(SUBAGENT_CHILD_DISPOSED).toBe("subagent:session:disposed");
   });
+});
+
+describe("handoff tool preparation", () => {
+  const input = {
+    agentName: "explore",
+    agentId: "worker",
+    toolCallId: "spawn-call",
+    parentSessionId: "parent",
+    cwd: "/workspace",
+    handoff: { todo: { keys: ["audit"] } },
+  };
+
+  it("collects and deduplicates synchronous contributions without interpreting handoff keys", () => {
+    const emit = vi.fn((_channel: string, data: unknown) => {
+      const event = data as ChildPrepareEvent;
+      expect(event).toMatchObject(input);
+      event.requireTools(["todo_list", "todo_upsert"]);
+      event.requireTools(["todo_list", "other_tool"]);
+    });
+    expect(createChildLifecyclePublisher(emit).prepare(input)).toEqual([
+      "todo_list",
+      "todo_upsert",
+      "other_tool",
+    ]);
+    expect(emit).toHaveBeenCalledWith(SUBAGENT_CHILD_PREPARE, expect.any(Object));
+  });
+
+  it("returns no requirements without a contributor and snapshots before asynchronous contributions", () => {
+    expect(setup().publisher.prepare(input)).toEqual([]);
+    let late: ChildPrepareEvent["requireTools"] = () => {};
+    const publisher = createChildLifecyclePublisher((_channel, data) => {
+      late = (data as ChildPrepareEvent).requireTools;
+    });
+    const required = publisher.prepare(input);
+    late(["edit"]);
+    expect(required).toEqual([]);
+  });
+
+  it.each(["all", "none", "-bash", "+edit", "mcp__server__*", "tool?", "", " read"])(
+    "rejects selectors and malformed names: %j",
+    (name) => {
+      const publisher = createChildLifecyclePublisher((_channel, data) => {
+        (data as ChildPrepareEvent).requireTools([name]);
+      });
+      expect(() => publisher.prepare(input)).toThrow("invalid tool name");
+    },
+  );
 });
 
 describe("normalizeHandoff", () => {

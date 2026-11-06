@@ -340,7 +340,9 @@ tools: read, grep, find, agent_browser
 ---
 ```
 
-An explicit allowlist must still name an extension's tool to admit it. Children load the parent's extensions, but the SDK filters those tools against the resolved selection when their registrations arrive.
+An explicit allowlist normally must name an extension's tool to admit it. Children load the parent's extensions, but the SDK filters those tools against the resolved selection when their registrations arrive.
+
+A handoff's owner may require additional tools through the synchronous `subagent:session:prepare` hook before SDK creation. pi-todo uses it to add only `todo_list` and `todo_upsert` when tasks are handed over, even for `explore`, `plan`, `review`, or `tools: none`. No handoff means no additional todo tools. An explicit exclusion such as `-todo_upsert` is not overridden: the handoff fails with a required-tools error. Initialization also fails if a required tool is unavailable after binding (for example, its extension was excluded from children).
 
 Three names are removed from a child unless its profile sets `delegate: true`:
 `subagent_start`, `subagent_get`, and `subagent_steer`. `delegate` is the only
