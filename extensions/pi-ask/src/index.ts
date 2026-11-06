@@ -11,6 +11,7 @@ import {
   sanitizeLine,
   styleLine,
 } from "../../../packages/pi-ui/src/index.ts";
+import { CmuxNotifications } from "./cmux.ts";
 import { askWithDialogs } from "./dialogs.ts";
 import {
   ASK_ANSWER,
@@ -77,6 +78,7 @@ export default function piAsk(pi: ExtensionAPI): void {
   // subagent session runs this factory again, and a same-cwd child may share
   // this module with its parent.
   let route: AskRoute = { kind: "user", mode: "tui" };
+  const notifications = new CmuxNotifications();
   /** Questionnaires on screen, by asking tool call id. */
   const open = new Map<string, { questions: AskQuestion[]; finish(outcome: AskOutcome): void }>();
 
@@ -184,6 +186,7 @@ export default function piAsk(pi: ExtensionAPI): void {
     ctx: ExtensionContext,
   ): Promise<AskOutcome> => {
     let closed: AskClosedEvent["outcome"] = "error";
+    let closeNotification: (() => void) | undefined;
     let finish: ((outcome: AskOutcome) => void) | undefined;
     // An answer from outside can arrive before the window has mounted.
     let early: AskOutcome | undefined;
@@ -194,6 +197,7 @@ export default function piAsk(pi: ExtensionAPI): void {
     const abort = () => open.get(toolCallId)?.finish({ status: "cancelled" });
     signal?.addEventListener("abort", abort, { once: true });
     try {
+      closeNotification = notifications.open();
       pi.events.emit(ASK_OPENED, openedEvent(toolCallId, questions));
       const outcome = await openInlineWindow<AskOutcome>(
         ctx,
@@ -209,6 +213,7 @@ export default function piAsk(pi: ExtensionAPI): void {
       closed = result.status;
       return result;
     } finally {
+      closeNotification?.();
       signal?.removeEventListener("abort", abort);
       open.delete(toolCallId);
       pi.events.emit(ASK_CLOSED, { toolCallId, outcome: closed } satisfies AskClosedEvent);
@@ -254,6 +259,8 @@ export default function piAsk(pi: ExtensionAPI): void {
     route = next;
     register();
   });
+
+  pi.on("session_shutdown", () => notifications.shutdown());
 
   register();
 }
