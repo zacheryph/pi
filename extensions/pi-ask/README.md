@@ -84,6 +84,26 @@ back to the end and restores the window; that key is not used as an answer. In
 regular mode your terminal owns scrollback, so the window stays inline at the
 bottom.
 
+## Optional cmux notifications
+
+Inside cmux, opening a root terminal questionnaire also sends a native notification
+with a generic message (never the questions or answers). The inline UI is unchanged.
+Answering, cancelling or encountering an error dismisses only that questionnaire's
+notification, including when its creation receipt arrives after closing. RPC dialogs
+and questions routed to a parent agent do not notify.
+
+This uses the public `cmux` CLI automatically when `CMUX_SURFACE_ID` (or legacy
+`CMUX_PANEL_ID`) is set, with an optional `CMUX_WORKSPACE_ID`/`CMUX_TAB_ID` target.
+It prefers `CMUX_BUNDLED_CLI_PATH`, then `cmux` on PATH, and preserves the inherited
+socket environment. Set `CMUX_PI_HOOKS_DISABLED=1` to opt out; no settings are needed.
+Without cmux, or if the CLI fails or times out, questions work exactly as before.
+Creation and dismissal never wait on the question's interaction path; shutdown
+briefly drains pending work. If cmux creates a notification but its receipt is lost,
+pi-ask cannot safely identify it to dismiss it and will not clear other notifications.
+
+cmux may suppress native banners while its target pane is focused; its own
+notification settings control this behavior.
+
 ## Events
 
 pi-ask publishes on the session's `pi.events` bus, keyed by the asking tool
