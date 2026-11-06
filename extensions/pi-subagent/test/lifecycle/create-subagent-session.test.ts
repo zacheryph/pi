@@ -406,6 +406,92 @@ describe("createSubagentSession — dispose on creation failure", () => {
   });
 });
 
+describe("createSubagentSession — handoff tool requirements", () => {
+  function prepare(required = ["todo_list", "todo_upsert"], toolNames = ["read"]) {
+    const session = arrangeFactory();
+    session.getActiveToolNames.mockReturnValue([...toolNames, ...required]);
+    const deps = createSubagentSessionDeps({
+      io,
+      exec,
+      registry: createAgentLookup({ toolNames }),
+    });
+    deps.lifecycle.prepare.mockReturnValue(required);
+    return { session, deps };
+  }
+
+  it.each([["read"], ["none"]])(
+    "adds requirements to the SDK allowlist for profile %j",
+    async (...toolNames) => {
+      const { deps } = prepare(["todo_list", "todo_upsert"], toolNames);
+      const handoff = { todo: { keys: ["audit"] } };
+      await createSubagentSession(
+        {
+          snapshot: STUB_SNAPSHOT,
+          type: "explore",
+          handoff,
+          agentId: "worker",
+          cwd: "/worktree",
+          parentSession: { parentSessionId: "parent", toolCallId: "spawn-call" },
+        },
+        deps,
+      );
+      expect(deps.lifecycle.prepare).toHaveBeenCalledWith({
+        agentName: "explore",
+        agentId: "worker",
+        parentSessionId: "parent",
+        toolCallId: "spawn-call",
+        cwd: "/worktree",
+        handoff,
+      });
+      expect(io.createSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tools: [...toolNames.filter((name) => name !== "none"), "todo_list", "todo_upsert"],
+        }),
+      );
+      expect(deps.lifecycle.prepare.mock.invocationCallOrder[0]).toBeLessThan(
+        io.createSession.mock.invocationCallOrder[0],
+      );
+    },
+  );
+
+  it.each([
+    ["todo_upsert", ["read", "-todo_upsert"]],
+    ["mcp__test__read", ["read", "-mcp__test__*"]],
+    ["subagent_start", ["read"]],
+  ])("refuses excluded requirements without creating a session: %s", async (name, toolNames) => {
+    const { deps } = prepare([name], toolNames);
+    await expect(
+      createSubagentSession({ snapshot: STUB_SNAPSHOT, type: "explore" }, deps),
+    ).rejects.toThrow(`required tools excluded: ${name}`);
+    expect(io.createSession).not.toHaveBeenCalled();
+  });
+
+  it("loads built-in extensions needed by a contributed tool", async () => {
+    const { deps } = prepare(["codemode"]);
+    await createSubagentSession({ snapshot: STUB_SNAPSHOT, type: "explore" }, deps);
+    expect(loadedBuiltinNames()).toEqual(["codemode"]);
+  });
+
+  it("deduplicates tools already selected by the profile", async () => {
+    const { deps } = prepare(["todo_list"], ["read", "todo_list"]);
+    await createSubagentSession({ snapshot: STUB_SNAPSHOT, type: "explore" }, deps);
+    expect(io.createSession).toHaveBeenCalledWith(
+      expect.objectContaining({ tools: ["read", "todo_list"] }),
+    );
+  });
+
+  it("disposes a child whose extensions did not make required tools active", async () => {
+    const { session, deps } = prepare();
+    session.getActiveToolNames.mockReturnValue(["read", "todo_list"]);
+    await expect(
+      createSubagentSession({ snapshot: STUB_SNAPSHOT, type: "explore" }, deps),
+    ).rejects.toThrow("required tools unavailable: todo_upsert");
+    expect(session.dispose).toHaveBeenCalledOnce();
+    expect(deps.lifecycle.disposed).toHaveBeenCalledOnce();
+    expect(deps.lifecycle.bound).not.toHaveBeenCalled();
+  });
+});
+
 describe("createSubagentSession — recursion guard", () => {
   // A child loads this extension too, so it registers the spawn tools during
   // bindExtensions. They are denied at the SDK boundary, which holds for the

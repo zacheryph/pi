@@ -3,6 +3,15 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-06: Supply tools required by todo handoffs
+
+- `src/delegation.ts`: request only `todo_list` and `todo_upsert` through
+  pi-subagent's pre-creation hook for valid `handoff.todo` payloads. Restricted
+  workers can now read and update their claims without broadening repository
+  capabilities or admitting destructive todo tools. No handoff adds no tools.
+- Cover valid, absent, malformed, and unsupported onward handoffs; real SDK
+  coverage in pi-subagent verifies restricted profiles and scoped parent writes.
+
 ## 2026-11-04: Expanded tool results list only changed tasks
 
 - `src/index.ts`: an expanded todo tool result shows its summary and one inset

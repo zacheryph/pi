@@ -117,6 +117,7 @@ export function createSubagentSessionDeps(overrides?: {
 export function createChildLifecycleMock() {
   return {
     spawning: vi.fn<ChildLifecyclePublisher["spawning"]>(),
+    prepare: vi.fn<ChildLifecyclePublisher["prepare"]>(() => []),
     sessionCreated: vi.fn<ChildLifecyclePublisher["sessionCreated"]>(),
     bound: vi.fn<ChildLifecyclePublisher["bound"]>(),
     completed: vi.fn<ChildLifecyclePublisher["completed"]>(),

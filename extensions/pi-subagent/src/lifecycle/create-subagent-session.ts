@@ -261,16 +261,42 @@ export async function createSubagentSession(
     deps.io.assemblerIO,
   );
 
-  const selection = resolveToolSelection(cfg.toolNames, deps.listParentToolNames());
+  const run = {
+    ...(params.agentId !== undefined ? { agentId: params.agentId } : {}),
+    ...(params.parentSession?.toolCallId !== undefined
+      ? { toolCallId: params.parentSession.toolCallId }
+      : {}),
+  };
+  const requiredTools = deps.lifecycle.prepare({
+    agentName: type,
+    parentSessionId,
+    ...run,
+    ...(params.handoff ? { handoff: params.handoff } : {}),
+    cwd: cfg.effectiveCwd,
+  });
+  // Handoff owners may add capabilities omitted by a profile, never override an
+  // explicit exclusion. Resolve their literal names too so MCP exclusions apply.
+  const selection = resolveToolSelection(cfg.toolNames, [
+    ...new Set([...deps.listParentToolNames(), ...requiredTools]),
+  ]);
   const { unmatchedPatterns } = selection;
   // `delegate: true` adds the delegation tools; a `-subagent_*` exclusion still
   // wins. Without it they are stripped whatever `tools` selected.
   const delegationTools = cfg.delegate
     ? DELEGATION_TOOL_NAMES.filter((name) => !selection.excludedToolNames.includes(name))
     : [];
-  const toolNames = [...new Set([...selection.toolNames, ...delegationTools])].filter(
-    (name) => !DELEGATION_TOOL_NAMES.includes(name) || delegationTools.includes(name),
+  const deniedRequired = requiredTools.filter(
+    (name) =>
+      selection.excludedToolNames.includes(name) ||
+      (DELEGATION_TOOL_NAMES.includes(name) && !delegationTools.includes(name)),
   );
+  if (deniedRequired.length)
+    throw new Error(
+      `Cannot prepare subagent ${type}: required tools excluded: ${deniedRequired.join(", ")}`,
+    );
+  const toolNames = [
+    ...new Set([...selection.toolNames, ...requiredTools, ...delegationTools]),
+  ].filter((name) => !DELEGATION_TOOL_NAMES.includes(name) || delegationTools.includes(name));
   for (const pattern of unmatchedPatterns) {
     debugNote(`agent ${type}: tools pattern ${pattern} matched no tool the parent has`);
   }
@@ -341,12 +367,6 @@ export async function createSubagentSession(
       : {}),
   });
 
-  const run = {
-    ...(params.agentId !== undefined ? { agentId: params.agentId } : {}),
-    ...(params.parentSession?.toolCallId !== undefined
-      ? { toolCallId: params.parentSession.toolCallId }
-      : {}),
-  };
   // Offered before the child's extensions bind, so pi-ask finds it on session_start.
   const askParent = params.askParent;
   const withdrawAskRoute = askParent
@@ -380,8 +400,14 @@ export async function createSubagentSession(
   try {
     // Bind extensions so that session_start fires and extensions can initialize.
     await session.bindExtensions({});
+    const activeTools = new Set(session.getActiveToolNames());
+    const missing = requiredTools.filter((name) => !activeTools.has(name));
+    if (missing.length)
+      throw new Error(
+        `Cannot prepare subagent ${type}: required tools unavailable: ${missing.join(", ")}`,
+      );
   } catch (err) {
-    // Binding failed after session-created — dispose (child session_shutdown +
+    // Initialization failed after session-created — dispose (child session_shutdown +
     // session.dispose() + emit disposed) before rethrowing so neither the
     // registration nor a partially-initialized extension's resources leak.
     await subagentSession.dispose();

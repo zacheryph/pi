@@ -223,7 +223,9 @@ Launch a sub-agent.
 | `cwd`             | string  | no       | Existing directory the agent runs in, such as a git worktree (see below)                                               |
 | `handoff`         | object  | no       | Data for extensions in the agent's session (see below)                                                                 |
 
-`handoff` is a JSON object (at most 16 KB) whose top-level keys belong to other extensions, each documenting its key's shape in its own tool guidance. For example, pi-todo reads `todo`. This package does not interpret it: it copies and freezes the object and forwards it on `subagent:session:created`, so an extension can add handoff data without changing pi-subagent.
+`handoff` is a JSON object (at most 16 KB) whose top-level keys belong to other extensions, each documenting its key's shape in its own tool guidance. For example, pi-todo reads `todo`. This package does not interpret it: it copies and freezes the object and forwards it on `subagent:session:prepare` and `subagent:session:created`, so an extension can add handoff data without changing pi-subagent.
+
+Before SDK creation, the parent's extensions can synchronously call `requireTools(["exact_tool_name"])` on the `subagent:session:prepare` event. These requirements supplement the profile's allowlist, including `tools: none`; explicit exclusions and the delegation guard still win. Required tools must be active after child extensions bind, or initialization fails and disposes the child. For example, pi-todo requests `todo_list` and `todo_upsert` for `handoff.todo`, so restricted workers can update their assigned tasks without gaining file-editing tools.
 
 `cwd` runs the agent in an existing directory, absolute or relative to the parent's working directory; a missing one is refused before anything is spawned. The caller owns that directory: nothing is removed when the agent finishes, so it can still be resumed there. It is refused together with `resume`, because a resumed agent keeps the directory it started in. `subagent:session:created` carries the child's `cwd`, chosen or inherited.
 

@@ -170,6 +170,42 @@ const claimEntries = (s: Session) =>
     .filter((entry) => entry.type === "custom" && entry.customType === TODO_CLAIMS_TYPE)
     .map((entry) => (entry as { data: unknown }).data);
 
+describe("handoff tool requirements", () => {
+  it("requests only list/upsert for a valid todo handoff, independent of the agent profile", async () => {
+    const parent = await planned();
+    const requireTools = vi.fn();
+    parent.bus.emit("subagent:session:prepare", {
+      agentName: "explore",
+      handoff: { todo: { keys: ["a"] } },
+      requireTools,
+    });
+    expect(requireTools).toHaveBeenCalledExactlyOnceWith(["todo_list", "todo_upsert"]);
+  });
+
+  it.each([
+    undefined,
+    {},
+    { review: {} },
+    { todo: { keys: [] } },
+    { todo: { keys: ["a"], scope: "bad" } },
+  ])("does not add tools for absent, unrelated, or malformed handoffs: %j", async (handoff) => {
+    const parent = await planned();
+    const requireTools = vi.fn();
+    parent.bus.emit("subagent:session:prepare", { handoff, requireTools });
+    expect(requireTools).not.toHaveBeenCalled();
+  });
+
+  it("does not contribute tools for unsupported onward delegation", async () => {
+    const child = await spawn(await planned(), { keys: ["a"] });
+    const requireTools = vi.fn();
+    child.bus.emit("subagent:session:prepare", {
+      handoff: { todo: { keys: ["a"] } },
+      requireTools,
+    });
+    expect(requireTools).not.toHaveBeenCalled();
+  });
+});
+
 describe("handing tasks to a subagent", () => {
   it("vetoes a spawn whose handoff.todo cannot be claimed", async () => {
     const parent = await planned();

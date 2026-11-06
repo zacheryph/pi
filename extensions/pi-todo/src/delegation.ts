@@ -304,6 +304,16 @@ export function createTodoDelegation(pi: ExtensionAPI, host: DelegationHost) {
     },
   };
 
+  pi.events.on("subagent:session:prepare", (data) => {
+    const event = (data ?? {}) as {
+      handoff?: unknown;
+      requireTools?: (names: readonly string[]) => void;
+    };
+    const handoff = readTodoHandoff(event.handoff);
+    if (!delegated && handoff && typeof handoff !== "string")
+      event.requireTools?.(["todo_list", "todo_upsert"]);
+  });
+
   pi.on("tool_call", (event) => {
     if (event.toolName !== "subagent_start") return undefined;
     const handoff = readTodoHandoff((event.input as Record<string, unknown> | undefined)?.handoff);
