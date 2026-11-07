@@ -238,7 +238,7 @@ A file whose frontmatter is not valid YAML still takes its name, so it still ove
 | `display_name`    | —              | Display name for UI (e.g. widget, agent list)                                                                                                                                                                                                                             |
 | `tools`           | all available  | `all` for registered tools; explicit names restrict; `-name` removes; `none` disables tools. See [Tool selection](#tool-selection)                                                                                                                                        |
 | `reserved_tools`  | —              | Tools the agent may not call itself. A call is refused with a reason that points at delegation. Unlike a `-name` exclusion, they stay registered, so the agent's own workers still receive them. See [Profile guards](#profile-guards)                                    |
-| `reminder`        | —              | Short text restated right after the latest user message on every request, for a rule that must keep its weight in a long conversation. Never shown or saved to the transcript. See [Profile guards](#profile-guards)                                                      |
+| `reminder`        | —              | Short text restated right after the latest user message on every request, for a rule that must keep its weight in a long conversation. Never shown or saved to the transcript. Off while the `agentReminders` setting is off. See [Profile guards](#profile-guards)       |
 | `delegate`        | `false`        | `true` lets the agent start, read and steer agents of its own (`subagent_start`, `subagent_get`, `subagent_steer`). Without it they are withheld, whatever `tools` selects. See [Tool selection](#tool-selection)                                                         |
 | `model`           | inherit parent | Model — `provider/modelId`, fuzzy name (`"haiku"`, `"sonnet"`), or `[provider/]family@latest` for the newest available model whose id contains `family`                                                                                                                   |
 | `thinking`        | inherit        | off, minimal, low, medium, high, xhigh, max. An unrecognized value is dropped, and the agent inherits the parent's level                                                                                                                                                  |
@@ -394,7 +394,10 @@ reminder: >-
   set cannot drop a tool without unregistering it.
 - `reminder` is added after the latest user message on every request, wrapped
   in `<agent_reminder>`. It stays at that position for the whole turn, so the
-  turn's later requests keep the cached prefix.
+  turn's later requests keep the cached prefix. Each new user message moves it,
+  which ends the cached prefix where it sat: the first request of a turn
+  re-caches the whole previous turn. Turn it off for every profile with the
+  [`agentReminders`](#persistent-settings) setting; `reserved_tools` still holds.
 
 Two names are always **added**, whatever an agent lists: `ask` (from pi-ask) and `parent_notify`.
 These are the child's channel back to the agent that delegated to it — protocol the core installs in every child, like the `<active_agent>` tag and the parent-context prefix.
@@ -516,12 +519,15 @@ for validation, tool-access, and automation limitations.
 
 ## Persistent Settings
 
-Runtime tuning values set via `/subagent:settings` (max concurrency, default max turns, wrap-up turns, the two session-retention windows, the abort-on-interrupt policy, and the mid-run update channel) persist across pi restarts.
+Runtime tuning values set via `/subagent:settings` (max concurrency, default max turns, wrap-up turns, the two session-retention windows, the abort-on-interrupt policy, the mid-run update channel, and agent profile reminders) persist across pi restarts.
 A completed subagent's record is kept for the whole parent session (so `subagent_get` never misses), and its saved `subagent:record` entry outlives a reload or resume; only its heavy in-memory session is released — after `consumedSessionRetentionMinutes` once the result has been collected, or after the `unconsumedSessionRetentionMinutes` safety cap if it never was.
 An agent that asked a question and has not been answered holds the safety cap rather than the consumed window, because reading a question is not finishing with the agent — the answer is delivered by resuming the very session the short window would release.
 
 Set `midRunUpdates` to `false` to withhold `parent_notify` from every agent, leaving them no way to tell you anything before they finish.
 `ask` is unaffected: a blocked agent can still end its turn with a question.
+
+Set `agentReminders` to `false` (or flip "Agent profile reminders" in `/subagent:settings`) to stop restating profiles' [`reminder`](#profile-guards) text before each request, in the main session and every subagent.
+The change applies from the next request. The profile's system prompt and `reserved_tools` are unaffected.
 Two files, merged on load:
 
 - **Global:** `~/.pi/agent/subagent.json` — your machine-wide defaults.
@@ -530,7 +536,7 @@ Two files, merged on load:
   Written by `/subagent:settings`.
 
 **Precedence:** project overrides global on any field present in both.
-Missing fields fall back to the hardcoded defaults (max concurrency `4`, default max turns unlimited, wrap-up turns `2`, consumed-session retention `10` minutes, unconsumed-session retention `720` minutes, abort-all-on-interrupt `true`, mid-run updates `true`, watch-overlay width `third`, watch-overlay default visibility `false`, watch-overlay thinking visibility `true`).
+Missing fields fall back to the hardcoded defaults (max concurrency `4`, default max turns unlimited, wrap-up turns `2`, consumed-session retention `10` minutes, unconsumed-session retention `720` minutes, abort-all-on-interrupt `true`, mid-run updates `true`, agent profile reminders `true`, watch-overlay width `third`, watch-overlay default visibility `false`, watch-overlay thinking visibility `true`).
 
 **Example — global defaults for a beefy machine:**
 

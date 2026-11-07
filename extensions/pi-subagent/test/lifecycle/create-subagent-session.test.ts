@@ -697,6 +697,32 @@ describe("createSubagentSession — Pi built-in extensions", () => {
     expect(loadedBuiltinNames()).toEqual(["codemode", "<factory>"]);
   });
 
+  it("gates the child's reminder on the deps' setting, read per request", async () => {
+    arrangeFactory();
+    let enabled = false;
+
+    await createSubagentSession(
+      { snapshot: STUB_SNAPSHOT, type: "explore" },
+      createSubagentSessionDeps({
+        io,
+        exec,
+        registry: createAgentLookup({ toolNames: ["read"], reminder: "Delegate." }),
+        remindersEnabled: () => enabled,
+      }),
+    );
+
+    const opts = io.createResourceLoader.mock.calls[0]?.[0] as ResourceLoaderOptions;
+    const factory = opts.extensionFactories?.at(-1);
+    const handlers = new Map<string, Function>();
+    if (typeof factory !== "function") throw new Error("expected the guards factory");
+    void factory({ on: (name: string, fn: Function) => handlers.set(name, fn) } as never);
+    const context = handlers.get("context")!;
+    const messages = [{ role: "user", content: "hi", timestamp: 0 }];
+    expect(context({ messages })).toBeUndefined();
+    enabled = true;
+    expect(context({ messages }).messages).toHaveLength(2);
+  });
+
   it("adds the profile guards for reserved tools, which stay in the child's allowlist", async () => {
     arrangeFactory();
 

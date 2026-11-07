@@ -18,9 +18,15 @@ const reminderAt = (messages: readonly { role: string; customType?: string }[]) 
   );
 
 /** Load the guards extension into a stub and return its handlers by event. */
-function load(guards: Parameters<typeof profileGuardsExtension>[0]) {
+function load(
+  guards: Parameters<typeof profileGuardsExtension>[0],
+  remindersEnabled?: () => boolean,
+) {
   const handlers = new Map<string, Function>();
-  void profileGuardsExtension(guards)({
+  void profileGuardsExtension(
+    guards,
+    remindersEnabled,
+  )({
     on: (name: string, fn: Function) => handlers.set(name, fn),
   } as never);
   return handlers;
@@ -80,6 +86,18 @@ describe("profileGuardsExtension", () => {
     expect(reminderAt(handlers.get("context")?.({ messages: [user("hi")] }).messages)).toEqual([1]);
     expect(handlers.get("tool_call")?.({ toolName: "write" })).toMatchObject({ block: true });
     expect(handlers.get("tool_call")?.({ toolName: "read" })).toBeUndefined();
+  });
+
+  it("reads the reminders setting on every request; reserved tools stay refused", () => {
+    let enabled = false;
+    const handlers = load(
+      { name: "orchestrate", reminder: "R", reservedTools: ["write"] },
+      () => enabled,
+    );
+    expect(handlers.get("context")?.({ messages: [user("hi")] })).toBeUndefined();
+    expect(handlers.get("tool_call")?.({ toolName: "write" })).toMatchObject({ block: true });
+    enabled = true;
+    expect(reminderAt(handlers.get("context")?.({ messages: [user("hi")] }).messages)).toEqual([1]);
   });
 
   it("registers only the guards the profile declares", () => {

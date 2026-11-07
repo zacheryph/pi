@@ -94,6 +94,7 @@ export function createSubagentSessionDeps(overrides?: {
   lifecycle?: ReturnType<typeof createChildLifecycleMock>;
   resolvePromptInheritance?: (provider: string | undefined) => PromptInheritance;
   listParentToolNames?: () => readonly string[];
+  remindersEnabled?: () => boolean;
 }) {
   return {
     io: overrides?.io ?? createSubagentSessionIO(),
@@ -104,6 +105,7 @@ export function createSubagentSessionDeps(overrides?: {
       overrides?.resolvePromptInheritance ??
       vi.fn((_provider: string | undefined): PromptInheritance => "full"),
     listParentToolNames: overrides?.listParentToolNames ?? vi.fn((): readonly string[] => []),
+    ...(overrides?.remindersEnabled ? { remindersEnabled: overrides.remindersEnabled } : {}),
   };
 }
 

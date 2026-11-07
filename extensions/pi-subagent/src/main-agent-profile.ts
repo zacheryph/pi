@@ -37,6 +37,8 @@ export interface MainAgentSnapshot {
 export interface MainAgentProfileIO {
   resolveProfile(name: string, ctx: ExtensionContext): AgentConfig;
   diagnostic(message: string): void;
+  /** Whether the profile's reminder is restated, read on every request. */
+  remindersEnabled(): boolean;
 }
 
 /** Main discovery uses the target session cwd, not the child registry's process.cwd closure. */
@@ -139,6 +141,7 @@ export function registerMainAgentProfile(
   const io: MainAgentProfileIO = {
     resolveProfile: resolveMainAgentProfile,
     diagnostic: (message) => console.error(message),
+    remindersEnabled: () => true,
     ...overrides,
   };
   let selected: MainAgentSnapshot | undefined;
@@ -355,7 +358,7 @@ export function registerMainAgentProfile(
   // keeps its weight however long the conversation grows.
   pi.on("context", (event) => {
     const reminder = selected?.profile.reminder;
-    return !failure && reminder
+    return !failure && reminder && io.remindersEnabled()
       ? { messages: withAgentReminder(event.messages, reminder) }
       : undefined;
   });

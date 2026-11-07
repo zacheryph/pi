@@ -6,7 +6,8 @@
  * as orchestrate's "delegate, do not do the work", loses its hold. Two profile
  * fields hold such a rule in place:
  *
- * - `reminder` is restated on every request right after the latest user
+ * - `reminder` is restated on every request, while the `agentReminders`
+ *   setting is on, right after the latest user
  *   message, where the model reads it together with the request it answers.
  *   It is a `custom` message with `display: false`, added in the `context`
  *   event: never written to the transcript or shown in the TUI. It keeps its
@@ -81,12 +82,20 @@ export function hasProfileGuards(profile: ProfileGuards): boolean {
   return Boolean(profile.reminder?.trim()) || Boolean(profile.reservedTools?.length);
 }
 
-/** A child-session extension enforcing the profile's reminder and reserved tools. */
-export function profileGuardsExtension(profile: ProfileGuards): ExtensionFactory {
+/**
+ * A child-session extension enforcing the profile's reminder and reserved tools.
+ * `remindersEnabled` is read on every request, so the setting applies at once.
+ */
+export function profileGuardsExtension(
+  profile: ProfileGuards,
+  remindersEnabled: () => boolean = () => true,
+): ExtensionFactory {
   return (pi) => {
     const { name, reminder, reservedTools } = profile;
     if (reminder?.trim())
-      pi.on("context", (event) => ({ messages: withAgentReminder(event.messages, reminder) }));
+      pi.on("context", (event) =>
+        remindersEnabled() ? { messages: withAgentReminder(event.messages, reminder) } : undefined,
+      );
     if (reservedTools?.length)
       pi.on("tool_call", (event) => reservedToolRefusal(event, reservedTools, name));
   };
