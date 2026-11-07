@@ -177,6 +177,7 @@ export default function (pi: ExtensionAPI) {
     resolvePromptInheritance: (provider) => settings.promptInheritanceFor(provider),
     // Read per child rather than once: an MCP server connects in the
     // background, so its tools register after this extension loads.
+    remindersEnabled: () => settings.agentReminders,
     listParentToolNames: () =>
       pi
         .getAllTools()
@@ -280,7 +281,7 @@ export default function (pi: ExtensionAPI) {
 
   // Main-only profile hooks register after the orchestration tools exist. Child
   // sessions load fresh extension runtimes without this session's flag/snapshot.
-  registerMainAgentProfile(pi);
+  registerMainAgentProfile(pi, { remindersEnabled: () => settings.agentReminders });
 
   // ---- Passive background-agent watch overlay ----
 

@@ -72,6 +72,11 @@ export interface SubagentsSettings {
    */
   midRunUpdates?: boolean;
   /**
+   * When false, an agent profile's `reminder` is not restated before each
+   * request. Its system prompt and `reserved_tools` are unaffected.
+   */
+  agentReminders?: boolean;
+  /**
    * Pi package sources whose extensions child sessions must not load, matched
    * against Pi's configured source string exactly (e.g. `npm:@scope/pkg`).
    * The package's skills, prompts, and themes stay available to children.
@@ -103,6 +108,7 @@ export interface SettingsSnapshot {
   unconsumedSessionRetentionMinutes: number;
   abortAllOnInterrupt: boolean;
   midRunUpdates: boolean;
+  agentReminders: boolean;
   /**
    * Present only when non-empty, so files that never set it gain no noise.
    * It must round-trip: the key has no `/subagent:settings` affordance, so a
@@ -128,6 +134,7 @@ const DEFAULT_CONSUMED_RETENTION_MINUTES = 10;
 const DEFAULT_UNCONSUMED_RETENTION_MINUTES = 720;
 const DEFAULT_ABORT_ALL_ON_INTERRUPT = true;
 const DEFAULT_MID_RUN_UPDATES = true;
+const DEFAULT_AGENT_REMINDERS = true;
 const DEFAULT_OVERLAY_WIDTH: OverlayWidth = "third";
 const DEFAULT_OVERLAY_DEFAULT_OPEN = false;
 
@@ -146,6 +153,7 @@ export class SettingsManager {
   private _unconsumedSessionRetentionMinutes: number = DEFAULT_UNCONSUMED_RETENTION_MINUTES;
   private _abortAllOnInterrupt: boolean = DEFAULT_ABORT_ALL_ON_INTERRUPT;
   private _midRunUpdates: boolean = DEFAULT_MID_RUN_UPDATES;
+  private _agentReminders: boolean = DEFAULT_AGENT_REMINDERS;
   private _excludedExtensionPackages: string[] = [];
   private _promptInheritance: Record<string, PromptInheritance> = {};
 
@@ -282,6 +290,8 @@ export class SettingsManager {
     if (typeof settings.abortAllOnInterrupt === "boolean")
       this._abortAllOnInterrupt = settings.abortAllOnInterrupt;
     if (typeof settings.midRunUpdates === "boolean") this._midRunUpdates = settings.midRunUpdates;
+    if (typeof settings.agentReminders === "boolean")
+      this._agentReminders = settings.agentReminders;
     // Assigned unconditionally: removing the key from disk must clear the value.
     this._excludedExtensionPackages = [...(settings.excludedExtensionPackages ?? [])];
     this._promptInheritance = { ...settings.promptInheritance };
@@ -305,6 +315,7 @@ export class SettingsManager {
       unconsumedSessionRetentionMinutes: this._unconsumedSessionRetentionMinutes,
       abortAllOnInterrupt: this._abortAllOnInterrupt,
       midRunUpdates: this._midRunUpdates,
+      agentReminders: this._agentReminders,
     };
     if (this._excludedExtensionPackages.length > 0) {
       snapshot.excludedExtensionPackages = [...this._excludedExtensionPackages];
@@ -407,6 +418,19 @@ export class SettingsManager {
     );
   }
 
+  get agentReminders(): boolean {
+    return this._agentReminders;
+  }
+
+  /**
+   * Flip whether agent profiles' reminders are restated before each request,
+   * persist, and return the toast.
+   */
+  toggleAgentReminders(): Toast {
+    this._agentReminders = !this._agentReminders;
+    return this.saveAndNotify(`Agent profile reminders: ${this._agentReminders ? "on" : "off"}`);
+  }
+
   /**
    * Persist the current snapshot, emit `subagent:settings:changed`,
    * and return the toast the UI should display.
@@ -480,6 +504,9 @@ function sanitize(raw: unknown): SubagentsSettings {
   }
   if (typeof r.midRunUpdates === "boolean") {
     out.midRunUpdates = r.midRunUpdates;
+  }
+  if (typeof r.agentReminders === "boolean") {
+    out.agentReminders = r.agentReminders;
   }
   if (Array.isArray(r.excludedExtensionPackages)) {
     const sources = r.excludedExtensionPackages

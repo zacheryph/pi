@@ -61,6 +61,11 @@ function makeSettings() {
       message: "Mid-run updates from background subagents: off",
       level: "info",
     })),
+    agentReminders: true,
+    toggleAgentReminders: vi.fn((): { message: string; level: "info" | "warning" } => ({
+      message: "Agent profile reminders: off",
+      level: "info",
+    })),
   };
 }
 
@@ -92,6 +97,7 @@ describe("SubagentsSettingsHandler", () => {
       "Unconsumed-session retention (current: 720 min)",
       "Abort all subagents on ESC (current: on)",
       "Mid-run updates from background subagents (current: on)",
+      "Agent profile reminders (restated each request) (current: on)",
       "Overlay width (current: third)",
       "Overlay default visibility (before explicit show/hide this session) (current: hidden)",
       "Overlay thinking (current: shown)",
@@ -110,6 +116,17 @@ describe("SubagentsSettingsHandler", () => {
       "Mid-run updates from background subagents: off",
       "info",
     );
+  });
+
+  it("toggles agent profile reminders from the settings list", async () => {
+    const settings = makeSettings();
+    const { handler } = makeHandler(settings);
+    const ui = makeMenuUI(["Agent profile reminders (restated each request) (current: on)"]);
+
+    await handler.handle({ ui });
+
+    expect(settings.toggleAgentReminders).toHaveBeenCalledOnce();
+    expect(ui.notify).toHaveBeenCalledWith("Agent profile reminders: off", "info");
   });
 
   it("renders the abort-on-ESC option as off when the policy is disabled", async () => {

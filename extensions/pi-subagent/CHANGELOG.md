@@ -3,6 +3,15 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-07: Setting to turn agent profile reminders off
+
+- New `agentReminders` setting (default on), toggled as "Agent profile
+  reminders" in `/subagent:settings`. Off, no profile's `reminder` is restated,
+  in the main session or any subagent; it is read on every request, so the
+  change applies at once. `reserved_tools` and system prompts are unaffected.
+- Configuration docs note the reminder's cache cost: each new user message
+  moves it, so the first request of a turn re-caches the previous turn.
+
 ## 2026-11-06: Keep orchestrate delegating in long conversations
 
 - `orchestrate` gains a "Delegation boundary" section: "can you", "can we" and

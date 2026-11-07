@@ -49,6 +49,7 @@ function harness(mode: ExtensionContext["mode"] = "tui") {
     clamp: false,
     auth: true,
     cannotActivate: false,
+    reminders: true,
   };
   const ctx = {
     mode,
@@ -100,7 +101,11 @@ function harness(mode: ExtensionContext["mode"] = "tui") {
   };
   const diagnostic = vi.fn();
   const resolve = vi.fn(() => state.profile);
-  registerMainAgentProfile(pi as unknown as ExtensionAPI, { resolveProfile: resolve, diagnostic });
+  registerMainAgentProfile(pi as unknown as ExtensionAPI, {
+    resolveProfile: resolve,
+    diagnostic,
+    remindersEnabled: () => state.reminders,
+  });
   const fire = async (name: string, event: any = {}, context = ctx) => {
     let result: any;
     for (const fn of handlers.get(name) ?? []) result = await fn(event, context);
@@ -183,6 +188,17 @@ describe("main profile defaults and persistent body", () => {
     await h.start("reload");
     expect(h.state.active).toContain("write");
     expect((await h.fire("tool_call", { toolName: "write", input: {} })).block).toBe(true);
+  });
+
+  it("stops restating the reminder while the setting is off, and resumes when it is on", async () => {
+    const h = harness();
+    h.state.profile.reminder = "Delegate the work.";
+    await h.start();
+    const user = { role: "user", content: "can you fix it?", timestamp: 0 };
+    h.state.reminders = false;
+    expect(await h.fire("context", { messages: [user] })).toBeUndefined();
+    h.state.reminders = true;
+    expect((await h.fire("context", { messages: [user] })).messages).toHaveLength(2);
   });
 
   it("leaves the context alone for a profile without a reminder", async () => {

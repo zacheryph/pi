@@ -174,6 +174,8 @@ export interface SubagentSessionDeps {
    * created. An agent's `mcp__<server>__*` tool patterns expand against them.
    */
   listParentToolNames: () => readonly string[];
+  /** Whether profile reminders are restated, read on every request. Omitted means on. */
+  remindersEnabled?: () => boolean;
 }
 
 /** Per-spawn parameters — the fields that vary per child session. */
@@ -329,7 +331,7 @@ export async function createSubagentSession(
     appendSystemPromptOverride: () => [],
     extensionFactories: [
       ...builtinExtensionsFor(toolNames),
-      ...(hasProfileGuards(guards) ? [profileGuardsExtension(guards)] : []),
+      ...(hasProfileGuards(guards) ? [profileGuardsExtension(guards, deps.remindersEnabled)] : []),
     ],
   });
   await loader.reload();

@@ -11,6 +11,7 @@ export interface SubagentsSettingsManager {
   readonly unconsumedSessionRetentionMinutes: number;
   readonly abortAllOnInterrupt: boolean;
   readonly midRunUpdates: boolean;
+  readonly agentReminders: boolean;
   readonly overlayWidth: OverlayWidth;
   readonly overlayDefaultOpen: boolean;
   readonly overlayShowThinking: boolean;
@@ -24,6 +25,7 @@ export interface SubagentsSettingsManager {
   applyUnconsumedSessionRetentionMinutes(n: number): Toast;
   toggleAbortAllOnInterrupt(): Toast;
   toggleMidRunUpdates(): Toast;
+  toggleAgentReminders(): Toast;
 }
 
 /** Narrow UI interface — only the ctx.ui methods the settings handler calls. */
@@ -137,6 +139,12 @@ const SETTINGS: readonly SettingDescriptor[] = [
     label: "Mid-run updates from background subagents",
     currentDisplay: (settings) => (settings.midRunUpdates ? "on" : "off"),
     toggle: (settings) => settings.toggleMidRunUpdates(),
+  },
+  {
+    kind: "toggle",
+    label: "Agent profile reminders (restated each request)",
+    currentDisplay: (settings) => (settings.agentReminders ? "on" : "off"),
+    toggle: (settings) => settings.toggleAgentReminders(),
   },
   {
     kind: "enum",

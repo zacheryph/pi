@@ -290,6 +290,13 @@ describe("settings persistence", () => {
       expect(loadSettings(globalDir, projectDir)).toEqual({ midRunUpdates: true });
     });
 
+    it("keeps agentReminders when it is a boolean and drops any other value", () => {
+      writeProject({ agentReminders: false });
+      expect(loadSettings(globalDir, projectDir)).toEqual({ agentReminders: false });
+      writeProject({ agentReminders: "false", wrapUpTurns: 5 });
+      expect(loadSettings(globalDir, projectDir)).toEqual({ wrapUpTurns: 5 });
+    });
+
     it("drops a non-boolean midRunUpdates", () => {
       writeProject({ midRunUpdates: "false", wrapUpTurns: 5 });
       expect(loadSettings(globalDir, projectDir)).toEqual({ wrapUpTurns: 5 });
@@ -814,6 +821,7 @@ describe("SettingsManager", () => {
         unconsumedSessionRetentionMinutes: 720,
         abortAllOnInterrupt: true,
         midRunUpdates: true,
+        agentReminders: true,
         overlayWidth: "third",
         overlayDefaultOpen: false,
         overlayShowThinking: true,
@@ -833,6 +841,7 @@ describe("SettingsManager", () => {
         unconsumedSessionRetentionMinutes: 720,
         abortAllOnInterrupt: true,
         midRunUpdates: true,
+        agentReminders: true,
         overlayWidth: "third",
         overlayDefaultOpen: false,
         overlayShowThinking: true,
@@ -850,6 +859,7 @@ describe("SettingsManager", () => {
         unconsumedSessionRetentionMinutes: 720,
         abortAllOnInterrupt: true,
         midRunUpdates: true,
+        agentReminders: true,
         overlayWidth: "third",
         overlayDefaultOpen: false,
         overlayShowThinking: true,
@@ -868,6 +878,7 @@ describe("SettingsManager", () => {
         unconsumedSessionRetentionMinutes: 1440,
         abortAllOnInterrupt: true,
         midRunUpdates: true,
+        agentReminders: true,
         overlayWidth: "third",
         overlayDefaultOpen: false,
         overlayShowThinking: true,
@@ -885,6 +896,7 @@ describe("SettingsManager", () => {
         unconsumedSessionRetentionMinutes: 720,
         abortAllOnInterrupt: false,
         midRunUpdates: true,
+        agentReminders: true,
         overlayWidth: "third",
         overlayDefaultOpen: false,
         overlayShowThinking: true,
@@ -901,6 +913,7 @@ describe("SettingsManager", () => {
         unconsumedSessionRetentionMinutes: 720,
         abortAllOnInterrupt: true,
         midRunUpdates: true,
+        agentReminders: true,
         overlayWidth: "third",
         overlayDefaultOpen: false,
         overlayShowThinking: true,
@@ -917,6 +930,7 @@ describe("SettingsManager", () => {
         unconsumedSessionRetentionMinutes: 720,
         abortAllOnInterrupt: true,
         midRunUpdates: true,
+        agentReminders: true,
         overlayWidth: "third",
         overlayDefaultOpen: false,
         overlayShowThinking: true,
@@ -958,6 +972,7 @@ describe("SettingsManager", () => {
         unconsumedSessionRetentionMinutes: 720,
         abortAllOnInterrupt: true,
         midRunUpdates: true,
+        agentReminders: true,
         overlayWidth: "third",
         overlayDefaultOpen: false,
         overlayShowThinking: true,
@@ -989,6 +1004,7 @@ describe("SettingsManager", () => {
         unconsumedSessionRetentionMinutes: 720,
         abortAllOnInterrupt: true,
         midRunUpdates: true,
+        agentReminders: true,
         overlayWidth: "third",
         overlayDefaultOpen: false,
         overlayShowThinking: true,
@@ -1011,6 +1027,7 @@ describe("SettingsManager", () => {
         unconsumedSessionRetentionMinutes: 720,
         abortAllOnInterrupt: true,
         midRunUpdates: true,
+        agentReminders: true,
         overlayWidth: "third",
         overlayDefaultOpen: false,
         overlayShowThinking: true,
@@ -1031,6 +1048,7 @@ describe("SettingsManager", () => {
           unconsumedSessionRetentionMinutes: 720,
           abortAllOnInterrupt: true,
           midRunUpdates: true,
+          agentReminders: true,
           overlayWidth: "third",
           overlayDefaultOpen: false,
           overlayShowThinking: true,
@@ -1074,6 +1092,7 @@ describe("SettingsManager", () => {
             unconsumedSessionRetentionMinutes: 720,
             abortAllOnInterrupt: true,
             midRunUpdates: true,
+            agentReminders: true,
             overlayWidth: "third",
             overlayDefaultOpen: false,
             overlayShowThinking: true,
@@ -1466,6 +1485,48 @@ describe("SettingsManager", () => {
     });
   });
 
+  describe("toggleAgentReminders()", () => {
+    let projectDir: string;
+
+    beforeEach(() => {
+      projectDir = mkdtempSync(join(tmpdir(), "pi-sm-reminders-"));
+    });
+
+    afterEach(() => {
+      rmSync(projectDir, { recursive: true, force: true });
+    });
+
+    it("defaults to on", () => {
+      const sm = new SettingsManager({ emit: vi.fn(), cwd: projectDir, agentDir: "/nonexistent" });
+      expect(sm.agentReminders).toBe(true);
+    });
+
+    it("flips reminders off and back on, persisting each change", () => {
+      const sm = new SettingsManager({ emit: vi.fn(), cwd: projectDir, agentDir: "/nonexistent" });
+      expect(sm.toggleAgentReminders()).toEqual({
+        message: "Agent profile reminders: off",
+        level: "info",
+      });
+      const file = join(projectDir, ".pi", "subagent.json");
+      expect(JSON.parse(readFileSync(file, "utf-8")).agentReminders).toBe(false);
+      expect(sm.toggleAgentReminders().message).toBe("Agent profile reminders: on");
+      expect(sm.agentReminders).toBe(true);
+      expect(JSON.parse(readFileSync(file, "utf-8")).agentReminders).toBe(true);
+    });
+
+    it("loads a saved off value", () => {
+      const sm = new SettingsManager({ emit: vi.fn(), cwd: projectDir, agentDir: "/nonexistent" });
+      sm.toggleAgentReminders();
+      const reloaded = new SettingsManager({
+        emit: vi.fn(),
+        cwd: projectDir,
+        agentDir: "/nonexistent",
+      });
+      reloaded.load();
+      expect(reloaded.agentReminders).toBe(false);
+    });
+  });
+
   describe("toggleAbortAllOnInterrupt()", () => {
     let projectDir: string;
 
@@ -1513,6 +1574,7 @@ describe("SettingsManager", () => {
           unconsumedSessionRetentionMinutes: 720,
           abortAllOnInterrupt: false,
           midRunUpdates: true,
+          agentReminders: true,
           overlayWidth: "third",
           overlayDefaultOpen: false,
           overlayShowThinking: true,
