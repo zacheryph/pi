@@ -54,7 +54,8 @@ for (const [name, args] of scenarios) {
           stdio: "pipe",
         });
       } catch (error) {
-        assert.fail(`${command} ${commandArgs.join(" ")}\n${error.stdout}\n${error.stderr}`);
+        const { stdout, stderr } = /** @type {{ stdout?: string, stderr?: string }} */ (error);
+        assert.fail(`${command} ${commandArgs.join(" ")}\n${stdout}\n${stderr}`);
       }
     };
     run(process.execPath, [

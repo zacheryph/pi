@@ -93,6 +93,7 @@ export function applySgr(style, params, palette = PALETTE) {
  */
 export function parseAnsi(input, palette = PALETTE) {
   const style = {};
+  /** @type {{ text: string, style: object }[][]} */
   const lines = [[]];
   // CSI ... final byte, OSC ... BEL/ST, or a lone two-byte escape.
   // oxlint-disable-next-line no-control-regex -- terminal escape sequences are the input
@@ -101,7 +102,8 @@ export function parseAnsi(input, palette = PALETTE) {
     const parts = text.split("\n");
     parts.forEach((part, i) => {
       if (i > 0) lines.push([]);
-      if (part) lines.at(-1).push({ text: part.replace(/\r/g, ""), style: { ...style } });
+      if (part)
+        lines[lines.length - 1].push({ text: part.replace(/\r/g, ""), style: { ...style } });
     });
   };
   let last = 0;
@@ -111,7 +113,7 @@ export function parseAnsi(input, palette = PALETTE) {
     last = m.index + m[0].length;
   }
   push(input.slice(last));
-  while (lines.length > 1 && lines.at(-1).length === 0) lines.pop();
+  while (lines.length > 1 && lines[lines.length - 1].length === 0) lines.pop();
   return lines;
 }
 
@@ -167,6 +169,7 @@ export function findSymbolsFont() {
   }
 }
 
+/** @param {string} input @param {{ symbolsFont?: string, frame?: boolean }} [options] */
 export function renderPage(input, { symbolsFont, frame = true } = {}) {
   const face = symbolsFont
     ? `@font-face{font-family:"TuiSymbols";src:url("${pathToFileURL(resolve(symbolsFont)).href}")}`
@@ -204,7 +207,12 @@ export function loadPlaywright() {
   }
 }
 
-/** Write the page and screenshot it at `scale` device pixels per CSS pixel. */
+/**
+ * Write the page and screenshot it at `scale` device pixels per CSS pixel.
+ * @param {string} input
+ * @param {string} out
+ * @param {{ scale?: number, html?: string, symbolsFont?: string, frame?: boolean }} [options]
+ */
 export async function renderPng(input, out, { scale = 2, html, ...pageOptions } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "tui-render-"));
   const page = join(dir, "page.html");

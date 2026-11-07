@@ -61,6 +61,7 @@ const REVIEW = [
 ];
 const LICENSE_FILE = /^(licen[cs]e|copying)(\.[a-z]+)?$/i;
 
+/** @param {string} message @returns {never} */
 function fail(message) {
   console.error(`import: ${message}`);
   process.exit(1);
@@ -122,7 +123,8 @@ const upstream = join(scratch, "upstream.git");
 try {
   execFileSync("git", ["clone", "--bare", "--quiet", source, upstream], { stdio: "pipe" });
 } catch (error) {
-  fail(`could not clone ${source}: ${String(error.stderr ?? error).trim()}`);
+  const stderr = /** @type {{ stderr?: Buffer }} */ (error).stderr;
+  fail(`could not clone ${source}: ${String(stderr ?? error).trim()}`);
 }
 const up = (args) => git(args, upstream);
 
@@ -175,7 +177,8 @@ const rootLicense =
         })
         .find((file) => file.type === "blob" && LICENSE_FILE.test(file.path))
     : undefined;
-if (!ownLicense && !rootLicense) fail("upstream has no license file; it cannot be copied");
+const noticeFile = ownLicense ?? rootLicense;
+if (!noticeFile) fail("upstream has no license file; it cannot be copied");
 const license = typeof pkg.license === "string" ? pkg.license : undefined;
 if (!values["allow-license"] && !(license && PERMISSIVE.has(license))) {
   fail(
@@ -270,7 +273,7 @@ Imported from [\`${label}\`](${web ?? source})${pkg.description ? `: ${pkg.descr
 | Commit | \`${sha}\` (${date}, "${subject.replaceAll("|", "\\|")}") |
 | Tree | \`${tree}\`, equal to the import commit's |
 | Version | \`${pkg.name ?? name}\` ${pkg.version ?? "unversioned"} |
-| License | ${license ?? "see LICENSE"}; original notice retained in \`${(ownLicense ?? rootLicense).path}\` |
+| License | ${license ?? "see LICENSE"}; original notice retained in \`${noticeFile.path}\` |
 | Imported | ${today}, commit \`${importCommit}\` |
 
 Plain source, not a submodule. The bundle loads ${loads}; do not install the

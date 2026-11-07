@@ -19,6 +19,7 @@ const skillDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const templates = join(skillDir, "templates");
 const root = resolve(skillDir, "../../..");
 
+/** @param {string} message @returns {never} */
 function fail(message) {
   console.error(`scaffold: ${message}`);
   process.exit(1);
@@ -90,6 +91,7 @@ const fill = (text, vars) =>
     return vars[key];
   });
 const template = (path) => readFileSync(join(templates, `${path}.tmpl`), "utf8");
+/** @type {(items: string[], path: string, key: string, extra?: (item: string) => Record<string, string>) => string} */
 const each = (items, path, key, extra = () => ({})) =>
   items.map((item) => fill(template(path), { [key]: item, ...extra(item) })).join("");
 const label = (tool) =>

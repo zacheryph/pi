@@ -61,7 +61,9 @@ function main() {
   const isPullRequest = process.env.GITHUB_EVENT_NAME === "pull_request";
   let paths = [];
   if (isPullRequest) {
-    const { pull_request: pr } = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, "utf8"));
+    const eventPath = process.env.GITHUB_EVENT_PATH;
+    if (!eventPath) throw new Error("GITHUB_EVENT_PATH is not set for a pull_request event");
+    const { pull_request: pr } = JSON.parse(readFileSync(eventPath, "utf8"));
     paths = changedFiles(pr.base.sha, pr.head.sha);
   }
   const extensions = selectExtensions(workspaces, paths, !isPullRequest);
