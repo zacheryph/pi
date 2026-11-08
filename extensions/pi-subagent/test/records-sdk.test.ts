@@ -1,17 +1,26 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
 import type { Context } from "@earendil-works/pi-ai";
-import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
-import { ModelRuntime, SessionManager } from "@earendil-works/pi-coding-agent";
-import { afterEach, beforeEach, describe, expect, it, vi, onTestFinished } from "vitest";
+import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
 import subagentExtension from "#src/index";
 import {
   readPersistedRecords,
   type PersistedSubagentRecord,
   SUBAGENT_RECORD_ENTRY,
 } from "#src/persisted-record";
-import { fauxSession, toolCall } from "../../../packages/pi-test-helpers/src/faux-session.ts";
+import {
+  offlineAgentDir,
+  EXTENSIONS,
+  spawn,
+  capture,
+  lastResult,
+  agentIdIn,
+} from "./helpers/sdk.ts";
+import {
+  fauxSession,
+  toolCall,
+  toolResults,
+} from "../../../packages/pi-test-helpers/src/faux-session.ts";
 
 // A real parent session loads this extension and spawns real child sessions
 // through it, all answered by one scripted faux provider in call order. The
@@ -20,35 +29,10 @@ import { fauxSession, toolCall } from "../../../packages/pi-test-helpers/src/fau
 const CARD = "Subagents started by this session";
 
 let dir: string;
-let previousAgentDir: string | undefined;
-let offline: ReturnType<typeof vi.spyOn>;
-const disposers: Array<() => void> = [];
 
+// Children read their settings (and pi-ask) from here.
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), "records-sdk-"));
-  previousAgentDir = process.env.PI_CODING_AGENT_DIR;
-  // Children read their settings (and pi-ask) from here.
-  process.env.PI_CODING_AGENT_DIR = dir;
-  const createRuntime = ModelRuntime.create.bind(ModelRuntime);
-  offline = vi
-    .spyOn(ModelRuntime, "create")
-    .mockImplementation((options) => createRuntime({ ...options, refreshOnCreate: false }));
-  writeFileSync(
-    join(dir, "settings.json"),
-    JSON.stringify({
-      extensions: [resolve(import.meta.dirname, "../../pi-ask/src/index.ts")],
-      compaction: { enabled: false },
-      retry: { enabled: false },
-    }),
-  );
-});
-
-afterEach(() => {
-  for (const dispose of disposers.splice(0).reverse()) dispose();
-  offline.mockRestore();
-  if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
-  else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
-  rmSync(dir, { recursive: true, force: true });
+  dir = offlineAgentDir({ extensions: [EXTENSIONS.ask] });
 });
 
 async function parent(manager = SessionManager.inMemory(dir)) {
@@ -65,47 +49,16 @@ async function parent(manager = SessionManager.inMemory(dir)) {
   return { ...h, manager };
 }
 
-const call = (name: string, args: Parameters<typeof fauxToolCall>[1]) =>
-  fauxAssistantMessage(fauxToolCall(name, args), { stopReason: "toolUse" });
-
-const spawn = (description: string) =>
-  call("subagent_start", {
-    subagent_type: "general-purpose",
-    description,
-    prompt: `${description}.`,
-  });
-
-/** The text of the latest result `tool` returned in this request. */
-const lastResult = (context: Context, tool: string) =>
-  JSON.stringify(
-    context.messages.findLast(
-      (message) => message.role === "toolResult" && message.toolName === tool,
-    ),
-  );
-
 /** How many roster cards this request carries (the card reaches the model as a user turn). */
 const cards = (context: Context) =>
   context.messages.filter((message) => JSON.stringify(message).includes(CARD)).length;
 
 /** The agent IDs subagent_start returned on the current branch, oldest first. */
 const spawnedIds = (manager: SessionManager) =>
-  manager.getBranch().flatMap((entry) => {
-    if (entry.type !== "message" || entry.message.role !== "toolResult") return [];
-    if (entry.message.toolName !== "subagent_start") return [];
-    const id = /Agent ID: ([\w-]+)/.exec(JSON.stringify(entry.message.content))?.[1];
+  toolResults(manager, "subagent_start").flatMap((result) => {
+    const id = agentIdIn(JSON.stringify(result.content));
     return id ? [id] : [];
   });
-
-/**
- * A response that records the request it answers. Assertions must run after
- * the prompt: one thrown inside a response is swallowed as a provider error.
- */
-function capture(requests: Context[], reply: ReturnType<typeof fauxAssistantMessage>) {
-  return (context: Context) => {
-    requests.push(structuredClone(context));
-    return reply;
-  };
-}
 
 /** The last message of a request, where the card sits when it is sent. */
 const tail = (context: Context | undefined) => JSON.stringify(context?.messages.at(-1));
@@ -162,8 +115,8 @@ describe("subagent records in a real parent session (offline faux provider)", ()
 
     const requests: Context[] = [];
     h.faux.setResponses([
-      capture(requests, call("subagent_get", { agent_id: id })),
-      capture(requests, call("subagent_get", {})),
+      capture(requests, toolCall("subagent_get", { agent_id: id })),
+      capture(requests, toolCall("subagent_get", {})),
       capture(requests, fauxAssistantMessage("Checked.")),
     ]);
     await h.session.prompt("Check on the worker");
@@ -206,7 +159,7 @@ describe("subagent records in a real parent session (offline faux provider)", ()
 
     const requests: Context[] = [];
     h.faux.setResponses([
-      capture(requests, call("subagent_get", { agent_id: id })),
+      capture(requests, toolCall("subagent_get", { agent_id: id })),
       capture(requests, fauxAssistantMessage("Seen.")),
     ]);
     await h.session.prompt("What did it ask?");
@@ -242,8 +195,8 @@ describe("subagent records in a real parent session (offline faux provider)", ()
 
     const requests: Context[] = [];
     h.faux.setResponses([
-      capture(requests, call("subagent_get", { agent_id: abandoned })),
-      capture(requests, call("subagent_get", {})),
+      capture(requests, toolCall("subagent_get", { agent_id: abandoned })),
+      capture(requests, toolCall("subagent_get", {})),
       capture(requests, fauxAssistantMessage("done")),
     ]);
     await h.session.prompt("Where are we?");
@@ -333,7 +286,7 @@ describe("subagent records in a real parent session (offline faux provider)", ()
     const h = await parent(manager);
     const requests: Context[] = [];
     h.faux.setResponses([
-      capture(requests, call("subagent_get", { agent_id: "old-agent" })),
+      capture(requests, toolCall("subagent_get", { agent_id: "old-agent" })),
       capture(requests, fauxAssistantMessage("ok")),
     ]);
     await h.session.prompt("Status?");

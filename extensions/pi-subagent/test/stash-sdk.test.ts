@@ -1,131 +1,21 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-import { createFauxCore, fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
-import {
-  createAgentSession,
-  DefaultResourceLoader,
-  ModelRegistry,
-  ModelRuntime,
-  SessionManager,
-  SettingsManager,
-  type ResourceLoader,
-} from "@earendil-works/pi-coding-agent";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { AgentTypeRegistry } from "#src/config/agent-types";
-import { createChildLifecyclePublisher } from "#src/lifecycle/child-lifecycle";
-import { createSubagentSession } from "#src/lifecycle/create-subagent-session";
-import { buildAgentPrompt } from "#src/session/prompts";
+import { join } from "node:path";
+import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
+import { expect, it, vi } from "vitest";
+import { offlineAgentDir, EXTENSIONS, realChildSession, BUILTIN_TOOLS } from "./helpers/sdk.ts";
 import { toolCall, toolResults } from "../../../packages/pi-test-helpers/src/faux-session.ts";
 
 // Real SDK children with the repository's pi-stash extension loaded, as a
 // parent bundle would provide it. Checks capability, not model judgment.
-let dir: string;
-let previousAgentDir: string | undefined;
-let previousStashDir: string | undefined;
-let offline: ReturnType<typeof vi.spyOn>;
-const disposers: Array<() => Promise<void>> = [];
-
-beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), "stash-subagent-sdk-"));
-  previousAgentDir = process.env.PI_CODING_AGENT_DIR;
-  previousStashDir = process.env.PI_STASH_DIR;
-  process.env.PI_CODING_AGENT_DIR = dir;
-  process.env.PI_STASH_DIR = join(dir, "stash");
-  const createRuntime = ModelRuntime.create.bind(ModelRuntime);
-  offline = vi
-    .spyOn(ModelRuntime, "create")
-    .mockImplementation((options) => createRuntime({ ...options, refreshOnCreate: false }));
-  writeFileSync(
-    join(dir, "settings.json"),
-    JSON.stringify({
-      extensions: [resolve(import.meta.dirname, "../../pi-stash/src/index.ts")],
-      compaction: { enabled: false },
-      retry: { enabled: false },
-    }),
-  );
-});
-
-afterEach(async () => {
-  for (const dispose of disposers.splice(0)) await dispose();
-  offline.mockRestore();
-  if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
-  else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
-  if (previousStashDir === undefined) delete process.env.PI_STASH_DIR;
-  else process.env.PI_STASH_DIR = previousStashDir;
-  rmSync(dir, { recursive: true, force: true });
-});
-
 async function child(type: "explore" | "plan") {
-  const faux = createFauxCore({ provider: "stash-subagent-test", models: [{ id: "worker" }] });
-  const runtime = await ModelRuntime.create({
-    authPath: join(dir, "auth.json"),
-    modelsPath: null,
-    modelsStorePath: join(dir, "cache"),
+  const dir = offlineAgentDir({ extensions: [EXTENSIONS.stash] });
+  vi.stubEnv("PI_STASH_DIR", join(dir, "stash"));
+  return realChildSession(dir, {
+    type,
+    provider: "stash-subagent-test",
+    models: [{ id: "worker" }],
+    parentTools: [...BUILTIN_TOOLS, "stash_put", "stash_get", "stash_list"],
+    pinModel: true,
   });
-  runtime.registerProvider("stash-subagent-test", {
-    api: faux.api,
-    apiKey: "test-key",
-    models: faux.models,
-    streamSimple: faux.streamSimple,
-  });
-  const parentTools = [
-    "read",
-    "bash",
-    "edit",
-    "write",
-    "grep",
-    "find",
-    "ls",
-    "stash_put",
-    "stash_get",
-    "stash_list",
-  ];
-  const session = await createSubagentSession(
-    {
-      type,
-      model: faux.getModel(),
-      snapshot: {
-        cwd: dir,
-        systemPrompt: "PROJECT BASE",
-        model: faux.getModel(),
-        modelRegistry: new ModelRegistry(runtime),
-      },
-    },
-    {
-      registry: new AgentTypeRegistry(() => new Map()),
-      exec: vi.fn(),
-      lifecycle: createChildLifecyclePublisher(() => {}),
-      resolvePromptInheritance: () => "full",
-      listParentToolNames: () => parentTools,
-      io: {
-        detectEnv: async () => ({ isGitRepo: false, branch: "", platform: "linux" }),
-        getAgentDir: () => dir,
-        deriveSessionDir: () => join(dir, "sessions"),
-        createSessionManager: (cwd, sessionDir) => SessionManager.create(cwd, sessionDir),
-        openSessionManager: (path, cwd) => SessionManager.open(path, undefined, cwd),
-        createSettingsManager: (cwd, agentDir) => SettingsManager.create(cwd, agentDir),
-        createLoaderSettingsManager: (settings) => settings,
-        createResourceLoader: (options) =>
-          new DefaultResourceLoader({ ...options, noSkills: true }),
-        createSession: async ({
-          sessionManager,
-          resourceLoader,
-          modelRegistry: _registry,
-          ...rest
-        }) =>
-          createAgentSession({
-            ...rest,
-            sessionManager: sessionManager as SessionManager,
-            resourceLoader: resourceLoader as ResourceLoader,
-            modelRuntime: runtime,
-          }),
-        assemblerIO: { buildAgentPrompt, loadProjectContext: () => undefined },
-      },
-    },
-  );
-  disposers.push(() => session.dispose());
-  return { session, faux };
 }
 
 it("explore can stash large findings and read them back by handle", async () => {

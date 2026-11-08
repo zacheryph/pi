@@ -1,12 +1,12 @@
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Context } from "@earendil-works/pi-ai";
-import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
-import { ModelRuntime, SessionManager } from "@earendil-works/pi-coding-agent";
+import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi, onTestFinished } from "vitest";
 import subagentExtension from "#src/index";
 import { readPersistedRecords, SUBAGENT_RECORD_ENTRY } from "#src/persisted-record";
+import { offlineAgentDir, spawn, capture, lastResult } from "./helpers/sdk.ts";
 import { fauxSession, toolCall } from "../../../packages/pi-test-helpers/src/faux-session.ts";
 
 // A real parent session spawns real child sessions through the extension, all
@@ -16,25 +16,11 @@ import { fauxSession, toolCall } from "../../../packages/pi-test-helpers/src/fau
 const SWEEP_INTERVAL_MS = 60_000;
 
 let dir: string;
-let previousAgentDir: string | undefined;
-let offline: ReturnType<typeof vi.spyOn>;
 let sweeps: Array<() => void>;
-const disposers: Array<() => void> = [];
 
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), "cold-resume-sdk-"));
-  previousAgentDir = process.env.PI_CODING_AGENT_DIR;
-  process.env.PI_CODING_AGENT_DIR = dir;
-  const createRuntime = ModelRuntime.create.bind(ModelRuntime);
-  offline = vi
-    .spyOn(ModelRuntime, "create")
-    .mockImplementation((options) => createRuntime({ ...options, refreshOnCreate: false }));
-  writeFileSync(
-    join(dir, "settings.json"),
-    JSON.stringify({ compaction: { enabled: false }, retry: { enabled: false } }),
-  );
   // The minimum the setting allows.
-  writeFileSync(join(dir, "subagent.json"), JSON.stringify({ consumedSessionRetentionMinutes: 1 }));
+  dir = offlineAgentDir({ files: { "subagent.json": { consumedSessionRetentionMinutes: 1 } } });
   // Catch the manager's retention sweep, so a test can run it without waiting.
   sweeps = [];
   const realSetInterval = globalThis.setInterval;
@@ -48,14 +34,7 @@ beforeEach(() => {
   }) as typeof setInterval);
 });
 
-afterEach(() => {
-  for (const dispose of disposers.splice(0).reverse()) dispose();
-  vi.restoreAllMocks();
-  offline.mockRestore();
-  if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
-  else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
-  rmSync(dir, { recursive: true, force: true });
-});
+afterEach(() => vi.restoreAllMocks());
 
 async function parent(manager = SessionManager.inMemory(dir)) {
   const events: Array<{ channel: string; data: unknown }> = [];
@@ -78,17 +57,6 @@ async function parent(manager = SessionManager.inMemory(dir)) {
   return { ...h, manager, events };
 }
 
-const call = (name: string, args: Parameters<typeof fauxToolCall>[1]) =>
-  fauxAssistantMessage(fauxToolCall(name, args), { stopReason: "toolUse" });
-
-const spawn = (description: string, extra: Record<string, unknown> = {}) =>
-  call("subagent_start", {
-    subagent_type: "general-purpose",
-    description,
-    prompt: `${description}.`,
-    ...extra,
-  });
-
 const resume = (id: string, prompt: string, extra: Record<string, unknown> = {}) =>
   toolCall("subagent_start", {
     subagent_type: "general-purpose",
@@ -98,20 +66,6 @@ const resume = (id: string, prompt: string, extra: Record<string, unknown> = {})
     foreground: true,
     ...extra,
   });
-
-const lastResult = (context: Context, tool: string) =>
-  JSON.stringify(
-    context.messages.findLast(
-      (message) => message.role === "toolResult" && message.toolName === tool,
-    ),
-  );
-
-function capture(requests: Context[], reply: ReturnType<typeof fauxAssistantMessage>) {
-  return (context: Context) => {
-    requests.push(structuredClone(context));
-    return reply;
-  };
-}
 
 const latestRecord = (manager: SessionManager) => readPersistedRecords(manager.getBranch())[0];
 
@@ -245,7 +199,7 @@ describe("cold resume in a real parent session (offline faux provider)", () => {
     const requests: Context[] = [];
     h.faux.setResponses([
       resume(id, "Keep going"),
-      capture(requests, call("subagent_get", { agent_id: id })),
+      capture(requests, toolCall("subagent_get", { agent_id: id })),
       capture(requests, fauxAssistantMessage("Refused.")),
     ]);
     await h.session.prompt("Ask the worker");
@@ -268,8 +222,8 @@ describe("cold resume in a real parent session (offline faux provider)", () => {
 
     const requests: Context[] = [];
     h.faux.setResponses([
-      capture(requests, call("subagent_get", { agent_id: id })),
-      capture(requests, call("subagent_get", {})),
+      capture(requests, toolCall("subagent_get", { agent_id: id })),
+      capture(requests, toolCall("subagent_get", {})),
       capture(requests, fauxAssistantMessage("Checked.")),
     ]);
     await h.session.prompt("Check on the worker");
