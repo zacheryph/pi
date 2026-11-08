@@ -28,6 +28,7 @@ import { STUB_CTX, STUB_SNAPSHOT } from "#test/helpers/stub-ctx";
 import { turnLoopResult } from "#test/helpers/turn-loop-result";
 import { tick } from "../../../../packages/pi-test-helpers/src/wait.ts";
 import { tempDir } from "../../../../packages/pi-test-helpers/src/temp.ts";
+import { makeAgentConfig } from "#test/helpers/make-agent-config";
 
 /** Default max concurrent background agents (matches production default). */
 const DEFAULT_MAX_CONCURRENT = 4;
@@ -39,18 +40,6 @@ function defaultFactory(): SessionFactory {
   return vi.fn(async (_params: CreateSubagentSessionParams) =>
     toSubagentSession(createSubagentSessionStub()),
   );
-}
-
-function makeAgentConfig(overrides: Partial<AgentConfig> = {}): AgentConfig {
-  return {
-    name: "test-agent",
-    description: "Test agent",
-    toolNames: ["read", "grep"],
-    systemPrompt: "You are a test agent.",
-    promptMode: "replace",
-    inheritContext: false,
-    ...overrides,
-  };
 }
 
 /** Registry with default agents only. */

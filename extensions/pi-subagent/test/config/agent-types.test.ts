@@ -4,18 +4,7 @@ import { describe, expect, it } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import { BUILTIN_AGENTS_DIR, DEFAULT_AGENTS } from "#src/config/default-agents";
 import type { AgentConfig } from "#src/types";
-
-function makeAgentConfig(overrides: Partial<AgentConfig> = {}): AgentConfig {
-  return {
-    name: "test-agent",
-    description: "Test agent",
-    toolNames: ["read", "grep"],
-    systemPrompt: "You are a test agent.",
-    promptMode: "replace",
-    inheritContext: false,
-    ...overrides,
-  };
-}
+import { makeAgentConfig } from "#test/helpers/make-agent-config";
 
 describe("AgentTypeRegistry", () => {
   function makeRegistry(userAgents: Map<string, AgentConfig> = new Map()): AgentTypeRegistry {
