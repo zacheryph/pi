@@ -3,6 +3,13 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-08: One test harness for index and delegation tests
+
+- `test/harness.ts`: the fake-`pi` harness `index.test.ts` defined, built on
+  `packages/pi-test-helpers`' `fakePi`, now also serves `delegation.test.ts`,
+  which had its own copy; it takes a real event bus for the delegation tests. No
+  source change.
+
 ## 2026-11-08: Widget render test uses plainTheme
 
 - `index.test.ts` renders the inline widget with `packages/pi-test-helpers`'
