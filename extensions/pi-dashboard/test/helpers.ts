@@ -93,3 +93,14 @@ export function post(
     req.end(body);
   });
 }
+
+/** The session cards a hub serves, or none while it has no HTTP port. */
+export async function listSessions(
+  hub: { httpPort?: number } | undefined,
+): Promise<Array<Record<string, unknown>>> {
+  return hub?.httpPort
+    ? (JSON.parse((await get(hub.httpPort, "/api/sessions")).body).sessions as Array<
+        Record<string, unknown>
+      >)
+    : [];
+}
