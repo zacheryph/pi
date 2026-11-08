@@ -21,7 +21,7 @@ import {
 } from "#test/helpers/mock-session";
 import { STUB_CTX } from "#test/helpers/stub-ctx";
 import { turnLoopResult } from "#test/helpers/turn-loop-result";
-import { plainTheme } from "../../../../packages/pi-test-helpers/src/theme.ts";
+import { plainTheme, markupTheme } from "../../../../packages/pi-test-helpers/src/theme.ts";
 
 const testRegistry = new AgentTypeRegistry(() => new Map());
 
@@ -517,10 +517,7 @@ describe("GetResultTool", () => {
 });
 
 describe("GetResultTool — TUI rendering", () => {
-  const theme: Theme = {
-    fg: (color: string, text: string) => `[${color}:${text}]`,
-    bold: (text: string) => `**${text}**`,
-  };
+  const theme: Theme = markupTheme;
 
   // The registered hooks take Pi's full Theme; `display.ts` narrows it to the two
   // methods the renderers call, so a double is structurally short of the SDK type.

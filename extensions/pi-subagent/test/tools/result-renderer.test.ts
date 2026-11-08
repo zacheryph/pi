@@ -12,13 +12,9 @@ import {
   renderStopped,
 } from "#src/tools/result-renderer";
 import type { AgentDetails, Theme } from "#src/ui/display";
+import { markupTheme } from "../../../../packages/pi-test-helpers/src/theme.ts";
 
-function makeTheme(): Theme {
-  return {
-    fg: (color: string, text: string) => `[${color}:${text}]`,
-    bold: (text: string) => `**${text}**`,
-  };
-}
+const makeTheme = (): Theme => markupTheme;
 
 const WARNED: TurnBudget = { maxTurns: 2, used: 3, phase: "warned" };
 

@@ -6,13 +6,9 @@ import {
   renderGetResultLines,
 } from "#src/tools/get-result-renderer";
 import type { Theme } from "#src/ui/display";
+import { markupTheme } from "../../../../packages/pi-test-helpers/src/theme.ts";
 
-function makeTheme(): Theme {
-  return {
-    fg: (color: string, text: string) => `[${color}:${text}]`,
-    bold: (text: string) => `**${text}**`,
-  };
-}
+const makeTheme = (): Theme => markupTheme;
 
 function makeDetails(overrides: Partial<GetResultDetails> = {}): GetResultDetails {
   return {
