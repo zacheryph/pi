@@ -3,6 +3,11 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-08: Widget render test uses plainTheme
+
+- `index.test.ts` renders the inline widget with `packages/pi-test-helpers`'
+  `plainTheme`, the last identity theme stub in the suite. No source change.
+
 ## 2026-11-08: Global test slots from pi-test-helpers
 
 - `delegation.test.ts` resets pi-session-tree with `packages/pi-test-helpers`'
