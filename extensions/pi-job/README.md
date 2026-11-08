@@ -258,11 +258,15 @@ the parent.
 
 With this bundle's pi-subagent, outstanding jobs/watches automatically park the
 child when its run ends. The child keeps its session and releases its agent
-execution slot. Completions enter its managed inbox; if all slots are busy the
-child queues for activation alongside new agents. The completion message is
+execution slot. A job that finishes while the child is running is a follow-up of
+that run, exactly as in a top-level session. One that finishes while the child is
+parked enters its managed inbox instead of starting a run; if all slots are busy
+the child queues for activation alongside new agents. The completion message is
 appended only after admission, and the manager drives the next run with normal
 tracking and turn budgets. Multiple completions and parent guidance can share
-one activation. Stopping the worker shuts its jobs down.
+one activation. A completion for a child that can no longer be activated is
+reported lost, like one for a stale session. Stopping the worker shuts its jobs
+down.
 
 Other hosts retain native completion delivery. If they dispose a child, its jobs
 are stopped at shutdown; without shutdown, stale-owner cleanup or process exit

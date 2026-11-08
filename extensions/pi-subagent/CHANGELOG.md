@@ -3,6 +3,23 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-08: Waiting-worker review fixes
+
+- `subagent_get` with `wait: true` follows queued activations to the
+  assignment's outcome instead of reporting "queued" and dropping the result.
+  Only a parent-started resume counts as replacing the waited run.
+- A stopped, failed or exhausted child keeps its session for the retention
+  window unless background work is actually pending; registering a work source
+  alone no longer releases it.
+- One throwing activation delivery no longer fails the run or drops the rest;
+  `enqueue` reports refusal so pi-job can report the completion lost.
+- A question asked before parking is sent to the parent once and survives job
+  activations until guidance answers it.
+- Parked foreground workers show in the widget and watch overlay; waiting rows
+  show no clock, since nothing animates it.
+- One `isParked()` predicate replaces five copies; active-status checks use
+  `isActiveStatus()`.
+
 ## 2026-11-08: Waiting workers and managed job wakeups
 
 - Keep child assignments waiting automatically while their jobs/watches run;

@@ -224,11 +224,16 @@ export class Subagent {
     return this.state.isRunning();
   }
   canBeSteered(): boolean {
-    return (
-      this.status === "waiting" ||
-      (this.status === "queued" && this.isSessionReady()) ||
-      this.state.canBeSteered()
-    );
+    return this.isParked() || this.state.canBeSteered();
+  }
+
+  /**
+   * Between runs of an open assignment: waiting for work or guidance, or queued
+   * for the activation that continues it. A first run still awaiting its slot
+   * has no session and is not parked.
+   */
+  isParked(): boolean {
+    return this.status === "waiting" || (this.status === "queued" && this.isSessionReady());
   }
 
   private _abortController: AbortController;
@@ -262,12 +267,36 @@ export class Subagent {
   get waitingReason(): string | undefined {
     return this._waitingReason;
   }
-  get awaitingGuidance(): boolean {
-    return this.explicitWait !== undefined && this.inbox.length === 0 && this.guidance.length === 0;
+  private _guidanceRequest?: string;
+  /**
+   * What the parked agent needs from its parent, decided when it parked: its
+   * explicit wait reason, or a question the parent has not been told about yet.
+   * Undefined while queued input will wake it anyway.
+   */
+  get guidanceRequest(): string | undefined {
+    return this._guidanceRequest;
   }
+  private _hasParked = false;
+  /**
+   * Whether this agent has ever parked. A foreground agent that parked has
+   * outlived the tool call that streamed it, so background surfaces show it.
+   */
+  get hasParked(): boolean {
+    return this._hasParked;
+  }
+  /** The last question a guidance request carried, so a re-park does not repeat it. */
+  private requestedQuestion?: string;
   private closed = false;
   private activationEpoch = 0;
   private activationSignal?: AbortSignal;
+  /**
+   * Counts parent-started resumes. A queued activation continues the current
+   * assignment instead, so a waiter follows it rather than treating it as a
+   * replacement.
+   */
+  private assignment = 0;
+  /** The last run of the assignment the latest parent resume replaced. */
+  private replacedRun?: number;
   private readonly activation: ActivationRoute = {
     track: (source) => {
       this.workSources.add(source);
@@ -276,14 +305,25 @@ export class Subagent {
       };
     },
     enqueue: (deliver) => {
-      if (this.closed || !this.isActive()) return;
+      if (this.closed || !this.isActive()) return false;
       this.inbox.push(deliver);
       if (this.status === "waiting") this.queueActivation();
+      return true;
     },
     wait: (reason) => {
       this.explicitWait = reason;
     },
   };
+
+  /** What the child's extensions report as still pending, e.g. running jobs. */
+  private pendingWork(): string[] {
+    const pending: string[] = [];
+    for (const source of this.workSources) {
+      const reason = source();
+      if (reason) pending.push(reason);
+    }
+    return pending;
+  }
 
   /** One FIFO admission per child; all inputs accumulated before admission share it. */
   private queueActivation(): void {
@@ -295,11 +335,15 @@ export class Subagent {
     const task = async () => {
       if (this.status !== "queued" || this.closed || this.activationEpoch !== epoch) return;
       const guidance = this.guidance.splice(0).join("\n\n");
+      // Only parent guidance answers an open question; a job completion leaves it standing.
+      const question = guidance ? undefined : this.pendingQuestion;
+      if (guidance) this.requestedQuestion = undefined;
       await this.runResume(
         this.subagentSession,
         guidance ||
           "Background work completed. Handle the completion messages and continue your assignment.",
         this.activationSignal,
+        question,
       );
     };
     // Let the previous run publish its promise and release its concurrency slot first.
@@ -385,8 +429,7 @@ export class Subagent {
     // its session, and "still running" describes that record better than "no
     // session" does. A queued agent is not running and keeps the no-session
     // answer, which is the truth about it.
-    if (this.isRunning() || this.reopening || (this.status === "queued" && this.isSessionReady()))
-      return "still-running";
+    if (this.isRunning() || this.reopening || this.isParked()) return "still-running";
     if (this.isSessionReady()) return undefined;
     if (!this.released) return "no-session";
     const { checkReopen } = this.execution;
@@ -400,7 +443,7 @@ export class Subagent {
    * `delivered` outcome once the message reaches the session.
    */
   async steer(message: string, signal?: AbortSignal): Promise<SteerOutcome> {
-    if (this.status === "waiting" || (this.status === "queued" && this.isSessionReady())) {
+    if (this.isParked()) {
       this.guidance.push(message);
       if (signal) {
         this.activationSignal = signal;
@@ -622,12 +665,19 @@ export class Subagent {
    * is not necessarily the run that was waited on.
    */
   async waitUntilSettled(signal: AbortSignal): Promise<WaitOutcome> {
-    const waitedRun = this.state.run;
-    const handle = this._promise;
-    if (handle && this.isActive()) await settleOrAbort(handle, signal);
-    const superseded =
-      this.state.run === waitedRun ? undefined : this.state.supersededOutcome(waitedRun);
-    if (superseded) return { kind: "superseded", outcome: superseded };
+    const assignment = this.assignment;
+    let handle = this._promise;
+    while (handle && this.isActive()) {
+      await settleOrAbort(handle, signal);
+      // A queued activation continues this assignment under a new handle, so
+      // follow it. A parked agent with nothing queued has no new handle.
+      if (signal.aborted || this.assignment !== assignment || this._promise === handle) break;
+      handle = this._promise;
+    }
+    if (this.assignment === assignment + 1 && this.replacedRun !== undefined) {
+      const superseded = this.state.supersededOutcome(this.replacedRun);
+      if (superseded) return { kind: "superseded", outcome: superseded };
+    }
     return this.isActive() ? { kind: "unsettled" } : { kind: "settled" };
   }
 
@@ -652,20 +702,27 @@ export class Subagent {
       return Promise.reject(new Error("Subagent not configured for resume — missing session"));
     }
 
+    this.replacedRun = this.state.run;
+    this.assignment++;
     this._promise = this.runResume(subagentSession, prompt, signal);
     return this._promise;
   }
 
-  /** The resume body. Always resolves — errors terminate through fail(). */
+  /**
+   * The resume body. Always resolves — errors terminate through fail().
+   * `openQuestion` carries a question no guidance has answered into the new run.
+   */
   private async runResume(
     liveSession: SubagentSession | undefined,
     prompt: string,
     signal?: AbortSignal,
+    openQuestion?: string,
   ): Promise<void> {
     this._abortController = new AbortController();
     if (this.turnBudget) this.resumeMaxTurns = this.turnBudget.maxTurns ?? 0;
     this.reopening = liveSession === undefined;
     this.state.resetForResume(Date.now());
+    if (openQuestion !== undefined) this.state.setPendingQuestion(openQuestion);
     // Release the previous run's listener handles before wiring this one's.
     this.listeners.release();
     this.listeners.wireSignal(signal, () => this.abort());
@@ -689,7 +746,15 @@ export class Subagent {
       this.activationSignal = undefined;
       this.explicitWait = undefined;
       this._waitingReason = undefined;
-      for (const deliver of this.inbox.splice(0)) deliver();
+      this._guidanceRequest = undefined;
+      for (const deliver of this.inbox.splice(0)) {
+        // A delivery belongs to the extension that queued it; its failure must not fail this run.
+        try {
+          deliver();
+        } catch (err) {
+          debugLog("child activation delivery", err);
+        }
+      }
       this.settle(await session.resumeTurnLoop(prompt, this.turnLoopOptions()), true);
     } catch (err) {
       this.reopening = false;
@@ -733,20 +798,36 @@ export class Subagent {
    */
   private settle(result: TurnLoopResult, resumed: boolean): void {
     if (this.status !== "stopped" && result.turnBudget.phase !== "exhausted") {
-      const pending = [...this.workSources].map((source) => source()).filter(Boolean);
-      const reason = this.explicitWait ?? pending.join(", ");
-      if (reason || this.inbox.length || this.guidance.length) {
+      const reason = this.explicitWait ?? this.pendingWork().join(", ");
+      const queuedInput = this.inbox.length > 0 || this.guidance.length > 0;
+      if (reason || queuedInput) {
         this._waitingReason = reason || "Pending input";
+        this._guidanceRequest = queuedInput ? undefined : this.requestFor(this.explicitWait);
+        this._hasParked = true;
         this.state.markWaiting(result.responseText);
         this.listeners.release();
         this.execution.observer?.onWaiting?.(this);
-        if (this.inbox.length || this.guidance.length) this.queueActivation();
+        if (queuedInput) this.queueActivation();
         return;
       }
     }
     if (result.turnBudget.phase === "exhausted") this.state.markAborted(result.responseText);
     else this.state.markCompleted(result.responseText);
     this.finish(resumed);
+  }
+
+  /**
+   * What a parking agent asks of its parent: a question it has not asked
+   * before, else its explicit wait reason. A question carried across job
+   * activations was already announced, so it is not repeated.
+   */
+  private requestFor(explicitWait: string | undefined): string | undefined {
+    const question = this.pendingQuestion;
+    if (question !== undefined && question !== this.requestedQuestion) {
+      this.requestedQuestion = question;
+      return `Question: ${question}`;
+    }
+    return explicitWait === undefined ? undefined : `Waiting: ${explicitWait}.`;
   }
 
   /**
@@ -768,7 +849,8 @@ export class Subagent {
       this.inbox = [];
       this.guidance = [];
       this.activationSignal = undefined;
-      if (this.workSources.size > 0) void this.releaseSession();
+      // Disposing the session stops the background work its extensions still run.
+      if (this.pendingWork().length > 0) void this.releaseSession();
     }
     if (resumed) this.execution.observer?.onResumeFinished?.(this);
     else this.execution.observer?.onRunFinished?.(this);
@@ -811,7 +893,7 @@ export class Subagent {
    * its slot frees. Returns false when there was nothing to stop.
    */
   abort(): boolean {
-    if (this.status === "waiting" || (this.status === "queued" && this.isSessionReady())) {
+    if (this.isParked()) {
       this.state.markStopped();
       this.activationEpoch++;
       this.listeners.release();

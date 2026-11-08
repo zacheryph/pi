@@ -386,6 +386,15 @@ describe("waiting worker rows", () => {
     expect(render({ agents, spinnerFrame: 3 })).toEqual(first);
   });
 
+  it("shows no clock for a waiting worker, since no timer advances it", () => {
+    const agents = [
+      makeAgent({ status: "waiting", startedAt: Date.now() - 42_000, completedAt: undefined }),
+    ];
+    const text = render({ agents, terminalWidth: 100 }).join("\n");
+    expect(text).toContain("--:--");
+    expect(text).not.toContain("00:42");
+  });
+
   it.each(NARROW_WIDTHS)(
     "keeps waiting Unicode and ANSI text inside %i columns",
     (terminalWidth) => {

@@ -53,11 +53,9 @@ export class SubagentEventsObserver implements SubagentManagerObserver {
     });
     this.persist(record);
     // This is an open assignment, not a completion. Let the parent supply guidance.
-    if (!record.claimed && record.awaitingGuidance)
-      this.notifications.sendUpdate(
-        record,
-        `Waiting: ${record.waitingReason}. Use subagent_steer to provide guidance.`,
-      );
+    const request = record.guidanceRequest;
+    if (!record.claimed && request !== undefined)
+      this.notifications.sendUpdate(record, `${request}\nUse subagent_steer to provide guidance.`);
   }
 
   onSubagentQueued(record: Subagent): void {

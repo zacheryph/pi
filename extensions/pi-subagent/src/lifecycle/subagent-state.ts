@@ -58,7 +58,7 @@ export interface SettledOutcome {
 // methods on SubagentState delegate here; DTO consumers holding a bare
 // SubagentStatus (no SubagentState instance) call these directly.
 
-/** Running or queued — the agent is still live (started or awaiting a slot). */
+/** Running, queued or waiting — the agent is still live (started, awaiting a slot, or parked). */
 export function isActiveStatus(status: SubagentStatus): boolean {
   return status === "running" || status === "queued" || status === "waiting";
 }

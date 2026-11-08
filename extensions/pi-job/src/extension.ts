@@ -269,54 +269,73 @@ export function createJobsExtension(options: JobsExtensionOptions = {}) {
     const live = liveManagers();
     // Latest context seen (pi's contexts read live state; a stale one throws).
     let ctxRef: SessionContext | undefined;
-    let activation: ActivationRoute | undefined;
     let untrackWork: (() => void) | undefined;
     const remember = (ctx: unknown) => {
       if (ctx && typeof ctx === "object") ctxRef = ctx as SessionContext;
     };
 
-    const host: DeliveryHost<JobSnapshot> = {
-      isIdle: () =>
-        activation ? true : typeof ctxRef?.isIdle === "function" ? ctxRef.isIdle() : true,
-      aborted: () => ctxRef?.signal?.aborted === true,
-      send: (deliveryId, completions) => {
-        const budget = tailBudget(completions.length);
-        const items = completions.map((c) => ({
-          job: c.payload,
-          tail: manager.notificationTail(c.payload, NOTIFY_LINES, budget),
-        }));
-        const { parts, partOf } = formatBatch(items);
-        const send = () =>
-          pi.sendMessage(
-            {
-              customType: CUSTOM_TYPE,
-              content: parts.map((text) => ({ type: "text" as const, text })),
-              display: true,
-              // `part`: the content part holding this completion (used by dedupeCompletions).
-              details: {
-                deliveryId,
-                completions: completions.map((c, i) => ({
-                  completionId: c.completionId,
-                  part: partOf[i],
-                  job: brief(c.payload),
-                })),
-              },
-            },
-            // pi decides: streaming → its follow-up queue; otherwise → start a run.
-            { triggerTurn: !activation, deliverAs: "followUp" },
-          );
-        if (activation) activation.enqueue(send);
-        else send();
-      },
-      lost: (items) => {
-        try {
-          ctxRef?.ui?.notify?.(
-            `pi-job: session context is gone; completion of ${items.map((i) => i.payload.id).join(", ")} was not delivered (see /job).`,
-            "warning",
-          );
-        } catch {}
-      },
+    const completionMessage = (deliveryId: string, completions: Completion<JobSnapshot>[]) => {
+      const budget = tailBudget(completions.length);
+      const items = completions.map((c) => ({
+        job: c.payload,
+        tail: manager.notificationTail(c.payload, NOTIFY_LINES, budget),
+      }));
+      const { parts, partOf } = formatBatch(items);
+      return {
+        customType: CUSTOM_TYPE,
+        content: parts.map((text) => ({ type: "text" as const, text })),
+        display: true,
+        // `part`: the content part holding this completion (used by dedupeCompletions).
+        details: {
+          deliveryId,
+          completions: completions.map((c, i) => ({
+            completionId: c.completionId,
+            part: partOf[i],
+            job: brief(c.payload),
+          })),
+        },
+      };
     };
+    const lost = (items: Completion<JobSnapshot>[]) => {
+      try {
+        ctxRef?.ui?.notify?.(
+          `pi-job: session context is gone; completion of ${items.map((i) => i.payload.id).join(", ")} was not delivered (see /job).`,
+          "warning",
+        );
+      } catch {}
+    };
+
+    const host: DeliveryHost<JobSnapshot> = {
+      isIdle: () => (typeof ctxRef?.isIdle === "function" ? ctxRef.isIdle() : true),
+      aborted: () => ctxRef?.signal?.aborted === true,
+      send: (deliveryId, completions) =>
+        // pi decides: streaming → its follow-up queue; otherwise → start a run.
+        pi.sendMessage(completionMessage(deliveryId, completions), {
+          triggerTurn: true,
+          deliverAs: "followUp",
+        }),
+      lost,
+    };
+    /**
+     * A subagent child's runs are admitted by its manager. During a run a completion is a
+     * follow-up that run consumes, as in a top-level session. Between runs it must not start
+     * one of its own: the manager latches it and delivers it before the activation it queues.
+     */
+    const managedHost = (route: ActivationRoute): DeliveryHost<JobSnapshot> => ({
+      ...host,
+      send: (deliveryId, completions) => {
+        if (!host.isIdle()) return host.send(deliveryId, completions);
+        const message = completionMessage(deliveryId, completions);
+        const accepted = route.enqueue(() => {
+          try {
+            pi.sendMessage(message, { triggerTurn: false, deliverAs: "followUp" });
+          } catch {
+            lost(completions);
+          }
+        });
+        if (!accepted) lost(completions);
+      },
+    });
     let delivery = new Delivery<JobSnapshot>(host);
 
     let manager: JobManager = new JobManager({
@@ -366,15 +385,15 @@ export function createJobsExtension(options: JobsExtensionOptions = {}) {
 
     pi.on("agent_start", async (_e: unknown, ctx: unknown) => {
       remember(ctx);
-      if (!activation) delivery.onAgentStart();
+      delivery.onAgentStart();
     });
     pi.on("agent_end", async (_e: unknown, ctx: unknown) => {
       remember(ctx);
-      if (!activation) delivery.onAgentEnd();
+      delivery.onAgentEnd();
     });
     pi.on("agent_settled", async (_e: unknown, ctx: unknown) => {
       remember(ctx);
-      if (!activation) delivery.onAgentSettled();
+      delivery.onAgentSettled();
     });
     pi.on("message_end", async (e: unknown) => {
       const m = (
@@ -472,7 +491,9 @@ export function createJobsExtension(options: JobsExtensionOptions = {}) {
         pruneLogs(logRoot);
       } catch {}
       untrackWork?.();
-      activation = sessionId ? service<ActivationRoute>(sessionId, ACTIVATION_SERVICE) : undefined;
+      const activation = sessionId
+        ? service<ActivationRoute>(sessionId, ACTIVATION_SERVICE)
+        : undefined;
       untrackWork = activation?.track(() => {
         const pending = manager.list().filter((job) => job.status === "running");
         return pending.length
@@ -481,7 +502,7 @@ export function createJobsExtension(options: JobsExtensionOptions = {}) {
             ? "Pending job completion"
             : undefined;
       });
-      delivery.rebind(host);
+      delivery.rebind(activation ? managedHost(activation) : host);
     });
 
     pi.on("session_shutdown", async (event) => {

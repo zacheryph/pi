@@ -22,7 +22,7 @@ import {
   type SubagentLifecycleObserver,
 } from "#src/lifecycle/subagent";
 import type { SubagentSession } from "#src/lifecycle/subagent-session";
-import { SubagentState } from "#src/lifecycle/subagent-state";
+import { isActiveStatus, SubagentState } from "#src/lifecycle/subagent-state";
 import type { PersistedSubagentRecord } from "#src/persisted-record";
 
 import type { RunConfig } from "#src/runtime";
@@ -508,10 +508,7 @@ export class SubagentManager {
     const saved = live ? undefined : this.savedAgents?.find(id);
     if (!live && !saved) return { kind: "refused", reason: "unknown-agent" };
     const source = live ?? saved!;
-    if (
-      live &&
-      (live.status === "waiting" || (live.status === "queued" && live.isSessionReady()))
-    ) {
+    if (live?.isParked()) {
       void live.steer(prompt, options.signal);
       if (options.claimOutcome) live.claim();
       else live.releaseClaims();
@@ -575,10 +572,7 @@ export class SubagentManager {
       isBackground: resolved.isBackground,
       state: new SubagentState({
         // A record still reading queued or running was interrupted.
-        status:
-          saved.status === "queued" || saved.status === "running" || saved.status === "waiting"
-            ? "stopped"
-            : saved.status,
+        status: isActiveStatus(saved.status) ? "stopped" : saved.status,
         result: saved.result,
         error: saved.error,
         startedAt: saved.startedAt,

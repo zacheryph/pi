@@ -121,8 +121,10 @@ npm test --workspace=pi-session-tree
 `src/activation.ts` defines the versioned `subagent:activation:v1` service.
 Pi-subagent offers it before child extension binding; a background-work extension
 registers a live pending-work query with `track`, unregisters on shutdown, and
-passes completion delivery closures to `enqueue`. The child manager owns FIFO
-admission and invokes those closures before its next prompt; they must append
-messages without triggering their own turns. `wait` explicitly keeps an
+passes completion delivery closures to `enqueue` while the child is between runs.
+The child manager owns FIFO admission and invokes those closures before its next
+prompt; they must append messages without triggering their own turns. `enqueue`
+returns false when the child can no longer be activated, and the caller reports
+that completion as lost. `wait` explicitly keeps an
 assignment open for parent input. These registrations and inboxes are process
 local and are not a durable job queue.

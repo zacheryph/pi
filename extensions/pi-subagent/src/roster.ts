@@ -10,7 +10,7 @@
  * Pure functions only, apart from reading the branch off a context.
  */
 
-import type { SubagentStatus } from "#src/lifecycle/subagent-state";
+import { isActiveStatus, type SubagentStatus } from "#src/lifecycle/subagent-state";
 import {
   type PersistedSubagentRecord,
   readPersistedRecords,
@@ -80,8 +80,7 @@ export function rosterState(
   pendingQuestion: string | undefined,
   live: boolean,
 ): RosterState {
-  if (status === "queued" || status === "running" || status === "waiting")
-    return live ? status : "interrupted";
+  if (isActiveStatus(status)) return live ? status : "interrupted";
   if (status === "completed" && pendingQuestion !== undefined) return "waiting";
   return status;
 }

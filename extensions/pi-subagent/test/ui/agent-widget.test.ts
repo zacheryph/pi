@@ -492,6 +492,20 @@ describe("AgentWidget — background-only filtering", () => {
     expect(text).toContain("background task");
     expect(text).not.toContain("foreground task");
   });
+
+  it("shows a foreground agent once it has parked and outlived its tool call", () => {
+    const parked = createTestSubagent({
+      id: "fg1",
+      status: "waiting",
+      completedAt: undefined,
+      description: "parked foreground task",
+      isBackground: false,
+    });
+    Object.defineProperty(parked, "hasParked", { value: true });
+    const { widget, renderLines } = setup([parked]);
+    widget.update();
+    expect(renderLines().join("\n")).toContain("parked foreground task");
+  });
 });
 
 describe("AgentWidget — the animation timer tracks running agents", () => {

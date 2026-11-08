@@ -45,9 +45,17 @@ function singleLine(text: string): string {
   return sanitizeLine(text).replace(/\s+/g, " ").trim();
 }
 
-/** Queued agents have not started; finished durations stay fixed while lingering. */
+/**
+ * Queued and waiting agents are not running, and no timer animates them, so
+ * they show no clock; finished durations stay fixed while lingering.
+ */
 function elapsedLabel(agent: WidgetAgent, now: number): string {
-  if (agent.status === "queued" || !Number.isFinite(agent.startedAt) || agent.startedAt <= 0)
+  if (
+    agent.status === "queued" ||
+    agent.status === "waiting" ||
+    !Number.isFinite(agent.startedAt) ||
+    agent.startedAt <= 0
+  )
     return "--:--";
   const seconds = Math.max(0, Math.floor(((agent.completedAt ?? now) - agent.startedAt) / 1000));
   return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;

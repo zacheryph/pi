@@ -79,8 +79,14 @@ A job completion changes waiting to **queued**, then **running** when a slot
 opens. Activations use the same FIFO concurrency queue as new background agents,
 including workers originally launched in the foreground. Completions and parent
 guidance received before admission share one activation in the same session.
-Inputs arriving during an activation are retained for the next one. Every
-activation gets the existing fresh resume turn budget and tracked usage.
+A job that finishes during a run is delivered to that run as a follow-up, as in
+a top-level session, so it needs no extra activation. Every activation gets the
+existing fresh resume turn budget and tracked usage.
+
+A question the child asks with `ask` before parking is sent to the parent, and
+stays open across job activations until parent guidance answers it.
+`subagent_get({ wait: true })` follows queued activations through to the
+assignment's outcome, and returns early if the child parks with nothing queued.
 
 Children can call `subagent_wait({ reason: "Need parent guidance" })`, then end
 their turn, to wait without a job. Parents wake waiting workers with
@@ -88,7 +94,9 @@ their turn, to wait without a job. Parents wake waiting workers with
 Guidance for an already queued activation joins its inbox. Foreground calls
 return when the child parks; they do not block indefinitely waiting for CI.
 
-The widget, roster and dashboard distinguish waiting from completed; lifecycle
+The widget, roster and dashboard distinguish waiting from completed. A
+foreground worker that parked appears in the widget and watch overlay like a
+background one, because its tool call has already returned. Lifecycle
 consumers receive `subagent:waiting` and `subagent:queued`. Waiting sessions are
 excluded from completed-session retention cleanup. Stop cancels waiting/queued
 activations and shuts down their jobs. Parent-session shutdown/reload also tears

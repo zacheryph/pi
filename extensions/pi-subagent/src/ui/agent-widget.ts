@@ -233,7 +233,8 @@ export class AgentWidget implements SubagentManagerObserver {
    * SDK-spawned agent was filtered out permanently (#724).
    */
   private listBackgroundAgents(): Subagent[] {
-    return this.manager.listAgents().filter((record) => record.isBackground);
+    // A foreground agent that parked outlived its tool call's stream, so it shows here.
+    return this.manager.listAgents().filter((record) => record.isBackground || record.hasParked);
   }
 
   /** Project a live Subagent record onto a pure-data WidgetAgent snapshot. */

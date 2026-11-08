@@ -17,6 +17,7 @@ function agent(overrides: Partial<WatchAgent> = {}) {
     type: "general-purpose",
     description: "watch me",
     isBackground: true,
+    hasParked: false,
     status: "running",
     responseText: "",
     result: undefined,

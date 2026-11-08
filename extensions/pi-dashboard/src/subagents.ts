@@ -2,6 +2,11 @@ import type { SubagentsSection, SubagentState } from "./protocol.ts";
 import { clip } from "./sections.ts";
 
 /** pi-subagent lifecycle channels on the session's pi.events bus. */
+/** Still live: running, waiting for a slot, or parked waiting for work or guidance. */
+function isLive(state: SubagentState): boolean {
+  return state === "running" || state === "queued" || state === "waiting";
+}
+
 export const SUBAGENT_CHANNELS = [
   "subagent:created",
   "subagent:started",
@@ -95,12 +100,7 @@ export class SubagentTracker {
     this.agents.set(id, agent);
     // Keep running agents; trim the oldest finished ones.
     while (this.agents.size > MAX_AGENTS) {
-      const oldest = [...this.agents.values()].find(
-        (candidate) =>
-          candidate.state !== "running" &&
-          candidate.state !== "queued" &&
-          candidate.state !== "waiting",
-      );
+      const oldest = [...this.agents.values()].find((candidate) => !isLive(candidate.state));
       if (!oldest) break;
       this.agents.delete(oldest.id);
     }

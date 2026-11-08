@@ -222,3 +222,121 @@ it("honors a foreground resume's cancellation while its activation is queued", a
   expect(child.record.status).toBe("stopped");
   expect(child.stub.resumeTurnLoop).not.toHaveBeenCalled();
 });
+
+describe("review fixes", () => {
+  it("a result wait that starts while an activation is queued reports that activation's outcome", async () => {
+    const h = harness();
+    const child = await h.spawn(({ params }) => params.activation!.wait("CI"));
+    child.stub.resumeTurnLoop.mockResolvedValueOnce(turnLoopResult({ responseText: "final" }));
+    child.params.activation!.enqueue(() => {});
+    expect(child.record.status).toBe("queued");
+    const wait = await child.record.waitUntilSettled(new AbortController().signal);
+    expect(wait).toEqual({ kind: "settled" });
+    expect(child.record.status).toBe("completed");
+    expect(child.record.result).toBe("final");
+  });
+
+  it("a result wait follows an activation that parks and queues another", async () => {
+    const h = harness();
+    const child = await h.spawn(({ params }) => params.activation!.wait("CI"));
+    const second = Promise.withResolvers<ReturnType<typeof turnLoopResult>>();
+    // The first activation parks again on a new completion; the second one finishes.
+    child.stub.resumeTurnLoop.mockImplementationOnce(async () => {
+      child.params.activation!.enqueue(() => {});
+      return turnLoopResult({ responseText: "between" });
+    });
+    child.stub.resumeTurnLoop.mockReturnValueOnce(second.promise);
+    child.params.activation!.enqueue(() => {});
+    let outcome: unknown;
+    const wait = child.record.waitUntilSettled(new AbortController().signal).then((w) => {
+      outcome = w;
+    });
+    await tick();
+    expect(child.stub.resumeTurnLoop).toHaveBeenCalledTimes(2);
+    expect(outcome).toBeUndefined();
+    second.resolve(turnLoopResult({ responseText: "final" }));
+    await wait;
+    expect(outcome).toEqual({ kind: "settled" });
+    expect(child.record.result).toBe("final");
+  });
+
+  it("a result wait on a parked agent with nothing queued returns at once", async () => {
+    const h = harness();
+    const child = await h.spawn(({ params }) => params.activation!.wait("guidance"));
+    await expect(child.record.waitUntilSettled(new AbortController().signal)).resolves.toEqual({
+      kind: "unsettled",
+    });
+  });
+
+  it("keeps a failed child's session for retention when it has no pending work", async () => {
+    const h = harness();
+    const child = await h.spawn(({ params, stub }) => {
+      params.activation!.track(() => undefined);
+      stub.runTurnLoop.mockRejectedValue(new Error("boom"));
+    });
+    await tick();
+    expect(child.record.status).toBe("error");
+    expect(child.stub.dispose).not.toHaveBeenCalled();
+  });
+
+  it("releases a failed child's session when its background work is still pending", async () => {
+    const h = harness();
+    const child = await h.spawn(({ params, stub }) => {
+      params.activation!.track(() => "CI");
+      stub.runTurnLoop.mockRejectedValue(new Error("boom"));
+    });
+    await tick();
+    expect(child.record.status).toBe("error");
+    expect(child.stub.dispose).toHaveBeenCalledOnce();
+  });
+
+  it("a throwing delivery does not fail the activation or skip the others", async () => {
+    const h = harness();
+    const child = await h.spawn(({ params }) => params.activation!.wait("CI"));
+    const later = vi.fn();
+    expect(
+      child.params.activation!.enqueue(() => {
+        throw new Error("stale context");
+      }),
+    ).toBe(true);
+    child.params.activation!.enqueue(later);
+    await child.record.promise;
+    expect(later).toHaveBeenCalledOnce();
+    expect(child.record.status).toBe("completed");
+  });
+
+  it("refuses a completion once the child cannot be activated", async () => {
+    const h = harness();
+    const child = await h.spawn(({ params }) => params.activation!.wait("CI"));
+    h.manager.abort(child.record.id);
+    expect(child.params.activation!.enqueue(vi.fn())).toBe(false);
+  });
+
+  it("asks the parent a question raised while jobs run, and keeps it across job activations", async () => {
+    const h = harness();
+    let pending = true;
+    const child = await h.spawn(({ params, stub }) => {
+      params.activation!.track(() => (pending ? "CI" : undefined));
+      stub.runTurnLoop.mockImplementation(async () => {
+        params.askParent!("Which branch?");
+        return turnLoopResult();
+      });
+    });
+    expect(child.record.status).toBe("waiting");
+    expect(child.record.guidanceRequest).toBe("Question: Which branch?");
+
+    // A job completion activates the child; the question still stands and is not asked twice.
+    child.params.activation!.enqueue(() => {});
+    await child.record.promise;
+    expect(child.record.status).toBe("waiting");
+    expect(child.record.pendingQuestion).toBe("Which branch?");
+    expect(child.record.guidanceRequest).toBeUndefined();
+
+    // Parent guidance answers it.
+    pending = false;
+    await child.record.steer("Use main");
+    await child.record.promise;
+    expect(child.record.status).toBe("completed");
+    expect(child.record.pendingQuestion).toBeUndefined();
+  });
+});

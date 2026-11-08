@@ -3,6 +3,16 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-08: Managed delivery through Delivery's own state machine
+
+- Child sessions keep native delivery during a run: completions are held and
+  sent as follow-ups at agent_end, with the usual confirmation and recovery.
+  Only an idle (between-runs) send goes to the subagent manager's inbox, through
+  a separate managed `DeliveryHost`. This replaces the per-event `activation`
+  checks and avoids an extra queued activation for completions a run can take.
+- A latched delivery that throws, or a completion the child can no longer take
+  (`enqueue` returns false), is reported through `lost()` instead of vanishing.
+
 ## 2026-11-08: Waiting workers and managed job wakeups
 
 - Register child pending work through the session activation service and route

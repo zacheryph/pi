@@ -5,7 +5,7 @@ import { Type } from "typebox";
 import type { AgentConfigLookup } from "#src/config/agent-types";
 import type { ReopenSource } from "#src/lifecycle/cold-resume";
 import type { ResumeRefusal } from "#src/lifecycle/subagent";
-import type { SettledOutcome } from "#src/lifecycle/subagent-state";
+import { isActiveStatus, type SettledOutcome } from "#src/lifecycle/subagent-state";
 import { SUBAGENT_LIST_KIND } from "#src/handlers/roster-card";
 import type { PersistedSubagentRecord } from "#src/persisted-record";
 import { buildRoster, formatRosterList, readBranchRecords } from "#src/roster";
@@ -135,8 +135,7 @@ export class GetResultTool {
 
   /** Answer from the branch's last record for an agent no live record backs. */
   private savedResult(saved: PersistedSubagentRecord, verbose: boolean) {
-    const interrupted =
-      saved.status === "queued" || saved.status === "running" || saved.status === "waiting";
+    const interrupted = isActiveStatus(saved.status);
     const displayName = getDisplayName(saved.type, this.registry);
     const duration = interrupted
       ? "unknown"

@@ -859,24 +859,27 @@ void test("session_start reports and stops proven orphan watches, not another li
   assert.equal((await live.call("job_list", {}, dir)).details.jobs[0].status, "running");
 });
 
-void test("a child parks for its jobs and queues completions without triggering an unmanaged turn", async (t) => {
+async function managedChild(t: Parameters<typeof tempDir>[0], accept = true) {
   const { provide } = await import("../../../packages/pi-session-tree/src/index.ts");
   const { ACTIVATION_SERVICE } =
     await import("../../../packages/pi-session-tree/src/activation.ts");
   const h = setup(t);
   const inbox: Array<() => void> = [];
-  let pending: (() => string | undefined) | undefined;
-  const withdraw = provide(h.ctx(h.dir).sessionManager.getSessionId(), ACTIVATION_SERVICE, {
+  const route = {
+    pending: undefined as (() => string | undefined) | undefined,
     track: (source: () => string | undefined) => {
-      pending = source;
+      route.pending = source;
       return () => {
-        pending = undefined;
+        route.pending = undefined;
       };
     },
-    enqueue: (deliver: () => void) => inbox.push(deliver),
+    enqueue: (deliver: () => void) => {
+      if (accept) inbox.push(deliver);
+      return accept;
+    },
     wait() {},
-  });
-  t.after(withdraw);
+  };
+  t.after(provide(h.ctx(h.dir).sessionManager.getSessionId(), ACTIVATION_SERVICE, route));
   await h.emit("session_start", { reason: "startup" });
   await tick(); // replacement delivery binding becomes live on setImmediate
   const gate = join(h.dir, "watch-ready");
@@ -885,20 +888,41 @@ void test("a child parks for its jobs and queues completions without triggering 
     { check: `test -f '${gate}'`, intervalSeconds: 0.1, timeoutSeconds: 10, label: "CI" },
     h.dir,
   );
-  assert.match(pending!()!, /CI/);
-  h.state.idle = false;
-  await h.emit("agent_start");
-  writeFileSync(gate, "");
+  return { h, inbox, route, finish: () => writeFileSync(gate, "") };
+}
+
+void test("a parked child queues completions for its manager instead of starting a turn", async (t) => {
+  const { h, inbox, route, finish } = await managedChild(t);
+  assert.match(route.pending!()!, /CI/);
+  finish();
   await waitUntil(() => inbox.length === 1, 5000, "managed completion queued");
-  await h.emit("agent_end");
-  await h.emit("agent_settled");
   assert.equal(h.sent.length, 0, "nothing starts a child outside the concurrency gate");
-  assert.equal(pending!(), undefined);
-  h.state.idle = true;
+  assert.equal(route.pending!(), undefined);
   inbox.shift()!();
   assert.equal(h.sent.length, 1);
   assert.equal(h.sent[0].options.triggerTurn, false);
   assert.match(messageText(h.sent[0].message), /CI/);
   await h.emit("session_shutdown", { reason: "quit" });
-  assert.equal(pending, undefined, "shutdown unregisters the pending-work source");
+  assert.equal(route.pending, undefined, "shutdown unregisters the pending-work source");
+});
+
+void test("a child's completion during a run is a follow-up of that run", async (t) => {
+  const { h, inbox, route, finish } = await managedChild(t);
+  h.state.idle = false;
+  await h.emit("agent_start");
+  finish();
+  await waitUntil(() => route.pending!() === "Pending job completion", 5000, "completion held");
+  assert.equal(h.sent.length, 0);
+  await h.emit("agent_end");
+  assert.equal(h.sent.length, 1);
+  assert.deepEqual(h.sent[0].options, { triggerTurn: true, deliverAs: "followUp" });
+  assert.equal(inbox.length, 0, "no extra activation for a completion the run already consumes");
+  assert.equal(route.pending!(), undefined);
+});
+
+void test("a completion the child can no longer take is reported lost", async (t) => {
+  const { h, finish } = await managedChild(t, false);
+  finish();
+  await waitUntil(() => h.notes.some((n) => /not delivered/.test(n.text)), 5000, "lost notice");
+  assert.equal(h.sent.length, 0);
 });

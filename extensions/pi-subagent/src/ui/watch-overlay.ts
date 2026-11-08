@@ -5,6 +5,7 @@ import { debugLog } from "#src/debug";
 import type { AgentConfigLookup } from "#src/config/agent-types";
 import type { SubagentManagerObserver } from "#src/lifecycle/subagent-manager";
 import type { Subagent } from "#src/lifecycle/subagent";
+import { isActiveStatus } from "#src/lifecycle/subagent-state";
 import { OVERLAY_WIDTH_PERCENT, type OverlayWidth } from "#src/settings";
 import { getDisplayName } from "#src/ui/display";
 import { renderWatchOverlay, watchHeight, type WatchSection } from "#src/ui/watch-renderer";
@@ -17,6 +18,7 @@ export type WatchAgent = Pick<
   | "type"
   | "description"
   | "isBackground"
+  | "hasParked"
   | "status"
   | "responseText"
   | "result"
@@ -31,6 +33,11 @@ export type WatchAgent = Pick<
     };
   };
 };
+/** Background agents, and foreground ones that parked and outlived their tool call. */
+function shownInBackground(record: WatchAgent): boolean {
+  return record.isBackground || record.hasParked === true;
+}
+
 export interface WatchSettings {
   readonly overlayWidth: OverlayWidth;
   readonly overlayDefaultOpen: boolean;
@@ -98,10 +105,7 @@ export class WatchOverlay implements SubagentManagerObserver {
       };
     });
     for (const record of this.manager.listAgents()) {
-      if (
-        record.isBackground &&
-        (record.status === "running" || record.status === "queued" || record.status === "waiting")
-      ) {
+      if (shownInBackground(record) && isActiveStatus(record.status)) {
         const watched = this.track(record);
         if (watched && record.responseText) watched.tail.note(record.responseText, "text");
         this.subscribe(record);
@@ -166,7 +170,7 @@ export class WatchOverlay implements SubagentManagerObserver {
   }
 
   private track(record: WatchAgent): Watched | undefined {
-    if (!this.context || !record.isBackground) return undefined;
+    if (!this.context || !shownInBackground(record)) return undefined;
     let watched = this.watched.get(record.id);
     if (!watched) {
       watched = { record, tail: new WatchTail() };
