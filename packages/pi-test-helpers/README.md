@@ -22,6 +22,6 @@ file needs its own `afterEach` list of cleanups.
 
 ## Modules
 
-| Module    | Exports                                                                         |
-| --------- | ------------------------------------------------------------------------------- |
-| `temp.ts` | `tempDir(cleanup, prefix?)`; `writeFiles(root, files)`, objects written as JSON |
+| Module    | Exports                                                                                                                                                                 |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `temp.ts` | `tempDir(cleanup, prefix?)`; `writeFiles(root, files)`, objects written as JSON; `settingsDirs(cleanup, filename)`, an agent dir and a project for layered config files |

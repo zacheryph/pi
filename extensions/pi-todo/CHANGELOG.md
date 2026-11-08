@@ -3,6 +3,11 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-08: Layered settings fixture from pi-test-helpers
+
+- `test/config.test.ts` lays out its agent directory and project with
+  `packages/pi-test-helpers`' `settingsDirs`. No source change.
+
 ## 2026-11-08: Test temp directories from pi-test-helpers
 
 - `test/config.test.ts` creates its directory with `packages/pi-test-helpers`'

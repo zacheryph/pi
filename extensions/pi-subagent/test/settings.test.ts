@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, onTestFinished } from "vitest";
 import {
   loadSettings,
   OVERLAY_WIDTH_PRESETS,
@@ -12,7 +12,7 @@ import {
   saveSettings,
 } from "#src/settings";
 import { captureWarn } from "#test/helpers/capture-warn";
-import { createSettingsDirs, type SettingsDirs } from "#test/helpers/tmp-settings-dirs";
+import { settingsDirs, type SettingsDirs } from "../../../packages/pi-test-helpers/src/temp.ts";
 
 /**
  * Tests for persistent settings. Uses two tmp directories:
@@ -24,18 +24,21 @@ describe("settings persistence", () => {
   let dirs: SettingsDirs;
   let globalDir: string;
   let projectDir: string;
-  let globalFile: () => string;
-  let projectFile: () => string;
+  let globalFile: string;
+  let projectFile: string;
   let writeGlobal: (obj: unknown) => void;
   let writeProject: (obj: unknown) => void;
 
   beforeEach(() => {
-    dirs = createSettingsDirs("subagent.json");
-    ({ globalDir, projectDir, globalFile, projectFile, writeGlobal, writeProject } = dirs);
-  });
-
-  afterEach(() => {
-    dirs.dispose();
+    dirs = settingsDirs(onTestFinished, "subagent.json");
+    ({
+      agentDir: globalDir,
+      cwd: projectDir,
+      globalFile,
+      projectFile,
+      writeGlobal,
+      writeProject,
+    } = dirs);
   });
 
   it("returns {} when both files are missing", () => {
@@ -43,9 +46,9 @@ describe("settings persistence", () => {
   });
 
   it("returns {} when both files are malformed JSON", () => {
-    writeFileSync(globalFile(), "not json {{");
+    writeFileSync(globalFile, "not json {{");
     mkdirSync(join(projectDir, ".pi"), { recursive: true });
-    writeFileSync(projectFile(), "also not json");
+    writeFileSync(projectFile, "also not json");
     expect(loadSettings(globalDir, projectDir)).toEqual({});
   });
 
@@ -84,15 +87,15 @@ describe("settings persistence", () => {
     saveSettings({ maxConcurrent: 2 }, projectDir);
 
     // Project file contains the new value
-    expect(JSON.parse(readFileSync(projectFile(), "utf-8"))).toEqual({ maxConcurrent: 2 });
+    expect(JSON.parse(readFileSync(projectFile, "utf-8"))).toEqual({ maxConcurrent: 2 });
     // Global file unchanged
-    expect(JSON.parse(readFileSync(globalFile(), "utf-8"))).toEqual({ maxConcurrent: 16 });
+    expect(JSON.parse(readFileSync(globalFile, "utf-8"))).toEqual({ maxConcurrent: 16 });
   });
 
   it("saveSettings creates <cwd>/.pi/ when missing", () => {
     expect(existsSync(join(projectDir, ".pi"))).toBe(false);
     saveSettings({ maxConcurrent: 4 }, projectDir);
-    expect(existsSync(projectFile())).toBe(true);
+    expect(existsSync(projectFile)).toBe(true);
   });
 
   it("round-trips defaultMaxTurns: 0 (unlimited marker)", () => {
@@ -232,11 +235,11 @@ describe("settings persistence", () => {
 
     it("returns {} when the JSON root is not an object (array, string, null)", () => {
       mkdirSync(join(projectDir, ".pi"), { recursive: true });
-      writeFileSync(projectFile(), '["not", "an", "object"]');
+      writeFileSync(projectFile, '["not", "an", "object"]');
       expect(loadSettings(globalDir, projectDir)).toEqual({});
-      writeFileSync(projectFile(), '"just a string"');
+      writeFileSync(projectFile, '"just a string"');
       expect(loadSettings(globalDir, projectDir)).toEqual({});
-      writeFileSync(projectFile(), "null");
+      writeFileSync(projectFile, "null");
       expect(loadSettings(globalDir, projectDir)).toEqual({});
     });
 
@@ -368,7 +371,7 @@ describe("settings persistence", () => {
   describe("save result + corrupt-file warning", () => {
     it("saveSettings returns true on success", () => {
       expect(saveSettings({ maxConcurrent: 2 }, projectDir)).toBe(true);
-      expect(JSON.parse(readFileSync(projectFile(), "utf-8"))).toEqual({ maxConcurrent: 2 });
+      expect(JSON.parse(readFileSync(projectFile, "utf-8"))).toEqual({ maxConcurrent: 2 });
     });
 
     it("saveSettings returns false when the target dir cannot be created", () => {
@@ -385,7 +388,7 @@ describe("settings persistence", () => {
 
     it("warns to console.warn when an existing file is malformed", () => {
       mkdirSync(join(projectDir, ".pi"), { recursive: true });
-      writeFileSync(projectFile(), "not valid json {{{");
+      writeFileSync(projectFile, "not valid json {{{");
       const warnings = captureWarn(() => {
         expect(loadSettings(globalDir, projectDir)).toEqual({});
       });
@@ -1260,15 +1263,11 @@ describe("SettingsManager", () => {
     let dirs: SettingsDirs;
 
     beforeEach(() => {
-      dirs = createSettingsDirs("subagent.json");
+      dirs = settingsDirs(onTestFinished, "subagent.json");
     });
 
-    afterEach(() => {
-      dirs.dispose();
-    });
-
-    function manager(emit = vi.fn(), cwd = dirs.projectDir): SettingsManager {
-      return new SettingsManager({ emit, cwd, agentDir: dirs.globalDir });
+    function manager(emit = vi.fn(), cwd = dirs.cwd): SettingsManager {
+      return new SettingsManager({ emit, cwd, agentDir: dirs.agentDir });
     }
 
     it("defaults thinking to shown and persists toggles both ways with live settings events", () => {
@@ -1281,7 +1280,7 @@ describe("SettingsManager", () => {
         level: "info",
       });
       expect(sm.overlayShowThinking).toBe(false);
-      expect(loadSettings(dirs.globalDir, dirs.projectDir).overlayShowThinking).toBe(false);
+      expect(loadSettings(dirs.agentDir, dirs.cwd).overlayShowThinking).toBe(false);
       expect(emit).toHaveBeenLastCalledWith("subagent:settings:changed", {
         settings: sm.snapshot(),
         persisted: true,
@@ -1290,7 +1289,7 @@ describe("SettingsManager", () => {
         message: "Overlay thinking: shown",
         level: "info",
       });
-      expect(loadSettings(dirs.globalDir, dirs.projectDir).overlayShowThinking).toBe(true);
+      expect(loadSettings(dirs.agentDir, dirs.cwd).overlayShowThinking).toBe(true);
     });
 
     it("loads project thinking preference over global and preserves it through unrelated edits", () => {
@@ -1311,7 +1310,7 @@ describe("SettingsManager", () => {
     });
 
     it("changes thinking live and reports warning even when persistence fails", () => {
-      const cwdFile = join(dirs.projectDir, "not-a-directory");
+      const cwdFile = join(dirs.cwd, "not-a-directory");
       writeFileSync(cwdFile, "");
       const emit = vi.fn();
       const sm = manager(emit, cwdFile);
@@ -1357,7 +1356,7 @@ describe("SettingsManager", () => {
           level: "info",
         });
         expect(sm.overlayWidth).toBe(width);
-        expect(loadSettings(dirs.globalDir, dirs.projectDir)).toEqual(sm.snapshot());
+        expect(loadSettings(dirs.agentDir, dirs.cwd)).toEqual(sm.snapshot());
         expect(emit).toHaveBeenCalledWith("subagent:settings:changed", {
           settings: sm.snapshot(),
           persisted: true,
@@ -1373,7 +1372,7 @@ describe("SettingsManager", () => {
         level: "info",
       });
       expect(sm.overlayDefaultOpen).toBe(true);
-      expect(loadSettings(dirs.globalDir, dirs.projectDir).overlayDefaultOpen).toBe(true);
+      expect(loadSettings(dirs.agentDir, dirs.cwd).overlayDefaultOpen).toBe(true);
       expect(emit).toHaveBeenLastCalledWith("subagent:settings:changed", {
         settings: sm.snapshot(),
         persisted: true,
@@ -1382,7 +1381,7 @@ describe("SettingsManager", () => {
         "Overlay default visibility: hidden (before explicit show/hide this session)",
       );
       expect(sm.overlayDefaultOpen).toBe(false);
-      expect(loadSettings(dirs.globalDir, dirs.projectDir).overlayDefaultOpen).toBe(false);
+      expect(loadSettings(dirs.agentDir, dirs.cwd).overlayDefaultOpen).toBe(false);
     });
 
     it("round-trips non-default overlay settings through unrelated edits and reload", () => {
@@ -1398,7 +1397,7 @@ describe("SettingsManager", () => {
     });
 
     it("keeps session values and emits persisted:false when persistence fails", () => {
-      const cwdFile = join(dirs.projectDir, "not-a-directory");
+      const cwdFile = join(dirs.cwd, "not-a-directory");
       writeFileSync(cwdFile, "");
       const emit = vi.fn();
       const sm = manager(emit, cwdFile);
