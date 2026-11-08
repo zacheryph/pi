@@ -2,26 +2,18 @@ import {
   SessionManager,
   type ContextEvent,
   type ContextEventResult,
-  type ExtensionAPI,
-  type ExtensionCommandContext,
-  type ExtensionContext,
-  type ExtensionEvent,
-  type ExtensionToolContext,
-  type RegisteredCommand,
-  type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import type { ToolResultMessage } from "@earendil-works/pi-ai";
-import type { TSchema } from "typebox";
 import { Check } from "typebox/value";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import todoExtension, { type TodoExtensionDependencies } from "../src/index.ts";
-import { DEFAULT_CONFIG, type TodoConfig } from "../src/config.ts";
+import { DEFAULT_CONFIG } from "../src/config.ts";
 import type { TodoRequest } from "../src/actions.ts";
-import { TODO_STATE_CUSTOM_TYPE, type TodoDetails, type TodoState } from "../src/state.ts";
-import { TODO_JOURNAL_TYPE, TODO_REVIEW_TYPE } from "#src/replay.ts";
+import { TODO_STATE_CUSTOM_TYPE, type TodoState } from "../src/state.ts";
+import { TODO_JOURNAL_TYPE } from "#src/replay.ts";
 import { showTodoBrowser } from "../src/ui/browser.ts";
 import { TODO_SNAPSHOT_EVENT, type TodoSnapshotEvent } from "#src/events.ts";
+import { CONTEXT_TYPE, harness, started, T0 } from "./harness.ts";
 import { plainTheme, ansiTheme, stripAnsi } from "../../../packages/pi-test-helpers/src/theme.ts";
 import { withSlot } from "../../../packages/pi-test-helpers/src/globals.ts";
 
@@ -30,126 +22,6 @@ import { withSlot } from "../../../packages/pi-test-helpers/src/globals.ts";
 vi.mock("../src/ui/browser.ts", () => ({ showTodoBrowser: vi.fn(async () => {}) }));
 afterEach(() => vi.clearAllMocks());
 
-type Handler = (event: ExtensionEvent, ctx: ExtensionContext) => unknown;
-type Command = Omit<RegisteredCommand, "name" | "sourceInfo">;
-const CONTEXT_TYPE = "todo:context";
-const T0 = Date.UTC(2026, 9, 22, 12);
-function harness(
-  options: {
-    session?: SessionManager;
-    mode?: ExtensionContext["mode"];
-    hasUI?: boolean;
-    config?: Partial<TodoConfig>;
-    dependencies?: TodoExtensionDependencies;
-  } = {},
-) {
-  const session = options.session ?? SessionManager.inMemory("/todo-test");
-  const tools: ToolDefinition<TSchema, TodoDetails>[] = [];
-  const commands = new Map<string, Command>();
-  const handlers = new Map<string, Handler[]>();
-  const ui = {
-    notify: vi.fn(),
-    setWidget: vi.fn(),
-    custom: vi.fn(),
-    input: vi
-      .fn<(title: string, initial?: string) => Promise<string | undefined>>()
-      .mockResolvedValue(undefined),
-    select: vi
-      .fn<(title: string, choices: string[]) => Promise<string | undefined>>()
-      .mockResolvedValue(undefined),
-    confirm: vi.fn<(title: string, message: string) => Promise<boolean>>().mockResolvedValue(true),
-  };
-  const ctx = {
-    cwd: session.getCwd(),
-    mode: options.mode ?? "print",
-    hasUI: options.hasUI ?? false,
-    ui,
-    sessionManager: session,
-  } as unknown as ExtensionCommandContext & ExtensionToolContext;
-  const pi = {
-    registerTool: vi.fn((tool: ToolDefinition<TSchema, TodoDetails>) => tools.push(tool)),
-    registerCommand: vi.fn((name: string, command: Command) => commands.set(name, command)),
-    on: vi.fn((name: string, handler: Handler) => {
-      handlers.set(name, [...(handlers.get(name) ?? []), handler]);
-      return () => {};
-    }),
-    appendEntry: vi.fn((type: string, data: unknown) => {
-      session.appendCustomEntry(type, data);
-    }),
-    sendMessage: vi.fn(),
-    sendUserMessage: vi.fn(),
-    events: { emit: vi.fn(), on: vi.fn(() => () => {}) },
-  };
-  const loadConfig = vi.fn(() => ({ ...DEFAULT_CONFIG, ...options.config }));
-  const saveConfig = vi.fn();
-  const clock = { now: T0 };
-  todoExtension(pi as unknown as ExtensionAPI, {
-    loadConfig,
-    saveConfig,
-    now: () => clock.now,
-    ...options.dependencies,
-  });
-  const emit = async (name: string, event: object = { type: name }) => {
-    let result: unknown;
-    for (const handler of handlers.get(name) ?? [])
-      result = await handler(event as ExtensionEvent, ctx);
-    return result;
-  };
-  /** Calls the per-action tool a request names, without its action field. */
-  const execute = (request: TodoRequest, signal?: AbortSignal) => {
-    const { action, ...input } = request;
-    const tool = tools.find((candidate) => candidate.name === `todo_${action}`);
-    if (!tool) throw new Error(`No todo tool for action: ${String(action)}`);
-    return tool.execute("call", input, signal, undefined, ctx);
-  };
-  const tool = (action: string) => {
-    const found = tools.find((candidate) => candidate.name === `todo_${action}`);
-    if (!found) throw new Error(`No todo tool for action: ${action}`);
-    return found;
-  };
-  const command = (name: string, args = "") => {
-    const registered = commands.get(name);
-    if (!registered) throw new Error(`Command not registered: ${name}`);
-    return registered.handler(args, ctx);
-  };
-  const context = async (messages: ContextEvent["messages"] = []) =>
-    (await emit("context", { type: "context", messages })) as ContextEventResult | undefined;
-  const state = async () => (await execute({ action: "list" })).details;
-  const snapshots = () =>
-    session.getEntries().filter((e) => e.type === "custom" && e.customType === TODO_JOURNAL_TYPE);
-  const noContinuation = () => {
-    expect(pi.sendMessage).not.toHaveBeenCalled();
-    expect(pi.sendUserMessage).not.toHaveBeenCalled();
-  };
-  const reviews = () =>
-    session.getEntries().filter((e) => e.type === "custom" && e.customType === TODO_REVIEW_TYPE);
-  return {
-    session,
-    tools,
-    commands,
-    handlers,
-    ui,
-    ctx,
-    pi,
-    loadConfig,
-    saveConfig,
-    clock,
-    emit,
-    execute,
-    tool,
-    command,
-    context,
-    state,
-    snapshots,
-    reviews,
-    noContinuation,
-  };
-}
-async function started(options: Parameters<typeof harness>[0] = {}) {
-  const env = harness(options);
-  await env.emit("session_start");
-  return env;
-}
 const add = (key: string, subject = `Task ${key}`): TodoRequest => ({
   action: "upsert",
   tasks: [{ key, subject }],

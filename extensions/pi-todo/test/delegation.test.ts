@@ -1,95 +1,32 @@
-import {
-  createEventBus,
-  SessionManager,
-  type ContextEvent,
-  type ContextEventResult,
-  type ExtensionAPI,
-  type ExtensionContext,
-  type ExtensionEvent,
-  type ExtensionToolContext,
-  type ToolDefinition,
-} from "@earendil-works/pi-coding-agent";
-import type { TSchema } from "typebox";
+import { createEventBus, SessionManager } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import todoExtension from "#src/index";
-import type { TodoRequest } from "#src/actions";
+import { resetSessionTree } from "../../../packages/pi-test-helpers/src/globals.ts";
+import { CONTEXT_TYPE, harness } from "./harness.ts";
 import { TODO_CLAIMS_TYPE } from "#src/claims";
-import { DEFAULT_CONFIG, type TodoConfig } from "#src/config";
+import { type TodoConfig } from "#src/config";
 import { TODO_SNAPSHOT_EVENT, type TodoSnapshotEvent } from "#src/events";
 import { replayTodoSession } from "#src/replay";
-import type { TodoDetails } from "#src/state";
-import { resetSessionTree } from "../../../packages/pi-test-helpers/src/globals.ts";
 
 afterEach(resetSessionTree);
-
-type Handler = (event: ExtensionEvent, ctx: ExtensionContext) => unknown;
-const CONTEXT_TYPE = "todo:context";
 
 /** One Pi session with pi-todo loaded and its own real event bus. */
 function session(config: Partial<TodoConfig> = {}) {
   const manager = SessionManager.inMemory("/todo-delegation");
   const bus = createEventBus();
-  const tools: ToolDefinition<TSchema, TodoDetails>[] = [];
-  const handlers = new Map<string, Handler[]>();
   const snapshots: TodoSnapshotEvent[] = [];
   bus.on(TODO_SNAPSHOT_EVENT, (data) => {
     snapshots.push(data as TodoSnapshotEvent);
   });
-  const pi = {
-    registerTool: vi.fn((tool: ToolDefinition<TSchema, TodoDetails>) => tools.push(tool)),
-    registerCommand: vi.fn(),
-    on: vi.fn((name: string, handler: Handler) => {
-      handlers.set(name, [...(handlers.get(name) ?? []), handler]);
-      return () => {};
-    }),
-    appendEntry: vi.fn((type: string, data: unknown) => {
-      manager.appendCustomEntry(type, data);
-    }),
-    sendMessage: vi.fn(),
-    sendUserMessage: vi.fn(),
-    events: { emit: bus.emit, on: bus.on },
-  };
-  todoExtension(pi as unknown as ExtensionAPI, {
-    loadConfig: () => ({ ...DEFAULT_CONFIG, ...config }),
-    saveConfig: vi.fn(),
-    now: () => 1_000,
-  });
-  const ctx = {
-    cwd: "/todo-delegation",
-    mode: "print",
-    hasUI: false,
-    ui: { notify: vi.fn(), setWidget: vi.fn() },
-    sessionManager: manager,
-  } as unknown as ExtensionContext & ExtensionToolContext;
-  const emit = async (name: string, event: object = { type: name }) => {
-    let result: unknown;
-    for (const handler of handlers.get(name) ?? [])
-      result = await handler(event as ExtensionEvent, ctx);
-    return result;
-  };
-  /** Calls the per-action tool a request names, without its action field. */
-  const execute = (request: TodoRequest) => {
-    const { action, ...input } = request;
-    const tool = tools.find((candidate) => candidate.name === `todo_${action}`);
-    if (!tool) throw new Error(`No todo tool for action: ${String(action)}`);
-    return tool.execute("call", input, undefined, undefined, ctx);
-  };
-  const text = async (request: TodoRequest) =>
-    (await execute(request)).content
-      .map((part) => (part.type === "text" ? part.text : ""))
-      .join("");
+  const env = harness({ session: manager, config, events: bus });
+  env.clock.now = 1_000;
   const tasks = async () =>
-    JSON.parse(await text({ action: "list" })).tasks as {
+    JSON.parse(await env.text({ action: "list" })).tasks as {
       key: string;
       status: string;
       dependsOn?: string[];
     }[];
   const context = async () => {
-    const result = (await emit("context", {
-      type: "context",
-      messages: [] satisfies ContextEvent["messages"],
-    })) as ContextEventResult | undefined;
-    const message = result?.messages?.find(
+    const message = (await env.context())?.messages?.find(
       (m) => m.role === "custom" && m.customType === CONTEXT_TYPE,
     );
     return message && "content" in message && typeof message.content === "string"
@@ -100,10 +37,10 @@ function session(config: Partial<TodoConfig> = {}) {
     id: manager.getSessionId(),
     manager,
     bus,
-    pi,
-    emit,
-    execute,
-    text,
+    pi: env.pi,
+    emit: env.emit,
+    execute: env.execute,
+    text: env.text,
     tasks,
     context,
     snapshots,
