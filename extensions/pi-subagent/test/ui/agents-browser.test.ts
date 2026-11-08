@@ -1,5 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi, onTestFinished } from "vitest";
@@ -15,6 +14,7 @@ import {
 import { Explorer, renderBlocks, type Block } from "../../../../packages/pi-ui/src/index.ts";
 import { plainTheme } from "../../../../packages/pi-test-helpers/src/theme.ts";
 import { tempDir } from "../../../../packages/pi-test-helpers/src/temp.ts";
+import { fakeCustomUi, fakeTui } from "../../../../packages/pi-test-helpers/src/ui.ts";
 
 const identity = plainTheme;
 const plainDetail = (blocks: unknown) => renderBlocks(blocks as Block[], 1000, identity).join("\n");
@@ -360,105 +360,56 @@ describe("showAgentsBrowser", () => {
   it.each([false, true])(
     "uses live project trust for composed browser preview (%s)",
     async (trusted) => {
-      const root = mkdtempSync(join(tmpdir(), "pi-browser-trust-"));
-      try {
-        mkdirSync(join(root, "fragments"));
-        writeFileSync(join(root, "fragments", "aws.md"), "TRUSTED FRAGMENT CONTENT");
-        const r = registry(
-          agent({
-            source: "project",
-            sourcePath: join(root, "auditor.md"),
-            fragments: ["aws"],
-            systemPrompt: "RAW BODY",
-          }),
-        );
-        type Factory = Parameters<ExtensionContext["ui"]["custom"]>[0];
-        const { KeybindingsManager, TUI_KEYBINDINGS } = await import("@earendil-works/pi-tui");
-        const components: Awaited<ReturnType<Factory>>[] = [];
-        const ui = {
-          notify: vi.fn(),
-          custom: vi.fn(async (factory: Factory, _options?: unknown) => {
-            let result: unknown;
-            components.push(
-              await factory(
-                {
-                  mode: "regular",
-                  terminal: { rows: 100, columns: 160 },
-                  requestRender() {},
-                } as Parameters<Factory>[0],
-                {
-                  fg: (_token: string, text: string) => text,
-                  bold: (text: string) => text,
-                } as Parameters<Factory>[1],
-                new KeybindingsManager(TUI_KEYBINDINGS) as Parameters<Factory>[2],
-                (value) => {
-                  result = value;
-                },
-              ),
-            );
-            return result;
-          }),
-        };
-        const isProjectTrusted = vi.fn(() => trusted);
-        await showAgentsBrowser(
-          {
-            mode: "tui",
-            hasUI: true,
-            ui: ui as unknown as ExtensionContext["ui"],
-            isProjectTrusted,
-          },
-          r,
-        );
-        const browser = components[0] as Explorer;
-        browser.handleInput("auditor");
-        browser.handleInput("\r");
-        const text = browser.render(160).join("\n");
-        expect(isProjectTrusted).toHaveBeenCalledTimes(1);
-        expect(text).toContain("Composed instructions");
-        if (trusted) expect(text).toContain("TRUSTED FRAGMENT CONTENT");
-        else {
-          expect(text).toContain("require Pi project trust");
-          expect(text).not.toContain("TRUSTED FRAGMENT CONTENT");
-        }
-      } finally {
-        rmSync(root, { recursive: true, force: true });
+      const root = tempDir(onTestFinished, "pi-browser-trust-");
+      mkdirSync(join(root, "fragments"));
+      writeFileSync(join(root, "fragments", "aws.md"), "TRUSTED FRAGMENT CONTENT");
+      const r = registry(
+        agent({
+          source: "project",
+          sourcePath: join(root, "auditor.md"),
+          fragments: ["aws"],
+          systemPrompt: "RAW BODY",
+        }),
+      );
+      const mounted = fakeCustomUi<Explorer>({ tui: { ...fakeTui(100, 160), mode: "regular" } });
+      const { components } = mounted;
+      const ui = { notify: vi.fn(), custom: mounted.custom };
+      const isProjectTrusted = vi.fn(() => trusted);
+      await showAgentsBrowser(
+        {
+          mode: "tui",
+          hasUI: true,
+          ui: ui as unknown as ExtensionContext["ui"],
+          isProjectTrusted,
+        },
+        r,
+      );
+      const browser = components[0]!;
+      browser.handleInput("auditor");
+      browser.handleInput("\r");
+      const text = browser.render(160).join("\n");
+      expect(isProjectTrusted).toHaveBeenCalledTimes(1);
+      expect(text).toContain("Composed instructions");
+      if (trusted) expect(text).toContain("TRUSTED FRAGMENT CONTENT");
+      else {
+        expect(text).toContain("require Pi project trust");
+        expect(text).not.toContain("TRUSTED FRAGMENT CONTENT");
       }
     },
   );
 
   it("handles no UI and passes effective snapshot to actual browser factory", async () => {
     const r = registry();
-    type Factory = Parameters<ExtensionContext["ui"]["custom"]>[0];
-    const { KeybindingsManager, TUI_KEYBINDINGS } = await import("@earendil-works/pi-tui");
-    const components: Awaited<ReturnType<Factory>>[] = [];
-    const ui = {
-      notify: vi.fn(),
-      custom: vi.fn(async (factory: Factory, _options?: unknown) => {
-        const tui = { mode: "regular", terminal: { rows: 100, columns: 120 }, requestRender() {} };
-        let result: unknown;
-        components.push(
-          await factory(
-            tui as Parameters<Factory>[0],
-            {
-              fg: (_token: string, text: string) => text,
-              bold: (text: string) => text,
-            } as Parameters<Factory>[1],
-            new KeybindingsManager(TUI_KEYBINDINGS) as Parameters<Factory>[2],
-            (value) => {
-              result = value;
-            },
-          ),
-        );
-        return result;
-      }),
-    };
+    const mounted = fakeCustomUi<Explorer>({ tui: { ...fakeTui(100, 120), mode: "regular" } });
+    const { components } = mounted;
+    const ui = { notify: vi.fn(), custom: mounted.custom };
     const ctx = { mode: "tui" as const, hasUI: false, ui: ui as unknown as ExtensionContext["ui"] };
     await showAgentsBrowser(ctx, r);
     expect(ui.custom).not.toHaveBeenCalled();
     await showAgentsBrowser({ ...ctx, hasUI: true }, r, { defaultMaxTurns: 20 });
     expect(ui.custom).toHaveBeenCalledOnce();
     expect(ui.custom.mock.calls[0][1]).toMatchObject({ overlay: true });
-    const browser = components[0] as Explorer;
+    const browser = components[0]!;
     browser.handleInput("auditor");
     browser.handleInput("\r");
     expect(browser.render(120).join("\n")).toContain("20 (extension default)");

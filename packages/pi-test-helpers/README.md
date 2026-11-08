@@ -30,6 +30,7 @@ file needs its own `afterEach` list of cleanups.
 | `render.ts`  | _vitest_. `expectPadded(row, width)` (the AGENTS.md spacing rule), `expectBounded(lines, width, height?)`, `NARROW_WIDTHS`, `WIDE_TEXT`                                 |
 | `globals.ts` | `slots`, `clearSlots(...keys)`, `withSlot(key, value, run)`, `resetSessionTree()`                                                                                       |
 | `fake-pi.ts` | _vitest_. `fakePi(extra?)`: spies for `on`, `registerTool`, `registerCommand`, `appendEntry`, `sendMessage`, a working `events` bus; `emit`, `runTool`, `runCommand`    |
+| `ui.ts`      | _vitest_. `fakeCustomUi({ theme, tui, awaitDone })`: a `ui.custom` spy that mounts each component; `fakeTui(rows, columns)`, `keybindings()`                            |
 
 ## Unit tests of an extension factory
 
