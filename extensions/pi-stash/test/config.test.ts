@@ -1,15 +1,14 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, onTestFinished, vi } from "vitest";
+import { tempDir } from "../../../packages/pi-test-helpers/src/temp.ts";
 import { DEFAULT_CONFIG, loadStashConfig } from "../src/config.ts";
 let root: string;
 beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), "stash-config-"));
+  root = tempDir(onTestFinished, "stash-config-");
 });
 afterEach(() => {
   vi.restoreAllMocks();
-  rmSync(root, { recursive: true, force: true });
 });
 it("loads global limits and ignores project settings", () => {
   writeFileSync(join(root, "stash.json"), JSON.stringify({ retentionDays: 45, maxEntryBytes: -1 }));

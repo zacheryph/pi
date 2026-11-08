@@ -6,10 +6,10 @@
  * `test/session/provider-inheritance.test.ts`, but those tests pass whether or
  * not the root calls it — only this file fails if the wiring is removed.
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, onTestFinished } from "vitest";
+import { tempDir } from "../../../packages/pi-test-helpers/src/temp.ts";
 
 const sdk = vi.hoisted(() => {
   interface Recorded {
@@ -440,7 +440,7 @@ describe("composition root: prompt-inheritance wiring", () => {
     let projectDir: string;
 
     beforeEach(() => {
-      projectDir = mkdtempSync(join(tmpdir(), "pi-root-inherit-"));
+      projectDir = tempDir(onTestFinished, "pi-root-inherit-");
       mkdirSync(join(projectDir, ".pi"), { recursive: true });
       writeFileSync(
         join(projectDir, ".pi", "subagent.json"),
@@ -452,7 +452,6 @@ describe("composition root: prompt-inheritance wiring", () => {
 
     afterEach(() => {
       vi.mocked(process.cwd).mockRestore();
-      rmSync(projectDir, { recursive: true, force: true });
     });
 
     it("answers portable for a provider the operator configured", async () => {
@@ -472,12 +471,8 @@ describe("composition root: prompt-inheritance wiring", () => {
     let workspace: string;
 
     beforeEach(() => {
-      workspace = mkdtempSync(join(tmpdir(), "pi-root-context-"));
+      workspace = tempDir(onTestFinished, "pi-root-context-");
       writeFileSync(join(workspace, "AGENTS.md"), "Worktree rules.");
-    });
-
-    afterEach(() => {
-      rmSync(workspace, { recursive: true, force: true });
     });
 
     it("reads the directory it is asked about, not the parent's", async () => {

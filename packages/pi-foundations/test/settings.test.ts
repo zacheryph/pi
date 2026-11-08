@@ -1,7 +1,7 @@
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
+import { tempDir } from "../../pi-test-helpers/src/temp.ts";
 import {
   loadLayeredSettings,
   patchSettingsFile,
@@ -11,12 +11,9 @@ import {
 
 let root: string;
 beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), "pi-foundations-"));
+  root = tempDir(onTestFinished, "pi-foundations-");
 });
-afterEach(() => {
-  vi.restoreAllMocks();
-  rmSync(root, { recursive: true, force: true });
-});
+afterEach(() => vi.restoreAllMocks());
 const sanitize = (raw: unknown): { count?: number } => {
   const count = (raw as { count?: unknown } | null)?.count;
   return typeof count === "number" ? { count } : {};

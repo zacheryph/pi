@@ -1,14 +1,13 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { beforeEach, expect, it } from "vitest";
+import { tempDir } from "#test/helpers";
 import { DEFAULT_CONFIG, loadDashboardConfig } from "../src/config.ts";
 let root: string, path: string;
 beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), "dashboard-config-"));
+  root = tempDir();
   path = join(root, "dashboard.json");
 });
-afterEach(() => rmSync(root, { recursive: true, force: true }));
 it("uses silent defaults for missing and malformed files", () => {
   expect(loadDashboardConfig(path)).toEqual(DEFAULT_CONFIG);
   writeFileSync(path, "{bad");

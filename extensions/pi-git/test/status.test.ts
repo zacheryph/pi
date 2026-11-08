@@ -1,7 +1,7 @@
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { chmodSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
+import { tempDir } from "../../../packages/pi-test-helpers/src/temp.ts";
 import { isTransientError, withRetry } from "../src/retry.ts";
 import { checksSettled } from "../src/prs.ts";
 import {
@@ -114,15 +114,10 @@ describe("fetchWithGh", () => {
 });
 
 describe("runGh", () => {
-  const dirs: string[] = [];
-  afterEach(() => {
-    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
-    vi.unstubAllEnvs();
-  });
+  afterEach(() => vi.unstubAllEnvs());
   /** A `gh` on PATH that prints `stdout`, or `stderr` and exits 1. */
   const fakeGh = (script: string) => {
-    const dir = mkdtempSync(join(tmpdir(), "fake-gh-"));
-    dirs.push(dir);
+    const dir = tempDir(onTestFinished, "fake-gh-");
     const gh = join(dir, "gh");
     writeFileSync(gh, `#!/bin/sh\n${script}\n`);
     chmodSync(gh, 0o755);
@@ -136,7 +131,7 @@ describe("runGh", () => {
   });
 
   it("reports a missing or signed-out gh as unavailable, and other failures as errors", async () => {
-    vi.stubEnv("PATH", mkdtempSync(join(tmpdir(), "no-gh-")));
+    vi.stubEnv("PATH", tempDir(onTestFinished, "no-gh-"));
     await expect(runGh(["pr", "view"])).rejects.toBeInstanceOf(GhUnavailable);
     fakeGh('echo "To get started with GitHub CLI, please run:  gh auth login" >&2; exit 4');
     await expect(runGh(["pr", "view"])).rejects.toBeInstanceOf(GhUnavailable);

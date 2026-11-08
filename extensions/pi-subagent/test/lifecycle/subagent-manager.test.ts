@@ -1,7 +1,6 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi, onTestFinished } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import { ConcurrencyLimiter } from "#src/lifecycle/concurrency-limiter";
 import type { CreateSubagentSessionParams } from "#src/lifecycle/create-subagent-session";
@@ -27,6 +26,7 @@ import {
 } from "#test/helpers/mock-session";
 import { STUB_CTX, STUB_SNAPSHOT } from "#test/helpers/stub-ctx";
 import { turnLoopResult } from "#test/helpers/turn-loop-result";
+import { tempDir } from "../../../../packages/pi-test-helpers/src/temp.ts";
 
 /** Default max concurrent background agents (matches production default). */
 const DEFAULT_MAX_CONCURRENT = 4;
@@ -1857,7 +1857,7 @@ describe("SubagentManager — cold resume", () => {
   let manager: SubagentManager;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "cold-resume-manager-"));
+    dir = tempDir(onTestFinished, "cold-resume-manager-");
     transcript = join(dir, "agent.jsonl");
     writeFileSync(transcript, "{}\n");
     cwd = join(dir, "worktree");
@@ -1866,7 +1866,6 @@ describe("SubagentManager — cold resume", () => {
 
   afterEach(async () => {
     await manager.dispose();
-    rmSync(dir, { recursive: true, force: true });
   });
 
   const savedRecord = (

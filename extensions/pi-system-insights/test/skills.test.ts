@@ -1,5 +1,5 @@
-import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { symlinkSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import type {
   AssistantMessage,
@@ -11,13 +11,14 @@ import type {
 } from "@earendil-works/pi-ai";
 import { detailText, field, section } from "#test/helpers";
 import { SessionManager, type SessionEntry, type Skill } from "@earendil-works/pi-coding-agent";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import {
   buildSkillsView,
   normalizeSkillPath,
   SKILL_READ_ENTRY,
   skillReadEvidence,
 } from "../src/skills.js";
+import { tempDir } from "../../../packages/pi-test-helpers/src/temp.ts";
 
 const cwd = "/project";
 const file = "/project/skills/sample/SKILL.md";
@@ -104,11 +105,6 @@ function item(entries: readonly SessionEntry[], discovered = skill()) {
   return buildSkillsView([discovered], entries, cwd).items![0]!;
 }
 
-const tempDirs: string[] = [];
-afterEach(() => {
-  for (const path of tempDirs.splice(0)) rmSync(path, { recursive: true, force: true });
-});
-
 describe("path normalization and live read evidence", () => {
   it("normalizes relative, absolute, dot segments, tilde and missing paths", () => {
     expect(normalizeSkillPath("./skills/sample/../sample/SKILL.md", cwd)).toBe(file);
@@ -120,8 +116,7 @@ describe("path normalization and live read evidence", () => {
   });
 
   it("canonicalizes symlinks and matches discovery paths without reading contents", () => {
-    const dir = mkdtempSync(join(tmpdir(), "pi-insights-"));
-    tempDirs.push(dir);
+    const dir = tempDir(onTestFinished, "pi-insights-");
     const actual = join(dir, "SKILL.md");
     const link = join(dir, "alias.md");
     writeFileSync(actual, "SECRET FILE CONTENT NEVER DISPLAYED");

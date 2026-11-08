@@ -3,6 +3,12 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-08: Test temp directories from pi-test-helpers
+
+- Tests create temp directories with `packages/pi-test-helpers`' `tempDir`,
+  which removes them when the test ends, instead of `mkdtempSync` with an
+  `afterEach` or `finally` cleanup. No source change.
+
 ## 2026-11-06: Supply tools required by todo handoffs
 
 - Add synchronous `subagent:session:prepare` with `requireTools(names)` so handoff

@@ -3,7 +3,7 @@ import { request } from "node:http";
 import { connect, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach } from "vitest";
+import { afterEach, onTestFinished } from "vitest";
 import { encode, type ReporterMessage, type SessionSnapshot } from "#src/protocol";
 
 const cleanups: Array<() => unknown> = [];
@@ -12,7 +12,9 @@ afterEach(async () => {
 });
 
 export function onCleanup(cleanup: () => unknown): void {
-  cleanups.push(cleanup);
+  onTestFinished(async () => {
+    await cleanup();
+  });
 }
 
 /** Short prefix: unix socket paths are limited to about 104 bytes on macOS. */

@@ -1,7 +1,7 @@
 import { existsSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, onTestFinished } from "vitest";
 import { SESSION_TREE_KEY } from "../../../packages/pi-session-tree/src/index.ts";
 import { GIT_SNAPSHOT_EVENT, type GitSnapshotEvent } from "../src/events.ts";
 import piGit from "../src/index.ts";
@@ -98,12 +98,11 @@ function harness(options: {
 
 let box: Sandbox;
 beforeEach(() => {
-  box = sandbox();
+  box = sandbox(onTestFinished);
   clock = 1_000;
   frozen = false;
 });
 afterEach(() => {
-  box.cleanup();
   // eslint-disable-next-line @typescript-eslint/no-dynamic-delete -- Symbol-keyed global in tests
   delete (globalThis as Record<symbol, unknown>)[SESSION_TREE_KEY];
 });

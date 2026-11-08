@@ -1,13 +1,12 @@
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+// Installed renderer is not public SDK API; tests only.
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-// Installed renderer is not public SDK API; tests only.
 import {
   buildSystemPrompt,
   normalizeBuildSystemPromptOptions,
 } from "../../../node_modules/@earendil-works/pi-coding-agent/dist/core/system-prompt.js";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, onTestFinished } from "vitest";
 import {
   MAIN_AGENT_ENTRY,
   MAIN_AGENT_REQUIRED_TOOLS,
@@ -21,6 +20,7 @@ import { loadCustomAgents } from "#src/config/custom-agents";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import type { AgentConfig } from "#src/types";
 import { makeModel } from "#test/helpers/make-model";
+import { tempDir } from "../../../packages/pi-test-helpers/src/temp.ts";
 
 function harness(mode: ExtensionContext["mode"] = "tui") {
   const handlers = new Map<string, Function[]>();
@@ -744,14 +744,9 @@ describe("main profile defaults and persistent body", () => {
   });
 });
 
-const dirs: string[] = [];
-afterEach(() => {
-  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
-});
 describe("main profile discovery", () => {
   function project(content: string) {
-    const cwd = mkdtempSync(join(tmpdir(), "main-profile-"));
-    dirs.push(cwd);
+    const cwd = tempDir(onTestFinished, "main-profile-");
     mkdirSync(join(cwd, ".pi", "agents"), { recursive: true });
     writeFileSync(join(cwd, ".pi", "agents", "unique-main-reader.md"), content);
     const h = harness();
