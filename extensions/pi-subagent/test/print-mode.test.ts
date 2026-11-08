@@ -17,54 +17,14 @@ import {
   createSubagentSessionStub,
   toSubagentSession,
 } from "./helpers/mock-session";
+import { subagentPi } from "./helpers/subagent-pi.ts";
 
-function makePi() {
-  const tools = new Map<string, any>();
-  const handlers = new Map<string, any[]>();
-  const eventHandlers = new Map<string, any>();
-
-  return {
-    pi: {
-      registerMessageRenderer: vi.fn(),
-      registerFlag: vi.fn(),
-      getFlag: vi.fn(),
-      getActiveTools: vi.fn(() => []),
-      registerTool: vi.fn((tool: any) => {
-        tools.set(tool.name, tool);
-      }),
-      registerCommand: vi.fn(),
-      registerShortcut: vi.fn(),
-      on: vi.fn((event: string, handler: any) => {
-        const registered = handlers.get(event);
-        if (registered) registered.push(handler);
-        else handlers.set(event, [handler]);
-      }),
-      events: {
-        emit: vi.fn(),
-        on: vi.fn((event: string, handler: any) => {
-          eventHandlers.set(event, handler);
-          return vi.fn();
-        }),
-      },
-      appendEntry: vi.fn(),
-      sendMessage: vi.fn(() => {
-        throw new Error("stale extension context");
-      }),
-    } as any,
-    tools,
-    handlers,
-    /**
-     * Invoke every handler registered for `event`, in registration order — Pi fans
-     * an event out to all of one extension's handlers for it, so a fixture keyed
-     * one-handler-per-event would silently keep only the last registration.
-     */
-    fire: async (event: string, ...args: any[]) => {
-      for (const handler of handlers.get(event) ?? []) {
-        await handler(...args);
-      }
-    },
-  };
-}
+const makePi = () =>
+  subagentPi({
+    sendMessage: vi.fn(() => {
+      throw new Error("stale extension context");
+    }),
+  });
 
 function makeHeadlessCtx() {
   return {
@@ -107,7 +67,7 @@ describe("print mode background notifications", () => {
     const ctx = makeHeadlessCtx();
     await fire("session_start", {}, ctx);
 
-    const agentTool = tools.get("subagent_start");
+    const agentTool = tools.get("subagent_start")!;
     await agentTool.execute(
       "tool-call-1",
       {

@@ -3,6 +3,13 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-08: One fake pi for whole-extension tests
+
+- `test/helpers/subagent-pi.ts`: the fake `pi` with every member the composition
+  root touches at load, on `packages/pi-test-helpers`' `fakePi`, replacing the
+  copies in `composition-root.test.ts` and `print-mode.test.ts`. No source
+  change.
+
 ## 2026-11-08: Main-profile harness on fakePi
 
 - `main-agent-profile.test.ts` builds its fake `pi` on `packages/pi-test-
