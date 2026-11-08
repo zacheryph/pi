@@ -3,6 +3,14 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-08: SDK tests share one child-session fixture
+
+- `test/helpers/sdk.ts`: `offlineAgentDir` (agent directory, settings and an
+  offline `ModelRuntime`, undone when the test ends), `realChildSession`
+  (`createSubagentSession` wired to real factories on a faux model),
+  `lifecycleLog`, `spawn`, `capture`, `lastResult` and `agentIdIn`. The
+  `*-sdk.test.ts` files each built these by hand. No source change.
+
 ## 2026-11-08: Faux sessions from pi-test-helpers
 
 - Parent sessions in `records-sdk` and `cold-resume-sdk` use `packages/pi-test-
