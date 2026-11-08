@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { createJobsExtension, CUSTOM_TYPE, liveManagers } from "../src/extension.ts";
 import { piAiEntry, runtimeDirectory } from "./runtime.ts";
 import defaultExtension from "../src/extension.ts";
-import { alive, readPid, sleep, tempDir, waitUntil } from "./helpers.ts";
+import { alive, sleep, tempDir, waitForPid, waitUntil } from "./helpers.ts";
 import { JobManager } from "../src/jobs.ts";
 import { sessionOwners } from "../src/ownership.ts";
 
@@ -220,14 +220,14 @@ void test("job_list, job_read and job_kill", async (t) => {
     },
     dir,
   );
-  await waitUntil(() => existsSync(join(dir, "gc.pid")));
+  const gc = await waitForPid(join(dir, "gc.pid"));
   const list = await call("job_list", {}, dir);
   assert.match(list.content[0].text, /^Running \(1\):\n  j1 · job · running · \d+s — long$/);
   const out = await call("job_read", { id: "j1", tailLines: 5 }, dir);
   assert.match(out.content[0].text, /log: .*\noutput:\nstarted$/);
   const killed = await call("job_kill", { id: "j1" }, dir);
   assert.match(killed.content[0].text, /^Stopped: j1 · job · killed · exit 143 \(likely SIGTERM\)/);
-  await waitUntil(() => !alive(readPid(join(dir, "gc.pid"))), 3000, "grandchild to die");
+  await waitUntil(() => !alive(gc), 3000, "grandchild to die");
   const again = await call("job_kill", { id: "j1" }, dir);
   assert.match(again.content[0].text, /^Already finished: /);
   await sleep(200);
@@ -262,8 +262,7 @@ void test("session_shutdown kills running jobs without notifying", async (t) => 
     dir,
   );
   await call("job_watch", { check: "sleep 100", intervalSeconds: 1, timeoutSeconds: 60 }, dir);
-  await waitUntil(() => existsSync(join(dir, "gc.pid")));
-  const gc = readPid(join(dir, "gc.pid"));
+  const gc = await waitForPid(join(dir, "gc.pid"));
   await emit("session_shutdown", { type: "session_shutdown", reason: "quit" });
   await waitUntil(() => !alive(gc), 3000, "grandchild to die");
   await sleep(200);
@@ -302,7 +301,9 @@ void test("pi exiting without session_shutdown kills job groups; >10 instances a
   assert.equal(res.status, 0, res.stderr);
   assert.equal(res.stdout.trim(), "delta=1");
   assert.doesNotMatch(res.stderr, /MaxListeners/);
-  const pids = Array.from({ length: 12 }, (_, i) => readPid(join(dir, `gc-${i}.pid`)));
+  const pids = await Promise.all(
+    Array.from({ length: 12 }, (_, i) => waitForPid(join(dir, `gc-${i}.pid`))),
+  );
   await waitUntil(
     () => pids.every((p) => !alive(p)),
     3000,
@@ -330,7 +331,7 @@ void test("host exit while a finished job's TERM-ignoring descendant awaits esca
     timeout: 15_000,
   });
   assert.equal(res.status, 0, res.stdout + res.stderr);
-  const d = readPid(join(dir, "d.pid"));
+  const d = await waitForPid(join(dir, "d.pid"));
   await waitUntil(
     () => !alive(d),
     1500,
@@ -365,8 +366,7 @@ void test("manager stays in the exit-hook set until shutdown has finished", asyn
     },
     dir,
   );
-  await waitUntil(() => existsSync(join(dir, "gc.pid")));
-  const gc = readPid(join(dir, "gc.pid"));
+  const gc = await waitForPid(join(dir, "gc.pid"));
   const live = liveManagers();
   const ours = [...live].find((m) => m.list().some((j) => j.command.includes("stays-live")))!;
   assert.ok(ours);

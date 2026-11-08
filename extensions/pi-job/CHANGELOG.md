@@ -10,6 +10,11 @@ recorded in [UPSTREAM.md](UPSTREAM.md).
   `kill(pid, 0)` kept succeeding and the host-exit escalation test timed out.
 - Skip the unopenable-log-file test as root, which ignores directory
   permissions, so the expected EACCES never happens.
+- Read every test PID with `waitForPid`. The 2026-11-04 fix covered one test;
+  the rest still read a PID file as soon as it existed, and an empty read gave
+  PID 0. That flaked `session_shutdown kills running jobs without notifying` in
+  CI. `alive()` now throws on a non-positive PID, and the escaper cleanup no
+  longer risks `kill(0, SIGKILL)` on the test runner's own process group.
 
 ## 2026-11-04: Shutdown test PID readiness
 

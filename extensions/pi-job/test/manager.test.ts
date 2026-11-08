@@ -80,9 +80,8 @@ void test("timeout kills the whole process group, grandchild included", async (t
   const { dir, done, manager } = setup(t);
   const cmd = `sleep 100 & echo $! > gc.pid; echo $$ > leader.pid; sleep 100`;
   manager.start({ command: cmd, cwd: dir, timeoutSeconds: 1 });
-  await waitUntil(() => existsSync(join(dir, "gc.pid")) && existsSync(join(dir, "leader.pid")));
-  const gc = readPid(join(dir, "gc.pid"));
-  const leader = readPid(join(dir, "leader.pid"));
+  const gc = await waitForPid(join(dir, "gc.pid"));
+  const leader = await waitForPid(join(dir, "leader.pid"));
   assert.ok(alive(gc) && alive(leader));
   await waitUntil(() => done.length === 1, 5000, "timeout");
   assert.equal(done[0].status, "timed_out");
@@ -96,8 +95,7 @@ void test("SIGTERM-ignoring group is SIGKILLed after the grace period", async (t
     cwd: dir,
     timeoutSeconds: 0.5,
   });
-  await waitUntil(() => existsSync(join(dir, "gc.pid")));
-  const gc = readPid(join(dir, "gc.pid"));
+  const gc = await waitForPid(join(dir, "gc.pid"));
   await waitUntil(() => done.length === 1, 5000, "timeout");
   assert.equal(done[0].status, "timed_out");
   assert.equal(done[0].signal, "SIGKILL");
@@ -109,7 +107,7 @@ void test("background leftovers of a finished job are stopped", async (t) => {
   manager.start({ command: `sleep 100 & echo $! > gc.pid`, cwd: dir, timeoutSeconds: 10 });
   await waitUntil(() => done.length === 1);
   assert.equal(done[0].status, "succeeded");
-  const gc = readPid(join(dir, "gc.pid"));
+  const gc = await waitForPid(join(dir, "gc.pid"));
   await waitUntil(() => !alive(gc), 3000, "leftover to die");
 });
 
@@ -120,8 +118,7 @@ void test("kill stops the group, returns the final state and sends no notificati
     cwd: dir,
     timeoutSeconds: 60,
   });
-  await waitUntil(() => existsSync(join(dir, "gc.pid")));
-  const gc = readPid(join(dir, "gc.pid"));
+  const gc = await waitForPid(join(dir, "gc.pid"));
   const killed = await manager.kill(job.id);
   assert.equal(killed.status, "killed");
   assert.equal(killed.killedBy, "request");
@@ -247,11 +244,8 @@ void test("a hung check is killed by the per-check timeout and the watch continu
   await waitUntil(() => done.length === 1, 5000, "watch");
   assert.equal(done[0].status, "matched");
   assert.equal(done[0].checks, 2);
-  await waitUntil(
-    () => !alive(readPid(join(dir, "gc.pid"))),
-    3000,
-    "hung check's grandchild to die",
-  );
+  const gc = await waitForPid(join(dir, "gc.pid"));
+  await waitUntil(() => !alive(gc), 3000, "hung check's grandchild to die");
   assert.match(readFileSync(done[0].logPath, "utf8"), /--- check 1 · .* · timed out ---/);
 });
 
@@ -421,11 +415,8 @@ void test("group signals are only sent while the group leader exists (no PGID-re
   await sleep(100);
   await manager.kill(k.id);
   await waitUntil(() => done.length === 2, 5000, "exit and timeout");
-  await waitUntil(
-    () => existsSync(join(dir, "left.pid")) && !alive(readPid(join(dir, "left.pid"))),
-    5000,
-    "leftover to be killed",
-  );
+  const left = await waitForPid(join(dir, "left.pid"));
+  await waitUntil(() => !alive(left), 5000, "leftover to be killed");
   await waitUntil(() => !manager.ownsProcesses, 5000, "all supervisors reaped");
   // Escalation timers are cleared when a supervisor is reaped, so none can fire after this.
   assert.deepEqual(violations, []);
@@ -444,7 +435,7 @@ void test("leader exits while a TERM-ignoring descendant survives: ownership hol
   });
   await waitUntil(() => done.length === 1, 5000, "job to finish");
   assert.equal(done[0].status, "succeeded");
-  const d = readPid(join(dir, "d.pid"));
+  const d = await waitForPid(join(dir, "d.pid"));
   // The supervisor has sent SIGTERM (ignored) and waits the 2 s grace period before SIGKILL.
   assert.ok(alive(d), "descendant ignores SIGTERM, so it lives until the escalation");
   assert.equal(
@@ -466,9 +457,13 @@ function escaper(t: Parameters<typeof tempDir>[0]) {
     `pi-job-esc-${process.pid}-${Math.random().toString(36).slice(2)}.pid`,
   );
   t.after(() => {
-    try {
-      process.kill(readPid(pidFile), "SIGKILL");
-    } catch {}
+    // An empty file reads as PID 0, and kill(0) would signal the test runner's own group.
+    const pid = existsSync(pidFile) ? readPid(pidFile) : 0;
+    if (Number.isSafeInteger(pid) && pid > 0) {
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch {}
+    }
     rmSync(pidFile, { force: true });
   });
   const command = `perl -e 'use POSIX; if (fork() == 0) { POSIX::setsid(); open(my $f, ">", "${pidFile}"); print $f $$; close $f; sleep 20; exit 0 } exit 0'`;
@@ -489,11 +484,8 @@ void test("watch: an escaped descendant holding stdout cannot stall the check", 
   assert.equal(done[0].status, "matched");
   assert.equal(done[0].lastCheck?.output, "checked");
   assert.ok(Date.now() - started < 4000);
-  await waitUntil(() => existsSync(esc.pidFile), 2000, "escaped pid");
-  assert.ok(
-    alive(readPid(esc.pidFile)),
-    "the escaped process is outside our reach (the test kills it)",
-  );
+  const escaped = await waitForPid(esc.pidFile);
+  assert.ok(alive(escaped), "the escaped process is outside our reach (the test kills it)");
 });
 
 void test("job_start: an escaped descendant holding stdout cannot stall completion", async (t) => {
@@ -514,12 +506,8 @@ void test("shutdown with a check stalled by an escaped descendant: bounded, noth
     cwd: dir,
     timeoutSeconds: 60,
   });
-  await waitUntil(
-    () => existsSync(esc.pidFile) && existsSync(join(dir, "leader.pid")),
-    5000,
-    "escaped process and leader pid",
-  );
-  const leader = readPid(join(dir, "leader.pid"));
+  await waitForPid(esc.pidFile);
+  const leader = await waitForPid(join(dir, "leader.pid"));
   // Observe that the check's leader has exited (and been reaped); only the escaped pipe holder remains.
   await waitUntil(() => !alive(leader), 5000, "check leader to exit");
   const started = Date.now();
