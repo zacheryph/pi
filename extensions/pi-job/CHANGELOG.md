@@ -3,6 +3,11 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-08: Test temp directories from pi-test-helpers
+
+- `test/helpers.ts`: `tempDir` wraps `packages/pi-test-helpers`' `tempDir`,
+  which removes the directory when the test ends. No source change.
+
 ## 2026-11-08: Tests under root and non-reaping init
 
 - The test helper `alive()` counts a zombie as dead. Killed orphans are

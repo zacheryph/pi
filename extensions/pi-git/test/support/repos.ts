@@ -1,7 +1,8 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import type { Defer } from "../../../../packages/pi-test-helpers/src/cleanup.ts";
+import { tempDir } from "../../../../packages/pi-test-helpers/src/temp.ts";
 
 /** Run git with a fixed identity and signing off, so tests never depend on the user's config. */
 export function run(cwd: string, ...args: string[]): string {
@@ -36,12 +37,14 @@ export interface Sandbox {
   /** Two repositories with one commit each on `main`. */
   api: string;
   web: string;
-  cleanup(): void;
 }
 
-/** A temp directory holding two repositories side by side, as a multi-repo session sees them. */
-export function sandbox(): Sandbox {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), "pi-git-")));
+/**
+ * A temp directory holding two repositories side by side, as a multi-repo
+ * session sees them, removed by `cleanup` (vitest's `onTestFinished`).
+ */
+export function sandbox(cleanup: Defer): Sandbox {
+  const dir = realpathSync(tempDir(cleanup, "pi-git-"));
   const api = join(dir, "src", "api");
   const web = join(dir, "src", "web");
   for (const repo of [api, web]) {
@@ -54,7 +57,6 @@ export function sandbox(): Sandbox {
     root: join(dir, "worktrees"),
     api,
     web,
-    cleanup: () => rmSync(dir, { recursive: true, force: true }),
   };
 }
 

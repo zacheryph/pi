@@ -1,28 +1,18 @@
 import {
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readdirSync,
   readFileSync,
-  rmSync,
   symlinkSync,
   utimesSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
+import { tempDir } from "../../../packages/pi-test-helpers/src/temp.ts";
 import { BlobStore, defaultStashRoot, hashText } from "#src/store";
 
-const dirs: string[] = [];
-afterEach(() => {
-  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
-});
-function temp(): string {
-  const dir = mkdtempSync(join(tmpdir(), "pi-stash-store-"));
-  dirs.push(dir);
-  return dir;
-}
+const temp = (): string => tempDir(onTestFinished, "pi-stash-store-");
 const DAY = 24 * 60 * 60 * 1000;
 
 describe("BlobStore", () => {

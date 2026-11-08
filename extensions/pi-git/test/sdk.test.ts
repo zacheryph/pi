@@ -14,7 +14,7 @@ import {
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi, onTestFinished } from "vitest";
 import { SESSION_TREE_KEY } from "../../../packages/pi-session-tree/src/index.ts";
 import { GIT_SNAPSHOT_EVENT, type GitSnapshotEvent } from "../src/events.ts";
 import piGit from "../src/index.ts";
@@ -194,8 +194,7 @@ const cardCount = (messages: unknown[]) =>
 
 describe("pi-git in a real AgentSession (offline faux provider)", () => {
   it("restores PRs and worktrees with a context card after compaction, until a list result", async () => {
-    const box = sandbox();
-    cleanups.push(() => box.cleanup());
+    const box = sandbox(onTestFinished);
     const manager = SessionManager.inMemory(box.dir);
     const worktree = join(box.root, "api", "feat-login");
 
@@ -262,8 +261,7 @@ describe("pi-git in a real AgentSession (offline faux provider)", () => {
   }, 30_000);
 
   it("gives a session with no ledger entries no card, even after compaction", async () => {
-    const box = sandbox();
-    cleanups.push(() => box.cleanup());
+    const box = sandbox(onTestFinished);
     const manager = SessionManager.inMemory(box.dir);
     const h = await fixture(box, manager, { keepRecentTokens: 1 });
     h.faux.setResponses([fauxAssistantMessage("One.")]);
@@ -281,8 +279,7 @@ describe("pi-git in a real AgentSession (offline faux provider)", () => {
   }, 30_000);
 
   it("keeps worktrees and the subagents that used them across a resume", async () => {
-    const box = sandbox();
-    cleanups.push(() => box.cleanup());
+    const box = sandbox(onTestFinished);
     const manager = SessionManager.inMemory(box.dir);
     const api = join(box.root, "multi", "api");
     const web = join(box.root, "multi", "web");
@@ -325,8 +322,7 @@ describe("pi-git in a real AgentSession (offline faux provider)", () => {
   }, 30_000);
 
   it("records a PR a tool opened and lists it after a resume", async () => {
-    const box = sandbox();
-    cleanups.push(() => box.cleanup());
+    const box = sandbox(onTestFinished);
     const manager = SessionManager.inMemory(box.dir);
 
     const first = await fixture(box, manager);
@@ -358,8 +354,7 @@ describe("pi-git in a real AgentSession (offline faux provider)", () => {
   }, 30_000);
 
   it("reads a PR through the GitHub MCP tool when gh is missing, recording it once", async () => {
-    const box = sandbox();
-    cleanups.push(() => box.cleanup());
+    const box = sandbox(onTestFinished);
     const manager = SessionManager.inMemory(box.dir);
     const h = await fixture(box, manager);
     h.faux.setResponses([

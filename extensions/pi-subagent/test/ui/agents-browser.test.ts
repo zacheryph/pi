@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, onTestFinished } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import { loadCustomAgents } from "#src/config/custom-agents";
 import { BUILTIN_AGENTS_DIR } from "#src/config/default-agents";
@@ -13,6 +13,7 @@ import {
   type AgentsBrowserOptions,
 } from "#src/ui/agents-browser";
 import { Explorer, renderBlocks, type Block } from "../../../../packages/pi-ui/src/index.ts";
+import { tempDir } from "../../../../packages/pi-test-helpers/src/temp.ts";
 
 const identity = { fg: (_color: string, text: string) => text, bold: (text: string) => text };
 const plainDetail = (blocks: unknown) => renderBlocks(blocks as Block[], 1000, identity).join("\n");
@@ -301,7 +302,7 @@ describe("effective agent definitions", () => {
   });
 
   it("loader captures winning path; new registry reflects edits and cwd without mutating old registry", () => {
-    const root = mkdtempSync(join(tmpdir(), "pi-agents-browser-"));
+    const root = tempDir(onTestFinished, "pi-agents-browser-");
     const previous = process.env.PI_CODING_AGENT_DIR;
     process.env.PI_CODING_AGENT_DIR = join(root, "global");
     const project = join(root, "project");
@@ -337,7 +338,6 @@ describe("effective agent definitions", () => {
     } finally {
       if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR;
       else process.env.PI_CODING_AGENT_DIR = previous;
-      rmSync(root, { recursive: true, force: true });
     }
   });
 });

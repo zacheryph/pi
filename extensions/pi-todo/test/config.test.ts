@@ -28,7 +28,6 @@ function setup() {
 const json = (path: string, value: unknown) => writeFileSync(path, JSON.stringify(value), "utf8");
 afterEach(() => {
   vi.restoreAllMocks();
-  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
 describe("config validation", () => {

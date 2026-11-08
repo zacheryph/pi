@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
 import { worktreeStatus } from "../src/git.ts";
 import {
   atRisk,
@@ -17,9 +17,8 @@ import { addRemote, commit, run, sandbox, type Sandbox } from "./support/repos.t
 
 let box: Sandbox;
 beforeEach(() => {
-  box = sandbox();
+  box = sandbox(onTestFinished);
 });
-afterEach(() => box.cleanup());
 
 const create = (options: {
   repo?: string;

@@ -1,9 +1,9 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DefaultResourceLoader, SettingsManager } from "@earendil-works/pi-coding-agent";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
 import { builtinExtensionsFor } from "#src/session/builtin-extensions";
+import { tempDir } from "../../../../packages/pi-test-helpers/src/temp.ts";
 
 /** The names of the built-ins selected for `toolNames`, in selection order. */
 function namesFor(toolNames: string[]): string[] {
@@ -19,13 +19,8 @@ describe("builtinExtensionsFor", () => {
     let cwd: string;
 
     beforeEach(() => {
-      agentDir = mkdtempSync(join(tmpdir(), "pi-builtins-agent-"));
-      cwd = mkdtempSync(join(tmpdir(), "pi-builtins-cwd-"));
-    });
-
-    afterEach(() => {
-      rmSync(agentDir, { recursive: true, force: true });
-      rmSync(cwd, { recursive: true, force: true });
+      agentDir = tempDir(onTestFinished, "pi-builtins-agent-");
+      cwd = tempDir(onTestFinished, "pi-builtins-cwd-");
     });
 
     async function loadedPaths(extensionsSetting: string[]): Promise<string[]> {

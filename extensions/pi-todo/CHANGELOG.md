@@ -3,6 +3,11 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-08: Test temp directories from pi-test-helpers
+
+- `test/config.test.ts` creates its directory with `packages/pi-test-helpers`'
+  `tempDir`, removed when the test ends. No source change.
+
 ## 2026-11-06: Supply tools required by todo handoffs
 
 - `src/delegation.ts`: request only `todo_list` and `todo_upsert` through

@@ -1,20 +1,16 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
 import { resolveSpawnCwd } from "#src/lifecycle/spawn-cwd";
+import { tempDir } from "../../../../packages/pi-test-helpers/src/temp.ts";
 
 describe("resolveSpawnCwd", () => {
   let base: string;
 
   beforeEach(() => {
-    base = mkdtempSync(join(tmpdir(), "spawn-cwd-"));
+    base = tempDir(onTestFinished, "spawn-cwd-");
     mkdirSync(join(base, "worktree"));
     writeFileSync(join(base, "file.txt"), "not a directory");
-  });
-
-  afterEach(() => {
-    rmSync(base, { recursive: true, force: true });
   });
 
   it("yields no override when absent", () => {

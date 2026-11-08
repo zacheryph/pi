@@ -1,16 +1,16 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished } from "vitest";
 import { loadCustomAgents } from "#src/config/custom-agents";
 import { composeAgentInstructions } from "#src/config/prompt-fragments";
+import { tempDir } from "../../../../packages/pi-test-helpers/src/temp.ts";
 
 describe("loadCustomAgents", () => {
   let tmpDir: string;
   let originalHome: string | undefined;
 
   beforeEach(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), "pi-test-"));
+    tmpDir = tempDir(onTestFinished, "pi-test-");
     originalHome = process.env.HOME;
     process.env.HOME = tmpDir;
   });
@@ -18,7 +18,6 @@ describe("loadCustomAgents", () => {
   afterEach(() => {
     if (originalHome == null) delete process.env.HOME;
     else process.env.HOME = originalHome;
-    rmSync(tmpDir, { recursive: true, force: true });
   });
 
   function writeAgent(name: string, content: string) {
@@ -623,7 +622,7 @@ Agent prompt.`,
   });
 
   it("honors PI_CODING_AGENT_DIR for global custom agent discovery", () => {
-    const altAgentDir = mkdtempSync(join(tmpdir(), "pi-alt-agent-"));
+    const altAgentDir = tempDir(onTestFinished, "pi-alt-agent-");
     const originalEnv = process.env.PI_CODING_AGENT_DIR;
     process.env.PI_CODING_AGENT_DIR = altAgentDir;
     try {
@@ -642,7 +641,6 @@ Agent prompt.`,
     } finally {
       if (originalEnv == null) delete process.env.PI_CODING_AGENT_DIR;
       else process.env.PI_CODING_AGENT_DIR = originalEnv;
-      rmSync(altAgentDir, { recursive: true, force: true });
     }
   });
 });

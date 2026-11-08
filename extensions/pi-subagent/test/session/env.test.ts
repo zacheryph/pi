@@ -1,10 +1,8 @@
 import { execSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import { detectEnv } from "#src/session/env";
 import type { ShellExec } from "#src/types";
+import { tempDir } from "../../../../packages/pi-test-helpers/src/temp.ts";
 
 /** ShellExec stub that shells out via child_process. */
 function mockExec(): ShellExec {
@@ -32,32 +30,24 @@ describe("detectEnv", () => {
 
   it("returns branch name when on a branch", async () => {
     // Create a temp repo on a known branch to test branch detection
-    const tmpDir = mkdtempSync(join(tmpdir(), "pi-env-branch-"));
-    try {
-      execSync(
-        "git init && git config user.email test@test.com && git config user.name Test && git checkout -b test-branch && git -c commit.gpgsign=false commit --allow-empty -m init",
-        {
-          cwd: tmpDir,
-          stdio: "pipe",
-        },
-      );
-      const env = await detectEnv(mockExec(), tmpDir);
-      expect(env.isGitRepo).toBe(true);
-      expect(env.branch).toBe("test-branch");
-    } finally {
-      rmSync(tmpDir, { recursive: true, force: true });
-    }
+    const tmpDir = tempDir(onTestFinished, "pi-env-branch-");
+    execSync(
+      "git init && git config user.email test@test.com && git config user.name Test && git checkout -b test-branch && git -c commit.gpgsign=false commit --allow-empty -m init",
+      {
+        cwd: tmpDir,
+        stdio: "pipe",
+      },
+    );
+    const env = await detectEnv(mockExec(), tmpDir);
+    expect(env.isGitRepo).toBe(true);
+    expect(env.branch).toBe("test-branch");
   });
 
   it("detects non-git directory", async () => {
-    const tmpDir = mkdtempSync(join(tmpdir(), "pi-env-test-"));
-    try {
-      const env = await detectEnv(mockExec(), tmpDir);
-      expect(env.isGitRepo).toBe(false);
-      expect(env.branch).toBe("");
-      expect(env.platform).toBe(process.platform);
-    } finally {
-      rmSync(tmpDir, { recursive: true, force: true });
-    }
+    const tmpDir = tempDir(onTestFinished, "pi-env-test-");
+    const env = await detectEnv(mockExec(), tmpDir);
+    expect(env.isGitRepo).toBe(false);
+    expect(env.branch).toBe("");
+    expect(env.platform).toBe(process.platform);
   });
 });

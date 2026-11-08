@@ -1,7 +1,7 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { beforeEach, expect, it } from "vitest";
 import { DEFAULT_CONFIG, loadTldrConfig } from "../src/config.ts";
 let root: string, agentDir: string, cwd: string;
 beforeEach(() => {
@@ -11,7 +11,6 @@ beforeEach(() => {
   mkdirSync(agentDir);
   mkdirSync(join(cwd, ".pi"), { recursive: true });
 });
-afterEach(() => rmSync(root, { recursive: true, force: true }));
 it("layers global and project settings without weakening strict validation", () => {
   expect(loadTldrConfig(cwd, agentDir)).toEqual(DEFAULT_CONFIG);
   writeFileSync(

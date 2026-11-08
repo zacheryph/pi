@@ -14,6 +14,7 @@
     "packages/pi-foundations",
     "packages/pi-ui",
     "packages/pi-scripted-model",
+    "packages/pi-test-helpers",
     "extensions/pi-ask",
     "extensions/pi-git"
   ],

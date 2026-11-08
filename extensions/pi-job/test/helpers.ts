@@ -1,13 +1,9 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
 import type { TestContext } from "node:test";
+import { tempDir as sharedTempDir } from "../../../packages/pi-test-helpers/src/temp.ts";
 
-export function tempDir(t: Pick<TestContext, "after">): string {
-  const dir = mkdtempSync(join(tmpdir(), "pi-job-test-"));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-  return dir;
-}
+/** A temp directory removed when the test ends. */
+export const tempDir = (t: Pick<TestContext, "after">): string => sharedTempDir(t, "pi-job-test-");
 
 export async function waitUntil(
   predicate: () => boolean,

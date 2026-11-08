@@ -1,7 +1,7 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
+import { tempDir } from "../../../packages/pi-test-helpers/src/temp.ts";
 import {
   countLines,
   currentEntries,
@@ -15,15 +15,7 @@ import {
 } from "#src/state";
 import { BlobStore } from "#src/store";
 
-const dirs: string[] = [];
-afterEach(() => {
-  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
-});
-function store(): BlobStore {
-  const dir = mkdtempSync(join(tmpdir(), "pi-stash-state-"));
-  dirs.push(dir);
-  return new BlobStore(dir);
-}
+const store = () => new BlobStore(tempDir(onTestFinished, "pi-stash-state-"));
 
 function record(name: string, hash: string, createdAt = 1): StashRecord {
   return {

@@ -1,9 +1,9 @@
-import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import type { AgentSessionEvent } from "#src/types";
 import { WatchTail, watchText } from "#src/ui/watch-tail";
+import { tempDir } from "../../../../packages/pi-test-helpers/src/temp.ts";
 
 // Only content fields are used; keep streaming fixtures independent from model metadata.
 function assistant(
@@ -309,21 +309,17 @@ describe("WatchTail skill evidence", () => {
   });
 
   it("matches relative, normalized and symlink paths without reading skill files", () => {
-    const cwd = mkdtempSync(join(tmpdir(), "watch-skill-"));
-    try {
-      mkdirSync(join(cwd, "skills"));
-      symlinkSync(join(cwd, "skills"), join(cwd, "alias"));
-      writeFileSync(join(cwd, "skills", "SKILL.md"), "private instructions");
-      const tail = new WatchTail({
-        cwd,
-        skills: [{ name: "known", filePath: join(cwd, "skills", "SKILL.md") }],
-      });
-      start(tail, "alias/../alias/SKILL.md");
-      end(tail);
-      expect(texts(tail)).toEqual(["known · loaded"]);
-    } finally {
-      rmSync(cwd, { recursive: true, force: true });
-    }
+    const cwd = tempDir(onTestFinished, "watch-skill-");
+    mkdirSync(join(cwd, "skills"));
+    symlinkSync(join(cwd, "skills"), join(cwd, "alias"));
+    writeFileSync(join(cwd, "skills", "SKILL.md"), "private instructions");
+    const tail = new WatchTail({
+      cwd,
+      skills: [{ name: "known", filePath: join(cwd, "skills", "SKILL.md") }],
+    });
+    start(tail, "alias/../alias/SKILL.md");
+    end(tail);
+    expect(texts(tail)).toEqual(["known · loaded"]);
   });
 
   it("evicts call metadata with the feed rather than accumulating completed calls", () => {

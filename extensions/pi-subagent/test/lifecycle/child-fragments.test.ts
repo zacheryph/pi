@@ -1,7 +1,6 @@
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, onTestFinished } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import { loadAgentsFromDir } from "#src/config/custom-agents";
 import { ConcurrencyLimiter } from "#src/lifecycle/concurrency-limiter";
@@ -19,6 +18,7 @@ import {
   createSubagentSessionDeps,
   createSubagentSessionIO,
 } from "#test/helpers/subagent-session-io";
+import { tempDir } from "../../../../packages/pi-test-helpers/src/temp.ts";
 
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
@@ -39,7 +39,7 @@ describe("child fragment spawn snapshots", () => {
   >;
 
   beforeEach(() => {
-    root = mkdtempSync(join(tmpdir(), "pi-child-fragments-"));
+    root = tempDir(onTestFinished, "pi-child-fragments-");
     const agents = join(root, "source", "agents");
     mkdirSync(join(agents, "fragments"), { recursive: true });
     writeFileSync(join(agents, "fragments", "aws.md"), "AWS source instructions.\n");
@@ -78,7 +78,6 @@ describe("child fragment spawn snapshots", () => {
 
   afterEach(async () => {
     await manager.dispose();
-    rmSync(root, { recursive: true, force: true });
   });
 
   function fragmentPath() {

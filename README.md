@@ -108,6 +108,7 @@ pi-personal/
     ├── pi-ui/                           # shared terminal UI library (no migrations yet)
     ├── pi-foundations/                  # shared settings + model lookup
     ├── pi-scripted-model/               # fake model + bundle test harness (dev only)
+    ├── pi-test-helpers/                 # shared test helpers (dev only)
     └── pi-session-tree/                 # shared library, not an extension
         ├── src/index.ts                 # cross-session registry (globalThis)
         └── test/
@@ -512,6 +513,13 @@ and subagents, no API key or network. A scenario scripts each model response;
 `startSession` loads the bundle, `prompt` runs a turn, and `toolRuns()` returns
 every call with its result. Use it for behavior that spans extensions, such as
 todo handoff to a subagent. CI runs it whenever any extension changes.
+
+### Shared test helpers
+
+[`packages/pi-test-helpers`](packages/pi-test-helpers/README.md) holds what test
+suites across workspaces share, such as temp directories cleaned up when a test
+ends. Reach for it before writing another local helper; keep helpers that only
+one workspace needs in that workspace's `test/`.
 
 ### Screenshot the TUI
 

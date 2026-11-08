@@ -1,18 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
+import { tempDir } from "../../../packages/pi-test-helpers/src/temp.ts";
 import { guessMime, literalContent, readCwdFile, readToolResult } from "#src/sources";
 
-const dirs: string[] = [];
-afterEach(() => {
-  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
-});
-function temp(): string {
-  const dir = mkdtempSync(join(tmpdir(), "pi-stash-sources-"));
-  dirs.push(dir);
-  return dir;
-}
+const temp = (): string => tempDir(onTestFinished, "pi-stash-sources-");
 
 describe("readCwdFile", () => {
   it("reads files inside the cwd with read-style spelling", () => {
