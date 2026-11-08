@@ -70,6 +70,7 @@ describe("assembleWidgetState", () => {
     it("returns all-zero/false state for an empty agent list", () => {
       expect(assembleWidgetState([], alwaysShow)).toEqual({
         runningCount: 0,
+        waitingCount: 0,
         queuedCount: 0,
         hasFinished: false,
         hasActive: false,
@@ -705,5 +706,19 @@ describe("AgentWidget.dispose", () => {
     widget.update();
 
     expect(setWidget.mock.calls.length).toBe(callsAfterDispose);
+  });
+});
+
+it("counts waiting workers as active without a running animation or a finished outcome", () => {
+  const state = assembleWidgetState(
+    [makeAgent({ status: "waiting", completedAt: undefined })],
+    neverShow,
+  );
+  expect(state).toMatchObject({
+    waitingCount: 1,
+    runningCount: 0,
+    queuedCount: 0,
+    hasActive: true,
+    hasFinished: false,
   });
 });

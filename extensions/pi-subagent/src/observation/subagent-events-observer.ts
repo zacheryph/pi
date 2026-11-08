@@ -44,6 +44,31 @@ export class SubagentEventsObserver implements SubagentManagerObserver {
     this.isOnBranch = deps.isOnBranch ?? (() => true);
   }
 
+  onSubagentWaiting(record: Subagent): void {
+    this.emit("subagent:waiting", {
+      id: record.id,
+      type: record.type,
+      description: record.description,
+      reason: record.waitingReason,
+    });
+    this.persist(record);
+    // This is an open assignment, not a completion. Let the parent supply guidance.
+    if (!record.claimed && record.awaitingGuidance)
+      this.notifications.sendUpdate(
+        record,
+        `Waiting: ${record.waitingReason}. Use subagent_steer to provide guidance.`,
+      );
+  }
+
+  onSubagentQueued(record: Subagent): void {
+    this.emit("subagent:queued", {
+      id: record.id,
+      type: record.type,
+      description: record.description,
+    });
+    this.persist(record);
+  }
+
   onSubagentStarted(record: Subagent): void {
     // Emit started event when agent transitions to running (including from queue).
     this.emit("subagent:started", {

@@ -34,6 +34,7 @@ export interface GetResultDetails {
   displayName: string;
   status: SubagentStatus;
   description: string;
+  waitingReason?: string;
   toolUses: number;
   /** Pre-formatted lifetime token total; "" when zero. */
   tokens: string;
@@ -76,6 +77,8 @@ function renderCollapsedSummary(details: GetResultDetails, theme: Theme): string
   if (details.description) lines.push(subLine(details.description, "dim", theme));
   if (details.error) {
     lines.push(subLine(details.error, "error", theme));
+  } else if (details.status === "waiting") {
+    lines.push(subLine(`Waiting: ${details.waitingReason ?? "input"}`, "dim", theme));
   } else if (details.preview) {
     lines.push(subLine(details.preview, "dim", theme));
   }

@@ -88,3 +88,15 @@ describe("SubagentTracker", () => {
     expect(ids[0]).toBe("a24");
   });
 });
+
+it("tracks waiting and queued activations before a worker resumes", () => {
+  const tracker = new SubagentTracker();
+  tracker.apply("subagent:created", { id: "worker", description: "Review CI" });
+  tracker.apply("subagent:waiting", { id: "worker", reason: "CI checks" });
+  expect(tracker.section()?.agents[0]).toMatchObject({ state: "waiting", note: "CI checks" });
+  tracker.apply("subagent:queued", { id: "worker" });
+  expect(tracker.section()?.agents[0].state).toBe("queued");
+  tracker.apply("subagent:resuming", { id: "worker" });
+  expect(tracker.section()?.agents[0]).toMatchObject({ state: "running" });
+  expect(tracker.section()?.agents[0].note).toBeUndefined();
+});

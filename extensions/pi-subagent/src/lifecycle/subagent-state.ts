@@ -22,7 +22,14 @@ import type { TurnBudget } from "#src/lifecycle/turn-limits";
 import type { LifetimeUsage } from "#src/lifecycle/usage";
 import { addUsage } from "#src/lifecycle/usage";
 
-export type SubagentStatus = "queued" | "running" | "completed" | "aborted" | "stopped" | "error";
+export type SubagentStatus =
+  | "queued"
+  | "running"
+  | "waiting"
+  | "completed"
+  | "aborted"
+  | "stopped"
+  | "error";
 
 /**
  * One carrier's commitment to deliver an outcome. Releasing it drops only this
@@ -53,7 +60,7 @@ export interface SettledOutcome {
 
 /** Running or queued — the agent is still live (started or awaiting a slot). */
 export function isActiveStatus(status: SubagentStatus): boolean {
-  return status === "running" || status === "queued";
+  return status === "running" || status === "queued" || status === "waiting";
 }
 
 /** Terminated by error, harness turn-limit abort, or external stop. */
@@ -304,6 +311,16 @@ export class SubagentState {
   /** Append a text delta to the current response text. Called by record-observer on message_update. */
   appendResponseText(delta: string): void {
     this._responseText += delta;
+  }
+
+  markQueued(): void {
+    this._status = "queued";
+  }
+
+  markWaiting(result: string): void {
+    this._status = "waiting";
+    this._result = result;
+    this._completedAt = undefined;
   }
 
   /** Transition to running state. Sets status and startedAt. */

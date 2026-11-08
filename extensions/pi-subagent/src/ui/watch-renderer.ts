@@ -77,7 +77,7 @@ export function renderWatchOverlay(
       const icon =
         section.status === "running"
           ? ICONS.active
-          : section.status === "queued"
+          : section.status === "queued" || section.status === "waiting"
             ? ICONS.queued
             : section.status === "completed"
               ? ICONS.success

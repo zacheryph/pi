@@ -23,6 +23,8 @@ export function renderAgentResult(
   theme: Theme,
 ): string {
   if (isPartial || details.status === "running") return renderRunning(details, theme);
+  if (details.status === "waiting" || details.status === "queued")
+    return theme.fg("dim", `  ${ICONS.queued} ${details.status} (ID: ${details.agentId})`);
   if (details.status === "background") return renderBackground(details, theme);
   if (details.status === "completed") return renderCompleted(details, resultText, expanded, theme);
   if (details.status === "stopped") return renderStopped(details, theme);
@@ -133,6 +135,7 @@ export function renderStatusIcon(status: SubagentStatus, theme: Theme): string {
     case "error":
     case "aborted":
       return theme.fg("error", ICONS.failure);
+    case "waiting":
     case "queued":
       return theme.fg("dim", ICONS.queued);
     case "running":

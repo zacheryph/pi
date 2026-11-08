@@ -56,7 +56,7 @@ describe("renderPage", () => {
       'fold(node, "fold:" + session.id + ":todos", finished.length + " completed"',
     );
     expect(page).toContain(
-      'const live = agents.filter((agent) => agent.state === "running" || agent.state === "queued");',
+      'const live = agents.filter((agent) => agent.state === "running" || agent.state === "queued" || agent.state === "waiting");',
     );
     expect(page).toContain('fold(node, "fold:" + session.id + ":subagents"');
     expect(page).toContain(

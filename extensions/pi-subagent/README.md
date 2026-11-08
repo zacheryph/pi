@@ -68,6 +68,33 @@ Agents run in the background: the call returns an ID immediately and you are not
 Pass `foreground: true` to block until the agent completes and get its result inline.
 In print and json mode (`pi -p`, `--mode json`) nothing can wake the parent once its turn ends, so there an agent runs in the foreground unless the call says otherwise.
 
+## Waiting workers and background jobs
+
+A child that ends its run with an outstanding `job_start` or `job_watch` becomes
+**waiting**, keeping its assignment, session and watches alive. It uses no model
+execution slot while parked. Ending a run without pending work completes the
+assignment normally; cancel unwanted jobs with `job_kill` before finishing.
+
+A job completion changes waiting to **queued**, then **running** when a slot
+opens. Activations use the same FIFO concurrency queue as new background agents,
+including workers originally launched in the foreground. Completions and parent
+guidance received before admission share one activation in the same session.
+Inputs arriving during an activation are retained for the next one. Every
+activation gets the existing fresh resume turn budget and tracked usage.
+
+Children can call `subagent_wait({ reason: "Need parent guidance" })`, then end
+their turn, to wait without a job. Parents wake waiting workers with
+`subagent_steer({ agent_id, message })` or `subagent_start({ resume: id, ... })`.
+Guidance for an already queued activation joins its inbox. Foreground calls
+return when the child parks; they do not block indefinitely waiting for CI.
+
+The widget, roster and dashboard distinguish waiting from completed; lifecycle
+consumers receive `subagent:waiting` and `subagent:queued`. Waiting sessions are
+excluded from completed-session retention cleanup. Stop cancels waiting/queued
+activations and shuts down their jobs. Parent-session shutdown/reload also tears
+these children down; transcript resume preserves conversation, not live watches
+or an activation inbox across process restart or reload.
+
 ## UI
 
 The extension renders a persistent widget above the editor showing active background agents (foreground runs are rendered inline by the `subagent_start` tool's progress stream):

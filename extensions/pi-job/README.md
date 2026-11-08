@@ -252,12 +252,21 @@ skipped, and every path must resolve inside the log root.
 
 ## Subagents and print mode
 
-Each extension instance (main session, each subagent session) has its own JobManager: ids,
-jobs and notifications are per session. A job started by a subagent wakes that subagent; if
-the subagent session has already ended, its jobs were stopped at its shutdown (or, if the host
-disposes it without a shutdown event, a later session start stops and reports its jobs once
-the runtime is provably stale; otherwise they run to timeout and the message is dropped —
-the exit hook still kills them when pi exits). Do not hand a subagent's job id to the parent.
+Each extension instance (main session, each subagent session) has its own JobManager:
+ids, jobs and notifications are per session. Do not hand a subagent's job id to
+the parent.
+
+With this bundle's pi-subagent, outstanding jobs/watches automatically park the
+child when its run ends. The child keeps its session and releases its agent
+execution slot. Completions enter its managed inbox; if all slots are busy the
+child queues for activation alongside new agents. The completion message is
+appended only after admission, and the manager drives the next run with normal
+tracking and turn budgets. Multiple completions and parent guidance can share
+one activation. Stopping the worker shuts its jobs down.
+
+Other hosts retain native completion delivery. If they dispose a child, its jobs
+are stopped at shutdown; without shutdown, stale-owner cleanup or process exit
+provides the existing fallback. Transcript resume does not restore live jobs.
 
 In print mode (`pi -p`) the run ends when the agent goes idle and the shutdown kills running
 jobs, so a wake-up cannot happen there; use interactive or RPC mode.

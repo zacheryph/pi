@@ -32,7 +32,15 @@ export interface AgentDetails {
   toolUses: number;
   tokens: string;
   durationMs: number;
-  status: "queued" | "running" | "completed" | "aborted" | "stopped" | "error" | "background";
+  status:
+    | "queued"
+    | "running"
+    | "waiting"
+    | "completed"
+    | "aborted"
+    | "stopped"
+    | "error"
+    | "background";
   /** Human-readable description of what the agent is currently doing. */
   activity?: string;
   /** Current spinner frame index (for animated running indicator). */

@@ -26,6 +26,11 @@ import type { EnvInfo } from "#src/session/env";
 import { resolveToolSelection } from "#src/session/tool-selection";
 import type { ModelRegistry } from "#src/session/model-resolver";
 import { NotifyParentTool, type UpdateAnnouncer } from "#src/session/notify-parent-tool";
+import { waitTool } from "#src/session/wait-tool";
+import {
+  ACTIVATION_SERVICE,
+  type ActivationRoute,
+} from "../../../../packages/pi-session-tree/src/activation.ts";
 import { provide } from "../../../../packages/pi-session-tree/src/index.ts";
 import { type AssemblerIO, assembleSessionConfig } from "#src/session/session-config";
 import type {
@@ -197,6 +202,7 @@ export interface CreateSubagentSessionParams {
    * `ask` toward this parent. Its absence leaves the child without a route.
    */
   askParent?: QuestionRecorder;
+  activation?: ActivationRoute;
   /**
    * Announces a mid-run update the child sends with `parent_notify`. Supplied
    * only for a background child whose operator left the channel on; its absence
@@ -219,6 +225,7 @@ export interface CreateSubagentSessionParams {
  */
 function buildChildTools(params: CreateSubagentSessionParams): ToolDefinition[] {
   const tools: ToolDefinition[] = [];
+  if (params.activation) tools.push(waitTool(params.activation));
   if (params.notifyParent) tools.push(new NotifyParentTool(params.notifyParent).toToolDefinition());
   return tools;
 }
@@ -372,6 +379,9 @@ export async function createSubagentSession(
   const withdrawAskRoute = askParent
     ? provide(sessionId, ASK_ROUTE_SERVICE, { record: (question: string) => askParent(question) })
     : undefined;
+  const withdrawActivation = params.activation
+    ? provide(sessionId, ACTIVATION_SERVICE, params.activation)
+    : undefined;
   const subagentSession = new SubagentSession(session, {
     outputFile: sessionManager.getSessionFile(),
     sessionId,
@@ -381,7 +391,10 @@ export async function createSubagentSession(
     agentMaxTurns: cfg.agentMaxTurns,
     parentContext: snapshot.parentContext,
     lifecycle: deps.lifecycle,
-    ...(withdrawAskRoute ? { onDispose: withdrawAskRoute } : {}),
+    onDispose: () => {
+      withdrawAskRoute?.();
+      withdrawActivation?.();
+    },
   });
 
   // Publish session-created before bindExtensions() so observers (e.g. the

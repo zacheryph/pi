@@ -3,6 +3,13 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-08: Waiting workers and managed job wakeups
+
+- Register child pending work through the session activation service and route
+  completion messages into the manager's inbox instead of starting unmanaged
+  model runs. Keep native delivery for sessions without that service.
+- Cover managed watch completion, deferred delivery and source cleanup.
+
 ## 2026-11-08: Faux sessions from pi-test-helpers
 
 - `test/toolcheck-session.test.ts` and `test/pi-execute-tool.contract.test.ts`

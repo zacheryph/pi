@@ -858,3 +858,47 @@ void test("session_start reports and stops proven orphan watches, not another li
   assert.equal((await old.call("job_list", {}, dir)).details.jobs[0].status, "killed");
   assert.equal((await live.call("job_list", {}, dir)).details.jobs[0].status, "running");
 });
+
+void test("a child parks for its jobs and queues completions without triggering an unmanaged turn", async (t) => {
+  const { provide } = await import("../../../packages/pi-session-tree/src/index.ts");
+  const { ACTIVATION_SERVICE } =
+    await import("../../../packages/pi-session-tree/src/activation.ts");
+  const h = setup(t);
+  const inbox: Array<() => void> = [];
+  let pending: (() => string | undefined) | undefined;
+  const withdraw = provide(h.ctx(h.dir).sessionManager.getSessionId(), ACTIVATION_SERVICE, {
+    track: (source: () => string | undefined) => {
+      pending = source;
+      return () => {
+        pending = undefined;
+      };
+    },
+    enqueue: (deliver: () => void) => inbox.push(deliver),
+    wait() {},
+  });
+  t.after(withdraw);
+  await h.emit("session_start", { reason: "startup" });
+  await tick(); // replacement delivery binding becomes live on setImmediate
+  const gate = join(h.dir, "watch-ready");
+  await h.call(
+    "job_watch",
+    { check: `test -f '${gate}'`, intervalSeconds: 0.1, timeoutSeconds: 10, label: "CI" },
+    h.dir,
+  );
+  assert.match(pending!()!, /CI/);
+  h.state.idle = false;
+  await h.emit("agent_start");
+  writeFileSync(gate, "");
+  await waitUntil(() => inbox.length === 1, 5000, "managed completion queued");
+  await h.emit("agent_end");
+  await h.emit("agent_settled");
+  assert.equal(h.sent.length, 0, "nothing starts a child outside the concurrency gate");
+  assert.equal(pending!(), undefined);
+  h.state.idle = true;
+  inbox.shift()!();
+  assert.equal(h.sent.length, 1);
+  assert.equal(h.sent[0].options.triggerTurn, false);
+  assert.match(messageText(h.sent[0].message), /CI/);
+  await h.emit("session_shutdown", { reason: "quit" });
+  assert.equal(pending, undefined, "shutdown unregisters the pending-work source");
+});

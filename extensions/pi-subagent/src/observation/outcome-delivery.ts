@@ -103,6 +103,8 @@ export function renderResumeUnavailable(refusal: ResumeRefusal | undefined): str
  * went wrong.
  */
 export function renderStatusLabel(outcome: StatusOutcome): string {
+  if (outcome.status === "waiting") return "Waiting";
+  if (outcome.status === "queued") return "Queued";
   if (outcome.status === "error") return `Error: ${outcome.error ?? "unknown"}`;
   const meaning = statusMeaning(outcome);
   return meaning ? `${meaning.label} (${meaning.detail})` : "Done";
@@ -124,6 +126,7 @@ export function renderStatusNote(outcome: StatusOutcome): string {
  * caller cannot come to depend on fields this module does not use.
  */
 export interface OutcomeBody {
+  waitingReason?: string;
   status: SubagentStatus;
   result: string | undefined;
   error: string | undefined;
@@ -237,6 +240,9 @@ export function renderRunUpdates(updates: readonly string[] | undefined): string
 export function renderOutcomeBody(outcome: OutcomeBody): string {
   if (outcome.status === "running")
     return "Agent is still running. Use wait: true or check back later.";
+  if (outcome.status === "waiting")
+    return `Waiting: ${outcome.waitingReason ?? "background work or parent guidance"}. This assignment is still open. Use subagent_steer to provide guidance.`;
+  if (outcome.status === "queued") return "Agent is queued for an execution slot.";
   if (outcome.status === "error") return `Error: ${outcome.error}`;
   if (outcome.stoppedWhileQueued)
     return "Agent was stopped while queued and never started. No work was performed.";

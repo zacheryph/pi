@@ -3,6 +3,15 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-08: Waiting workers and managed job wakeups
+
+- Keep child assignments waiting automatically while their jobs/watches run;
+  expose `subagent_wait` for parent guidance, and queue managed wakeups under
+  the existing concurrency limit with a coalesced completion/guidance inbox.
+- Preserve session context, turn budgets, statistics and cancellation across
+  activations; show waiting/queued states in the widget, roster and watch overlay.
+- Add lifecycle, rendering and real AgentSession/job-watch integration coverage.
+
 ## 2026-11-08: One agent-definition builder for tests
 
 - `test/helpers/make-agent-config.ts`: the `makeAgentConfig` builder that

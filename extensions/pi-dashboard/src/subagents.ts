@@ -5,6 +5,8 @@ import { clip } from "./sections.ts";
 export const SUBAGENT_CHANNELS = [
   "subagent:created",
   "subagent:started",
+  "subagent:waiting",
+  "subagent:queued",
   "subagent:resuming",
   "subagent:notified",
   "subagent:completed",
@@ -54,6 +56,13 @@ export class SubagentTracker {
       case "subagent:created":
         if (existing) return false;
         break;
+      case "subagent:waiting":
+        agent.state = "waiting";
+        agent.note = clip(raw.reason, 300);
+        break;
+      case "subagent:queued":
+        agent.state = "queued";
+        break;
       case "subagent:started":
       case "subagent:resuming":
         agent.state = "running";
@@ -87,7 +96,10 @@ export class SubagentTracker {
     // Keep running agents; trim the oldest finished ones.
     while (this.agents.size > MAX_AGENTS) {
       const oldest = [...this.agents.values()].find(
-        (candidate) => candidate.state !== "running" && candidate.state !== "queued",
+        (candidate) =>
+          candidate.state !== "running" &&
+          candidate.state !== "queued" &&
+          candidate.state !== "waiting",
       );
       if (!oldest) break;
       this.agents.delete(oldest.id);

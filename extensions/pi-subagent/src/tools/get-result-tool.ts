@@ -135,7 +135,8 @@ export class GetResultTool {
 
   /** Answer from the branch's last record for an agent no live record backs. */
   private savedResult(saved: PersistedSubagentRecord, verbose: boolean) {
-    const interrupted = saved.status === "queued" || saved.status === "running";
+    const interrupted =
+      saved.status === "queued" || saved.status === "running" || saved.status === "waiting";
     const displayName = getDisplayName(saved.type, this.registry);
     const duration = interrupted
       ? "unknown"
@@ -195,6 +196,7 @@ export class GetResultTool {
       compactionCount: record.compactionCount,
       duration: formatDuration(outcome.startedAt, outcome.completedAt),
       description: record.description,
+      waitingReason: record.waitingReason,
       result: outcome.result,
       error: outcome.error,
       turnBudget: outcome.turnBudget,
@@ -227,6 +229,7 @@ export class GetResultTool {
       displayName: getDisplayName(record.type, this.registry),
       status: outcome.status,
       description: record.description,
+      waitingReason: record.waitingReason,
       toolUses: record.toolUses,
       tokens: formatLifetimeTokens(record),
       contextPercent: record.getContextPercent(),

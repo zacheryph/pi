@@ -23,6 +23,7 @@ import {
 } from "#src/lifecycle/subagent-state";
 import type { TurnBudget } from "#src/lifecycle/turn-limits";
 import type { LifetimeUsage } from "#src/lifecycle/usage";
+import type { ActivationRoute } from "../../../../packages/pi-session-tree/src/activation.ts";
 import { subscribeSubagentObserver } from "#src/observation/record-observer";
 import type { RunConfig } from "#src/runtime";
 import type {
@@ -35,6 +36,8 @@ import type {
 
 /** Per-subagent lifecycle observer — created by SubagentManager for each spawn. */
 export interface SubagentLifecycleObserver {
+  onWaiting?(agent: Subagent): void;
+  onQueued?(agent: Subagent): void;
   /** Fires when the subagent transitions to running (inside run(), after markRunning). */
   onStarted?(agent: Subagent): void;
   /** Fires once the session is created — the subagent's subagentSession is now available. */
@@ -103,6 +106,7 @@ export interface SubagentExecution {
   prompt: string;
   observer?: SubagentLifecycleObserver;
   getRunConfig?: () => RunConfig;
+  scheduleActivation?: (task: () => Promise<void>) => Promise<void>;
   model?: Model<any>;
   maxTurns?: number;
   thinkingLevel?: ThinkingLevel;
@@ -220,7 +224,11 @@ export class Subagent {
     return this.state.isRunning();
   }
   canBeSteered(): boolean {
-    return this.state.canBeSteered();
+    return (
+      this.status === "waiting" ||
+      (this.status === "queued" && this.isSessionReady()) ||
+      this.state.canBeSteered()
+    );
   }
 
   private _abortController: AbortController;
@@ -246,6 +254,60 @@ export class Subagent {
    * attached again.
    */
   private released?: ReleasedSessionInfo;
+  private readonly workSources = new Set<() => string | undefined>();
+  private inbox: Array<() => void> = [];
+  private guidance: string[] = [];
+  private explicitWait?: string;
+  private _waitingReason?: string;
+  get waitingReason(): string | undefined {
+    return this._waitingReason;
+  }
+  get awaitingGuidance(): boolean {
+    return this.explicitWait !== undefined && this.inbox.length === 0 && this.guidance.length === 0;
+  }
+  private closed = false;
+  private activationEpoch = 0;
+  private activationSignal?: AbortSignal;
+  private readonly activation: ActivationRoute = {
+    track: (source) => {
+      this.workSources.add(source);
+      return () => {
+        this.workSources.delete(source);
+      };
+    },
+    enqueue: (deliver) => {
+      if (this.closed || !this.isActive()) return;
+      this.inbox.push(deliver);
+      if (this.status === "waiting") this.queueActivation();
+    },
+    wait: (reason) => {
+      this.explicitWait = reason;
+    },
+  };
+
+  /** One FIFO admission per child; all inputs accumulated before admission share it. */
+  private queueActivation(): void {
+    if (this.status !== "waiting" || this.closed) return;
+    this.releaseClaims();
+    const epoch = ++this.activationEpoch;
+    this.state.markQueued();
+    this.execution.observer?.onQueued?.(this);
+    const task = async () => {
+      if (this.status !== "queued" || this.closed || this.activationEpoch !== epoch) return;
+      const guidance = this.guidance.splice(0).join("\n\n");
+      await this.runResume(
+        this.subagentSession,
+        guidance ||
+          "Background work completed. Handle the completion messages and continue your assignment.",
+        this.activationSignal,
+      );
+    };
+    // Let the previous run publish its promise and release its concurrency slot first.
+    this._promise = Promise.resolve().then(
+      () => this.execution.scheduleActivation?.(task) ?? task(),
+    );
+  }
+
   /** A reopened transcript must not share its session ID with a dying session. */
   private sessionRelease?: Promise<void>;
   /** A stopped rebuild still owns the transcript until its setup has unwound. */
@@ -323,7 +385,8 @@ export class Subagent {
     // its session, and "still running" describes that record better than "no
     // session" does. A queued agent is not running and keeps the no-session
     // answer, which is the truth about it.
-    if (this.isRunning() || this.reopening) return "still-running";
+    if (this.isRunning() || this.reopening || (this.status === "queued" && this.isSessionReady()))
+      return "still-running";
     if (this.isSessionReady()) return undefined;
     if (!this.released) return "no-session";
     const { checkReopen } = this.execution;
@@ -336,7 +399,18 @@ export class Subagent {
    * not running, a `buffered` outcome when the session is not yet ready, or a
    * `delivered` outcome once the message reaches the session.
    */
-  async steer(message: string): Promise<SteerOutcome> {
+  async steer(message: string, signal?: AbortSignal): Promise<SteerOutcome> {
+    if (this.status === "waiting" || (this.status === "queued" && this.isSessionReady())) {
+      this.guidance.push(message);
+      if (signal) {
+        this.activationSignal = signal;
+        this.listeners.release();
+        this.listeners.wireSignal(signal, () => this.abort());
+        if (signal.aborted) this.abort();
+      }
+      this.queueActivation();
+      return { kind: "buffered" };
+    }
     if (!this.canBeSteered()) {
       return { kind: "rejected", status: this.status };
     }
@@ -446,6 +520,7 @@ export class Subagent {
       agentId: this.id,
       cwd: this.cwd,
       ...(this.execution.handoff ? { handoff: this.execution.handoff } : {}),
+      activation: this.activation,
       askParent: (question) => {
         this.state.setPendingQuestion(question);
       },
@@ -611,6 +686,10 @@ export class Subagent {
         }
         this.attachSession(session);
       }
+      this.activationSignal = undefined;
+      this.explicitWait = undefined;
+      this._waitingReason = undefined;
+      for (const deliver of this.inbox.splice(0)) deliver();
       this.settle(await session.resumeTurnLoop(prompt, this.turnLoopOptions()), true);
     } catch (err) {
       this.reopening = false;
@@ -653,6 +732,18 @@ export class Subagent {
    * way a returned run is not complete: that ends the run for good, as aborted.
    */
   private settle(result: TurnLoopResult, resumed: boolean): void {
+    if (this.status !== "stopped" && result.turnBudget.phase !== "exhausted") {
+      const pending = [...this.workSources].map((source) => source()).filter(Boolean);
+      const reason = this.explicitWait ?? pending.join(", ");
+      if (reason || this.inbox.length || this.guidance.length) {
+        this._waitingReason = reason || "Pending input";
+        this.state.markWaiting(result.responseText);
+        this.listeners.release();
+        this.execution.observer?.onWaiting?.(this);
+        if (this.inbox.length || this.guidance.length) this.queueActivation();
+        return;
+      }
+    }
     if (result.turnBudget.phase === "exhausted") this.state.markAborted(result.responseText);
     else this.state.markCompleted(result.responseText);
     this.finish(resumed);
@@ -673,6 +764,12 @@ export class Subagent {
   /** Release the run's listeners and report its terminal transition. */
   private finish(resumed: boolean): void {
     this.listeners.release();
+    if (this.isTerminalError()) {
+      this.inbox = [];
+      this.guidance = [];
+      this.activationSignal = undefined;
+      if (this.workSources.size > 0) void this.releaseSession();
+    }
     if (resumed) this.execution.observer?.onResumeFinished?.(this);
     else this.execution.observer?.onRunFinished?.(this);
   }
@@ -714,6 +811,17 @@ export class Subagent {
    * its slot frees. Returns false when there was nothing to stop.
    */
   abort(): boolean {
+    if (this.status === "waiting" || (this.status === "queued" && this.isSessionReady())) {
+      this.state.markStopped();
+      this.activationEpoch++;
+      this.listeners.release();
+      this.activationSignal = undefined;
+      this.inbox = [];
+      this.guidance = [];
+      void this.releaseSession();
+      this.execution.observer?.onRunFinished?.(this);
+      return true;
+    }
     if (this.status === "queued") {
       this.state.stopQueued();
       this.execution.observer?.onRunFinished?.(this);
@@ -742,6 +850,9 @@ export class Subagent {
    * swallowed so the caller's remaining cleanup still runs.
    */
   async disposeSession(): Promise<void> {
+    this.closed = true;
+    this.inbox = [];
+    this.guidance = [];
     await disposeQuietly(this.subagentSession, "child session dispose");
     // A retention release already cleared subagentSession, but its shutdown
     // must finish before a reload can reopen the same transcript/session ID.

@@ -139,7 +139,7 @@ export async function runForeground(
   const statsParts = [`${record.toolUses} tool uses`];
   if (tokenText) statsParts.push(tokenText);
   return textResult(
-    `${noteText}Agent completed in ${formatMs(durationMs)} (${statsParts.join(", ")})${renderStatusNote(record)}.\n` +
+    `${noteText}Agent ${record.isActive() ? record.status : "completed"} in ${formatMs(durationMs)} (${statsParts.join(", ")})${renderStatusNote(record)}.\n` +
       `Agent ID: ${record.id}\n\n` +
       renderOutcomeBody(record) +
       renderOutcomeAddenda(record),

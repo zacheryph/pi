@@ -57,7 +57,8 @@ describe("status vocabulary", () => {
     { status: "stopped", label: "Stopped (user request)", note: " (stopped \u2014 user request)" },
     { status: "completed", label: "Done", note: "" },
     { status: "running", label: "Done", note: "" },
-    { status: "queued", label: "Done", note: "" },
+    { status: "queued", label: "Queued", note: "" },
+    { status: "waiting", label: "Waiting", note: "" },
   ];
 
   for (const row of rows) {

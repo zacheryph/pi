@@ -126,7 +126,7 @@ export interface UsageSection {
   cost: number;
 }
 
-export type SubagentState = "queued" | "running" | "completed" | "failed" | "stopped";
+export type SubagentState = "queued" | "running" | "waiting" | "completed" | "failed" | "stopped";
 
 /** Subagents seen on this session's bus while the dashboard was loaded, newest first. */
 export interface SubagentsSection {

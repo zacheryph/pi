@@ -115,3 +115,14 @@ resolves, and that two module copies share one registry.
 npm run check --workspace=pi-session-tree
 npm test --workspace=pi-session-tree
 ```
+
+## Child activation protocol
+
+`src/activation.ts` defines the versioned `subagent:activation:v1` service.
+Pi-subagent offers it before child extension binding; a background-work extension
+registers a live pending-work query with `track`, unregisters on shutdown, and
+passes completion delivery closures to `enqueue`. The child manager owns FIFO
+admission and invokes those closures before its next prompt; they must append
+messages without triggering their own turns. `wait` explicitly keeps an
+assignment open for parent input. These registrations and inboxes are process
+local and are not a durable job queue.

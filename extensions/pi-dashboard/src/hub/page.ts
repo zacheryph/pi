@@ -491,7 +491,7 @@ function activityPanel(session) {
 
 function subagentPanel(session) {
   const agents = list(session.subagents.agents);
-  const live = agents.filter((agent) => agent.state === "running" || agent.state === "queued");
+  const live = agents.filter((agent) => agent.state === "running" || agent.state === "queued" || agent.state === "waiting");
   const finished = agents.filter((agent) => !live.includes(agent));
   const node = panel("Subagents", live.length ? live.length + " running" : agents.length + " recent");
   if (live.length) node.append(itemList(live, subagentItem));
@@ -508,7 +508,7 @@ function subagentItem(agent) {
   const row = el("div", "row");
   row.append(el("span", "clip", agent.type + ": " + (agent.description || agent.id)), pill(agent.state, agent.state));
   li.append(row);
-  const facts = [agent.state === "running" || agent.state === "queued" ? ago(agent.since) : agent.durationMs !== undefined ? duration(agent.durationMs) : null,
+  const facts = [agent.state === "running" || agent.state === "queued" || agent.state === "waiting" ? ago(agent.since) : agent.durationMs !== undefined ? duration(agent.durationMs) : null,
     agent.toolUses ? agent.toolUses + " tools" : null, agent.tokens ? tokens(agent.tokens) + " tok" : null].filter(Boolean);
   if (facts.length) li.append(el("span", "mono muted", facts.join(" · ")));
   if (agent.note) li.append(el("span", "muted wrap", agent.note));

@@ -52,7 +52,7 @@ export class SteerTool {
       case "buffered":
         this.events.emit("subagent:steered", { id: record.id, message: params.message });
         return textResult(
-          `Steering message queued for agent ${record.id}. It will be delivered once the session initializes.`,
+          `Steering message queued for agent ${record.id}. It will be delivered when the agent is admitted to run.`,
         );
       case "delivered":
         this.events.emit("subagent:steered", { id: record.id, message: params.message });
@@ -85,10 +85,10 @@ export class SteerTool {
       promptSnippet: "Send a mid-run message to redirect a running background agent.",
       description:
         "Send a steering message to a running agent. The message will interrupt the agent after its current tool execution " +
-        "and be injected into its conversation, allowing you to redirect its work mid-run. Only works on running agents.",
+        "and be injected into its conversation, allowing you to redirect its work mid-run. Waiting agents are queued for activation; guidance for an already queued activation is merged into its inbox.",
       parameters: Type.Object({
         agent_id: Type.String({
-          description: "The agent ID to steer (must be currently running).",
+          description: "The agent ID to steer (running, waiting, or queued for activation).",
         }),
         message: Type.String({
           description:

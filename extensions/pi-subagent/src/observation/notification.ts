@@ -91,7 +91,9 @@ export function formatUpdateNotification(record: Subagent, message: string): str
     `<summary>Subagent "${escapeXml(record.description)}" sent an update</summary>`,
     `<message>${escapeXml(message)}</message>`,
     "</subagent-update>",
-    `The agent is still running. Steer it with subagent_steer("${record.id}", "...") to redirect it, or let it continue.`,
+    record.status === "waiting"
+      ? `The agent is waiting. Use subagent_steer with agent_id: "${record.id}" and your guidance to activate it.`
+      : `The agent is ${record.status === "running" ? "still running" : record.status}. Steer it with subagent_steer("${record.id}", "...") to redirect it, or let it continue.`,
   ]);
 }
 

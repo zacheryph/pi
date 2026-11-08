@@ -171,6 +171,8 @@ export function resolveRetentionWindow(
 
 /** Observer interface for agent lifecycle notifications. */
 export interface SubagentManagerObserver {
+  onSubagentWaiting?(record: Subagent): void;
+  onSubagentQueued?(record: Subagent): void;
   onSubagentStarted(record: Subagent): void;
   /** Session ready, before first prompt: live viewers can subscribe without polling. */
   onSubagentSessionCreated?(record: Subagent): void;
@@ -299,6 +301,8 @@ export class SubagentManager {
       observer?.onSubagentSessionCreated?.(agent),
     );
     return {
+      onWaiting: guarded("onSubagentWaiting", (agent) => observer?.onSubagentWaiting?.(agent)),
+      onQueued: guarded("onSubagentQueued", (agent) => observer?.onSubagentQueued?.(agent)),
       onStarted: (agent) => observer?.onSubagentStarted(agent),
       onSessionCreated: (agent) => {
         sessionCreated(agent);
@@ -424,6 +428,7 @@ export class SubagentManager {
       prompt,
       getRunConfig: this.getRunConfig,
       checkReopen: (source) => this.checkReopen(source),
+      scheduleActivation: (task) => this.limiter.schedule(task),
       ...knobs,
     };
   }
@@ -503,6 +508,15 @@ export class SubagentManager {
     const saved = live ? undefined : this.savedAgents?.find(id);
     if (!live && !saved) return { kind: "refused", reason: "unknown-agent" };
     const source = live ?? saved!;
+    if (
+      live &&
+      (live.status === "waiting" || (live.status === "queued" && live.isSessionReady()))
+    ) {
+      void live.steer(prompt, options.signal);
+      if (options.claimOutcome) live.claim();
+      else live.releaseClaims();
+      return { kind: "started", record: live };
+    }
     const refusal = this.resumeRefusalFor(source);
     if (refusal) return refused(refusal, source.outputFile);
     let agent: Subagent;
@@ -561,7 +575,10 @@ export class SubagentManager {
       isBackground: resolved.isBackground,
       state: new SubagentState({
         // A record still reading queued or running was interrupted.
-        status: saved.status === "queued" || saved.status === "running" ? "stopped" : saved.status,
+        status:
+          saved.status === "queued" || saved.status === "running" || saved.status === "waiting"
+            ? "stopped"
+            : saved.status,
         result: saved.result,
         error: saved.error,
         startedAt: saved.startedAt,

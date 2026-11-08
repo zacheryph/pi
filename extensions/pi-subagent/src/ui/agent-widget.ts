@@ -26,8 +26,9 @@ interface AgentSummary {
 export interface WidgetState {
   readonly runningCount: number;
   readonly queuedCount: number;
+  readonly waitingCount: number;
   readonly hasFinished: boolean;
-  /** True when runningCount > 0 || queuedCount > 0. Included for call-site readability. */
+  /** True while an assignment is running, queued, or waiting. */
   readonly hasActive: boolean;
 }
 
@@ -41,18 +42,21 @@ export function assembleWidgetState(
 ): WidgetState {
   let runningCount = 0;
   let queuedCount = 0;
+  let waitingCount = 0;
   let hasFinished = false;
   for (const a of agents) {
     if (a.status === "running") {
       runningCount++;
     } else if (a.status === "queued") {
       queuedCount++;
+    } else if (a.status === "waiting") {
+      waitingCount++;
     } else if (a.completedAt && shouldShowFinished(a.id, a.status)) {
       hasFinished = true;
     }
   }
-  const hasActive = runningCount > 0 || queuedCount > 0;
-  return { runningCount, queuedCount, hasFinished, hasActive };
+  const hasActive = runningCount > 0 || queuedCount > 0 || waitingCount > 0;
+  return { runningCount, queuedCount, waitingCount, hasFinished, hasActive };
 }
 
 /** The slice of the TUI the widget factory callback touches. */
@@ -154,6 +158,15 @@ export class AgentWidget implements SubagentManagerObserver {
 
   // ---- SubagentManagerObserver: react to lifecycle, self-drive the timer ----
 
+  /** Parked workers stay visible without an animation timer. */
+  onSubagentWaiting(_record: Subagent) {
+    this.update();
+  }
+
+  onSubagentQueued(_record: Subagent) {
+    this.update();
+  }
+
   /** A subagent started running — render, which arms the animation loop. */
   onSubagentStarted(_record: Subagent) {
     this.update();
@@ -229,6 +242,7 @@ export class AgentWidget implements SubagentManagerObserver {
       id: record.id,
       type: record.type,
       status: record.status,
+      waitingReason: record.waitingReason,
       description: record.description,
       toolUses: record.toolUses,
       startedAt: record.startedAt,
@@ -288,7 +302,8 @@ export class AgentWidget implements SubagentManagerObserver {
       const statusParts: string[] = [];
       if (state.runningCount > 0) statusParts.push(`${state.runningCount} running`);
       if (state.queuedCount > 0) statusParts.push(`${state.queuedCount} queued`);
-      const total = state.runningCount + state.queuedCount;
+      if (state.waitingCount > 0) statusParts.push(`${state.waitingCount} waiting`);
+      const total = state.runningCount + state.queuedCount + state.waitingCount;
       newStatusText = `${statusParts.join(", ")} agent${total === 1 ? "" : "s"}`;
     }
     if (newStatusText !== this.lastStatusText) {

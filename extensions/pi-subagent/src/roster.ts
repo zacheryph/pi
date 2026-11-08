@@ -80,7 +80,8 @@ export function rosterState(
   pendingQuestion: string | undefined,
   live: boolean,
 ): RosterState {
-  if (status === "queued" || status === "running") return live ? status : "interrupted";
+  if (status === "queued" || status === "running" || status === "waiting")
+    return live ? status : "interrupted";
   if (status === "completed" && pendingQuestion !== undefined) return "waiting";
   return status;
 }
@@ -170,6 +171,7 @@ export function formatClock(at: number): string {
 function stateText(entry: RosterEntry): string {
   switch (entry.state) {
     case "waiting":
+      if (!entry.pendingQuestion) return "waiting for background work or parent guidance";
       return (
         `waiting for your answer: "${clipText(entry.pendingQuestion ?? "", QUESTION_MAX_CHARS)}"` +
         (entry.resumable === false ? " (cannot be resumed)" : "")

@@ -3,6 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import type { Theme } from "#src/ui/display";
 import { renderWidgetLines, type WidgetAgent, widgetLineBudget } from "#src/ui/widget-renderer";
+import {
+  expectBounded,
+  expectPadded,
+  NARROW_WIDTHS,
+  WIDE_TEXT,
+} from "../../../../packages/pi-test-helpers/src/render.ts";
 import { withSlot } from "../../../../packages/pi-test-helpers/src/globals.ts";
 import { plainTheme, ansiTheme } from "../../../../packages/pi-test-helpers/src/theme.ts";
 
@@ -369,4 +375,32 @@ describe("terminal layout safety", () => {
     expect(lines[1]).toContain("live task");
     expect(lines[2]).toMatch(/^ \+2 more \(2 finished\) +$/);
   });
+});
+
+describe("waiting worker rows", () => {
+  it("keeps parked workers visible without completion styling or an animated spinner", () => {
+    const agents = [makeAgent({ status: "waiting", waitingReason: "CI checks" })];
+    const first = render({ agents, spinnerFrame: 0 });
+    expect(first.join("\n")).toContain("waiting: CI checks");
+    expect(first.join("\n")).not.toContain("done");
+    expect(render({ agents, spinnerFrame: 3 })).toEqual(first);
+  });
+
+  it.each(NARROW_WIDTHS)(
+    "keeps waiting Unicode and ANSI text inside %i columns",
+    (terminalWidth) => {
+      const lines = render({
+        terminalWidth,
+        agents: [
+          makeAgent({
+            status: "waiting",
+            description: WIDE_TEXT,
+            waitingReason: "\u001b[31mCI界\u001b[0m\nnext",
+          }),
+        ],
+      });
+      expectBounded(lines, terminalWidth);
+      for (const line of lines.slice(1)) expectPadded(line, terminalWidth);
+    },
+  );
 });

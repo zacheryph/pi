@@ -40,6 +40,7 @@ export interface PersistedSubagentRecord {
   readonly toolUses: number;
   /** The question the agent ended its turn with, when it declared one. */
   readonly pendingQuestion?: string;
+  readonly waitingReason?: string;
   /** The model's `provider/id`; absent while an inherited model is still unknown. */
   readonly model?: string;
   readonly thinkingLevel?: ThinkingLevel;
@@ -88,6 +89,7 @@ export function toPersistedRecord(record: PersistedRecordSource): PersistedSubag
     completedAt: record.completedAt,
     outputFile: record.outputFile,
     toolUses: record.toolUses,
+    ...(record.waitingReason !== undefined ? { waitingReason: record.waitingReason } : {}),
     ...(record.pendingQuestion !== undefined ? { pendingQuestion: record.pendingQuestion } : {}),
     ...(record.model ? { model: `${record.model.provider}/${record.model.id}` } : {}),
     ...(record.thinkingLevel !== undefined ? { thinkingLevel: record.thinkingLevel } : {}),
@@ -134,6 +136,7 @@ export function readPersistedRuns(entries: readonly SessionEntryLike[]): Persist
 const SUBAGENT_STATUSES: ReadonlySet<string> = new Set<SubagentStatus>([
   "queued",
   "running",
+  "waiting",
   "completed",
   "aborted",
   "stopped",
@@ -145,6 +148,7 @@ const OPTIONAL_STRINGS = [
   "error",
   "outputFile",
   "pendingQuestion",
+  "waitingReason",
   "model",
   "thinkingLevel",
   "cwd",
@@ -182,6 +186,7 @@ function asRecord(data: unknown): PersistedSubagentRecord | undefined {
       outputFile: optional<string>("outputFile"),
       toolUses,
       pendingQuestion: optional<string>("pendingQuestion"),
+      waitingReason: optional<string>("waitingReason"),
       thinkingLevel: optional<ThinkingLevel>("thinkingLevel"),
       maxTurns: optional<number>("maxTurns"),
       cwd: optional<string>("cwd"),

@@ -30,6 +30,7 @@ export interface AgentReport {
   /** Pre-formatted duration string. */
   duration: string;
   description: string;
+  waitingReason?: string;
   result: string | undefined;
   error: string | undefined;
   /** The run's turn limit and its use; absent when no limit applied. */
@@ -120,6 +121,7 @@ export interface SavedAgentReport {
   toolUses: number;
   duration: string;
   description: string;
+  waitingReason?: string;
   result: string | undefined;
   error: string | undefined;
   turnBudget?: TurnBudget;

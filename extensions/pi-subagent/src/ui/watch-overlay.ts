@@ -98,7 +98,10 @@ export class WatchOverlay implements SubagentManagerObserver {
       };
     });
     for (const record of this.manager.listAgents()) {
-      if (record.isBackground && (record.status === "running" || record.status === "queued")) {
+      if (
+        record.isBackground &&
+        (record.status === "running" || record.status === "queued" || record.status === "waiting")
+      ) {
         const watched = this.track(record);
         if (watched && record.responseText) watched.tail.note(record.responseText, "text");
         this.subscribe(record);
@@ -131,6 +134,15 @@ export class WatchOverlay implements SubagentManagerObserver {
   }
   onSubagentSessionCreated(record: WatchAgent): void {
     this.subscribe(record);
+    this.refresh();
+  }
+  onSubagentWaiting(record: WatchAgent): void {
+    const watched = this.track(record);
+    watched?.tail.note("Waiting for background work or parent guidance…");
+    this.refresh();
+  }
+  onSubagentQueued(record: WatchAgent): void {
+    this.track(record)?.tail.note("Queued for activation…");
     this.refresh();
   }
   onSubagentCompleted(record: WatchAgent): void {

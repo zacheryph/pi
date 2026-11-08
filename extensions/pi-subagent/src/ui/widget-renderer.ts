@@ -26,6 +26,7 @@ export interface WidgetAgent {
   readonly type: SubagentType;
   readonly status: SubagentStatus;
   readonly description: string;
+  readonly waitingReason?: string;
   readonly toolUses: number;
   readonly startedAt: number;
   readonly completedAt?: number;
@@ -68,6 +69,8 @@ function statusLine(agent: WidgetAgent, spinnerFrame: number, max: number): Line
       { text: clipped.slice(spinner.length), tone: "muted" },
     ];
   }
+  if (agent.status === "waiting")
+    return { text: fit(`waiting: ${singleLine(agent.waitingReason ?? "input")}`), tone: "muted" };
   if (agent.status === "queued") return { text: fit(`${ICONS.queued} queued`), tone: "dim" };
   if (wrappedUpAtTurnLimit(agent))
     return { text: fit(`${ICONS.success} done (budget warning)`), tone: "warning" };
@@ -100,7 +103,7 @@ function agentRow(
     left,
     // Below 12 columns the task keeps the row; the status is dropped.
     right: content < 12 ? [] : [statusLine(agent, spinnerFrame, Math.floor(content * 0.4))],
-    group: agent.status === "running" ? "running" : "finished",
+    group: agent.status === "running" || agent.status === "waiting" ? "running" : "finished",
   };
 }
 
@@ -150,7 +153,8 @@ export function renderWidgetLines(params: {
       agent.completedAt != null &&
       shouldShowFinished(agent.id, agent.status),
   );
-  const ordered = [...running, ...finished];
+  const waiting = agents.filter((agent) => agent.status === "waiting");
+  const ordered = [...running, ...waiting, ...finished];
   if (ordered.length === 0 && queuedCount === 0) return [];
 
   const now = Date.now();

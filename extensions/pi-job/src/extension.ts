@@ -7,6 +7,11 @@
  * ExtensionAPI.
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { service } from "../../../packages/pi-session-tree/src/index.ts";
+import {
+  ACTIVATION_SERVICE,
+  type ActivationRoute,
+} from "../../../packages/pi-session-tree/src/activation.ts";
 import { randomUUID } from "node:crypto";
 import { isAbsolute, resolve } from "node:path";
 import {
@@ -264,12 +269,15 @@ export function createJobsExtension(options: JobsExtensionOptions = {}) {
     const live = liveManagers();
     // Latest context seen (pi's contexts read live state; a stale one throws).
     let ctxRef: SessionContext | undefined;
+    let activation: ActivationRoute | undefined;
+    let untrackWork: (() => void) | undefined;
     const remember = (ctx: unknown) => {
       if (ctx && typeof ctx === "object") ctxRef = ctx as SessionContext;
     };
 
     const host: DeliveryHost<JobSnapshot> = {
-      isIdle: () => (typeof ctxRef?.isIdle === "function" ? ctxRef.isIdle() : true),
+      isIdle: () =>
+        activation ? true : typeof ctxRef?.isIdle === "function" ? ctxRef.isIdle() : true,
       aborted: () => ctxRef?.signal?.aborted === true,
       send: (deliveryId, completions) => {
         const budget = tailBudget(completions.length);
@@ -278,24 +286,27 @@ export function createJobsExtension(options: JobsExtensionOptions = {}) {
           tail: manager.notificationTail(c.payload, NOTIFY_LINES, budget),
         }));
         const { parts, partOf } = formatBatch(items);
-        pi.sendMessage(
-          {
-            customType: CUSTOM_TYPE,
-            content: parts.map((text) => ({ type: "text" as const, text })),
-            display: true,
-            // `part`: the content part holding this completion (used by dedupeCompletions).
-            details: {
-              deliveryId,
-              completions: completions.map((c, i) => ({
-                completionId: c.completionId,
-                part: partOf[i],
-                job: brief(c.payload),
-              })),
+        const send = () =>
+          pi.sendMessage(
+            {
+              customType: CUSTOM_TYPE,
+              content: parts.map((text) => ({ type: "text" as const, text })),
+              display: true,
+              // `part`: the content part holding this completion (used by dedupeCompletions).
+              details: {
+                deliveryId,
+                completions: completions.map((c, i) => ({
+                  completionId: c.completionId,
+                  part: partOf[i],
+                  job: brief(c.payload),
+                })),
+              },
             },
-          },
-          // pi decides: streaming → its follow-up queue; otherwise → start a run.
-          { triggerTurn: true, deliverAs: "followUp" },
-        );
+            // pi decides: streaming → its follow-up queue; otherwise → start a run.
+            { triggerTurn: !activation, deliverAs: "followUp" },
+          );
+        if (activation) activation.enqueue(send);
+        else send();
       },
       lost: (items) => {
         try {
@@ -355,15 +366,15 @@ export function createJobsExtension(options: JobsExtensionOptions = {}) {
 
     pi.on("agent_start", async (_e: unknown, ctx: unknown) => {
       remember(ctx);
-      delivery.onAgentStart();
+      if (!activation) delivery.onAgentStart();
     });
     pi.on("agent_end", async (_e: unknown, ctx: unknown) => {
       remember(ctx);
-      delivery.onAgentEnd();
+      if (!activation) delivery.onAgentEnd();
     });
     pi.on("agent_settled", async (_e: unknown, ctx: unknown) => {
       remember(ctx);
-      delivery.onAgentSettled();
+      if (!activation) delivery.onAgentSettled();
     });
     pi.on("message_end", async (e: unknown) => {
       const m = (
@@ -460,11 +471,22 @@ export function createJobsExtension(options: JobsExtensionOptions = {}) {
       try {
         pruneLogs(logRoot);
       } catch {}
+      untrackWork?.();
+      activation = sessionId ? service<ActivationRoute>(sessionId, ACTIVATION_SERVICE) : undefined;
+      untrackWork = activation?.track(() => {
+        const pending = manager.list().filter((job) => job.status === "running");
+        return pending.length
+          ? `Waiting for ${pending.map((job) => job.label || job.id).join(", ")}`
+          : delivery.heldCount
+            ? "Pending job completion"
+            : undefined;
+      });
       delivery.rebind(host);
     });
 
     pi.on("session_shutdown", async (event) => {
       if (retired) return;
+      untrackWork?.();
       if (event.reason === "reload" && owner && sessionId) {
         // Timers belong to Node, not the extension runtime. Keep their one manager
         // (including watch options/baseline/deadline), pipes and supervisors alive.
