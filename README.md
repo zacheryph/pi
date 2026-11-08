@@ -517,9 +517,12 @@ todo handoff to a subagent. CI runs it whenever any extension changes.
 ### Shared test helpers
 
 [`packages/pi-test-helpers`](packages/pi-test-helpers/README.md) holds what test
-suites across workspaces share, such as temp directories cleaned up when a test
-ends. Reach for it before writing another local helper; keep helpers that only
-one workspace needs in that workspace's `test/`.
+suites across workspaces share: temp directories and layered settings
+fixtures cleaned up when a test ends, polling, plain, ANSI and markup themes,
+padding and width assertions, a fake `ExtensionAPI` for factory unit tests, a
+`ui.custom` stub that mounts components, and real SDK sessions on an offline
+faux model. Reach for it before writing another local helper; keep helpers
+that only one workspace needs in that workspace's `test/`.
 
 ### Screenshot the TUI
 
