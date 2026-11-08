@@ -2,12 +2,12 @@ import { existsSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi, onTestFinished } from "vitest";
-import { SESSION_TREE_KEY } from "../../../packages/pi-session-tree/src/index.ts";
 import { GIT_SNAPSHOT_EVENT, type GitSnapshotEvent } from "../src/events.ts";
 import piGit from "../src/index.ts";
 import { GhUnavailable, type GhRunner } from "../src/status.ts";
 import { LEDGER_TYPE, type WorktreeRecord } from "../src/ledger.ts";
 import { commit, run, sandbox, type Sandbox } from "./support/repos.ts";
+import { resetSessionTree } from "../../../packages/pi-test-helpers/src/globals.ts";
 
 type Handler = (...args: unknown[]) => unknown;
 interface Tool {
@@ -102,10 +102,7 @@ beforeEach(() => {
   clock = 1_000;
   frozen = false;
 });
-afterEach(() => {
-  // eslint-disable-next-line @typescript-eslint/no-dynamic-delete -- Symbol-keyed global in tests
-  delete (globalThis as Record<symbol, unknown>)[SESSION_TREE_KEY];
-});
+afterEach(resetSessionTree);
 
 const start = async (sessionId = "parent", entries?: unknown[]) => {
   const h = harness({ sessionId, cwd: box.dir, root: box.root, entries });

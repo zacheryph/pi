@@ -23,6 +23,7 @@ import { TODO_JOURNAL_TYPE, TODO_REVIEW_TYPE } from "#src/replay.ts";
 import { showTodoBrowser } from "../src/ui/browser.ts";
 import { TODO_SNAPSHOT_EVENT, type TodoSnapshotEvent } from "#src/events.ts";
 import { plainTheme, ansiTheme, stripAnsi } from "../../../packages/pi-test-helpers/src/theme.ts";
+import { withSlot } from "../../../packages/pi-test-helpers/src/globals.ts";
 
 // Browser interaction has its own component tests. Here test command routing,
 // branch snapshots, and headless behavior independently of terminal input.
@@ -755,14 +756,7 @@ describe("user commands", () => {
     const expanded = widget.render(60);
     expect(expanded).toHaveLength(3);
     const open = Symbol.for("pi-ui.inline-window.open");
-    const slots = globalThis as Record<symbol, unknown>;
-    slots[open] = 1;
-    try {
-      expect(widget.render(60)).toEqual([expanded[0]]);
-    } finally {
-      // oxlint-disable-next-line no-dynamic-delete -- Remove this test's Symbol-keyed slot.
-      delete slots[open];
-    }
+    withSlot(open, 1, () => expect(widget.render(60)).toEqual([expanded[0]]));
     expect(widget.render(60)).toEqual(expanded);
     env.noContinuation();
   });

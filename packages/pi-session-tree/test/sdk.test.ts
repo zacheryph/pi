@@ -1,20 +1,18 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DefaultResourceLoader, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { afterEach, expect, it } from "vitest";
-import { SESSION_TREE_KEY } from "#src/index";
+import { clearSlots, resetSessionTree, slots } from "../../pi-test-helpers/src/globals.ts";
 
-const slots = globalThis as Record<symbol, unknown>;
 const keys = ["provider", "consumer", "seen"].map((name) =>
   Symbol.for(`pi-session-tree.test.${name}`),
 );
 const dirs: string[] = [];
 
 afterEach(() => {
-  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
-  // eslint-disable-next-line @typescript-eslint/no-dynamic-delete -- Symbol-keyed globals in tests
-  for (const key of [...keys, SESSION_TREE_KEY]) delete slots[key];
+  clearSlots(...keys);
+  resetSessionTree();
 });
 
 it("shares one registry between extensions that each load their own copy of the library", async () => {

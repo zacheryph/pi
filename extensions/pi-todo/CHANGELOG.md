@@ -3,6 +3,12 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-08: Global test slots from pi-test-helpers
+
+- `delegation.test.ts` resets pi-session-tree with `packages/pi-test-helpers`'
+  `resetSessionTree`, and `index.test.ts` sets the inline-window slot with
+  `withSlot`. No source change.
+
 ## 2026-11-08: Test themes from pi-test-helpers
 
 - Theme stubs and SGR stripping in `index`, `ui` and `browser` tests come from

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import type { Theme } from "#src/ui/display";
 import { renderWidgetLines, type WidgetAgent, widgetLineBudget } from "#src/ui/widget-renderer";
+import { withSlot } from "../../../../packages/pi-test-helpers/src/globals.ts";
 import { plainTheme, ansiTheme } from "../../../../packages/pi-test-helpers/src/theme.ts";
 
 const registry = new AgentTypeRegistry(() => new Map());
@@ -58,17 +59,10 @@ describe("compact widget heading and rows", () => {
 
   it("collapses to its heading while an inline window (an ask) is open", () => {
     const open = Symbol.for("pi-ui.inline-window.open");
-    const slots = globalThis as Record<symbol, unknown>;
     const agents = [makeAgent(), makeAgent({ id: "second", status: "queued" })];
     const expanded = render({ agents });
-    slots[open] = 1;
-    try {
-      expect(render({ agents })).toEqual([expanded[0]]);
-      expect(expanded[0]).toContain("1 queued");
-    } finally {
-      // oxlint-disable-next-line no-dynamic-delete -- Remove this test's Symbol-keyed slot.
-      delete slots[open];
-    }
+    withSlot(open, 1, () => expect(render({ agents })).toEqual([expanded[0]]));
+    expect(expanded[0]).toContain("1 queued");
   });
 
   it("keeps the header icon static while agent status spinners advance", () => {

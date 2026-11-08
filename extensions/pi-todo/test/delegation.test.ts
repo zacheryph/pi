@@ -11,7 +11,6 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import type { TSchema } from "typebox";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { SESSION_TREE_KEY } from "../../../packages/pi-session-tree/src/index.ts";
 import todoExtension from "#src/index";
 import type { TodoRequest } from "#src/actions";
 import { TODO_CLAIMS_TYPE } from "#src/claims";
@@ -19,11 +18,9 @@ import { DEFAULT_CONFIG, type TodoConfig } from "#src/config";
 import { TODO_SNAPSHOT_EVENT, type TodoSnapshotEvent } from "#src/events";
 import { replayTodoSession } from "#src/replay";
 import type { TodoDetails } from "#src/state";
+import { resetSessionTree } from "../../../packages/pi-test-helpers/src/globals.ts";
 
-afterEach(() => {
-  // eslint-disable-next-line @typescript-eslint/no-dynamic-delete -- Symbol-keyed global in tests
-  delete (globalThis as Record<symbol, unknown>)[SESSION_TREE_KEY];
-});
+afterEach(resetSessionTree);
 
 type Handler = (event: ExtensionEvent, ctx: ExtensionContext) => unknown;
 const CONTEXT_TYPE = "todo:context";
