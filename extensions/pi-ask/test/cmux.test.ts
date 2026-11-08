@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CmuxNotifications } from "../src/cmux.ts";
+import { flushMicrotasks as flush } from "../../../packages/pi-test-helpers/src/wait.ts";
 
 type Callback = (error: Error | null, stdout: string, stderr: string) => void;
 const { execFile } = vi.hoisted(() => ({
@@ -23,9 +24,6 @@ const ID = "59A9DCD2-BB99-4BD2-8FC7-943073019662";
 const ID2 = "69A9DCD2-BB99-4BD2-8FC7-943073019662";
 const receipt = (id = ID) =>
   JSON.stringify({ id, surface_id: "surface", workspace_id: "workspace" });
-const flush = async () => {
-  for (let i = 0; i < 10; i++) await Promise.resolve();
-};
 const reply = (index: number, stdout = "", error: Error | null = null) =>
   execFile.mock.calls[index]![3](error, stdout, "");
 

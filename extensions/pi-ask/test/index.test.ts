@@ -3,6 +3,7 @@ import { KeybindingsManager, TUI_KEYBINDINGS } from "@earendil-works/pi-tui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { provide, SESSION_TREE_KEY } from "../../../packages/pi-session-tree/src/index.ts";
 import piAsk from "../src/index.ts";
+import { waitFor } from "../../../packages/pi-test-helpers/src/wait.ts";
 
 const { execFile } = vi.hoisted(() => ({ execFile: vi.fn() }));
 vi.mock("node:child_process", () => ({ execFile }));
@@ -91,10 +92,7 @@ function harness(options: { mode?: string; hasUI?: boolean; sessionId?: string }
   };
   const ask = (params: unknown, signal?: AbortSignal, id = "call-1") =>
     tools.get("ask")!.execute(id, params, signal, undefined, ctx);
-  const until = async (check: () => boolean) => {
-    for (let i = 0; i < 50 && !check(); i++) await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(check()).toBe(true);
-  };
+  const until = (check: () => boolean) => waitFor(check, { interval: 0, timeout: 1000 });
   return {
     pi,
     tools,

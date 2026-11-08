@@ -10,6 +10,7 @@ import {
   takeReloadOwner,
   type Owner,
 } from "../src/ownership.ts";
+import { sleep } from "./helpers.ts";
 
 void test("history high-water mark includes lists, old result text and completions, not other tools", () => {
   const entry = (message: any) => ({ type: "message", message });
@@ -162,7 +163,7 @@ void test("reload timeout is unref'd, stops abandoned work and logs its owner", 
   expireReloadOwner("abandoned", owner, 10, owners);
   t.after(() => clearTimeout(owner.reloadTimer));
   assert.equal(owner.reloadTimer!.hasRef(), false);
-  await new Promise((resolve) => setTimeout(resolve, 40));
+  await sleep(40);
   assert.equal(stopped, 1);
   assert.equal(owners.has("abandoned"), false);
   assert.match(warnings[0], /abandoned.*expired.*stopping/);
@@ -182,7 +183,7 @@ void test("compatible adoption cancels handoff expiry", async (t) => {
   });
   expireReloadOwner("adopted", owner, 10);
   assert.equal((await takeReloadOwner("adopted")).owner, owner);
-  await new Promise((resolve) => setTimeout(resolve, 40));
+  await sleep(40);
   assert.equal(stopped, false);
 });
 

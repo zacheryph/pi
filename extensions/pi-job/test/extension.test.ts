@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { createJobsExtension, CUSTOM_TYPE, liveManagers } from "../src/extension.ts";
 import { piAiEntry, runtimeDirectory } from "./runtime.ts";
 import defaultExtension from "../src/extension.ts";
-import { alive, sleep, tempDir, waitForPid, waitUntil } from "./helpers.ts";
+import { alive, sleep, tempDir, waitForPid, waitUntil, tick } from "./helpers.ts";
 import { JobManager } from "../src/jobs.ts";
 import { sessionOwners } from "../src/ownership.ts";
 
@@ -468,7 +468,7 @@ for (const event of ["session_compact", "session_tree"]) {
       0,
       "the event fires before pi clears its busy state: drain on the next turn of the event loop",
     );
-    await new Promise((r) => setImmediate(r));
+    await tick();
     assert.equal(sent.length, 1);
   });
 }

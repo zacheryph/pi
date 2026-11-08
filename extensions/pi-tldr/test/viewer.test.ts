@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { sanitizeText, type DisposableComponent } from "../../../packages/pi-ui/src/index.ts";
 import type { TldrResult } from "../src/core.js";
 import { errorContent, showTldr, summaryContent } from "../src/viewer.js";
+import { flushMicrotasks as flush } from "../../../packages/pi-test-helpers/src/wait.ts";
 
 const summary: TldrResult = {
   title: "routing-migration",
@@ -16,9 +17,6 @@ const theme = {
   bold: (text: string) => `\x1b[1m${text}\x1b[22m`,
 };
 const plain = (lines: readonly string[]) => lines.map(sanitizeText).join("\n");
-const flush = async () => {
-  for (let i = 0; i < 8; i++) await Promise.resolve();
-};
 
 type Factory = Parameters<ExtensionContext["ui"]["custom"]>[0];
 function context(mode: ExtensionContext["mode"] = "tui") {

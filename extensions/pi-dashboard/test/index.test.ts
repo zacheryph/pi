@@ -2,7 +2,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
 import { Hub } from "#src/hub/hub";
 import dashboardExtension, { type DashboardDependencies } from "#src/index";
-import { get, onCleanup, post, tempDir, waitFor } from "#test/helpers";
+import { get, onCleanup, post, tempDir, waitFor, sleep } from "#test/helpers";
 
 type Handler = (event: Record<string, unknown>, ctx: unknown) => unknown;
 
@@ -559,7 +559,7 @@ describe("pi-dashboard extension", () => {
     const env = setup();
     const fake = load(env.deps);
     await fake.emit("session_start", { reason: "startup" }, fakeCtx("print"));
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await sleep(100);
     expect(env.spawnHub).not.toHaveBeenCalled();
   });
 
@@ -573,7 +573,7 @@ describe("pi-dashboard extension", () => {
     await main.emit("session_start", { reason: "startup" }, mainCtx);
     await embedded.emit("session_start", { reason: "startup" }, embeddedCtx);
     await waitFor(async () => (await env.sessions()).length === 1);
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await sleep(100);
     expect((await env.sessions()).map((card) => card.id)).toEqual(["1"]);
 
     await quit(main, mainCtx);

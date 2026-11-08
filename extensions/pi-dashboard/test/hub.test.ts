@@ -12,6 +12,7 @@ import {
   tempDir,
   waitFor,
   type FakeReporter,
+  sleep,
 } from "#test/helpers";
 
 async function startHub(options: { dir?: string; idleGraceMs?: number } = {}) {
@@ -81,7 +82,7 @@ describe("Hub", () => {
     second.send(hello({ sessionId: "session-b" }));
     await waitFor(async () => (await sessions(hub))[0]?.sessionId === "session-b");
     expect((await sessions(hub))[0]?.restarting).toBeUndefined();
-    await new Promise((resolve) => setTimeout(resolve, 400));
+    await sleep(400);
     expect(await sessions(hub)).toHaveLength(1);
   });
 
@@ -102,7 +103,7 @@ describe("Hub", () => {
     const reporter = await fakeReporter(hub.paths.socket);
     reporter.send(hello());
     await waitFor(async () => (await sessions(hub)).length === 1);
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await sleep(200);
     expect(existsSync(hub.paths.socket)).toBe(true);
     reporter.send({ type: "bye", reason: "quit" });
     reporter.socket.end();

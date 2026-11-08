@@ -4,6 +4,7 @@ import piTldr from "../src/index.js";
 import { runTldrModel } from "../src/core.js";
 import { loadTldrConfig } from "../src/config.js";
 import { showTldr } from "../src/viewer.js";
+import { tick } from "../../../packages/pi-test-helpers/src/wait.ts";
 
 vi.mock("../src/core.js", async (importActual) => {
   const actual = await importActual<typeof import("../src/core.js")>();
@@ -88,7 +89,6 @@ function harness(setSessionName: boolean, existing?: string) {
 
 beforeEach(() => vi.clearAllMocks());
 afterEach(() => vi.clearAllMocks());
-const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 
 describe("pi-tldr integration", () => {
   it("registers /tldr and auto-names after the first prompt without blocking", async () => {

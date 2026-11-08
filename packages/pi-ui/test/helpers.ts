@@ -12,6 +12,7 @@ export const theme: UITheme = {
   fg: (_color, text) => `\x1b[36m${text}\x1b[39m`,
   bold: (text) => `\x1b[1m${text}\x1b[22m`,
 };
+export { flushMicrotasks as flush } from "../../pi-test-helpers/src/wait.ts";
 export const keys = () => new KeybindingsManager(TUI_KEYBINDINGS);
 export const plain = (lines: readonly string[]) => lines.map(sanitizeText).join("\n");
 export function surface(rows = 30) {
@@ -38,6 +39,3 @@ export const wheel = (delta: number): TuiMouseEvent => ({
   ctrl: false,
   wheelDelta: delta,
 });
-export const flush = async () => {
-  for (let i = 0; i < 8; i++) await Promise.resolve();
-};

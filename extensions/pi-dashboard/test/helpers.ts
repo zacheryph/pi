@@ -1,15 +1,10 @@
-import { mkdtempSync, rmSync } from "node:fs";
 import { request } from "node:http";
 import { connect, type Socket } from "node:net";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach, onTestFinished } from "vitest";
+import { onTestFinished } from "vitest";
 import { encode, type ReporterMessage, type SessionSnapshot } from "#src/protocol";
+import { tempDir as sharedTempDir } from "../../../packages/pi-test-helpers/src/temp.ts";
 
-const cleanups: Array<() => unknown> = [];
-afterEach(async () => {
-  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
-});
+export { sleep, waitFor } from "../../../packages/pi-test-helpers/src/wait.ts";
 
 export function onCleanup(cleanup: () => unknown): void {
   onTestFinished(async () => {
@@ -18,24 +13,7 @@ export function onCleanup(cleanup: () => unknown): void {
 }
 
 /** Short prefix: unix socket paths are limited to about 104 bytes on macOS. */
-export function tempDir(): string {
-  const dir = mkdtempSync(join(tmpdir(), "pid-"));
-  onCleanup(() => rmSync(dir, { recursive: true, force: true }));
-  return dir;
-}
-
-export async function waitFor<T>(
-  check: () => T | undefined | false | Promise<T | undefined | false>,
-  timeoutMs = 3_000,
-): Promise<T> {
-  const deadline = Date.now() + timeoutMs;
-  for (;;) {
-    const value = await check();
-    if (value) return value;
-    if (Date.now() > deadline) throw new Error("waitFor timed out");
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
-}
+export const tempDir = (): string => sharedTempDir(onTestFinished, "pid-");
 
 export function snapshot(overrides: Partial<SessionSnapshot> = {}): SessionSnapshot {
   return {

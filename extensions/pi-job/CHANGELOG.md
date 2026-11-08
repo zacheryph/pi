@@ -3,6 +3,12 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-08: Test waits from pi-test-helpers
+
+- `test/helpers.ts`: `waitUntil` polls through `packages/pi-test-helpers`'
+  `waitFor`, and `sleep` and the new `tick` are its helpers; inline `setTimeout`
+  and `setImmediate` promises in the tests use them. No source change.
+
 ## 2026-11-08: Test temp directories from pi-test-helpers
 
 - `test/helpers.ts`: `tempDir` wraps `packages/pi-test-helpers`' `tempDir`,

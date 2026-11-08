@@ -19,6 +19,7 @@ import {
   sessionTree,
   trackChildren,
 } from "#src/index";
+import { sleep } from "../../pi-test-helpers/src/wait.ts";
 
 afterEach(() => {
   // eslint-disable-next-line @typescript-eslint/no-dynamic-delete -- Symbol-keyed global in tests
@@ -226,7 +227,7 @@ describe("asynchronous services", () => {
       result.ok === false && result.reason === "error" && (result.error as Error).message,
     ).toMatch(/callAsync/);
     // Let the rejected promise settle; vitest fails the run on an unhandled rejection.
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await sleep(0);
   });
 });
 

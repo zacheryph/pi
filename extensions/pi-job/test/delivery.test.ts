@@ -8,6 +8,7 @@ import {
   DUPLICATE_STUB,
   type Completion,
 } from "../src/delivery.ts";
+import { sleep, tick } from "./helpers.ts";
 
 function host() {
   const state = {
@@ -153,7 +154,7 @@ void test("agent_settled while pi is busy again (earlier handler started a compa
   state.idle = true;
   state.startRunOnSend = false; // compaction end: the events drain in order without a new run
   d.onBusyEnd(false);
-  await new Promise((r) => setImmediate(r));
+  await tick();
   assert.deepEqual(
     state.sends.map((s) => s.ids),
     [["a"], ["a"], ["b", "c"]],
@@ -173,7 +174,7 @@ void test("no timers, and nothing is ever resent because time passed", async () 
   });
   assert.equal(timers, 0);
   const before = state.sends.length;
-  await new Promise((r) => setTimeout(r, 200));
+  await sleep(200);
   assert.equal(state.sends.length, before);
 });
 
@@ -187,7 +188,7 @@ void test("busy without a run (compaction, branch summary): held; one deferred r
     1,
     "exactly one setImmediate, no loop",
   );
-  await new Promise((r) => setImmediate(r));
+  await tick();
   assert.equal(state.sends.length, 0, "still busy: keep holding, no retry loop");
   state.idle = true;
   d.onBusyEnd(true); // session_compact_failed fires after pi cleared its state
@@ -348,7 +349,7 @@ void test("reload suspends stale API calls and rebinds held and unconfirmed comp
     },
   });
   assert.deepEqual(received, []); // Other session_start handlers run before this drain.
-  await new Promise((resolve) => setImmediate(resolve));
+  await tick();
   assert.deepEqual(received, [["unconfirmed"], ["held", "during-reload"]]);
   assert.equal(state.lost.length, 0);
 });
@@ -366,7 +367,7 @@ void test("a deferred rebind cannot resume a second reload handoff", async () =>
     },
   });
   d.suspend();
-  await new Promise((resolve) => setImmediate(resolve));
+  await tick();
   assert.equal(sends, 0);
   d.dispose();
 });
