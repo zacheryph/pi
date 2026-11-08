@@ -26,6 +26,7 @@ import {
 } from "#test/helpers/mock-session";
 import { STUB_CTX, STUB_SNAPSHOT } from "#test/helpers/stub-ctx";
 import { turnLoopResult } from "#test/helpers/turn-loop-result";
+import { tick } from "../../../../packages/pi-test-helpers/src/wait.ts";
 import { tempDir } from "../../../../packages/pi-test-helpers/src/temp.ts";
 
 /** Default max concurrent background agents (matches production default). */
@@ -2009,7 +2010,7 @@ describe("SubagentManager — cold resume", () => {
       const released = record.releaseSession();
       const disposed = vi.fn();
       const teardown = manager.dispose().then(disposed);
-      await new Promise<void>((resolve) => setImmediate(resolve));
+      await tick();
       expect(disposed).not.toHaveBeenCalled();
       shutdown.resolve();
       await released;

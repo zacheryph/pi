@@ -25,3 +25,4 @@ file needs its own `afterEach` list of cleanups.
 | Module    | Exports                                                                                                                                                                 |
 | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `temp.ts` | `tempDir(cleanup, prefix?)`; `writeFiles(root, files)`, objects written as JSON; `settingsDirs(cleanup, filename)`, an agent dir and a project for layered config files |
+| `wait.ts` | `waitFor(check, { timeout, interval, what })` returns the first truthy value; `sleep`, `tick`, `flushMicrotasks`                                                        |

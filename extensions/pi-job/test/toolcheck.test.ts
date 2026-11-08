@@ -17,6 +17,7 @@ import {
   type ToolCallOutcome,
 } from "../src/toolcheck.ts";
 import { evaluateWatch, type CheckResult } from "../src/watch.ts";
+import { tick } from "./helpers.ts";
 
 const ok = (structuredContent?: unknown, text = ""): ToolCallOutcome => ({
   isError: false,
@@ -231,10 +232,10 @@ void test("startProbe: one outcome; terminate wins over a late result; errors ar
     (c) => output.push(c.toString()),
     (o) => outcomes.push(o),
   );
-  await new Promise((r) => setImmediate(r));
+  await tick();
   run.terminate();
   resolve({ exitCode: 0, output: "late" });
-  await new Promise((r) => setImmediate(r));
+  await tick();
   assert.deepEqual(outcomes, [{ exitCode: null, signal: null }]);
   assert.deepEqual(output, [], "late output is dropped");
 
@@ -258,8 +259,8 @@ void test("startProbe: one outcome; terminate wins over a late result; errors ar
     () => {},
     (o) => done.push(o),
   );
-  await new Promise((r) => setImmediate(r));
-  await new Promise((r) => setImmediate(r));
+  await tick();
+  await tick();
   assert.deepEqual(done, [
     { exitCode: null, signal: null, error: "boom", inconclusive: true, final: true },
     { exitCode: null, signal: null, error: "threw", inconclusive: true },
@@ -272,7 +273,7 @@ void test("startProbe: one outcome; terminate wins over a late result; errors ar
     () => {},
     (o) => disposed.push(o),
   ).dispose();
-  await new Promise((r) => setImmediate(r));
+  await tick();
   assert.deepEqual(disposed, [], "dispose reports nothing");
 });
 

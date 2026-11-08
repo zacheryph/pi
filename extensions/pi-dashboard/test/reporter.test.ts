@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { Hub } from "#src/hub/hub";
 import { hubPaths } from "#src/protocol";
 import { Reporter } from "#src/reporter";
-import { get, onCleanup, snapshot, tempDir, waitFor } from "#test/helpers";
+import { get, onCleanup, snapshot, tempDir, waitFor, sleep } from "#test/helpers";
 
 function inProcessHub(dir: string) {
   const hubs: Hub[] = [];
@@ -84,7 +84,7 @@ describe("Reporter", () => {
     });
     r.start(snapshot());
     await waitFor(() => unavailable.mock.calls.length === 1);
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    await sleep(150);
     expect(spawn).toHaveBeenCalledTimes(1);
     expect(unavailable).toHaveBeenCalledTimes(1);
     expect(r.connected).toBe(false);

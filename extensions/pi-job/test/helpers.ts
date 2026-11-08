@@ -1,20 +1,20 @@
 import { existsSync, readFileSync } from "node:fs";
 import type { TestContext } from "node:test";
 import { tempDir as sharedTempDir } from "../../../packages/pi-test-helpers/src/temp.ts";
+import { waitFor } from "../../../packages/pi-test-helpers/src/wait.ts";
+
+export { sleep, tick } from "../../../packages/pi-test-helpers/src/wait.ts";
 
 /** A temp directory removed when the test ends. */
 export const tempDir = (t: Pick<TestContext, "after">): string => sharedTempDir(t, "pi-job-test-");
 
+/** Poll every 25 ms until `predicate` holds. */
 export async function waitUntil(
   predicate: () => boolean,
   timeoutMs = 5000,
   what = "condition",
 ): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (!predicate()) {
-    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
-    await new Promise((r) => setTimeout(r, 25));
-  }
+  await waitFor(predicate, { timeout: timeoutMs, interval: 25, what });
 }
 
 /**
@@ -63,5 +63,3 @@ export async function waitForPid(path: string): Promise<number> {
   );
   return pid;
 }
-
-export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

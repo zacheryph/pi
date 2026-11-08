@@ -11,6 +11,7 @@ import type { StashRecord } from "#src/state";
 import { Explorer } from "../../../packages/pi-ui/src/index.ts";
 import { showStashBrowser, stashExplorerView, type StashPreview } from "#src/ui/browser";
 import { formatAge, formatBytes, originLabel, previewRows } from "#src/ui/render";
+import { flushMicrotasks as flush } from "../../../packages/pi-test-helpers/src/wait.ts";
 
 // Colors every token so width math must ignore escape sequences.
 const ansi = {
@@ -95,9 +96,6 @@ describe("stash explorer", () => {
       done,
     });
     return { browser, done, load };
-  };
-  const flush = async () => {
-    for (let i = 0; i < 8; i++) await Promise.resolve();
   };
 
   it("maps entries to accent handles, muted descriptions and dim size/age badges", () => {
