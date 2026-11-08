@@ -28,6 +28,8 @@ export async function waitUntil(
  * Count a zombie as dead.
  */
 export function alive(pid: number): boolean {
+  // kill(0, 0) probes our own process group, which is always alive.
+  if (!Number.isSafeInteger(pid) || pid <= 0) throw new Error(`alive: invalid PID ${pid}`);
   try {
     process.kill(pid, 0);
   } catch {
