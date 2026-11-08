@@ -3,6 +3,13 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-08: Faux sessions from pi-test-helpers
+
+- Parent sessions in `records-sdk` and `cold-resume-sdk` use `packages/pi-test-
+  helpers`' `fauxSession`, and `main-agent-profile-sdk` its `fauxRuntime`,
+  reading provider calls from `calls`; tool-call responses use `toolCall`. No
+  source change.
+
 ## 2026-11-08: ui.custom stub from pi-test-helpers
 
 - `ui/agents-browser.test.ts` mounts the browser with `packages/pi-test-

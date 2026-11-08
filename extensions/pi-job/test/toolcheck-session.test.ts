@@ -5,41 +5,23 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
-import {
-  createFauxCore,
-  fauxAssistantMessage,
-  fauxToolCall,
-} from "@earendil-works/pi-ai/providers/faux";
-import {
-  createAgentSession,
-  DefaultResourceLoader,
-  ModelRuntime,
-  SessionManager,
-  SettingsManager,
-  type ExtensionAPI,
-} from "@earendil-works/pi-coding-agent";
+import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { createJobsExtension, CUSTOM_TYPE } from "../src/extension.ts";
 import type { JobManager } from "../src/jobs.ts";
+import {
+  fauxSession,
+  messageText,
+  toolCall,
+  toolResults,
+} from "../../../packages/pi-test-helpers/src/faux-session.ts";
 import { tempDir, waitUntil } from "./helpers.ts";
 
 type Ctx = Parameters<typeof tempDir>[0];
 
 async function harness(t: Ctx, opts: { block?: boolean } = {}) {
   const dir = tempDir(t);
-  const faux = createFauxCore({ provider: "toolcheck", models: [{ id: "m" }] });
-  const modelRuntime = await ModelRuntime.create({
-    authPath: join(dir, "auth.json"),
-    modelsPath: null,
-    modelsStorePath: join(dir, "cache"),
-    refreshOnCreate: false,
-  });
-  modelRuntime.registerProvider("toolcheck", {
-    api: faux.api,
-    apiKey: "k",
-    models: faux.models,
-    streamSimple: faux.streamSimple,
-  });
   const state = { status: "queued", calls: 0 };
   let manager: JobManager | undefined;
   const tools = (pi: ExtensionAPI) => {
@@ -73,15 +55,19 @@ async function harness(t: Ctx, opts: { block?: boolean } = {}) {
           : undefined,
       );
   };
-  const loader = new DefaultResourceLoader({
-    cwd: dir,
-    agentDir: dir,
-    settingsManager: SettingsManager.inMemory({}),
-    noExtensions: true,
-    noSkills: true,
-    noThemes: true,
-    noContextFiles: true,
-    extensionFactories: [
+  const { session, faux } = await fauxSession({
+    cleanup: t,
+    dir,
+    provider: "toolcheck",
+    models: [{ id: "m" }],
+    tools: ["job_watch", "job_list", "ci_status", "deploy"],
+    bind: {
+      mode: "print",
+      onError: (e) => {
+        throw e;
+      },
+    },
+    extensions: [
       createJobsExtension({
         logRoot: join(dir, "logs"),
         minIntervalSeconds: 0.01,
@@ -92,52 +78,18 @@ async function harness(t: Ctx, opts: { block?: boolean } = {}) {
       tools,
     ],
   });
-  await loader.reload();
-  const { session } = await createAgentSession({
-    cwd: dir,
-    agentDir: dir,
-    modelRuntime,
-    model: faux.getModel(),
-    resourceLoader: loader,
-    sessionManager: SessionManager.inMemory(dir),
-    settingsManager: SettingsManager.inMemory({
-      compaction: { enabled: false },
-      retry: { enabled: false },
-    }),
-    tools: ["job_watch", "job_list", "ci_status", "deploy"],
-  });
-  t.after(async () => {
-    try {
-      await session.abort();
-    } catch {}
-    session.dispose();
-    await manager?.shutdown(200);
-  });
-  await session.bindExtensions({
-    mode: "print",
-    onError: (e) => {
-      throw e;
-    },
-  });
+  t.after(() => manager?.shutdown(200));
   /** One model turn that calls job_watch with `params`, then ends; plus replies for wake-ups. */
   const watch = async (params: Record<string, unknown>) => {
     faux.setResponses([
-      fauxAssistantMessage(
-        [fauxToolCall("job_watch", params as Parameters<typeof fauxToolCall>[1])],
-        { stopReason: "toolUse" },
-      ),
+      toolCall("job_watch", params),
       fauxAssistantMessage("watching"),
       ...Array.from({ length: 5 }, () => fauxAssistantMessage("woken")),
     ]);
     await session.prompt("watch it");
-    const result = [...session.messages]
-      .reverse()
-      .find((m) => m.role === "toolResult" && m.toolName === "job_watch");
-    assert.ok(result && result.role === "toolResult");
-    return {
-      isError: result.isError,
-      text: result.content.map((c) => (c.type === "text" ? c.text : "")).join(""),
-    };
+    const result = toolResults(session, "job_watch").at(-1);
+    assert.ok(result);
+    return { isError: result.isError, text: messageText(result) };
   };
   const completions = () =>
     session.messages

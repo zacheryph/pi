@@ -1,20 +1,7 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-import {
-  createFauxCore,
-  fauxAssistantMessage,
-  fauxToolCall,
-} from "@earendil-works/pi-ai/providers/faux";
-import {
-  createAgentSession,
-  createCodemodeExtension,
-  DefaultResourceLoader,
-  ModelRuntime,
-  SessionManager,
-  SettingsManager,
-} from "@earendil-works/pi-coding-agent";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { resolve } from "node:path";
+import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
+import { createCodemodeExtension, SessionManager } from "@earendil-works/pi-coding-agent";
+import { describe, expect, it, onTestFinished } from "vitest";
 import todoExtension from "#src/index";
 import { loadTodoConfig } from "#src/config";
 import { replayTodoState } from "#src/state";
@@ -24,11 +11,12 @@ import {
   TODO_JOURNAL_TYPE,
   TODO_REVIEW_TYPE,
 } from "#src/replay";
-
-const cleanups: Array<() => void> = [];
-afterEach(() => {
-  for (const cleanup of cleanups.splice(0).reverse()) cleanup();
-});
+import {
+  fauxSession,
+  loadResources,
+  toolCall,
+} from "../../../packages/pi-test-helpers/src/faux-session.ts";
+import { tempDir } from "../../../packages/pi-test-helpers/src/temp.ts";
 
 async function fixture(
   options: {
@@ -37,31 +25,15 @@ async function fixture(
     delayToolResult?: () => Promise<void>;
   } = {},
 ) {
-  const dir = mkdtempSync(join(tmpdir(), "pi-todo-sdk-"));
-  cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
-  const faux = createFauxCore({ provider: "todo-test", models: [{ id: "test" }] });
-  const calls = vi.fn(faux.streamSimple);
-  const modelRuntime = await ModelRuntime.create({
-    authPath: join(dir, "auth.json"),
-    modelsPath: null,
-    modelsStorePath: join(dir, "cache"),
-    refreshOnCreate: false,
-  });
-  modelRuntime.registerProvider("todo-test", {
-    api: faux.api,
-    apiKey: "test-key",
-    models: faux.models,
-    streamSimple: calls,
-  });
-  const loader = new DefaultResourceLoader({
-    cwd: dir,
-    agentDir: dir,
-    settingsManager: SettingsManager.inMemory({}),
-    noExtensions: true,
-    noSkills: true,
-    noThemes: true,
-    noContextFiles: true,
-    extensionFactories: [
+  const dir = tempDir(onTestFinished, "pi-todo-sdk-");
+  const h = await fauxSession({
+    cleanup: onTestFinished,
+    dir,
+    provider: "todo-test",
+    sessionManager: options.manager,
+    responses: options.responses,
+    tools: ["todo_list", "todo_upsert", "todo_replace", "todo_remove", "todo_clear", "codemode"],
+    extensions: [
       (pi) => todoExtension(pi, { loadConfig: (cwd) => loadTodoConfig(cwd, dir) }),
       createCodemodeExtension(),
       (pi) => {
@@ -72,35 +44,13 @@ async function fixture(
       },
     ],
   });
-  await loader.reload();
-  const manager = options.manager ?? SessionManager.inMemory(dir);
-  const { session } = await createAgentSession({
-    cwd: dir,
-    agentDir: dir,
-    modelRuntime,
-    model: faux.getModel(),
-    resourceLoader: loader,
-    sessionManager: manager,
-    settingsManager: SettingsManager.inMemory({
-      compaction: { enabled: false },
-      retry: { enabled: false },
-    }),
-    tools: ["todo_list", "todo_upsert", "todo_replace", "todo_remove", "todo_clear", "codemode"],
-  });
-  cleanups.push(() => session.dispose());
-  const errors = vi.fn();
-  await session.bindExtensions({ mode: "print", onError: errors });
-  faux.setResponses(options.responses ?? [fauxAssistantMessage("done")]);
-  return { session, manager, faux, calls, errors };
+  return { ...h, manager: h.sessionManager };
 }
 
 const nestedWrite = (after = 'return "hidden";') =>
-  fauxAssistantMessage(
-    fauxToolCall("codemode", {
-      code: `await tools.todo_upsert({tasks:[{key:"inspect",subject:"Inspect",status:"in_progress"},{key:"verify",subject:"Verify",dependsOn:["inspect"]}]}); ${after}`,
-    }),
-    { stopReason: "toolUse" },
-  );
+  toolCall("codemode", {
+    code: `await tools.todo_upsert({tasks:[{key:"inspect",subject:"Inspect",status:"in_progress"},{key:"verify",subject:"Verify",dependsOn:["inspect"]}]}); ${after}`,
+  });
 
 function snapshot(manager: SessionManager) {
   return replayTaskState({ sessionManager: manager });
@@ -108,19 +58,9 @@ function snapshot(manager: SessionManager) {
 
 describe("real Pi SDK integration (offline faux provider)", () => {
   it("loads standalone package with one tool per action and expected commands", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "pi-todo-loader-"));
-    cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
-    const loader = new DefaultResourceLoader({
-      cwd: dir,
-      agentDir: dir,
-      settingsManager: SettingsManager.inMemory({ packages: [resolve(import.meta.dirname, "..")] }),
-      noSkills: true,
-      noPromptTemplates: true,
-      noThemes: true,
-      noContextFiles: true,
+    const { extensions, errors } = await loadResources(onTestFinished, {
+      packages: [resolve(import.meta.dirname, "..")],
     });
-    await loader.reload();
-    const { extensions, errors } = loader.getExtensions();
     expect(errors).toEqual([]);
     expect(extensions).toHaveLength(1);
     expect([...extensions[0].tools.keys()]).toEqual([
@@ -149,8 +89,8 @@ describe("real Pi SDK integration (offline faux provider)", () => {
     async (_label, after) => {
       const h = await fixture({ responses: [nestedWrite(after), fauxAssistantMessage("done")] });
       await h.session.prompt("Work");
-      expect(h.calls).toHaveBeenCalledTimes(2);
-      expect(h.errors).not.toHaveBeenCalled();
+      expect(h.requests).toHaveLength(2);
+      expect(h.errors).toEqual([]);
       const branch = h.manager.getBranch();
       expect(
         branch.filter((entry) => entry.type === "custom" && entry.customType === TODO_JOURNAL_TYPE),
@@ -164,14 +104,12 @@ describe("real Pi SDK integration (offline faux provider)", () => {
         ),
       ).toHaveLength(0);
       expect(snapshot(h.manager).tasks.map((task) => task.key)).toEqual(["inspect", "verify"]);
-      const nextRequest = JSON.stringify(h.calls.mock.calls[1][1]);
+      const nextRequest = JSON.stringify(h.requests[1]);
       expect(nextRequest).toContain("Current task list (revision 1)");
       expect(nextRequest).toContain('\\"dependsOn\\":[\\"inspect\\"]');
       const reloaded = await fixture({ manager: h.manager });
       await reloaded.session.prompt("Resume");
-      expect(JSON.stringify(reloaded.calls.mock.calls[0][1])).toContain(
-        "Current task list (revision 1)",
-      );
+      expect(JSON.stringify(reloaded.requests[0])).toContain("Current task list (revision 1)");
       expect(snapshot(reloaded.manager).tasks).toEqual(snapshot(h.manager).tasks);
     },
     20_000,
@@ -180,21 +118,21 @@ describe("real Pi SDK integration (offline faux provider)", () => {
   it("commands never call provider; next ordinary request sees exact changed/empty plan", async () => {
     const h = await fixture();
     await h.session.prompt("/todo:add Fix auth");
-    expect(h.calls).not.toHaveBeenCalled();
+    expect(h.requests).toHaveLength(0);
     expect(snapshot(h.manager).tasks[0]).toMatchObject({ key: "fix-auth", status: "pending" });
     await h.session.prompt("Continue");
-    expect(h.calls).toHaveBeenCalledTimes(1);
-    expect(JSON.stringify(h.calls.mock.calls[0][1])).toContain("Current task list (revision 1)");
+    expect(h.requests).toHaveLength(1);
+    expect(JSON.stringify(h.requests[0])).toContain("Current task list (revision 1)");
     h.faux.setResponses([fauxAssistantMessage("still tracked")]);
     await h.session.prompt("Another request without direct todo results");
-    expect(h.calls).toHaveBeenCalledTimes(2);
-    expect(JSON.stringify(h.calls.mock.calls[1][1])).toContain("Current task list (revision 1)");
+    expect(h.requests).toHaveLength(2);
+    expect(JSON.stringify(h.requests[1])).toContain("Current task list (revision 1)");
     await h.session.prompt("/todo:clear all --yes");
-    expect(h.calls).toHaveBeenCalledTimes(2);
+    expect(h.requests).toHaveLength(2);
     h.faux.setResponses([fauxAssistantMessage("done again")]);
     await h.session.prompt("Next");
-    expect(h.calls).toHaveBeenCalledTimes(3);
-    expect(JSON.stringify(h.calls.mock.calls[2][1])).toContain("Current task list (revision 2)");
+    expect(h.requests).toHaveLength(3);
+    expect(JSON.stringify(h.requests[2])).toContain("Current task list (revision 2)");
     expect(snapshot(h.manager).tasks).toEqual([]);
   });
 
@@ -209,10 +147,7 @@ describe("real Pi SDK integration (offline faux provider)", () => {
     });
     const h = await fixture({
       responses: [
-        fauxAssistantMessage(
-          fauxToolCall("todo_upsert", { tasks: [{ key: "old", subject: "Old" }] }),
-          { stopReason: "toolUse" },
-        ),
+        toolCall("todo_upsert", { tasks: [{ key: "old", subject: "Old" }] }),
         fauxAssistantMessage("done"),
       ],
       delayToolResult: async () => {
@@ -232,9 +167,7 @@ describe("real Pi SDK integration (offline faux provider)", () => {
     const restored = await fixture({ manager: h.manager });
     await restored.session.prompt("After reload");
     expect(snapshot(restored.manager).tasks).toEqual([]);
-    expect(JSON.stringify(restored.calls.mock.calls[0][1])).toContain(
-      "Current task list (revision 2)",
-    );
+    expect(JSON.stringify(restored.requests[0])).toContain("Current task list (revision 2)");
   }, 20_000);
 
   it("real tree navigation restores branch-local state instead of abandoned additions", async () => {
@@ -246,7 +179,7 @@ describe("real Pi SDK integration (offline faux provider)", () => {
     await h.session.navigateTree(first, { summarize: false });
     await h.session.prompt("Current branch");
     expect(snapshot(h.manager).tasks.map((task) => task.key)).toEqual(["first-work"]);
-    const request = JSON.stringify(h.calls.mock.calls[0][1]);
+    const request = JSON.stringify(h.requests[0]);
     expect(request).toContain("first-work");
     expect(request).not.toContain("abandoned-work");
   });
@@ -254,22 +187,19 @@ describe("real Pi SDK integration (offline faux provider)", () => {
   it("direct todo results provide persistent baseline, avoiding duplicate context snapshots", async () => {
     const h = await fixture({
       responses: [
-        fauxAssistantMessage(
-          fauxToolCall("todo_upsert", {
-            tasks: [{ key: "tracked", subject: "Tracked" }],
-          }),
-          { stopReason: "toolUse" },
-        ),
+        toolCall("todo_upsert", {
+          tasks: [{ key: "tracked", subject: "Tracked" }],
+        }),
         fauxAssistantMessage("done"),
       ],
     });
     await h.session.prompt("Work");
-    const secondRequest = JSON.stringify(h.calls.mock.calls[1][1]);
+    const secondRequest = JSON.stringify(h.requests[1]);
     expect(secondRequest).toContain("tracked");
     expect(secondRequest).not.toContain("Current task list");
     h.faux.setResponses([fauxAssistantMessage("done again")]);
     await h.session.prompt("Still tracked");
-    expect(JSON.stringify(h.calls.mock.calls[2][1])).not.toContain("Current task list");
+    expect(JSON.stringify(h.requests[2])).not.toContain("Current task list");
     expect(snapshot(h.manager).tasks.map((task) => task.key)).toEqual(["tracked"]);
   });
 
@@ -285,10 +215,10 @@ describe("real Pi SDK integration (offline faux provider)", () => {
     expect(snapshot(child.manager).tasks).toEqual([
       expect.objectContaining({ key: "child-work", status: "completed" }),
     ]);
-    expect(parent.calls).not.toHaveBeenCalled();
-    expect(child.calls).not.toHaveBeenCalled();
+    expect(parent.requests).toHaveLength(0);
+    expect(child.requests).toHaveLength(0);
     await parent.session.prompt("Parent next");
-    const request = JSON.stringify(parent.calls.mock.calls[0][1]);
+    const request = JSON.stringify(parent.requests[0]);
     expect(request).toContain("parent-work");
     expect(request).not.toContain("child-work");
   });
@@ -296,26 +226,23 @@ describe("real Pi SDK integration (offline faux provider)", () => {
   it("model messages pass schema validation, persist, and review commands never call the provider or alter model context", async () => {
     const h = await fixture({
       responses: [
-        fauxAssistantMessage(
-          fauxToolCall("todo_upsert", {
-            tasks: [
-              {
-                key: "audit",
-                subject: "Audit",
-                status: "completed",
-                message: "Found 2 issues in token refresh",
-              },
-            ],
-          }),
-          { stopReason: "toolUse" },
-        ),
+        toolCall("todo_upsert", {
+          tasks: [
+            {
+              key: "audit",
+              subject: "Audit",
+              status: "completed",
+              message: "Found 2 issues in token refresh",
+            },
+          ],
+        }),
         fauxAssistantMessage("done"),
       ],
     });
     await h.session.prompt("Work");
-    expect(h.errors).not.toHaveBeenCalled();
-    expect(h.calls).toHaveBeenCalledTimes(2);
-    expect(JSON.stringify(h.calls.mock.calls[1][1])).toContain("lastMessage");
+    expect(h.errors).toEqual([]);
+    expect(h.requests).toHaveLength(2);
+    expect(JSON.stringify(h.requests[1])).toContain("lastMessage");
     expect(replayTodoSession({ sessionManager: h.manager }).activity.get("audit")?.updates).toEqual(
       [
         expect.objectContaining({
@@ -326,7 +253,7 @@ describe("real Pi SDK integration (offline faux provider)", () => {
       ],
     );
     await h.session.prompt("/todo:review all");
-    expect(h.calls).toHaveBeenCalledTimes(2);
+    expect(h.requests).toHaveLength(2);
     expect(
       h.manager
         .getBranch()
@@ -337,7 +264,7 @@ describe("real Pi SDK integration (offline faux provider)", () => {
     expect(restored.review.tasks.get("audit")?.revision).toBe(1);
     await reloaded.session.prompt("Next");
     // The direct result is still the current baseline; review added no snapshot.
-    expect(JSON.stringify(reloaded.calls.mock.calls[0][1])).not.toContain("Current task list");
+    expect(JSON.stringify(reloaded.requests[0])).not.toContain("Current task list");
   }, 20_000);
 
   it("restores exact keys/dependencies after compaction omits task history", async () => {
@@ -352,9 +279,9 @@ describe("real Pi SDK integration (offline faux provider)", () => {
     const restored = await fixture({ manager: h.manager });
     await restored.session.prompt("After compaction");
     expect(snapshot(restored.manager).tasks.map((task) => task.key)).toEqual(["inspect", "verify"]);
-    const request = JSON.stringify(restored.calls.mock.calls[0][1]);
+    const request = JSON.stringify(restored.requests[0]);
     expect(request).toContain("Current task list (revision 1)");
     expect(request).toContain('\\"dependsOn\\":[\\"inspect\\"]');
-    expect(restored.calls).toHaveBeenCalledTimes(1);
+    expect(restored.requests).toHaveLength(1);
   }, 20_000);
 });

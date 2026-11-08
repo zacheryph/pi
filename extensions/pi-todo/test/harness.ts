@@ -12,6 +12,7 @@ import {
 import type { TSchema } from "typebox";
 import { expect, vi } from "vitest";
 import { fakePi } from "../../../packages/pi-test-helpers/src/fake-pi.ts";
+import { messageText } from "../../../packages/pi-test-helpers/src/faux-session.ts";
 import todoExtension, { type TodoExtensionDependencies } from "../src/index.ts";
 import { DEFAULT_CONFIG, type TodoConfig } from "../src/config.ts";
 import type { TodoRequest } from "../src/actions.ts";
@@ -96,10 +97,7 @@ export function harness(options: HarnessOptions = {}) {
     return tool(String(action)).execute("call", input as never, signal, undefined, ctx);
   };
   /** The text a tool call returned to the model. */
-  const text = async (request: TodoRequest) =>
-    (await execute(request)).content
-      .map((part) => (part.type === "text" ? part.text : ""))
-      .join("");
+  const text = async (request: TodoRequest) => messageText(await execute(request));
   const command = (name: string, args = "") => fake.runCommand(name, args, ctx) as Promise<void>;
   const context = async (messages: ContextEvent["messages"] = []) =>
     (await emit("context", { messages })) as ContextEventResult | undefined;
