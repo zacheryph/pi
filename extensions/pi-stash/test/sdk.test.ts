@@ -26,13 +26,13 @@ import {
   type StashSnapshotEvent,
 } from "#src/events";
 import type { EventBus } from "@earendil-works/pi-coding-agent";
-import { provide, SESSION_TREE_KEY, service } from "../../../packages/pi-session-tree/src/index.ts";
+import { provide, service } from "../../../packages/pi-session-tree/src/index.ts";
+import { resetSessionTree } from "../../../packages/pi-test-helpers/src/globals.ts";
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {
   for (const cleanup of cleanups.splice(0).reverse()) cleanup();
-  // eslint-disable-next-line @typescript-eslint/no-dynamic-delete -- Symbol-keyed global in tests
-  delete (globalThis as Record<symbol, unknown>)[SESSION_TREE_KEY];
+  resetSessionTree();
 });
 
 function tempDir(prefix: string): string {

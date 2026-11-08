@@ -1,9 +1,10 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { KeybindingsManager, TUI_KEYBINDINGS } from "@earendil-works/pi-tui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { provide, SESSION_TREE_KEY } from "../../../packages/pi-session-tree/src/index.ts";
+import { provide } from "../../../packages/pi-session-tree/src/index.ts";
 import piAsk from "../src/index.ts";
 import { waitFor } from "../../../packages/pi-test-helpers/src/wait.ts";
+import { resetSessionTree } from "../../../packages/pi-test-helpers/src/globals.ts";
 
 const { execFile } = vi.hoisted(() => ({ execFile: vi.fn() }));
 vi.mock("node:child_process", () => ({ execFile }));
@@ -123,7 +124,7 @@ const params = {
 
 afterEach(() => {
   vi.unstubAllEnvs();
-  delete (globalThis as Record<symbol, unknown>)[SESSION_TREE_KEY];
+  resetSessionTree();
 });
 
 describe("pi-ask routing", () => {

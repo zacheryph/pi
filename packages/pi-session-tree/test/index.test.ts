@@ -20,11 +20,9 @@ import {
   trackChildren,
 } from "#src/index";
 import { sleep } from "../../pi-test-helpers/src/wait.ts";
+import { resetSessionTree, slots } from "../../pi-test-helpers/src/globals.ts";
 
-afterEach(() => {
-  // eslint-disable-next-line @typescript-eslint/no-dynamic-delete -- Symbol-keyed global in tests
-  delete (globalThis as Record<symbol, unknown>)[SESSION_TREE_KEY];
-});
+afterEach(resetSessionTree);
 
 /** An extension's view of one session's real Pi event bus. */
 function sessionBus() {
@@ -43,11 +41,11 @@ describe("registry", () => {
   it("is created once and shared through globalThis", () => {
     const tree = sessionTree();
     expect(sessionTree()).toBe(tree);
-    expect((globalThis as Record<symbol, unknown>)[SESSION_TREE_KEY]).toBe(tree);
+    expect(slots[SESSION_TREE_KEY]).toBe(tree);
   });
 
   it("replaces a value of another shape under its key", () => {
-    (globalThis as Record<symbol, unknown>)[SESSION_TREE_KEY] = { version: 0, nodes: [] };
+    slots[SESSION_TREE_KEY] = { version: 0, nodes: [] };
     const tree = sessionTree();
     expect(tree.version).toBe(1);
     expect(tree.nodes).toBeInstanceOf(Map);

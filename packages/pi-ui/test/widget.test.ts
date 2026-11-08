@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { Widget, renderWidget, type WidgetView } from "../src/widget.ts";
 import { ICONS } from "../src/icons.ts";
 import { bounded, plain, theme } from "./helpers.ts";
+import { clearSlots, slots } from "../../pi-test-helpers/src/globals.ts";
 
 const tagged = {
   fg: (color: string, text: string) => `<${color}>${text}</${color}>`,
@@ -81,11 +82,7 @@ describe("pure widget layout", () => {
   });
   describe("docked widgets while an inline window is open", () => {
     const open = Symbol.for("pi-ui.inline-window.open");
-    const slots = globalThis as Record<symbol, unknown>;
-    afterEach(() => {
-      // oxlint-disable-next-line no-dynamic-delete -- Remove this test's Symbol-keyed slot.
-      delete slots[open];
-    });
+    afterEach(() => clearSlots(open));
     it("collapse to the heading rule, keeping its metadata, while other views keep their rows", () => {
       const docked = { ...view(), docked: true };
       expect(renderWidget(docked, 60, theme)).toHaveLength(5);

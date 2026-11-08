@@ -15,18 +15,17 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it, vi, onTestFinished } from "vitest";
-import { SESSION_TREE_KEY } from "../../../packages/pi-session-tree/src/index.ts";
 import { GIT_SNAPSHOT_EVENT, type GitSnapshotEvent } from "../src/events.ts";
 import piGit from "../src/index.ts";
 import { GhUnavailable } from "../src/status.ts";
 import { foldLedger } from "../src/fold.ts";
 import { sandbox, type Sandbox } from "./support/repos.ts";
+import { resetSessionTree } from "../../../packages/pi-test-helpers/src/globals.ts";
 
 const cleanups: Array<() => void | Promise<void>> = [];
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
-  // eslint-disable-next-line @typescript-eslint/no-dynamic-delete -- Symbol-keyed global in tests
-  delete (globalThis as Record<symbol, unknown>)[SESSION_TREE_KEY];
+  resetSessionTree();
 });
 
 async function fixture(

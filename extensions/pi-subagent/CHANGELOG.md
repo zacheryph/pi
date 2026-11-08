@@ -3,6 +3,12 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-08: Global test slots from pi-test-helpers
+
+- `ui/widget-renderer.test.ts` sets the inline-window slot with `packages/pi-
+  test-helpers`' `withSlot` instead of a `try`/`finally` delete. No source
+  change.
+
 ## 2026-11-08: Markup theme from pi-test-helpers
 
 - The three renderer suites that rendered styling as `[color:text]` and
