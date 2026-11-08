@@ -100,14 +100,19 @@ overlay; regular mode uses a custom screen (see `extensions/pi-system-insights`)
 
 ## 4. Test it
 
-- `test/index.test.ts` starts with a fake `pi` that records `on`,
-  `registerTool` and `registerCommand`. Extend it to drive the handlers and the
-  tools' `execute` (more examples: `extensions/pi-tldr/test/index.test.ts`).
+- Use [`packages/pi-test-helpers`](../../../packages/pi-test-helpers/README.md)
+  before writing a local helper: temp directories, polling, themes, padding
+  assertions, `ui.custom` mounting and SDK sessions are there.
+- `test/index.test.ts` starts with its `fakePi`, which records `on`,
+  `registerTool` and `registerCommand`. Drive handlers with `emit`, tools with
+  `runTool` and commands with `runCommand` (more examples:
+  `extensions/pi-tldr/test/index.test.ts`).
 - Rendering: test narrow widths, ANSI-colored text and wide Unicode, and assert
-  the padding rules.
+  the padding rules (`expectPadded`, `NARROW_WIDTHS`, `WIDE_TEXT`, `ansiTheme`).
 - Anything that persists or crosses sessions: one SDK test with Pi's real
   `DefaultResourceLoader`, `createAgentSession` and the faux provider (see
-  `extensions/pi-stash/test/sdk.test.ts`). It runs offline.
+  `extensions/pi-stash/test/sdk.test.ts`, built on the helpers' `fauxSession`).
+  It runs offline.
 
 ## 5. Verify and open the PR
 

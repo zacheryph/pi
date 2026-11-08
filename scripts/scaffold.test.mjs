@@ -41,6 +41,14 @@ for (const [name, args] of scenarios) {
     ]) {
       cpSync(join(root, path), join(fixture, path));
     }
+    // Generated tests build on the shared test helpers.
+    cpSync(
+      join(root, "packages/pi-test-helpers/src"),
+      join(fixture, "packages/pi-test-helpers/src"),
+      {
+        recursive: true,
+      },
+    );
     symlinkSync(join(root, "node_modules"), join(fixture, "node_modules"), "dir");
     const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
     manifest.workspaces = [];
