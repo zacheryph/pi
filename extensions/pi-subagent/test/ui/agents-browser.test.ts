@@ -13,9 +13,10 @@ import {
   type AgentsBrowserOptions,
 } from "#src/ui/agents-browser";
 import { Explorer, renderBlocks, type Block } from "../../../../packages/pi-ui/src/index.ts";
+import { plainTheme } from "../../../../packages/pi-test-helpers/src/theme.ts";
 import { tempDir } from "../../../../packages/pi-test-helpers/src/temp.ts";
 
-const identity = { fg: (_color: string, text: string) => text, bold: (text: string) => text };
+const identity = plainTheme;
 const plainDetail = (blocks: unknown) => renderBlocks(blocks as Block[], 1000, identity).join("\n");
 
 function agent(overrides: Partial<AgentConfig> = {}): AgentConfig {

@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import type { AgentSessionEvent } from "#src/types";
 import { WatchOverlay, type WatchAgent, type WatchSettings } from "#src/ui/watch-overlay";
+import { plainTheme } from "../../../../packages/pi-test-helpers/src/theme.ts";
 
 type Mutable<T> = { -readonly [K in keyof T]: T[K] };
 
@@ -68,7 +69,7 @@ function fixture(initial: WatchAgent[] = [], mode: "tui" | "rpc" | "print" = "tu
     }),
   };
   const ui = {
-    theme: { fg: (_color: string, text: string) => text, bold: (text: string) => text },
+    theme: plainTheme,
     notify: vi.fn(),
     setWidget: vi.fn((_key: string, factory: unknown) => {
       if (typeof factory === "function") {

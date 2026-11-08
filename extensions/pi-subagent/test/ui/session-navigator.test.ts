@@ -25,6 +25,7 @@ import {
 } from "#src/ui/session-navigator";
 import { makeNavigable } from "#test/helpers/make-navigable";
 import { fakeSource, mockTui } from "#test/helpers/transcript-fixtures";
+import { stripAnsi } from "../../../../packages/pi-test-helpers/src/theme.ts";
 
 const registry = new AgentTypeRegistry(() => new Map());
 
@@ -43,8 +44,6 @@ const LEVEL_CODES: Record<string, number> = {
   max: 6,
 };
 const levelColour = (level: string): string => `\x1b[38;5;${LEVEL_CODES[level] ?? 9}m`;
-// oxlint-disable-next-line no-control-regex -- Intentionally matches terminal control characters.
-const stripAnsi = (text: string): string => text.replace(/\x1b\[[0-9;]*m/g, "");
 
 /** Plain-text theme; the thinking-border painter wraps in zero-width SGR codes. */
 function ansiTheme() {

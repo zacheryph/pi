@@ -1,6 +1,7 @@
 import { renderBlocks, type Block } from "../../../packages/pi-ui/src/index.ts";
+import { plainTheme } from "../../../packages/pi-test-helpers/src/theme.ts";
 
-const identity = { fg: (_color: string, text: string) => text, bold: (text: string) => text };
+const identity = plainTheme;
 
 /** Plain rendered detail, wide enough that nothing wraps. */
 export function detailText(blocks: readonly Block[] | undefined): string {

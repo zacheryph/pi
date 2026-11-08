@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { Explorer } from "../../../packages/pi-ui/src/index.ts";
 import type { GitSnapshotEvent, GitSnapshotPr, GitSnapshotWorktree } from "../src/events.ts";
 import { explorerView, LIST_LIMIT, listText, prExplorerView, statusText } from "../src/view.ts";
+import { stripAnsi } from "../../../packages/pi-test-helpers/src/theme.ts";
 
 // Colors every token so width math must ignore escape sequences.
 const ansi = {
@@ -138,7 +139,7 @@ describe("/git:worktrees explorer", () => {
     );
     browser.handleInput("\r");
     for (let i = 0; i < 8; i++) await Promise.resolve();
-    const detail = browser.render(80).map(strip).join("\n");
+    const detail = browser.render(80).map(stripAnsi).join("\n");
     expect(detail).toMatch(/Workspace +\/w\/auth/);
     expect(detail).toMatch(/Created by +subagent agent-0/);
     expect(detail).toContain("agent-1");
@@ -222,7 +223,7 @@ describe("/git:prs explorer", () => {
     });
     browser.handleInput("\r");
     for (let i = 0; i < 8; i++) await Promise.resolve();
-    const detail = browser.render(80).map(strip).join("\n");
+    const detail = browser.render(80).map(stripAnsi).join("\n");
     expect(detail).toMatch(/Branch +feat\/login/);
     expect(detail).toMatch(/Observed +seen 2m ago via bash/);
     expect(detail).toContain("bash · 2m ago · subagent agent-7");

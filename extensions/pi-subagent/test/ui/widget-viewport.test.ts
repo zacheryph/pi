@@ -15,6 +15,7 @@ import { AgentTypeRegistry } from "#src/config/agent-types";
 import type { SubagentManager } from "#src/lifecycle/subagent-manager";
 import { AgentWidget, type UICtx } from "#src/ui/agent-widget";
 import { createTestSubagent } from "#test/helpers/make-subagent";
+import { plainTheme } from "../../../../packages/pi-test-helpers/src/theme.ts";
 
 /** A `Terminal` that reports fixed dimensions and discards every write. */
 function fakeTerminal(columns: number, rows: number): Terminal {
@@ -82,7 +83,7 @@ function animateUnderRealRenderer(opts: {
     false,
     "/tmp/pi-subagent-widget-viewport-test",
   );
-  const theme = { fg: (_: string, text: string) => text, bold: (text: string) => text };
+  const theme = plainTheme;
   let widgetComponent: { render(): string[]; invalidate(): void } | undefined;
   const ui: UICtx = {
     setStatus: () => {},
@@ -178,7 +179,7 @@ describe("AgentWidget cadence under Pi's real renderers", () => {
     });
     const manager = { listAgents: () => [record] } as unknown as SubagentManager;
     const widget = new AgentWidget(manager, new AgentTypeRegistry(() => new Map()));
-    const theme = { fg: (_: string, text: string) => text, bold: (text: string) => text };
+    const theme = plainTheme;
     const requestRender = vi.spyOn(tui, "requestRender").mockImplementation(() => {});
     widget.setUICtx({
       setStatus: () => {},

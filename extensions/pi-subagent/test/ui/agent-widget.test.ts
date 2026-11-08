@@ -7,6 +7,7 @@ import type { CompactionInfo } from "#src/types";
 import { AgentWidget, assembleWidgetState, type UICtx } from "#src/ui/agent-widget";
 import { makeModel } from "#test/helpers/make-model";
 import { createTestSubagent, makeStubExecution } from "#test/helpers/make-subagent";
+import { plainTheme } from "../../../../packages/pi-test-helpers/src/theme.ts";
 
 // Minimal agent fixture — only the three fields AgentSummary requires.
 function makeAgent(overrides: { id?: string; status?: string; completedAt?: number } = {}) {
@@ -38,7 +39,7 @@ function stubTui(
 
 /** Identity theme — every helper returns its text unchanged, so assertions read plainly. */
 function stubTheme() {
-  return { fg: (_: string, t: string) => t, bold: (t: string) => t };
+  return plainTheme;
 }
 
 // Build a widget over a manager stub whose listAgents() returns a fixed list,

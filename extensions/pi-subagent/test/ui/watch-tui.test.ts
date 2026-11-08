@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import { WatchOverlay } from "#src/ui/watch-overlay";
 import { createTestSubagent } from "#test/helpers/make-subagent";
+import { plainTheme } from "../../../../packages/pi-test-helpers/src/theme.ts";
 
 function terminal() {
   const size = { columns: 120, rows: 30 };
@@ -46,7 +47,7 @@ function mount(tui: TuiAltScreen | TuiMainScreen) {
   });
   const settings = { overlayWidth: "third" as const, overlayDefaultOpen: false };
   const ui = {
-    theme: { fg: (_: string, text: string) => text, bold: (text: string) => text },
+    theme: plainTheme,
     notify: vi.fn(),
     setWidget: vi.fn((_key: string, factory: unknown) => {
       if (typeof factory === "function") tui.addChild(factory(tui, ui.theme));

@@ -11,6 +11,7 @@ import type { StashRecord } from "#src/state";
 import { Explorer } from "../../../packages/pi-ui/src/index.ts";
 import { showStashBrowser, stashExplorerView, type StashPreview } from "#src/ui/browser";
 import { formatAge, formatBytes, originLabel, previewRows } from "#src/ui/render";
+import { stripAnsi } from "../../../packages/pi-test-helpers/src/theme.ts";
 import { flushMicrotasks as flush } from "../../../packages/pi-test-helpers/src/wait.ts";
 
 // Colors every token so width math must ignore escape sequences.
@@ -124,7 +125,7 @@ describe("stash explorer", () => {
       30,
       load,
     );
-    const list = browser.render(80).map(strip);
+    const list = browser.render(80).map(stripAnsi);
     expect(list[0]).toMatch(/^ ╭─+ Stash ─+╮ $/);
     expect(list.join("\n")).toContain("Store is over the cap");
     expect(list.join("\n")).toContain("24 KB stored on this branch");
@@ -135,7 +136,7 @@ describe("stash explorer", () => {
     browser.handleInput("\r");
     await flush();
     expect(load).toHaveBeenCalledWith(expect.objectContaining({ name: "second" }));
-    const preview = browser.render(80).map(strip).join("\n");
+    const preview = browser.render(80).map(stripAnsi).join("\n");
     // The breadcrumb names the selected entry (its label, clipped to the frame).
     expect(preview).toMatch(/╭─+ Stash \/ stash:second@b+/);
     expect(preview).toMatch(/Name +second/);
@@ -146,7 +147,7 @@ describe("stash explorer", () => {
     expect(preview).not.toContain("evil");
     expect(preview).toContain("Preview stops here");
     browser.handleInput("\x1b");
-    expect(strip(browser.render(80)[0])).toMatch(/Stash/);
+    expect(stripAnsi(browser.render(80)[0])).toMatch(/Stash/);
     browser.handleInput("\x1b");
     expect(done).toHaveBeenCalledTimes(1);
   });
@@ -162,14 +163,14 @@ describe("stash explorer", () => {
     );
     browser.handleInput("\r");
     await flush();
-    expect(browser.render(80).map(strip).join("\n")).toMatch(
+    expect(browser.render(80).map(stripAnsi).join("\n")).toMatch(
       /Stored by +agent a3f2b1c4 \(session session-\) · adopted from a subagent/,
     );
     browser.handleInput("\x1b");
     browser.handleInput("\x1b[B");
     browser.handleInput("\r");
     await flush();
-    expect(browser.render(80).map(strip).join("\n")).toMatch(/Stored by +session- *│/);
+    expect(browser.render(80).map(stripAnsi).join("\n")).toMatch(/Stored by +session- *│/);
   });
 
   it("stays within width at narrow widths", async () => {
@@ -186,7 +187,7 @@ describe("stash explorer", () => {
   });
 
   it("shows an empty state, and read errors below the metadata", async () => {
-    expect(make([]).browser.render(60).map(strip)).toContainEqual(
+    expect(make([]).browser.render(60).map(stripAnsi)).toContainEqual(
       expect.stringMatching(/No stash entries on this branch/),
     );
     const { browser } = make(
@@ -198,7 +199,7 @@ describe("stash explorer", () => {
     );
     browser.handleInput("\r");
     await flush();
-    const detail = browser.render(60).map(strip).join("\n");
+    const detail = browser.render(60).map(stripAnsi).join("\n");
     expect(detail).toMatch(/Hash +3f9a1c2b7d01/);
     expect(detail).toContain("Couldn't read: missing blob");
   });
@@ -247,14 +248,14 @@ describe("tool renderers", () => {
     const result = { content: [{ type: "text" as const, text: "receipt" }], details };
     const collapsed = put.renderResult!(result, options(false), ansi, {} as never)
       .render(80)
-      .map(strip);
+      .map(stripAnsi);
     expect(collapsed[0]).toMatch(/stash:big@3f9a1c2b7d01 · 977 KB · 5000 lines/);
     const component = put.renderResult!(result, options(true), ansi, {} as never);
     for (const width of WIDTHS) {
       const rows = component.render(width);
       for (const row of rows) expectPadded(row, width);
     }
-    expect(component.render(60).map(strip)).toEqual([
+    expect(component.render(60).map(stripAnsi)).toEqual([
       expect.stringMatching(/^ stash:big@3f9a1c2b7d01/),
       expect.stringMatching(/^ 1  検索結果😀データ +$/),
       expect.stringMatching(/^ 2  line 2 +$/),
@@ -285,7 +286,7 @@ describe("tool renderers", () => {
         expectPadded(row, width);
     }
     expect(
-      strip(list.renderResult!(listResult, options(false), ansi, {} as never).render(40)[0]),
+      stripAnsi(list.renderResult!(listResult, options(false), ansi, {} as never).render(40)[0]),
     ).toMatch(/1 entry/);
     const error = get.renderResult!(
       { content: [{ type: "text", text: "boom\x1b[2J" }], details: undefined } as never,
@@ -293,6 +294,6 @@ describe("tool renderers", () => {
       ansi,
       {} as never,
     );
-    expect(strip(error.render(40)[0])).toMatch(/boom/);
+    expect(stripAnsi(error.render(40)[0])).toMatch(/boom/);
   });
 });
