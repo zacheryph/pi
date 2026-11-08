@@ -1,9 +1,10 @@
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { KeybindingsManager, TUI_KEYBINDINGS } from "@earendil-works/pi-tui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { provide } from "../../../packages/pi-session-tree/src/index.ts";
 import piAsk from "../src/index.ts";
 import { waitFor } from "../../../packages/pi-test-helpers/src/wait.ts";
+import { fakePi } from "../../../packages/pi-test-helpers/src/fake-pi.ts";
 import { resetSessionTree } from "../../../packages/pi-test-helpers/src/globals.ts";
 
 const { execFile } = vi.hoisted(() => ({ execFile: vi.fn() }));
@@ -32,31 +33,9 @@ type Tool = {
 const theme = { fg: (_c: string, text: string) => text, bold: (text: string) => text };
 
 function harness(options: { mode?: string; hasUI?: boolean; sessionId?: string } = {}) {
-  const handlers = new Map<string, Function[]>();
-  const listeners = new Map<string, ((data: unknown) => void)[]>();
-  const sent: [string, unknown][] = [];
-  const tools = new Map<string, Tool>();
-  const registrations: Tool[] = [];
-  const events = {
-    on: (channel: string, handler: (data: unknown) => void) => {
-      listeners.set(channel, [...(listeners.get(channel) ?? []), handler]);
-      return () => {};
-    },
-    emit: (channel: string, data: unknown) => {
-      sent.push([channel, data]);
-      for (const handler of listeners.get(channel) ?? []) handler(data);
-    },
-  };
-  const pi = {
-    on: vi.fn((event: string, handler: Function) =>
-      handlers.set(event, [...(handlers.get(event) ?? []), handler]),
-    ),
-    registerTool: vi.fn((tool: Tool) => {
-      tools.set(tool.name, tool);
-      registrations.push(tool);
-    }),
-    events,
-  };
+  const fake = fakePi();
+  const { pi, events } = fake;
+  const tools = fake.tools as unknown as Map<string, Tool>;
   let mounted: { handleInput?(data: string): void; render(width: number): string[] } | undefined;
   const ui = {
     notify: vi.fn(),
@@ -84,21 +63,17 @@ function harness(options: { mode?: string; hasUI?: boolean; sessionId?: string }
     ui,
     sessionManager: { getSessionId: () => options.sessionId ?? "root" },
   } as unknown as ExtensionContext;
-  piAsk(pi as unknown as ExtensionAPI);
-  const start = async () => {
-    for (const handler of handlers.get("session_start") ?? []) await handler({}, ctx);
-  };
-  const shutdown = async () => {
-    for (const handler of handlers.get("session_shutdown") ?? []) await handler({}, ctx);
-  };
+  piAsk(fake.api);
+  const start = () => fake.emit("session_start", {}, ctx);
+  const shutdown = () => fake.emit("session_shutdown", {}, ctx);
   const ask = (params: unknown, signal?: AbortSignal, id = "call-1") =>
     tools.get("ask")!.execute(id, params, signal, undefined, ctx);
   const until = (check: () => boolean) => waitFor(check, { interval: 0, timeout: 1000 });
   return {
     pi,
     tools,
-    registrations,
-    sent,
+    registrations: pi.registerTool.mock.calls.map(([tool]) => tool),
+    sent: events.emitted,
     events,
     ui,
     ctx,
