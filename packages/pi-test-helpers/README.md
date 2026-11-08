@@ -29,3 +29,19 @@ file needs its own `afterEach` list of cleanups.
 | `theme.ts`   | `plainTheme`, `ansiTheme` (real SGR codes), `markupTheme` (`[color:text]`, `**bold**`), `stripAnsi` (colors only: leaked controls stay visible), `plainLines`           |
 | `render.ts`  | _vitest_. `expectPadded(row, width)` (the AGENTS.md spacing rule), `expectBounded(lines, width, height?)`, `NARROW_WIDTHS`, `WIDE_TEXT`                                 |
 | `globals.ts` | `slots`, `clearSlots(...keys)`, `withSlot(key, value, run)`, `resetSessionTree()`                                                                                       |
+| `fake-pi.ts` | _vitest_. `fakePi(extra?)`: spies for `on`, `registerTool`, `registerCommand`, `appendEntry`, `sendMessage`, a working `events` bus; `emit`, `runTool`, `runCommand`    |
+
+## Unit tests of an extension factory
+
+```ts
+const h = fakePi({ getSessionName: () => "fix-auth" });
+myExtension(h.api);
+await h.emit("session_start", { reason: "startup" }, ctx);
+const result = await h.runTool("my_tool", { query: "x" }, ctx);
+expect(h.pi.registerCommand).toHaveBeenCalledWith("my:command", expect.anything());
+```
+
+`emit` runs every handler for the event in order, awaiting each, with
+`{ type, ...payload }` as the event, and returns the last result. Pass members to
+`fakePi` to add or replace them, such as an `appendEntry` that writes to a real
+`SessionManager`.

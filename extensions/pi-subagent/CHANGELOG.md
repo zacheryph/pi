@@ -3,6 +3,11 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-08: Main-profile harness on fakePi
+
+- `main-agent-profile.test.ts` builds its fake `pi` on `packages/pi-test-
+  helpers`' `fakePi` and fires events through its `emit`. No source change.
+
 ## 2026-11-08: Global test slots from pi-test-helpers
 
 - `ui/widget-renderer.test.ts` sets the inline-window slot with `packages/pi-

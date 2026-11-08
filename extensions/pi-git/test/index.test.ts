@@ -1,19 +1,13 @@
 import { existsSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { afterEach, beforeEach, describe, expect, it, vi, onTestFinished } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
+import { fakePi } from "../../../packages/pi-test-helpers/src/fake-pi.ts";
+import { resetSessionTree } from "../../../packages/pi-test-helpers/src/globals.ts";
 import { GIT_SNAPSHOT_EVENT, type GitSnapshotEvent } from "../src/events.ts";
 import piGit from "../src/index.ts";
 import { GhUnavailable, type GhRunner } from "../src/status.ts";
 import { LEDGER_TYPE, type WorktreeRecord } from "../src/ledger.ts";
 import { commit, run, sandbox, type Sandbox } from "./support/repos.ts";
-import { resetSessionTree } from "../../../packages/pi-test-helpers/src/globals.ts";
-
-type Handler = (...args: unknown[]) => unknown;
-interface Tool {
-  name: string;
-  execute: (...args: unknown[]) => Promise<{ content: { text: string }[]; details: unknown }>;
-}
 
 /** One wall clock for every session in a test, as in a real process. */
 let clock = 1_000;
@@ -30,35 +24,15 @@ function harness(options: {
   loadConfig?: () => { worktreeRoot: string; trackReferenced: boolean };
   runGh?: GhRunner;
 }) {
-  const handlers = new Map<string, Handler[]>();
-  const listeners = new Map<string, Handler[]>();
-  const tools = new Map<string, Tool>();
-  const commands = new Map<string, { handler: Handler }>();
   const entries: unknown[] = [...(options.entries ?? [])];
   const snapshots: GitSnapshotEvent[] = [];
-  const pi = {
-    on: vi.fn((event: string, handler: Handler) =>
-      handlers.set(event, [...(handlers.get(event) ?? []), handler]),
-    ),
-    registerTool: vi.fn((tool: Tool) => tools.set(tool.name, tool)),
-    registerCommand: vi.fn((name: string, command: { handler: Handler }) =>
-      commands.set(name, command),
-    ),
+  const fake = fakePi({
     appendEntry: vi.fn((customType: string, data: unknown) =>
       entries.push({ type: "custom", customType, data }),
     ),
-    events: {
-      on: (channel: string, handler: Handler) => {
-        listeners.set(channel, [...(listeners.get(channel) ?? []), handler]);
-        return () => undefined;
-      },
-      emit: (channel: string, data: unknown) => {
-        for (const handler of listeners.get(channel) ?? []) handler(data);
-      },
-    },
-  };
-  pi.events.on(GIT_SNAPSHOT_EVENT, (data) => snapshots.push(data as GitSnapshotEvent));
-  piGit(pi as unknown as ExtensionAPI, {
+  });
+  fake.api.events.on(GIT_SNAPSHOT_EVENT, (data) => snapshots.push(data as GitSnapshotEvent));
+  piGit(fake.api, {
     loadConfig:
       options.loadConfig ??
       (() => ({
@@ -84,15 +58,14 @@ function harness(options: {
       getEntries: () => entries,
     },
   };
-  const fire = async (event: string, data: unknown = {}) => {
-    for (const handler of handlers.get(event) ?? []) await handler(data, ctx);
-  };
-  const tool = async (name: string, params: Record<string, unknown>) =>
-    tools.get(name)!.execute("call-1", params, undefined, undefined, ctx);
+  const fire = (event: string, data: object = {}) => fake.emit(event, data, ctx);
+  const tool = (name: string, params: Record<string, unknown>) =>
+    fake.runTool(name, params, ctx) as Promise<{ content: { text: string }[]; details: unknown }>;
   const ledger = () =>
     entries
       .filter((entry) => (entry as { customType?: string }).customType === LEDGER_TYPE)
       .map((entry) => (entry as { data: WorktreeRecord }).data);
+  const { pi, tools, commands } = fake;
   return { pi, ctx, ui, tools, commands, entries, snapshots, fire, tool, ledger };
 }
 

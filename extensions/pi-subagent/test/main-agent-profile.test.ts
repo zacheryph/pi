@@ -1,7 +1,7 @@
-// Installed renderer is not public SDK API; tests only.
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+// Installed renderer is not public SDK API; tests only.
 import {
   buildSystemPrompt,
   normalizeBuildSystemPromptOptions,
@@ -21,9 +21,9 @@ import { AgentTypeRegistry } from "#src/config/agent-types";
 import type { AgentConfig } from "#src/types";
 import { makeModel } from "#test/helpers/make-model";
 import { tempDir } from "../../../packages/pi-test-helpers/src/temp.ts";
+import { fakePi } from "../../../packages/pi-test-helpers/src/fake-pi.ts";
 
 function harness(mode: ExtensionContext["mode"] = "tui") {
-  const handlers = new Map<string, Function[]>();
   const model = makeModel({ reasoning: true });
   const other = makeModel({ id: "other", reasoning: true });
   const state = {
@@ -71,10 +71,7 @@ function harness(mode: ExtensionContext["mode"] = "tui") {
     abort: vi.fn(),
     shutdown: vi.fn(),
   } as unknown as ExtensionContext;
-  const pi = {
-    on: (name: string, fn: Function) => {
-      handlers.set(name, [...(handlers.get(name) ?? []), fn]);
-    },
+  const fake = fakePi({
     registerFlag: vi.fn(),
     getFlag: (name: string) =>
       name === "agent" ? state.flag : name === "agent-model" ? state.modelOverride : undefined,
@@ -96,15 +93,14 @@ function harness(mode: ExtensionContext["mode"] = "tui") {
     appendEntry: vi.fn((customType: string, data: unknown) => {
       state.branch.push({ type: "custom", customType, data });
     }),
-  };
+  });
+  const pi = fake.pi;
   const diagnostic = vi.fn();
   const resolve = vi.fn(() => state.profile);
-  registerMainAgentProfile(pi as unknown as ExtensionAPI, { resolveProfile: resolve, diagnostic });
-  const fire = async (name: string, event: any = {}, context = ctx) => {
-    let result: any;
-    for (const fn of handlers.get(name) ?? []) result = await fn(event, context);
-    return result;
-  };
+  registerMainAgentProfile(fake.api, { resolveProfile: resolve, diagnostic });
+  // oxlint-disable-next-line typescript/no-explicit-any -- Handler results vary by event.
+  const fire = (name: string, event: object = {}, context = ctx): Promise<any> =>
+    fake.emit(name, event, context);
   const start = (reason = "startup") => fire("session_start", { reason });
   const prompt = async () => {
     const systemPromptOptions = normalizeBuildSystemPromptOptions({
@@ -123,7 +119,19 @@ function harness(mode: ExtensionContext["mode"] = "tui") {
     state.thinking = "high";
     state.active = ["write", "tool_search"];
   };
-  return { state, ctx, pi, diagnostic, resolve, fire, start, prompt, other, manual, handlers };
+  return {
+    state,
+    ctx,
+    pi,
+    diagnostic,
+    resolve,
+    fire,
+    start,
+    prompt,
+    other,
+    manual,
+    handlers: fake.handlers,
+  };
 }
 
 describe("main profile defaults and persistent body", () => {

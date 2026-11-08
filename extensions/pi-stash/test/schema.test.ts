@@ -1,15 +1,10 @@
-import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import { describe, expect, it } from "vitest";
+import { fakePi } from "../../../packages/pi-test-helpers/src/fake-pi.ts";
 import stashExtension from "#src/index";
 
-const tools = new Map<string, ToolDefinition>();
-stashExtension({
-  registerTool: (tool: ToolDefinition) => tools.set(tool.name, tool),
-  registerCommand: () => {},
-  on: () => {},
-  events: { on: () => () => {}, emit: () => {} },
-} as unknown as ExtensionAPI);
+const { api, tools } = fakePi();
+stashExtension(api);
 
 // Validate the serialized schemas sent to providers, not TypeBox's runtime metadata.
 const wireSchema = (schema: unknown) => JSON.parse(JSON.stringify(schema));

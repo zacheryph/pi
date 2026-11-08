@@ -5,6 +5,7 @@ import { runTldrModel } from "../src/core.js";
 import { loadTldrConfig } from "../src/config.js";
 import { showTldr } from "../src/viewer.js";
 import { tick } from "../../../packages/pi-test-helpers/src/wait.ts";
+import { fakePi } from "../../../packages/pi-test-helpers/src/fake-pi.ts";
 
 vi.mock("../src/core.js", async (importActual) => {
   const actual = await importActual<typeof import("../src/core.js")>();
@@ -35,18 +36,13 @@ vi.mock("../src/viewer.js", () => ({
 type Command = Parameters<ExtensionAPI["registerCommand"]>[1];
 function harness(setSessionName: boolean, existing?: string) {
   vi.mocked(loadTldrConfig).mockReturnValue({ model: "auto", setSessionName });
-  const commands = new Map<string, Command>();
-  const events = new Map<string, Function>();
   let title = existing;
   const setName = vi.fn((value: string) => {
     title = value;
   });
-  const pi = {
-    registerCommand: (name: string, value: Command) => commands.set(name, value),
-    on: (name: string, cb: Function) => events.set(name, cb),
-    setSessionName: setName,
-    getSessionName: () => title,
-  } as unknown as ExtensionAPI;
+  const fake = fakePi({ setSessionName: setName, getSessionName: () => title });
+  const pi = fake.api;
+  const commands = fake.commands as unknown as Map<string, Command>;
   const user = { type: "message", message: { role: "user", content: "Migrate network routes" } };
   let entries: object[] = [];
   const ctx = {
@@ -73,7 +69,8 @@ function harness(setSessionName: boolean, existing?: string) {
     },
   } as unknown as ExtensionCommandContext;
   piTldr(pi);
-  const emit = (name: string, event: any = {}) => events.get(name)!(event, ctx);
+  /** Calls the one handler for `name` synchronously, so a test sees whether it blocks. */
+  const emit = (name: string, event: object = {}) => fake.handlers.get(name)![0]!(event, ctx);
   return {
     pi,
     ctx,

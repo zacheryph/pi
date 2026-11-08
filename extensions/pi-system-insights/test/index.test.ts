@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import systemInsights from "#src/index";
 import { SKILL_READ_ENTRY } from "#src/skills";
 import { showInsightView } from "#src/viewer";
+import { fakePi } from "../../../packages/pi-test-helpers/src/fake-pi.ts";
 
 vi.mock("#src/viewer", () => ({ showInsightView: vi.fn(async () => {}) }));
 
@@ -39,20 +40,13 @@ type Command = Parameters<ExtensionAPI["registerCommand"]>[1];
 type ResultHandler = (event: ToolResultEvent, ctx: ExtensionCommandContext) => unknown;
 
 function harness() {
-  const commands = new Map<string, Command>();
-  const events = new Map<string, ResultHandler>();
   const appendEntry = vi.fn();
   const getAllTools = vi.fn(() => [tool]);
   const getActiveTools = vi.fn(() => ["read"]);
   const getCommands = vi.fn(() => [{ name: "skill:example", source: "skill", sourceInfo: source }]);
-  const pi = {
-    registerCommand: (name: string, command: Command) => commands.set(name, command),
-    on: (name: string, handler: ResultHandler) => events.set(name, handler),
-    appendEntry,
-    getAllTools,
-    getActiveTools,
-    getCommands,
-  } as unknown as ExtensionAPI;
+  const fake = fakePi({ appendEntry, getAllTools, getActiveTools, getCommands });
+  const pi = fake.api;
+  const commands = fake.commands as unknown as Map<string, Command>;
   const sessionManager = SessionManager.inMemory("/project");
   const ctx = {
     mode: "tui",
@@ -68,6 +62,9 @@ function harness() {
     ui: { notify: vi.fn() },
   } as unknown as ExtensionCommandContext;
   systemInsights(pi);
+  const events = new Map(
+    [...fake.handlers].map(([name, [handler]]) => [name, handler as ResultHandler]),
+  );
   return {
     commands,
     events,

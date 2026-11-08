@@ -1,22 +1,18 @@
-import type {
-  ExtensionAPI,
-  ExtensionContext,
-  Theme,
-  ToolDefinition,
-} from "@earendil-works/pi-coding-agent";
+import type { ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import { KeybindingsManager, TUI_KEYBINDINGS, visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
-import stashExtension from "#src/index";
-import type { StashRecord } from "#src/state";
-import { Explorer } from "../../../packages/pi-ui/src/index.ts";
-import { showStashBrowser, stashExplorerView, type StashPreview } from "#src/ui/browser";
-import { formatAge, formatBytes, originLabel, previewRows } from "#src/ui/render";
+import { fakePi } from "../../../packages/pi-test-helpers/src/fake-pi.ts";
 import {
   expectPadded,
   NARROW_WIDTHS,
   WIDE_TEXT,
 } from "../../../packages/pi-test-helpers/src/render.ts";
 import { ansiTheme, stripAnsi } from "../../../packages/pi-test-helpers/src/theme.ts";
+import stashExtension from "#src/index";
+import type { StashRecord } from "#src/state";
+import { Explorer } from "../../../packages/pi-ui/src/index.ts";
+import { showStashBrowser, stashExplorerView, type StashPreview } from "#src/ui/browser";
+import { formatAge, formatBytes, originLabel, previewRows } from "#src/ui/render";
 import { flushMicrotasks as flush } from "../../../packages/pi-test-helpers/src/wait.ts";
 
 // Colors every token so width math must ignore escape sequences.
@@ -213,14 +209,8 @@ describe("stash explorer", () => {
 });
 
 describe("tool renderers", () => {
-  const tools = new Map<string, ToolDefinition>();
-  stashExtension({
-    registerTool: (tool: ToolDefinition) => tools.set(tool.name, tool),
-    registerCommand: () => {},
-    on: () => {},
-    appendEntry: () => {},
-    events: { on: () => () => {}, emit: () => {} },
-  } as unknown as ExtensionAPI);
+  const { api, tools } = fakePi();
+  stashExtension(api);
   const options = (expanded: boolean) => ({ expanded, isPartial: false }) as never;
 
   it("collapses to a receipt and expands to a padded preview, never the full content", () => {

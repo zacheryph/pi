@@ -1,50 +1,24 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
 import { Hub } from "#src/hub/hub";
 import dashboardExtension, { type DashboardDependencies } from "#src/index";
 import { get, onCleanup, post, tempDir, waitFor, sleep } from "#test/helpers";
+import { fakePi } from "../../../packages/pi-test-helpers/src/fake-pi.ts";
 
-type Handler = (event: Record<string, unknown>, ctx: unknown) => unknown;
-
-function fakePi() {
-  const handlers = new Map<string, Handler[]>();
-  const commands = new Map<string, { handler: (args: string, ctx: unknown) => Promise<void> }>();
-  const listeners = new Map<string, Array<(data: unknown) => void>>();
+/** A fake pi with a renameable session name and a working event bus. */
+function dashboardPi() {
   let name: string | undefined = "fix-auth";
-  const pi = {
-    on: (event: string, handler: Handler) => {
-      handlers.set(event, [...(handlers.get(event) ?? []), handler]);
-      return () => {};
-    },
-    registerCommand: (
-      command: string,
-      options: { handler: (args: string, ctx: unknown) => Promise<void> },
-    ) => commands.set(command, options),
+  const fake = fakePi({
     getSessionName: () => name,
     getThinkingLevel: () => "high",
     exec: vi.fn(),
-    events: {
-      on: (channel: string, handler: (data: unknown) => void) => {
-        listeners.set(channel, [...(listeners.get(channel) ?? []), handler]);
-        return () => {};
-      },
-      emit: (channel: string, data: unknown) => {
-        for (const handler of listeners.get(channel) ?? []) handler(data);
-      },
-    },
-  } as unknown as ExtensionAPI;
-  const emit = async (event: string, payload: Record<string, unknown>, ctx: unknown) => {
-    for (const handler of handlers.get(event) ?? [])
-      await handler({ type: event, ...payload }, ctx);
-  };
+  });
   return {
-    pi,
-    emit,
-    commands,
+    ...fake,
+    pi: fake.api,
     rename: (next: string) => {
       name = next;
     },
-    publish: (channel: string, data: unknown) => pi.events.emit(channel, data),
+    publish: (channel: string, data: unknown) => fake.api.events.emit(channel, data),
   };
 }
 
@@ -99,12 +73,12 @@ function setup(overrides: Partial<DashboardDependencies> = {}) {
 }
 
 function load(deps: DashboardDependencies, pid = 4242) {
-  const fake = fakePi();
+  const fake = dashboardPi();
   dashboardExtension(fake.pi, { ...deps, pid });
   return fake;
 }
 
-async function quit(fake: ReturnType<typeof fakePi>, ctx: unknown) {
+async function quit(fake: ReturnType<typeof dashboardPi>, ctx: unknown) {
   await fake.emit("session_shutdown", { reason: "quit" }, ctx);
 }
 
