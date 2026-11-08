@@ -3,6 +3,11 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-08: Markup theme from pi-test-helpers
+
+- The three renderer suites that rendered styling as `[color:text]` and
+  `**bold**` use `packages/pi-test-helpers`' `markupTheme`. No source change.
+
 ## 2026-11-08: Test themes from pi-test-helpers
 
 - Identity and single-color theme stubs in the UI and tool tests are

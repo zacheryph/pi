@@ -19,6 +19,15 @@ export const ansiTheme: TestTheme = {
   bold: (text) => `\x1b[1m${text}\x1b[22m`,
 };
 
+/**
+ * Marks styling in plain text, `[color:text]` and `**text**`, so a test can
+ * assert which color or weight each piece of a rendered line got.
+ */
+export const markupTheme: TestTheme = {
+  fg: (color, text) => `[${color}:${text}]`,
+  bold: (text) => `**${text}**`,
+};
+
 // oxlint-disable-next-line no-control-regex -- Intentionally matches terminal control sequences.
 const SGR = /\x1b\[[0-9;]*m/g;
 

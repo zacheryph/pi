@@ -8,14 +8,10 @@ import {
   createUpdateRenderer,
   resolveStatusPresentation,
 } from "#src/observation/renderer";
+import { markupTheme } from "../../../../packages/pi-test-helpers/src/theme.ts";
 
 /** Minimal theme stub — satisfies RendererTheme structurally. */
-function stubTheme() {
-  return {
-    fg: (style: string, text: string) => `[${style}:${text}]`,
-    bold: (text: string) => `**${text}**`,
-  };
-}
+const stubTheme = () => markupTheme;
 
 function makeDetails(overrides: Partial<NotificationDetails> = {}): NotificationDetails {
   return {

@@ -26,4 +26,4 @@ file needs its own `afterEach` list of cleanups.
 | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `temp.ts`  | `tempDir(cleanup, prefix?)`; `writeFiles(root, files)`, objects written as JSON; `settingsDirs(cleanup, filename)`, an agent dir and a project for layered config files |
 | `wait.ts`  | `waitFor(check, { timeout, interval, what })` returns the first truthy value; `sleep`, `tick`, `flushMicrotasks`                                                        |
-| `theme.ts` | `plainTheme`, `ansiTheme` (real SGR codes), `stripAnsi` (colors only: leaked controls stay visible), `plainLines`                                                       |
+| `theme.ts` | `plainTheme`, `ansiTheme` (real SGR codes), `markupTheme` (`[color:text]`, `**bold**`), `stripAnsi` (colors only: leaked controls stay visible), `plainLines`           |
