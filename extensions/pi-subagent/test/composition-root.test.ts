@@ -9,7 +9,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi, onTestFinished } from "vitest";
-import { tempDir } from "../../../packages/pi-test-helpers/src/temp.ts";
 
 const sdk = vi.hoisted(() => {
   interface Recorded {
@@ -64,47 +63,10 @@ import {
   createSubagentSessionStub,
   toSubagentSession,
 } from "./helpers/mock-session";
+import { tempDir } from "../../../packages/pi-test-helpers/src/temp.ts";
+import { subagentPi } from "./helpers/subagent-pi.ts";
 
-function makePi() {
-  const tools = new Map<string, any>();
-  const handlers = new Map<string, any[]>();
-  return {
-    pi: {
-      registerMessageRenderer: vi.fn(),
-      registerFlag: vi.fn(),
-      getFlag: vi.fn(),
-      getActiveTools: vi.fn(() => []),
-      registerTool: vi.fn((tool: any) => tools.set(tool.name, tool)),
-      registerCommand: vi.fn(),
-      registerShortcut: vi.fn(),
-      on: vi.fn((event: string, handler: any) => {
-        const registered = handlers.get(event);
-        if (registered) registered.push(handler);
-        else handlers.set(event, [handler]);
-      }),
-      events: { emit: vi.fn(), on: vi.fn(() => vi.fn()) },
-      appendEntry: vi.fn(),
-      sendMessage: vi.fn(),
-      exec: vi.fn(),
-      getAllTools: vi.fn((): { name: string }[] => []),
-    } as any,
-    tools,
-    handlers,
-    /**
-     * Invoke every handler registered for `event`, in registration order.
-     *
-     * Pi fans an event out to all of one extension's handlers for it — "A single
-     * extension may register multiple handlers for the same event" (the SDK's
-     * `ExtensionRunner`). A fixture keyed one-handler-per-event would keep only the
-     * last registration, hiding a second one instead of exercising it.
-     */
-    fire: async (event: string, ...args: any[]) => {
-      for (const handler of handlers.get(event) ?? []) {
-        await handler(...args);
-      }
-    },
-  };
-}
+const makePi = () => subagentPi();
 
 /** The parent registry the root reads runtime registrations from. */
 function makeParentRegistry() {
