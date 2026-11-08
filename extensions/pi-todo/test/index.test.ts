@@ -749,10 +749,7 @@ describe("user commands", () => {
       tui: unknown,
       theme: unknown,
     ) => { render(width: number): string[] };
-    const widget = factory(
-      { requestRender: vi.fn() },
-      { fg: (_color: string, text: string) => text, bold: (text: string) => text },
-    );
+    const widget = factory({ requestRender: vi.fn() }, plainTheme);
     const expanded = widget.render(60);
     expect(expanded).toHaveLength(3);
     const open = Symbol.for("pi-ui.inline-window.open");
