@@ -3,6 +3,14 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-08: Tests under root and non-reaping init
+
+- The test helper `alive()` counts a zombie as dead. Killed orphans are
+  reparented to PID 1, and some container inits never reap them, so
+  `kill(pid, 0)` kept succeeding and the host-exit escalation test timed out.
+- Skip the unopenable-log-file test as root, which ignores directory
+  permissions, so the expected EACCES never happens.
+
 ## 2026-11-04: Shutdown test PID readiness
 
 - Wait for positive PIDs in the shutdown test, rather than just PID file existence.
