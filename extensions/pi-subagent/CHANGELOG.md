@@ -3,6 +3,12 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-08: One agent-definition builder for tests
+
+- `test/helpers/make-agent-config.ts`: the `makeAgentConfig` builder that
+  `agent-types` and `subagent-manager` tests each defined identically;
+  `invocation-config`'s builder now starts from it. No source change.
+
 ## 2026-11-08: SDK tests share one child-session fixture
 
 - `test/helpers/sdk.ts`: `offlineAgentDir` (agent directory, settings and an

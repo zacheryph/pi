@@ -1,18 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { resolveAgentInvocationConfig } from "#src/config/invocation-config";
 import type { AgentConfig } from "#src/types";
+import { makeAgentConfig } from "#test/helpers/make-agent-config";
 
-function makeConfig(overrides: Partial<AgentConfig> = {}): AgentConfig {
-  return {
+const makeConfig = (overrides: Partial<AgentConfig> = {}): AgentConfig =>
+  makeAgentConfig({
     name: "explore",
     description: "explore",
     toolNames: ["read"],
     systemPrompt: "Test agent",
-    promptMode: "replace",
-    inheritContext: false,
     ...overrides,
-  };
-}
+  });
 
 /** An agent file declaring a value for every lockable field. */
 function makeOpinionatedConfig(overrides: Partial<AgentConfig> = {}): AgentConfig {
