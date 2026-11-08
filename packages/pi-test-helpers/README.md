@@ -22,8 +22,9 @@ file needs its own `afterEach` list of cleanups.
 
 ## Modules
 
-| Module     | Exports                                                                                                                                                                 |
-| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `temp.ts`  | `tempDir(cleanup, prefix?)`; `writeFiles(root, files)`, objects written as JSON; `settingsDirs(cleanup, filename)`, an agent dir and a project for layered config files |
-| `wait.ts`  | `waitFor(check, { timeout, interval, what })` returns the first truthy value; `sleep`, `tick`, `flushMicrotasks`                                                        |
-| `theme.ts` | `plainTheme`, `ansiTheme` (real SGR codes), `markupTheme` (`[color:text]`, `**bold**`), `stripAnsi` (colors only: leaked controls stay visible), `plainLines`           |
+| Module      | Exports                                                                                                                                                                 |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `temp.ts`   | `tempDir(cleanup, prefix?)`; `writeFiles(root, files)`, objects written as JSON; `settingsDirs(cleanup, filename)`, an agent dir and a project for layered config files |
+| `wait.ts`   | `waitFor(check, { timeout, interval, what })` returns the first truthy value; `sleep`, `tick`, `flushMicrotasks`                                                        |
+| `theme.ts`  | `plainTheme`, `ansiTheme` (real SGR codes), `markupTheme` (`[color:text]`, `**bold**`), `stripAnsi` (colors only: leaked controls stay visible), `plainLines`           |
+| `render.ts` | _vitest_. `expectPadded(row, width)` (the AGENTS.md spacing rule), `expectBounded(lines, width, height?)`, `NARROW_WIDTHS`, `WIDE_TEXT`                                 |

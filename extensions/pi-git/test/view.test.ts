@@ -1,20 +1,18 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
-import { KeybindingsManager, TUI_KEYBINDINGS, visibleWidth } from "@earendil-works/pi-tui";
+import { KeybindingsManager, TUI_KEYBINDINGS } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
+import {
+  expectPadded,
+  NARROW_WIDTHS,
+  WIDE_TEXT,
+} from "../../../packages/pi-test-helpers/src/render.ts";
+import { ansiTheme, stripAnsi } from "../../../packages/pi-test-helpers/src/theme.ts";
 import { Explorer } from "../../../packages/pi-ui/src/index.ts";
 import type { GitSnapshotEvent, GitSnapshotPr, GitSnapshotWorktree } from "../src/events.ts";
 import { explorerView, LIST_LIMIT, listText, prExplorerView, statusText } from "../src/view.ts";
-import { stripAnsi } from "../../../packages/pi-test-helpers/src/theme.ts";
 
 // Colors every token so width math must ignore escape sequences.
-const ansi = {
-  fg: (_token: string, text: string) => `\x1b[31m${text}\x1b[0m`,
-  bold: (text: string) => `\x1b[1m${text}\x1b[22m`,
-} as Theme;
-// oxlint-disable-next-line no-control-regex -- Intentionally matches terminal control characters.
-const strip = (text: string) => text.replace(/\x1b\[[0-9;]*m/g, "");
-const WIDE = "機能😀ブランチ";
-const WIDTHS = [0, 1, 2, 3, 4, 5, 8, 13, 21, 40, 80];
+const ansi = ansiTheme as Theme;
 
 const worktree = (overrides: Partial<GitSnapshotWorktree> = {}): GitSnapshotWorktree => ({
   path: "/w/api/feat-login",
@@ -32,17 +30,6 @@ const snapshot = (
   worktrees: GitSnapshotWorktree[],
   found: GitSnapshotEvent["found"] = [],
 ): GitSnapshotEvent => ({ version: 1, worktrees, found, prs: [] });
-
-/** Every body row keeps one space at each edge, or is blank when too narrow. */
-function expectPadded(row: string, width: number): void {
-  expect(visibleWidth(row)).toBeLessThanOrEqual(width);
-  const text = strip(row);
-  if (width <= 2) expect(text.trim()).toBe("");
-  else if (text.trim()) {
-    expect(text.startsWith(" ")).toBe(true);
-    expect(text.endsWith(" ")).toBe(true);
-  }
-}
 
 describe("statusText", () => {
   it("names the state, or the git status of an active worktree", () => {
@@ -149,10 +136,12 @@ describe("/git:worktrees explorer", () => {
   it("keeps body rows padded at every width, with wide and control-laden text", () => {
     const browser = make(
       explorerView(
-        snapshot([worktree({ branch: `${WIDE}\x1b[2J`, path: `/w/${WIDE}/\x1b]52;c;evil\x07x` })]),
+        snapshot([
+          worktree({ branch: `${WIDE_TEXT}\x1b[2J`, path: `/w/${WIDE_TEXT}/\x1b]52;c;evil\x07x` }),
+        ]),
       ),
     );
-    for (const width of WIDTHS) {
+    for (const width of NARROW_WIDTHS) {
       const rows = browser.render(width);
       for (const row of rows.slice(1, -1)) expectPadded(row, width);
       expect(rows.join("\n")).not.toContain("evil");
@@ -234,10 +223,10 @@ describe("/git:prs explorer", () => {
       tui: { requestRender: vi.fn(), terminal: { rows: 30, columns: 80 } },
       theme: ansi,
       keys: new KeybindingsManager(TUI_KEYBINDINGS),
-      view: prExplorerView([pr({ title: `${WIDE}\x1b]52;c;evil\x07 title` })], NOW),
+      view: prExplorerView([pr({ title: `${WIDE_TEXT}\x1b]52;c;evil\x07 title` })], NOW),
       done: vi.fn(),
     });
-    for (const width of WIDTHS) {
+    for (const width of NARROW_WIDTHS) {
       const rows = browser.render(width);
       for (const row of rows.slice(1, -1)) expectPadded(row, width);
       expect(rows.join("\n")).not.toContain("evil");

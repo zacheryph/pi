@@ -11,18 +11,16 @@ import type { StashRecord } from "#src/state";
 import { Explorer } from "../../../packages/pi-ui/src/index.ts";
 import { showStashBrowser, stashExplorerView, type StashPreview } from "#src/ui/browser";
 import { formatAge, formatBytes, originLabel, previewRows } from "#src/ui/render";
-import { stripAnsi } from "../../../packages/pi-test-helpers/src/theme.ts";
+import {
+  expectPadded,
+  NARROW_WIDTHS,
+  WIDE_TEXT,
+} from "../../../packages/pi-test-helpers/src/render.ts";
+import { ansiTheme, stripAnsi } from "../../../packages/pi-test-helpers/src/theme.ts";
 import { flushMicrotasks as flush } from "../../../packages/pi-test-helpers/src/wait.ts";
 
 // Colors every token so width math must ignore escape sequences.
-const ansi = {
-  fg: (_token: string, text: string) => `\x1b[31m${text}\x1b[0m`,
-  bold: (text: string) => `\x1b[1m${text}\x1b[22m`,
-} as Theme;
-// oxlint-disable-next-line no-control-regex -- Intentionally matches terminal control characters.
-const strip = (text: string) => text.replace(/\x1b\[[0-9;]*m/g, "");
-const WIDE = "検索結果😀データ";
-const WIDTHS = [0, 1, 2, 3, 4, 5, 8, 13, 21, 40, 80];
+const ansi = ansiTheme as Theme;
 
 const record = (overrides: Partial<StashRecord> = {}): StashRecord => ({
   name: "auth-findings",
@@ -30,23 +28,12 @@ const record = (overrides: Partial<StashRecord> = {}): StashRecord => ({
   bytes: 12_345,
   lines: 340,
   mime: "text/plain",
-  description: `${WIDE} \x1b[2Jdescription`,
+  description: `${WIDE_TEXT} \x1b[2Jdescription`,
   createdAt: Date.now() - 3_600_000,
   createdBy: "session-1234567890",
   source: "content",
   ...overrides,
 });
-
-/** Every body row keeps one space at each edge, or is blank when too narrow. */
-function expectPadded(row: string, width: number): void {
-  expect(visibleWidth(row)).toBeLessThanOrEqual(width);
-  const text = strip(row);
-  if (width <= 2) expect(text.trim()).toBe("");
-  else if (text.trim()) {
-    expect(text.startsWith(" ")).toBe(true);
-    expect(text.endsWith(" ")).toBe(true);
-  }
-}
 
 describe("render helpers", () => {
   it("formats sizes and ages", () => {
@@ -84,7 +71,7 @@ describe("stash explorer", () => {
     entries: StashRecord[],
     rows = 12,
     load: () => StashPreview = vi.fn(() => ({
-      lines: [`${WIDE} line`, "\x1b]52;c;evil\x07second"],
+      lines: [`${WIDE_TEXT} line`, "\x1b]52;c;evil\x07second"],
       note: "Preview stops here",
     })),
   ) => {
@@ -105,7 +92,7 @@ describe("stash explorer", () => {
       id: "stash:auth-findings@3f9a1c2b7d01",
       label: [
         { text: "stash:auth-findings@3f9a1c2b7d01", tone: "accent" },
-        { text: ` — ${WIDE} \x1b[2Jdescription`, tone: "muted" },
+        { text: ` — ${WIDE_TEXT} \x1b[2Jdescription`, tone: "muted" },
       ],
       badge: { text: "↑ agent a3f2b1c4 · 12 KB · 340 lines · 1h" },
     });
@@ -117,7 +104,7 @@ describe("stash explorer", () => {
 
   it("lists entries, previews lazily with line numbers, and goes back and closes with Esc", async () => {
     const load = vi.fn(() => ({
-      lines: [`${WIDE} line`, "\x1b]52;c;evil\x07second"],
+      lines: [`${WIDE_TEXT} line`, "\x1b]52;c;evil\x07second"],
       note: "Preview stops here",
     }));
     const { browser, done } = make(
@@ -180,7 +167,7 @@ describe("stash explorer", () => {
         browser.handleInput("\r");
         await flush();
       }
-      for (const width of WIDTHS)
+      for (const width of NARROW_WIDTHS)
         for (const line of browser.render(width))
           expect(visibleWidth(line)).toBeLessThanOrEqual(width);
     }
@@ -243,7 +230,7 @@ describe("tool renderers", () => {
       bytes: 999_999,
       lines: 5000,
       source: "content",
-      preview: `${WIDE}\nline 2\n… (5000 lines total)`,
+      preview: `${WIDE_TEXT}\nline 2\n… (5000 lines total)`,
     };
     const result = { content: [{ type: "text" as const, text: "receipt" }], details };
     const collapsed = put.renderResult!(result, options(false), ansi, {} as never)
@@ -251,7 +238,7 @@ describe("tool renderers", () => {
       .map(stripAnsi);
     expect(collapsed[0]).toMatch(/stash:big@3f9a1c2b7d01 · 977 KB · 5000 lines/);
     const component = put.renderResult!(result, options(true), ansi, {} as never);
-    for (const width of WIDTHS) {
+    for (const width of NARROW_WIDTHS) {
       const rows = component.render(width);
       for (const row of rows) expectPadded(row, width);
     }
@@ -275,7 +262,7 @@ describe("tool renderers", () => {
       },
     };
     const listResult = { content: [], details: { total: 1, entries: [record()] } };
-    for (const width of WIDTHS) {
+    for (const width of NARROW_WIDTHS) {
       for (const row of get.renderResult!(getResult, options(true), ansi, {} as never).render(
         width,
       ))
