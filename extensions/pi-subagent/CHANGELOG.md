@@ -3,6 +3,12 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-08: ui.custom stub from pi-test-helpers
+
+- `ui/agents-browser.test.ts` mounts the browser with `packages/pi-test-
+  helpers`' `fakeCustomUi` and `fakeTui` instead of two inline `ui.custom`
+  stubs. No source change.
+
 ## 2026-11-08: One fake pi for whole-extension tests
 
 - `test/helpers/subagent-pi.ts`: the fake `pi` with every member the composition

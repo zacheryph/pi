@@ -1,9 +1,10 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { KeybindingsManager, TUI_KEYBINDINGS, visibleWidth } from "@earendil-works/pi-tui";
+import { visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 import { sanitizeText, type DisposableComponent } from "../../../packages/pi-ui/src/index.ts";
 import type { InsightView } from "#src/types";
 import { legendNotice, showInsightView, toExplorerView } from "#src/viewer";
+import { fakeCustomUi, fakeTui } from "../../../packages/pi-test-helpers/src/ui.ts";
 
 const ENTER = "\r";
 const palette: Record<string, number> = { success: 32, dim: 90, accent: 36, muted: 37 };
@@ -32,25 +33,14 @@ const skillView: InsightView = {
 };
 const textView: InsightView = { title: "System prompt", note: "Captured prompt", text: "Body" };
 
-type Factory = Parameters<ExtensionContext["ui"]["custom"]>[0];
 function context(mode: ExtensionContext["mode"] = "tui", hasUI = true) {
-  const components: DisposableComponent[] = [];
-  const tui = { terminal: { rows: 30, columns: 100 }, requestRender: vi.fn() };
-  const ui = {
-    notify: vi.fn(),
-    custom: vi.fn(async (factory: Factory, _options?: unknown) => {
-      components.push(
-        await factory(
-          tui as unknown as Parameters<Factory>[0],
-          theme as unknown as Parameters<Factory>[1],
-          new KeybindingsManager(TUI_KEYBINDINGS) as Parameters<Factory>[2],
-          () => {},
-        ),
-      );
-      return undefined;
-    }),
+  const mounted = fakeCustomUi<DisposableComponent>({ theme, tui: fakeTui(30, 100) });
+  const ui = { notify: vi.fn(), custom: mounted.custom };
+  return {
+    ctx: { mode, hasUI, ui: ui as unknown as ExtensionContext["ui"] },
+    ui,
+    components: mounted.components,
   };
-  return { ctx: { mode, hasUI, ui: ui as unknown as ExtensionContext["ui"] }, ui, components };
 }
 
 describe("toExplorerView", () => {

@@ -1,11 +1,12 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { KeybindingsManager, TUI_KEYBINDINGS, visibleWidth } from "@earendil-works/pi-tui";
+import { visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 import { sanitizeText, type DisposableComponent } from "../../../packages/pi-ui/src/index.ts";
 import type { TldrResult } from "../src/core.js";
 import { errorContent, showTldr, summaryContent } from "../src/viewer.js";
 import { ansiTheme } from "../../../packages/pi-test-helpers/src/theme.ts";
 import { flushMicrotasks as flush } from "../../../packages/pi-test-helpers/src/wait.ts";
+import { fakeCustomUi } from "../../../packages/pi-test-helpers/src/ui.ts";
 
 const summary: TldrResult = {
   title: "routing-migration",
@@ -16,28 +17,10 @@ const summary: TldrResult = {
 const theme = ansiTheme;
 const plain = (lines: readonly string[]) => lines.map(sanitizeText).join("\n");
 
-type Factory = Parameters<ExtensionContext["ui"]["custom"]>[0];
 function context(mode: ExtensionContext["mode"] = "tui") {
-  const components: DisposableComponent[] = [];
-  const tui = { terminal: { rows: 30, columns: 80 }, requestRender: vi.fn() };
-  let closed: () => void = () => {};
-  const ui = {
-    notify: vi.fn(),
-    custom: vi.fn(
-      (factory: Factory, _options?: unknown) =>
-        new Promise<undefined>((resolve) => {
-          closed = () => resolve(undefined);
-          void Promise.resolve(
-            factory(
-              tui as unknown as Parameters<Factory>[0],
-              theme as unknown as Parameters<Factory>[1],
-              new KeybindingsManager(TUI_KEYBINDINGS) as Parameters<Factory>[2],
-              () => closed(),
-            ),
-          ).then((component) => components.push(component));
-        }),
-    ),
-  };
+  const mounted = fakeCustomUi<DisposableComponent>({ theme, awaitDone: true });
+  const { tui, components } = mounted;
+  const ui = { notify: vi.fn(), custom: mounted.custom };
   return {
     ctx: { mode, hasUI: true, ui: ui as unknown as ExtensionContext["ui"] },
     ui,

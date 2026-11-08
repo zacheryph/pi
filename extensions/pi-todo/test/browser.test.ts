@@ -1,16 +1,11 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import {
-  CURSOR_MARKER,
-  KeybindingsManager,
-  renderFakeCursor,
-  TUI_KEYBINDINGS,
-  visibleWidth,
-} from "@earendil-works/pi-tui";
+import { CURSOR_MARKER, renderFakeCursor, visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 import type { DisposableComponent } from "../../../packages/pi-ui/src/index.ts";
 import { type TodoState } from "../src/state.js";
 import { showTodoBrowser, type TodoBrowserOptions } from "../src/ui/browser.js";
 import { applyTodoReview, createTodoReviewState, type TodoActivity } from "../src/activity.js";
+import { fakeCustomUi, fakeTui } from "../../../packages/pi-test-helpers/src/ui.ts";
 
 type Browser = DisposableComponent & { focused: boolean; handleInput(data: string): void };
 const ENTER = "\r",
@@ -27,32 +22,10 @@ const snapshot: TodoState = {
   })),
 };
 function setup(rows = 40) {
-  const tui = { terminal: { rows, columns: 100 }, requestRender: vi.fn() };
-  const theme = { fg: (_color: string, text: string) => text, bold: (text: string) => text };
-  const keys = new KeybindingsManager(TUI_KEYBINDINGS);
-  type Factory = Parameters<ExtensionContext["ui"]["custom"]>[0];
-  const components: Browser[] = [];
-  const done = vi.fn();
-  const ui = {
-    notify: vi.fn(),
-    custom: vi.fn(async (factory: Factory, _options?: unknown) => {
-      let result: unknown;
-      components.push(
-        (await factory(
-          tui as unknown as Parameters<Factory>[0],
-          theme as unknown as Parameters<Factory>[1],
-          keys as Parameters<Factory>[2],
-          (value) => {
-            result = value;
-            done(value);
-          },
-        )) as Browser,
-      );
-      return result;
-    }),
-  };
+  const mounted = fakeCustomUi<Browser>({ tui: fakeTui(rows, 100) });
+  const ui = { notify: vi.fn(), custom: mounted.custom };
   const ctx = { mode: "tui", hasUI: true, ui } as unknown as ExtensionContext;
-  return { tui, ctx, ui, done, components };
+  return { tui: mounted.tui, ctx, ui, done: mounted.done, components: mounted.components };
 }
 async function open(state = snapshot, rows = 40) {
   const env = setup(rows);

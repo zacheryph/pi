@@ -1,11 +1,11 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { KeybindingsManager, TUI_KEYBINDINGS } from "@earendil-works/pi-tui";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, onTestFinished } from "vitest";
 import { provide } from "../../../packages/pi-session-tree/src/index.ts";
 import piAsk from "../src/index.ts";
 import { waitFor } from "../../../packages/pi-test-helpers/src/wait.ts";
 import { fakePi } from "../../../packages/pi-test-helpers/src/fake-pi.ts";
 import { resetSessionTree } from "../../../packages/pi-test-helpers/src/globals.ts";
+import { fakeCustomUi } from "../../../packages/pi-test-helpers/src/ui.ts";
 
 const { execFile } = vi.hoisted(() => ({ execFile: vi.fn() }));
 vi.mock("node:child_process", () => ({ execFile }));
@@ -30,33 +30,19 @@ type Tool = {
   }>;
 };
 
-const theme = { fg: (_c: string, text: string) => text, bold: (text: string) => text };
-
 function harness(options: { mode?: string; hasUI?: boolean; sessionId?: string } = {}) {
   const fake = fakePi();
   const { pi, events } = fake;
   const tools = fake.tools as unknown as Map<string, Tool>;
-  let mounted: { handleInput?(data: string): void; render(width: number): string[] } | undefined;
-  const ui = {
-    notify: vi.fn(),
-    select: vi.fn(),
-    input: vi.fn(),
-    custom: vi.fn(async (factory: Function, custom?: unknown) => {
-      expect(custom).toBeUndefined();
-      return new Promise((resolve) => {
-        void Promise.resolve(
-          factory(
-            { requestRender: vi.fn(), isFollowingOutput: true },
-            theme,
-            new KeybindingsManager(TUI_KEYBINDINGS),
-            resolve,
-          ),
-        ).then((component) => {
-          mounted = component;
-        });
-      });
-    }),
-  };
+  const mounted = fakeCustomUi<{
+    handleInput?(data: string): void;
+    render(width: number): string[];
+  }>({ awaitDone: true });
+  const ui = { notify: vi.fn(), select: vi.fn(), input: vi.fn(), custom: mounted.custom };
+  // An inline window, never an overlay: ui.custom gets no options.
+  onTestFinished(() => {
+    for (const [, custom] of ui.custom.mock.calls) expect(custom).toBeUndefined();
+  });
   const ctx = {
     mode: options.mode ?? "tui",
     hasUI: options.hasUI ?? true,
@@ -82,7 +68,7 @@ function harness(options: { mode?: string; hasUI?: boolean; sessionId?: string }
     ask,
     until,
     get mounted() {
-      return mounted;
+      return mounted.latest();
     },
   };
 }
