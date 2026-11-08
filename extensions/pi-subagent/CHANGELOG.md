@@ -3,6 +3,12 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-08: Test themes from pi-test-helpers
+
+- Identity and single-color theme stubs in the UI and tool tests are
+  `packages/pi-test-helpers`' `plainTheme` and `ansiTheme`; SGR stripping is its
+  `stripAnsi`. No source change.
+
 ## 2026-11-08: Test waits from pi-test-helpers
 
 - Inline `setTimeout` promises in `subagent-manager.test.ts` use `packages/pi-

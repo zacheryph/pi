@@ -3,11 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 import { sanitizeText } from "../../../packages/pi-ui/src/index.ts";
 import { Questionnaire } from "../src/questionnaire.ts";
 import { readQuestions, type AskOutcome } from "../src/questions.ts";
+import { ansiTheme } from "../../../packages/pi-test-helpers/src/theme.ts";
 
-const theme = {
-  fg: (_color: string, text: string) => `\x1b[36m${text}\x1b[39m`,
-  bold: (text: string) => `\x1b[1m${text}\x1b[22m`,
-};
+const theme = ansiTheme;
 const ENTER = "\r";
 const ESC = "\x1b";
 const DOWN = "\x1b[B";

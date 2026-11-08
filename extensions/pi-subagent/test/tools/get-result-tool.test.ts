@@ -21,6 +21,7 @@ import {
 } from "#test/helpers/mock-session";
 import { STUB_CTX } from "#test/helpers/stub-ctx";
 import { turnLoopResult } from "#test/helpers/turn-loop-result";
+import { plainTheme } from "../../../../packages/pi-test-helpers/src/theme.ts";
 
 const testRegistry = new AgentTypeRegistry(() => new Map());
 
@@ -848,7 +849,7 @@ describe("GetResultTool — the branch's saved records", () => {
 
     it("renders padded rows, collapsed to a count and expanded to the lines", async () => {
       const result = await list(new Map(), branchCtx([savedRecord({ description: "漢字 🎉" })]));
-      const theme = { fg: (_c: string, text: string) => text, bold: (text: string) => text };
+      const theme = plainTheme;
       const { renderResult } = tool().toToolDefinition();
       const render = (expanded: boolean, width: number) =>
         renderResult!(

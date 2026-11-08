@@ -15,8 +15,10 @@ import {
   sanitizeText as sanitizeTodoText,
   type Block,
 } from "../../../packages/pi-ui/src/index.ts";
+import { plainTheme, ansiTheme, stripAnsi } from "../../../packages/pi-test-helpers/src/theme.ts";
 
-const theme = { fg: (_token: string, text: string) => text, bold: (text: string) => text } as Theme;
+const theme = plainTheme as Theme;
+const colored = ansiTheme as Theme;
 const task = (
   key: string,
   status: TodoTask["status"] = "pending",
@@ -85,7 +87,6 @@ describe("todo rendering", () => {
 
   it("reserves trailing border columns for multi-digit progress with ANSI styling", () => {
     const s = state(Array.from({ length: 50 }, (_, i) => task(`k${i}`, "completed")));
-    const colored = { fg: (_token: string, text: string) => `\x1b[32m${text}\x1b[0m` } as Theme;
     for (const width of [22, 30, 80]) {
       const header = render(s, config, width)[0];
       expect(header).toMatch(/^──   Todos ─* 50\/50 ──$/);
@@ -213,7 +214,6 @@ describe("todo rendering", () => {
         dependsOn: ["長".repeat(40)],
       },
     ]);
-    const colored = { fg: (_token: string, text: string) => `\x1b[32m${text}\x1b[0m` } as Theme;
     for (let width = 1; width <= 30; width++) {
       for (const t of [theme, colored]) {
         const lines = renderTodoLines(s, config, width, t, Infinity);
@@ -241,7 +241,6 @@ describe("todo rendering", () => {
     expect(renderTodoText(s, { ...config, assignees })).toContain(
       "▸ audit: Task audit [in_progress] → agent a3f2b1c4",
     );
-    const colored = { fg: (_token: string, text: string) => `\x1b[32m${text}\x1b[0m` } as Theme;
     const hostile = new Map([["audit", `agent ${unsafe}日本語👩‍💻`.repeat(4)]]);
     for (let width = 0; width <= 80; width++) {
       for (const t of [theme, colored]) {
@@ -270,7 +269,6 @@ describe("todo rendering", () => {
   it.each([1, 2, 3, 8, 30, 80])(
     "insets all body rows at width %i without moving header chrome",
     (width) => {
-      const colored = { fg: (_token: string, text: string) => `\x1b[32m${text}\x1b[0m` } as Theme;
       const cases = [
         state([{ ...task("wide"), subject: "日本語 👩‍💻 e\u0301".repeat(20) }]),
         state(Array.from({ length: 6 }, (_, i) => task(`k${i}`))),
@@ -331,7 +329,6 @@ describe("unreviewed message rendering", () => {
   it("counts new messages in the header, falling back to progress then title on narrow widths", () => {
     expect(render(s, c)[0]).toMatch(/^──   Todos ─+ ● 2 new · 2\/4 ──$/);
     expect(visibleWidth(render(s, c)[0])).toBe(100);
-    const colored = { fg: (_token: string, text: string) => `\x1b[32m${text}\x1b[0m` } as Theme;
     for (let width = 1; width <= 40; width++) {
       const header = render(s, c, width)[0];
       expect(visibleWidth(header)).toBeLessThanOrEqual(width);
@@ -396,7 +393,6 @@ describe("unreviewed message rendering", () => {
   it.each([1, 2, 3, 8, 30, 80])(
     "insets and bounds unreviewed rows with hostile, wide and ANSI text at width %i",
     (width) => {
-      const colored = { fg: (_token: string, text: string) => `\x1b[32m${text}\x1b[0m` } as Theme;
       const hostile = new Map([
         ["wide", `${unsafe}\n日本語 👩‍💻 e\u0301 🦀`.repeat(5)],
         ["k1", unsafe],
@@ -417,8 +413,7 @@ describe("unreviewed message rendering", () => {
         for (const row of lines.slice(1)) {
           expect(row.startsWith(" ")).toBe(true);
           expect(visibleWidth(row)).toBeLessThanOrEqual(width);
-          // oxlint-disable-next-line no-control-regex -- Intentionally matches terminal control characters.
-          expect(row.replace(/\x1b\[[0-9;]*m/g, "")).not.toMatch(
+          expect(stripAnsi(row)).not.toMatch(
             // oxlint-disable-next-line no-control-regex -- Intentionally matches terminal control characters.
             /[\x00-\x1f\x7f-\x9f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069\u2028\u2029]/,
           );

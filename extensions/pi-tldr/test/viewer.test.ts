@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { sanitizeText, type DisposableComponent } from "../../../packages/pi-ui/src/index.ts";
 import type { TldrResult } from "../src/core.js";
 import { errorContent, showTldr, summaryContent } from "../src/viewer.js";
+import { ansiTheme } from "../../../packages/pi-test-helpers/src/theme.ts";
 import { flushMicrotasks as flush } from "../../../packages/pi-test-helpers/src/wait.ts";
 
 const summary: TldrResult = {
@@ -12,10 +13,7 @@ const summary: TldrResult = {
   findings: "One issue; two fixes ;three",
   status: "Pending rollout review",
 };
-const theme = {
-  fg: (_color: string, text: string) => `\x1b[36m${text}\x1b[39m`,
-  bold: (text: string) => `\x1b[1m${text}\x1b[22m`,
-};
+const theme = ansiTheme;
 const plain = (lines: readonly string[]) => lines.map(sanitizeText).join("\n");
 
 type Factory = Parameters<ExtensionContext["ui"]["custom"]>[0];

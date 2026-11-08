@@ -22,6 +22,7 @@ import { TODO_STATE_CUSTOM_TYPE, type TodoDetails, type TodoState } from "../src
 import { TODO_JOURNAL_TYPE, TODO_REVIEW_TYPE } from "#src/replay.ts";
 import { showTodoBrowser } from "../src/ui/browser.ts";
 import { TODO_SNAPSHOT_EVENT, type TodoSnapshotEvent } from "#src/events.ts";
+import { plainTheme, ansiTheme, stripAnsi } from "../../../packages/pi-test-helpers/src/theme.ts";
 
 // Browser interaction has its own component tests. Here test command routing,
 // branch snapshots, and headless behavior independently of terminal input.
@@ -347,10 +348,7 @@ describe("todo registration and journal", () => {
     const env = await started();
     const tool = env.tool("clear");
     const hostile = "bad\x1b[2J\x1b]52;c;clipboard\x07\x1b_Pi:c\x07\x9b31m\u202e\u200eend";
-    const theme = {
-      fg: (_color: string, text: string) => text,
-      bold: (text: string) => text,
-    } as Parameters<NonNullable<typeof tool.renderCall>>[1];
+    const theme = plainTheme as Parameters<NonNullable<typeof tool.renderCall>>[1];
     const renderContext = {} as Parameters<NonNullable<typeof tool.renderCall>>[2];
     // Runtime failures lack success details even though registered renderer is typed for TodoDetails.
     const failed = {
@@ -1244,10 +1242,7 @@ describe("task messages and review", () => {
   it("call and result renderers count and inset recorded messages, scrubbing controls at every width", async () => {
     const env = await started();
     const tool = env.tool("upsert");
-    const theme = {
-      fg: (_color: string, text: string) => `\x1b[32m${text}\x1b[0m`,
-      bold: (text: string) => text,
-    } as Parameters<NonNullable<typeof tool.renderCall>>[1];
+    const theme = ansiTheme as Parameters<NonNullable<typeof tool.renderCall>>[1];
     const renderContext = {} as Parameters<NonNullable<typeof tool.renderCall>>[2];
     const call = tool.renderCall!(
       { tasks: [{ key: "a", message: "x" }, { key: "b", message: " " }, null] } as never,
@@ -1273,15 +1268,14 @@ describe("task messages and review", () => {
         theme,
         renderContext,
       );
-      // oxlint-disable-next-line no-control-regex -- Intentionally matches terminal control characters.
-      const lines = component.render(80).map((line) => line.replace(/\x1b\[[0-9;]*m/g, ""));
+      const lines = component.render(80).map((line) => stripAnsi(line));
       // pi-ui pads inset rows to the full width.
       expect(lines.at(-1)!.trimEnd()).toBe(" ✓ a: bad日本語 \u{1f469}\u200d\u{1f4bb} e\u0301 next");
       for (let width = 1; width <= 30; width++) {
         for (const line of component.render(width).slice(expanded ? 0 : 1)) {
           expect(visibleWidth(line)).toBeLessThanOrEqual(width);
           // oxlint-disable-next-line no-control-regex -- Intentionally matches terminal control characters.
-          expect(line.replace(/\x1b\[[0-9;]*m/g, "")).not.toMatch(/[\x00-\x1f\x7f-\x9f‮]/);
+          expect(stripAnsi(line)).not.toMatch(/[\x00-\x1f\x7f-\x9f‮]/);
         }
         const row = component.render(width).at(-1)!;
         if (width <= 2) expect(row).toBe(" ".repeat(width));
@@ -1294,10 +1288,7 @@ describe("task messages and review", () => {
 it("result renderer ignores malformed persisted message details", async () => {
   const env = await started();
   const tool = env.tool("upsert");
-  const theme = {
-    fg: (_color: string, text: string) => text,
-    bold: (text: string) => text,
-  } as Parameters<NonNullable<typeof tool.renderCall>>[1];
+  const theme = plainTheme as Parameters<NonNullable<typeof tool.renderCall>>[1];
   const result = await env.execute(add("a"));
   const malformed = {
     ...result,
@@ -1320,13 +1311,9 @@ it("result renderer ignores malformed persisted message details", async () => {
 
 it("expanded results list only the tasks a call changed, never the widget", async () => {
   const env = await started();
-  const theme = {
-    fg: (_color: string, text: string) => `\x1b[32m${text}\x1b[0m`,
-    bold: (text: string) => text,
-  } as Parameters<NonNullable<ReturnType<typeof env.tool>["renderCall"]>>[1];
+  const theme = ansiTheme as Parameters<NonNullable<ReturnType<typeof env.tool>["renderCall"]>>[1];
   const renderContext = {} as Parameters<NonNullable<ReturnType<typeof env.tool>["renderCall"]>>[2];
-  // oxlint-disable-next-line no-control-regex -- Intentionally strips SGR styling.
-  const plain = (line: string) => line.replace(/\x1b\[[0-9;]*m/g, "").trimEnd();
+  const plain = (line: string) => stripAnsi(line).trimEnd();
   await env.execute({
     action: "upsert",
     tasks: [

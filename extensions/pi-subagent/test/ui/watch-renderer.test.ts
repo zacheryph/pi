@@ -2,8 +2,9 @@ import { visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it } from "vitest";
 import type { Theme } from "#src/ui/display";
 import { renderWatchOverlay, watchHeight, type WatchSection } from "#src/ui/watch-renderer";
+import { plainTheme, ansiTheme } from "../../../../packages/pi-test-helpers/src/theme.ts";
 
-const theme: Theme = { fg: (_color, text) => text, bold: (text) => text };
+const theme: Theme = plainTheme;
 function section(id = "a", overrides: Partial<WatchSection> = {}): WatchSection {
   return {
     id,
@@ -148,7 +149,7 @@ describe("watch overlay renderer", () => {
     expect(calls).toContainEqual(["error", "Skill deploy · failed"]);
     expect(calls).toContainEqual(["error", "Provider failed"]);
     expect(first.join("\n")).not.toContain("Text normal");
-    const changed: Theme = { fg: (_color, text) => `\x1b[35m${text}\x1b[0m`, bold: (text) => text };
+    const changed: Theme = ansiTheme;
     const second = render([section("a", { blocks })], 40, 14, changed);
     expect(second).not.toEqual(first);
     expect(second.every((line) => visibleWidth(line) === 40)).toBe(true);
@@ -199,7 +200,7 @@ describe("watch overlay renderer", () => {
   });
 
   it("measures ANSI and wide Unicode by terminal cells and strips agent-provided controls", () => {
-    const colors: Theme = { fg: (_color, text) => `\x1b[32m${text}\x1b[0m`, bold: (text) => text };
+    const colors: Theme = ansiTheme;
     const lines = render(
       [
         section("a", {

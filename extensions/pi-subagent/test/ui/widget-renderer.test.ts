@@ -3,9 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import type { Theme } from "#src/ui/display";
 import { renderWidgetLines, type WidgetAgent, widgetLineBudget } from "#src/ui/widget-renderer";
+import { plainTheme, ansiTheme } from "../../../../packages/pi-test-helpers/src/theme.ts";
 
 const registry = new AgentTypeRegistry(() => new Map());
-const theme: Theme = { fg: (_color, text) => text, bold: (text) => text };
+const theme: Theme = plainTheme;
 const NOW = 100_000;
 
 function makeAgent(overrides: Partial<WidgetAgent> = {}): WidgetAgent {
@@ -254,10 +255,6 @@ describe("terminal layout safety", () => {
   it.each([0, 1, 2, 3, 8, 12, 14, 15, 16, 20, 39, 40, 60, 80, 200])(
     "fits every row in %i terminal cells",
     (terminalWidth) => {
-      const ansiTheme: Theme = {
-        fg: (_color, text) => `\x1b[36m${text}\x1b[39m`,
-        bold: (text) => `\x1b[1m${text}\x1b[22m`,
-      };
       const lines = render({
         terminalWidth,
         theme: ansiTheme,
