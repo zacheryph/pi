@@ -3,6 +3,12 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-08: Layered settings fixture from pi-test-helpers
+
+- `settings.test.ts` uses `packages/pi-test-helpers`' `settingsDirs` for its
+  global and project settings files; `test/helpers/tmp-settings-dirs.ts`, which
+  did the same, is removed. No source change.
+
 ## 2026-11-08: Test temp directories from pi-test-helpers
 
 - Tests create temp directories with `packages/pi-test-helpers`' `tempDir`,

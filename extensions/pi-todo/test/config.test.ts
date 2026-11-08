@@ -1,7 +1,6 @@
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import {
   CONFIG_FILE,
   DEFAULT_CONFIG,
@@ -9,21 +8,12 @@ import {
   sanitizeConfig,
   saveTodoConfig,
 } from "../src/config.ts";
+import { settingsDirs } from "../../../packages/pi-test-helpers/src/temp.ts";
 
-const dirs: string[] = [];
 function setup() {
-  const root = mkdtempSync(join(tmpdir(), "pi-todo-config-"));
-  dirs.push(root);
-  const cwd = join(root, "project"),
-    agentDir = join(root, "agent");
-  mkdirSync(join(cwd, ".pi"), { recursive: true });
-  mkdirSync(agentDir);
-  return {
-    cwd,
-    agentDir,
-    global: join(agentDir, CONFIG_FILE),
-    project: join(cwd, ".pi", CONFIG_FILE),
-  };
+  const dirs = settingsDirs(onTestFinished, CONFIG_FILE, "pi-todo-config-");
+  mkdirSync(join(dirs.cwd, ".pi"));
+  return { ...dirs, global: dirs.globalFile, project: dirs.projectFile };
 }
 const json = (path: string, value: unknown) => writeFileSync(path, JSON.stringify(value), "utf8");
 afterEach(() => {
