@@ -13,6 +13,7 @@ import {
   waitFor,
   type FakeReporter,
   sleep,
+  listSessions,
 } from "#test/helpers";
 
 async function startHub(options: { dir?: string; idleGraceMs?: number } = {}) {
@@ -26,10 +27,6 @@ async function startHub(options: { dir?: string; idleGraceMs?: number } = {}) {
   return hub;
 }
 
-const sessions = async (hub: Hub) =>
-  JSON.parse((await get(hub.httpPort!, "/api/sessions")).body).sessions as Array<
-    Record<string, unknown>
-  >;
 const hello = (overrides = {}) => ({
   type: "hello",
   version: PROTOCOL_VERSION,
@@ -41,49 +38,49 @@ describe("Hub", () => {
     const hub = await startHub();
     const reporter = await fakeReporter(hub.paths.socket);
     reporter.send(hello({ name: "fix-auth" }));
-    await waitFor(async () => (await sessions(hub)).length === 1);
+    await waitFor(async () => (await listSessions(hub)).length === 1);
     reporter.send({
       type: "update",
       snapshot: snapshot({ name: "renamed", status: { kind: "working", since: 2 } }),
     });
-    await waitFor(async () => (await sessions(hub))[0]?.name === "renamed");
-    expect((await sessions(hub))[0]).toMatchObject({ id: "101", status: { kind: "working" } });
+    await waitFor(async () => (await listSessions(hub))[0]?.name === "renamed");
+    expect((await listSessions(hub))[0]).toMatchObject({ id: "101", status: { kind: "working" } });
   });
 
   it("ignores updates that claim another session's id", async () => {
     const hub = await startHub();
     const a = await fakeReporter(hub.paths.socket);
     a.send(hello({ id: "a", name: "first" }));
-    await waitFor(async () => (await sessions(hub)).length === 1);
+    await waitFor(async () => (await listSessions(hub)).length === 1);
     a.send({ type: "update", snapshot: snapshot({ id: "b", name: "spoof" }) });
     a.send({ type: "update", snapshot: snapshot({ id: "a", name: "second" }) });
-    await waitFor(async () => (await sessions(hub))[0]?.name === "second");
-    expect(await sessions(hub)).toHaveLength(1);
+    await waitFor(async () => (await listSessions(hub))[0]?.name === "second");
+    expect(await listSessions(hub)).toHaveLength(1);
   });
 
   it("drops a session at once when its socket closes without a goodbye", async () => {
     const hub = await startHub();
     const reporter = await fakeReporter(hub.paths.socket);
     reporter.send(hello());
-    await waitFor(async () => (await sessions(hub)).length === 1);
+    await waitFor(async () => (await listSessions(hub)).length === 1);
     reporter.socket.destroy();
-    await waitFor(async () => (await sessions(hub)).length === 0);
+    await waitFor(async () => (await listSessions(hub)).length === 0);
   });
 
   it("keeps a restarting session's card through the grace period and reuses it on reconnect", async () => {
     const hub = await startHub({ idleGraceMs: 300 });
     const first = await fakeReporter(hub.paths.socket);
     first.send(hello());
-    await waitFor(async () => (await sessions(hub)).length === 1);
+    await waitFor(async () => (await listSessions(hub)).length === 1);
     first.send({ type: "bye", reason: "replace" });
     first.socket.end();
-    await waitFor(async () => (await sessions(hub))[0]?.restarting === true);
+    await waitFor(async () => (await listSessions(hub))[0]?.restarting === true);
     const second = await fakeReporter(hub.paths.socket);
     second.send(hello({ sessionId: "session-b" }));
-    await waitFor(async () => (await sessions(hub))[0]?.sessionId === "session-b");
-    expect((await sessions(hub))[0]?.restarting).toBeUndefined();
+    await waitFor(async () => (await listSessions(hub))[0]?.sessionId === "session-b");
+    expect((await listSessions(hub))[0]?.restarting).toBeUndefined();
     await sleep(400);
-    expect(await sessions(hub)).toHaveLength(1);
+    expect(await listSessions(hub)).toHaveLength(1);
   });
 
   it("removes a restarting card that never comes back", async () => {
@@ -92,17 +89,17 @@ describe("Hub", () => {
     keepAlive.send(hello({ id: "other" }));
     const leaving = await fakeReporter(hub.paths.socket);
     leaving.send(hello());
-    await waitFor(async () => (await sessions(hub)).length === 2);
+    await waitFor(async () => (await listSessions(hub)).length === 2);
     leaving.send({ type: "bye", reason: "replace" });
     leaving.socket.end();
-    await waitFor(async () => (await sessions(hub)).length === 1, 4_000);
+    await waitFor(async () => (await listSessions(hub)).length === 1, 4_000);
   });
 
   it("stops after the grace period with no sessions and removes its socket", async () => {
     const hub = await startHub({ idleGraceMs: 100 });
     const reporter = await fakeReporter(hub.paths.socket);
     reporter.send(hello());
-    await waitFor(async () => (await sessions(hub)).length === 1);
+    await waitFor(async () => (await listSessions(hub)).length === 1);
     await sleep(200);
     expect(existsSync(hub.paths.socket)).toBe(true);
     reporter.send({ type: "bye", reason: "quit" });
@@ -127,7 +124,7 @@ describe("Hub", () => {
     const fresh = await startHub({ dir });
     const reporter = await fakeReporter(fresh.paths.socket);
     reporter.send(hello());
-    await waitFor(async () => (await sessions(fresh)).length === 1);
+    await waitFor(async () => (await listSessions(fresh)).length === 1);
   });
 
   it("steps aside for a reporter that speaks a newer protocol", async () => {
@@ -143,7 +140,7 @@ describe("Hub", () => {
     const reporter = await fakeReporter(hub.paths.socket);
     reporter.send({ type: "hello", version: PROTOCOL_VERSION, snapshot: { id: 3 } });
     await reporter.closed;
-    expect(await sessions(hub)).toEqual([]);
+    expect(await listSessions(hub)).toEqual([]);
   });
 
   it("serves the page and health, and rejects foreign Host headers", async () => {
@@ -225,7 +222,7 @@ describe("Hub", () => {
       const reporter = await fakeReporter(hub.paths.socket);
       const seen = commands(reporter, answer);
       reporter.send(hello({ terminal, ...overrides }));
-      await waitFor(async () => (await sessions(hub)).length === 1);
+      await waitFor(async () => (await listSessions(hub)).length === 1);
       return { reporter, seen };
     }
 
@@ -293,7 +290,7 @@ describe("Hub", () => {
       const hub = await startHub();
       const plain = await fakeReporter(hub.paths.socket);
       plain.send(hello({ id: "plain" }));
-      await waitFor(async () => (await sessions(hub)).length === 1);
+      await waitFor(async () => (await listSessions(hub)).length === 1);
       const port = hub.httpPort!;
       expect(await post(port, "/api/sessions/missing/focus", auth(hub))).toMatchObject({
         status: 404,
@@ -336,7 +333,7 @@ describe("Hub", () => {
         }
       });
       reporter.send(hello());
-      await waitFor(async () => (await sessions(hub)).length === 1);
+      await waitFor(async () => (await listSessions(hub)).length === 1);
       const preview = await post(
         hub.httpPort!,
         "/api/sessions/101/stash/auth%20notes/preview",
@@ -377,7 +374,7 @@ describe("Hub", () => {
         }
       });
       reporter.send(hello());
-      await waitFor(async () => (await sessions(hub)).length === 1);
+      await waitFor(async () => (await listSessions(hub)).length === 1);
       const answer = { answers: [{ questionIndex: 0, optionIndexes: [1] }], globalNote: "thanks" };
       const sent = await post(
         hub.httpPort!,

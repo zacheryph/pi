@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { Hub } from "#src/hub/hub";
 import dashboardExtension, { type DashboardDependencies } from "#src/index";
-import { get, onCleanup, post, tempDir, waitFor, sleep } from "#test/helpers";
+import { get, onCleanup, post, tempDir, waitFor, sleep, listSessions } from "#test/helpers";
 import { fakePi } from "../../../packages/pi-test-helpers/src/fake-pi.ts";
 
 /** A fake pi with a renameable session name and a working event bus. */
@@ -57,14 +57,7 @@ function setup(overrides: Partial<DashboardDependencies> = {}) {
     loadConfig: () => ({ port: 7317 }),
     ...overrides,
   };
-  const sessions = async () => {
-    const hub = hubs.at(-1);
-    return hub?.httpPort
-      ? (JSON.parse((await get(hub.httpPort, "/api/sessions")).body).sessions as Array<
-          Record<string, unknown>
-        >)
-      : [];
-  };
+  const sessions = () => listSessions(hubs.at(-1));
   const focus = async (id: string) => {
     const hub = hubs.at(-1)!;
     return post(hub.httpPort!, `/api/sessions/${id}/focus`, { "x-dashboard-token": hub.token });
