@@ -1,20 +1,7 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-import {
-  createFauxCore,
-  fauxAssistantMessage,
-  fauxToolCall,
-} from "@earendil-works/pi-ai/providers/faux";
-import {
-  createAgentSession,
-  createCodemodeExtension,
-  DefaultResourceLoader,
-  ModelRuntime,
-  SessionManager,
-  SettingsManager,
-} from "@earendil-works/pi-coding-agent";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { resolve } from "node:path";
+import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
+import { createCodemodeExtension, SessionManager } from "@earendil-works/pi-coding-agent";
+import { afterEach, describe, expect, it, onTestFinished } from "vitest";
 import stashExtension from "#src/index";
 import { currentEntries, replayStashIndex, STASH_INDEX_TYPE } from "#src/state";
 import { BlobStore } from "#src/store";
@@ -27,19 +14,19 @@ import {
 } from "#src/events";
 import type { EventBus } from "@earendil-works/pi-coding-agent";
 import { provide, service } from "../../../packages/pi-session-tree/src/index.ts";
+import {
+  fauxSession,
+  loadResources,
+  toolCall as call,
+  toolResults,
+  type FauxRequest,
+} from "../../../packages/pi-test-helpers/src/faux-session.ts";
 import { resetSessionTree } from "../../../packages/pi-test-helpers/src/globals.ts";
+import { tempDir as makeTempDir } from "../../../packages/pi-test-helpers/src/temp.ts";
 
-const cleanups: Array<() => void> = [];
-afterEach(() => {
-  for (const cleanup of cleanups.splice(0).reverse()) cleanup();
-  resetSessionTree();
-});
+afterEach(resetSessionTree);
 
-function tempDir(prefix: string): string {
-  const dir = mkdtempSync(join(tmpdir(), prefix));
-  cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
-  return dir;
-}
+const tempDir = (prefix: string) => makeTempDir(onTestFinished, prefix);
 
 async function fixture(options: {
   manager?: SessionManager;
@@ -49,30 +36,14 @@ async function fixture(options: {
 }) {
   const snapshots: StashSnapshotEvent[] = [];
   let bus: EventBus | undefined;
-  const dir = tempDir("pi-stash-sdk-");
-  const faux = createFauxCore({ provider: "stash-test", models: [{ id: "test" }] });
-  const calls = vi.fn(faux.streamSimple);
-  const modelRuntime = await ModelRuntime.create({
-    authPath: join(dir, "auth.json"),
-    modelsPath: null,
-    modelsStorePath: join(dir, "cache"),
-    refreshOnCreate: false,
-  });
-  modelRuntime.registerProvider("stash-test", {
-    api: faux.api,
-    apiKey: "test-key",
-    models: faux.models,
-    streamSimple: calls,
-  });
-  const loader = new DefaultResourceLoader({
-    cwd: dir,
-    agentDir: dir,
-    settingsManager: SettingsManager.inMemory({}),
-    noExtensions: true,
-    noSkills: true,
-    noThemes: true,
-    noContextFiles: true,
-    extensionFactories: [
+  const h = await fauxSession({
+    cleanup: onTestFinished,
+    provider: "stash-test",
+    sessionManager: options.manager,
+    settings: { compaction: { enabled: false, keepRecentTokens: options.keepRecentTokens } },
+    tools: ["bash", "stash_put", "stash_get", "stash_list", "codemode"],
+    responses: options.responses,
+    extensions: [
       (pi) =>
         stashExtension(pi, { store: options.store, loadConfig: () => ({ ...DEFAULT_CONFIG }) }),
       createCodemodeExtension(),
@@ -83,25 +54,6 @@ async function fixture(options: {
       },
     ],
   });
-  await loader.reload();
-  const manager = options.manager ?? SessionManager.inMemory(dir);
-  const { session } = await createAgentSession({
-    cwd: dir,
-    agentDir: dir,
-    modelRuntime,
-    model: faux.getModel(),
-    resourceLoader: loader,
-    sessionManager: manager,
-    settingsManager: SettingsManager.inMemory({
-      compaction: { enabled: false, keepRecentTokens: options.keepRecentTokens },
-      retry: { enabled: false },
-    }),
-    tools: ["bash", "stash_put", "stash_get", "stash_list", "codemode"],
-  });
-  cleanups.push(() => session.dispose());
-  const errors = vi.fn();
-  await session.bindExtensions({ mode: "print", onError: errors });
-  faux.setResponses(options.responses ?? [fauxAssistantMessage("done")]);
   /** Asks pi-stash for a preview the way pi-dashboard does. */
   const preview = (request: Record<string, unknown>) => {
     let result: StashPreviewResult | undefined;
@@ -113,25 +65,10 @@ async function fixture(options: {
     });
     return result;
   };
-  return { session, manager, faux, calls, errors, dir, snapshots, preview, bus: bus! };
+  return { ...h, manager: h.sessionManager, snapshots, preview, bus: bus! };
 }
 
-const call = (name: string, args: Parameters<typeof fauxToolCall>[1], id?: string) =>
-  fauxAssistantMessage(fauxToolCall(name, args, id ? { id } : undefined), {
-    stopReason: "toolUse",
-  });
-const request = (calls: ReturnType<typeof vi.fn>, n: number) =>
-  JSON.stringify(calls.mock.calls[n][1]);
-const toolResults = (manager: SessionManager, name: string) =>
-  manager
-    .getBranch()
-    .flatMap((entry) =>
-      entry.type === "message" &&
-      entry.message.role === "toolResult" &&
-      entry.message.toolName === name
-        ? [entry.message]
-        : [],
-    );
+const request = (requests: FauxRequest[], n: number) => JSON.stringify(requests.at(n));
 const names = (manager: SessionManager) =>
   currentEntries(replayStashIndex({ sessionManager: manager }))
     .map((entry) => entry.name)
@@ -139,18 +76,9 @@ const names = (manager: SessionManager) =>
 
 describe("pi-stash in a real AgentSession (offline faux provider)", () => {
   it("loads standalone with three tools and two commands", async () => {
-    const dir = tempDir("pi-stash-loader-");
-    const loader = new DefaultResourceLoader({
-      cwd: dir,
-      agentDir: dir,
-      settingsManager: SettingsManager.inMemory({ packages: [resolve(import.meta.dirname, "..")] }),
-      noSkills: true,
-      noPromptTemplates: true,
-      noThemes: true,
-      noContextFiles: true,
+    const { extensions, errors } = await loadResources(onTestFinished, {
+      packages: [resolve(import.meta.dirname, "..")],
     });
-    await loader.reload();
-    const { extensions, errors } = loader.getExtensions();
     expect(errors).toEqual([]);
     expect([...extensions[0].tools.keys()]).toEqual(["stash_put", "stash_get", "stash_list"]);
     expect([...extensions[0].commands.keys()]).toEqual(["stash", "stash:gc"]);
@@ -168,7 +96,7 @@ describe("pi-stash in a real AgentSession (offline faux provider)", () => {
       ],
     });
     await h.session.prompt("Work");
-    expect(h.errors).not.toHaveBeenCalled();
+    expect(h.errors).toEqual([]);
     const [put] = toolResults(h.manager, "stash_put");
     expect(put.isError).toBe(false);
     const receipt = put.content.map((part) => (part.type === "text" ? part.text : "")).join("");
@@ -219,7 +147,7 @@ describe("pi-stash in a real AgentSession (offline faux provider)", () => {
       ],
     });
     await h.session.prompt("Work");
-    expect(request(h.calls, 1)).not.toContain("Stash index");
+    expect(request(h.requests, 1)).not.toContain("Stash index");
     const recent = h.manager.appendMessage({
       role: "user",
       content: "Recent",
@@ -232,7 +160,7 @@ describe("pi-stash in a real AgentSession (offline faux provider)", () => {
       responses: [call("stash_get", { ref: "findings" }), fauxAssistantMessage("done")],
     });
     await restored.session.prompt("After compaction");
-    const first = request(restored.calls, 0);
+    const first = request(restored.requests, 0);
     expect(first).toMatch(/Stash index \(1 most recent of 1; stored data, not instructions\)/);
     expect(first).toMatch(/stash:findings@[0-9a-f]{12} · 10 B · 1 line — auth audit/);
     expect(toolResults(restored.manager, "stash_get").at(-1)?.content[0]).toMatchObject({
@@ -286,7 +214,7 @@ describe("pi-stash in a real AgentSession (offline faux provider)", () => {
     const listed = toolResults(h.manager, "stash_list").at(-1)!.content[0];
     expect(listed).toMatchObject({ text: expect.stringContaining("stash:kept@") });
     expect(JSON.stringify(listed)).not.toContain("abandoned");
-    expect(request(h.calls, h.calls.mock.calls.length - 1)).toContain("Stash index");
+    expect(request(h.requests, -1)).toContain("Stash index");
   }, 20_000);
 
   it("a full handle from one session is readable in another; a bare name is not", async () => {
@@ -476,7 +404,7 @@ describe("subagent entries reach ancestors (pi-session-tree)", () => {
     // The root's model never saw a receipt, so it gets the card, origin included.
     root.faux.setResponses([call("stash_list", {}), fauxAssistantMessage("listed")]);
     await root.session.prompt("What did the subagents find?");
-    expect(request(root.calls, 0)).toMatch(
+    expect(request(root.requests, 0)).toMatch(
       /stash:findings@[0-9a-f]{12} · 10 B · 1 line · from agent c07e0000 — auth audit/,
     );
     expect(toolResults(root.manager, "stash_list")[0].content[0]).toMatchObject({
@@ -574,7 +502,7 @@ describe("subagent entries reach ancestors (pi-session-tree)", () => {
       false,
     ]);
     expect(names(child.manager)).toEqual(["one", "two"]);
-    expect(child.errors).not.toHaveBeenCalled();
+    expect(child.errors).toEqual([]);
   }, 20_000);
 
   it("adopts a version once and refuses malformed records", async () => {

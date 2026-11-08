@@ -2,21 +2,12 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { Context } from "@earendil-works/pi-ai";
-import {
-  createFauxCore,
-  fauxAssistantMessage,
-  fauxToolCall,
-} from "@earendil-works/pi-ai/providers/faux";
-import {
-  createAgentSession,
-  DefaultResourceLoader,
-  ModelRuntime,
-  SessionManager,
-  SettingsManager,
-} from "@earendil-works/pi-coding-agent";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
+import { ModelRuntime, SessionManager } from "@earendil-works/pi-coding-agent";
+import { afterEach, beforeEach, describe, expect, it, vi, onTestFinished } from "vitest";
 import subagentExtension from "#src/index";
 import { readPersistedRecords, SUBAGENT_RECORD_ENTRY } from "#src/persisted-record";
+import { fauxSession, toolCall } from "../../../packages/pi-test-helpers/src/faux-session.ts";
 
 // A real parent session spawns real child sessions through the extension, all
 // answered by one scripted faux provider. The parent runs in print mode, so a
@@ -67,29 +58,15 @@ afterEach(() => {
 });
 
 async function parent(manager = SessionManager.inMemory(dir)) {
-  const faux = createFauxCore({ provider: "cold-test", models: [{ id: "worker" }] });
-  const modelRuntime = await ModelRuntime.create({
-    authPath: join(dir, "auth.json"),
-    modelsPath: null,
-    modelsStorePath: join(dir, "cache"),
-    refreshOnCreate: false,
-  });
-  modelRuntime.registerProvider("cold-test", {
-    api: faux.api,
-    apiKey: "test-key",
-    models: faux.models,
-    streamSimple: faux.streamSimple,
-  });
   const events: Array<{ channel: string; data: unknown }> = [];
-  const loader = new DefaultResourceLoader({
-    cwd: dir,
-    agentDir: dir,
-    settingsManager: SettingsManager.inMemory({}),
-    noExtensions: true,
-    noSkills: true,
-    noThemes: true,
-    noContextFiles: true,
-    extensionFactories: [
+  const h = await fauxSession({
+    cleanup: onTestFinished,
+    dir,
+    provider: "cold-test",
+    models: [{ id: "worker" }],
+    sessionManager: manager,
+    tools: ["subagent_start", "subagent_get", "subagent_steer"],
+    extensions: [
       subagentExtension,
       (pi) => {
         for (const channel of ["subagent:session:disposed", "subagent:resumed"]) {
@@ -98,24 +75,7 @@ async function parent(manager = SessionManager.inMemory(dir)) {
       },
     ],
   });
-  await loader.reload();
-  const { session } = await createAgentSession({
-    cwd: dir,
-    agentDir: dir,
-    modelRuntime,
-    model: faux.getModel(),
-    resourceLoader: loader,
-    sessionManager: manager,
-    settingsManager: SettingsManager.inMemory({
-      compaction: { enabled: false },
-      retry: { enabled: false },
-    }),
-    tools: ["subagent_start", "subagent_get", "subagent_steer"],
-  });
-  disposers.push(() => session.dispose());
-  const errors = vi.fn();
-  await session.bindExtensions({ mode: "print", onError: errors });
-  return { session, manager, faux, errors, events };
+  return { ...h, manager, events };
 }
 
 const call = (name: string, args: Parameters<typeof fauxToolCall>[1]) =>
@@ -130,7 +90,7 @@ const spawn = (description: string, extra: Record<string, unknown> = {}) =>
   });
 
 const resume = (id: string, prompt: string, extra: Record<string, unknown> = {}) =>
-  call("subagent_start", {
+  toolCall("subagent_start", {
     subagent_type: "general-purpose",
     description: "resume",
     prompt,
@@ -210,7 +170,7 @@ describe("cold resume in a real parent session (offline faux provider)", () => {
     expect(conversation).toContain("What was the codeword?");
     expect(result).toContain("It was PLOVER.");
     expect(latestRecord(h.manager)).toMatchObject({ id, status: "completed" });
-    expect(h.errors).not.toHaveBeenCalled();
+    expect(h.errors).toEqual([]);
   }, 30_000);
 
   it("continues with earlier context after a full reload", async () => {
@@ -234,7 +194,7 @@ describe("cold resume in a real parent session (offline faux provider)", () => {
       cwd: record.cwd,
       outputFile: record.outputFile,
     });
-    expect(h.errors).not.toHaveBeenCalled();
+    expect(h.errors).toEqual([]);
   }, 30_000);
 
   it("appends to the agent's existing transcript rather than starting a new one", async () => {
@@ -366,7 +326,7 @@ describe("cold resume in a real parent session (offline faux provider)", () => {
       },
       (context: Context) => {
         requests.push(structuredClone(context));
-        return call("subagent_steer", { agent_id: id, message: "Also check the tests." });
+        return toolCall("subagent_steer", { agent_id: id, message: "Also check the tests." });
       },
       (context: Context) => {
         requests.push(structuredClone(context));

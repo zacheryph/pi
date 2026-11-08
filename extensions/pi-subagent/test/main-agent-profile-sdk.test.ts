@@ -1,16 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import {
-  createFauxCore,
-  fauxAssistantMessage,
-  fauxToolCall,
-} from "@earendil-works/pi-ai/providers/faux";
+import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import {
   createAgentSession,
   createCodemodeExtension,
   DefaultResourceLoader,
-  ModelRuntime,
   SessionManager,
   SettingsManager,
   type ExtensionAPI,
@@ -18,7 +12,7 @@ import {
   type SessionStartEvent,
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, onTestFinished } from "vitest";
 import {
   MAIN_AGENT_ENTRY,
   MAIN_AGENT_REQUIRED_TOOLS,
@@ -28,11 +22,8 @@ import {
   type MainAgentSnapshot,
 } from "#src/main-agent-profile";
 import type { AgentConfig } from "#src/types";
-
-const cleanups: Array<() => void> = [];
-afterEach(() => {
-  for (const cleanup of cleanups.splice(0)) cleanup();
-});
+import { fauxRuntime, toolCall } from "../../../packages/pi-test-helpers/src/faux-session.ts";
+import { tempDir, writeFiles } from "../../../packages/pi-test-helpers/src/temp.ts";
 
 async function fixture(
   options: {
@@ -54,35 +45,25 @@ async function fixture(
     fragmentFiles?: Record<string, string>;
   } = {},
 ) {
-  const dir = mkdtempSync(join(tmpdir(), "main-profile-sdk-"));
-  cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+  const dir = tempDir(onTestFinished, "main-profile-sdk-");
   if (options.profileContent !== undefined) {
-    const agents = join(dir, ".pi", "agents");
-    mkdirSync(join(agents, "fragments"), { recursive: true });
-    writeFileSync(join(agents, "reader.md"), options.profileContent);
-    for (const [name, content] of Object.entries(options.fragmentFiles ?? {})) {
-      writeFileSync(join(agents, "fragments", `${name}.md`), content);
-    }
+    writeFiles(join(dir, ".pi", "agents"), {
+      "reader.md": options.profileContent,
+      ...Object.fromEntries(
+        Object.entries(options.fragmentFiles ?? {}).map(([name, content]) => [
+          `fragments/${name}.md`,
+          content,
+        ]),
+      ),
+    });
   }
-  const faux = createFauxCore({
+  const { faux, modelRuntime, calls } = await fauxRuntime({
+    dir,
     provider: "main-profile-test",
     models: [
       { id: "first", reasoning: true },
       { id: "other", reasoning: true },
     ],
-  });
-  const calls = vi.fn(faux.streamSimple);
-  const modelRuntime = await ModelRuntime.create({
-    authPath: join(dir, "auth.json"),
-    modelsPath: null,
-    modelsStorePath: join(dir, "cache"),
-    refreshOnCreate: false,
-  });
-  modelRuntime.registerProvider("main-profile-test", {
-    api: faux.api,
-    apiKey: "test-key",
-    models: faux.models,
-    streamSimple: calls,
   });
   const secret = vi.fn(async () => ({
     content: [{ type: "text" as const, text: "SECRET" }],
@@ -200,7 +181,7 @@ async function fixture(
     tools: options.tools,
     sessionStartEvent: { type: "session_start", reason: options.sessionStartReason ?? "startup" },
   });
-  cleanups.push(() => session.dispose());
+  onTestFinished(() => session.dispose());
   await session.bindExtensions({
     mode: options.mode ?? "print",
     shutdownHandler: shutdown,
@@ -235,9 +216,9 @@ describe("main profile / installed SDK", () => {
       });
       expect(h.pi.getAllTools().some((tool) => tool.name.startsWith("mcp__"))).toBe(false);
       await h.session.prompt("hello");
-      expect(h.calls).toHaveBeenCalledTimes(1);
-      expect(JSON.stringify(h.calls.mock.calls[0]![1])).toContain("PROFILE WITH MCP WILDCARD");
-      expect(JSON.stringify(h.calls.mock.calls[0]![1])).toContain("FROZEN AWS INSTRUCTIONS");
+      expect(h.calls).toHaveLength(1);
+      expect(JSON.stringify(h.calls[0]![1])).toContain("PROFILE WITH MCP WILDCARD");
+      expect(JSON.stringify(h.calls[0]![1])).toContain("FROZEN AWS INSTRUCTIONS");
       expect(h.session.getActiveToolNames()).toEqual([
         "read",
         "codemode",
@@ -252,10 +233,7 @@ describe("main profile / installed SDK", () => {
     const h = await fixture({
       toolNames: ["read", "codemode", "mcp__*"],
       responses: [
-        fauxAssistantMessage(
-          fauxToolCall("codemode", { code: "return await tools.mcp__late__read({});" }),
-          { stopReason: "toolUse" },
-        ),
+        toolCall("codemode", { code: "return await tools.mcp__late__read({});" }),
         fauxAssistantMessage("done"),
       ],
     });
@@ -273,7 +251,7 @@ describe("main profile / installed SDK", () => {
     });
     await h.session.prompt("use late MCP tool");
     expect(execute).toHaveBeenCalledTimes(1);
-    expect(h.calls).toHaveBeenCalledTimes(2);
+    expect(h.calls).toHaveLength(2);
     expect(h.shutdown).not.toHaveBeenCalled();
     expect(JSON.stringify(h.session.messages)).toContain("LATE MCP RESULT");
   }, 20_000);
@@ -281,7 +259,7 @@ describe("main profile / installed SDK", () => {
   it("exact missing MCP tool still blocks real provider dispatch", async () => {
     const h = await fixture({ toolNames: ["read", "codemode", "mcp__*", "mcp__required__read"] });
     await h.session.prompt("hello");
-    expect(h.calls).not.toHaveBeenCalled();
+    expect(h.calls).toHaveLength(0);
     expect(h.shutdown).toHaveBeenCalled();
     expect(h.diagnostic).toHaveBeenCalledWith(
       "Main agent blocked: Unavailable profile tools (check --tools/--exclude-tools): mcp__required__read.",
@@ -300,11 +278,11 @@ describe("main profile / installed SDK", () => {
       expect(h.session.thinkingLevel).toBe("high");
       expect(h.session.getActiveToolNames()).toEqual(["read", ...MAIN_AGENT_REQUIRED_TOOLS]);
       await h.session.prompt("chosen config");
-      expect(h.calls.mock.calls[0]![0]).toMatchObject({
+      expect(h.calls[0]![0]).toMatchObject({
         provider: "main-profile-test",
         id: "other",
       });
-      expect(h.calls.mock.calls[0]![2]?.reasoning).toBe("high");
+      expect(h.calls[0]![2]?.reasoning).toBe("high");
       const saved = h.session.sessionManager
         .getBranch()
         .find((e) => e.type === "custom" && e.customType === MAIN_AGENT_ENTRY)!;
@@ -323,10 +301,10 @@ describe("main profile / installed SDK", () => {
       h.session.setActiveToolsByName(["write"]);
       h.faux.setResponses([fauxAssistantMessage("manual done")]);
       await h.session.prompt("manual config");
-      expect(h.calls.mock.calls[1]![0].id).toBe("first");
-      expect(h.calls.mock.calls[1]![2]?.reasoning).toBeUndefined();
+      expect(h.calls[1]![0].id).toBe("first");
+      expect(h.calls[1]![2]?.reasoning).toBeUndefined();
       expect(h.session.getActiveToolNames()).toEqual(["write"]);
-      expect(JSON.stringify(h.calls.mock.calls[1]![1])).toContain("ONLY MAIN");
+      expect(JSON.stringify(h.calls[1]![1])).toContain("ONLY MAIN");
       expect(
         h.session.sessionManager
           .getBranch()
@@ -347,7 +325,7 @@ describe("main profile / installed SDK", () => {
       expect(h.session.thinkingLevel).toBe("medium");
       expect(h.session.getActiveToolNames()).toContain("write");
       await h.session.prompt("blocked");
-      expect(h.calls).not.toHaveBeenCalled();
+      expect(h.calls).toHaveLength(0);
       expect(h.shutdown).toHaveBeenCalled();
       expect(h.diagnostic).toHaveBeenCalledWith(
         modelOverride.trim()
@@ -367,8 +345,8 @@ describe("main profile / installed SDK", () => {
     async (modelOverride) => {
       const h = await fixture({ flag: null, modelOverride });
       await h.session.prompt("ordinary main");
-      expect(h.calls.mock.calls[0]![0].id).toBe("first");
-      expect(JSON.stringify(h.calls.mock.calls[0]![1])).not.toContain(MAIN_AGENT_SECTION);
+      expect(h.calls[0]![0].id).toBe("first");
+      expect(JSON.stringify(h.calls[0]![1])).not.toContain(MAIN_AGENT_SECTION);
       expect(h.session.getActiveToolNames()).toContain("write");
       expect(
         h.session.sessionManager
@@ -398,10 +376,10 @@ describe("main profile / installed SDK", () => {
         profileModel: "missing/new-definition",
       });
       await restored.session.prompt("restore");
-      expect(restored.calls.mock.calls[0]![0].id).toBe("first");
-      expect(restored.calls.mock.calls[0]![2]?.reasoning).toBe("medium");
+      expect(restored.calls[0]![0].id).toBe("first");
+      expect(restored.calls[0]![2]?.reasoning).toBe("medium");
       expect(restored.session.getActiveToolNames()).toContain("write");
-      expect(JSON.stringify(restored.calls.mock.calls[0]![1])).toContain("ONLY MAIN");
+      expect(JSON.stringify(restored.calls[0]![1])).toContain("ONLY MAIN");
       expect(
         restored.session.sessionManager
           .getBranch()
@@ -419,8 +397,8 @@ describe("main profile / installed SDK", () => {
       profileModel: "missing/profile",
     });
     await h.session.prompt("new");
-    expect(h.calls.mock.calls[0]![0].id).toBe("first");
-    expect(JSON.stringify(h.calls.mock.calls[0]![1])).not.toContain(MAIN_AGENT_SECTION);
+    expect(h.calls[0]![0].id).toBe("first");
+    expect(JSON.stringify(h.calls[0]![1])).not.toContain(MAIN_AGENT_SECTION);
     expect(h.shutdown).not.toHaveBeenCalled();
   });
 
@@ -432,10 +410,10 @@ describe("main profile / installed SDK", () => {
       h.session.setThinkingLevel("off");
       h.session.setActiveToolsByName(["write", ...MAIN_AGENT_REQUIRED_TOOLS]);
       await h.session.prompt("hello");
-      expect(h.calls).toHaveBeenCalledTimes(1);
-      expect(h.calls.mock.calls[0]![0].id).toBe("other");
-      expect(h.calls.mock.calls[0]![2]?.reasoning).toBeUndefined();
-      const request = JSON.stringify(h.calls.mock.calls[0]![1]);
+      expect(h.calls).toHaveLength(1);
+      expect(h.calls[0]![0].id).toBe("other");
+      expect(h.calls[0]![2]?.reasoning).toBeUndefined();
+      const request = JSON.stringify(h.calls[0]![1]);
       expect(request).toContain("PARENT BASE");
       expect(request).toContain("PARENT ADDENDUM");
       expect(request).toContain(`<${MAIN_AGENT_SECTION}>`);
@@ -458,8 +436,8 @@ describe("main profile / installed SDK", () => {
     writeFileSync(join(h.dir, ".pi", "agents", "fragments", "aws.md"), "EDITED FRAGMENT");
     rmSync(join(h.dir, ".pi", "agents", "fragments", "git.md"));
     await h.session.prompt("hello");
-    expect(h.calls).toHaveBeenCalledTimes(1);
-    const request = JSON.stringify(h.calls.mock.calls[0]![1]);
+    expect(h.calls).toHaveLength(1);
+    const request = JSON.stringify(h.calls[0]![1]);
     expect(request).toContain("SDK AWS");
     expect(request).toContain("SDK GIT");
     expect(request.indexOf("SDK AWS")).toBeLessThan(request.indexOf("SDK GIT"));
@@ -487,8 +465,8 @@ describe("main profile / installed SDK", () => {
     rmSync(join(first.dir, ".pi"), { recursive: true });
     const resumed = await fixture({ flag: null, snapshot: saved.data as MainAgentSnapshot });
     await resumed.session.prompt("resume");
-    expect(resumed.calls).toHaveBeenCalledTimes(1);
-    const request = JSON.stringify(resumed.calls.mock.calls[0]![1]);
+    expect(resumed.calls).toHaveLength(1);
+    const request = JSON.stringify(resumed.calls[0]![1]);
     expect(request).toContain("SDK SAVED AWS");
     expect(request).toContain("SDK SAVED BODY");
     expect(resumed.shutdown).not.toHaveBeenCalled();
@@ -499,7 +477,7 @@ describe("main profile / installed SDK", () => {
       profileContent: "---\ntools: [read]\nfragments: [missing]\n---\nSDK BODY",
     });
     await h.session.prompt("hello");
-    expect(h.calls).not.toHaveBeenCalled();
+    expect(h.calls).toHaveLength(0);
     expect(h.shutdown).toHaveBeenCalled();
     expect(h.diagnostic).toHaveBeenCalledWith(expect.stringContaining('fragment "missing"'));
     expect(
@@ -513,7 +491,7 @@ describe("main profile / installed SDK", () => {
     const h = await fixture({ failure: "startup" });
     await h.session.prompt("first");
     await h.session.prompt("second");
-    expect(h.calls).not.toHaveBeenCalled();
+    expect(h.calls).toHaveLength(0);
     expect(h.shutdown).toHaveBeenCalled();
     expect(h.session.messages.filter((m) => m.role === "assistant")).toHaveLength(0);
   });
@@ -530,13 +508,13 @@ describe("main profile / installed SDK", () => {
       expect.objectContaining({ cancelled: true }),
     );
     expect(manager.getLeafId()).toBe(originalLeaf);
-    expect(h.calls).not.toHaveBeenCalled();
+    expect(h.calls).toHaveLength(0);
   });
 
   it("structured prompt removed after our hook aborts live context, swallowed events never reach provider", async () => {
     const h = await fixture({ failure: "turn" });
     await h.session.prompt("first").catch(() => undefined);
-    expect(h.calls).not.toHaveBeenCalled();
+    expect(h.calls).toHaveLength(0);
     expect(h.shutdown).toHaveBeenCalled();
     expect(h.signals).toEqual(
       expect.arrayContaining([
@@ -544,13 +522,13 @@ describe("main profile / installed SDK", () => {
       ]),
     );
     await h.session.prompt("second");
-    expect(h.calls).not.toHaveBeenCalled();
+    expect(h.calls).toHaveLength(0);
   });
 
   it("late model selection no longer triggers a profile lock", async () => {
     const h = await fixture({ failure: "context" });
     await h.session.prompt("hello");
-    expect(h.calls).toHaveBeenCalledTimes(1);
+    expect(h.calls).toHaveLength(1);
     expect(h.session.model?.id).toBe("other");
     expect(h.shutdown).not.toHaveBeenCalled();
   });
@@ -573,10 +551,10 @@ describe("main profile / installed SDK", () => {
     h.session.setThinkingLevel("high");
     h.session.setActiveToolsByName(["write"]);
     await h.session.prompt("hello");
-    expect(h.calls.mock.calls[0]![0].id).toBe("other");
-    expect(h.calls.mock.calls[0]![2]?.reasoning).toBe("high");
+    expect(h.calls[0]![0].id).toBe("other");
+    expect(h.calls[0]![2]?.reasoning).toBe("high");
     expect(h.session.getActiveToolNames()).toEqual(["write"]);
-    expect(JSON.stringify(h.calls.mock.calls[0]![1])).toContain("EXACT SAVED BODY");
+    expect(JSON.stringify(h.calls[0]![1])).toContain("EXACT SAVED BODY");
     expect(h.shutdown).not.toHaveBeenCalled();
     expect(
       h.session.sessionManager
@@ -588,7 +566,7 @@ describe("main profile / installed SDK", () => {
   it("strong construction-time --tools restriction fails closed if orchestration tool missing", async () => {
     const h = await fixture({ tools: ["read"] });
     await h.session.prompt("hello");
-    expect(h.calls).not.toHaveBeenCalled();
+    expect(h.calls).toHaveLength(0);
     expect(h.shutdown).toHaveBeenCalled();
     expect(h.diagnostic).toHaveBeenCalledWith(expect.stringContaining("Unavailable profile tools"));
   });
@@ -596,7 +574,7 @@ describe("main profile / installed SDK", () => {
   it("project trust refusal blocks main but performs no child-loader change", async () => {
     const h = await fixture({ source: "project", trusted: false });
     await h.session.prompt("hello");
-    expect(h.calls).not.toHaveBeenCalled();
+    expect(h.calls).toHaveLength(0);
     expect(h.diagnostic).toHaveBeenCalledWith(expect.stringContaining("requires Pi project trust"));
   });
 
@@ -604,9 +582,7 @@ describe("main profile / installed SDK", () => {
     const h = await fixture({
       toolNames: ["read", "codemode"],
       responses: [
-        fauxAssistantMessage(fauxToolCall("codemode", { code: "return await tools.secret({});" }), {
-          stopReason: "toolUse",
-        }),
+        toolCall("codemode", { code: "return await tools.secret({});" }),
         fauxAssistantMessage("done"),
       ],
     });
@@ -616,6 +592,6 @@ describe("main profile / installed SDK", () => {
       (m) => m.role === "toolResult" && m.toolName === "codemode",
     );
     expect(JSON.stringify(result)).toContain("SECRET");
-    expect(h.calls).toHaveBeenCalledTimes(2);
+    expect(h.calls).toHaveLength(2);
   }, 20_000);
 });

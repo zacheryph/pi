@@ -3,6 +3,13 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-08: Faux sessions from pi-test-helpers
+
+- `test/toolcheck-session.test.ts` and `test/pi-execute-tool.contract.test.ts`
+  build their sessions with `packages/pi-test-helpers`' `fauxSession` and read
+  results with `toolResults` and `messageText`. `test/agent-session.test.ts`
+  still loads the installed runtime on purpose. No source change.
+
 ## 2026-11-08: Test waits from pi-test-helpers
 
 - `test/helpers.ts`: `waitUntil` polls through `packages/pi-test-helpers`'

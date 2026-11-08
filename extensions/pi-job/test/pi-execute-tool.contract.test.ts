@@ -6,25 +6,19 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import {
-  createFauxCore,
-  fauxAssistantMessage,
-  fauxToolCall,
-} from "@earendil-works/pi-ai/providers/faux";
-import {
-  createAgentSession,
   createCodemodeExtension,
-  DefaultResourceLoader,
-  ModelRuntime,
-  SessionManager,
-  SettingsManager,
   type ExtensionAPI,
   type ExtensionToolContext,
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import {
+  fauxSession,
+  messageText,
+  toolCall,
+} from "../../../packages/pi-test-helpers/src/faux-session.ts";
+import type { Defer } from "../../../packages/pi-test-helpers/src/cleanup.ts";
 
 interface Seen {
   toolName: string;
@@ -33,28 +27,9 @@ interface Seen {
 }
 type Outcome = Awaited<ReturnType<ExtensionToolContext["executeTool"]>>;
 
-const text = (o: Outcome) =>
-  (o.result.content ?? [])
-    .filter((c) => c.type === "text")
-    .map((c) => (c as { text: string }).text)
-    .join("");
+const text = (o: Outcome) => messageText(o.result);
 
-async function fixture(t: { after(fn: () => void | Promise<void>): void }) {
-  const dir = mkdtempSync(join(tmpdir(), "pi-job-contract-"));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const faux = createFauxCore({ provider: "contract", models: [{ id: "m" }] });
-  const modelRuntime = await ModelRuntime.create({
-    authPath: join(dir, "auth.json"),
-    modelsPath: null,
-    modelsStorePath: join(dir, "cache"),
-    refreshOnCreate: false,
-  });
-  modelRuntime.registerProvider("contract", {
-    api: faux.api,
-    apiKey: "k",
-    models: faux.models,
-    streamSimple: faux.streamSimple,
-  });
+async function fixture(t: Defer) {
   let retained: ExtensionToolContext | undefined;
   const probes: string[] = [];
   const seen: Seen[] = [];
@@ -91,41 +66,21 @@ async function fixture(t: { after(fn: () => void | Promise<void>): void }) {
       return undefined;
     });
   };
-  const loader = new DefaultResourceLoader({
-    cwd: dir,
-    agentDir: dir,
-    settingsManager: SettingsManager.inMemory({}),
-    noExtensions: true,
-    noSkills: true,
-    noThemes: true,
-    noContextFiles: true,
-    extensionFactories: [ext, createCodemodeExtension()],
-  });
-  await loader.reload();
-  const { session } = await createAgentSession({
-    cwd: dir,
-    agentDir: dir,
-    modelRuntime,
-    model: faux.getModel(),
-    resourceLoader: loader,
-    sessionManager: SessionManager.inMemory(dir),
-    settingsManager: SettingsManager.inMemory({
-      compaction: { enabled: false, keepRecentTokens: 1 },
-      retry: { enabled: false },
-    }),
+  const { session, faux } = await fauxSession({
+    cleanup: t,
+    provider: "contract",
+    models: [{ id: "m" }],
+    settings: { compaction: { enabled: false, keepRecentTokens: 1 } },
     tools: ["retain", "probe", "codemode"],
-  });
-  t.after(() => session.dispose());
-  await session.bindExtensions({
-    mode: "print",
-    onError: (e) => {
-      throw e;
+    extensions: [ext, createCodemodeExtension()],
+    bind: {
+      mode: "print",
+      onError: (e) => {
+        throw e;
+      },
     },
   });
-  faux.setResponses([
-    fauxAssistantMessage([fauxToolCall("retain", {})], { stopReason: "toolUse" }),
-    fauxAssistantMessage("done"),
-  ]);
+  faux.setResponses([toolCall("retain", {}), fauxAssistantMessage("done")]);
   await session.prompt("go");
   assert.ok(retained, "retain ran");
   const nestedRecords = () =>

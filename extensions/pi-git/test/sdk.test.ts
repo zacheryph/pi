@@ -1,32 +1,22 @@
 import { join } from "node:path";
-import {
-  createFauxCore,
-  fauxAssistantMessage,
-  fauxToolCall,
-} from "@earendil-works/pi-ai/providers/faux";
-import {
-  createAgentSession,
-  defineTool,
-  DefaultResourceLoader,
-  type EventBus,
-  ModelRuntime,
-  SessionManager,
-  SettingsManager,
-} from "@earendil-works/pi-coding-agent";
+import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
+import { defineTool, type EventBus, SessionManager } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { afterEach, describe, expect, it, vi, onTestFinished } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished } from "vitest";
+import {
+  fauxSession,
+  toolCall as call,
+  toolResults,
+  type FauxRequest,
+} from "../../../packages/pi-test-helpers/src/faux-session.ts";
+import { resetSessionTree } from "../../../packages/pi-test-helpers/src/globals.ts";
 import { GIT_SNAPSHOT_EVENT, type GitSnapshotEvent } from "../src/events.ts";
 import piGit from "../src/index.ts";
 import { GhUnavailable } from "../src/status.ts";
 import { foldLedger } from "../src/fold.ts";
 import { sandbox, type Sandbox } from "./support/repos.ts";
-import { resetSessionTree } from "../../../packages/pi-test-helpers/src/globals.ts";
 
-const cleanups: Array<() => void | Promise<void>> = [];
-afterEach(async () => {
-  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
-  resetSessionTree();
-});
+afterEach(resetSessionTree);
 
 async function fixture(
   box: Sandbox,
@@ -35,29 +25,22 @@ async function fixture(
 ) {
   const snapshots: GitSnapshotEvent[] = [];
   let bus: EventBus | undefined;
-  const faux = createFauxCore({ provider: "git-test", models: [{ id: "test" }] });
-  const calls = vi.fn(faux.streamSimple);
-  const modelRuntime = await ModelRuntime.create({
-    authPath: join(box.dir, "auth.json"),
-    modelsPath: null,
-    modelsStorePath: join(box.dir, "cache"),
-    refreshOnCreate: false,
-  });
-  modelRuntime.registerProvider("git-test", {
-    api: faux.api,
-    apiKey: "test-key",
-    models: faux.models,
-    streamSimple: calls,
-  });
-  const loader = new DefaultResourceLoader({
-    cwd: box.dir,
-    agentDir: box.dir,
-    settingsManager: SettingsManager.inMemory({}),
-    noExtensions: true,
-    noSkills: true,
-    noThemes: true,
-    noContextFiles: true,
-    extensionFactories: [
+  const h = await fauxSession({
+    cleanup: onTestFinished,
+    dir: box.dir,
+    provider: "git-test",
+    sessionManager: manager,
+    settings: { compaction: { enabled: false, keepRecentTokens: options.keepRecentTokens } },
+    tools: [
+      "git_worktree_create",
+      "git_worktree_list",
+      "git_worktree_remove",
+      "git_pr_list",
+      "git_pr_status",
+      "mcp__github__create_pull_request",
+      "mcp__github__pull_request_read",
+    ],
+    extensions: [
       (pi) =>
         piGit(pi, {
           loadConfig: () => ({ worktreeRoot: box.root, trackReferenced: true }),
@@ -143,51 +126,15 @@ async function fixture(
       },
     ],
   });
-  await loader.reload();
-  const { session } = await createAgentSession({
-    cwd: box.dir,
-    agentDir: box.dir,
-    modelRuntime,
-    model: faux.getModel(),
-    resourceLoader: loader,
-    sessionManager: manager,
-    settingsManager: SettingsManager.inMemory({
-      compaction: { enabled: false, keepRecentTokens: options.keepRecentTokens },
-      retry: { enabled: false },
-    }),
-    tools: [
-      "git_worktree_create",
-      "git_worktree_list",
-      "git_worktree_remove",
-      "git_pr_list",
-      "git_pr_status",
-      "mcp__github__create_pull_request",
-      "mcp__github__pull_request_read",
-    ],
-  });
-  cleanups.push(() => session.dispose());
-  await session.bindExtensions({ mode: "print" });
-  return { session, faux, calls, snapshots, bus: bus! };
+  return { ...h, snapshots, bus: bus! };
 }
 
-const call = (name: string, args: Parameters<typeof fauxToolCall>[1]) =>
-  fauxAssistantMessage(fauxToolCall(name, args), { stopReason: "toolUse" });
-
 const toolText = (manager: SessionManager, name: string) =>
-  manager
-    .getBranch()
-    .flatMap((entry) =>
-      entry.type === "message" &&
-      entry.message.role === "toolResult" &&
-      entry.message.toolName === name
-        ? [JSON.stringify(entry.message.content)]
-        : [],
-    );
+  toolResults(manager, name).map((result) => JSON.stringify(result.content));
 
 const CARD = "Pull requests and worktrees in this session";
 /** The messages of each model request made so far, as the provider got them. */
-const requests = (calls: { mock: { calls: unknown[][] } }) =>
-  calls.mock.calls.map((args) => (args[1] as { messages: unknown[] }).messages);
+const messages = (requests: FauxRequest[]) => requests.map((request) => request.messages);
 const cardCount = (messages: unknown[]) =>
   messages.filter((message) => JSON.stringify(message).includes(CARD)).length;
 
@@ -207,7 +154,7 @@ describe("pi-git in a real AgentSession (offline faux provider)", () => {
     h.bus.emit("subagent:session:created", { agentId: "agent-1", cwd: worktree });
     h.faux.setResponses([fauxAssistantMessage("More.")]);
     await h.session.prompt("More work.");
-    expect(requests(h.calls).map(cardCount)).toEqual([0, 0, 0, 0]);
+    expect(messages(h.requests).map(cardCount)).toEqual([0, 0, 0, 0]);
 
     h.faux.setResponses([
       fauxAssistantMessage("Compacted summary"),
@@ -215,7 +162,7 @@ describe("pi-git in a real AgentSession (offline faux provider)", () => {
     ]);
     await h.session.compact();
 
-    h.calls.mockClear();
+    h.requests.length = 0;
     h.faux.setResponses([
       fauxAssistantMessage("Still here."),
       call("git_pr_list", {}),
@@ -223,7 +170,7 @@ describe("pi-git in a real AgentSession (offline faux provider)", () => {
     ]);
     await h.session.prompt("After compaction.");
     await h.session.prompt("Which PRs?");
-    const [first, withList, afterList] = requests(h.calls);
+    const [first, withList, afterList] = messages(h.requests);
     // Once per request, as its last message, on each request until the list result.
     expect(cardCount(first)).toBe(1);
     expect(cardCount(withList)).toBe(1);
@@ -236,25 +183,25 @@ describe("pi-git in a real AgentSession (offline faux provider)", () => {
     // Context-only: never written to the transcript.
     expect(JSON.stringify(manager.getEntries())).not.toContain(CARD);
 
-    h.calls.mockClear();
+    h.requests.length = 0;
     h.faux.setResponses([fauxAssistantMessage("No card.")]);
     await h.session.prompt("And now?");
-    expect(requests(h.calls).map(cardCount)).toEqual([0]);
+    expect(messages(h.requests).map(cardCount)).toEqual([0]);
 
     // /tree brings it back.
     const target = manager.getBranch().find((entry) => entry.type === "message")!;
     await h.session.navigateTree(target.id);
-    h.calls.mockClear();
+    h.requests.length = 0;
     h.faux.setResponses([fauxAssistantMessage("Card again.")]);
     await h.session.prompt("After /tree.");
-    expect(requests(h.calls).map(cardCount)).toEqual([1]);
+    expect(messages(h.requests).map(cardCount)).toEqual([1]);
     h.session.dispose();
 
     // A reload does too: a new session on the same session file.
     const reloaded = await fixture(box, manager);
     reloaded.faux.setResponses([fauxAssistantMessage("Card again.")]);
     await reloaded.session.prompt("After reload.");
-    const [afterReload] = requests(reloaded.calls);
+    const [afterReload] = messages(reloaded.requests);
     expect(cardCount(afterReload)).toBe(1);
     expect(JSON.stringify(afterReload.at(-1))).toContain(CARD);
   }, 30_000);
@@ -274,7 +221,7 @@ describe("pi-git in a real AgentSession (offline faux provider)", () => {
     await h.session.compact();
     h.faux.setResponses([fauxAssistantMessage("Three.")]);
     await h.session.prompt("After compaction.");
-    expect(requests(h.calls).filter((messages) => cardCount(messages) > 0)).toEqual([]);
+    expect(messages(h.requests).filter((messages) => cardCount(messages) > 0)).toEqual([]);
   }, 30_000);
 
   it("keeps worktrees and the subagents that used them across a resume", async () => {

@@ -3,6 +3,12 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-08: Faux sessions from pi-test-helpers
+
+- `test/sdk.test.ts` runs on `packages/pi-test-helpers`' `fauxSession` and
+  `loadResources` and reads provider requests from `requests`; `test/harness.ts`
+  reads tool text with `messageText`. No source change.
+
 ## 2026-11-08: ui.custom stub from pi-test-helpers
 
 - `browser.test.ts` mounts the browser with `packages/pi-test-helpers`'

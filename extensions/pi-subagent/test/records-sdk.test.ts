@@ -2,25 +2,16 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { Context } from "@earendil-works/pi-ai";
-import {
-  createFauxCore,
-  fauxAssistantMessage,
-  fauxToolCall,
-} from "@earendil-works/pi-ai/providers/faux";
-import {
-  createAgentSession,
-  DefaultResourceLoader,
-  ModelRuntime,
-  SessionManager,
-  SettingsManager,
-} from "@earendil-works/pi-coding-agent";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
+import { ModelRuntime, SessionManager } from "@earendil-works/pi-coding-agent";
+import { afterEach, beforeEach, describe, expect, it, vi, onTestFinished } from "vitest";
 import subagentExtension from "#src/index";
 import {
   readPersistedRecords,
   type PersistedSubagentRecord,
   SUBAGENT_RECORD_ENTRY,
 } from "#src/persisted-record";
+import { fauxSession, toolCall } from "../../../packages/pi-test-helpers/src/faux-session.ts";
 
 // A real parent session loads this extension and spawns real child sessions
 // through it, all answered by one scripted faux provider in call order. The
@@ -61,47 +52,17 @@ afterEach(() => {
 });
 
 async function parent(manager = SessionManager.inMemory(dir)) {
-  const faux = createFauxCore({ provider: "records-test", models: [{ id: "worker" }] });
-  const modelRuntime = await ModelRuntime.create({
-    authPath: join(dir, "auth.json"),
-    modelsPath: null,
-    modelsStorePath: join(dir, "cache"),
-    refreshOnCreate: false,
-  });
-  modelRuntime.registerProvider("records-test", {
-    api: faux.api,
-    apiKey: "test-key",
-    models: faux.models,
-    streamSimple: faux.streamSimple,
-  });
-  const loader = new DefaultResourceLoader({
-    cwd: dir,
-    agentDir: dir,
-    settingsManager: SettingsManager.inMemory({}),
-    noExtensions: true,
-    noSkills: true,
-    noThemes: true,
-    noContextFiles: true,
-    extensionFactories: [subagentExtension],
-  });
-  await loader.reload();
-  const { session } = await createAgentSession({
-    cwd: dir,
-    agentDir: dir,
-    modelRuntime,
-    model: faux.getModel(),
-    resourceLoader: loader,
+  const h = await fauxSession({
+    cleanup: onTestFinished,
+    dir,
+    provider: "records-test",
+    models: [{ id: "worker" }],
     sessionManager: manager,
-    settingsManager: SettingsManager.inMemory({
-      compaction: { enabled: false, keepRecentTokens: 1 },
-      retry: { enabled: false },
-    }),
+    settings: { compaction: { enabled: false, keepRecentTokens: 1 } },
     tools: ["subagent_start", "subagent_get"],
+    extensions: [subagentExtension],
   });
-  disposers.push(() => session.dispose());
-  const errors = vi.fn();
-  await session.bindExtensions({ mode: "print", onError: errors });
-  return { session, manager, faux, errors };
+  return { ...h, manager };
 }
 
 const call = (name: string, args: Parameters<typeof fauxToolCall>[1]) =>
@@ -169,7 +130,7 @@ describe("subagent records in a real parent session (offline faux provider)", ()
     const restored = await parent(saved);
     const requests: Context[] = [];
     restored.faux.setResponses([
-      call("subagent_get", { agent_id: running!.id }),
+      toolCall("subagent_get", { agent_id: running!.id }),
       capture(requests, fauxAssistantMessage("recovered")),
     ]);
     await restored.session.prompt("Recover interrupted work");
@@ -219,14 +180,14 @@ describe("subagent records in a real parent session (offline faux provider)", ()
     );
     // Context-only: the card is never written to the transcript.
     expect(JSON.stringify(h.manager.getEntries())).not.toContain(CARD);
-    expect(h.errors).not.toHaveBeenCalled();
+    expect(h.errors).toEqual([]);
   }, 30_000);
 
   it("keeps the question a worker ended with across a reload", async () => {
     const h = await parent();
     h.faux.setResponses([
       spawn("Pick storage"),
-      call("ask", {
+      toolCall("ask", {
         questions: [
           {
             question: "Which database?",
@@ -383,6 +344,6 @@ describe("subagent records in a real parent session (offline faux provider)", ()
     const report = lastResult(requests[1], "subagent_get");
     expect(report).toContain("Old result.");
     expect(report).toContain("Full transcript available at: /tasks/old-agent.jsonl");
-    expect(h.errors).not.toHaveBeenCalled();
+    expect(h.errors).toEqual([]);
   }, 30_000);
 });

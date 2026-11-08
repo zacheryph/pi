@@ -1,11 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import {
-  createFauxCore,
-  fauxAssistantMessage,
-  fauxToolCall,
-} from "@earendil-works/pi-ai/providers/faux";
+import { createFauxCore, fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import {
   createAgentSession,
   DefaultResourceLoader,
@@ -20,6 +16,7 @@ import { AgentTypeRegistry } from "#src/config/agent-types";
 import { createChildLifecyclePublisher } from "#src/lifecycle/child-lifecycle";
 import { createSubagentSession } from "#src/lifecycle/create-subagent-session";
 import { buildAgentPrompt } from "#src/session/prompts";
+import { toolCall, toolResults } from "../../../packages/pi-test-helpers/src/faux-session.ts";
 
 // Real SDK children with the repository's pi-stash extension loaded, as a
 // parent bundle would provide it. Checks capability, not model judgment.
@@ -131,11 +128,6 @@ async function child(type: "explore" | "plan") {
   return { session, faux };
 }
 
-const results = (session: Awaited<ReturnType<typeof child>>["session"], name: string) =>
-  session.session.messages.flatMap((message) =>
-    message.role === "toolResult" && message.toolName === name ? [message] : [],
-  );
-
 it("explore can stash large findings and read them back by handle", async () => {
   const { session, faux } = await child("explore");
   expect(session.session.getActiveToolNames()).toEqual(
@@ -143,21 +135,19 @@ it("explore can stash large findings and read them back by handle", async () => 
   );
   expect(session.session.getActiveToolNames()).not.toContain("write");
   faux.setResponses([
-    fauxAssistantMessage(
-      fauxToolCall("stash_put", { name: "findings", content: "a.ts:1\nb.ts:2\n" }),
-    ),
+    toolCall("stash_put", { name: "findings", content: "a.ts:1\nb.ts:2\n" }),
     (context) => {
       const receipt = JSON.stringify(context.messages.at(-1));
       const handle = /stash:findings@[0-9a-f]{12}/.exec(receipt)?.[0];
       expect(handle).toBeTruthy();
-      return fauxAssistantMessage(fauxToolCall("stash_get", { ref: handle! }));
+      return toolCall("stash_get", { ref: handle! });
     },
     fauxAssistantMessage("Findings stored."),
   ]);
   const result = await session.runTurnLoop("Find usages.", {});
   expect(result.responseText).toContain("Findings stored.");
-  expect(results(session, "stash_put")[0]).toMatchObject({ isError: false });
-  expect(results(session, "stash_get")[0]).toMatchObject({
+  expect(toolResults(session.session, "stash_put")[0]).toMatchObject({ isError: false });
+  expect(toolResults(session.session, "stash_get")[0]).toMatchObject({
     isError: false,
     content: [{ text: expect.stringContaining("2\tb.ts:2") }],
   });
@@ -169,10 +159,10 @@ it("Plan can read the stash but cannot write to it", async () => {
   expect(active).toEqual(expect.arrayContaining(["stash_get", "stash_list"]));
   expect(active).not.toContain("stash_put");
   faux.setResponses([
-    fauxAssistantMessage(fauxToolCall("stash_put", { name: "plan", content: "x" })),
+    toolCall("stash_put", { name: "plan", content: "x" }),
     fauxAssistantMessage("Could not stash."),
   ]);
   await session.runTurnLoop("Plan it.", {});
-  const [attempt] = results(session, "stash_put");
+  const [attempt] = toolResults(session.session, "stash_put");
   expect(attempt?.isError).toBe(true);
 }, 20_000);
