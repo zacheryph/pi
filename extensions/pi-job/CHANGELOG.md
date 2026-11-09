@@ -3,6 +3,13 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-09: Pi 1.5.0 argument validation
+
+- `test/extension.test.ts`: Pi 1.5.0 validates tool arguments with pi-schema,
+  which truncates a fractional integer instead of rejecting it. The bounds test
+  now expects `tailLines: 2.5` to arrive as `2`. No source change: `job_read`
+  already floors the value.
+
 ## 2026-11-08: Faux sessions from pi-test-helpers
 
 - `test/toolcheck-session.test.ts` and `test/pi-execute-tool.contract.test.ts`
