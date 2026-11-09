@@ -111,28 +111,27 @@ jobs finished:`). The output of all completions in a message shares a 16 KB budg
 
 ### Guarantee
 
-> In the normal case each completion is **delivered at least once**. Each model context contains
-> **at most one full copy** of each completion id, for messages in the current indexed format;
-> messages from older pi-job versions are only stubbed as a whole once all their ids were shown. Across Escape/abort, delivery is **best
-> effort**, with at most one resend per dropped follow-up. This is **not exactly-once**: pi has no
-> atomic wake API (see [UPSTREAM-ISSUES.md](https://github.com/woksin/pi-jobs/blob/main/UPSTREAM-ISSUES.md)).
+> A completion is a custom message in the session transcript, so **once sent it is never lost**:
+> Escape and abort leave it in the transcript and force no turn, and the next run sees it. A
+> completion that arrives while a run is active reaches the model **in that run**. Each model
+> context contains **at most one full copy** of each completion id, for messages in the current
+> indexed format; messages from older pi-job versions are only stubbed as a whole once all their ids
+> were shown. This is **not exactly-once** on the idle path: pi has no atomic wake API (see
+> [UPSTREAM-ISSUES.md](https://github.com/woksin/pi-jobs/blob/main/UPSTREAM-ISSUES.md)).
 
 ### How it works
 
-`src/delivery.ts` is event-driven only: no timers, no polling, no time-based resend. Every
-message goes through `pi.sendMessage(…, { triggerTurn: true, deliverAs: "followUp" })`, and
-pi does the scheduling.
+`src/delivery.ts` is event-driven only: no timers, no polling, no queue of its own. Every
+completion is one `pi.sendMessage(…)` call, and pi's run boundaries do the scheduling.
 
-| Situation when the job finishes                                      | What pi-job does                                                                                                                                                                                                                    |
-| -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Session idle                                                         | Send now; pi starts a run with the completion as its prompt.                                                                                                                                                                        |
-| A run is active (`agent_start` … `agent_settled`)                    | Hold it. At the next non-aborted `agent_end`, send everything held as one follow-up, which pi consumes in the same run.                                                                                                             |
-| Run aborted, or the completion arrived after the last `agent_end`    | At `agent_settled`, send only if pi is idle; pi then starts a new run right after. If pi is already busy again (an earlier `agent_settled` handler started a compaction), keep holding.                                             |
-| pi busy without a run (manual compaction, branch summary on `/tree`) | Hold it. Send after `session_compact` or `session_tree` (one `setImmediate`, because these fire before pi clears its busy state), or after `session_compact_failed`, if pi is idle by then. Otherwise send at the next agent event. |
+| Situation when the job finishes                                      | What pi-job does                                                                                                                                                                                                                                                                                                   |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Session idle                                                         | `triggerTurn: true`: pi starts a run with the completion as its prompt.                                                                                                                                                                                                                                            |
+| A run is active (`agent_start` … `agent_settled`)                    | `triggerTurn: false`, at once, one message per completion. Pi appends it at the end of the current turn, never between a tool call and its result. If another turn follows, the model sees it there. Otherwise the `agent_before_settle` handler returns `continue: true`: one more model request in the same run. |
+| Escape or abort during the run                                       | Nothing to do. The message is in the transcript, no turn is forced, and the next run sees it.                                                                                                                                                                                                                      |
+| pi busy without a run (manual compaction, branch summary on `/tree`) | `triggerTurn: false`: pi appends it at once. Nothing wakes the agent afterwards; the next run sees it.                                                                                                                                                                                                             |
 
-**Recovery.** A follow-up we queued has no `message_end` confirmation when its run settles if
-Escape/`clearQueue` dropped it or an abort stranded it. It is then sent once more as its own
-batch, never merged, through the same idle-checked path.
+After an error the handler does not continue the run either: another request would repeat the failure.
 
 **Duplicates.** Each completion carries a random UUID (`details.completions[].completionId`)
 and occupies its own content part (`details.completions[].part`). A model-context filter keeps
@@ -149,14 +148,13 @@ check/interval/until definition, change baseline and original deadline stay aliv
 command supervisors and logs. Completion delivery is suspended until the replacement extension
 rebinds its API at `session_start` (`reload`); delivery resumes on the next `setImmediate`,
 after other extensions can initialize. Job ids are unchanged; numbering advances past
-session history. Unconfirmed follow-ups may be resent with the same completion ids (deduplicated
-in context as above). No subprocess is relaunched and no second watch loop is created.
+session history. No subprocess is relaunched and no second watch loop is created.
 
 A stale attached runtime proves an owner is gone: its jobs/watches are stopped and reported
 with log paths. Another live session is never stopped; a pending reload handoff is unknown,
 reported and kept for at most five minutes. An unref'd handoff timer then stops its jobs/watches
 and logs the expiry if no replacement adopts it. A versioned registry and method checks reject
-incompatible handoffs and stop their work instead of adopting it. This is **same-process reload**,
+incompatible handoffs (including one from earlier pi-job versions, whose follow-up queue differs) and stop their work instead of adopting it. This is **same-process reload**,
 not restart/crash recovery. Old versions
 that shut down jobs cannot hand them off: the replacement warns and preserves id numbering.
 In particular, upgrading an already-loaded pre-0.2 runtime cannot preserve its jobs: its old
@@ -179,11 +177,16 @@ in `test/agent-session.test.ts`:
 
 - A completion that arrives while a user prompt is still preparing can make that prompt fail
   with "Agent is already processing" (#1).
-- A completion sent from `agent_settled` can start its run inside a compaction that another
-  extension started from its own `agent_settled` handler (#2).
-- If another `session_compact`/`session_tree` handler delays pi's teardown, or a `/tree`
-  navigation is cancelled or fails (no `session_tree`), a held completion waits for the next
-  agent activity (#4, #5).
+- A wake that fires while pi emits `agent_settled` is deferred, and can start its run inside a
+  compaction that another extension started from its own `agent_settled` handler (#2).
+- A completion that finishes while `/tree` summarizes a branch is appended to the branch that
+  was current when it arrived. If the navigation then moves to another node, that branch is the
+  one the user left, so the completion is in the session file but not in the new branch's context.
+- A completion that arrives after the last `agent_before_settle` but before `agent_settled` is
+  appended with no turn to follow; the next run sees it.
+
+Upstream issues #3, #4 and #5 no longer affect pi-job: nothing is queued in pi's follow-up
+queue, and nothing waits for a compaction or branch summary to end.
 
 ## Processes
 
@@ -274,11 +277,12 @@ npm test   # node --test, real processes and a real AgentSession, ~10 s
 `supervisor.ts`, `delivery.ts`, `logwriter.ts`, `tail.ts`, `watch.ts`,
 `format.ts`, `logs.ts` are plain Node. Tests drive the extension through a fake
 `ExtensionAPI`, spawn real processes, and run delivery scenarios (Escape, abort, compaction,
-batching) against the installed pi `AgentSession` with the faux model provider
+batching, continuing the run) against the installed pi `AgentSession` with the faux model provider
 (`test/agent-session.test.ts`). Tests resolve a local runtime dependency or Pi's standard
 user installation directories; set `PI_RUNTIME_DIR` to override the package root. Runtime
-tests skip with a clear message if Pi is unavailable. Two known upstream race reproductions
-remain skipped. Live RPC scenarios are in
+tests skip with a clear message if Pi is unavailable. `test/run-boundary.test.ts` pins the Pi
+behaviour delivery relies on, with a probe extension instead of pi-job. Two known upstream race
+reproductions remain skipped. Live RPC scenarios are in
 [`e2e/`](https://github.com/woksin/pi-jobs/blob/main/e2e/README.md); they require credentials
 and make paid model calls, unlike `npm test`.
 Requires `perl` only for the escaped-descendant tests.

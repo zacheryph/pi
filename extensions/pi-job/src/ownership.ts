@@ -3,7 +3,8 @@ import { CUSTOM_TYPE, type Delivery } from "./delivery.ts";
 import type { JobManager, JobSnapshot } from "./jobs.ts";
 
 export interface Owner {
-  version: 2;
+  /** 3: completions go through run boundaries (see delivery.ts). A version 2 owner holds a follow-up queue whose host protocol differs, so it is never adopted. */
+  version: 3;
   reloadTimer?: ReturnType<typeof setTimeout>;
   manager: JobManager;
   delivery: Delivery<JobSnapshot>;
@@ -23,7 +24,7 @@ export function compatibleOwner(owner: any): owner is Owner {
   const methods = (object: any, names: string[]) =>
     names.every((name) => typeof object?.[name] === "function");
   return (
-    owner?.version === 2 &&
+    owner?.version === 3 &&
     typeof owner.alive === "function" &&
     methods(owner.manager, [
       "start",
@@ -43,10 +44,7 @@ export function compatibleOwner(owner: any): owner is Owner {
       "rebind",
       "dispose",
       "onAgentStart",
-      "onAgentEnd",
       "onAgentSettled",
-      "onBusyEnd",
-      "confirm",
     ])
   );
 }

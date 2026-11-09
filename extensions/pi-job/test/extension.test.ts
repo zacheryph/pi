@@ -136,7 +136,7 @@ void test("job_start → completion message wakes the agent exactly once", async
   await sleep(150);
   assert.equal(sent.length, 1);
   const { message, options } = sent[0];
-  assert.deepEqual(options, { triggerTurn: true, deliverAs: "followUp" });
+  assert.deepEqual(options, { triggerTurn: true }, "idle: the completion starts a run");
   assert.equal(message.customType, CUSTOM_TYPE);
   assert.equal(message.display, true);
   assert.match(
@@ -145,7 +145,6 @@ void test("job_start → completion message wakes the agent exactly once", async
   );
   assert.equal(message.details.completions[0].job.exitCode, 4);
   assert.match(message.details.completions[0].completionId, /^[0-9a-f-]{36}$/);
-  assert.equal(typeof message.details.deliveryId, "string");
 });
 
 void test("job_watch → matched notification with the last check output", async (t) => {
@@ -401,99 +400,174 @@ void test("stale context (sendMessage throws): no retries; the loss is reported 
   assert.match(list.content[0].text, /j1 · job · failed · exit 2/);
 });
 
-const ourMessageEnd = (details: unknown) => ({
-  type: "message_end",
-  message: { role: "custom", customType: CUSTOM_TYPE, details },
+const completionMessage = (text = "done") => ({
+  role: "custom",
+  customType: CUSTOM_TYPE,
+  content: [{ type: "text", text }],
+});
+const assistant = { role: "assistant", content: [] };
+const settle = (outcome: string, contextMessages: unknown[], pendingMessages: unknown[] = []) => ({
+  type: "agent_before_settle",
+  outcome,
+  context: { contextMessages, pendingMessages },
 });
 
-void test("completions during a run are held and sent as ONE follow-up at agent_end", async (t) => {
+void test("completions during a run are sent at once without a turn, one message each", async (t) => {
   const { dir, call, sent, state, emit, manager } = setup(t);
   state.idle = false;
   await emit("agent_start", { type: "agent_start" });
   await call("job_start", { command: "echo held", timeoutSeconds: 10 }, dir);
+  await waitUntil(() => manager()!.get("j1")?.status === "succeeded", 5000, "first job");
+  assert.equal(sent.length, 1, "no waiting for agent_end");
   await call("job_start", { command: "echo held-too", timeoutSeconds: 10 }, dir);
-  await waitUntil(
-    () =>
-      manager()!
-        .list()
-        .every((j) => j.status !== "running"),
-    5000,
-    "both jobs",
+  await waitUntil(() => manager()!.get("j2")?.status === "succeeded", 5000, "second job");
+  assert.equal(sent.length, 2);
+  for (const { message, options } of sent) {
+    assert.deepEqual(options, { triggerTurn: false }, "Pi appends it at the end of the turn");
+    assert.equal(message.customType, CUSTOM_TYPE);
+  }
+  assert.deepEqual(
+    sent.map((s) => s.message.details.completions.map((c: any) => c.job.id)),
+    [["j1"], ["j2"]],
   );
-  await sleep(200);
-  assert.equal(sent.length, 0, "must not send while a run is active");
   await emit("agent_end", { type: "agent_end", messages: [] });
-  assert.equal(sent.length, 1);
-  const { message, options } = sent[0];
-  assert.deepEqual(options, { triggerTurn: true, deliverAs: "followUp" });
-  assert.deepEqual(message.details.completions.map((c: any) => c.job.id).sort(), ["j1", "j2"]);
-  assert.match(messageText(message), /^2 background jobs finished:/);
-  await emit("message_end", ourMessageEnd(message.details));
   state.idle = true;
   await emit("agent_settled", { type: "agent_settled" });
-  assert.equal(sent.length, 1, "a confirmed delivery is never repeated");
+  assert.equal(sent.length, 2, "run boundaries never resend or add anything");
 });
 
-void test("a follow-up dropped before confirmation (Escape) is resent once at agent_settled", async (t) => {
+void test("agent_before_settle continues the run only for a completed run with an unanswered completion", async (t) => {
+  const { emit } = setup(t);
+  const user = { role: "user", content: "hi" };
+  const continued = { continue: true };
+  assert.deepEqual(
+    await emit("agent_before_settle", settle("completed", [user, assistant, completionMessage()])),
+    continued,
+  );
+  assert.deepEqual(
+    await emit(
+      "agent_before_settle",
+      settle("completed", [user, assistant], [completionMessage()]),
+    ),
+    continued,
+    "pending: Pi appends it right after this handler",
+  );
+  assert.equal(
+    await emit("agent_before_settle", settle("completed", [user, completionMessage(), assistant])),
+    undefined,
+    "already answered",
+  );
+  assert.equal(
+    await emit("agent_before_settle", settle("completed", [user, assistant])),
+    undefined,
+  );
+  assert.equal(
+    await emit(
+      "agent_before_settle",
+      settle("completed", [user, assistant, { role: "custom", customType: "other", content: "x" }]),
+    ),
+    undefined,
+    "only our messages",
+  );
+  for (const outcome of ["aborted", "error"])
+    assert.equal(
+      await emit("agent_before_settle", settle(outcome, [user, assistant, completionMessage()])),
+      undefined,
+      `${outcome}: the message waits in the transcript for the next run`,
+    );
+});
+
+void test("a completion sent before Escape is never resent or queued again", async (t) => {
   const { dir, call, sent, state, emit, manager } = setup(t);
   state.idle = false;
   await emit("agent_start", { type: "agent_start" });
   await call("job_start", { command: "echo lost-once", timeoutSeconds: 10 }, dir);
   await waitUntil(() => manager()!.get("j1")?.status === "succeeded", 5000, "job");
-  await emit("agent_end", { type: "agent_end", messages: [] });
   assert.equal(sent.length, 1);
+  assert.deepEqual(sent[0].options, { triggerTurn: false });
+  // Escape: Pi keeps the message in the transcript, aborts, and settles without a boundary.
   state.idle = true;
-  await emit("agent_settled", { type: "agent_settled" }); // no message_end: pi dropped it
-  assert.equal(sent.length, 2);
-  assert.deepEqual(
-    sent[1].message.details.completions,
-    sent[0].message.details.completions,
-    "same completion id",
-  );
   await emit("agent_settled", { type: "agent_settled" });
-  assert.equal(sent.length, 2, "at most one resend");
+  await emit("agent_settled", { type: "agent_settled" });
+  assert.equal(sent.length, 1, "pi already holds it in the transcript");
 });
 
-for (const event of ["session_compact", "session_tree"]) {
-  void test(`busy without a run: held, then sent after ${event}`, async (t) => {
+for (const event of ["session_compact", "session_compact_failed", "session_tree"]) {
+  void test(`busy without a run: recorded without a turn, nothing re-sent after ${event}`, async (t) => {
     const { dir, call, sent, state, emit, manager } = setup(t);
     state.idle = false; // compacting / summarizing a branch: no agent_start, but not idle
     await call("job_start", { command: "echo busy", timeoutSeconds: 10 }, dir);
     await waitUntil(() => manager()!.get("j1")?.status === "succeeded", 5000, "job");
-    assert.equal(sent.length, 0, "must not start a run while pi is busy");
+    assert.equal(sent.length, 1);
+    assert.deepEqual(
+      sent[0].options,
+      { triggerTurn: false },
+      "must not start a run while pi is busy",
+    );
     state.idle = true;
     await emit(event, { type: event });
-    assert.equal(
-      sent.length,
-      0,
-      "the event fires before pi clears its busy state: drain on the next turn of the event loop",
-    );
     await tick();
     assert.equal(sent.length, 1);
   });
 }
 
-void test("batch output budget is shared: 20 completions stay within 16 KB of output", async (t) => {
-  const { dir, call, sent, state, emit, manager } = setup(t, { maxRunning: 20 });
-  state.idle = false;
-  await emit("agent_start", { type: "agent_start" });
+void test("a run started by our own wake records the completions that follow", async (t) => {
+  const { dir, call, sent, state, emit, manager } = setup(t);
+  state.startRunOnSend = true; // pi starts a run synchronously on a wake
+  await call("job_start", { command: "echo first", timeoutSeconds: 10 }, dir);
+  await waitUntil(() => sent.length === 1, 5000, "wake");
+  await call("job_start", { command: "echo second", timeoutSeconds: 10 }, dir);
+  await waitUntil(() => manager()!.get("j2")?.status === "succeeded", 5000, "second job");
+  assert.deepEqual(
+    sent.map((s) => s.options),
+    [{ triggerTurn: true }, { triggerTurn: false }],
+  );
+  await emit("agent_settled", { type: "agent_settled" });
+  state.idle = true;
+  state.startRunOnSend = false;
+  await call("job_start", { command: "echo third", timeoutSeconds: 10 }, dir);
+  await waitUntil(() => sent.length === 3, 5000, "idle again");
+  assert.deepEqual(sent[2].options, { triggerTurn: true });
+});
+
+void test("jobs that finish in a reload gap arrive as one batch within the shared output budget", async (t) => {
+  const dir = tempDir(t);
+  const id = randomUUID();
+  const old = fakePi(false, id);
+  const next = fakePi(false, id);
+  let manager: JobManager | undefined;
+  const options = {
+    logRoot: join(dir, "logs"),
+    killGraceMs: 50,
+    drainMs: 50,
+    maxRunning: 20,
+    onManager: (m: JobManager) => (manager = m),
+  };
+  createJobsExtension(options)(old.pi as any);
+  await old.emit("session_start", { reason: "startup" });
+  t.after(() => next.emit("session_shutdown", { reason: "quit" }));
   for (let i = 0; i < 20; i++)
-    await call(
+    await old.call(
       "job_start",
-      { command: "head -c 3000 /dev/zero | tr '\\0' x", timeoutSeconds: 10 },
+      {
+        command: "while [ ! -f go ]; do sleep 0.02; done; head -c 3000 /dev/zero | tr '\\0' x",
+        timeoutSeconds: 10,
+      },
       dir,
     );
+  await old.emit("session_shutdown", { reason: "reload" });
+  writeFileSync(join(dir, "go"), "");
   await waitUntil(
-    () =>
-      manager()!
-        .list()
-        .every((j) => j.status !== "running"),
+    () => manager!.list().every((j) => j.status !== "running"),
     10_000,
-    "all jobs",
+    "all jobs, during the gap",
   );
-  await emit("agent_end", { type: "agent_end", messages: [] });
-  assert.equal(sent.length, 1);
-  const text = messageText(sent[0].message);
+  assert.equal(old.sent.length, 0, "nothing goes through the stale API");
+  createJobsExtension(options)(next.pi as any);
+  await next.emit("session_start", { reason: "reload" });
+  await waitUntil(() => next.sent.length === 1, 10_000, "one batch after the reload");
+  assert.deepEqual(next.sent[0].options, { triggerTurn: true });
+  const text = messageText(next.sent[0].message);
   assert.match(text, /^20 background jobs finished:/);
   const outputBytes = (text.match(/x{5,}/g) ?? []).reduce((n, run) => n + run.length, 0);
   assert.ok(outputBytes > 0 && outputBytes <= 16 * 1024, `output bytes ${outputBytes}`);

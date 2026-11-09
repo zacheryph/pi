@@ -91,7 +91,7 @@ void test("history recovery keeps full commands without a watch cap and excludes
 void test("unknown owner and reload handoff are not proof of an orphan", async () => {
   let stopped = 0;
   const owner = (alive: () => boolean | undefined, token: object | undefined): Owner => ({
-    version: 2,
+    version: 3,
     alive,
     token,
     manager: {
@@ -119,7 +119,7 @@ void test("unknown owner and reload handoff are not proof of an orphan", async (
 function handoffOwner(): Owner {
   const noop = () => {};
   return {
-    version: 2,
+    version: 3,
     alive: () => undefined,
     manager: Object.fromEntries(
       [
@@ -136,17 +136,10 @@ function handoffOwner(): Owner {
       ].map((name) => [name, noop]),
     ) as any,
     delivery: Object.fromEntries(
-      [
-        "add",
-        "suspend",
-        "rebind",
-        "dispose",
-        "onAgentStart",
-        "onAgentEnd",
-        "onAgentSettled",
-        "onBusyEnd",
-        "confirm",
-      ].map((name) => [name, noop]),
+      ["add", "suspend", "rebind", "dispose", "onAgentStart", "onAgentSettled"].map((name) => [
+        name,
+        noop,
+      ]),
     ) as any,
   };
 }
@@ -185,6 +178,11 @@ void test("compatible adoption cancels handoff expiry", async (t) => {
   assert.equal((await takeReloadOwner("adopted")).owner, owner);
   await sleep(40);
   assert.equal(stopped, false);
+});
+
+void test("an owner from the follow-up delivery protocol (version 2) is not adopted", () => {
+  assert.equal(compatibleOwner({ ...handoffOwner(), version: 2 }), false);
+  assert.equal(compatibleOwner(handoffOwner()), true);
 });
 
 void test("incompatible suspended owners are stopped, never adopted", async (t) => {

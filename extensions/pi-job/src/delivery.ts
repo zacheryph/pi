@@ -1,31 +1,24 @@
 /**
- * Completion delivery through pi's native paths only (no timers, no polling).
+ * Completion delivery through Pi's own run boundaries (no timers, no polling, no queue of ours).
  *
- * pi has no atomic "wake the agent" or reservation API, so an extension cannot make delivery
- * exactly-once. What this module does guarantee:
- *  - Normal case: every completion is delivered at least once.
- *  - The model sees each completion id at most once per context: `dedupeCompletions` strips
- *    already-shown completion blocks, keyed on unique ids. This holds per completion for
- *    messages in the current indexed format (`details.completions[].part`); older messages
- *    without part indices can only be stubbed as a whole, once all their ids were seen.
- *  - Across Escape/abort: best effort, with at most one resend per dropped follow-up.
- * Known pi-side races are documented in UPSTREAM-ISSUES.md rather than papered over here.
+ * A completion is a custom message in the session transcript, so the transcript is the inbox and
+ * nothing a user does can lose it. Two paths, both `pi.sendMessage`:
+ *  - Idle: `triggerTurn: true`. Pi starts a run with the completion as its trigger.
+ *  - A run is active (agent_start ... agent_settled), or Pi is busy without one (compaction,
+ *    branch summary): `triggerTurn: false`. Pi appends the message at the end of the current turn
+ *    (immediately when it is not streaming), never between a tool call and its result, so the
+ *    model sees it in the same run when another turn follows. When none does, the
+ *    `agent_before_settle` handler (`continuesRun`) asks Pi for one more request. After Escape or
+ *    abort the message stays in the transcript and no turn is forced; the next run sees it.
  *
- * Paths, all through `pi.sendMessage(..., { triggerTurn: true, deliverAs: "followUp" })`:
- *  - Idle: pi starts a run with the completion as its prompt.
- *  - A run is active (agent_start … agent_settled), or pi is busy without one (compaction,
- *    branch summary): hold it. At the next non-aborted agent_end, everything held goes out as
- *    ONE follow-up (batching), which pi consumes in the continuation of that run.
- *  - agent_settled: the run is over; deliver what is held only if pi is idle. pi may already be
- *    busy again (an earlier agent_settled handler can start a compaction); then wait.
- *  - End of busy work: `session_compact` and `session_tree` fire before pi clears its busy
- *    state, so they get one setImmediate, idle-checked drain; `session_compact_failed` fires
- *    after it and drains at once. If pi is still busy then, the next agent event drains.
- *  - Recovery: a follow-up we queued that has no message_end confirmation when its run
- *    settles (Escape/clearQueue dropped it, or an abort stranded it) is sent once more, as its
- *    own batch (never merged), through the same idle-checked drain.
- *  - A throw from pi (stale context after reload/session replacement) is permanent: the
- *    delivery is disposed and nothing is retried.
+ * What this does not do: wake an idle session that was busy without a run (a manual `/compact`
+ * or `/tree`) when the completion arrived. The message is in the transcript, and the next run
+ * answers it. Pi-side races on the idle path are documented in UPSTREAM-ISSUES.md (#1, #2).
+ *
+ * The model sees each completion id at most once per context: `dedupeCompletions` strips
+ * already-shown completion blocks, keyed on unique ids. It exists for transcripts written by
+ * older versions, which could deliver a completion twice. A throw from Pi (stale context after
+ * reload or session replacement) is permanent: the delivery is disposed and nothing is retried.
  */
 
 /** Custom message type of completion messages. */
@@ -37,13 +30,14 @@ export interface Completion<T> {
   payload: T;
 }
 
+/** "wake": Pi is idle, start a run (`triggerTurn: true`). "record": append only (`triggerTurn: false`). */
+export type SendMode = "wake" | "record";
+
 export interface DeliveryHost<T> {
-  /** pi's idle state. Throws if the context is stale. */
+  /** Pi's idle state. Throws if the context is stale. */
   isIdle(): boolean;
-  /** Whether the current run was aborted (read in agent_end). */
-  aborted(): boolean;
-  /** One message, `triggerTurn: true, deliverAs: "followUp"`. Throws if the context is stale. */
-  send(deliveryId: string, items: Completion<T>[]): void;
+  /** One message for all `items`. Throws if the context is stale. */
+  send(items: Completion<T>[], mode: SendMode): void;
   /** Called once when delivery stops for good (stale context) with what was not sent. */
   lost?(items: Completion<T>[]): void;
 }
@@ -52,80 +46,32 @@ export class Delivery<T> {
   private host: DeliveryHost<T>;
   private suspended = false;
   private binding = 0;
-  private readonly newId: () => string;
+  /** Completions waiting for a usable context: only while suspended for a reload. */
   private held: Completion<T>[] = [];
-  /** Unconfirmed follow-ups awaiting their single resend, one batch each. */
-  private recovery: Completion<T>[][] = [];
-  /**
-   * Follow-ups in pi's queue awaiting message_end. Recovery resends through the idle path,
-   * which is never tracked here, so each follow-up is resent at most once.
-   */
-  private readonly queued = new Map<string, Completion<T>[]>();
   private runActive = false;
   private disposed = false;
 
-  constructor(host: DeliveryHost<T>, newId: () => string = () => crypto.randomUUID()) {
+  constructor(host: DeliveryHost<T>) {
     this.host = host;
-    this.newId = newId;
   }
 
   get heldCount(): number {
-    return this.held.length + this.recovery.reduce((n, b) => n + b.length, 0);
-  }
-
-  private get pending(): boolean {
-    return this.held.length > 0 || this.recovery.length > 0;
+    return this.held.length;
   }
 
   add(item: Completion<T>): void {
     if (this.disposed) return;
     this.held.push(item);
-    this.drainIfIdle();
+    this.flush();
   }
 
   onAgentStart(): void {
     if (!this.disposed && !this.suspended) this.runActive = true;
   }
 
-  onAgentEnd(): void {
-    if (this.disposed || this.suspended || (this.held.length === 0 && this.recovery.length === 0))
-      return;
-    let aborted = true;
-    try {
-      aborted = this.host.aborted();
-    } catch {}
-    // An aborted run will not consume follow-ups; keep them for agent_settled.
-    if (aborted) return;
-    for (const batch of this.recovery.splice(0)) this.send(batch, "untracked");
-    if (this.held.length) this.send(this.held.splice(0), "followUp");
-  }
-
-  /**
-   * The run is over, but pi may already be busy again (e.g. an earlier agent_settled handler
-   * started a compaction): deliver only if idle, otherwise wait for the end of that work.
-   */
+  /** The run is over, including its continuations. Pi may be idle again. */
   onAgentSettled(): void {
-    if (this.disposed || this.suspended) return;
-    this.runActive = false;
-    for (const items of this.queued.values()) this.recovery.push(items); // kept separate, never merged
-    this.queued.clear();
-    this.drainIfIdle();
-  }
-
-  /**
-   * pi finished non-agent work (compaction: `session_compact`/`session_compact_failed`;
-   * branch summary: `session_tree`). Events emitted before pi clears its busy state get one
-   * deferred, idle-checked drain; events emitted after it (`afterTeardown`) drain at once.
-   */
-  onBusyEnd(afterTeardown: boolean): void {
-    if (this.disposed || !this.pending) return;
-    if (afterTeardown) this.drainIfIdle();
-    else setImmediate(() => this.drainIfIdle());
-  }
-
-  /** message_end of one of our messages. */
-  confirm(deliveryId: string): void {
-    this.queued.delete(deliveryId);
+    if (!this.disposed && !this.suspended) this.runActive = false;
   }
 
   /** Reload keeps completions, but must never call the stale extension API. */
@@ -133,11 +79,9 @@ export class Delivery<T> {
     this.binding++;
     this.suspended = true;
     this.runActive = false;
-    for (const items of this.queued.values()) this.recovery.push(items);
-    this.queued.clear();
   }
 
-  /** The replacement extension supplies a fresh context and API before draining. */
+  /** The replacement extension supplies a fresh context and API before anything is sent. */
   rebind(host: DeliveryHost<T>): void {
     this.host = host;
     const binding = ++this.binding;
@@ -146,17 +90,15 @@ export class Delivery<T> {
     setImmediate(() => {
       if (this.binding !== binding || this.disposed) return;
       this.suspended = false;
-      this.drainIfIdle();
+      this.flush();
     });
   }
 
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    const lost = [...this.held, ...this.recovery.flat(), ...[...this.queued.values()].flat()];
+    const lost = this.held;
     this.held = [];
-    this.recovery = [];
-    this.queued.clear();
     if (lost.length) {
       try {
         this.host.lost?.(lost);
@@ -164,44 +106,52 @@ export class Delivery<T> {
     }
   }
 
-  private idle(): boolean {
-    try {
-      return this.host.isIdle();
-    } catch {
-      this.dispose(); // stale context: permanent
-      return false;
-    }
-  }
-
   /**
-   * Idle: send recovery batches (separately), then everything held. A send that starts a run
-   * synchronously stops the drain; the rest goes out at that run's agent_end.
+   * Everything held goes out as ONE message: a wake when Pi is idle, otherwise a record that
+   * Pi appends at the end of the turn.
    */
-  private drainIfIdle(): void {
-    while (!this.disposed && !this.suspended && !this.runActive && this.pending && this.idle()) {
-      const recovered = this.recovery.shift();
-      this.send(recovered ?? this.held.splice(0), "idle");
-    }
-  }
-
-  /**
-   * "followUp": sent during a run and tracked for one recovery. "untracked": a recovery
-   * batch sent as a follow-up (never recovered again). "idle": pi starts a run (or defers one
-   * when called from agent_settled).
-   */
-  private send(items: Completion<T>[], mode: "idle" | "followUp" | "untracked"): void {
-    const deliveryId = this.newId();
+  private flush(): void {
+    if (this.disposed || this.suspended || this.held.length === 0) return;
+    const items = this.held.splice(0);
+    let sent = false;
     try {
-      this.host.send(deliveryId, items);
+      const wake = !this.runActive && this.host.isIdle();
+      this.host.send(items, wake ? "wake" : "record");
+      sent = true;
+      // A wake starts a run synchronously; what arrives next is a record for that run.
+      if (wake) this.runActive = !this.host.isIdle();
     } catch {
-      this.held.unshift(...items);
-      this.dispose(); // pi refused synchronously: the context is stale
-      return;
+      if (!sent) this.held.unshift(...items);
+      this.dispose(); // Pi refused, or the context is stale: permanent
     }
-    if (mode === "followUp") this.queued.set(deliveryId, items);
-    // An idle send starts a run synchronously; hold what arrives until its agent_end.
-    else if (mode === "idle" && !this.runActive && !this.idle()) this.runActive = true;
   }
+}
+
+/** The parts of an `agent_before_settle` event that `continuesRun` reads. */
+export interface BeforeSettleEvent {
+  outcome: string;
+  context: {
+    contextMessages: readonly ContextMessage[];
+    pendingMessages: readonly ContextMessage[];
+  };
+}
+
+const isCompletion = (m: ContextMessage | undefined): boolean =>
+  m?.role === "custom" && m.customType === CUSTOM_TYPE;
+
+/**
+ * Whether the run needs one more model request because a completion arrived after the model's
+ * last answer: the newest message in the context is a completion, or one is still pending (Pi
+ * appends pending messages right after this handler). Only for a run that completed: after an
+ * abort the completion waits in the transcript for the next run, and after an error continuing
+ * would just repeat the failing request.
+ */
+export function continuesRun(event: BeforeSettleEvent): boolean {
+  if (event.outcome !== "completed") return false;
+  return (
+    isCompletion(event.context.contextMessages.at(-1)) ||
+    event.context.pendingMessages.some(isCompletion)
+  );
 }
 
 interface ContextMessage {

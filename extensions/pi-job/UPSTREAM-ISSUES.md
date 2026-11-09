@@ -2,7 +2,8 @@
 
 Draft issue texts for `@earendil-works/pi-coding-agent` (observed on 1.0.3; line numbers below refer to that version). pi-jobs does not
 work around these with timers or heuristics. The two races (#1 and #2) have deterministic
-reproductions in `test/agent-session.test.ts`; they are skipped and point here. Line references are to
+reproductions in `test/agent-session.test.ts`; they are skipped and point here. Issues #3, #4 and
+#5 no longer affect pi-jobs (see each); they stay for other extensions that hit them. Line references are to
 `dist/core/agent-session.js`.
 
 ---
@@ -66,6 +67,10 @@ through the same atomic wake queue as #1.
 
 ## 3. Custom follow-ups are dropped by `clearQueue()` (Escape) and stranded by `abort()`
 
+**No longer affects pi-jobs.** It sends no follow-ups: completions go out with `triggerTurn: false`,
+which lands in the transcript, and `agent_before_settle` continues the run (SDK 1.4.0). The text
+below describes the pi behaviour as observed on 1.0.3.
+
 **Summary.** `sendCustomMessage` queues a custom follow-up only in the agent
 (`agent.followUp`) and not in `_followUpMessages` (l. 1759–1761):
 
@@ -90,15 +95,16 @@ says so.
 - On abort, either flush custom follow-ups as the next run or report them as dropped. Do not
   leave them queued indefinitely.
 
-**pi-jobs' current approach.** It sends completions as a follow-up only from a non-aborted
-`agent_end`, where pi consumes them during the subsequent continuation of that run. If a follow-up has no `message_end` confirmation
-when the run settles, pi-jobs resends it once through the idle path. A stranded copy that
-appears later is replaced in the model context by a one-line stub, keyed on the unique
-completion id.
+**pi-jobs' former approach (removed).** It sent completions as a follow-up from a non-aborted
+`agent_end`, confirmed them at `message_end`, and resent an unconfirmed one once through the idle
+path.
 
 ---
 
 ## 4. No extension event after compaction state is cleared
+
+**No longer affects pi-jobs.** It no longer waits for compaction to end: a completion during
+compaction is appended at once with `triggerTurn: false`.
 
 **Summary.** `session_compact` is emitted before `_clearManualCompactionState()`
 (l. 2205–2223), so `ctx.isIdle()` is still `false` inside the handler. `compaction_end` is
@@ -127,12 +133,15 @@ add an extension event that fires once the session is idle again (see #5).
 
 ## 5. No reliable post-teardown event for branch summarization (`/tree`)
 
+**No longer affects pi-jobs.** It no longer waits for the navigation to end: a completion during it
+is appended at once with `triggerTurn: false` (to the branch current when it arrived).
+
 **Summary.** `navigateTree()` sets `_branchSummaryAbortController` (busy, `isIdle() === false`)
 for the whole navigation and clears it in `finally` (l. 3198–3318).
 
 - **Success:** `session_tree` is emitted (l. 3308), but still before the `finally`, so it has
-  the same "fires before teardown" problem as #4. pi-jobs handles this case with an
-  idle-checked `setImmediate` drain after `session_tree`.
+  the same "fires before teardown" problem as #4. pi-jobs used to drain
+  held completions after `session_tree` with an idle-checked `setImmediate`.
 - **Cancelled** (a `session_before_tree` handler returns `{ cancel: true }`), **aborted** or
   **failed** summarization: the function returns or throws through the `finally` without
   emitting any extension event. An extension that deferred work because pi was busy has no
