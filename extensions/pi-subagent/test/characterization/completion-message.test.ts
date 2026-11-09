@@ -81,7 +81,7 @@ describe("the completion message for a background agent", () => {
       completion("Error: boom", "error", "No output."),
     );
     expect(h.announcements()[0].details).toMatchObject({ id, status: "error", error: "boom" });
-    expect(h.savedRecord(id)).toMatchObject({ status: "error", error: "boom" });
+    expect(h.savedRecord(id)).toMatchObject({ status: "idle", outcome: "error", error: "boom" });
   }, 30_000);
 
   it("reports an agent the parent interrupted as Stopped (user request)", async () => {
@@ -104,7 +104,7 @@ describe("the completion message for a background agent", () => {
       completion("Stopped (user request)", "stopped", "No output."),
     );
     expect(h.announcements()[0].details).toMatchObject({ id, status: "stopped" });
-    expect(h.savedRecord(id)).toMatchObject({ status: "stopped" });
+    expect(h.savedRecord(id)).toMatchObject({ status: "idle", outcome: "stopped" });
   }, 30_000);
 
   it("reports an agent that finished after its turn-limit warning as Wrapped up", async () => {
@@ -128,7 +128,8 @@ describe("the completion message for a background agent", () => {
       ),
     );
     expect(h.savedRecord(id)).toMatchObject({
-      status: "completed",
+      status: "idle",
+      outcome: "completed",
       turnBudget: { maxTurns: 3, used: 3, phase: "warned" },
     });
   }, 30_000);

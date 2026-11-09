@@ -693,7 +693,8 @@ describe("SessionNavigatorHandler", () => {
     const released = makeNavigable({
       id: "e1",
       description: "Old task",
-      status: "completed",
+      status: "idle",
+      outcome: "completed",
       startedAt: 1000,
       completedAt: 4000,
       toolUses: 5,
@@ -716,10 +717,12 @@ describe("SessionNavigatorHandler", () => {
       type: "custom",
       customType: "subagent:record",
       data: {
+        version: 2,
         id: "e1",
         type: "general-purpose",
         description: "Old task",
-        status: "completed",
+        status: "idle",
+        outcome: "completed",
         result: "done",
         startedAt: 1000,
         completedAt: 4000,
@@ -728,6 +731,15 @@ describe("SessionNavigatorHandler", () => {
       },
     };
     const label = "agent (Old task) · 5 tools · completed · 3.0s · session released (snapshot)";
+
+    it("offers a run a version 1 entry recorded, with the label it always had", async () => {
+      const { version: _version, outcome: _outcome, ...v2 } = recordEntry.data;
+      const v1Entry = { ...recordEntry, data: { ...v2, status: "completed" } };
+      const ui = makeUI(undefined);
+      await handleWith(ui, [], { sessionEntries: [v1Entry] });
+      expect(ui.notify).not.toHaveBeenCalled();
+      expect(ui.select).toHaveBeenCalledWith("Subagent sessions", [label]);
+    });
 
     it("offers the runs the session recorded", async () => {
       const ui = makeUI(undefined);
@@ -760,7 +772,8 @@ describe("SessionNavigatorHandler", () => {
     const released = makeNavigable({
       id: "e1",
       description: "Old task",
-      status: "completed",
+      status: "idle",
+      outcome: "completed",
       startedAt: 1000,
       completedAt: 4000,
       toolUses: 5,

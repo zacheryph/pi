@@ -99,6 +99,10 @@ describe("releasing a finished agent's session", () => {
     expect(resultText(h.requests.parent[2], "subagent_get")).toMatch(
       /completed \d\d:\d\d, resumable/,
     );
-    expect(h.savedRecord(id)).toMatchObject({ status: "completed", result: "Did the work." });
+    expect(h.savedRecord(id)).toMatchObject({
+      status: "idle",
+      outcome: "completed",
+      result: "Did the work.",
+    });
   }, 30_000);
 });

@@ -13,10 +13,12 @@ function persistedRecord(
   overrides: Partial<PersistedSubagentRecord> = {},
 ): PersistedSubagentRecord {
   return {
+    version: 2,
     id: "run-1",
     type: "explore",
     description: "map the module",
-    status: "completed",
+    status: "idle",
+    outcome: "completed",
     result: "done",
     error: undefined,
     turnBudget: undefined,
@@ -51,10 +53,12 @@ describe("toPersistedRecord", () => {
     });
 
     expect(toPersistedRecord(record)).toStrictEqual({
+      version: 2,
       id: "agent-9",
       type: "explore",
       description: "map the module",
-      status: "error",
+      status: "idle",
+      outcome: "error",
       result: "partial",
       error: "boom",
       turnBudget,
@@ -67,6 +71,11 @@ describe("toPersistedRecord", () => {
       // The parent's directory: the spawn chose none.
       cwd: "/test",
     });
+  });
+
+  it("writes a run in flight with no outcome: it has not ended yet", () => {
+    const running = createTestSubagent({ status: "running" });
+    expect(toPersistedRecord(running)).toMatchObject({ status: "running", outcome: undefined });
   });
 
   it("records the question, model label, thinking level, turn ceiling and directory", () => {
@@ -99,12 +108,21 @@ describe("readPersistedRecords", () => {
   it("folds every lifecycle step into the last one per id", () => {
     const entries = [
       recordEntry(
-        persistedRecord({ status: "running", result: undefined, completedAt: undefined }),
+        persistedRecord({
+          status: "running",
+          outcome: undefined,
+          result: undefined,
+          completedAt: undefined,
+        }),
       ),
-      recordEntry(persistedRecord({ status: "completed", pendingQuestion: "Which DB?" })),
-      recordEntry(persistedRecord({ id: "run-2", startedAt: 2000, status: "running" })),
+      recordEntry(persistedRecord({ pendingQuestion: "Which DB?" })),
+      recordEntry(
+        persistedRecord({ id: "run-2", startedAt: 2000, status: "running", outcome: undefined }),
+      ),
       // A resume clears the question and runs again.
-      recordEntry(persistedRecord({ status: "running", completedAt: undefined })),
+      recordEntry(
+        persistedRecord({ status: "running", outcome: undefined, completedAt: undefined }),
+      ),
     ];
     const records = readPersistedRecords(entries);
     expect(records.map((record) => [record.id, record.status])).toEqual([
@@ -122,6 +140,7 @@ describe("readPersistedRecords", () => {
   it("returns every optional field it validated", () => {
     const full = {
       ...persistedRecord(),
+      outcome: "turn-limit",
       pendingQuestion: "Which DB?",
       model: "anthropic/claude-x",
       thinkingLevel: "medium",
@@ -146,16 +165,20 @@ describe("readPersistedRecords", () => {
     ["a string completion time", { completedAt: "later" }],
     ["a string turn budget", { turnBudget: "lots" }],
     ["a numeric result", { result: 42 }],
+    ["an idle agent with no outcome", { outcome: undefined }],
+    ["an idle agent with an unknown outcome", { outcome: "vanished" }],
+    ["a version from the future", { version: 3 }],
+    ["a version 2 entry still using a version 1 status", { status: "completed" }],
   ])("skips an entry with %s", (_label, override) => {
     expect(readPersistedRecords([recordEntry({ ...persistedRecord(), ...override })])).toEqual([]);
   });
 
   it("keeps the last valid record when a later entry for the id is malformed", () => {
     const entries = [
-      recordEntry(persistedRecord({ status: "completed" })),
+      recordEntry(persistedRecord({ outcome: "stopped" })),
       recordEntry({ ...persistedRecord(), status: "bogus" }),
     ];
-    expect(readPersistedRecords(entries).map((record) => record.status)).toEqual(["completed"]);
+    expect(readPersistedRecords(entries).map((record) => record.outcome)).toEqual(["stopped"]);
   });
 });
 
@@ -164,7 +187,8 @@ describe("readPersistedRuns", () => {
     id: "run-1",
     type: "explore",
     description: "map the module",
-    status: "completed",
+    status: "idle",
+    outcome: "completed",
     startedAt: 1000,
     completedAt: 4000,
     outputFile: "/tasks/run-1.jsonl",
@@ -190,10 +214,10 @@ describe("readPersistedRuns", () => {
   describe("repeated ids", () => {
     it("keeps the last entry for an id, so a resumed run reports its latest outcome", () => {
       const entries = [
-        recordEntry(persistedRecord({ status: "completed" })),
-        recordEntry(persistedRecord({ status: "error", error: "boom" })),
+        recordEntry(persistedRecord()),
+        recordEntry(persistedRecord({ outcome: "error", error: "boom" })),
       ];
-      expect(readPersistedRuns(entries)).toStrictEqual([{ ...summary, status: "error" }]);
+      expect(readPersistedRuns(entries)).toStrictEqual([{ ...summary, outcome: "error" }]);
     });
   });
 
@@ -246,5 +270,95 @@ describe("readPersistedRuns", () => {
     expect(readPersistedRuns([recordEntry(toPersistedRecord(record))])).toStrictEqual([
       { ...summary, id: "round-trip", outputFile: "/tasks/round-trip.jsonl" },
     ]);
+  });
+});
+
+describe("version 1 records", () => {
+  // Entries as the version 1 writer saved them: six statuses, no `version`, no `outcome`.
+  const v1 = {
+    id: "old-1",
+    type: "explore",
+    description: "map the module",
+    status: "completed",
+    result: "done",
+    turnBudget: undefined,
+    startedAt: 1000,
+    completedAt: 4000,
+    outputFile: "/tasks/old-1.jsonl",
+    toolUses: 7,
+  };
+
+  it.each([
+    ["completed", "idle", "completed"],
+    ["aborted", "idle", "turn-limit"],
+    ["error", "idle", "error"],
+    ["stopped", "idle", "stopped"],
+    // The process that wrote a queued or running record is gone by the time anyone reads it back.
+    ["queued", "idle", "interrupted"],
+    ["running", "idle", "interrupted"],
+  ])("reads status %s as %s with outcome %s", (legacy, status, outcome) => {
+    const [record] = readPersistedRecords([recordEntry({ ...v1, status: legacy })]);
+    expect(record).toMatchObject({ version: 2, id: "old-1", status, outcome });
+    expect(readPersistedRuns([recordEntry({ ...v1, status: legacy })])).toStrictEqual([
+      {
+        id: "old-1",
+        type: "explore",
+        description: "map the module",
+        status,
+        outcome,
+        startedAt: 1000,
+        completedAt: 4000,
+        toolUses: 7,
+        outputFile: "/tasks/old-1.jsonl",
+      },
+    ]);
+  });
+
+  it("keeps everything else a version 1 entry recorded", () => {
+    const entry = {
+      ...v1,
+      status: "error",
+      error: "boom",
+      pendingQuestion: "Which DB?",
+      model: "anthropic/claude-x",
+      thinkingLevel: "high",
+      maxTurns: 6,
+      cwd: "/w",
+      turnBudget: { maxTurns: 6, used: 6, phase: "exhausted" },
+    };
+    expect(readPersistedRecords([recordEntry(entry)])).toStrictEqual([
+      {
+        ...entry,
+        version: 2,
+        status: "idle",
+        outcome: "error",
+      },
+    ]);
+  });
+
+  it("reads an entry from before the optional fields were added", () => {
+    const [record] = readPersistedRecords([recordEntry(v1)]);
+    expect(record).toStrictEqual({
+      version: 2,
+      ...v1,
+      status: "idle",
+      outcome: "completed",
+      error: undefined,
+    });
+  });
+
+  it("lets a version 2 entry that follows a version 1 one in the same session win", () => {
+    const entries = [
+      recordEntry({ ...v1, status: "running", completedAt: undefined }),
+      recordEntry(persistedRecord({ id: "old-1", outcome: "completed", result: "resumed" })),
+    ];
+    expect(readPersistedRecords(entries)).toMatchObject([
+      { id: "old-1", status: "idle", outcome: "completed", result: "resumed" },
+    ]);
+  });
+
+  it("skips a version 1 entry with a status the old writer never wrote", () => {
+    expect(readPersistedRecords([recordEntry({ ...v1, status: "idle" })])).toEqual([]);
+    expect(readPersistedRecords([recordEntry({ ...v1, status: "toString" })])).toEqual([]);
   });
 });

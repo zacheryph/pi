@@ -19,7 +19,12 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import type { AgentConfigLookup } from "#src/config/agent-types";
-import { isRunningStatus, type SubagentStatus } from "#src/lifecycle/subagent-state";
+import {
+  displayStatus,
+  isRunningStatus,
+  type RunOutcome,
+  type SubagentStatus,
+} from "#src/lifecycle/subagent-state";
 import type { PersistedRunSummary } from "#src/persisted-record";
 import type { AgentSessionEvent, SessionMessage, SubagentType } from "#src/types";
 import { formatDuration, getDisplayName, type ModelIdentity } from "#src/ui/display";
@@ -32,6 +37,7 @@ export interface NavigableSubagent {
   readonly type: SubagentType;
   readonly description: string;
   readonly status: SubagentStatus;
+  readonly outcome: RunOutcome | undefined;
   readonly startedAt: number;
   readonly completedAt: number | undefined;
   readonly toolUses: number;
@@ -81,6 +87,7 @@ interface LabelFields {
   readonly type: SubagentType;
   readonly description: string;
   readonly status: SubagentStatus;
+  readonly outcome: RunOutcome | undefined;
   readonly startedAt: number;
   readonly completedAt: number | undefined;
   readonly toolUses: number;
@@ -223,5 +230,5 @@ function buildLabel(fields: LabelFields, registry: AgentConfigLookup, released =
   const name = getDisplayName(fields.type, registry);
   const duration = formatDuration(fields.startedAt, fields.completedAt);
   const marker = released ? " · session released (snapshot)" : "";
-  return `${name} (${fields.description}) · ${fields.toolUses} tools · ${fields.status} · ${duration}${marker}`;
+  return `${name} (${fields.description}) · ${fields.toolUses} tools · ${displayStatus(fields.status, fields.outcome)} · ${duration}${marker}`;
 }

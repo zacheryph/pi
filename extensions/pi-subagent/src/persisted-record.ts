@@ -10,14 +10,24 @@
  *
  * This module owns the entry's shape on both sides: the writer
  * (`SubagentEventsObserver`) builds it here, and readers fold it here.
+ *
+ * Two shapes exist. Version 1 (no `version` field) recorded one of six statuses:
+ * `queued`, `running`, `completed`, `aborted`, `stopped` or `error`. Version 2
+ * records the three-state `status` (`queued`, `running`, `idle`) and, for an idle
+ * agent, how its last run ended in `outcome`. The writer only writes version 2;
+ * the reader accepts both and returns every record in the version 2 shape (see
+ * `LEGACY_STATUS`), so nothing past this module knows version 1 existed.
  */
 
-import type { SubagentStatus } from "#src/lifecycle/subagent-state";
+import type { RunOutcome, SubagentStatus } from "#src/lifecycle/subagent-state";
 import type { TurnBudget } from "#src/lifecycle/turn-limits";
 import type { SubagentType, ThinkingLevel } from "#src/types";
 
 /** The `customType` every persisted run record is appended under. */
 export const SUBAGENT_RECORD_ENTRY = "subagent:record";
+
+/** The shape this module writes. Entries with no `version` field are version 1. */
+export const PERSISTED_RECORD_VERSION = 2;
 
 /**
  * What is appended at each lifecycle step.
@@ -26,10 +36,16 @@ export const SUBAGENT_RECORD_ENTRY = "subagent:record";
  * still validates, and a reader treats a missing one as unknown.
  */
 export interface PersistedSubagentRecord {
+  readonly version: typeof PERSISTED_RECORD_VERSION;
   readonly id: string;
   readonly type: SubagentType;
   readonly description: string;
   readonly status: SubagentStatus;
+  /**
+   * How the last run ended; present exactly when the status is `idle`. An agent
+   * whose run was cut short by a reload or restart reads back as `interrupted`.
+   */
+  readonly outcome: RunOutcome | undefined;
   readonly result: string | undefined;
   readonly error: string | undefined;
   readonly turnBudget: TurnBudget | undefined;
@@ -52,7 +68,15 @@ export interface PersistedSubagentRecord {
 /** The fields a reader validates and returns: what labels a past run and opens its transcript. */
 export type PersistedRunSummary = Pick<
   PersistedSubagentRecord,
-  "id" | "type" | "description" | "status" | "startedAt" | "completedAt" | "toolUses" | "outputFile"
+  | "id"
+  | "type"
+  | "description"
+  | "status"
+  | "outcome"
+  | "startedAt"
+  | "completedAt"
+  | "toolUses"
+  | "outputFile"
 >;
 
 /** The session-entry fields the reader inspects; Pi's `SessionEntry` satisfies it. */
@@ -66,7 +90,7 @@ export interface SessionEntryLike {
  * What the writer copies from. A `Subagent` satisfies it structurally; the
  * model arrives as an object and is stored as its `provider/id` label.
  */
-export interface PersistedRecordSource extends Omit<PersistedSubagentRecord, "model"> {
+export interface PersistedRecordSource extends Omit<PersistedSubagentRecord, "model" | "version"> {
   readonly model?: { readonly provider: string; readonly id: string } | undefined;
 }
 
@@ -77,10 +101,13 @@ export interface PersistedRecordSource extends Omit<PersistedSubagentRecord, "mo
  */
 export function toPersistedRecord(record: PersistedRecordSource): PersistedSubagentRecord {
   return {
+    version: PERSISTED_RECORD_VERSION,
     id: record.id,
     type: record.type,
     description: record.description,
     status: record.status,
+    // Only an idle agent has an outcome; a run in flight has not ended yet.
+    outcome: record.status === "idle" ? record.outcome : undefined,
     result: record.result,
     error: record.error,
     turnBudget: record.turnBudget,
@@ -118,11 +145,12 @@ export function readPersistedRecords(
 /** Read every persisted run's summary out of a session's entries, newest first. */
 export function readPersistedRuns(entries: readonly SessionEntryLike[]): PersistedRunSummary[] {
   return readPersistedRecords(entries).map(
-    ({ id, type, description, status, startedAt, completedAt, toolUses, outputFile }) => ({
+    ({ id, type, description, status, outcome, startedAt, completedAt, toolUses, outputFile }) => ({
       id,
       type,
       description,
       status,
+      outcome,
       startedAt,
       completedAt,
       toolUses,
@@ -134,11 +162,46 @@ export function readPersistedRuns(entries: readonly SessionEntryLike[]): Persist
 const SUBAGENT_STATUSES: ReadonlySet<string> = new Set<SubagentStatus>([
   "queued",
   "running",
-  "completed",
-  "aborted",
-  "stopped",
-  "error",
+  "idle",
 ]);
+
+const RUN_OUTCOMES: ReadonlySet<string> = new Set<RunOutcome>([
+  "completed",
+  "turn-limit",
+  "error",
+  "stopped",
+  "interrupted",
+]);
+
+/**
+ * How a version 1 status reads in version 2. A run that ended keeps how it
+ * ended; one still queued or running was cut short, because a reader only sees
+ * a version 1 record after the process that wrote it is gone.
+ */
+export const LEGACY_STATUS: Readonly<
+  Record<string, { status: SubagentStatus; outcome: RunOutcome }>
+> = {
+  completed: { status: "idle", outcome: "completed" },
+  aborted: { status: "idle", outcome: "turn-limit" },
+  error: { status: "idle", outcome: "error" },
+  stopped: { status: "idle", outcome: "stopped" },
+  queued: { status: "idle", outcome: "interrupted" },
+  running: { status: "idle", outcome: "interrupted" },
+};
+
+/** The status and outcome an entry records, in the version 2 shape, or undefined when invalid. */
+function readStatus(
+  fields: Record<string, unknown>,
+): { status: SubagentStatus; outcome: RunOutcome | undefined } | undefined {
+  const { version, status, outcome } = fields;
+  if (typeof status !== "string") return undefined;
+  if (version === undefined)
+    return Object.hasOwn(LEGACY_STATUS, status) ? LEGACY_STATUS[status] : undefined;
+  if (version !== PERSISTED_RECORD_VERSION || !SUBAGENT_STATUSES.has(status)) return undefined;
+  if (status !== "idle") return { status: status as SubagentStatus, outcome: undefined };
+  if (typeof outcome !== "string" || !RUN_OUTCOMES.has(outcome)) return undefined;
+  return { status: "idle", outcome: outcome as RunOutcome };
+}
 
 const OPTIONAL_STRINGS = [
   "result",
@@ -158,10 +221,11 @@ const orUndefined = <T>(value: T | null | undefined): T | undefined => value ?? 
 function asRecord(data: unknown): PersistedSubagentRecord | undefined {
   if (typeof data !== "object" || data === null) return undefined;
   const fields = data as Record<string, unknown>;
-  const { id, type, description, status, startedAt, toolUses } = fields;
+  const { id, type, description, startedAt, toolUses } = fields;
   if (typeof id !== "string" || typeof type !== "string" || typeof description !== "string")
     return undefined;
-  if (typeof status !== "string" || !SUBAGENT_STATUSES.has(status)) return undefined;
+  const state = readStatus(fields);
+  if (!state) return undefined;
   if (typeof startedAt !== "number" || typeof toolUses !== "number") return undefined;
   if (!OPTIONAL_STRINGS.every((key) => isOptional(fields[key], "string"))) return undefined;
   if (!OPTIONAL_NUMBERS.every((key) => isOptional(fields[key], "number"))) return undefined;
@@ -173,7 +237,8 @@ function asRecord(data: unknown): PersistedSubagentRecord | undefined {
       id,
       type,
       description,
-      status: status as SubagentStatus,
+      status: state.status,
+      outcome: state.outcome,
       result: optional<string>("result"),
       error: optional<string>("error"),
       turnBudget: optional<TurnBudget>("turnBudget"),

@@ -22,25 +22,77 @@ import type { TurnBudget } from "#src/lifecycle/turn-limits";
 import type { LifetimeUsage } from "#src/lifecycle/usage";
 import { addUsage } from "#src/lifecycle/usage";
 
-export type SubagentStatus = "queued" | "running" | "completed" | "aborted" | "stopped" | "error";
+/**
+ * Where an agent stands. `queued` is a run waiting for a concurrency slot, the
+ * first run or a later one alike; `running` is a run in flight; `idle` is no
+ * run at all, whatever the last one produced (see `RunOutcome`).
+ */
+export type SubagentStatus = "queued" | "running" | "idle";
+
+/**
+ * How the last run ended. Stored beside the status of an idle agent, and
+ * undefined while a run is queued or running.
+ *
+ * `turn-limit` is the harness ending a run at its turn limit, and `interrupted`
+ * a run that a reload or restart cut short: a record read back from storage
+ * that still said queued or running.
+ */
+export type RunOutcome = "completed" | "turn-limit" | "error" | "stopped" | "interrupted";
+
+/**
+ * The six-word vocabulary users and subscribers have always seen for an agent:
+ * tool output, the widget, the completion message and the lifecycle events say
+ * `completed`, `aborted`, `stopped` or `error`, not "idle with an outcome".
+ * Derived from status and outcome by `displayStatus`, and kept as the
+ * wire/label vocabulary until the idle/done presentation replaces it.
+ */
+export type DisplayStatus = "queued" | "running" | "completed" | "aborted" | "stopped" | "error";
+
+/**
+ * The label for a status and the outcome beside it. An interrupted run reads as
+ * `stopped`, as it always has once its record is rebuilt after a reload.
+ */
+export function displayStatus(
+  status: SubagentStatus,
+  outcome: RunOutcome | undefined,
+): DisplayStatus {
+  if (status !== "idle") return status;
+  switch (outcome) {
+    case "completed":
+      return "completed";
+    case "turn-limit":
+      return "aborted";
+    case "error":
+      return "error";
+    case "stopped":
+    case "interrupted":
+    case undefined:
+      return "stopped";
+  }
+}
 
 // ---- Status classification predicates ----
 // The single decision point for the re-derived status groupings. Instance
-// methods on SubagentState delegate here; DTO consumers holding a bare
-// SubagentStatus (no SubagentState instance) call these directly.
+// methods on SubagentState delegate here; DTO consumers holding a bare status
+// or display label (no SubagentState instance) call these directly.
 
-/** Running or queued — the agent is still live (started or awaiting a slot). */
-export function isActiveStatus(status: SubagentStatus): boolean {
+/** Running or queued — the agent has a run in flight or waiting for a slot. */
+export function isActiveStatus(status: SubagentStatus | DisplayStatus): boolean {
   return status === "running" || status === "queued";
 }
 
-/** Terminated by error, harness turn-limit abort, or external stop. */
-export function isTerminalErrorStatus(status: SubagentStatus): boolean {
+/** A display label for a run that ended in error, harness turn-limit abort, or a stop. */
+export function isTerminalErrorStatus(status: SubagentStatus | DisplayStatus): boolean {
   return status === "error" || status === "stopped" || status === "aborted";
 }
 
+/** A run that did not end in `completed`. */
+export function isFailureOutcome(outcome: RunOutcome | undefined): boolean {
+  return outcome !== undefined && outcome !== "completed";
+}
+
 /** Actively running (excludes queued). */
-export function isRunningStatus(status: SubagentStatus): boolean {
+export function isRunningStatus(status: SubagentStatus | DisplayStatus): boolean {
   return status === "running";
 }
 
@@ -52,6 +104,11 @@ interface RunUpdate {
 
 export interface SubagentStateInit {
   status?: SubagentStatus;
+  /**
+   * How the last run ended. Read only for an idle agent, where it defaults to
+   * `completed`: an idle agent has always finished a run.
+   */
+  outcome?: RunOutcome;
   result?: string;
   /** The question the agent ended its turn with — an outcome fact, like result. */
   pendingQuestion?: string;
@@ -78,6 +135,17 @@ export class SubagentState {
   private _status: SubagentStatus;
   get status(): SubagentStatus {
     return this._status;
+  }
+
+  // How the last run ended; defined exactly while the agent is idle.
+  private _outcome?: RunOutcome;
+  get outcome(): RunOutcome | undefined {
+    return this._outcome;
+  }
+
+  /** The label users see for this status and outcome. */
+  get displayStatus(): DisplayStatus {
+    return displayStatus(this._status, this._outcome);
   }
 
   private _result?: string;
@@ -127,7 +195,7 @@ export class SubagentState {
 
   // The run's turn budget, live: the turn loop reports it before the first turn
   // and after each boundary, so the last report is already the outcome's. Part
-  // of the outcome like _result, and cleared where a run begins (resetForResume).
+  // of the outcome like _result, and cleared where a run begins (markQueued).
   private _turnBudget?: TurnBudget;
   get turnBudget(): TurnBudget | undefined {
     return this._turnBudget;
@@ -176,6 +244,7 @@ export class SubagentState {
 
   constructor(init: SubagentStateInit = {}) {
     this._status = init.status ?? "queued";
+    this._outcome = this._status === "idle" ? (init.outcome ?? "completed") : undefined;
     this._result = init.result;
     this._pendingQuestion = init.pendingQuestion;
     this._turnBudget = init.turnBudget;
@@ -196,14 +265,14 @@ export class SubagentState {
     }
   }
 
-  /** Running or queued — still live. */
+  /** Running or queued — a run is in flight or waiting for a slot. */
   isActive(): boolean {
     return isActiveStatus(this._status);
   }
 
-  /** Terminated by error, harness turn-limit abort, or external stop. */
+  /** The last run ended in error, at the harness turn limit, by a stop or by an interruption. */
   isTerminalError(): boolean {
-    return isTerminalErrorStatus(this._status);
+    return isFailureOutcome(this._outcome);
   }
 
   /** Actively running (excludes queued). */
@@ -256,10 +325,31 @@ export class SubagentState {
     this._responseText += delta;
   }
 
-  /** Transition to running state. Sets status and startedAt. */
+  /** A run begins. Sets status and startedAt; the previous outcome no longer applies. */
   markRunning(startedAt: number): void {
     this._status = "running";
+    this._outcome = undefined;
     this._startedAt = startedAt;
+    this._runUpdates.length = 0;
+  }
+
+  /**
+   * A later run asks for a slot: queued again, and the run it replaces is
+   * forgotten. Everything a finished run left on the record (its result, error,
+   * question, turn budget, read time and end time) belongs to that run, so it
+   * clears here, and the record reads like a first run waiting for its slot.
+   */
+  markQueued(startedAt: number): void {
+    this._status = "queued";
+    this._outcome = undefined;
+    this._stoppedWhileQueued = false;
+    this._startedAt = startedAt;
+    this._completedAt = undefined;
+    this._result = undefined;
+    this._error = undefined;
+    this._consumedAt = undefined;
+    this._turnBudget = undefined;
+    this._pendingQuestion = undefined;
     this._runUpdates.length = 0;
   }
 
@@ -284,39 +374,33 @@ export class SubagentState {
   }
 
   /**
-   * Transition to completed state.
-   * Always sets result and completedAt (??=). Only changes status if not stopped.
+   * The run ended: idle, with how it ended. Always sets completedAt (??=). A
+   * stop already ended the run and left the agent idle, so a run winding down
+   * after one keeps the outcome `stopped`.
    */
+  private endRun(outcome: RunOutcome, completedAt?: number): void {
+    this._completedAt ??= completedAt ?? Date.now();
+    if (this._status === "idle") return;
+    this._status = "idle";
+    this._outcome = outcome;
+  }
+
+  /** The run finished. Always sets result; the outcome is `completed` unless a stop came first. */
   markCompleted(result: string, completedAt?: number): void {
     this._result = result;
-    this._completedAt ??= completedAt ?? Date.now();
-    if (this._status !== "stopped") {
-      this._status = "completed";
-    }
+    this.endRun("completed", completedAt);
   }
 
-  /**
-   * Transition to aborted state.
-   * Always sets result and completedAt (??=). Only changes status if not stopped.
-   */
-  markAborted(result: string, completedAt?: number): void {
+  /** The harness ended the run at its turn limit. Always sets result. */
+  markTurnLimit(result: string, completedAt?: number): void {
     this._result = result;
-    this._completedAt ??= completedAt ?? Date.now();
-    if (this._status !== "stopped") {
-      this._status = "aborted";
-    }
+    this.endRun("turn-limit", completedAt);
   }
 
-  /**
-   * Transition to error state.
-   * Always sets error (formatted) and completedAt (??=). Only changes status if not stopped.
-   */
+  /** The run failed. Always sets error (formatted). */
   markError(error: unknown, completedAt?: number): void {
     this._error = error instanceof Error ? error.message : String(error);
-    this._completedAt ??= completedAt ?? Date.now();
-    if (this._status !== "stopped") {
-      this._status = "error";
-    }
+    this.endRun("error", completedAt);
   }
 
   /**
@@ -332,9 +416,10 @@ export class SubagentState {
     this._pendingQuestion = question;
   }
 
-  /** Transition to stopped state. Always valid — no guard. */
+  /** Stop the run: idle with outcome `stopped`. Always valid — no guard. */
   markStopped(completedAt?: number): void {
-    this._status = "stopped";
+    this._status = "idle";
+    this._outcome = "stopped";
     this._completedAt = completedAt ?? Date.now();
   }
 
@@ -346,24 +431,5 @@ export class SubagentState {
   stopQueued(completedAt?: number): void {
     if (this._status === "queued") this._stoppedWhileQueued = true;
     this.markStopped(completedAt);
-  }
-
-  /**
-   * Reset for resume: running status, new startedAt, clear
-   * completedAt/result/error/consumedAt/turnBudget.
-   */
-  resetForResume(startedAt: number): void {
-    this._status = "running";
-    this._startedAt = startedAt;
-    this._completedAt = undefined;
-    this._result = undefined;
-    this._error = undefined;
-    this._consumedAt = undefined;
-    this._turnBudget = undefined;
-    // A resumed run answers the old question; whether it asks a new one is
-    // decided when it terminates.
-    this._pendingQuestion = undefined;
-    // The updates belong to the run that produced them, and this starts another.
-    this._runUpdates.length = 0;
   }
 }

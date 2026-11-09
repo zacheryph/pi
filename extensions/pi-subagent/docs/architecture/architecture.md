@@ -144,6 +144,8 @@ classDiagram
         -state: SubagentState
         -execution: SubagentExecution
         +status: SubagentStatus
+        +outcome?: RunOutcome
+        +displayStatus: DisplayStatus
         +result?: string
         +error?: string
         +toolUses: number
@@ -174,6 +176,7 @@ classDiagram
 
     class SubagentState {
         +status: SubagentStatus
+        +outcome?: RunOutcome
         +result?: string
         +error?: string
         +startedAt: number
@@ -182,7 +185,7 @@ classDiagram
         +lifetimeUsage: LifetimeUsage
         +compactionCount: number
         +markRunning() ... markStopped()
-        +resetForResume()
+        +markQueued()
         +incrementToolUses()
         +addUsage(delta)
         +incrementCompactions()
@@ -194,6 +197,7 @@ classDiagram
 
     class SubagentExecution {
         +createSubagentSession(params)
+        +admit?: Admission
         +snapshot: ParentSnapshot
         +prompt: string
         +observer?: SubagentLifecycleObserver
@@ -238,37 +242,51 @@ classDiagram
 ```mermaid
 stateDiagram-v2
     [*] --> queued : spawn
-    queued --> running : capacity available (or a bypassQueue spawn, at once)
-    queued --> stopped : stopQueued() — never started
-    running --> completed : agent finished, including after the turn-budget warning
-    running --> error : unhandled exception
-    running --> aborted : harness stop at the turn ceiling
-    running --> stopped : abort() called
-    completed --> running : resetForResume
-    stopped --> running : resetForResume
-    error --> running : resetForResume
-    aborted --> running : resetForResume
-    completed --> [*]
-    error --> [*]
-    aborted --> [*]
-    stopped --> [*]
+    queued --> running : slot granted (or a bypassQueue spawn, at once)
+    queued --> idle : stopQueued() — outcome stopped, never started
+    running --> idle : run ended — outcome completed, turn-limit or error
+    running --> idle : abort() — outcome stopped
+    idle --> queued : resume (every run goes through the limiter)
+    idle --> [*]
 
-    note right of running
-        markCompleted, markAborted,
-        and markError
-        are no-ops when status is stopped
+    note right of idle
+        the last run's outcome is stored beside the status:
+        completed, turn-limit, error, stopped or interrupted
+        a run winding down after abort() keeps outcome stopped
     end note
 ```
+
+An agent is `queued` while a run waits for a concurrency slot (the first run and every resume alike), `running` while a run is active, and `idle` when it has no run.
+How the last run ended is its `outcome`, recorded beside the status together with the run's `result` and `error`: `completed`, `turn-limit` (the harness stopped it at the turn ceiling), `error`, `stopped` (an `abort()`), or `interrupted` (a record read back from storage that still said queued or running).
+An idle agent of any outcome accepts a new run; a stop ends the run and cancels nothing else.
+
+The status and outcome are the model; the words users and subscribers see are derived from them by `displayStatus` in `subagent-state.ts`: `completed`, `aborted` (outcome `turn-limit`), `stopped` (`stopped` and `interrupted`), `error`, or the status itself while queued or running.
+Tool output, the widget, the watch overlay, the completion message and its details, and the `status` field of the lifecycle events still use these six words.
+They are a bridge: the idle/done presentation replaces them in the steps after this one.
 
 A steer (`subagent_steer`) redirects a running agent and changes no status.
 The turn budget is not a status either: it is the live `turnBudget` (`{ used, maxTurns, phase }`) the turn loop reports to the record before the first turn and after each turn boundary.
 A `TurnBudgetTracker` (`turn-limits.ts`) counts successful turns and decides when `SubagentSession` warns the child (a context-only custom message once `wrapUpTurns` turns remain, which forces no turn) and when it stops the run (after a ceiling turn that ran tools, or as a turn starts past the ceiling).
-`phase` is `warned` once the warning went out and `exhausted` when the harness stopped the run: the one case a run or resume that returned ends `aborted`.
+`phase` is `warned` once the warning went out and `exhausted` when the harness stopped the run: the one case a run or resume that returned ends with outcome `turn-limit`.
 A resume runs a fresh tracker under the initial run's limits.
 
 Note: `markStopped` always succeeds regardless of current status.
-Other terminal transitions guard against overwriting `stopped` — once an agent is stopped, only `resetForResume` can return it to `running`.
-`stopQueued` composes `markStopped` with a never-started marker and, like `completeRun`/`failRun`, notifies the lifecycle observer — so a queued stop publishes the same events, session entry, and nudge a running stop does.
+`markCompleted`, `markTurnLimit` and `markError` still record their result or error after a stop but keep the outcome `stopped`.
+A run that a later one has replaced (stopped, then the agent took new input while the old run wound down) reports nothing and changes nothing: the record belongs to the later run.
+`stopQueued` composes `markStopped` with a never-started marker and notifies the lifecycle observer — so a queued stop, a queued resume's included, publishes the same events, session entry, and nudge a running stop does.
+
+### Every run goes through the limiter
+
+A resume is admitted exactly like a first run.
+`Subagent.resume` queues the record at once (`markQueued`: status `queued`, the earlier run's result, error, question and turn budget cleared) and hands the run to `SubagentExecution.admit`, which the manager binds to the `ConcurrencyLimiter`.
+With a free slot the run begins synchronously, so a resume looks as it did when it skipped the limiter, and no extra event is sent.
+With every slot taken the resume waits: `onResumeQueued` fires (the session record is saved as `queued`, the widget counts it, and the `subagent_start` call says "Agent resume queued in background" with the queue position), and `onResumeStarted` (the `subagent:resuming` event) follows when the slot opens.
+Stopping a queued resume leaves the agent idle with outcome `stopped`; its place in the limiter's queue is spent harmlessly, because a run only begins if it is still the current one.
+
+`bypassQueue` is a spawn option for the first run only: it starts that run at once without taking a slot.
+A resume of such an agent still goes through the limiter.
+Nothing in production sets it today (the cross-extension RPC it served was removed); only tests do.
+Admitting resumes cannot deadlock nested delegation: a run holds its slot only while its own turn loop runs and never waits on another agent's slot, since no call blocks on a subagent, and a child session's extensions have a limiter of their own.
 
 ## Execution flow
 

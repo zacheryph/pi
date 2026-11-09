@@ -21,7 +21,7 @@
  */
 
 import type { ResumeRefusal } from "#src/lifecycle/subagent";
-import type { SubagentStatus } from "#src/lifecycle/subagent-state";
+import type { DisplayStatus } from "#src/lifecycle/subagent-state";
 import { type TurnBudget, wrappedUpAtTurnLimit } from "#src/lifecycle/turn-limits";
 
 /**
@@ -40,7 +40,7 @@ interface StatusMeaning {
   detail: string;
 }
 
-const STATUS_MEANINGS: Partial<Record<SubagentStatus, StatusMeaning>> = {
+const STATUS_MEANINGS: Partial<Record<DisplayStatus, StatusMeaning>> = {
   aborted: { label: "Aborted", detail: "turn limit reached, output may be incomplete" },
   // "user request" rather than "stopped by user": the detail must stand on its
   // own after the label, which both presentations already supply.
@@ -55,7 +55,7 @@ const WRAPPED_UP: StatusMeaning = { label: "Wrapped up", detail: "after turn-bud
  * label names, and the budget that qualifies a completed run.
  */
 export interface StatusOutcome {
-  status: SubagentStatus;
+  status: DisplayStatus;
   error?: string;
   turnBudget?: TurnBudget;
 }
@@ -122,7 +122,7 @@ export function renderStatusNote(outcome: StatusOutcome): string {
  * caller cannot come to depend on fields this module does not use.
  */
 export interface OutcomeBody {
-  status: SubagentStatus;
+  status: DisplayStatus;
   result: string | undefined;
   error: string | undefined;
   /** Whether the agent was stopped before the limiter ever admitted it. */

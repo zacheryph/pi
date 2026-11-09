@@ -10,12 +10,19 @@ import {
   type TurnLoopOptions,
   type TurnLoopResult,
 } from "#src/lifecycle/subagent-session";
-import { SubagentState, type SubagentStateInit } from "#src/lifecycle/subagent-state";
+import type { Admission } from "#src/lifecycle/run";
+import {
+  type DisplayStatus,
+  type RunOutcome,
+  SubagentState,
+  type SubagentStateInit,
+  type SubagentStatus,
+} from "#src/lifecycle/subagent-state";
 import type { TurnBudget } from "#src/lifecycle/turn-limits";
 import type { RunConfig } from "#src/runtime";
 import type { CompactionInfo, SubagentType } from "#src/types";
 import { makeModel } from "#test/helpers/make-model";
-import { createTestSubagent, makeStubExecution } from "#test/helpers/make-subagent";
+import { createTestSubagent, makeStubExecution, stateForLabel } from "#test/helpers/make-subagent";
 import {
   createMockSession,
   createSubagentSessionStub,
@@ -47,7 +54,9 @@ function defaultFactory(): SessionFactory {
   return createFactory().factory;
 }
 
-interface MakeSubagentOptions extends SubagentStateInit {
+interface MakeSubagentOptions extends Omit<SubagentStateInit, "status"> {
+  /** A status, or one of today's display labels standing for a status and outcome. */
+  status?: SubagentStatus | DisplayStatus;
   id?: string;
   type?: SubagentType;
   description?: string;
@@ -61,7 +70,11 @@ interface MakeSubagentOptions extends SubagentStateInit {
 
 /** Construct a Subagent with default identity and a stub execution, overridable per test. */
 function makeSubagent(overrides: MakeSubagentOptions = {}): Subagent {
-  const { id, type, description, execution, state, ...stateOverrides } = overrides;
+  const { id, type, description, execution, state, status, ...rest } = overrides;
+  const stateOverrides: SubagentStateInit = {
+    ...rest,
+    ...(status === undefined ? {} : status === "idle" ? { status } : stateForLabel(status)),
+  };
   return new Subagent({
     id: id ?? "1",
     type: type ?? "general-purpose",
@@ -183,7 +196,7 @@ describe("convenience getters", () => {
     });
 
     it("markConsumed delegates to SubagentState", () => {
-      const state = new SubagentState({ status: "completed" });
+      const state = new SubagentState({ status: "idle" });
       const record = makeSubagent({ state });
       record.markConsumed(5000);
       expect(record.consumed).toBe(true);
@@ -345,13 +358,15 @@ describe("Subagent — abort", () => {
     const record = makeSubagent({ status: "running" });
     expect(record.abort()).toBe(true);
     expect(record.abortController.signal.aborted).toBe(true);
-    expect(record.status).toBe("stopped");
+    expect(record.status).toBe("idle");
+    expect(record.outcome).toBe("stopped");
   });
 
   it("marks stopped and returns true even without an AbortController", () => {
     const record = makeSubagent({ status: "running" });
     expect(record.abort()).toBe(true);
-    expect(record.status).toBe("stopped");
+    expect(record.status).toBe("idle");
+    expect(record.outcome).toBe("stopped");
   });
 
   it("returns false when already stopped", () => {
@@ -381,19 +396,22 @@ async function runTo(
 describe("Subagent.run() — terminal transitions", () => {
   it("transitions to completed for a normal result", async () => {
     const record = await runTo(turnLoopResult());
-    expect(record.status).toBe("completed");
+    expect(record.status).toBe("idle");
+    expect(record.outcome).toBe("completed");
     expect(record.result).toBe("done");
   });
 
   it("transitions to aborted, a terminal error, when the harness exhausted the turn budget", async () => {
     const record = await runTo(turnLoopResult({ turnBudget: EXHAUSTED }));
-    expect(record.status).toBe("aborted");
+    expect(record.status).toBe("idle");
+    expect(record.outcome).toBe("turn-limit");
     expect(record.isTerminalError()).toBe(true);
   });
 
   it("transitions to completed, not a terminal error, when the run wrapped up at its turn limit", async () => {
     const record = await runTo(turnLoopResult({ turnBudget: WARNED }));
-    expect(record.status).toBe("completed");
+    expect(record.status).toBe("idle");
+    expect(record.outcome).toBe("completed");
     expect(record.isTerminalError()).toBe(false);
   });
 
@@ -410,7 +428,8 @@ describe("Subagent — abort while queued", () => {
   it("transitions to stopped and records that the agent never started", () => {
     const record = makeSubagent({ status: "queued" });
     expect(record.abort()).toBe(true);
-    expect(record.status).toBe("stopped");
+    expect(record.status).toBe("idle");
+    expect(record.outcome).toBe("stopped");
     expect(record.stoppedWhileQueued).toBe(true);
   });
 
@@ -427,7 +446,8 @@ describe("Subagent — abort while queued", () => {
   it("leaves stoppedWhileQueued false for a running agent aborted mid-run", () => {
     const record = makeSubagent({ status: "running" });
     expect(record.abort()).toBe(true);
-    expect(record.status).toBe("stopped");
+    expect(record.status).toBe("idle");
+    expect(record.outcome).toBe("stopped");
     expect(record.stoppedWhileQueued).toBe(false);
   });
 });
@@ -656,7 +676,8 @@ describe("Subagent.run() — happy path", () => {
   it("transitions through running → completed", async () => {
     const agent = createRunnableAgent();
     await agent.run();
-    expect(agent.status).toBe("completed");
+    expect(agent.status).toBe("idle");
+    expect(agent.outcome).toBe("completed");
     expect(agent.result).toBe("done");
   });
 
@@ -764,7 +785,8 @@ describe("Subagent.run() — error handling", () => {
     stub.runTurnLoop.mockRejectedValue(new Error("turn loop exploded"));
     const agent = createRunnableAgent({ createSubagentSession: factory });
     await agent.run();
-    expect(agent.status).toBe("error");
+    expect(agent.status).toBe("idle");
+    expect(agent.outcome).toBe("error");
     expect(agent.error).toBe("turn loop exploded");
   });
 
@@ -772,7 +794,8 @@ describe("Subagent.run() — error handling", () => {
     const factory: SessionFactory = vi.fn().mockRejectedValue(new Error("creation failed"));
     const agent = createRunnableAgent({ createSubagentSession: factory });
     await agent.run();
-    expect(agent.status).toBe("error");
+    expect(agent.status).toBe("idle");
+    expect(agent.outcome).toBe("error");
     expect(agent.error).toBe("creation failed");
   });
 });
@@ -942,7 +965,8 @@ describe("Subagent.start() — promise encapsulation", () => {
     agent.start();
     expect(agent.promise).toBeInstanceOf(Promise);
     await agent.promise;
-    expect(agent.status).toBe("completed");
+    expect(agent.status).toBe("idle");
+    expect(agent.outcome).toBe("completed");
   });
 
   it("promise is undefined before start() is called", () => {
@@ -954,7 +978,8 @@ describe("Subagent.start() — promise encapsulation", () => {
     const agent = makeSubagent({ status: "stopped", startedAt: 1, completedAt: 1 });
     agent.start();
     await expect(agent.promise).resolves.toBeUndefined();
-    expect(agent.status).toBe("stopped");
+    expect(agent.status).toBe("idle");
+    expect(agent.outcome).toBe("stopped");
   });
 
   it("is a no-op when status is completed", async () => {
@@ -966,7 +991,8 @@ describe("Subagent.start() — promise encapsulation", () => {
     });
     agent.start();
     await expect(agent.promise).resolves.toBeUndefined();
-    expect(agent.status).toBe("completed");
+    expect(agent.status).toBe("idle");
+    expect(agent.outcome).toBe("completed");
   });
 });
 
@@ -983,7 +1009,8 @@ describe("Subagent.scheduleVia() — eager promise capture", () => {
     expect(agent.status).toBe("queued");
     openSlot();
     await agent.promise;
-    expect(agent.status).toBe("completed");
+    expect(agent.status).toBe("idle");
+    expect(agent.outcome).toBe("completed");
   });
 
   it("runs guardedRun as the thunk — abort-while-queued is a no-op", async () => {
@@ -997,7 +1024,8 @@ describe("Subagent.scheduleVia() — eager promise capture", () => {
     });
     await agent.promise;
     expect(thunkRan).toBe(true);
-    expect(agent.status).toBe("stopped");
+    expect(agent.status).toBe("idle");
+    expect(agent.outcome).toBe("stopped");
   });
 });
 
@@ -1082,7 +1110,8 @@ describe("Subagent — ask-back", () => {
 
     await agent.run();
 
-    expect(agent.status).toBe("error");
+    expect(agent.status).toBe("idle");
+    expect(agent.outcome).toBe("error");
     expect(agent.pendingQuestion).toBeUndefined();
   });
 
@@ -1097,7 +1126,8 @@ describe("Subagent — ask-back", () => {
 
     await agent.resume("continue");
 
-    expect(agent.status).toBe("error");
+    expect(agent.status).toBe("idle");
+    expect(agent.outcome).toBe("error");
     expect(agent.pendingQuestion).toBeUndefined();
   });
 
@@ -1127,7 +1157,8 @@ describe("Subagent — ask-back", () => {
       turnBudget: EXHAUSTED,
     });
 
-    expect(agent.status).toBe("aborted");
+    expect(agent.status).toBe("idle");
+    expect(agent.outcome).toBe("turn-limit");
     expect(agent.pendingQuestion).toBe("Still stuck on which?");
   });
 
@@ -1144,7 +1175,8 @@ describe("Subagent — ask-back", () => {
       "The project one.",
       expect.objectContaining({ signal: agent.abortController.signal }),
     );
-    expect(agent.status).toBe("completed");
+    expect(agent.status).toBe("idle");
+    expect(agent.outcome).toBe("completed");
     expect(agent.result).toBe("Used the project config. Done.");
     // The question was answered, so it no longer stands.
     expect(agent.pendingQuestion).toBeUndefined();
@@ -1168,7 +1200,8 @@ describe("Subagent.resume() — happy path", () => {
   it("transitions to completed and sets result from the resume response", async () => {
     const { agent } = createResumableAgent();
     await agent.resume("continue");
-    expect(agent.status).toBe("completed");
+    expect(agent.status).toBe("idle");
+    expect(agent.outcome).toBe("completed");
     expect(agent.result).toBe("resumed");
   });
 
@@ -1216,7 +1249,8 @@ describe("Subagent.resume() — turn budget", () => {
       turnLoopResult({ responseText: "partial", turnBudget: EXHAUSTED }),
     );
     await agent.resume("continue");
-    expect(agent.status).toBe("aborted");
+    expect(agent.status).toBe("idle");
+    expect(agent.outcome).toBe("turn-limit");
     expect(agent.result).toBe("partial");
     expect(onResumeFinished).toHaveBeenCalledOnce();
   });
@@ -1256,7 +1290,8 @@ describe("Subagent.resume() — cancellation", () => {
 
     expect(loop.abortedAtEntry).toBe(false);
     expect(loop.signalled).toBe(true);
-    expect(agent.status).toBe("stopped");
+    expect(agent.status).toBe("idle");
+    expect(agent.outcome).toBe("stopped");
   });
 
   it("a caller signal cancels through the record, which reads stopped", async () => {
@@ -1269,7 +1304,8 @@ describe("Subagent.resume() — cancellation", () => {
     await resumed;
 
     expect(loop.signalled).toBe(true);
-    expect(agent.status).toBe("stopped");
+    expect(agent.status).toBe("idle");
+    expect(agent.outcome).toBe("stopped");
   });
 
   it("gives a resume that follows an aborted run a lever that is not already spent", async () => {
@@ -1349,7 +1385,8 @@ describe("Subagent.resume() — observer lifecycle", () => {
     // After the rewind, not before it: a subscriber reading the record must see
     // the run that just started, not the outcome of the one it replaced.
     expect(seen).toEqual([{ status: "running", completedAt: undefined }]);
-    expect(agent.status).toBe("completed");
+    expect(agent.status).toBe("idle");
+    expect(agent.outcome).toBe("completed");
   });
 
   it("fires observer.onResumeStarted even when the resumed run fails", async () => {
@@ -1368,7 +1405,8 @@ describe("Subagent.resume() — observer lifecycle", () => {
     const { agent } = createResumableAgent({ observer: { onResumeFinished } });
     await agent.resume("continue");
     expect(onResumeFinished).toHaveBeenCalledExactlyOnceWith(agent);
-    expect(agent.status).toBe("completed");
+    expect(agent.status).toBe("idle");
+    expect(agent.outcome).toBe("completed");
   });
 
   it("fires observer.onResumeFinished when the resume errors", async () => {
@@ -1378,7 +1416,8 @@ describe("Subagent.resume() — observer lifecycle", () => {
     const { agent } = createResumableAgent({ observer: { onResumeFinished }, stub });
     await agent.resume("continue");
     expect(onResumeFinished).toHaveBeenCalledExactlyOnceWith(agent);
-    expect(agent.status).toBe("error");
+    expect(agent.status).toBe("idle");
+    expect(agent.outcome).toBe("error");
   });
 });
 
@@ -1437,7 +1476,8 @@ describe("Subagent — provider failures reach the record", () => {
 
     await agent.run();
 
-    expect(agent.status).toBe("error");
+    expect(agent.status).toBe("idle");
+    expect(agent.outcome).toBe("error");
     expect(agent.error).toBe("429 rate limit exceeded");
     expect(agent.result).toBeUndefined();
   });
@@ -1455,7 +1495,8 @@ describe("Subagent — provider failures reach the record", () => {
 
     await agent.run();
 
-    expect(agent.status).toBe("completed");
+    expect(agent.status).toBe("idle");
+    expect(agent.outcome).toBe("completed");
     expect(agent.result).toBe("the answer");
     expect(agent.error).toBeUndefined();
   });
@@ -1487,7 +1528,8 @@ describe("Subagent — provider failures reach the record", () => {
 
     await agent.run();
 
-    expect(agent.status).toBe("error");
+    expect(agent.status).toBe("idle");
+    expect(agent.outcome).toBe("error");
     expect(agent.error).toBe("prompt is too long: 210000 tokens > 200000 maximum");
     expect(agent.result).toBeUndefined();
   });
@@ -1524,11 +1566,13 @@ describe("Subagent — provider failures reach the record", () => {
     const agent = createRunnableAgent({ createSubagentSession: realSessionFactory(session) });
 
     await agent.run();
-    expect(agent.status).toBe("completed");
+    expect(agent.status).toBe("idle");
+    expect(agent.outcome).toBe("completed");
 
     await agent.resume("and now the other half");
 
-    expect(agent.status).toBe("error");
+    expect(agent.status).toBe("idle");
+    expect(agent.outcome).toBe("error");
     expect(agent.error).toBe("503 upstream unavailable");
     expect(agent.result).toBeUndefined();
   });
@@ -1540,7 +1584,8 @@ describe("Subagent.resume() — error handling", () => {
     stub.resumeTurnLoop.mockRejectedValue(new Error("resume exploded"));
     const { agent } = createResumableAgent({ stub });
     await agent.resume("more");
-    expect(agent.status).toBe("error");
+    expect(agent.status).toBe("idle");
+    expect(agent.outcome).toBe("error");
     expect(agent.error).toBe("resume exploded");
   });
 
@@ -1577,7 +1622,227 @@ describe("Subagent.resume() — awaitable handle", () => {
 
     finishResume(turnLoopResult({ responseText: "resumed late" }));
     await returned;
-    expect(agent.status).toBe("completed");
+    expect(agent.status).toBe("idle");
+    expect(agent.outcome).toBe("completed");
     expect(agent.result).toBe("resumed late");
+  });
+});
+
+// ── Agent.resume() — admission (roadmap step 7a) ──────────────────────────────
+
+describe("Subagent.resume() — admission", () => {
+  /** An admission that holds each run until the test opens its slot. */
+  function heldAdmission() {
+    const waiting: Array<() => void> = [];
+    const admit: Admission = (begin) =>
+      new Promise<void>((resolve) => {
+        waiting.push(() => void begin().then(resolve));
+      });
+    return { admit, waiting, open: (index = 0) => waiting[index]() };
+  }
+
+  /** A resumable agent whose resumes are admitted by `admit`. */
+  function admittedAgent(admit: Admission | undefined, state?: SubagentState) {
+    const observer = {
+      onResumeQueued: vi.fn(),
+      onResumeStarted: vi.fn(),
+      onResumeFinished: vi.fn(),
+    };
+    const stub = createSubagentSessionStub();
+    stub.resumeTurnLoop.mockResolvedValue(turnLoopResult({ responseText: "resumed" }));
+    const agent = makeSubagent({
+      id: "admitted-1",
+      execution: makeStubExecution({ observer, admit }),
+      state: state ?? new SubagentState({ status: "idle", outcome: "completed", result: "first" }),
+    });
+    agent.subagentSession = toSubagentSession(stub);
+    return { agent, stub, observer };
+  }
+
+  it("hands the resume to the admission, which defers its start", async () => {
+    const held = heldAdmission();
+    const { agent, stub, observer } = admittedAgent(held.admit);
+
+    const resumed = agent.resume("go");
+
+    // Queued like a first run waiting for its slot: nothing of the earlier run is left.
+    expect(agent.status).toBe("queued");
+    expect(agent.outcome).toBeUndefined();
+    expect(agent.result).toBeUndefined();
+    expect(observer.onResumeQueued).toHaveBeenCalledTimes(1);
+    expect(observer.onResumeStarted).not.toHaveBeenCalled();
+    expect(stub.resumeTurnLoop).not.toHaveBeenCalled();
+    // Another resume must not join the one already waiting.
+    expect(agent.resumeRefusal).toBe("still-running");
+
+    held.open();
+    await resumed;
+
+    expect(observer.onResumeStarted).toHaveBeenCalledTimes(1);
+    expect(observer.onResumeFinished).toHaveBeenCalledTimes(1);
+    expect(agent.status).toBe("idle");
+    expect(agent.outcome).toBe("completed");
+    expect(agent.result).toBe("resumed");
+  });
+
+  it("does not announce a queue when the admission grants the slot at once", async () => {
+    const { agent, observer } = admittedAgent((begin) => begin());
+
+    await agent.resume("go");
+
+    expect(observer.onResumeQueued).not.toHaveBeenCalled();
+    expect(observer.onResumeStarted).toHaveBeenCalledTimes(1);
+  });
+
+  it("begins at once when there is no admission to wait on", async () => {
+    const { agent, observer } = admittedAgent(undefined);
+
+    const resumed = agent.resume("go");
+    expect(agent.status).toBe("running");
+    await resumed;
+
+    expect(observer.onResumeQueued).not.toHaveBeenCalled();
+  });
+
+  it("stops a queued resume without running it: idle, stopped, never started", async () => {
+    const held = heldAdmission();
+    const { agent, stub, observer } = admittedAgent(held.admit);
+    const resumed = agent.resume("go");
+
+    expect(agent.abort()).toBe(true);
+
+    expect(agent.status).toBe("idle");
+    expect(agent.outcome).toBe("stopped");
+    expect(agent.stoppedWhileQueued).toBe(true);
+    expect(observer.onResumeFinished).toHaveBeenCalledTimes(1);
+    // The agent keeps its session, so it takes another run at once.
+    expect(agent.resumeRefusal).toBeUndefined();
+
+    // Its slot opens later; the run it was waiting for no longer exists.
+    held.open();
+    await resumed;
+    expect(stub.resumeTurnLoop).not.toHaveBeenCalled();
+    expect(observer.onResumeStarted).not.toHaveBeenCalled();
+    expect(agent.status).toBe("idle");
+    expect(agent.outcome).toBe("stopped");
+  });
+
+  it("lets an agent whose queued cold resume was stopped be resumed again", async () => {
+    const held = heldAdmission();
+    // Reconstructed from a saved record: no session, only the transcript pointer.
+    const agent = new Subagent({
+      id: "cold-1",
+      type: "general-purpose",
+      description: "cold",
+      execution: makeStubExecution({ admit: held.admit, checkReopen: () => undefined }),
+      state: new SubagentState({ status: "idle", outcome: "completed" }),
+      released: { outputFile: "/t/a.jsonl", model: undefined, thinkingLevel: undefined },
+    });
+    expect(agent.resumeRefusal).toBeUndefined();
+
+    void agent.resume("go");
+    expect(agent.resumeRefusal).toBe("still-running");
+    agent.abort();
+
+    // Nothing is rebuilding the session any more, so the agent is not "still running".
+    expect(agent.resumeRefusal).toBeUndefined();
+  });
+
+  it("does not start a stopped resume's slot for a newer resume of the same agent", async () => {
+    const held = heldAdmission();
+    const { agent, stub } = admittedAgent(held.admit);
+    const first = agent.resume("one");
+    agent.abort();
+    const second = agent.resume("two");
+    expect(agent.status).toBe("queued");
+
+    held.open(0);
+    await first;
+    // The first resume's slot is spent on nothing: the second is still waiting.
+    expect(stub.resumeTurnLoop).not.toHaveBeenCalled();
+    expect(agent.status).toBe("queued");
+
+    held.open(1);
+    await second;
+    expect(stub.resumeTurnLoop).toHaveBeenCalledTimes(1);
+    expect(stub.resumeTurnLoop.mock.calls[0][0]).toBe("two");
+    expect(agent.outcome).toBe("completed");
+  });
+
+  it("clears the stopped-while-queued mark when a later resume runs", async () => {
+    const held = heldAdmission();
+    const { agent } = admittedAgent(held.admit);
+    const first = agent.resume("one");
+    agent.abort();
+    held.open(0);
+    await first;
+    expect(agent.stoppedWhileQueued).toBe(true);
+
+    const second = agent.resume("two");
+    expect(agent.stoppedWhileQueued).toBe(false);
+    held.open(1);
+    await second;
+    expect(agent.stoppedWhileQueued).toBe(false);
+  });
+
+  it.each<RunOutcome>(["completed", "turn-limit", "error", "stopped", "interrupted"])(
+    "accepts a new run from idle after %s",
+    async (outcome) => {
+      const { agent, stub } = admittedAgent(
+        (begin) => begin(),
+        new SubagentState({ status: "idle", outcome, result: "before", error: "before" }),
+      );
+
+      expect(agent.resumeRefusal).toBeUndefined();
+      await agent.resume("again");
+
+      expect(stub.resumeTurnLoop).toHaveBeenCalledTimes(1);
+      expect(agent.status).toBe("idle");
+      expect(agent.outcome).toBe("completed");
+      expect(agent.result).toBe("resumed");
+      expect(agent.error).toBeUndefined();
+    },
+  );
+
+  it("lets a stopped run wind down without touching the run that replaced it", async () => {
+    const { agent, stub, observer } = admittedAgent((begin) => begin());
+    const slow = Promise.withResolvers<TurnLoopResult>();
+    stub.resumeTurnLoop
+      .mockImplementationOnce(() => slow.promise)
+      .mockResolvedValueOnce(turnLoopResult({ responseText: "second answer" }));
+    const first = agent.resume("one");
+    expect(agent.abort()).toBe(true);
+    expect(agent.outcome).toBe("stopped");
+
+    // The stop left the agent idle, so it takes new input while the first run is still winding down.
+    await agent.resume("two");
+    expect(agent.result).toBe("second answer");
+    slow.resolve(turnLoopResult({ responseText: "late first answer" }));
+    await first;
+
+    expect(agent.status).toBe("idle");
+    expect(agent.outcome).toBe("completed");
+    expect(agent.result).toBe("second answer");
+    expect(observer.onResumeFinished).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets a stopped run that later fails leave the run that replaced it alone", async () => {
+    const { agent, stub, observer } = admittedAgent((begin) => begin());
+    const slow = Promise.withResolvers<TurnLoopResult>();
+    stub.resumeTurnLoop
+      .mockImplementationOnce(() => slow.promise)
+      .mockResolvedValueOnce(turnLoopResult({ responseText: "second answer" }));
+    const first = agent.resume("one");
+    expect(agent.abort()).toBe(true);
+    await agent.resume("two");
+
+    slow.reject(new Error("late failure"));
+    await first;
+
+    expect(agent.status).toBe("idle");
+    expect(agent.outcome).toBe("completed");
+    expect(agent.error).toBeUndefined();
+    expect(agent.result).toBe("second answer");
+    expect(observer.onResumeFinished).toHaveBeenCalledTimes(1);
   });
 });

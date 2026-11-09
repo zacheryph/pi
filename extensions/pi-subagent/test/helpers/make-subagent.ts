@@ -1,7 +1,12 @@
 import type { CreateSubagentSessionParams } from "#src/lifecycle/create-subagent-session";
 import { Subagent, type SubagentExecution } from "#src/lifecycle/subagent";
 import type { SubagentSession } from "#src/lifecycle/subagent-session";
-import { SubagentState, type SubagentStatus } from "#src/lifecycle/subagent-state";
+import {
+  type DisplayStatus,
+  type RunOutcome,
+  SubagentState,
+  type SubagentStatus,
+} from "#src/lifecycle/subagent-state";
 import type { TurnBudget } from "#src/lifecycle/turn-limits";
 import type { SubagentType } from "#src/types";
 import { createSubagentSessionStub, toSubagentSession } from "#test/helpers/mock-session";
@@ -21,6 +26,30 @@ export function makeStubExecution(overrides: Partial<SubagentExecution> = {}): S
   };
 }
 
+/**
+ * The status and outcome a record reads as for one of today's display labels,
+ * so a fixture can say "an agent that errored" without spelling out
+ * "idle, outcome error".
+ */
+export function stateForLabel(label: DisplayStatus): {
+  status: SubagentStatus;
+  outcome?: RunOutcome;
+} {
+  switch (label) {
+    case "queued":
+    case "running":
+      return { status: label };
+    case "completed":
+      return { status: "idle", outcome: "completed" };
+    case "aborted":
+      return { status: "idle", outcome: "turn-limit" };
+    case "error":
+      return { status: "idle", outcome: "error" };
+    case "stopped":
+      return { status: "idle", outcome: "stopped" };
+  }
+}
+
 export interface TestSubagentOptions {
   id?: string;
   type?: SubagentType;
@@ -28,8 +57,13 @@ export interface TestSubagentOptions {
   execution?: SubagentExecution;
   /** Shorthand to set execution.parentSession.toolCallId. Ignored when execution is supplied. */
   toolCallId?: string;
-  /** Passive lifecycle state shorthands. */
-  status?: SubagentStatus;
+  /**
+   * Passive lifecycle state shorthands. Either a status (`idle` takes its
+   * `outcome`) or one of today's display labels, which stands for the status and
+   * outcome that read that way. Defaults to a completed agent.
+   */
+  status?: SubagentStatus | DisplayStatus;
+  outcome?: RunOutcome;
   result?: string;
   /** Seed the question the agent ended its turn with. */
   pendingQuestion?: string;
@@ -85,12 +119,14 @@ export function createTestSubagent(overrides: TestSubagentOptions = {}): Subagen
     sessionReady,
     outputFile,
     state: suppliedState,
+    status = "completed",
+    outcome,
     ...stateOverrides
   } = overrides;
   const state =
     suppliedState ??
     new SubagentState({
-      status: "completed",
+      ...(status === "idle" ? { status, outcome } : stateForLabel(status)),
       result: "All done.",
       startedAt: 1000,
       completedAt: 2000,

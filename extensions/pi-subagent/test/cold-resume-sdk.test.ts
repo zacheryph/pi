@@ -106,7 +106,7 @@ async function finishedWorker(h: Harness, extra: Record<string, unknown> = {}) {
   await h.session.prompt("Delegate");
   await untilAnnounced(h, announcedCount(h) + 1);
   const record = latestRecord(h.manager);
-  expect(record).toMatchObject({ status: "completed" });
+  expect(record).toMatchObject({ status: "idle", outcome: "completed" });
   expect(record.outputFile).toBeTruthy();
   return { id: record.id, transcript: record.outputFile!, record };
 }
@@ -154,7 +154,7 @@ describe("cold resume in a real parent session (offline faux provider)", () => {
     expect(conversation).toContain("The codeword is PLOVER.");
     expect(conversation).toContain("What was the codeword?");
     expect(result).toContain("It was PLOVER.");
-    expect(latestRecord(h.manager)).toMatchObject({ id, status: "completed" });
+    expect(latestRecord(h.manager)).toMatchObject({ id, status: "idle", outcome: "completed" });
     expect(h.errors).toEqual([]);
   }, 30_000);
 
@@ -171,7 +171,8 @@ describe("cold resume in a real parent session (offline faux provider)", () => {
     expect(result).toContain("It was PLOVER.");
     expect(latestRecord(h.manager)).toMatchObject({
       id,
-      status: "completed",
+      status: "idle",
+      outcome: "completed",
       result: "It was PLOVER.",
       description: record.description,
       model: record.model,
@@ -243,7 +244,7 @@ describe("cold resume in a real parent session (offline faux provider)", () => {
     const report = lastResult(requests[1], "subagent_get");
     expect(report).toContain("Resume: not available, because the directory it ran in");
     expect(report).toContain(`Full transcript available at: ${transcript}`);
-    expect(latestRecord(h.manager)).toMatchObject({ id, status: "completed" });
+    expect(latestRecord(h.manager)).toMatchObject({ id, status: "idle", outcome: "completed" });
   }, 30_000);
 
   it("reports it resumable from subagent_get and the list once its session is gone", async () => {

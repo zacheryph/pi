@@ -1,5 +1,5 @@
 import { debugLog } from "#src/debug";
-import type { SubagentStatus } from "#src/lifecycle/subagent-state";
+import type { DisplayStatus } from "#src/lifecycle/subagent-state";
 import type { TurnBudget } from "#src/lifecycle/turn-limits";
 import { getLifetimeTotal } from "#src/lifecycle/usage";
 import {
@@ -13,7 +13,7 @@ import type { Subagent } from "#src/types";
 export interface NotificationDetails {
   id: string;
   description: string;
-  status: SubagentStatus;
+  status: DisplayStatus;
   toolUses: number;
   totalTokens: number;
   durationMs: number;
@@ -40,11 +40,16 @@ export function escapeXml(s: string): string {
     .replace(/'/g, "&apos;");
 }
 
+/** What the status labels read of a record: its display status, error and turn budget. */
+function statusOutcome(record: Subagent) {
+  return { status: record.displayStatus, error: record.error, turnBudget: record.turnBudget };
+}
+
 /** Format a structured <task-notification> XML block for the parent agent to parse. */
 export function formatTaskNotification(record: Subagent, resultMaxLen: number): string {
   if (record.stoppedWhileQueued) return formatNeverStartedNotification(record);
 
-  const status = renderStatusLabel(record);
+  const status = renderStatusLabel(statusOutcome(record));
   const durationMs = record.completedAt ? record.completedAt - record.startedAt : 0;
   const totalTokens = getLifetimeTotal(record.lifetimeUsage);
   const contextPercent = record.getContextPercent();
@@ -70,7 +75,7 @@ export function formatTaskNotification(record: Subagent, resultMaxLen: number): 
     toolCallId ? `<tool-use-id>${escapeXml(toolCallId)}</tool-use-id>` : null,
     outputFile ? `<output-file>${escapeXml(outputFile)}</output-file>` : null,
     `<status>${escapeXml(status)}</status>`,
-    `<summary>Subagent "${escapeXml(record.description)}" ${record.status}</summary>`,
+    `<summary>Subagent "${escapeXml(record.description)}" ${record.displayStatus}</summary>`,
     `<result>${escapeXml(resultPreview)}</result>`,
     `<usage><total_tokens>${totalTokens}</total_tokens><tool_uses>${record.toolUses}</tool_uses>${ctxXml}${compactXml}<duration_ms>${durationMs}</duration_ms></usage>`,
     "</task-notification>",
@@ -127,7 +132,7 @@ export function buildNotificationDetails(
   return {
     id: record.id,
     description: record.description,
-    status: record.status,
+    status: record.displayStatus,
     toolUses: record.toolUses,
     totalTokens,
     durationMs: record.completedAt ? record.completedAt - record.startedAt : 0,
@@ -161,7 +166,7 @@ export function buildEventData(record: Subagent) {
     description: record.description,
     result: record.result,
     error: record.error,
-    status: record.status,
+    status: record.displayStatus,
     turnBudget: record.turnBudget,
     toolUses: record.toolUses,
     durationMs,

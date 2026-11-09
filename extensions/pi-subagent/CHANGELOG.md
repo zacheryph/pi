@@ -3,6 +3,82 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-09: Agents are queued, running or idle, and every run goes through the limiter
+
+Roadmap step 7a (`docs/roadmaps/subagent-work-lifecycle.md`). The record of an
+agent now says where it stands (`queued`, `running` or `idle`) and, beside that,
+how its last run ended. What the parent, the widget, the roster, the watch
+overlay, the dashboard and the lifecycle events show is unchanged: they derive
+today's words from the new pair. The idle/done presentation and the renamed
+events belong to the later steps.
+
+- State model (`src/lifecycle/subagent-state.ts`):
+  - `SubagentStatus` is `queued | running | idle`. `RunOutcome` is
+    `completed | turn-limit | error | stopped | interrupted`, stored beside the
+    status with the run's result and error; it is defined exactly while the
+    agent is idle, and `interrupted` marks a run a reload or restart cut short.
+  - `DisplayStatus` and `displayStatus(status, outcome)` keep the six words users
+    have always seen (`completed`, `aborted` for `turn-limit`, `stopped` for both
+    `stopped` and `interrupted`, `error`, `queued`, `running`). Tool output, the
+    widget, the watch overlay, `subagent_steer`'s refusal, the completion message
+    and its `details.status`, and the `status` of `subagent:completed`,
+    `subagent:failed` and `subagent:resumed` use them. Event payloads and the
+    dashboard protocol are unchanged.
+  - Transitions: `markAborted` is `markTurnLimit`, and `resetForResume` is
+    `markQueued` (a later run asks for a slot, so the earlier run's result,
+    error, question, turn budget, read time and end time clear) plus the
+    ordinary `markRunning` when the slot opens. `markCompleted`, `markTurnLimit`
+    and `markError` still record their result or error after a stop but leave the
+    outcome `stopped`.
+- Stop: ends the run and leaves the agent idle with outcome `stopped`. It cancels
+  nothing else, and the idle agent takes a new run at once. A run that a later
+  one has replaced (stopped, then given new input while the old turn loop was
+  still winding down) now reports nothing and writes nothing: before, its late
+  result could overwrite the newer run's record.
+- Every run goes through the limiter:
+  - `SubagentExecution.admit` is the manager's limiter; `Subagent.resume` queues
+    the record, then hands the run to it. With a free slot the run begins
+    synchronously, so nothing observable changes. With every slot taken the
+    resume waits as a first run does: the call says "Agent resume queued in
+    background." with the queue position, the saved record reads `queued`, the
+    widget counts it, and `subagent:resuming` is sent when the slot opens
+    (`onResumeQueued` / `onSubagentResumeQueued` is the new, optional hook).
+  - A queued resume that is stopped leaves the agent idle (outcome `stopped`,
+    never started, no result) and sends the same completion message as a stopped
+    first run. A run only begins if it is still the agent's current run, so the
+    stopped resume's place in the limiter queue, or one a newer resume replaced,
+    does nothing when its slot opens.
+  - `bypassQueue` is findings only: it governs a spawn's first run, which starts
+    at once and takes no slot; a resume of such an agent still goes through the
+    limiter. Nothing in production sets it (the RPC it served was removed in
+    #49), only tests do, so it is a candidate for removal in the cleanup step.
+  - Nested delegation cannot deadlock on the limiter: a run holds a slot only
+    while its own turn loop runs and no call blocks on another agent, and each
+    child session's extensions have a limiter of their own.
+- Saved records (`src/persisted-record.ts`) are version 2: `version: 2`, `status`
+  and, for an idle agent, `outcome`. `readPersistedRecords` reads both versions
+  and returns the version 2 shape, so nothing past the module sees version 1.
+  A version 1 `completed`, `aborted`, `error` or `stopped` reads as idle with
+  outcome `completed`, `turn-limit`, `error` or `stopped`; a version 1 `queued`
+  or `running` reads as idle with outcome `interrupted`. A version 2 entry that
+  is still `queued` or `running` and has no live agent behind it reads as
+  interrupted, as before. Entries that fail validation are skipped, including a
+  version 2 entry with a version 1 status. Rolling this change back needs the
+  version 2 reader to stay: the previous reader skips version 2 entries, which
+  hides those agents from the roster and from resume.
+- `rebuildFromSaved`, the roster, `subagent_get`'s report on a saved record and
+  the `/subagent:sessions` picker read the pair. Output is unchanged, except the
+  picker's label for a saved version 1 `queued` or `running` run, which reads
+  `stopped` (what it is) where it used to read the stale `queued` or `running`.
+- Tests: the saved-record assertions in the characterization, cold-resume and
+  records tests now pin `status: "idle"` and the outcome. "Starts the resumed run
+  at once even when every concurrency slot is taken" pinned the dropped
+  behaviour and now pins a queued resume that runs when a slot frees. New:
+  admission, queued-resume stop and stale-run cases in `subagent.test.ts` and
+  `subagent-manager.test.ts`; the state model in `subagent-state.test.ts`;
+  version 1 fixtures in `persisted-record.test.ts` and end to end in
+  `legacy-records-sdk.test.ts`.
+
 ## 2026-11-09: Every subagent runs in the background
 
 Roadmap step 6 (`docs/roadmaps/subagent-work-lifecycle.md`). No call blocks the

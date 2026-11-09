@@ -123,13 +123,17 @@ export class AgentTool {
     if (start.kind === "refused") {
       return textResult(resumeRefusalMessage(start, id));
     }
+    // A resume goes through the limiter like a first run: with every slot taken
+    // it waits, and the call says so as a spawn's does.
+    const isQueued = start.record.status === "queued";
     return renderBackgroundLaunch({
-      headline: "Agent resumed in background.",
+      headline: `Agent ${isQueued ? "resume queued" : "resumed"} in background.`,
       id: start.record.id,
       displayName: config.identity.displayName,
       description: config.execution.description,
       detailBase: config.presentation.detailBase,
       outputFile: start.record.outputFile,
+      queuePosition: isQueued ? { maxConcurrent: this.settings.maxConcurrent } : undefined,
     });
   }
 

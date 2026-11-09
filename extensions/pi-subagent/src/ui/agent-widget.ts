@@ -8,6 +8,7 @@
 import type { TuiMode } from "@earendil-works/pi-tui";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import type { Subagent } from "#src/lifecycle/subagent";
+import { displayStatus } from "#src/lifecycle/subagent-state";
 import type { SubagentManager, SubagentManagerObserver } from "#src/lifecycle/subagent-manager";
 import type { CompactionInfo } from "#src/types";
 import { ERROR_STATUSES, type Theme } from "#src/ui/display";
@@ -20,6 +21,15 @@ interface AgentSummary {
   readonly id: string;
   readonly status: string;
   readonly completedAt?: number;
+}
+
+/** The widget's view of a record: its id, display label and end time. */
+function summarize(record: Subagent): AgentSummary {
+  return {
+    id: record.id,
+    status: displayStatus(record.status, record.outcome),
+    completedAt: record.completedAt,
+  };
 }
 
 /** Lightweight state snapshot used by AgentWidget.update() to decide what to show. */
@@ -174,6 +184,11 @@ export class AgentWidget implements SubagentManagerObserver {
     this.update();
   }
 
+  /** A resume is waiting for a slot — render so the queued count shows. */
+  onSubagentResumeQueued(_record: Subagent) {
+    this.update();
+  }
+
   /** A subagent finished a resume — render so the refreshed result is shown. */
   onSubagentResumed(_record: Subagent) {
     this.update();
@@ -214,7 +229,7 @@ export class AgentWidget implements SubagentManagerObserver {
     return {
       id: record.id,
       type: record.type,
-      status: record.status,
+      status: displayStatus(record.status, record.outcome),
       description: record.description,
       toolUses: record.toolUses,
       startedAt: record.startedAt,
@@ -302,7 +317,7 @@ export class AgentWidget implements SubagentManagerObserver {
   update() {
     if (!this.uiCtx) return;
 
-    const backgroundAgents = this.manager.listAgents();
+    const backgroundAgents = this.manager.listAgents().map(summarize);
     this.seedFinishedAgents(backgroundAgents);
     const state = assembleWidgetState(backgroundAgents, (id, status) =>
       this.shouldShowFinished(id, status),

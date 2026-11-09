@@ -1,6 +1,6 @@
 /** Passive watch panel: evenly stacked sections, always following output tails. */
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
-import type { SubagentStatus } from "#src/lifecycle/subagent-state";
+import type { DisplayStatus } from "#src/lifecycle/subagent-state";
 import type { Theme } from "#src/ui/display";
 import { watchText, type WatchBlock } from "#src/ui/watch-tail";
 import { ICONS } from "../../../../packages/pi-ui/src/index.ts";
@@ -8,7 +8,7 @@ import { ICONS } from "../../../../packages/pi-ui/src/index.ts";
 export interface WatchSection {
   id: string;
   label: string;
-  status: SubagentStatus;
+  status: DisplayStatus;
   blocks: readonly WatchBlock[];
 }
 

@@ -5,7 +5,7 @@
 
 import { truncateToWidth } from "@earendil-works/pi-tui";
 import type { AgentConfigLookup } from "#src/config/agent-types";
-import { isActiveStatus, type SubagentStatus } from "#src/lifecycle/subagent-state";
+import { type DisplayStatus, isActiveStatus } from "#src/lifecycle/subagent-state";
 import { type TurnBudget, wrappedUpAtTurnLimit } from "#src/lifecycle/turn-limits";
 import type { LifetimeUsage } from "#src/lifecycle/usage";
 import type { SubagentType } from "#src/types";
@@ -24,7 +24,7 @@ import {
 export interface WidgetAgent {
   readonly id: string;
   readonly type: SubagentType;
-  readonly status: SubagentStatus;
+  readonly status: DisplayStatus;
   readonly description: string;
   readonly toolUses: number;
   readonly startedAt: number;
