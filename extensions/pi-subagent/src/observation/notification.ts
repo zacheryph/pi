@@ -196,11 +196,9 @@ type PendingAnnouncement =
 
 export class NotificationManager implements NotificationSystem {
   // pi.sendMessage is fire-and-forget: while the parent's agent run is active,
-  // a followUp is handed to a queue the extension cannot recall, yet it is only
-  // delivered when the run drains that queue at turn end. A parent that pulls
-  // the result in between would receive it twice. So nudges that arrive mid-run
-  // are withheld here — where record.consumed is still consultable — and
-  // flushed once the run settles.
+  // a followUp is handed to a queue the extension cannot recall, and is only
+  // delivered when the run drains that queue at turn end. So announcements that
+  // arrive mid-run are withheld here and flushed once the run settles.
   // Ordered rather than record-keyed: a completion for an agent supersedes an
   // earlier one for that agent, but announcements from different agents are
   // distinct facts, and arrival order is the only order the parent can make
@@ -221,16 +219,9 @@ export class NotificationManager implements NotificationSystem {
     // here, and with no parent run active a nudge would go straight out as an
     // unrecallable followUp.
     if (this.disposed) return;
-    // A carrier has committed to delivering this outcome, so announcing it would
-    // duplicate a delivery the parent is already getting. Structural and decided
-    // at the parent's request, so unlike the consumption check below it cannot
-    // race the turn.
-    if (record.claimed) return;
-    // Consumption is domain state on the record; the nudge is a pure
-    // announcement. Skip if the parent already pulled the result (enqueue-time
-    // guard); emitIndividualNudge re-reads record.consumed when the nudge is
-    // actually emitted, which is what makes the flush a fresh re-check.
-    if (record.consumed) return;
+    // The completion message is the only carrier of an outcome, so every
+    // terminal transition is announced exactly once, whatever the parent has
+    // read with subagent_get in the meantime.
     if (this.parentRunActive) {
       this.withholdCompletion(record);
       return;
@@ -255,8 +246,6 @@ export class NotificationManager implements NotificationSystem {
   /**
    * Announce a message a still-running child sent its parent.
    *
-   * Consumption is not consulted: it records that the child's *outcome* was
-   * collected, and an update is a new fact rather than that outcome told again.
    * What is consulted is whether an announcement is still the right channel at
    * all — see `canAnnounceUpdate`. The disposal latch and the parent-run
    * withhold apply as they do to any announcement.
@@ -274,29 +263,25 @@ export class NotificationManager implements NotificationSystem {
   /**
    * Whether an announcement is still the right channel for this run's updates.
    *
-   * A claimed outcome is one a blocked carrier is already delivering, so an
-   * announcement could only arrive after its return. A terminated run has an
-   * outcome, and every carrier of an outcome renders what the run still owes —
-   * including the completion nudge — so the message arrives with it rather than
-   * as a live update the child can no longer act on.
+   * A terminated run has an outcome, and its completion message renders what the
+   * run still owes, so the update arrives with it rather than as a live update
+   * the child can no longer act on.
    *
    * Consulted at enqueue and again at emit, because a run withheld for the
-   * parent's turn can terminate or be claimed in between. That re-read is what
-   * keeps a `<subagent-update>` block's steering affordance true.
+   * parent's turn can terminate in between. That re-read is what keeps a
+   * `<subagent-update>` block's steering affordance true.
    */
   private canAnnounceUpdate(record: Subagent): boolean {
-    return !record.claimed && record.isActive();
+    return record.isActive();
   }
 
-  /** The parent's agent run became active; nudges are withheld until it settles. */
+  /** The parent's agent run became active; announcements are withheld until it settles. */
   onParentAgentStart(): void {
     this.parentRunActive = true;
   }
 
   /**
-   * The parent's agent run settled. Flush the nudges withheld during it, each
-   * re-checking consumption, so a result the parent pulled mid-run is dropped
-   * rather than announced a second time.
+   * The parent's agent run settled. Flush the announcements withheld during it.
    */
   onParentAgentSettled(): void {
     this.parentRunActive = false;
@@ -319,8 +304,8 @@ export class NotificationManager implements NotificationSystem {
 
   private emitUpdate(record: Subagent, message: string): void {
     if (!this.canAnnounceUpdate(record)) return;
-    // This channel is delivering the message, so no outcome carrier may repeat
-    // it — the record renders only what is still owed.
+    // This channel is delivering the message, so the completion message does not
+    // repeat it — the record renders only what is still owed.
     record.markUpdateAnnounced(message);
     const details: UpdateDetails = {
       id: record.id,
@@ -339,9 +324,6 @@ export class NotificationManager implements NotificationSystem {
   }
 
   private emitIndividualNudge(record: Subagent): void {
-    if (record.claimed) return;
-    if (record.consumed) return;
-
     const notification = formatTaskNotification(record, 500);
     // A never-started agent has no transcript and nothing to collect.
     const pointerLines = record.stoppedWhileQueued ? "" : this.buildPointerLines(record);
@@ -358,16 +340,15 @@ export class NotificationManager implements NotificationSystem {
   }
 
   /**
-   * The trailing pointer lines: where the transcript lives, and how to collect
-   * the result. The nudge only announces; the parent must pull to collect (and
-   * consume).
+   * The trailing pointer lines: where the transcript lives, and how to read the
+   * full result when the preview above is cut.
    */
   private buildPointerLines(record: Subagent): string {
     const outputFile = record.outputFile;
     const transcriptLine = outputFile ? `\nFull transcript available at: ${outputFile}` : "";
     return (
-      // What the child flagged along the way leads — for a run nothing else
-      // collected, this nudge is the carrier those updates ride.
+      // What the child flagged along the way leads: this message carries every
+      // update no announcement delivered.
       renderRunUpdates(record.runUpdates) +
       `${transcriptLine}\nCall subagent_get("${record.id}") to collect the full result.` +
       renderQuestionAffordance(record.id, record.pendingQuestion, record.resumeRefusal)

@@ -51,8 +51,8 @@ restores it.
 
 The tool's description and guidelines differ by route, because the two behave
 differently: asking you blocks and returns your answer, while asking a parent
-cannot block (a parent waiting in the foreground for this subagent would
-deadlock), so the subagent records the question and ends its turn.
+cannot block (no parent waits on a subagent), so the subagent records the
+question and ends its turn.
 
 A subagent reaches its parent through the `ask:route` service that pi-subagent
 offers under the child's session id before the child's extensions load.

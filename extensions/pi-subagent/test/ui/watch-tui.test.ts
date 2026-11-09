@@ -41,7 +41,6 @@ function terminal() {
 function mount(tui: TuiAltScreen | TuiMainScreen) {
   const record = createTestSubagent({
     status: "running",
-    isBackground: true,
     completedAt: undefined,
     description: "Live task",
   });

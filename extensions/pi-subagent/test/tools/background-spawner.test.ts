@@ -19,7 +19,6 @@ function makeConfig(overrides: Parameters<typeof createResolvedSpawnConfig>[0] =
     displayName: "General-purpose",
     prompt: "do something",
     description: "bg task",
-    runInBackground: true,
     ...overrides,
   });
 }
@@ -99,28 +98,6 @@ describe("renderBackgroundLaunch", () => {
 });
 
 describe("spawnBackground", () => {
-  /**
-   * The door declares a commitment rather than a default, because
-   * resolveSpawnConfig already merged the agent's frontmatter and AgentTool
-   * routed here on the result. The distinction is not observable today — the
-   * tool only reaches this door when the merged value was already true, where
-   * both request kinds resolve alike — but it is the contract #829 builds on to
-   * make a caller's explicit override win, so a silent flip to "default" must
-   * fail here rather than in that issue's work.
-   */
-  it("commits explicitly to background rather than deferring to frontmatter", () => {
-    const { manager } = createToolDeps();
-
-    spawnBackground(manager, makeParams());
-
-    expect(manager.spawn).toHaveBeenCalledWith(
-      expect.anything(), // snapshot
-      expect.any(String),
-      "do something",
-      expect.objectContaining({ background: true }),
-    );
-  });
-
   it("passes the handoff to manager.spawn", () => {
     const { manager } = createToolDeps();
     const config = makeConfig();

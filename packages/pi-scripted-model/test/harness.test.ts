@@ -1,6 +1,6 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { type ScriptedSession, collectToolRuns, startSession } from "#src/harness.ts";
 import { defineScenario, startAgent, tool } from "#src/scenario.ts";
 
@@ -15,6 +15,22 @@ const run = (session: ScriptedSession, name: string) => {
   expect(found, `no ${name} call ran`).not.toHaveLength(0);
   return found.at(-1)!;
 };
+
+/** The text of every subagent completion message in the session, oldest first. */
+const completionTexts = (session: ScriptedSession) =>
+  session
+    .entries()
+    .flatMap((entry) =>
+      entry.type === "custom_message" && entry.customType === "subagent:completion"
+        ? [JSON.stringify(entry.content)]
+        : [],
+    );
+
+/** Wait for a subagent's completion message, and for the turn it starts to end. */
+async function untilCompleted(session: ScriptedSession) {
+  await vi.waitFor(() => expect(completionTexts(session)).toHaveLength(1), { timeout: 15_000 });
+  await session.session.waitForIdle();
+}
 
 describe("startSession", () => {
   it("plays the scenario against the real bundle", async () => {
@@ -40,7 +56,7 @@ describe("startSession", () => {
     expect(run(open, "todo_upsert").isError).toBe(true);
   });
 
-  it("runs a foreground subagent on its own script and returns its result", async () => {
+  it("runs a subagent on its own script and announces its result in a completion message", async () => {
     open = await startSession({
       scenario: defineScenario({
         replies: [
@@ -51,11 +67,12 @@ describe("startSession", () => {
                 description: "Read the note",
                 prompt: "Read note.txt and report what it says.",
                 steps: [[tool("read", { path: "note.txt" })], "The note says hello."],
-                options: { foreground: true },
               }),
             ],
-            "Done.",
+            "Started.",
           ],
+          // The completion message starts the next turn.
+          ["Noted."],
         ],
       }),
     });
@@ -63,7 +80,12 @@ describe("startSession", () => {
     await open.prompt("Delegate the note");
     const spawn = run(open, "subagent_start");
     expect(spawn.isError, spawn.text).toBe(false);
-    expect(spawn.text).toContain("The note says hello.");
+    expect(spawn.text).toContain("Agent started in background.");
+    expect(spawn.text).not.toContain("The note says hello.");
+
+    await untilCompleted(open);
+    const [completion] = completionTexts(open);
+    expect(completion).toContain("<result>The note says hello.</result>");
   });
 
   it("hands a todo to a subagent, which completes it in the parent's list", async () => {
@@ -85,18 +107,21 @@ describe("startSession", () => {
                   ],
                   "Implemented.",
                 ],
-                options: { foreground: true, handoff: { todo: { keys: ["impl"] } } },
+                options: { handoff: { todo: { keys: ["impl"] } } },
               }),
             ],
-            [tool("todo_list", {})],
-            "All done.",
+            "Started.",
           ],
+          // The completion message starts the next turn.
+          [[tool("todo_list", {})], "All done."],
         ],
       }),
     });
     await open.prompt("Do the work");
     const spawn = run(open, "subagent_start");
     expect(spawn.isError, spawn.text).toBe(false);
+
+    await untilCompleted(open);
     const list = run(open, "todo_list");
     expect(list.isError, list.text).toBe(false);
     expect(list.text).toMatch(/completed/i);

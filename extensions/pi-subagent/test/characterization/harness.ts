@@ -4,13 +4,22 @@
  * and every child. The parent is observed only through what it can see: tool
  * results, the messages in its transcript, and the events on its bus.
  */
-import type { AssistantMessage, Context, SimpleStreamOptions } from "@earendil-works/pi-ai";
+import type { AssistantMessage, Context } from "@earendil-works/pi-ai";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { expect, vi, onTestFinished } from "vitest";
 import subagentExtension from "#src/index";
 import { readPersistedRecords } from "#src/persisted-record";
-import { agentIdIn, BUILTIN_TOOLS, lastResult, offlineAgentDir } from "../helpers/sdk.ts";
+import {
+  agentIdIn,
+  BUILTIN_TOOLS,
+  CHILD_MARK,
+  isChildRequest,
+  lastResult,
+  offlineAgentDir,
+  type Reply,
+  scriptSides,
+} from "../helpers/sdk.ts";
 import {
   fauxSession,
   messageText,
@@ -19,12 +28,9 @@ import {
 } from "../../../../packages/pi-test-helpers/src/faux-session.ts";
 
 /** What one scripted reply may be: a message, or a function of the request it answers. */
-export type Step =
-  | AssistantMessage
-  | ((
-      context: Context,
-      options?: SimpleStreamOptions,
-    ) => AssistantMessage | Promise<AssistantMessage>);
+export type Step = Reply;
+
+export { CHILD_MARK, isChildRequest };
 
 /**
  * A reply that holds its request open until `release()` is called or the
@@ -47,40 +53,28 @@ export function gated(reply: AssistantMessage = fauxAssistantMessage("(released)
   return { step, started, release };
 }
 
-/** The marker every child prompt in these tests starts with, so a request can be told apart. */
-const CHILD_MARK = "[child]";
-
 /** The retention sweep's interval; the manager registers one `setInterval` at this period. */
 const SWEEP_INTERVAL_MS = 60_000;
 
-/** A `subagent_start` call whose child prompt is `prompt`. Runs in the background unless `extra` says otherwise. */
+/** A `subagent_start` call whose child prompt is `prompt`. */
 export function delegate(prompt: string, extra: Record<string, unknown> = {}) {
   return toolCall("subagent_start", {
     subagent_type: "general-purpose",
     description: prompt,
     prompt: `${CHILD_MARK} ${prompt}`,
-    foreground: false,
     ...extra,
   });
 }
 
-/** A `subagent_start` call that resumes agent `id` with `prompt`. Background unless `extra` says otherwise. */
+/** A `subagent_start` call that resumes agent `id` with `prompt`. */
 export function resumeCall(id: string, prompt: string, extra: Record<string, unknown> = {}) {
   return toolCall("subagent_start", {
     subagent_type: "general-purpose",
     description: prompt,
     prompt: `${CHILD_MARK} ${prompt}`,
     resume: id,
-    foreground: false,
     ...extra,
   });
-}
-
-/** Whether a request comes from a child: a user message in it is a child prompt. */
-export function isChildRequest(context: Context): boolean {
-  return context.messages.some(
-    (message) => message.role === "user" && JSON.stringify(message.content).includes(CHILD_MARK),
-  );
 }
 
 export interface ParentOptions {
@@ -149,25 +143,12 @@ export async function startParent(options: ParentOptions = {}) {
   const requests = { parent: [] as Context[], child: [] as Context[] };
 
   /**
-   * Answer the parent's and the children's requests from two queues. The
-   * provider is shared and the two sides race for it, so each reply is chosen by
-   * who is asking. A side with nothing scripted answers "(unscripted)".
-   * Calling it again starts a new phase: `requests` is emptied and the queues replaced.
+   * Answer the parent's and the children's requests from two queues (see
+   * `scriptSides`). Calling it again starts a new phase: `requests` is emptied
+   * and the queues replaced.
    */
   function script(replies: { parent?: Step[]; child?: Step[] }) {
-    // Each script starts a phase of the test, so `requests` counts from its first request.
-    requests.parent.length = 0;
-    requests.child.length = 0;
-    const queues = { parent: [...(replies.parent ?? [])], child: [...(replies.child ?? [])] };
-    const answer = async (context: Context, options?: SimpleStreamOptions) => {
-      const side = isChildRequest(context) ? "child" : "parent";
-      requests[side].push(structuredClone(context));
-      const step = queues[side].shift();
-      if (!step) return fauxAssistantMessage("(unscripted)");
-      return typeof step === "function" ? step(context, options) : step;
-    };
-    h.faux.setResponses(Array.from({ length: 60 }, () => answer));
-    return queues;
+    return scriptSides(h.faux, replies, requests);
   }
 
   /** The `subagent:completion` and `subagent:update` messages in the transcript, oldest first. */

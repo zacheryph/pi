@@ -126,10 +126,8 @@ export class SubagentEventsObserver implements SubagentManagerObserver {
   /**
    * Persist the terminal record for cross-extension history reconstruction and
    * announce completion. Shared by every terminal-state handler (fresh and
-   * resumed). Whether a nudge is actually owed is the notification manager's
-   * decision — it suppresses itself when a carrier has claimed the outcome or
-   * the parent has already consumed it. Both are domain state on the record,
-   * not owned here.
+   * resumed). The completion message is the only carrier of an outcome, so
+   * every terminal transition is announced.
    */
   private persistAndNotify(record: Subagent): void {
     this.persist(record);
@@ -164,12 +162,11 @@ export class SubagentEventsObserver implements SubagentManagerObserver {
   }
 
   onSubagentCreated(record: Subagent): void {
-    // Emit created event for background agents (before limiter admission).
+    // Emit created event (before limiter admission).
     this.emit("subagent:created", {
       id: record.id,
       type: record.type,
       description: record.description,
-      isBackground: record.isBackground,
     });
     // A queued agent belongs to this branch before it gets a slot.
     this.persist(record);

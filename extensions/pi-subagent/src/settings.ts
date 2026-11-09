@@ -61,9 +61,8 @@ export interface SubagentsSettings {
   /** Minutes an unconsumed agent's session is retained (safety cap). */
   unconsumedSessionRetentionMinutes?: number;
   /**
-   * When false, a parent interrupt (ESC) leaves background and queued subagents
-   * running. Foreground agents hold the parent's run signal directly, so they
-   * abort on ESC either way.
+   * When false, a parent interrupt (ESC) leaves running and queued subagents
+   * running.
    */
   abortAllOnInterrupt?: boolean;
   /**

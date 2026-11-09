@@ -77,7 +77,7 @@ export default defineScenario({
 - **Subagents.** `startAgent` builds a `subagent_start` call. The child is
   matched by its `prompt`, so keep prompts unique. It plays `steps`, then holds
   and stays running, which keeps it in the Subagents widget. A string step
-  finishes it. Put extra parameters (`foreground`, `handoff`) in `options`.
+  finishes it. Put extra parameters (`handoff`) in `options`.
 
 ## 2. Run the driver
 

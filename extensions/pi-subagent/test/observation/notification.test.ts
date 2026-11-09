@@ -300,12 +300,15 @@ describe("NotificationManager", () => {
     expect(content).toBe(formatTaskNotification(record, 500));
   });
 
-  it("sendCompletion skips the nudge when the record is already consumed (enqueue-time guard)", () => {
+  it("sendCompletion still sends the message when the parent already read the result", () => {
     const args = makeArgs();
     const system = makeManager(args);
-    const consumedRecord = createTestSubagent({ id: "consumed-1", consumedAt: 5000 });
-    system.sendCompletion(consumedRecord);
-    expect(args.sendMessage).not.toHaveBeenCalled();
+    const readRecord = createTestSubagent({ id: "consumed-1", consumedAt: 5000 });
+    system.sendCompletion(readRecord);
+    expect(args.sendMessage).toHaveBeenCalledOnce();
+    expect((args.sendMessage.mock.calls[0][0] as { customType: string }).customType).toBe(
+      "subagent:completion",
+    );
   });
 
   describe("disposal", () => {
@@ -428,14 +431,14 @@ describe("NotificationManager", () => {
       expect(parent.deliveredToLlm).toHaveLength(1);
     });
 
-    it("suppresses the nudge when the parent pulls the result later in the same turn", () => {
+    it("still delivers the withheld nudge when the parent reads the result later in the same turn", () => {
       const parent = makePiParent();
       const record = createTestSubagent({ id: "race-1" });
       parent.startRun();
       parent.manager.sendCompletion(record);
       record.markConsumed(); // subagent_get, later in the same turn
       parent.settleRun();
-      expect(parent.deliveredToLlm).toHaveLength(0);
+      expect(parent.deliveredToLlm).toHaveLength(1);
     });
 
     it("collapses a re-completion during the same turn into a single delivery", () => {
@@ -550,31 +553,18 @@ describe("NotificationManager", () => {
         ]);
       });
 
-      it("is announced even after the parent collected an earlier outcome", () => {
+      it("is announced even after the parent read an earlier result", () => {
         const parent = makePiParent();
         const record = createTestSubagent({ id: "live-1", status: "running" });
         record.markConsumed();
 
         parent.manager.sendUpdate(record, "Course change.");
 
-        // Consumption records that the *outcome* was collected. An update is a
-        // new fact, so the gate that silences a duplicate outcome does not apply.
+        // Reading a result is no reason to silence a new fact the child sent.
         expect(parent.deliveredToLlm).toHaveLength(1);
       });
 
-      it("is left to the carrier that holds the outcome, which is blocked meanwhile", () => {
-        const parent = makePiParent();
-        const record = createTestSubagent({ id: "live-1", status: "running" });
-        record.claim();
-
-        parent.manager.sendUpdate(record, "Course change.");
-
-        // A claimed carrier is blocked awaiting this run, so an announcement
-        // would arrive after its own return. It renders the update instead.
-        expect(parent.deliveredToLlm).toHaveLength(0);
-      });
-
-      it("is no longer owed to a carrier once the announcement delivered it", () => {
+      it("is no longer owed to the completion message once the announcement delivered it", () => {
         const parent = makePiParent();
         const record = createTestSubagent({
           id: "live-1",
@@ -585,17 +575,6 @@ describe("NotificationManager", () => {
         parent.manager.sendUpdate(record, "Course change.");
 
         expect(record.runUpdates).toEqual(["A second finding."]);
-      });
-
-      it("is announced again once the carrier abandons its claim", () => {
-        const parent = makePiParent();
-        const record = createTestSubagent({ id: "live-1", status: "running" });
-        record.claim();
-        record.releaseClaims();
-
-        parent.manager.sendUpdate(record, "Course change.");
-
-        expect(parent.deliveredToLlm).toHaveLength(1);
       });
 
       it("is announced when the child is still running as the run settles", () => {
@@ -615,49 +594,31 @@ describe("NotificationManager", () => {
     });
 
     describe("a withheld update whose child terminates before the flush", () => {
-      it("rides the outcome the parent collected, rather than arriving after it", () => {
+      it("stays quiet once the child has terminated, leaving the update to the completion message", () => {
         const parent = makePiParent();
         const { record, state } = liveChildThatSent("Course change.");
 
         parent.startRun();
         parent.manager.sendUpdate(record, "Course change.");
 
-        // What subagent_get({ wait: true }) does: claim the outcome, wait
-        // for it, then record the collection.
-        record.claim();
+        // The update is still owed, to the completion message (and to a report
+        // from subagent_get); the withheld announcement does not arrive after
+        // the outcome it belongs to.
         state.markCompleted("Done.");
-        record.markConsumed();
 
-        // The report it returns renders what the run still owes.
+        parent.settleRun();
+        expect(parent.deliveredToLlm).toEqual([]);
         expect(record.runUpdates).toEqual(["Course change."]);
-
-        parent.settleRun();
-        expect(parent.deliveredToLlm).toEqual([]);
       });
 
-      it("stays quiet once a pull without wait has rendered it", () => {
-        const parent = makePiParent();
-        const { record, state } = liveChildThatSent("Course change.");
-
-        parent.startRun();
-        parent.manager.sendUpdate(record, "Course change.");
-
-        // subagent_get without wait claims nothing; it renders the run's
-        // owed updates and marks the settled outcome collected.
-        state.markCompleted("Done.");
-        record.markConsumed();
-
-        parent.settleRun();
-        expect(parent.deliveredToLlm).toEqual([]);
-      });
-
-      it("rides the completion nudge when nothing collected the outcome", () => {
+      it("rides the completion message, even when the parent read the result meanwhile", () => {
         const parent = makePiParent();
         const { record, state } = liveChildThatSent("Course change.");
 
         parent.startRun();
         parent.manager.sendUpdate(record, "Course change.");
         state.markCompleted("Done.");
+        record.markConsumed(); // subagent_get, later in the same turn
         parent.manager.sendCompletion(record);
         parent.settleRun();
 

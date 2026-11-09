@@ -1,22 +1,21 @@
 /**
  * outcome-delivery.ts — Shared rendering for a subagent outcome.
  *
- * A terminated child's outcome reaches the parent model through exactly one
- * carrier: the foreground tool return, the resume tool return, the
- * `subagent_get` report, or the completion nudge. Each carrier owns its
- * own framing (spawn notes, XML envelope, report header) and its own
- * truncation — a nudge is a preview, a pull is the full text — but the body
- * they wrap is the same fact, so it is rendered here rather than four times.
+ * A terminated child's outcome reaches the parent model in the completion
+ * message, which is a preview. `subagent_get` reads the same outcome back in
+ * full, without delivering it again. Each owns its own framing (XML envelope,
+ * report header) and its own truncation, but the body they wrap is the same
+ * fact, so it is rendered here rather than twice.
  *
- * The updates a child sent mid-run ride the carriers too, for the runs whose
- * outcome a blocked carrier holds: the announcement channel would deliver them
- * after that carrier's own return, so it renders them itself instead.
+ * The updates a child sent mid-run that no announcement delivered ride both:
+ * `renderRunUpdates` renders them for the completion message, and
+ * `renderOutcomeAddenda` appends them to a report.
  *
  * The updates and the ask-back affordance are appended in one fixed order by
- * `renderOutcomeAddenda`, so the three carriers that compose them cannot
- * disagree about what follows the body. The affordance is the one
- * addendum that asks the parent to call back, so it is also the one that has
- * to know whether that call would be accepted.
+ * `renderOutcomeAddenda`, so the renderings that compose them cannot disagree
+ * about what follows the body. The affordance is the one addendum that asks the
+ * parent to call back, so it is also the one that has to know whether that call
+ * would be accepted.
  *
  * Pure functions only: no SDK types, no record types, no side effects.
  */
@@ -26,12 +25,11 @@ import type { SubagentStatus } from "#src/lifecycle/subagent-state";
 import { type TurnBudget, wrappedUpAtTurnLimit } from "#src/lifecycle/turn-limits";
 
 /**
- * What a terminal status means, independent of how a carrier renders it.
+ * What a terminal status means, independent of how a message renders it.
  *
- * One source of truth for the facts, because the carriers disagreed on them:
- * the nudge reported an abort as "max turns exceeded" while the foreground
- * result added "output may be incomplete", and the pull and resume carriers
- * reported nothing at all. Presentation still differs — see the two renderers
+ * One source of truth for the facts, because the renderings disagreed on them:
+ * the nudge reported an abort as "max turns exceeded" while the pull reported
+ * nothing at all. Presentation still differs — see the two renderers
  * below — because a standalone label and a mid-sentence parenthetical are
  * different grammar, not different facts.
  */
@@ -88,7 +86,7 @@ const RESUME_REFUSAL_CLAUSES: Record<Exclude<ResumeRefusal, "still-running">, st
 
 /**
  * One line on why this settled agent cannot be resumed; empty when it can, or
- * when it is simply not finished. A carrier with a question to report uses
+ * when it is simply not finished. A message with a question to report uses
  * `renderQuestionAffordance` instead, which says the same thing about the question.
  */
 export function renderResumeUnavailable(refusal: ResumeRefusal | undefined): string {
@@ -110,7 +108,7 @@ export function renderStatusLabel(outcome: StatusOutcome): string {
 
 /**
  * Parenthetical suffix form, e.g. " (wrapped up — after turn-budget warning)", for a
- * carrier appending to its own sentence. Empty when the status is unremarkable
+ * message appending to its own sentence. Empty when the status is unremarkable
  * or when the body already carries the explanation, as an error's does.
  */
 export function renderStatusNote(outcome: StatusOutcome): string {
@@ -136,12 +134,12 @@ export interface OutcomeBody {
  * Empty when the child asked nothing.
  *
  * Names the exact call that answers it when a resume would be accepted, why it
- * cannot be answered when one would be refused for good, and what to wait for
- * when the child is simply not finished — the parent is never told to make a
- * call this extension declines.
+ * cannot be answered when one would be refused for good, and that the
+ * completion message is coming when the child is simply not finished — the
+ * parent is never told to make a call this extension declines.
  *
  * Takes the id, question, and refusal rather than a record: the three facts it
- * needs, so a carrier holding any shape can call it.
+ * needs, so a caller holding any shape can call it.
  */
 export function renderQuestionAffordance(
   agentId: string,
@@ -157,8 +155,7 @@ export function renderQuestionAffordance(
     return (
       "\n\nThis agent asked a question before it finished running, so it cannot be " +
       `resumed yet:\n\n${quoted}\n\n` +
-      "Wait for it to settle \u2014 subagent_get with wait: true returns when it " +
-      "does \u2014 then answer it."
+      "End your turn: its completion message arrives when it settles. Then answer it."
     );
   }
   if (refusal) {
@@ -175,10 +172,10 @@ export function renderQuestionAffordance(
 }
 
 /**
- * What a carrier appends after the outcome body: the run's updates, then the
+ * What a report appends after the outcome body: the run's updates, then the
  * call to action.
  *
- * The fields rather than a record, so a carrier holding any shape can call it
+ * The fields rather than a record, so a caller holding any shape can call it
  * — both `Subagent` and `AgentReport` satisfy this structurally.
  */
 export interface OutcomeAddenda {
@@ -188,14 +185,14 @@ export interface OutcomeAddenda {
   /**
    * Why a resume would be refused; undefined when one would be accepted.
    *
-   * Required rather than optional so a carrier that forgets it fails to
+   * Required rather than optional so a caller that forgets it fails to
    * compile. An omitted optional would silently mean "resumable", which is the
    * fail-open this field exists to close.
    */
   resumeRefusal: ResumeRefusal | undefined;
 }
 
-/** The addenda tail every outcome carrier appends, in one order. */
+/** The addenda tail a report appends, in one order. */
 export function renderOutcomeAddenda(outcome: OutcomeAddenda): string {
   return (
     // What the agent flagged along the way, then the call to action.
@@ -205,10 +202,10 @@ export function renderOutcomeAddenda(outcome: OutcomeAddenda): string {
 }
 
 /**
- * The updates a child sent while a carrier held this run's outcome, quoted the
- * way the ask-back affordance quotes the child's question. Empty for a run the
- * child said nothing during — which is every run whose updates the parent was
- * free to receive as they happened.
+ * The updates a child sent that no announcement delivered, quoted the way the
+ * ask-back affordance quotes the child's question. Empty for a run the child
+ * said nothing during — which is every run whose updates the parent received
+ * as they happened.
  */
 export function renderRunUpdates(updates: readonly string[] | undefined): string {
   if (!updates?.length) return "";
@@ -224,7 +221,7 @@ export function renderRunUpdates(updates: readonly string[] | undefined): string
 }
 
 /**
- * The outcome body every carrier reports: a running note, an error line, a
+ * The outcome body a report gives: a running note, an error line, a
  * never-started note, or the trimmed result.
  *
  * The empty-result fallback tests truthiness rather than nullishness. A `??`
@@ -236,7 +233,7 @@ export function renderRunUpdates(updates: readonly string[] | undefined): string
  */
 export function renderOutcomeBody(outcome: OutcomeBody): string {
   if (outcome.status === "running")
-    return "Agent is still running. Use wait: true or check back later.";
+    return "Agent is still running. Its completion message arrives when it finishes.";
   if (outcome.status === "error") return `Error: ${outcome.error}`;
   if (outcome.stoppedWhileQueued)
     return "Agent was stopped while queued and never started. No work was performed.";

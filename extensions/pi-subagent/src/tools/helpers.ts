@@ -1,39 +1,7 @@
 import type { AgentConfigLookup } from "#src/config/agent-types";
-import type { TurnBudget } from "#src/lifecycle/turn-limits";
 import { getLifetimeTotal, type LifetimeUsage } from "#src/lifecycle/usage";
 import type { AgentConfig } from "#src/types";
-import { type AgentDetails, formatTokens, type ModelIdentity, modelLabel } from "#src/ui/display";
-
-/** Build AgentDetails from a base + record-specific fields. */
-export function buildDetails(
-  base: Pick<AgentDetails, "displayName" | "description" | "subagentType" | "modelName" | "tags">,
-  record: {
-    toolUses: number;
-    startedAt: number;
-    completedAt?: number;
-    status: string;
-    error?: string;
-    id?: string;
-    lifetimeUsage: LifetimeUsage;
-    /** The model the agent runs; unknown for an inherited model until its session exists. */
-    model?: ModelIdentity;
-    turnBudget?: TurnBudget;
-  },
-  overrides?: Partial<AgentDetails>,
-): AgentDetails {
-  return {
-    ...base,
-    modelName: modelLabel(record.model) ?? base.modelName,
-    toolUses: record.toolUses,
-    tokens: formatLifetimeTokens(record),
-    durationMs: (record.completedAt ?? Date.now()) - record.startedAt,
-    status: record.status as AgentDetails["status"],
-    agentId: record.id,
-    error: record.error,
-    turnBudget: record.turnBudget,
-    ...overrides,
-  };
-}
+import { type AgentDetails, formatTokens } from "#src/ui/display";
 
 /** Render a spawn's advisories as the prefix a result's leading line follows, or "" when there are none. */
 export function renderSpawnNotes(notes: readonly string[]): string {

@@ -64,8 +64,8 @@ An invalid `thinking` or `visibility` value is dropped, not rejected: the
 agent inherits the caller's thinking level, or stays visible. Lists take
 either YAML form: `tools: read, grep` or `tools: [read, grep]`.
 
-There is no foreground setting. Whether an agent runs in the foreground or the
-background is always the caller's choice.
+There is no run-mode setting: every agent runs in the background, and a
+`foreground` key in an agent file is ignored.
 
 ## Description and guidance
 

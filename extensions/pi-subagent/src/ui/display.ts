@@ -114,7 +114,6 @@ export function buildInvocationTags(invocation: AgentInvocation | undefined): { 
   if (!invocation) return { tags };
   if (invocation.thinking) tags.push(`thinking: ${invocation.thinking}`);
   if (invocation.inheritContext) tags.push("inherit context");
-  if (invocation.runInBackground === false) tags.push("foreground");
   if (invocation.maxTurns != null) tags.push(`max turns: ${invocation.maxTurns}`);
   return { tags };
 }

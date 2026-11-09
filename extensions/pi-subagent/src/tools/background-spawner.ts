@@ -52,8 +52,6 @@ export function spawnBackground(manager: BackgroundManagerDeps, params: Backgrou
       thinkingLevel: execution.thinking,
       ...(execution.handoff ? { handoff: execution.handoff } : {}),
       ...(execution.cwd ? { cwd: execution.cwd } : {}),
-      // AgentTool routed here because the call runs in the background.
-      background: true,
     });
   } catch (err) {
     return textResult(err instanceof Error ? err.message : String(err));

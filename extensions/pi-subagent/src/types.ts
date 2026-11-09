@@ -124,7 +124,6 @@ export interface AgentInvocation {
   thinking?: ThinkingLevel;
   maxTurns?: number;
   inheritContext?: boolean;
-  runInBackground?: boolean;
 }
 
 /**

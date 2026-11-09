@@ -28,18 +28,7 @@ interface AgentInvocationParams {
   /** Already validated by the door — see `parseThinkingLevel`. */
   thinking?: ThinkingLevel;
   max_turns?: number;
-  foreground?: boolean;
   inherit_context?: boolean;
-}
-
-/** What the door assumes when the caller does not pick a mode. */
-export interface AgentInvocationDefaults {
-  /**
-   * Run in the foreground when nothing chooses. False everywhere but a run mode
-   * that cannot be woken once its turn ends (print, json), where a background
-   * agent's result would never reach the parent.
-   */
-  foreground: boolean;
 }
 
 /** The per-call values the Agent tool door resolved from its caller and the agent file. */
@@ -56,7 +45,6 @@ export interface AgentInvocationConfig {
   thinking?: ThinkingLevel;
   maxTurns?: number;
   inheritContext: boolean;
-  runInBackground: boolean;
   /**
    * Locked fields whose caller value was thrown away, in `LOCKABLE_FIELDS` order.
    *
@@ -76,7 +64,6 @@ export interface AgentInvocationConfig {
 export function resolveAgentInvocationConfig(
   agentConfig: AgentConfig,
   params: AgentInvocationParams,
-  defaults: AgentInvocationDefaults = { foreground: false },
 ): AgentInvocationConfig {
   const locked = agentConfig.locked;
   const model = resolveField("model", agentConfig.model, params.model, locked);
@@ -95,8 +82,6 @@ export function resolveAgentInvocationConfig(
     thinking: thinking.value,
     maxTurns: maxTurns.value,
     inheritContext: inheritContext.value ?? false,
-    // The caller alone decides how an agent runs; its profile has no say.
-    runInBackground: !(params.foreground ?? defaults.foreground),
     discarded: [model, thinking, maxTurns, inheritContext]
       .filter((resolution) => resolution.discarded)
       .map((resolution) => resolution.field),

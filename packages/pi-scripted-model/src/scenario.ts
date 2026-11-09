@@ -50,7 +50,7 @@ export interface AgentScript {
   prompt: string;
   /** The child's responses. When they run out the child holds, still running. */
   steps?: Step[];
-  /** Extra subagent_start parameters (foreground, handoff, …). */
+  /** Extra subagent_start parameters (handoff, …). */
   options?: ToolArgs;
 }
 

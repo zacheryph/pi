@@ -1,11 +1,19 @@
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
-import { expect, it } from "vitest";
-import { EXTENSIONS, offlineAgentDir, realChildSession, lastResult } from "./helpers/sdk.ts";
+import { expect, it, vi } from "vitest";
+import {
+  EXTENSIONS,
+  lastResult,
+  offlineAgentDir,
+  realChildSession,
+  scriptSides,
+  spawnChild,
+} from "./helpers/sdk.ts";
 import { toolCall } from "../../../packages/pi-test-helpers/src/faux-session.ts";
 
 // A real orchestrator session loads this extension and pi-ask, and spawns a
-// worker whose `ask` call turns toward the orchestrator: the question lands on
-// the worker's record and in the orchestrator's subagent_start result.
+// worker whose `ask` call turns toward the orchestrator: the worker ends its
+// turn with the question, and the question reaches the orchestrator in the
+// worker's completion message.
 it("routes a child's ask to its parent through pi-ask", async () => {
   const dir = offlineAgentDir({ extensions: [EXTENSIONS.subagent, EXTENSIONS.ask] });
   const { session: orchestrator, faux } = await realChildSession(dir, {
@@ -13,43 +21,41 @@ it("routes a child's ask to its parent through pi-ask", async () => {
     provider: "ask-test",
   });
   let childTools: string[] = [];
-  let spawnResult = "";
-  faux.setResponses([
-    toolCall("subagent_start", {
-      subagent_type: "general-purpose",
-      description: "Pick storage",
-      prompt: "Set up storage.",
-    }),
-    (context) => {
-      childTools = context.messages.flatMap((message) =>
-        message.role === "system" ? (message.toolsAdded?.map((tool) => tool.name) ?? []) : [],
-      );
-      return toolCall("ask", {
-        questions: [
-          {
-            question: "Which database?",
-            header: "Storage",
-            options: [{ label: "Postgres" }, { label: "SQLite" }],
-          },
-        ],
-      });
-    },
-    (context) => {
-      const recorded = lastResult(context, "ask");
-      expect(recorded).toContain("End your turn now");
-      return fauxAssistantMessage("Waiting for the storage decision.");
-    },
-    (context) => {
-      const result = lastResult(context, "subagent_start");
-      spawnResult = result;
-      return fauxAssistantMessage("Asked.");
-    },
-  ]);
+  let recorded = "";
+  const { requests } = scriptSides(faux, {
+    parent: [spawnChild("Pick storage"), fauxAssistantMessage("Asked.")],
+    child: [
+      (context) => {
+        childTools = context.messages.flatMap((message) =>
+          message.role === "system" ? (message.toolsAdded?.map((tool) => tool.name) ?? []) : [],
+        );
+        return toolCall("ask", {
+          questions: [
+            {
+              question: "Which database?",
+              header: "Storage",
+              options: [{ label: "Postgres" }, { label: "SQLite" }],
+            },
+          ],
+        });
+      },
+      (context) => {
+        recorded = lastResult(context, "ask");
+        return fauxAssistantMessage("Waiting for the storage decision.");
+      },
+    ],
+  });
 
   await orchestrator.runTurnLoop("Delegate storage.", {});
-  expect(faux.getPendingResponseCount()).toBe(0);
+  // The worker's completion message wakes the orchestrator once more.
+  await vi.waitFor(() => expect(requests.parent).toHaveLength(3), { timeout: 10_000 });
+  await orchestrator.session.waitForIdle();
+
   expect(childTools).toContain("ask");
-  expect(spawnResult).toContain("[Storage] Which database?");
-  expect(spawnResult).toContain("a) Postgres");
-  expect(spawnResult).toContain("resume");
+  expect(recorded).toContain("End your turn now");
+  const completion = JSON.stringify(requests.parent[2].messages.at(-1));
+  expect(completion).toContain("<task-notification>");
+  expect(completion).toContain("[Storage] Which database?");
+  expect(completion).toContain("a) Postgres");
+  expect(completion).toContain("resume");
 }, 20_000);

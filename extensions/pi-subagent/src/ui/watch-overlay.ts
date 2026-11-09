@@ -16,7 +16,6 @@ export type WatchAgent = Pick<
   | "id"
   | "type"
   | "description"
-  | "isBackground"
   | "status"
   | "responseText"
   | "result"
@@ -98,7 +97,7 @@ export class WatchOverlay implements SubagentManagerObserver {
       };
     });
     for (const record of this.manager.listAgents()) {
-      if (record.isBackground && (record.status === "running" || record.status === "queued")) {
+      if (record.status === "running" || record.status === "queued") {
         const watched = this.track(record);
         if (watched && record.responseText) watched.tail.note(record.responseText, "text");
         this.subscribe(record);
@@ -154,7 +153,7 @@ export class WatchOverlay implements SubagentManagerObserver {
   }
 
   private track(record: WatchAgent): Watched | undefined {
-    if (!this.context || !record.isBackground) return undefined;
+    if (!this.context) return undefined;
     let watched = this.watched.get(record.id);
     if (!watched) {
       watched = { record, tail: new WatchTail() };

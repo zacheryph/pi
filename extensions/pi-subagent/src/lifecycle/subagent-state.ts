@@ -24,28 +24,6 @@ import { addUsage } from "#src/lifecycle/usage";
 
 export type SubagentStatus = "queued" | "running" | "completed" | "aborted" | "stopped" | "error";
 
-/**
- * One carrier's commitment to deliver an outcome. Releasing it drops only this
- * commitment, so the outcome stays claimed while any other carrier holds one.
- */
-export interface CarrierClaim {
-  release(): void;
-}
-
-/** What a settled run ended with: the fields an outcome carrier renders. */
-export interface SettledOutcome {
-  status: SubagentStatus;
-  result: string | undefined;
-  error: string | undefined;
-  startedAt: number;
-  completedAt: number | undefined;
-  pendingQuestion: string | undefined;
-  /** The updates no announcement delivered; what the carrier still owes. */
-  runUpdates: readonly string[];
-  /** The run's turn limit and its use; absent when no limit applied. */
-  turnBudget?: TurnBudget;
-}
-
 // ---- Status classification predicates ----
 // The single decision point for the re-derived status groupings. Instance
 // methods on SubagentState delegate here; DTO consumers holding a bare
@@ -84,7 +62,7 @@ export interface SubagentStateInit {
   stoppedWhileQueued?: boolean;
   startedAt?: number;
   completedAt?: number;
-  /** Time the parent collected the outcome; undefined = obligation still open. */
+  /** Time the parent read the finished result with `subagent_get`; undefined = not read. */
   consumedAt?: number;
   // Stats — seed a populated value without replaying the accumulation methods
   toolUses?: number;
@@ -129,7 +107,9 @@ export class SubagentState {
     return this._completedAt;
   }
 
-  // Result delivery — whether the parent has collected the outcome (orthogonal to status)
+  // Whether the parent has read the finished result with `subagent_get`
+  // (orthogonal to status). It decides only how long the session is retained;
+  // it never decides whether the completion message is sent.
   private _consumedAt?: number;
   get consumedAt(): number | undefined {
     return this._consumedAt;
@@ -137,36 +117,6 @@ export class SubagentState {
   get consumed(): boolean {
     return this._consumedAt != null;
   }
-
-  // Result delivery — whether a carrier has committed to delivering the outcome.
-  // Distinct from consumption in two ways. It is revocable, where consumption is
-  // a one-way latch that also times session retention. And it is scoped to the
-  // caller rather than the run: consumedAt records a delivery that has already
-  // happened, so a resume must clear it, while a claim records one that has not
-  // happened yet and stays live across the reset (see resetForResume).
-  // Transient runtime ownership, so deliberately not seedable via
-  // SubagentStateInit — a rehydrated record must not claim a carrier that no
-  // longer exists.
-  // One entry per carrier, so a carrier that abandons its commitment drops only
-  // its own: another carrier holding the same outcome still delivers it.
-  private readonly _claims = new Set<CarrierClaim>();
-  get claimed(): boolean {
-    return this._claims.size > 0;
-  }
-
-  // Which run this is: 1 for the first, one more for each resume. A carrier
-  // that waits on a run compares it afterwards to learn whether a resume
-  // replaced the run it waited for.
-  // Transient like the claim: a rehydrated record has no waiter to answer.
-  private _run = 1;
-  get run(): number {
-    return this._run;
-  }
-
-  // The outcome of the run the latest resume replaced, kept for a carrier that
-  // was waiting on it when the resume began. One slot: a second resume during
-  // one wait would need the first resumed run to settle inside it.
-  private _superseded?: { run: number; outcome: SettledOutcome };
 
   // The question this agent ended its turn with, if it declared one. Part of the
   // outcome like _result, and set alongside it at the terminal transition.
@@ -183,14 +133,14 @@ export class SubagentState {
     return this._turnBudget;
   }
 
-  // The updates the child sent during this run, each remembering whether the
-  // announcement channel delivered it — so a message reaches the parent once,
-  // through whichever channel could reach it, and no carrier repeats it.
+  // The updates the child sent during this run, each remembering whether it was
+  // announced as it happened — so a message reaches the parent once: the
+  // completion message repeats only the updates no announcement delivered.
   // Scoped to the run, so it clears wherever a run begins.
   // Transient runtime state, so deliberately not seedable via SubagentStateInit
   // — a rehydrated record has no run to have produced these.
   private _runUpdates: RunUpdate[] = [];
-  /** The updates no announcement delivered — what an outcome carrier must render. */
+  /** The updates no announcement delivered — what the completion message must render. */
   get runUpdates(): readonly string[] {
     return this._runUpdates.filter((update) => !update.announced).map((update) => update.message);
   }
@@ -370,8 +320,8 @@ export class SubagentState {
   }
 
   /**
-   * Record the parent collected the outcome. Idempotent — keeps the first
-   * collection time (??=), so a re-read does not advance the retention clock.
+   * Record the parent read the finished result. Idempotent — keeps the first
+   * read time (??=), so a re-read does not advance the retention clock.
    */
   markConsumed(at?: number): void {
     this._consumedAt ??= at ?? Date.now();
@@ -380,25 +330,6 @@ export class SubagentState {
   /** Record the question the agent ended its turn with. */
   setPendingQuestion(question: string | undefined): void {
     this._pendingQuestion = question;
-  }
-
-  /**
-   * A carrier has committed to delivering this outcome, so nothing else should
-   * announce it. Unlike every other transition here, this one is revocable.
-   */
-  claim(): CarrierClaim {
-    const claim: CarrierClaim = {
-      release: () => {
-        this._claims.delete(claim);
-      },
-    };
-    this._claims.add(claim);
-    return claim;
-  }
-
-  /** Drop every carrier's commitment; announcing is owed again. */
-  releaseClaims(): void {
-    this._claims.clear();
   }
 
   /** Transition to stopped state. Always valid — no guard. */
@@ -420,18 +351,8 @@ export class SubagentState {
   /**
    * Reset for resume: running status, new startedAt, clear
    * completedAt/result/error/consumedAt/turnBudget.
-   *
-   * The carrier claim deliberately survives: it belongs to the caller that asked
-   * for the resume and will deliver its outcome, not to the run being reset.
-   * Clearing it here would drop the claim before the caller could observe it,
-   * since this runs synchronously before resume() returns.
-   *
-   * The outgoing run's outcome is retained first, so a carrier that was waiting
-   * on that run can still deliver what it ended with (see supersededOutcome).
    */
   resetForResume(startedAt: number): void {
-    this._superseded = { run: this._run, outcome: this.currentOutcome() };
-    this._run++;
     this._status = "running";
     this._startedAt = startedAt;
     this._completedAt = undefined;
@@ -444,26 +365,5 @@ export class SubagentState {
     this._pendingQuestion = undefined;
     // The updates belong to the run that produced them, and this starts another.
     this._runUpdates.length = 0;
-  }
-
-  /**
-   * What run `run` ended with, once a resume has replaced it; undefined for the
-   * current run, and for any run before the most recently replaced one.
-   */
-  supersededOutcome(run: number): SettledOutcome | undefined {
-    return this._superseded?.run === run ? this._superseded.outcome : undefined;
-  }
-
-  private currentOutcome(): SettledOutcome {
-    return {
-      status: this._status,
-      result: this._result,
-      error: this._error,
-      startedAt: this._startedAt,
-      completedAt: this._completedAt,
-      pendingQuestion: this._pendingQuestion,
-      runUpdates: this.runUpdates,
-      turnBudget: this._turnBudget,
-    };
   }
 }

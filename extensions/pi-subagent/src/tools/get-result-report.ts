@@ -40,7 +40,7 @@ export interface AgentReport {
   conversation?: string;
   /** Persisted transcript path; rendered as a pointer so the parent can read it directly. */
   transcriptPath?: string;
-  /** The updates the agent sent while this call's carrier held the outcome. */
+  /** The updates the agent sent that no announcement delivered. */
   runUpdates?: readonly string[];
   /** The question the agent ended its turn with, when it declared one. */
   pendingQuestion?: string;
@@ -54,11 +54,6 @@ export interface AgentReport {
    * Required, so a report builder cannot leave it out by omission.
    */
   model: string | undefined;
-  /**
-   * The run this report describes was replaced by a resume before the call's
-   * wait returned, so the agent is running again.
-   */
-  resumedWhileWaiting?: boolean;
 }
 
 /** Assemble the stats parts: Tool uses / tokens? / Context? / Compactions? / Duration. */
@@ -73,7 +68,7 @@ export function renderStatsParts(report: AgentReport): string[] {
 
 /**
  * Select the per-status body. `AgentReport` structurally satisfies
- * `OutcomeBody`, so this is the shared renderer under this carrier's name.
+ * `OutcomeBody`, so this is the shared renderer under this report's name.
  */
 export function renderReportBody(report: AgentReport): string {
   return renderOutcomeBody(report);
@@ -91,11 +86,6 @@ export function formatAgentReport(report: AgentReport): string {
   if (!report.pendingQuestion && report.resumeRefusal && report.resumeRefusal !== "no-session") {
     const unavailable = renderResumeUnavailable(report.resumeRefusal);
     if (unavailable) output += `\n\n${unavailable}`;
-  }
-  if (report.resumedWhileWaiting) {
-    output +=
-      "\n\nThis agent was resumed before this wait returned and is running again \u2014 " +
-      "call subagent_get for that run's outcome.";
   }
   if (report.conversation) {
     output += `\n\n--- Agent Conversation ---\n${report.conversation}`;

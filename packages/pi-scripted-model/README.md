@@ -27,12 +27,13 @@ const scenario = defineScenario({
           description: "Do A",
           prompt: "Do task A.", // identifies the child, so keep it unique
           steps: [[tool("read", { path: "a.txt" })], "A is done."],
-          options: { foreground: true },
         }),
       ],
-      "Done.", // a string ends the turn
+      "Started.", // a string ends the turn
     ],
-    [HOLD], // the second turn stays open until aborted
+    // The agent's completion message starts the second turn.
+    ["Noted."],
+    [HOLD], // the third turn stays open until aborted
   ],
 });
 ```
@@ -90,6 +91,7 @@ scripted ones is available, so a test cannot reach a real provider. The
 environment is restored on `dispose`. Because it is process-wide, only one
 session may be open per process; vitest runs each test file in its own worker.
 
-`test/harness.test.ts` shows end-to-end tests across extensions: a foreground
-subagent running its own script, and a todo handed to a subagent that completes
-it in the parent's list. CI runs this package whenever any extension changes.
+`test/harness.test.ts` shows end-to-end tests across extensions: a background
+subagent running its own script and announcing its result in a completion
+message, and a todo handed to a subagent that completes it in the parent's
+list. CI runs this package whenever any extension changes.

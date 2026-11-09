@@ -1,7 +1,9 @@
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import {
+  CHILD_MARK,
   EXTENSIONS,
+  scriptSides,
   offlineAgentDir,
   realChildSession,
   lifecycleLog,
@@ -20,29 +22,34 @@ it("carries the agent id, tool call id and any extension's handoff on a tool-spa
     provider: "handoff-test",
   });
   let workerId: string | undefined;
-  faux.setResponses([
-    toolCall(
-      "subagent_start",
-      {
-        subagent_type: "general-purpose",
-        description: "Audit auth",
-        prompt: "Audit the auth module.",
-        handoff: {
-          todos: { keys: ["auth-audit", "auth-tests"], scope: "ledger" },
-          review: { ticket: "AUTH-12" },
+  const { requests } = scriptSides(faux, {
+    parent: [
+      toolCall(
+        "subagent_start",
+        {
+          subagent_type: "general-purpose",
+          description: "Audit auth",
+          prompt: `${CHILD_MARK} Audit the auth module.`,
+          handoff: {
+            todos: { keys: ["auth-audit", "auth-tests"], scope: "ledger" },
+            review: { ticket: "AUTH-12" },
+          },
         },
+        "call-spawn-1",
+      ),
+      (context) => {
+        workerId = agentIdIn(lastResult(context, "subagent_start"));
+        return fauxAssistantMessage("Delegated.");
       },
-      "call-spawn-1",
-    ),
-    fauxAssistantMessage("Audit done."),
-    (context) => {
-      const result = lastResult(context, "subagent_start");
-      workerId = agentIdIn(result);
-      return fauxAssistantMessage("Delegated.");
-    },
-  ]);
+      // The worker's completion message wakes the orchestrator once more.
+      fauxAssistantMessage("Noted."),
+    ],
+    child: [fauxAssistantMessage("Audit done.")],
+  });
 
   await orchestrator.runTurnLoop("Delegate the audit.", {});
+  await vi.waitFor(() => expect(requests.parent).toHaveLength(3), { timeout: 10_000 });
+  await orchestrator.session.waitForIdle();
   expect(workerId).toBeTruthy();
   await orchestrator.dispose();
 
