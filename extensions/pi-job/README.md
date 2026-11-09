@@ -122,10 +122,10 @@ non-reload session shutdown (nobody to wake; the item stays open, see [Restart](
 > A job that is still open when Pi restarts is not silently forgotten: the next start tells the
 > model it was lost.
 
-One narrow gap remains. When a completion arrives mid-run, pi appends it at the end of the current
-turn, but the host closes the item as soon as it hands the message over. If Pi dies in between, the
-completion is not in the transcript and the item is closed, so the next start does not report it
-either. The window is the rest of one turn, and the job itself is gone with the process in any case.
+A completion that arrives mid-run is appended by pi at the end of the current turn. The host closes
+the item only once the message is in the transcript, so if pi dies in between, the item is still open
+and the next start reports it lost. A job that ends while the session reloads, between pi-work's
+shutdown handler and pi-job's, is completed through the re-adopted item once startup is over.
 
 ### How it works
 

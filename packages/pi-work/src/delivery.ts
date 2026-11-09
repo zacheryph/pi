@@ -50,6 +50,8 @@ export class Delivery<T> {
   private held: Completion<T>[] = [];
   private runActive = false;
   private disposed = false;
+  /** Messages that were handed over but dropped when delivery stopped for good. */
+  private readonly refused = new WeakSet<Completion<T>>();
 
   constructor(host: DeliveryHost<T>) {
     this.host = host;
@@ -64,10 +66,16 @@ export class Delivery<T> {
     return this.disposed;
   }
 
-  add(item: Completion<T>): void {
-    if (this.disposed) return;
+  /**
+   * Hand a message over. Returns whether delivery accepted it: it was sent, or it is held for a
+   * reload. False when delivery is disposed (before or because of this very send), in which case
+   * the message goes nowhere and the caller must not treat it as delivered.
+   */
+  add(item: Completion<T>): boolean {
+    if (this.disposed) return false;
     this.held.push(item);
     this.flush();
+    return !this.refused.has(item);
   }
 
   onAgentStart(): void {
@@ -104,6 +112,7 @@ export class Delivery<T> {
     this.disposed = true;
     const lost = this.held;
     this.held = [];
+    for (const item of lost) this.refused.add(item);
     if (lost.length) {
       try {
         this.host.lost?.(lost);

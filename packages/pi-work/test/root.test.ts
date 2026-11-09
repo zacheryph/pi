@@ -217,3 +217,97 @@ describe("ensureWorkHost", () => {
     expect(h.pi.appendEntry).not.toHaveBeenCalled();
   });
 });
+
+describe("waiting for a completion to land", () => {
+  const DONE = { customType: "test:done", content: "SAME" };
+  const landed = (id: string, content = "SAME") => ({
+    type: "custom_message",
+    id,
+    customType: "test:done",
+    content,
+  });
+  const base = [
+    { type: "message", id: "m1" },
+    { type: "message", id: "m2" },
+  ];
+  const closesOf = (h: ReturnType<typeof fakePi>) =>
+    h.pi.appendEntry.mock.calls.filter(([, data]) => (data as WorkRecord).op === "close");
+
+  async function started(branch: unknown[]) {
+    const h = fakePi();
+    const work = ensureWorkHost(h.api);
+    const { ctx } = context({ branch });
+    await h.emit("session_start", { reason: "startup" }, ctx);
+    const item = work.host()!.open({ owner: "test", kind: "job", label: "a" });
+    return { h, work, ctx, item, branch };
+  }
+
+  it("closes the item when its message appears after the send", async () => {
+    const { h, ctx, item, branch } = await started([...base]);
+    item.complete(DONE);
+    branch.push(landed("c1"));
+    await h.emit("turn_start", {}, ctx);
+    expect(closesOf(h)).toHaveLength(1);
+  });
+
+  it("does not take an identical message from before the send for the new one", async () => {
+    const { h, ctx, item, branch } = await started([...base, landed("old")]);
+    item.complete(DONE);
+    await new Promise((resolve) => setImmediate(resolve));
+    await h.emit("turn_start", {}, ctx);
+    await h.emit(
+      "agent_before_settle",
+      {
+        outcome: "completed",
+        continue: false,
+        context: { contextMessages: [], pendingMessages: [] },
+      },
+      ctx,
+    );
+    expect(closesOf(h)).toHaveLength(0);
+    branch.push(landed("new"));
+    await h.emit("turn_start", {}, ctx);
+    expect(closesOf(h)).toHaveLength(1);
+  });
+
+  it("stops waiting once the leaf has left the branch the message was sent on", async () => {
+    const { h, work, ctx, item, branch } = await started([...base]);
+    item.complete(DONE);
+    branch.splice(1, 1, { type: "message", id: "other" }, { type: "message", id: "other2" });
+    await h.emit("session_tree", {}, ctx);
+    // Even an identical message that shows up later closes nothing: the item stays open on disk.
+    branch.push(landed("c1"));
+    await h.emit("turn_start", {}, ctx);
+    expect(closesOf(h)).toHaveLength(0);
+    expect((work.host() as unknown as { awaitingLanding(): boolean }).awaitingLanding()).toBe(
+      false,
+    );
+  });
+
+  it("stops waiting once a run has settled without the message landing", async () => {
+    const { h, work, ctx, item, branch } = await started([...base]);
+    item.complete(DONE);
+    await h.emit("agent_settled", {}, ctx);
+    const host = work.host() as unknown as { awaitingLanding(): boolean };
+    expect(host.awaitingLanding()).toBe(false);
+    branch.push(landed("c1"));
+    await h.emit("turn_start", {}, ctx);
+    expect(closesOf(h)).toHaveLength(0);
+  });
+
+  it("still closes a message that lands at the end of the settling run", async () => {
+    const { h, ctx, item, branch } = await started([...base]);
+    item.complete(DONE);
+    branch.push(landed("c1")); // appended when the turn ended, before agent_settled
+    await h.emit("agent_settled", {}, ctx);
+    expect(closesOf(h)).toHaveLength(1);
+  });
+
+  it("keeps waiting while no run has settled and the branch is the same", async () => {
+    const { h, work, ctx, item } = await started([...base]);
+    item.complete(DONE);
+    await h.emit("turn_start", {}, ctx);
+    await h.emit("agent_end", {}, ctx);
+    expect((work.host() as unknown as { awaitingLanding(): boolean }).awaitingLanding()).toBe(true);
+  });
+});

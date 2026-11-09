@@ -71,6 +71,36 @@ describe("Delivery", () => {
     expect(sent).toEqual([]);
   });
 
+  it("reports whether it accepted a message", () => {
+    const { delivery, sent } = setup();
+    expect(delivery.add(item("a"))).toBe(true);
+    delivery.suspend();
+    expect(delivery.add(item("held"))).toBe(true); // kept for the reload handoff
+    delivery.dispose();
+    expect(delivery.add(item("c"))).toBe(false); // disposed: goes nowhere
+    expect(sent).toEqual([{ ids: ["a"], mode: "wake" }]);
+  });
+
+  it("refuses the message whose own send failed for good", () => {
+    const { delivery, state } = setup();
+    state.throws = true;
+    expect(delivery.add(item("a"))).toBe(false);
+    expect(delivery.add(item("b"))).toBe(false);
+  });
+
+  it("accepts a message that went out even when the context goes stale right after", () => {
+    let checks = 0;
+    const delivery = new Delivery<string>({
+      isIdle: () => {
+        if (++checks > 1) throw new Error("stale");
+        return true;
+      },
+      send: () => {},
+    });
+    expect(delivery.add(item("a"))).toBe(true);
+    expect(delivery.isDisposed).toBe(true);
+  });
+
   it("reports held items when disposed", () => {
     const { delivery, lost } = setup();
     delivery.suspend();

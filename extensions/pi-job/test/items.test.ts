@@ -129,8 +129,8 @@ void test("a reload: what ended in the gap is completed through the adopted item
   assert.deepEqual(log, ["complete new done j1"]);
 });
 
-void test("an adopted item whose job was stopped without a message is closed, not lost", () => {
-  const { items, handle, log } = setup([job({ status: "killed" })]);
+void test("an adopted item whose job was stopped on request is closed, not lost", () => {
+  const { items, handle, log } = setup([job({ status: "killed", killedBy: "request" })]);
   const stopped = handle(
     {
       owner: WORK_OWNER,
@@ -142,6 +142,44 @@ void test("an adopted item whose job was stopped without a message is closed, no
   );
   assert.equal(items.adopt(stopped), true);
   assert.deepEqual(log, ["cancel k"]);
+});
+
+void test("an adopted item whose job ended on its own, unseen by the old host, is completed after release", () => {
+  // The old host was disposed before pi-job's shutdown handler ran, so finished() reached a dead handle.
+  const { items, handle, log } = setup([job({ status: "succeeded" })]);
+  const orphan = handle(
+    {
+      owner: WORK_OWNER,
+      kind: "job",
+      label: "",
+      data: { jobId: "j1", sessionId: "s1", logPath: "/logs/j1.log" },
+    },
+    "o",
+  );
+  items.suspend();
+  assert.equal(items.adopt(orphan), true);
+  assert.deepEqual(log, [], "nothing is delivered while startup is not over");
+  items.release();
+  assert.deepEqual(log, ["complete o done j1"]);
+  items.release();
+  assert.deepEqual(log, ["complete o done j1"], "once");
+});
+
+void test("a terminal job adopted outside a reload gap is completed at once", () => {
+  for (const status of ["failed", "timed_out", "matched"] as const) {
+    const { items, handle, log } = setup([job({ status })]);
+    const orphan = handle(
+      {
+        owner: WORK_OWNER,
+        kind: "job",
+        label: "",
+        data: { jobId: "j1", sessionId: "s1", logPath: "/logs/j1.log" },
+      },
+      "o",
+    );
+    assert.equal(items.adopt(orphan), true);
+    assert.deepEqual(log, ["complete o done j1"], status);
+  }
 });
 
 void test("after dispose nothing is delivered and the items stay open for the next start", () => {

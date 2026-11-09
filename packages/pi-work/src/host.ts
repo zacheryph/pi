@@ -45,6 +45,21 @@ export interface WorkHostOptions {
   store: WorkStore;
   /** The wake policy and transcript writer. */
   delivery: DeliveryHost<WorkMessage>;
+  /**
+   * Whether the transport holds messages after `send` returns (Pi appends a message sent mid-run
+   * at the end of the turn). With it, `complete` closes the item only once the transport calls
+   * `messageLanded` for its message, so a crash in between leaves the item open and the next
+   * start reports it lost. Without it, a message is in the transcript when `send` returns and
+   * the item closes at once (a transport that writes the session file directly).
+   */
+  confirmLanding?: boolean;
+  /**
+   * With `confirmLanding`: an opaque mark taken just before a completion's message is sent, for
+   * the transport to tell that message from an identical one that landed earlier (the root host
+   * records the transcript position). Passed back to `messageLanded`'s `accepts`, and revisable
+   * with `reviseLanding`.
+   */
+  landingMark?(): unknown;
   /** Called once per startup with the items closed as lost, after their message was written. */
   onLost?(items: readonly WorkItemView[]): void;
   now?(): number;
@@ -62,6 +77,18 @@ interface Entry {
   closed: boolean;
   handle: WorkItem;
 }
+
+/** A completed item whose result message is not in the transcript yet. */
+interface Awaiting {
+  key: string;
+  entry: Entry;
+  /** `WorkHostOptions.landingMark` at the time of the send; the transport may revise it. */
+  mark: unknown;
+}
+
+/** What identifies a message at the transcript: Pi keeps the type, the content and the details as sent. */
+const messageKey = (m: { customType?: string; content?: unknown; details?: unknown }): string =>
+  JSON.stringify([m.customType ?? "", m.content ?? [], m.details ?? null]);
 
 const isText = (value: unknown): value is string => typeof value === "string" && value.length > 0;
 
@@ -140,6 +167,8 @@ export class WorkHostRuntime implements WorkHost {
   private readonly entries = new Map<string, Entry>();
   /** Custom types this host delivered: what `continuesRun` recognizes at the run boundary. */
   private readonly delivered = new Set<string>();
+  /** Completed items waiting for their message to reach the transcript (`confirmLanding`). */
+  private readonly awaiting: Awaiting[] = [];
   private started = false;
   private settled = false;
   private disposed = false;
@@ -273,12 +302,7 @@ export class WorkHostRuntime implements WorkHost {
     entry.handle = {
       ...view,
       notify: (message) => this.notify(entry, message),
-      complete: (message) => {
-        if (this.live(entry)) {
-          this.deliver(message);
-          this.close(entry, "completed");
-        }
-      },
+      complete: (message) => this.complete(entry, message),
       cancel: () => {
         if (this.live(entry)) this.close(entry, "cancelled");
       },
@@ -295,13 +319,90 @@ export class WorkHostRuntime implements WorkHost {
     if (this.live(entry)) this.deliver(message);
   }
 
-  private deliver(message: WorkMessage): void {
+  /**
+   * Deliver the result, then close. The close record is the promise that the result reached the
+   * transcript, so it is written only when it did: at once for a transport that appends directly,
+   * otherwise when the transport reports the message (`messageLanded`). A message that delivery
+   * refuses leaves the item open, so the next start reports it lost instead of closing it as done.
+   */
+  private complete(entry: Entry, message: WorkMessage): void {
+    if (!this.live(entry)) return;
+    entry.closed = true; // the handle is spent either way; undone below if delivery refuses
+    const waiting: Awaiting | undefined = this.options.confirmLanding
+      ? { key: messageKey(message), entry, mark: this.markLanding() }
+      : undefined;
+    if (waiting) this.awaiting.push(waiting);
+    if (!this.deliver(message)) {
+      entry.closed = false;
+      if (waiting) this.awaiting.splice(this.awaiting.indexOf(waiting), 1);
+      return;
+    }
+    if (!waiting) this.write(entry, "completed");
+  }
+
+  /** Whether completed items still wait for their message to reach the transcript. */
+  awaitingLanding(): boolean {
+    return this.awaiting.length > 0;
+  }
+
+  private markLanding(): unknown {
+    try {
+      return this.options.landingMark?.();
+    } catch {
+      return undefined; // the transport cannot say where it is; the message matches by content alone
+    }
+  }
+
+  /** The marks of the items still waiting, oldest first. */
+  landingMarks(): readonly unknown[] {
+    return this.awaiting.map((waiting) => waiting.mark);
+  }
+
+  /**
+   * The transport reports that `message` is now in the transcript (only with `confirmLanding`).
+   * Closes the oldest item waiting for an identical message whose mark `accepts` (all of them,
+   * when omitted): a message identical to one that landed before the send has an older mark and
+   * is not taken for the new one. Any other message is ignored.
+   */
+  messageLanded(
+    message: { customType?: string; content?: unknown; details?: unknown },
+    accepts?: (mark: unknown) => boolean,
+  ): void {
+    if (this.awaiting.length === 0) return;
+    const key = messageKey(message);
+    const index = this.awaiting.findIndex(
+      (waiting) => waiting.key === key && (!accepts || accepts(waiting.mark)),
+    );
+    if (index < 0) return;
+    const [waiting] = this.awaiting.splice(index, 1);
+    this.write(waiting.entry, "completed");
+  }
+
+  /**
+   * Give every waiting item a new mark, or stop waiting for it: `undefined` drops it. A dropped
+   * item stays open on disk, so the next start reports it lost; its message cannot land any more
+   * (the transcript moved to another branch, or the run it was sent in is over).
+   */
+  reviseLanding(revise: (mark: unknown) => unknown): void {
+    for (let i = this.awaiting.length - 1; i >= 0; i--) {
+      const mark = revise(this.awaiting[i].mark);
+      if (mark === undefined) this.awaiting.splice(i, 1);
+      else this.awaiting[i].mark = mark;
+    }
+  }
+
+  /** Whether delivery took the message (see `Delivery.add`). */
+  private deliver(message: WorkMessage): boolean {
     this.delivered.add(message.customType);
-    this.delivery.add({ completionId: this.newId(), payload: message });
+    return this.delivery.add({ completionId: this.newId(), payload: message });
   }
 
   private close(entry: Entry, reason: "completed" | "cancelled" | "lost"): void {
     entry.closed = true;
+    this.write(entry, reason);
+  }
+
+  private write(entry: Entry, reason: "completed" | "cancelled" | "lost"): void {
     try {
       this.options.store.append({ v: 1, op: "close", id: entry.view.id, reason, at: this.now() });
     } catch {

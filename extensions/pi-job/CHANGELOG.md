@@ -3,6 +3,24 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-09: Reload race and work-contract gaps
+
+- `JobItems.adopt`: a job that is already terminal and was not stopped on request
+  (`killedBy !== "request"`) is completed through the adopted item, once startup is over, instead of
+  being cancelled silently. At a reload pi-work's `session_shutdown` handler disposes the old host
+  before pi-job's handler suspends its items, so a job that exited in between had its completion
+  dropped and the next `adopt` cancelled the item with no message. Only jobs stopped by `job_kill` or
+  `/job kill` are cancelled on adoption.
+- Follows pi-work: the item's close record is written once its completion is in the transcript, and a
+  completion the host cannot deliver leaves the item open (lost at the next start), so the README's
+  "narrow gap" paragraph is gone.
+- Tests: the fake `ExtensionAPI` appends sent messages to the transcript like Pi does (the host closes
+  an item when it sees its message there). New: the `/job kill` command path cancels the item and
+  sends nothing; the reload race above (a job exits between the host's and pi-job's shutdown
+  handlers); the first-agent-start fallback releases a reload gap's completion when
+  `resources_discover` never comes; `adopt` of a terminal job (unit). The adopt test for a stopped job
+  now sets `killedBy: "request"`, as the manager does.
+
 ## 2026-11-09: Jobs are work items
 
 pi-job produces on the work contract (`packages/pi-work`, `work:v1`) and delivers nothing itself.

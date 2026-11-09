@@ -6,9 +6,11 @@ to its parent) is an _item_ in the session's **work host**. Producers open items
 and complete them with a message; the host persists the items, writes the messages
 into the session's transcript and wakes the session when it is idle.
 
-pi-job is the first producer: each job or watch is an item, and a reload re-adopts
-them. The roadmap in `docs/roadmaps/subagent-work-lifecycle.md` ports pi-subagent
-and pi-ask onto it.
+pi-job and pi-subagent are producers. Each job or watch is an item, and a reload
+re-adopts it. Each subagent run a session asks for is an item in that session's
+host, completed by the run's completion message. The roadmap in
+`docs/roadmaps/subagent-work-lifecycle.md` ports pi-ask onto it and gives each
+child a managed host.
 
 ## The contract (`src/contract.ts`)
 
@@ -84,11 +86,29 @@ The host sends it with `pi.sendMessage` and lets Pi's run boundaries do the rest
 `src/delivery.ts` holds the mechanism (`Delivery`, `continuesRun`). It was moved
 here from pi-job, which now completes items and leaves delivery to the host.
 
-`complete` closes the item as soon as it hands the message over, while a message sent mid-run is
-appended by Pi at the end of the turn. If the process dies in between, the message is not in the
-transcript and the item is closed, so nothing reports it lost. The window is the rest of one turn;
-it matters little for jobs, which die with the process, but producers whose work survives a restart
-should know it.
+### When an item closes
+
+A close record means the result is in the transcript. `complete` hands the message to delivery, and
+the item's close record is written only once the message has landed:
+
+- A message appended at once (the session is idle, or the host's transport writes the session file)
+  closes the item right away.
+- A message Pi holds until the end of the turn closes it then. Pi tells extensions nothing when it
+  appends such a message, so the root host reads the newest transcript entries after a send and at
+  the boundaries after a turn ends (`turn_start`, `agent_before_settle`, `agent_end`,
+  `agent_settled`, and one tick after any `message_end`), only while an item waits.
+- Only entries after the transcript position recorded at the send count, so an identical message
+  that landed earlier is never taken for a new one, and waiting items are matched in the order they
+  were sent. An item stops waiting (it stays open on disk, so the next start reports it lost) once
+  the leaf has moved off the branch it was sent on, or a run has settled without its message landing.
+- If the process dies in between, the item stays open on disk and the next start reports it
+  lost. The same holds when delivery refuses the message: `Delivery.add` returns `false` once
+  delivery is disposed (a stale context after a reload or a session replacement), and `complete`
+  then leaves the item open instead of closing it as done.
+
+`WorkHostOptions.confirmLanding` turns the wait on; the root host sets it. A transport that writes
+the transcript itself (the managed child host of roadmap step 9) leaves it off. A transport that
+holds messages calls `host.messageLanded(message)` when one is in the transcript.
 
 ## Persistence
 

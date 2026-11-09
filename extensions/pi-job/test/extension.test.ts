@@ -62,6 +62,13 @@ function fakePi(throwOnSend = false, sessionId = randomUUID(), entries: any[] = 
     sendMessage: (message: any, options: any) => {
       sent.push({ message, options });
       if (throwOnSend) throw new Error("sendMessage failed: session gone");
+      // Pi appends the message to the transcript (here at once; mid-run Pi does at the turn's end).
+      entries.push({
+        type: "custom_message",
+        customType: message.customType,
+        content: message.content,
+        details: message.details,
+      });
       if (state.startRunOnSend) state.idle = false;
     },
   };
@@ -74,6 +81,7 @@ function fakePi(throwOnSend = false, sessionId = randomUUID(), entries: any[] = 
     pi,
     tools,
     commands,
+    handlers,
     sent,
     notes,
     state,
@@ -1085,4 +1093,90 @@ void test("a quit leaves the running jobs' items open: the next start reports th
   await fake.emit("session_shutdown", { reason: "quit" });
   assert.deepEqual(closeReasons(entries), []);
   assert.equal(fake.sent.length, 0, "shutting down sends nothing");
+});
+
+void test("/job kill cancels the job's item without a message", async (t) => {
+  const { dir, call, commands, ctx, sent, entries, notes } = await setup(t);
+  await call("job_start", { command: "sleep 100", timeoutSeconds: 60 }, dir);
+  await call("job_watch", { check: "false", intervalSeconds: 0.1, timeoutSeconds: 60 }, dir);
+  await commands.get("job").handler("kill j1", ctx(dir));
+  assert.match(notes[0].text, /^Stopped: j1/);
+  assert.deepEqual(closeReasons(entries), ["cancelled"]);
+  await commands.get("job").handler("kill j2", ctx(dir));
+  assert.deepEqual(closeReasons(entries), ["cancelled", "cancelled"]);
+  // Nothing is left open for the next start to report lost, and no completion was sent.
+  const open = openRecords(entries.filter((e) => e.customType === WORK_ENTRY).map((e) => e.data));
+  assert.deepEqual(open, []);
+  await sleep(100);
+  assert.equal(sent.length, 0);
+});
+
+/** A reload from `old` to a fresh instance on the same session, up to (not including) startup's end. */
+async function reloadGap(t: Parameters<typeof tempDir>[0]) {
+  const dir = tempDir(t);
+  const id = randomUUID();
+  const entries: any[] = [];
+  const old = fakePi(false, id, entries);
+  const next = fakePi(false, id, entries);
+  let manager: JobManager | undefined;
+  const options = {
+    logRoot: join(dir, "logs"),
+    killGraceMs: 50,
+    drainMs: 50,
+    onManager: (m: JobManager) => (manager = m),
+  };
+  createJobsExtension(options)(old.pi as any);
+  await old.start();
+  t.after(() => next.emit("session_shutdown", { reason: "quit" }));
+  const started = await old.call(
+    "job_start",
+    { command: "while [ ! -f go ]; do sleep 0.02; done; echo finished", timeoutSeconds: 10 },
+    dir,
+  );
+  return { dir, entries, old, next, options, manager: () => manager!, started };
+}
+
+void test("a job that exits between the host's shutdown and pi-job's is still completed after the reload", async (t) => {
+  const { dir, entries, old, next, options, manager } = await reloadGap(t);
+  // pi-work's session_shutdown handler (registered first, by ensureWorkHost) disposes the host
+  // before pi-job's own handler runs suspend(). The job exits in between.
+  const shutdown = old.handlers.get("session_shutdown")!;
+  assert.equal(shutdown.length, 2, "pi-work's handler, then pi-job's");
+  shutdown.splice(1, 0, async () => {
+    writeFileSync(join(dir, "go"), "");
+    await waitUntil(() => manager().get("j1")?.status === "succeeded", 5000, "the job to exit");
+  });
+  await old.emit("session_shutdown", { reason: "reload" });
+  assert.equal(old.sent.length, 0, "the old host is gone: nothing is delivered");
+  assert.deepEqual(closeReasons(entries), [], "the item is still open");
+
+  createJobsExtension(options)(next.pi as any);
+  await next.emit("session_start", { reason: "reload" });
+  assert.equal(next.sent.length, 0, "adopting delivers nothing: startup is not over");
+  await next.emit("resources_discover", { reason: "reload" });
+  await waitUntil(() => next.sent.length === 1, 5000, "the completion");
+  assert.match(messageText(next.sent[0].message), /^Job j1 succeeded/);
+  assert.match(messageText(next.sent[0].message), /finished/);
+  assert.deepEqual(closeReasons(entries), ["completed"], "completed, not cancelled silently");
+  assert.ok(!next.sent.some((s) => s.message.customType === WORK_LOST));
+});
+
+void test("a reload gap's completion is released by the first agent start when resources_discover never comes", async (t) => {
+  const { dir, entries, old, next, options, manager } = await reloadGap(t);
+  await old.emit("session_shutdown", { reason: "reload" });
+  writeFileSync(join(dir, "go"), "");
+  await waitUntil(() => manager().get("j1")?.status === "succeeded", 5000, "the job to exit");
+
+  createJobsExtension(options)(next.pi as any);
+  await next.emit("session_start", { reason: "reload" });
+  await sleep(50);
+  assert.equal(next.sent.length, 0, "held while startup is not over");
+  assert.deepEqual(closeReasons(entries), []);
+
+  await next.emit("before_agent_start", { type: "before_agent_start" });
+  await waitUntil(() => next.sent.length === 1, 5000, "the completion");
+  assert.match(messageText(next.sent[0].message), /^Job j1 succeeded/);
+  assert.deepEqual(closeReasons(entries), ["completed"]);
+  await next.emit("before_agent_start", { type: "before_agent_start" });
+  assert.equal(next.sent.length, 1, "released once");
 });

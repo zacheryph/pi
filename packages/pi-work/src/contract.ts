@@ -57,7 +57,11 @@ export interface WorkItemView extends WorkItemSpec {
 export interface WorkItem extends WorkItemView {
   /** Deliver a message without closing the item (progress, a question). Wakes the session. */
   notify(message: WorkMessage): void;
-  /** Close the item and deliver its result. Wakes the session. */
+  /**
+   * Close the item and deliver its result. Wakes the session. The close is recorded once the
+   * message is in the transcript; if the host cannot deliver it (its session is gone), the item
+   * stays open, and the next start reports it lost.
+   */
   complete(message: WorkMessage): void;
   /** Close the item without a message. */
   cancel(): void;
