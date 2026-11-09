@@ -73,6 +73,24 @@ background agents finish, and that is accepted.
 - `packages/pi-session-tree` lets one session offer a service under its id
   (`provide`) and find its ancestors.
 
+**In the Pi SDK (1.4.0), to use instead of building:**
+
+| SDK feature                                                                                                                                                                                                                   | What it replaces in this plan                                                                                                                                                                                  |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pi.sendMessage(msg, { triggerTurn: false })`. Idle: the message is appended to the session file at once. Running: Pi holds it and appends it at the end of the current turn, so it never splits a tool call from its result. | A separate persisted inbox, and pi-job's follow-up queueing. The session transcript is the inbox.                                                                                                              |
+| `agent_before_settle` (since 0.87). A handler can return `continue: true` for one more model request, and sees whether the run completed, aborted or failed.                                                                  | pi-job's follow-up at `agent_end`, its confirmation at `message_end` and its one resend. Nothing enters Pi's follow-up queue, so Escape and abort cannot drop a completion (pi-job's `UPSTREAM-ISSUES.md` #3). |
+| `turn_end` boundary, with the same entries and `continue` result.                                                                                                                                                             | Not needed by default. Available if a completion should reach the model before the run's last turn.                                                                                                            |
+| `pi.sendMessage(msg, { triggerTurn: true })` while idle starts a run with the message as its trigger (`before_agent_start` reports `messageType: "custom"`).                                                                  | The synthetic "Background work completed" prompt for a child's activation, if `SubagentSession` can drive a run started this way.                                                                              |
+| Tool results with `terminate: true` end the turn after a tool batch in which every tool terminates.                                                                                                                           | Telling a child in prose to end its turn after `ask`.                                                                                                                                                          |
+| `SessionManager.open(path)` and `appendCustomMessageEntry()` write to a session file without an `AgentSession`.                                                                                                               | Reopening an agent just to record lost work in its transcript after a restart.                                                                                                                                 |
+| `session_start` and `session_shutdown` reasons (`startup`, `reload`, `resume`, ...).                                                                                                                                          | Guessing why a session started when deciding what to adopt.                                                                                                                                                    |
+
+**Not in the SDK, so built here:** the concurrency limiter, the cross-session
+service registry (`pi.events` is per session), a work ledger, and an atomic way
+to wake an idle session. pi-job's `UPSTREAM-ISSUES.md` #1 and #2 describe the
+races that the idle `triggerTurn: true` path still has; this plan does not fix
+them.
+
 **In PR #105, worth reusing:** the waiting and queued rows in the widget,
 roster, watch overlay and dashboard. The `subagent:waiting` and
 `subagent:queued` events. The waiting-workers tests, as a behaviour spec. The
@@ -80,16 +98,16 @@ idea of an activation service that child extensions find by session id.
 
 **Friction**
 
-| Friction                                                                                                                                                               | Where                                 |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
-| One run per record; the assignment that spans runs was added beside it in about 13 private fields.                                                                     | `Subagent`                            |
-| `queued` means "first slot" or "next run", told apart only by whether a session exists.                                                                                | `Subagent.isParked`                   |
-| Four outcome carriers need claims, a consumed flag and a superseded-outcome slot to avoid double delivery.                                                             | notification, foreground, get, resume |
-| A job completion arrives as a closure, not data, so it cannot survive a released session or a restart.                                                                 | `ActivationRoute.enqueue`             |
-| pi-job is the only producer. A child's own background subagents are not pending work, so the child completes and their completion messages start unmanaged runs in it. | pi-subagent in a child                |
-| Delivery logic lives in pi-job, so pi-subagent cannot reuse it.                                                                                                        | `pi-job/src/delivery.ts`              |
-| A child has no UI, so pi-job's "completion not delivered" warning is silent there.                                                                                     | `bindExtensions({})`                  |
-| A question alone completes the child, so "waiting for an answer" is a special case of completed.                                                                       | roster, outcome rendering             |
+| Friction                                                                                                                                                                                             | Where                                 |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| One run per record; the assignment that spans runs was added beside it in about 13 private fields.                                                                                                   | `Subagent`                            |
+| `queued` means "first slot" or "next run", told apart only by whether a session exists.                                                                                                              | `Subagent.isParked`                   |
+| Four outcome carriers need claims, a consumed flag and a superseded-outcome slot to avoid double delivery.                                                                                           | notification, foreground, get, resume |
+| A job completion arrives as a closure, not data, so it cannot survive a released session or a restart.                                                                                               | `ActivationRoute.enqueue`             |
+| pi-job is the only producer. A child's own background subagents are not pending work, so the child completes and their completion messages start unmanaged runs in it.                               | pi-subagent in a child                |
+| Delivery logic lives in pi-job, so pi-subagent cannot reuse it. It sends follow-ups that Escape and abort can drop, then confirms and resends to make up for it, where Pi's run boundaries would do. | `pi-job/src/delivery.ts`              |
+| A child has no UI, so pi-job's "completion not delivered" warning is silent there.                                                                                                                   | `bindExtensions({})`                  |
+| A question alone completes the child, so "waiting for an answer" is a special case of completed.                                                                                                     | roster, outcome rendering             |
 
 **Noticed, not doing:** keeping the process alive in print mode until work
 finishes; keeping work alive while its session is released. Open work holds
@@ -137,24 +155,31 @@ interface WorkItem {
   cancel(): void;
 }
 
-/** Plain data, so it can be persisted and delivered later. */
+/** Plain data, written into the session's transcript as a custom message. */
 type WorkMessage = { customType: string; content: string | TextPart[]; details?: Json };
 ```
 
-- Items and undelivered messages are **data**, persisted by the host. Nothing
-  depends on a closure surviving.
-- **While the session runs**, a message is delivered into the current run as a
-  follow-up, using the delivery state machine extracted from pi-job. This
-  covers hold, follow-up at `agent_end`, confirmation and one resend.
-- **While the session is idle**, the host's wake policy decides:
-  - Root session: send the message and start a turn, as pi-job does today.
-  - Child session: add the message to the agent's inbox and queue its next run
-    through the concurrency limiter. Messages are appended before that run's
-    prompt.
+- Open items are **data**, persisted by the host as custom entries. Messages
+  are not stored separately: the host writes each one into the session's
+  transcript as soon as it arrives, with `sendMessage(..., { triggerTurn: false })`.
+  The transcript is the inbox, so undelivered messages survive a released
+  session, a reload and a restart with nothing extra to store.
+- **While the session runs**, Pi appends the message at the end of the current
+  turn. The host's `agent_before_settle` handler returns `continue: true` when a
+  work message landed after the last assistant message and the run was not
+  aborted, so the model answers it in the same run. After an Escape the message
+  stays in the transcript for the next run, and no turn is forced.
+- **While the session is idle**, the message is already in the transcript, and
+  the host's wake policy starts the next run:
+  - Root session: start a run with the message as its trigger
+    (`triggerTurn: true`), as pi-job does today.
+  - Child session: ask the agent's manager for a run, which queues through the
+    concurrency limiter.
 - **On session start**, the host offers persisted open items to their owners
   through `adopt`. Items no owner adopts by the end of startup are closed as
   lost. Lost work never wakes anything on its own:
-  - In a child, the loss is recorded for the agent's next run and reported to
+  - In a child, the loss is written into the child's transcript for its next
+    run (through `SessionManager.open` when no session is live) and reported to
     its parent through the agent's item.
   - In the root session, it is shown without starting a turn.
 - A session with any open item is never released. There is one kind of item:
@@ -199,7 +224,8 @@ type WorkMessage = { customType: string; content: string | TextPart[]; details?:
 - **pi-ask, in a child:**
   - Ask opens a question item in the child's host, and notifies the parent
     through the child's agent item.
-  - The child ends its turn and is idle and waiting.
+  - The ask tool returns `terminate: true`, so the child's turn ends after the
+    tool batch. The child is then idle and waiting.
   - The parent's next `subagent_send` answers the question and closes the
     item. There is no `subagent_wait`: a child that needs guidance asks.
   - The question holds the child's session like any other open item. pi-ask
@@ -226,20 +252,32 @@ the behaviour it pins.
 **Ships alone:** yes · **Rollback:** delete the folder
 **Depends on:** none · **Size:** M
 
-### 2. Move pi-job's delivery state machine into `packages/pi-work`
+### 2. Deliver pi-job completions through Pi's run boundaries
 
-**Type:** tidy
-**Eases:** 4 (both hosts need it), 9
-**Does:** Create `packages/pi-work` with `Delivery`, `DeliveryHost` and
-`dedupeCompletions` moved from `extensions/pi-job/src/delivery.ts`, and their
-tests. pi-job imports from the package. Register the package in the root
-manifest and the bundle check.
-**Done when:** pi-job has no delivery code of its own and its tests pass
-unchanged.
-**Verification:** pi-job and pi-work suites, `npm run check`,
-`npm run verify:bundle`.
-**Ships alone:** yes · **Rollback:** revert the commit
-**Depends on:** none · **Size:** S
+**Type:** migration
+**Eases:** 4 (the root host reuses this delivery), 9
+**Does:**
+
+- First, add a test with a real `AgentSession` and a scripted model that pins
+  the SDK behaviour this relies on: a custom message sent with
+  `triggerTurn: false` mid-run lands after the turn, `continue: true` from
+  `agent_before_settle` produces one more model request that sees it, and an
+  Escape leaves it in the transcript.
+- Then, in pi-job, send each completion with `triggerTurn: false` while a run is
+  active, and continue the run from `agent_before_settle`. Keep the idle path
+  (`triggerTurn: true`).
+- Remove the follow-up queue, `confirm`, the recovery batches and the
+  compaction-end drains from `delivery.ts`. Keep `dedupeCompletions` for
+  transcripts written by the old code.
+- Mark issue #3 in `UPSTREAM-ISSUES.md` as no longer affecting pi-job.
+
+**Done when:** Completions during a run reach the model in that run. A
+completion sent before an Escape is in the transcript and not lost.
+**Verification:** The SDK test above, the pi-job suite with the
+follow-up-recovery tests replaced, and a manual root session: start a short
+job, keep the agent busy, see the completion answered in the same run.
+**Ships alone:** yes · **Rollback:** revert
+**Depends on:** none · **Size:** M
 
 ### 3. Give `Subagent` one run abstraction
 
@@ -259,10 +297,12 @@ the existing suite pass unchanged.
 
 **Type:** contract
 **Eases:** 5, 8, 9, 10
-**Does:** In `packages/pi-work`, add `WorkHost`, `WorkItem`, `WorkMessage` and
-the `work:v1` service. Add `ensureWorkHost(pi)`: if no host is offered for this
-session id, it provides the root host, whose wake policy starts a turn. Open
-items and undelivered messages persist as custom entries. Startup runs adoption,
+**Does:** Create `packages/pi-work` (registered in the root manifest and the
+bundle check) and move step 2's boundary delivery into it. Add `WorkHost`,
+`WorkItem`, `WorkMessage` and the `work:v1` service. Add `ensureWorkHost(pi)`:
+if no host is offered for this session id, it provides the root host, whose wake
+policy starts a turn. Open items persist as custom entries; messages go straight
+into the transcript. Startup runs adoption,
 then completes unadopted items as lost. The host exposes a session's open items
 for the widget and dashboard.
 **Seam or contract:** `work:v1`. A host can be provided by someone other than
@@ -382,9 +422,13 @@ extended to spawn a scripted child.
   extensions bind, so `ensureWorkHost` in the child finds it.
 - When a run ends with open items, the agent goes idle and waiting instead of
   done.
-- Messages for an idle agent go to its persisted inbox and queue a run. A
-  running child gets them as follow-ups through the pi-work delivery state
-  machine, bound to the child session.
+- Messages go into the child's transcript through the same pi-work delivery as
+  the root. For an idle child the host asks the manager for a run, which queues
+  through the limiter. A running child answers them in the same run.
+- The run starts from the transcript as it stands. Prefer starting it with the
+  newest message as its trigger, as the root does; if `SubagentSession`'s
+  turn-budget wrapper cannot drive a run started that way, use a short fixed
+  prompt. Decide inside this step.
 - Nested delegation now works with no extra code: a child's own subagents are
   items in its host.
 - The widget, status bar, roster, watch overlay and dashboard show an idle
@@ -404,7 +448,7 @@ extended to spawn a scripted child.
 **Verification:** Port PR #105's waiting-workers tests to this model. Add a
 nested-delegation test, and a real-session test with `job_watch`.
 **Ships alone:** yes · **Rollback:** revert
-**Depends on:** 5, 8 · **Size:** L. Split into 9a (host, parking, inbox) and 9b
+**Depends on:** 5, 8 · **Size:** L. Split into 9a (host, parking, wake) and 9b
 (mid-run delivery) if review needs it.
 
 ### 10. Route a child's ask through the work contract
@@ -412,8 +456,8 @@ nested-delegation test, and a real-session test with `job_watch`.
 **Type:** the change
 **Does:**
 
-- In a child, `ask` opens a question item and notifies the parent through the
-  agent's item. Its tool text tells the child to end its turn.
+- In a child, `ask` opens a question item, notifies the parent through the
+  agent's item, and returns `terminate: true` so the child's turn ends.
 - pi-ask adopts its open question items on session start, so questions survive
   a reload or restart.
 - The parent's next `subagent_send` closes open question items and becomes the
@@ -462,11 +506,14 @@ the parent shuts down.
   handoff window, pi-ask always. Their hosts are provided again under each child's
   session id.
 - A child's own subagents end with the reload, so their items are lost.
-- On restart, agents are rebuilt idle with their open items and inbox, and those
-  with open items are reopened the same way. Jobs and subagents cannot be
+- On restart, agents are rebuilt idle with their open items, and those with open
+  items are reopened the same way. Messages that arrived before the restart are
+  already in their transcripts. Jobs and subagents cannot be
   adopted after a restart and are lost; questions are adopted and stay open.
 - Lost work is reported to the agent's parent in one message per startup that
-  lists each agent and what it lost, and is recorded for the agent's next run.
+  lists each agent and what it lost. It is also written into each agent's
+  transcript with `SessionManager.open` and `appendCustomMessageEntry`, so the
+  agent sees it on its next run without being reopened now.
   Nothing restarts on its own.
 - A run in progress at reload or restart ends with an interrupted outcome.
 
