@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   continuesRun,
   Delivery,
@@ -77,6 +77,61 @@ describe("Delivery", () => {
     delivery.add(item("a"));
     delivery.dispose();
     expect(lost).toEqual([["a"]]);
+  });
+
+  it("detects a stale context in isIdle: disposed, nothing sent", () => {
+    const { delivery, sent, lost, state } = setup();
+    state.throws = true;
+    delivery.add(item("a"));
+    expect(sent).toEqual([]);
+    expect(lost).toEqual([["a"]]);
+  });
+
+  it("does not report a send as lost when a later check finds the context stale", () => {
+    const sent: string[] = [];
+    const lost: string[] = [];
+    let checks = 0;
+    const delivery = new Delivery<string>({
+      isIdle: () => {
+        if (++checks > 1) throw new Error("stale");
+        return true;
+      },
+      send: (items) => void sent.push(...items.map((i) => i.payload)),
+      lost: (items) => void lost.push(...items.map((i) => i.payload)),
+    });
+    delivery.add(item("a"));
+    expect(sent).toEqual(["a"]);
+    expect(lost).toEqual([]);
+  });
+
+  it("starts no timer and never resends because time passed", async () => {
+    vi.useFakeTimers();
+    try {
+      const { delivery, sent, state } = setup();
+      delivery.add(item("a"));
+      delivery.onAgentStart();
+      delivery.add(item("b"));
+      delivery.onAgentSettled();
+      state.idle = true;
+      expect(vi.getTimerCount()).toBe(0);
+      const before = sent.length;
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(sent.length).toBe(before);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not let a deferred rebind resume a second reload handoff", async () => {
+    const { delivery } = setup();
+    delivery.suspend();
+    delivery.add(item("pending"));
+    let sends = 0;
+    delivery.rebind({ isIdle: () => true, send: () => void sends++ });
+    delivery.suspend();
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(sends).toBe(0);
+    delivery.dispose();
   });
 });
 

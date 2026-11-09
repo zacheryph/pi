@@ -1,38 +1,17 @@
 /**
- * pi-job's completion messages on top of pi-work's boundary delivery.
+ * What pi-job keeps of message delivery: the completion message type, and `dedupeCompletions`
+ * for transcripts written by older versions.
  *
- * The delivery mechanics (idle wake, `triggerTurn: false` during a run, continuing a run from
- * `agent_before_settle`, nothing queued by us) live in packages/pi-work/src/delivery.ts and are
- * documented there. What stays here is specific to pi-job: the completion message type, which
- * messages count as completions at the run boundary, and `dedupeCompletions` for transcripts
- * written by older versions.
+ * Delivery itself belongs to the work host (packages/pi-work): pi-job completes a work item with
+ * the completion message and the host writes it into the transcript, wakes an idle session, and
+ * continues a running one from `agent_before_settle`. Completions written by those older
+ * versions carried several completions per message and could repeat one after a resend, which
+ * the filter below still keeps out of the model's context.
  */
-import {
-  continuesRun as continuesRunFor,
-  Delivery,
-  type BeforeSettleEvent,
-  type Completion,
-  type ContextMessage,
-  type DeliveryHost,
-  type SendMode,
-} from "../../../packages/pi-work/src/delivery.ts";
-
-export { Delivery };
-export type { BeforeSettleEvent, Completion, DeliveryHost, SendMode };
+import type { ContextMessage } from "../../../packages/pi-work/src/index.ts";
 
 /** Custom message type of completion messages. */
 export const CUSTOM_TYPE = "job:completion";
-
-const isCompletion = (m: ContextMessage | undefined): boolean =>
-  m?.role === "custom" && m.customType === CUSTOM_TYPE;
-
-/**
- * Whether the run needs one more model request because a completion arrived after the model's
- * last answer (see pi-work's `continuesRun`).
- */
-export function continuesRun(event: BeforeSettleEvent): boolean {
-  return continuesRunFor(event, isCompletion);
-}
 
 interface CompletionRef {
   completionId: string;

@@ -1,13 +1,14 @@
 /** Process-wide ownership survives module replacement, but never a Pi process restart. */
-import { CUSTOM_TYPE, type Delivery } from "./delivery.ts";
+import { CUSTOM_TYPE } from "./delivery.ts";
+import type { JobItems } from "./items.ts";
 import type { JobManager, JobSnapshot } from "./jobs.ts";
 
 export interface Owner {
-  /** 3: completions go through run boundaries (see delivery.ts). A version 2 owner holds a follow-up queue whose host protocol differs, so it is never adopted. */
-  version: 3;
+  /** 4: jobs are work items (see items.ts). A version 3 owner holds a Delivery of its own and opened no items, so it is never adopted. */
+  version: 4;
   reloadTimer?: ReturnType<typeof setTimeout>;
   manager: JobManager;
-  delivery: Delivery<JobSnapshot>;
+  items: JobItems;
   /** Undefined while reload is between shutdown and session_start. */
   token?: object;
   alive: () => boolean | undefined;
@@ -24,7 +25,7 @@ export function compatibleOwner(owner: any): owner is Owner {
   const methods = (object: any, names: string[]) =>
     names.every((name) => typeof object?.[name] === "function");
   return (
-    owner?.version === 3 &&
+    owner?.version === 4 &&
     typeof owner.alive === "function" &&
     methods(owner.manager, [
       "start",
@@ -38,20 +39,22 @@ export function compatibleOwner(owner: any): owner is Owner {
       "advanceSequence",
       "notificationTail",
     ]) &&
-    methods(owner.delivery, [
-      "add",
+    methods(owner.items, [
+      "open",
+      "finished",
+      "cancel",
+      "adopt",
       "suspend",
-      "rebind",
+      "bind",
+      "release",
       "dispose",
-      "onAgentStart",
-      "onAgentSettled",
     ])
   );
 }
 
 async function stopOwner(owner: any): Promise<void> {
   try {
-    if (typeof owner.delivery?.dispose === "function") owner.delivery.dispose();
+    if (typeof owner.items?.dispose === "function") owner.items.dispose();
   } finally {
     try {
       if (typeof owner.manager?.shutdown === "function") await owner.manager.shutdown();
@@ -106,7 +109,7 @@ export async function stopOrphans(owners = sessionOwners()): Promise<string[]> {
     if (!owner.token || typeof owner.alive !== "function" || owner.alive() !== false) continue;
     const jobs = owner.manager.list().filter((job) => job.status === "running");
     owners.delete(sessionId);
-    owner.delivery.dispose();
+    owner.items.dispose();
     await owner.manager.shutdown();
     if (jobs.length)
       notices.push(
@@ -114,33 +117,6 @@ export async function stopOrphans(owners = sessionOwners()): Promise<string[]> {
       );
   }
   return notices;
-}
-
-/** Last recorded state, not proof of liveness: old versions stopped work without recording it. */
-export function historicalRunningJobs(entries: readonly any[]): JobSnapshot[] {
-  const jobs = new Map<string, JobSnapshot>();
-  const record = (job: any) => {
-    if (typeof job?.id === "string" && typeof job.command === "string") jobs.set(job.id, job);
-  };
-  for (const entry of entries) {
-    const message =
-      entry?.type === "message"
-        ? entry.message
-        : entry?.type === "custom_message"
-          ? { ...entry, role: "custom" }
-          : undefined;
-    if (
-      message?.role === "toolResult" &&
-      ["job_start", "job_watch", "job_list", "job_read", "job_kill"].includes(message.toolName)
-    ) {
-      record(message.details);
-      for (const job of message.details?.jobs ?? []) record(job);
-    }
-    if (message?.role === "custom" && message.customType === CUSTOM_TYPE) {
-      for (const completion of message.details?.completions ?? []) record(completion?.job);
-    }
-  }
-  return [...jobs.values()].filter((job) => job.status === "running");
 }
 
 /** Session history provides a high-water mark even when the old manager is unavailable. */

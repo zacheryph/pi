@@ -68,7 +68,10 @@ When a single workflow run carries everything, `job_start` with
 `gh run watch RUN_ID --exit-status` is cheaper.
 
 Then **end your turn**. Do not poll, sleep, or call the check yourself while the
-watch runs. Completions arrive as one follow-up message.
+watch runs. Each completion arrives as its own message: it wakes you when you are
+idle, and reaches you in the run you are in when you are not. If Pi restarts the
+watch is gone: you are told it was lost instead of left waiting for it, and you
+start it again if the PR still needs watching.
 
 If no checks appear within a few minutes of the push, look at the workflow
 triggers (`.github/workflows/`) before waiting longer: the change may not select

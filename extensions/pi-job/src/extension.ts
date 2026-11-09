@@ -1,30 +1,27 @@
 /**
  * pi-job — background shell jobs and watches that wake the agent when they finish.
  *
- * Thin pi adapter over JobManager and Delivery: tool schemas, completion messages (see
- * delivery.ts for the delivery paths and the guarantee), the /job command and lifecycle
- * cleanup. Only type imports from pi, so tests can load it under plain `node` with a fake
- * ExtensionAPI.
+ * Thin pi adapter over JobManager and the session's work host: tool schemas, one work item per
+ * job (see items.ts; the host delivers the completion messages, see packages/pi-work), the /job
+ * command and lifecycle cleanup. Only type imports from pi, so tests can load it under plain
+ * `node` with a fake ExtensionAPI.
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { randomUUID } from "node:crypto";
 import { isAbsolute, resolve } from "node:path";
 import {
-  continuesRun,
-  CUSTOM_TYPE,
-  dedupeCompletions,
-  Delivery,
-  type BeforeSettleEvent,
-  type DeliveryHost,
-  type Completion,
-} from "./delivery.ts";
-import { formatBatch, formatJobList, formatJobLine, jobTitle } from "./format.ts";
+  ensureWorkHost,
+  type Json,
+  type WorkMessage,
+} from "../../../packages/pi-work/src/index.ts";
+import { CUSTOM_TYPE, dedupeCompletions } from "./delivery.ts";
+import { formatJobList, formatJobLine, formatNotification, jobTitle } from "./format.ts";
+import { JobItems, WORK_OWNER } from "./items.ts";
 import { envLimit, JobManager, type JobSnapshot } from "./jobs.ts";
 import { defaultLogRoot, pruneLogs } from "./logs.ts";
 import {
   expireReloadOwner,
   highestJobId,
-  historicalRunningJobs,
   sessionOwners,
   stopOrphans,
   takeReloadOwner,
@@ -49,8 +46,6 @@ export const MAX_INTERVAL_SECONDS = 3600;
 export const DEFAULT_CHECK_TIMEOUT_SECONDS = 120;
 export const NOTIFY_LINES = 40;
 export const NOTIFY_BYTES = 4096;
-/** Total output budget of one wake-up message, shared by all completions in it. */
-export const BATCH_BYTES = 16 * 1024;
 export const OUTPUT_DEFAULT_LINES = 40;
 export const OUTPUT_MAX_LINES = 200;
 export const OUTPUT_BYTES = 16 * 1024;
@@ -231,11 +226,6 @@ function brief(job: JobSnapshot): JobSnapshot {
   return lastCheck ? { ...rest, lastCheck: { ...lastCheck, output: "" } } : rest;
 }
 
-/** Per-completion output budget so that a batch's tails together stay within BATCH_BYTES. */
-export function tailBudget(count: number): number {
-  return Math.min(NOTIFY_BYTES, Math.floor(BATCH_BYTES / Math.max(1, count)));
-}
-
 export const LIVE_MANAGERS_KEY = Symbol.for("job:managers");
 
 /**
@@ -263,6 +253,10 @@ export function createJobsExtension(options: JobsExtensionOptions = {}) {
     const logRoot = options.logRoot ?? defaultLogRoot();
     const minInterval = options.minIntervalSeconds ?? MIN_INTERVAL_SECONDS;
 
+    // The session's work host delivers what jobs finish with. Called first, so the host is
+    // provided (and the session's run boundaries are wired) before our own session_start runs.
+    const work = ensureWorkHost(pi);
+
     const live = liveManagers();
     // Latest context seen (pi's contexts read live state; a stale one throws).
     let ctxRef: SessionContext | undefined;
@@ -270,44 +264,25 @@ export function createJobsExtension(options: JobsExtensionOptions = {}) {
       if (ctx && typeof ctx === "object") ctxRef = ctx as SessionContext;
     };
 
-    const host: DeliveryHost<JobSnapshot> = {
-      isIdle: () => (typeof ctxRef?.isIdle === "function" ? ctxRef.isIdle() : true),
-      send: (completions, mode) => {
-        const budget = tailBudget(completions.length);
-        const items = completions.map((c) => ({
-          job: c.payload,
-          tail: manager.notificationTail(c.payload, NOTIFY_LINES, budget),
-        }));
-        const { parts, partOf } = formatBatch(items);
-        pi.sendMessage(
-          {
-            customType: CUSTOM_TYPE,
-            content: parts.map((text) => ({ type: "text" as const, text })),
-            display: true,
-            // `part`: the content part holding this completion (used by dedupeCompletions).
-            details: {
-              completions: completions.map((c, i) => ({
-                completionId: c.completionId,
-                part: partOf[i],
-                job: brief(c.payload),
-              })),
-            },
-          },
-          // Idle: start a run. Otherwise Pi appends it at the end of the turn and
-          // agent_before_settle continues the run when no further turn would follow.
-          { triggerTurn: mode === "wake" },
-        );
-      },
-      lost: (items) => {
-        try {
-          ctxRef?.ui?.notify?.(
-            `pi-job: session context is gone; completion of ${items.map((i) => i.payload.id).join(", ")} was not delivered (see /job).`,
-            "warning",
-          );
-        } catch {}
-      },
+    /** The completion of a job as a work message: one block, with the bounded tail of its output. */
+    const completion = (job: JobSnapshot): WorkMessage => {
+      let tail = { text: "", truncated: false };
+      try {
+        tail = manager.notificationTail(job, NOTIFY_LINES, NOTIFY_BYTES);
+      } catch {
+        // An unreadable log must not keep the completion from arriving.
+      }
+      return {
+        customType: CUSTOM_TYPE,
+        content: [{ type: "text", text: formatNotification(job, tail) }],
+        details: {
+          // `part`: the content part holding this completion (used by dedupeCompletions).
+          completions: [
+            { completionId: randomUUID(), part: 0, job: brief(job) as unknown as Json },
+          ],
+        },
+      };
     };
-    let delivery = new Delivery<JobSnapshot>(host);
 
     let manager: JobManager = new JobManager({
       logRoot,
@@ -321,57 +296,44 @@ export function createJobsExtension(options: JobsExtensionOptions = {}) {
         if (active) live.add(manager);
         else live.delete(manager);
       },
-      onTerminal: (job) =>
-        delivery.add({
-          completionId: randomUUID(),
-          payload: job,
-        } satisfies Completion<JobSnapshot>),
+      onTerminal: (job) => items.finished(job),
     });
+    let items: JobItems = new JobItems(manager, completion);
     options.onManager?.(manager);
     const token = {};
     let owner: Owner | undefined;
     let sessionId: string | undefined;
     let retired = false;
 
-    const reportReloadLoss = (jobs: JobSnapshot[]) => {
-      for (const job of jobs) {
-        const message =
-          `pi-job: ${job.kind} ${job.id}${job.label ? ` (${job.label})` : ""} was not adopted. Last recorded as running; it may have finished or been stopped by the old version. Check before re-arming.\n` +
-          `command: ${job.command}\ncwd: ${job.cwd}\nlog: ${job.logPath}\n` +
-          `timeoutSeconds: ${job.timeoutSeconds}${job.kind === "watch" ? `; until: ${job.until}; intervalSeconds: ${job.intervalSeconds ?? "not recorded by old version"}` : ""}`;
-        ctxRef?.ui?.notify?.(message, "warning");
-        // UI notifications alone are not model context. Persist the full command without
-        // starting a turn while other session_start handlers are still initializing.
-        pi.sendMessage(
-          {
-            customType: "job:reload-notice",
-            content: message,
-            display: true,
-            details: { unadopted: job },
-          },
-          { triggerTurn: false },
-        );
+    /** Start a job's item. A job nobody can be woken for is stopped again. */
+    const track = async (job: JobSnapshot): Promise<void> => {
+      try {
+        items.open(job);
+      } catch (error) {
+        await manager.kill(job.id).catch(() => {});
+        throw error;
       }
     };
 
-    pi.on("agent_start", async (_e: unknown, ctx: unknown) => {
-      remember(ctx);
-      delivery.onAgentStart();
-    });
-    pi.on("agent_settled", async (_e: unknown, ctx: unknown) => {
-      remember(ctx);
-      delivery.onAgentSettled();
-    });
-    // A completion that landed after the model's last answer needs one more request in this run.
-    pi.on("agent_before_settle", async (e: BeforeSettleEvent, ctx: unknown) => {
-      remember(ctx);
-      return continuesRun(e) ? { continue: true } : undefined;
-    });
     // The model sees each completion id at most once (transcripts of older versions may repeat one).
     // Per completion for indexed messages; legacy unindexed messages are stubbed only as a whole.
     pi.on("context", async (e: { messages: any[] }) => {
       const messages = dedupeCompletions(e.messages);
       return messages ? { messages } : undefined;
+    });
+
+    // Every extension has started: the jobs that ended in a reload gap are completed now, so
+    // nothing wakes the session while later extensions are still initializing. The first agent
+    // start is the fallback for a mode that never emits resources_discover.
+    pi.on("resources_discover", async (_e: unknown, ctx: unknown) => {
+      remember(ctx);
+      items.release();
+      return undefined;
+    });
+    pi.on("before_agent_start", async (_e: unknown, ctx: unknown) => {
+      remember(ctx);
+      items.release();
+      return undefined;
     });
 
     pi.on("session_start", async (event, ctx) => {
@@ -383,8 +345,7 @@ export function createJobsExtension(options: JobsExtensionOptions = {}) {
         const previous = handoff.owner;
         if (previous) {
           manager = previous.manager;
-          delivery.dispose();
-          delivery = previous.delivery;
+          items = previous.items;
           options.onManager?.(manager);
           ctxRef?.ui?.notify?.(
             `pi-job: re-adopted session ${sessionId}; job ids, watch loops and deadlines preserved (${
@@ -397,30 +358,20 @@ export function createJobsExtension(options: JobsExtensionOptions = {}) {
             "info",
           );
         } else if (handoff.incompatible) {
+          // Their items, if any, come back as lost from the host.
           ctxRef?.ui?.notify?.(
-            "pi-job: incompatible reload handoff; stopped the old jobs/watches instead of adopting them. Inspect their recorded log paths.",
+            `pi-job: incompatible reload handoff; stopped the old jobs/watches instead of adopting them. Inspect their recorded log paths${
+              handoff.dropped?.length
+                ? `: ${handoff.dropped.map((job) => `${job.kind} ${job.id} (log: ${job.logPath})`).join(", ")}`
+                : ""
+            }.`,
             "warning",
           );
-          reportReloadLoss(
-            handoff.dropped?.length
-              ? handoff.dropped
-              : historicalRunningJobs(ctx.sessionManager.getEntries()),
-          );
-        } else if (
-          event.reason === "reload" &&
-          !owners.has(sessionId) &&
-          highestJobId(ctx.sessionManager.getEntries()) > 0
-        ) {
-          ctxRef?.ui?.notify?.(
-            "pi-job: no reload handoff exists for this session. Earlier jobs/watches cannot be re-adopted (the old version may have stopped them); inspect their recorded log paths. Id numbering will continue from session history.",
-            "warning",
-          );
-          reportReloadLoss(historicalRunningJobs(ctx.sessionManager.getEntries()));
         }
         owner = {
-          version: 3,
+          version: 4,
           manager,
-          delivery,
+          items,
           token,
           alive: () => {
             try {
@@ -444,15 +395,21 @@ export function createJobsExtension(options: JobsExtensionOptions = {}) {
       try {
         pruneLogs(logRoot);
       } catch {}
-      delivery.rebind(host);
+      if (sessionId) {
+        // Take back the items an earlier instance left open: this session's live jobs. The host
+        // closes the rest as lost once startup is over, with a message the model sees.
+        items.bind(() => work.host(), sessionId);
+        work.host()?.adopt(WORK_OWNER, (item) => items.adopt(item));
+      }
     });
 
     pi.on("session_shutdown", async (event) => {
       if (retired) return;
       if (event.reason === "reload" && owner && sessionId) {
         // Timers belong to Node, not the extension runtime. Keep their one manager
-        // (including watch options/baseline/deadline), pipes and supervisors alive.
-        delivery.suspend();
+        // (including watch options/baseline/deadline), pipes and supervisors alive. The host
+        // goes with this instance: what ends meanwhile waits for the replacement's host.
+        items.suspend();
         owner.token = undefined;
         expireReloadOwner(sessionId, owner);
         retired = true;
@@ -460,7 +417,8 @@ export function createJobsExtension(options: JobsExtensionOptions = {}) {
       }
       if (sessionId && sessionOwners().get(sessionId)?.token === token)
         sessionOwners().delete(sessionId);
-      delivery.dispose();
+      // The items stay open in the transcript: the next start of this session reports them lost.
+      items.dispose();
       try {
         await manager.shutdown();
       } finally {
@@ -494,6 +452,7 @@ export function createJobsExtension(options: JobsExtensionOptions = {}) {
           cwd: resolveCwd(params.cwd, ctx.cwd),
           label: typeof params.label === "string" ? params.label : undefined,
         });
+        await track(job);
         return result(
           `Started job ${job.id} (${jobTitle(job)}), timeout ${job.timeoutSeconds}s.\nlog: ${job.logPath}\n` +
             "End your turn now; you will be woken when it finishes.",
@@ -574,6 +533,7 @@ export function createJobsExtension(options: JobsExtensionOptions = {}) {
           cwd: resolveCwd(params.cwd, ctx.cwd),
           label: typeof params.label === "string" ? params.label : undefined,
         });
+        await track(job);
         return result(
           `Started watch ${job.id} (${jobTitle(job)}) until ${until}, every ${params.intervalSeconds}s, timeout ${timeoutSeconds}s.\n` +
             `log: ${job.logPath}\nEnd your turn now; you will be woken when it finishes.`,
@@ -625,6 +585,7 @@ export function createJobsExtension(options: JobsExtensionOptions = {}) {
       async execute(_id: string, params: any) {
         const before = manager.get(text(params.id, "id"));
         const job = await manager.kill(params.id);
+        items.cancel(job.id);
         const prefix = before && before.status !== "running" ? "Already finished: " : "Stopped: ";
         return result(`${prefix}${formatJobLine(job)}\nlog: ${job.logPath}`, brief(job));
       },
@@ -638,6 +599,7 @@ export function createJobsExtension(options: JobsExtensionOptions = {}) {
           if (!id) return ctx.ui.notify("Usage: /job kill <id>", "warning");
           try {
             const job = await manager.kill(id);
+            items.cancel(job.id);
             ctx.ui.notify(`Stopped: ${formatJobLine(job)}`, "info");
           } catch (err) {
             ctx.ui.notify((err as Error).message, "error");

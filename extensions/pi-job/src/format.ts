@@ -78,34 +78,6 @@ export function formatNotification(job: JobSnapshot, tail: Tail, now = Date.now(
   return head.join("\n");
 }
 
-export interface FormattedBatch {
-  /** Message content parts; joined they read as one message. */
-  parts: string[];
-  /** Index into `parts` of each item's own block (so a context filter can drop one block). */
-  partOf: number[];
-}
-
-/**
- * One wake-up message for one or more completions. A single completion keeps the plain
- * format; several are numbered blocks, one content part each, under a header part.
- */
-export function formatBatch(
-  items: { job: JobSnapshot; tail: Tail }[],
-  now = Date.now(),
-): FormattedBatch {
-  if (items.length === 1)
-    return { parts: [formatNotification(items[0].job, items[0].tail, now)], partOf: [0] };
-  const n = items.length;
-  const blocks = items.map(
-    (it, i) =>
-      `[${i + 1}/${n}] ${formatNotification(it.job, it.tail, now)}${i < n - 1 ? "\n\n" : ""}`,
-  );
-  return {
-    parts: [`${n} background jobs finished:\n\n`, ...blocks],
-    partOf: items.map((_, i) => i + 1),
-  };
-}
-
 export function formatJobLine(job: JobSnapshot, now = Date.now()): string {
   const kind = job.kind === "watch" ? "watch" : "job";
   const parts = [`${job.id}`, kind, job.status];

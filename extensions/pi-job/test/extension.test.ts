@@ -4,12 +4,13 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { createJobsExtension, CUSTOM_TYPE, liveManagers } from "../src/extension.ts";
+import { createJobsExtension, CUSTOM_TYPE, liveManagers, NOTIFY_BYTES } from "../src/extension.ts";
 import { piAiEntry, runtimeDirectory } from "./runtime.ts";
 import defaultExtension from "../src/extension.ts";
 import { alive, sleep, tempDir, waitForPid, waitUntil, tick } from "./helpers.ts";
 import { JobManager } from "../src/jobs.ts";
 import { sessionOwners } from "../src/ownership.ts";
+import { openRecords, WORK_ENTRY, WORK_LOST } from "../../../packages/pi-work/src/index.ts";
 
 interface Sent {
   message: {
@@ -45,17 +46,29 @@ function fakePi(throwOnSend = false, sessionId = randomUUID(), entries: any[] = 
       if (state.stale) throw new Error("stale runtime");
       return state.idle;
     },
-    sessionManager: { getSessionId: () => sessionId, getEntries: () => entries },
+    sessionManager: {
+      getSessionId: () => sessionId,
+      getEntries: () => entries,
+      getBranch: () => entries,
+    },
   });
   const pi = {
     registerTool: (tool: any) => tools.set(tool.name, tool),
     registerCommand: (name: string, cmd: any) => commands.set(name, cmd),
     on: (event: string, fn: any) => handlers.set(event, [...(handlers.get(event) ?? []), fn]),
+    // Persisted like Pi does: a custom entry in the session's branch.
+    appendEntry: (customType: string, data: unknown) =>
+      void entries.push({ type: "custom", customType, data }),
     sendMessage: (message: any, options: any) => {
       sent.push({ message, options });
       if (throwOnSend) throw new Error("sendMessage failed: session gone");
       if (state.startRunOnSend) state.idle = false;
     },
+  };
+  const emit = async (event: string, payload: unknown = {}) => {
+    let result: unknown;
+    for (const fn of handlers.get(event) ?? []) result = (await fn(payload, ctxFor("/"))) ?? result;
+    return result;
   };
   return {
     pi,
@@ -64,19 +77,20 @@ function fakePi(throwOnSend = false, sessionId = randomUUID(), entries: any[] = 
     sent,
     notes,
     state,
+    entries,
     ctx: ctxFor,
-    emit: async (event: string, payload: unknown = {}) => {
-      let result: unknown;
-      for (const fn of handlers.get(event) ?? [])
-        result = (await fn(payload, ctxFor("/"))) ?? result;
-      return result;
+    emit,
+    /** What Pi emits when a session starts: every session_start handler, then resources_discover. */
+    start: async (reason = "startup") => {
+      await emit("session_start", { type: "session_start", reason });
+      await emit("resources_discover", { type: "resources_discover", reason });
     },
     call: (name: string, params: unknown, cwd: string) =>
       tools.get(name).execute("call-1", params, undefined, undefined, ctxFor(cwd)),
   };
 }
 
-function setup(
+async function setup(
   t: Parameters<typeof tempDir>[0],
   opts: Parameters<typeof createJobsExtension>[0] = {},
   { production = false, throwOnSend = false } = {},
@@ -97,6 +111,7 @@ function setup(
         ...opts,
       };
   createJobsExtension(options)(fake.pi as any);
+  await fake.start();
   t.after(() => fake.emit("session_shutdown", { type: "session_shutdown", reason: "quit" }));
   return { dir, ...fake, manager: () => mgr };
 }
@@ -105,8 +120,8 @@ void test("default export is an extension factory", () => {
   assert.equal(typeof defaultExtension, "function");
 });
 
-void test("registers the five tools and /job, with no-poll guidance", (t) => {
-  const { tools, commands } = setup(t);
+void test("registers the five tools and /job, with no-poll guidance", async (t) => {
+  const { tools, commands } = await setup(t);
   assert.deepEqual(
     [...tools.keys()],
     ["job_start", "job_watch", "job_list", "job_read", "job_kill"],
@@ -121,7 +136,7 @@ void test("registers the five tools and /job, with no-poll guidance", (t) => {
 });
 
 void test("job_start → completion message wakes the agent exactly once", async (t) => {
-  const { dir, call, sent } = setup(t);
+  const { dir, call, sent } = await setup(t);
   const res = await call(
     "job_start",
     { command: "printf 'a\\nb\\n'; exit 4", timeoutSeconds: 10, label: "demo" },
@@ -148,7 +163,7 @@ void test("job_start → completion message wakes the agent exactly once", async
 });
 
 void test("job_watch → matched notification with the last check output", async (t) => {
-  const { dir, call, sent } = setup(t);
+  const { dir, call, sent } = await setup(t);
   setTimeout(() => writeFileSync(join(dir, "ready"), "built\n"), 300);
   const res = await call(
     "job_watch",
@@ -167,7 +182,7 @@ void test("job_watch → matched notification with the last check output", async
 });
 
 void test("validation errors are thrown as tool failures", async (t) => {
-  const { dir, call } = setup(t);
+  const { dir, call } = await setup(t);
   await assert.rejects(
     call("job_start", { command: "true", timeoutSeconds: 99999 }, dir),
     /timeoutSeconds must be between 1 and 14400/,
@@ -192,7 +207,7 @@ void test("validation errors are thrown as tool failures", async (t) => {
 });
 
 void test("production interval floor is 10 s", async (t) => {
-  const { dir, call } = setup(t, { minIntervalSeconds: undefined });
+  const { dir, call } = await setup(t, { minIntervalSeconds: undefined });
   await assert.rejects(
     call("job_watch", { check: "true", intervalSeconds: 2, timeoutSeconds: 60 }, dir),
     /intervalSeconds must be between 10 and 3600/,
@@ -200,7 +215,7 @@ void test("production interval floor is 10 s", async (t) => {
 });
 
 void test("relative cwd resolves against the session cwd", async (t) => {
-  const { dir, call, sent } = setup(t);
+  const { dir, call, sent } = await setup(t);
   const { mkdirSync } = await import("node:fs");
   mkdirSync(join(dir, "sub"));
   await call("job_start", { command: "pwd", timeoutSeconds: 5, cwd: "sub" }, dir);
@@ -209,7 +224,7 @@ void test("relative cwd resolves against the session cwd", async (t) => {
 });
 
 void test("job_list, job_read and job_kill", async (t) => {
-  const { dir, call, sent } = setup(t);
+  const { dir, call, sent } = await setup(t);
   await call(
     "job_start",
     {
@@ -234,7 +249,7 @@ void test("job_list, job_read and job_kill", async (t) => {
 });
 
 void test("concurrency cap surfaces as a tool error", async (t) => {
-  const { dir, call } = setup(t, { maxRunning: 1 });
+  const { dir, call } = await setup(t, { maxRunning: 1 });
   await call("job_start", { command: "sleep 100", timeoutSeconds: 60 }, dir);
   await assert.rejects(
     call("job_start", { command: "true", timeoutSeconds: 5 }, dir),
@@ -243,7 +258,7 @@ void test("concurrency cap surfaces as a tool error", async (t) => {
 });
 
 void test("/job command lists and kills", async (t) => {
-  const { dir, call, commands, ctx, notes } = setup(t);
+  const { dir, call, commands, ctx, notes } = await setup(t);
   await call("job_start", { command: "sleep 100", timeoutSeconds: 60 }, dir);
   await commands.get("job").handler("", ctx(dir));
   assert.match(notes[0].text, /Running \(1\):\n  j1 · job · running/);
@@ -254,7 +269,7 @@ void test("/job command lists and kills", async (t) => {
 });
 
 void test("session_shutdown kills running jobs without notifying", async (t) => {
-  const { dir, call, sent, emit } = setup(t);
+  const { dir, call, sent, emit } = await setup(t);
   await call(
     "job_start",
     { command: "sleep 100 & echo $! > gc.pid; sleep 100", timeoutSeconds: 60 },
@@ -272,18 +287,29 @@ void test("session_shutdown kills running jobs without notifying", async (t) => 
   );
 });
 
+/** Script helper: start a session on a bare fake pi, as Pi does (session_start, then resources_discover). */
+const STARTED = `
+		async function started(handlers, id) {
+			const ctx = { cwd: "/", ui: {}, isIdle: () => true, sessionManager: { getSessionId: () => id, getEntries: () => [], getBranch: () => [] } };
+			for (const event of ["session_start", "resources_discover"])
+				for (const fn of handlers.get(event) ?? []) await fn({ type: event, reason: "startup" }, ctx);
+		}`;
+
 void test("pi exiting without session_shutdown kills job groups; >10 instances add exactly one exit listener", async (t) => {
   const dir = tempDir(t);
   const ext = new URL("../src/extension.ts", import.meta.url).href;
   const script = `
 		import { createJobsExtension } from ${JSON.stringify(ext)};
 		import { existsSync } from "node:fs";
+		${STARTED}
 		const before = process.listenerCount("exit");
 		const all = [];
 		for (let i = 0; i < 12; i++) {
 			const tools = new Map();
-			const pi = { registerTool: t => tools.set(t.name, t), registerCommand() {}, on() {}, sendMessage() {} };
+			const handlers = new Map();
+			const pi = { registerTool: t => tools.set(t.name, t), registerCommand() {}, on: (e, fn) => handlers.set(e, [...(handlers.get(e) ?? []), fn]), sendMessage() {}, appendEntry() {} };
 			createJobsExtension({ logRoot: ${JSON.stringify(join(dir, "logs"))} })(pi);
+			await started(handlers, "s" + i);
 			all.push(tools);
 		}
 		for (let i = 0; i < all.length; i++)
@@ -316,10 +342,13 @@ void test("host exit while a finished job's TERM-ignoring descendant awaits esca
   const script = `
 		import { createJobsExtension } from ${JSON.stringify(ext)};
 		import { existsSync } from "node:fs";
+		${STARTED}
 		const tools = new Map();
 		let manager;
-		const pi = { registerTool: t => tools.set(t.name, t), registerCommand() {}, on() {}, sendMessage() {} };
+		const handlers = new Map();
+		const pi = { registerTool: t => tools.set(t.name, t), registerCommand() {}, on: (e, fn) => handlers.set(e, [...(handlers.get(e) ?? []), fn]), sendMessage() {}, appendEntry() {} };
 		createJobsExtension({ logRoot: ${JSON.stringify(join(dir, "logs"))}, onManager: m => (manager = m) })(pi); // default 5 s grace
+		await started(handlers, "s");
 		await tools.get("job_start").execute("x", { command: "trap '' TERM; sleep 30 & echo $! > d.pid", timeoutSeconds: 60 }, undefined, undefined, { cwd: ${JSON.stringify(dir)} });
 		while (manager.get("j1").status === "running") await new Promise(r => setTimeout(r, 20));
 		if (!manager.ownsProcesses) { console.log("not-owned"); process.exit(3); }
@@ -339,7 +368,7 @@ void test("host exit while a finished job's TERM-ignoring descendant awaits esca
 });
 
 void test("production defaults through the adapter: 8-job cap and 5000 ms kill grace", async (t) => {
-  const { dir, call } = setup(t, {}, { production: true });
+  const { dir, call } = await setup(t, {}, { production: true });
   for (let i = 0; i < 8; i++)
     await call("job_start", { command: "sleep 100 # prod-defaults", timeoutSeconds: 60 }, dir);
   await assert.rejects(
@@ -356,7 +385,7 @@ void test("production defaults through the adapter: 8-job cap and 5000 ms kill g
 });
 
 void test("manager stays in the exit-hook set until shutdown has finished", async (t) => {
-  const { dir, call, emit } = setup(t);
+  const { dir, call, emit } = await setup(t);
   await call(
     "job_start",
     {
@@ -379,7 +408,7 @@ void test("manager stays in the exit-hook set until shutdown has finished", asyn
 void test("a session disposed without session_shutdown leaves the exit-hook set when its jobs end", async (t) => {
   const live = liveManagers();
   const before = live.size;
-  const { dir, call, sent } = setup(t);
+  const { dir, call, sent } = await setup(t);
   assert.equal(live.size, before, "idle manager must not be registered");
   await call("job_start", { command: "sleep 0.2", timeoutSeconds: 10 }, dir);
   assert.equal(live.size, before + 1, "manager with a running job must be registered");
@@ -388,7 +417,7 @@ void test("a session disposed without session_shutdown leaves the exit-hook set 
 });
 
 void test("stale context (sendMessage throws): no retries; the loss is reported once", async (t) => {
-  const { dir, call, sent, notes, manager } = setup(t, {}, { throwOnSend: true });
+  const { dir, call, sent, notes, manager } = await setup(t, {}, { throwOnSend: true });
   await call("job_start", { command: "exit 2", timeoutSeconds: 10 }, dir);
   await waitUntil(() => sent.length === 1, 5000, "send attempt");
   await call("job_start", { command: "true", timeoutSeconds: 10 }, dir);
@@ -413,7 +442,7 @@ const settle = (outcome: string, contextMessages: unknown[], pendingMessages: un
 });
 
 void test("completions during a run are sent at once without a turn, one message each", async (t) => {
-  const { dir, call, sent, state, emit, manager } = setup(t);
+  const { dir, call, sent, state, emit, manager } = await setup(t);
   state.idle = false;
   await emit("agent_start", { type: "agent_start" });
   await call("job_start", { command: "echo held", timeoutSeconds: 10 }, dir);
@@ -437,7 +466,10 @@ void test("completions during a run are sent at once without a turn, one message
 });
 
 void test("agent_before_settle continues the run only for a completed run with an unanswered completion", async (t) => {
-  const { emit } = setup(t);
+  const { dir, call, sent, emit } = await setup(t);
+  // The host continues for the message types it has delivered: let a job complete first.
+  await call("job_start", { command: "true", timeoutSeconds: 10 }, dir);
+  await waitUntil(() => sent.length === 1, 5000, "first completion");
   const user = { role: "user", content: "hi" };
   const continued = { continue: true };
   assert.deepEqual(
@@ -467,7 +499,7 @@ void test("agent_before_settle continues the run only for a completed run with a
       settle("completed", [user, assistant, { role: "custom", customType: "other", content: "x" }]),
     ),
     undefined,
-    "only our messages",
+    "only work messages",
   );
   for (const outcome of ["aborted", "error"])
     assert.equal(
@@ -478,7 +510,7 @@ void test("agent_before_settle continues the run only for a completed run with a
 });
 
 void test("a completion sent before Escape is never resent or queued again", async (t) => {
-  const { dir, call, sent, state, emit, manager } = setup(t);
+  const { dir, call, sent, state, emit, manager } = await setup(t);
   state.idle = false;
   await emit("agent_start", { type: "agent_start" });
   await call("job_start", { command: "echo lost-once", timeoutSeconds: 10 }, dir);
@@ -494,7 +526,7 @@ void test("a completion sent before Escape is never resent or queued again", asy
 
 for (const event of ["session_compact", "session_compact_failed", "session_tree"]) {
   void test(`busy without a run: recorded without a turn, nothing re-sent after ${event}`, async (t) => {
-    const { dir, call, sent, state, emit, manager } = setup(t);
+    const { dir, call, sent, state, emit, manager } = await setup(t);
     state.idle = false; // compacting / summarizing a branch: no agent_start, but not idle
     await call("job_start", { command: "echo busy", timeoutSeconds: 10 }, dir);
     await waitUntil(() => manager()!.get("j1")?.status === "succeeded", 5000, "job");
@@ -512,7 +544,7 @@ for (const event of ["session_compact", "session_compact_failed", "session_tree"
 }
 
 void test("a run started by our own wake records the completions that follow", async (t) => {
-  const { dir, call, sent, state, emit, manager } = setup(t);
+  const { dir, call, sent, state, emit, manager } = await setup(t);
   state.startRunOnSend = true; // pi starts a run synchronously on a wake
   await call("job_start", { command: "echo first", timeoutSeconds: 10 }, dir);
   await waitUntil(() => sent.length === 1, 5000, "wake");
@@ -530,11 +562,12 @@ void test("a run started by our own wake records the completions that follow", a
   assert.deepEqual(sent[2].options, { triggerTurn: true });
 });
 
-void test("jobs that finish in a reload gap arrive as one batch within the shared output budget", async (t) => {
+void test("jobs that finish in a reload gap are completed one by one once startup is over, each within its own output budget", async (t) => {
   const dir = tempDir(t);
   const id = randomUUID();
-  const old = fakePi(false, id);
-  const next = fakePi(false, id);
+  const entries: any[] = [];
+  const old = fakePi(false, id, entries);
+  const next = fakePi(false, id, entries);
   let manager: JobManager | undefined;
   const options = {
     logRoot: join(dir, "logs"),
@@ -544,13 +577,13 @@ void test("jobs that finish in a reload gap arrive as one batch within the share
     onManager: (m: JobManager) => (manager = m),
   };
   createJobsExtension(options)(old.pi as any);
-  await old.emit("session_start", { reason: "startup" });
+  await old.start();
   t.after(() => next.emit("session_shutdown", { reason: "quit" }));
   for (let i = 0; i < 20; i++)
     await old.call(
       "job_start",
       {
-        command: "while [ ! -f go ]; do sleep 0.02; done; head -c 3000 /dev/zero | tr '\\0' x",
+        command: "while [ ! -f go ]; do sleep 0.02; done; head -c 6000 /dev/zero | tr '\\0' x",
         timeoutSeconds: 10,
       },
       dir,
@@ -564,17 +597,28 @@ void test("jobs that finish in a reload gap arrive as one batch within the share
   );
   assert.equal(old.sent.length, 0, "nothing goes through the stale API");
   createJobsExtension(options)(next.pi as any);
+  next.state.startRunOnSend = true; // the first wake starts a run: what follows is recorded
   await next.emit("session_start", { reason: "reload" });
-  await waitUntil(() => next.sent.length === 1, 10_000, "one batch after the reload");
-  assert.deepEqual(next.sent[0].options, { triggerTurn: true });
-  const text = messageText(next.sent[0].message);
-  assert.match(text, /^20 background jobs finished:/);
-  const outputBytes = (text.match(/x{5,}/g) ?? []).reduce((n, run) => n + run.length, 0);
-  assert.ok(outputBytes > 0 && outputBytes <= 16 * 1024, `output bytes ${outputBytes}`);
+  assert.equal(next.sent.length, 0, "session_start only adopts");
+  await next.emit("resources_discover", { reason: "reload" });
+  await waitUntil(() => next.sent.length === 20, 10_000, "every completion after the reload");
+  assert.deepEqual(
+    next.sent.map((s) => s.options.triggerTurn),
+    [true, ...Array<boolean>(19).fill(false)],
+    "the first wakes the session, the rest are recorded for its run",
+  );
+  const ids = next.sent.flatMap((s) => s.message.details.completions.map((c: any) => c.job.id));
+  assert.equal(new Set(ids).size, 20, "one completion per job");
+  for (const { message } of next.sent) {
+    const text = messageText(message);
+    assert.match(text, /^Job j\d+ succeeded/);
+    const outputBytes = (text.match(/x{5,}/g) ?? []).reduce((n, run) => n + run.length, 0);
+    assert.ok(outputBytes > 0 && outputBytes <= NOTIFY_BYTES, `output bytes ${outputBytes}`);
+  }
 });
 
 void test("context handler: a whole repeat of a completion id is stubbed; a new j1 is not", async (t) => {
-  const { emit } = setup(t);
+  const { emit } = await setup(t);
   const msg = (deliveryId: string, completionId: string) => ({
     role: "custom",
     customType: CUSTOM_TYPE,
@@ -597,8 +641,8 @@ void test("context handler: a whole repeat of a completion id is stubbed; a new 
 });
 
 void test("each extension instance (e.g. a subagent session) owns its jobs", async (t) => {
-  const a = setup(t);
-  const b = setup(t);
+  const a = await setup(t);
+  const b = await setup(t);
   await a.call("job_start", { command: "sleep 100", timeoutSeconds: 60 }, a.dir);
   await b.call("job_start", { command: "true", timeoutSeconds: 60 }, b.dir);
   await waitUntil(() => b.sent.length === 1);
@@ -621,7 +665,7 @@ void test(
   },
   async (t) => {
     const { validateToolArguments } = await import(PI_AI!);
-    const { tools } = setup(t, {}, { production: true });
+    const { tools } = await setup(t, {}, { production: true });
     const ok = (name: string, args: object) =>
       validateToolArguments(tools.get(name), { type: "toolCall", id: "x", name, arguments: args });
     const bad = (name: string, args: object) =>
@@ -669,8 +713,9 @@ void test(
 void test("reload adopts a running command and watch, preserves ids and delivers through the new API", async (t) => {
   const dir = tempDir(t);
   const id = randomUUID();
-  const old = fakePi(false, id);
-  const next = fakePi(false, id);
+  const entries: any[] = [];
+  const old = fakePi(false, id, entries);
+  const next = fakePi(false, id, entries);
   const options = {
     logRoot: join(dir, "logs"),
     killGraceMs: 50,
@@ -678,7 +723,7 @@ void test("reload adopts a running command and watch, preserves ids and delivers
     minIntervalSeconds: 0.05,
   };
   createJobsExtension(options)(old.pi as any);
-  await old.emit("session_start", { reason: "startup" });
+  await old.start();
   t.after(() => next.emit("session_shutdown", { reason: "quit" }));
   const command = await old.call(
     "job_start",
@@ -698,7 +743,7 @@ void test("reload adopts a running command and watch, preserves ids and delivers
   next.pi.on("session_start", () =>
     assert.equal(next.sent.length, 0, "later extension initializes before triggerTurn"),
   );
-  await next.emit("session_start", { reason: "reload" });
+  await next.start("reload");
   const listed = await next.call("job_list", {}, dir);
   assert.deepEqual(
     listed.details.jobs
@@ -719,13 +764,25 @@ void test("reload adopts a running command and watch, preserves ids and delivers
   const third = await next.call("job_start", { command: "sleep 1", timeoutSeconds: 5 }, dir);
   assert.equal(third.details.id, "j3");
   assert.match(next.notes[0].text, /re-adopted/);
+  assert.ok(
+    !next.sent.some((s) => s.message.customType === WORK_LOST),
+    "adopted items are not reported lost",
+  );
+  // The reload gap's completion was delivered through the replacement's host, and both items closed.
+  const open = openRecords(entries.filter((e) => e.customType === WORK_ENTRY).map((e) => e.data));
+  assert.deepEqual(
+    open.map((r) => r.data),
+    [{ jobId: "j3", sessionId: id, logPath: third.details.logPath }],
+    "only the job started after the reload is still open",
+  );
 });
 
 void test("reload keeps a watch's original deadline and change baseline", async (t) => {
   const dir = tempDir(t),
-    id = randomUUID();
-  const old = fakePi(false, id),
-    next = fakePi(false, id);
+    id = randomUUID(),
+    entries: any[] = [];
+  const old = fakePi(false, id, entries),
+    next = fakePi(false, id, entries);
   const options = {
     logRoot: join(dir, "logs"),
     killGraceMs: 50,
@@ -733,7 +790,7 @@ void test("reload keeps a watch's original deadline and change baseline", async 
     minIntervalSeconds: 0.05,
   };
   createJobsExtension(options)(old.pi as any);
-  await old.emit("session_start", { reason: "startup" });
+  await old.start();
   await old.call(
     "job_watch",
     { check: "echo unchanged", until: "change", intervalSeconds: 0.05, timeoutSeconds: 1 },
@@ -743,84 +800,78 @@ void test("reload keeps a watch's original deadline and change baseline", async 
   await old.emit("session_shutdown", { reason: "reload" });
   createJobsExtension(options)(next.pi as any);
   t.after(() => next.emit("session_shutdown", { reason: "quit" }));
-  await next.emit("session_start", { reason: "reload" });
+  await next.start("reload");
   await waitUntil(() => next.sent.length === 1, 800, "original watch deadline");
   assert.equal(next.sent[0].message.details.completions[0].job.status, "timed_out");
 });
 
-void test("a legacy upgrade that stops work without a handoff reports every full command in model context", async (t) => {
+/** The `work:lost` messages a fake pi was asked to send. */
+const lostMessages = (fake: { sent: Sent[] }) =>
+  fake.sent.filter((s) => s.message.customType === WORK_LOST);
+
+void test("a reload without a handoff reports the open jobs and watches as lost: once, without a turn, nothing restarted", async (t) => {
   const dir = tempDir(t),
     id = randomUUID();
   const entries: any[] = [];
   const old = fakePi(false, id, entries),
-    next = fakePi(false, id, entries);
-  const manager = new JobManager({
-    logRoot: join(dir, "logs"),
-    killGraceMs: 50,
-    drainMs: 50,
-    onTerminal: () => {},
-  });
-  t.after(() => manager.shutdown());
-  // The pre-0.2 extension's shutdown handler ignored the reason (4011ae7:252-260).
-  // Its manager was never registered in sessionOwners, so new code cannot resurrect it.
-  old.pi.on("session_shutdown", async () => manager.shutdown());
-  const command = manager.start({
-    command: "while [ ! -f done ]; do sleep 0.02; done",
-    cwd: dir,
-    timeoutSeconds: 10,
-  });
-  const watch = manager.watch({
-    check: `echo '${"full command ".repeat(100)}'; false`,
-    cwd: dir,
-    intervalSeconds: 0.05,
-    timeoutSeconds: 10,
-    checkTimeoutSeconds: 1,
-    until: "success",
-  });
-  for (const job of [command, watch])
-    entries.push({
-      type: "message",
-      message: {
-        role: "toolResult",
-        toolName: job.kind === "watch" ? "job_watch" : "job_start",
-        details: job,
-      },
-    });
-  await old.emit("session_shutdown", { reason: "reload" });
-  assert.equal(manager.get(command.id)?.status, "killed");
-  assert.equal(manager.get(watch.id)?.status, "killed");
-  assert.equal(sessionOwners().has(id), false);
-  createJobsExtension({ logRoot: join(dir, "logs") })(next.pi as any);
-  t.after(() => next.emit("session_shutdown", { reason: "quit" }));
-  await next.emit("session_start", { reason: "reload" });
-  assert.deepEqual((await next.call("job_list", {}, dir)).details.jobs, []);
-  assert.equal(next.sent.length, 2);
-  for (const [i, job] of [command, watch].entries()) {
-    const notice = next.sent[i];
-    assert.equal(notice.message.customType, "job:reload-notice");
-    assert.equal(notice.message.display, true);
-    assert.equal(notice.options.triggerTurn, false);
-    assert.ok(messageText(notice.message).includes(`command: ${job.command}\n`));
-    assert.ok(
-      next.notes.some(
-        (note) =>
-          note.text.includes(job.command) &&
-          note.text.includes(job.cwd) &&
-          note.text.includes(job.logPath),
-      ),
-    );
-    assert.equal(notice.message.details.unadopted.id, job.id);
-  }
-});
-
-void test("incompatible handoff reports running items before stopping them", async (t) => {
-  const dir = tempDir(t),
-    id = randomUUID();
-  const old = fakePi(false, id),
-    next = fakePi(false, id);
+    next = fakePi(false, id, entries),
+    third = fakePi(false, id, entries);
   const options = { logRoot: join(dir, "logs"), killGraceMs: 50, minIntervalSeconds: 0.05 };
   createJobsExtension(options)(old.pi as any);
-  await old.emit("session_start", { reason: "startup" });
+  await old.start();
+  const command = await old.call(
+    "job_start",
+    { command: "while [ ! -f done ]; do sleep 0.02; done", timeoutSeconds: 10, label: "build" },
+    dir,
+  );
+  const watch = await old.call(
+    "job_watch",
+    {
+      check: `echo '${"full command ".repeat(20)}'; false`,
+      intervalSeconds: 0.05,
+      timeoutSeconds: 10,
+    },
+    dir,
+  );
+  // The old process ended without a handoff: its shutdown stopped the work and kept no owner.
+  await old.emit("session_shutdown", { reason: "quit" });
+  assert.equal(sessionOwners().has(id), false);
+
+  createJobsExtension(options)(next.pi as any);
+  t.after(() => next.emit("session_shutdown", { reason: "quit" }));
+  await next.start("reload");
+  assert.deepEqual((await next.call("job_list", {}, dir)).details.jobs, [], "nothing restarted");
+  assert.equal(next.sent.length, 1, "one message for all lost items");
+  const [lost] = lostMessages(next);
+  assert.deepEqual(lost.options, { triggerTurn: false }, "lost work never starts a turn");
+  assert.deepEqual(
+    lost.message.details.items.map((item: any) => [item.owner, item.kind, item.label]),
+    [
+      ["pi-job", "job", "build"],
+      ["pi-job", "watch", watch.details.command.slice(0, 79) + "…"],
+    ],
+  );
+  assert.match(messageText(lost.message), /Work lost: 2 items/);
+  assert.match(messageText(lost.message), /job "build"/);
+  assert.ok(next.notes.some((n) => n.level === "warning" && /closed as lost/.test(n.text)));
+  assert.equal(command.details.status, "running");
+
+  // Recorded as closed: the next start reports nothing again.
+  createJobsExtension(options)(third.pi as any);
+  t.after(() => third.emit("session_shutdown", { reason: "quit" }));
+  await third.start("reload");
+  assert.deepEqual(third.sent, []);
+});
+
+void test("an incompatible handoff stops the old jobs, says so, and reports their items as lost", async (t) => {
+  const dir = tempDir(t),
+    id = randomUUID(),
+    entries: any[] = [];
+  const old = fakePi(false, id, entries),
+    next = fakePi(false, id, entries);
+  const options = { logRoot: join(dir, "logs"), killGraceMs: 50, minIntervalSeconds: 0.05 };
+  createJobsExtension(options)(old.pi as any);
+  await old.start();
   const watch = await old.call(
     "job_watch",
     { check: "echo incompatible; false", intervalSeconds: 0.05, timeoutSeconds: 10 },
@@ -831,17 +882,56 @@ void test("incompatible handoff reports running items before stopping them", asy
   (owner as any).version = 999;
   createJobsExtension(options)(next.pi as any);
   t.after(() => next.emit("session_shutdown", { reason: "quit" }));
-  await next.emit("session_start", { reason: "reload" });
+  await next.start("reload");
   assert.equal(owner.manager.get(watch.details.id)?.status, "killed");
+  const warning = next.notes.find((n) => /incompatible reload handoff/.test(n.text));
+  assert.equal(warning?.level, "warning");
+  assert.ok(warning!.text.includes(watch.details.logPath), "names the log of what was stopped");
   assert.equal(next.sent.length, 1);
-  assert.ok(messageText(next.sent[0].message).includes(watch.details.command));
+  const [lost] = lostMessages(next);
+  assert.deepEqual(lost.options, { triggerTurn: false });
+  assert.ok(messageText(lost.message).includes(watch.details.command));
+});
+
+void test("a fork inherits the open records, but its jobs stay with the session that started them", async (t) => {
+  const dir = tempDir(t);
+  const entries: any[] = [];
+  const parent = fakePi(false, randomUUID(), entries);
+  const options = { logRoot: join(dir, "logs"), killGraceMs: 50, minIntervalSeconds: 0.05 };
+  createJobsExtension(options)(parent.pi as any);
+  await parent.start();
+  t.after(() => parent.emit("session_shutdown", { reason: "quit" }));
+  const job = await parent.call(
+    "job_start",
+    { command: "while [ ! -f done ]; do sleep 0.02; done", timeoutSeconds: 10 },
+    dir,
+  );
+
+  // A fork has another session id and a copy of the parent's records.
+  const fork = fakePi(false, randomUUID(), [...entries]);
+  createJobsExtension(options)(fork.pi as any);
+  t.after(() => fork.emit("session_shutdown", { reason: "quit" }));
+  await fork.start("fork");
+  assert.deepEqual((await fork.call("job_list", {}, dir)).details.jobs, []);
+  assert.equal(lostMessages(fork).length, 1, "the fork is told it does not have the job");
+
+  writeFileSync(join(dir, "done"), "");
+  await waitUntil(() => parent.sent.length === 1, 5000, "the parent's completion");
+  await sleep(150);
+  assert.equal(parent.sent[0].message.details.completions[0].job.id, job.details.id);
+  assert.equal(
+    fork.sent.filter((s) => s.message.customType === CUSTOM_TYPE).length,
+    0,
+    "only the session that started the job receives its completion",
+  );
 });
 
 void test("a replacement module adopts compatible older snapshots without intervalSeconds", async (t) => {
   const dir = tempDir(t),
-    id = randomUUID();
-  const old = fakePi(false, id),
-    next = fakePi(false, id);
+    id = randomUUID(),
+    entries: any[] = [];
+  const old = fakePi(false, id, entries),
+    next = fakePi(false, id, entries);
   const options = {
     logRoot: join(dir, "logs"),
     killGraceMs: 50,
@@ -849,7 +939,7 @@ void test("a replacement module adopts compatible older snapshots without interv
     minIntervalSeconds: 0.05,
   };
   createJobsExtension(options)(old.pi as any);
-  await old.emit("session_start", { reason: "startup" });
+  await old.start();
   const command = await old.call(
     "job_start",
     { command: "while [ ! -f done ]; do sleep 0.02; done", timeoutSeconds: 10 },
@@ -867,7 +957,7 @@ void test("a replacement module adopts compatible older snapshots without interv
   const replacement = await import(`../src/extension.ts?replacement=${randomUUID()}`);
   replacement.createJobsExtension(options)(next.pi as any);
   t.after(() => next.emit("session_shutdown", { reason: "quit" }));
-  await next.emit("session_start", { reason: "reload" });
+  await next.start("reload");
   assert.equal(sessionOwners().get(id)!.manager, manager);
   assert.deepEqual(
     (await next.call("job_list", {}, dir)).details.jobs.map((job: any) => job.id),
@@ -899,7 +989,7 @@ void test("history continues numbering when no manager can be adopted", async (t
   ]);
   createJobsExtension({ logRoot: join(dir, "logs"), killGraceMs: 50 })(fake.pi as any);
   t.after(() => fake.emit("session_shutdown", { reason: "quit" }));
-  await fake.emit("session_start", { reason: "reload" });
+  await fake.start("reload");
   const result = await fake.call("job_start", { command: "sleep 1", timeoutSeconds: 5 }, dir);
   assert.equal(result.details.id, "j545");
 });
@@ -919,8 +1009,8 @@ void test("session_start reports and stops proven orphan watches, not another li
     createJobsExtension(options)(fake.pi as any);
     t.after(() => fake.emit("session_shutdown", { reason: "quit" }));
   }
-  await old.emit("session_start", { reason: "startup" });
-  await live.emit("session_start", { reason: "startup" });
+  await old.start();
+  await live.start();
   await old.call(
     "job_watch",
     { check: "sleep 30", intervalSeconds: 0.05, timeoutSeconds: 60 },
@@ -928,8 +1018,71 @@ void test("session_start reports and stops proven orphan watches, not another li
   );
   await live.call("job_watch", { check: "false", intervalSeconds: 0.05, timeoutSeconds: 60 }, dir);
   old.state.stale = true; // runtime invalidated without a shutdown handler
-  await next.emit("session_start", { reason: "reload" });
+  await next.start("reload");
   assert.match(next.notes[0].text, /owner session .* is gone; stopped orphaned watch j1.*log:/);
   assert.equal((await old.call("job_list", {}, dir)).details.jobs[0].status, "killed");
   assert.equal((await live.call("job_list", {}, dir)).details.jobs[0].status, "running");
+});
+
+/** The reasons of the close records written so far. */
+const closeReasons = (entries: any[]) =>
+  entries
+    .filter((e) => e.customType === WORK_ENTRY && e.data.op === "close")
+    .map((e) => e.data.reason);
+
+void test("each job and watch is a work item: opened at start, closed by its completion or by a kill", async (t) => {
+  const { dir, call, sent, entries, manager } = await setup(t, { minIntervalSeconds: 0.05 });
+  const opened = () =>
+    entries.filter((e) => e.customType === WORK_ENTRY && e.data.op === "open").map((e) => e.data);
+  await call("job_start", { command: "sleep 100", timeoutSeconds: 60, label: "long" }, dir);
+  await call("job_watch", { check: "false", intervalSeconds: 0.05, timeoutSeconds: 60 }, dir);
+  await call("job_start", { command: "true", timeoutSeconds: 10 }, dir);
+  assert.deepEqual(
+    opened().map((r) => [r.owner, r.kind, r.label, r.data.jobId]),
+    [
+      ["pi-job", "job", "long", "j1"],
+      ["pi-job", "watch", "false", "j2"],
+      ["pi-job", "job", "true", "j3"],
+    ],
+  );
+  await waitUntil(() => sent.length === 1, 5000, "j3's completion");
+  assert.deepEqual(closeReasons(entries), ["completed"]);
+  await call("job_kill", { id: "j1" }, dir);
+  await call("job_kill", { id: "j2" }, dir);
+  assert.deepEqual(closeReasons(entries), ["completed", "cancelled", "cancelled"]);
+  await sleep(100);
+  assert.equal(sent.length, 1, "a kill sends no message");
+  assert.equal(manager()!.get("j1")?.status, "killed");
+});
+
+void test("a job that cannot get a work item is stopped, not left running unobserved", async (t) => {
+  const dir = tempDir(t);
+  const fake = fakePi();
+  let manager: JobManager | undefined;
+  createJobsExtension({
+    logRoot: join(dir, "logs"),
+    killGraceMs: 50,
+    drainMs: 50,
+    onManager: (m) => (manager = m),
+  })(fake.pi as any);
+  t.after(() => fake.emit("session_shutdown", { reason: "quit" }));
+  // No session_start: the session has no work host yet.
+  await assert.rejects(
+    fake.call("job_start", { command: "sleep 100", timeoutSeconds: 60 }, dir),
+    /work host is not available/,
+  );
+  assert.equal(manager!.get("j1")?.status, "killed");
+  assert.equal(fake.sent.length, 0);
+});
+
+void test("a quit leaves the running jobs' items open: the next start reports them lost", async (t) => {
+  const dir = tempDir(t);
+  const entries: any[] = [];
+  const fake = fakePi(false, randomUUID(), entries);
+  createJobsExtension({ logRoot: join(dir, "logs"), killGraceMs: 50, drainMs: 50 })(fake.pi as any);
+  await fake.start();
+  await fake.call("job_start", { command: "sleep 100", timeoutSeconds: 60 }, dir);
+  await fake.emit("session_shutdown", { reason: "quit" });
+  assert.deepEqual(closeReasons(entries), []);
+  assert.equal(fake.sent.length, 0, "shutting down sends nothing");
 });

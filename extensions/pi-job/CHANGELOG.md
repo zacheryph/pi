@@ -3,6 +3,47 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-09: Jobs are work items
+
+pi-job produces on the work contract (`packages/pi-work`, `work:v1`) and delivers nothing itself.
+
+- New `src/items.ts` (`JobItems`): `job_start` and `job_watch` open one item per job or watch in the
+  session's work host (`ensureWorkHost`, owner `pi-job`, kind `job` or `watch`, label the job title,
+  data `{ jobId, sessionId, logPath }`). A job's end completes its item with today's completion
+  message, unchanged (`Job j1 succeeded: ...`, one block, same tail limits, same
+  `details.completions`). `job_kill` and `/job kill` cancel the item; a quit leaves it open. A job
+  that cannot get an item (no host, or the write fails) is stopped before the tool returns.
+- Removed: the `Delivery` use and the host adapter in `extension.ts`, the `agent_start`,
+  `agent_settled` and `agent_before_settle` handlers (the host's run-boundary handlers do this),
+  `continuesRun`, and the `Delivery` re-export in `delivery.ts`. `delivery.ts` keeps `CUSTOM_TYPE` and
+  `dedupeCompletions` for transcripts written by older versions. The tests of `Delivery` moved to
+  `packages/pi-work/test/delivery.test.ts`.
+- One message per completion. The batched message (`N background jobs finished:`), `formatBatch`,
+  `tailBudget` and `BATCH_BYTES` are gone: several completions that arrive together are separate
+  messages that one run answers, each with the full 40 lines / 4 KB tail. `dedupeCompletions` still
+  handles batched messages from older versions.
+- Reload: the owner registry entry is version 4 and holds the manager and its `JobItems` (a
+  version 3 owner is not adopted). The host does not survive a reload, so at `session_start` pi-job
+  calls `adopt` for the items it left open. An item is adopted only when its recorded session id
+  equals this session's and its job id and log path match a live job of the retained manager: a fork
+  that inherits the records, or a reused job id, adopts nothing. Jobs that end in the reload gap
+  are completed through their adopted items on `resources_discover` (first agent start as the
+  fallback), after every extension started, replacing the `setImmediate` rebind.
+- Removed: `reportReloadLoss`, `historicalRunningJobs` and the `job:reload-notice` message. Items
+  nobody adopts (jobs of an earlier process, or of the session a fork came from) are closed as lost
+  by the host with one `work:lost` message that starts no turn and reaches the model in every
+  session. The "no reload handoff" UI note is gone with it. The pi-job warning for a completion that
+  was "not delivered" became the host's: the item stays open on disk and the next start reports it
+  lost. The incompatible-handoff warning stays, and now names the stopped jobs and their logs.
+  Jobs started by versions before this one have no item, so a restart or an upgrade by reload
+  reports nothing for them.
+- Tests: the fake `ExtensionAPI` persists `appendEntry` records and emits `resources_discover`;
+  `test/work-session.test.ts` runs a real `session.reload()` (a watch re-adopted and completed, a job
+  that ends during the reload) and a restart (one lost message, no model request) on a scripted
+  model; `test/items.test.ts` covers adoption rules. The reload-loss tests were rewritten to expect
+  lost items, and the reload-gap batch test now checks one message per job. The test of
+  `historicalRunningJobs` went with the function. README updated.
+
 ## 2026-11-09: Delivery mechanics moved to pi-work
 
 - `src/delivery.ts` no longer defines `Delivery`: the class (idle wake, `triggerTurn: false` during a

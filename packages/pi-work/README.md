@@ -6,9 +6,9 @@ to its parent) is an _item_ in the session's **work host**. Producers open items
 and complete them with a message; the host persists the items, writes the messages
 into the session's transcript and wakes the session when it is idle.
 
-Nothing in the bundle uses it yet except pi-job's delivery mechanics (see
-[Delivery](#delivery)). The roadmap in `docs/roadmaps/subagent-work-lifecycle.md`
-ports pi-job, pi-subagent and pi-ask onto it.
+pi-job is the first producer: each job or watch is an item, and a reload re-adopts
+them. The roadmap in `docs/roadmaps/subagent-work-lifecycle.md` ports pi-subagent
+and pi-ask onto it.
 
 ## The contract (`src/contract.ts`)
 
@@ -82,7 +82,13 @@ The host sends it with `pi.sendMessage` and lets Pi's run boundaries do the rest
 | Pi busy without a run (compaction) | `triggerTurn: false`: appended at once, answered by the next run.                                                                                                               |
 
 `src/delivery.ts` holds the mechanism (`Delivery`, `continuesRun`). It was moved
-here from pi-job, which still uses it for its own completions.
+here from pi-job, which now completes items and leaves delivery to the host.
+
+`complete` closes the item as soon as it hands the message over, while a message sent mid-run is
+appended by Pi at the end of the turn. If the process dies in between, the message is not in the
+transcript and the item is closed, so nothing reports it lost. The window is the rest of one turn;
+it matters little for jobs, which die with the process, but producers whose work survives a restart
+should know it.
 
 ## Persistence
 

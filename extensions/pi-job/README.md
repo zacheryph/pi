@@ -20,16 +20,16 @@ sequenceDiagram
 
 - Polling CI from the model burns tokens on every check and fills the context.
 - A foreground wait blocks the session.
-- Several jobs finishing together should wake the agent once, not many times.
+- Several jobs finishing together should start one run, not many.
 
 ## Features
 
 - `job_start` runs a command under a supervisor in its own process group, with a log file.
 - `job_watch` re-runs a check until it succeeds, fails or changes (`until`).
-- Completions are batched into one message with a bounded log tail.
+- Every job and watch is an item in the session's work host; its completion is one message with a bounded log tail. Completions that arrive together are answered by one run.
 - `job_list`, `job_read` and `job_kill`, plus `/job` and `/job kill <id>` for you.
 - Logs are capped at 50 MB and old logs are cleaned up after 7 days.
-- Jobs survive `/reload`.
+- Jobs survive `/reload`. After a restart the jobs that were still open are reported as lost.
 
 ## Install
 
@@ -101,13 +101,14 @@ log truncation or log write error. Then the last 40 lines / 4 KB of output, with
 stripped and `\r` redraws collapsed. Watches also report `until`, the check count, and the
 status and output of the last completed check.
 
-**Batching.** Completions that are waiting together go out as **one** message (`N background
-jobs finished:`). The output of all completions in a message shares a 16 KB budget.
+**One message per completion.** Each completion is its own message, so the output of one job
+never shares a budget with another's. Completions that arrive together reach the model in one
+request: the first wakes an idle session, the rest are appended to the run it starts.
 
 **Terminal states.** `succeeded`, `failed` (non-zero exit or spawn failure), `timed_out`,
 `matched` (watch) and `killed`. There is **no message** for jobs stopped by
-`job_kill`/`/job kill` (the caller gets the final state synchronously) or by non-reload session shutdown
-(nobody to wake).
+`job_kill`/`/job kill` (the caller gets the final state synchronously; the item is cancelled) or by
+non-reload session shutdown (nobody to wake; the item stays open, see [Restart](#restart-and-lost-work)).
 
 ### Guarantee
 
@@ -118,15 +119,24 @@ jobs finished:`). The output of all completions in a message shares a 16 KB budg
 > indexed format; messages from older pi-job versions are only stubbed as a whole once all their ids
 > were shown. This is **not exactly-once** on the idle path: pi has no atomic wake API (see
 > [UPSTREAM-ISSUES.md](https://github.com/woksin/pi-jobs/blob/main/UPSTREAM-ISSUES.md)).
+> A job that is still open when Pi restarts is not silently forgotten: the next start tells the
+> model it was lost.
+
+One narrow gap remains. When a completion arrives mid-run, pi appends it at the end of the current
+turn, but the host closes the item as soon as it hands the message over. If Pi dies in between, the
+completion is not in the transcript and the item is closed, so the next start does not report it
+either. The window is the rest of one turn, and the job itself is gone with the process in any case.
 
 ### How it works
 
-Delivery is event-driven only: no timers, no polling, no queue of its own. Every
-completion is one `pi.sendMessage(…)` call, and pi's run boundaries do the scheduling. The
-mechanics live in [`packages/pi-work`](../../packages/pi-work/README.md) (`Delivery`,
-`continuesRun`); `src/delivery.ts` adds the completion message type and `dedupeCompletions`.
+pi-job does not deliver anything itself. `job_start` and `job_watch` open an item in the
+session's work host ([`packages/pi-work`](../../packages/pi-work/README.md), `work:v1`); when the
+job ends, pi-job completes the item with the completion message, and the host does the rest. It is
+event-driven only: no timers, no polling, no queue of its own. Every completion is one
+`pi.sendMessage(…)` call made by the host, and pi's run boundaries do the scheduling. `src/items.ts`
+maps jobs to items; `src/delivery.ts` keeps the completion message type and `dedupeCompletions`.
 
-| Situation when the job finishes                                      | What pi-job does                                                                                                                                                                                                                                                                                                   |
+| Situation when the job finishes                                      | What happens                                                                                                                                                                                                                                                                                                       |
 | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Session idle                                                         | `triggerTurn: true`: pi starts a run with the completion as its prompt.                                                                                                                                                                                                                                            |
 | A run is active (`agent_start` … `agent_settled`)                    | `triggerTurn: false`, at once, one message per completion. Pi appends it at the end of the current turn, never between a tool call and its result. If another turn follows, the model sees it there. Otherwise the `agent_before_settle` handler returns `continue: true`: one more model request in the same run. |
@@ -141,36 +151,49 @@ the first copy of each id. In later messages it removes already-shown completion
 leaving a one-line note, and keeps the unseen ones. A message with nothing unseen becomes a
 one-line stub. The stub keeps the message in place, so the context never ends on an assistant
 message. Messages from older pi-job versions without part indices can only be stubbed as a
-whole. Job handles such as `j1` restart in every session and are never used for
-deduplication.
+whole; those versions also batched several completions into one message and could resend one.
+Job handles such as `j1` restart in every session and are never used for deduplication.
 
 **Reload.** On `session_shutdown` with reason `reload`, the session's manager is retained in a
-process-wide registry. Node timers do not belong to the extension runtime: the single watch loop,
-check/interval/until definition, change baseline and original deadline stay alive with it, as do
-command supervisors and logs. Completion delivery is suspended until the replacement extension
-rebinds its API at `session_start` (`reload`); delivery resumes on the next `setImmediate`,
-after other extensions can initialize. Job ids are unchanged; numbering advances past
-session history. No subprocess is relaunched and no second watch loop is created.
+process-wide registry (version 4), together with the object that maps its jobs to items. Node
+timers do not belong to the extension runtime: the single watch loop, check/interval/until
+definition, change baseline and original deadline stay alive with it, as do command supervisors
+and logs. The work host does not survive: the new extension instance provides another one, and
+the items are persisted in the transcript. At `session_start` (`reload`) pi-job takes the manager
+back and calls `adopt` on the host for each item it left open. An item is adopted only when it
+belongs to this session (the session id and log path recorded in the item match a live job of the
+retained manager), so a fork that inherited the records, or a job id reused in a later process,
+never adopts a job. A job that ended while no host was reachable is completed through its adopted
+item once every extension has started (`resources_discover`, with the first agent start as the
+fallback), so nothing wakes the session while later extensions are initializing. Job ids are
+unchanged; numbering advances past session history. No subprocess is relaunched and no second
+watch loop is created.
 
 A stale attached runtime proves an owner is gone: its jobs/watches are stopped and reported
 with log paths. Another live session is never stopped; a pending reload handoff is unknown,
 reported and kept for at most five minutes. An unref'd handoff timer then stops its jobs/watches
 and logs the expiry if no replacement adopts it. A versioned registry and method checks reject
-incompatible handoffs (including one from earlier pi-job versions, whose follow-up queue differs) and stop their work instead of adopting it. This is **same-process reload**,
-not restart/crash recovery. Old versions
-that shut down jobs cannot hand them off: the replacement warns and preserves id numbering.
+incompatible handoffs (including one from the previous pi-job version, which delivered its own
+messages) and stop their work instead of adopting it; the UI names what was stopped, and any
+open item of it comes back as lost. This is **same-process reload**, not restart/crash recovery.
+Old versions that shut down jobs cannot hand them off: the replacement preserves id numbering.
 In particular, upgrading an already-loaded pre-0.2 runtime cannot preserve its jobs: its old
-shutdown handler runs before the updated extension loads. A missing or incompatible handoff
-now reports each affected item's full command, cwd, log and recorded watch settings, both in the
-UI and in session/model context, without starting a turn. Missing-handoff reports use the last
-recorded running state, not proof that the item was still alive; inspect the logs before
-re-arming. An old snapshot may lack an interval, which the notice explicitly marks as unknown.
-Compatible handoffs do not require that optional snapshot field and are still adopted without
-restarting commands or watches. Recovery notices do not automatically restart work or restore
-an already-stopped process.
+shutdown handler runs before the updated extension loads, and those jobs have no item to report.
 
-**Unexpected stale context.** Outside the reload handoff, a throw remains permanent: delivery
-stops, the loss is reported once, and nothing is retried.
+### Restart and lost work
+
+A job that is still running when Pi quits or dies stays an open item in the transcript. The next
+time that session starts (resume, restart, or a reload with no handoff), nobody adopts the item,
+so the host closes it as **lost** and writes one `work:lost` message listing everything lost,
+without starting a turn. The model sees it on its next run and the TUI shows a warning. Nothing is
+restarted, and the loss is recorded, so the next start reports nothing again. The same message
+reaches the model in every session, a subagent's included, where the old "not delivered" warning
+went to a UI that does not exist. Jobs and watches of earlier versions have no item, so a restart
+reports nothing for them.
+
+**Unexpected stale context.** Outside the reload handoff, a throw from `sendMessage` is permanent
+for the host: it stops delivering, reports the loss once, and retries nothing. Its items stay open
+on disk and the next start reports them lost.
 
 ### Known pi-side limitations
 
@@ -245,7 +268,8 @@ queue, and nothing waits for a compaction or branch summary to end.
   byte cap holds after decoding (invalid UTF-8 cannot inflate it). A watch keeps at most
   64 KB of one check's output in memory, even when the check writes larger chunks.
 - The 50 most recent finished jobs are kept for `job_list`/`job_read`; state is in memory
-  only (retained across same-process reload, not restored after restart/resume).
+  only (retained across same-process reload, not restored after restart/resume; a restart
+  reports the jobs that were still open as lost).
 
 ## Logs
 
@@ -263,6 +287,8 @@ the subagent session has already ended, its jobs were stopped at its shutdown (o
 disposes it without a shutdown event, a later session start stops and reports its jobs once
 the runtime is provably stale; otherwise they run to timeout and the message is dropped —
 the exit hook still kills them when pi exits). Do not hand a subagent's job id to the parent.
+Completions and lost-work messages reach a subagent through its own work host, as in the main
+session.
 
 In print mode (`pi -p`) the run ends when the agent goes idle and the shutdown kills running
 jobs, so a wake-up cannot happen there; use interactive or RPC mode.
@@ -276,11 +302,14 @@ npm test   # node --test, real processes and a real AgentSession, ~10 s
 ```
 
 `src/extension.ts` is the only pi-aware module and uses type-only pi imports; `jobs.ts`,
-`supervisor.ts`, `delivery.ts`, `logwriter.ts`, `tail.ts`, `watch.ts`,
-`format.ts`, `logs.ts` are plain Node. Tests drive the extension through a fake
+`supervisor.ts`, `delivery.ts`, `items.ts`, `logwriter.ts`, `tail.ts`, `watch.ts`,
+`format.ts`, `logs.ts` are plain Node (`items.ts` and `delivery.ts` import only types
+from `packages/pi-work`). Tests drive the extension through a fake
 `ExtensionAPI`, spawn real processes, and run delivery scenarios (Escape, abort, compaction,
-batching, continuing the run) against the installed pi `AgentSession` with the faux model provider
-(`test/agent-session.test.ts`). Tests resolve a local runtime dependency or Pi's standard
+continuing the run) against the installed pi `AgentSession` with the faux model provider
+(`test/agent-session.test.ts`). `test/work-session.test.ts` does the same for the work contract:
+a real `session.reload()` that re-adopts a watch, a job that ends during the reload, and a
+restart that reports the job lost with no model request. Tests resolve a local runtime dependency or Pi's standard
 user installation directories; set `PI_RUNTIME_DIR` to override the package root. Runtime
 tests skip with a clear message if Pi is unavailable. `test/run-boundary.test.ts` pins the Pi
 behaviour delivery relies on, with a probe extension instead of pi-job. Two known upstream race
