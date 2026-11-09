@@ -15,6 +15,7 @@
     "packages/pi-ui",
     "packages/pi-scripted-model",
     "packages/pi-test-helpers",
+    "packages/pi-work",
     "extensions/pi-ask",
     "extensions/pi-git"
   ],

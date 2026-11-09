@@ -1,0 +1,29 @@
+{
+  "name": "pi-work",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "The work:v1 contract: what a Pi session waits on, a root work host, and boundary delivery of work messages.",
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "imports": {
+    "#src/*": "./src/*",
+    "#test/*": "./test/*"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "check": "oxfmt --check . && oxlint --deny-warnings . && npm run typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "fix": "oxfmt --write . && oxlint --fix . && oxfmt --write ."
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  }
+}

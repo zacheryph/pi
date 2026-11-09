@@ -121,8 +121,10 @@ jobs finished:`). The output of all completions in a message shares a 16 KB budg
 
 ### How it works
 
-`src/delivery.ts` is event-driven only: no timers, no polling, no queue of its own. Every
-completion is one `pi.sendMessage(…)` call, and pi's run boundaries do the scheduling.
+Delivery is event-driven only: no timers, no polling, no queue of its own. Every
+completion is one `pi.sendMessage(…)` call, and pi's run boundaries do the scheduling. The
+mechanics live in [`packages/pi-work`](../../packages/pi-work/README.md) (`Delivery`,
+`continuesRun`); `src/delivery.ts` adds the completion message type and `dedupeCompletions`.
 
 | Situation when the job finishes                                      | What pi-job does                                                                                                                                                                                                                                                                                                   |
 | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |

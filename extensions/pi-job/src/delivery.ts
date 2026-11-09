@@ -1,164 +1,37 @@
 /**
- * Completion delivery through Pi's own run boundaries (no timers, no polling, no queue of ours).
+ * pi-job's completion messages on top of pi-work's boundary delivery.
  *
- * A completion is a custom message in the session transcript, so the transcript is the inbox and
- * nothing a user does can lose it. Two paths, both `pi.sendMessage`:
- *  - Idle: `triggerTurn: true`. Pi starts a run with the completion as its trigger.
- *  - A run is active (agent_start ... agent_settled), or Pi is busy without one (compaction,
- *    branch summary): `triggerTurn: false`. Pi appends the message at the end of the current turn
- *    (immediately when it is not streaming), never between a tool call and its result, so the
- *    model sees it in the same run when another turn follows. When none does, the
- *    `agent_before_settle` handler (`continuesRun`) asks Pi for one more request. After Escape or
- *    abort the message stays in the transcript and no turn is forced; the next run sees it.
- *
- * What this does not do: wake an idle session that was busy without a run (a manual `/compact`
- * or `/tree`) when the completion arrived. The message is in the transcript, and the next run
- * answers it. Pi-side races on the idle path are documented in UPSTREAM-ISSUES.md (#1, #2).
- *
- * The model sees each completion id at most once per context: `dedupeCompletions` strips
- * already-shown completion blocks, keyed on unique ids. It exists for transcripts written by
- * older versions, which could deliver a completion twice. A throw from Pi (stale context after
- * reload or session replacement) is permanent: the delivery is disposed and nothing is retried.
+ * The delivery mechanics (idle wake, `triggerTurn: false` during a run, continuing a run from
+ * `agent_before_settle`, nothing queued by us) live in packages/pi-work/src/delivery.ts and are
+ * documented there. What stays here is specific to pi-job: the completion message type, which
+ * messages count as completions at the run boundary, and `dedupeCompletions` for transcripts
+ * written by older versions.
  */
+import {
+  continuesRun as continuesRunFor,
+  Delivery,
+  type BeforeSettleEvent,
+  type Completion,
+  type ContextMessage,
+  type DeliveryHost,
+  type SendMode,
+} from "../../../packages/pi-work/src/delivery.ts";
+
+export { Delivery };
+export type { BeforeSettleEvent, Completion, DeliveryHost, SendMode };
 
 /** Custom message type of completion messages. */
 export const CUSTOM_TYPE = "job:completion";
-
-export interface Completion<T> {
-  /** Globally unique (UUID); the only key used for deduplication. */
-  completionId: string;
-  payload: T;
-}
-
-/** "wake": Pi is idle, start a run (`triggerTurn: true`). "record": append only (`triggerTurn: false`). */
-export type SendMode = "wake" | "record";
-
-export interface DeliveryHost<T> {
-  /** Pi's idle state. Throws if the context is stale. */
-  isIdle(): boolean;
-  /** One message for all `items`. Throws if the context is stale. */
-  send(items: Completion<T>[], mode: SendMode): void;
-  /** Called once when delivery stops for good (stale context) with what was not sent. */
-  lost?(items: Completion<T>[]): void;
-}
-
-export class Delivery<T> {
-  private host: DeliveryHost<T>;
-  private suspended = false;
-  private binding = 0;
-  /** Completions waiting for a usable context: only while suspended for a reload. */
-  private held: Completion<T>[] = [];
-  private runActive = false;
-  private disposed = false;
-
-  constructor(host: DeliveryHost<T>) {
-    this.host = host;
-  }
-
-  get heldCount(): number {
-    return this.held.length;
-  }
-
-  add(item: Completion<T>): void {
-    if (this.disposed) return;
-    this.held.push(item);
-    this.flush();
-  }
-
-  onAgentStart(): void {
-    if (!this.disposed && !this.suspended) this.runActive = true;
-  }
-
-  /** The run is over, including its continuations. Pi may be idle again. */
-  onAgentSettled(): void {
-    if (!this.disposed && !this.suspended) this.runActive = false;
-  }
-
-  /** Reload keeps completions, but must never call the stale extension API. */
-  suspend(): void {
-    this.binding++;
-    this.suspended = true;
-    this.runActive = false;
-  }
-
-  /** The replacement extension supplies a fresh context and API before anything is sent. */
-  rebind(host: DeliveryHost<T>): void {
-    this.host = host;
-    const binding = ++this.binding;
-    // Keep buffering until every extension's session_start handler has run.
-    this.suspended = true;
-    setImmediate(() => {
-      if (this.binding !== binding || this.disposed) return;
-      this.suspended = false;
-      this.flush();
-    });
-  }
-
-  dispose(): void {
-    if (this.disposed) return;
-    this.disposed = true;
-    const lost = this.held;
-    this.held = [];
-    if (lost.length) {
-      try {
-        this.host.lost?.(lost);
-      } catch {}
-    }
-  }
-
-  /**
-   * Everything held goes out as ONE message: a wake when Pi is idle, otherwise a record that
-   * Pi appends at the end of the turn.
-   */
-  private flush(): void {
-    if (this.disposed || this.suspended || this.held.length === 0) return;
-    const items = this.held.splice(0);
-    let sent = false;
-    try {
-      const wake = !this.runActive && this.host.isIdle();
-      this.host.send(items, wake ? "wake" : "record");
-      sent = true;
-      // A wake starts a run synchronously; what arrives next is a record for that run.
-      if (wake) this.runActive = !this.host.isIdle();
-    } catch {
-      if (!sent) this.held.unshift(...items);
-      this.dispose(); // Pi refused, or the context is stale: permanent
-    }
-  }
-}
-
-/** The parts of an `agent_before_settle` event that `continuesRun` reads. */
-export interface BeforeSettleEvent {
-  outcome: string;
-  context: {
-    contextMessages: readonly ContextMessage[];
-    pendingMessages: readonly ContextMessage[];
-  };
-}
 
 const isCompletion = (m: ContextMessage | undefined): boolean =>
   m?.role === "custom" && m.customType === CUSTOM_TYPE;
 
 /**
  * Whether the run needs one more model request because a completion arrived after the model's
- * last answer: the newest message in the context is a completion, or one is still pending (Pi
- * appends pending messages right after this handler). Only for a run that completed: after an
- * abort the completion waits in the transcript for the next run, and after an error continuing
- * would just repeat the failing request.
+ * last answer (see pi-work's `continuesRun`).
  */
 export function continuesRun(event: BeforeSettleEvent): boolean {
-  if (event.outcome !== "completed") return false;
-  return (
-    isCompletion(event.context.contextMessages.at(-1)) ||
-    event.context.pendingMessages.some(isCompletion)
-  );
-}
-
-interface ContextMessage {
-  role?: string;
-  customType?: string;
-  content?: unknown;
-  details?: unknown;
+  return continuesRunFor(event, isCompletion);
 }
 
 interface CompletionRef {

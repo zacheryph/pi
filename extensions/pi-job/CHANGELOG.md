@@ -3,6 +3,15 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-09: Delivery mechanics moved to pi-work
+
+- `src/delivery.ts` no longer defines `Delivery`: the class (idle wake, `triggerTurn: false` during a
+  run, hold while suspended for a reload, dispose) and the generic form of `continuesRun` live in
+  `packages/pi-work/src/delivery.ts`, where the work contract's hosts use the same mechanism.
+  `delivery.ts` re-exports `Delivery` and its types, keeps `CUSTOM_TYPE`, a `continuesRun(event)` bound
+  to `job:completion`, and `dedupeCompletions`. Pure refactor: behaviour, message format and the owner
+  handoff are unchanged, and the suite passes without edits. One additive accessor, `Delivery.isDisposed`.
+
 ## 2026-11-09: Completions through Pi's run boundaries
 
 - `src/delivery.ts`: a completion is one `pi.sendMessage` call at once. Idle sends it with
