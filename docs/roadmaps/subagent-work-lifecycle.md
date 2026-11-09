@@ -73,7 +73,7 @@ background agents finish, and that is accepted.
 - `packages/pi-session-tree` lets one session offer a service under its id
   (`provide`) and find its ancestors.
 
-**In the Pi SDK (1.4.0), to use instead of building:**
+**In the Pi SDK (checked on 1.4.0 and 1.5.0), to use instead of building:**
 
 | SDK feature                                                                                                                                                                                                                   | What it replaces in this plan                                                                                                                                                                                  |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
