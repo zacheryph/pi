@@ -11,6 +11,7 @@ import {
 import { SubagentManager } from "#src/lifecycle/subagent-manager";
 import { buildAgentPrompt } from "#src/session/prompts";
 import type { AgentConfig } from "#src/types";
+import { resumeAndSettle, spawnAndSettle } from "#test/helpers/manager-stubs";
 import { STUB_SNAPSHOT } from "#test/helpers/stub-ctx";
 import {
   createAgentLookup,
@@ -24,8 +25,6 @@ vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
   return { ...actual, readFileSync: vi.fn(actual.readFileSync) };
 });
-
-const background = true;
 
 describe("child fragment spawn snapshots", () => {
   let root: string;
@@ -85,7 +84,7 @@ describe("child fragment spawn snapshots", () => {
   }
 
   function spawn() {
-    return manager.spawn(STUB_SNAPSHOT, profile.name, "Task", { description: "Task", background });
+    return manager.spawn(STUB_SNAPSHOT, profile.name, "Task", { description: "Task" });
   }
 
   function childPrompt(index = 0) {
@@ -97,7 +96,7 @@ describe("child fragment spawn snapshots", () => {
     mkdirSync(join(childCwd, "fragments"), { recursive: true });
     writeFileSync(join(childCwd, "fragments", "aws.md"), "Wrong workspace instructions.");
 
-    const record = await manager.spawnAndWait(STUB_SNAPSHOT, profile.name, "Task", {
+    const record = await spawnAndSettle(manager, STUB_SNAPSHOT, profile.name, "Task", {
       description: "Task",
       cwd: childCwd,
     });
@@ -123,7 +122,7 @@ describe("child fragment spawn snapshots", () => {
 
       expect(spawn).toThrow(error);
       await expect(
-        manager.spawnAndWait(STUB_SNAPSHOT, profile.name, "Task", { description: "Task" }),
+        spawnAndSettle(manager, STUB_SNAPSHOT, profile.name, "Task", { description: "Task" }),
       ).rejects.toThrow(error);
 
       expect(manager.listAgents()).toEqual([]);
@@ -138,7 +137,7 @@ describe("child fragment spawn snapshots", () => {
     profile.systemPrompt = "  Original body.\n\n";
     profile.source = "project";
 
-    const record = await manager.spawnAndWait(STUB_SNAPSHOT, profile.name, "Task", {
+    const record = await spawnAndSettle(manager, STUB_SNAPSHOT, profile.name, "Task", {
       description: "Task",
     });
 
@@ -168,7 +167,6 @@ describe("child fragment spawn snapshots", () => {
       io.createSession.mockResolvedValueOnce({ session: firstSession });
       const first = manager.spawn(STUB_SNAPSHOT, "general-purpose", "Hold slot", {
         description: "Hold",
-        background,
       });
       const queued = spawn();
       expect(manager.getRecord(queued)?.status).toBe("queued");
@@ -204,7 +202,6 @@ describe("child fragment spawn snapshots", () => {
     io.createSession.mockResolvedValueOnce({ session: firstSession });
     const first = manager.spawn(STUB_SNAPSHOT, "general-purpose", "Hold slot", {
       description: "Hold",
-      background,
     });
     const queued = spawn();
     profile.systemPrompt = "Updated legacy body.";
@@ -228,7 +225,6 @@ describe("child fragment spawn snapshots", () => {
     io.createSession.mockResolvedValueOnce({ session: firstSession });
     const first = manager.spawn(STUB_SNAPSHOT, "general-purpose", "Hold slot", {
       description: "Hold",
-      background,
     });
     const queued = spawn();
     expect(manager.getRecord(queued)?.status).toBe("queued");
@@ -256,7 +252,6 @@ describe("child fragment spawn snapshots", () => {
       io.createSession.mockResolvedValueOnce({ session: firstSession });
       const first = manager.spawn(STUB_SNAPSHOT, "general-purpose", "Hold slot", {
         description: "Hold",
-        background,
       });
       const queued = spawn();
       Object.assign(profile, declaration);
@@ -285,9 +280,9 @@ describe("child fragment spawn snapshots", () => {
     vi.mocked(readFileSync).mockClear();
     const registryRead = vi.spyOn(registry, "resolveAgentConfig");
 
-    const outcome = await manager.resume(id, "More work");
+    const outcome = await resumeAndSettle(manager, id, "More work");
 
-    expect(outcome.kind).toBe("resumed");
+    expect(outcome.kind).toBe("started");
     expect(manager.getRecord(id)?.status).toBe("completed");
     expect(childPrompt()).toBe(originalPrompt);
     expect(factory).toHaveBeenCalledTimes(1);
@@ -304,7 +299,6 @@ describe("child fragment spawn snapshots", () => {
       expect(() =>
         manager.spawn({ ...STUB_SNAPSHOT, projectTrusted }, profile.name, "Task", {
           description: "Task",
-          background,
         }),
       ).toThrow(/require Pi project trust/);
 
@@ -316,7 +310,8 @@ describe("child fragment spawn snapshots", () => {
   it("accepts explicitly trusted project fragments", async () => {
     profile.source = "project";
 
-    const record = await manager.spawnAndWait(
+    const record = await spawnAndSettle(
+      manager,
       { ...STUB_SNAPSHOT, projectTrusted: true },
       profile.name,
       "Task",

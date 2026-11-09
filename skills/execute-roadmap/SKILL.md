@@ -65,8 +65,11 @@ each ready step:
      anything the step did not anticipate. Large output as a `stash_put` handle.
 3. Record the agent ID on the task with a `message`.
 
-Subagents run in the background: after starting the ready steps' workers, end
-your turn, and each completion notification wakes you to verify that step.
+Subagents always run in the background: after starting the ready steps' workers,
+end your turn, and each completion message wakes you to verify that step. A
+completion message carries only the first 500 characters of a result, so the
+report's large output arrives as a `stash_put` handle that you read with
+`stash_get`.
 
 A single ready step runs in the main checkout. When several steps are ready at
 once, run them in parallel, each in its own worktree:

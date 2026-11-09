@@ -1,9 +1,9 @@
 /**
  * subagent-manager.ts - Tracks subagents, background execution, resume support.
  *
- * Background agents are subject to a configurable concurrency limit (default: 4).
- * Excess agents are scheduled on a ConcurrencyLimiter and auto-started as running
- * agents complete. Foreground agents bypass the limiter (they block the parent anyway).
+ * Every agent runs in the background and is subject to a configurable
+ * concurrency limit (default: 4). Excess agents are scheduled on a
+ * ConcurrencyLimiter and auto-started as running agents complete.
  */
 
 import { randomUUID } from "node:crypto";
@@ -53,15 +53,6 @@ export interface SpawnTypeResolver {
 export type ResumeRefusalReason = ResumeRefusal | "unknown-agent";
 
 /**
- * What a resume attempt produced: the record whose run was restarted, or the
- * reason nothing was started.
- *
- * A resumed run that *failed* is still `resumed` — the record carries the
- * error. `refused` means the turn loop never ran.
- */
-export type ResumeOutcome = { kind: "resumed"; record: Subagent } | ResumeRefused;
-
-/**
  * Nothing was started. A refusal for good names the transcript when the agent
  * has one, which still holds what it did.
  */
@@ -76,7 +67,9 @@ export interface ResumeRefused {
  * nothing was started.
  *
  * The run itself continues on the record; its `promise` settles when the
- * resumed run reaches a terminal state.
+ * resumed run reaches a terminal state. A resumed run that *failed* is still
+ * `started`: the record carries the error. `refused` means the turn loop never
+ * ran.
  */
 export type ResumeStart = { kind: "started"; record: Subagent } | ResumeRefused;
 
@@ -90,21 +83,15 @@ export interface SavedAgents {
   parent(): { snapshot: ParentSnapshot; parentSession: ParentSessionInfo };
 }
 
-/** Per-call knobs for a resume; both doors pass their own. */
+/** Per-call knobs for a resume. */
 export interface ResumeCallOptions {
   /** Cancels the resumed turn loop, through the record's own lever — so it ends like `abort(id)` does. */
   signal?: AbortSignal;
-  /**
-   * The caller will deliver this outcome to the parent, so nothing announces
-   * it. Omitted, the resumed outcome is announced like any other completion.
-   */
-  claimOutcome?: boolean;
 }
 
-/** A spawn's resolved identity and mode — the invariants every front door shares. */
+/** A spawn's resolved identity — the invariants every front door shares. */
 interface ResolvedSpawn {
   type: SubagentType;
-  isBackground: boolean;
   /** Fragment-bearing configuration captured before queue admission. */
   agentConfig?: AgentConfig;
 }
@@ -127,6 +114,7 @@ const DEFAULT_RETENTION_POLICY: RetentionPolicy = {
 /**
  * Only what the retention rule reads. Narrower than `Subagent` so the rule
  * stays a plain function over four facts, testable without spawning an agent.
+ * `consumed` means the parent read the finished result with `subagent_get`.
  */
 export interface RetentionCandidate {
   consumed: boolean;
@@ -144,14 +132,14 @@ export interface RetentionWindow {
 /**
  * Pick the retention window for one terminal record.
  *
- * A collected outcome releases on the short window, measured from the later of
- * completion and collection, so a late read still gets a full resume window; an
- * uncollected one holds until the long safety cap.
+ * A result the parent read releases on the short window, measured from the
+ * later of completion and the read, so a late read still gets a full resume
+ * window; one nobody read holds until the long safety cap.
  *
- * A record carrying an unanswered question is not collected, whatever
- * `consumed` says: the parent has read the question but has not answered it,
- * and the answer is delivered by resuming the very session the short window
- * would release.
+ * A record carrying an unanswered question is not read, whatever `consumed`
+ * says: the parent has read the question but has not answered it, and the
+ * answer is delivered by resuming the very session the short window would
+ * release.
  */
 export function resolveRetentionWindow(
   record: RetentionCandidate,
@@ -216,12 +204,6 @@ export interface AgentSpawnConfig {
   inheritContext?: boolean;
   thinkingLevel?: ThinkingLevel;
   /**
-   * Whether the agent runs in the background. The caller decides; an agent
-   * profile has no say. Required so a new front door cannot silently inherit
-   * another's policy.
-   */
-  background: boolean;
-  /**
    * Skip the maxConcurrent queue check for this spawn - start immediately even
    * if the configured concurrency limit would otherwise queue it. Useful for
    * callers (e.g. cross-extension RPC) that must not be deferred by the queue.
@@ -279,12 +261,9 @@ export class SubagentManager {
   /**
    * Compose a per-agent lifecycle observer from manager and spawn-config concerns.
    *
-   * Terminal transitions are reported for every agent. Whether the parent needs
-   * telling is the notification layer's decision, made from the carrier claim;
-   * suppressing the observer here would also suppress the lifecycle event and
-   * the session-history record, which are facts about the run rather than
-   * announcements. Observer faults on the session-created and terminal hooks
-   * must not fail the run.
+   * Terminal transitions are reported for every agent, and the notification
+   * layer announces each one to the parent. Observer faults on the
+   * session-created and terminal hooks must not fail the run.
    */
   private buildObserver(spawnObserver?: SubagentLifecycleObserver): SubagentLifecycleObserver {
     const observer = this.observer;
@@ -317,8 +296,9 @@ export class SubagentManager {
   }
 
   /**
-   * Spawn an agent and return its ID immediately (for background use).
-   * If the concurrency limit is reached, the agent is queued.
+   * Spawn an agent and return its ID immediately; the parent learns the outcome
+   * from the completion message. If the concurrency limit is reached, the agent
+   * is queued.
    *
    * Throws when the named agent type is disabled or its file does not parse.
    */
@@ -328,46 +308,14 @@ export class SubagentManager {
     prompt: string,
     options: AgentSpawnConfig,
   ): string {
-    return this.create(
-      snapshot,
-      this.resolveSpawn(type, options.background, snapshot),
-      prompt,
-      options,
-    );
-  }
-
-  /**
-   * Spawn an agent and wait for completion (foreground use).
-   * Foreground agents bypass the concurrency queue.
-   *
-   * The caller holds the result, which is a delivery commitment: the agent must
-   * not be queued and must not be announced, whatever its frontmatter declares.
-   *
-   * Rejects when the named agent type is disabled or its file does not parse.
-   */
-  async spawnAndWait(
-    snapshot: ParentSnapshot,
-    type: SubagentType,
-    prompt: string,
-    options: Omit<AgentSpawnConfig, "background">,
-  ): Promise<Subagent> {
-    const id = this.create(snapshot, this.resolveSpawn(type, false, snapshot), prompt, {
-      ...options,
-      background: false,
-    });
-    const record = this.agents.get(id)!;
-    // The caller holds the result, so this call is the carrier: claim the outcome
-    // before awaiting it, so nothing announces what is already being delivered.
-    record.claim();
-    await record.promise;
-    return record;
+    return this.create(snapshot, this.resolveSpawn(type, snapshot), prompt, options);
   }
 
   /**
    * Stamp the invariants every front door shares: a canonical agent type, a
-   * rejection for a disabled one, and the background mode.
+   * rejection for a disabled one.
    */
-  private resolveSpawn(type: string, background: boolean, snapshot: ParentSnapshot): ResolvedSpawn {
+  private resolveSpawn(type: string, snapshot: ParentSnapshot): ResolvedSpawn {
     const canonical = this.registry.resolveType(type);
     if (canonical !== undefined && !this.registry.isValidType(canonical)) {
       const { definitionError } = this.registry.resolveAgentConfig(canonical);
@@ -397,7 +345,6 @@ export class SubagentManager {
     }
     return {
       type: resolvedType,
-      isBackground: background,
       agentConfig,
     };
   }
@@ -435,17 +382,13 @@ export class SubagentManager {
     prompt: string,
     options: AgentSpawnConfig,
   ): string {
-    const { type, isBackground } = resolved;
+    const { type } = resolved;
     const id = randomUUID().slice(0, 17);
     const record = new Subagent({
       id,
       type,
       description: options.description,
-      isBackground,
-      state: new SubagentState({
-        status: isBackground ? "queued" : "running",
-        startedAt: Date.now(),
-      }),
+      state: new SubagentState({ status: "queued", startedAt: Date.now() }),
       execution: this.execution(snapshot, resolved, prompt, {
         observer: this.buildObserver(options.observer),
         model: options.model,
@@ -459,13 +402,11 @@ export class SubagentManager {
     });
     this.agents.set(id, record);
 
-    if (isBackground) {
-      this.observer?.onSubagentCreated(record);
-    }
+    this.observer?.onSubagentCreated(record);
 
-    if (isBackground && !options.bypassQueue) {
+    if (!options.bypassQueue) {
       // Schedule on the limiter — scheduleVia captures the limiter promise
-      // eagerly, so a queued agent is awaitable from spawn; guardedRun guards
+      // eagerly, so a queued agent has a run promise from spawn; begin() guards
       // against abort-while-queued when the slot frees.
       record.scheduleVia((thunk) => this.limiter.schedule(thunk));
       return id;
@@ -476,27 +417,14 @@ export class SubagentManager {
   }
 
   /**
-   * Resume an existing agent session with a new prompt.
+   * Resume an existing agent session with a new prompt, without waiting for it.
    *
    * The refusal policy lives here rather than in a caller, so every front door
    * declines the same resumes for the same reasons; a door owns only how it
    * words the answer. Delegates to Subagent.resume(), which owns the observer
    * subscription lifecycle, and reopens the transcript when the session is gone.
-   */
-  async resume(
-    id: string,
-    prompt: string,
-    options: ResumeCallOptions = {},
-  ): Promise<ResumeOutcome> {
-    const start = this.startResume(id, prompt, options);
-    if (start.kind === "refused") return start;
-    await start.record.promise;
-    return { kind: "resumed", record: start.record };
-  }
-
-  /**
-   * Start a resume without waiting for it: the door that returns before the
-   * resumed run ends. Refuses synchronously, for the same reasons `resume` does.
+   * Refuses synchronously; the resumed outcome reaches the parent as a
+   * completion message like any other run's.
    */
   startResume(id: string, prompt: string, options: ResumeCallOptions = {}): ResumeStart {
     const live = this.agents.get(id);
@@ -513,13 +441,6 @@ export class SubagentManager {
       debugLog(`rebuild agent ${id}`, err);
       return refused("agent-type-unavailable", source.outputFile);
     }
-    // Before the resume starts: resetForResume runs synchronously inside
-    // resume(), so a claim taken afterwards would miss the terminal edge.
-    // Each resume's caller decides who carries this run's outcome; a claim a
-    // previous carrier left behind belongs to an outcome already delivered, and
-    // no carrier is live on a settled record.
-    if (options.claimOutcome) agent.claim();
-    else agent.releaseClaims();
     // Published as agent.promise, which always resolves; it rejects only for a
     // missing session, which resumeRefusal has already refused as no-session.
     void agent.resume(prompt, options.signal);
@@ -552,13 +473,12 @@ export class SubagentManager {
    */
   private rebuildFromSaved(saved: PersistedSubagentRecord): Subagent {
     const { snapshot, parentSession } = this.savedAgents!.parent();
-    const resolved = this.resolveSpawn(saved.type, true, snapshot);
+    const resolved = this.resolveSpawn(saved.type, snapshot);
     const model = resolveSavedModel(saved.model, snapshot.modelRegistry);
     const record = new Subagent({
       id: saved.id,
       type: resolved.type,
       description: saved.description,
-      isBackground: resolved.isBackground,
       state: new SubagentState({
         // A record still reading queued or running was interrupted.
         status: saved.status === "queued" || saved.status === "running" ? "stopped" : saved.status,

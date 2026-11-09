@@ -11,7 +11,6 @@ describe("SubagentTracker", () => {
         id: "a",
         type: "Explore",
         description: "Find auth files",
-        isBackground: true,
       }),
     ).toBe(true);
     expect(tracker.section()?.agents[0]).toEqual({

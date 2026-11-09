@@ -1,19 +1,22 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import {
+  CHILD_MARK,
   EXTENSIONS,
   offlineAgentDir,
   realChildSession,
   lifecycleLog,
   agentIdIn,
   lastResult,
+  scriptSides,
 } from "./helpers/sdk.ts";
 import { toolCall } from "../../../packages/pi-test-helpers/src/faux-session.ts";
 
 // A real orchestrator session hands a worker a directory it owns (a worktree)
-// through subagent_start's cwd, then resumes the worker there.
+// through subagent_start's cwd, then resumes the worker there; both runs finish
+// with a completion message that wakes the orchestrator.
 it("runs a tool-spawned child in the caller's cwd and keeps it resumable", async () => {
   const dir = offlineAgentDir({ extensions: [EXTENSIONS.subagent, EXTENSIONS.lifecycleRecorder] });
   const lifecycle = lifecycleLog();
@@ -24,44 +27,48 @@ it("runs a tool-spawned child in the caller's cwd and keeps it resumable", async
   const worktree = join(dir, "worktrees", "feat-x");
   mkdirSync(worktree, { recursive: true });
   let workerId: string | undefined;
-  let resumeResult = "";
-  faux.setResponses([
-    toolCall(
-      "subagent_start",
-      {
-        subagent_type: "general-purpose",
-        description: "Build feature",
-        prompt: "Build the feature.",
-        cwd: "worktrees/feat-x",
-      },
-      "call-spawn-1",
-    ),
-    fauxAssistantMessage("First pass done."),
-    (context) => {
-      const result = lastResult(context, "subagent_start");
-      workerId = agentIdIn(result);
-      return toolCall(
+  const { requests } = scriptSides(faux, {
+    parent: [
+      toolCall(
         "subagent_start",
         {
           subagent_type: "general-purpose",
           description: "Build feature",
-          prompt: "Add the tests.",
-          resume: workerId ?? "",
+          prompt: `${CHILD_MARK} Build the feature.`,
+          cwd: "worktrees/feat-x",
         },
-        "call-resume-1",
-      );
-    },
-    fauxAssistantMessage("Tests added."),
-    (context) => {
-      const result = lastResult(context, "subagent_start");
-      resumeResult = result;
-      return fauxAssistantMessage("Delegated.");
-    },
-  ]);
+        "call-spawn-1",
+      ),
+      fauxAssistantMessage("Started."),
+      // The first completion message wakes the orchestrator, which resumes the worker.
+      (context) => {
+        workerId = agentIdIn(lastResult(context, "subagent_start"));
+        return toolCall(
+          "subagent_start",
+          {
+            subagent_type: "general-purpose",
+            description: "Build feature",
+            prompt: `${CHILD_MARK} Add the tests.`,
+            resume: workerId ?? "",
+          },
+          "call-resume-1",
+        );
+      },
+      fauxAssistantMessage("Resumed."),
+      fauxAssistantMessage("Delegated."),
+    ],
+    child: [fauxAssistantMessage("First pass done."), fauxAssistantMessage("Tests added.")],
+  });
 
   await orchestrator.runTurnLoop("Delegate the feature.", {});
+  await vi.waitFor(() => expect(requests.parent).toHaveLength(5), { timeout: 10_000 });
+  await orchestrator.session.waitForIdle();
   expect(workerId).toBeTruthy();
-  expect(resumeResult).toContain("Tests added.");
+  const resumeResult = JSON.stringify(requests.parent[3].messages);
+  expect(lastResult(requests.parent[3], "subagent_start")).toContain(
+    "Agent resumed in background.",
+  );
+  expect(JSON.stringify(requests.parent[4].messages.at(-1))).toContain("Tests added.");
   expect(resumeResult).not.toContain("resume is unavailable");
   await orchestrator.dispose();
 

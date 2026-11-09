@@ -15,7 +15,8 @@ import {
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import { onTestFinished, vi } from "vitest";
-import type { AssistantMessage, Context } from "@earendil-works/pi-ai";
+import type { AssistantMessage, Context, SimpleStreamOptions } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import {
   fauxRuntime,
   toolCall,
@@ -197,3 +198,51 @@ export function capture(requests: Context[], reply: AssistantMessage) {
     return reply;
   };
 }
+
+/** What one scripted reply may be: a message, or a function of the request it answers. */
+export type Reply =
+  | AssistantMessage
+  | ((
+      context: Context,
+      options?: SimpleStreamOptions,
+    ) => AssistantMessage | Promise<AssistantMessage>);
+
+/** The marker every child prompt in these tests starts with, so a request can be told apart. */
+export const CHILD_MARK = "[child]";
+
+/** Whether a request comes from a child: a user message in it is a child prompt. */
+export function isChildRequest(context: Context): boolean {
+  return context.messages.some(
+    (message) => message.role === "user" && JSON.stringify(message.content).includes(CHILD_MARK),
+  );
+}
+
+/**
+ * Script one faux provider that a parent and its children share. Children run
+ * in the background, so the two race for the provider's queue; each reply is
+ * therefore chosen by who is asking. A side with nothing scripted answers
+ * "(unscripted)". Every request is kept in `requests`, oldest first, which the
+ * call empties first, so a second call starts a new phase of the test.
+ */
+export function scriptSides(
+  faux: { setResponses(responses: unknown[]): void },
+  replies: { parent?: Reply[]; child?: Reply[] },
+  requests: { parent: Context[]; child: Context[] } = { parent: [], child: [] },
+) {
+  requests.parent.length = 0;
+  requests.child.length = 0;
+  const queues = { parent: [...(replies.parent ?? [])], child: [...(replies.child ?? [])] };
+  const answer = async (context: Context, options?: SimpleStreamOptions) => {
+    const side = isChildRequest(context) ? "child" : "parent";
+    requests[side].push(structuredClone(context));
+    const reply = queues[side].shift();
+    if (!reply) return fauxAssistantMessage("(unscripted)");
+    return typeof reply === "function" ? reply(context, options) : reply;
+  };
+  faux.setResponses(Array.from({ length: 60 }, () => answer));
+  return { requests, queues };
+}
+
+/** A `subagent_start` response for a general-purpose worker whose prompt carries the child marker. */
+export const spawnChild = (description: string, extra: Record<string, unknown> = {}) =>
+  spawn(description, { prompt: `${CHILD_MARK} ${description}.`, ...extra });

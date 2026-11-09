@@ -30,24 +30,24 @@ This document describes the architecture of the pi-subagent fork: a focused, com
 The README carries a short charter for the boundaries that come up most often.
 This is the full inventory, with the decision record or design principle each rests on.
 
-| Non-goal                                                                      | Rests on                                                                                             |
-| ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| Time-based scheduling (cron / interval / one-shot dispatch)                   | Design principle 4                                                                                   |
-| Ad-hoc cross-extension event RPC (`subagent:rpc:*`)                           | Design principle 3; §"What the core dropped"                                                         |
-| Group-join / consolidated completion notifications                            | §"What the core dropped"                                                                             |
-| Model-scope enforcement (an `enabledModels` allowlist in the core)            | `docs/comparison-with-upstream.md` only — the weakest entry here                                     |
-| Per-agent tool restriction policy (`disallowed_tools`, a built-in denylist)   | [ADR-0002](../decisions/0002-extensions-on-a-minimal-core.md); §"Child tool selection"               |
-| Widening a child's tool allowlist with capability tools on the agent's behalf | §"Child tool selection"; operator position on the additive-key case                                  |
-| A global run-mode default                                                     | Operator position; per-agent `foreground` already exists                                             |
-| Worktree / environment isolation in the core                                  | [ADR-0002](../decisions/0002-extensions-on-a-minimal-core.md) §"What leaves the core"                |
-| Persistent agent memory (`memory:`) and skill preloading (`skills:`)          | [ADR-0002](../decisions/0002-extensions-on-a-minimal-core.md); comparison doc                        |
-| Per-agent extension lifecycle control (`isolated`, `extensions:`, `noSkills`) | [ADR-0002](../decisions/0002-extensions-on-a-minimal-core.md) and its amendment                      |
-| New generative provider seams without a concrete consumer                     | [ADR-0002](../decisions/0002-extensions-on-a-minimal-core.md) §"The governing rule: no vacant hooks" |
-| In-viewer steering or interactive child-session takeover                      | [ADR-0004](../decisions/0004-reconsider-ui-direction.md) Addendum criteria 1 and 2                   |
-| Bespoke transcript rendering in the core                                      | [ADR-0004](../decisions/0004-reconsider-ui-direction.md) Decision B                                  |
-| Agent-definition authoring UI (wizard, config editor, `/agents` menu)         | [ADR-0004](../decisions/0004-reconsider-ui-direction.md) Decision C                                  |
-| Duplicating foreground progress in the above-editor widget                    | [ADR-0004](../decisions/0004-reconsider-ui-direction.md) Decision A                                  |
-| Propagating the parent's `pi -e <path>` ephemeral extensions to children      | [ADR-0001](../decisions/0001-deferred-patches.md), now superseded — restate before citing            |
+| Non-goal                                                                      | Rests on                                                                                              |
+| ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Time-based scheduling (cron / interval / one-shot dispatch)                   | Design principle 4                                                                                    |
+| Ad-hoc cross-extension event RPC (`subagent:rpc:*`)                           | Design principle 3; §"What the core dropped"                                                          |
+| Group-join / consolidated completion notifications                            | §"What the core dropped"                                                                              |
+| Model-scope enforcement (an `enabledModels` allowlist in the core)            | `docs/comparison-with-upstream.md` only — the weakest entry here                                      |
+| Per-agent tool restriction policy (`disallowed_tools`, a built-in denylist)   | [ADR-0002](../decisions/0002-extensions-on-a-minimal-core.md); §"Child tool selection"                |
+| Widening a child's tool allowlist with capability tools on the agent's behalf | §"Child tool selection"; operator position on the additive-key case                                   |
+| A global run-mode default                                                     | Operator position; every agent runs in the background, so there is no mode to default                 |
+| Worktree / environment isolation in the core                                  | [ADR-0002](../decisions/0002-extensions-on-a-minimal-core.md) §"What leaves the core"                 |
+| Persistent agent memory (`memory:`) and skill preloading (`skills:`)          | [ADR-0002](../decisions/0002-extensions-on-a-minimal-core.md); comparison doc                         |
+| Per-agent extension lifecycle control (`isolated`, `extensions:`, `noSkills`) | [ADR-0002](../decisions/0002-extensions-on-a-minimal-core.md) and its amendment                       |
+| New generative provider seams without a concrete consumer                     | [ADR-0002](../decisions/0002-extensions-on-a-minimal-core.md) §"The governing rule: no vacant hooks"  |
+| In-viewer steering or interactive child-session takeover                      | [ADR-0004](../decisions/0004-reconsider-ui-direction.md) Addendum criteria 1 and 2                    |
+| Bespoke transcript rendering in the core                                      | [ADR-0004](../decisions/0004-reconsider-ui-direction.md) Decision B                                   |
+| Agent-definition authoring UI (wizard, config editor, `/agents` menu)         | [ADR-0004](../decisions/0004-reconsider-ui-direction.md) Decision C                                   |
+| A foreground mode, or any call that blocks the parent on an agent             | Roadmap `docs/roadmaps/subagent-work-lifecycle.md` step 6; the completion message is the only carrier |
+| Propagating the parent's `pi -e <path>` ephemeral extensions to children      | [ADR-0001](../decisions/0001-deferred-patches.md), now superseded — restate before citing             |
 
 Extracting the surviving UI to a separate package is a **not now with criteria**, not a decline: [ADR-0004](../decisions/0004-reconsider-ui-direction.md) Decision D names the revisit conditions.
 
@@ -105,7 +105,6 @@ flowchart TB
         AgentTool["subagent tool<br/>(dispatch)"]
         ResultRenderer["result-renderer<br/>(pure rendering)"]
         SpawnConfig["spawn-config<br/>(resolve params)"]
-        FgRunner["foreground-runner"]
         BgSpawner["background-spawner"]
         GetResult["subagent_get"]
         GetResultRenderer["get-result-renderer<br/>(pure rendering)"]
@@ -142,7 +141,6 @@ classDiagram
         +id: string
         +type: SubagentType
         +description: string
-        +isBackground: boolean
         -state: SubagentState
         -execution: SubagentExecution
         +status: SubagentStatus
@@ -161,7 +159,6 @@ classDiagram
         +run()
         +resume(prompt, signal)
         +abort(): boolean
-        +waitUntilSettled(signal): Promise~void~
         +steer(message): Promise~SteerOutcome~
         +isSessionReady(): boolean
         +getConversation(): string | undefined
@@ -208,8 +205,6 @@ classDiagram
     class SubagentManager {
         -registry: SpawnTypeResolver
         +spawn(snapshot, type, prompt, config)
-        +spawnAndWait(snapshot, type, prompt, config)
-        +resume(id, prompt, options)
         +startResume(id, prompt, options)
         +getRecord(id): Subagent
         +listAgents(): Subagent[]
@@ -242,9 +237,8 @@ classDiagram
 
 ```mermaid
 stateDiagram-v2
-    [*] --> queued : spawn (background, at capacity)
-    [*] --> running : spawn (foreground or under limit)
-    queued --> running : capacity available
+    [*] --> queued : spawn
+    queued --> running : capacity available (or a bypassQueue spawn, at once)
     queued --> stopped : stopQueued() — never started
     running --> completed : agent finished, including after the turn-budget warning
     running --> error : unhandled exception
@@ -353,12 +347,12 @@ src/
 │   └── session-dir.ts              session directory derivation
 │
 ├── lifecycle/                      agent execution and state tracking
-│   ├── subagent-manager.ts         collection manager + observer wiring + session-retention sweep (consumption-aware; an unanswered question holds the safety cap); the resume choke point, refusing from the record's own predicate and reporting a discriminated outcome, so every front door declines the same resumes; a door that returns before the resumed run ends starts one synchronously, and each resume's caller decides whether its outcome is claimed
+│   ├── subagent-manager.ts         collection manager + observer wiring + session-retention sweep (consumption-aware; an unanswered question holds the safety cap); the resume choke point, refusing from the record's own predicate and reporting a discriminated outcome, so every front door declines the same resumes; a resume starts synchronously and returns before the resumed run ends, because every door is a background door
 │   ├── create-subagent-session.ts  assembly factory: MCP pattern expansion, Pi built-in selection, session creation, spawn-tool denylist, core child-tool install, binding
 │   ├── subagent-session.ts         born-complete child session: turn loop, steer, shutdown-then-dispose teardown
 │   ├── turn-limits.ts              turn-budget policy: TurnBudget, the TurnBudgetTracker that decides warnings and stops, normalizeMaxTurns (minimum 2)
-│   ├── subagent.ts                 owns full execution lifecycle (run, resume, abort, steer, wait-until-settled); answers why a resume would be refused (resumeRefusal, including a live run), which the resume choke point and every result carrier read rather than re-deriving; reports a resume's start as well as its end; wait-until-settled reports whether the waited run settled, has not, or was replaced by a resume (carrying what it ended with)
-│   ├── subagent-state.ts           lifecycle status + metrics + result-delivery value object (transitions, accumulators, classification predicates); delivery carries a revocable claim per carrier (each releases only its own handle), a one-way consumption latch, and a per-run update ledger that renders only what no announcement delivered; numbers its runs and keeps the outcome of the run the latest resume replaced
+│   ├── subagent.ts                 owns full execution lifecycle (run, resume, abort, steer); answers why a resume would be refused (resumeRefusal, including a live run), which the resume choke point and every report read rather than re-deriving; reports a resume's start as well as its end
+│   ├── subagent-state.ts           lifecycle status + metrics + result-delivery value object (transitions, accumulators, classification predicates); a one-way latch for the time the parent read the finished result (retention only), and a per-run update ledger that renders only what no announcement delivered
 │   ├── run-listeners.ts            per-run observer-unsub and signal-detach handles
 │   ├── concurrency-limiter.ts       background admission gate: schedules run thunks FIFO against the limit
 │   ├── parent-snapshot.ts          immutable spawn-time parent state, including the parent's operator-authored prompt parts composed in Pi's own order
@@ -368,8 +362,8 @@ src/
 │
 ├── observation/                    progress tracking and notification
 │   ├── record-observer.ts          session-event stats observer
-│   ├── notification.ts             completion nudges and mid-run updates, in one arrival-ordered withheld queue (announce-only; withheld during the parent's agent run and flushed on agent_settled, each re-checking its gates at emit rather than replaying them from enqueue — a completion on claim and consumption, an update on the claim and on the child still running, since a terminated run's updates ride its outcome and this nudge is one of their carriers)
-│   ├── outcome-delivery.ts         shared outcome rendering every result carrier composes: one status vocabulary in two presentations, body, and the addenda tail (mid-run updates, then the ask-back affordance — which names a resume only when the record says one would be accepted, and asks the parent to wait when the child has merely not settled) in one fixed order
+│   ├── notification.ts             completion nudges and mid-run updates, in one arrival-ordered withheld queue (announce-only; withheld during the parent's agent run and flushed on agent_settled; every completion is announced, whatever the parent has read, and an update only while the child is still running, since a terminated run's updates ride the completion message)
+│   ├── outcome-delivery.ts         shared outcome rendering the completion message and the subagent_get report compose: one status vocabulary in two presentations, body, and the addenda tail (mid-run updates, then the ask-back affordance — which names a resume only when the record says one would be accepted, and says the completion message is coming when the child has merely not settled) in one fixed order
 │   ├── renderer.ts                 notification and mid-run-update TUI components
 │   ├── composite-subagent-observer.ts fans manager notifications out to multiple observers; enumerates every member, so an optional one it omits is dropped silently
 │   └── subagent-events-observer.ts manager lifecycle observer (event emission + persistence + notification)
@@ -378,9 +372,8 @@ src/
 │   ├── agent-tool.ts               subagent tool definition, validation, dispatch
 │   ├── result-renderer.ts          pure per-status result rendering
 │   ├── spawn-config.ts             pure config resolution
-│   ├── foreground-runner.ts        foreground execution loop
 │   ├── background-spawner.ts       background spawn setup + the launch message every background door (spawn, resume) returns
-│   ├── get-result-tool.ts          subagent_get tool; a wait a resume superseded reports the run it waited for
+│   ├── get-result-tool.ts          subagent_get tool: a non-blocking status and result read (no wait)
 │   ├── get-result-report.ts        pure subagent_get report formatter
 │   ├── get-result-renderer.ts      pure subagent_get line assembly for the collapsed and expanded TUI views
 │   ├── steer-tool.ts               subagent_steer tool
@@ -491,7 +484,7 @@ The core emits events on `pi.events` that any extension can observe:
 | `subagent:resuming`  | `{ id, type, description }`                                                                      | A resume starts, from either front door                                                   |
 | `subagent:resumed`   | same as `completed` (`buildEventData` shape)                                                     | Resumed run reaches a terminal state (`completed`/`error`); `status`/`error` discriminate |
 | `subagent:compacted` | `{ id, type, description, reason, tokensBefore, compactionCount }`                               | Child session compacts                                                                    |
-| `subagent:created`   | `{ id, type, description, isBackground }`                                                        | Background agent created (pre-admission)                                                  |
+| `subagent:created`   | `{ id, type, description }`                                                                      | Agent created (pre-admission)                                                             |
 | `subagent:steered`   | `{ id, message }`                                                                                | Steering message delivered to a running agent                                             |
 
 These are fire-and-forget broadcast events — no request IDs, no reply channels.
@@ -618,8 +611,8 @@ Pulling each apart by asking "who changes this, how often, and who needs to know
    `record-observer` already computes them — its only error is writing the aggregate back onto the subagent.
 3. **The hook surface** — the points where an extension alters or augments the child before and around its run.
    This is the child session's own extension binding (see below), not data on the subagent.
-4. **Result delivery** — whether the parent has consumed the result, when to nudge, how the result reaches the caller.
-   This domain now has a home: `consumedAt` is a first-class field on `SubagentState`, marked only at the parent-initiated return edges (`subagent_get`, foreground return, resume return); the notification layer reads it to suppress a nudge but never owns it, and the retention sweep reads it to time session release (#617).
+4. **Result delivery** — when to announce, how the result reaches the parent.
+   The completion message is the only carrier of an outcome. `consumedAt` is a first-class field on `SubagentState`, marked when the parent reads a finished result with `subagent_get`; it only times session release (#617) and never suppresses a message.
 
 The ~20 optional constructor fields and the runtime `run()` throws are the pressure these four domains exert on one class.
 Separating them is what makes the Phase 17 steps fall out rather than fight back.

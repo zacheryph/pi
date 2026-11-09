@@ -52,7 +52,6 @@ interface MakeSubagentOptions extends SubagentStateInit {
   type?: SubagentType;
   description?: string;
   execution?: SubagentExecution;
-  isBackground?: boolean;
   /**
    * A caller-owned SubagentState, for tests that mutate it after construction to
    * observe the record delegating live. Wins over the flat state overrides.
@@ -62,12 +61,11 @@ interface MakeSubagentOptions extends SubagentStateInit {
 
 /** Construct a Subagent with default identity and a stub execution, overridable per test. */
 function makeSubagent(overrides: MakeSubagentOptions = {}): Subagent {
-  const { id, type, description, isBackground, execution, state, ...stateOverrides } = overrides;
+  const { id, type, description, execution, state, ...stateOverrides } = overrides;
   return new Subagent({
     id: id ?? "1",
     type: type ?? "general-purpose",
     description: description ?? "test",
-    isBackground: isBackground ?? true,
     execution: execution ?? makeStubExecution(),
     state:
       state ??
@@ -632,7 +630,6 @@ function createRunnableAgent(overrides?: {
   getRunConfig?: () => RunConfig;
   parentSession?: { toolCallId?: string; parentSessionFile?: string; parentSessionId?: string };
   signal?: AbortSignal;
-  isBackground?: boolean;
   cwd?: string;
   maxTurns?: number;
 }) {
@@ -641,7 +638,6 @@ function createRunnableAgent(overrides?: {
   return makeSubagent({
     id: "run-1",
     description: "run test",
-    isBackground: overrides?.isBackground,
     execution: {
       createSubagentSession,
       observer,
@@ -843,11 +839,10 @@ function createSpyFactory() {
 describe("Subagent — the mid-run update channel", () => {
   const updatesOn = { defaultMaxTurns: undefined, wrapUpTurns: 5, midRunUpdates: true };
 
-  it("gives a background child a way to send its parent an update", async () => {
+  it("gives a child a way to send its parent an update", async () => {
     const { factory } = createSpyFactory();
     const agent = createRunnableAgent({
       createSubagentSession: factory,
-      isBackground: true,
       getRunConfig: () => updatesOn,
     });
 
@@ -856,12 +851,11 @@ describe("Subagent — the mid-run update channel", () => {
     expect(factory.mock.calls[0][0].notifyParent).toBeTypeOf("function");
   });
 
-  it("reports a background child's update to the lifecycle observer", async () => {
+  it("reports a child's update to the lifecycle observer", async () => {
     const { factory } = createSpyFactory();
     const onUpdateSent = vi.fn<(agent: Subagent, message: string) => void>();
     const agent = createRunnableAgent({
       createSubagentSession: factory,
-      isBackground: true,
       observer: { onUpdateSent },
       getRunConfig: () => updatesOn,
     });
@@ -872,35 +866,8 @@ describe("Subagent — the mid-run update channel", () => {
     expect(onUpdateSent).toHaveBeenCalledWith(agent, "The bug is in the retry wrapper.");
   });
 
-  it("gives a foreground child the same channel, since where its update lands is not its concern", async () => {
-    const { factory } = createSpyFactory();
-    const agent = createRunnableAgent({
-      createSubagentSession: factory,
-      isBackground: false,
-      getRunConfig: () => updatesOn,
-    });
-
-    await agent.run();
-
-    expect(factory.mock.calls[0][0].notifyParent).toBeTypeOf("function");
-  });
-
-  describe("routing by who holds the outcome", () => {
-    it("holds an update for the carrier that claimed the run's outcome", async () => {
-      const { factory } = createSpyFactory();
-      const agent = createRunnableAgent({
-        createSubagentSession: factory,
-        getRunConfig: () => updatesOn,
-      });
-      await agent.run();
-      agent.claim();
-
-      factory.mock.calls[0][0].notifyParent?.("The bug is in the retry wrapper.");
-
-      expect(agent.runUpdates).toEqual(["The bug is in the retry wrapper."]);
-    });
-
-    it("records the update for a carrier even when none has claimed the outcome", async () => {
+  describe("recording what the child sent", () => {
+    it("records the update for the completion message", async () => {
       const { factory } = createSpyFactory();
       const agent = createRunnableAgent({
         createSubagentSession: factory,
@@ -911,11 +878,11 @@ describe("Subagent — the mid-run update channel", () => {
       factory.mock.calls[0][0].notifyParent?.("The bug is in the retry wrapper.");
 
       // The announcement channel is what decides to announce, and it marks what
-      // it delivers. Until then the run owes the message to a carrier.
+      // it delivers. Until then the run owes the message to the completion message.
       expect(agent.runUpdates).toEqual(["The bug is in the retry wrapper."]);
     });
 
-    it("tells the observer either way, because the update is a fact about the run", async () => {
+    it("tells the observer, because the update is a fact about the run", async () => {
       const { factory } = createSpyFactory();
       const onUpdateSent = vi.fn<(agent: Subagent, message: string) => void>();
       const agent = createRunnableAgent({
@@ -924,21 +891,19 @@ describe("Subagent — the mid-run update channel", () => {
         getRunConfig: () => updatesOn,
       });
       await agent.run();
-      agent.claim();
 
       factory.mock.calls[0][0].notifyParent?.("The bug is in the retry wrapper.");
 
       expect(onUpdateSent).toHaveBeenCalledWith(agent, "The bug is in the retry wrapper.");
     });
 
-    it("keeps the channel live across a resume, whose parent is blocked awaiting it", async () => {
+    it("keeps the channel live across a resume", async () => {
       const { factory } = createSpyFactory();
       const agent = createRunnableAgent({
         createSubagentSession: factory,
         getRunConfig: () => updatesOn,
       });
       await agent.run();
-      agent.claim();
       await agent.resume("keep going");
 
       factory.mock.calls[0][0].notifyParent?.("The premise is wrong.");
@@ -951,7 +916,6 @@ describe("Subagent — the mid-run update channel", () => {
     const { factory } = createSpyFactory();
     const agent = createRunnableAgent({
       createSubagentSession: factory,
-      isBackground: true,
       getRunConfig: () => ({ ...updatesOn, midRunUpdates: false }),
     });
 
@@ -960,9 +924,9 @@ describe("Subagent — the mid-run update channel", () => {
     expect(factory.mock.calls[0][0].notifyParent).toBeUndefined();
   });
 
-  it("still gives a foreground child the ask-back recorder", async () => {
+  it("gives the child the ask-back recorder", async () => {
     const { factory } = createSpyFactory();
-    const agent = createRunnableAgent({ createSubagentSession: factory, isBackground: false });
+    const agent = createRunnableAgent({ createSubagentSession: factory });
 
     await agent.run();
 
@@ -1034,105 +998,6 @@ describe("Subagent.scheduleVia() — eager promise capture", () => {
     await agent.promise;
     expect(thunkRan).toBe(true);
     expect(agent.status).toBe("stopped");
-  });
-});
-
-describe("Subagent.waitUntilSettled()", () => {
-  it("resolves immediately, unsettled, for an agent that has no run handle", async () => {
-    const agent = makeSubagent({ status: "queued" });
-    await expect(agent.waitUntilSettled(new AbortController().signal)).resolves.toEqual({
-      kind: "unsettled",
-    });
-  });
-
-  it("resolves immediately for an agent that already left the active set", async () => {
-    const agent = makeSubagent({
-      status: "completed",
-      result: "done",
-      startedAt: 1,
-      completedAt: 2,
-    });
-    agent.start();
-    await agent.promise;
-    await expect(agent.waitUntilSettled(new AbortController().signal)).resolves.toEqual({
-      kind: "settled",
-    });
-  });
-
-  it("spans the queue slot and the run that follows it", async () => {
-    const agent = makeSubagent({ status: "queued" });
-    const { promise: gate, resolve: openSlot } = Promise.withResolvers<void>(); // eslint-disable-line @typescript-eslint/no-invalid-void-type -- Promise.withResolvers<void> is valid; rule does not allow void in generic fn call type args
-    agent.scheduleVia(async (thunk) => {
-      await gate;
-      await thunk();
-    });
-
-    const wait = agent.waitUntilSettled(new AbortController().signal);
-    openSlot();
-
-    await expect(wait).resolves.toEqual({ kind: "settled" });
-    expect(agent.status).toBe("completed");
-  });
-
-  it("ends the wait on interrupt without cancelling the agent", async () => {
-    const agent = makeSubagent({ status: "queued" });
-    const { promise: gate, resolve: openSlot } = Promise.withResolvers<void>(); // eslint-disable-line @typescript-eslint/no-invalid-void-type -- Promise.withResolvers<void> is valid; rule does not allow void in generic fn call type args
-    agent.scheduleVia(async (thunk) => {
-      await gate;
-      await thunk();
-    });
-    const controller = new AbortController();
-
-    const wait = agent.waitUntilSettled(controller.signal);
-    controller.abort();
-    await expect(wait).resolves.toEqual({ kind: "unsettled" });
-
-    // Interrupting the query must not cancel the work: the agent is still
-    // queued and still runs once its slot opens.
-    expect(agent.status).toBe("queued");
-    openSlot();
-    await agent.promise;
-    expect(agent.status).toBe("completed");
-  });
-
-  it("returns immediately when the signal is already aborted", async () => {
-    const agent = makeSubagent({ status: "queued" });
-    agent.scheduleVia(() => new Promise<never>(() => {}));
-
-    await expect(agent.waitUntilSettled(AbortSignal.abort())).resolves.toEqual({
-      kind: "unsettled",
-    });
-
-    expect(agent.status).toBe("queued");
-  });
-
-  it("reports the waited run's outcome when a resume replaced it before the wait returned", async () => {
-    const stub = createSubagentSessionStub();
-    stub.runTurnLoop.mockResolvedValue(turnLoopResult({ responseText: "first result" }));
-    const resumed = Promise.withResolvers<TurnLoopResult>();
-    stub.resumeTurnLoop.mockReturnValue(resumed.promise);
-    const agent = makeSubagent({
-      status: "running",
-      execution: makeStubExecution({
-        createSubagentSession: async () => toSubagentSession(stub),
-        // Resumes the moment the run settles, before the waiter continues.
-        observer: {
-          onRunFinished: (a) => {
-            void a.resume("continue");
-          },
-        },
-      }),
-    });
-    agent.start();
-
-    const wait = await agent.waitUntilSettled(new AbortController().signal);
-
-    expect(wait.kind).toBe("superseded");
-    expect(
-      wait.kind === "superseded" ? [wait.outcome.status, wait.outcome.result] : undefined,
-    ).toEqual(["completed", "first result"]);
-    resumed.resolve(turnLoopResult({ responseText: "second" }));
-    await agent.promise;
   });
 });
 

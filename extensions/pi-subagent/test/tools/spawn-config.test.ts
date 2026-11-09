@@ -185,32 +185,6 @@ describe("resolveSpawnConfig — max turns normalization", () => {
 });
 
 describe("resolveSpawnConfig — invocation fields", () => {
-  it("runs in the background unless params ask for the foreground", () => {
-    const base = { subagent_type: "general-purpose", prompt: "test", description: "d" };
-    const background = resolveSpawnConfig(base, testRegistry, makeModelInfo(), defaultSettings);
-    const foreground = resolveSpawnConfig(
-      { ...base, foreground: true },
-      testRegistry,
-      makeModelInfo(),
-      defaultSettings,
-    );
-    if ("error" in background || "error" in foreground) throw new Error("unexpected error");
-    expect(background.execution.runInBackground).toBe(true);
-    expect(foreground.execution.runInBackground).toBe(false);
-  });
-
-  it("runs in the foreground when the door's default says so", () => {
-    const result = resolveSpawnConfig(
-      { subagent_type: "general-purpose", prompt: "test", description: "d" },
-      testRegistry,
-      makeModelInfo(),
-      defaultSettings,
-      { foreground: true },
-    );
-    if ("error" in result) throw new Error(result.error);
-    expect(result.execution.runInBackground).toBe(false);
-  });
-
   it("builds agentInvocation snapshot", () => {
     const result = resolveSpawnConfig(
       { subagent_type: "general-purpose", prompt: "test", description: "d", thinking: "high" },
@@ -223,7 +197,6 @@ describe("resolveSpawnConfig — invocation fields", () => {
       thinking: "high",
       maxTurns: undefined,
       inheritContext: false,
-      runInBackground: true,
     });
   });
 });

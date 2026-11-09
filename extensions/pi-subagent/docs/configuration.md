@@ -236,7 +236,7 @@ A file whose frontmatter is not valid YAML still takes its name, so it still ove
 
 The caller decides, and the agent file fills the gaps.
 A `subagent_start` tool parameter wins over the agent file's value for `model`, `thinking`, `max_turns`, and `inherit_context`; the agent file supplies whichever of those the caller left unset.
-Whether an agent runs in the foreground or the background is the caller's choice alone; an agent file has no say.
+Every agent runs in the background; there is no run mode for a caller or an agent file to choose. A retired `foreground` or `run_in_background` key in an agent file is ignored.
 
 ### Locking fields against callers
 
@@ -369,7 +369,7 @@ A question can outlive the chance to answer it — the saved transcript or the c
 Both go to every agent, `parent_notify` only while [`midRunUpdates`](#persistent-settings) is on.
 Where an update lands depends on whether an announcement can still reach you in time to act on it.
 It arrives as its own message when you are idle and the agent is still running — the one case where steering it is still possible.
-Otherwise it rides that agent's outcome, under "Updates this agent sent while it worked": the foreground call, the resume, the `subagent_get` report, or the completion notice, whichever delivers that run.
+Otherwise it rides that agent's outcome, under "Updates this agent sent while it worked": the completion message or the `subagent_get` report.
 Either way you see it once.
 
 Examples (comma-separated scalars, YAML flow sequences and block sequences all work):
@@ -482,7 +482,7 @@ for validation, tool-access, and automation limitations.
 ## Persistent Settings
 
 Runtime tuning values set via `/subagent:settings` (max concurrency, default max turns, wrap-up turns, the two session-retention windows, the abort-on-interrupt policy, and the mid-run update channel) persist across pi restarts.
-A completed subagent's record is kept for the whole parent session (so `subagent_get` never misses), and its saved `subagent:record` entry outlives a reload or resume; only its heavy in-memory session is released — after `consumedSessionRetentionMinutes` once the result has been collected, or after the `unconsumedSessionRetentionMinutes` safety cap if it never was.
+A completed subagent's record is kept for the whole parent session (so `subagent_get` never misses), and its saved `subagent:record` entry outlives a reload or resume; only its heavy in-memory session is released — after `consumedSessionRetentionMinutes` once the result has been read with `subagent_get`, or after the `unconsumedSessionRetentionMinutes` safety cap if it never was.
 An agent that asked a question and has not been answered holds the safety cap rather than the consumed window, because reading a question is not finishing with the agent — the answer is delivered by resuming the very session the short window would release.
 
 Set `midRunUpdates` to `false` to withhold `parent_notify` from every agent, leaving them no way to tell you anything before they finish.
@@ -622,10 +622,7 @@ Remove the entry to restore gating in child sessions; keep it, knowing the child
 ### Abort on interrupt
 
 By default, pressing ESC to interrupt the parent agent also aborts every subagent.
-Set `abortAllOnInterrupt` to `false` (or flip it from `/subagent:settings`) to keep background and queued subagents running when you interrupt the parent — useful when you spawn long background work and then want to steer the parent without losing it.
-
-A foreground agent aborts on ESC regardless of this setting.
-It holds the parent's own run signal for the duration of its blocking tool call, so the interrupt reaches it directly; the policy governs background and queued agents.
+Set `abortAllOnInterrupt` to `false` (or flip it from `/subagent:settings`) to keep running and queued subagents running when you interrupt the parent — useful when you spawn long work and then want to steer the parent without losing it.
 
 The policy is read at the moment ESC fires, so flipping it mid-session applies to the very next interrupt.
 

@@ -136,12 +136,11 @@ describe("renderQuestionAffordance", () => {
   });
 
   describe("when the child has not finished running", () => {
-    it("says the question cannot be answered yet and points at the waiting pull", () => {
+    it("says the question cannot be answered yet and that the completion message is coming", () => {
       expect(renderQuestionAffordance("agent-7", "Which config?", "still-running")).toBe(
         "\n\nThis agent asked a question before it finished running, so it cannot be " +
           "resumed yet:\n\n  Which config?\n\n" +
-          "Wait for it to settle \u2014 subagent_get with wait: true returns when it " +
-          "does \u2014 then answer it.",
+          "End your turn: its completion message arrives when it settles. Then answer it.",
       );
     });
 
@@ -172,9 +171,9 @@ describe("renderQuestionAffordance", () => {
 });
 
 describe("renderOutcomeBody", () => {
-  it("points a running agent at the wait option instead of reporting an outcome", () => {
+  it("points a running agent at its completion message instead of reporting an outcome", () => {
     expect(renderOutcomeBody(makeOutcome({ status: "running" }))).toBe(
-      "Agent is still running. Use wait: true or check back later.",
+      "Agent is still running. Its completion message arrives when it finishes.",
     );
   });
 
@@ -208,7 +207,7 @@ describe("renderOutcomeBody", () => {
 
   it("prefers the running note over a result a running agent has already accumulated", () => {
     expect(renderOutcomeBody(makeOutcome({ status: "running", result: "partial" }))).toBe(
-      "Agent is still running. Use wait: true or check back later.",
+      "Agent is still running. Its completion message arrives when it finishes.",
     );
   });
 

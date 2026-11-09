@@ -5,7 +5,6 @@ import { Type } from "typebox";
 import type { AgentConfigLookup } from "#src/config/agent-types";
 import type { ReopenSource } from "#src/lifecycle/cold-resume";
 import type { ResumeRefusal } from "#src/lifecycle/subagent";
-import type { SettledOutcome } from "#src/lifecycle/subagent-state";
 import { SUBAGENT_LIST_KIND } from "#src/handlers/roster-card";
 import type { PersistedSubagentRecord } from "#src/persisted-record";
 import { buildRoster, formatRosterList, readBranchRecords } from "#src/roster";
@@ -39,7 +38,7 @@ export interface GetListDetails {
   total: number;
 }
 
-type GetParams = { agent_id?: string; wait?: boolean; verbose?: boolean };
+type GetParams = { agent_id?: string; verbose?: boolean };
 
 /** The reply for an ID this branch never started. */
 export function agentNotFoundMessage(id: string): string {
@@ -67,7 +66,7 @@ export class GetResultTool {
   async execute(
     _toolCallId: string,
     params: GetParams & { agent_id: string },
-    signal: AbortSignal,
+    _signal: AbortSignal | undefined,
     _onUpdate: unknown,
     ctx: unknown,
   ) {
@@ -81,40 +80,15 @@ export class GetResultTool {
       return textResult<GetResultDetails>(agentNotFoundMessage(id));
     }
 
-    // Wait for completion if requested. The record owns the decision of whether
-    // it is still awaitable — a queued agent counts, because scheduleVia()
-    // captures its limiter promise at spawn. A parent interrupt ends the wait
-    // without cancelling the agent, leaving the outcome uncollected below.
-    //
-    // Pull-delivery edge: the parent is collecting the settled outcome here, so
-    // mark it consumed. A wait whose run has not settled was abandoned, so it
-    // releases the claim it made and lets the nudge announce. The handle drops
-    // only this call's claim, so a concurrent carrier's (such as a resume that
-    // started as the run settled) is never cleared by this call.
-    //
-    // A resume that replaced the waited run after it settled leaves this call
-    // the only carrier of what that run ended with: its nudge was suppressed by
-    // this call's claim. So the report carries that outcome, not the live run's.
-    // Consumption is record-wide and now belongs to the resumed run, so it is
-    // not marked here; doing so would silence a background resume's nudge.
-    let superseded: SettledOutcome | undefined;
-    if (params.wait === true) {
-      // Waiting commits this call to delivering the outcome, so claim it before
-      // the agent can settle and be announced by the nudge instead.
-      const claim = record.claim();
-      const wait = await record.waitUntilSettled(signal);
-      if (wait.kind === "settled") record.markConsumed();
-      else claim.release();
-      if (wait.kind === "superseded") superseded = wait.outcome;
-    } else if (!record.isActive()) {
-      record.markConsumed();
-    }
+    // Reading a finished result starts the short retention window for the
+    // agent's session. It does not touch the completion message, which is
+    // delivered whatever the parent has read.
+    if (!record.isActive()) record.markConsumed();
 
     const verbose = params.verbose === true;
-    const outcome = superseded ? withoutQuestion(superseded) : liveOutcome(record);
     return textResult<GetResultDetails>(
-      formatAgentReport(this.buildReport(record, outcome, verbose, superseded !== undefined)),
-      this.buildGetResultDetails(record, outcome, verbose),
+      formatAgentReport(this.buildReport(record, verbose)),
+      this.buildGetResultDetails(record, verbose),
     );
   }
 
@@ -178,63 +152,50 @@ export class GetResultTool {
     });
   }
 
-  /** The report: outcome fields from `outcome`, everything else from the live record. */
-  private buildReport(
-    record: Subagent,
-    outcome: SettledOutcome,
-    verbose: boolean,
-    resumedWhileWaiting: boolean,
-  ): AgentReport {
+  /** The report on the live record's current outcome. */
+  private buildReport(record: Subagent, verbose: boolean): AgentReport {
     return {
       id: record.id,
       displayName: getDisplayName(record.type, this.registry),
-      status: outcome.status,
+      status: record.status,
       toolUses: record.toolUses,
       tokens: formatLifetimeTokens(record),
       contextPercent: record.getContextPercent(),
       compactionCount: record.compactionCount,
-      duration: formatDuration(outcome.startedAt, outcome.completedAt),
+      duration: formatDuration(record.startedAt, record.completedAt),
       description: record.description,
-      result: outcome.result,
-      error: outcome.error,
-      turnBudget: outcome.turnBudget,
+      result: record.result,
+      error: record.error,
+      turnBudget: record.turnBudget,
       stoppedWhileQueued: record.stoppedWhileQueued,
       conversation: verbose ? record.getConversation() : undefined,
       // Transcript pointer: lets the parent read the full session from disk,
       // and covers verbose after the live session was released (no conversation).
       transcriptPath: record.outputFile,
-      runUpdates: outcome.runUpdates,
-      pendingQuestion: outcome.pendingQuestion,
+      runUpdates: record.runUpdates,
+      pendingQuestion: record.pendingQuestion,
       resumeRefusal: record.resumeRefusal,
       model: modelLabel(record.model),
-      resumedWhileWaiting,
     };
   }
 
   /**
    * The compact metadata the TUI renders from.
-   *
-   * Named in full because `helpers.ts` exports a module-level `buildDetails`
-   * producing the structurally different `AgentDetails`.
    */
-  private buildGetResultDetails(
-    record: Subagent,
-    outcome: SettledOutcome,
-    verbose: boolean,
-  ): GetResultDetails {
+  private buildGetResultDetails(record: Subagent, verbose: boolean): GetResultDetails {
     return {
       agentId: record.id,
       displayName: getDisplayName(record.type, this.registry),
-      status: outcome.status,
+      status: record.status,
       description: record.description,
       toolUses: record.toolUses,
       tokens: formatLifetimeTokens(record),
       contextPercent: record.getContextPercent(),
       compactionCount: record.compactionCount,
-      duration: formatDuration(outcome.startedAt, outcome.completedAt),
-      preview: buildPreview(outcome.result),
-      error: outcome.error,
-      turnBudget: outcome.turnBudget,
+      duration: formatDuration(record.startedAt, record.completedAt),
+      preview: buildPreview(record.result),
+      error: record.error,
+      turnBudget: record.turnBudget,
       verbose,
       transcriptPath: record.outputFile,
       modelName: modelLabel(record.model),
@@ -248,19 +209,13 @@ export class GetResultTool {
       promptSnippet:
         "Check status and retrieve results from a background agent, or list this branch's agents.",
       description:
-        "Check status and retrieve results from a background agent. Use the agent ID returned by subagent_start. " +
+        "Check status and read the full result of a background agent without waiting for it. Use the agent ID returned by subagent_start. A running agent reports its status; its completion message arrives when it finishes, so end your turn instead of polling. " +
         "Agents from before a reload, resume or compaction keep their saved result, question and transcript path, and the report says whether they can still be resumed. " +
         "Without agent_id, lists the agents started on this branch: waiting on a question first, then running, failed, and completed newest first.",
       parameters: Type.Object({
         agent_id: Type.Optional(
           Type.String({
             description: "The agent ID to check. Omit to list this branch's agents.",
-          }),
-        ),
-        wait: Type.Optional(
-          Type.Boolean({
-            description:
-              "If true, block until the agent completes, which also keeps the user waiting. Prefer ending your turn: the completion notification wakes you. Default: false.",
           }),
         ),
         verbose: Type.Optional(
@@ -273,9 +228,7 @@ export class GetResultTool {
       // ---- Custom rendering: a bounded, Ctrl+O-expandable retrieval row ----
 
       renderCall(args: GetParams, theme: Theme) {
-        const notes = [args.wait === true ? "waiting" : "", args.verbose === true ? "verbose" : ""]
-          .filter(Boolean)
-          .join(", ");
+        const notes = args.verbose === true ? "verbose" : "";
         return new Text(
           `${ICONS.tool} ` +
             theme.fg("toolTitle", theme.bold("Get Agent Result")) +
@@ -335,29 +288,6 @@ export class GetResultTool {
  */
 export function renderListRows(lines: readonly string[], width: number): string[] {
   return lines.map((line) => bodyRow(line, width));
-}
-
-/** The live record's current outcome fields. */
-function liveOutcome(record: Subagent): SettledOutcome {
-  return {
-    status: record.status,
-    result: record.result,
-    error: record.error,
-    startedAt: record.startedAt,
-    completedAt: record.completedAt,
-    pendingQuestion: record.pendingQuestion,
-    runUpdates: record.runUpdates,
-    turnBudget: record.turnBudget,
-  };
-}
-
-/**
- * A superseded run's outcome without its question: the resume that replaced it
- * is that question's answer, and the live record's refusal (still running)
- * would tell the parent to wait and answer it again.
- */
-function withoutQuestion(outcome: SettledOutcome): SettledOutcome {
-  return { ...outcome, pendingQuestion: undefined };
 }
 
 /** The first non-empty line of a result body, clipped to the preview budget. */

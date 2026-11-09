@@ -7,8 +7,8 @@ import { delegate, gated, type Parent, shape, startParent, untilAnnounced } from
 
 // When a finished agent's session is released. The record, its result and its
 // transcript outlive the session; only the live session is freed. Windows are
-// the defaults: 10 minutes once the parent has collected the outcome, 12 hours
-// for an outcome nobody collected. The sweep is run on demand.
+// the defaults: 10 minutes once the parent has read the result with subagent_get, 12 hours
+// for a result nobody read. The sweep is run on demand.
 
 const resultText = (request: Context, tool: string) =>
   (JSON.parse(lastResult(request, tool)) as { content: Array<{ text: string }> }).content[0].text;
@@ -23,7 +23,7 @@ async function finishedAgent(h: Parent) {
   return h.agentIds()[0];
 }
 
-/** The parent reads the agent's result with subagent_get, which collects it. */
+/** The parent reads the agent's result with subagent_get, which starts the short window. */
 async function collect(h: Parent, id: string) {
   h.script({
     parent: [toolCall("subagent_get", { agent_id: id }), fauxAssistantMessage("Read it.")],

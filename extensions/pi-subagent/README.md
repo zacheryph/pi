@@ -9,7 +9,7 @@
 
 A [pi](https://pi.dev) extension that gives pi **a focused, in-process sub-agent core** — autonomous agents that run inside the same pi runtime (no spawned subprocesses), plus a typed API and lifecycle events other extensions build on.
 Spawn specialized agents that run in isolated sessions — each with its own tools, system prompt, model, and thinking level.
-Run them in foreground or background, steer them mid-run, resume completed sessions, and define your own custom agent types.
+Every agent runs in the background: the parent starts it, ends its turn, and is woken by the completion message. Steer agents mid-run, resume completed sessions, and define your own custom agent types.
 
 > This personal fork is based on [`gotgenes/pi-packages/packages/pi-subagent`](https://github.com/gotgenes/pi-packages/tree/main/packages/pi-subagent),
 > itself an independently maintained hard fork of [`tintinweb/pi-subagent`](https://github.com/tintinweb/pi-subagent) by [@tintinweb](https://github.com/tintinweb).
@@ -64,13 +64,14 @@ subagent_start({
 })
 ```
 
-Agents run in the background: the call returns an ID immediately and you are notified on completion, so the parent can end its turn and stay available while the agent works.
-Pass `foreground: true` to block until the agent completes and get its result inline.
-In print and json mode (`pi -p`, `--mode json`) nothing can wake the parent once its turn ends, so there an agent runs in the foreground unless the call says otherwise.
+Agents always run in the background: the call returns an ID immediately and the completion message wakes the parent when the agent finishes, so the parent can end its turn and stay available while the agent works.
+There is no foreground mode and no call that waits for an agent.
+The completion message is the only thing that delivers an outcome: it carries the result up to 500 characters, so ask agents to store a large result with `stash_put` and name the handle in their final answer.
+In print and json mode (`pi -p`, `--mode json`) nothing can wake the parent once its turn ends, so the process can return before background agents finish.
 
 ## UI
 
-The extension renders a persistent widget above the editor showing active background agents (foreground runs are rendered inline by the `subagent_start` tool's progress stream):
+The extension renders a persistent widget above the editor showing active agents:
 
 ```text
 ──   Subagents ────────────────────────────────────────────
@@ -217,7 +218,6 @@ Launch a sub-agent.
 | `model`           | string  | no       | Model — `provider/modelId`, fuzzy name (`"haiku"`, `"sonnet"`), or `[provider/]family@latest` (newest available match) |
 | `thinking`        | string  | no       | Thinking level: off, minimal, low, medium, high, xhigh, max                                                            |
 | `max_turns`       | number  | no       | Turn ceiling (minimum 2). Omit for the agent's own limit                                                               |
-| `foreground`      | boolean | no       | Block until the agent completes and return its result inline. Omit to run in the background                            |
 | `resume`          | string  | no       | Agent ID to resume a previous session                                                                                  |
 | `inherit_context` | boolean | no       | Fork parent conversation into agent                                                                                    |
 | `cwd`             | string  | no       | Existing directory the agent runs in, such as a git worktree (see below)                                               |
@@ -232,8 +232,7 @@ Before SDK creation, the parent's extensions can synchronously call `requireTool
 These five parameters win over the agent file's own values, which fill whichever the call leaves unset.
 An agent file can withhold one with [`locked`](./docs/configuration.md#locking-fields-against-callers); the result then names the agent and the parameters it ignored.
 
-A call with `resume` resumes the agent in the background: it returns the agent ID at once, and you are notified when the resumed run finishes.
-Add `foreground: true` to wait for the resumed outcome instead.
+A call with `resume` resumes the agent in the background: it returns the agent ID at once, and the completion message arrives when the resumed run finishes.
 
 A resume continues the agent's live session while it has one.
 Once that is gone — the retention window released it, or a `/reload`, `/resume` or session switch dropped it — the agent's saved transcript is reopened instead, with the type, model, thinking level, turn ceiling and directory on its last saved record.
@@ -244,12 +243,13 @@ A resume is refused when the transcript is gone, when the directory no longer ex
 
 ### `subagent_get`
 
-Check status and retrieve results from a background agent, or list the agents this branch started.
+Check the status of an agent and read its full result without waiting for it, or list the agents this branch started.
+A running agent is reported as running; its completion message arrives when it finishes.
+Reading a finished result does not deliver it again and does not suppress its completion message; it only starts the shorter session-retention window.
 
 | Parameter  | Type    | Required | Description                                          |
 | ---------- | ------- | -------- | ---------------------------------------------------- |
 | `agent_id` | string  | no       | Agent ID to check; omit to list this branch's agents |
-| `wait`     | boolean | no       | Wait for completion                                  |
 | `verbose`  | boolean | no       | Include full conversation log                        |
 
 Without `agent_id`, the result lists every agent started on the current branch — ID, type, description, status, and the question or error when there is one — waiting on a question first, then running, failed, and completed newest first.
@@ -388,12 +388,10 @@ The widget shows a warned agent's turn count in the warning color.
 
 ## Concurrency
 
-Background agents are subject to a configurable concurrency limit (default: 4).
+Every agent is subject to a configurable concurrency limit (default: 4).
 Excess agents are automatically queued and start as running agents complete.
 The widget shows queued agents as a collapsed count.
 It also bounds its own height to the terminal's, collapsing the agents that do not fit into a `+N more` summary, so a short pane keeps its conversation visible.
-
-Foreground agents bypass the queue — they block the parent anyway.
 
 Stopping a still-queued agent produces the same completion notification a running agent's stop does.
 Because that agent never started, the notification says so and offers no result to collect.
@@ -451,7 +449,7 @@ Agent lifecycle events are emitted via `pi.events.emit()` so other extensions ca
 
 | Event                       | When                                                    | Key fields                                                                                                               |
 | --------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `subagent:created`          | Background agent registered                             | `id`, `type`, `description`, `isBackground`                                                                              |
+| `subagent:created`          | Agent registered                                        | `id`, `type`, `description`                                                                                              |
 | `subagent:started`          | Agent transitions to running (including queued→running) | `id`, `type`, `description`                                                                                              |
 | `subagent:completed`        | Agent finished successfully                             | `id`, `type`, `status`, `turnBudget`, `durationMs`, `tokens` (lifetime `{ input, output, total }`), `toolUses`, `result` |
 | `subagent:failed`           | Agent errored, stopped, or aborted                      | same as completed + `error`, `status`                                                                                    |
@@ -552,7 +550,7 @@ Anything attaching to the core subscribes to a lifecycle event — see [ADR-0002
   An agent's `tools:` frontmatter chooses its capabilities: omitted or `all` includes currently registered built-in and extension tools; explicit names restrict them; `-name` excludes. A global setting that widens a read-only `explore` agent's declared tools would violate its contract.
   The core does install its own protocol in every child — the `<active_agent>` tag, the parent-context prefix, the `ask:route` that points pi-ask's `ask` at the parent, and the `parent_notify` tool — none of which reaches the filesystem, the shell, or the network.
 - _A global run-mode default._
-  Foreground or background is a per-invocation argument and a per-agent frontmatter key; a global flip changes every existing agent file at once.
+  Agents always run in the background; there is no run mode to set.
 - _Provider seams with no consumer._
   A seam nobody supplies is a speculative abstraction that taxes every reader; the architecture may admit one without shipping it until a real consumer exists.
 

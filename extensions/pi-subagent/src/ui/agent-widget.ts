@@ -1,7 +1,7 @@
 /**
  * agent-widget.ts — Persistent widget showing running/completed agents above the editor.
  *
- * Displays a static header rule and one compact row per background agent.
+ * Displays a static header rule and one compact row per agent.
  * Uses the callback form of setWidget for themed rendering.
  */
 
@@ -159,7 +159,7 @@ export class AgentWidget implements SubagentManagerObserver {
     this.update();
   }
 
-  /** A background subagent was created (queued) — render so the count shows. */
+  /** A subagent was created (queued) — render so the count shows. */
   onSubagentCreated(_record: Subagent) {
     this.update();
   }
@@ -209,20 +209,6 @@ export class AgentWidget implements SubagentManagerObserver {
     return age < maxAge;
   }
 
-  /**
-   * Background agents only — the widget's sole audience (ADR-0004 Decision A).
-   * Foreground runs are rendered by the `subagent_start` tool's inline `onUpdate` stream,
-   * so funneling both `listAgents()` call sites through this accessor applies the
-   * background predicate exactly once at the source.
-   *
-   * The predicate reads the record's own resolved mode. It formerly re-derived
-   * it from a per-call display snapshot only the tool door ever built — so every
-   * SDK-spawned agent was filtered out permanently (#724).
-   */
-  private listBackgroundAgents(): Subagent[] {
-    return this.manager.listAgents().filter((record) => record.isBackground);
-  }
-
   /** Project a live Subagent record onto a pure-data WidgetAgent snapshot. */
   private toWidgetAgent(record: Subagent): WidgetAgent {
     return {
@@ -247,7 +233,7 @@ export class AgentWidget implements SubagentManagerObserver {
   /** Delegate rendering to the pure widget-renderer module. */
   private renderWidget(tui: TuiSurface, theme: Theme, width = tui.terminal.columns): string[] {
     return renderWidgetLines({
-      agents: this.listBackgroundAgents().map((r) => this.toWidgetAgent(r)),
+      agents: this.manager.listAgents().map((r) => this.toWidgetAgent(r)),
       registry: this.registry,
       spinnerFrame: this.widgetFrame,
       terminalWidth: width,
@@ -316,7 +302,7 @@ export class AgentWidget implements SubagentManagerObserver {
   update() {
     if (!this.uiCtx) return;
 
-    const backgroundAgents = this.listBackgroundAgents();
+    const backgroundAgents = this.manager.listAgents();
     this.seedFinishedAgents(backgroundAgents);
     const state = assembleWidgetState(backgroundAgents, (id, status) =>
       this.shouldShowFinished(id, status),

@@ -1,7 +1,6 @@
 import { type TuiMode, visibleWidth } from "@earendil-works/pi-tui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
-import type { Subagent } from "#src/lifecycle/subagent";
 import type { SubagentManager } from "#src/lifecycle/subagent-manager";
 import type { CompactionInfo } from "#src/types";
 import { AgentWidget, assembleWidgetState, type UICtx } from "#src/ui/agent-widget";
@@ -48,14 +47,8 @@ function stubTheme() {
 // arg of the most recent setWidget call, where a function means the widget is
 // registered/visible and undefined means it was cleared (the finished agent has
 // aged out).
-// Fixtures default to background so they survive the widget's background-only
-// filter; per-agent `isBackground` overrides the default.
-function makeWidget(
-  agents: Array<{ id: string; status: string; completedAt?: number; isBackground?: boolean }>,
-) {
-  const manager = {
-    listAgents: () => agents.map((a) => ({ isBackground: true, ...a })),
-  } as unknown as SubagentManager;
+function makeWidget(agents: Array<{ id: string; status: string; completedAt?: number }>) {
+  const manager = { listAgents: () => agents } as unknown as SubagentManager;
   const registry = new AgentTypeRegistry(() => new Map());
   const widget = new AgentWidget(manager, registry);
   const setWidget = vi.fn<UICtx["setWidget"]>();
@@ -236,7 +229,6 @@ describe("AgentWidget — projection reads activity off Subagent records", () =>
     const record = createTestSubagent({
       status: "running",
       completedAt: undefined,
-      isBackground: true,
     });
     const manager = { listAgents: () => [record] } as unknown as SubagentManager;
     const widget = new AgentWidget(manager, new AgentTypeRegistry(() => new Map()));
@@ -261,7 +253,6 @@ describe("AgentWidget — projection reads activity off Subagent records", () =>
       startedAt: Date.now() - 100,
       turnBudget: { maxTurns: 10, used: 3, phase: "within" },
       activeTools: ["read"],
-      isBackground: true,
     });
     const manager = { listAgents: () => [record] } as unknown as SubagentManager;
     const registry = new AgentTypeRegistry(() => new Map());
@@ -291,7 +282,6 @@ describe("AgentWidget — projection reads activity off Subagent records", () =>
       status: "running",
       completedAt: undefined,
       startedAt: Date.now() - 100,
-      isBackground: true,
       execution: makeStubExecution({
         model: makeModel({ provider: "anthropic", id: "claude-sonnet-5" }),
       }),
@@ -318,7 +308,6 @@ describe("AgentWidget — projection reads activity off Subagent records", () =>
     const record = createTestSubagent({
       status: "completed",
       completedAt: Date.now(),
-      isBackground: true,
       turnBudget: { maxTurns: 2, used: 3, phase: "warned" },
     });
     const manager = { listAgents: () => [record] } as unknown as SubagentManager;
@@ -436,63 +425,6 @@ describe("AgentWidget — self-drives from lifecycle notifications", () => {
   });
 });
 
-describe("AgentWidget — background-only filtering", () => {
-  function setup(records: Subagent[]) {
-    const manager = { listAgents: () => records } as unknown as SubagentManager;
-    const registry = new AgentTypeRegistry(() => new Map());
-    const widget = new AgentWidget(manager, registry);
-    const setWidgetCalls: unknown[] = [];
-    let renderFn: ((tui: unknown, theme: unknown) => { render(): string[] }) | undefined;
-    const ui: UICtx = {
-      setStatus: () => {},
-      setWidget: (_key, content) => {
-        setWidgetCalls.push(content);
-        if (typeof content === "function") renderFn = content as typeof renderFn;
-      },
-    };
-    widget.setUICtx(ui);
-    const lastContent = () => setWidgetCalls.at(-1);
-    const renderLines = () => renderFn!(stubTui(), stubTheme()).render();
-    return { widget, lastContent, renderLines };
-  }
-
-  it("does not register the widget when only foreground agents exist", () => {
-    const { widget, lastContent } = setup([
-      createTestSubagent({
-        id: "fg1",
-        status: "running",
-        completedAt: undefined,
-        isBackground: false,
-      }),
-    ]);
-    widget.update();
-    expect(lastContent()).toBeUndefined();
-  });
-
-  it("renders only background agents when foreground and background agents are mixed", () => {
-    const { widget, renderLines } = setup([
-      createTestSubagent({
-        id: "bg1",
-        status: "running",
-        completedAt: undefined,
-        description: "background task",
-        isBackground: true,
-      }),
-      createTestSubagent({
-        id: "fg1",
-        status: "running",
-        completedAt: undefined,
-        description: "foreground task",
-        isBackground: false,
-      }),
-    ]);
-    widget.update();
-    const text = renderLines().join("\n");
-    expect(text).toContain("background task");
-    expect(text).not.toContain("foreground task");
-  });
-});
-
 describe("AgentWidget — the animation timer tracks running agents", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -564,7 +496,6 @@ describe("AgentWidget — animation cadence", () => {
       id: "a1",
       status: "running",
       completedAt: undefined,
-      isBackground: true,
     });
     const listAgents = vi.fn(() => [record]);
     const manager = { listAgents } as unknown as SubagentManager;

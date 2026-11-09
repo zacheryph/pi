@@ -3,6 +3,68 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-09: Every subagent runs in the background
+
+Roadmap step 6 (`docs/roadmaps/subagent-work-lifecycle.md`). No call blocks the
+parent on a subagent any more, and the completion message is the only thing that
+delivers an outcome.
+
+- Tool contract:
+  - `subagent_start` has no `foreground` parameter. A spawn and a resume always
+    return at once with the agent ID. A `foreground` argument a caller still
+    sends is ignored. Print and JSON mode no longer default to the foreground,
+    so `pi -p` can return before background agents finish; that is accepted.
+  - `subagent_get` has no `wait` parameter. It reads the agent's current state
+    and result at once; a running agent is reported as running, and its
+    completion message arrives when it finishes. A `wait` argument is ignored.
+    The completion message's closing line still says to call `subagent_get` for
+    the full result.
+  - A `foreground` or `run_in_background` key in an agent file is still ignored,
+    as before.
+- Removed with them:
+  - `foreground-runner.ts`, `SubagentManager.spawnAndWait`, and the awaiting
+    `SubagentManager.resume`. `startResume` is the only resume.
+  - Carrier claims (`claim`, `releaseClaims`, `claimed`, `ResumeCallOptions.claimOutcome`),
+    `Subagent.waitUntilSettled` and `WaitOutcome`, the run ordinal and the
+    superseded-outcome slot in `SubagentState`, `SettledOutcome`, and the
+    "resumed before this wait returned" note in the `subagent_get` report.
+  - `Subagent.isBackground`, `AgentSpawnConfig.background`, the
+    `runInBackground` invocation field and its `foreground` tag in the widget
+    tags, the widget's and watch overlay's background-only filters, and the
+    `isBackground` field of the `subagent:created` event.
+- Delivery: `NotificationManager` no longer skips a completion because a claim
+  or a read result says it was delivered elsewhere. Every terminal transition,
+  including every resume's, is announced exactly once, whatever the parent has
+  read with `subagent_get` in the meantime. A mid-run update is still announced
+  only while its child is running; afterwards it rides the completion message.
+- Kept: the consumed flag (`consumedAt`). Reading a finished result with
+  `subagent_get` still starts the short retention window
+  (`consumedSessionRetentionMinutes`) for the agent's session; it no longer
+  affects what is delivered.
+- Prompts: `subagent_start`'s guidelines say agents always run in the
+  background, that a completion message carries 500 characters of the result,
+  and to ask agents to `stash_put` a large result and name the handle in their
+  final answer. `explore` and `orchestrate` say the same to their own workers.
+  `orchestrate` no longer tells a child orchestrator to wait for its workers with
+  `subagent_get`; it says no call waits and to list each worker's agent ID in
+  its final answer.
+- Behaviour users will notice:
+  - Every agent is admitted through the queue and the concurrency limit, which
+    a foreground agent used to skip, and every agent now gets a `queued` saved
+    record before its `running` one.
+  - A resume of a finished agent returns "Agent resumed in background." and its
+    outcome arrives as a second completion message.
+  - Agents that used to run in the foreground were aborted by ESC whatever
+    `abortAllOnInterrupt` said. Every agent now follows that setting.
+- Tests: the foreground tests are gone, and the characterization tests that
+  pinned a foreground return, `subagent_get` with `wait`, a foreground resume
+  and a pulled result suppressing the completion message now pin the new
+  contract. The SDK tests that relied on a print-mode parent running spawns in
+  the foreground (`cold-resume-sdk`, `records-sdk`, `ask-sdk`, `cwd-sdk`,
+  `handoff-sdk`, `orchestrator-sdk`, `todo-handoff-sdk`) wait for the completion
+  message instead, over a provider shared by the parent and its children
+  (`scriptSides` in `test/helpers/sdk.ts`).
+
 ## 2026-11-09: One run abstraction inside `Subagent`
 
 - `src/lifecycle/run.ts`: `Run`, one execution of an agent. It owns what used to

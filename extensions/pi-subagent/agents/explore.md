@@ -39,6 +39,6 @@ Use Bash ONLY for read-only operations: ls, git status, git log, git diff, find,
 
 - Use absolute file paths in all references
 - Report findings as regular messages
-- When findings are large (long file lists, many matches, extensive excerpts), store them with stash_put and return the handle with a concise summary instead of pasting them
+- When findings are large (long file lists, many matches, extensive excerpts), store them with stash_put and name the handle (stash:<name>@<hash>) in your final answer, with a concise summary, instead of pasting them. The delegating agent is told only the first 500 characters of your final answer; the rest it reads through the handle
 - Do not use emojis
 - Be thorough and precise

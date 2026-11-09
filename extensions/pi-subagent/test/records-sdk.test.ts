@@ -1,7 +1,7 @@
 import type { Context } from "@earendil-works/pi-ai";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import subagentExtension from "#src/index";
 import {
   readPersistedRecords,
@@ -11,7 +11,8 @@ import {
 import {
   offlineAgentDir,
   EXTENSIONS,
-  spawn,
+  scriptSides,
+  spawnChild,
   capture,
   lastResult,
   agentIdIn,
@@ -23,8 +24,8 @@ import {
 } from "../../../packages/pi-test-helpers/src/faux-session.ts";
 
 // A real parent session loads this extension and spawns real child sessions
-// through it, all answered by one scripted faux provider in call order. The
-// parent runs in print mode, so every spawn runs in the foreground.
+// through it, all answered by one scripted faux provider. Every spawn runs in
+// the background, so a test waits for the completion message it ends with.
 
 const CARD = "Subagents started by this session";
 
@@ -60,6 +61,38 @@ const spawnedIds = (manager: SessionManager) =>
     return id ? [id] : [];
   });
 
+/** Wait until the parent holds `count` completion messages and, woken by the last, is idle. */
+async function untilCompleted(h: Awaited<ReturnType<typeof parent>>, count: number) {
+  await vi.waitFor(
+    () =>
+      expect(
+        h.manager
+          .getEntries()
+          .filter(
+            (entry) =>
+              entry.type === "custom_message" && entry.customType === "subagent:completion",
+          ),
+      ).toHaveLength(count),
+    { timeout: 15_000 },
+  );
+  await h.session.waitForIdle();
+}
+
+/** Start a worker and wait for it to finish; the parent's own replies are `Started.`. */
+async function delegateAndFinish(
+  h: Awaited<ReturnType<typeof parent>>,
+  description: string,
+  reply: Parameters<typeof scriptSides>[1]["child"] = [],
+  count = 1,
+) {
+  scriptSides(h.faux, {
+    parent: [spawnChild(description), fauxAssistantMessage("Started.")],
+    child: reply,
+  });
+  await h.session.prompt(`Delegate ${description}`);
+  await untilCompleted(h, count);
+}
+
 /** The last message of a request, where the card sits when it is sent. */
 const tail = (context: Context | undefined) => JSON.stringify(context?.messages.at(-1));
 
@@ -67,15 +100,12 @@ describe("subagent records in a real parent session (offline faux provider)", ()
   it("restores a transcript path from a record captured before the child finishes", async () => {
     const h = await parent();
     let running: PersistedSubagentRecord | undefined;
-    h.faux.setResponses([
-      spawn("Interrupted work"),
+    await delegateAndFinish(h, "Interrupted work", [
       () => {
         running = readPersistedRecords(h.manager.getBranch())[0];
         return fauxAssistantMessage("finished later");
       },
-      fauxAssistantMessage("ok"),
     ]);
-    await h.session.prompt("Delegate");
     expect(running).toMatchObject({ status: "running", model: "records-test/worker", cwd: dir });
     expect(running?.outputFile).toBeTruthy();
     const saved = SessionManager.inMemory(dir);
@@ -94,12 +124,7 @@ describe("subagent records in a real parent session (offline faux provider)", ()
 
   it("answers subagent_get from the record after a reload, and shows the card until a list", async () => {
     const h = await parent();
-    h.faux.setResponses([
-      spawn("Map auth"),
-      fauxAssistantMessage("Mapped auth call sites."),
-      fauxAssistantMessage("Started."),
-    ]);
-    await h.session.prompt("Delegate");
+    await delegateAndFinish(h, "Map auth", [fauxAssistantMessage("Mapped auth call sites.")]);
     const [id] = spawnedIds(h.manager);
     expect(id).toBeTruthy();
     const statuses = h.manager
@@ -109,7 +134,8 @@ describe("subagent records in a real parent session (offline faux provider)", ()
           ? [(entry.data as { status: string }).status]
           : [],
       );
-    expect(statuses).toEqual(["running", "running", "completed"]);
+    // Every agent is admitted through the queue, so its first step is the queued one.
+    expect(statuses).toEqual(["queued", "running", "running", "completed"]);
 
     await h.session.reload();
 
@@ -138,8 +164,7 @@ describe("subagent records in a real parent session (offline faux provider)", ()
 
   it("keeps the question a worker ended with across a reload", async () => {
     const h = await parent();
-    h.faux.setResponses([
-      spawn("Pick storage"),
+    await delegateAndFinish(h, "Pick storage", [
       toolCall("ask", {
         questions: [
           {
@@ -150,9 +175,7 @@ describe("subagent records in a real parent session (offline faux provider)", ()
         ],
       }),
       fauxAssistantMessage("Waiting for the storage decision."),
-      fauxAssistantMessage("Asked."),
     ]);
-    await h.session.prompt("Delegate");
     const [id] = spawnedIds(h.manager);
 
     await h.session.reload();
@@ -175,19 +198,9 @@ describe("subagent records in a real parent session (offline faux provider)", ()
 
   it("follows /tree: an agent spawned after the target point is gone from the list, by ID and on the card", async () => {
     const h = await parent();
-    h.faux.setResponses([
-      spawn("Kept work"),
-      fauxAssistantMessage("kept"),
-      fauxAssistantMessage("one"),
-    ]);
-    await h.session.prompt("First");
+    await delegateAndFinish(h, "Kept work", [fauxAssistantMessage("kept")]);
     const target = h.manager.getLeafId()!;
-    h.faux.setResponses([
-      spawn("Abandoned work"),
-      fauxAssistantMessage("abandoned"),
-      fauxAssistantMessage("two"),
-    ]);
-    await h.session.prompt("Second");
+    await delegateAndFinish(h, "Abandoned work", [fauxAssistantMessage("abandoned")], 2);
     const [kept, abandoned] = spawnedIds(h.manager);
     expect(abandoned).toBeTruthy();
 
@@ -219,8 +232,7 @@ describe("subagent records in a real parent session (offline faux provider)", ()
     h.faux.setResponses([fauxAssistantMessage("hello")]);
     await h.session.prompt("Hi");
     const target = h.manager.getLeafId()!;
-    h.faux.setResponses([spawn("Later"), fauxAssistantMessage("done"), fauxAssistantMessage("ok")]);
-    await h.session.prompt("Spawn");
+    await delegateAndFinish(h, "Later", [fauxAssistantMessage("done")]);
     await h.session.navigateTree(target, { summarize: false });
     const requests: Context[] = [];
     h.faux.setResponses([capture(requests, fauxAssistantMessage("fine"))]);
@@ -231,12 +243,7 @@ describe("subagent records in a real parent session (offline faux provider)", ()
 
   it("ends each request after compaction with the card, sent once", async () => {
     const h = await parent();
-    h.faux.setResponses([
-      spawn("Index repo"),
-      fauxAssistantMessage("indexed"),
-      fauxAssistantMessage("one"),
-    ]);
-    await h.session.prompt("Delegate");
+    await delegateAndFinish(h, "Index repo", [fauxAssistantMessage("indexed")]);
     h.faux.setResponses([fauxAssistantMessage("more")]);
     await h.session.prompt("More work");
     const [id] = spawnedIds(h.manager);

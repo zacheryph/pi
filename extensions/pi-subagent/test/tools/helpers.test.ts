@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TypeListRegistry } from "#src/tools/helpers";
 import {
-  buildDetails,
   buildTypeListText,
   formatLifetimeTokens,
   getModelLabelFromConfig,
@@ -9,7 +8,6 @@ import {
 } from "#src/tools/helpers";
 import type { AgentConfig } from "#src/types";
 import type { AgentDetails } from "#src/ui/display";
-import { createTestSubagent } from "#test/helpers/make-subagent";
 
 /** Build a minimal TypeListRegistry stub: `listed` in order, each resolving to its config. */
 function makeRegistry(agents: Record<string, Partial<AgentConfig>>): TypeListRegistry {
@@ -145,75 +143,5 @@ describe("buildTypeListText", () => {
 
   it("is empty when nothing is listed", () => {
     expect(buildTypeListText(makeRegistry({}))).toBe("");
-  });
-});
-
-describe("buildDetails", () => {
-  const base = {
-    displayName: "TestAgent",
-    description: "does stuff",
-    subagentType: "general-purpose",
-    modelName: undefined,
-    tags: undefined,
-  };
-  const record = {
-    toolUses: 3,
-    startedAt: 1000,
-    completedAt: 5000,
-    status: "completed",
-    error: undefined,
-    id: "agent-42",
-    lifetimeUsage: { input: 100, output: 50, cacheWrite: 0 },
-  };
-
-  it("maps record fields to AgentDetails shape", () => {
-    const details = buildDetails(base, record);
-    expect(details.toolUses).toBe(3);
-    expect(details.durationMs).toBe(4000);
-    expect(details.status).toBe("completed");
-    expect(details.agentId).toBe("agent-42");
-  });
-
-  it("leaves the turn budget undefined when the record has none", () => {
-    expect(buildDetails(base, record).turnBudget).toBeUndefined();
-  });
-
-  it("carries the record's turn budget", () => {
-    const details = buildDetails(
-      base,
-      createTestSubagent({ turnBudget: { maxTurns: 2, used: 3, phase: "warned" } }),
-    );
-    expect(details.turnBudget).toEqual({ maxTurns: 2, used: 3, phase: "warned" });
-  });
-
-  it("applies overrides on top of computed fields", () => {
-    const details = buildDetails(base, record, { tokens: "99.9k token" });
-    expect(details.tokens).toBe("99.9k token");
-  });
-
-  it("uses Date.now() for durationMs when completedAt is absent", () => {
-    const openRecord = { ...record, completedAt: undefined };
-    const before = Date.now();
-    const details = buildDetails(base, openRecord);
-    const after = Date.now();
-    expect(details.durationMs).toBeGreaterThanOrEqual(before - openRecord.startedAt);
-    expect(details.durationMs).toBeLessThanOrEqual(after - openRecord.startedAt);
-  });
-
-  describe("model label", () => {
-    const spawnBase = { ...base, modelName: "anthropic/claude-sonnet-5-5" };
-
-    it("labels the model the record runs, over the one resolved at spawn", () => {
-      const details = buildDetails(spawnBase, {
-        ...record,
-        model: { provider: "openai", id: "gpt-5" },
-      });
-      expect(details.modelName).toBe("openai/gpt-5");
-    });
-
-    it("keeps the spawn-time label while the record's model is unknown", () => {
-      const details = buildDetails(spawnBase, record);
-      expect(details.modelName).toBe("anthropic/claude-sonnet-5-5");
-    });
   });
 });

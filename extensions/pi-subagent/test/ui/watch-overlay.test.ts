@@ -16,7 +16,6 @@ function agent(overrides: Partial<WatchAgent> = {}) {
     id: "a",
     type: "general-purpose",
     description: "watch me",
-    isBackground: true,
     status: "running",
     responseText: "",
     result: undefined,
@@ -370,12 +369,12 @@ describe("WatchOverlay lifecycle and visibility", () => {
     f.watch.dispose();
   });
 
-  it("ignores foreground agents and all non-terminal modes", () => {
-    for (const mode of ["tui", "rpc", "print"] as const) {
+  it("ignores all non-terminal modes", () => {
+    for (const mode of ["rpc", "print"] as const) {
       const f = fixture([], mode);
-      f.watch.onSubagentStarted(agent({ isBackground: mode !== "tui" }).record);
+      f.watch.onSubagentStarted(agent().record);
       expect(f.overlays).toHaveLength(0);
-      if (mode !== "tui") expect(f.ui.setWidget).not.toHaveBeenCalled();
+      expect(f.ui.setWidget).not.toHaveBeenCalled();
       f.watch.dispose();
     }
   });

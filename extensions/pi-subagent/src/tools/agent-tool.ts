@@ -12,25 +12,17 @@ import { resolveSpawnCwd } from "#src/lifecycle/spawn-cwd";
 import type {
   AgentSpawnConfig,
   ResumeCallOptions,
-  ResumeOutcome,
   ResumeRefused,
   ResumeRefusalReason,
   ResumeStart,
 } from "#src/lifecycle/subagent-manager";
-import {
-  renderOutcomeAddenda,
-  renderOutcomeBody,
-  renderStatusNote,
-} from "#src/observation/outcome-delivery";
 import { renderBackgroundLaunch, spawnBackground } from "#src/tools/background-spawner";
-import { runForeground } from "#src/tools/foreground-runner";
-import { buildDetails, buildTypeListText, textResult } from "#src/tools/helpers";
+import { buildTypeListText, textResult } from "#src/tools/helpers";
 import { renderAgentResult } from "#src/tools/result-renderer";
 import {
   type ModelInfo,
   type ResolvedSpawnConfig,
   resolveSpawnConfig,
-  type SpawnPresentation,
 } from "#src/tools/spawn-config";
 import type { ParentSessionInfo, Subagent } from "#src/types";
 import { type AgentDetails, getDisplayName, type Theme } from "#src/ui/display";
@@ -41,13 +33,6 @@ import { ICONS } from "../../../../packages/pi-ui/src/index.ts";
 /** Narrow manager interface — only the methods the Agent tool calls. */
 export interface AgentToolManager {
   spawn: (snapshot: ParentSnapshot, type: string, prompt: string, opts: AgentSpawnConfig) => string;
-  spawnAndWait: (
-    snapshot: ParentSnapshot,
-    type: string,
-    prompt: string,
-    opts: Omit<AgentSpawnConfig, "background">,
-  ) => Promise<Subagent>;
-  resume: (id: string, prompt: string, options: ResumeCallOptions) => Promise<ResumeOutcome>;
   startResume: (id: string, prompt: string, options: ResumeCallOptions) => ResumeStart;
   getRecord: (id: string) => Subagent | undefined;
 }
@@ -82,17 +67,12 @@ export class AgentTool {
   async execute(
     toolCallId: string,
     params: Record<string, unknown>,
-    signal: AbortSignal | undefined,
-    onUpdate: ((update: AgentToolResult<AgentDetails>) => void) | undefined,
-    ctx: ExtensionContext,
+    _signal: AbortSignal | undefined,
+    _onUpdate: ((update: AgentToolResult<AgentDetails>) => void) | undefined,
+    _ctx: ExtensionContext,
   ) {
     // Reload custom agents so new .pi/agents/*.md files are picked up without restart
     this.registry.reload();
-
-    // Agents run in the background unless something asks for the foreground. A
-    // one-shot run mode cannot be woken after its turn ends, so there the
-    // foreground is the default instead (local change).
-    const defaultForeground = isOneShotMode(ctx);
 
     // ---- Config resolution (pure) ----
     const resolved = resolveSpawnConfig(
@@ -100,7 +80,6 @@ export class AgentTool {
       this.registry,
       this.runtime.getModelInfo(),
       this.settings,
-      { foreground: defaultForeground },
     );
     if ("error" in resolved) return textResult(resolved.error);
 
@@ -123,65 +102,21 @@ export class AgentTool {
 
     // ---- Resume existing agent ----
     if (params.resume) {
-      const id = params.resume as string;
-      const prompt = params.prompt as string;
-      const foreground =
-        typeof params.foreground === "boolean" ? params.foreground : defaultForeground;
-      if (foreground) {
-        return this.resumeExisting(id, prompt, signal, config.presentation.detailBase);
-      }
-      return this.resumeInBackground(id, prompt, config);
+      return this.resumeInBackground(params.resume as string, params.prompt as string, config);
     }
 
-    // ---- Background execution ----
-    if (config.execution.runInBackground) {
-      return spawnBackground(this.manager, {
-        config,
-        snapshot,
-        parentSession,
-        settings: this.settings,
-      });
-    }
-
-    // ---- Foreground execution — stream progress via onUpdate ----
-    return runForeground(this.manager, { config, snapshot, parentSession }, signal, onUpdate);
-  }
-
-  /**
-   * Continue an existing agent's session with a new prompt, returning its
-   * resumed outcome directly to the parent.
-   */
-  private async resumeExisting(
-    id: string,
-    prompt: string,
-    signal: AbortSignal | undefined,
-    detailBase: SpawnPresentation["detailBase"],
-  ) {
-    // The manager owns whether a resume happens; this door owns only how the
-    // answer is worded. Resuming commits this call to delivering the outcome,
-    // so it claims it — nothing else announces what is already being returned.
-    const outcome = await this.manager.resume(id, prompt, {
-      signal: signal ?? new AbortController().signal,
-      claimOutcome: true,
+    // ---- Spawn: the call returns the agent ID at once ----
+    return spawnBackground(this.manager, {
+      config,
+      snapshot,
+      parentSession,
+      settings: this.settings,
     });
-    if (outcome.kind === "refused") {
-      return textResult(resumeRefusalMessage(outcome, id));
-    }
-    const record = outcome.record;
-    // Resume-return delivery edge: the resumed outcome is returned directly.
-    record.markConsumed();
-    return textResult(
-      `Agent ID: ${record.id}${renderStatusNote(record)}\n\n` +
-        renderOutcomeBody(record) +
-        renderOutcomeAddenda(record),
-      buildDetails(detailBase, record),
-    );
   }
 
   /**
-   * Start an existing agent's resume and return at once; the completion notice
-   * delivers its outcome. Nothing claims the outcome and no tool-call signal is
-   * wired, as for a background spawn.
+   * Start an existing agent's resume and return at once; the completion message
+   * delivers its outcome. No tool-call signal is wired, as for a spawn.
    */
   private resumeInBackground(id: string, prompt: string, config: ResolvedSpawnConfig) {
     const start = this.manager.startResume(id, prompt, {});
@@ -203,11 +138,11 @@ export class AgentTool {
     const registry = this.registry;
 
     const guidelines = [
-      "- Agents run in the background: the call returns an agent ID at once, and a completion notification arrives when the agent finishes. Start every independent agent, then end your turn instead of waiting; the notification wakes you, and the user can talk to you in the meantime.",
-      "- Set foreground: true only when you cannot take your next step without the result. A foreground call blocks you, and the user, until the agent finishes; foreground calls run one at a time.",
+      "- Agents always run in the background: the call returns an agent ID at once, and a completion message arrives when the agent finishes. Start every independent agent, then end your turn instead of waiting; the message wakes you, and the user can talk to you in the meantime. Do not poll.",
+      "- The completion message is the only carrier of an outcome: it holds the result up to 500 characters. Ask agents to store a large result with stash_put and name the stash handle in their final answer, then read the handle with stash_get. subagent_get reads a finished agent's full result without waiting.",
       "- Provide clear, detailed prompts so the agent can work autonomously.",
       "- Subagent results are returned as text — summarize them for the user.",
-      "- Use resume with an agent ID to continue a previous agent's work, or to answer an agent that ended its turn with a question. This also works after a reload or once its session was released, as long as its transcript and directory still exist: its saved transcript is reopened.",
+      "- Use resume with an agent ID to continue a previous agent's work, or to answer an agent that ended its turn with a question. A resume is a background run too: its outcome arrives as another completion message. This also works after a reload or once its session was released, as long as its transcript and directory still exist: its saved transcript is reopened.",
       "- Use subagent_steer to send mid-run messages to a running background agent.",
       '- Use model to specify a different model (as "provider/modelId", or fuzzy e.g. "haiku", "sonnet").',
       "- Use thinking to control extended thinking level.",
@@ -257,16 +192,10 @@ ${guidelines}
             minimum: 1,
           }),
         ),
-        foreground: Type.Optional(
-          Type.Boolean({
-            description:
-              "Set to true to wait for the agent and get its result in this call, blocking you until it finishes. Omit to run in the background: the call returns the agent ID at once and you are notified when it completes.",
-          }),
-        ),
         resume: Type.Optional(
           Type.String({
             description:
-              "Optional agent ID to resume from. Continues from previous context in the background, reopening the saved transcript if the live session is gone; you are notified when it finishes. Combine with foreground: true to wait for the resumed result.",
+              "Optional agent ID to resume from. Continues from previous context in the background, reopening the saved transcript if the live session is gone; you are notified when it finishes.",
           }),
         ),
         inherit_context: Type.Optional(
@@ -371,12 +300,4 @@ function resumeRefusalSentence(refusal: ResumeRefusalReason, id: string): string
         "Spawn a new agent with the context it needs."
       );
   }
-}
-
-/**
- * Whether the parent runs in a mode that ends with its turn (`pi -p`, `--mode json`).
- * Nothing can wake it afterwards, so a background agent's result would be lost.
- */
-function isOneShotMode(ctx: ExtensionContext | undefined): boolean {
-  return ctx?.mode === "print" || ctx?.mode === "json";
 }

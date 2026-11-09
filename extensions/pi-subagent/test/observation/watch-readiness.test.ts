@@ -22,8 +22,8 @@ function observer(overrides: Partial<SubagentManagerObserver> = {}): SubagentMan
 
 describe("watch readiness through manager and composite observer", () => {
   it.each([false, true])(
-    "subscribes before the first event (foreground: %s) without suppressing spawn observer",
-    async (foreground) => {
+    "subscribes before the first event (bypassQueue: %s) without suppressing spawn observer",
+    async (bypassQueue) => {
       const { factory, stub, session } = createSessionFactory();
       const received: AgentSessionEvent[] = [];
       const order: string[] = [];
@@ -55,7 +55,7 @@ describe("watch readiness through manager and composite observer", () => {
       try {
         const id = manager.spawn(STUB_SNAPSHOT, "general-purpose", "work", {
           description: "watch",
-          background: !foreground,
+          bypassQueue,
           observer: {
             onSessionCreated: () => {
               order.push("spawn-ready");
@@ -89,7 +89,6 @@ describe("watch readiness through manager and composite observer", () => {
     try {
       const id = manager.spawn(STUB_SNAPSHOT, "general-purpose", "work", {
         description: "watch",
-        background: true,
         observer: { onSessionCreated: perSpawn },
       });
       await manager.getRecord(id)!.promise;

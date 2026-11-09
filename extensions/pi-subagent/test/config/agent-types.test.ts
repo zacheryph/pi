@@ -380,13 +380,30 @@ describe("AgentTypeRegistry", () => {
 
     it("stays available: delegates in the background and ends its turn instead of waiting", () => {
       const prompt = makeRegistry().resolveAgentConfig("orchestrate").systemPrompt;
-      expect(prompt).toContain("Stay available to the user. Subagents run in the background");
-      expect(prompt).toContain("then end your turn. Each completion notification wakes you");
       expect(prompt).toContain(
-        "Do not pass foreground: true, call subagent_get with wait, or poll.",
+        "Stay available to the user. Subagents always run in the background",
       );
-      expect(prompt).toContain("When you run as a subagent yourself");
+      expect(prompt).toContain("then end your turn. Each completion message wakes you");
+      expect(prompt).toContain("Never poll or block on a worker.");
+      expect(prompt).not.toMatch(/foreground|wait: true|subagent_get with wait/);
       expect(prompt).not.toContain("wait when progress depends on a worker");
+    });
+
+    it("says what it can do as a subagent, where no call waits for a worker", () => {
+      const prompt = makeRegistry().resolveAgentConfig("orchestrate").systemPrompt;
+      expect(prompt).toContain("When you run as a subagent yourself");
+      expect(prompt).toContain("no call waits for a worker");
+      expect(prompt).toContain(
+        "list each worker you started, with its agent ID, in your final answer",
+      );
+    });
+
+    it("asks workers to stash large results and name the handle in their final answer", () => {
+      const prompt = makeRegistry().resolveAgentConfig("orchestrate").systemPrompt;
+      expect(prompt).toContain(
+        "ask workers to store large results with stash_put and name the handle in their final answer",
+      );
+      expect(prompt).toContain("A completion message carries only the first 500 characters");
     });
 
     it("can be overridden or disabled like every other built-in", () => {

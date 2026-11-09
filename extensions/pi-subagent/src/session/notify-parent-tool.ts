@@ -8,10 +8,9 @@
  * at its next turn boundary.
  *
  * Supplied to every child, gated only on the `midRunUpdates` setting. Where
- * the message lands is decided per call rather than per child: while a carrier
- * holds this run's outcome it is blocked awaiting the child, so that carrier
- * renders the update into its own return instead of an announcement arriving
- * after it. A child whose parent is free is nudged as it goes.
+ * the message lands is decided per call rather than per child: an update on a
+ * run that is still going is announced to the parent as it happens, and one
+ * that is not delivered that way rides the completion message.
  *
  * Lives in `session/` because the assembly factory installs it on the child's session, where every `tools/` module is registered on the parent's.
  */
@@ -24,8 +23,9 @@ export const NOTIFY_PARENT_TOOL_NAME = "parent_notify";
 /**
  * The longest update the channel carries.
  *
- * Neither carrier can be pulled from again — unlike a result, there is no
- * `subagent_get` that returns the untruncated text — so the cut is made
+ * Neither the announcement nor the completion message can be read back in full
+ * — unlike a result, there is no `subagent_get` that returns the untruncated
+ * text — so the cut is made
  * here, where the child is told about it and can be briefer next time.
  */
 export const UPDATE_MESSAGE_MAX_LENGTH = 2000;

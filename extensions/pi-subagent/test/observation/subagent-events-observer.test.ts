@@ -334,7 +334,7 @@ describe("SubagentEventsObserver", () => {
   });
 
   describe("onSubagentCreated", () => {
-    it("emits subagent:created with id, type, description, and isBackground: true", () => {
+    it("emits subagent:created with id, type and description", () => {
       const { observer, emit } = makeObserver();
       const record = createTestSubagent({
         id: "agent-4",
@@ -348,7 +348,6 @@ describe("SubagentEventsObserver", () => {
         id: "agent-4",
         type: "general-purpose",
         description: "bg task",
-        isBackground: true,
       });
     });
 

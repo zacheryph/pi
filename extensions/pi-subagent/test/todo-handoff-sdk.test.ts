@@ -1,8 +1,10 @@
-import { getCurrentTools } from "@earendil-works/pi-ai";
+import { type Context, getCurrentTools } from "@earendil-works/pi-ai";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import {
+  CHILD_MARK,
   EXTENSIONS,
+  scriptSides,
   offlineAgentDir,
   realChildSession,
   BUILTIN_TOOLS,
@@ -37,82 +39,101 @@ it.each(["general-purpose", "explore", "plan", "review", "no-tools"])(
           subagent_type: workerType,
           model: "todo-handoff-test/coordinator",
           description: "Audit auth",
-          prompt: "Audit auth and write its tests.",
+          prompt: `${CHILD_MARK} Audit auth and write its tests.`,
           handoff: { todo: { keys } },
         },
         id,
       );
-    faux.setResponses([
-      // A restricted worker without a handoff still has no todo tools.
-      toolCall("subagent_start", {
-        subagent_type: workerType,
-        model: "todo-handoff-test/coordinator",
-        description: "Unassigned worker",
-        prompt: "Report only.",
-      }),
-      (context) => {
-        const tools = getCurrentTools(context.messages).map((tool) => tool.name);
-        if (workerType !== "general-purpose") {
-          expect(tools.filter((name) => name.startsWith("todo_"))).toEqual([]);
-          expect(tools).not.toContain("edit");
-          expect(tools).not.toContain("write");
-        }
-        return fauxAssistantMessage("Unassigned worker finished.");
-      },
-      toolCall("todo_upsert", {
-        tasks: [
-          { key: "audit", subject: "Audit auth" },
-          { key: "tests", subject: "Write auth tests" },
-          { key: "ship", subject: "Ship release" },
-        ],
-      }),
-      spawn(["missing"], "call-bad"),
-      (context) => {
-        expect(lastResult(context, "subagent_start")).toContain(
-          "Cannot hand off todo tasks: unknown task: missing",
-        );
-        return spawn(["audit", "tests"], "call-spawn");
-      },
-      // The worker sees actual SDK tool declarations on its very first request.
-      (context) => {
-        const tools = getCurrentTools(context.messages).map((tool) => tool.name);
-        expect(tools).toContain("todo_list");
-        expect(tools).toContain("todo_upsert");
-        expect(tools).not.toContain("subagent_start");
-        if (workerType !== "general-purpose") {
-          expect(tools.filter((name) => name.startsWith("todo_"))).toEqual([
-            "todo_list",
-            "todo_upsert",
-          ]);
-          expect(tools).not.toContain("edit");
-          expect(tools).not.toContain("write");
-        }
-        return toolCall("todo_list", {});
-      },
-      (context) => {
-        const listed = lastResult(context, "todo_list");
-        expect(listed).toContain("audit");
-        expect(listed).toContain("tests");
-        expect(listed).not.toContain("ship");
-        return toolCall("todo_upsert", {
+    const toolNames = (context: Context) =>
+      getCurrentTools(context.messages).map((tool) => tool.name);
+    const seen: {
+      unassignedTools: string[];
+      badHandoff: string;
+      assignedTools: string[];
+      listed: string;
+      denied: string;
+    } = { unassignedTools: [], badHandoff: "", assignedTools: [], listed: "", denied: "" };
+    const { queues } = scriptSides(faux, {
+      parent: [
+        // A restricted worker without a handoff still has no todo tools.
+        toolCall("subagent_start", {
+          subagent_type: workerType,
+          model: "todo-handoff-test/coordinator",
+          description: "Unassigned worker",
+          prompt: `${CHILD_MARK} Report only.`,
+        }),
+        fauxAssistantMessage("Unassigned worker started."),
+        // Its completion message wakes the orchestrator.
+        toolCall("todo_upsert", {
           tasks: [
-            { key: "audit", status: "completed", message: "Session cookie path is sound." },
-            { key: "rotate-key", subject: "Rotate signing key", dependsOn: ["audit"] },
+            { key: "audit", subject: "Audit auth" },
+            { key: "tests", subject: "Write auth tests" },
+            { key: "ship", subject: "Ship release" },
           ],
-        });
-      },
-      toolCall("todo_upsert", { tasks: [{ key: "ship", status: "completed" }] }),
-      (context) => {
-        expect(lastResult(context, "todo_upsert")).toContain("task ship is not assigned to you");
-        return fauxAssistantMessage("Audit finished; follow-up added.");
-      },
-      // Back in the orchestrator.
-      toolCall("todo_list", {}),
-      fauxAssistantMessage("Delegated."),
-    ]);
+        }),
+        spawn(["missing"], "call-bad"),
+        (context) => {
+          seen.badHandoff = lastResult(context, "subagent_start");
+          return spawn(["audit", "tests"], "call-spawn");
+        },
+        fauxAssistantMessage("Audit worker started."),
+        // The audit worker's completion message wakes the orchestrator again.
+        toolCall("todo_list", {}),
+        fauxAssistantMessage("Delegated."),
+      ],
+      child: [
+        (context) => {
+          seen.unassignedTools = toolNames(context);
+          return fauxAssistantMessage("Unassigned worker finished.");
+        },
+        // The worker sees actual SDK tool declarations on its very first request.
+        (context) => {
+          seen.assignedTools = toolNames(context);
+          return toolCall("todo_list", {});
+        },
+        (context) => {
+          seen.listed = lastResult(context, "todo_list");
+          return toolCall("todo_upsert", {
+            tasks: [
+              { key: "audit", status: "completed", message: "Session cookie path is sound." },
+              { key: "rotate-key", subject: "Rotate signing key", dependsOn: ["audit"] },
+            ],
+          });
+        },
+        toolCall("todo_upsert", { tasks: [{ key: "ship", status: "completed" }] }),
+        (context) => {
+          seen.denied = lastResult(context, "todo_upsert");
+          return fauxAssistantMessage("Audit finished; follow-up added.");
+        },
+      ],
+    });
 
     await orchestrator.runTurnLoop("Delegate the auth work.", {});
-    expect(faux.getPendingResponseCount()).toBe(0);
+    await vi.waitFor(() => expect(queues.parent).toHaveLength(0), { timeout: 15_000 });
+    await orchestrator.session.waitForIdle();
+    expect(queues.child).toHaveLength(0);
+
+    if (workerType !== "general-purpose") {
+      expect(seen.unassignedTools.filter((name) => name.startsWith("todo_"))).toEqual([]);
+      expect(seen.unassignedTools).not.toContain("edit");
+      expect(seen.unassignedTools).not.toContain("write");
+    }
+    expect(seen.badHandoff).toContain("Cannot hand off todo tasks: unknown task: missing");
+    expect(seen.assignedTools).toContain("todo_list");
+    expect(seen.assignedTools).toContain("todo_upsert");
+    expect(seen.assignedTools).not.toContain("subagent_start");
+    if (workerType !== "general-purpose") {
+      expect(seen.assignedTools.filter((name) => name.startsWith("todo_"))).toEqual([
+        "todo_list",
+        "todo_upsert",
+      ]);
+      expect(seen.assignedTools).not.toContain("edit");
+      expect(seen.assignedTools).not.toContain("write");
+    }
+    expect(seen.listed).toContain("audit");
+    expect(seen.listed).toContain("tests");
+    expect(seen.listed).not.toContain("ship");
+    expect(seen.denied).toContain("task ship is not assigned to you");
 
     const branch = orchestrator.session.sessionManager.getBranch();
     const journal = branch

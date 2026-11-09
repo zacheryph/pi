@@ -152,27 +152,29 @@ describe("the completion message for a background agent", () => {
   }, 30_000);
 });
 
-describe("how the parent otherwise receives an outcome", () => {
-  // DROPPED by roadmap step 6 (no foreground): the call blocks and returns the result.
-  it("returns a foreground agent's result in the tool call and sends no completion message", async () => {
+describe("the completion message is the only carrier of an outcome", () => {
+  // Rewritten by roadmap step 6 (was: a foreground call blocked and returned the result).
+  it("runs in the background and still announces when the call asks for foreground", async () => {
     const h = await startParent();
     h.script({
-      parent: [delegate("Work", { foreground: true }), fauxAssistantMessage("Got it.")],
+      parent: [delegate("Work", { foreground: true }), fauxAssistantMessage("Started.")],
       child: [fauxAssistantMessage("Did the work.")],
     });
 
     await h.session.prompt("Delegate");
-    await settle();
+    await untilAnnounced(h);
 
     const [id] = h.agentIds();
     const text = shape(resultText(h.requests.parent[1], "subagent_start"), id);
-    expect(text).toMatch(/^Agent completed in [\d.]+s \(0 tool uses, [\d.]+k token\)\./);
-    expect(text).toContain("Agent ID: <id>\n\nDid the work.");
-    expect(h.announcements()).toEqual([]);
+    expect(text).toMatch(/^Agent started in background\.\nAgent ID: <id>\n/);
+    expect(h.announcements()).toHaveLength(1);
+    expect(shape(h.announcements()[0].text, id)).toBe(
+      completion("Done", "completed", "Did the work."),
+    );
   }, 30_000);
 
-  // DROPPED by roadmap steps 6 and 7a (the completion message is the only carrier; no wait).
-  it("returns the result from subagent_get with wait and sends no completion message", async () => {
+  // Rewritten by roadmap steps 6 and 7a (was: subagent_get with wait blocked and returned the result).
+  it("answers subagent_get with wait at once, and announces the outcome when it ends", async () => {
     const h = await startParent();
     const child = gated(fauxAssistantMessage("Did the work."));
     h.script({
@@ -180,26 +182,30 @@ describe("how the parent otherwise receives an outcome", () => {
         delegate("Work"),
         async () => {
           await child.started;
-          setTimeout(child.release, 20);
           return toolCall("subagent_get", { agent_id: h.agentIds()[0], wait: true });
         },
-        fauxAssistantMessage("Collected."),
+        fauxAssistantMessage("Not yet."),
       ],
       child: [child.step],
     });
 
     await h.session.prompt("Delegate");
-    await settle();
 
     const [id] = h.agentIds();
     const report = shape(resultText(h.requests.parent[2], "subagent_get"), id);
-    expect(report).toContain("Status: completed");
-    expect(report).toContain("Did the work.");
+    expect(report).toContain("Status: running");
+    expect(report).toContain("Its completion message arrives when it finishes.");
     expect(h.announcements()).toEqual([]);
+
+    child.release();
+    await untilAnnounced(h);
+    expect(shape(h.announcements()[0].text, id)).toBe(
+      completion("Done", "completed", "Did the work."),
+    );
   }, 30_000);
 
-  // DROPPED by roadmap step 6: a pulled result and the completion message are two carriers.
-  it("drops the completion message when the parent already pulled the result during its run", async () => {
+  // Rewritten by roadmap step 6 (was: a pulled result suppressed the completion message).
+  it("announces the outcome even when the parent already pulled the result during its run", async () => {
     const h = await startParent();
     h.script({
       parent: [
@@ -214,9 +220,16 @@ describe("how the parent otherwise receives an outcome", () => {
     });
 
     await h.session.prompt("Delegate");
+    await untilAnnounced(h);
     await settle();
 
     expect(resultText(h.requests.parent[2], "subagent_get")).toContain("Did the work.");
-    expect(h.announcements()).toEqual([]);
+    // Exactly one: reading the result is not delivering it, and delivering it
+    // does not depend on the read.
+    expect(h.announcements()).toHaveLength(1);
+    const [id] = h.agentIds();
+    expect(shape(h.announcements()[0].text, id)).toBe(
+      completion("Done", "completed", "Did the work."),
+    );
   }, 30_000);
 });

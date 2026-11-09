@@ -29,7 +29,6 @@ const overridingParams = {
   thinking: "minimal",
   max_turns: 1,
   inherit_context: true,
-  foreground: false,
 } as const;
 
 describe("resolveAgentInvocationConfig", () => {
@@ -41,7 +40,6 @@ describe("resolveAgentInvocationConfig", () => {
       expect(resolved.thinking).toBe("minimal");
       expect(resolved.maxTurns).toBe(1);
       expect(resolved.inheritContext).toBe(true);
-      expect(resolved.runInBackground).toBe(true);
     });
 
     it("falls back to the agent's frontmatter for parameters the caller omits", () => {
@@ -51,40 +49,20 @@ describe("resolveAgentInvocationConfig", () => {
       expect(resolved.thinking).toBe("high");
       expect(resolved.maxTurns).toBe(42);
       expect(resolved.inheritContext).toBe(false);
-      expect(resolved.runInBackground).toBe(true);
     });
 
     it("lets the caller fill booleans the agent leaves undefined", () => {
       const resolved = resolveAgentInvocationConfig(makeConfig({ inheritContext: undefined }), {
         inherit_context: true,
-        foreground: true,
       });
 
       expect(resolved.inheritContext).toBe(true);
-      expect(resolved.runInBackground).toBe(false);
     });
 
-    it("defaults to fresh context in the background when neither side sets them", () => {
+    it("defaults to fresh context when neither side sets it", () => {
       const resolved = resolveAgentInvocationConfig(makeConfig({ inheritContext: undefined }), {});
 
       expect(resolved.inheritContext).toBe(false);
-      expect(resolved.runInBackground).toBe(true);
-    });
-
-    it("runs in the foreground when the door's default says so and neither side sets it", () => {
-      const resolved = resolveAgentInvocationConfig(makeConfig(), {}, { foreground: true });
-
-      expect(resolved.runInBackground).toBe(false);
-    });
-
-    it("lets the caller override the door's foreground default", () => {
-      const resolved = resolveAgentInvocationConfig(
-        makeConfig(),
-        { foreground: false },
-        { foreground: true },
-      );
-
-      expect(resolved.runInBackground).toBe(true);
     });
   });
 
@@ -143,8 +121,6 @@ describe("resolveAgentInvocationConfig", () => {
       expect(resolved.thinking).toBe("high");
       expect(resolved.maxTurns).toBe(42);
       expect(resolved.inheritContext).toBe(false);
-      // How an agent runs is the caller's alone; no lock reaches it.
-      expect(resolved.runInBackground).toBe(true);
     });
 
     it("leaves a field the agent file does not set open to the caller", () => {
@@ -169,7 +145,6 @@ describe("resolveAgentInvocationConfig", () => {
       expect(resolved.maxTurns).toBe(42);
       expect(resolved.thinking).toBe("minimal");
       expect(resolved.inheritContext).toBe(true);
-      expect(resolved.runInBackground).toBe(true);
     });
 
     it("denies the caller a field the agent file never sets", () => {

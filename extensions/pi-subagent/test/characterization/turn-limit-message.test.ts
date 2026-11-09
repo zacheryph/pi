@@ -40,7 +40,6 @@ it("reports an agent the harness stopped at its turn limit as Aborted, with the 
 
   const id = manager.spawn(STUB_SNAPSHOT, "general-purpose", "Work.", {
     description: "Work",
-    background: true,
     maxTurns: 2,
     parentSession: { toolCallId: "call-1" },
   });

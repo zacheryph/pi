@@ -15,12 +15,7 @@ import type { CreateSubagentSessionParams } from "#src/lifecycle/create-subagent
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import { type Admission, Run, type RunInit } from "#src/lifecycle/run";
 import type { SubagentSession, TurnLoopResult } from "#src/lifecycle/subagent-session";
-import {
-  type CarrierClaim,
-  type SettledOutcome,
-  SubagentState,
-  type SubagentStatus,
-} from "#src/lifecycle/subagent-state";
+import { SubagentState, type SubagentStatus } from "#src/lifecycle/subagent-state";
 import type { TurnBudget } from "#src/lifecycle/turn-limits";
 import type { LifetimeUsage } from "#src/lifecycle/usage";
 import { subscribeSubagentObserver } from "#src/observation/record-observer";
@@ -61,7 +56,7 @@ export type { SubagentStatus } from "#src/lifecycle/subagent-state";
  * Why a resume of an agent would be refused.
  *
  * `still-running` is the one transient member: it is a refusal of *now* rather
- * than of ever, and the carriers word it accordingly.
+ * than of ever, and the messages word it accordingly.
  */
 export type ResumeRefusal = "still-running" | "no-session" | ReopenRefusal;
 
@@ -74,17 +69,6 @@ export type SteerOutcome =
   | { kind: "delivered" }
   | { kind: "buffered" }
   | { kind: "rejected"; status: SubagentStatus };
-
-/**
- * What happened to the run a `waitUntilSettled` call waited on: it settled and
- * is still the current run; it has not settled (the wait was interrupted, or
- * there was no run to wait on); or a resume replaced it after it settled,
- * carrying what it ended with.
- */
-export type WaitOutcome =
-  | { kind: "settled" }
-  | { kind: "unsettled" }
-  | { kind: "superseded"; outcome: SettledOutcome };
 
 /**
  * The execution machinery a Subagent needs to run. A single mandatory
@@ -131,8 +115,6 @@ export interface SubagentInit {
   id: string;
   type: SubagentType;
   description: string;
-  /** The mode SubagentManager resolved for this spawn; drives scheduling and announcement. */
-  isBackground: boolean;
 
   /** Execution machinery — always supplied; construct-complete, no test fallbacks. */
   execution: SubagentExecution;
@@ -149,12 +131,6 @@ export class Subagent {
   readonly id: string;
   readonly type: SubagentType;
   readonly description: string;
-  /**
-   * Whether this agent runs in the background. Resolved once at the manager
-   * choke point, so a consumer asks the record rather than re-deriving it from
-   * a per-call display snapshot only the tool door ever built (#724).
-   */
-  readonly isBackground: boolean;
 
   // Lifecycle status and metrics — owned by a private value object; getters and
   // mutation methods below delegate to it one line.
@@ -182,9 +158,6 @@ export class Subagent {
   }
   get consumed(): boolean {
     return this.state.consumed;
-  }
-  get claimed(): boolean {
-    return this.state.claimed;
   }
   get pendingQuestion(): string | undefined {
     return this.state.pendingQuestion;
@@ -314,7 +287,7 @@ export class Subagent {
    * yet. A live session is resumable. A released one is resumable if its
    * transcript can be reopened.
    *
-   * A getter rather than a predicate method because the result carriers read it
+   * A getter rather than a predicate method because the reports read it
    * as a field: `OutcomeAddenda` and `AgentReport` both declare it, and a live
    * record satisfies them structurally only if it is a property.
    */
@@ -381,7 +354,6 @@ export class Subagent {
     this.id = init.id;
     this.type = init.type;
     this.description = init.description;
-    this.isBackground = init.isBackground;
 
     // Lifecycle status and metrics — fresh queued state unless one is supplied
     this.state = init.state ?? new SubagentState();
@@ -573,8 +545,8 @@ export class Subagent {
    * Every update joins the run's ledger, whoever ends up delivering it: this
    * side cannot know whether an announcement will reach the parent in time, or
    * at all, so it records unconditionally and lets the channel that delivers
-   * mark what it took. What the ledger still owes is what an outcome carrier
-   * renders alongside the result.
+   * mark what it took. What the ledger still owes is what the completion
+   * message renders alongside the result.
    */
   private announceUpdate(message: string): void {
     this.state.recordUpdate(message);
@@ -604,36 +576,10 @@ export class Subagent {
   }
 
   /**
-   * Wait until this agent's current run settles.
-   * Resolves immediately when the agent is no longer active or has no run
-   * handle. A queued agent is awaitable because scheduleVia() captures the
-   * limiter promise at spawn, so the wait spans both the queue slot and the
-   * run that follows it.
-   *
-   * When `signal` fires the wait ends early and the agent keeps running: this
-   * is a query, so interrupting it must not cancel the work. Cancelling the
-   * work on a parent interrupt is InterruptHandler's separate decision.
-   *
-   * Reports what happened to the run the wait began on. A resume can start
-   * between that run settling and the waiter continuing (a consumer resuming
-   * from the completion event does), so a record that reads active afterwards
-   * is not necessarily the run that was waited on.
-   */
-  async waitUntilSettled(signal: AbortSignal): Promise<WaitOutcome> {
-    const waitedRun = this.state.run;
-    const handle = this.promise;
-    if (handle && this.isActive()) await settleOrAbort(handle, signal);
-    const superseded =
-      this.state.run === waitedRun ? undefined : this.state.supersededOutcome(waitedRun);
-    if (superseded) return { kind: "superseded", outcome: superseded };
-    return this.isActive() ? { kind: "unsettled" } : { kind: "settled" };
-  }
-
-  /**
    * Resume the session with a new prompt: the live SubagentSession, or a
    * released one whose transcript can be reopened (`resumeRefusal` is the
    * check). The returned promise always resolves (errors are captured
-   * internally) and is published as the `promise` getter, so waiters track the
+   * internally) and is published as the `promise` getter, so it tracks the
    * resume rather than the settled handle of the original run.
    *
    * A resume runs under its own controller, like the initial run: the
@@ -714,32 +660,17 @@ export class Subagent {
     else this.execution.observer?.onRunFinished?.(this);
   }
 
-  /** Record the parent collected this agent's outcome. Idempotent. */
+  /**
+   * Record the parent read this agent's finished result with `subagent_get`.
+   * Idempotent. Only the retention window reads it.
+   */
   markConsumed(at?: number): void {
     this.state.markConsumed(at);
   }
 
-  /** The announcement channel delivered this update; no outcome carrier repeats it. */
+  /** The announcement channel delivered this update; the completion message does not repeat it. */
   markUpdateAnnounced(message: string): void {
     this.state.markUpdateAnnounced(message);
-  }
-
-  /**
-   * A carrier has committed to delivering this outcome; nothing else announces
-   * it. The returned handle lets a carrier that abandons its commitment (a
-   * waiter whose parent turn was interrupted) drop only its own.
-   */
-  claim(): CarrierClaim {
-    return this.state.claim();
-  }
-
-  /**
-   * No carrier holds this outcome; announcing is owed again. Called when a
-   * resume nobody claims starts (SubagentManager.startResume), clearing the
-   * claims previous carriers left after they delivered.
-   */
-  releaseClaims(): void {
-    this.state.releaseClaims();
   }
 
   /**
@@ -822,27 +753,4 @@ async function disposeQuietly(
   } catch (err) {
     debugLog(context, err);
   }
-}
-
-/**
- * Settle with `run`, or early when `signal` fires — whichever comes first.
- * The inner controller is the listener-cleanup channel: it detaches the abort
- * listener whichever branch wins, so repeated waits within one parent turn do
- * not accumulate listeners on that turn's signal.
- */
-function settleOrAbort(run: Promise<void>, signal: AbortSignal): Promise<void> {
-  if (signal.aborted) return Promise.resolve();
-  const detach = new AbortController();
-  const interrupted = new Promise<void>((resolve) => {
-    signal.addEventListener(
-      "abort",
-      () => {
-        resolve();
-      },
-      { once: true, signal: detach.signal },
-    );
-  });
-  return Promise.race([run, interrupted]).finally(() => {
-    detach.abort();
-  });
 }

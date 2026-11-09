@@ -171,8 +171,8 @@ describe("resuming a finished agent", () => {
     );
   }, 30_000);
 
-  // DROPPED by roadmap step 6 (no foreground): the resume blocks and returns the outcome.
-  it("returns the resumed result in the tool call, and sends no completion message for it", async () => {
+  // Rewritten by roadmap step 6 (was: foreground: true blocked and returned the resumed result).
+  it("resumes in the background even when the call asks for foreground, and announces the result", async () => {
     const h = await startParent();
     const { id } = await finishedAgent(h);
 
@@ -184,12 +184,13 @@ describe("resuming a finished agent", () => {
       child: [fauxAssistantMessage("It was PLOVER.")],
     });
     await h.session.prompt("Ask the agent");
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await untilAnnounced(h, 2);
 
-    expect(shape(resultText(h.requests.parent[1], "subagent_start"), id)).toBe(
-      "Agent ID: <id>\n\nIt was PLOVER.",
+    expect(shape(resultText(h.requests.parent[1], "subagent_start"), id)).toMatch(
+      /^Agent resumed in background\.\nAgent ID: <id>\n/,
     );
-    expect(h.announcements()).toHaveLength(1);
+    expect(h.announcements()).toHaveLength(2);
+    expect(shape(h.announcements()[1].text, id)).toContain("<result>It was PLOVER.</result>");
     expect(h.savedRecord(id)).toMatchObject({ status: "completed", result: "It was PLOVER." });
   }, 30_000);
 });

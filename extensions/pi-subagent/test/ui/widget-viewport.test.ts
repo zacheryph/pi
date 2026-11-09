@@ -71,7 +71,6 @@ function animateUnderRealRenderer(opts: {
       id: `a${i}`,
       status: "running",
       completedAt: undefined,
-      isBackground: true,
       description: `task ${i}`,
     }),
   );
@@ -175,7 +174,6 @@ describe("AgentWidget cadence under Pi's real renderers", () => {
       id: "a1",
       status: "running",
       completedAt: undefined,
-      isBackground: true,
     });
     const manager = { listAgents: () => [record] } as unknown as SubagentManager;
     const widget = new AgentWidget(manager, new AgentTypeRegistry(() => new Map()));
