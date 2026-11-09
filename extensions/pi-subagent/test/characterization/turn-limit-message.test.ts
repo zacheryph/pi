@@ -1,8 +1,9 @@
-import { expect, it, vi } from "vitest";
+import { expect, it } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import { ConcurrencyLimiter } from "#src/lifecycle/concurrency-limiter";
 import { SubagentManager } from "#src/lifecycle/subagent-manager";
-import { NotificationManager } from "#src/observation/notification";
+import { SubagentWork } from "#src/observation/subagent-work";
+import { fakeWorkHost } from "#test/helpers/fake-work-host";
 import { createSubagentSessionStub, toSubagentSession } from "#test/helpers/mock-session";
 import { STUB_SNAPSHOT } from "#test/helpers/stub-ctx";
 import { turnLoopResult } from "#test/helpers/turn-loop-result";
@@ -15,8 +16,8 @@ import { turnLoopResult } from "#test/helpers/turn-loop-result";
 // the manager, with a session that returns the way a real provider's does.
 
 it("reports an agent the harness stopped at its turn limit as Aborted, with the partial result", async () => {
-  const sendMessage = vi.fn();
-  const notifications = new NotificationManager(sendMessage);
+  const fake = fakeWorkHost();
+  const work = new SubagentWork(() => fake.host);
   const session = createSubagentSessionStub();
   session.runTurnLoop.mockResolvedValue(
     turnLoopResult({
@@ -28,11 +29,11 @@ it("reports an agent the harness stopped at its turn limit as Aborted, with the 
     createSubagentSession: async () => toSubagentSession(session),
     observer: {
       onSubagentStarted: () => {},
-      onSubagentCompleted: (record) => notifications.sendCompletion(record),
+      onSubagentCompleted: (record) => work.runEnded(record),
       onSubagentResumed: () => {},
       onSubagentResuming: () => {},
       onSubagentCompacted: () => {},
-      onSubagentCreated: () => {},
+      onSubagentCreated: (record) => work.runRequested(record),
     },
     limiter: new ConcurrencyLimiter(() => 4),
     registry: new AgentTypeRegistry(() => new Map()),
@@ -46,10 +47,10 @@ it("reports an agent the harness stopped at its turn limit as Aborted, with the 
   await manager.getRecord(id)!.promise;
   await manager.dispose();
 
-  expect(sendMessage).toHaveBeenCalledOnce();
-  const [message, options] = sendMessage.mock.calls[0];
+  const [message, ...others] = fake.messages();
+  expect(others).toEqual([]);
   expect(message.customType).toBe("subagent:completion");
-  expect(message.content.replace(/<duration_ms>\d+/, "<duration_ms>N")).toBe(
+  expect((message.content as string).replace(/<duration_ms>\d+/, "<duration_ms>N")).toBe(
     [
       "<task-notification>",
       `<task-id>${id}</task-id>`,
@@ -63,5 +64,5 @@ it("reports an agent the harness stopped at its turn limit as Aborted, with the 
     ].join("\n"),
   );
   expect(message.details).toMatchObject({ id, status: "aborted", resultPreview: "Got partway." });
-  expect(options).toEqual({ deliverAs: "followUp", triggerTurn: true });
+  expect(fake.items.map((item) => item.events.map((event) => event.kind))).toEqual([["complete"]]);
 }, 15_000);

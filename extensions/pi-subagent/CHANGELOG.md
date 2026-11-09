@@ -3,6 +3,60 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-09: Subagents are work items of the session that spawned them
+
+Roadmap step 8 (`docs/roadmaps/subagent-work-lifecycle.md`). The spawning session's work host
+(`packages/pi-work`, `work:v1`) delivers what an agent reports; this extension no longer queues or
+sends anything.
+
+- New `src/observation/subagent-work.ts` (`SubagentWork`), driven by `SubagentEventsObserver`:
+  - A run being asked for opens an item in the spawning session's host (`ensureWorkHost(pi)`, called
+    first in the factory): at spawn (`onSubagentCreated`), and for new input to an idle agent
+    (`onSubagentResumeQueued` / `onSubagentResuming`; one item per run).
+    Owner `pi-subagent`, kind `subagent`, label `<description> (<type> agent <id>)`, data
+    `{ agentId, type, description, toolCallId? }`.
+  - The run ending completes the item with the completion message: the same text and details as the
+    nudge it replaces (500-character preview, the stash/`subagent_get` pointer lines, updates the
+    announcement did not deliver, the question affordance).
+  - A stopped run (outcome `stopped`, including one stopped while queued) delivers the same message
+    with `notify`, then cancels the item: stopped work is cancelled, not completed.
+  - `parent_notify` goes through `item.notify`, only while the child is active; the message still
+    marks the update as announced, so the completion message does not repeat it.
+  - Session shutdown (reload, quit, switch) makes the producer inert **before** the agents are aborted,
+    so a run stopped by the shutdown neither closes its item nor sends a message. The item stays
+    open and the next start of the spawning session reports it lost, with a `work:lost` message that
+    names the agent (`subagent "Audit parser (general-purpose agent 3f2a...)"`). Nothing restarts;
+    `subagent_send` gives the agent more work. Adoption across a reload arrives with roadmap step 12.
+- Removed: `NotificationManager`, `NotificationSystem` and the `agent_start` / `agent_settled`
+  handlers that fed it: the queue that held announcements while the parent ran and flushed them at
+  `agent_settled`, the supersession of a repeated completion, and the `deliverAs: "followUp"`
+  `triggerTurn` options. `notification.ts` keeps the formatting and gains `completionMessage` and
+  `updateMessage`.
+- Behaviour changes for the parent:
+  - A completion or update that arrives while the parent is running is appended at the end of the
+    turn and answered in that same run (one more model request), not in a second run after
+    `agent_settled`. An idle parent is woken as before.
+  - After Escape the message is in the transcript and forces no turn if the parent's run was still
+    unwinding; a child that winds down after the run settled still wakes the parent, as before.
+  - An update withheld while the parent ran used to be dropped if the child finished before the
+    flush; now the host appends it at the end of the turn even if the child finished meanwhile,
+    ahead of the completion, which no longer repeats it.
+  - Two completions of one agent in one parent turn (a resumed run) are two messages, one per item.
+- A session that spawns agents from a child (nested delegation) gets pi-work's root-style host in
+  that child: its wake policy starts a run in the child with `triggerTurn: true`, as the old nudge's
+  `followUp` did, and it is unmanaged until roadmap step 9 provides a managed host.
+- Tests: `test/work-sdk.test.ts` spawns a scripted child on a real parent session and checks
+  the item (open at spawn, label and data), the idle wake, a completion during a run answered in the
+  same run, `parent_notify`, a stopped agent (message and cancelled item), `subagent_send` opening a
+  new item, and a restart (the running agent is lost work, named). `test/observation/subagent-work.test.ts`
+  covers the producer against a fake host (`test/helpers/fake-work-host.ts`). Mechanical updates:
+  the `NotificationManager` tests became `completionMessage` / `updateMessage` tests (the queueing
+  tests moved with the behaviour to `packages/pi-work`); `subagent-events-observer.test.ts`,
+  `subagent-manager.test.ts` and `characterization/turn-limit-message.test.ts` drive a
+  `SubagentWork` over a fake host instead of a `NotificationManager` over `sendMessage`;
+  `characterization/harness.ts` restores an earlier parent's `setInterval` spy so a test can start
+  a second parent (a restart). Step 1's message tests pass unchanged.
+
 ## 2026-11-09: One tool, `subagent_send`, replaces steer and resume
 
 Roadmap step 7b (`docs/roadmaps/subagent-work-lifecycle.md`). A message reaches

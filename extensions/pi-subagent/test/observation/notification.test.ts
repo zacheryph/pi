@@ -1,44 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
-import { SubagentState } from "#src/lifecycle/subagent-state";
 import {
   buildEventData,
   buildNotificationDetails,
   escapeXml,
+  completionMessage,
   formatTaskNotification,
-  NotificationManager,
+  formatUpdateNotification,
+  updateMessage,
 } from "#src/observation/notification";
 import { createTestSubagent } from "#test/helpers/make-subagent";
-
-/** Options a notification carrier hands `pi.sendMessage`. */
-interface SendOptions {
-  triggerTurn?: boolean;
-  deliverAs?: "steer" | "followUp" | "nextTurn";
-}
-
-/**
- * Which path Pi takes for a custom message, mirroring the branch order of
- * `AgentSession.sendCustomMessage` in `@earendil-works/pi-coding-agent`.
- *
- * The order matters more than any single branch: `nextTurn` is tested first and
- * unconditionally, so it wins over `triggerTurn` rather than combining with it.
- *
- * - `buffered` — held until the user submits a prompt; nothing is rendered or
- *   written to the session, and the buffer is discarded if they never do.
- * - `queued` — handed to the running turn's unrecallable steer/followUp queue.
- * - `started` — appended, and a fresh turn is run for it.
- * - `deferred` — appended once the current turn ends, so it never lands between
- *   a tool call and its result.
- * - `appended` — appended and rendered immediately.
- */
-function piDeliveryPath(
-  streaming: boolean,
-  opts?: SendOptions,
-): "buffered" | "queued" | "started" | "deferred" | "appended" {
-  if (opts?.deliverAs === "nextTurn") return "buffered";
-  if (streaming && opts?.triggerTurn !== false) return "queued";
-  if (opts?.triggerTurn) return "started";
-  return streaming ? "deferred" : "appended";
-}
 
 // ---- Pure helper tests ----
 
@@ -240,19 +210,9 @@ describe("buildEventData", () => {
   });
 });
 
-// ---- Factory tests ----
+// ---- The messages a work item delivers ----
 
-describe("NotificationManager", () => {
-  function makeArgs() {
-    return {
-      sendMessage: vi.fn(),
-    };
-  }
-
-  function makeManager(args: ReturnType<typeof makeArgs>) {
-    return new NotificationManager(args.sendMessage);
-  }
-
+describe("completionMessage", () => {
   const baseRecord = createTestSubagent({
     description: "Test",
     result: "Done.",
@@ -260,373 +220,65 @@ describe("NotificationManager", () => {
     lifetimeUsage: { input: 100, output: 200, cacheWrite: 0 },
   });
 
-  it("sendCompletion delivers the nudge immediately when the parent is idle", () => {
-    const args = makeArgs();
-    const system = makeManager(args);
-    system.sendCompletion(baseRecord);
-    expect(args.sendMessage).toHaveBeenCalledOnce();
-  });
-
-  it("every nudge carries the retrieval instruction", () => {
-    const args = makeArgs();
-    const system = makeManager(args);
-    system.sendCompletion(baseRecord);
-    const content = (args.sendMessage.mock.calls[0][0] as { content: string }).content;
-    expect(content).toContain("subagent_get");
-  });
-
-  it("surfaces a declared question as answerable in the nudge", () => {
-    const args = makeArgs();
-    const system = makeManager(args);
-    system.sendCompletion(
-      createTestSubagent({ id: "agent-3", pendingQuestion: "Which config?", sessionReady: true }),
+  it("is a subagent:completion message with the notification block and the details", () => {
+    const message = completionMessage(baseRecord);
+    expect(message.customType).toBe("subagent:completion");
+    expect(message.content).toContain(formatTaskNotification(baseRecord, 500));
+    expect(message.details).toEqual(
+      JSON.parse(JSON.stringify(buildNotificationDetails(baseRecord, 500))),
     );
-    const content = (args.sendMessage.mock.calls[0][0] as { content: string }).content;
+  });
+
+  it("previews the result at 500 characters", () => {
+    const long = createTestSubagent({ result: "x".repeat(600) });
+    const message = completionMessage(long);
+    expect(message.content).toContain("x".repeat(500) + "\n...(truncated, use subagent_get");
+    expect((message.details as { resultPreview: string }).resultPreview).toBe(
+      "x".repeat(500) + "…",
+    );
+  });
+
+  it("every completion carries the retrieval instruction", () => {
+    expect(completionMessage(baseRecord).content).toContain("subagent_get");
+  });
+
+  it("surfaces a declared question as answerable", () => {
+    const content = completionMessage(
+      createTestSubagent({ id: "agent-3", pendingQuestion: "Which config?", sessionReady: true }),
+    ).content as string;
     expect(content).toContain("This agent is waiting on an answer:");
     expect(content).toContain("Which config?");
     expect(content).toContain('subagent_send with agent_id: "agent-3"');
   });
 
   it("omits the retrieval instruction for an agent that never started", () => {
-    const args = makeArgs();
-    const system = makeManager(args);
     const record = createTestSubagent({
       status: "stopped",
       stoppedWhileQueued: true,
       result: undefined,
     });
-    system.sendCompletion(record);
-    const content = (args.sendMessage.mock.calls[0][0] as { content: string }).content;
-    expect(content).toBe(formatTaskNotification(record, 500));
+    expect(completionMessage(record).content).toBe(formatTaskNotification(record, 500));
   });
 
-  it("sendCompletion still sends the message when the parent already read the result", () => {
-    const args = makeArgs();
-    const system = makeManager(args);
-    const readRecord = createTestSubagent({ id: "consumed-1", consumedAt: 5000 });
-    system.sendCompletion(readRecord);
-    expect(args.sendMessage).toHaveBeenCalledOnce();
-    expect((args.sendMessage.mock.calls[0][0] as { customType: string }).customType).toBe(
-      "subagent:completion",
+  it("leads the pointer lines with the updates no announcement delivered", () => {
+    const record = createTestSubagent({ runUpdates: ["Course change."] });
+    expect(completionMessage(record).content).toContain(
+      "Updates this agent sent while it worked:\n\n  Course change.",
     );
   });
+});
 
-  describe("disposal", () => {
-    // At session_shutdown no parent run is active, so sendCompletion would
-    // otherwise skip the withhold queue and hand Pi an unrecallable followUp.
-    it("sends nothing after dispose, with no parent run to defer to", () => {
-      const args = makeArgs();
-      const system = makeManager(args);
-      system.dispose();
-      system.sendCompletion(baseRecord);
-      expect(args.sendMessage).not.toHaveBeenCalled();
-    });
-
-    it("withholds a never-started agent's nudge while the parent run is active", () => {
-      const args = makeArgs();
-      const system = makeManager(args);
-      const record = createTestSubagent({
-        id: "never-1",
-        status: "stopped",
-        stoppedWhileQueued: true,
-        result: undefined,
-      });
-
-      // The ESC path: InterruptHandler stops queued agents from inside the
-      // parent's run, so the nudge waits for agent_settled like any other.
-      system.onParentAgentStart();
-      system.sendCompletion(record);
-      expect(args.sendMessage).not.toHaveBeenCalled();
-
-      system.onParentAgentSettled();
-      expect(args.sendMessage).toHaveBeenCalledOnce();
-    });
-  });
-
-  describe("parent-turn boundary", () => {
-    /** The agent id a delivered notification block names. */
-    function taskIdOf(content: string): string {
-      return /<task-id>([^<]*)<\/task-id>/.exec(content)?.[1] ?? "";
-    }
-
-    /**
-     * A parent whose delivery follows `piDeliveryPath`, so a carrier's choice of
-     * options is honoured rather than assumed.
-     *
-     * `deliveredToLlm` holds what the parent model can actually read. A deferred
-     * message joins it when the turn ends, which Pi does before extensions are
-     * notified that the run settled.
-     */
-    function makePiParent() {
-      const deliveredToLlm: string[] = [];
-      let deferredUntilTurnEnd: string[] = [];
-      let runActive = false;
-      const manager = new NotificationManager((msg, opts) => {
-        switch (piDeliveryPath(runActive, opts)) {
-          case "buffered":
-            return;
-          case "deferred":
-            deferredUntilTurnEnd.push(msg.content);
-            return;
-          default:
-            deliveredToLlm.push(msg.content);
-        }
-      });
-      return {
-        manager,
-        deliveredToLlm,
-        startRun() {
-          runActive = true;
-          manager.onParentAgentStart();
-        },
-        settleRun() {
-          runActive = false;
-          deliveredToLlm.push(...deferredUntilTurnEnd);
-          deferredUntilTurnEnd = [];
-          manager.onParentAgentSettled();
-        },
-      };
-    }
-
-    describe("the Pi delivery model the parent stub is built on", () => {
-      it("buffers a nextTurn message invisibly, whatever else is asked for", () => {
-        expect(piDeliveryPath(false, { deliverAs: "nextTurn", triggerTurn: true })).toBe(
-          "buffered",
-        );
-        expect(piDeliveryPath(true, { deliverAs: "nextTurn", triggerTurn: false })).toBe(
-          "buffered",
-        );
-      });
-
-      it("queues a mid-stream message onto the run's unrecallable queue", () => {
-        expect(piDeliveryPath(true, { deliverAs: "followUp", triggerTurn: true })).toBe("queued");
-        expect(piDeliveryPath(true, {})).toBe("queued");
-      });
-
-      it("starts a turn for an idle parent that asked for one", () => {
-        expect(piDeliveryPath(false, { deliverAs: "followUp", triggerTurn: true })).toBe("started");
-      });
-
-      it("defers a mid-stream message that refuses a turn until the turn ends", () => {
-        expect(piDeliveryPath(true, { triggerTurn: false })).toBe("deferred");
-      });
-
-      it("appends a message an idle parent gets with no turn asked for", () => {
-        expect(piDeliveryPath(false, { triggerTurn: false })).toBe("appended");
-      });
-    });
-
-    it("withholds a nudge that arrives while the parent's run is active", () => {
-      const parent = makePiParent();
-      parent.startRun();
-      parent.manager.sendCompletion(createTestSubagent({ id: "held-1" }));
-      expect(parent.deliveredToLlm).toHaveLength(0);
-    });
-
-    it("delivers the withheld nudge once the run settles when the parent never pulled", () => {
-      const parent = makePiParent();
-      parent.startRun();
-      parent.manager.sendCompletion(createTestSubagent({ id: "kept-1" }));
-      parent.settleRun();
-      expect(parent.deliveredToLlm).toHaveLength(1);
-    });
-
-    it("still delivers the withheld nudge when the parent reads the result later in the same turn", () => {
-      const parent = makePiParent();
-      const record = createTestSubagent({ id: "race-1" });
-      parent.startRun();
-      parent.manager.sendCompletion(record);
-      record.markConsumed(); // subagent_get, later in the same turn
-      parent.settleRun();
-      expect(parent.deliveredToLlm).toHaveLength(1);
-    });
-
-    it("collapses a re-completion during the same turn into a single delivery", () => {
-      const parent = makePiParent();
-      const record = createTestSubagent({ id: "recomplete-1" });
-      parent.startRun();
-      parent.manager.sendCompletion(record);
-      parent.manager.sendCompletion(record); // e.g. a resumed run reaching terminal state again
-      parent.settleRun();
-      expect(parent.deliveredToLlm).toHaveLength(1);
-    });
-
-    it("flushes nudges from different agents in the order they arrived", () => {
-      const parent = makePiParent();
-      parent.startRun();
-      parent.manager.sendCompletion(createTestSubagent({ id: "first-1" }));
-      parent.manager.sendCompletion(createTestSubagent({ id: "second-1" }));
-      parent.settleRun();
-      expect(parent.deliveredToLlm.map(taskIdOf)).toEqual(["first-1", "second-1"]);
-    });
-
-    it("keeps a re-completed agent in the queue position it first took", () => {
-      const parent = makePiParent();
-      const early = createTestSubagent({ id: "early-1" });
-      parent.startRun();
-      parent.manager.sendCompletion(early);
-      parent.manager.sendCompletion(createTestSubagent({ id: "late-1" }));
-      parent.manager.sendCompletion(early); // the resumed run terminates again
-      parent.settleRun();
-      expect(parent.deliveredToLlm.map(taskIdOf)).toEqual(["early-1", "late-1"]);
-    });
-
-    it("delivers immediately when the parent is idle at completion", () => {
-      const parent = makePiParent();
-      parent.manager.sendCompletion(createTestSubagent({ id: "idle-1" }));
-      expect(parent.deliveredToLlm).toHaveLength(1);
-    });
-
-    it("dispose drops nudges withheld for the current run", () => {
-      const parent = makePiParent();
-      parent.startRun();
-      parent.manager.sendCompletion(createTestSubagent({ id: "disposed-1" }));
-      parent.manager.dispose();
-      parent.settleRun();
-      expect(parent.deliveredToLlm).toHaveLength(0);
-    });
-
-    /**
-     * A live child that has already produced one update, as the production chain
-     * leaves it: `Subagent.announceUpdate` records the message on the run, then
-     * the observer offers it to the manager.
-     */
-    /** A running child that sent `message`, and the state a test completes it through. */
-    function liveChildThatSent(message: string) {
-      const state = new SubagentState({ status: "running", startedAt: 1000 });
-      state.recordUpdate(message);
-      return { record: createTestSubagent({ id: "live-1", state }), state };
-    }
-
-    describe("a running child's mid-run update", () => {
-      it("is delivered immediately when the parent is idle", () => {
-        const parent = makePiParent();
-        parent.manager.sendUpdate(
-          createTestSubagent({ id: "live-1", status: "running" }),
-          "Course change.",
-        );
-        expect(parent.deliveredToLlm).toHaveLength(1);
-      });
-
-      it("is withheld while the parent's run is active, then flushed", () => {
-        const parent = makePiParent();
-        parent.startRun();
-        parent.manager.sendUpdate(
-          createTestSubagent({ id: "live-1", status: "running" }),
-          "Course change.",
-        );
-        expect(parent.deliveredToLlm).toHaveLength(0);
-        parent.settleRun();
-        expect(parent.deliveredToLlm).toHaveLength(1);
-      });
-
-      it("is dropped after dispose, like every other announcement", () => {
-        const parent = makePiParent();
-        parent.manager.dispose();
-        parent.manager.sendUpdate(
-          createTestSubagent({ id: "live-1", status: "running" }),
-          "Course change.",
-        );
-        expect(parent.deliveredToLlm).toHaveLength(0);
-      });
-
-      it("keeps every update, because two updates are two facts", () => {
-        const parent = makePiParent();
-        const record = createTestSubagent({ id: "live-1", status: "running" });
-        parent.startRun();
-        parent.manager.sendUpdate(record, "First finding.");
-        parent.manager.sendUpdate(record, "Second finding.");
-        parent.settleRun();
-        expect(parent.deliveredToLlm).toHaveLength(2);
-      });
-
-      it("keeps its place ahead of the same child's later completion", () => {
-        const parent = makePiParent();
-        const record = createTestSubagent({ id: "live-1", status: "running" });
-        parent.startRun();
-        parent.manager.sendUpdate(record, "Course change.");
-        parent.manager.sendCompletion(record);
-        parent.settleRun();
-        expect(parent.deliveredToLlm.map((c) => c.slice(0, 18))).toEqual([
-          "<subagent-update>\n",
-          "<task-notification",
-        ]);
-      });
-
-      it("is announced even after the parent read an earlier result", () => {
-        const parent = makePiParent();
-        const record = createTestSubagent({ id: "live-1", status: "running" });
-        record.markConsumed();
-
-        parent.manager.sendUpdate(record, "Course change.");
-
-        // Reading a result is no reason to silence a new fact the child sent.
-        expect(parent.deliveredToLlm).toHaveLength(1);
-      });
-
-      it("is no longer owed to the completion message once the announcement delivered it", () => {
-        const parent = makePiParent();
-        const record = createTestSubagent({
-          id: "live-1",
-          status: "running",
-          runUpdates: ["Course change.", "A second finding."],
-        });
-
-        parent.manager.sendUpdate(record, "Course change.");
-
-        expect(record.runUpdates).toEqual(["A second finding."]);
-      });
-
-      it("is announced when the child is still running as the run settles", () => {
-        const parent = makePiParent();
-        const { record } = liveChildThatSent("Course change.");
-
-        parent.startRun();
-        parent.manager.sendUpdate(record, "Course change.");
-        parent.settleRun();
-
-        // The affordance the block carries is true: the child is live, so the
-        // parent can still steer it.
-        expect(parent.deliveredToLlm).toHaveLength(1);
-        expect(parent.deliveredToLlm[0]).toContain("The agent is still running.");
-        expect(record.runUpdates).toEqual([]);
-      });
-    });
-
-    describe("a withheld update whose child terminates before the flush", () => {
-      it("stays quiet once the child has terminated, leaving the update to the completion message", () => {
-        const parent = makePiParent();
-        const { record, state } = liveChildThatSent("Course change.");
-
-        parent.startRun();
-        parent.manager.sendUpdate(record, "Course change.");
-
-        // The update is still owed, to the completion message (and to a report
-        // from subagent_get); the withheld announcement does not arrive after
-        // the outcome it belongs to.
-        state.markCompleted("Done.");
-
-        parent.settleRun();
-        expect(parent.deliveredToLlm).toEqual([]);
-        expect(record.runUpdates).toEqual(["Course change."]);
-      });
-
-      it("rides the completion message, even when the parent read the result meanwhile", () => {
-        const parent = makePiParent();
-        const { record, state } = liveChildThatSent("Course change.");
-
-        parent.startRun();
-        parent.manager.sendUpdate(record, "Course change.");
-        state.markCompleted("Done.");
-        record.markConsumed(); // subagent_get, later in the same turn
-        parent.manager.sendCompletion(record);
-        parent.settleRun();
-
-        expect(parent.deliveredToLlm.map((c) => c.slice(0, 18))).toEqual(["<task-notification"]);
-        expect(parent.deliveredToLlm[0]).toContain(
-          "Updates this agent sent while it worked:\n\n  Course change.",
-        );
-      });
+describe("updateMessage", () => {
+  it("is a subagent:update message naming the agent and still-running affordance", () => {
+    const record = createTestSubagent({ id: "live-1", status: "running" });
+    const message = updateMessage(record, "Course change.");
+    expect(message.customType).toBe("subagent:update");
+    expect(message.content).toBe(formatUpdateNotification(record, "Course change."));
+    expect(message.content).toContain("The agent is still running.");
+    expect(message.details).toEqual({
+      id: "live-1",
+      description: record.description,
+      message: "Course change.",
     });
   });
 });
