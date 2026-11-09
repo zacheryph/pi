@@ -3,6 +3,32 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-09: Completions through Pi's run boundaries
+
+- `src/delivery.ts`: a completion is one `pi.sendMessage` call at once. Idle sends it with
+  `triggerTurn: true`. While a run is active, or while Pi is busy without one (compaction, branch
+  summary), it goes out with `triggerTurn: false`, so Pi appends it to the transcript at the end of
+  the turn. `continuesRun` and the new `agent_before_settle` handler in `src/extension.ts` return
+  `continue: true` when a completion follows the model's last answer in a completed run, so the
+  model answers it in the same run. After Escape or abort the message stays in the transcript and
+  no turn is forced.
+- Removed: the follow-up queue (`deliverAs: "followUp"`), `confirm` and the `message_end`
+  confirmation, the one-shot resend, the held batch released at `agent_end` and `agent_settled`,
+  and the drains on `session_compact`, `session_compact_failed` and `session_tree`. Each completion
+  is its own message now; the batched output budget still applies to a reload gap, which flushes
+  held completions as one message. `dedupeCompletions` stays for transcripts written by older
+  versions.
+- `src/ownership.ts`: the reload handoff owner is version 3. A version 2 owner holds a Delivery
+  with the old host protocol, so it is not adopted and its jobs are stopped, as for any
+  incompatible handoff.
+- `test/run-boundary.test.ts` pins the Pi behaviour this relies on with a real `AgentSession` and a
+  scripted model. `test/agent-session.test.ts` now pins the new guarantees: in the transcript after
+  Escape or abort and seen once by the next run, answered in the same run, one request for several
+  completions, nothing woken by compaction or `/tree`. The `delivery.test.ts` and
+  `extension.test.ts` tests of the queue, confirmation and resend now cover the run-boundary
+  equivalents.
+- `UPSTREAM-ISSUES.md` #3, #4 and #5 are marked as no longer affecting pi-job. README updated.
+
 ## 2026-11-09: Pi 1.5.0 argument validation
 
 - `test/extension.test.ts`: Pi 1.5.0 validates tool arguments with pi-schema,

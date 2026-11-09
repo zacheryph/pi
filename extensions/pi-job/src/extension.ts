@@ -10,9 +10,11 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { randomUUID } from "node:crypto";
 import { isAbsolute, resolve } from "node:path";
 import {
+  continuesRun,
   CUSTOM_TYPE,
   dedupeCompletions,
   Delivery,
+  type BeforeSettleEvent,
   type DeliveryHost,
   type Completion,
 } from "./delivery.ts";
@@ -270,8 +272,7 @@ export function createJobsExtension(options: JobsExtensionOptions = {}) {
 
     const host: DeliveryHost<JobSnapshot> = {
       isIdle: () => (typeof ctxRef?.isIdle === "function" ? ctxRef.isIdle() : true),
-      aborted: () => ctxRef?.signal?.aborted === true,
-      send: (deliveryId, completions) => {
+      send: (completions, mode) => {
         const budget = tailBudget(completions.length);
         const items = completions.map((c) => ({
           job: c.payload,
@@ -285,7 +286,6 @@ export function createJobsExtension(options: JobsExtensionOptions = {}) {
             display: true,
             // `part`: the content part holding this completion (used by dedupeCompletions).
             details: {
-              deliveryId,
               completions: completions.map((c, i) => ({
                 completionId: c.completionId,
                 part: partOf[i],
@@ -293,8 +293,9 @@ export function createJobsExtension(options: JobsExtensionOptions = {}) {
               })),
             },
           },
-          // pi decides: streaming → its follow-up queue; otherwise → start a run.
-          { triggerTurn: true, deliverAs: "followUp" },
+          // Idle: start a run. Otherwise Pi appends it at the end of the turn and
+          // agent_before_settle continues the run when no further turn would follow.
+          { triggerTurn: mode === "wake" },
         );
       },
       lost: (items) => {
@@ -357,33 +358,16 @@ export function createJobsExtension(options: JobsExtensionOptions = {}) {
       remember(ctx);
       delivery.onAgentStart();
     });
-    pi.on("agent_end", async (_e: unknown, ctx: unknown) => {
-      remember(ctx);
-      delivery.onAgentEnd();
-    });
     pi.on("agent_settled", async (_e: unknown, ctx: unknown) => {
       remember(ctx);
       delivery.onAgentSettled();
     });
-    pi.on("message_end", async (e: unknown) => {
-      const m = (
-        e as
-          | { message?: { role?: string; customType?: string; details?: { deliveryId?: unknown } } }
-          | undefined
-      )?.message;
-      if (
-        m?.role === "custom" &&
-        m.customType === CUSTOM_TYPE &&
-        typeof m.details?.deliveryId === "string"
-      )
-        delivery.confirm(m.details.deliveryId);
+    // A completion that landed after the model's last answer needs one more request in this run.
+    pi.on("agent_before_settle", async (e: BeforeSettleEvent, ctx: unknown) => {
+      remember(ctx);
+      return continuesRun(e) ? { continue: true } : undefined;
     });
-    // End of non-agent busy work. session_compact and session_tree fire before pi clears its
-    // busy state; session_compact_failed fires after it.
-    pi.on("session_compact", async () => delivery.onBusyEnd(false));
-    pi.on("session_compact_failed", async () => delivery.onBusyEnd(true));
-    pi.on("session_tree", async () => delivery.onBusyEnd(false));
-    // The model sees each completion id at most once (a stranded follow-up may reappear).
+    // The model sees each completion id at most once (transcripts of older versions may repeat one).
     // Per completion for indexed messages; legacy unindexed messages are stubbed only as a whole.
     pi.on("context", async (e: { messages: any[] }) => {
       const messages = dedupeCompletions(e.messages);
@@ -434,7 +418,7 @@ export function createJobsExtension(options: JobsExtensionOptions = {}) {
           reportReloadLoss(historicalRunningJobs(ctx.sessionManager.getEntries()));
         }
         owner = {
-          version: 2,
+          version: 3,
           manager,
           delivery,
           token,

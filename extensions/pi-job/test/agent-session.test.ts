@@ -1,7 +1,10 @@
 /**
  * Delivery against the real pi AgentSession (installed runtime) with the faux model provider.
  * Skipped when no installed runtime can be resolved (override: PI_RUNTIME_DIR).
- * Two tests reproduce pi-side races and are skipped with a pointer to UPSTREAM-ISSUES.md.
+ * Completions travel as custom messages through Pi's run boundaries (see src/delivery.ts): the
+ * transcript is the inbox, so these tests assert what is in the transcript and what the model saw.
+ * Two tests reproduce pi-side races on the idle path and are skipped with a pointer to
+ * UPSTREAM-ISSUES.md.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -159,6 +162,7 @@ async function harness(t: Parameters<typeof tempDir>[0], opts: HarnessOptions = 
     completions,
     assistantTexts,
     maxSeen,
+    contexts,
     blocking,
     reply,
     startJob,
@@ -176,7 +180,7 @@ for (const [name, escape] of [
   ["RPC abort", false],
 ] as const) {
   void test(
-    `completion during a streaming turn survives ${name}: delivered once, seen once`,
+    `completion during a streaming turn survives ${name}: in the transcript, no turn forced, seen once by the next run`,
     { skip },
     async (t) => {
       const h = await harness(t);
@@ -197,13 +201,15 @@ for (const [name, escape] of [
       if (escape) h.session.clearQueue();
       await h.session.abort();
       await run;
-      await waitUntil(
-        () => h.completions().length === 1 && h.assistantTexts().includes("woken"),
-        5000,
-        "delivery after abort",
-      );
       await idle(h.session);
       await sleep(300);
+      assert.equal(h.completions().length, 1, "the completion is in the transcript");
+      assert.equal(h.contexts.length, 2, "Escape forces no turn");
+      assert.ok(!h.assistantTexts().includes("woken"));
+      assert.equal(h.maxSeen("ESC-DONE"), 0, "the model has not seen it yet");
+      // The next run, the user's, sees it.
+      await h.session.prompt("next");
+      await idle(h.session);
       assert.equal(h.completions().length, 1);
       assert.equal(h.maxSeen("ESC-DONE"), 1);
     },
@@ -211,20 +217,48 @@ for (const [name, escape] of [
 }
 
 void test(
-  "a follow-up dropped by clearQueue right after we queued it is resent once",
+  "a completion during a streaming turn reaches the model in that same run",
+  { skip },
+  async (t) => {
+    const h = await harness(t);
+    const busy = h.blocking();
+    h.faux.setResponses([
+      h.startJob(h.gated("go", "SAME-RUN")),
+      busy.step,
+      h.reply("answered in the run"),
+      h.reply("must not run"),
+    ]);
+    const run = h.session.prompt("go");
+    await busy.entered;
+    h.open("go");
+    await waitUntil(() => h.manager().get("j1")?.status === "succeeded", 5000, "job");
+    busy.release();
+    await run; // prompt() resolves once the whole run, continuation included, has settled
+    await idle(h.session);
+    await sleep(300);
+    assert.ok(h.assistantTexts().includes("answered in the run"));
+    assert.ok(!h.assistantTexts().includes("must not run"));
+    assert.equal(h.contexts.length, 3, "one extra model request, no second run");
+    assert.equal(h.completions().length, 1);
+    assert.equal(h.maxSeen("SAME-RUN"), 1);
+  },
+);
+
+void test(
+  "clearQueue right after the turn ended cannot drop the completion: it is answered in the run",
   { skip },
   async (t) => {
     let session: any;
     let armed = false;
-    // Runs after pi-job' agent_end handler, i.e. right after the follow-up was queued: Escape.
-    const escapeAfterQueue = (pi: any) =>
+    // Runs after pi-job's handlers, at the end of the last turn: Escape.
+    const escapeAtEnd = (pi: any) =>
       pi.on("agent_end", async () => {
         if (armed) {
           armed = false;
           session.clearQueue();
         }
       });
-    const h = await harness(t, { extra: escapeAfterQueue });
+    const h = await harness(t, { extra: escapeAtEnd });
     session = h.session;
     const busy = h.blocking();
     h.faux.setResponses([
@@ -239,33 +273,28 @@ void test(
     armed = true;
     busy.release();
     await run;
-    await waitUntil(
-      () => h.completions().length === 1 && h.assistantTexts().includes("woken"),
-      5000,
-      "resend after the drop",
-    );
     await idle(h.session);
     await sleep(300);
+    assert.ok(h.assistantTexts().includes("woken"), "the completion was answered");
     assert.equal(h.completions().length, 1);
     assert.equal(h.maxSeen("DROP-DONE"), 1);
   },
 );
 
 void test(
-  "a follow-up stranded by an abort reappears later but the model sees the completion once",
+  "an abort at the end of the turn leaves one copy of the completion; the next run sees it once",
   { skip },
   async (t) => {
     let session: any;
     let armed = false;
-    // Abort right after pi-job queued its follow-up: the copy stays in pi's agent queue.
-    const abortAfterQueue = (pi: any) =>
+    const abortAtEnd = (pi: any) =>
       pi.on("agent_end", async () => {
         if (armed) {
           armed = false;
           void session.abort();
         }
       });
-    const h = await harness(t, { extra: abortAfterQueue });
+    const h = await harness(t, { extra: abortAtEnd });
     session = h.session;
     const busy = h.blocking();
     h.faux.setResponses([
@@ -281,11 +310,11 @@ void test(
     busy.release();
     await run;
     await idle(h.session);
-    await waitUntil(() => h.completions().length >= 1, 5000, "resend");
+    await sleep(300);
+    assert.equal(h.completions().length, 1, "exactly one copy, however the abort raced");
+    await h.session.prompt("next");
     await idle(h.session);
-    await h.session.prompt("next"); // pi drains the stranded copy at the end of this run
-    await idle(h.session);
-    assert.ok(h.completions().length >= 1);
+    assert.equal(h.completions().length, 1);
     assert.equal(
       h.maxSeen("STRANDED-DONE"),
       1,
@@ -295,7 +324,7 @@ void test(
 );
 
 void test(
-  "a completion during manual compaction does not start a run; it is delivered once after",
+  "a completion during manual compaction starts no run; it is in the transcript and the next run sees it once",
   { skip },
   async (t) => {
     const h = await harness(t);
@@ -304,10 +333,9 @@ void test(
       h.startJob(h.gated("go", "COMPACT-DONE")),
       h.reply("started"),
       summary.step, // the first compaction request blocks
-      // Compaction may make one more summarization call; anything else is the wake-up run.
+      // Compaction may make one more summarization call; anything else is a run.
       ...[1, 2].map(
-        () => () =>
-          h.ai.fauxAssistantMessage(h.session.isCompacting ? "summary" : "woken after compaction"),
+        () => () => h.ai.fauxAssistantMessage(h.session.isCompacting ? "summary" : "next run"),
       ),
     ]);
     await h.session.prompt("go");
@@ -324,23 +352,22 @@ void test(
       false,
       "a completion started an agent run during compaction",
     );
-    assert.equal(h.completions().length, 0);
     summary.release();
     const result = await compaction;
     assert.ok(!(result instanceof Error), String(result));
-    await waitUntil(
-      () => h.completions().length === 1 && h.assistantTexts().includes("woken after compaction"),
-      5000,
-      "delivery after compaction",
-    );
     await idle(h.session);
     await sleep(300);
+    assert.ok(!h.assistantTexts().includes("next run"), "nothing woke the agent");
+    assert.equal(h.completions().length, 1, "the completion is in the transcript");
+    await h.session.prompt("next");
+    await idle(h.session);
     assert.equal(h.completions().length, 1);
+    assert.equal(h.maxSeen("COMPACT-DONE"), 1);
   },
 );
 
 void test(
-  "completions that finish during one turn arrive as one batched message",
+  "completions that finish during one turn arrive as one message each and are answered by one request",
   { skip },
   async (t) => {
     const h = await harness(t);
@@ -358,6 +385,7 @@ void test(
       ),
       busy.step,
       h.reply("woken once"),
+      h.reply("must not run"),
     ]);
     const run = h.session.prompt("go");
     await busy.entered;
@@ -368,14 +396,16 @@ void test(
     );
     busy.release();
     await run;
-    await waitUntil(() => h.assistantTexts().includes("woken once"), 5000, "wake-up");
     await idle(h.session);
     await sleep(300);
-    assert.equal(h.completions().length, 1);
-    const text = JSON.stringify(h.completions()[0].content);
-    assert.match(text, /2 background jobs finished/);
-    assert.match(text, /BATCH-A/);
-    assert.match(text, /BATCH-B/);
+    assert.ok(h.assistantTexts().includes("woken once"));
+    assert.equal(h.contexts.length, 3, "one request answers both completions");
+    assert.equal(h.completions().length, 2);
+    assert.equal(h.maxSeen("BATCH-A"), 1);
+    assert.equal(h.maxSeen("BATCH-B"), 1);
+    const last = JSON.stringify(h.contexts[2]);
+    assert.match(last, /BATCH-A/);
+    assert.match(last, /BATCH-B/);
   },
 );
 
@@ -411,17 +441,19 @@ void test(
 );
 
 void test(
-  "compaction started by an EARLIER agent_settled handler: the held completion waits for it",
+  "compaction started by an earlier agent_settled handler: the already recorded completion starts no run in it",
   { skip },
   async (t) => {
     let compactOnSettle = false;
-    // Loaded before pi-job: starts a compaction from agent_settled, then yields, so pi is busy
-    // again by the time pi-job' agent_settled handler runs. The compaction is slowed down.
+    let compactionDone!: () => void;
+    const compacted = new Promise<void>((r) => (compactionDone = r));
+    // Loaded before pi-job: starts a compaction from agent_settled, then yields. The compaction
+    // is slowed down.
     const compactor = (pi: any) => {
       pi.on("agent_settled", async (_e: unknown, ctx: any) => {
         if (!compactOnSettle) return;
         compactOnSettle = false;
-        ctx.compact();
+        ctx.compact({ onComplete: () => compactionDone(), onError: () => compactionDone() });
         await sleep(10);
       });
       pi.on("session_before_compact", async () => {
@@ -446,25 +478,27 @@ void test(
     await waitUntil(
       () => h.manager().get("j1")?.status === "succeeded",
       5000,
-      "job (held: a run is active)",
+      "job (recorded: a run is active)",
     );
     compactOnSettle = true;
-    await h.session.abort(); // aborted run: the held completion is due at agent_settled
+    await h.session.abort(); // the settle that starts the compaction
     await run;
-    await waitUntil(
-      () => h.completions().length === 1 && h.assistantTexts().includes("woken"),
-      5000,
-      "delivery after the compaction",
-    );
+    await compacted;
     await idle(h.session);
-    assert.equal(runDuringCompaction, false, "the completion's run started during compaction");
-    assert.equal(h.completions().length, 1);
+    await sleep(300);
+    assert.equal(runDuringCompaction, false, "a run started during the compaction");
+    assert.ok(!h.assistantTexts().includes("woken"), "an abort forces no turn");
+    assert.equal(h.maxSeen("EARLY-DONE"), 0);
+    // The next run sees the completion, whether the compaction kept it as a message or folded
+    // it into its summary.
+    await h.session.prompt("next");
+    await idle(h.session);
     assert.equal(h.maxSeen("EARLY-DONE"), 1);
   },
 );
 
 void test(
-  "a completion during branch summarization (/tree) is delivered after session_tree",
+  "a completion during branch summarization (/tree) starts no run and is recorded once",
   { skip },
   async (t) => {
     let releaseTree: (() => void) | undefined;
@@ -498,18 +532,19 @@ void test(
       5000,
       "job during the tree navigation",
     );
-    assert.equal(h.completions().length, 0);
     releaseTree!();
     const result = await nav;
     assert.equal(result.cancelled, false);
-    await waitUntil(
-      () => h.completions().length === 1 && h.assistantTexts().includes("woken"),
-      5000,
-      "delivery after session_tree",
-    );
     await idle(h.session);
+    await sleep(300);
     assert.equal(runDuringSummary, false);
-    assert.equal(h.maxSeen("TREE-DONE"), 1);
+    assert.ok(!h.assistantTexts().includes("woken"), "nothing woke the agent");
+    // Recorded where the session stood when it arrived. The navigation then moved the leaf to an
+    // earlier node, so this completion belongs to the branch the user left (see the README).
+    const recorded = h.session.sessionManager
+      .getEntries()
+      .filter((e: any) => e.type === "custom_message" && e.customType === CUSTOM_TYPE);
+    assert.equal(recorded.length, 1, "the completion is in the session file, once");
   },
 );
 
@@ -557,12 +592,20 @@ void test(
   "deferred settled action runs during a compaction started by a LATER agent_settled handler",
   { skip: upstream(2, "deferred actions are not revalidated") },
   async (t) => {
-    // Deterministic: one-shot compactor loaded AFTER pi-job, history that can be compacted
-    // (keepRecentTokens: 1), and a compaction slowed by session_before_compact.
+    // Deterministic and independent of pi-job (which no longer sends from agent_settled): a waker
+    // whose agent_settled handler sends a triggerTurn message, then a one-shot compactor after it,
+    // history that can be compacted (keepRecentTokens: 1), and a compaction slowed by
+    // session_before_compact.
     let compactOnSettle = false;
     let compactionDone!: () => void;
     const compacted = new Promise<void>((r) => (compactionDone = r));
+    let wakeOnSettle = false;
     const compactor = (pi: any) => {
+      pi.on("agent_settled", async () => {
+        if (!wakeOnSettle) return;
+        wakeOnSettle = false;
+        pi.sendMessage({ customType: "x", content: "wake", display: true }, { triggerTurn: true });
+      });
       pi.on("agent_settled", async (_e: unknown, ctx: any) => {
         if (!compactOnSettle) return;
         compactOnSettle = false;
@@ -589,7 +632,8 @@ void test(
     h.open("go");
     await waitUntil(() => h.manager().get("j1")?.status === "succeeded", 5000, "job");
     compactOnSettle = true;
-    await h.session.abort(); // the held completion is sent from agent_settled: a deferred action
+    wakeOnSettle = true;
+    await h.session.abort(); // the wake is sent from agent_settled: a deferred action
     await run;
     await compacted;
     await idle(h.session);
