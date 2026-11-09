@@ -7,13 +7,16 @@ import {
   delegate,
   gated,
   type Parent,
-  resumeCall,
+  sendCall,
   shape,
   startParent,
   untilAnnounced,
 } from "./harness.ts";
 
-// Giving a finished agent more work, through subagent_start with `resume`.
+// Giving an idle agent more work, through subagent_send. Rewritten by roadmap step 7b: this
+// used to be subagent_start with `resume`. The run starts and reports as it did, with the
+// same texts; what changed is the door, the refusals (a running agent is steered, not refused)
+// and that a stopped or failed agent takes a message like any other idle agent.
 
 const resultText = (request: Context, tool: string) =>
   (JSON.parse(lastResult(request, tool)) as { content: Array<{ text: string }> }).content[0].text;
@@ -30,11 +33,11 @@ async function finishedAgent(h: Parent) {
   return { id, transcript: h.savedRecord(id)!.outputFile! };
 }
 
-/** Resume `id` in the background and wait for the second completion message. */
+/** Send `id` a question and wait for the second completion message. */
 async function resumeAndAwait(h: Parent, id: string) {
   const question: Context[] = [];
   h.script({
-    parent: [resumeCall(id, "What was the codeword?"), fauxAssistantMessage("Asked.")],
+    parent: [sendCall(id, "What was the codeword?"), fauxAssistantMessage("Asked.")],
     child: [
       (context) => {
         question.push(structuredClone(context));
@@ -62,7 +65,7 @@ describe("resuming a finished agent", () => {
     const child = await resumeAndAwait(h, id);
 
     expectContinued(child);
-    const started = shape(resultText(h.requests.parent[1], "subagent_start"), id);
+    const started = shape(resultText(h.requests.parent[1], "subagent_send"), id);
     expect(started).toMatch(/^Agent resumed in background\.\nAgent ID: <id>\n/);
     expect(started).toContain("You will be notified when this agent completes.");
     expect(h.announcements()).toHaveLength(2);
@@ -136,7 +139,7 @@ describe("resuming a finished agent", () => {
     expect(h.savedRecord(id)).toMatchObject({ status: "idle", outcome: "stopped" });
 
     h.script({
-      parent: [resumeCall(id, "Carry on"), fauxAssistantMessage("Resumed.")],
+      parent: [sendCall(id, "Carry on"), fauxAssistantMessage("Resumed.")],
       child: [fauxAssistantMessage("Carried on.")],
     });
     await h.session.prompt("Resume it");
@@ -165,7 +168,7 @@ describe("resuming a finished agent", () => {
 
     h.script({
       parent: [
-        resumeCall(id, "Go again"),
+        sendCall(id, "Go again"),
         fauxAssistantMessage("Queued."),
         fauxAssistantMessage("Noted."),
         fauxAssistantMessage("Noted again."),
@@ -175,12 +178,16 @@ describe("resuming a finished agent", () => {
     await h.session.prompt("Resume while full");
 
     // The call returned at once, saying the resume waits, and nothing has run.
-    expect(shape(resultText(h.requests.parent[1], "subagent_start"), id)).toMatch(
+    expect(shape(resultText(h.requests.parent[1], "subagent_send"), id)).toMatch(
       /^Agent resume queued in background\.\nAgent ID: <id>\n[\s\S]*Position: queued \(max 1 concurrent\)/,
     );
     expect(h.savedRecord(id)).toMatchObject({ status: "queued", outcome: undefined });
     expect(h.requests.child).toHaveLength(0);
     expect(h.seen("subagent:resuming")).toHaveLength(0);
+    // Added by step 7b: consumers learn that the finished agent has a run waiting.
+    expect(h.seen("subagent:queued")).toEqual([
+      expect.objectContaining({ data: expect.objectContaining({ id }) }),
+    ]);
 
     busy.release();
     await vi.waitFor(() =>
@@ -194,62 +201,41 @@ describe("resuming a finished agent", () => {
     expect(h.seen("subagent:resumed")).toHaveLength(1);
     expect(h.errors).toEqual([]);
   }, 30_000);
-
-  // Rewritten by roadmap step 6 (was: foreground: true blocked and returned the resumed result).
-  it("resumes in the background even when the call asks for foreground, and announces the result", async () => {
-    const h = await startParent();
-    const { id } = await finishedAgent(h);
-
-    h.script({
-      parent: [
-        resumeCall(id, "What was the codeword?", { foreground: true }),
-        fauxAssistantMessage("Asked."),
-      ],
-      child: [fauxAssistantMessage("It was PLOVER.")],
-    });
-    await h.session.prompt("Ask the agent");
-    await untilAnnounced(h, 2);
-
-    expect(shape(resultText(h.requests.parent[1], "subagent_start"), id)).toMatch(
-      /^Agent resumed in background\.\nAgent ID: <id>\n/,
-    );
-    expect(h.announcements()).toHaveLength(2);
-    expect(shape(h.announcements()[1].text, id)).toContain("<result>It was PLOVER.</result>");
-    expect(h.savedRecord(id)).toMatchObject({
-      status: "idle",
-      outcome: "completed",
-      result: "It was PLOVER.",
-    });
-  }, 30_000);
 });
 
-describe("resuming an agent that cannot be resumed", () => {
-  it("refuses an agent that is still running, and points at subagent_steer", async () => {
+describe("sending to an agent that cannot take the message", () => {
+  // Changed by roadmap step 7b (was: refused as still running, pointing at subagent_steer).
+  it("steers an agent that is still running instead of refusing", async () => {
     const h = await startParent();
     const child = gated();
     h.script({
       parent: [delegate("Work"), fauxAssistantMessage("Started.")],
-      child: [child.step],
+      child: [child.step, fauxAssistantMessage("Adjusted.")],
     });
     await h.session.prompt("Delegate");
     await child.started;
     const [id] = h.agentIds();
 
-    h.script({ parent: [resumeCall(id, "Hurry up"), fauxAssistantMessage("Refused.")] });
-    await h.session.prompt("Resume it");
+    h.script({
+      parent: [sendCall(id, "Hurry up"), fauxAssistantMessage("Sent.")],
+    });
+    await h.session.prompt("Message it");
 
-    expect(shape(resultText(h.requests.parent[1], "subagent_start"), id)).toBe(
-      'Agent "<id>" is still running; wait for it to finish before resuming. Use subagent_steer to send it a message while it runs.',
+    expect(resultText(h.requests.parent[1], "subagent_send")).toContain(
+      `Steering message sent to agent ${id}.`,
     );
+    expect(h.seen("subagent:resuming")).toEqual([]);
+    child.release();
+    await untilAnnounced(h);
   }, 30_000);
 
   it("refuses an agent the session never started", async () => {
     const h = await startParent();
-    h.script({ parent: [resumeCall("nope", "Hello?"), fauxAssistantMessage("Refused.")] });
+    h.script({ parent: [sendCall("nope", "Hello?"), fauxAssistantMessage("Refused.")] });
 
-    await h.session.prompt("Resume a stranger");
+    await h.session.prompt("Message a stranger");
 
-    expect(resultText(h.requests.parent[1], "subagent_start")).toBe(
+    expect(resultText(h.requests.parent[1], "subagent_send")).toBe(
       'Agent not found: "nope". It is not live in this session; subagent_get without agent_id lists the agents started on this branch, including any from before a reload or resume.',
     );
   }, 30_000);

@@ -4,7 +4,7 @@ import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import type { AgentConfigLookup } from "#src/config/agent-types";
 import type { ReopenSource } from "#src/lifecycle/cold-resume";
-import type { ResumeRefusal } from "#src/lifecycle/subagent";
+import type { SendRefusal } from "#src/lifecycle/subagent";
 import { displayStatus } from "#src/lifecycle/subagent-state";
 import { SUBAGENT_LIST_KIND } from "#src/handlers/roster-card";
 import type { PersistedSubagentRecord } from "#src/persisted-record";
@@ -29,8 +29,8 @@ import { BoundedLines, bodyRow, ICONS } from "../../../../packages/pi-ui/src/ind
 export interface GetResultToolManager {
   getRecord(id: string): Subagent | undefined;
   listAgents(): Subagent[];
-  /** The check `resume` itself makes, so this report cannot promise what it refuses. */
-  resumeRefusalFor(source: { id: string } & ReopenSource): ResumeRefusal | undefined;
+  /** The check `send` itself makes, so this report cannot promise what it refuses. */
+  sendRefusalFor(source: { id: string } & ReopenSource): SendRefusal | undefined;
 }
 
 /** What a `subagent_get` list result carries for the TUI and the roster card's stop rule. */
@@ -100,7 +100,7 @@ export class GetResultTool {
     const entries = buildRoster(
       branch ?? this.manager.listAgents(),
       getLive,
-      (source) => this.manager.resumeRefusalFor(source) === undefined,
+      (source) => this.manager.sendRefusalFor(source) === undefined,
     );
     return textResult<GetListDetails>(formatRosterList(entries), {
       kind: SUBAGENT_LIST_KIND,
@@ -134,7 +134,7 @@ export class GetResultTool {
       cwd: saved.cwd,
       transcriptPath: saved.outputFile,
       verbose,
-      resumeRefusal: this.manager.resumeRefusalFor(saved),
+      sendRefusal: this.manager.sendRefusalFor(saved),
     });
     return textResult<GetResultDetails>(text, {
       agentId: saved.id,
@@ -177,7 +177,7 @@ export class GetResultTool {
       transcriptPath: record.outputFile,
       runUpdates: record.runUpdates,
       pendingQuestion: record.pendingQuestion,
-      resumeRefusal: record.resumeRefusal,
+      sendRefusal: record.sendRefusal,
       model: modelLabel(record.model),
     };
   }
@@ -213,8 +213,8 @@ export class GetResultTool {
         "Check status and retrieve results from a background agent, or list this branch's agents.",
       description:
         "Check status and read the full result of a background agent without waiting for it. Use the agent ID returned by subagent_start. A running agent reports its status; its completion message arrives when it finishes, so end your turn instead of polling. " +
-        "Agents from before a reload, resume or compaction keep their saved result, question and transcript path, and the report says whether they can still be resumed. " +
-        "Without agent_id, lists the agents started on this branch: waiting on a question first, then running, failed, and completed newest first.",
+        "Agents from before a reload, resume or compaction keep their saved result, question and transcript path, and the report says whether subagent_send can still reach them. " +
+        "Without agent_id, lists the agents started on this branch: waiting on a question first, then running, then idle agents whose last run failed or stopped, then completed ones, newest first.",
       parameters: Type.Object({
         agent_id: Type.Optional(
           Type.String({

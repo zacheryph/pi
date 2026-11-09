@@ -8,6 +8,7 @@ import {
   renderOutcomeBody,
   renderQuestionAffordance,
   renderRunUpdates,
+  renderSendUnavailable,
   renderStatusLabel,
   renderStatusNote,
 } from "#src/observation/outcome-delivery";
@@ -83,12 +84,36 @@ describe("status vocabulary", () => {
   });
 });
 
+describe("renderSendUnavailable", () => {
+  it("says nothing when a message would be accepted", () => {
+    expect(renderSendUnavailable(undefined)).toBe("");
+  });
+
+  it("says nothing for a refusal that lifts in a moment", () => {
+    expect(renderSendUnavailable("rebuilding")).toBe("");
+  });
+
+  it.each([
+    ["no-session", "it never started a session and its original task was not saved"],
+    ["session-released", "its session was released and its saved transcript is gone"],
+    ["directory-unavailable", "the directory it ran in no longer exists"],
+    ["agent-type-unavailable", "its agent type is no longer available"],
+  ] as const)(
+    "gives the reason a %s agent cannot take a message, and what to do instead",
+    (refusal, clause) => {
+      expect(renderSendUnavailable(refusal)).toBe(
+        `Send: not available, because ${clause}. Spawn a new agent with the context it needs.`,
+      );
+    },
+  );
+});
+
 describe("renderQuestionAffordance", () => {
-  describe("when a resume would be accepted", () => {
-    it("names the exact resume call that answers the question", () => {
+  describe("when a message would be accepted", () => {
+    it("names the exact send call that answers the question", () => {
       expect(renderQuestionAffordance("b15f500f-314b-49b", "Which config?", undefined)).toBe(
         "\n\nThis agent is waiting on an answer:\n\n  Which config?\n\n" +
-          'Answer by calling subagent_start with resume: "b15f500f-314b-49b" and your answer as the prompt.',
+          'Answer by calling subagent_send with agent_id: "b15f500f-314b-49b" and your answer as the message.',
       );
     });
 
@@ -99,18 +124,18 @@ describe("renderQuestionAffordance", () => {
     });
   });
 
-  describe("when a resume would be refused", () => {
-    it("reports a released session without naming a resume", () => {
+  describe("when a message would be refused", () => {
+    it("reports a released session without naming a send", () => {
       expect(renderQuestionAffordance("agent-7", "Which config?", "session-released")).toBe(
         "\n\nThis agent ended its run with a question that can no longer be answered \u2014 " +
           "its session was released and its saved transcript is gone:\n\n  Which config?\n\n" +
-          "Spawn a new agent with the context it needs; this one cannot be resumed.",
+          "Spawn a new agent with the context it needs; this one cannot take a message.",
       );
     });
 
     it("names a missing session as the reason", () => {
       expect(renderQuestionAffordance("agent-7", "Which config?", "no-session")).toContain(
-        "it has no active session",
+        "it never started a session and its original task was not saved",
       );
     });
 
@@ -126,32 +151,35 @@ describe("renderQuestionAffordance", () => {
       );
     });
 
-    it("names no resume call for any reason", () => {
-      for (const refusal of ["still-running", "no-session", "session-released"] as const) {
+    it("names no send call for any reason", () => {
+      for (const refusal of ["rebuilding", "no-session", "session-released"] as const) {
         expect(renderQuestionAffordance("agent-7", "Which config?", refusal)).not.toContain(
-          "resume:",
+          "subagent_send",
         );
       }
     });
   });
 
-  describe("when the child has not finished running", () => {
-    it("says the question cannot be answered yet and that the completion message is coming", () => {
-      expect(renderQuestionAffordance("agent-7", "Which config?", "still-running")).toBe(
-        "\n\nThis agent asked a question before it finished running, so it cannot be " +
-          "resumed yet:\n\n  Which config?\n\n" +
-          "End your turn: its completion message arrives when it settles. Then answer it.",
+  // Changed by roadmap step 7b (was: a question on a child that had not finished running said
+  // to end the turn and wait). A running child takes a message, so the only transient
+  // refusal left is a stopped rebuild that still owns the transcript.
+  describe("when a stopped rebuild still owns the transcript", () => {
+    it("says the question cannot be answered yet, and to try again", () => {
+      expect(renderQuestionAffordance("agent-7", "Which config?", "rebuilding")).toBe(
+        "\n\nThis agent asked a question, but it was stopped while its session was being created or rebuilt " +
+          "and cannot take your answer yet:\n\n  Which config?\n\n" +
+          "Try again in a moment.",
       );
     });
 
     it("does not tell the parent to spawn a new agent, which a permanent refusal does", () => {
-      expect(renderQuestionAffordance("agent-7", "Which config?", "still-running")).not.toContain(
+      expect(renderQuestionAffordance("agent-7", "Which config?", "rebuilding")).not.toContain(
         "Spawn a new agent",
       );
     });
 
     it("indents every line of a multi-line question", () => {
-      expect(renderQuestionAffordance("agent-1", "A or B?\nOr C?", "still-running")).toContain(
+      expect(renderQuestionAffordance("agent-1", "A or B?\nOr C?", "rebuilding")).toContain(
         "  A or B?\n  Or C?",
       );
     });
@@ -220,7 +248,7 @@ describe("renderOutcomeBody", () => {
 
 describe("renderOutcomeAddenda", () => {
   function makeAddenda(overrides: Partial<OutcomeAddenda> = {}): OutcomeAddenda {
-    return { id: "agent-1", resumeRefusal: undefined, ...overrides };
+    return { id: "agent-1", sendRefusal: undefined, ...overrides };
   }
 
   it("renders nothing when the run produced no addenda", () => {
@@ -235,17 +263,17 @@ describe("renderOutcomeAddenda", () => {
 
     expect(renderOutcomeAddenda(addenda)).toBe(
       renderRunUpdates(addenda.runUpdates) +
-        renderQuestionAffordance(addenda.id, addenda.pendingQuestion, addenda.resumeRefusal),
+        renderQuestionAffordance(addenda.id, addenda.pendingQuestion, addenda.sendRefusal),
     );
   });
 
-  it("passes the refusal through, so the tail does not name a refused resume", () => {
+  it("passes the refusal through, so the tail does not name a refused send", () => {
     const rendered = renderOutcomeAddenda(
-      makeAddenda({ pendingQuestion: "Which config?", resumeRefusal: "session-released" }),
+      makeAddenda({ pendingQuestion: "Which config?", sendRefusal: "session-released" }),
     );
 
     expect(rendered).toContain("Which config?");
-    expect(rendered).not.toContain("resume:");
+    expect(rendered).not.toContain("subagent_send");
   });
 
   it("leads with what the agent flagged along the way", () => {

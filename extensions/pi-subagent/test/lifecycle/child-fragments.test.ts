@@ -11,7 +11,7 @@ import {
 import { SubagentManager } from "#src/lifecycle/subagent-manager";
 import { buildAgentPrompt } from "#src/session/prompts";
 import type { AgentConfig } from "#src/types";
-import { resumeAndSettle, spawnAndSettle } from "#test/helpers/manager-stubs";
+import { sendAndSettle, spawnAndSettle } from "#test/helpers/manager-stubs";
 import { STUB_SNAPSHOT } from "#test/helpers/stub-ctx";
 import {
   createAgentLookup,
@@ -285,7 +285,7 @@ describe("child fragment spawn snapshots", () => {
     vi.mocked(readFileSync).mockClear();
     const registryRead = vi.spyOn(registry, "resolveAgentConfig");
 
-    const outcome = await resumeAndSettle(manager, id, "More work");
+    const outcome = await sendAndSettle(manager, id, "More work");
 
     expect(outcome.kind).toBe("started");
     expect(manager.getRecord(id)?.status).toBe("idle");

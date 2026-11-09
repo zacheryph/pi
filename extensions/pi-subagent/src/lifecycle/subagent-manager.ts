@@ -1,5 +1,5 @@
 /**
- * subagent-manager.ts - Tracks subagents, background execution, resume support.
+ * subagent-manager.ts - Tracks subagents, background execution, message delivery.
  *
  * Every agent runs in the background and is subject to a configurable
  * concurrency limit (default: 4). Excess agents are scheduled on a
@@ -16,7 +16,8 @@ import type { ConcurrencyLimiter } from "#src/lifecycle/concurrency-limiter";
 import type { CreateSubagentSessionParams } from "#src/lifecycle/create-subagent-session";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import {
-  type ResumeRefusal,
+  type SendOutcome,
+  type SendRefusal,
   Subagent,
   type SubagentExecution,
   type SubagentLifecycleObserver,
@@ -45,36 +46,37 @@ export interface SpawnTypeResolver {
 }
 
 /**
- * Why a resume was refused, across every front door.
+ * Why a message was refused, across every front door.
  *
  * Widens the record's own vocabulary by the one refusal that is not a fact
  * about a record: an id no record answers to.
  */
-export type ResumeRefusalReason = ResumeRefusal | "unknown-agent";
+export type SendRefusalReason = SendRefusal | "unknown-agent";
 
 /**
- * Nothing was started. A refusal for good names the transcript when the agent
+ * Nothing was done. A refusal for good names the transcript when the agent
  * has one, which still holds what it did.
  */
-export interface ResumeRefused {
+export interface SendRefused {
   kind: "refused";
-  reason: ResumeRefusalReason;
+  reason: SendRefusalReason;
   transcriptPath?: string;
 }
 
 /**
- * What starting a resume produced: the record now running it, or the reason
- * nothing was started.
+ * What sending an agent a message produced: how it reached the agent (see
+ * `SendOutcome`) and the record it reached, or the reason nothing was done.
  *
- * The run itself continues on the record; its `promise` settles when the
- * resumed run reaches a terminal state. A resumed run that *failed* is still
- * `started`: the record carries the error. `refused` means the turn loop never
- * ran.
+ * A run the message started continues on the record; its `promise` settles when
+ * the run reaches a terminal state. A run that *fails* is still `started`: the
+ * record carries the error. `refused` means the message went nowhere.
  */
-export type ResumeStart = { kind: "started"; record: Subagent } | ResumeRefused;
+export type SendResult =
+  | (Exclude<SendOutcome, { kind: "refused" }> & { record: Subagent })
+  | SendRefused;
 
 /**
- * Where a resume finds an agent this runtime holds no record of: the session's
+ * Where a message finds an agent this runtime holds no record of: the session's
  * saved records, and the parent a rebuilt agent then belongs to.
  */
 export interface SavedAgents {
@@ -83,9 +85,9 @@ export interface SavedAgents {
   parent(): { snapshot: ParentSnapshot; parentSession: ParentSessionInfo };
 }
 
-/** Per-call knobs for a resume. */
-export interface ResumeCallOptions {
-  /** Cancels the resumed turn loop, through the record's own lever — so it ends like `abort(id)` does. */
+/** Per-call knobs for a send. */
+export interface SendCallOptions {
+  /** Cancels the run the message starts, through the record's own lever — so it ends like `abort(id)` does. */
   signal?: AbortSignal;
 }
 
@@ -231,11 +233,11 @@ export interface AgentSpawnConfig {
 }
 
 /** A refusal, naming the transcript unless it is only a refusal of now. */
-function refused(reason: ResumeRefusal, transcriptPath: string | undefined): ResumeRefused {
+function refused(reason: SendRefusal, transcriptPath: string | undefined): SendRefused {
   return {
     kind: "refused",
     reason,
-    ...(transcriptPath && reason !== "still-running" ? { transcriptPath } : {}),
+    ...(transcriptPath && reason !== "rebuilding" ? { transcriptPath } : {}),
   };
 }
 
@@ -432,21 +434,23 @@ export class SubagentManager {
   }
 
   /**
-   * Resume an existing agent session with a new prompt, without waiting for it.
+   * Give an agent a message, without waiting for what it does with it: steer a
+   * running agent, fold the message into a queued one's waiting run, or start a
+   * run for an idle one (see `Subagent.send`).
    *
    * The refusal policy lives here rather than in a caller, so every front door
-   * declines the same resumes for the same reasons; a door owns only how it
-   * words the answer. Delegates to Subagent.resume(), which owns the observer
-   * subscription lifecycle, and reopens the transcript when the session is gone.
-   * Refuses synchronously; the resumed outcome reaches the parent as a
-   * completion message like any other run's.
+   * declines the same messages for the same reasons; a door owns only how it
+   * words the answer. An agent this runtime has forgotten is rebuilt from the
+   * branch's saved record when its transcript can be reopened. Whatever run the
+   * message starts reports to the parent as a completion message like any other
+   * run.
    */
-  startResume(id: string, prompt: string, options: ResumeCallOptions = {}): ResumeStart {
+  async send(id: string, message: string, options: SendCallOptions = {}): Promise<SendResult> {
     const live = this.agents.get(id);
     const saved = live ? undefined : this.savedAgents?.find(id);
     if (!live && !saved) return { kind: "refused", reason: "unknown-agent" };
     const source = live ?? saved!;
-    const refusal = this.resumeRefusalFor(source);
+    const refusal = this.sendRefusalFor(source);
     if (refusal) return refused(refusal, source.outputFile);
     let agent: Subagent;
     try {
@@ -456,20 +460,21 @@ export class SubagentManager {
       debugLog(`rebuild agent ${id}`, err);
       return refused("agent-type-unavailable", source.outputFile);
     }
-    // Published as agent.promise, which always resolves; it rejects only for a
-    // missing session, which resumeRefusal has already refused as no-session.
-    void agent.resume(prompt, options.signal);
-    return { kind: "started", record: agent };
+    const outcome = await agent.send(message, options.signal);
+    if (outcome.kind === "refused") return refused(outcome.reason, agent.outputFile);
+    return { ...outcome, record: agent };
   }
 
   /**
-   * Why a resume of this agent would be refused, or undefined when one would be
-   * accepted: the one check `startResume` and every report on an agent share.
-   * A live record answers for itself, whatever `source` says.
+   * Why a message to this agent would be refused, or undefined when one would be
+   * accepted: the one check `send` and every report on an agent share. A live
+   * record answers for itself, whatever `source` says. A saved record with no
+   * transcript never got a session, and its original task died with the process
+   * that held it, so there is nothing to start a first run from.
    */
-  resumeRefusalFor(source: { id: string } & ReopenSource): ResumeRefusal | undefined {
+  sendRefusalFor(source: { id: string } & ReopenSource): SendRefusal | undefined {
     const live = this.agents.get(source.id);
-    if (live) return live.resumeRefusal;
+    if (live) return live.sendRefusal;
     return source.outputFile ? this.checkReopen(source) : "no-session";
   }
 
@@ -482,8 +487,8 @@ export class SubagentManager {
 
   /**
    * A record for an agent the runtime has forgotten, whose session is already
-   * released: resuming it reopens the saved transcript. Under the agent's own ID,
-   * so results, steering and notifications work as they did. The profile is the
+   * released: sending it a message reopens the saved transcript. Under the agent's
+   * own ID, so results, messages and notifications work as they did. The profile is the
    * current one for its type; the transcript carries everything else it knew.
    */
   private rebuildFromSaved(saved: PersistedSubagentRecord): Subagent {

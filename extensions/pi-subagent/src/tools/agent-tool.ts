@@ -9,14 +9,8 @@ import { Type } from "typebox";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import { resolveSpawnCwd } from "#src/lifecycle/spawn-cwd";
-import type {
-  AgentSpawnConfig,
-  ResumeCallOptions,
-  ResumeRefused,
-  ResumeRefusalReason,
-  ResumeStart,
-} from "#src/lifecycle/subagent-manager";
-import { renderBackgroundLaunch, spawnBackground } from "#src/tools/background-spawner";
+import type { AgentSpawnConfig } from "#src/lifecycle/subagent-manager";
+import { spawnBackground } from "#src/tools/background-spawner";
 import { buildTypeListText, textResult } from "#src/tools/helpers";
 import { renderAgentResult } from "#src/tools/result-renderer";
 import {
@@ -33,7 +27,6 @@ import { ICONS } from "../../../../packages/pi-ui/src/index.ts";
 /** Narrow manager interface — only the methods the Agent tool calls. */
 export interface AgentToolManager {
   spawn: (snapshot: ParentSnapshot, type: string, prompt: string, opts: AgentSpawnConfig) => string;
-  startResume: (id: string, prompt: string, options: ResumeCallOptions) => ResumeStart;
   getRecord: (id: string) => Subagent | undefined;
 }
 
@@ -74,6 +67,16 @@ export class AgentTool {
     // Reload custom agents so new .pi/agents/*.md files are picked up without restart
     this.registry.reload();
 
+    // `resume` is gone. Ignoring it would spawn a second agent that repeats the
+    // first one's work, so a caller still sending it is told where to go.
+    // A null or empty value is a model's way of leaving an optional out.
+    if (params.resume !== undefined && params.resume !== null && params.resume !== "") {
+      return textResult(
+        "subagent_start no longer resumes agents, so nothing was started. " +
+          `Call subagent_send with agent_id: ${JSON.stringify(params.resume)} and your message instead.`,
+      );
+    }
+
     // ---- Config resolution (pure) ----
     const resolved = resolveSpawnConfig(
       params,
@@ -87,11 +90,6 @@ export class AgentTool {
     const snapshot = this.runtime.buildSnapshot(resolved.execution.inheritContext);
 
     // ---- Caller-chosen cwd (local change), relative to the parent's cwd ----
-    if (params.resume && params.cwd != null) {
-      return textResult(
-        "cwd applies only to a new agent; a resumed agent keeps the directory it started in.",
-      );
-    }
     const cwd = resolveSpawnCwd(params.cwd, snapshot.cwd);
     if ("error" in cwd) return textResult(cwd.error);
     const config: ResolvedSpawnConfig = cwd.cwd
@@ -100,40 +98,12 @@ export class AgentTool {
     const { parentSessionFile, parentSessionId } = this.runtime.getSessionInfo();
     const parentSession: ParentSessionInfo = { parentSessionFile, parentSessionId, toolCallId };
 
-    // ---- Resume existing agent ----
-    if (params.resume) {
-      return this.resumeInBackground(params.resume as string, params.prompt as string, config);
-    }
-
     // ---- Spawn: the call returns the agent ID at once ----
     return spawnBackground(this.manager, {
       config,
       snapshot,
       parentSession,
       settings: this.settings,
-    });
-  }
-
-  /**
-   * Start an existing agent's resume and return at once; the completion message
-   * delivers its outcome. No tool-call signal is wired, as for a spawn.
-   */
-  private resumeInBackground(id: string, prompt: string, config: ResolvedSpawnConfig) {
-    const start = this.manager.startResume(id, prompt, {});
-    if (start.kind === "refused") {
-      return textResult(resumeRefusalMessage(start, id));
-    }
-    // A resume goes through the limiter like a first run: with every slot taken
-    // it waits, and the call says so as a spawn's does.
-    const isQueued = start.record.status === "queued";
-    return renderBackgroundLaunch({
-      headline: `Agent ${isQueued ? "resume queued" : "resumed"} in background.`,
-      id: start.record.id,
-      displayName: config.identity.displayName,
-      description: config.execution.description,
-      detailBase: config.presentation.detailBase,
-      outputFile: start.record.outputFile,
-      queuePosition: isQueued ? { maxConcurrent: this.settings.maxConcurrent } : undefined,
     });
   }
 
@@ -146,12 +116,11 @@ export class AgentTool {
       "- The completion message is the only carrier of an outcome: it holds the result up to 500 characters. Ask agents to store a large result with stash_put and name the stash handle in their final answer, then read the handle with stash_get. subagent_get reads a finished agent's full result without waiting.",
       "- Provide clear, detailed prompts so the agent can work autonomously.",
       "- Subagent results are returned as text — summarize them for the user.",
-      "- Use resume with an agent ID to continue a previous agent's work, or to answer an agent that ended its turn with a question. A resume is a background run too: its outcome arrives as another completion message. This also works after a reload or once its session was released, as long as its transcript and directory still exist: its saved transcript is reopened.",
-      "- Use subagent_steer to send mid-run messages to a running background agent.",
+      "- Use subagent_send with an agent ID to reach an agent in any state: it steers a running agent, and gives an idle one (finished, failed or stopped) more work or the answer to its question. The new run is a background run too: its outcome arrives as another completion message. This also works after a reload or once its session was released, as long as its transcript and directory still exist: its saved transcript is reopened.",
       '- Use model to specify a different model (as "provider/modelId", or fuzzy e.g. "haiku", "sonnet").',
       "- Use thinking to control extended thinking level.",
       "- Use inherit_context if the agent needs the parent conversation history.",
-      "- Use cwd to run the agent in another existing directory, such as a git worktree you created for it. You own that directory: it is not removed when the agent finishes, and the agent can be resumed there.",
+      "- Use cwd to run the agent in another existing directory, such as a git worktree you created for it. You own that directory: it is not removed when the agent finishes, and the agent keeps working there when you send it more.",
     ].join("\n");
 
     return defineTool({
@@ -196,12 +165,6 @@ ${guidelines}
             minimum: 1,
           }),
         ),
-        resume: Type.Optional(
-          Type.String({
-            description:
-              "Optional agent ID to resume from. Continues from previous context in the background, reopening the saved transcript if the live session is gone; you are notified when it finishes.",
-          }),
-        ),
         inherit_context: Type.Optional(
           Type.Boolean({
             description:
@@ -211,7 +174,7 @@ ${guidelines}
         cwd: Type.Optional(
           Type.String({
             description:
-              "Existing directory the agent runs in, absolute or relative to your working directory, such as a git worktree. Omit to run in your working directory. Not allowed with resume.",
+              "Existing directory the agent runs in, absolute or relative to your working directory, such as a git worktree. Omit to run in your working directory.",
           }),
         ),
         handoff: Type.Optional(
@@ -264,44 +227,5 @@ ${guidelines}
         ctx: ExtensionContext,
       ) => this.execute(toolCallId, params, signal, onUpdate, ctx),
     });
-  }
-}
-
-/**
- * The operator-facing sentence for each reason a resume is refused.
- *
- * Exhaustive over `ResumeRefusalReason`, so a reason added later fails to
- * compile here rather than falling through to an attempted resume.
- */
-function resumeRefusalMessage(refusal: ResumeRefused, id: string): string {
-  const message = resumeRefusalSentence(refusal.reason, id);
-  return refusal.transcriptPath
-    ? `${message}\n\nIts transcript is at: ${refusal.transcriptPath}`
-    : message;
-}
-
-function resumeRefusalSentence(refusal: ResumeRefusalReason, id: string): string {
-  switch (refusal) {
-    case "unknown-agent":
-      return `Agent not found: "${id}". It is not live in this session; subagent_get without agent_id lists the agents started on this branch, including any from before a reload or resume.`;
-    case "still-running":
-      return (
-        `Agent "${id}" is still running; wait for it to finish before resuming. ` +
-        "Use subagent_steer to send it a message while it runs."
-      );
-    case "session-released":
-      return `Agent "${id}" had its session released and its saved transcript is gone; resume is unavailable, but its result is still retrievable via subagent_get.`;
-    case "no-session":
-      return `Agent "${id}" has no active session to resume.`;
-    case "directory-unavailable":
-      return (
-        `Agent "${id}" cannot be resumed: the directory it ran in no longer exists. ` +
-        "Spawn a new agent with the context it needs."
-      );
-    case "agent-type-unavailable":
-      return (
-        `Agent "${id}" cannot be resumed: its agent type is no longer available. ` +
-        "Spawn a new agent with the context it needs."
-      );
   }
 }

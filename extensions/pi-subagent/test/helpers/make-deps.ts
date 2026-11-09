@@ -1,15 +1,13 @@
 import { vi } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
-import type { Subagent } from "#src/lifecycle/subagent";
-import type { ResumeRefusalReason } from "#src/lifecycle/subagent-manager";
 import {
   type AgentToolManager,
   type AgentToolRuntime,
   type AgentToolSettings,
 } from "#src/tools/agent-tool";
 import { makeModel } from "./make-model";
-import { createTestSubagent, type TestSubagentOptions } from "./make-subagent";
+import { createTestSubagent } from "./make-subagent";
 import { STUB_SNAPSHOT } from "./stub-ctx";
 
 /** Minimal registry with no user agents — sufficient for tool tests that don't exercise agent-type lookup. */
@@ -53,7 +51,6 @@ export function createToolDeps(overrides: Partial<AgentToolFixture> = {}): Agent
   return {
     manager: {
       spawn: vi.fn().mockReturnValue("agent-1"),
-      startResume: vi.fn().mockReturnValue({ kind: "started", record: createTestSubagent() }),
       getRecord: vi.fn().mockReturnValue(createTestSubagent()),
     },
     runtime,
@@ -61,24 +58,6 @@ export function createToolDeps(overrides: Partial<AgentToolFixture> = {}): Agent
     registry: defaultRegistry,
     ...overrides,
   };
-}
-
-/**
- * Point the fixture's `manager.startResume` at a record built from `overrides`,
- * and return that record so the test can assert on it.
- */
-export function mockResumeStart(
-  deps: AgentToolFixture,
-  overrides: TestSubagentOptions = {},
-): Subagent {
-  const record = createTestSubagent(overrides);
-  deps.manager.startResume = vi.fn().mockReturnValue({ kind: "started", record });
-  return record;
-}
-
-/** Point the fixture's `manager.startResume` at a refusal. */
-export function mockResumeStartRefusal(deps: AgentToolFixture, reason: ResumeRefusalReason): void {
-  deps.manager.startResume = vi.fn().mockReturnValue({ kind: "refused", reason });
 }
 
 /**

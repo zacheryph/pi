@@ -20,7 +20,7 @@ import {
   type LiveAgentLike,
   readBranchRecords,
   type RestoreReason,
-  type ResumableCheck,
+  type ReachableCheck,
 } from "#src/roster";
 
 type AgentMessage = ContextEvent["messages"][number];
@@ -57,7 +57,7 @@ export class RosterCard {
   constructor(
     private readonly getLive: (id: string) => LiveAgentLike | undefined,
     private readonly now: () => number = Date.now,
-    private readonly isResumable?: ResumableCheck,
+    private readonly isReachable?: ReachableCheck,
   ) {}
 
   /** The session started: a reload, resume or fork may have lost the roster. */
@@ -108,7 +108,7 @@ export class RosterCard {
     const records = readBranchRecords(ctx);
     const card =
       records &&
-      formatRosterCard(buildRoster(records, this.getLive, this.isResumable), this.reason);
+      formatRosterCard(buildRoster(records, this.getLive, this.isReachable), this.reason);
     if (!card) return unchanged();
     return {
       messages: [

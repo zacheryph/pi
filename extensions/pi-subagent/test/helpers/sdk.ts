@@ -41,7 +41,7 @@ export const EXTENSIONS = {
 
 /** The built-in tools a parent session has. */
 export const BUILTIN_TOOLS = ["read", "bash", "edit", "write", "grep", "find", "ls"];
-export const SUBAGENT_TOOLS = ["subagent_start", "subagent_get", "subagent_steer"];
+export const SUBAGENT_TOOLS = ["subagent_start", "subagent_get", "subagent_send"];
 export const TODO_TOOLS = ["todo_list", "todo_upsert", "todo_replace", "todo_remove", "todo_clear"];
 
 export interface AgentDirOptions {

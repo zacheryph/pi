@@ -15,7 +15,7 @@
  * scroll position and key hints. Both take the thinking level's border colour,
  * read from the source on every render, so a live child's change repaints them.
  *
- * The pane is strictly read-only — steering stays in the `subagent_steer` tool
+ * The pane is strictly read-only — messaging stays in the `subagent_send` tool
  * and the widget. It consumes a `TranscriptSource`, so a released agent's disk
  * snapshot (`fileSnapshotSource`) swaps in without touching the renderer or the pane.
  *

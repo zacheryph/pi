@@ -64,6 +64,27 @@ describe("SubagentTracker", () => {
     expect(tracker.section()?.agents[0]?.state).toBe("completed");
   });
 
+  it("shows a finished agent given a message as queued until its run starts", () => {
+    const tracker = new SubagentTracker(() => 1);
+    tracker.apply("subagent:started", { id: "d", type: "Agent", description: "x" });
+    tracker.apply("subagent:failed", { id: "d", status: "error", error: "model overloaded" });
+    expect(tracker.section()?.agents[0]).toMatchObject({
+      state: "failed",
+      note: "model overloaded",
+    });
+
+    expect(tracker.apply("subagent:queued", { id: "d", type: "Agent", description: "x" })).toBe(
+      true,
+    );
+    expect(tracker.section()?.agents[0]).toMatchObject({ id: "d", state: "queued" });
+    expect(tracker.section()?.agents[0]?.note).toBeUndefined();
+
+    tracker.apply("subagent:resuming", { id: "d" });
+    expect(tracker.section()?.agents[0]?.state).toBe("running");
+    tracker.apply("subagent:resumed", { id: "d", status: "completed" });
+    expect(tracker.section()?.agents[0]?.state).toBe("completed");
+  });
+
   it("ignores malformed and unrelated events, and does not re-queue a known agent", () => {
     const tracker = new SubagentTracker(() => 1);
     expect(tracker.apply("subagent:started", { type: "Agent" })).toBe(false);

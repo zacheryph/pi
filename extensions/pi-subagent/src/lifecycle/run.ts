@@ -12,8 +12,19 @@ import { RunListeners } from "#src/lifecycle/run-listeners";
 import type { SubagentSession } from "#src/lifecycle/subagent-session";
 import type { RunConfig } from "#src/runtime";
 
-/** The first run creates the session; a resume continues one. */
-export type RunKind = "initial" | "resume";
+/**
+ * What a run does with the agent's session, and how observers hear about it.
+ *
+ * - `initial`: the spawn's first run. Creates the session; announced as a start.
+ * - `resume`: continues the session, live or reopened from its transcript;
+ *   announced as a resume.
+ * - `relaunch`: the first run of an agent that never got a session (it was
+ *   stopped while queued, or its session could not be created) and has now been
+ *   sent a message. Creates the session like `initial`, from the agent's
+ *   original spawn configuration, but is announced as a resume: the agent
+ *   already had a record, and a consumer counting starts must not see it twice.
+ */
+export type RunKind = "initial" | "resume" | "relaunch";
 
 /**
  * How a run is admitted. Receives the run's body and returns the promise for the
@@ -42,7 +53,7 @@ export interface RunInit {
 
 export class Run {
   readonly kind: RunKind;
-  readonly prompt: string;
+  private text: string;
   readonly signal?: AbortSignal;
   readonly liveSession?: SubagentSession;
   /** Resolved ceiling a cold resume reopens its session with; undefined, the spawn's own. */
@@ -52,19 +63,45 @@ export class Run {
   readonly abort = new AbortController();
   /** The run's observer and signal handles, released together when it ends. */
   readonly listeners = new RunListeners();
+  /**
+   * The prompt the turn loop starts from: what the run was created with, then
+   * any message sent while the run was still waiting for its slot.
+   */
+  get prompt(): string {
+    return this.text;
+  }
+
+  /**
+   * Fold a message into a run that has not begun, after what it will start
+   * from. It reaches the agent as part of the run's first prompt, so it needs no
+   * session, and a run that is stopped before its slot opens takes it along.
+   */
+  addMessage(message: string): void {
+    this.text = joinPrompt(this.text, message);
+  }
+
   /** Settles when the run reaches a terminal state. Always resolves. */
   promise?: Promise<void>;
-  /** A cold resume is rebuilding the session; a stopped rebuild still owns the transcript. */
-  reopening: boolean;
+  /**
+   * The run is creating or reopening the agent's session and has not got it yet.
+   * A run stopped in this window winds down on its own: the session it was
+   * building is disposed when it arrives, and until then no second one may be
+   * started for the agent (a stopped rebuild still owns the transcript).
+   */
+  opening = false;
   /** What the initial run's session factory was configured with; read for its turn loop. */
   runConfig?: RunConfig;
 
   constructor(init: RunInit) {
     this.kind = init.kind;
-    this.prompt = init.prompt;
+    this.text = init.prompt;
     this.signal = init.signal;
     this.liveSession = init.liveSession;
     this.turnCeiling = init.turnCeiling;
-    this.reopening = init.kind === "resume" && init.liveSession === undefined;
   }
+}
+
+/** A prompt followed by a message sent after it, as separate paragraphs. */
+export function joinPrompt(prompt: string, message: string): string {
+  return `${prompt}\n\n${message}`;
 }

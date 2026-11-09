@@ -97,7 +97,7 @@ describe("releasing a finished agent's session", () => {
     expect(report).toContain("Did the work.");
     expect(report).toContain("Full transcript available at: <transcript>");
     expect(resultText(h.requests.parent[2], "subagent_get")).toMatch(
-      /completed \d\d:\d\d, resumable/,
+      /idle, last run completed \d\d:\d\d$/m,
     );
     expect(h.savedRecord(id)).toMatchObject({
       status: "idle",

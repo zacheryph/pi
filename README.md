@@ -260,18 +260,19 @@ completes an implementation task only after a reviewer that did not do the work
 passes it.
 
 Personal copy of [`gotgenes/pi-packages/packages/pi-subagent`](https://github.com/gotgenes/pi-packages/tree/main/packages/pi-subagent).
-Provides `subagent_start`, `subagent_get`, and `subagent_steer`, plus
+Provides `subagent_start`, `subagent_get`, and `subagent_send`, plus
 `/subagent:settings`, `/subagent:sessions`, `/subagent:watch`, and
 `/subagent:agents` (read-only browser for agent definitions).
 `subagent_start` takes a `cwd`, so an orchestrator can run a worker in a
 directory it prepared, such as a git worktree; that directory is never removed
-for it and the worker stays resumable there.
+for it and the worker keeps taking messages there.
 The session records every agent's lifecycle, so `subagent_get` still answers for
 an agent's ID after a reload or resume (status, result, question, transcript
 path), lists the branch's agents when called without one, and a context-only
 roster card restores them to the model after compaction, reload, resume or `/tree`.
-A resume reopens the agent's saved transcript once its live session is gone, as
-long as that transcript and the agent's directory still exist.
+`subagent_send` reaches an agent in any state: it steers a running one, and gives
+an idle one more work, reopening its saved transcript once its live session is
+gone, as long as that transcript and the agent's directory still exist.
 
 Background agents use a compact widget above Pi's editor:
 

@@ -66,15 +66,9 @@ export function delegate(prompt: string, extra: Record<string, unknown> = {}) {
   });
 }
 
-/** A `subagent_start` call that resumes agent `id` with `prompt`. */
-export function resumeCall(id: string, prompt: string, extra: Record<string, unknown> = {}) {
-  return toolCall("subagent_start", {
-    subagent_type: "general-purpose",
-    description: prompt,
-    prompt: `${CHILD_MARK} ${prompt}`,
-    resume: id,
-    ...extra,
-  });
+/** A `subagent_send` call that gives agent `id` the message `message`. */
+export function sendCall(id: string, message: string) {
+  return toolCall("subagent_send", { agent_id: id, message: `${CHILD_MARK} ${message}` });
 }
 
 export interface ParentOptions {
@@ -92,6 +86,7 @@ const WATCHED = [
   "subagent:started",
   "subagent:completed",
   "subagent:failed",
+  "subagent:queued",
   "subagent:resuming",
   "subagent:resumed",
   "subagent:steered",
@@ -100,7 +95,7 @@ const WATCHED = [
 ];
 
 /**
- * A parent session with `subagent_start`, `subagent_get` and `subagent_steer`.
+ * A parent session with `subagent_start`, `subagent_get` and `subagent_send`.
  * Calls to the retention sweep are caught, so a test can run it on demand.
  */
 export async function startParent(options: ParentOptions = {}) {
@@ -126,7 +121,7 @@ export async function startParent(options: ParentOptions = {}) {
     models: [{ id: "worker" }],
     sessionManager: manager,
     // Children take their tools from the parent's, so it offers the built-ins too.
-    tools: [...BUILTIN_TOOLS, "subagent_start", "subagent_get", "subagent_steer"],
+    tools: [...BUILTIN_TOOLS, "subagent_start", "subagent_get", "subagent_send"],
     extensions: [
       subagentExtension,
       (pi) => {

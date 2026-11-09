@@ -1,7 +1,7 @@
 /**
  * pi-subagent — focused, in-process autonomous sub-agents.
  *
- * Tools: subagent_start, subagent_get, subagent_steer.
+ * Tools: subagent_start, subagent_get, subagent_send.
  * Commands: /subagent:watch, /subagent:settings, /subagent:agents, /subagent:sessions.
  */
 
@@ -53,7 +53,7 @@ import { deriveSubagentSessionDir } from "#src/session/session-dir";
 import { SettingsManager } from "#src/settings";
 import { AgentTool } from "#src/tools/agent-tool";
 import { GetResultTool } from "#src/tools/get-result-tool";
-import { SteerTool } from "#src/tools/steer-tool";
+import { SendTool } from "#src/tools/send-tool";
 import { AgentWidget } from "#src/ui/agent-widget";
 import { showAgentsBrowser } from "#src/ui/agents-browser";
 import { SessionNavigatorHandler } from "#src/ui/session-navigator";
@@ -230,7 +230,7 @@ export default function (pi: ExtensionAPI) {
   const rosterCard = new RosterCard(
     (id) => manager.getRecord(id),
     Date.now,
-    (source) => manager.resumeRefusalFor(source) === undefined,
+    (source) => manager.sendRefusalFor(source) === undefined,
   );
   pi.on("session_start", (event, ctx) => rosterCard.handleSessionStart(event, ctx));
   pi.on("session_tree", (_event, ctx) => {
@@ -274,9 +274,9 @@ export default function (pi: ExtensionAPI) {
 
   pi.registerTool(new GetResultTool(manager, registry).toToolDefinition());
 
-  // ---- subagent_steer tool ----
+  // ---- subagent_send tool ----
 
-  pi.registerTool(new SteerTool(manager, pi.events).toToolDefinition());
+  pi.registerTool(new SendTool(manager, pi.events, registry, settings).toToolDefinition());
 
   // Main-only profile hooks register after the orchestration tools exist. Child
   // sessions load fresh extension runtimes without this session's flag/snapshot.

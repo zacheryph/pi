@@ -97,12 +97,18 @@ export class SubagentEventsObserver implements SubagentManagerObserver {
   }
 
   /**
-   * A resume is waiting for a concurrency slot. Persisted, so the branch's
-   * latest record says the agent is queued again; no event goes out until the
-   * run starts (`subagent:resuming`), which is when a consumer first has
-   * something running to show.
+   * A run a message asked for is waiting for a concurrency slot, so a settled
+   * agent went back to queued. Announced on `subagent:queued`, so a consumer
+   * showing the agent as done learns it has work waiting; `subagent:resuming`
+   * follows when the run starts. Persisted, so the branch's latest record says
+   * the agent is queued again.
    */
   onSubagentResumeQueued(record: Subagent): void {
+    this.emit("subagent:queued", {
+      id: record.id,
+      type: record.type,
+      description: record.description,
+    });
     this.persist(record);
   }
 

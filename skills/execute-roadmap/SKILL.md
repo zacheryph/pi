@@ -97,8 +97,8 @@ A worker finishing is not proof. For every implementation step:
    reviewed there: pass the same `cwd`.
 3. On `Verdict: PASS`: commit (see below), then mark the task `completed` with a
    `message` that names the commit and the reviewer's evidence.
-4. On `Verdict: FAIL`: resume the original worker (`subagent_start` with `resume` set
-   to its agent ID) with the reviewer's findings, then review again. Allow two
+4. On `Verdict: FAIL`: send the original worker the reviewer's findings with
+   `subagent_send` (its agent ID and the findings as the message), then review again. Allow two
    repair rounds. On `Verdict: BLOCKED`, fix what kept the reviewer from checking
    (a missing service, a check that cannot run) or ask the user. After that,
    the step is blocked: mark it `pending`, record the failure in its `message`,
@@ -116,8 +116,9 @@ tests) run in every verification, whether or not the step lists them.
 - A step that ran in a worktree is committed there, on its branch, then landed
   on the roadmap branch in roadmap order with `git cherry-pick`. Hold a later
   step's commit in its worktree until every earlier step has landed. If the
-  pick conflicts, rebase the step's branch onto the roadmap branch, resume its
-  worker in the same `cwd` to resolve, and verify again before landing. Once it
+  pick conflicts, rebase the step's branch onto the roadmap branch, send its
+  worker the conflict with `subagent_send` (it keeps its `cwd`) to resolve, and
+  verify again before landing. Once it
   has landed, remove the worktree with `git_worktree_remove` (its branch is
   kept; delete it with `git branch -d`).
 - Do not push or open pull requests unless the user asked for it. If they did,

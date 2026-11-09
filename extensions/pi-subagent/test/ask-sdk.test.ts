@@ -57,5 +57,5 @@ it("routes a child's ask to its parent through pi-ask", async () => {
   expect(completion).toContain("<task-notification>");
   expect(completion).toContain("[Storage] Which database?");
   expect(completion).toContain("a) Postgres");
-  expect(completion).toContain("resume");
+  expect(completion).toContain("subagent_send");
 }, 20_000);

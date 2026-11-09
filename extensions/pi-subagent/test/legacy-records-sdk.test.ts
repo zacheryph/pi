@@ -5,7 +5,7 @@ import { SUBAGENT_RECORD_ENTRY } from "#src/persisted-record";
 import { toolCall } from "../../../packages/pi-test-helpers/src/faux-session.ts";
 import {
   delegate,
-  resumeCall,
+  sendCall,
   shape,
   startParent,
   untilAnnounced,
@@ -54,19 +54,19 @@ async function reloadedOverV1Record(status: string, overrides: Record<string, un
 
 describe("a session saved with version 1 records", () => {
   it.each([
-    ["completed", {}, "completed \\d\\d:\\d\\d, resumable"],
-    ["aborted", {}, "failed: turn budget exhausted"],
-    ["error", { error: "boom" }, "failed: boom"],
-    ["stopped", {}, "stopped before it finished"],
+    ["completed", {}, "idle, last run completed \\d\\d:\\d\\d"],
+    ["aborted", {}, "idle, last run failed: turn budget exhausted"],
+    ["error", { error: "boom" }, "idle, last run failed: boom"],
+    ["stopped", {}, "idle, last run stopped before it finished"],
     [
       "queued",
       { result: undefined, completedAt: undefined },
-      "interrupted: the session was reloaded or replaced before it finished, resumable",
+      "idle, last run interrupted: the session was reloaded or replaced before it finished",
     ],
     [
       "running",
       { result: undefined, completedAt: undefined },
-      "interrupted: the session was reloaded or replaced before it finished, resumable",
+      "idle, last run interrupted: the session was reloaded or replaced before it finished",
     ],
   ])(
     "lists a %s agent as it always did",
@@ -91,7 +91,7 @@ describe("a session saved with version 1 records", () => {
     h.script({
       parent: [
         toolCall("subagent_get", { agent_id: id }),
-        resumeCall(id, "Pick it back up"),
+        sendCall(id, "Pick it back up"),
         fauxAssistantMessage("Resumed."),
       ],
       child: [fauxAssistantMessage("Picked it back up.")],
@@ -115,7 +115,7 @@ describe("a session saved with version 1 records", () => {
   it("resumes an agent a version 1 record said was stopped", async () => {
     const { h, id } = await reloadedOverV1Record("stopped");
     h.script({
-      parent: [resumeCall(id, "Carry on"), fauxAssistantMessage("Resumed.")],
+      parent: [sendCall(id, "Carry on"), fauxAssistantMessage("Resumed.")],
       child: [fauxAssistantMessage("Carried on.")],
     });
 

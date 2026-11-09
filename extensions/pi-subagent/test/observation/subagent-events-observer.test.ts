@@ -238,7 +238,10 @@ describe("SubagentEventsObserver", () => {
   });
 
   describe("onSubagentResumeQueued", () => {
-    it("records the agent queued again, announces nothing and emits nothing", () => {
+    // Changed by roadmap step 7b (was: emitted nothing). A finished agent that has been given
+    // a message and waits for a slot is announced on subagent:queued, so a consumer showing it
+    // as done learns it has work waiting.
+    it("records the agent queued again and announces it on subagent:queued, with no completion", () => {
       const { observer, emit, appendEntry, notifications } = makeObserver();
 
       observer.onSubagentResumeQueued(
@@ -249,7 +252,11 @@ describe("SubagentEventsObserver", () => {
         "subagent:record",
         expect.objectContaining({ id: "agent-1", status: "queued", outcome: undefined }),
       );
-      expect(emit).not.toHaveBeenCalled();
+      expect(emit).toHaveBeenCalledExactlyOnceWith("subagent:queued", {
+        id: "agent-1",
+        type: "general-purpose",
+        description: "Test task",
+      });
       expect(notifications.sendCompletion).not.toHaveBeenCalled();
     });
   });

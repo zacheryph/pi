@@ -22,7 +22,7 @@ function makeReport(overrides: Partial<AgentReport> = {}): AgentReport {
     stoppedWhileQueued: false,
     conversation: undefined,
     transcriptPath: undefined,
-    resumeRefusal: undefined,
+    sendRefusal: undefined,
     model: undefined,
     ...overrides,
   };
@@ -95,31 +95,31 @@ describe("renderReportBody", () => {
 });
 
 describe("formatAgentReport", () => {
-  it("surfaces a declared question as answerable, naming the resume call", () => {
+  it("surfaces a declared question as answerable, naming the send call", () => {
     const text = formatAgentReport(makeReport({ id: "agent-7", pendingQuestion: "Which config?" }));
 
     expect(text).toContain("This agent is waiting on an answer:");
     expect(text).toContain("Which config?");
-    expect(text).toContain('resume: "agent-7"');
+    expect(text).toContain('subagent_send with agent_id: "agent-7"');
   });
 
   it("adds no affordance when the agent asked nothing", () => {
     expect(formatAgentReport(makeReport())).not.toContain("waiting on an answer");
   });
 
-  it("reports a question the released session can no longer answer, without a resume call", () => {
+  it("reports a question the released session can no longer answer, without a send call", () => {
     const text = formatAgentReport(
       makeReport({
         id: "agent-7",
         pendingQuestion: "Which config?",
-        resumeRefusal: "session-released",
+        sendRefusal: "session-released",
       }),
     );
 
     expect(text).toContain("can no longer be answered");
     expect(text).toContain("its session was released and its saved transcript is gone");
     expect(text).toContain("Which config?");
-    expect(text).not.toContain("resume:");
+    expect(text).not.toContain("subagent_send");
   });
 
   it("reports the updates the agent sent while the parent waited", () => {

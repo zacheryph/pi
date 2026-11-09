@@ -13,7 +13,7 @@ import type { SubagentHandoff } from "#src/lifecycle/child-lifecycle";
 import type { ReopenRefusal, ReopenSource } from "#src/lifecycle/cold-resume";
 import type { CreateSubagentSessionParams } from "#src/lifecycle/create-subagent-session";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
-import { type Admission, Run, type RunInit } from "#src/lifecycle/run";
+import { type Admission, joinPrompt, Run, type RunInit } from "#src/lifecycle/run";
 import type { SubagentSession, TurnLoopResult } from "#src/lifecycle/subagent-session";
 import {
   type DisplayStatus,
@@ -63,22 +63,39 @@ export interface SubagentLifecycleObserver {
 export type { DisplayStatus, RunOutcome, SubagentStatus } from "#src/lifecycle/subagent-state";
 
 /**
- * Why a resume of an agent would be refused.
+ * Why an idle agent cannot take a message. A running or queued agent always
+ * takes one.
  *
- * `still-running` is the one transient member: it is a refusal of *now* rather
- * than of ever, and the messages word it accordingly.
+ * `rebuilding` is the one transient member, a refusal of *now* rather than of
+ * ever: the agent was stopped while its transcript was being reopened, and that
+ * stopped rebuild still owns the transcript until it winds down. A second
+ * session on it would write the same file.
+ *
+ * `no-session` is an agent that never got a session and whose original task is
+ * not at hand to start one with: only a saved record of it survives.
  */
-export type ResumeRefusal = "still-running" | "no-session" | ReopenRefusal;
+export type SendRefusal = "rebuilding" | "no-session" | ReopenRefusal;
 
 /**
- * The result of a steer attempt. `Subagent.steer` owns the non-running
- * rejection rule and reports it here, so coordinators switch on the outcome
- * instead of pre-checking status (tell by id, with outcomes).
+ * What `Subagent.send` did with a message, by the state it found the agent in.
+ * `Subagent.send` owns the state rule and reports it here, so coordinators
+ * switch on the outcome instead of pre-checking status (tell by id, with
+ * outcomes).
+ *
+ * - `steered`: the agent was running. The message went to its session
+ *   (`delivered`), or is held until the session exists (`buffered`).
+ * - `joined`: the agent was queued for a slot. The message was added to the
+ *   prompt of the run that is waiting, which sees it when it starts.
+ * - `started`: the agent was idle and a run was requested with the message as
+ *   its prompt. It begins now, or waits for a slot (the record reads `queued`).
+ *   `relaunched` marks the first run of an agent that never had a session.
+ * - `refused`: the agent is idle and cannot take the message.
  */
-export type SteerOutcome =
-  | { kind: "delivered" }
-  | { kind: "buffered" }
-  | { kind: "rejected"; status: DisplayStatus };
+export type SendOutcome =
+  | { kind: "steered"; delivery: "delivered" | "buffered" }
+  | { kind: "joined" }
+  | { kind: "started"; relaunched: boolean }
+  | { kind: "refused"; reason: SendRefusal };
 
 /**
  * The execution machinery a Subagent needs to run. A single mandatory
@@ -307,48 +324,58 @@ export class Subagent {
   }
 
   /**
-   * Why a resume of this agent would be refused, or undefined when one would be
+   * Why a message to this agent would be refused, or undefined when it would be
    * accepted.
    *
-   * A live run outranks everything: nothing about a settled record is decided
-   * yet. A live session is resumable. A released one is resumable if its
-   * transcript can be reopened.
+   * A running agent is steered and a queued one takes the message into its
+   * waiting run, so only an idle agent can refuse. A live session takes the next
+   * run. A released one does if its transcript can be reopened. One that never
+   * had a session does if its original task is at hand: a relaunch starts its
+   * first run from it.
    *
    * A getter rather than a predicate method because the reports read it
    * as a field: `OutcomeAddenda` and `AgentReport` both declare it, and a live
    * record satisfies them structurally only if it is a property.
    */
-  get resumeRefusal(): ResumeRefusal | undefined {
-    // Before the session check: a run transitions to running before it creates
-    // its session, and "still running" describes that record better than "no
-    // session" does. A queued agent is not running and keeps the no-session
-    // answer, which is the truth about it.
-    if (this.isRunning() || this.current.reopening) return "still-running";
-    // A resume waiting for its slot is a run already: a second one must not
-    // join it. A queued first run is told apart by having no session, below.
-    if (this.status === "queued" && this.current.kind === "resume") return "still-running";
+  get sendRefusal(): SendRefusal | undefined {
+    if (this.isActive()) return undefined;
+    if (this.current.opening) return "rebuilding";
     if (this.isSessionReady()) return undefined;
-    if (!this.released) return "no-session";
+    if (!this.released) return this.execution.prompt ? undefined : "no-session";
     const { checkReopen } = this.execution;
     return checkReopen ? checkReopen(this) : "session-released";
   }
 
   /**
-   * Steer a running agent, owning the non-running rejection rule.
-   * Returns a `rejected` outcome (with the observed status) when the agent is
-   * not running, a `buffered` outcome when the session is not yet ready, or a
-   * `delivered` outcome once the message reaches the session.
+   * Give the agent a message, whatever state it is in (see `SendOutcome`).
+   *
+   * Like typing into a main session: a running agent is steered, and an idle one
+   * starts a run with the message as its prompt, reopening its transcript if its
+   * session was released, however long ago it finished. An idle agent that never
+   * had a session gets its first run, from its original task followed by the
+   * message.
+   *
+   * Idle agents go through the limiter like any run. `signal` is a caller's
+   * lever on a run this call starts.
    */
-  async steer(message: string): Promise<SteerOutcome> {
-    if (!this.canBeSteered()) {
-      return { kind: "rejected", status: this.displayStatus };
+  async send(message: string, signal?: AbortSignal): Promise<SendOutcome> {
+    if (this.isRunning()) {
+      if (!this.subagentSession) {
+        this._pendingSteers.push(message);
+        return { kind: "steered", delivery: "buffered" };
+      }
+      await this.subagentSession.steer(message);
+      return { kind: "steered", delivery: "delivered" };
     }
-    if (!this.subagentSession) {
-      this._pendingSteers.push(message);
-      return { kind: "buffered" };
+    if (this.status === "queued") {
+      this.current.addMessage(message);
+      return { kind: "joined" };
     }
-    await this.subagentSession.steer(message);
-    return { kind: "delivered" };
+    const reason = this.sendRefusal;
+    if (reason) return { kind: "refused", reason };
+    const relaunched = !this.isSessionReady() && !this.released;
+    void (relaunched ? this.relaunch(message) : this.resume(message, signal));
+    return { kind: "started", relaunched };
   }
 
   /** Return the session conversation as formatted text, or undefined if no session. */
@@ -417,14 +444,14 @@ export class Subagent {
   }
 
   /**
-   * The one place a run starts. The first run and every resume mint a `Run`
-   * here, make it current, and execute it; they differ only in the `kind` the
-   * run carries and in whether an `admit` defers its start.
+   * The one place a run starts. The first run, every resume and a relaunch mint
+   * a `Run` here, make it current, and execute it; they differ only in the
+   * `kind` the run carries and in whether an `admit` defers its start.
    *
-   * A resume queues the record the moment it is asked for, as a first run is
+   * A later run queues the record the moment it is asked for, as a first run is
    * queued when its agent is created, and the run begins when `admit` grants a
    * slot. The body runs synchronously up to its first await when the slot is
-   * free, so such a resume has reset the record by the time its caller regains
+   * free, so such a run has reset the record by the time its caller regains
    * control.
    */
   private startRun(init: RunInit, admit?: Admission): Promise<void> {
@@ -437,7 +464,9 @@ export class Subagent {
         : undefined;
     const run = new Run({ ...init, turnCeiling });
     this.current = run;
-    if (init.kind === "resume") {
+    // Every run after the agent's first is queued the moment it is asked for.
+    const again = init.kind !== "initial";
+    if (again) {
       // Release the previous run's listener handles before wiring this one's.
       previous.listeners.release();
       this.state.markQueued(Date.now());
@@ -446,7 +475,7 @@ export class Subagent {
     run.promise = admit ? admit(body) : body();
     // Still queued after admission: the limiter had no slot, so nothing has
     // started and observers learn that the agent went back to waiting.
-    if (init.kind === "resume" && this.current === run && this.status === "queued") {
+    if (again && this.current === run && this.status === "queued") {
       this.execution.observer?.onResumeQueued?.(this);
     }
     return run.promise;
@@ -461,10 +490,18 @@ export class Subagent {
         this.observeSession(run, session);
       } else {
         // Only a new or reopened session awaits here, so a live resume keeps its timing.
+        run.opening = true;
         session = await this.openSession(run);
-        run.reopening = false;
+        if (session && (run.abort.signal.aborted || this.current !== run)) {
+          // Stopped while the session was being created: nothing will drive it, and a
+          // second session for this agent may only start once this one is gone.
+          await disposeQuietly(session, "stopped session creation");
+          session = undefined;
+        }
+        run.opening = false;
         if (!session) {
-          // Stopped while the session was being rebuilt; abort() marked the record.
+          // Stopped while the session was being built; abort() marked the record.
+          this.discardPendingSteers(run);
           this.finish(run);
           return;
         }
@@ -514,13 +551,13 @@ export class Subagent {
     };
   }
 
-  /** The session a run drives: a new one for the initial run, a rebuilt one for a cold resume. */
+  /** The session a run drives: a new one for a first run, a rebuilt one for a cold resume. */
   private openSession(run: Run): Promise<SubagentSession | undefined> {
-    return run.kind === "initial" ? this.createSession(run) : this.reopenSession(run);
+    return run.kind === "resume" ? this.reopenSession(run) : this.createSession(run);
   }
 
   /**
-   * Create the initial run's session. Not async, so the run awaits the factory's
+   * Create a first run's session. Not async, so the run awaits the factory's
    * own promise.
    */
   private createSession(run: Run): Promise<SubagentSession> {
@@ -532,7 +569,7 @@ export class Subagent {
     });
   }
 
-  /** Drive the turn loop: the initial run starts it, a resume continues it. */
+  /** Drive the turn loop: a first run starts it, a resume continues it. */
   private turnLoop(run: Run, session: SubagentSession): Promise<TurnLoopResult> {
     if (run.kind === "resume") {
       return session.resumeTurnLoop(run.prompt, this.turnLoopOptions(run));
@@ -613,7 +650,7 @@ export class Subagent {
 
   /**
    * Resume the session with a new prompt: the live SubagentSession, or a
-   * released one whose transcript can be reopened (`resumeRefusal` is the
+   * released one whose transcript can be reopened (`sendRefusal` is the
    * check). The returned promise always resolves (errors are captured
    * internally) and is published as the `promise` getter, so it tracks the
    * resume rather than the settled handle of the original run.
@@ -629,12 +666,28 @@ export class Subagent {
    */
   resume(prompt: string, signal?: AbortSignal): Promise<void> {
     const liveSession = this.subagentSession;
-    if (!liveSession && !(this.released && this.resumeRefusal === undefined)) {
+    if (!liveSession && !(this.released && this.sendRefusal === undefined)) {
       // Rejection, not a throw: this method is not async, and a synchronous
       // throw would escape a caller's `.rejects` assertion.
       return Promise.reject(new Error("Subagent not configured for resume — missing session"));
     }
     return this.startRun({ kind: "resume", prompt, signal, liveSession }, this.execution.admit);
+  }
+
+  /**
+   * Start the first run of an agent that never got a session: it was stopped
+   * while queued, or its session could not be created. The run creates the
+   * session from the agent's original spawn configuration and starts it from the
+   * original task followed by `message`, so the agent does the work it was given
+   * with what the parent has since said. It is announced as a resume (the agent
+   * already has a record) and admitted through the limiter like any later run.
+   * Callers check `sendRefusal` first.
+   */
+  private relaunch(message: string): Promise<void> {
+    return this.startRun(
+      { kind: "relaunch", prompt: joinPrompt(this.execution.prompt, message) },
+      this.execution.admit,
+    );
   }
 
   /**
@@ -686,7 +739,8 @@ export class Subagent {
    * parent to look.
    */
   private fail(run: Run, err: unknown): void {
-    run.reopening = false;
+    run.opening = false;
+    this.discardPendingSteers(run);
     if (this.current === run) {
       this.state.markError(err);
       this.state.setPendingQuestion(undefined);
@@ -703,7 +757,7 @@ export class Subagent {
   private finish(run: Run): void {
     run.listeners.release();
     if (this.current !== run) return;
-    if (run.kind === "resume") this.execution.observer?.onResumeFinished?.(this);
+    if (run.kind !== "initial") this.execution.observer?.onResumeFinished?.(this);
     else this.execution.observer?.onRunFinished?.(this);
   }
 
@@ -733,8 +787,6 @@ export class Subagent {
   abort(): boolean {
     if (this.status === "queued") {
       this.state.stopQueued();
-      // Nothing will rebuild the session this queued resume was going to reopen.
-      this.current.reopening = false;
       this.finish(this.current);
       return true;
     }
@@ -742,6 +794,15 @@ export class Subagent {
     this.current.abort.abort();
     this.state.markStopped();
     return true;
+  }
+
+  /**
+   * Drop the steers buffered for a run that ended without a session to give them
+   * to. They were addressed to that run; flushed later they would reach the next
+   * run's session as if the parent had just sent them.
+   */
+  private discardPendingSteers(run: Run): void {
+    if (this.current === run) this._pendingSteers = [];
   }
 
   /**

@@ -4,7 +4,7 @@ import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { describe, expect, it } from "vitest";
 import { toolCall } from "../../../../packages/pi-test-helpers/src/faux-session.ts";
 import { lastResult } from "../helpers/sdk.ts";
-import { delegate, gated, resumeCall, shape, startParent, untilAnnounced } from "./harness.ts";
+import { delegate, gated, sendCall, shape, startParent, untilAnnounced } from "./harness.ts";
 
 // What the parent sees of its agents after the session reloads. The extension
 // is torn down and set up again over the same session file, so nothing is live:
@@ -40,10 +40,10 @@ describe("agents after a reload", () => {
     const report = shape(resultText(h.requests.parent[1], "subagent_get"), id);
     expect(report).toContain("Status: completed");
     expect(report).toContain("Did the work.");
-    expect(report).toContain('Resume: available. Call subagent_start with resume: "<id>"');
+    expect(report).toContain('Send: available. Call subagent_send with agent_id: "<id>"');
     expect(report).toContain("Full transcript available at: <transcript>");
     expect(shape(resultText(h.requests.parent[2], "subagent_get"), id)).toMatch(
-      /^Agents started on this branch \(1; subagent_get <id> for details\):\n- <id> general-purpose "Work": completed \d\d:\d\d, resumable$/,
+      /^Agents started on this branch \(1; subagent_get <id> for details, subagent_send <id> to give an idle one more work\):\n- <id> general-purpose "Work": idle, last run completed \d\d:\d\d$/,
     );
     expect(h.announcements()).toHaveLength(1);
   }, 30_000);
@@ -66,7 +66,7 @@ describe("agents after a reload", () => {
       parent: [
         toolCall("subagent_get", { agent_id: id }),
         toolCall("subagent_get", {}),
-        resumeCall(id, "Pick it back up"),
+        sendCall(id, "Pick it back up"),
         fauxAssistantMessage("Checked."),
       ],
       child: [fauxAssistantMessage("Picked it back up.")],
@@ -80,7 +80,7 @@ describe("agents after a reload", () => {
       "This agent was still running when this session was reloaded or replaced, so it never finished.",
     );
     expect(shape(resultText(h.requests.parent[2], "subagent_get"), id)).toContain(
-      '"Work": interrupted: the session was reloaded or replaced before it finished, resumable',
+      '"Work": idle, last run interrupted: the session was reloaded or replaced before it finished',
     );
     // The only announcement is the resumed run's; the interrupted run sent none.
     expect(shape(h.announcements()[0].text, id)).toContain("<result>Picked it back up.</result>");
@@ -92,7 +92,7 @@ describe("agents after a reload", () => {
     });
   }, 30_000);
 
-  it("says a finished agent cannot be resumed once its transcript is gone", async () => {
+  it("says a finished agent cannot take a message once its transcript is gone", async () => {
     const h = await startParent();
     h.script({
       parent: [delegate("Work"), fauxAssistantMessage("Started.")],
@@ -107,7 +107,7 @@ describe("agents after a reload", () => {
     h.script({
       parent: [
         toolCall("subagent_get", { agent_id: id }),
-        resumeCall(id, "More"),
+        sendCall(id, "More"),
         fauxAssistantMessage("Checked."),
       ],
     });
@@ -116,10 +116,10 @@ describe("agents after a reload", () => {
     const report = shape(resultText(h.requests.parent[1], "subagent_get"), id);
     expect(report).toContain("Did the work.");
     expect(report).toContain(
-      "Resume: not available, because its session was released and its saved transcript is gone.",
+      "Send: not available, because its session was released and its saved transcript is gone.",
     );
-    expect(shape(resultText(h.requests.parent[2], "subagent_start"), id)).toMatch(
-      /^Agent "<id>" had its session released and its saved transcript is gone; resume is unavailable, but its result is still retrievable via subagent_get\./,
+    expect(shape(resultText(h.requests.parent[2], "subagent_send"), id)).toMatch(
+      /^Agent "<id>" had its session released and its saved transcript is gone; it cannot take a message, but its result is still retrievable via subagent_get\./,
     );
   }, 30_000);
 });

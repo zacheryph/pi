@@ -19,7 +19,8 @@ import {
 import { sanitizeLine } from "../../../packages/pi-ui/src/index.ts";
 
 /**
- * Where an agent stands, for ordering and labelling.
+ * Where an agent stands, for ordering and labelling. The last six are an idle
+ * agent and how its last run ended.
  *
  * `waiting` is a completed run that ended its turn with a question.
  * `interrupted` is a run that a reload or restart cut short: a record still
@@ -52,8 +53,8 @@ export interface LiveAgentLike {
   readonly cwd?: string | undefined;
 }
 
-/** Whether `resume` would accept this agent: the same check `resume` makes. */
-export type ResumableCheck = (agent: LiveAgentLike) => boolean;
+/** Whether `subagent_send` would reach this agent: the same check `send` makes. */
+export type ReachableCheck = (agent: LiveAgentLike) => boolean;
 
 export interface RosterEntry {
   readonly id: string;
@@ -66,8 +67,8 @@ export interface RosterEntry {
   readonly completedAt: number | undefined;
   /** Whether a live agent in this runtime backs the entry. */
   readonly live: boolean;
-  /** Whether it can be resumed; undefined when the state makes it moot or nobody checked. */
-  readonly resumable?: boolean;
+  /** Whether `subagent_send` reaches it; undefined when the state makes it moot or nobody checked. */
+  readonly reachable?: boolean;
 }
 
 /** Card limits from the issue that introduced it: whole lines, cut at grapheme boundaries. */
@@ -100,8 +101,18 @@ export function rosterState(
   }
 }
 
-/** The states whose roster line says whether `resume` would accept the agent. */
-const RESUME_MATTERS: ReadonlySet<RosterState> = new Set(["waiting", "interrupted", "completed"]);
+/**
+ * The states whose roster line says when `subagent_send` would refuse the
+ * agent: every idle one. A queued or running agent always takes a message.
+ */
+const SEND_MATTERS: ReadonlySet<RosterState> = new Set([
+  "waiting",
+  "interrupted",
+  "error",
+  "aborted",
+  "stopped",
+  "completed",
+]);
 
 /** 0 waiting, 1 queued or running, 2 failed or stopped, 3 completed. */
 function rosterGroup(state: RosterState): number {
@@ -130,7 +141,7 @@ function isPinned(entry: RosterEntry): boolean {
 export function buildRoster(
   records: readonly LiveAgentLike[],
   getLive: (id: string) => LiveAgentLike | undefined,
-  isResumable?: ResumableCheck,
+  isReachable?: ReachableCheck,
 ): RosterEntry[] {
   const entries = records.map((record): RosterEntry => {
     const live = getLive(record.id);
@@ -151,7 +162,7 @@ export function buildRoster(
       startedAt: source.startedAt,
       completedAt: source.completedAt,
       live: live !== undefined,
-      ...(isResumable && RESUME_MATTERS.has(state) ? { resumable: isResumable(source) } : {}),
+      ...(isReachable && SEND_MATTERS.has(state) ? { reachable: isReachable(source) } : {}),
     };
   });
   return entries.sort((a, b) => {
@@ -186,13 +197,17 @@ export function formatClock(at: number): string {
   return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-/** What follows the label on a roster line. */
+/**
+ * What follows the label on a roster line. An idle agent reads as idle and
+ * says how its last run ended; whether `subagent_send` reaches it is spoken of
+ * only when it does not.
+ */
 function stateText(entry: RosterEntry): string {
   switch (entry.state) {
     case "waiting":
       return (
         `waiting for your answer: "${clipText(entry.pendingQuestion ?? "", QUESTION_MAX_CHARS)}"` +
-        (entry.resumable === false ? " (cannot be resumed)" : "")
+        unreachableSuffix(entry)
       );
     case "queued":
       return "queued";
@@ -200,26 +215,31 @@ function stateText(entry: RosterEntry): string {
       return "running";
     case "interrupted":
       return (
-        "interrupted: the session was reloaded or replaced before it finished" +
-        resumableSuffix(entry)
+        "idle, last run interrupted: the session was reloaded or replaced before it finished" +
+        unreachableSuffix(entry)
       );
     case "error":
-      return `failed: ${clipText(entry.error ?? "unknown error", QUESTION_MAX_CHARS)}`;
+      return (
+        `idle, last run failed: ${clipText(entry.error ?? "unknown error", QUESTION_MAX_CHARS)}` +
+        unreachableSuffix(entry)
+      );
     case "aborted":
-      return "failed: turn budget exhausted";
+      return `idle, last run failed: turn budget exhausted${unreachableSuffix(entry)}`;
     case "stopped":
-      return "stopped before it finished";
+      return `idle, last run stopped before it finished${unreachableSuffix(entry)}`;
     case "completed":
       return (
+        "idle, last run " +
         (entry.completedAt === undefined
           ? "completed"
-          : `completed ${formatClock(entry.completedAt)}`) + resumableSuffix(entry)
+          : `completed ${formatClock(entry.completedAt)}`) +
+        unreachableSuffix(entry)
       );
   }
 }
 
-function resumableSuffix(entry: RosterEntry): string {
-  return entry.resumable ? ", resumable" : "";
+function unreachableSuffix(entry: RosterEntry): string {
+  return entry.reachable === false ? " (cannot take a message)" : "";
 }
 
 /** One roster line: ID, type, description, state, and the question or error. */
@@ -270,7 +290,7 @@ export function formatRosterCard(
 ): string | undefined {
   if (!entries.length) return undefined;
   return [
-    `Subagents started by this session (restored after ${reason}; subagent_get <id> for details):`,
+    `Subagents started by this session (restored after ${reason}; subagent_get <id> for details, subagent_send <id> to give an idle one more work):`,
     ...capRoster(entries, CARD_MAX_LINES),
   ].join("\n");
 }
@@ -279,7 +299,7 @@ export function formatRosterCard(
 export function formatRosterList(entries: readonly RosterEntry[]): string {
   if (!entries.length) return "No agents were started on this branch of the session.";
   return [
-    `Agents started on this branch (${entries.length}; subagent_get <id> for details):`,
+    `Agents started on this branch (${entries.length}; subagent_get <id> for details, subagent_send <id> to give an idle one more work):`,
     ...capRoster(entries, LIST_MAX_LINES),
   ].join("\n");
 }

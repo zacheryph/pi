@@ -9,7 +9,7 @@
 
 A [pi](https://pi.dev) extension that gives pi **a focused, in-process sub-agent core** — autonomous agents that run inside the same pi runtime (no spawned subprocesses), plus a typed API and lifecycle events other extensions build on.
 Spawn specialized agents that run in isolated sessions — each with its own tools, system prompt, model, and thinking level.
-Every agent runs in the background: the parent starts it, ends its turn, and is woken by the completion message. Steer agents mid-run, resume completed sessions, and define your own custom agent types.
+Every agent runs in the background: the parent starts it, ends its turn, and is woken by the completion message. Message any agent with one tool: steer it mid-run, or give a finished one more work. Define your own custom agent types.
 
 > This personal fork is based on [`gotgenes/pi-packages/packages/pi-subagent`](https://github.com/gotgenes/pi-packages/tree/main/packages/pi-subagent),
 > itself an independently maintained hard fork of [`tintinweb/pi-subagent`](https://github.com/tintinweb/pi-subagent) by [@tintinweb](https://github.com/tintinweb).
@@ -21,16 +21,15 @@ Every agent runs in the background: the parent starts it, ends its turn, and is 
 
 ## Features
 
-- **In-process & native** — agents run inside the same pi runtime (no spawned subprocesses), sharing tool names, calling conventions, and UI patterns (`subagent_start`, `subagent_get`, `subagent_steer`) — feels native
+- **In-process & native** — agents run inside the same pi runtime (no spawned subprocesses), sharing tool names, calling conventions, and UI patterns (`subagent_start`, `subagent_get`, `subagent_send`) — feels native
 - **Parallel background agents** — spawn multiple agents that run concurrently with automatic queuing (configurable concurrency limit, default 4) and individual completion notifications
 - **Live widget UI** — compact above-editor widget with a static Subagents header rule and one line per agent: elapsed time, task, and live activity or outcome
 - **Session transcripts** — open any subagent's full session transcript (running or with its session released) in pi's native read-only viewer via `/subagent:sessions`
 - **Custom agent types** — define agents in `.pi/agents/<name>.md` with YAML frontmatter: custom system prompts, model selection, thinking levels, tool restrictions
 - **orchestrate profile** — coordinate long-running projects with categorized todos, delegated work, and follow-ups in prior workers' sessions; available as a subagent or with `pi --agent orchestrate` ([usage and continuity](docs/configuration.md#orchestrate))
-- **Mid-run steering** — inject messages into running agents to redirect their work without restarting
-- **Session resume** — pick up where an agent left off, preserving full conversation context, even after a reload or once its session was released: the saved transcript is reopened.
-- **Ask-back** — an agent that needs information only you have calls `ask` (from the bundled pi-ask) and ends its turn, and every result surfaces the question with the exact `resume` call that answers it; once that agent can no longer be resumed, the result says so and why instead of naming a call that would be refused
-- **Mid-run updates** — an agent that finds something material calls `parent_notify` and keeps working; the message arrives on its own while you are idle and that agent is still running, and otherwise rides that agent's own result, so you hear it exactly once and never as a stale prompt to steer an agent that has finished
+- **One input tool** — `subagent_send` reaches an agent in any state, like typing into a main session: it steers a running agent mid-run, and gives an idle one (finished, failed or stopped) a new run that picks up where the agent left off, preserving full conversation context, even after a reload or once its session was released: the saved transcript is reopened.
+- **Ask-back** — an agent that needs information only you have calls `ask` (from the bundled pi-ask) and ends its turn, and every result surfaces the question with the exact `subagent_send` call that answers it; once that agent can no longer take a message, the result says so and why instead of naming a call that would be refused
+- **Mid-run updates** — an agent that finds something material calls `parent_notify` and keeps working; the message arrives on its own while you are idle and that agent is still running, and otherwise rides that agent's own result, so you hear it exactly once and never as a stale prompt to message an agent that has finished
 - **Turn budgets** — `max_turns` is a hard ceiling, and an agent is told how many turns it has left while it still has room to wrap up, so it answers instead of being cut off
 - **Case-insensitive agent types** — `"explore"`, `"explore"`, `"EXPLORE"` all work.
   Unknown types fall back to general-purpose with a note
@@ -38,7 +37,7 @@ Every agent runs in the background: the parent starts it, ends its turn, and is 
 - **Context inheritance** — optionally fork the parent conversation into a sub-agent so it knows what's been discussed
 - **Styled completion notifications** — background agent results render as themed, compact notification boxes (icon, stats, result preview) instead of raw XML.
   Expandable to show full output
-- **Event bus** — lifecycle events (`subagent:created`, `started`, `completed`, `failed`, `resuming`, `resumed`, `steered`, `compacted`) emitted via `pi.events`, enabling other extensions to react to sub-agent activity
+- **Event bus** — lifecycle events (`subagent:created`, `started`, `completed`, `failed`, `queued`, `resuming`, `resumed`, `steered`, `compacted`) emitted via `pi.events`, enabling other extensions to react to sub-agent activity
 
 ## Install
 
@@ -169,7 +168,7 @@ Construction-time tool exclusions cannot be undone; avoid conflicting `--tools`,
 runs, but Pi's public extension API cannot guarantee a nonzero print/JSON exit
 status for a handled startup failure; automation must check diagnostics too.
 
-`subagent_start`, `subagent_get`, and `subagent_steer` remain active alongside the
+`subagent_start`, `subagent_get`, and `subagent_send` remain active alongside the
 main profile's initial tool list. Children keep existing profile settings and
 prompt construction; the main profile body is not inherited. Normal child
 defaults that inherit the current parent model or thinking still work as before.
@@ -218,7 +217,6 @@ Launch a sub-agent.
 | `model`           | string  | no       | Model — `provider/modelId`, fuzzy name (`"haiku"`, `"sonnet"`), or `[provider/]family@latest` (newest available match) |
 | `thinking`        | string  | no       | Thinking level: off, minimal, low, medium, high, xhigh, max                                                            |
 | `max_turns`       | number  | no       | Turn ceiling (minimum 2). Omit for the agent's own limit                                                               |
-| `resume`          | string  | no       | Agent ID to resume a previous session                                                                                  |
 | `inherit_context` | boolean | no       | Fork parent conversation into agent                                                                                    |
 | `cwd`             | string  | no       | Existing directory the agent runs in, such as a git worktree (see below)                                               |
 | `handoff`         | object  | no       | Data for extensions in the agent's session (see below)                                                                 |
@@ -227,19 +225,39 @@ Launch a sub-agent.
 
 Before SDK creation, the parent's extensions can synchronously call `requireTools(["exact_tool_name"])` on the `subagent:session:prepare` event. These requirements supplement the profile's allowlist, including `tools: none`; explicit exclusions and the delegation guard still win. Required tools must be active after child extensions bind, or initialization fails and disposes the child. For example, pi-todo requests `todo_list` and `todo_upsert` for `handoff.todo`, so restricted workers can update their assigned tasks without gaining file-editing tools.
 
-`cwd` runs the agent in an existing directory, absolute or relative to the parent's working directory; a missing one is refused before anything is spawned. The caller owns that directory: nothing is removed when the agent finishes, so it can still be resumed there. It is refused together with `resume`, because a resumed agent keeps the directory it started in. `subagent:session:created` carries the child's `cwd`, chosen or inherited.
+`cwd` runs the agent in an existing directory, absolute or relative to the parent's working directory; a missing one is refused before anything is spawned. The caller owns that directory: nothing is removed when the agent finishes, so the agent can keep working there when you send it more. A later `subagent_send` keeps the directory the agent started in. `subagent:session:created` carries the child's `cwd`, chosen or inherited.
 
 These five parameters win over the agent file's own values, which fill whichever the call leaves unset.
 An agent file can withhold one with [`locked`](./docs/configuration.md#locking-fields-against-callers); the result then names the agent and the parameters it ignored.
 
-A call with `resume` resumes the agent in the background: it returns the agent ID at once, and the completion message arrives when the resumed run finishes.
+`subagent_start` has no `resume` parameter any more: a call that still sends one starts nothing and says to use `subagent_send`. Starting a second agent would repeat the first one's work.
 
-A resume continues the agent's live session while it has one.
+### `subagent_send`
+
+Send a message to an agent, whatever state it is in, like typing into a main session. The call returns at once; a run it starts reports through another completion message.
+
+| Parameter  | Type   | Required | Description                                                           |
+| ---------- | ------ | -------- | --------------------------------------------------------------------- |
+| `agent_id` | string | yes      | Agent ID to message; the agent can be in any state                    |
+| `message`  | string | yes      | The message; it appears as a user message in the agent's conversation |
+
+What happens depends on the agent's state:
+
+| State                                                                             | What the message does                                                                                                                                                                                       |
+| --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Running                                                                           | Steers it: the message interrupts the agent after its current tool execution. Before its session exists, the message is held and delivered when the session initializes. Emits `subagent:steered`.          |
+| Queued (waiting for a concurrency slot)                                           | Joins the run that is waiting: the message is added to the prompt the run starts with, so the agent sees it when it starts. Emits `subagent:steered`. A run stopped before its slot opens takes it with it. |
+| Idle (finished, failed, hit its turn limit, stopped or interrupted)               | Starts a new run with the message as its prompt, continuing the agent's conversation. The run goes through the concurrency limiter, so it can wait for a slot (`subagent:queued`) before it starts.         |
+| Idle and never had a session (stopped while queued, or its session never started) | Starts the agent's first run, from its original task followed by the message, with its original model, tools, directory and context. Announced as a resume, not a second start.                             |
+| Unknown ID, or an idle agent whose transcript, directory or agent type is gone    | Refused, saying why; the refusal names the transcript when there is one.                                                                                                                                    |
+
+An idle agent's run continues its live session while it has one.
 Once that is gone — the retention window released it, or a `/reload`, `/resume` or session switch dropped it — the agent's saved transcript is reopened instead, with the type, model, thinking level, turn ceiling and directory on its last saved record.
-It continues under the same ID and appends to the same transcript file, so results, steering and notifications work as usual, and a record still reading queued or running (a run a reload interrupted) can be resumed the same way.
-This rebuilds a full session, so the first turn starts more slowly than a live resume.
+It continues under the same ID and appends to the same transcript file, so results, messages and notifications work as usual, and a record still reading queued or running (a run a reload interrupted) takes a message the same way.
+This rebuilds a full session, so the first turn starts more slowly than with a live session.
 The agent's current profile for its type applies, and what the spawn passed in `handoff` is not saved, so after a reload a worker does not regain the todo tasks it was handed.
-A resume is refused when the transcript is gone, when the directory no longer exists (such as a worktree removed with `git_worktree_remove`), or when the agent type is no longer available; the refusal names the transcript when there is one.
+An idle agent that never had a session can be started only while this runtime still holds its spawn configuration: after a reload only the saved record remains, which has no task to start from, so the message is refused and the parent spawns a new agent.
+A message is refused when the transcript is gone, when the directory no longer exists (such as a worktree removed with `git_worktree_remove`), or when the agent type is no longer available.
 
 ### `subagent_get`
 
@@ -252,25 +270,15 @@ Reading a finished result does not deliver it again and does not suppress its co
 | `agent_id` | string  | no       | Agent ID to check; omit to list this branch's agents |
 | `verbose`  | boolean | no       | Include full conversation log                        |
 
-Without `agent_id`, the result lists every agent started on the current branch — ID, type, description, status, and the question or error when there is one — waiting on a question first, then running, failed, and completed newest first.
+Without `agent_id`, the result lists every agent started on the current branch — ID, type, description, status, and the question or error when there is one — waiting on a question first, then running, then idle agents whose last run failed or stopped, then completed ones, newest first.
 
-An agent's ID keeps working after `/reload`, `/resume` or a session switch: when no live agent has it, `subagent_get` answers from the agent's last saved record — status, result, error, the question it ended with, and its transcript path — and says whether it can be resumed, using the same check `resume` makes.
+An agent's ID keeps working after `/reload`, `/resume` or a session switch: when no live agent has it, `subagent_get` answers from the agent's last saved record — status, result, error, the question it ended with, and its transcript path — and says whether `subagent_send` can reach it, using the same check `subagent_send` makes.
 An agent still running when that runtime went away is reported as interrupted.
 `Agent not found` means the current branch never started that ID, including an agent started on a branch `/tree` has since left.
 
 The result renders as a compact three-line summary — status, stats, description, and a one-line preview.
 Press `Ctrl+O` to expand it to the full report, bounded so a long result cannot fill the terminal; the expanded view names the transcript path when it withholds anything.
 The complete report, including the conversation `verbose` requests, always reaches the model regardless of what the terminal shows.
-
-### `subagent_steer`
-
-Send a steering message to a running agent.
-The message interrupts after the current tool execution.
-
-| Parameter  | Type   | Required | Description                               |
-| ---------- | ------ | -------- | ----------------------------------------- |
-| `agent_id` | string | yes      | Agent ID to steer                         |
-| `message`  | string | yes      | Message to inject into agent conversation |
 
 ## Commands
 
@@ -342,7 +350,7 @@ this during output bursts. See [watch-overlay decision](./docs/decisions/0013-pa
 ### `/subagent:sessions`
 
 Pick any subagent — running, or completed with its live session already released — and read its full session transcript in pi's native per-entry viewer.
-Read-only: no steering, no session takeover (steering lives in the `subagent_steer` tool and the background widget).
+Read-only: no messaging, no session takeover (messages go through the `subagent_send` tool).
 Runs that finished earlier in the session stay listed after a `/reload`, and a resumed session lists the runs it recorded; both open from their saved transcript.
 
 The viewer is framed by two rules in the style of pi's editor border, coloured for the agent's thinking level:
@@ -396,7 +404,7 @@ It also bounds its own height to the terminal's, collapsing the agents that do n
 Stopping a still-queued agent produces the same completion notification a running agent's stop does.
 Because that agent never started, the notification says so and offers no result to collect.
 
-A resume goes through the same limit as a first run. With a slot free it starts at once; with every slot taken, the call returns "Agent resume queued in background" and the run starts when a slot opens. Stopping a queued resume leaves the agent as it was after a stop: idle, and open to another resume.
+A run that `subagent_send` starts for an idle agent goes through the same limit as a first run. With a slot free it starts at once; with every slot taken, the call returns "Agent resume queued in background", `subagent:queued` is emitted, the widget and the dashboard show the agent as queued again, and the run starts when a slot opens. A message sent to an agent that is still queued joins its waiting run. Stopping a queued run leaves the agent as it was after a stop: idle, and open to another message.
 
 ## Child session lifecycle
 
@@ -410,7 +418,7 @@ It receives the standard pair of session lifecycle events:
 
 Disposal happens when the retention window for a finished agent expires, when the in-memory records of finished agents are cleared at session start or switch, when the parent session shuts down, or when child extension binding fails partway.
 Clearing them loses no history: the session keeps every agent's saved record (see [Saved records and the roster card](#saved-records-and-the-roster-card)).
-It does **not** happen the moment an agent finishes: the session is retained so a resume is cheap, per the `consumedSessionRetentionMinutes` and `unconsumedSessionRetentionMinutes` settings above. A released agent can still be resumed from its transcript, at the cost of rebuilding the session.
+It does **not** happen the moment an agent finishes: the session is retained so a resume is cheap, per the `consumedSessionRetentionMinutes` and `unconsumedSessionRetentionMinutes` settings above. A released agent still takes `subagent_send`, which reopens its transcript, at the cost of rebuilding the session.
 
 The shutdown event is dispatched and awaited **before** the child's `AgentSession` is disposed, so a handler still has a live context and can close what it opened — stdio subprocesses, sockets, timers, file handles.
 Each child's shutdown is bounded: a handler that never resolves is abandoned after a few seconds and disposal proceeds, so one misbehaving extension cannot stall the parent's teardown or Pi's exit.
@@ -433,35 +441,36 @@ After a compaction, `/reload`, `/resume` or `/tree`, the model may have lost tra
 Until it lists them with `subagent_get` (no `agent_id`), each request ends with a roster card built from the branch's records and any still-live agents:
 
 ```text
-Subagents started by this session (restored after compaction; subagent_get <id> for details):
+Subagents started by this session (restored after compaction; subagent_get <id> for details, subagent_send <id> to give an idle one more work):
 - 9a8b7c implementer "Migrate session store": waiting for your answer: "Postgres or SQLite?"
 - d4e5f6 review "Review roadmap step 3": running
-- a1b2c3 implementer "Add token refresh": completed 14:10, resumable
-- 77e0aa explorer "Map auth call sites": failed: turn budget exhausted
+- a1b2c3 implementer "Add token refresh": idle, last run completed 14:10
+- 77e0aa explorer "Map auth call sites": idle, last run failed: turn budget exhausted
 - 2 older completed agents not shown
 ```
 
 The card is added to the request only: it is never written to the transcript or shown in the terminal.
 It holds at most 20 agent lines, dropping the oldest failed and completed agents first and counting them on the last line; waiting and running agents are never dropped.
-Descriptions are cut to 80 characters and questions to 160, without splitting a wide character or emoji.
+An idle agent shows how its last run ended, and `(cannot take a message)` when `subagent_send` would refuse it (its transcript or directory is gone). Descriptions are cut to 80 characters and questions to 160, without splitting a wide character or emoji.
 A branch that started no agents gets no card.
 
 ## Events
 
 Agent lifecycle events are emitted via `pi.events.emit()` so other extensions can react:
 
-| Event                       | When                                                    | Key fields                                                                                                               |
-| --------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `subagent:created`          | Agent registered                                        | `id`, `type`, `description`                                                                                              |
-| `subagent:started`          | Agent transitions to running (including queued→running) | `id`, `type`, `description`                                                                                              |
-| `subagent:completed`        | Agent finished successfully                             | `id`, `type`, `status`, `turnBudget`, `durationMs`, `tokens` (lifetime `{ input, output, total }`), `toolUses`, `result` |
-| `subagent:failed`           | Agent errored, stopped, or aborted                      | same as completed + `error`, `status`                                                                                    |
-| `subagent:resuming`         | Resume started, from either front door                  | `id`, `type`, `description`                                                                                              |
-| `subagent:resumed`          | Resumed run reached a terminal state (completed/error)  | same as completed + `error`, `status` (`buildEventData` shape) — `status`/`error` discriminate                           |
-| `subagent:steered`          | Steering message sent                                   | `id`, `message`                                                                                                          |
-| `subagent:compacted`        | Agent's session successfully compacted                  | `id`, `type`, `description`, `reason` (`"manual"` / `"threshold"` / `"overflow"`), `tokensBefore`, `compactionCount`     |
-| `subagent:settings:loaded`  | Persisted settings applied at extension init            | `settings` (merged global + project)                                                                                     |
-| `subagent:settings:changed` | `/subagent:settings` mutation was applied               | `settings`, `persisted` (`boolean` — `false` on write failure)                                                           |
+| Event                       | When                                                                             | Key fields                                                                                                               |
+| --------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `subagent:created`          | Agent registered                                                                 | `id`, `type`, `description`                                                                                              |
+| `subagent:started`          | Agent transitions to running (including queued→running)                          | `id`, `type`, `description`                                                                                              |
+| `subagent:completed`        | Agent finished successfully                                                      | `id`, `type`, `status`, `turnBudget`, `durationMs`, `tokens` (lifetime `{ input, output, total }`), `toolUses`, `result` |
+| `subagent:failed`           | Agent errored, stopped, or aborted                                               | same as completed + `error`, `status`                                                                                    |
+| `subagent:queued`           | A message gave an idle agent a run that waits for a slot                         | `id`, `type`, `description`                                                                                              |
+| `subagent:resuming`         | An idle agent's new run started (also an agent's first run started by a message) | `id`, `type`, `description`                                                                                              |
+| `subagent:resumed`          | That run reached a terminal state (completed/error)                              | same as completed + `error`, `status` (`buildEventData` shape) — `status`/`error` discriminate                           |
+| `subagent:steered`          | Message delivered to a running agent, or added to a queued agent's waiting run   | `id`, `message`                                                                                                          |
+| `subagent:compacted`        | Agent's session successfully compacted                                           | `id`, `type`, `description`, `reason` (`"manual"` / `"threshold"` / `"overflow"`), `tokensBefore`, `compactionCount`     |
+| `subagent:settings:loaded`  | Persisted settings applied at extension init                                     | `settings` (merged global + project)                                                                                     |
+| `subagent:settings:changed` | `/subagent:settings` mutation was applied                                        | `settings`, `persisted` (`boolean` — `false` on write failure)                                                           |
 
 `tokens.total` = `input + output + cacheWrite`.
 `cacheRead` is excluded — each turn's `cacheRead` is the cumulative cached prefix re-read on that one API call, so summing per-message would over-count it.
@@ -470,7 +479,7 @@ Use `contextUsage.percent` (surfaced as `(NN%)` in the widget) for current conte
 ## Worktree Isolation
 
 Worktree isolation is not part of this core.
-A caller that prepared a directory, such as a git worktree, passes it as `subagent_start`'s `cwd`; the child runs there and stays resumable, and the directory is never removed for it.
+A caller that prepared a directory, such as a git worktree, passes it as `subagent_start`'s `cwd`; the child runs there and keeps taking messages there, and the directory is never removed for it.
 The earlier `isolation: "worktree"` spawn flag and `isolation:` frontmatter key were removed from the core.
 
 ## Removed: agent memory and skill preloading

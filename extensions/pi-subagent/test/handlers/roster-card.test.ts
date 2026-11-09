@@ -118,7 +118,9 @@ describe("RosterCard", () => {
       display: false,
     });
     expect(cardText(result)).toContain(`(restored after ${reason};`);
-    expect(cardText(result)).toContain('- x1 implementer "Add token refresh": completed');
+    expect(cardText(result)).toContain(
+      '- x1 implementer "Add token refresh": idle, last run completed',
+    );
   });
 
   it("is sent once per request: an earlier card is replaced, not repeated", () => {
@@ -211,7 +213,7 @@ describe("RosterCard", () => {
     h.card.handleSessionCompact(h.ctx);
     expect(cardText(h.context([user("hi")]))).toContain(": running");
     live = { ...record, status: "idle", outcome: "completed", completedAt: 5_000 };
-    expect(cardText(h.context([user("hi")]))).toContain(": completed ");
+    expect(cardText(h.context([user("hi")]))).toContain(": idle, last run completed ");
   });
 
   it("turns off at shutdown", () => {

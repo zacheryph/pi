@@ -11,7 +11,7 @@ import type { LockDeclaration } from "#src/config/invocation-config";
 import type { SubagentThinkingLevel } from "#src/config/thinking-level";
 import type { ModelRegistry } from "#src/session/model-resolver";
 
-export type { SteerOutcome } from "#src/lifecycle/subagent";
+export type { SendOutcome } from "#src/lifecycle/subagent";
 export { Subagent } from "#src/lifecycle/subagent";
 export type { AgentSessionEvent };
 
@@ -82,8 +82,8 @@ export interface AgentConfig extends AgentIdentity, AgentPromptConfig {
   /** Tool selectors: omitted or `all` inherits available tools; explicit names restrict, `-name` excludes (MCP globs supported). */
   toolNames?: string[];
   /**
-   * true lets a child start, read and steer agents of its own (subagent_start,
-   * subagent_get, subagent_steer). Omitted or false withholds them, whatever
+   * true lets a child start, read and message agents of its own (subagent_start,
+   * subagent_get, subagent_send). Omitted or false withholds them, whatever
    * `toolNames` selects. A main session always has them unless `tools` excludes them.
    */
   delegate?: boolean;
