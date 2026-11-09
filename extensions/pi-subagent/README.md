@@ -396,6 +396,8 @@ It also bounds its own height to the terminal's, collapsing the agents that do n
 Stopping a still-queued agent produces the same completion notification a running agent's stop does.
 Because that agent never started, the notification says so and offers no result to collect.
 
+A resume goes through the same limit as a first run. With a slot free it starts at once; with every slot taken, the call returns "Agent resume queued in background" and the run starts when a slot opens. Stopping a queued resume leaves the agent as it was after a stop: idle, and open to another resume.
+
 ## Child session lifecycle
 
 A child session runs in the parent's process but is a full Pi session with its own extension set.
@@ -422,6 +424,7 @@ Before this behavior existed, children fired `session_start` with no matching sh
 The parent session appends a `subagent:record` custom entry for every lifecycle step of each agent it starts: when the agent is queued or starts running, when a resume starts, and when a run settles — including a run that ended its turn with a question.
 Each entry carries the agent's ID, type, description, status, result, error, turn budget, timings, tool count and transcript path, plus the question it is waiting on, its model and thinking level, the turn ceiling the spawn asked for, and the directory it runs in.
 The last entry for an ID wins.
+An entry records the agent's `status` (`queued`, `running` or `idle`) and, once idle, the `outcome` of its last run (`completed`, `turn-limit`, `error`, `stopped` or `interrupted`). Entries written before this shape, with a `status` of `completed`, `aborted`, `error`, `stopped`, `queued` or `running`, are still read: the first four become idle with that outcome, and a queued or running one becomes idle and interrupted.
 The entries sit on the branch that started the agent, so they follow it through `/tree` and forks, and entries written by older versions without the newer fields still load.
 Once the child session is ready, another running entry saves its resolved model, directory and transcript path so an interrupted run can be inspected.
 Lifecycle updates from an agent hidden by `/tree` do not add it to the new branch; the latest update is held in memory and written when `/tree` returns to a branch containing that agent.

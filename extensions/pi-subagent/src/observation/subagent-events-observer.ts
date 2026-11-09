@@ -96,6 +96,16 @@ export class SubagentEventsObserver implements SubagentManagerObserver {
     this.persist(record);
   }
 
+  /**
+   * A resume is waiting for a concurrency slot. Persisted, so the branch's
+   * latest record says the agent is queued again; no event goes out until the
+   * run starts (`subagent:resuming`), which is when a consumer first has
+   * something running to show.
+   */
+  onSubagentResumeQueued(record: Subagent): void {
+    this.persist(record);
+  }
+
   onSubagentResumed(record: Subagent): void {
     // A resumed run terminates in any terminal status; a single distinct
     // channel carries them all — the payload's status/error discriminate. Existing

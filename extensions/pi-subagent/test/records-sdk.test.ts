@@ -135,7 +135,7 @@ describe("subagent records in a real parent session (offline faux provider)", ()
           : [],
       );
     // Every agent is admitted through the queue, so its first step is the queued one.
-    expect(statuses).toEqual(["queued", "running", "running", "completed"]);
+    expect(statuses).toEqual(["queued", "running", "running", "idle"]);
 
     await h.session.reload();
 

@@ -10,7 +10,7 @@
  * Pure functions only, apart from reading the branch off a context.
  */
 
-import type { SubagentStatus } from "#src/lifecycle/subagent-state";
+import type { RunOutcome, SubagentStatus } from "#src/lifecycle/subagent-state";
 import {
   type PersistedSubagentRecord,
   readPersistedRecords,
@@ -22,8 +22,9 @@ import { sanitizeLine } from "../../../packages/pi-ui/src/index.ts";
  * Where an agent stands, for ordering and labelling.
  *
  * `waiting` is a completed run that ended its turn with a question.
- * `interrupted` is a record still reading queued or running with no live agent
- * behind it: the runtime that ran it was reloaded or replaced first.
+ * `interrupted` is a run that a reload or restart cut short: a record still
+ * reading queued or running with no live agent behind it, or one whose last
+ * outcome is `interrupted`.
  */
 export type RosterState =
   | "waiting"
@@ -41,6 +42,8 @@ export interface LiveAgentLike {
   readonly type: string;
   readonly description: string;
   readonly status: SubagentStatus;
+  /** How the last run ended; defined exactly when the agent is idle. */
+  readonly outcome: RunOutcome | undefined;
   readonly pendingQuestion?: string | undefined;
   readonly error?: string | undefined;
   readonly startedAt: number;
@@ -74,15 +77,27 @@ export const QUESTION_MAX_CHARS = 160;
 /** How many agents a `subagent_get` list shows before it counts the rest. */
 export const LIST_MAX_LINES = 50;
 
-/** The state an agent's status, question and liveness put it in. */
+/** The state an agent's status, last outcome, question and liveness put it in. */
 export function rosterState(
   status: SubagentStatus,
+  outcome: RunOutcome | undefined,
   pendingQuestion: string | undefined,
   live: boolean,
 ): RosterState {
   if (status === "queued" || status === "running") return live ? status : "interrupted";
-  if (status === "completed" && pendingQuestion !== undefined) return "waiting";
-  return status;
+  switch (outcome) {
+    case "interrupted":
+      return "interrupted";
+    case "turn-limit":
+      return "aborted";
+    case "error":
+      return "error";
+    case "stopped":
+      return "stopped";
+    case "completed":
+    case undefined:
+      return pendingQuestion !== undefined ? "waiting" : "completed";
+  }
 }
 
 /** The states whose roster line says whether `resume` would accept the agent. */
@@ -120,7 +135,12 @@ export function buildRoster(
   const entries = records.map((record): RosterEntry => {
     const live = getLive(record.id);
     const source: LiveAgentLike = live ?? record;
-    const state = rosterState(source.status, source.pendingQuestion, live !== undefined);
+    const state = rosterState(
+      source.status,
+      source.outcome,
+      source.pendingQuestion,
+      live !== undefined,
+    );
     return {
       id: record.id,
       type: source.type,

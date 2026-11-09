@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { SubagentStatus } from "#src/lifecycle/subagent-state";
+import type { DisplayStatus } from "#src/lifecycle/subagent-state";
 import type { TurnBudget } from "#src/lifecycle/turn-limits";
 import {
   type OutcomeAddenda,
@@ -48,7 +48,7 @@ describe("status vocabulary", () => {
     expect(renderStatusNote({ status: "completed", turnBudget: within })).toBe("");
   });
 
-  const rows: { status: SubagentStatus; label: string; note: string }[] = [
+  const rows: { status: DisplayStatus; label: string; note: string }[] = [
     {
       status: "aborted",
       label: "Aborted (turn limit reached, output may be incomplete)",

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { SubagentStatus } from "#src/lifecycle/subagent-state";
+import type { DisplayStatus } from "#src/lifecycle/subagent-state";
 import type { TurnBudget } from "#src/lifecycle/turn-limits";
 import {
   renderAgentResult,
@@ -294,7 +294,7 @@ describe("renderAgentResult", () => {
 describe("renderStatusIcon", () => {
   const theme = makeTheme();
 
-  const cases: ReadonlyArray<[SubagentStatus, string]> = [
+  const cases: ReadonlyArray<[DisplayStatus, string]> = [
     ["completed", "[success:\u2713]"],
     ["stopped", "[dim:\u25A0]"],
     ["error", "[error:\u2717]"],

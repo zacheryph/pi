@@ -53,7 +53,11 @@ describe("subagent_steer", () => {
       { channel: "subagent:steered", data: { id: steerId, message: "Also check the tests." } },
     ]);
     // The agent's answer to the steer is its result.
-    expect(h.savedRecord(steerId)).toMatchObject({ status: "completed", result: "Adjusted." });
+    expect(h.savedRecord(steerId)).toMatchObject({
+      status: "idle",
+      outcome: "completed",
+      result: "Adjusted.",
+    });
     expect(shape(h.announcements()[0].text, steerId)).toContain("<result>Adjusted.</result>");
   }, 30_000);
 
@@ -128,7 +132,11 @@ describe("subagent_steer", () => {
     expect(resultText(h.requests.parent[2], "subagent_steer")).toContain(
       `Steering message sent to agent ${id}.`,
     );
-    expect(h.savedRecord(id)).toMatchObject({ status: "completed", result: "Changed course." });
+    expect(h.savedRecord(id)).toMatchObject({
+      status: "idle",
+      outcome: "completed",
+      result: "Changed course.",
+    });
   }, 30_000);
 
   it("no longer finds an agent from before a reload", async () => {

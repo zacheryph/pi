@@ -78,6 +78,9 @@ function createManager(overrides?: {
         onSubagentResuming: overrides.observer.onSubagentResuming ?? (() => {}),
         onSubagentCompacted: overrides.observer.onSubagentCompacted ?? (() => {}),
         onSubagentCreated: overrides.observer.onSubagentCreated ?? (() => {}),
+        ...(overrides.observer.onSubagentResumeQueued
+          ? { onSubagentResumeQueued: overrides.observer.onSubagentResumeQueued }
+          : {}),
       }
     : undefined;
   const limiter = new ConcurrencyLimiter(
@@ -286,7 +289,8 @@ describe("SubagentManager", () => {
         // Were this routed through the limiter, the await would never settle.
         await manager.getRecord(id)!.promise;
 
-        expect(manager.getRecord(id)!.status).toBe("completed");
+        expect(manager.getRecord(id)!.status).toBe("idle");
+        expect(manager.getRecord(id)!.outcome).toBe("completed");
       });
     });
   });
@@ -366,7 +370,8 @@ describe("SubagentManager", () => {
 
         // Abort the queued agent
         expect(manager.abort(queued)).toBe(true);
-        expect(manager.getRecord(queued)!.status).toBe("stopped");
+        expect(manager.getRecord(queued)!.status).toBe("idle");
+        expect(manager.getRecord(queued)!.outcome).toBe("stopped");
 
         // factory was called once (for the first agent), never for the aborted one
         expect(factory).toHaveBeenCalledOnce();
@@ -439,7 +444,8 @@ describe("SubagentManager", () => {
 
         expect(completed).toHaveLength(1);
         expect(completed[0]).toBe(manager.getRecord(queued));
-        expect(manager.getRecord(queued)!.status).toBe("stopped");
+        expect(manager.getRecord(queued)!.status).toBe("idle");
+        expect(manager.getRecord(queued)!.outcome).toBe("stopped");
         expect(manager.getRecord(queued)!.stoppedWhileQueued).toBe(true);
 
         manager.abort(running);
@@ -522,7 +528,8 @@ describe("SubagentManager", () => {
         const id = spawnBg(manager);
         await expect(manager.getRecord(id)!.promise).resolves.toBeUndefined();
 
-        expect(manager.getRecord(id)!.status).toBe("completed");
+        expect(manager.getRecord(id)!.status).toBe("idle");
+        expect(manager.getRecord(id)!.outcome).toBe("completed");
       });
     });
 
@@ -719,7 +726,8 @@ describe("SubagentManager", () => {
           seeded.notifications.onParentAgentSettled();
           seeded.notifications.onParentAgentSettled();
 
-          expect(record.status).toBe(outcome);
+          expect(record.status).toBe("idle");
+          expect(record.outcome).toBe(outcome);
           expect(sendMessage).toHaveBeenCalledOnce();
           const [message] = sendMessage.mock.calls[0];
           expect(message.customType).toBe("subagent:completion");
@@ -808,7 +816,8 @@ describe("SubagentManager", () => {
 
         const id = spawnBg(manager);
         await manager.getRecord(id)!.promise;
-        expect(manager.getRecord(id)!.status).toBe("error");
+        expect(manager.getRecord(id)!.status).toBe("idle");
+        expect(manager.getRecord(id)!.outcome).toBe("error");
 
         await manager.clearCompleted();
         expect(manager.getRecord(id)).toBeUndefined();
@@ -1335,7 +1344,8 @@ describe("SubagentManager", () => {
         const outcome = await resumeAndSettle(manager, id, "continue");
 
         expect(outcome.kind).toBe("started");
-        expect(manager.getRecord(id)!.status).toBe("error");
+        expect(manager.getRecord(id)!.status).toBe("idle");
+        expect(manager.getRecord(id)!.outcome).toBe("error");
       });
 
       it("tells the observer a resume started, before it reports one finished", async () => {
@@ -1399,7 +1409,119 @@ describe("SubagentManager", () => {
         await resumed;
 
         expect(signalled).toBe(true);
-        expect(manager.getRecord(id)!.status).toBe("stopped");
+        expect(manager.getRecord(id)!.status).toBe("idle");
+        expect(manager.getRecord(id)!.outcome).toBe("stopped");
+      });
+    });
+
+    // Changed by roadmap step 7a (was: a resume skipped the limiter): every run goes through it.
+    describe("admission through the limiter", () => {
+      /** A finished agent at limit 1, with the only slot then taken by another agent. */
+      async function agentBehindFullLimit(overrides: { bypassQueue?: boolean } = {}) {
+        const calls: string[] = [];
+        const holder = Promise.withResolvers<void>(); // eslint-disable-line @typescript-eslint/no-invalid-void-type -- Promise.withResolvers<void> is valid; rule does not allow void in generic fn call type args
+        const resumed = createSubagentSessionStub();
+        resumed.resumeTurnLoop.mockResolvedValue(turnLoopResult({ responseText: "resumed" }));
+        let creations = 0;
+        const factory: SessionFactory = vi.fn(async () => {
+          creations += 1;
+          if (creations === 1) return toSubagentSession(resumed);
+          const stub = createSubagentSessionStub();
+          stub.runTurnLoop.mockImplementation(async () => {
+            await holder.promise;
+            return turnLoopResult({ responseText: "held" });
+          });
+          return toSubagentSession(stub);
+        });
+        ({ manager } = createManager({
+          createSubagentSession: factory,
+          getMaxConcurrent: () => 1,
+          observer: {
+            onSubagentResumeQueued: () => calls.push("queued"),
+            onSubagentResuming: () => calls.push("resuming"),
+            onSubagentResumed: () => calls.push("resumed"),
+          },
+        }));
+        const id = manager.spawn(STUB_SNAPSHOT, "general-purpose", "test", {
+          description: "d",
+          ...overrides,
+        });
+        await manager.getRecord(id)!.promise;
+        const holderId = spawnBg(manager, "holds the only slot");
+        await vi.waitFor(() => expect(manager.getRecord(holderId)!.status).toBe("running"));
+        return { id, holderId, holder, resumed, calls };
+      }
+
+      it("queues a resume behind a full limit and starts it when the slot frees", async () => {
+        const { id, holderId, holder, resumed, calls } = await agentBehindFullLimit();
+
+        const start = manager.startResume(id, "again");
+
+        expect(start.kind).toBe("started");
+        const record = manager.getRecord(id)!;
+        expect(record.status).toBe("queued");
+        expect(record.outcome).toBeUndefined();
+        expect(resumed.resumeTurnLoop).not.toHaveBeenCalled();
+        expect(calls).toEqual(["queued"]);
+        // A second resume cannot join the one waiting.
+        expect(manager.startResume(id, "and again")).toEqual({
+          kind: "refused",
+          reason: "still-running",
+        });
+
+        holder.resolve();
+        await manager.getRecord(holderId)!.promise;
+        await record.promise;
+
+        expect(resumed.resumeTurnLoop).toHaveBeenCalledWith("again", expect.anything());
+        expect(record.status).toBe("idle");
+        expect(record.outcome).toBe("completed");
+        expect(calls).toEqual(["queued", "resuming", "resumed"]);
+      });
+
+      it("does not announce a queue for a resume the limiter admits at once", async () => {
+        const { id, holder, holderId, calls } = await agentBehindFullLimit();
+        holder.resolve();
+        await manager.getRecord(holderId)!.promise;
+        // The limiter frees the slot just after the run's promise settles.
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        await resumeAndSettle(manager, id, "again");
+
+        expect(calls).toEqual(["resuming", "resumed"]);
+      });
+
+      it("makes a resume wait even when its agent was spawned with bypassQueue", async () => {
+        const { id, holder, holderId, resumed } = await agentBehindFullLimit({ bypassQueue: true });
+
+        manager.startResume(id, "again");
+
+        // bypassQueue governs the spawn's first run only.
+        expect(manager.getRecord(id)!.status).toBe("queued");
+        expect(resumed.resumeTurnLoop).not.toHaveBeenCalled();
+        holder.resolve();
+        await manager.getRecord(holderId)!.promise;
+        await manager.getRecord(id)!.promise;
+        expect(manager.getRecord(id)!.outcome).toBe("completed");
+      });
+
+      it("stops a queued resume without running it, leaving the agent idle", async () => {
+        const { id, holder, holderId, resumed } = await agentBehindFullLimit();
+        manager.startResume(id, "again");
+
+        expect(manager.abort(id)).toBe(true);
+
+        const record = manager.getRecord(id)!;
+        expect(record.status).toBe("idle");
+        expect(record.outcome).toBe("stopped");
+        expect(record.stoppedWhileQueued).toBe(true);
+        holder.resolve();
+        await manager.getRecord(holderId)!.promise;
+        await record.promise;
+        expect(resumed.resumeTurnLoop).not.toHaveBeenCalled();
+        // Idle, so the agent takes a new run.
+        expect((await resumeAndSettle(manager, id, "once more")).kind).toBe("started");
+        expect(resumed.resumeTurnLoop).toHaveBeenCalledWith("once more", expect.anything());
       });
     });
 
@@ -1461,7 +1583,8 @@ describe("SubagentManager", () => {
       expect(record.status).toBe("running");
       gate.resolve(turnLoopResult({ responseText: "second" }));
       await record.promise;
-      expect(record.status).toBe("completed");
+      expect(record.status).toBe("idle");
+      expect(record.outcome).toBe("completed");
     });
 
     it("refuses an id no record answers to", () => {
@@ -1602,7 +1725,9 @@ describe("SubagentManager — cold resume", () => {
     id: "saved-1",
     type: "explore",
     description: "map the module",
-    status: "completed",
+    version: 2,
+    status: "idle",
+    outcome: "completed",
     result: "Mapped it.",
     error: undefined,
     turnBudget: undefined,
@@ -1652,7 +1777,8 @@ describe("SubagentManager — cold resume", () => {
       expect(factory.mock.calls[1][0]).toMatchObject({ transcriptPath: transcript, cwd });
       expect(second.applyTurnLimits).toHaveBeenCalledWith(expect.objectContaining({ maxTurns: 5 }));
       expect(second.resumeTurnLoop).toHaveBeenCalledWith("continue", expect.anything());
-      expect(record.status).toBe("completed");
+      expect(record.status).toBe("idle");
+      expect(record.outcome).toBe("completed");
       expect(record.result).toBe("resumed");
       expect(record.isSessionReady()).toBe(true);
       expect(record.outputFile).toBe(transcript);
@@ -1817,7 +1943,8 @@ describe("SubagentManager — cold resume", () => {
       finish(toSubagentSession(second));
       await record.promise;
 
-      expect(record.status).toBe("stopped");
+      expect(record.status).toBe("idle");
+      expect(record.outcome).toBe("stopped");
       expect(second.dispose).toHaveBeenCalledTimes(1);
       expect(second.resumeTurnLoop).not.toHaveBeenCalled();
       expect(record.isSessionReady()).toBe(false);
@@ -1835,12 +1962,14 @@ describe("SubagentManager — cold resume", () => {
       const { id, record } = await releasedAgent(factory);
 
       await resumeAndSettle(manager, id, "continue");
-      expect(record.status).toBe("error");
+      expect(record.status).toBe("idle");
+      expect(record.outcome).toBe("error");
       expect(record.error).toContain("not a valid session");
 
       await resumeAndSettle(manager, id, "try again");
       expect(third.resumeTurnLoop).toHaveBeenCalledWith("try again", expect.anything());
-      expect(record.status).toBe("completed");
+      expect(record.status).toBe("idle");
+      expect(record.outcome).toBe("completed");
     });
   });
 
@@ -1889,14 +2018,21 @@ describe("SubagentManager — cold resume", () => {
       expect(observer.onSubagentResumed).toHaveBeenCalledWith(record);
     });
 
-    it("resumes an agent that was interrupted mid-run", async () => {
+    it.each<[string, Partial<PersistedSubagentRecord>]>([
+      ["still running", { status: "running", outcome: undefined }],
+      ["still queued", { status: "queued", outcome: undefined }],
+      ["read back as interrupted", { status: "idle", outcome: "interrupted" }],
+    ])("resumes an agent that was interrupted mid-run (saved %s)", async (_label, overrides) => {
       const { factory, stub } = createSessionFactory(createMockSession(), transcript);
       ({ manager } = createManager({
         createSubagentSession: factory,
-        savedAgents: savedAgents(savedRecord({ status: "running", completedAt: undefined })),
+        savedAgents: savedAgents(savedRecord({ completedAt: undefined, ...overrides })),
       }));
       expect((await resumeAndSettle(manager, "saved-1", "continue")).kind).toBe("started");
       expect(stub.resumeTurnLoop).toHaveBeenCalled();
+      const record = manager.getRecord("saved-1")!;
+      expect(record.status).toBe("idle");
+      expect(record.outcome).toBe("completed");
     });
 
     it.each([3, undefined])("keeps a saved resolved turn ceiling of %s", async (maxTurns) => {

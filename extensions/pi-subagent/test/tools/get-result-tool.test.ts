@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import type { ResumeRefusal } from "#src/lifecycle/subagent";
+import type { DisplayStatus, SubagentStatus } from "#src/lifecycle/subagent-state";
 import { MAX_EXPANDED_LINES, PREVIEW_CHARS } from "#src/tools/get-result-renderer";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { type PersistedSubagentRecord, SUBAGENT_RECORD_ENTRY } from "#src/persisted-record";
@@ -12,7 +13,7 @@ import {
 import type { Subagent } from "#src/types";
 import type { Theme } from "#src/ui/display";
 import { makeModel } from "#test/helpers/make-model";
-import { createTestSubagent, makeStubExecution } from "#test/helpers/make-subagent";
+import { createTestSubagent, makeStubExecution, stateForLabel } from "#test/helpers/make-subagent";
 import {
   createMockSession,
   createSubagentSessionStub,
@@ -380,12 +381,19 @@ describe("GetResultTool — TUI rendering", () => {
 });
 
 describe("GetResultTool — the branch's saved records", () => {
-  function savedRecord(overrides: Partial<PersistedSubagentRecord> = {}): PersistedSubagentRecord {
+  /** A saved record; `status` also takes today's display labels (see `stateForLabel`). */
+  function savedRecord(
+    overrides: Omit<Partial<PersistedSubagentRecord>, "status"> & {
+      status?: SubagentStatus | DisplayStatus;
+    } = {},
+  ): PersistedSubagentRecord {
+    const { status = "completed", ...rest } = overrides;
     return {
+      version: 2,
       id: "saved-1",
       type: "explore",
       description: "map the module",
-      status: "completed",
+      ...(status === "idle" ? { status, outcome: "completed" as const } : stateForLabel(status)),
       result: "Mapped it.",
       error: undefined,
       turnBudget: undefined,
@@ -393,8 +401,8 @@ describe("GetResultTool — the branch's saved records", () => {
       completedAt: 4_000,
       outputFile: "/tasks/saved-1.jsonl",
       toolUses: 7,
-      ...overrides,
-    };
+      ...rest,
+    } as PersistedSubagentRecord;
   }
 
   /** A Pi context whose current branch holds these records, last step last. */

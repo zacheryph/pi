@@ -5,6 +5,7 @@ import { Type } from "typebox";
 import type { AgentConfigLookup } from "#src/config/agent-types";
 import type { ReopenSource } from "#src/lifecycle/cold-resume";
 import type { ResumeRefusal } from "#src/lifecycle/subagent";
+import { displayStatus } from "#src/lifecycle/subagent-state";
 import { SUBAGENT_LIST_KIND } from "#src/handlers/roster-card";
 import type { PersistedSubagentRecord } from "#src/persisted-record";
 import { buildRoster, formatRosterList, readBranchRecords } from "#src/roster";
@@ -109,7 +110,9 @@ export class GetResultTool {
 
   /** Answer from the branch's last record for an agent no live record backs. */
   private savedResult(saved: PersistedSubagentRecord, verbose: boolean) {
-    const interrupted = saved.status === "queued" || saved.status === "running";
+    // Still queued or running with no live agent behind it, or already read back as interrupted.
+    const interrupted = saved.status !== "idle" || saved.outcome === "interrupted";
+    const status = displayStatus(saved.status, saved.outcome);
     const displayName = getDisplayName(saved.type, this.registry);
     const duration = interrupted
       ? "unknown"
@@ -117,7 +120,7 @@ export class GetResultTool {
     const text = formatSavedAgentReport({
       id: saved.id,
       displayName,
-      status: saved.status,
+      status,
       interrupted,
       toolUses: saved.toolUses,
       duration,
@@ -136,7 +139,7 @@ export class GetResultTool {
     return textResult<GetResultDetails>(text, {
       agentId: saved.id,
       displayName,
-      status: interrupted ? "stopped" : saved.status,
+      status: interrupted ? "stopped" : status,
       description: saved.description,
       toolUses: saved.toolUses,
       tokens: "",
@@ -157,7 +160,7 @@ export class GetResultTool {
     return {
       id: record.id,
       displayName: getDisplayName(record.type, this.registry),
-      status: record.status,
+      status: record.displayStatus,
       toolUses: record.toolUses,
       tokens: formatLifetimeTokens(record),
       contextPercent: record.getContextPercent(),
@@ -186,7 +189,7 @@ export class GetResultTool {
     return {
       agentId: record.id,
       displayName: getDisplayName(record.type, this.registry),
-      status: record.status,
+      status: record.displayStatus,
       description: record.description,
       toolUses: record.toolUses,
       tokens: formatLifetimeTokens(record),

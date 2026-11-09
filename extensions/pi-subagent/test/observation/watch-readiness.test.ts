@@ -65,7 +65,8 @@ describe("watch readiness through manager and composite observer", () => {
         await manager.getRecord(id)!.promise;
         expect(order).toEqual(["ready", "spawn-ready", "prompt"]);
         expect(received[0]).toMatchObject({ type: "tool_execution_start", toolCallId: "first" });
-        expect(manager.getRecord(id)!.status).toBe("completed");
+        expect(manager.getRecord(id)!.status).toBe("idle");
+        expect(manager.getRecord(id)!.outcome).toBe("completed");
       } finally {
         unsubscribe?.();
         await manager.dispose();
@@ -93,7 +94,8 @@ describe("watch readiness through manager and composite observer", () => {
       });
       await manager.getRecord(id)!.promise;
       expect(perSpawn).toHaveBeenCalledTimes(1);
-      expect(manager.getRecord(id)!.status).toBe("completed");
+      expect(manager.getRecord(id)!.status).toBe("idle");
+      expect(manager.getRecord(id)!.outcome).toBe("completed");
     } finally {
       await manager.dispose();
     }

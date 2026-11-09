@@ -169,6 +169,12 @@ export interface SubagentManagerObserver {
    * settled record went back to running, and the only alternative is polling.
    */
   onSubagentResuming(record: Subagent): void;
+  /**
+   * Fires when a resume had to wait for a concurrency slot, so the record went
+   * back to queued without starting. Optional: a resume admitted at once never
+   * fires it, and `onSubagentResuming` follows when a queued one begins.
+   */
+  onSubagentResumeQueued?(record: Subagent): void;
   /** Fires when a resumed run reaches a terminal state (distinct from a fresh completion). */
   onSubagentResumed(record: Subagent): void;
   /**
@@ -205,8 +211,11 @@ export interface AgentSpawnConfig {
   thinkingLevel?: ThinkingLevel;
   /**
    * Skip the maxConcurrent queue check for this spawn - start immediately even
-   * if the configured concurrency limit would otherwise queue it. Useful for
-   * callers (e.g. cross-extension RPC) that must not be deferred by the queue.
+   * if the configured concurrency limit would otherwise queue it, and without
+   * taking a slot. It governs the spawn's first run only: a resume of the agent
+   * always goes through the limiter, however the agent was spawned. Nothing in
+   * production sets it (the cross-extension RPC it served was removed); only
+   * tests do.
    */
   bypassQueue?: boolean;
   /** Parent abort signal - when aborted, the subagent is also stopped. */
@@ -289,6 +298,9 @@ export class SubagentManager {
       onResumeStarted: guarded("onSubagentResuming", (agent) =>
         observer?.onSubagentResuming(agent),
       ),
+      onResumeQueued: guarded("onSubagentResumeQueued", (agent) =>
+        observer?.onSubagentResumeQueued?.(agent),
+      ),
       onResumeFinished: guarded("onSubagentResumed", (agent) => observer?.onSubagentResumed(agent)),
       onUpdateSent: (agent, message) => observer?.onSubagentUpdate?.(agent, message),
       onCompacted: (agent, info) => observer?.onSubagentCompacted(agent, info),
@@ -357,6 +369,7 @@ export class SubagentManager {
     knobs: Omit<
       SubagentExecution,
       | "createSubagentSession"
+      | "admit"
       | "snapshot"
       | "agentConfig"
       | "prompt"
@@ -366,6 +379,8 @@ export class SubagentManager {
   ): SubagentExecution {
     return {
       createSubagentSession: this.createSubagentSession,
+      // Every resume goes through the limiter, like the first run does.
+      admit: (thunk) => this.limiter.schedule(thunk),
       snapshot,
       agentConfig: resolved.agentConfig,
       prompt,
@@ -480,8 +495,10 @@ export class SubagentManager {
       type: resolved.type,
       description: saved.description,
       state: new SubagentState({
-        // A record still reading queued or running was interrupted.
-        status: saved.status === "queued" || saved.status === "running" ? "stopped" : saved.status,
+        // A record still reading queued or running was interrupted. The saved
+        // record has no live run behind it, so it is idle either way.
+        status: "idle",
+        outcome: saved.status === "idle" ? saved.outcome : "interrupted",
         result: saved.result,
         error: saved.error,
         startedAt: saved.startedAt,

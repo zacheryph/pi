@@ -5,7 +5,8 @@ import type { SubagentManager } from "#src/lifecycle/subagent-manager";
 import type { CompactionInfo } from "#src/types";
 import { AgentWidget, assembleWidgetState, type UICtx } from "#src/ui/agent-widget";
 import { makeModel } from "#test/helpers/make-model";
-import { createTestSubagent, makeStubExecution } from "#test/helpers/make-subagent";
+import { createTestSubagent, makeStubExecution, stateForLabel } from "#test/helpers/make-subagent";
+import type { DisplayStatus } from "#src/lifecycle/subagent-state";
 import { plainTheme } from "../../../../packages/pi-test-helpers/src/theme.ts";
 
 // Minimal agent fixture — only the three fields AgentSummary requires.
@@ -48,7 +49,11 @@ function stubTheme() {
 // registered/visible and undefined means it was cleared (the finished agent has
 // aged out).
 function makeWidget(agents: Array<{ id: string; status: string; completedAt?: number }>) {
-  const manager = { listAgents: () => agents } as unknown as SubagentManager;
+  // The fixtures name an agent by the label it shows (completed, error, ...); the
+  // manager lists records with a status and an outcome.
+  const listAgents = () =>
+    agents.map((agent) => ({ ...agent, ...stateForLabel(agent.status as DisplayStatus) }));
+  const manager = { listAgents } as unknown as SubagentManager;
   const registry = new AgentTypeRegistry(() => new Map());
   const widget = new AgentWidget(manager, registry);
   const setWidget = vi.fn<UICtx["setWidget"]>();
@@ -394,6 +399,19 @@ describe("AgentWidget — self-drives from lifecycle notifications", () => {
 
     expect(vi.getTimerCount()).toBe(0);
     expect(typeof lastContent()).toBe("function");
+  });
+
+  it("renders a resume waiting for its slot on onSubagentResumeQueued, counted as queued", () => {
+    const { widget, lastContent, setStatus } = makeWidget([{ id: "a1", status: "queued" }]);
+
+    widget.onSubagentResumeQueued(createTestSubagent({ id: "a1", status: "queued" }));
+
+    expect(vi.getTimerCount()).toBe(0);
+    expect(typeof lastContent()).toBe("function");
+    expect(setStatus).toHaveBeenLastCalledWith(
+      "subagent:status",
+      expect.stringContaining("queued"),
+    );
   });
 
   it("renders the finished agent on onSubagentCompleted", () => {

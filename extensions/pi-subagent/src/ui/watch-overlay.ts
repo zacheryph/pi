@@ -5,6 +5,7 @@ import { debugLog } from "#src/debug";
 import type { AgentConfigLookup } from "#src/config/agent-types";
 import type { SubagentManagerObserver } from "#src/lifecycle/subagent-manager";
 import type { Subagent } from "#src/lifecycle/subagent";
+import { displayStatus } from "#src/lifecycle/subagent-state";
 import { OVERLAY_WIDTH_PERCENT, type OverlayWidth } from "#src/settings";
 import { getDisplayName } from "#src/ui/display";
 import { renderWatchOverlay, watchHeight, type WatchSection } from "#src/ui/watch-renderer";
@@ -17,6 +18,7 @@ export type WatchAgent = Pick<
   | "type"
   | "description"
   | "status"
+  | "outcome"
   | "responseText"
   | "result"
   | "error"
@@ -138,6 +140,12 @@ export class WatchOverlay implements SubagentManagerObserver {
   onSubagentResumed(record: WatchAgent): void {
     this.finish(record);
   }
+  onSubagentResumeQueued(record: WatchAgent): void {
+    const watched = this.track(record);
+    if (watched) watched.finishedAt = undefined;
+    this.scheduleExpiry();
+    this.refresh();
+  }
   onSubagentResuming(record: WatchAgent): void {
     const watched = this.track(record);
     if (watched) {
@@ -203,7 +211,7 @@ export class WatchOverlay implements SubagentManagerObserver {
       .map(({ record, tail }) => ({
         id: record.id,
         label: `${getDisplayName(record.type, this.registry)}: ${record.description}`,
-        status: record.status,
+        status: displayStatus(record.status, record.outcome),
         blocks: tail.visibleBlocks(this.settings.overlayShowThinking ?? true),
       }));
   }

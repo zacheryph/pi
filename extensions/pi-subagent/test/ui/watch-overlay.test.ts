@@ -17,6 +17,7 @@ function agent(overrides: Partial<WatchAgent> = {}) {
     type: "general-purpose",
     description: "watch me",
     status: "running",
+    outcome: undefined,
     responseText: "",
     result: undefined,
     error: undefined,
@@ -242,7 +243,7 @@ describe("WatchOverlay lifecycle and visibility", () => {
     const f = fixture();
     const fg = vi.fn((_color: string, text: string) => text);
     f.ui.theme.fg = fg;
-    f.watch.onSubagentCompleted(agent({ status: "error", error: "Oops" }).record);
+    f.watch.onSubagentCompleted(agent({ status: "idle", outcome: "error", error: "Oops" }).record);
     f.text();
     expect(fg).toHaveBeenCalledWith("error", "Error: Oops");
     f.watch.dispose();
@@ -253,7 +254,8 @@ describe("WatchOverlay lifecycle and visibility", () => {
     const a = agent();
     f.watch.onSubagentStarted(a.record);
     f.watch.toggle(); // explicitly hidden
-    a.record.status = "completed";
+    a.record.status = "idle";
+    a.record.outcome = "completed";
     f.watch.onSubagentCompleted(a.record);
     vi.advanceTimersByTime(8100);
     f.watch.onSubagentStarted(agent({ id: "b" }).record);
@@ -268,7 +270,8 @@ describe("WatchOverlay lifecycle and visibility", () => {
     const f = fixture();
     const a = agent();
     f.watch.onSubagentStarted(a.record);
-    a.record.status = "completed";
+    a.record.status = "idle";
+    a.record.outcome = "completed";
     f.watch.onSubagentCompleted(a.record);
     vi.advanceTimersByTime(8100);
     expect(f.overlays[0].handle.isHidden()).toBe(true);
@@ -330,18 +333,44 @@ describe("WatchOverlay lifecycle and visibility", () => {
     const a = agent();
     a.ready();
     f.watch.onSubagentSessionCreated(a.record);
-    a.record.status = "error";
+    a.record.status = "idle";
+    a.record.outcome = "error";
     a.record.error = "Oops";
     f.watch.onSubagentCompleted(a.record);
     expect(a.unsubscribe).toHaveBeenCalledTimes(1);
     expect(f.text()).toContain("Error: Oops");
     vi.advanceTimersByTime(4000);
     a.record.status = "running";
+    a.record.outcome = undefined;
     f.watch.onSubagentResuming(a.record);
     expect(a.record.subscribeToUpdates).toHaveBeenCalledTimes(2);
     vi.advanceTimersByTime(8000);
     expect(f.text()).toContain("Resuming");
     expect(f.overlays[0].handle.isHidden()).toBe(false);
+    f.watch.dispose();
+  });
+
+  it("keeps a finished agent that is queued for a resume from expiring", () => {
+    const f = fixture();
+    const a = agent();
+    a.ready();
+    f.watch.onSubagentSessionCreated(a.record);
+    a.record.status = "idle";
+    a.record.outcome = "completed";
+    a.record.result = "first result";
+    f.watch.onSubagentCompleted(a.record);
+    vi.advanceTimersByTime(1000);
+    a.record.status = "queued";
+    a.record.outcome = undefined;
+
+    f.watch.onSubagentResumeQueued(a.record);
+    vi.advanceTimersByTime(60_000);
+
+    // Still tracked, with what it showed: the section reappears once its run begins.
+    a.record.status = "running";
+    f.watch.onSubagentResuming(a.record);
+    expect(f.text()).toContain("first result");
+    expect(f.text()).toContain("Resuming");
     f.watch.dispose();
   });
 

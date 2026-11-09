@@ -8,7 +8,7 @@
  * result-renderer.ts pattern used by the subagent_start tool's renderer.
  */
 
-import type { SubagentStatus } from "#src/lifecycle/subagent-state";
+import type { DisplayStatus } from "#src/lifecycle/subagent-state";
 import type { TurnBudget } from "#src/lifecycle/turn-limits";
 import { renderOutcomeIcon } from "#src/tools/result-renderer";
 import type { Theme } from "#src/ui/display";
@@ -32,7 +32,7 @@ export const PREVIEW_CHARS = 200;
 export interface GetResultDetails {
   agentId: string;
   displayName: string;
-  status: SubagentStatus;
+  status: DisplayStatus;
   description: string;
   toolUses: number;
   /** Pre-formatted lifetime token total; "" when zero. */

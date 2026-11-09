@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { DisplayStatus, RunOutcome, SubagentStatus } from "#src/lifecycle/subagent-state";
 import type { PersistedSubagentRecord } from "#src/persisted-record";
 import {
   buildRoster,
@@ -12,13 +13,25 @@ import {
   readBranchRecords,
   rosterState,
 } from "#src/roster";
+import { stateForLabel } from "#test/helpers/make-subagent";
 
-function saved(overrides: Partial<PersistedSubagentRecord> = {}): PersistedSubagentRecord {
+/**
+ * A saved record. `status` also takes one of today's display labels
+ * (`error`, `aborted`, `stopped`, `completed`), standing for the status and
+ * outcome that read that way.
+ */
+function saved(
+  overrides: Omit<Partial<PersistedSubagentRecord>, "status"> & {
+    status?: SubagentStatus | DisplayStatus;
+  } = {},
+): PersistedSubagentRecord {
+  const { status = "completed", ...rest } = overrides;
   return {
+    version: 2,
     id: "a1",
     type: "implementer",
     description: "Add token refresh",
-    status: "completed",
+    ...(status === "idle" ? { status, outcome: "completed" as const } : stateForLabel(status)),
     result: "done",
     error: undefined,
     turnBudget: undefined,
@@ -26,25 +39,28 @@ function saved(overrides: Partial<PersistedSubagentRecord> = {}): PersistedSubag
     completedAt: 2_000,
     outputFile: undefined,
     toolUses: 0,
-    ...overrides,
-  };
+    ...rest,
+  } as PersistedSubagentRecord;
 }
 
 const noneLive = () => undefined;
 
 describe("rosterState", () => {
-  it.each([
-    ["completed", undefined, true, "completed"],
-    ["completed", "Which DB?", false, "waiting"],
-    ["running", undefined, true, "running"],
-    ["queued", undefined, true, "queued"],
-    ["running", undefined, false, "interrupted"],
-    ["queued", undefined, false, "interrupted"],
-    ["error", undefined, false, "error"],
-    ["aborted", "Which DB?", false, "aborted"],
-    ["stopped", undefined, true, "stopped"],
-  ] as const)("%s, question %s, live %s → %s", (status, question, live, expected) => {
-    expect(rosterState(status, question, live)).toBe(expected);
+  it.each<[SubagentStatus, RunOutcome | undefined, string | undefined, boolean, string]>([
+    ["idle", "completed", undefined, true, "completed"],
+    ["idle", "completed", "Which DB?", false, "waiting"],
+    ["running", undefined, undefined, true, "running"],
+    ["queued", undefined, undefined, true, "queued"],
+    ["running", undefined, undefined, false, "interrupted"],
+    ["queued", undefined, undefined, false, "interrupted"],
+    ["idle", "error", undefined, false, "error"],
+    ["idle", "turn-limit", "Which DB?", false, "aborted"],
+    ["idle", "stopped", undefined, true, "stopped"],
+    ["idle", "stopped", "Which DB?", true, "stopped"],
+    // A run a reload or restart cut short, as a version 1 record reads back.
+    ["idle", "interrupted", undefined, false, "interrupted"],
+  ])("%s after %s, question %s, live %s → %s", (status, outcome, question, live, expected) => {
+    expect(rosterState(status, outcome, question, live)).toBe(expected);
   });
 });
 
@@ -72,7 +88,12 @@ describe("buildRoster", () => {
 
   it("takes live state over the saved record", () => {
     const record = saved({ status: "running", completedAt: undefined });
-    const live: LiveAgentLike = { ...record, status: "completed", completedAt: 9_000 };
+    const live: LiveAgentLike = {
+      ...record,
+      status: "idle",
+      outcome: "completed",
+      completedAt: 9_000,
+    };
     const [entry] = buildRoster([record], () => live);
     expect(entry).toMatchObject({ state: "completed", completedAt: 9_000, live: true });
   });
@@ -142,6 +163,10 @@ describe("formatRosterLine", () => {
     expect(line(saved({ status: "aborted" }))).toContain("failed: turn budget exhausted");
     expect(line(saved({ status: "stopped" }))).toContain("stopped before it finished");
     expect(line(saved({ status: "running" }))).toContain(
+      "interrupted: the session was reloaded or replaced before it finished",
+    );
+    // The same line for a run a version 1 record said was cut short.
+    expect(line(saved({ status: "idle", outcome: "interrupted" }))).toContain(
       "interrupted: the session was reloaded or replaced before it finished",
     );
   });

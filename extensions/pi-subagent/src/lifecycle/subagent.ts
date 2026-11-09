@@ -15,7 +15,12 @@ import type { CreateSubagentSessionParams } from "#src/lifecycle/create-subagent
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import { type Admission, Run, type RunInit } from "#src/lifecycle/run";
 import type { SubagentSession, TurnLoopResult } from "#src/lifecycle/subagent-session";
-import { SubagentState, type SubagentStatus } from "#src/lifecycle/subagent-state";
+import {
+  type DisplayStatus,
+  type RunOutcome,
+  SubagentState,
+  type SubagentStatus,
+} from "#src/lifecycle/subagent-state";
 import type { TurnBudget } from "#src/lifecycle/turn-limits";
 import type { LifetimeUsage } from "#src/lifecycle/usage";
 import { subscribeSubagentObserver } from "#src/observation/record-observer";
@@ -42,6 +47,11 @@ export interface SubagentLifecycleObserver {
    * outcome of the one it replaced.
    */
   onResumeStarted?(agent: Subagent): void;
+  /**
+   * Fires when a resume had to wait for a concurrency slot: the agent is queued
+   * again and nothing has started. A resume admitted at once never fires it.
+   */
+  onResumeQueued?(agent: Subagent): void;
   /** Fires once when a resumed run reaches a terminal state. */
   onResumeFinished?(agent: Subagent): void;
   /** Fires when the running agent sends its parent a mid-run message. */
@@ -50,7 +60,7 @@ export interface SubagentLifecycleObserver {
   onCompacted?(agent: Subagent, info: CompactionInfo): void;
 }
 
-export type { SubagentStatus } from "#src/lifecycle/subagent-state";
+export type { DisplayStatus, RunOutcome, SubagentStatus } from "#src/lifecycle/subagent-state";
 
 /**
  * Why a resume of an agent would be refused.
@@ -68,7 +78,7 @@ export type ResumeRefusal = "still-running" | "no-session" | ReopenRefusal;
 export type SteerOutcome =
   | { kind: "delivered" }
   | { kind: "buffered" }
-  | { kind: "rejected"; status: SubagentStatus };
+  | { kind: "rejected"; status: DisplayStatus };
 
 /**
  * The execution machinery a Subagent needs to run. A single mandatory
@@ -79,6 +89,12 @@ export type SteerOutcome =
 export interface SubagentExecution {
   /** Assembly factory that produces a born-complete SubagentSession. */
   createSubagentSession: (params: CreateSubagentSessionParams) => Promise<SubagentSession>;
+  /**
+   * How a resume is admitted: the limiter, in production. Every run goes through
+   * it, the first run (`scheduleVia`) and every resume alike. Absent, a resume
+   * begins at once, which only a bare `Subagent` built without a manager does.
+   */
+  admit?: Admission;
   /** Immutable spawn-time parent snapshot handed to the session factory. */
   snapshot: ParentSnapshot;
   /** Prepared spawn-time config for fragment profiles; others use live lookup. */
@@ -137,6 +153,17 @@ export class Subagent {
   private readonly state: SubagentState;
   get status(): SubagentStatus {
     return this.state.status;
+  }
+  /** How the last run ended; undefined while a run is queued or running. */
+  get outcome(): RunOutcome | undefined {
+    return this.state.outcome;
+  }
+  /**
+   * The label users and subscribers see: `completed`, `aborted`, `stopped` or
+   * `error` once idle, else the status itself.
+   */
+  get displayStatus(): DisplayStatus {
+    return this.state.displayStatus;
   }
   get result(): string | undefined {
     return this.state.result;
@@ -297,6 +324,9 @@ export class Subagent {
     // session" does. A queued agent is not running and keeps the no-session
     // answer, which is the truth about it.
     if (this.isRunning() || this.current.reopening) return "still-running";
+    // A resume waiting for its slot is a run already: a second one must not
+    // join it. A queued first run is told apart by having no session, below.
+    if (this.status === "queued" && this.current.kind === "resume") return "still-running";
     if (this.isSessionReady()) return undefined;
     if (!this.released) return "no-session";
     const { checkReopen } = this.execution;
@@ -311,7 +341,7 @@ export class Subagent {
    */
   async steer(message: string): Promise<SteerOutcome> {
     if (!this.canBeSteered()) {
-      return { kind: "rejected", status: this.status };
+      return { kind: "rejected", status: this.displayStatus };
     }
     if (!this.subagentSession) {
       this._pendingSteers.push(message);
@@ -391,8 +421,11 @@ export class Subagent {
    * here, make it current, and execute it; they differ only in the `kind` the
    * run carries and in whether an `admit` defers its start.
    *
-   * The body runs synchronously up to its first await when not deferred, so a
-   * resume has reset the record by the time its caller regains control.
+   * A resume queues the record the moment it is asked for, as a first run is
+   * queued when its agent is created, and the run begins when `admit` grants a
+   * slot. The body runs synchronously up to its first await when the slot is
+   * free, so such a resume has reset the record by the time its caller regains
+   * control.
    */
   private startRun(init: RunInit, admit?: Admission): Promise<void> {
     const previous = this.current;
@@ -404,10 +437,18 @@ export class Subagent {
         : undefined;
     const run = new Run({ ...init, turnCeiling });
     this.current = run;
-    // Release the previous run's listener handles before wiring this one's.
-    if (init.kind === "resume") previous.listeners.release();
+    if (init.kind === "resume") {
+      // Release the previous run's listener handles before wiring this one's.
+      previous.listeners.release();
+      this.state.markQueued(Date.now());
+    }
     const body = () => this.execute(run);
     run.promise = admit ? admit(body) : body();
+    // Still queued after admission: the limiter had no slot, so nothing has
+    // started and observers learn that the agent went back to waiting.
+    if (init.kind === "resume" && this.current === run && this.status === "queued") {
+      this.execution.observer?.onResumeQueued?.(this);
+    }
     return run.promise;
   }
 
@@ -436,21 +477,16 @@ export class Subagent {
   }
 
   /**
-   * Record that the run is under way. False when an initial run's agent left the
-   * active set before its slot opened (e.g. abort-while-queued): that run does
-   * nothing.
+   * Record that the run is under way. False when the run's turn never came: its
+   * agent left the active set before the slot opened (abort-while-queued), or a
+   * later run replaced it. That run does nothing.
    */
   private begin(run: Run): boolean {
-    if (run.kind === "initial") {
-      if (!this.isActive()) return false;
-      this.state.markRunning(Date.now());
-      this.execution.observer?.onStarted?.(this);
-      run.listeners.wireSignal(run.signal, () => this.abort());
-      return true;
-    }
-    this.state.resetForResume(Date.now());
+    if (this.current !== run || !this.isActive()) return false;
+    this.state.markRunning(Date.now());
     run.listeners.wireSignal(run.signal, () => this.abort());
-    this.execution.observer?.onResumeStarted?.(this);
+    if (run.kind === "initial") this.execution.observer?.onStarted?.(this);
+    else this.execution.observer?.onResumeStarted?.(this);
     return true;
   }
 
@@ -588,7 +624,8 @@ export class Subagent {
    * than forwarded to the turn loop, so both levers stop the same run and both
    * leave the record reading `stopped`.
    *
-   * A resume is admitted at once: it does not go through the limiter.
+   * A resume is admitted like a first run: it queues the record and goes
+   * through the limiter, so it waits for a slot when the limit is reached.
    */
   resume(prompt: string, signal?: AbortSignal): Promise<void> {
     const liveSession = this.subagentSession;
@@ -597,7 +634,7 @@ export class Subagent {
       // throw would escape a caller's `.rejects` assertion.
       return Promise.reject(new Error("Subagent not configured for resume — missing session"));
     }
-    return this.startRun({ kind: "resume", prompt, signal, liveSession });
+    return this.startRun({ kind: "resume", prompt, signal, liveSession }, this.execution.admit);
   }
 
   /**
@@ -635,8 +672,10 @@ export class Subagent {
    * way a returned run is not complete: that ends the run for good, as aborted.
    */
   private settle(run: Run, result: TurnLoopResult): void {
-    if (result.turnBudget.phase === "exhausted") this.state.markAborted(result.responseText);
-    else this.state.markCompleted(result.responseText);
+    if (this.current === run) {
+      if (result.turnBudget.phase === "exhausted") this.state.markTurnLimit(result.responseText);
+      else this.state.markCompleted(result.responseText);
+    }
     this.finish(run);
   }
 
@@ -648,14 +687,22 @@ export class Subagent {
    */
   private fail(run: Run, err: unknown): void {
     run.reopening = false;
-    this.state.markError(err);
-    this.state.setPendingQuestion(undefined);
+    if (this.current === run) {
+      this.state.markError(err);
+      this.state.setPendingQuestion(undefined);
+    }
     this.finish(run);
   }
 
-  /** Release the run's listeners and report its terminal transition. */
+  /**
+   * Release the run's listeners and report its terminal transition. A run that
+   * a later one has replaced (it was stopped, and the agent has since taken new
+   * input) winds down quietly: the record now belongs to the later run, which
+   * reports for itself.
+   */
   private finish(run: Run): void {
     run.listeners.release();
+    if (this.current !== run) return;
     if (run.kind === "resume") this.execution.observer?.onResumeFinished?.(this);
     else this.execution.observer?.onRunFinished?.(this);
   }
@@ -674,16 +721,21 @@ export class Subagent {
   }
 
   /**
-   * Stop the agent: a queued one through the same terminal funnel a run's stop
-   * uses, a running one by firing its current run's AbortController. Each run
-   * has its own controller, so the lever always reaches whichever run is in
-   * flight. A stopped queued agent leaves the active set, so its scheduled
-   * thunk no-ops on begin()'s guard when its slot frees. Returns false when there was nothing to stop.
+   * Stop the agent: the run ends and the agent is idle with outcome `stopped`.
+   * A queued run goes through the same terminal funnel a run's stop uses, a
+   * running one by firing its current run's AbortController. Each run has its
+   * own controller, so the lever always reaches whichever run is in flight. A
+   * stopped queued agent leaves the active set, so its scheduled thunk no-ops
+   * on begin()'s guard when its slot frees. Returns false when there was
+   * nothing to stop. Stopping cancels nothing else: an idle agent takes a new
+   * run at once.
    */
   abort(): boolean {
     if (this.status === "queued") {
       this.state.stopQueued();
-      this.execution.observer?.onRunFinished?.(this);
+      // Nothing will rebuild the session this queued resume was going to reopen.
+      this.current.reopening = false;
+      this.finish(this.current);
       return true;
     }
     if (!this.isRunning()) return false;

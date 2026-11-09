@@ -172,6 +172,19 @@ describe("AgentTool — resume path", () => {
       expect(result.details).toMatchObject({ status: "background", agentId: "agent-1" });
     });
 
+    it("says a resume waits for a slot when the limiter has none free", async () => {
+      const deps = createToolDeps();
+      mockResumeStart(deps, { status: "queued", completedAt: undefined });
+
+      const result = await execute(deps, { ...resumeCall, description: "answer" });
+
+      expect(result.content[0].text).toContain("Agent resume queued in background.\n");
+      expect(result.content[0].text).toContain(
+        `Position: queued (max ${deps.settings.maxConcurrent} concurrent)`,
+      );
+      expect(result.details).toMatchObject({ status: "background", agentId: "agent-1" });
+    });
+
     it("leaves the resumed outcome to the completion message", async () => {
       const deps = createToolDeps();
       const record = mockResumeStart(deps);

@@ -53,7 +53,8 @@ describe("listNavigableAgents", () => {
       type: "general-purpose",
       description: "Investigate the bug",
       toolUses: 3,
-      status: "completed",
+      status: "idle",
+      outcome: "completed",
       startedAt: 1000,
       completedAt: 4000,
     });
@@ -144,7 +145,8 @@ function persistedRun(overrides: Partial<PersistedRunSummary> = {}): PersistedRu
     id: "earlier",
     type: "general-purpose",
     description: "Earlier task",
-    status: "completed",
+    status: "idle",
+    outcome: "completed",
     startedAt: 1000,
     completedAt: 4000,
     toolUses: 7,
@@ -185,7 +187,7 @@ describe("liveSource", () => {
     const running = makeNavigable({ status: "running", activeTools, responseText: "working" });
     expect(liveSource(running).streaming()).toEqual({ activeTools, responseText: "working" });
 
-    const completed = makeNavigable({ status: "completed" });
+    const completed = makeNavigable({ status: "idle", outcome: "completed" });
     expect(liveSource(completed).streaming()).toBeUndefined();
   });
 

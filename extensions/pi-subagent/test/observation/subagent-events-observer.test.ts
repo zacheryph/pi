@@ -168,12 +168,15 @@ describe("SubagentEventsObserver", () => {
       observer.onSubagentCompleted(record);
 
       expect(appendEntry).toHaveBeenCalledExactlyOnceWith("subagent:record", {
+        version: 2,
         id: "agent-2",
         type: "explore",
         description: "explore code",
-        status: "completed",
+        status: "idle",
+        outcome: "completed",
         result: "found it",
         error: undefined,
+        turnBudget: undefined,
         startedAt: 1000,
         completedAt: 2000,
         outputFile: undefined,
@@ -234,6 +237,23 @@ describe("SubagentEventsObserver", () => {
     });
   });
 
+  describe("onSubagentResumeQueued", () => {
+    it("records the agent queued again, announces nothing and emits nothing", () => {
+      const { observer, emit, appendEntry, notifications } = makeObserver();
+
+      observer.onSubagentResumeQueued(
+        createTestSubagent({ id: "agent-1", status: "queued", completedAt: undefined }),
+      );
+
+      expect(appendEntry).toHaveBeenCalledExactlyOnceWith(
+        "subagent:record",
+        expect.objectContaining({ id: "agent-1", status: "queued", outcome: undefined }),
+      );
+      expect(emit).not.toHaveBeenCalled();
+      expect(notifications.sendCompletion).not.toHaveBeenCalled();
+    });
+  });
+
   describe("onSubagentResumed", () => {
     it("emits subagent:resumed with the buildEventData payload for a completed resume", () => {
       const { observer, emit } = makeObserver();
@@ -269,12 +289,15 @@ describe("SubagentEventsObserver", () => {
       observer.onSubagentResumed(record);
 
       expect(appendEntry).toHaveBeenCalledExactlyOnceWith("subagent:record", {
+        version: 2,
         id: "agent-5",
         type: "explore",
         description: "resume explore",
-        status: "completed",
+        status: "idle",
+        outcome: "completed",
         result: "resumed it",
         error: undefined,
+        turnBudget: undefined,
         startedAt: 3000,
         completedAt: 4000,
         outputFile: undefined,

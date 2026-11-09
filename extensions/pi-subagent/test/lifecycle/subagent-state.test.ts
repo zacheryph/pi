@@ -1,15 +1,21 @@
 import { describe, expect, it } from "vitest";
 import {
+  type DisplayStatus,
+  displayStatus,
   isActiveStatus,
+  isFailureOutcome,
   isRunningStatus,
   isTerminalErrorStatus,
+  type RunOutcome,
   SubagentState,
   type SubagentStateInit,
   type SubagentStatus,
 } from "#src/lifecycle/subagent-state";
 import type { TurnBudget } from "#src/lifecycle/turn-limits";
 
-const ALL_STATUSES: SubagentStatus[] = [
+const ALL_STATUSES: SubagentStatus[] = ["queued", "running", "idle"];
+const ALL_OUTCOMES: RunOutcome[] = ["completed", "turn-limit", "error", "stopped", "interrupted"];
+const ALL_DISPLAY_STATUSES: DisplayStatus[] = [
   "queued",
   "running",
   "completed",
@@ -47,17 +53,28 @@ describe("SubagentState — constructor", () => {
 
   it("passes through optional transition fields", () => {
     const state = new SubagentState({
-      status: "completed",
+      status: "idle",
+      outcome: "error",
       result: "done",
       error: "oops",
       startedAt: 1000,
       completedAt: 2000,
     });
-    expect(state.status).toBe("completed");
+    expect(state.status).toBe("idle");
+    expect(state.outcome).toBe("error");
     expect(state.result).toBe("done");
     expect(state.error).toBe("oops");
     expect(state.startedAt).toBe(1000);
     expect(state.completedAt).toBe(2000);
+  });
+
+  it("has no outcome while a run is queued or running, whatever the init says", () => {
+    expect(new SubagentState().outcome).toBeUndefined();
+    expect(new SubagentState({ status: "running", outcome: "error" }).outcome).toBeUndefined();
+  });
+
+  it("defaults an idle agent's outcome to completed: an idle agent has finished a run", () => {
+    expect(new SubagentState({ status: "idle" }).outcome).toBe("completed");
   });
 
   it("leaves optional fields undefined when not provided", () => {
@@ -112,13 +129,20 @@ describe("SubagentState — markRunning", () => {
     expect(state.status).toBe("running");
     expect(state.startedAt).toBe(2000);
   });
+
+  it("clears the outcome of the run before", () => {
+    const state = new SubagentState({ status: "idle", outcome: "error" });
+    state.markRunning(2000);
+    expect(state.outcome).toBeUndefined();
+  });
 });
 
 describe("SubagentState — markCompleted", () => {
-  it("sets status, result, and completedAt", () => {
+  it("goes idle with outcome completed, sets result and completedAt", () => {
     const state = new SubagentState({ status: "running" });
     state.markCompleted("all done", 5000);
-    expect(state.status).toBe("completed");
+    expect(state.status).toBe("idle");
+    expect(state.outcome).toBe("completed");
     expect(state.result).toBe("all done");
     expect(state.completedAt).toBe(5000);
   });
@@ -138,38 +162,41 @@ describe("SubagentState — markCompleted", () => {
     expect(state.completedAt).toBe(1000);
   });
 
-  it("preserves status when already stopped, but still sets result and completedAt", () => {
-    const state = new SubagentState({ status: "stopped", completedAt: 1000 });
+  it("keeps the outcome stopped when a stop came first, but still sets result and completedAt", () => {
+    const state = new SubagentState({ status: "idle", outcome: "stopped", completedAt: 1000 });
     state.markCompleted("late result", 2000);
-    expect(state.status).toBe("stopped");
+    expect(state.status).toBe("idle");
+    expect(state.outcome).toBe("stopped");
     expect(state.result).toBe("late result");
     expect(state.completedAt).toBe(1000);
   });
 });
 
-describe("SubagentState — markAborted", () => {
-  it("sets status to 'aborted' with result and completedAt", () => {
+describe("SubagentState — markTurnLimit", () => {
+  it("goes idle with outcome turn-limit, with result and completedAt", () => {
     const state = new SubagentState({ status: "running" });
-    state.markAborted("partial result", 3000);
-    expect(state.status).toBe("aborted");
+    state.markTurnLimit("partial result", 3000);
+    expect(state.status).toBe("idle");
+    expect(state.outcome).toBe("turn-limit");
     expect(state.result).toBe("partial result");
     expect(state.completedAt).toBe(3000);
   });
 
-  it("preserves status when already stopped, but still sets result", () => {
-    const state = new SubagentState({ status: "stopped", completedAt: 500 });
-    state.markAborted("partial", 2000);
-    expect(state.status).toBe("stopped");
+  it("keeps the outcome stopped when a stop came first, but still sets result", () => {
+    const state = new SubagentState({ status: "idle", outcome: "stopped", completedAt: 500 });
+    state.markTurnLimit("partial", 2000);
+    expect(state.outcome).toBe("stopped");
     expect(state.result).toBe("partial");
     expect(state.completedAt).toBe(500);
   });
 });
 
 describe("SubagentState — markError", () => {
-  it("sets status to 'error' and formats Error objects to .message", () => {
+  it("goes idle with outcome error and formats Error objects to .message", () => {
     const state = new SubagentState({ status: "running" });
     state.markError(new Error("something broke"), 6000);
-    expect(state.status).toBe("error");
+    expect(state.status).toBe("idle");
+    expect(state.outcome).toBe("error");
     expect(state.error).toBe("something broke");
     expect(state.completedAt).toBe(6000);
   });
@@ -180,10 +207,11 @@ describe("SubagentState — markError", () => {
     expect(state.error).toBe("42");
   });
 
-  it("preserves status when already stopped, but still sets error and completedAt", () => {
-    const state = new SubagentState({ status: "stopped", completedAt: 1000 });
+  it("keeps the outcome stopped when a stop came first, but still sets error and completedAt", () => {
+    const state = new SubagentState({ status: "idle", outcome: "stopped", completedAt: 1000 });
     state.markError(new Error("late error"), 2000);
-    expect(state.status).toBe("stopped");
+    expect(state.status).toBe("idle");
+    expect(state.outcome).toBe("stopped");
     expect(state.error).toBe("late error");
     expect(state.completedAt).toBe(1000);
   });
@@ -196,10 +224,11 @@ describe("SubagentState — markError", () => {
 });
 
 describe("SubagentState — markStopped", () => {
-  it("sets status to 'stopped' and completedAt", () => {
+  it("ends the run: idle with outcome stopped, and completedAt", () => {
     const state = new SubagentState({ status: "running" });
     state.markStopped(7000);
-    expect(state.status).toBe("stopped");
+    expect(state.status).toBe("idle");
+    expect(state.outcome).toBe("stopped");
     expect(state.completedAt).toBe(7000);
   });
 
@@ -212,10 +241,11 @@ describe("SubagentState — markStopped", () => {
     expect(state.completedAt).toBeLessThanOrEqual(after);
   });
 
-  it("overwrites any previous status — no guard", () => {
-    const state = new SubagentState({ status: "completed" });
+  it("overwrites any previous outcome — no guard", () => {
+    const state = new SubagentState({ status: "idle", outcome: "completed" });
     state.markStopped(8000);
-    expect(state.status).toBe("stopped");
+    expect(state.status).toBe("idle");
+    expect(state.outcome).toBe("stopped");
   });
 
   it("leaves stoppedWhileQueued false — the agent had started", () => {
@@ -226,10 +256,11 @@ describe("SubagentState — markStopped", () => {
 });
 
 describe("SubagentState — stopQueued", () => {
-  it("sets status to 'stopped' and completedAt", () => {
+  it("leaves the agent idle with outcome stopped, and sets completedAt", () => {
     const state = new SubagentState({ status: "queued" });
     state.stopQueued(7000);
-    expect(state.status).toBe("stopped");
+    expect(state.status).toBe("idle");
+    expect(state.outcome).toBe("stopped");
     expect(state.completedAt).toBe(7000);
   });
 
@@ -252,12 +283,16 @@ describe("SubagentState — stopQueued", () => {
   it("stops an already-running agent without claiming it never started", () => {
     const state = new SubagentState({ status: "running" });
     state.stopQueued(7000);
-    expect(state.status).toBe("stopped");
+    expect(state.outcome).toBe("stopped");
     expect(state.stoppedWhileQueued).toBe(false);
   });
 
   it("seeds stoppedWhileQueued from init", () => {
-    const state = new SubagentState({ status: "stopped", stoppedWhileQueued: true });
+    const state = new SubagentState({
+      status: "idle",
+      outcome: "stopped",
+      stoppedWhileQueued: true,
+    });
     expect(state.stoppedWhileQueued).toBe(true);
   });
 });
@@ -295,32 +330,47 @@ describe("SubagentState — incrementCompactions", () => {
   });
 });
 
-describe("SubagentState — resetForResume", () => {
-  it("sets status to 'running' and new startedAt", () => {
-    const state = new SubagentState({ status: "completed", startedAt: 1000 });
-    state.resetForResume(9000);
-    expect(state.status).toBe("running");
+describe("SubagentState — markQueued", () => {
+  it("queues the agent again with a new startedAt and no outcome", () => {
+    const state = new SubagentState({ status: "idle", outcome: "completed", startedAt: 1000 });
+    state.markQueued(9000);
+    expect(state.status).toBe("queued");
+    expect(state.outcome).toBeUndefined();
     expect(state.startedAt).toBe(9000);
   });
 
-  it("clears completedAt, result, and error", () => {
+  it("clears completedAt, result, and error: they belong to the run it replaces", () => {
     const state = new SubagentState({
-      status: "error",
+      status: "idle",
+      outcome: "error",
       result: "old result",
       error: "old error",
       completedAt: 5000,
     });
-    state.resetForResume(9000);
+    state.markQueued(9000);
     expect(state.completedAt).toBeUndefined();
     expect(state.result).toBeUndefined();
     expect(state.error).toBeUndefined();
   });
 
   it("clears consumedAt so a resumed run's result is unread again", () => {
-    const state = new SubagentState({ status: "completed", consumedAt: 5000 });
-    state.resetForResume(9000);
+    const state = new SubagentState({ status: "idle", consumedAt: 5000 });
+    state.markQueued(9000);
     expect(state.consumedAt).toBeUndefined();
     expect(state.consumed).toBe(false);
+  });
+
+  it("clears the question the earlier run ended with", () => {
+    const state = new SubagentState({ status: "idle", pendingQuestion: "Which branch?" });
+    state.markQueued(9000);
+    expect(state.pendingQuestion).toBeUndefined();
+  });
+
+  it("forgets that an earlier run was stopped before it started", () => {
+    const state = new SubagentState({ status: "queued" });
+    state.stopQueued(1000);
+    state.markQueued(9000);
+    expect(state.stoppedWhileQueued).toBe(false);
   });
 });
 
@@ -348,7 +398,7 @@ describe("SubagentState — turn budget", () => {
   it("keeps the live budget through a terminal transition", () => {
     const state = new SubagentState({ status: "running" });
     state.setTurnBudget(EXHAUSTED);
-    state.markAborted("partial", 5000);
+    state.markTurnLimit("partial", 5000);
     expect(state.turnBudget).toEqual(EXHAUSTED);
   });
 
@@ -357,13 +407,13 @@ describe("SubagentState — turn budget", () => {
     state.setTurnBudget(WARNED);
     state.markStopped(500);
     state.markCompleted("late", 2000);
-    expect(state.status).toBe("stopped");
+    expect(state.outcome).toBe("stopped");
     expect(state.turnBudget).toEqual(WARNED);
   });
 
-  it("resetForResume clears the budget, which belongs to the run that produced it", () => {
-    const state = new SubagentState({ status: "completed", turnBudget: WARNED });
-    state.resetForResume(9000);
+  it("markQueued clears the budget, which belongs to the run that produced it", () => {
+    const state = new SubagentState({ status: "idle", turnBudget: WARNED });
+    state.markQueued(9000);
     expect(state.turnBudget).toBeUndefined();
   });
 });
@@ -376,14 +426,14 @@ describe("SubagentState — consumption", () => {
   });
 
   it("markConsumed sets consumedAt and flips consumed true", () => {
-    const state = new SubagentState({ status: "completed" });
+    const state = new SubagentState({ status: "idle" });
     state.markConsumed(5000);
     expect(state.consumed).toBe(true);
     expect(state.consumedAt).toBe(5000);
   });
 
   it("markConsumed defaults consumedAt to Date.now() when not provided", () => {
-    const state = new SubagentState({ status: "completed" });
+    const state = new SubagentState({ status: "idle" });
     const before = Date.now();
     state.markConsumed();
     const after = Date.now();
@@ -392,14 +442,14 @@ describe("SubagentState — consumption", () => {
   });
 
   it("markConsumed keeps the first read time (idempotent ??=)", () => {
-    const state = new SubagentState({ status: "completed" });
+    const state = new SubagentState({ status: "idle" });
     state.markConsumed(5000);
     state.markConsumed(9999);
     expect(state.consumedAt).toBe(5000);
   });
 
   it("seeds consumedAt from the constructor", () => {
-    const state = new SubagentState({ status: "completed", consumedAt: 4200 });
+    const state = new SubagentState({ status: "idle", consumedAt: 4200 });
     expect(state.consumed).toBe(true);
     expect(state.consumedAt).toBe(4200);
   });
@@ -494,12 +544,12 @@ describe("SubagentState — responseText", () => {
 });
 
 describe("SubagentState — classification predicates", () => {
-  const active = new Set<SubagentStatus>(["running", "queued"]);
-  const terminalError = new Set<SubagentStatus>(["error", "stopped", "aborted"]);
-  const running = new Set<SubagentStatus>(["running"]);
+  const active = new Set<SubagentStatus | DisplayStatus>(["running", "queued"]);
+  const terminalError = new Set<SubagentStatus | DisplayStatus>(["error", "stopped", "aborted"]);
+  const running = new Set<SubagentStatus | DisplayStatus>(["running"]);
 
-  describe("exported status-level functions", () => {
-    for (const status of ALL_STATUSES) {
+  describe("exported status-level functions, over statuses and display labels alike", () => {
+    for (const status of [...ALL_STATUSES, ...ALL_DISPLAY_STATUSES]) {
       it(`isActiveStatus("${status}") is ${active.has(status)}`, () => {
         expect(isActiveStatus(status)).toBe(active.has(status));
       });
@@ -512,17 +562,56 @@ describe("SubagentState — classification predicates", () => {
     }
   });
 
-  describe("instance predicates delegate to the status-level functions", () => {
-    for (const status of ALL_STATUSES) {
-      it(`"${status}": isActive=${active.has(status)}, isTerminalError=${terminalError.has(status)}, isRunning=${running.has(status)}, canBeSteered=${running.has(status)}`, () => {
+  describe("isFailureOutcome", () => {
+    for (const outcome of ALL_OUTCOMES) {
+      it(`is ${outcome !== "completed"} for "${outcome}"`, () => {
+        expect(isFailureOutcome(outcome)).toBe(outcome !== "completed");
+      });
+    }
+    it("is false while there is no outcome", () => {
+      expect(isFailureOutcome(undefined)).toBe(false);
+    });
+  });
+
+  describe("instance predicates follow the status and the last outcome", () => {
+    for (const status of ["queued", "running"] as const) {
+      it(`"${status}": active, never a terminal error, steerable only when running`, () => {
         const state = new SubagentState({ status });
-        expect(state.isActive()).toBe(active.has(status));
-        expect(state.isTerminalError()).toBe(terminalError.has(status));
-        expect(state.isRunning()).toBe(running.has(status));
-        expect(state.canBeSteered()).toBe(running.has(status));
+        expect(state.isActive()).toBe(true);
+        expect(state.isTerminalError()).toBe(false);
+        expect(state.isRunning()).toBe(status === "running");
+        expect(state.canBeSteered()).toBe(status === "running");
+      });
+    }
+    for (const outcome of ALL_OUTCOMES) {
+      it(`idle after "${outcome}": not active, not steerable, terminal error is ${outcome !== "completed"}`, () => {
+        const state = new SubagentState({ status: "idle", outcome });
+        expect(state.isActive()).toBe(false);
+        expect(state.isRunning()).toBe(false);
+        expect(state.canBeSteered()).toBe(false);
+        expect(state.isTerminalError()).toBe(outcome !== "completed");
       });
     }
   });
+});
+
+describe("displayStatus — today's labels derived from status and outcome", () => {
+  const cases: Array<[SubagentStatus, RunOutcome | undefined, DisplayStatus]> = [
+    ["queued", undefined, "queued"],
+    ["running", undefined, "running"],
+    ["idle", "completed", "completed"],
+    ["idle", "turn-limit", "aborted"],
+    ["idle", "error", "error"],
+    ["idle", "stopped", "stopped"],
+    // A run a reload cut short has always read as stopped once its record was rebuilt.
+    ["idle", "interrupted", "stopped"],
+  ];
+  for (const [status, outcome, label] of cases) {
+    it(`${status} + ${outcome ?? "no outcome"} reads "${label}"`, () => {
+      expect(displayStatus(status, outcome)).toBe(label);
+      expect(new SubagentState({ status, outcome }).displayStatus).toBe(label);
+    });
+  }
 });
 
 describe("SubagentState — run updates", () => {
@@ -551,11 +640,11 @@ describe("SubagentState — run updates", () => {
     expect(state.runUpdates).toEqual([]);
   });
 
-  it("drops the previous run's updates when a resume starts", () => {
+  it("drops the previous run's updates when a resume is queued", () => {
     const state = new SubagentState();
     state.recordUpdate("From the run being resumed.");
 
-    state.resetForResume(2000);
+    state.markQueued(2000);
 
     expect(state.runUpdates).toEqual([]);
   });

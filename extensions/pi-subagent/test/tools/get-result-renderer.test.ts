@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { SubagentStatus } from "#src/lifecycle/subagent-state";
+import type { DisplayStatus } from "#src/lifecycle/subagent-state";
 import {
   type GetResultDetails,
   MAX_EXPANDED_LINES,
@@ -184,7 +184,7 @@ describe("renderGetResultLines", () => {
   });
 
   describe("status glyphs", () => {
-    const cases: ReadonlyArray<[SubagentStatus, string]> = [
+    const cases: ReadonlyArray<[DisplayStatus, string]> = [
       ["completed", "[success:✓]"],
       ["stopped", "[dim:■]"],
       ["error", "[error:✗]"],

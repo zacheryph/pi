@@ -41,6 +41,10 @@ export class CompositeSubagentObserver implements SubagentManagerObserver {
     this.dispatch((o) => o.onSubagentResuming(record), "onSubagentResuming");
   }
 
+  onSubagentResumeQueued(record: Subagent): void {
+    this.dispatch((o) => o.onSubagentResumeQueued?.(record), "onSubagentResumeQueued");
+  }
+
   onSubagentResumed(record: Subagent): void {
     this.dispatch((o) => o.onSubagentResumed(record), "onSubagentResumed");
   }

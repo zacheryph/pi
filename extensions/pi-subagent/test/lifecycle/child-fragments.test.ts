@@ -101,7 +101,8 @@ describe("child fragment spawn snapshots", () => {
       cwd: childCwd,
     });
 
-    expect(record.status).toBe("completed");
+    expect(record.status).toBe("idle");
+    expect(record.outcome).toBe("completed");
     expect(childPrompt()).toContain("AWS source instructions.\n\n---\n\nChild body.");
     expect(childPrompt()).not.toContain("Wrong workspace instructions.");
     expect(io.createSession.mock.calls[0][0].cwd).toBe(childCwd);
@@ -141,7 +142,8 @@ describe("child fragment spawn snapshots", () => {
       description: "Task",
     });
 
-    expect(record.status).toBe("completed");
+    expect(record.status).toBe("idle");
+    expect(record.outcome).toBe("completed");
     expect(factory.mock.calls[0][0].agentConfig).toBeUndefined();
     expect(io.assemblerIO.buildAgentPrompt.mock.calls[0][0].systemPrompt).toBe(
       profile.systemPrompt,
@@ -182,7 +184,8 @@ describe("child fragment spawn snapshots", () => {
       await manager.getRecord(first)!.promise;
       await manager.getRecord(queued)!.promise;
 
-      expect(manager.getRecord(queued)?.status).toBe("completed");
+      expect(manager.getRecord(queued)?.status).toBe("idle");
+      expect(manager.getRecord(queued)?.outcome).toBe("completed");
       expect(childPrompt(1)).toContain("AWS source instructions.\n\n---\n\nChild body.");
       expect(childPrompt(1)).not.toContain("Changed");
       expect(io.createSession.mock.calls[1][0].tools).toEqual(["read", "ask", "parent_notify"]);
@@ -236,7 +239,8 @@ describe("child fragment spawn snapshots", () => {
     await manager.getRecord(first)!.promise;
     await manager.getRecord(queued)!.promise;
 
-    expect(manager.getRecord(queued)?.status).toBe("error");
+    expect(manager.getRecord(queued)?.status).toBe("idle");
+    expect(manager.getRecord(queued)?.outcome).toBe("error");
     expect(manager.getRecord(queued)?.error).toContain(profile.definitionError!);
     expect(io.createSession).toHaveBeenCalledTimes(1);
     expect(io.assemblerIO.buildAgentPrompt).toHaveBeenCalledTimes(1);
@@ -260,7 +264,8 @@ describe("child fragment spawn snapshots", () => {
       await manager.getRecord(first)!.promise;
       await manager.getRecord(queued)!.promise;
 
-      expect(manager.getRecord(queued)?.status).toBe("error");
+      expect(manager.getRecord(queued)?.status).toBe("idle");
+      expect(manager.getRecord(queued)?.outcome).toBe("error");
       expect(manager.getRecord(queued)?.error).toContain(
         "fragment instructions were not prepared at spawn; start a new agent",
       );
@@ -283,7 +288,8 @@ describe("child fragment spawn snapshots", () => {
     const outcome = await resumeAndSettle(manager, id, "More work");
 
     expect(outcome.kind).toBe("started");
-    expect(manager.getRecord(id)?.status).toBe("completed");
+    expect(manager.getRecord(id)?.status).toBe("idle");
+    expect(manager.getRecord(id)?.outcome).toBe("completed");
     expect(childPrompt()).toBe(originalPrompt);
     expect(factory).toHaveBeenCalledTimes(1);
     expect(io.createSession).toHaveBeenCalledTimes(1);
@@ -318,7 +324,8 @@ describe("child fragment spawn snapshots", () => {
       { description: "Task" },
     );
 
-    expect(record.status).toBe("completed");
+    expect(record.status).toBe("idle");
+    expect(record.outcome).toBe("completed");
     expect(childPrompt()).toContain("AWS source instructions.");
     expect(readFileSync).toHaveBeenCalledExactlyOnceWith(fragmentPath(), "utf8");
   });

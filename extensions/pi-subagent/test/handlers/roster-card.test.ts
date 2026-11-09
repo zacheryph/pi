@@ -1,14 +1,23 @@
 import { describe, expect, it } from "vitest";
 import { ROSTER_CARD_TYPE, RosterCard } from "#src/handlers/roster-card";
+import type { DisplayStatus, SubagentStatus } from "#src/lifecycle/subagent-state";
 import { type PersistedSubagentRecord, SUBAGENT_RECORD_ENTRY } from "#src/persisted-record";
 import type { LiveAgentLike } from "#src/roster";
+import { stateForLabel } from "#test/helpers/make-subagent";
 
-function saved(overrides: Partial<PersistedSubagentRecord> = {}): PersistedSubagentRecord {
+/** A saved record; `status` also takes today's display labels (see `stateForLabel`). */
+function saved(
+  overrides: Omit<Partial<PersistedSubagentRecord>, "status"> & {
+    status?: SubagentStatus | DisplayStatus;
+  } = {},
+): PersistedSubagentRecord {
+  const { status = "completed", ...rest } = overrides;
   return {
+    version: 2,
     id: "a1",
     type: "implementer",
     description: "Add token refresh",
-    status: "completed",
+    ...(status === "idle" ? { status, outcome: "completed" as const } : stateForLabel(status)),
     result: "done",
     error: undefined,
     turnBudget: undefined,
@@ -16,8 +25,8 @@ function saved(overrides: Partial<PersistedSubagentRecord> = {}): PersistedSubag
     completedAt: 2_000,
     outputFile: undefined,
     toolUses: 0,
-    ...overrides,
-  };
+    ...rest,
+  } as PersistedSubagentRecord;
 }
 
 /** A context whose branch holds these records; mutable so a test can add more. */
@@ -201,7 +210,7 @@ describe("RosterCard", () => {
     const h = setup([record], () => live);
     h.card.handleSessionCompact(h.ctx);
     expect(cardText(h.context([user("hi")]))).toContain(": running");
-    live = { ...record, status: "completed", completedAt: 5_000 };
+    live = { ...record, status: "idle", outcome: "completed", completedAt: 5_000 };
     expect(cardText(h.context([user("hi")]))).toContain(": completed ");
   });
 

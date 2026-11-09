@@ -6,7 +6,7 @@
  * Consumed by the renderResult hook in agent-tool.ts.
  */
 
-import type { SubagentStatus } from "#src/lifecycle/subagent-state";
+import type { DisplayStatus } from "#src/lifecycle/subagent-state";
 import { type TurnBudget, wrappedUpAtTurnLimit } from "#src/lifecycle/turn-limits";
 import type { AgentDetails, Theme } from "#src/ui/display";
 import { formatMs, formatTurnBudget } from "#src/ui/display";
@@ -105,7 +105,7 @@ export function renderFailed(details: AgentDetails, theme: Theme): string {
  * for a run that wrapped up at its turn limit.
  */
 export function renderOutcomeIcon(
-  outcome: { status: SubagentStatus; turnBudget?: TurnBudget },
+  outcome: { status: DisplayStatus; turnBudget?: TurnBudget },
   theme: Theme,
 ): string {
   if (wrappedUpAtTurnLimit(outcome)) return renderWrappedUpIcon(theme);
@@ -120,11 +120,11 @@ function renderWrappedUpIcon(theme: Theme): string {
 /**
  * The themed status glyph for a settled or pending agent.
  *
- * Exhaustive over `SubagentStatus`, so a status added later fails to compile
+ * Exhaustive over `DisplayStatus`, so a status added later fails to compile
  * here rather than falling through to an unmarked icon. Shared with
  * `get-result-renderer.ts`, which draws the same vocabulary for the same enum.
  */
-export function renderStatusIcon(status: SubagentStatus, theme: Theme): string {
+export function renderStatusIcon(status: DisplayStatus, theme: Theme): string {
   switch (status) {
     case "completed":
       return theme.fg("success", ICONS.success);

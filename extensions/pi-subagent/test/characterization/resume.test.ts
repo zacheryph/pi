@@ -70,7 +70,11 @@ describe("resuming a finished agent", () => {
     expect(text).toContain("<status>Done</status>");
     expect(text).toContain(`<summary>Subagent "Remember the codeword" completed</summary>`);
     expect(text).toContain("<result>It was PLOVER.</result>");
-    expect(h.savedRecord(id)).toMatchObject({ status: "completed", result: "It was PLOVER." });
+    expect(h.savedRecord(id)).toMatchObject({
+      status: "idle",
+      outcome: "completed",
+      result: "It was PLOVER.",
+    });
     expect(h.seen("subagent:resuming")).toHaveLength(1);
     expect(h.seen("subagent:resumed")).toHaveLength(1);
     expect(h.errors).toEqual([]);
@@ -86,7 +90,11 @@ describe("resuming a finished agent", () => {
     const child = await resumeAndAwait(h, id);
 
     expectContinued(child);
-    expect(h.savedRecord(id)).toMatchObject({ status: "completed", result: "It was PLOVER." });
+    expect(h.savedRecord(id)).toMatchObject({
+      status: "idle",
+      outcome: "completed",
+      result: "It was PLOVER.",
+    });
     // The same transcript carries on; no second one starts.
     const after = readFileSync(transcript, "utf8");
     expect(after.startsWith(before)).toBe(true);
@@ -103,7 +111,11 @@ describe("resuming a finished agent", () => {
 
     expectContinued(child);
     expect(shape(h.announcements()[1].text, id)).toContain("<result>It was PLOVER.</result>");
-    expect(h.savedRecord(id)).toMatchObject({ status: "completed", result: "It was PLOVER." });
+    expect(h.savedRecord(id)).toMatchObject({
+      status: "idle",
+      outcome: "completed",
+      result: "It was PLOVER.",
+    });
     expect(h.errors).toEqual([]);
   }, 30_000);
 
@@ -121,7 +133,7 @@ describe("resuming a finished agent", () => {
     await run.catch(() => {});
     await untilAnnounced(h);
     const [id] = h.agentIds();
-    expect(h.savedRecord(id)).toMatchObject({ status: "stopped" });
+    expect(h.savedRecord(id)).toMatchObject({ status: "idle", outcome: "stopped" });
 
     h.script({
       parent: [resumeCall(id, "Carry on"), fauxAssistantMessage("Resumed.")],
@@ -130,11 +142,16 @@ describe("resuming a finished agent", () => {
     await h.session.prompt("Resume it");
     await untilAnnounced(h, 2);
 
-    expect(h.savedRecord(id)).toMatchObject({ status: "completed", result: "Carried on." });
+    expect(h.savedRecord(id)).toMatchObject({
+      status: "idle",
+      outcome: "completed",
+      result: "Carried on.",
+    });
   }, 30_000);
 
-  it("starts the resumed run at once even when every concurrency slot is taken", async () => {
-    // Changed by roadmap step 7a: every run, a resume included, goes through the limiter.
+  // Changed by roadmap step 7a (was: a resume skipped the limiter and ran at once
+  // even when every slot was taken): a resume waits for a slot like a first run.
+  it("queues the resumed run when every concurrency slot is taken, and runs it once one frees", async () => {
     const h = await startParent({ files: { "subagent.json": { maxConcurrent: 1 } } });
     const { id } = await finishedAgent(h);
 
@@ -149,26 +166,33 @@ describe("resuming a finished agent", () => {
     h.script({
       parent: [
         resumeCall(id, "Go again"),
-        delegate("Waits for the slot"),
-        fauxAssistantMessage("Done."),
+        fauxAssistantMessage("Queued."),
+        fauxAssistantMessage("Noted."),
+        fauxAssistantMessage("Noted again."),
       ],
-      child: [fauxAssistantMessage("Resumed while full.")],
+      child: [fauxAssistantMessage("Resumed after the slot freed.")],
     });
     await h.session.prompt("Resume while full");
 
+    // The call returned at once, saying the resume waits, and nothing has run.
+    expect(shape(resultText(h.requests.parent[1], "subagent_start"), id)).toMatch(
+      /^Agent resume queued in background\.\nAgent ID: <id>\n[\s\S]*Position: queued \(max 1 concurrent\)/,
+    );
+    expect(h.savedRecord(id)).toMatchObject({ status: "queued", outcome: undefined });
+    expect(h.requests.child).toHaveLength(0);
+    expect(h.seen("subagent:resuming")).toHaveLength(0);
+
+    busy.release();
     await vi.waitFor(() =>
       expect(h.savedRecord(id)).toMatchObject({
-        status: "completed",
-        result: "Resumed while full.",
+        status: "idle",
+        outcome: "completed",
+        result: "Resumed after the slot freed.",
       }),
     );
-    expect(resultText(h.requests.parent[1], "subagent_start")).toMatch(
-      /^Agent resumed in background\./,
-    );
-    // A new agent, by contrast, waits for the slot.
-    expect(resultText(h.requests.parent[2], "subagent_start")).toMatch(
-      /^Agent queued in background\.[\s\S]*Position: queued \(max 1 concurrent\)/,
-    );
+    expect(h.seen("subagent:resuming")).toHaveLength(1);
+    expect(h.seen("subagent:resumed")).toHaveLength(1);
+    expect(h.errors).toEqual([]);
   }, 30_000);
 
   // Rewritten by roadmap step 6 (was: foreground: true blocked and returned the resumed result).
@@ -191,7 +215,11 @@ describe("resuming a finished agent", () => {
     );
     expect(h.announcements()).toHaveLength(2);
     expect(shape(h.announcements()[1].text, id)).toContain("<result>It was PLOVER.</result>");
-    expect(h.savedRecord(id)).toMatchObject({ status: "completed", result: "It was PLOVER." });
+    expect(h.savedRecord(id)).toMatchObject({
+      status: "idle",
+      outcome: "completed",
+      result: "It was PLOVER.",
+    });
   }, 30_000);
 });
 

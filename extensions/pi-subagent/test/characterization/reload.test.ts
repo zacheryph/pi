@@ -85,7 +85,11 @@ describe("agents after a reload", () => {
     // The only announcement is the resumed run's; the interrupted run sent none.
     expect(shape(h.announcements()[0].text, id)).toContain("<result>Picked it back up.</result>");
     expect(h.announcements()).toHaveLength(1);
-    expect(h.savedRecord(id)).toMatchObject({ status: "completed", result: "Picked it back up." });
+    expect(h.savedRecord(id)).toMatchObject({
+      status: "idle",
+      outcome: "completed",
+      result: "Picked it back up.",
+    });
   }, 30_000);
 
   it("says a finished agent cannot be resumed once its transcript is gone", async () => {
@@ -143,7 +147,8 @@ describe("the records the parent saves", () => {
 
     expect(h.savedRecord(id)).toMatchObject({
       id,
-      status: "completed",
+      status: "idle",
+      outcome: "completed",
       result: "Did the work.",
       toolUses: 0,
     });

@@ -7,7 +7,7 @@
  * result-renderer.ts pattern used by the subagent_start tool's TUI renderer.
  */
 
-import type { ResumeRefusal, SubagentStatus } from "#src/lifecycle/subagent";
+import type { DisplayStatus, ResumeRefusal } from "#src/lifecycle/subagent";
 import type { TurnBudget } from "#src/lifecycle/turn-limits";
 import {
   renderOutcomeAddenda,
@@ -21,7 +21,7 @@ import {
 export interface AgentReport {
   id: string;
   displayName: string;
-  status: SubagentStatus;
+  status: DisplayStatus;
   toolUses: number;
   /** Pre-formatted lifetime token total; "" when zero. */
   tokens: string;
@@ -104,7 +104,7 @@ export function formatAgentReport(report: AgentReport): string {
 export interface SavedAgentReport {
   id: string;
   displayName: string;
-  status: SubagentStatus;
+  status: DisplayStatus;
   /** The record still read queued or running, but no live agent backs it. */
   interrupted: boolean;
   toolUses: number;
