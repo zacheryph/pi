@@ -3,6 +3,20 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-09: Characterization tests for what the parent sees
+
+- `test/characterization/`: tests that run a real parent session over real
+  child sessions on one faux provider, and pin what the parent can observe
+  through `subagent_start`, `subagent_get`, `subagent_steer` and its own
+  transcript. They cover the completion message for each outcome (completed,
+  wrapped up at the turn limit, turn limit enforced, error, stopped), steering a
+  running agent, resuming a finished agent (live, after retention released its
+  session, and after a reload), retention release, and rebuilding saved records
+  after a reload. `harness.ts` is the shared parent. Tests for behaviour the
+  work-lifecycle roadmap drops (foreground, a resume returning its result,
+  `subagent_get` with `wait`, the resume that skips the concurrency limiter) say
+  so in a comment. No source change.
+
 ## 2026-11-09: Pi 1.5.0 active-tool order
 
 - `test/main-agent-profile-sdk.test.ts` compares the active tools as a set. Pi
