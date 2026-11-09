@@ -3,6 +3,34 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-09: One run abstraction inside `Subagent`
+
+- `src/lifecycle/run.ts`: `Run`, one execution of an agent. It owns what used to
+  be spread over the record and replaced field by field when a resume began:
+  the cancel `AbortController`, the listener handles, the run promise, the
+  cold-resume `reopening` flag and the turn ceiling carried across resumes. Its
+  `kind` (`initial` or `resume`), prompt, caller signal and live session say how
+  the run differs from another.
+- `Subagent.startRun` is the one place a run starts. `run()`, `start()`,
+  `scheduleVia()` and `resume()` all go through it; `runResume` and
+  `guardedRun` are gone, and one `execute` drives both kinds from `begin` to
+  `settle`, `fail` or `finish`. An optional admission decides when the run's
+  body starts: `scheduleVia` passes the limiter's, and a resume passes none, so
+  it still skips the limiter.
+- Statuses, observer events, messages and timing are unchanged, apart from these
+  edge cases:
+  - A throw from `attachSession` (for example from a spawn observer's
+    `onSessionCreated`) on the first run now ends the record as `error`. It used
+    to leave the record `running`; a resume already ended as `error`.
+  - A run releases only its own listeners and reads only its own abort signal.
+    A stale run (for example a cold rebuild started before a stop) can no longer
+    detach a newer run's listeners or keep going on the newer run's signal.
+  - While a resume starts synchronously, `agent.promise` is `undefined` until
+    the new run is set; it used to be the previous settled promise. Nothing in
+    `src` reads it there.
+  - A direct `run()` on an agent that is not active is now a no-op, and a direct
+    `run()` sets `promise`. Only `start()` and tests call `run()`.
+
 ## 2026-11-09: Characterization tests for what the parent sees
 
 - `test/characterization/`: tests that run a real parent session over real
