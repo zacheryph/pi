@@ -43,7 +43,7 @@ async function parent(manager = SessionManager.inMemory(dir)) {
     provider: "cold-test",
     models: [{ id: "worker" }],
     sessionManager: manager,
-    tools: ["subagent_start", "subagent_get", "subagent_steer"],
+    tools: ["subagent_start", "subagent_get", "subagent_send"],
     extensions: [
       subagentExtension,
       (pi) => {
@@ -56,14 +56,8 @@ async function parent(manager = SessionManager.inMemory(dir)) {
   return { ...h, manager, events };
 }
 
-const resume = (id: string, prompt: string, extra: Record<string, unknown> = {}) =>
-  toolCall("subagent_start", {
-    subagent_type: "general-purpose",
-    description: "resume",
-    prompt: `[child] ${prompt}`,
-    resume: id,
-    ...extra,
-  });
+const send = (id: string, message: string) =>
+  toolCall("subagent_send", { agent_id: id, message: `[child] ${message}` });
 
 const latestRecord = (manager: SessionManager) => readPersistedRecords(manager.getBranch())[0];
 
@@ -127,7 +121,7 @@ async function resumeAndAwait(h: Harness, id: string) {
   const child: Context[] = [];
   const before = announcedCount(h);
   scriptSides(h.faux, {
-    parent: [resume(id, "What was the codeword?"), fauxAssistantMessage("Asked.")],
+    parent: [send(id, "What was the codeword?"), fauxAssistantMessage("Asked.")],
     child: [capture(child, fauxAssistantMessage("It was PLOVER."))],
   });
   await h.session.prompt("Ask the worker");
@@ -230,24 +224,24 @@ describe("cold resume in a real parent session (offline faux provider)", () => {
 
     const requests: Context[] = [];
     h.faux.setResponses([
-      resume(id, "Keep going"),
+      send(id, "Keep going"),
       capture(requests, toolCall("subagent_get", { agent_id: id })),
       capture(requests, fauxAssistantMessage("Refused.")),
     ]);
     await h.session.prompt("Ask the worker");
 
     expect(h.faux.getPendingResponseCount()).toBe(0);
-    const refusal = lastResult(requests[0], "subagent_start");
+    const refusal = lastResult(requests[0], "subagent_send");
     expect(refusal).toContain("the directory it ran in no longer exists");
     expect(refusal).toContain(transcript);
     // subagent_get reports the same answer, from the same check.
     const report = lastResult(requests[1], "subagent_get");
-    expect(report).toContain("Resume: not available, because the directory it ran in");
+    expect(report).toContain("Send: not available, because the directory it ran in");
     expect(report).toContain(`Full transcript available at: ${transcript}`);
     expect(latestRecord(h.manager)).toMatchObject({ id, status: "idle", outcome: "completed" });
   }, 30_000);
 
-  it("reports it resumable from subagent_get and the list once its session is gone", async () => {
+  it("reports it reachable from subagent_get and the list once its session is gone", async () => {
     const h = await parent();
     const { id } = await finishedWorker(h);
     await h.session.reload();
@@ -260,12 +254,15 @@ describe("cold resume in a real parent session (offline faux provider)", () => {
     ]);
     await h.session.prompt("Check on the worker");
 
-    // The roster card, restored after the reload, already says so.
-    expect(JSON.stringify(requests[0].messages.at(-1))).toMatch(/completed \d\d:\d\d, resumable/);
+    // The roster card, restored after the reload, shows the agent idle with its last
+    // outcome, and says nothing against sending to it.
+    const card = JSON.stringify(requests[0].messages.at(-1));
+    expect(card).toMatch(/idle, last run completed \d\d:\d\d/);
+    expect(card).not.toContain("cannot take a message");
     expect(lastResult(requests[1], "subagent_get")).toContain(
-      `Resume: available. Call subagent_start with resume: \\"${id}\\"`,
+      `Send: available. Call subagent_send with agent_id: \\"${id}\\"`,
     );
-    expect(lastResult(requests[2], "subagent_get")).toMatch(/completed \d\d:\d\d, resumable/);
+    expect(lastResult(requests[2], "subagent_get")).toMatch(/idle, last run completed \d\d:\d\d/);
   }, 30_000);
 
   it("resumes an agent whose run a reload interrupted", async () => {
@@ -289,7 +286,10 @@ describe("cold resume in a real parent session (offline faux provider)", () => {
     expect(readFileSync(transcript, "utf8")).toContain("It was PLOVER.");
   }, 30_000);
 
-  it("refuses a live run with still-running, and works as usual once rebuilt", async () => {
+  // Rewritten by roadmap step 7b (was: a second resume of the run being rebuilt was refused
+  // as still-running, and subagent_steer then worked). One tool now takes both messages: the
+  // run is going, so each is a steer, held until the rebuilt session exists.
+  it("steers a run on a rebuilt session as it would any other, and queues no second run", async () => {
     const h = await parent();
     const { id } = await finishedWorker(h);
     await h.session.reload();
@@ -304,15 +304,15 @@ describe("cold resume in a real parent session (offline faux provider)", () => {
     });
     const requests: Context[] = [];
     const parentReplies = [
-      resume(id, "Keep going"),
+      send(id, "Keep going"),
       async (context: Context) => {
         await childRunning;
         requests.push(structuredClone(context));
-        return resume(id, "And again");
+        return send(id, "And again");
       },
       (context: Context) => {
         requests.push(structuredClone(context));
-        return toolCall("subagent_steer", { agent_id: id, message: "Also check the tests." });
+        return toolCall("subagent_send", { agent_id: id, message: "Also check the tests." });
       },
       (context: Context) => {
         requests.push(structuredClone(context));
@@ -344,16 +344,23 @@ describe("cold resume in a real parent session (offline faux provider)", () => {
       expect(h.events.some(({ channel }) => channel === "subagent:resumed")).toBe(true),
     );
 
-    expect(lastResult(requests[0], "subagent_start")).toContain("Agent resumed in background.");
-    expect(lastResult(requests[1], "subagent_start")).toContain(
-      `Agent \\"${id}\\" is still running`,
+    expect(lastResult(requests[0], "subagent_send")).toContain("Agent resumed in background.");
+    // The rebuilt run is under way: the second and third messages steer the running agent.
+    expect(lastResult(requests[1], "subagent_send")).toContain(
+      `Steering message sent to agent ${id}`,
     );
-    expect(lastResult(requests[2], "subagent_steer")).not.toContain("Agent not found");
+    expect(lastResult(requests[2], "subagent_send")).toContain(
+      `Steering message sent to agent ${id}`,
+    );
     // The completion notification reached the parent, as for any background run.
     await vi.waitFor(() =>
       expect(JSON.stringify(h.manager.getEntries())).toContain("subagent:completion"),
     );
     expect(JSON.stringify(childContexts[0].messages)).toContain("The codeword is PLOVER.");
+    // Both steers reached the rebuilt session.
+    const seenByChild = JSON.stringify(childContexts.at(-1)!.messages);
+    expect(seenByChild).toContain("And again");
+    expect(seenByChild).toContain("Also check the tests.");
     expect(latestRecord(h.manager)).toMatchObject({ id, result: "Picked it back up." });
   }, 30_000);
 });

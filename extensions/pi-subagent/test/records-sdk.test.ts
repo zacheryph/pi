@@ -149,13 +149,15 @@ describe("subagent records in a real parent session (offline faux provider)", ()
     expect(h.faux.getPendingResponseCount()).toBe(0);
     expect(requests.map(cards)).toEqual([1, 1, 0]);
     expect(tail(requests[0])).toContain("restored after reload");
-    expect(tail(requests[0])).toContain(`${id} general-purpose \\"Map auth\\": completed`);
+    expect(tail(requests[0])).toContain(
+      `${id} general-purpose \\"Map auth\\": idle, last run completed`,
+    );
     const report = lastResult(requests[1], "subagent_get");
     expect(report).toContain("Mapped auth call sites.");
     expect(report).toContain("Full transcript available at: ");
-    expect(report).toContain("Resume: available.");
+    expect(report).toContain("Send: available.");
     expect(lastResult(requests[2], "subagent_get")).toContain(
-      `- ${id} general-purpose \\"Map auth\\": completed`,
+      `- ${id} general-purpose \\"Map auth\\": idle, last run completed`,
     );
     // Context-only: the card is never written to the transcript.
     expect(JSON.stringify(h.manager.getEntries())).not.toContain(CARD);
@@ -193,7 +195,7 @@ describe("subagent records in a real parent session (offline faux provider)", ()
     const report = lastResult(requests[1], "subagent_get");
     expect(report).toContain("This agent is waiting on an answer:");
     expect(report).toContain("Which database?");
-    expect(report).toContain(`resume: \\"${id}\\"`);
+    expect(report).toContain(`subagent_send with agent_id: \\"${id}\\"`);
   }, 30_000);
 
   it("follows /tree: an agent spawned after the target point is gone from the list, by ID and on the card", async () => {
@@ -263,7 +265,9 @@ describe("subagent records in a real parent session (offline faux provider)", ()
     await h.session.prompt("And again");
     expect(requests.map(cards)).toEqual([1, 1]);
     expect(tail(requests[0])).toContain("restored after compaction");
-    expect(tail(requests[0])).toContain(`${id} general-purpose \\"Index repo\\": completed`);
+    expect(tail(requests[0])).toContain(
+      `${id} general-purpose \\"Index repo\\": idle, last run completed`,
+    );
     expect(JSON.stringify(h.manager.getEntries())).not.toContain(CARD);
   }, 30_000);
 
@@ -299,7 +303,9 @@ describe("subagent records in a real parent session (offline faux provider)", ()
     await h.session.prompt("Status?");
     expect(requests).toHaveLength(2);
     expect(tail(requests[0])).toContain("restored after resume");
-    expect(tail(requests[0])).toContain('old-agent Explore \\"Old run\\": completed');
+    expect(tail(requests[0])).toContain(
+      'old-agent Explore \\"Old run\\": idle, last run completed',
+    );
     expect(tail(requests[0])).not.toContain("ancient-agent");
     const report = lastResult(requests[1], "subagent_get");
     expect(report).toContain("Old result.");

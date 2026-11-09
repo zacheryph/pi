@@ -5,6 +5,7 @@ import { clip } from "./sections.ts";
 export const SUBAGENT_CHANNELS = [
   "subagent:created",
   "subagent:started",
+  "subagent:queued",
   "subagent:resuming",
   "subagent:notified",
   "subagent:completed",
@@ -53,6 +54,11 @@ export class SubagentTracker {
     switch (channel) {
       case "subagent:created":
         if (existing) return false;
+        break;
+      case "subagent:queued":
+        // A finished agent given a message, waiting for a concurrency slot.
+        agent.state = "queued";
+        delete agent.note;
         break;
       case "subagent:started":
       case "subagent:resuming":

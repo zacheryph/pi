@@ -241,35 +241,6 @@ describe("Subagent — session-encapsulation methods", () => {
     });
   });
 
-  describe("steer", () => {
-    it("rejects with the observed status when the agent is not running", async () => {
-      const agent = makeSubagent({ status: "completed", result: "done" });
-      const stub = createSubagentSessionStub();
-      agent.subagentSession = toSubagentSession(stub);
-      const outcome = await agent.steer("hello");
-      expect(outcome).toEqual({ kind: "rejected", status: "completed" });
-      expect(stub.steer).not.toHaveBeenCalled();
-      expect(agent.pendingSteerCount).toBe(0);
-    });
-
-    it("buffers the message and returns a buffered outcome when the session is not ready", async () => {
-      const agent = makeSubagent({ status: "running" });
-      const outcome = await agent.steer("hello");
-      expect(outcome).toEqual({ kind: "buffered" });
-      expect(agent.pendingSteerCount).toBe(1);
-    });
-
-    it("delivers to the session and returns a delivered outcome when the session is ready", async () => {
-      const agent = makeSubagent({ status: "running" });
-      const stub = createSubagentSessionStub();
-      agent.subagentSession = toSubagentSession(stub);
-      const outcome = await agent.steer("go faster");
-      expect(outcome).toEqual({ kind: "delivered" });
-      expect(stub.steer).toHaveBeenCalledWith("go faster");
-      expect(agent.pendingSteerCount).toBe(0);
-    });
-  });
-
   describe("getConversation", () => {
     it("returns undefined when no session", () => {
       const agent = makeSubagent();
@@ -514,13 +485,14 @@ describe("Subagent — releaseSession", () => {
   });
 
   it("marks the record released, distinct from never having had a session", async () => {
-    const record = makeSubagent();
-    expect(record.resumeRefusal).toBe("no-session");
+    // An agent that never had a session is sent a first run, so nothing is refused.
+    const record = makeSubagent({ status: "idle" });
+    expect(record.sendRefusal).toBeUndefined();
     record.subagentSession = toSubagentSession(
       createSubagentSessionStub(createMockSession(), "/path/to/session.jsonl"),
     );
     await record.releaseSession();
-    expect(record.resumeRefusal).toBe("session-released");
+    expect(record.sendRefusal).toBe("session-released");
   });
 
   it("clears the session before awaiting teardown, so a racing sweep releases once", async () => {
@@ -559,18 +531,19 @@ describe("Subagent — releaseSession", () => {
   });
 
   it("swallows a failing teardown but still marks the session released", async () => {
-    const record = makeSubagent();
+    const record = makeSubagent({ status: "idle" });
     const stub = createSubagentSessionStub(createMockSession(), "/path/to/session.jsonl");
     stub.dispose = vi.fn((): Promise<void> => Promise.reject(new Error("teardown failed")));
     record.subagentSession = toSubagentSession(stub);
     await expect(record.releaseSession()).resolves.toBeUndefined();
-    expect(record.resumeRefusal).toBe("session-released");
+    expect(record.sendRefusal).toBe("session-released");
   });
 
-  it("is a no-op when no session was created", async () => {
-    const record = makeSubagent();
+  it("is a no-op when no session was created, and does not mark the agent released", async () => {
+    const record = makeSubagent({ status: "idle" });
     await expect(record.releaseSession()).resolves.toBeUndefined();
-    expect(record.resumeRefusal).toBe("no-session");
+    expect(record.sendRefusal).toBeUndefined();
+    expect(record.outputFile).toBeUndefined();
   });
 });
 
@@ -707,7 +680,7 @@ describe("Subagent.run() — happy path", () => {
     const created = Promise.withResolvers<SubagentSession>();
     const agent = createRunnableAgent({ createSubagentSession: () => created.promise });
     const run = agent.run();
-    void agent.steer("hurry up");
+    void agent.send("hurry up");
     expect(agent.pendingSteerCount).toBe(1);
     created.resolve(toSubagentSession(stub));
     await run;
@@ -723,7 +696,7 @@ describe("Subagent.run() — caller-chosen cwd", () => {
     await agent.run();
     const params = (factory as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(params.cwd).toBe("/worktrees/feat-x");
-    expect(agent.resumeRefusal).toBeUndefined();
+    expect(agent.sendRefusal).toBeUndefined();
   });
 });
 
@@ -742,40 +715,48 @@ describe("Subagent — recorded run settings", () => {
   });
 });
 
-describe("Subagent — resumeRefusal", () => {
+describe("Subagent — sendRefusal", () => {
   it("refuses nothing for an agent whose session is live", async () => {
     const agent = createRunnableAgent();
     await agent.run();
-    expect(agent.resumeRefusal).toBeUndefined();
+    expect(agent.sendRefusal).toBeUndefined();
   });
 
-  it("reports no-session for an agent that never got one", () => {
-    expect(makeSubagent().resumeRefusal).toBe("no-session");
+  // Changed by roadmap step 7b (was: no-session for an agent that never got one, and
+  // still-running for a live run): a message reaches an agent in any state, so a run in
+  // flight is steered and an agent without a session is sent its first run.
+  it("refuses nothing for an idle agent that never got a session, which gets its first run", () => {
+    expect(makeSubagent({ status: "idle" }).sendRefusal).toBeUndefined();
   });
 
-  it("reports still-running for a live run whose session is ready", () => {
-    expect(createTestSubagent({ status: "running", sessionReady: true }).resumeRefusal).toBe(
-      "still-running",
-    );
+  it("refuses nothing for a running agent, whether or not its session is ready", () => {
+    expect(
+      createTestSubagent({ status: "running", sessionReady: true }).sendRefusal,
+    ).toBeUndefined();
+    expect(createTestSubagent({ status: "running" }).sendRefusal).toBeUndefined();
   });
 
-  it("prefers the live run over the missing session it has not created yet", () => {
-    expect(createTestSubagent({ status: "running" }).resumeRefusal).toBe("still-running");
+  it("refuses nothing for a queued agent, which takes the message into its waiting run", () => {
+    expect(createTestSubagent({ status: "queued" }).sendRefusal).toBeUndefined();
   });
 
-  it("leaves a queued agent reporting no-session, which is what it has", () => {
-    expect(createTestSubagent({ status: "queued" }).resumeRefusal).toBe("no-session");
+  it("reports no-session for an idle agent that never got a session and has no task to start one from", () => {
+    const agent = makeSubagent({
+      status: "idle",
+      execution: makeStubExecution({ prompt: "" }),
+    });
+    expect(agent.sendRefusal).toBe("no-session");
   });
 
   it("reports session-released once the retention sweep has freed the session", async () => {
     const agent = createRunnableAgent();
     await agent.run();
     await agent.releaseSession();
-    expect(agent.resumeRefusal).toBe("session-released");
+    expect(agent.sendRefusal).toBe("session-released");
   });
 
-  it("leaves a session-ready test fixture resumable", () => {
-    expect(createTestSubagent({ sessionReady: true }).resumeRefusal).toBeUndefined();
+  it("leaves a session-ready test fixture reachable", () => {
+    expect(createTestSubagent({ sessionReady: true }).sendRefusal).toBeUndefined();
   });
 });
 
@@ -1672,8 +1653,8 @@ describe("Subagent.resume() — admission", () => {
     expect(observer.onResumeQueued).toHaveBeenCalledTimes(1);
     expect(observer.onResumeStarted).not.toHaveBeenCalled();
     expect(stub.resumeTurnLoop).not.toHaveBeenCalled();
-    // Another resume must not join the one already waiting.
-    expect(agent.resumeRefusal).toBe("still-running");
+    // A message sent now joins the run already waiting rather than starting another.
+    expect(agent.sendRefusal).toBeUndefined();
 
     held.open();
     await resumed;
@@ -1716,7 +1697,7 @@ describe("Subagent.resume() — admission", () => {
     expect(agent.stoppedWhileQueued).toBe(true);
     expect(observer.onResumeFinished).toHaveBeenCalledTimes(1);
     // The agent keeps its session, so it takes another run at once.
-    expect(agent.resumeRefusal).toBeUndefined();
+    expect(agent.sendRefusal).toBeUndefined();
 
     // Its slot opens later; the run it was waiting for no longer exists.
     held.open();
@@ -1738,14 +1719,13 @@ describe("Subagent.resume() — admission", () => {
       state: new SubagentState({ status: "idle", outcome: "completed" }),
       released: { outputFile: "/t/a.jsonl", model: undefined, thinkingLevel: undefined },
     });
-    expect(agent.resumeRefusal).toBeUndefined();
+    expect(agent.sendRefusal).toBeUndefined();
 
     void agent.resume("go");
-    expect(agent.resumeRefusal).toBe("still-running");
+    expect(agent.sendRefusal).toBeUndefined();
     agent.abort();
 
-    // Nothing is rebuilding the session any more, so the agent is not "still running".
-    expect(agent.resumeRefusal).toBeUndefined();
+    expect(agent.sendRefusal).toBeUndefined();
   });
 
   it("does not start a stopped resume's slot for a newer resume of the same agent", async () => {
@@ -1793,7 +1773,7 @@ describe("Subagent.resume() — admission", () => {
         new SubagentState({ status: "idle", outcome, result: "before", error: "before" }),
       );
 
-      expect(agent.resumeRefusal).toBeUndefined();
+      expect(agent.sendRefusal).toBeUndefined();
       await agent.resume("again");
 
       expect(stub.resumeTurnLoop).toHaveBeenCalledTimes(1);
@@ -1844,5 +1824,493 @@ describe("Subagent.resume() — admission", () => {
     expect(agent.error).toBeUndefined();
     expect(agent.result).toBe("second answer");
     expect(observer.onResumeFinished).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Added by roadmap step 7b. `Subagent.send` is the one state rule for a message; the manager
+// and the tool only word what it reports. (Replaces the `steer` tests, whose guarantees are
+// the first two cases here; a non-running agent no longer rejects.)
+describe("Subagent.send()", () => {
+  /** An admission that holds each run until the test opens its slot. */
+  function heldAdmission() {
+    const waiting: Array<() => void> = [];
+    const admit: Admission = (begin) =>
+      new Promise<void>((resolve) => {
+        waiting.push(() => void begin().then(resolve));
+      });
+    return { admit, open: (index = 0) => waiting[index]() };
+  }
+
+  function observerMock() {
+    return {
+      onStarted: vi.fn(),
+      onRunFinished: vi.fn(),
+      onResumeQueued: vi.fn(),
+      onResumeStarted: vi.fn(),
+      onResumeFinished: vi.fn(),
+    };
+  }
+
+  describe("to a running agent", () => {
+    it("delivers to the session and reports it delivered", async () => {
+      const agent = makeSubagent({ status: "running" });
+      const stub = createSubagentSessionStub();
+      agent.subagentSession = toSubagentSession(stub);
+
+      expect(await agent.send("go faster")).toEqual({ kind: "steered", delivery: "delivered" });
+      expect(stub.steer).toHaveBeenCalledWith("go faster");
+      expect(agent.pendingSteerCount).toBe(0);
+    });
+
+    it("holds the message when the session is not ready, and reports it buffered", async () => {
+      const agent = makeSubagent({ status: "running" });
+
+      expect(await agent.send("hello")).toEqual({ kind: "steered", delivery: "buffered" });
+      expect(agent.pendingSteerCount).toBe(1);
+    });
+
+    it("starts no run", async () => {
+      const observer = observerMock();
+      const agent = makeSubagent({
+        status: "running",
+        execution: makeStubExecution({ observer }),
+      });
+      agent.subagentSession = toSubagentSession(createSubagentSessionStub());
+
+      await agent.send("redirect");
+
+      expect(observer.onResumeQueued).not.toHaveBeenCalled();
+      expect(observer.onResumeStarted).not.toHaveBeenCalled();
+      expect(agent.status).toBe("running");
+    });
+
+    it("surfaces a session that refuses the steer", async () => {
+      const agent = makeSubagent({ status: "running" });
+      const stub = createSubagentSessionStub();
+      stub.steer.mockRejectedValue(new Error("session closed"));
+      agent.subagentSession = toSubagentSession(stub);
+
+      await expect(agent.send("hi")).rejects.toThrow("session closed");
+    });
+  });
+
+  describe("to a queued agent", () => {
+    it("folds the message into the first run it is waiting to start, after the task", async () => {
+      const held = heldAdmission();
+      const { factory, stub } = createFactory();
+      stub.runTurnLoop.mockResolvedValue(turnLoopResult({ responseText: "done" }));
+      const agent = createRunnableAgent({ createSubagentSession: factory });
+      agent.scheduleVia(held.admit);
+      expect(agent.status).toBe("queued");
+
+      expect(await agent.send("use staging")).toEqual({ kind: "joined" });
+      // Nothing was steered or buffered: the message rides the prompt.
+      expect(agent.pendingSteerCount).toBe(0);
+      held.open();
+      await agent.promise;
+
+      expect(stub.runTurnLoop.mock.calls[0][0]).toBe("do something\n\nuse staging");
+      expect(agent.outcome).toBe("completed");
+    });
+
+    it("folds the message into a queued resume of a live session, which has no buffer to flush", async () => {
+      const held = heldAdmission();
+      const observer = observerMock();
+      const stub = createSubagentSessionStub();
+      stub.resumeTurnLoop.mockResolvedValue(turnLoopResult({ responseText: "resumed" }));
+      const agent = makeSubagent({
+        execution: makeStubExecution({ observer, admit: held.admit }),
+        state: new SubagentState({ status: "idle", outcome: "completed" }),
+      });
+      agent.subagentSession = toSubagentSession(stub);
+      const resumed = agent.resume("first");
+
+      expect(await agent.send("second")).toEqual({ kind: "joined" });
+      await agent.send("third");
+      held.open();
+      await resumed;
+
+      expect(stub.resumeTurnLoop).toHaveBeenCalledTimes(1);
+      expect(stub.resumeTurnLoop.mock.calls[0][0]).toBe("first\n\nsecond\n\nthird");
+      expect(stub.steer).not.toHaveBeenCalled();
+    });
+
+    it("loses the message with a run that is stopped before its slot opens", async () => {
+      const held = heldAdmission();
+      const { factory } = createFactory();
+      const agent = createRunnableAgent({ createSubagentSession: factory });
+      agent.scheduleVia(held.admit);
+      await agent.send("use staging");
+      agent.abort();
+      held.open();
+      await agent.promise;
+
+      expect(factory).not.toHaveBeenCalled();
+      expect(agent.outcome).toBe("stopped");
+      expect(agent.stoppedWhileQueued).toBe(true);
+    });
+  });
+
+  describe("to an idle agent with a session", () => {
+    it.each<RunOutcome>(["completed", "turn-limit", "error", "stopped", "interrupted"])(
+      "starts a resume with the message as its prompt after %s",
+      async (outcome) => {
+        const observer = observerMock();
+        const stub = createSubagentSessionStub();
+        stub.resumeTurnLoop.mockResolvedValue(turnLoopResult({ responseText: "again" }));
+        const agent = makeSubagent({
+          execution: makeStubExecution({ observer }),
+          state: new SubagentState({ status: "idle", outcome, result: "before" }),
+        });
+        agent.subagentSession = toSubagentSession(stub);
+
+        expect(await agent.send("more please")).toEqual({ kind: "started", relaunched: false });
+        await agent.promise;
+
+        expect(stub.resumeTurnLoop.mock.calls[0][0]).toBe("more please");
+        expect(stub.steer).not.toHaveBeenCalled();
+        expect(observer.onResumeStarted).toHaveBeenCalledTimes(1);
+        expect(observer.onResumeFinished).toHaveBeenCalledTimes(1);
+        expect(agent.result).toBe("again");
+      },
+    );
+
+    it("queues the run when the admission has no slot, and reports it started", async () => {
+      const held = heldAdmission();
+      const observer = observerMock();
+      const stub = createSubagentSessionStub();
+      stub.resumeTurnLoop.mockResolvedValue(turnLoopResult({ responseText: "again" }));
+      const agent = makeSubagent({
+        execution: makeStubExecution({ observer, admit: held.admit }),
+        state: new SubagentState({ status: "idle", outcome: "completed" }),
+      });
+      agent.subagentSession = toSubagentSession(stub);
+
+      expect(await agent.send("more")).toEqual({ kind: "started", relaunched: false });
+
+      expect(agent.status).toBe("queued");
+      expect(observer.onResumeQueued).toHaveBeenCalledTimes(1);
+      expect(stub.resumeTurnLoop).not.toHaveBeenCalled();
+      held.open();
+      await agent.promise;
+      expect(stub.resumeTurnLoop).toHaveBeenCalledTimes(1);
+    });
+
+    it("hands the caller's signal to the run it starts", async () => {
+      const stub = createSubagentSessionStub();
+      const gate = Promise.withResolvers<TurnLoopResult>();
+      stub.resumeTurnLoop.mockImplementation(() => gate.promise);
+      const agent = makeSubagent({
+        state: new SubagentState({ status: "idle", outcome: "completed" }),
+      });
+      agent.subagentSession = toSubagentSession(stub);
+      const controller = new AbortController();
+
+      await agent.send("go", controller.signal);
+      controller.abort();
+
+      expect(agent.status).toBe("idle");
+      expect(agent.outcome).toBe("stopped");
+      gate.resolve(turnLoopResult({ responseText: "late" }));
+    });
+  });
+
+  describe("to an idle agent whose session was released", () => {
+    function releasedAgent(checkReopen?: SubagentExecution["checkReopen"]) {
+      const factorySession = createSubagentSessionStub();
+      factorySession.resumeTurnLoop.mockResolvedValue(turnLoopResult({ responseText: "reopened" }));
+      const createSubagentSession = vi.fn(async (_params: CreateSubagentSessionParams) =>
+        toSubagentSession(factorySession),
+      );
+      const agent = new Subagent({
+        id: "released-1",
+        type: "general-purpose",
+        description: "released",
+        execution: makeStubExecution({ createSubagentSession, checkReopen }),
+        state: new SubagentState({ status: "idle", outcome: "completed" }),
+        released: { outputFile: "/t/a.jsonl", model: undefined, thinkingLevel: undefined },
+      });
+      return { agent, createSubagentSession, factorySession };
+    }
+
+    it("reopens the transcript and runs the message against the rebuilt session", async () => {
+      const { agent, createSubagentSession, factorySession } = releasedAgent(() => undefined);
+
+      expect(await agent.send("pick it up")).toEqual({ kind: "started", relaunched: false });
+      await agent.promise;
+
+      expect(createSubagentSession).toHaveBeenCalledTimes(1);
+      expect(createSubagentSession.mock.calls[0][0]).toMatchObject({
+        transcriptPath: "/t/a.jsonl",
+      });
+      expect(factorySession.resumeTurnLoop.mock.calls[0][0]).toBe("pick it up");
+      expect(agent.isSessionReady()).toBe(true);
+    });
+
+    it("refuses with the reason the transcript cannot be reopened, and starts nothing", async () => {
+      const { agent, createSubagentSession } = releasedAgent(() => "directory-unavailable");
+
+      expect(await agent.send("pick it up")).toEqual({
+        kind: "refused",
+        reason: "directory-unavailable",
+      });
+
+      expect(createSubagentSession).not.toHaveBeenCalled();
+      expect(agent.status).toBe("idle");
+    });
+  });
+
+  describe("to an idle agent that never had a session", () => {
+    function neverStarted(overrides: { prompt?: string; admit?: Admission } = {}) {
+      const { factory, stub } = createFactory();
+      stub.runTurnLoop.mockResolvedValue(turnLoopResult({ responseText: "first run done" }));
+      const observer = observerMock();
+      const agent = makeSubagent({
+        id: "never-1",
+        execution: makeStubExecution({
+          createSubagentSession: factory,
+          observer,
+          prompt: overrides.prompt ?? "Write the report",
+          ...(overrides.admit ? { admit: overrides.admit } : {}),
+          maxTurns: 7,
+          cwd: "/worktrees/feat-x",
+        }),
+        state: new SubagentState({ status: "idle", outcome: "stopped", stoppedWhileQueued: true }),
+      });
+      return { agent, factory: vi.mocked(factory), stub, observer };
+    }
+
+    it("starts its first run from the original task followed by the message", async () => {
+      const { agent, factory, stub } = neverStarted();
+
+      expect(await agent.send("Use the staging data.")).toEqual({
+        kind: "started",
+        relaunched: true,
+      });
+      await agent.promise;
+
+      expect(factory).toHaveBeenCalledTimes(1);
+      expect(stub.runTurnLoop.mock.calls[0][0]).toBe("Write the report\n\nUse the staging data.");
+      expect(stub.resumeTurnLoop).not.toHaveBeenCalled();
+      expect(agent.status).toBe("idle");
+      expect(agent.outcome).toBe("completed");
+      expect(agent.result).toBe("first run done");
+      expect(agent.isSessionReady()).toBe(true);
+    });
+
+    it("runs with the spawn's own configuration", async () => {
+      const { agent, factory, stub } = neverStarted();
+
+      await agent.send("go");
+      await agent.promise;
+
+      expect(factory.mock.calls[0][0]).toMatchObject({
+        type: "general-purpose",
+        agentId: "never-1",
+        cwd: "/worktrees/feat-x",
+      });
+      expect(stub.runTurnLoop.mock.calls[0][1]).toMatchObject({ maxTurns: 7 });
+    });
+
+    it("is announced as a resume, not as a second start", async () => {
+      const { agent, observer } = neverStarted();
+
+      await agent.send("go");
+      await agent.promise;
+
+      expect(observer.onResumeStarted).toHaveBeenCalledTimes(1);
+      expect(observer.onResumeFinished).toHaveBeenCalledTimes(1);
+      expect(observer.onStarted).not.toHaveBeenCalled();
+      expect(observer.onRunFinished).not.toHaveBeenCalled();
+    });
+
+    it("goes through the limiter, and clears the earlier stop", async () => {
+      const held = heldAdmission();
+      const { agent, factory, observer } = neverStarted({ admit: held.admit });
+
+      await agent.send("go");
+
+      expect(agent.status).toBe("queued");
+      expect(agent.stoppedWhileQueued).toBe(false);
+      expect(observer.onResumeQueued).toHaveBeenCalledTimes(1);
+      expect(factory).not.toHaveBeenCalled();
+      held.open();
+      await agent.promise;
+      expect(factory).toHaveBeenCalledTimes(1);
+    });
+
+    it("can be stopped while queued again, and then started once more", async () => {
+      const held = heldAdmission();
+      const { agent, factory } = neverStarted({ admit: held.admit });
+      await agent.send("one");
+      agent.abort();
+      expect(agent.stoppedWhileQueued).toBe(true);
+
+      await agent.send("two");
+      held.open(0);
+      held.open(1);
+      await agent.promise;
+
+      expect(factory).toHaveBeenCalledTimes(1);
+      expect(agent.outcome).toBe("completed");
+    });
+
+    it("ends as an error, with no session, when the session cannot be created, and can be sent to again", async () => {
+      const factory = vi
+        .fn<SessionFactory>()
+        .mockRejectedValueOnce(new Error("no model"))
+        .mockResolvedValue(toSubagentSession(createSubagentSessionStub()));
+      const agent = makeSubagent({
+        execution: makeStubExecution({ createSubagentSession: factory, prompt: "Task" }),
+        state: new SubagentState({ status: "idle", outcome: "stopped" }),
+      });
+
+      await agent.send("one");
+      await agent.promise;
+      expect(agent.outcome).toBe("error");
+      expect(agent.error).toBe("no model");
+      expect(agent.isSessionReady()).toBe(false);
+      expect(agent.sendRefusal).toBeUndefined();
+
+      expect(await agent.send("two")).toEqual({ kind: "started", relaunched: true });
+      await agent.promise;
+      expect(agent.outcome).toBe("completed");
+    });
+
+    it("refuses when no task is at hand to start it from", async () => {
+      const { agent, factory } = neverStarted({ prompt: "" });
+
+      expect(await agent.send("go")).toEqual({ kind: "refused", reason: "no-session" });
+
+      expect(factory).not.toHaveBeenCalled();
+      expect(agent.status).toBe("idle");
+    });
+  });
+});
+
+// Added by the 7b review repair: a run stopped while its session is being created must not
+// leave a second session to be created for the same agent, nor a leaked one.
+describe("Subagent.send() — a run stopped while its session is being created", () => {
+  /** A factory whose sessions the test resolves by hand, one per call. */
+  function deferredFactory() {
+    const pending: Array<{
+      resolve: (session: SubagentSession) => void;
+      reject: (err: Error) => void;
+    }> = [];
+    const factory = vi.fn<SessionFactory>(
+      () =>
+        new Promise<SubagentSession>((resolve, reject) => {
+          pending.push({ resolve, reject });
+        }),
+    );
+    return { factory, pending };
+  }
+
+  function sessionStub() {
+    const stub = createSubagentSessionStub();
+    stub.runTurnLoop.mockResolvedValue(turnLoopResult({ responseText: "done" }));
+    return { stub, session: toSubagentSession(stub) };
+  }
+
+  it("refuses a message until the stopped creation has unwound, then disposes its session", async () => {
+    const { factory, pending } = deferredFactory();
+    const agent = createRunnableAgent({ createSubagentSession: factory });
+    const run = agent.run();
+    expect(factory).toHaveBeenCalledTimes(1);
+
+    expect(agent.abort()).toBe(true);
+    expect(agent.sendRefusal).toBe("rebuilding");
+    expect(await agent.send("hurry")).toEqual({ kind: "refused", reason: "rebuilding" });
+    expect(factory).toHaveBeenCalledTimes(1);
+
+    const first = sessionStub();
+    pending[0].resolve(first.session);
+    await run;
+
+    // The session arrived after the stop: nothing drives it, and it is not kept.
+    expect(first.stub.dispose).toHaveBeenCalledTimes(1);
+    expect(first.stub.runTurnLoop).not.toHaveBeenCalled();
+    expect(agent.isSessionReady()).toBe(false);
+    expect(agent.outcome).toBe("stopped");
+    expect(agent.sendRefusal).toBeUndefined();
+  });
+
+  it("starts a first run once the stopped creation has unwound, leaking no session", async () => {
+    const { factory, pending } = deferredFactory();
+    const agent = createRunnableAgent({ createSubagentSession: factory });
+    const run = agent.run();
+    agent.abort();
+    const first = sessionStub();
+    pending[0].resolve(first.session);
+    await run;
+
+    expect(await agent.send("go")).toEqual({ kind: "started", relaunched: true });
+    const second = sessionStub();
+    pending[1].resolve(second.session);
+    await agent.promise;
+
+    expect(factory).toHaveBeenCalledTimes(2);
+    expect(first.stub.dispose).toHaveBeenCalledTimes(1);
+    expect(second.stub.dispose).not.toHaveBeenCalled();
+    expect(agent.subagentSession).toBeDefined();
+    expect(second.stub.runTurnLoop).toHaveBeenCalledTimes(1);
+    expect(agent.outcome).toBe("completed");
+  });
+
+  it("holds the same for a relaunch that is stopped while its session is created", async () => {
+    const { factory, pending } = deferredFactory();
+    const agent = makeSubagent({
+      execution: makeStubExecution({ createSubagentSession: factory, prompt: "Task" }),
+      state: new SubagentState({ status: "idle", outcome: "stopped" }),
+    });
+    expect(await agent.send("one")).toEqual({ kind: "started", relaunched: true });
+    agent.abort();
+
+    expect(await agent.send("two")).toEqual({ kind: "refused", reason: "rebuilding" });
+    const first = sessionStub();
+    pending[0].resolve(first.session);
+    await agent.promise;
+
+    expect(factory).toHaveBeenCalledTimes(1);
+    expect(first.stub.dispose).toHaveBeenCalledTimes(1);
+    expect(agent.isSessionReady()).toBe(false);
+  });
+
+  it("refuses with rebuilding only while the session is being built, not for an idle agent that never began", () => {
+    expect(makeSubagent({ status: "idle" }).sendRefusal).toBeUndefined();
+  });
+
+  it("drops steers buffered for a run stopped before it got a session", async () => {
+    const { factory, pending } = deferredFactory();
+    const agent = createRunnableAgent({ createSubagentSession: factory });
+    const run = agent.run();
+    expect(await agent.send("for the stopped run")).toEqual({
+      kind: "steered",
+      delivery: "buffered",
+    });
+    agent.abort();
+    pending[0].resolve(sessionStub().session);
+    await run;
+    expect(agent.pendingSteerCount).toBe(0);
+
+    // The next run's session does not receive them.
+    const next = sessionStub();
+    expect(await agent.send("fresh")).toEqual({ kind: "started", relaunched: true });
+    pending[1].resolve(next.session);
+    await agent.promise;
+    expect(next.stub.steer).not.toHaveBeenCalled();
+  });
+
+  it("drops steers buffered for a run whose session could not be created", async () => {
+    const { factory, pending } = deferredFactory();
+    const agent = createRunnableAgent({ createSubagentSession: factory });
+    const run = agent.run();
+    await agent.send("for the failed run");
+    expect(agent.pendingSteerCount).toBe(1);
+    pending[0].reject(new Error("no model"));
+    await run;
+
+    expect(agent.outcome).toBe("error");
+    expect(agent.pendingSteerCount).toBe(0);
   });
 });

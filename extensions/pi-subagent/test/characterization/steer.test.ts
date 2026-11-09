@@ -3,14 +3,17 @@ import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { describe, expect, it } from "vitest";
 import { toolCall } from "../../../../packages/pi-test-helpers/src/faux-session.ts";
 import { lastResult } from "../helpers/sdk.ts";
-import { delegate, gated, resumeCall, shape, startParent, untilAnnounced } from "./harness.ts";
+import { delegate, gated, sendCall, shape, startParent, untilAnnounced } from "./harness.ts";
 
-// Sending a message to an agent through subagent_steer, from the parent's side.
+// Sending a message to a running agent through subagent_send, from the parent's side.
+// Rewritten by roadmap step 7b: subagent_steer is gone, and subagent_send steers a running
+// agent with the same text and the same event. Sending to an agent that is not running no
+// longer refuses; resume.test.ts and send.test.ts pin what it does instead.
 
 const resultText = (request: Context, tool: string) =>
   (JSON.parse(lastResult(request, tool)) as { content: Array<{ text: string }> }).content[0].text;
 
-describe("subagent_steer", () => {
+describe("subagent_send to a running agent", () => {
   it("delivers a message to a running agent, which answers it before finishing", async () => {
     const h = await startParent();
     const child = gated(fauxAssistantMessage("First answer."));
@@ -22,10 +25,7 @@ describe("subagent_steer", () => {
         async () => {
           await child.started;
           steerId = h.agentIds()[0];
-          return toolCall("subagent_steer", {
-            agent_id: steerId,
-            message: "Also check the tests.",
-          });
+          return sendCall(steerId, "Also check the tests.");
         },
         () => {
           child.release();
@@ -44,14 +44,19 @@ describe("subagent_steer", () => {
     await h.session.prompt("Delegate");
     await untilAnnounced(h);
 
-    const text = shape(resultText(h.requests.parent[2], "subagent_steer"), steerId);
+    const text = shape(resultText(h.requests.parent[2], "subagent_send"), steerId);
     expect(text).toMatch(
       /^Steering message sent to agent <id>\. The agent will process it after its current tool execution\.\nCurrent state: /,
     );
     expect(JSON.stringify(seenByChild[0].messages.at(-1))).toContain("Also check the tests.");
     expect(h.seen("subagent:steered")).toEqual([
-      { channel: "subagent:steered", data: { id: steerId, message: "Also check the tests." } },
+      {
+        channel: "subagent:steered",
+        data: { id: steerId, message: "[child] Also check the tests." },
+      },
     ]);
+    // A steer is not a new run.
+    expect(h.seen("subagent:resuming")).toEqual([]);
     // The agent's answer to the steer is its result.
     expect(h.savedRecord(steerId)).toMatchObject({
       status: "idle",
@@ -61,47 +66,23 @@ describe("subagent_steer", () => {
     expect(shape(h.announcements()[0].text, steerId)).toContain("<result>Adjusted.</result>");
   }, 30_000);
 
-  it("refuses to steer a finished agent, naming its status", async () => {
-    const h = await startParent();
-    h.script({
-      parent: [delegate("Work"), fauxAssistantMessage("Started.")],
-      child: [fauxAssistantMessage("Did the work.")],
-    });
-    await h.session.prompt("Delegate");
-    await untilAnnounced(h);
-    const [id] = h.agentIds();
-
-    h.script({
-      parent: [
-        toolCall("subagent_steer", { agent_id: id, message: "More." }),
-        fauxAssistantMessage("Ok."),
-      ],
-    });
-    await h.session.prompt("Steer it");
-
-    expect(shape(resultText(h.requests.parent[1], "subagent_steer"), id)).toBe(
-      'Agent "<id>" is not running (status: completed). Cannot steer a non-running agent.',
-    );
-    expect(h.seen("subagent:steered")).toEqual([]);
-  }, 30_000);
-
   it("refuses an agent the session does not know", async () => {
     const h = await startParent();
     h.script({
       parent: [
-        toolCall("subagent_steer", { agent_id: "nope", message: "Hello?" }),
+        toolCall("subagent_send", { agent_id: "nope", message: "Hello?" }),
         fauxAssistantMessage("Ok."),
       ],
     });
 
     await h.session.prompt("Steer a stranger");
 
-    expect(resultText(h.requests.parent[1], "subagent_steer")).toBe(
+    expect(resultText(h.requests.parent[1], "subagent_send")).toBe(
       'Agent not found: "nope". It is not live in this session; subagent_get without agent_id lists the agents started on this branch, including any from before a reload or resume.',
     );
   }, 30_000);
 
-  it("steers a resumed agent while its resumed run is going", async () => {
+  it("steers an agent while the run a message started is going", async () => {
     const h = await startParent();
     h.script({
       parent: [delegate("Work"), fauxAssistantMessage("Started.")],
@@ -114,10 +95,10 @@ describe("subagent_steer", () => {
     const child = gated(fauxAssistantMessage("Resumed answer."));
     h.script({
       parent: [
-        resumeCall(id, "Keep going"),
+        sendCall(id, "Keep going"),
         async () => {
           await child.started;
-          return toolCall("subagent_steer", { agent_id: id, message: "Change course." });
+          return sendCall(id, "Change course.");
         },
         () => {
           child.release();
@@ -129,7 +110,7 @@ describe("subagent_steer", () => {
     await h.session.prompt("Resume it");
     await untilAnnounced(h, 2);
 
-    expect(resultText(h.requests.parent[2], "subagent_steer")).toContain(
+    expect(resultText(h.requests.parent[2], "subagent_send")).toContain(
       `Steering message sent to agent ${id}.`,
     );
     expect(h.savedRecord(id)).toMatchObject({
@@ -139,7 +120,10 @@ describe("subagent_steer", () => {
     });
   }, 30_000);
 
-  it("no longer finds an agent from before a reload", async () => {
+  // Changed by roadmap step 7b (was: "no longer finds an agent from before a reload", because
+  // steering needed a live record). A reload ends the run, so the agent comes back idle and
+  // interrupted, and a message starts a new run for it instead of finding nothing.
+  it("starts a run for an agent whose run a reload interrupted, rather than steering it", async () => {
     const h = await startParent();
     const child = gated();
     h.script({
@@ -152,15 +136,20 @@ describe("subagent_steer", () => {
     await h.session.reload();
 
     h.script({
-      parent: [
-        toolCall("subagent_steer", { agent_id: id, message: "Still there?" }),
-        fauxAssistantMessage("Ok."),
-      ],
+      parent: [sendCall(id, "Still there?"), fauxAssistantMessage("Ok.")],
+      child: [fauxAssistantMessage("Yes.")],
     });
-    await h.session.prompt("Steer it");
+    await h.session.prompt("Message it");
+    await untilAnnounced(h);
 
-    expect(shape(resultText(h.requests.parent[1], "subagent_steer"), id)).toMatch(
-      /^Agent not found: "<id>"\. It is not live in this session;/,
+    expect(shape(resultText(h.requests.parent[1], "subagent_send"), id)).toMatch(
+      /^Agent resumed in background\.\nAgent ID: <id>\n/,
     );
+    expect(h.seen("subagent:steered")).toEqual([]);
+    expect(h.savedRecord(id)).toMatchObject({
+      status: "idle",
+      outcome: "completed",
+      result: "Yes.",
+    });
   }, 30_000);
 });

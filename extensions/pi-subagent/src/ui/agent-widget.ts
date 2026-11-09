@@ -304,10 +304,16 @@ export class AgentWidget implements SubagentManagerObserver {
    * so no external bookkeeping call is needed.
    * Idempotent — only seeds when an entry is absent, so repeated updates within
    * a turn neither reset nor advance the age.
+   *
+   * An agent that is queued or running again has no finished state to age: its
+   * entry is dropped, so the run a message started lingers as done when it
+   * ends, as the first run did.
    */
   private seedFinishedAgents(agents: readonly AgentSummary[]): void {
     for (const a of agents) {
-      if (a.completedAt && !this.finishedTurnAge.has(a.id)) {
+      if (a.status === "queued" || a.status === "running") {
+        this.finishedTurnAge.delete(a.id);
+      } else if (a.completedAt && !this.finishedTurnAge.has(a.id)) {
         this.finishedTurnAge.set(a.id, 0);
       }
     }

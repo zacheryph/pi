@@ -154,20 +154,26 @@ describe("formatRosterLine", () => {
 
   it("gives a completed agent its local finish time", () => {
     expect(line(saved({ completedAt: 7_200_000 }))).toBe(
-      `- a1 implementer "Add token refresh": completed ${formatClock(7_200_000)}`,
+      `- a1 implementer "Add token refresh": idle, last run completed ${formatClock(7_200_000)}`,
     );
   });
 
   it("names the error, the exhausted budget, a stop and an interruption", () => {
-    expect(line(saved({ status: "error", error: "boom\nstack" }))).toContain("failed: boom stack");
-    expect(line(saved({ status: "aborted" }))).toContain("failed: turn budget exhausted");
-    expect(line(saved({ status: "stopped" }))).toContain("stopped before it finished");
+    expect(line(saved({ status: "error", error: "boom\nstack" }))).toContain(
+      "idle, last run failed: boom stack",
+    );
+    expect(line(saved({ status: "aborted" }))).toContain(
+      "idle, last run failed: turn budget exhausted",
+    );
+    expect(line(saved({ status: "stopped" }))).toContain(
+      "idle, last run stopped before it finished",
+    );
     expect(line(saved({ status: "running" }))).toContain(
-      "interrupted: the session was reloaded or replaced before it finished",
+      "idle, last run interrupted: the session was reloaded or replaced before it finished",
     );
     // The same line for a run a version 1 record said was cut short.
     expect(line(saved({ status: "idle", outcome: "interrupted" }))).toContain(
-      "interrupted: the session was reloaded or replaced before it finished",
+      "idle, last run interrupted: the session was reloaded or replaced before it finished",
     );
   });
 
@@ -207,11 +213,11 @@ describe("formatRosterCard", () => {
     const live = (id: string) => (id === "d4e5f6" ? records[2] : undefined);
     expect(formatRosterCard(buildRoster(records, live), "compaction")).toBe(
       [
-        "Subagents started by this session (restored after compaction; subagent_get <id> for details):",
+        "Subagents started by this session (restored after compaction; subagent_get <id> for details, subagent_send <id> to give an idle one more work):",
         '- 9a8b7c implementer "Migrate store": waiting for your answer: "Postgres?"',
         '- d4e5f6 review "Review step 3": running',
-        '- 77e0aa explorer "Map auth call sites": failed: turn budget exhausted',
-        `- a1b2c3 implementer "Add token refresh": completed ${formatClock(50_000_000)}`,
+        '- 77e0aa explorer "Map auth call sites": idle, last run failed: turn budget exhausted',
+        `- a1b2c3 implementer "Add token refresh": idle, last run completed ${formatClock(50_000_000)}`,
       ].join("\n"),
     );
   });
@@ -269,7 +275,7 @@ describe("formatRosterCard", () => {
       );
       expect(lines).toHaveLength(20);
       expect(lines.slice(0, 18).every((text) => text.includes("waiting"))).toBe(true);
-      expect(lines[18]).toContain("failed: ");
+      expect(lines[18]).toContain("last run failed: ");
       expect(lines.at(-1)).toBe("- 1 failed and 3 older completed agents not shown");
     });
 
@@ -294,7 +300,7 @@ describe("formatRosterList", () => {
   it("lists every agent with a count", () => {
     const text = formatRosterList(buildRoster([saved({ id: "x" }), saved({ id: "y" })], noneLive));
     expect(text.split("\n")[0]).toBe(
-      "Agents started on this branch (2; subagent_get <id> for details):",
+      "Agents started on this branch (2; subagent_get <id> for details, subagent_send <id> to give an idle one more work):",
     );
     expect(text).toContain("- x implementer");
     expect(text).toContain("- y implementer");
@@ -320,42 +326,61 @@ describe("readBranchRecords", () => {
   });
 });
 
-describe("buildRoster — whether an agent can be resumed", () => {
-  const line = (record: PersistedSubagentRecord, resumable: boolean) =>
+describe("buildRoster — whether subagent_send reaches an agent", () => {
+  const line = (record: PersistedSubagentRecord, reachable: boolean) =>
     formatRosterLine(
       buildRoster(
         [record],
         () => undefined,
-        () => resumable,
+        () => reachable,
       )[0],
     );
 
-  it("says so on a completed line", () => {
-    expect(line(saved(), true)).toMatch(/: completed \d\d:\d\d, resumable$/);
-    expect(line(saved(), false)).toMatch(/: completed \d\d:\d\d$/);
+  it("says nothing on a line the tool reaches, whatever the last outcome", () => {
+    for (const status of ["completed", "error", "aborted", "stopped", "running"] as const) {
+      expect(line(saved({ status, error: "boom" }), true)).not.toContain("cannot take a message");
+    }
+    expect(line(saved(), true)).toMatch(/: idle, last run completed \d\d:\d\d$/);
   });
 
-  it("says so on an interrupted line", () => {
+  // Changed by roadmap step 7b (was: only completed, interrupted and waiting lines said
+  // "resumable", and failed or stopped ones said nothing). Every idle agent takes a message,
+  // so every idle line says when one would be refused.
+  it("warns on every idle line the tool would refuse", () => {
+    expect(line(saved(), false)).toMatch(
+      /: idle, last run completed \d\d:\d\d \(cannot take a message\)$/,
+    );
+    expect(line(saved({ status: "error", error: "boom" }), false)).toMatch(
+      /: idle, last run failed: boom \(cannot take a message\)$/,
+    );
+    expect(line(saved({ status: "aborted" }), false)).toMatch(
+      /: idle, last run failed: turn budget exhausted \(cannot take a message\)$/,
+    );
+    expect(line(saved({ status: "stopped" }), false)).toMatch(
+      /: idle, last run stopped before it finished \(cannot take a message\)$/,
+    );
     const interrupted = saved({ status: "running", completedAt: undefined });
-    expect(line(interrupted, true)).toMatch(/before it finished, resumable$/);
-    expect(line(interrupted, false)).toMatch(/before it finished$/);
+    expect(line(interrupted, false)).toMatch(/before it finished \(cannot take a message\)$/);
   });
 
   it("warns only when a question cannot be answered", () => {
     const waiting = saved({ pendingQuestion: "Which DB?" });
     expect(line(waiting, true)).toMatch(/"Which DB\?"$/);
-    expect(line(waiting, false)).toMatch(/"Which DB\?" \(cannot be resumed\)$/);
+    expect(line(waiting, false)).toMatch(/"Which DB\?" \(cannot take a message\)$/);
   });
 
-  it("does not ask about a failed agent", () => {
+  it("does not ask about a queued or running agent, which always takes a message", () => {
     const check = vi.fn(() => true);
-    const [entry] = buildRoster(
-      [saved({ status: "error", error: "boom" })],
-      () => undefined,
+    const live = (record: PersistedSubagentRecord) => record as unknown as LiveAgentLike;
+    const running = saved({ id: "r", status: "running", completedAt: undefined });
+    const queued = saved({ id: "q", status: "queued", completedAt: undefined });
+    const entries = buildRoster(
+      [running, queued],
+      (id) => live(id === "r" ? running : queued),
       check,
     );
     expect(check).not.toHaveBeenCalled();
-    expect(entry.resumable).toBeUndefined();
+    expect(entries.map((entry) => entry.reachable)).toEqual([undefined, undefined]);
   });
 
   it("asks about the live agent when one backs the record", () => {
@@ -363,5 +388,31 @@ describe("buildRoster — whether an agent can be resumed", () => {
     const live: LiveAgentLike = { ...saved(), outputFile: "/live.jsonl" };
     buildRoster([saved()], () => live, check);
     expect(check).toHaveBeenCalledWith(live);
+  });
+});
+
+describe("idle roster lines at hostile widths of text", () => {
+  const line = (record: PersistedSubagentRecord) =>
+    formatRosterLine(buildRoster([record], () => undefined)[0]);
+
+  // The roster is text for the model, not a TUI row, so the guarantee is that every
+  // variable part is cut to a bounded number of whole user-perceived characters and
+  // carries no terminal control, whatever the text holds.
+  it("cuts a wide or ANSI-laden error to one clean line of 160 characters", () => {
+    const wide = `\x1b[31m${"漢字".repeat(200)}\x1b[0m\nnext line`;
+    const text = line(saved({ status: "error", error: wide }));
+    expect(text).not.toContain("\n");
+    // oxlint-disable-next-line no-control-regex -- asserting no escape survives
+    expect(text).not.toMatch(/\x1b/);
+    const error = text.split("last run failed: ")[1];
+    expect(
+      Array.from(new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(error)),
+    ).toHaveLength(160);
+    expect(error.endsWith("…")).toBe(true);
+  });
+
+  it("keeps a wide description whole at the cut", () => {
+    const text = line(saved({ status: "stopped", description: "界".repeat(100) }));
+    expect(text).toContain(`"${"界".repeat(79)}…"`);
   });
 });

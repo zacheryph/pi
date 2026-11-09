@@ -284,7 +284,7 @@ describe("NotificationManager", () => {
     const content = (args.sendMessage.mock.calls[0][0] as { content: string }).content;
     expect(content).toContain("This agent is waiting on an answer:");
     expect(content).toContain("Which config?");
-    expect(content).toContain('resume: "agent-3"');
+    expect(content).toContain('subagent_send with agent_id: "agent-3"');
   });
 
   it("omits the retrieval instruction for an agent that never started", () => {

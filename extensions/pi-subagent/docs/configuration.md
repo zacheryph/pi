@@ -30,7 +30,7 @@ Override one by creating a `.md` file with the same name (e.g. `.pi/agents/gener
 
 Use the bundled `orchestrate` for projects that need sustained coordination.
 It uses the existing `todo`, `subagent_start`, `subagent_get`, and
-`subagent_steer` tools; the root bundle includes all of them. When loading
+`subagent_send` tools; the root bundle includes all of them. When loading
 pi-subagent separately, also load pi-todo. Model, thinking, context inheritance,
 background execution, and turn limits follow the existing caller/runtime defaults.
 
@@ -64,11 +64,12 @@ The profile's instructions establish this working loop:
    collects its workers with `subagent_get` before finishing instead.
 3. Collect results and verify acceptance criteria before completing todos: a
    `review` that did not do the work checks each implementation task. A
-   `FAIL` goes back to the implementer by resume; after two failed rounds the
+   `FAIL` goes back to the implementer with `subagent_send`; after two failed rounds the
    task stays `pending` with the findings. Record questions and follow-ups immediately. Waiting items stay `pending`
    with a described blocker; todo has no separate waiting/blocked status.
-4. Steer running workers; resume settled workers by their original agent IDs for
-   rationale, clarification, or follow-up work. Reuse their context instead of
+4. Message workers with `subagent_send`, by their original agent IDs, for
+   rationale, clarification, or follow-up work: it steers a running worker and
+   gives a settled one a new run. Reuse their context instead of
    restarting the investigation. Checkpoint project state before yielding.
 
 This is a profile-driven workflow using existing session persistence, not a
@@ -78,8 +79,8 @@ results and updates. The profile rereads todo after compaction/reload and record
 concise recovery notes. Live worker sessions remain subject to retention and
 runtime lifetime. After a reload or resume, `subagent_get` still answers for a
 worker's ID from its saved record (status, result, question, transcript path) and
-lists every worker the branch started, and a resume reopens the worker's saved
-transcript as long as it and the worker's directory still exist. If resume is
+lists every worker the branch started, and `subagent_send` reopens the worker's
+saved transcript as long as it and the worker's directory still exist. If it is
 refused, the orchestrator uses saved task notes, results, transcripts, and artifacts
 to brief a replacement. Required work stays open until verified or explicitly rescoped.
 
@@ -225,7 +226,7 @@ A file whose frontmatter is not valid YAML still takes its name, so it still ove
 | `guidance`        | —              | When to pick the agent, as a sentence (`Use for …`). Shown after the description on the same line of the list, so the name is not repeated                                                                                                                                |
 | `display_name`    | —              | Display name for UI (e.g. widget, agent list)                                                                                                                                                                                                                             |
 | `tools`           | all available  | `all` for registered tools; explicit names restrict; `-name` removes; `none` disables tools. See [Tool selection](#tool-selection)                                                                                                                                        |
-| `delegate`        | `false`        | `true` lets the agent start, read and steer agents of its own (`subagent_start`, `subagent_get`, `subagent_steer`). Without it they are withheld, whatever `tools` selects. See [Tool selection](#tool-selection)                                                         |
+| `delegate`        | `false`        | `true` lets the agent start, read and message agents of its own (`subagent_start`, `subagent_get`, `subagent_send`). Without it they are withheld, whatever `tools` selects. See [Tool selection](#tool-selection)                                                        |
 | `model`           | inherit parent | Model — `provider/modelId`, fuzzy name (`"haiku"`, `"sonnet"`), or `[provider/]family@latest` for the newest available model whose id contains `family`                                                                                                                   |
 | `thinking`        | inherit        | off, minimal, low, medium, high, xhigh, max. An unrecognized value is dropped, and the agent inherits the parent's level                                                                                                                                                  |
 | `max_turns`       | unlimited      | Turn ceiling: the harness stops the agent after this many turns (minimum 2). `0` or omit for unlimited                                                                                                                                                                    |
@@ -345,10 +346,10 @@ An explicit allowlist normally must name an extension's tool to admit it. Childr
 A handoff's owner may require additional tools through the synchronous `subagent:session:prepare` hook before SDK creation. pi-todo uses it to add only `todo_list` and `todo_upsert` when tasks are handed over, even for `explore`, `plan`, `review`, or `tools: none`. No handoff means no additional todo tools. An explicit exclusion such as `-todo_upsert` is not overridden: the handoff fails with a required-tools error. Initialization also fails if a required tool is unavailable after binding (for example, its extension was excluded from children).
 
 Three names are removed from a child unless its profile sets `delegate: true`:
-`subagent_start`, `subagent_get`, and `subagent_steer`. `delegate` is the only
+`subagent_start`, `subagent_get`, and `subagent_send`. `delegate` is the only
 switch; naming them in `tools` does not opt in. With it, all three are added
 to the child's tools, even under an allowlist that names none of them, and an
-explicit exclusion such as `-subagent_steer` still wins. The denylist remains
+explicit exclusion such as `-subagent_send` still wins. The denylist remains
 enforced by the SDK across tool-registry refreshes.
 
 ```yaml
@@ -364,11 +365,11 @@ or shared concurrency pool across managers.
 Two names are always **added**, whatever an agent lists: `ask` (from pi-ask) and `parent_notify`.
 These are the child's channel back to the agent that delegated to it — protocol the core installs in every child, like the `<active_agent>` tag and the parent-context prefix.
 Neither reaches the filesystem, the shell, or the network, so a read-only agent stays read-only.
-`ask` reaches the parent through the `ask:route` service the core offers for every child: it records a question and tells the child to end its turn, so the delegating agent can answer by resuming it; `parent_notify` sends a one-way update and returns at once.
-A question can outlive the chance to answer it — the saved transcript or the child's directory can go away, and a workspace is torn down at run end unless the child completed — so once a resume would be refused, the result reports the question and the reason rather than the `resume` call.
+`ask` reaches the parent through the `ask:route` service the core offers for every child: it records a question and tells the child to end its turn, so the delegating agent can answer with `subagent_send`; `parent_notify` sends a one-way update and returns at once.
+A question can outlive the chance to answer it — the saved transcript or the child's directory can go away, and a workspace is torn down at run end unless the child completed — so once `subagent_send` would be refused, the result reports the question and the reason rather than the call.
 Both go to every agent, `parent_notify` only while [`midRunUpdates`](#persistent-settings) is on.
 Where an update lands depends on whether an announcement can still reach you in time to act on it.
-It arrives as its own message when you are idle and the agent is still running — the one case where steering it is still possible.
+It arrives as its own message when you are idle and the agent is still running — the one case where messaging it still steers it.
 Otherwise it rides that agent's outcome, under "Updates this agent sent while it worked": the completion message or the `subagent_get` report.
 Either way you see it once.
 
@@ -473,7 +474,7 @@ snapshot. It is not reapplied on `/new`, resume, reload, or tree navigation and
 never propagates as a child override. Children can still inherit the current
 parent model normally.
 
-Project profiles require Pi project trust. Delegation tools are included by default, unless a profile explicitly excludes them (`-subagent_start`, `-subagent_get`, or `-subagent_steer`);
+Project profiles require Pi project trust. Delegation tools are included by default, unless a profile explicitly excludes them (`-subagent_start`, `-subagent_get`, or `-subagent_send`);
 child settings and prompt construction are unchanged. `locked`, `max_turns`,
 and `inherit_context` retain their child meanings rather
 than imposing main-session restrictions. See [main-session profile usage](../README.md#main-session-profile---agent)

@@ -7,13 +7,13 @@
  * result-renderer.ts pattern used by the subagent_start tool's TUI renderer.
  */
 
-import type { DisplayStatus, ResumeRefusal } from "#src/lifecycle/subagent";
+import type { DisplayStatus, SendRefusal } from "#src/lifecycle/subagent";
 import type { TurnBudget } from "#src/lifecycle/turn-limits";
 import {
   renderOutcomeAddenda,
   renderOutcomeBody,
   renderQuestionAffordance,
-  renderResumeUnavailable,
+  renderSendUnavailable,
   renderStatusNote,
 } from "#src/observation/outcome-delivery";
 
@@ -45,10 +45,10 @@ export interface AgentReport {
   /** The question the agent ended its turn with, when it declared one. */
   pendingQuestion?: string;
   /**
-   * Why a resume would be refused; undefined when one would be accepted.
+   * Why a message would be refused; undefined when one would be accepted.
    * Required, for the reason `OutcomeAddenda` gives.
    */
-  resumeRefusal: ResumeRefusal | undefined;
+  sendRefusal: SendRefusal | undefined;
   /**
    * The model's `provider/id`; undefined while an inherited model is still unknown.
    * Required, so a report builder cannot leave it out by omission.
@@ -83,8 +83,8 @@ export function formatAgentReport(report: AgentReport): string {
     `Description: ${report.description}\n\n`;
   output += renderReportBody(report);
   output += renderOutcomeAddenda(report);
-  if (!report.pendingQuestion && report.resumeRefusal && report.resumeRefusal !== "no-session") {
-    const unavailable = renderResumeUnavailable(report.resumeRefusal);
+  if (!report.pendingQuestion && report.sendRefusal) {
+    const unavailable = renderSendUnavailable(report.sendRefusal);
     if (unavailable) output += `\n\n${unavailable}`;
   }
   if (report.conversation) {
@@ -120,16 +120,16 @@ export interface SavedAgentReport {
   transcriptPath?: string;
   /** The call asked for the conversation, which only a live record holds. */
   verbose: boolean;
-  /** Why a resume would be refused; undefined when one would be accepted. */
-  resumeRefusal: ResumeRefusal | undefined;
+  /** Why a message would be refused; undefined when one would be accepted. */
+  sendRefusal: SendRefusal | undefined;
 }
 
-/** Whether a resume would reopen this agent's transcript, as one sentence. */
-function renderSavedResumeNote(report: SavedAgentReport): string {
-  return report.resumeRefusal
-    ? renderResumeUnavailable(report.resumeRefusal)
-    : `Resume: available. Call subagent_start with resume: "${report.id}" to reopen its saved ` +
-        "transcript and continue where it left off.";
+/** Whether a message would reopen this agent's transcript, as one sentence. */
+function renderSavedSendNote(report: SavedAgentReport): string {
+  return report.sendRefusal
+    ? renderSendUnavailable(report.sendRefusal)
+    : `Send: available. Call subagent_send with agent_id: "${report.id}" and your message to ` +
+        "reopen its saved transcript and continue where it left off.";
 }
 
 /** Assemble the subagent_get report for a saved record. */
@@ -150,8 +150,8 @@ export function formatSavedAgentReport(report: SavedAgentReport): string {
     : renderOutcomeBody({ ...report, stoppedWhileQueued: false });
   output +=
     report.pendingQuestion && report.status === "completed"
-      ? renderQuestionAffordance(report.id, report.pendingQuestion, report.resumeRefusal)
-      : `\n\n${renderSavedResumeNote(report)}`;
+      ? renderQuestionAffordance(report.id, report.pendingQuestion, report.sendRefusal)
+      : `\n\n${renderSavedSendNote(report)}`;
   if (report.verbose) {
     output += "\n\nThe conversation is not in memory any more; read the transcript instead.";
   }

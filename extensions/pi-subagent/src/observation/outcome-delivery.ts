@@ -20,7 +20,7 @@
  * Pure functions only: no SDK types, no record types, no side effects.
  */
 
-import type { ResumeRefusal } from "#src/lifecycle/subagent";
+import type { SendRefusal } from "#src/lifecycle/subagent";
 import type { DisplayStatus } from "#src/lifecycle/subagent-state";
 import { type TurnBudget, wrappedUpAtTurnLimit } from "#src/lifecycle/turn-limits";
 
@@ -65,33 +65,31 @@ function statusMeaning(outcome: StatusOutcome): StatusMeaning | undefined {
 }
 
 /**
- * Why a resume is unavailable *for good*, worded as a subordinate clause.
+ * Why a message cannot reach an idle agent, worded as a subordinate clause.
  *
- * The resume door words the same three facts as standalone refusals; a clause
- * that continues someone else's sentence is different grammar, not a different
- * fact — the split `STATUS_MEANINGS` makes between `label` and `detail`.
+ * `subagent_send` words the same facts as standalone refusals; a clause that
+ * continues someone else's sentence is different grammar, not a different fact
+ * — the split `STATUS_MEANINGS` makes between `label` and `detail`.
  *
- * `still-running` is excluded by type rather than by omission: a refusal that
- * lifts when the run settles asks the parent to wait, where these three ask it
- * to give up, so it gets its own sentence in the renderer below.
+ * `rebuilding` is excluded by type rather than by omission: a refusal that lifts
+ * in a moment asks the parent to try again, where these ask it to give up, so it
+ * gets its own sentence in the renderers below.
  */
-const RESUME_REFUSAL_CLAUSES: Record<Exclude<ResumeRefusal, "still-running">, string> = {
-  // Deliberately not "...no session to resume": the clause is followed by a
-  // colon, and "resume:" is the exact token the parent must not see here.
-  "no-session": "it has no active session",
+const SEND_REFUSAL_CLAUSES: Record<Exclude<SendRefusal, "rebuilding">, string> = {
+  "no-session": "it never started a session and its original task was not saved",
   "session-released": "its session was released and its saved transcript is gone",
   "directory-unavailable": "the directory it ran in no longer exists",
   "agent-type-unavailable": "its agent type is no longer available",
 };
 
 /**
- * One line on why this settled agent cannot be resumed; empty when it can, or
- * when it is simply not finished. A message with a question to report uses
- * `renderQuestionAffordance` instead, which says the same thing about the question.
+ * One line on why this settled agent cannot take a message; empty when it can.
+ * A message with a question to report uses `renderQuestionAffordance` instead,
+ * which says the same thing about the question.
  */
-export function renderResumeUnavailable(refusal: ResumeRefusal | undefined): string {
-  if (!refusal || refusal === "still-running") return "";
-  return `Resume: not available, because ${RESUME_REFUSAL_CLAUSES[refusal]}. Spawn a new agent with the context it needs.`;
+export function renderSendUnavailable(refusal: SendRefusal | undefined): string {
+  if (!refusal || refusal === "rebuilding") return "";
+  return `Send: not available, because ${SEND_REFUSAL_CLAUSES[refusal]}. Spawn a new agent with the context it needs.`;
 }
 
 /**
@@ -133,10 +131,9 @@ export interface OutcomeBody {
  * The trailing affordance for a child that ended its turn with a question.
  * Empty when the child asked nothing.
  *
- * Names the exact call that answers it when a resume would be accepted, why it
- * cannot be answered when one would be refused for good, and that the
- * completion message is coming when the child is simply not finished — the
- * parent is never told to make a call this extension declines.
+ * Names the exact call that answers it when a message would be accepted, and why
+ * it cannot be answered when one would be refused for good — the parent is never
+ * told to make a call this extension declines.
  *
  * Takes the id, question, and refusal rather than a record: the three facts it
  * needs, so a caller holding any shape can call it.
@@ -144,30 +141,30 @@ export interface OutcomeBody {
 export function renderQuestionAffordance(
   agentId: string,
   question: string | undefined,
-  refusal: ResumeRefusal | undefined,
+  refusal: SendRefusal | undefined,
 ): string {
   if (!question) return "";
   const quoted = question
     .split("\n")
     .map((line) => `  ${line}`)
     .join("\n");
-  if (refusal === "still-running") {
+  if (refusal === "rebuilding") {
     return (
-      "\n\nThis agent asked a question before it finished running, so it cannot be " +
-      `resumed yet:\n\n${quoted}\n\n` +
-      "End your turn: its completion message arrives when it settles. Then answer it."
+      "\n\nThis agent asked a question, but it was stopped while its session was being created or rebuilt " +
+      `and cannot take your answer yet:\n\n${quoted}\n\n` +
+      "Try again in a moment."
     );
   }
   if (refusal) {
     return (
       "\n\nThis agent ended its run with a question that can no longer be answered \u2014 " +
-      `${RESUME_REFUSAL_CLAUSES[refusal]}:\n\n${quoted}\n\n` +
-      "Spawn a new agent with the context it needs; this one cannot be resumed."
+      `${SEND_REFUSAL_CLAUSES[refusal]}:\n\n${quoted}\n\n` +
+      "Spawn a new agent with the context it needs; this one cannot take a message."
     );
   }
   return (
     `\n\nThis agent is waiting on an answer:\n\n${quoted}\n\n` +
-    `Answer by calling subagent_start with resume: "${agentId}" and your answer as the prompt.`
+    `Answer by calling subagent_send with agent_id: "${agentId}" and your answer as the message.`
   );
 }
 
@@ -183,13 +180,13 @@ export interface OutcomeAddenda {
   runUpdates?: readonly string[];
   pendingQuestion?: string;
   /**
-   * Why a resume would be refused; undefined when one would be accepted.
+   * Why a message would be refused; undefined when one would be accepted.
    *
    * Required rather than optional so a caller that forgets it fails to
-   * compile. An omitted optional would silently mean "resumable", which is the
-   * fail-open this field exists to close.
+   * compile. An omitted optional would silently mean "accepts messages", which
+   * is the fail-open this field exists to close.
    */
-  resumeRefusal: ResumeRefusal | undefined;
+  sendRefusal: SendRefusal | undefined;
 }
 
 /** The addenda tail a report appends, in one order. */
@@ -197,7 +194,7 @@ export function renderOutcomeAddenda(outcome: OutcomeAddenda): string {
   return (
     // What the agent flagged along the way, then the call to action.
     renderRunUpdates(outcome.runUpdates) +
-    renderQuestionAffordance(outcome.id, outcome.pendingQuestion, outcome.resumeRefusal)
+    renderQuestionAffordance(outcome.id, outcome.pendingQuestion, outcome.sendRefusal)
   );
 }
 

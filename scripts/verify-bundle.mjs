@@ -61,7 +61,7 @@ try {
   for (const name of [
     "subagent_start",
     "subagent_get",
-    "subagent_steer",
+    "subagent_send",
     "todo_list",
     "todo_upsert",
     "todo_replace",
@@ -84,6 +84,8 @@ try {
   ]) {
     assert.ok(tools.includes(name), `Missing tool: ${name}`);
   }
+  // subagent_send replaced subagent_steer and subagent_start's resume (roadmap step 7b).
+  assert.ok(!tools.includes("subagent_steer"), "subagent_steer was replaced by subagent_send");
   for (const name of [
     "job",
     "subagent:settings",

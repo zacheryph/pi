@@ -18,7 +18,7 @@ import {
 import { toolCall } from "../../../packages/pi-test-helpers/src/faux-session.ts";
 
 // Scripted model responses exercise the real SDK, extensions, todo journals,
-// nested worker creation, and resume. This tests capabilities, not model judgment.
+// nested worker creation, and messaging a settled worker. This tests capabilities, not model judgment.
 it("a child orchestrator tracks work, delegates an implementation, and recalls the same worker", async () => {
   const dir = offlineAgentDir({ extensions: [EXTENSIONS.subagent, EXTENSIONS.todo] });
   const registry = new AgentTypeRegistry(() => new Map());
@@ -60,11 +60,9 @@ it("a child orchestrator tracks work, delegates an implementation, and recalls t
         });
       },
       () =>
-        toolCall("subagent_start", {
-          subagent_type: "general-purpose",
-          resume: workerId!,
-          description: "Recall rationale",
-          prompt: `${CHILD_MARK} Explain the rationale you retained.`,
+        toolCall("subagent_send", {
+          agent_id: workerId!,
+          message: `${CHILD_MARK} Explain the rationale you retained.`,
         }),
       fauxAssistantMessage("Recall requested."),
       () => toolCall("subagent_get", { agent_id: workerId!, verbose: true }),
@@ -106,7 +104,7 @@ it("a child orchestrator tracks work, delegates an implementation, and recalls t
   await vi.waitFor(() => expect(queues.parent).toHaveLength(0), { timeout: 15_000 });
   await orchestrator.session.waitForIdle();
   expect(workerTools).toContain("write");
-  for (const name of ["subagent_start", "subagent_get", "subagent_steer"])
+  for (const name of ["subagent_start", "subagent_get", "subagent_send"])
     expect(workerTools).not.toContain(name);
   expect(workerId).toBeTruthy();
   expect(firstCompletion).toContain("Artifact implemented");

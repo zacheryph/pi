@@ -86,7 +86,7 @@ export function formatTaskNotification(record: Subagent, resultMaxLen: number): 
  * Format a `<subagent-update>` block for a message a still-running child sent.
  *
  * A distinct element from `<task-notification>`: the child has not finished, so
- * the parent's next action is to steer it or leave it alone, never to collect a
+ * the parent's next action is to message it or leave it alone, never to collect a
  * result that does not exist yet.
  */
 export function formatUpdateNotification(record: Subagent, message: string): string {
@@ -96,7 +96,7 @@ export function formatUpdateNotification(record: Subagent, message: string): str
     `<summary>Subagent "${escapeXml(record.description)}" sent an update</summary>`,
     `<message>${escapeXml(message)}</message>`,
     "</subagent-update>",
-    `The agent is still running. Steer it with subagent_steer("${record.id}", "...") to redirect it, or let it continue.`,
+    `The agent is still running. Message it with subagent_send("${record.id}", "...") to redirect it, or let it continue.`,
   ]);
 }
 
@@ -356,7 +356,7 @@ export class NotificationManager implements NotificationSystem {
       // update no announcement delivered.
       renderRunUpdates(record.runUpdates) +
       `${transcriptLine}\nCall subagent_get("${record.id}") to collect the full result.` +
-      renderQuestionAffordance(record.id, record.pendingQuestion, record.resumeRefusal)
+      renderQuestionAffordance(record.id, record.pendingQuestion, record.sendRefusal)
     );
   }
 }

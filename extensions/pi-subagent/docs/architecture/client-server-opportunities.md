@@ -62,7 +62,7 @@ Session lifecycle is normal server API (`resume_session`, `join_session`, `impor
 
 ## Capability 3 — operators interacting via an editor and submitting messages
 
-Today the only inbound channel to a running subagent is `subagent_steer` — a single buffer-or-deliver message through `Subagent.steer`.
+Today the only inbound channel to a subagent is `subagent_send` — a single message through `Subagent.send` that steers a running agent and starts a run for an idle one.
 No editor, no takeover, no real conversation.
 
 The plan's `join` versus `watch` split is the right primitive:
@@ -74,7 +74,7 @@ The plan's `join` versus `watch` split is the right primitive:
    The command goes up; the server applies it to the subagent's `AgentSession` (which already owns prompt submission, queued steering, and follow-up messages); canonical deltas flow back down to all subscribers.
    This is precisely "commands go up, state deltas come down," applied to a subagent session instead of the operator's own.
 3. **`steer` generalizes into the full command surface.**
-   pi-subagent's bespoke buffer-or-deliver logic (`Subagent.steer` rejecting when not running) is subsumed by `AgentSession`'s queued-steering machinery, and the custom buffering becomes redundant.
+   pi-subagent's bespoke state rule (`Subagent.send` choosing between steering, joining a queued run and starting a run) is subsumed by `AgentSession`'s queued-steering machinery, and the custom buffering becomes redundant.
 4. **Multiple clients on one session.**
    The plan supports this explicitly, with deltas broadcast to all subscribers including the initiator, so an operator can jump into a subagent the parent agent spawned, inject guidance, and the parent's view stays consistent.
 5. **Fork and rewind, not just append.**
@@ -100,7 +100,7 @@ This validates and sharpens the direction the architecture doc is already headin
 | [#277] accessors (`messages`, `subscribeToUpdates`, `getContextPercent`) | `SessionSnapshot` + deltas                                 |
 | `ConversationViewer` / native session navigation                         | client renders the snapshot through Pi's own components    |
 | dual-source-by-liveness split                                            | server rehydrates; client sees one session shape           |
-| `subagent_steer` buffer-or-deliver                                       | `join` + `prompt` / queued-steering commands               |
+| `subagent_send` state rule                                               | `join` + `prompt` / queued-steering commands               |
 | `subagent:*` activity broadcasts                                         | session sync (semantic events stay; liveness moves)        |
 
 ## Prerequisites and open questions

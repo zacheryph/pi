@@ -50,7 +50,7 @@ Every field is optional. Unknown keys are ignored silently, so check spelling.
 | `guidance`        | when to pick it, one sentence starting `Use …`                        | nothing after description |
 | `display_name`    | name for the widget and UI                                            | the file name             |
 | `tools`           | `all`, a list, `-name` to remove, `none`                              | `all`                     |
-| `delegate`        | `true` to start, read and steer its own agents                        | no delegation tools       |
+| `delegate`        | `true` to start, read and message its own agents                      | no delegation tools       |
 | `model`           | `provider/modelId`, `haiku`/`sonnet`/…, or `family@latest`            | the caller's model        |
 | `thinking`        | `off` `minimal` `low` `medium` `high` `xhigh` `max`                   | the caller's level        |
 | `max_turns`       | whole number; `0` is unlimited; a limit must be at least 2            | unlimited                 |
@@ -115,9 +115,9 @@ only for a near-copy of the caller with a small addition.
 - Read-only agents usually take `read, bash, grep, find, ls, stash_get,
   stash_list`, plus a body that forbids writing; `bash` can still write, so the
   instructions carry the restriction.
-- `subagent_start`, `subagent_get` and `subagent_steer` are withheld unless the
+- `subagent_start`, `subagent_get` and `subagent_send` are withheld unless the
   file sets `delegate: true`; listing them in `tools` does not count. With
-  `delegate`, all three are added even to an allowlist, and `-subagent_steer`
+  `delegate`, all three are added even to an allowlist, and `-subagent_send`
   style exclusions still win. Only coordinating agents should delegate, and
   their body should say when to stop delegating: there is no depth limit.
 - `ask` and `parent_notify` are always added; they reach only the caller.

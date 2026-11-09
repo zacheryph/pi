@@ -3,6 +3,110 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-09: One tool, `subagent_send`, replaces steer and resume
+
+Roadmap step 7b (`docs/roadmaps/subagent-work-lifecycle.md`). A message reaches
+an agent in whatever state it is in, like typing into a main session.
+`subagent_steer` and `subagent_start`'s `resume` are gone.
+
+- Tool contract:
+  - `subagent_send(agent_id, message)` steers a running agent, adds the message
+    to the run a queued agent is waiting to start, and starts a run for an idle
+    one with the message as its prompt (any last outcome: completed, turn limit,
+    error, stopped or interrupted), reopening its transcript if the session was
+    released or lost to a reload. The call returns at once; the run's outcome
+    arrives as a completion message. `subagent:steered` is emitted for a
+    steer and for a message that joined a queued run.
+  - An idle agent that never had a session (stopped while its first run was
+    queued, or its session could not be created) gets its **first run**,
+    started through the limiter from its original spawn configuration (type,
+    model, thinking level, turn ceiling, directory, context, handoff) with a
+    prompt of its original task followed by the message. It is announced as a
+    resume (`subagent:queued`, `subagent:resuming`, `subagent:resumed`), not as a
+    second `subagent:started`. This works only while the live record holds the
+    spawn configuration. After a reload the saved record has no task to start from,
+    so the message is refused ("never started a session, and its original task was
+    not saved across the reload ... Spawn a new agent with the task").
+  - A message to a **queued** agent is appended to the run's prompt
+    (`Run.addMessage`) rather than held as a steer, for every kind of queued run.
+    The steer buffer is flushed only when a session attaches, which a queued
+    resume of a live session never does. The message dies with a run stopped
+    before its slot opens, and the tool result and description say so.
+  - A message to a **running** agent whose session does not exist yet is held
+    and delivered when the session initializes, as before; that now includes a
+    run rebuilding a released transcript, which `resume` refused as
+    still-running.
+  - Refusals of an idle agent, all for good except the last: `session-released`
+    (transcript gone), `directory-unavailable`, `agent-type-unavailable`,
+    `no-session` (saved record with no transcript), and `rebuilding` (stopped
+    while its session was being created or its transcript reopened; try again in
+    a moment, because the stopped run still owns the session until it unwinds). An unknown id is refused as
+    before. A refusal names the transcript when there is one.
+  - `subagent_start` has no `resume` parameter. A call that still sends one
+    starts nothing and says to use `subagent_send`: ignoring it would spawn a
+    second agent that repeats the first one's work. A `null` or empty `resume`
+    counts as left out. `cwd` is no longer refused
+    "with resume"; a later message keeps the agent's directory.
+  - The tool names changed in the delegation allowlist, the `delegate` guard,
+    the main profile's required tools, `subagent_start`'s guidance and every
+    launch result ("Use subagent_get ..., or subagent_send to send it messages").
+- Code:
+  - `Subagent.send` is the one state rule and returns a `SendOutcome` (`steered`,
+    `joined`, `started`, `refused`); `Subagent.steer` and `SteerOutcome` are
+    gone. `SubagentManager.send` replaces `startResume`: the same refusal policy
+    and saved-record rebuild, now async, returning a `SendResult`.
+    `ResumeRefusal` is `SendRefusal` and `resumeRefusal(For)` is `sendRefusal(For)`.
+    `SendRefusal` drops `still-running` (a running or queued agent takes the
+    message) and gains `rebuilding`.
+  - A run stopped while its session is being created (a first run, a relaunch
+    or a cold resume) disposes the session when it arrives instead of attaching
+    it, and `Run.opening` keeps `sendRefusal` at `rebuilding` until then, so a
+    message sent right after a stop cannot create a second session for the same
+    agent or leak one. Steers buffered for a run that ends without a session
+    (stopped, or its creation failed) are dropped rather than flushed into the
+    next run's session.
+  - `Run` has a third kind, `relaunch`: it creates its session like `initial`
+    but is announced through the resume hooks, so a consumer counting
+    `subagent:started` once per agent does not see it twice. `startRun` queues the
+    record for every run after the agent's first.
+  - `src/tools/send-tool.ts` replaces `steer-tool.ts`. The steered texts are
+    unchanged; the launch texts of a run a message started are the old resume
+    texts ("Agent resumed in background.", "Agent resume queued in background."),
+    or "Agent started in background." / "Agent queued in background." with a
+    note for a first run.
+- What users see:
+  - Roster lines (the context card and the `subagent_get` list) show an idle
+    agent as `idle, last run completed 14:10`, `idle, last run failed: ...`,
+    `idle, last run stopped before it finished` or `idle, last run interrupted:
+    ...`, and say `(cannot take a message)` on any idle line `subagent_send`
+    would refuse. They used to say `completed 14:10, resumable`, and said nothing
+    about failed or stopped agents. The headers name `subagent_send`.
+  - `subagent_get` reports `Send: available. Call subagent_send ...` and `Send:
+    not available, because ...`; a pending question names the `subagent_send`
+    call that answers it. The "cannot be resumed yet" wording for a question on a
+    running child is gone: a send to a running child is a steer.
+  - The widget lingers the outcome of a run a message started as done for the
+    same window as the first, where the first outcome's age used to hide it.
+    Its rows are otherwise unchanged: a finished agent already read `done`,
+    `stopped`, `error` or `aborted`, and a re-queued one counts as queued.
+  - `subagent:queued` is a new event (`id`, `type`, `description`) for an idle
+    agent whose new run waits for a slot, so consumers learn it has work waiting.
+    pi-dashboard shows the agent as queued until `subagent:resuming`. Other
+    events and payloads are unchanged.
+- Docs and skills: the README, `docs/configuration.md`, the architecture notes,
+  the `orchestrate` agent, the `creating-agents` skill, the root README and
+  `skills/execute-roadmap` name `subagent_send` where they named the old tools.
+- Tests: `subagent_steer` and resume-via-`subagent_start` characterization tests
+  now pin `subagent_send` (`steer.test.ts`, `resume.test.ts`); the two that pinned
+  refusing a finished agent and refusing a running one pin the new behaviour,
+  and the "cannot find an agent from before a reload" steer test pins that the
+  interrupted agent now takes a run. `send.test.ts` pins a message to a queued
+  agent and to an agent that never had a session (live and after a reload).
+  `steer-tool.test.ts` and the resume tests of `agent-tool.test.ts` moved to
+  `send-tool.test.ts`; `agent-tool.test.ts` pins the refused `resume` parameter.
+  New unit cases for `Subagent.send`, `SubagentManager.send`, the widget's
+  re-linger and the roster's idle lines (with wide and ANSI text).
+
 ## 2026-11-09: Agents are queued, running or idle, and every run goes through the limiter
 
 Roadmap step 7a (`docs/roadmaps/subagent-work-lifecycle.md`). The record of an

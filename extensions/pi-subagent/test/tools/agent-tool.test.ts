@@ -4,12 +4,7 @@ import { join } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { AgentTool } from "#src/tools/agent-tool";
-import {
-  createToolDeps,
-  createToolDepsWithDisabledBuiltInAgents,
-  mockResumeStart,
-  mockResumeStartRefusal,
-} from "#test/helpers/make-deps";
+import { createToolDeps, createToolDepsWithDisabledBuiltInAgents } from "#test/helpers/make-deps";
 import { createTestSubagent } from "#test/helpers/make-subagent";
 
 function makeCtx(overrides: Record<string, unknown> = {}) {
@@ -95,7 +90,10 @@ describe("AgentTool", () => {
   });
 });
 
-describe("AgentTool — resume path", () => {
+// Rewritten by roadmap step 7b. Resuming moved to subagent_send (test/tools/send-tool.test.ts
+// pins every refusal and outcome that used to live here); subagent_start refuses the old parameter
+// instead of ignoring it, because ignoring it would spawn a second agent that repeats the work.
+describe("AgentTool — the retired resume parameter", () => {
   const resumeCall = {
     prompt: "continue",
     description: "resume",
@@ -103,113 +101,46 @@ describe("AgentTool — resume path", () => {
     resume: "agent-1",
   };
 
-  describe("refused", () => {
-    it("names an id no record answers to", async () => {
-      const deps = createToolDeps();
-      mockResumeStartRefusal(deps, "unknown-agent");
-      const result = await execute(deps, { ...resumeCall, resume: "nonexistent" });
-      expect(result.content[0].text).toBe(
-        'Agent not found: "nonexistent". It is not live in this session; subagent_get without ' +
-          "agent_id lists the agents started on this branch, including any from before a reload or resume.",
-      );
-    });
+  it("starts nothing and points at subagent_send", async () => {
+    const deps = createToolDeps();
 
-    it("names a missing session without offering a cleanup story it cannot tell", async () => {
-      const deps = createToolDeps();
-      mockResumeStartRefusal(deps, "no-session");
-      const result = await execute(deps, resumeCall);
-      expect(result.content[0].text).toBe('Agent "agent-1" has no active session to resume.');
-    });
+    const result = await execute(deps, resumeCall);
 
-    it("points a released-agent resume at subagent_get instead of resuming", async () => {
-      const deps = createToolDeps();
-      mockResumeStartRefusal(deps, "session-released");
-      const result = await execute(deps, resumeCall);
-      expect(result.content[0].text).toBe(
-        'Agent "agent-1" had its session released and its saved transcript is gone; resume is ' +
-          "unavailable, but its result is still retrievable via subagent_get.",
-      );
-    });
-
-    it("tells the parent to wait out a run that has not finished", async () => {
-      const deps = createToolDeps();
-      mockResumeStartRefusal(deps, "still-running");
-
-      const result = await execute(deps, resumeCall);
-
-      expect(result.content[0].text).toBe(
-        'Agent "agent-1" is still running; wait for it to finish before resuming. ' +
-          "Use subagent_steer to send it a message while it runs.",
-      );
-    });
+    expect(result.content[0].text).toBe(
+      "subagent_start no longer resumes agents, so nothing was started. " +
+        'Call subagent_send with agent_id: "agent-1" and your message instead.',
+    );
+    expect(deps.manager.spawn).not.toHaveBeenCalled();
   });
 
-  describe("started", () => {
-    it("starts the resume without waiting for it, with no signal", async () => {
+  it("refuses a resume that also names a cwd, without spawning", async () => {
+    const deps = createToolDeps();
+
+    const result = await execute(deps, { ...resumeCall, cwd: tmpdir() });
+
+    expect(result.content[0].text).toContain("subagent_start no longer resumes agents");
+    expect(deps.manager.spawn).not.toHaveBeenCalled();
+  });
+
+  it.for([null, "", undefined])(
+    "spawns normally when a model leaves resume out as %j",
+    async (resume) => {
       const deps = createToolDeps();
-      mockResumeStart(deps);
 
-      await execute(deps, resumeCall);
+      await execute(deps, { ...resumeCall, resume });
 
-      expect(deps.manager.startResume).toHaveBeenCalledWith("agent-1", "continue", {});
-    });
+      expect(deps.manager.spawn).toHaveBeenCalledOnce();
+    },
+  );
 
-    it("returns the background launch message for the resumed agent", async () => {
-      const deps = createToolDeps();
-      mockResumeStart(deps);
+  it("is gone from the schema and the guidance, which names subagent_send", () => {
+    const def = makeTool(createToolDeps()).toToolDefinition();
+    const properties = (def.parameters as { properties: Record<string, unknown> }).properties;
 
-      const result = await execute(deps, { ...resumeCall, description: "answer" });
-
-      expect(result.content[0].text).toBe(
-        "Agent resumed in background.\n" +
-          "Agent ID: agent-1\n" +
-          "Type: agent\n" +
-          "Description: answer\n" +
-          "\nYou will be notified when this agent completes.\n" +
-          "Use subagent_get to retrieve full results, or subagent_steer to send it messages.\n" +
-          "Do not duplicate this agent's work.",
-      );
-      expect(result.details).toMatchObject({ status: "background", agentId: "agent-1" });
-    });
-
-    it("says a resume waits for a slot when the limiter has none free", async () => {
-      const deps = createToolDeps();
-      mockResumeStart(deps, { status: "queued", completedAt: undefined });
-
-      const result = await execute(deps, { ...resumeCall, description: "answer" });
-
-      expect(result.content[0].text).toContain("Agent resume queued in background.\n");
-      expect(result.content[0].text).toContain(
-        `Position: queued (max ${deps.settings.maxConcurrent} concurrent)`,
-      );
-      expect(result.details).toMatchObject({ status: "background", agentId: "agent-1" });
-    });
-
-    it("leaves the resumed outcome to the completion message", async () => {
-      const deps = createToolDeps();
-      const record = mockResumeStart(deps);
-
-      await execute(deps, resumeCall);
-
-      expect(record.consumed).toBe(false);
-    });
-
-    it.for([undefined, "print", "json"])(
-      "resumes in the background whatever the call or the run mode says (%s)",
-      async (mode) => {
-        const deps = createToolDeps();
-        mockResumeStart(deps);
-
-        const result = await execute(
-          deps,
-          { ...resumeCall, foreground: true },
-          mode ? makeCtx({ mode }) : undefined,
-        );
-
-        expect(deps.manager.startResume).toHaveBeenCalledOnce();
-        expect(result.content[0].text).toContain("Agent resumed in background.");
-      },
-    );
+    expect(properties).not.toHaveProperty("resume");
+    expect(def.description).toContain("subagent_send");
+    expect(def.description).not.toContain("subagent_steer");
+    expect(def.description).not.toMatch(/Use resume/);
   });
 });
 
@@ -358,19 +289,6 @@ describe("AgentTool — cwd", () => {
     });
     expect(result.content[0].text).toBe(`cwd ${join(dir, "missing")} is not an existing directory`);
     expect(deps.manager.spawn).not.toHaveBeenCalled();
-  });
-
-  it("refuses cwd on a resume", async () => {
-    const deps = createToolDeps();
-    const result = await execute(deps, {
-      prompt: "continue",
-      description: "resume",
-      subagent_type: "general-purpose",
-      resume: "agent-1",
-      cwd: dir,
-    });
-    expect(result.content[0].text).toContain("cwd applies only to a new agent");
-    expect(deps.manager.startResume).not.toHaveBeenCalled();
   });
 
   it("documents cwd in the tool guidance and schema", () => {

@@ -505,7 +505,7 @@ describe("createSubagentSession — recursion guard", () => {
 
     expect(io.createSession).toHaveBeenCalledWith(
       expect.objectContaining({
-        excludeTools: ["subagent_start", "subagent_get", "subagent_steer"],
+        excludeTools: ["subagent_start", "subagent_get", "subagent_send"],
       }),
     );
   });
@@ -538,7 +538,7 @@ describe("createSubagentSession — recursion guard", () => {
           "todo_clear",
           "subagent_start",
           "subagent_get",
-          "subagent_steer",
+          "subagent_send",
           "specialist",
         ],
       }),
@@ -557,7 +557,7 @@ describe("createSubagentSession — recursion guard", () => {
           "todo_clear",
           "subagent_start",
           "subagent_get",
-          "subagent_steer",
+          "subagent_send",
           "specialist",
         ],
         excludeTools: [],
@@ -580,7 +580,7 @@ describe("createSubagentSession — recursion guard", () => {
         type: "orchestrate",
         agentConfig: orchestratorWith({
           delegate: undefined,
-          toolNames: ["read", "subagent_start", "subagent_get", "subagent_steer"],
+          toolNames: ["read", "subagent_start", "subagent_get", "subagent_send"],
         }),
       },
       defaultDeps(),
@@ -588,7 +588,7 @@ describe("createSubagentSession — recursion guard", () => {
     expect(io.createSession).toHaveBeenCalledWith(
       expect.objectContaining({
         tools: ["read"],
-        excludeTools: ["subagent_start", "subagent_get", "subagent_steer"],
+        excludeTools: ["subagent_start", "subagent_get", "subagent_send"],
       }),
     );
   });
@@ -605,7 +605,7 @@ describe("createSubagentSession — recursion guard", () => {
     );
     expect(io.createSession).toHaveBeenCalledWith(
       expect.objectContaining({
-        tools: ["read", "subagent_start", "subagent_get", "subagent_steer"],
+        tools: ["read", "subagent_start", "subagent_get", "subagent_send"],
         excludeTools: [],
       }),
     );
@@ -617,14 +617,14 @@ describe("createSubagentSession — recursion guard", () => {
       {
         snapshot: STUB_SNAPSHOT,
         type: "orchestrate",
-        agentConfig: orchestratorWith({ delegate: true, toolNames: ["all", "-subagent_steer"] }),
+        agentConfig: orchestratorWith({ delegate: true, toolNames: ["all", "-subagent_send"] }),
       },
       defaultDeps(),
     );
     expect(io.createSession).toHaveBeenCalledWith(
       expect.objectContaining({
         tools: ["subagent_start", "subagent_get"],
-        excludeTools: ["subagent_steer"],
+        excludeTools: ["subagent_send"],
       }),
     );
   });
@@ -808,7 +808,7 @@ describe("createSubagentSession — all tools and MCP patterns", () => {
           "mcp__github__get_issue",
           "my_extension",
         ],
-        excludeTools: ["subagent_start", "subagent_get", "subagent_steer"],
+        excludeTools: ["subagent_start", "subagent_get", "subagent_send"],
       }),
     );
     expect(loadedBuiltinNames()).toEqual(["codemode", "tool-search", "mcp"]);
@@ -848,12 +848,12 @@ describe("createSubagentSession — all tools and MCP patterns", () => {
         io,
         exec,
         registry: createAgentLookup({ toolNames: ["all"] }),
-        listParentToolNames: () => ["read", "subagent_start", "subagent_steer", "subagent_get"],
+        listParentToolNames: () => ["read", "subagent_start", "subagent_send", "subagent_get"],
       }),
     );
     expect(io.createSession).toHaveBeenCalledWith(
       expect.objectContaining({
-        excludeTools: ["subagent_start", "subagent_get", "subagent_steer"],
+        excludeTools: ["subagent_start", "subagent_get", "subagent_send"],
       }),
     );
   });

@@ -99,7 +99,7 @@ export function renderBackgroundLaunch(launch: BackgroundLaunch) {
         ? `Position: queued (max ${launch.queuePosition.maxConcurrent} concurrent)\n`
         : "") +
       `\nYou will be notified when this agent completes.\n` +
-      `Use subagent_get to retrieve full results, or subagent_steer to send it messages.\n` +
+      `Use subagent_get to retrieve full results, or subagent_send to send it messages.\n` +
       `Do not duplicate this agent's work.`,
     details,
   );

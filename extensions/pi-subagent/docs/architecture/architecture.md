@@ -7,7 +7,7 @@ This document describes the architecture of the pi-subagent fork: a focused, com
 1. **Narrow core** — the extension owns agent spawning, execution, and result retrieval.
    Everything else is a consumer.
 2. **Composable by default** — other extensions observe agents' lifecycle and display their state through `pi.events`, without importing this package.
-3. **No programmatic API** — the model-facing tools are the only way to start, steer and resume agents.
+3. **No programmatic API** — the model-facing tools are the only way to start and message agents.
    The typed `SubagentsService` upstream published on `globalThis` had no consumer here and was removed.
 4. **No time-based scheduling** — cron-style timed dispatch (upstream's `schedule.ts` subsystem) is removed from the core (#52).
    The max-concurrent admission gate is not scheduling in this sense — concurrency management stays in core.
@@ -108,7 +108,7 @@ flowchart TB
         BgSpawner["background-spawner"]
         GetResult["subagent_get"]
         GetResultRenderer["get-result-renderer<br/>(pure rendering)"]
-        Steer["subagent_steer"]
+        Send["subagent_send"]
     end
 
     subgraph ui["UI domain"]
@@ -161,7 +161,8 @@ classDiagram
         +run()
         +resume(prompt, signal)
         +abort(): boolean
-        +steer(message): Promise~SteerOutcome~
+        +send(message): Promise~SendOutcome~
+        +sendRefusal?: SendRefusal
         +isSessionReady(): boolean
         +getConversation(): string | undefined
         +getContextPercent(): number | null
@@ -209,7 +210,7 @@ classDiagram
     class SubagentManager {
         -registry: SpawnTypeResolver
         +spawn(snapshot, type, prompt, config)
-        +startResume(id, prompt, options)
+        +send(id, message, options): Promise~SendResult~
         +getRecord(id): Subagent
         +listAgents(): Subagent[]
         +abort(id)
@@ -256,7 +257,7 @@ stateDiagram-v2
     end note
 ```
 
-An agent is `queued` while a run waits for a concurrency slot (the first run and every resume alike), `running` while a run is active, and `idle` when it has no run.
+An agent is `queued` while a run waits for a concurrency slot (the first run and every later run alike), `running` while a run is active, and `idle` when it has no run.
 How the last run ended is its `outcome`, recorded beside the status together with the run's `result` and `error`: `completed`, `turn-limit` (the harness stopped it at the turn ceiling), `error`, `stopped` (an `abort()`), or `interrupted` (a record read back from storage that still said queued or running).
 An idle agent of any outcome accepts a new run; a stop ends the run and cancels nothing else.
 
@@ -264,7 +265,7 @@ The status and outcome are the model; the words users and subscribers see are de
 Tool output, the widget, the watch overlay, the completion message and its details, and the `status` field of the lifecycle events still use these six words.
 They are a bridge: the idle/done presentation replaces them in the steps after this one.
 
-A steer (`subagent_steer`) redirects a running agent and changes no status.
+A message to a running agent (`subagent_send`) steers it and changes no status.
 The turn budget is not a status either: it is the live `turnBudget` (`{ used, maxTurns, phase }`) the turn loop reports to the record before the first turn and after each turn boundary.
 A `TurnBudgetTracker` (`turn-limits.ts`) counts successful turns and decides when `SubagentSession` warns the child (a context-only custom message once `wrapUpTurns` turns remain, which forces no turn) and when it stops the run (after a ceiling turn that ran tools, or as a turn starts past the ceiling).
 `phase` is `warned` once the warning went out and `exhausted` when the harness stopped the run: the one case a run or resume that returned ends with outcome `turn-limit`.
@@ -273,15 +274,31 @@ A resume runs a fresh tracker under the initial run's limits.
 Note: `markStopped` always succeeds regardless of current status.
 `markCompleted`, `markTurnLimit` and `markError` still record their result or error after a stop but keep the outcome `stopped`.
 A run that a later one has replaced (stopped, then the agent took new input while the old run wound down) reports nothing and changes nothing: the record belongs to the later run.
-`stopQueued` composes `markStopped` with a never-started marker and notifies the lifecycle observer — so a queued stop, a queued resume's included, publishes the same events, session entry, and nudge a running stop does.
+`stopQueued` composes `markStopped` with a never-started marker and notifies the lifecycle observer — so a queued stop, a queued resume's or relaunch's included, publishes the same events, session entry, and nudge a running stop does.
 
 ### Every run goes through the limiter
 
-A resume is admitted exactly like a first run.
-`Subagent.resume` queues the record at once (`markQueued`: status `queued`, the earlier run's result, error, question and turn budget cleared) and hands the run to `SubagentExecution.admit`, which the manager binds to the `ConcurrencyLimiter`.
-With a free slot the run begins synchronously, so a resume looks as it did when it skipped the limiter, and no extra event is sent.
-With every slot taken the resume waits: `onResumeQueued` fires (the session record is saved as `queued`, the widget counts it, and the `subagent_start` call says "Agent resume queued in background" with the queue position), and `onResumeStarted` (the `subagent:resuming` event) follows when the slot opens.
-Stopping a queued resume leaves the agent idle with outcome `stopped`; its place in the limiter's queue is spent harmlessly, because a run only begins if it is still the current one.
+A run a message starts is admitted exactly like a first run.
+`Subagent.send` on an idle agent calls `Subagent.resume` (or `relaunch`, below), which queues the record at once (`markQueued`: status `queued`, the earlier run's result, error, question and turn budget cleared) and hands the run to `SubagentExecution.admit`, which the manager binds to the `ConcurrencyLimiter`.
+With a free slot the run begins synchronously, so no extra event is sent.
+With every slot taken the run waits: `onResumeQueued` fires (the session record is saved as `queued`, `subagent:queued` is emitted, the widget counts it, and the `subagent_send` call says "Agent resume queued in background" with the queue position), and `onResumeStarted` (the `subagent:resuming` event) follows when the slot opens.
+Stopping a queued run leaves the agent idle with outcome `stopped`; its place in the limiter's queue is spent harmlessly, because a run only begins if it is still the current one.
+
+### One state rule for a message
+
+`Subagent.send` is the only place that decides what a message does, by the state it finds:
+
+| State                          | What happens                                                                                                                                                                         |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `running`                      | Steer: delivered to the session, or held in the steer buffer until the session exists (`steered`).                                                                                   |
+| `queued`                       | The message is added to the waiting `Run`'s prompt (`Run.addMessage`) and reaches the agent when the run begins (`joined`). It needs no session and dies with a run that is stopped. |
+| `idle`, session live or kept   | `resume`: the live session continues, or a released one is rebuilt from its transcript (`started`).                                                                                  |
+| `idle`, never had a session    | `relaunch`: a first run from the spawn configuration the record still holds, with the original task followed by the message (`started`, `relaunched`).                               |
+| `idle`, transcript or cwd gone | Refused (`SendRefusal`).                                                                                                                                                             |
+
+A queued run takes the message into its prompt rather than the steer buffer because the buffer is flushed only when a session attaches, and a queued resume of a live session has no session to attach.
+A `relaunch` run has its own `RunKind`: it creates its session like an initial run, from the original task and `AgentSpawnConfig`, but is announced through the resume observer hooks (`subagent:resuming`, `subagent:resumed`), because the agent already has a record and a consumer counting `subagent:started` once per agent must not see it twice.
+Only the live record holds the original task; a record rebuilt from the branch's saved entries has none, so a saved agent with no transcript is refused (`no-session`).
 
 `bypassQueue` is a spawn option for the first run only: it starts that run at once without taking a slot.
 A resume of such an agent still goes through the limiter.
@@ -365,11 +382,11 @@ src/
 │   └── session-dir.ts              session directory derivation
 │
 ├── lifecycle/                      agent execution and state tracking
-│   ├── subagent-manager.ts         collection manager + observer wiring + session-retention sweep (consumption-aware; an unanswered question holds the safety cap); the resume choke point, refusing from the record's own predicate and reporting a discriminated outcome, so every front door declines the same resumes; a resume starts synchronously and returns before the resumed run ends, because every door is a background door
+│   ├── subagent-manager.ts         collection manager + observer wiring + session-retention sweep (consumption-aware; an unanswered question holds the safety cap); the send choke point (`send`), refusing from the record's own predicate and reporting a discriminated outcome, so every front door declines the same messages; a run it starts begins synchronously and returns before the run ends, because every door is a background door
 │   ├── create-subagent-session.ts  assembly factory: MCP pattern expansion, Pi built-in selection, session creation, spawn-tool denylist, core child-tool install, binding
 │   ├── subagent-session.ts         born-complete child session: turn loop, steer, shutdown-then-dispose teardown
 │   ├── turn-limits.ts              turn-budget policy: TurnBudget, the TurnBudgetTracker that decides warnings and stops, normalizeMaxTurns (minimum 2)
-│   ├── subagent.ts                 owns full execution lifecycle (run, resume, abort, steer); answers why a resume would be refused (resumeRefusal, including a live run), which the resume choke point and every report read rather than re-deriving; reports a resume's start as well as its end
+│   ├── subagent.ts                 owns full execution lifecycle (run, resume, relaunch, abort, send); `send` is the one state rule for a message (steer a running agent, fold into a queued run, start a run for an idle one); answers why a message would be refused (sendRefusal), which the send choke point and every report read rather than re-deriving; reports a resume's start as well as its end
 │   ├── subagent-state.ts           lifecycle status + metrics + result-delivery value object (transitions, accumulators, classification predicates); a one-way latch for the time the parent read the finished result (retention only), and a per-run update ledger that renders only what no announcement delivered
 │   ├── run-listeners.ts            per-run observer-unsub and signal-detach handles
 │   ├── concurrency-limiter.ts       background admission gate: schedules run thunks FIFO against the limit
@@ -394,7 +411,7 @@ src/
 │   ├── get-result-tool.ts          subagent_get tool: a non-blocking status and result read (no wait)
 │   ├── get-result-report.ts        pure subagent_get report formatter
 │   ├── get-result-renderer.ts      pure subagent_get line assembly for the collapsed and expanded TUI views
-│   ├── steer-tool.ts               subagent_steer tool
+│   ├── send-tool.ts                subagent_send tool: wording for each way a message reached an agent, or was refused
 │   └── helpers.ts                  shared tool utilities
 │
 ├── ui/                             user-facing presentation
@@ -435,7 +452,7 @@ Nothing is published on `globalThis` for them to call.
 
 ### What the core owns
 
-- The three tools: `subagent` (née `Agent`), `subagent_get`, `subagent_steer`.
+- The three tools: `subagent` (née `Agent`), `subagent_get`, `subagent_send`.
 - `SubagentManager` — spawn, abort, resume, collection management, observer wiring.
 - `ConcurrencyLimiter` — background admission gate: schedules run thunks FIFO against a configurable concurrency limit.
 - `createSubagentSession` — assembly factory: session creation and extension binding; returns a born-complete `SubagentSession`.

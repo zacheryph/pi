@@ -24,7 +24,7 @@ export { MAIN_AGENT_SECTION } from "#src/session/main-profile-prompt";
 export const MAIN_AGENT_REQUIRED_TOOLS = [
   "subagent_start",
   "subagent_get",
-  "subagent_steer",
+  "subagent_send",
 ] as const;
 
 /** Exact profile content, never a pointer to a mutable file or a settings lock. */

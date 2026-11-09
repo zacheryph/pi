@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
-import type { ResumeRefusal } from "#src/lifecycle/subagent";
+import type { SendRefusal } from "#src/lifecycle/subagent";
 import type { DisplayStatus, SubagentStatus } from "#src/lifecycle/subagent-state";
 import { MAX_EXPANDED_LINES, PREVIEW_CHARS } from "#src/tools/get-result-renderer";
 import { visibleWidth } from "@earendil-works/pi-tui";
@@ -31,14 +31,14 @@ function longResult(lines: number): string {
 
 function makeManager(
   records: Map<string, Subagent> = new Map(),
-  savedRefusal?: ResumeRefusal,
+  savedRefusal?: SendRefusal,
 ): GetResultToolManager {
   return {
     getRecord: (id: string) => records.get(id),
     listAgents: () => [...records.values()],
-    resumeRefusalFor: ({ id }) => {
+    sendRefusalFor: ({ id }) => {
       const live = records.get(id);
-      return live ? live.resumeRefusal : savedRefusal;
+      return live ? live.sendRefusal : savedRefusal;
     },
   };
 }
@@ -109,21 +109,23 @@ describe("GetResultTool", () => {
     expect(result.content[0].text).toContain("The bug is in the retry wrapper.");
   });
 
-  describe("resume affordance", () => {
-    it("names the resume call while the agent is still resumable", async () => {
+  describe("send affordance", () => {
+    it("names the send call while the agent still takes messages", async () => {
       const records = new Map([
         ["agent-1", createTestSubagent({ pendingQuestion: "Which config?", sessionReady: true })],
       ]);
 
       const result = await execute(makeManager(records), { agent_id: "agent-1" });
 
-      expect(result.content[0].text).toContain('resume: "agent-1"');
+      expect(result.content[0].text).toContain('subagent_send with agent_id: "agent-1"');
     });
 
-    it("names no resume for a child that asked before its turn ended", async () => {
+    // Changed by roadmap step 7b (was: "cannot be resumed yet" for a child that asked before
+    // its turn ended). A send to a running child is a steer, which delivers the answer into
+    // the run, so naming the send call is right here too.
+    it("names the send call for a child that asked before its turn ended, since a send steers it", async () => {
       // The reported path: ask_parent records the question during the run, and a
-      // pull in the window before the turn ends used to name the resume call
-      // that would have started a second turn loop on the same session.
+      // pull in the window before the turn ends.
       const records = new Map([
         [
           "agent-1",
@@ -139,11 +141,11 @@ describe("GetResultTool", () => {
       const result = await execute(makeManager(records), { agent_id: "agent-1" });
 
       expect(result.content[0].text).toContain("Which config?");
-      expect(result.content[0].text).toContain("cannot be resumed yet");
-      expect(result.content[0].text).not.toContain("resume:");
+      expect(result.content[0].text).toContain('subagent_send with agent_id: "agent-1"');
+      expect(result.content[0].text).not.toContain("cannot be resumed yet");
     });
 
-    it("forwards the record's refusal, so a swept record names no resume", async () => {
+    it("forwards the record's refusal, so a swept record names no send", async () => {
       const released = createTestSubagent({
         pendingQuestion: "Which config?",
         sessionReady: true,
@@ -157,7 +159,7 @@ describe("GetResultTool", () => {
       expect(result.content[0].text).toContain(
         "its session was released and its saved transcript is gone",
       );
-      expect(result.content[0].text).not.toContain("resume:");
+      expect(result.content[0].text).not.toContain("subagent_send");
     });
   });
 
@@ -415,7 +417,7 @@ describe("GetResultTool — the branch's saved records", () => {
     } as never;
   }
 
-  const tool = (records: Map<string, Subagent> = new Map(), savedRefusal?: ResumeRefusal) =>
+  const tool = (records: Map<string, Subagent> = new Map(), savedRefusal?: SendRefusal) =>
     new GetResultTool(makeManager(records, savedRefusal), testRegistry);
   const signal = new AbortController().signal;
 
@@ -433,12 +435,12 @@ describe("GetResultTool — the branch's saved records", () => {
     expect(text).toContain("Tool uses: 7");
     expect(text).toContain("Model: anthropic/claude-x (thinking high)");
     expect(text).toContain("Mapped it.");
-    expect(text).toContain('Resume: available. Call subagent_start with resume: "saved-1"');
+    expect(text).toContain('Send: available. Call subagent_send with agent_id: "saved-1"');
     expect(text).toContain("Full transcript available at: /tasks/saved-1.jsonl");
     expect(result.details).toMatchObject({ agentId: "saved-1", status: "completed" });
   });
 
-  it("says why a saved agent cannot be resumed, and still names its transcript", async () => {
+  it("says why a saved agent cannot take a message, and still names its transcript", async () => {
     const result = await tool(new Map(), "directory-unavailable").execute(
       "tc",
       { agent_id: "saved-1" },
@@ -448,13 +450,13 @@ describe("GetResultTool — the branch's saved records", () => {
     );
     const text = result.content[0].text;
     expect(text).toContain(
-      "Resume: not available, because the directory it ran in no longer exists.",
+      "Send: not available, because the directory it ran in no longer exists.",
     );
-    expect(text).not.toContain('resume: "saved-1"');
+    expect(text).not.toContain("subagent_send");
     expect(text).toContain("Full transcript available at: /tasks/saved-1.jsonl");
   });
 
-  it("names the call that answers a saved agent's question when it can be resumed", async () => {
+  it("names the call that answers a saved agent's question when it can take a message", async () => {
     const result = await tool().execute(
       "tc",
       { agent_id: "saved-1" },
@@ -464,10 +466,10 @@ describe("GetResultTool — the branch's saved records", () => {
     );
     const text = result.content[0].text;
     expect(text).toContain("This agent is waiting on an answer:\n\n  Postgres or SQLite?");
-    expect(text).toContain('Answer by calling subagent_start with resume: "saved-1"');
+    expect(text).toContain('Answer by calling subagent_send with agent_id: "saved-1"');
   });
 
-  it("says a saved agent's question cannot be answered when it cannot be resumed", async () => {
+  it("says a saved agent's question cannot be answered when it cannot take a message", async () => {
     const result = await tool(new Map(), "session-released").execute(
       "tc",
       { agent_id: "saved-1" },
@@ -478,15 +480,16 @@ describe("GetResultTool — the branch's saved records", () => {
     const text = result.content[0].text;
     expect(text).toContain("can no longer be answered");
     expect(text).toContain("  Postgres or SQLite?");
-    expect(text).not.toContain('resume: "saved-1"');
+    expect(text).not.toContain("subagent_send");
   });
 
-  it("marks a listed agent resumable only when resume's own check agrees", () => {
-    const line = (refusal?: ResumeRefusal) =>
+  it("warns on a listed agent only when send's own check refuses it", () => {
+    const line = (refusal?: SendRefusal) =>
       (tool(new Map(), refusal).list(branchCtx([savedRecord()])).content[0] as { text: string })
         .text;
-    expect(line()).toContain(", resumable");
-    expect(line("session-released")).not.toContain("resumable");
+    expect(line()).toMatch(/idle, last run completed \d\d:\d\d$/);
+    expect(line()).not.toContain("cannot take a message");
+    expect(line("session-released")).toContain("(cannot take a message)");
   });
 
   it("reports a saved run that never finished as interrupted", async () => {
@@ -568,7 +571,9 @@ describe("GetResultTool — the branch's saved records", () => {
         ]),
       );
       const lines = (result.content[0] as { text: string }).text.split("\n");
-      expect(lines[0]).toBe("Agents started on this branch (4; subagent_get <id> for details):");
+      expect(lines[0]).toBe(
+        "Agents started on this branch (4; subagent_get <id> for details, subagent_send <id> to give an idle one more work):",
+      );
       expect(lines.slice(1).map((line) => line.split(" ")[1])).toEqual([
         "ask-1",
         "run-1",

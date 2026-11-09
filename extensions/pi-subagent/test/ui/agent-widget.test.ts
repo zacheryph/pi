@@ -371,6 +371,48 @@ describe("AgentWidget.update self-seeds finished agents", () => {
   });
 });
 
+// Added by roadmap step 7b: a finished agent given a message runs again, and its new outcome
+// shows as done for the same linger window as its first, instead of staying hidden because
+// the first outcome had already aged out.
+describe("AgentWidget — a finished agent that is sent a message", () => {
+  it("lingers its next outcome again after the first one aged out", () => {
+    const agents: Array<{ id: string; status: string; completedAt?: number }> = [
+      { id: "a1", status: "completed", completedAt: 5000 },
+    ];
+    const { widget, lastContent } = makeWidget(agents);
+    widget.update();
+    widget.onTurnStart();
+    expect(lastContent()).toBeUndefined();
+
+    // The message queues a run behind a full limit, then the run starts.
+    agents[0] = { id: "a1", status: "queued" };
+    widget.onSubagentResumeQueued({} as never);
+    expect(typeof lastContent()).toBe("function");
+    agents[0] = { id: "a1", status: "running" };
+    widget.onSubagentResuming({} as never);
+    expect(typeof lastContent()).toBe("function");
+
+    agents[0] = { id: "a1", status: "completed", completedAt: 9000 };
+    widget.onSubagentResumed({} as never);
+    expect(typeof lastContent()).toBe("function");
+    widget.onTurnStart();
+    expect(lastContent()).toBeUndefined();
+  });
+
+  it("counts the queued run on the status bar until it starts", () => {
+    const agents: Array<{ id: string; status: string; completedAt?: number }> = [
+      { id: "a1", status: "completed", completedAt: 5000 },
+    ];
+    const { widget, setStatus } = makeWidget(agents);
+    widget.update();
+
+    agents[0] = { id: "a1", status: "queued" };
+    widget.onSubagentResumeQueued({} as never);
+
+    expect(setStatus).toHaveBeenLastCalledWith("subagent:status", "1 queued agent");
+  });
+});
+
 describe("AgentWidget — self-drives from lifecycle notifications", () => {
   beforeEach(() => {
     vi.useFakeTimers();

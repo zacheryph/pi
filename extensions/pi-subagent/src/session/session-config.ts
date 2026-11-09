@@ -103,7 +103,7 @@ export interface SessionConfig {
   systemPrompt: string;
   /** Tool selectors resolved against registered parent tools at child creation. */
   toolNames: string[];
-  /** The profile's `delegate`: whether the child may start, read and steer agents of its own. */
+  /** The profile's `delegate`: whether the child may start, read and message agents of its own. */
   delegate: boolean;
   /**
    * Resolved model instance (undefined → use parent model as passed to SDK).

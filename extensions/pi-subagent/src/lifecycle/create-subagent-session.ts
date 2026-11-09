@@ -45,7 +45,7 @@ import type {
  * Filtering the active set once after `bindExtensions` would be undone by that
  * rebuild (#725).
  */
-const DELEGATION_TOOL_NAMES = ["subagent_start", "subagent_get", "subagent_steer"];
+const DELEGATION_TOOL_NAMES = ["subagent_start", "subagent_get", "subagent_send"];
 
 /** pi-ask's tool, and the session-tree service that routes it to this parent. */
 const ASK_TOOL_NAME = "ask";

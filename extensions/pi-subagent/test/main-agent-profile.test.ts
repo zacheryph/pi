@@ -207,7 +207,7 @@ describe("main profile defaults and persistent body", () => {
       "codemode",
       "tool_search",
       "secret",
-      "subagent_steer",
+      "subagent_send",
     ]);
     expect(h.ctx.shutdown).not.toHaveBeenCalled();
   });

@@ -11,8 +11,8 @@ import type { CreateSubagentSessionParams } from "#src/lifecycle/create-subagent
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import type {
   AgentSpawnConfig,
-  ResumeCallOptions,
-  ResumeStart,
+  SendCallOptions,
+  SendResult,
   SubagentManager,
 } from "#src/lifecycle/subagent-manager";
 import type { SubagentSession } from "#src/lifecycle/subagent-session";
@@ -73,16 +73,17 @@ export async function spawnAndSettle(
 }
 
 /**
- * Start a resume and wait for the resumed run to end. A refusal is returned as
- * the manager reports it.
+ * Send a message and wait for the run it started to end (a steer or a joined
+ * queued run has no run of its own to wait for). A refusal is returned as the
+ * manager reports it.
  */
-export async function resumeAndSettle(
+export async function sendAndSettle(
   manager: SubagentManager,
   id: string,
-  prompt: string,
-  options: ResumeCallOptions = {},
-): Promise<ResumeStart> {
-  const start = manager.startResume(id, prompt, options);
-  if (start.kind === "started") await start.record.promise;
-  return start;
+  message: string,
+  options: SendCallOptions = {},
+): Promise<SendResult> {
+  const result = await manager.send(id, message, options);
+  if (result.kind === "started") await result.record.promise;
+  return result;
 }

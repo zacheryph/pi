@@ -3,6 +3,15 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-09: README names subagent_send
+
+Roadmap step 7b (`docs/roadmaps/subagent-work-lifecycle.md`). The README's note
+on releasing a handed-over claim says a later run started by `subagent_send`
+(`subagent:resuming`) reclaims the agent's tasks, where it said a resume did.
+pi-todo's events and code are unchanged: `subagent:resuming` and
+`subagent:resumed` still carry every run a message starts, including the first
+run of an agent that never had a session. No source change.
+
 ## 2026-11-08: Faux sessions from pi-test-helpers
 
 - `test/sdk.test.ts` runs on `packages/pi-test-helpers`' `fauxSession` and

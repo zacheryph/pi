@@ -63,7 +63,7 @@ describe("renderBackgroundLaunch", () => {
         "Description: answer\n" +
         "Output file: /sessions/agent-7.jsonl\n" +
         "\nYou will be notified when this agent completes.\n" +
-        "Use subagent_get to retrieve full results, or subagent_steer to send it messages.\n" +
+        "Use subagent_get to retrieve full results, or subagent_send to send it messages.\n" +
         "Do not duplicate this agent's work.",
     );
     expect(result.details).toEqual({
@@ -91,7 +91,7 @@ describe("renderBackgroundLaunch", () => {
         "Type: explore\n" +
         "Description: answer\n" +
         "\nYou will be notified when this agent completes.\n" +
-        "Use subagent_get to retrieve full results, or subagent_steer to send it messages.\n" +
+        "Use subagent_get to retrieve full results, or subagent_send to send it messages.\n" +
         "Do not duplicate this agent's work.",
     );
   });
@@ -201,7 +201,7 @@ describe("spawnBackground", () => {
           "Description: bg task\n" +
           "Output file: /sessions/bg.jsonl\n" +
           "\nYou will be notified when this agent completes.\n" +
-          "Use subagent_get to retrieve full results, or subagent_steer to send it messages.\n" +
+          "Use subagent_get to retrieve full results, or subagent_send to send it messages.\n" +
           "Do not duplicate this agent's work.",
       );
       expect(result.details).toEqual({
@@ -236,7 +236,7 @@ describe("spawnBackground", () => {
           "Description: bg task\n" +
           "Position: queued (max 4 concurrent)\n" +
           "\nYou will be notified when this agent completes.\n" +
-          "Use subagent_get to retrieve full results, or subagent_steer to send it messages.\n" +
+          "Use subagent_get to retrieve full results, or subagent_send to send it messages.\n" +
           "Do not duplicate this agent's work.",
       );
     });
