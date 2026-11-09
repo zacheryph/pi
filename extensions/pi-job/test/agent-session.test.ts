@@ -53,6 +53,8 @@ async function harness(t: Parameters<typeof tempDir>[0], opts: HarnessOptions = 
     retry: { enabled: false },
   });
   let manager!: JobManager;
+  /** Extension errors, as bound by the session. */
+  const errors: unknown[] = [];
   /** Model contexts after all `context` handlers (what the model actually sees). */
   const contexts: any[][] = [];
   const recorder = (pi: any) => pi.on("context", async (e: any) => void contexts.push(e.messages));
@@ -92,6 +94,8 @@ async function harness(t: Parameters<typeof tempDir>[0], opts: HarnessOptions = 
     sessionManager,
     settingsManager,
   });
+  // As Pi's print mode binds the extensions: session_start (the work host is provided there).
+  await session.bindExtensions({ mode: "print", onError: (error: unknown) => errors.push(error) });
   t.after(async () => {
     try {
       await session.abort();
@@ -158,6 +162,7 @@ async function harness(t: Parameters<typeof tempDir>[0], opts: HarnessOptions = 
     faux,
     ai,
     dir,
+    errors,
     manager: () => manager,
     completions,
     assistantTexts,

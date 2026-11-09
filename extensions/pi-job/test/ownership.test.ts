@@ -4,7 +4,6 @@ import {
   compatibleOwner,
   expireReloadOwner,
   highestJobId,
-  historicalRunningJobs,
   sessionOwners,
   stopOrphans,
   takeReloadOwner,
@@ -33,65 +32,10 @@ void test("history high-water mark includes lists, old result text and completio
   );
 });
 
-void test("history recovery keeps full commands without a watch cap and excludes recorded terminal jobs", () => {
-  const snapshot = (id: string, status = "running") => ({
-    id,
-    kind: "watch",
-    command: `echo ${"x".repeat(1000)} ${id}`,
-    status,
-  });
-  const entries: any[] = Array.from({ length: 40 }, (_, i) => ({
-    type: "message",
-    message: { role: "toolResult", toolName: "job_watch", details: snapshot(`j${i + 1}`) },
-  }));
-  entries.push(
-    {
-      type: "message",
-      message: { role: "toolResult", toolName: "job_kill", details: snapshot("j1", "killed") },
-    },
-    {
-      type: "custom_message",
-      customType: "job:completion",
-      details: { completions: [{ job: snapshot("j2", "matched") }] },
-    },
-    {
-      type: "message",
-      message: {
-        role: "custom",
-        customType: "job:completion",
-        details: { completions: [{ job: snapshot("j3", "timed_out") }] },
-      },
-    },
-    {
-      type: "message",
-      message: {
-        role: "toolResult",
-        toolName: "job_list",
-        details: { jobs: [snapshot("j4", "failed")] },
-      },
-    },
-    {
-      type: "message",
-      message: { role: "toolResult", toolName: "job_read", details: snapshot("j5", "succeeded") },
-    },
-    {
-      type: "message",
-      message: { role: "toolResult", toolName: "other", details: snapshot("j999") },
-    },
-  );
-  const jobs = historicalRunningJobs(entries);
-  assert.equal(jobs.length, 35);
-  assert.deepEqual(
-    jobs.map((job) => job.id),
-    Array.from({ length: 35 }, (_, i) => `j${i + 6}`),
-  );
-  assert.equal(jobs[0].command, snapshot("j6").command);
-});
-
 void test("unknown owner and reload handoff are not proof of an orphan", async () => {
   let stopped = 0;
   const owner = (alive: () => boolean | undefined, token: object | undefined): Owner => ({
-    version: 3,
+    version: 4,
     alive,
     token,
     manager: {
@@ -100,7 +44,7 @@ void test("unknown owner and reload handoff are not proof of an orphan", async (
       },
       list: () => [{ status: "running" }],
     } as any,
-    delivery: {
+    items: {
       dispose: () => {
         stopped++;
       },
@@ -119,7 +63,7 @@ void test("unknown owner and reload handoff are not proof of an orphan", async (
 function handoffOwner(): Owner {
   const noop = () => {};
   return {
-    version: 3,
+    version: 4,
     alive: () => undefined,
     manager: Object.fromEntries(
       [
@@ -135,11 +79,10 @@ function handoffOwner(): Owner {
         "notificationTail",
       ].map((name) => [name, noop]),
     ) as any,
-    delivery: Object.fromEntries(
-      ["add", "suspend", "rebind", "dispose", "onAgentStart", "onAgentSettled"].map((name) => [
-        name,
-        noop,
-      ]),
+    items: Object.fromEntries(
+      ["open", "finished", "cancel", "adopt", "suspend", "bind", "release", "dispose"].map(
+        (name) => [name, noop],
+      ),
     ) as any,
   };
 }
@@ -180,7 +123,8 @@ void test("compatible adoption cancels handoff expiry", async (t) => {
   assert.equal(stopped, false);
 });
 
-void test("an owner from the follow-up delivery protocol (version 2) is not adopted", () => {
+void test("an owner from before jobs were work items (version 3) is not adopted", () => {
+  assert.equal(compatibleOwner({ ...handoffOwner(), version: 3 }), false);
   assert.equal(compatibleOwner({ ...handoffOwner(), version: 2 }), false);
   assert.equal(compatibleOwner(handoffOwner()), true);
 });
@@ -191,7 +135,7 @@ void test("incompatible suspended owners are stopped, never adopted", async (t) 
   const job = { id: "j1", kind: "watch", command: "echo full command; false", status: "running" };
   for (const owner of [versionless, malformed]) owner.manager.list = () => [job] as any;
   delete (versionless as any).version;
-  delete (malformed.delivery as any).rebind;
+  delete (malformed.items as any).bind;
   let stopped = 0;
   for (const owner of [versionless, malformed])
     owner.manager.shutdown = async () => {

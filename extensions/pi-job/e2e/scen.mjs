@@ -122,7 +122,7 @@ const scenarios = {
         bash.length === 1 &&
         !bash[0].isError &&
         /FG-DONE/.test(JSON.stringify(bash[0].result)),
-      `completion messages ${ms.length} (batched=${ms.length === 1}); first agent_end ${firstEnd}`,
+      `completion messages ${ms.length}; first agent_end ${firstEnd}`,
     );
   },
   async 6() {

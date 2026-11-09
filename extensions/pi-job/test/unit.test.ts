@@ -14,13 +14,7 @@ import { cleanOutput, lastBytes, readTail, tailBuffer, tailText, TailSink } from
 import { outcomeFromStatus } from "../src/supervisor.ts";
 import { LogWriter } from "../src/logwriter.ts";
 import { evaluateWatch, type CheckResult } from "../src/watch.ts";
-import {
-  exitText,
-  formatBatch,
-  formatDuration,
-  formatJobList,
-  formatNotification,
-} from "../src/format.ts";
+import { exitText, formatDuration, formatJobList, formatNotification } from "../src/format.ts";
 import { resolveManagerOptions, settleSnapshot, type JobSnapshot } from "../src/jobs.ts";
 import { pruneLogs } from "../src/logs.ts";
 import { tempDir } from "./helpers.ts";
@@ -301,33 +295,6 @@ void test("lastBytes keeps whole code points", () => {
   assert.equal(lastBytes("aé😀", 6), "é😀");
   assert.equal(lastBytes("aé😀", 3), "");
   assert.equal(lastBytes("abc", 10), "abc");
-});
-
-void test("formatBatch: one completion is plain, several are numbered under one header", () => {
-  const one = formatBatch([
-    {
-      job: snap({ status: "succeeded", exitCode: 0, endedAt: 1000 }),
-      tail: { text: "x", truncated: false },
-    },
-  ]);
-  assert.deepEqual(one.partOf, [0]);
-  assert.match(one.parts[0], /^Job j1 succeeded/);
-  const two = formatBatch([
-    {
-      job: snap({ status: "succeeded", exitCode: 0, endedAt: 1000 }),
-      tail: { text: "x", truncated: false },
-    },
-    {
-      job: snap({ id: "j2", status: "failed", exitCode: 1, endedAt: 1000 }),
-      tail: { text: "y", truncated: false },
-    },
-  ]);
-  assert.deepEqual(two.partOf, [1, 2], "one content part per completion, after the header");
-  assert.match(two.parts[1], /^\[1\/2\] Job j1 succeeded/);
-  assert.match(
-    two.parts.join(""),
-    /^2 background jobs finished:\n\n\[1\/2\] Job j1 succeeded[\s\S]*\n\n\[2\/2\] Job j2 failed/,
-  );
 });
 
 void test("formatNotification reports log truncation, log write errors and spawn errors", () => {

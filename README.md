@@ -210,8 +210,10 @@ from [`woksin/pi-jobs`](extensions/pi-job/UPSTREAM.md) with
 `job_watch` re-runs a shell check until it succeeds, fails, or its output changes.
 With `toolCheck` it instead polls a read-only Pi tool, such as an MCP tool, until a
 condition on its result holds ([tool checks](extensions/pi-job/TOOL-CHECKS.md)).
-The agent ends its turn instead of polling, and completions arrive as one batched
-follow-up message.
+The agent ends its turn instead of polling. Each job or watch is an item in the
+session's [work host](packages/pi-work/README.md), and its completion is a message
+that wakes an idle session or is answered in the run in progress. A reload keeps
+the jobs and re-adopts their items; after a restart they are reported as lost.
 `job_list`, `job_read`, and `job_kill` inspect and stop work; `/job` lists or
 kills jobs for the user. POSIX only. Logs live under `~/.pi/agent/jobs/` for seven
 days. Do not also install `npm:@woksin/pi-jobs`. See the
@@ -535,8 +537,8 @@ questions). A producer opens an item in the session's work host and completes
 it with a message; the host persists open items, writes messages into the
 transcript, wakes an idle session, answers a message that arrives mid-run in
 that same run, and closes items nobody takes over after a restart as lost
-without starting a turn. Only pi-job's delivery mechanics use it so far; there is
-nothing to configure.
+without starting a turn. pi-job is the only producer so far; there is nothing to
+configure.
 
 ### Screenshot the TUI
 
