@@ -15,19 +15,33 @@ import {
 const DONE: WorkMessage = { customType: "test:done", content: "RESULT" };
 
 /** A host over an in-memory store and a recording wake policy. */
-function setup(options: { records?: unknown[]; idle?: boolean } = {}) {
+function setup(
+  options: {
+    records?: unknown[];
+    idle?: boolean;
+    confirmLanding?: boolean;
+    throws?: boolean;
+    landingMark?: () => unknown;
+  } = {},
+) {
   const records: unknown[] = [...(options.records ?? [])];
   const sent: { messages: WorkMessage[]; mode: SendMode }[] = [];
   let idle = options.idle ?? true;
+  let throws = options.throws ?? false;
   let n = 0;
   const onLost = vi.fn();
   const host = createWorkHost({
     store: { read: () => records, append: (record) => void records.push(record) },
     delivery: {
-      isIdle: () => idle,
+      isIdle: () => {
+        if (throws) throw new Error("stale");
+        return idle;
+      },
       send: (items: Completion<WorkMessage>[], mode) =>
         void sent.push({ messages: items.map((item) => item.payload), mode }),
     },
+    confirmLanding: options.confirmLanding,
+    landingMark: options.landingMark,
     onLost,
     now: () => 1000 + n,
     newId: () => `id${++n}`,
@@ -39,6 +53,7 @@ function setup(options: { records?: unknown[]; idle?: boolean } = {}) {
     sent,
     onLost,
     setIdle: (value: boolean) => void (idle = value),
+    goStale: () => void (throws = true),
   };
 }
 
@@ -125,6 +140,161 @@ describe("opening and closing items", () => {
     host.open({ owner: "a", kind: "job", label: "one" });
     host.open({ owner: "b", kind: "job", label: "two" });
     expect(host.list().map((item) => item.label)).toEqual(["one", "two"]);
+  });
+});
+
+describe("a close record means the result is in the transcript", () => {
+  const closes = (records: WorkRecord[]) => records.filter((record) => record.op === "close");
+
+  it("waits for the transport to report the message when it holds messages", () => {
+    const { host, records, sent } = setup({ confirmLanding: true });
+    const item = host.open({ owner: "test", kind: "job", label: "CI" });
+    item.complete(DONE);
+    expect(sent).toHaveLength(1);
+    expect(closes(records)).toEqual([]);
+    expect(host.list()).toEqual([]); // spent: the producer has nothing more to do with it
+    host.messageLanded(DONE);
+    expect(closes(records)).toMatchObject([{ id: item.id, reason: "completed" }]);
+    host.messageLanded(DONE);
+    expect(closes(records)).toHaveLength(1);
+  });
+
+  it("matches the reported message by type, content and details, and ignores others", () => {
+    const { host, records } = setup({ confirmLanding: true });
+    const a = host.open({ owner: "test", kind: "job", label: "a" });
+    const b = host.open({ owner: "test", kind: "job", label: "b" });
+    a.complete({ customType: "test:done", content: "A", details: { n: 1 } });
+    b.complete({ customType: "test:done", content: [{ type: "text", text: "B" }] });
+    host.messageLanded({ customType: "test:done", content: "A" }); // different details
+    host.messageLanded({ customType: "other", content: "A", details: { n: 1 } });
+    expect(closes(records)).toEqual([]);
+    host.messageLanded({ customType: "test:done", content: [{ type: "text", text: "B" }] });
+    expect(closes(records)).toMatchObject([{ id: b.id }]);
+    host.messageLanded({ customType: "test:done", content: "A", details: { n: 1 } });
+    expect(closes(records)).toMatchObject([{ id: b.id }, { id: a.id }]);
+  });
+
+  it("closes each of two identical messages once", () => {
+    const { host, records } = setup({ confirmLanding: true });
+    host.open({ owner: "test", kind: "job", label: "a" }).complete(DONE);
+    host.open({ owner: "test", kind: "job", label: "b" }).complete(DONE);
+    host.messageLanded(DONE);
+    expect(closes(records)).toHaveLength(1);
+    host.messageLanded(DONE);
+    expect(closes(records)).toHaveLength(2);
+  });
+
+  it("notify and a message nobody waits for close nothing", () => {
+    const { host, records } = setup({ confirmLanding: true });
+    host.open({ owner: "test", kind: "question", label: "answer" }).notify(DONE);
+    host.messageLanded(DONE);
+    expect(closes(records)).toEqual([]);
+    expect(host.list()).toHaveLength(1);
+  });
+
+  it("leaves the item open on disk when the host goes away before the message lands", () => {
+    const { host, records } = setup({ confirmLanding: true });
+    const item = host.open({ owner: "test", kind: "job", label: "CI" });
+    item.complete(DONE);
+    host.dispose();
+    expect(closes(records)).toEqual([]);
+    const next = setup({ records, confirmLanding: true });
+    next.host.settleStartup();
+    expect(closes(next.records)).toMatchObject([{ id: item.id, reason: "lost" }]);
+    expect(next.sent[0].messages[0].customType).toBe(WORK_LOST);
+  });
+
+  describe("an identical message that landed earlier", () => {
+    /** A transport whose mark is the transcript length; `land` appends a message to it. */
+    function transport() {
+      const transcript: WorkMessage[] = [];
+      const t = setup({ confirmLanding: true, landingMark: () => transcript.length });
+      /** What a scan of the transcript does: entries from index 0, each offered with its position. */
+      const scan = () =>
+        transcript.forEach((message, index) =>
+          t.host.messageLanded(message, (mark) => (mark as number) <= index),
+        );
+      return { ...t, transcript, scan };
+    }
+
+    it("is not taken for the new message", () => {
+      const { host, records, transcript, scan } = transport();
+      host.open({ owner: "test", kind: "job", label: "a" }).complete(DONE);
+      transcript.push(DONE);
+      scan();
+      expect(closes(records)).toHaveLength(1);
+
+      host.open({ owner: "test", kind: "job", label: "b" }).complete(DONE);
+      scan(); // reads the first message again, which is older than the second send
+      expect(closes(records)).toHaveLength(1);
+
+      transcript.push(DONE);
+      scan();
+      expect(closes(records)).toHaveLength(2);
+    });
+
+    it("keeps first-in-first-out across items waiting at once", () => {
+      const { host, records, transcript, scan } = transport();
+      const a = host.open({ owner: "test", kind: "job", label: "a" });
+      const b = host.open({ owner: "test", kind: "job", label: "b" });
+      a.complete(DONE);
+      b.complete(DONE);
+      transcript.push(DONE);
+      scan();
+      expect(closes(records)).toMatchObject([{ id: a.id }]);
+      transcript.push(DONE);
+      scan();
+      expect(closes(records)).toMatchObject([{ id: a.id }, { id: b.id }]);
+    });
+
+    it("lets the transport revise the marks, and drop an item it can no longer wait for", () => {
+      const { host, records } = transport();
+      const a = host.open({ owner: "test", kind: "job", label: "a" });
+      a.complete(DONE);
+      expect(host.landingMarks()).toEqual([0]);
+      host.reviseLanding((mark) => (mark as number) + 5);
+      expect(host.landingMarks()).toEqual([5]);
+      host.reviseLanding(() => undefined);
+      expect(host.awaitingLanding()).toBe(false);
+      host.messageLanded(DONE);
+      // Dropped, not closed: the item stays open on disk, and the next start reports it lost.
+      expect(closes(records)).toEqual([]);
+      const next = setup({ records });
+      next.host.settleStartup();
+      expect(closes(next.records)).toMatchObject([{ id: a.id, reason: "lost" }]);
+    });
+  });
+
+  it("a transport that appends directly closes at once", () => {
+    const { host, records } = setup();
+    host.open({ owner: "test", kind: "job", label: "CI" }).complete(DONE);
+    expect(closes(records)).toHaveLength(1);
+  });
+
+  it("leaves the item open when delivery refuses the message, so the next start reports it lost", () => {
+    for (const confirmLanding of [false, true]) {
+      const { host, records, sent, goStale } = setup({ confirmLanding });
+      const item = host.open({ owner: "test", kind: "job", label: "CI" });
+      goStale(); // the context is gone: delivery stops for good
+      item.complete(DONE);
+      expect(sent).toEqual([]);
+      host.messageLanded(DONE);
+      expect(closes(records)).toEqual([]);
+      expect(host.list().map((view) => view.id)).toEqual([item.id]);
+
+      const next = setup({ records });
+      next.host.settleStartup();
+      expect(closes(next.records)).toMatchObject([{ id: item.id, reason: "lost" }]);
+    }
+  });
+
+  it("an item whose result was refused can still be cancelled", () => {
+    const { host, records, goStale } = setup();
+    const item = host.open({ owner: "test", kind: "job", label: "CI" });
+    goStale();
+    item.complete(DONE);
+    item.cancel();
+    expect(closes(records)).toMatchObject([{ reason: "cancelled" }]);
   });
 });
 

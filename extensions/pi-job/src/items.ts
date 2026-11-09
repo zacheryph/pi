@@ -15,6 +15,10 @@
  *  3. `release`s after every extension has started: the jobs that ended in the gap are
  *     completed through their adopted items, so nothing wakes the session half-initialized.
  *
+ * The old host is disposed by its own `session_shutdown` handler, which may run before pi-job's:
+ * a job that ends in between reaches a dead handle and its completion is dropped. `adopt` finds
+ * such a job terminal, not stopped on request, and completes it through the new item.
+ *
  * An item nobody adopts (jobs of an earlier process, or of another session whose records a fork
  * inherited) is closed as lost by the host, with one message that reaches the model.
  */
@@ -99,11 +103,14 @@ export class JobItems {
     if (typeof data?.jobId !== "string" || data.sessionId !== this.sessionId) return false;
     const job = this.manager.get(data.jobId);
     if (!job || job.logPath !== data.logPath) return false;
-    if (job.status === "running" || this.ended.has(job.id)) {
-      this.handles.set(job.id, item);
+    if (job.status !== "running" && job.killedBy === "request") {
+      item.cancel(); // stopped on request: nothing to deliver, nothing lost
       return true;
     }
-    item.cancel(); // stopped without a message: nothing to deliver, nothing lost
+    this.handles.set(job.id, item);
+    // Ended on its own but its completion never reached a live host (a reload disposes the host
+    // before pi-job's shutdown handler runs): deliver it through this item, not silently cancel.
+    if (job.status !== "running" && !this.ended.has(job.id)) this.finished(job);
     return true;
   }
 

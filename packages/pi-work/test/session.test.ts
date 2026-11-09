@@ -3,7 +3,8 @@
  * while the session is idle (wakes a turn) or running (answered in the same run), and see open
  * items closed as lost after a simulated restart. A probe extension plays the producer.
  */
-import { existsSync } from "node:fs";
+import { copyFileSync, existsSync } from "node:fs";
+import { join } from "node:path";
 import { fauxAssistantMessage, type FauxResponseStep } from "@earendil-works/pi-ai/providers/faux";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
@@ -90,6 +91,22 @@ const transcript = (manager: SessionManager) =>
         : [],
   );
 
+/** The branch as `message:<customType>` for the result and `close:<reason>` for work close records. */
+const closeOrder = (manager: SessionManager) =>
+  (
+    manager.getBranch() as {
+      type: string;
+      customType?: string;
+      data?: { op?: string; reason?: string };
+    }[]
+  ).flatMap((entry) =>
+    entry.type === "custom_message" && entry.customType === DONE
+      ? ["message"]
+      : entry.type === "custom" && entry.customType === WORK_ENTRY && entry.data?.op === "close"
+        ? [`close:${entry.data.reason}`]
+        : [],
+  );
+
 const requestTexts = (request: { messages: unknown[] }) =>
   (request.messages as { content?: unknown }[]).map((m) => messageText(m));
 
@@ -151,6 +168,93 @@ describe("root host on a real session", () => {
       "assistant",
     ]);
     expect(h.faux.getPendingResponseCount()).toBe(0);
+    expect(h.errors).toEqual([]);
+  });
+
+  it("writes the close record after the result is in the transcript, idle or mid-run", async () => {
+    const p = producer();
+    const h = await fauxSession({
+      cleanup: onTestFinished,
+      extensions: [p.extension],
+      tools: ["open_work"],
+      responses: [
+        toolCall("open_work", { label: "one" }),
+        toolCall("open_work", { label: "two" }),
+        fauxAssistantMessage("waiting"),
+      ],
+    });
+    await h.session.prompt("start both");
+    expect(p.host()!.list()).toHaveLength(2);
+
+    // Idle: the message starts a run and is the first thing in it.
+    h.faux.setResponses([fauxAssistantMessage("saw one")]);
+    p.items[0].complete({ customType: DONE, content: "ONE" });
+    await waitFor(() => h.session.isIdle && closeOrder(h.sessionManager).length === 2, {
+      what: "the idle completion",
+    });
+    expect(closeOrder(h.sessionManager)).toEqual(["message", "close:completed"]);
+
+    // Mid-run: Pi holds the message until the turn ends. Nothing is closed before it lands.
+    const busy = blocking();
+    h.faux.setResponses([busy.step, fauxAssistantMessage("saw two")]);
+    const run = h.session.prompt("keep going");
+    await busy.entered;
+    p.items[1].complete({ customType: DONE, content: "TWO" });
+    expect(closeOrder(h.sessionManager)).toEqual(["message", "close:completed"]);
+    busy.release();
+    await run;
+    await waitFor(() => closeOrder(h.sessionManager).length === 4, { what: "the mid-run close" });
+    expect(closeOrder(h.sessionManager)).toEqual([
+      "message",
+      "close:completed",
+      "message",
+      "close:completed",
+    ]);
+    expect(p.host()!.list()).toEqual([]);
+    expect(h.errors).toEqual([]);
+  });
+
+  it("does not take an earlier, identical message for the one still held", async () => {
+    const p = producer();
+    const h = await fauxSession({
+      cleanup: onTestFinished,
+      extensions: [p.extension],
+      tools: ["open_work"],
+      responses: [
+        toolCall("open_work", { label: "one" }),
+        toolCall("open_work", { label: "two" }),
+        fauxAssistantMessage("waiting"),
+      ],
+    });
+    await h.session.prompt("start both");
+    const tick = () => new Promise((resolve) => setImmediate(resolve));
+
+    // The first lands at once (idle). The second is byte-identical and completes mid-run.
+    h.faux.setResponses([fauxAssistantMessage("saw one")]);
+    p.items[0].complete({ customType: DONE, content: "SAME", details: { n: 1 } });
+    await waitFor(() => h.session.isIdle && closeOrder(h.sessionManager).length === 2, {
+      what: "the first completion",
+    });
+
+    const busy = blocking();
+    h.faux.setResponses([busy.step, fauxAssistantMessage("saw two")]);
+    const run = h.session.prompt("keep going");
+    await busy.entered;
+    p.items[1].complete({ customType: DONE, content: "SAME", details: { n: 1 } });
+    await tick();
+    await tick();
+    // The second message is held by Pi: nothing may close for it yet.
+    expect(closeOrder(h.sessionManager)).toEqual(["message", "close:completed"]);
+
+    busy.release();
+    await run;
+    await waitFor(() => closeOrder(h.sessionManager).length === 4, { what: "the second close" });
+    expect(closeOrder(h.sessionManager)).toEqual([
+      "message",
+      "close:completed",
+      "message",
+      "close:completed",
+    ]);
     expect(h.errors).toEqual([]);
   });
 
@@ -267,6 +371,53 @@ describe("root host on a real session", () => {
       h.faux.setResponses([fauxAssistantMessage("understood")]);
       await h.session.prompt("status?");
       expect(requestTexts(h.requests[0]).join("\n")).toContain("Work lost");
+    });
+
+    it("reports the item lost when the process dies between complete and the end of the turn", async () => {
+      const dir = tempDir(onTestFinished, "pi-work-");
+      const manager = SessionManager.create(dir, dir);
+      const p = producer();
+      const h = await fauxSession({
+        cleanup: onTestFinished,
+        dir,
+        sessionManager: manager,
+        extensions: [p.extension],
+        tools: ["open_work"],
+        responses: [toolCall("open_work", { label: "CI" }), fauxAssistantMessage("waiting")],
+      });
+      await h.session.prompt("start it");
+      const file = manager.getSessionFile()!;
+      const crashed = join(dir, "crashed.jsonl");
+
+      // The item completes while a run is in flight: Pi holds the message until the turn ends.
+      const busy = blocking();
+      h.faux.setResponses([busy.step, fauxAssistantMessage("saw it")]);
+      const run = h.session.prompt("keep going");
+      await busy.entered;
+      p.items[0].complete({ customType: DONE, content: "RESULT: lost in the crash" });
+      copyFileSync(file, crashed); // what a kill -9 right now leaves on disk
+      busy.release();
+      await run;
+      await waitFor(() => closeOrder(h.sessionManager).includes("close:completed"), {
+        what: "the close once the message landed",
+      });
+      h.session.dispose();
+      resetSessionTree();
+
+      const next = producer();
+      const restarted = await fauxSession({
+        cleanup: onTestFinished,
+        dir,
+        sessionManager: SessionManager.open(crashed, undefined, dir),
+        extensions: [next.extension],
+        tools: ["open_work"],
+      });
+      // The result never reached the transcript, so the item is not closed as done.
+      expect(transcript(restarted.sessionManager)).not.toContain(`custom:${DONE}`);
+      expect(closeOrder(restarted.sessionManager)).toEqual(["close:lost"]);
+      expect(transcript(restarted.sessionManager)).toContain(`custom:${WORK_LOST}`);
+      expect(restarted.requests).toHaveLength(0);
+      expect(restarted.errors).toEqual([]);
     });
 
     it("keeps an item its owner adopts, which then completes and wakes a turn", async () => {
