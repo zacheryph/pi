@@ -1,5 +1,6 @@
 import type { SubagentManagerObserver } from "#src/lifecycle/subagent-manager";
-import { buildEventData, type NotificationSystem } from "#src/observation/notification";
+import { buildEventData } from "#src/observation/notification";
+import type { AgentWork } from "#src/observation/subagent-work";
 import {
   type PersistedSubagentRecord,
   SUBAGENT_RECORD_ENTRY,
@@ -16,7 +17,8 @@ export type AppendEntry = (customType: string, data: unknown) => void;
 export interface SubagentEventsObserverDeps {
   emit: EventEmit;
   appendEntry: AppendEntry;
-  notifications: NotificationSystem;
+  /** The spawning session's work: one item per run, completed with the run's outcome. */
+  work: AgentWork;
   /** Whether the current branch already contains this agent's initial record. */
   isOnBranch?: (id: string) => boolean;
 }
@@ -24,15 +26,15 @@ export interface SubagentEventsObserverDeps {
 /**
  * Receives agent lifecycle notifications from SubagentManager and dispatches
  * them to three concerns: pi.events lifecycle events, session-entry persistence,
- * and completion notifications.
+ * and the work items the spawning session waits on.
  *
- * Constructed with narrow deps (emit, appendEntry, NotificationSystem) so all
+ * Constructed with narrow deps (emit, appendEntry, AgentWork) so all
  * three concerns are unit-testable without booting the extension.
  */
 export class SubagentEventsObserver implements SubagentManagerObserver {
   private readonly emit: EventEmit;
   private readonly appendEntry: AppendEntry;
-  private readonly notifications: NotificationSystem;
+  private readonly work: AgentWork;
   private readonly isOnBranch: (id: string) => boolean;
   private readonly recorded = new Set<string>();
   private readonly pending = new Map<string, PersistedSubagentRecord>();
@@ -40,7 +42,7 @@ export class SubagentEventsObserver implements SubagentManagerObserver {
   constructor(deps: SubagentEventsObserverDeps) {
     this.emit = deps.emit;
     this.appendEntry = deps.appendEntry;
-    this.notifications = deps.notifications;
+    this.work = deps.work;
     this.isOnBranch = deps.isOnBranch ?? (() => true);
   }
 
@@ -94,6 +96,8 @@ export class SubagentEventsObserver implements SubagentManagerObserver {
       description: record.description,
     });
     this.persist(record);
+    // Idempotent: a run that queued first already holds its item.
+    this.work.runRequested(record);
   }
 
   /**
@@ -110,6 +114,8 @@ export class SubagentEventsObserver implements SubagentManagerObserver {
       description: record.description,
     });
     this.persist(record);
+    // New input opens a new item for the new run.
+    this.work.runRequested(record);
   }
 
   onSubagentResumed(record: Subagent): void {
@@ -141,18 +147,18 @@ export class SubagentEventsObserver implements SubagentManagerObserver {
 
   /**
    * Persist the terminal record for cross-extension history reconstruction and
-   * announce completion. Shared by every terminal-state handler (fresh and
+   * end the run's work item. Shared by every terminal-state handler (fresh and
    * resumed). The completion message is the only carrier of an outcome, so
    * every terminal transition is announced.
    */
   private persistAndNotify(record: Subagent): void {
     this.persist(record);
-    this.notifications.sendCompletion(record);
+    this.work.runEnded(record);
   }
 
   /**
-   * A still-running child sent its parent a message. Announced, never
-   * persisted: the session entry records lifecycle steps, and a message
+   * A still-running child sent its parent a message. Delivered through the
+   * run's item, never persisted: the session entry records lifecycle steps, and a message
    * mid-run is not one.
    */
   onSubagentUpdate(record: Subagent, message: string): void {
@@ -162,7 +168,7 @@ export class SubagentEventsObserver implements SubagentManagerObserver {
       description: record.description,
       message,
     });
-    this.notifications.sendUpdate(record, message);
+    this.work.update(record, message);
   }
 
   onSubagentCompacted(record: Subagent, info: CompactionInfo): void {
@@ -186,5 +192,7 @@ export class SubagentEventsObserver implements SubagentManagerObserver {
     });
     // A queued agent belongs to this branch before it gets a slot.
     this.persist(record);
+    // The spawner now waits on this agent's run.
+    this.work.runRequested(record);
   }
 }

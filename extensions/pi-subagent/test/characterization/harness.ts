@@ -101,6 +101,9 @@ const WATCHED = [
 export async function startParent(options: ParentOptions = {}) {
   const dir = options.dir ?? offlineAgentDir({ files: options.files });
   const sweeps: Array<() => void> = [];
+  // A second parent in one test (a restart) must not wrap the first one's spy: its
+  // implementation calls the function it replaced, which would then call itself.
+  if (vi.isMockFunction(globalThis.setInterval)) vi.mocked(globalThis.setInterval).mockRestore();
   const realSetInterval = globalThis.setInterval;
   const interval = vi.spyOn(globalThis, "setInterval").mockImplementation(((
     fn: () => void,

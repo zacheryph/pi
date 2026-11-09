@@ -1,6 +1,6 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, type Mock, vi, onTestFinished } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, onTestFinished } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import { ConcurrencyLimiter } from "#src/lifecycle/concurrency-limiter";
 import type { CreateSubagentSessionParams } from "#src/lifecycle/create-subagent-session";
@@ -11,7 +11,7 @@ import {
   type SubagentManagerObserver,
 } from "#src/lifecycle/subagent-manager";
 import type { SubagentSession, TurnLoopResult } from "#src/lifecycle/subagent-session";
-import { NotificationManager } from "#src/observation/notification";
+import { SubagentWork } from "#src/observation/subagent-work";
 import type { PersistedSubagentRecord } from "#src/persisted-record";
 import type { RunConfig } from "#src/runtime";
 import type { AgentConfig, Subagent } from "#src/types";
@@ -32,6 +32,7 @@ import { turnLoopResult } from "#test/helpers/turn-loop-result";
 import { tick } from "../../../../packages/pi-test-helpers/src/wait.ts";
 import { tempDir } from "../../../../packages/pi-test-helpers/src/temp.ts";
 import { makeAgentConfig } from "#test/helpers/make-agent-config";
+import { fakeWorkHost } from "#test/helpers/fake-work-host";
 
 /** Default max concurrent background agents (matches production default). */
 const DEFAULT_MAX_CONCURRENT = 4;
@@ -139,25 +140,24 @@ function arrangeQueuedPair(observer?: Partial<SubagentManagerObserver>) {
 }
 
 /**
- * Arrange a manager whose onSubagentCompleted observer forwards to a real
- * NotificationManager (mirroring SubagentEventsObserver's unconditional
- * sendCompletion delegation), with one agent spawned via a tool call. The
- * act (when the record is marked consumed relative to awaiting) stays in each
- * test.
+ * Arrange a manager whose observer forwards to a real SubagentWork over a fake
+ * work host (mirroring SubagentEventsObserver's unconditional delegation), with
+ * one agent spawned via a tool call. The act (when the record is marked
+ * consumed relative to awaiting) stays in each test.
  */
 function seedNotificationScenario(createSubagentSession?: SessionFactory) {
-  const sendMessage = vi.fn();
-  const notifications = new NotificationManager(sendMessage);
+  const fake = fakeWorkHost();
+  const work = new SubagentWork(() => fake.host);
   const { manager } = createManager({
-    observer: { onSubagentCompleted: (r) => notifications.sendCompletion(r) },
+    observer: {
+      onSubagentCreated: (r) => work.runRequested(r),
+      onSubagentCompleted: (r) => work.runEnded(r),
+    },
     createSubagentSession,
   });
-  // The spawning tool call runs inside a parent agent run, so nudges are
-  // withheld until it settles.
-  notifications.onParentAgentStart();
   const id = spawnBgWithToolCall(manager, "tc-1");
   const record = manager.getRecord(id)!;
-  return { manager, record, notifications, sendMessage };
+  return { manager, record, work, messages: fake.messages, items: fake.items };
 }
 
 describe("SubagentManager", () => {
@@ -651,28 +651,26 @@ describe("SubagentManager", () => {
       it("still delivers the message when the parent read the result after awaiting", async () => {
         const seeded = seedNotificationScenario();
         manager = seeded.manager;
-        const { record, sendMessage } = seeded;
+        const { record, messages } = seeded;
 
-        // onSubagentCompleted already withheld the message by the time this
-        // await resumes. The parent reads the result (markConsumed) later in the
-        // same run; reading is not delivery, so the message still goes out.
+        // onSubagentCompleted already handed the message to the work item by the
+        // time this await resumes. The parent reads the result (markConsumed)
+        // afterwards; reading is not delivery, so the message was still sent.
         await record.promise;
         record.markConsumed();
 
-        seeded.notifications.onParentAgentSettled();
-        expect(sendMessage).toHaveBeenCalledOnce();
+        expect(messages()).toHaveLength(1);
       });
 
       it("still delivers the message when the parent read the result before it was sent", async () => {
         const seeded = seedNotificationScenario();
         manager = seeded.manager;
-        const { record, sendMessage } = seeded;
+        const { record, messages } = seeded;
 
         record.markConsumed();
         await record.promise;
 
-        seeded.notifications.onParentAgentSettled();
-        expect(sendMessage).toHaveBeenCalledOnce();
+        expect(messages()).toHaveLength(1);
       });
 
       it("calls the completion observer for every agent", async () => {
@@ -714,7 +712,7 @@ describe("SubagentManager", () => {
         async (outcome) => {
           const seeded = seedNotificationScenario(endingAs(outcome));
           manager = seeded.manager;
-          const { record, sendMessage } = seeded;
+          const { record, messages } = seeded;
           if (outcome === "stopped") {
             await vi.waitFor(() => expect(record.status).toBe("running"));
             manager.abort(record.id);
@@ -723,13 +721,11 @@ describe("SubagentManager", () => {
           await record.promise;
           // Reading the result mid-run changes nothing about delivery.
           record.markConsumed();
-          seeded.notifications.onParentAgentSettled();
-          seeded.notifications.onParentAgentSettled();
 
           expect(record.status).toBe("idle");
           expect(record.outcome).toBe(outcome);
-          expect(sendMessage).toHaveBeenCalledOnce();
-          const [message] = sendMessage.mock.calls[0];
+          expect(messages()).toHaveLength(1);
+          const [message] = messages();
           expect(message.customType).toBe("subagent:completion");
           expect(message.details).toMatchObject({ id: record.id, status: outcome });
         },
@@ -1533,18 +1529,22 @@ describe("SubagentManager", () => {
     });
 
     describe("announcing a resumed outcome", () => {
-      let sendMessage: Mock;
+      let messages: () => unknown[];
 
-      // A real NotificationManager wired the way SubagentEventsObserver wires it,
-      // with the parent idle, so a resumed outcome is sent at once.
+      // A real SubagentWork wired the way SubagentEventsObserver wires it, so a
+      // resumed outcome is delivered through the run's item.
       beforeEach(() => {
-        sendMessage = vi.fn();
-        const notifications = new NotificationManager(sendMessage);
+        const fake = fakeWorkHost();
+        messages = fake.messages;
+        const work = new SubagentWork(() => fake.host);
         const { factory, stub } = createSessionFactory();
         stub.resumeTurnLoop.mockResolvedValue(turnLoopResult({ responseText: "second" }));
         ({ manager } = createManager({
           createSubagentSession: factory,
-          observer: { onSubagentResumed: (r) => notifications.sendCompletion(r) },
+          observer: {
+            onSubagentResuming: (r) => work.runRequested(r),
+            onSubagentResumed: (r) => work.runEnded(r),
+          },
         }));
       });
 
@@ -1553,7 +1553,7 @@ describe("SubagentManager", () => {
 
         await sendAndSettle(manager, record.id, "continue");
 
-        expect(sendMessage).toHaveBeenCalledOnce();
+        expect(messages()).toHaveLength(1);
       });
 
       it("announces each resume, even after the parent read the earlier result", async () => {
@@ -1563,7 +1563,7 @@ describe("SubagentManager", () => {
 
         await sendAndSettle(manager, record.id, "second answer");
 
-        expect(sendMessage).toHaveBeenCalledTimes(2);
+        expect(messages()).toHaveLength(2);
       });
     });
   });

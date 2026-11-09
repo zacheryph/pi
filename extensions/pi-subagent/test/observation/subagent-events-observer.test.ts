@@ -1,25 +1,27 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { readPersistedRecords } from "#src/persisted-record";
-import { buildEventData, type NotificationSystem } from "#src/observation/notification";
+import { buildEventData } from "#src/observation/notification";
+import type { AgentWork } from "#src/observation/subagent-work";
 import { SubagentEventsObserver } from "#src/observation/subagent-events-observer";
 import type { CompactionInfo } from "#src/types";
 import { createTestSubagent } from "#test/helpers/make-subagent";
 
-function makeNotifications(): NotificationSystem {
+function makeWork(): AgentWork {
   return {
-    sendCompletion: vi.fn(),
-    sendUpdate: vi.fn(),
+    runRequested: vi.fn(),
+    runEnded: vi.fn(),
+    update: vi.fn(),
     dispose: vi.fn(),
   };
 }
 
-function makeObserver(overrides?: Partial<{ notifications: NotificationSystem }>) {
+function makeObserver(overrides?: Partial<{ work: AgentWork }>) {
   const emit = vi.fn<(channel: string, data: unknown) => void>();
   const appendEntry = vi.fn<(customType: string, data: unknown) => void>();
-  const notifications = overrides?.notifications ?? makeNotifications();
-  const observer = new SubagentEventsObserver({ emit, appendEntry, notifications });
-  return { observer, emit, appendEntry, notifications };
+  const work = overrides?.work ?? makeWork();
+  const observer = new SubagentEventsObserver({ emit, appendEntry, work });
+  return { observer, emit, appendEntry, work };
 }
 
 describe("SubagentEventsObserver", () => {
@@ -33,7 +35,7 @@ describe("SubagentEventsObserver", () => {
         appendEntry: (type, data) => {
           manager.appendCustomEntry(type, data);
         },
-        notifications: makeNotifications(),
+        work: makeWork(),
         isOnBranch: (id) =>
           readPersistedRecords(manager.getBranch()).some((record) => record.id === id),
       });
@@ -92,7 +94,7 @@ describe("SubagentEventsObserver", () => {
     });
 
     it("appends a running subagent:record and sends no notification", () => {
-      const { observer, appendEntry, notifications } = makeObserver();
+      const { observer, appendEntry, work } = makeObserver();
       observer.onSubagentStarted(
         createTestSubagent({ id: "agent-1", status: "running", completedAt: undefined }),
       );
@@ -100,7 +102,7 @@ describe("SubagentEventsObserver", () => {
         "subagent:record",
         expect.objectContaining({ id: "agent-1", status: "running" }),
       );
-      expect(notifications.sendCompletion).not.toHaveBeenCalled();
+      expect(work.runEnded).not.toHaveBeenCalled();
     });
   });
 
@@ -185,14 +187,14 @@ describe("SubagentEventsObserver", () => {
       });
     });
 
-    it("calls notifications.sendCompletion unconditionally — the manager decides whether to nudge", () => {
-      const notifications = makeNotifications();
-      const { observer } = makeObserver({ notifications });
+    it("ends the run's work item unconditionally — the item decides what to deliver", () => {
+      const work = makeWork();
+      const { observer } = makeObserver({ work });
       const record = createTestSubagent({ status: "completed" });
 
       observer.onSubagentCompleted(record);
 
-      expect(notifications.sendCompletion).toHaveBeenCalledExactlyOnceWith(record);
+      expect(work.runEnded).toHaveBeenCalledExactlyOnceWith(record);
     });
 
     it("emits exactly once and appends exactly once per call", () => {
@@ -222,7 +224,7 @@ describe("SubagentEventsObserver", () => {
     });
 
     it("records the agent running again, without its old question, and announces nothing", () => {
-      const { observer, appendEntry, notifications } = makeObserver();
+      const { observer, appendEntry, work } = makeObserver();
 
       observer.onSubagentResuming(
         createTestSubagent({ id: "agent-1", status: "running", completedAt: undefined }),
@@ -233,7 +235,7 @@ describe("SubagentEventsObserver", () => {
         expect.objectContaining({ id: "agent-1", status: "running" }),
       );
       expect(appendEntry.mock.calls[0]?.[1]).not.toHaveProperty("pendingQuestion");
-      expect(notifications.sendCompletion).not.toHaveBeenCalled();
+      expect(work.runEnded).not.toHaveBeenCalled();
     });
   });
 
@@ -242,7 +244,7 @@ describe("SubagentEventsObserver", () => {
     // a message and waits for a slot is announced on subagent:queued, so a consumer showing it
     // as done learns it has work waiting.
     it("records the agent queued again and announces it on subagent:queued, with no completion", () => {
-      const { observer, emit, appendEntry, notifications } = makeObserver();
+      const { observer, emit, appendEntry, work } = makeObserver();
 
       observer.onSubagentResumeQueued(
         createTestSubagent({ id: "agent-1", status: "queued", completedAt: undefined }),
@@ -257,7 +259,7 @@ describe("SubagentEventsObserver", () => {
         type: "general-purpose",
         description: "Test task",
       });
-      expect(notifications.sendCompletion).not.toHaveBeenCalled();
+      expect(work.runEnded).not.toHaveBeenCalled();
     });
   });
 
@@ -313,14 +315,14 @@ describe("SubagentEventsObserver", () => {
       });
     });
 
-    it("calls notifications.sendCompletion unconditionally — the manager decides whether to nudge", () => {
-      const notifications = makeNotifications();
-      const { observer } = makeObserver({ notifications });
+    it("ends the run's work item unconditionally — the item decides what to deliver", () => {
+      const work = makeWork();
+      const { observer } = makeObserver({ work });
       const record = createTestSubagent({ status: "completed" });
 
       observer.onSubagentResumed(record);
 
-      expect(notifications.sendCompletion).toHaveBeenCalledExactlyOnceWith(record);
+      expect(work.runEnded).toHaveBeenCalledExactlyOnceWith(record);
     });
 
     it("emits exactly once and appends exactly once per call", () => {
@@ -354,12 +356,12 @@ describe("SubagentEventsObserver", () => {
       });
     });
 
-    it("does not call appendEntry or notifications", () => {
-      const { observer, appendEntry, notifications } = makeObserver();
+    it("does not call appendEntry or work", () => {
+      const { observer, appendEntry, work } = makeObserver();
       const info: CompactionInfo = { reason: "manual", tokensBefore: 1000 };
       observer.onSubagentCompacted(createTestSubagent(), info);
       expect(appendEntry).not.toHaveBeenCalled();
-      expect(notifications.sendCompletion).not.toHaveBeenCalled();
+      expect(work.runEnded).not.toHaveBeenCalled();
     });
   });
 
@@ -382,7 +384,7 @@ describe("SubagentEventsObserver", () => {
     });
 
     it("appends a queued subagent:record, so the agent belongs to the branch before it runs", () => {
-      const { observer, appendEntry, notifications } = makeObserver();
+      const { observer, appendEntry, work } = makeObserver();
       observer.onSubagentCreated(
         createTestSubagent({ id: "agent-1", status: "queued", completedAt: undefined }),
       );
@@ -390,18 +392,53 @@ describe("SubagentEventsObserver", () => {
         "subagent:record",
         expect.objectContaining({ id: "agent-1", status: "queued" }),
       );
-      expect(notifications.sendCompletion).not.toHaveBeenCalled();
+      expect(work.runEnded).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("the spawner's work item", () => {
+    it("asks for an item when a run is requested: spawn, a queued resume, a started resume", () => {
+      const { observer, work } = makeObserver();
+      const record = createTestSubagent();
+
+      observer.onSubagentCreated(record);
+      observer.onSubagentResumeQueued(record);
+      observer.onSubagentResuming(record);
+
+      expect(work.runRequested).toHaveBeenCalledTimes(3);
+      expect(work.runRequested).toHaveBeenCalledWith(record);
+    });
+
+    it("does not ask for one, or end one, for the other lifecycle steps", () => {
+      const { observer, work } = makeObserver();
+      const record = createTestSubagent();
+
+      observer.onSubagentStarted(record);
+      observer.onSubagentSessionCreated(record);
+      observer.onSubagentCompacted(record, { reason: "overflow", tokensBefore: 1 });
+
+      expect(work.runRequested).not.toHaveBeenCalled();
+      expect(work.runEnded).not.toHaveBeenCalled();
+    });
+
+    it("ends the item of a resumed run's outcome too", () => {
+      const { observer, work } = makeObserver();
+      const record = createTestSubagent({ status: "completed" });
+
+      observer.onSubagentResumed(record);
+
+      expect(work.runEnded).toHaveBeenCalledExactlyOnceWith(record);
     });
   });
 
   describe("dependency isolation", () => {
     let emit: ReturnType<typeof vi.fn>;
     let appendEntry: ReturnType<typeof vi.fn>;
-    let notifications: NotificationSystem;
+    let work: AgentWork;
     let observer: SubagentEventsObserver;
 
     beforeEach(() => {
-      ({ observer, emit, appendEntry, notifications } = makeObserver());
+      ({ observer, emit, appendEntry, work } = makeObserver());
     });
 
     it("does not import or reference pi SDK directly", () => {
@@ -415,8 +452,8 @@ describe("SubagentEventsObserver", () => {
       expect(emit).toHaveBeenCalledTimes(4);
       // Created, started and completed are lifecycle steps; compaction is not.
       expect(appendEntry).toHaveBeenCalledTimes(3);
-      // Notifications were called as a side-effect of onSubagentCompleted.
-      expect(notifications.sendCompletion).toHaveBeenCalledTimes(1);
+      // The work item was ended as a side-effect of onSubagentCompleted.
+      expect(work.runEnded).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -440,12 +477,12 @@ describe("SubagentEventsObserver", () => {
     });
 
     it("announces the update to the parent", () => {
-      const { observer, notifications } = makeObserver();
+      const { observer, work } = makeObserver();
       const record = createTestSubagent({ id: "agent-1" });
 
       observer.onSubagentUpdate(record, "Course change.");
 
-      expect(notifications.sendUpdate).toHaveBeenCalledExactlyOnceWith(record, "Course change.");
+      expect(work.update).toHaveBeenCalledExactlyOnceWith(record, "Course change.");
     });
 
     it("persists nothing — an update is not an outcome to reconstruct history from", () => {

@@ -65,6 +65,8 @@ subagent_start({
 
 Agents always run in the background: the call returns an ID immediately and the completion message wakes the parent when the agent finishes, so the parent can end its turn and stay available while the agent works.
 There is no foreground mode and no call that waits for an agent.
+Each run is an item in the parent's work host ([`packages/pi-work`](../../packages/pi-work/README.md)); the host writes the completion message into the transcript, wakes an idle parent, and answers it in the same run when the parent is running. After a reload or restart an agent that was still running comes back as lost work, named in a `work:lost` message, and can be given more with `subagent_send`.
+
 The completion message is the only thing that delivers an outcome: it carries the result up to 500 characters, so ask agents to store a large result with `stash_put` and name the handle in their final answer.
 In print and json mode (`pi -p`, `--mode json`) nothing can wake the parent once its turn ends, so the process can return before background agents finish.
 

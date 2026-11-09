@@ -26,13 +26,13 @@ export interface LifecycleRuntime {
  * Constructor deps:
  * - `runtime` — owns session context state
  * - `manager` — manages agent lifecycle (clear, abort, dispose)
- * - `disposeNotifications` — tears down the notification system on shutdown
+ * - `disposeWork` — makes the spawner's work items inert on shutdown (they stay open)
  */
 export class SessionLifecycleHandler {
   constructor(
     private readonly runtime: LifecycleRuntime,
     private readonly manager: LifecycleManager,
-    private readonly disposeNotifications: () => void,
+    private readonly disposeWork: () => void,
   ) {}
 
   handleSessionStart(_event: unknown, ctx: unknown): Promise<void> {
@@ -46,15 +46,15 @@ export class SessionLifecycleHandler {
 
   // Cleanup order matters:
   // 1. Clear session context — no more session state
-  // 2. Dispose notifications — silence nudges *before* the aborts that would
-  //    raise them: no parent run is active at shutdown, so a terminal
-  //    transition delivers its nudge synchronously and Pi cannot recall it
+  // 2. Dispose the work items — silence them *before* the aborts that would
+  //    end them: a run stopped by the shutdown must not close its item or send
+  //    a message, so the item stays open and the next start reports it lost
   // 3. Abort all agents — stop running and queued work
   // 4. Dispose manager — final cleanup, awaited so each child's extensions get
   //    their `session_shutdown` before Pi tears the parent down (#709)
   handleSessionShutdown(): Promise<void> {
     this.runtime.clearSessionContext();
-    this.disposeNotifications();
+    this.disposeWork();
     this.manager.abortAll();
     return this.manager.dispose();
   }

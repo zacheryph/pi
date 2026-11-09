@@ -97,7 +97,7 @@ flowchart TB
     subgraph observation["Observation domain"]
         direction TB
         RecordObserver["record-observer<br/>(stats + live activity via events)"]
-        Notification["notification<br/>(completion nudges)"]
+        Notification["notification + subagent-work<br/>(completion messages; one work item per run)"]
     end
 
     subgraph tools["Tools domain"]
@@ -397,7 +397,8 @@ src/
 │
 ├── observation/                    progress tracking and notification
 │   ├── record-observer.ts          session-event stats observer
-│   ├── notification.ts             completion nudges and mid-run updates, in one arrival-ordered withheld queue (announce-only; withheld during the parent's agent run and flushed on agent_settled; every completion is announced, whatever the parent has read, and an update only while the child is still running, since a terminated run's updates ride the completion message)
+│   ├── notification.ts             the completion and update messages (`completionMessage`, `updateMessage`) and the task-notification formatting; no delivery
+│   ├── subagent-work.ts            the work producer for the spawning session: one `work:v1` item per run, opened when a run is requested, completed with the completion message when it ends (a stopped run delivers its message and cancels the item), `notify` for a mid-run update (only while the child is still running, since a terminated run's updates ride the completion message); holding while the parent runs and waking it are the host's (packages/pi-work)
 │   ├── outcome-delivery.ts         shared outcome rendering the completion message and the subagent_get report compose: one status vocabulary in two presentations, body, and the addenda tail (mid-run updates, then the ask-back affordance — which names a resume only when the record says one would be accepted, and says the completion message is coming when the child has merely not settled) in one fixed order
 │   ├── renderer.ts                 notification and mid-run-update TUI components
 │   ├── composite-subagent-observer.ts fans manager notifications out to multiple observers; enumerates every member, so an optional one it omits is dropped silently

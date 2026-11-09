@@ -1,4 +1,3 @@
-import { debugLog } from "#src/debug";
 import type { DisplayStatus } from "#src/lifecycle/subagent-state";
 import type { TurnBudget } from "#src/lifecycle/turn-limits";
 import { getLifetimeTotal } from "#src/lifecycle/usage";
@@ -7,6 +6,7 @@ import {
   renderRunUpdates,
   renderStatusLabel,
 } from "#src/observation/outcome-delivery";
+import type { Json, WorkMessage } from "../../../../packages/pi-work/src/index.ts";
 import type { Subagent } from "#src/types";
 
 /** Details attached to custom notification messages for visual rendering. */
@@ -174,13 +174,14 @@ export function buildEventData(record: Subagent) {
   };
 }
 
-// ---- Notification system factory ----
+// ---- The messages a spawner's work item delivers ----
 
-export interface NotificationSystem {
-  sendCompletion: (record: Subagent) => void;
-  sendUpdate: (record: Subagent, message: string) => void;
-  dispose: () => void;
-}
+/** The most characters of a result the completion message carries. */
+export const RESULT_PREVIEW_LENGTH = 500;
+
+/** Custom message types the parent's transcript holds, and the renderers are registered for. */
+export const COMPLETION_TYPE = "subagent:completion";
+export const UPDATE_TYPE = "subagent:update";
 
 /** Details the update renderer reads. */
 export interface UpdateDetails {
@@ -190,173 +191,43 @@ export interface UpdateDetails {
 }
 
 /**
- * One announcement withheld for the parent's current run.
- *
- * A completion for an agent supersedes an earlier one for that agent; two
- * updates are two distinct facts and both survive.
+ * The trailing pointer lines: where the transcript lives, and how to read the
+ * full result when the preview above is cut.
  */
-type PendingAnnouncement =
-  | { kind: "completion"; record: Subagent }
-  | { kind: "update"; record: Subagent; message: string };
+function buildPointerLines(record: Subagent): string {
+  const outputFile = record.outputFile;
+  const transcriptLine = outputFile ? `\nFull transcript available at: ${outputFile}` : "";
+  return (
+    // What the child flagged along the way leads: this message carries every
+    // update no announcement delivered.
+    renderRunUpdates(record.runUpdates) +
+    `${transcriptLine}\nCall subagent_get("${record.id}") to collect the full result.` +
+    renderQuestionAffordance(record.id, record.pendingQuestion, record.sendRefusal)
+  );
+}
 
-export class NotificationManager implements NotificationSystem {
-  // pi.sendMessage is fire-and-forget: while the parent's agent run is active,
-  // a followUp is handed to a queue the extension cannot recall, and is only
-  // delivered when the run drains that queue at turn end. So announcements that
-  // arrive mid-run are withheld here and flushed once the run settles.
-  // Ordered rather than record-keyed: a completion for an agent supersedes an
-  // earlier one for that agent, but announcements from different agents are
-  // distinct facts, and arrival order is the only order the parent can make
-  // sense of.
-  private pending: PendingAnnouncement[] = [];
-  private parentRunActive = false;
-  private disposed = false;
+/**
+ * The message that tells the parent a run ended, whatever the outcome. The
+ * completion message is the only carrier of an outcome, so every run's end
+ * is announced with one of these.
+ */
+export function completionMessage(record: Subagent): WorkMessage {
+  const notification = formatTaskNotification(record, RESULT_PREVIEW_LENGTH);
+  // A never-started agent has no transcript and nothing to collect.
+  const pointerLines = record.stoppedWhileQueued ? "" : buildPointerLines(record);
+  return {
+    customType: COMPLETION_TYPE,
+    content: notification + pointerLines,
+    details: buildNotificationDetails(record, RESULT_PREVIEW_LENGTH) as unknown as Json,
+  };
+}
 
-  constructor(
-    private sendMessage: (
-      msg: { customType: string; content: string; display: boolean; details?: unknown },
-      opts?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" },
-    ) => void,
-  ) {}
-
-  sendCompletion(record: Subagent): void {
-    // The session is gone. It is the aborts fired during shutdown that reach
-    // here, and with no parent run active a nudge would go straight out as an
-    // unrecallable followUp.
-    if (this.disposed) return;
-    // The completion message is the only carrier of an outcome, so every
-    // terminal transition is announced exactly once, whatever the parent has
-    // read with subagent_get in the meantime.
-    if (this.parentRunActive) {
-      this.withholdCompletion(record);
-      return;
-    }
-    this.emitIndividualNudge(record);
-  }
-
-  /**
-   * Queue a completion for the flush, superseding an earlier one for the same
-   * agent in the position that one already holds — a re-completion is the same
-   * fact told again, not a later one.
-   */
-  private withholdCompletion(record: Subagent): void {
-    const entry: PendingAnnouncement = { kind: "completion", record };
-    const existing = this.pending.findIndex(
-      (queued) => queued.kind === "completion" && queued.record.id === record.id,
-    );
-    if (existing === -1) this.pending.push(entry);
-    else this.pending[existing] = entry;
-  }
-
-  /**
-   * Announce a message a still-running child sent its parent.
-   *
-   * What is consulted is whether an announcement is still the right channel at
-   * all — see `canAnnounceUpdate`. The disposal latch and the parent-run
-   * withhold apply as they do to any announcement.
-   */
-  sendUpdate(record: Subagent, message: string): void {
-    if (this.disposed) return;
-    if (!this.canAnnounceUpdate(record)) return;
-    if (this.parentRunActive) {
-      this.pending.push({ kind: "update", record, message });
-      return;
-    }
-    this.emitUpdate(record, message);
-  }
-
-  /**
-   * Whether an announcement is still the right channel for this run's updates.
-   *
-   * A terminated run has an outcome, and its completion message renders what the
-   * run still owes, so the update arrives with it rather than as a live update
-   * the child can no longer act on.
-   *
-   * Consulted at enqueue and again at emit, because a run withheld for the
-   * parent's turn can terminate in between. That re-read is what keeps a
-   * `<subagent-update>` block's steering affordance true.
-   */
-  private canAnnounceUpdate(record: Subagent): boolean {
-    return record.isActive();
-  }
-
-  /** The parent's agent run became active; announcements are withheld until it settles. */
-  onParentAgentStart(): void {
-    this.parentRunActive = true;
-  }
-
-  /**
-   * The parent's agent run settled. Flush the announcements withheld during it.
-   */
-  onParentAgentSettled(): void {
-    this.parentRunActive = false;
-    const withheld = this.pending.splice(0);
-    for (const entry of withheld) {
-      try {
-        if (entry.kind === "update") this.emitUpdate(entry.record, entry.message);
-        else this.emitIndividualNudge(entry.record);
-      } catch (err) {
-        debugLog("notification render", err);
-      }
-    }
-  }
-
-  /** Terminal: the manager stops announcing anything, now and afterwards. */
-  dispose(): void {
-    this.disposed = true;
-    this.pending.length = 0;
-  }
-
-  private emitUpdate(record: Subagent, message: string): void {
-    if (!this.canAnnounceUpdate(record)) return;
-    // This channel is delivering the message, so the completion message does not
-    // repeat it — the record renders only what is still owed.
-    record.markUpdateAnnounced(message);
-    const details: UpdateDetails = {
-      id: record.id,
-      description: record.description,
-      message,
-    };
-    this.sendMessage(
-      {
-        customType: "subagent:update",
-        content: formatUpdateNotification(record, message),
-        display: true,
-        details,
-      },
-      { deliverAs: "followUp", triggerTurn: true },
-    );
-  }
-
-  private emitIndividualNudge(record: Subagent): void {
-    const notification = formatTaskNotification(record, 500);
-    // A never-started agent has no transcript and nothing to collect.
-    const pointerLines = record.stoppedWhileQueued ? "" : this.buildPointerLines(record);
-
-    this.sendMessage(
-      {
-        customType: "subagent:completion",
-        content: notification + pointerLines,
-        display: true,
-        details: buildNotificationDetails(record, 500),
-      },
-      { deliverAs: "followUp", triggerTurn: true },
-    );
-  }
-
-  /**
-   * The trailing pointer lines: where the transcript lives, and how to read the
-   * full result when the preview above is cut.
-   */
-  private buildPointerLines(record: Subagent): string {
-    const outputFile = record.outputFile;
-    const transcriptLine = outputFile ? `\nFull transcript available at: ${outputFile}` : "";
-    return (
-      // What the child flagged along the way leads: this message carries every
-      // update no announcement delivered.
-      renderRunUpdates(record.runUpdates) +
-      `${transcriptLine}\nCall subagent_get("${record.id}") to collect the full result.` +
-      renderQuestionAffordance(record.id, record.pendingQuestion, record.sendRefusal)
-    );
-  }
+/** The message that tells the parent a still-running child sent it an update. */
+export function updateMessage(record: Subagent, message: string): WorkMessage {
+  const details: UpdateDetails = { id: record.id, description: record.description, message };
+  return {
+    customType: UPDATE_TYPE,
+    content: formatUpdateNotification(record, message),
+    details: details as unknown as Json,
+  };
 }

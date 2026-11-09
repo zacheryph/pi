@@ -34,13 +34,10 @@ import {
 } from "#src/lifecycle/create-subagent-session";
 import { SubagentManager } from "#src/lifecycle/subagent-manager";
 import { CompositeSubagentObserver } from "#src/observation/composite-subagent-observer";
-import {
-  type NotificationDetails,
-  NotificationManager,
-  type UpdateDetails,
-} from "#src/observation/notification";
+import type { NotificationDetails, UpdateDetails } from "#src/observation/notification";
 import { createNotificationRenderer, createUpdateRenderer } from "#src/observation/renderer";
 import { SubagentEventsObserver } from "#src/observation/subagent-events-observer";
+import { SubagentWork } from "#src/observation/subagent-work";
 import { registerMainAgentProfile } from "#src/main-agent-profile";
 import { SubagentRuntime } from "#src/runtime";
 import { readBranchRecords } from "#src/roster";
@@ -59,6 +56,7 @@ import { showAgentsBrowser } from "#src/ui/agents-browser";
 import { SessionNavigatorHandler } from "#src/ui/session-navigator";
 import { SubagentsSettingsHandler } from "#src/ui/subagents-settings";
 import { WatchOverlay } from "#src/ui/watch-overlay";
+import { ensureWorkHost } from "../../../packages/pi-work/src/index.ts";
 
 export default function (pi: ExtensionAPI) {
   // ---- Register custom notification renderer ----
@@ -73,18 +71,13 @@ export default function (pi: ExtensionAPI) {
   // ---- Runtime: all mutable extension state in one place ----
   const runtime = new SubagentRuntime();
 
-  // ---- Notification system ----
-  // Owns completion nudges and live-activity cleanup. The widget detects finished
-  // agents itself (AgentWidget.update self-seeds), so NotificationManager has no
-  // widget dependency — keeping the construction graph a cycle-free DAG.
-  const notifications = new NotificationManager((msg, opts) => pi.sendMessage(msg, opts));
-
-  // Gate nudge delivery on the parent's agent run. agent_settled fires exactly
-  // once per run (from a finally block, so it also covers error and abort),
-  // whereas agent_end fires once per run segment — retries, auto-compaction and
-  // followUp continuations each emit one.
-  pi.on("agent_start", () => notifications.onParentAgentStart());
-  pi.on("agent_settled", () => notifications.onParentAgentSettled());
+  // ---- Work: the session that spawns an agent waits on its runs ----
+  // Each run is an item in the spawning session's work host (packages/pi-work), completed with
+  // the completion message. The host writes the message into the transcript, wakes an idle
+  // session, and answers it in the same run when the session is running; this extension holds
+  // and queues nothing. Called first, so the host's session handlers are registered before ours.
+  const workAccess = ensureWorkHost(pi);
+  const work = new SubagentWork(() => workAccess.host());
 
   // Settings: owns all three in-memory values and handles load/save/emit.
   // onMaxConcurrentChanged is wired to the limiter directly (closure captures by reference).
@@ -100,7 +93,7 @@ export default function (pi: ExtensionAPI) {
   const eventsObserver = new SubagentEventsObserver({
     emit: (channel, data) => pi.events.emit(channel, data),
     appendEntry: (customType, data) => pi.appendEntry(customType, data),
-    notifications,
+    work,
     isOnBranch: (id) =>
       readBranchRecords(runtime.currentCtx)?.some((record) => record.id === id) ?? false,
   });
@@ -204,7 +197,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  const lifecycle = new SessionLifecycleHandler(runtime, manager, () => notifications.dispose());
+  const lifecycle = new SessionLifecycleHandler(runtime, manager, () => work.dispose());
 
   // Live widget: constructed after the manager (it polls listAgents()) and
   // registered as a lifecycle observer so it self-drives its update timer.
