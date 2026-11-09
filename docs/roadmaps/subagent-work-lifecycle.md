@@ -16,10 +16,11 @@ again) on a simpler model:
 - One generic **work** contract covers everything a session can wait on: jobs,
   subagents it delegated to, and questions to its parent. pi-job, pi-subagent
   and pi-ask are all producers on it, so nested delegation behaves like jobs do.
-- An agent's session is never released while it has running work (a job or a
-  subagent of its own). Otherwise an idle session can be released after the
-  retention window, or lost to a reload or restart, and is reopened from the
-  transcript when the agent next gets input.
+- An agent's session is never released while it has open work: a job, a
+  subagent of its own, or a question to its parent. An idle agent with no open
+  work can have its session released after the retention window, or lose it to
+  a reload or restart, and it is reopened from the transcript when the agent
+  next gets input.
 - Work lost to a reload or restart is reported to the agent's parent, never
   restarted on its own. The parent or the user decides whether to send the
   agent more.
@@ -39,7 +40,7 @@ background agents finish, and that is accepted.
 | Should a released or expired session come back? | Yes, on reload, restart and retention release alike.                   | User    |
 | Who uses the work interface?                    | pi-job, delegated subagents, and ask.                                  | User    |
 | Does ask in the root session change?            | No. It still asks the user in a dialog. Only the parent route changes. | Assumed |
-| Can a session with active work be cleaned up?   | No. Only running work holds a session; an open question does not.      | User    |
+| Can a session with active work be cleaned up?   | No. Any open work holds it, a question included.                       | User    |
 | One input tool for steer and resume?            | Yes: `subagent_send`.                                                  | User    |
 | Drop `subagent_wait`?                           | Yes. A child that needs guidance asks.                                 | User    |
 | What happens to work lost on restart?           | It is reported to the parent. Nothing restarts on its own.             | User    |
@@ -91,8 +92,8 @@ idea of an activation service that child extensions find by session id.
 | A question alone completes the child, so "waiting for an answer" is a special case of completed.                                                                       | roster, outcome rendering             |
 
 **Noticed, not doing:** keeping the process alive in print mode until work
-finishes; keeping running work alive while its session is released. Running
-work holds the session instead.
+finishes; keeping work alive while its session is released. Open work holds
+the session instead.
 
 ## Options
 
@@ -120,14 +121,7 @@ A **work host** exists for every session and is found by session id through
 ```ts
 interface WorkHost {
   /** Something this session now waits on. Open work keeps an agent from finishing. */
-  open(item: {
-    owner: string;
-    kind: string;
-    label: string;
-    /** Runs inside this session (a job, a subagent) and holds it live until closed. */
-    running: boolean;
-    data?: Json;
-  }): WorkItem;
+  open(item: { owner: string; kind: string; label: string; data?: Json }): WorkItem;
   /** Items left open by an earlier process or session instance, for their owner to adopt. */
   adopt(owner: string, adopt: (item: WorkItem) => boolean): void;
   list(): readonly WorkItemView[];
@@ -163,8 +157,8 @@ type WorkMessage = { customType: string; content: string | TextPart[]; details?:
   - In a child, the loss is recorded for the agent's next run and reported to
     its parent through the agent's item.
   - In the root session, it is shown without starting a turn.
-- A session with an open **running** item is never released. Passive items (an
-  open question) do not hold it.
+- A session with any open item is never released. There is one kind of item:
+  a question holds its session the same way a job does.
 
 ### Agent state
 
@@ -191,7 +185,7 @@ type WorkMessage = { customType: string; content: string | TextPart[]; details?:
 
 ### How the producers map onto it
 
-- **pi-job:** `job_start` and `job_watch` open a running item and complete it
+- **pi-job:** `job_start` and `job_watch` open an item and complete it
   with today's completion text. Reload re-adopts by id through pi-job's existing
   reload handoff. After a restart the jobs are gone, so the items come back as
   lost.
@@ -203,13 +197,14 @@ type WorkMessage = { customType: string; content: string | TextPart[]; details?:
   - New input to a done agent opens a new item. Stopping an agent cancels it.
   - This replaces `NotificationManager`'s own queueing and delivery.
 - **pi-ask, in a child:**
-  - Ask opens a passive question item in the child's host, and notifies the
-    parent through the child's agent item.
+  - Ask opens a question item in the child's host, and notifies the parent
+    through the child's agent item.
   - The child ends its turn and is idle and waiting.
   - The parent's next `subagent_send` answers the question and closes the
     item. There is no `subagent_wait`: a child that needs guidance asks.
-  - A question is passive, so a child waiting days for an answer can have its
-    session released and reopened when the answer arrives.
+  - The question holds the child's session like any other open item. pi-ask
+    adopts its question items on session start, so a question survives a
+    reload or restart and is never reported lost.
 
 ## Roadmap
 
@@ -283,7 +278,7 @@ and a scripted model (pattern from PR #105's `waiting-jobs.integration.test.ts`)
 
 **Type:** contract (producer retrofit)
 **Eases:** 9, 11, 12
-**Does:** pi-job opens a running item per job or watch and completes it on exit
+**Does:** pi-job opens an item per job or watch and completes it on exit
 or match. Its own `Delivery` use goes away. Reload re-adopts items through the
 existing owner registry. `reportReloadLoss` and `historicalRunningJobs` are
 replaced by lost items from the host. Delivery-failure warnings become lost
@@ -363,7 +358,7 @@ rendering tests for the new rows. `npm run verify:bundle`.
 **Type:** the change
 **Does:**
 
-- Spawning opens a running item in the spawning session's host. Going idle with
+- Spawning opens an item in the spawning session's host. Going idle with
   no open work completes it with the completion message. `parent_notify` goes
   through `notify`. Stop cancels the item, and new input opens a new one.
 - `NotificationManager`'s queueing (holding while the parent runs, flushing at
@@ -391,7 +386,7 @@ extended to spawn a scripted child.
   running child gets them as follow-ups through the pi-work delivery state
   machine, bound to the child session.
 - Nested delegation now works with no extra code: a child's own subagents are
-  running items in its host.
+  items in its host.
 - The widget, status bar, roster, watch overlay and dashboard show an idle
   agent with open items as waiting, with the items' labels, and count it under
   "waiting" in the status bar. Waiting rows stay visible and show no clock.
@@ -417,37 +412,38 @@ nested-delegation test, and a real-session test with `job_watch`.
 **Type:** the change
 **Does:**
 
-- In a child, `ask` opens a passive question item and notifies the parent
-  through the agent's item. Its tool text tells the child to end its turn.
+- In a child, `ask` opens a question item and notifies the parent through the
+  agent's item. Its tool text tells the child to end its turn.
+- pi-ask adopts its open question items on session start, so questions survive
+  a reload or restart.
 - The parent's next `subagent_send` closes open question items and becomes the
   run's prompt.
 - Remove the `ask:route` record path, `pendingQuestion` as an outcome field,
   and the roster's "waiting for your answer" special case.
 - The root session's ask is unchanged.
 
-**Done when:** A child that asks is idle and waiting. The parent sees the
-question once, and answering wakes the child with the answer.
+**Done when:** A child that asks is idle and waiting, and keeps its session.
+The parent sees the question once, and answering wakes the child with the
+answer. An open question is still open after a reload.
 **Verification:** pi-ask and pi-subagent suites. One test with a job and a
 question open together.
 **Ships alone:** yes · **Rollback:** revert
 **Depends on:** 9 · **Size:** S
 
-### 11. Release idle sessions without running work
+### 11. Release idle sessions with no open work
 
 **Type:** the change
 **Does:**
 
-- Retention releases an idle agent's session after its window unless it has an
-  open running item. Done agents and agents waiting only on an answer are both
-  released.
-- Input or an answer to a released agent reopens the transcript and runs it.
+- Retention releases an idle agent's session after its window only when it has
+  no open work. Waiting agents keep their sessions.
+- Input to a released agent reopens the transcript and runs it.
 - No work has to outlive its session, so nothing detaches from it.
 
 **Done when:**
 
-- An agent with a running job or subagent is never released.
-- An agent waiting only on an answer is released after its window, and the
-  answer reopens it.
+- An agent with any open item (job, subagent or question) is never released.
+- A done agent is released after its window, and `subagent_send` reopens it.
 
 **Verification:** pi-subagent tests with fake timers. A real-session test that
 releases and then reopens.
@@ -461,13 +457,14 @@ the parent shuts down.
 **Does:**
 
 - On parent reload, every agent record survives. At the parent's
-  `session_start`, agents that had open running work get their sessions
-  reopened without a model run, so producers can re-adopt (pi-job within its
-  reload handoff window). Their hosts are provided again under each child's
+  `session_start`, agents that had open work get their sessions reopened
+  without a model run, so producers can re-adopt: pi-job within its reload
+  handoff window, pi-ask always. Their hosts are provided again under each child's
   session id.
 - A child's own subagents end with the reload, so their items are lost.
-- On restart, agents are rebuilt idle with their open items and inbox. Running
-  items cannot be adopted and are lost.
+- On restart, agents are rebuilt idle with their open items and inbox, and those
+  with open items are reopened the same way. Jobs and subagents cannot be
+  adopted after a restart and are lost; questions are adopted and stay open.
 - Lost work is reported to the agent's parent in one message per startup that
   lists each agent and what it lost, and is recorded for the agent's next run.
   Nothing restarts on its own.
