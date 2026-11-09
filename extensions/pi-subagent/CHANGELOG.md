@@ -3,6 +3,12 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-09: Pi 1.5.0 active-tool order
+
+- `test/main-agent-profile-sdk.test.ts` compares the active tools as a set. Pi
+  1.5.0 keeps tools that stay active in place and appends newly activated ones,
+  so the order is Pi's. No source change.
+
 ## 2026-11-08: One agent-definition builder for tests
 
 - `test/helpers/make-agent-config.ts`: the `makeAgentConfig` builder that

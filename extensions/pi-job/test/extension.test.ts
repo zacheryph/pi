@@ -581,7 +581,8 @@ void test(
       until: "sometimes",
     });
     ok("job_read", { id: "j1", tailLines: 200 });
-    bad("job_read", { id: "j1", tailLines: 2.5 });
+    // pi-schema (Pi 1.5.0) truncates a fractional integer instead of rejecting it.
+    assert.deepEqual(ok("job_read", { id: "j1", tailLines: 2.5 }), { id: "j1", tailLines: 2 });
     bad("job_read", { id: "j1", tailLines: 201 });
     bad("job_read", { id: "j1", tailLines: 0 });
     assert.match(

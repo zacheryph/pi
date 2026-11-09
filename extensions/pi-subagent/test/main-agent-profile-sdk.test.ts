@@ -25,6 +25,14 @@ import type { AgentConfig } from "#src/types";
 import { fauxRuntime, toolCall } from "../../../packages/pi-test-helpers/src/faux-session.ts";
 import { tempDir, writeFiles } from "../../../packages/pi-test-helpers/src/temp.ts";
 
+/**
+ * The active tools as a set. Pi keeps tools that stay active in place and
+ * appends newly activated ones (since 1.5.0), so their order is Pi's, not ours.
+ */
+function activeToolSet(session: { getActiveToolNames(): readonly string[] }): Set<string> {
+  return new Set(session.getActiveToolNames());
+}
+
 async function fixture(
   options: {
     mode?: ExtensionContext["mode"];
@@ -219,11 +227,9 @@ describe("main profile / installed SDK", () => {
       expect(h.calls).toHaveLength(1);
       expect(JSON.stringify(h.calls[0]![1])).toContain("PROFILE WITH MCP WILDCARD");
       expect(JSON.stringify(h.calls[0]![1])).toContain("FROZEN AWS INSTRUCTIONS");
-      expect(h.session.getActiveToolNames()).toEqual([
-        "read",
-        "codemode",
-        ...MAIN_AGENT_REQUIRED_TOOLS,
-      ]);
+      expect(activeToolSet(h.session)).toEqual(
+        new Set(["read", "codemode", ...MAIN_AGENT_REQUIRED_TOOLS]),
+      );
       expect(h.shutdown).not.toHaveBeenCalled();
       expect(h.errors).not.toHaveBeenCalled();
     },
@@ -276,7 +282,7 @@ describe("main profile / installed SDK", () => {
       });
       expect(h.session.model?.id).toBe("other");
       expect(h.session.thinkingLevel).toBe("high");
-      expect(h.session.getActiveToolNames()).toEqual(["read", ...MAIN_AGENT_REQUIRED_TOOLS]);
+      expect(activeToolSet(h.session)).toEqual(new Set(["read", ...MAIN_AGENT_REQUIRED_TOOLS]));
       await h.session.prompt("chosen config");
       expect(h.calls[0]![0]).toMatchObject({
         provider: "main-profile-test",
@@ -303,7 +309,7 @@ describe("main profile / installed SDK", () => {
       await h.session.prompt("manual config");
       expect(h.calls[1]![0].id).toBe("first");
       expect(h.calls[1]![2]?.reasoning).toBeUndefined();
-      expect(h.session.getActiveToolNames()).toEqual(["write"]);
+      expect(activeToolSet(h.session)).toEqual(new Set(["write"]));
       expect(JSON.stringify(h.calls[1]![1])).toContain("ONLY MAIN");
       expect(
         h.session.sessionManager
@@ -417,7 +423,7 @@ describe("main profile / installed SDK", () => {
       expect(request).toContain("PARENT BASE");
       expect(request).toContain("PARENT ADDENDUM");
       expect(request).toContain(`<${MAIN_AGENT_SECTION}>`);
-      expect(h.session.getActiveToolNames()).toEqual(["write", ...MAIN_AGENT_REQUIRED_TOOLS]);
+      expect(activeToolSet(h.session)).toEqual(new Set(["write", ...MAIN_AGENT_REQUIRED_TOOLS]));
       expect(
         h.session.sessionManager
           .getBranch()
@@ -553,7 +559,7 @@ describe("main profile / installed SDK", () => {
     await h.session.prompt("hello");
     expect(h.calls[0]![0].id).toBe("other");
     expect(h.calls[0]![2]?.reasoning).toBe("high");
-    expect(h.session.getActiveToolNames()).toEqual(["write"]);
+    expect(activeToolSet(h.session)).toEqual(new Set(["write"]));
     expect(JSON.stringify(h.calls[0]![1])).toContain("EXACT SAVED BODY");
     expect(h.shutdown).not.toHaveBeenCalled();
     expect(
