@@ -177,6 +177,11 @@ type WorkMessage = { customType: string; content: string | TextPart[]; details?:
 - How the last run ended (completed, turn limit, error or stopped) is recorded
   beside the state, with its result. Stopping an agent ends its run and cancels
   its open work; the agent is then idle.
+- Waiting is not a stored state, but the UI still shows it. The widget, status
+  bar, roster, watch overlay and dashboard derive it from the agent's open work:
+  an idle agent with open items shows as **waiting**, naming what it waits on
+  (`waiting: CI`, `waiting: answer`); one without shows as **done** with its
+  last outcome.
 - Every run, including the first, goes through one admission path and the
   limiter.
 - `subagent_send(agent_id, message)` is the one input tool, like a user typing
@@ -341,8 +346,9 @@ the v2 reader, so keep it.
 - Add `subagent_send(agent_id, message)`: steers a running agent, and queues a
   run for an idle one, reopening its transcript if needed.
 - Remove `subagent_steer` and `subagent_start`'s `resume`.
-- The widget, roster, watch overlay, dashboard and events show idle and the last
-  outcome, reusing PR #105's rows.
+- The widget, roster, watch overlay, dashboard and events show idle agents as
+  done with their last outcome, reusing PR #105's rows. Waiting appears in
+  step 9, once agents have open work.
 - Update skills and READMEs that name the old tools.
 
 **Done when:** One tool reaches an agent in any state. The roster shows idle and
@@ -386,6 +392,9 @@ extended to spawn a scripted child.
   machine, bound to the child session.
 - Nested delegation now works with no extra code: a child's own subagents are
   running items in its host.
+- The widget, status bar, roster, watch overlay and dashboard show an idle
+  agent with open items as waiting, with the items' labels, and count it under
+  "waiting" in the status bar. Waiting rows stay visible and show no clock.
 
 **Done when:**
 
@@ -394,6 +403,8 @@ extended to spawn a scripted child.
 - The completion wakes it through the limiter.
 - A completion during a run is delivered into that run.
 - No message ever starts an unmanaged run in a child.
+- The widget shows `waiting: CI` for an idle agent with an open watch, and
+  `done` once the watch completes and the agent finishes.
 
 **Verification:** Port PR #105's waiting-workers tests to this model. Add a
 nested-delegation test, and a real-session test with `job_watch`.
