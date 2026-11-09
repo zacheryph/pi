@@ -1,6 +1,6 @@
 # Subagents as background work
 
-Status: draft · Updated: 2026-11-08
+Status: chosen · Updated: 2026-11-09
 
 ## Goal brief
 
@@ -16,9 +16,13 @@ again) on a simpler model:
 - One generic **work** contract covers everything a session can wait on: jobs,
   subagents it delegated to, and questions to its parent. pi-job, pi-subagent
   and pi-ask are all producers on it, so nested delegation behaves like jobs do.
-- An idle agent does not need a live session. Its session can be released after
-  the retention window, or lost to a reload or restart, and is reopened from the
-  transcript when the agent next runs.
+- An agent's session is never released while it has running work (a job or a
+  subagent of its own). Otherwise an idle session can be released after the
+  retention window, or lost to a reload or restart, and is reopened from the
+  transcript when the agent next gets input.
+- Work lost to a reload or restart is reported to the agent's parent, never
+  restarted on its own. The parent or the user decides whether to send the
+  agent more.
 
 Out of scope: print and JSON mode. Without foreground, `pi -p` returns before
 background agents finish, and that is accepted.
@@ -35,6 +39,12 @@ background agents finish, and that is accepted.
 | Should a released or expired session come back? | Yes, on reload, restart and retention release alike.                   | User    |
 | Who uses the work interface?                    | pi-job, delegated subagents, and ask.                                  | User    |
 | Does ask in the root session change?            | No. It still asks the user in a dialog. Only the parent route changes. | Assumed |
+| Can a session with active work be cleaned up?   | No. Only running work holds a session; an open question does not.      | User    |
+| One input tool for steer and resume?            | Yes: `subagent_send`.                                                  | User    |
+| Drop `subagent_wait`?                           | Yes. A child that needs guidance asks.                                 | User    |
+| What happens to work lost on restart?           | It is reported to the parent. Nothing restarts on its own.             | User    |
+| Can a stopped or done agent take input?         | Yes, like a main session resumed days later.                           | User    |
+| Completion preview length?                      | Keep 500 characters.                                                   | User    |
 
 ## What exists
 
@@ -81,8 +91,8 @@ idea of an activation service that child extensions find by session id.
 | A question alone completes the child, so "waiting for an answer" is a special case of completed.                                                                       | roster, outcome rendering             |
 
 **Noticed, not doing:** keeping the process alive in print mode until work
-finishes; detaching a child's running grandchildren from its session (step 11
-keeps such a session live instead).
+finishes; keeping running work alive while its session is released. Running
+work holds the session instead.
 
 ## Options
 
@@ -114,7 +124,8 @@ interface WorkHost {
     owner: string;
     kind: string;
     label: string;
-    detachable: boolean;
+    /** Runs inside this session (a job, a subagent) and holds it live until closed. */
+    running: boolean;
     data?: Json;
   }): WorkItem;
   /** Items left open by an earlier process or session instance, for their owner to adopt. */
@@ -147,11 +158,13 @@ type WorkMessage = { customType: string; content: string | TextPart[]; details?:
     through the concurrency limiter. Messages are appended before that run's
     prompt.
 - **On session start**, the host offers persisted open items to their owners
-  through `adopt`. Items no owner adopts by the end of startup are completed
-  with a "lost" message, which wakes the session to deal with it.
-- `detachable: true` means the producer keeps working without the session (pi-job
-  through its owner registry). A session holding only detachable or passive
-  items can be released.
+  through `adopt`. Items no owner adopts by the end of startup are closed as
+  lost. Lost work never wakes anything on its own:
+  - In a child, the loss is recorded for the agent's next run and reported to
+    its parent through the agent's item.
+  - In the root session, it is shown without starting a turn.
+- A session with an open **running** item is never released. Passive items (an
+  open question) do not hold it.
 
 ### Agent state
 
@@ -160,21 +173,23 @@ type WorkMessage = { customType: string; content: string | TextPart[]; details?:
 | `queued`  | A run is waiting for a concurrency slot. Same for the first run and later ones. |
 | `running` | A run is active.                                                                |
 | `idle`    | No run. With open work it is waiting; with none it is done.                     |
-| `stopped` | The parent stopped it. Its open work was cancelled.                             |
 
-- How the last run ended (completed, turn limit or error) is recorded beside
-  the state, with its result. It is not a state of its own.
+- How the last run ended (completed, turn limit, error or stopped) is recorded
+  beside the state, with its result. Stopping an agent ends its run and cancels
+  its open work; the agent is then idle.
 - Every run, including the first, goes through one admission path and the
   limiter.
-- Any agent that is not running takes input from the parent. A running agent is
-  steered. An idle or stopped agent queues a run, reopening its transcript if
-  the session was released.
+- `subagent_send(agent_id, message)` is the one input tool, like a user typing
+  into a main session. A running agent is steered. Any idle agent queues a run,
+  reopening its transcript if the session was released, however long ago it
+  finished.
 
 ### How the producers map onto it
 
-- **pi-job:** `job_start` and `job_watch` open a detachable item and complete it
-  with today's completion text. Reload re-adopts by id. After a restart the
-  items are not adopted, so they come back as lost.
+- **pi-job:** `job_start` and `job_watch` open a running item and complete it
+  with today's completion text. Reload re-adopts by id through pi-job's existing
+  reload handoff. After a restart the jobs are gone, so the items come back as
+  lost.
 - **pi-subagent, for the session that spawned an agent:**
   - Spawning opens an item in the spawner's host.
   - The agent going idle with no open work completes that item with the
@@ -186,8 +201,10 @@ type WorkMessage = { customType: string; content: string | TextPart[]; details?:
   - Ask opens a passive question item in the child's host, and notifies the
     parent through the child's agent item.
   - The child ends its turn and is idle and waiting.
-  - The parent's next input to that agent answers the question and closes the
-    item. `subagent_wait` is not needed: it is an ask with no question.
+  - The parent's next `subagent_send` answers the question and closes the
+    item. There is no `subagent_wait`: a child that needs guidance asks.
+  - A question is passive, so a child waiting days for an answer can have its
+    session released and reopened when the answer arrives.
 
 ## Roadmap
 
@@ -196,7 +213,7 @@ type WorkMessage = { customType: string; content: string | TextPart[]; details?:
 ### 1. Pin today's parent-visible subagent behaviour
 
 **Type:** tidy (characterization)
-**Eases:** 3, 6, 7 (they change the code these tests cover)
+**Eases:** 3, 6, 7a (they change the code these tests cover)
 **Does:** Add tests in `extensions/pi-subagent/test/characterization/` covering:
 the completion message text for each outcome, steering a running agent,
 resuming a finished agent (live and cold), retention release, and rebuilding
@@ -227,7 +244,7 @@ unchanged.
 ### 3. Give `Subagent` one run abstraction
 
 **Type:** tidy
-**Eases:** 7 (state model), 9 (activations)
+**Eases:** 7a (state model), 9 (activations)
 **Does:** Inside `Subagent`, introduce a `Run` value created by one `startRun`
 path that the first run and resumes both use. Keep today's behaviour: a resume
 still skips the limiter. Fold `scheduleVia`, `resume` and `runResume`
@@ -261,11 +278,11 @@ and a scripted model (pattern from PR #105's `waiting-jobs.integration.test.ts`)
 
 **Type:** contract (producer retrofit)
 **Eases:** 9, 11, 12
-**Does:** pi-job opens a detachable item per job or watch and completes it on
-exit or match. Its own `Delivery` use goes away. Reload re-adopts items through
-the owner registry. `reportReloadLoss` and `historicalRunningJobs` are replaced
-by lost items from the host. Delivery-failure warnings become lost messages, so
-they reach the model in every session.
+**Does:** pi-job opens a running item per job or watch and completes it on exit
+or match. Its own `Delivery` use goes away. Reload re-adopts items through the
+existing owner registry. `reportReloadLoss` and `historicalRunningJobs` are
+replaced by lost items from the host. Delivery-failure warnings become lost
+messages, so they reach the model in every session, children included.
 **Done when:** Every pi-job test passes. The reload-loss tests are rewritten to
 expect lost items.
 **Verification:** pi-job suite, plus a manual root session: start a watch,
@@ -289,55 +306,71 @@ expect lost items.
 - Update tool descriptions, the README, and the skills that mention foreground.
 - Child prompts tell agents to `stash_put` large results and name the handle in
   their final answer.
-  **Done when:** No code path blocks the parent on a subagent. The completion
-  message is the only carrier of an outcome.
-  **Verification:** pi-subagent suite with the foreground tests removed. Step 1's
-  tests still pass for background. `npm run verify:bundle`.
-  **Ships alone:** yes · **Rollback:** revert (restores foreground)
-  **Depends on:** 1 · **Size:** M
 
-### 7. Move agents to the idle state model
+**Done when:** No code path blocks the parent on a subagent. The completion
+message is the only carrier of an outcome.
+**Verification:** pi-subagent suite with the foreground tests removed. Step 1's
+tests still pass for background. `npm run verify:bundle`.
+**Ships alone:** yes · **Rollback:** revert (restores foreground)
+**Depends on:** 1 · **Size:** M
+
+### 7a. Move agents to the idle state model
 
 **Type:** the change
 **Does:**
 
-- Statuses become `queued | running | idle | stopped`, with the last run's
-  outcome stored beside them.
+- Statuses become `queued | running | idle`. The last run's outcome
+  (completed, turn limit, error or stopped) and result are stored beside them.
+- Stop ends the run and leaves the agent idle.
 - Every run, including resumes, goes through the limiter.
-- Persisted records get a v2 shape. The reader maps v1 statuses:
-  `completed`, `aborted` and `error` become `idle`, and a saved `queued` or
-  `running` becomes idle with an interrupted outcome.
-- The widget, roster, watch overlay, dashboard and events follow, reusing PR
-  #105's rows.
-- `subagent_steer` and `subagent_start resume` merge into one input tool (see
-  Open questions). It steers a running agent and queues a run for any other.
-  **Done when:** An idle agent of any outcome takes input. The roster shows idle
-  and the last outcome. v1 records load.
-  **Verification:** pi-subagent and pi-dashboard suites. A persistence test reads
-  v1 fixtures. Narrow-width and ANSI rendering tests for the new rows.
-  **Ships alone:** yes · **Rollback:** revert. v2 records written meanwhile need
-  the v2 reader, so keep it.
-  **Depends on:** 3, 6 · **Size:** L. Can split into 7a (state, persistence,
-  limiter) and 7b (tools and UI).
+- Persisted records get a v2 shape. The reader maps v1 statuses: `completed`,
+  `aborted`, `error` and `stopped` become `idle` with that outcome, and a saved
+  `queued` or `running` becomes idle with an interrupted outcome.
+
+**Done when:** An idle agent of any outcome accepts a new run. v1 records load.
+**Verification:** pi-subagent suite. A persistence test reads v1 fixtures.
+**Ships alone:** yes · **Rollback:** revert. v2 records written meanwhile need
+the v2 reader, so keep it.
+**Depends on:** 3, 6 · **Size:** M
+
+### 7b. Replace steer and resume with `subagent_send`
+
+**Type:** the change (tool contract)
+**Does:**
+
+- Add `subagent_send(agent_id, message)`: steers a running agent, and queues a
+  run for an idle one, reopening its transcript if needed.
+- Remove `subagent_steer` and `subagent_start`'s `resume`.
+- The widget, roster, watch overlay, dashboard and events show idle and the last
+  outcome, reusing PR #105's rows.
+- Update skills and READMEs that name the old tools.
+
+**Done when:** One tool reaches an agent in any state. The roster shows idle and
+the last outcome.
+**Verification:** pi-subagent and pi-dashboard suites. Narrow-width and ANSI
+rendering tests for the new rows. `npm run verify:bundle`.
+**Ships alone:** yes · **Rollback:** revert
+**Depends on:** 7a · **Size:** M
 
 ### 8. Make pi-subagent a work producer for its spawner
 
 **Type:** the change
 **Does:**
 
-- Spawning opens an item in the spawning session's host. Going idle with no
-  open work completes it with the completion message. `parent_notify` goes
+- Spawning opens a running item in the spawning session's host. Going idle with
+  no open work completes it with the completion message. `parent_notify` goes
   through `notify`. Stop cancels the item, and new input opens a new one.
 - `NotificationManager`'s queueing (holding while the parent runs, flushing at
   `agent_settled`) is removed. The host does that now.
-- The completion message names stash handles, and the preview length is set
-  for stash-first results.
-  **Done when:** A root session gets the same completion and update messages as
-  before, through the host. Step 1's message tests pass.
-  **Verification:** pi-subagent suite. The integration test from step 4 is
-  extended to spawn a scripted child.
-  **Ships alone:** yes · **Rollback:** revert
-  **Depends on:** 4, 7 · **Size:** M
+- The completion message keeps its 500-character preview and names stash
+  handles.
+
+**Done when:** A root session gets the same completion and update messages as
+before, through the host. Step 1's message tests pass.
+**Verification:** pi-subagent suite. The integration test from step 4 is
+extended to spawn a scripted child.
+**Ships alone:** yes · **Rollback:** revert
+**Depends on:** 4, 7b · **Size:** M
 
 ### 9. Provide a managed work host for each child
 
@@ -352,17 +385,21 @@ expect lost items.
   running child gets them as follow-ups through the pi-work delivery state
   machine, bound to the child session.
 - Nested delegation now works with no extra code: a child's own subagents are
-  items in its host.
-  **Done when:**
-- A child with a running job or a running grandchild goes idle-waiting.
+  running items in its host.
+
+**Done when:**
+
+- A child with a running job or a running subagent of its own goes idle and
+  waiting.
 - The completion wakes it through the limiter.
 - A completion during a run is delivered into that run.
 - No message ever starts an unmanaged run in a child.
-  **Verification:** Port PR #105's waiting-workers tests to this model. Add a
-  nested-delegation test, and a real-session test with `job_watch`.
-  **Ships alone:** yes · **Rollback:** revert
-  **Depends on:** 5, 8 · **Size:** L. Split into 9a (host, parking, inbox) and
-  9b (mid-run delivery) if review needs it.
+
+**Verification:** Port PR #105's waiting-workers tests to this model. Add a
+nested-delegation test, and a real-session test with `job_watch`.
+**Ships alone:** yes · **Rollback:** revert
+**Depends on:** 5, 8 · **Size:** L. Split into 9a (host, parking, inbox) and 9b
+(mid-run delivery) if review needs it.
 
 ### 10. Route a child's ask through the work contract
 
@@ -371,58 +408,71 @@ expect lost items.
 
 - In a child, `ask` opens a passive question item and notifies the parent
   through the agent's item. Its tool text tells the child to end its turn.
-- The parent's next input closes open question items and becomes the run's
-  prompt.
+- The parent's next `subagent_send` closes open question items and becomes the
+  run's prompt.
 - Remove the `ask:route` record path, `pendingQuestion` as an outcome field,
   and the roster's "waiting for your answer" special case.
 - The root session's ask is unchanged.
-  **Done when:** A child that asks is idle-waiting. The parent sees the question
-  once, and answering wakes the child with the answer.
-  **Verification:** pi-ask and pi-subagent suites. One test with a job and a
-  question open together.
-  **Ships alone:** yes · **Rollback:** revert
-  **Depends on:** 9 · **Size:** S
 
-### 11. Release idle sessions and reopen them on demand
+**Done when:** A child that asks is idle and waiting. The parent sees the
+question once, and answering wakes the child with the answer.
+**Verification:** pi-ask and pi-subagent suites. One test with a job and a
+question open together.
+**Ships alone:** yes · **Rollback:** revert
+**Depends on:** 9 · **Size:** S
 
-**Type:** the change
-**Does:**
-
-- Retention releases any idle agent's session after its window, waiting ones
-  included, when every open item is detachable or passive.
-- A child with a running grandchild keeps its session, because agent items are
-  not detachable yet.
-- Job items stay with pi-job's owner registry, with no expiry while the item is
-  open. Completions for a released agent land in its inbox.
-- The next run reopens the transcript and re-adopts items.
-  **Done when:** A waiting agent with a long CI watch has its session released.
-  The watch's completion reopens it and the run sees the completion.
-  **Verification:** pi-subagent tests with fake timers. A real-session test that
-  releases and then reopens.
-  **Ships alone:** yes · **Rollback:** revert. Idle sessions are then kept until
-  the parent shuts down.
-  **Depends on:** 5, 9 · **Size:** M
-
-### 12. Keep idle agents across parent reload and restart
+### 11. Release idle sessions without running work
 
 **Type:** the change
 **Does:**
 
-- On parent reload, idle records survive. Their hosts are provided again under
-  each child's session id at `session_start`. Children's jobs stay with pi-job's
-  owner registry.
-- On restart, idle agents are rebuilt with their open items and inbox. Items no
-  producer adopts complete as lost and wake the agent (see Open questions).
-- Running agents still end on reload or restart, and their runs are recorded as
-  interrupted.
-  **Done when:**
-- After `/reload`, a waiting agent is still listed, and its job's completion
-  wakes it.
-- After a restart, it wakes with a "lost" message and can be steered.
-  **Verification:** Reload and restart tests at the manager level. A manual
-  reload in a TUI session using the tui-screenshot skill's driver.
-  **Ships alone:** yes · **Rollback:** revert
-  **Depends on:** 11 · **Size:** M
+- Retention releases an idle agent's session after its window unless it has an
+  open running item. Done agents and agents waiting only on an answer are both
+  released.
+- Input or an answer to a released agent reopens the transcript and runs it.
+- No work has to outlive its session, so nothing detaches from it.
+
+**Done when:**
+
+- An agent with a running job or subagent is never released.
+- An agent waiting only on an answer is released after its window, and the
+  answer reopens it.
+
+**Verification:** pi-subagent tests with fake timers. A real-session test that
+releases and then reopens.
+**Ships alone:** yes · **Rollback:** revert. Idle sessions are then kept until
+the parent shuts down.
+**Depends on:** 9, 10 · **Size:** S
+
+### 12. Keep idle agents across parent reload and restart, and report lost work
+
+**Type:** the change
+**Does:**
+
+- On parent reload, every agent record survives. At the parent's
+  `session_start`, agents that had open running work get their sessions
+  reopened without a model run, so producers can re-adopt (pi-job within its
+  reload handoff window). Their hosts are provided again under each child's
+  session id.
+- A child's own subagents end with the reload, so their items are lost.
+- On restart, agents are rebuilt idle with their open items and inbox. Running
+  items cannot be adopted and are lost.
+- Lost work is reported to the agent's parent in one message per startup that
+  lists each agent and what it lost, and is recorded for the agent's next run.
+  Nothing restarts on its own.
+- A run in progress at reload or restart ends with an interrupted outcome.
+
+**Done when:**
+
+- After `/reload`, an agent waiting on a job is still waiting, and the job's
+  completion wakes it.
+- After a restart, the parent gets one message naming the agents that lost
+  work. Those agents are idle and take `subagent_send`.
+
+**Verification:** Reload and restart tests at the manager level. A manual reload
+in a TUI session using the tui-screenshot skill's driver.
+**Ships alone:** yes · **Rollback:** revert
+**Depends on:** 11 · **Size:** M
 
 ### Clean up
 
@@ -432,38 +482,24 @@ expect lost items.
 **Does:**
 
 - Delete leftovers: claim helpers, foreground rendering, and the old status
-  strings and events that step 7 replaced.
+  strings and events that steps 7a and 7b replaced.
 - Update the pi-subagent, pi-job, pi-ask and pi-session-tree READMEs, and add a
   pi-work README.
 - Add CHANGELOG entries for the vendored extensions.
 - Update `skills/execute-roadmap` and `skills/make-it-easy` text that mentions
-  foreground or `wait: true`.
+  foreground, `wait: true`, `subagent_steer` or `resume`.
 - Close PR #105 with a link to this roadmap.
-  **Done when:** A search for `foreground`, `claim(` and `wait: true` in the
-  extensions finds nothing stale. Docs describe the idle model.
-  **Verification:** `npm run check`, `npm run verify:bundle`, full `npm test`.
-  **Ships alone:** yes · **Rollback:** revert
-  **Depends on:** 10, 12 · **Size:** S
+
+**Done when:** A search for `foreground`, `claim(`, `wait: true` and
+`subagent_steer` in the extensions and skills finds nothing stale. Docs describe
+the idle model.
+**Verification:** `npm run check`, `npm run verify:bundle`, full `npm test`.
+**Ships alone:** yes · **Rollback:** revert
+**Depends on:** 10, 12 · **Size:** S
 
 **Start with:** steps 1 and 2. Both are safe to start today and can run in
 parallel.
 
 ## Open questions
 
-1. **One input tool or two?** Recommend `subagent_send(agent_id, message)`,
-   replacing `subagent_steer` and `subagent_start`'s `resume`. The alternative
-   is to keep `subagent_steer` and widen it to idle agents. Blocks step 7b.
-2. **Is a separate `subagent_wait` tool needed?** PR #105 added one. Recommend
-   no: a child that needs guidance asks, and that is the same work item with a
-   question attached. Blocks step 10.
-3. **After a restart, should lost work wake the agent on its own?** Recommend
-   yes, through the limiter, since a lost job is a finished job with a bad
-   result. The alternative is to tell the parent and let it decide, which
-   avoids spending tokens at startup. Blocks step 12.
-4. **Can a stopped agent take input?** Recommend yes: input reopens it like any
-   idle agent, and stop only cancels its open work. Blocks step 7.
-5. **Completion preview length** once stash handles are the norm: keep 500
-   characters, or shorten to a summary plus handles? Blocks step 8.
-6. **Detaching grandchildren** so that a delegating child's session can be
-   released (process-level ownership of child managers). Deferred. Step 11
-   keeps such sessions live.
+None block a step. The earlier questions are answered in the Answers table.
