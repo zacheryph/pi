@@ -109,6 +109,9 @@ pi-personal/
     ├── pi-foundations/                  # shared settings + model lookup
     ├── pi-scripted-model/               # fake model + bundle test harness (dev only)
     ├── pi-test-helpers/                 # shared test helpers (dev only)
+    ├── pi-work/                         # work:v1 contract + root work host
+    │   ├── src/index.ts                 # WorkHost types, ensureWorkHost, boundary delivery
+    │   └── test/
     └── pi-session-tree/                 # shared library, not an extension
         ├── src/index.ts                 # cross-session registry (globalThis)
         └── test/
@@ -523,6 +526,17 @@ padding and width assertions, a fake `ExtensionAPI` for factory unit tests, a
 `ui.custom` stub that mounts components, and real SDK sessions on an offline
 faux model. Reach for it before writing another local helper; keep helpers
 that only one workspace needs in that workspace's `test/`.
+
+### The work contract
+
+[`packages/pi-work`](packages/pi-work/README.md) defines `work:v1`, the one
+interface for everything a session waits on (jobs, delegated subagents,
+questions). A producer opens an item in the session's work host and completes
+it with a message; the host persists open items, writes messages into the
+transcript, wakes an idle session, answers a message that arrives mid-run in
+that same run, and closes items nobody takes over after a restart as lost
+without starting a turn. Only pi-job's delivery mechanics use it so far; there is
+nothing to configure.
 
 ### Screenshot the TUI
 
