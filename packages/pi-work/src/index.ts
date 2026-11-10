@@ -29,4 +29,13 @@ export {
   type WorkHostOptions,
   type WorkStore,
 } from "./host.ts";
+export {
+  createLandingTracker,
+  type LandingBoundary,
+  type LandingMark,
+  type LandingTarget,
+  type LandingTracker,
+  type LandingTrackerOptions,
+  type TranscriptEntry,
+} from "./landing.ts";
 export { ensureWorkHost, type WorkAccess } from "./root.ts";

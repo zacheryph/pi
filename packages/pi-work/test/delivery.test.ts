@@ -176,6 +176,23 @@ describe("continuesRun", () => {
     expect(continuesRun(event("completed", {}, [{ customType: "mine" }]), isMine)).toBe(true);
     expect(continuesRun(event("completed", {}), isMine)).toBe(false);
   });
+  it("looks past other extensions' custom messages after the work message", () => {
+    const run = (...tail: object[]) => ({
+      outcome: "completed",
+      context: {
+        contextMessages: [{ role: "assistant" }, ...tail],
+        pendingMessages: [],
+      },
+    });
+    const work = { role: "custom", customType: "mine" };
+    const other = { role: "custom", customType: "other:note" };
+    expect(continuesRun(run(work, other), isMine)).toBe(true);
+    expect(continuesRun(run(work, other, { role: "branchSummary" }), isMine)).toBe(true);
+    expect(continuesRun(run(other, work), isMine)).toBe(true);
+    // Answered: an assistant message sits between the work message and the end.
+    expect(continuesRun(run(work, { role: "assistant" }, other), isMine)).toBe(false);
+    expect(continuesRun(run(other), isMine)).toBe(false);
+  });
   it("never continues an aborted or failed run", () => {
     expect(continuesRun(event("aborted", { customType: "mine" }), isMine)).toBe(false);
     expect(continuesRun(event("error", { customType: "mine" }), isMine)).toBe(false);
