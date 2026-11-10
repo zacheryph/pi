@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import { service } from "../../../../packages/pi-session-tree/src/index.ts";
+import { resetSessionTree } from "../../../../packages/pi-test-helpers/src/globals.ts";
+import {
+  WORK_ENTRY,
+  WORK_LOST,
+  WORK_SERVICE,
+  type WorkHost,
+} from "../../../../packages/pi-work/src/index.ts";
 import type {
   CreateSessionOptions,
   ResourceLoaderOptions,
@@ -892,6 +899,127 @@ describe("createSubagentSession — all tools and MCP patterns", () => {
     );
 
     expect(io.createSession).toHaveBeenCalledWith(expect.objectContaining({ tools: ["read"] }));
+    expect(loadedBuiltinNames()).toEqual([]);
+  });
+});
+
+describe("createSubagentSession — the child's managed work host", () => {
+  // Every stub child here has the same session id: forget what the last test offered under it.
+  beforeEach(resetSessionTree);
+  const policy = () => ({ wake: vi.fn(), changed: vi.fn() });
+
+  it("offers a work host under the child's session id before its extensions bind", async () => {
+    const session = arrangeFactory();
+    const deps = defaultDeps();
+    let atBind: WorkHost | undefined;
+    session.bindExtensions.mockImplementation(async () => {
+      atBind = service<WorkHost>("child-session-id", WORK_SERVICE);
+    });
+
+    const subagent = await createSubagentSession(
+      { snapshot: STUB_SNAPSHOT, type: "explore", work: policy() },
+      deps,
+    );
+
+    expect(atBind).toBeDefined();
+    // The one the session reports its open items from.
+    const item = atBind!.open({ owner: "test", kind: "job", label: "CI" });
+    expect(subagent.openWork().map((view) => view.id)).toEqual([item.id]);
+  });
+
+  it("persists the child's open items in the child's own session file", async () => {
+    arrangeFactory();
+    await createSubagentSession(
+      { snapshot: STUB_SNAPSHOT, type: "explore", work: policy() },
+      defaultDeps(),
+    );
+    const store = io.createSessionManager.mock.results[0].value as { appendCustomEntry: Mock };
+    service<WorkHost>("child-session-id", WORK_SERVICE)!.open({
+      owner: "test",
+      kind: "job",
+      label: "CI",
+    });
+    expect(store.appendCustomEntry).toHaveBeenCalledWith(
+      WORK_ENTRY,
+      expect.objectContaining({ op: "open", label: "CI" }),
+    );
+  });
+
+  it("withdraws the host and forgets the items when the session is disposed", async () => {
+    arrangeFactory();
+    const subagent = await createSubagentSession(
+      { snapshot: STUB_SNAPSHOT, type: "explore", work: policy() },
+      defaultDeps(),
+    );
+    service<WorkHost>("child-session-id", WORK_SERVICE)!.open({
+      owner: "test",
+      kind: "job",
+      label: "CI",
+    });
+    await subagent.dispose();
+    expect(service("child-session-id", WORK_SERVICE)).toBeUndefined();
+    expect(subagent.openWork()).toEqual([]);
+  });
+
+  it("loads the extension that wires the child's run boundaries to its host", async () => {
+    arrangeFactory();
+    await createSubagentSession(
+      { snapshot: STUB_SNAPSHOT, type: "explore", work: policy() },
+      defaultDeps(),
+    );
+    expect(loadedBuiltinNames()).toEqual(["<factory>"]);
+  });
+
+  it("reports what a reopened transcript left open as lost, once its extensions have bound", async () => {
+    const session = arrangeFactory();
+    const manager = {
+      newSession: vi.fn(),
+      getSessionFile: vi.fn().mockReturnValue("/old/tasks/agent.jsonl"),
+      getSessionId: vi.fn().mockReturnValue("reopened-session-id"),
+      getBranch: vi.fn().mockReturnValue([
+        {
+          type: "custom",
+          customType: WORK_ENTRY,
+          data: { v: 1, op: "open", id: "old", owner: "pi-job", kind: "watch", label: "CI", at: 1 },
+        },
+      ]),
+      appendCustomEntry: vi.fn().mockReturnValue("entry"),
+    };
+    io.openSessionManager.mockReturnValue(manager);
+    const order: string[] = [];
+    session.bindExtensions.mockImplementation(async () => void order.push("bind"));
+    session.sendCustomMessage.mockImplementation(async (message: { customType: string }) => {
+      order.push(message.customType);
+    });
+    const wake = vi.fn();
+
+    const subagent = await createSubagentSession(
+      {
+        snapshot: STUB_SNAPSHOT,
+        type: "explore",
+        transcriptPath: "/old/tasks/agent.jsonl",
+        work: { wake, changed: vi.fn() },
+      },
+      defaultDeps(),
+    );
+
+    // Offered to its owners during their session_start, lost after; nothing is woken.
+    expect(order).toEqual(["bind", WORK_LOST]);
+    expect(session.sendCustomMessage).toHaveBeenCalledWith(expect.anything(), {
+      triggerTurn: false,
+    });
+    expect(wake).not.toHaveBeenCalled();
+    expect(subagent.openWork()).toEqual([]);
+  });
+
+  it("gives a session built without a policy no host and no wiring", async () => {
+    arrangeFactory();
+    const subagent = await createSubagentSession(
+      { snapshot: STUB_SNAPSHOT, type: "explore" },
+      defaultDeps(),
+    );
+    expect(service("child-session-id", WORK_SERVICE)).toBeUndefined();
+    expect(subagent.openWork()).toEqual([]);
     expect(loadedBuiltinNames()).toEqual([]);
   });
 });

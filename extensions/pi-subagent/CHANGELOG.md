@@ -3,6 +3,91 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-09: A child has a managed work host, and waits instead of finishing
+
+Roadmap step 9a (`docs/roadmaps/subagent-work-lifecycle.md`). An agent whose run ends with open
+work (a job it started, an agent of its own) is idle and **waiting**, not done, and the work's
+completion wakes it through the manager and the concurrency limiter. Mid-run delivery hardening is
+9b; reload and restart adoption is step 12; the release-with-no-open-work rewrite is step 11.
+
+- New `src/lifecycle/child-work.ts` (`ChildWork`): the child's `work:v1` host, built with pi-work's
+  `createWorkHost` and offered under the child's session id **before its extensions bind**
+  (`create-subagent-session.ts`), so `ensureWorkHost` in the child finds it, provides nothing, and
+  only forwards the child's run boundaries to it.
+  - Store: the child's own session file (`SessionManager.getBranch` / `appendCustomEntry`), so open
+    items live in the child's transcript.
+  - Delivery: a message is written into the child's transcript at once (`sendCustomMessage` with
+    `triggerTurn: false`: appended now while the child is idle, held by Pi for the end of the turn
+    while it runs). For an idle child the host then asks the agent for a run (`ChildWorkPolicy.wake`).
+    No message ever starts a run by itself, so none escapes the limiter or the turn budget, and the
+    transcript stays the inbox. The item closes once the message is written (`confirmLanding` off).
+  - The session's `agent_start` / `agent_settled` events feed the host, so it knows whether a run is
+    active without any extension of the child wiring that. Every managed child also loads a small
+    inline extension that calls `ensureWorkHost`, so `agent_before_settle` (a message that arrived
+    mid-run is answered in that run) works whichever of the operator's extensions the child loads.
+  - After the child's extensions bound, `settleStartup` closes the items nobody adopted as lost, with
+    one `work:lost` message recorded without waking anything: this is what a reopened transcript
+    that was left with open items reports.
+  - `SubagentSession.openWork()` is the host's open items; disposing the session disposes the host
+    (items stay in the transcript, and are reported lost if the child is ever reopened).
+- `Subagent`: a run that **completed** with open work parks: no completion is reported and the
+  spawner's item stays open (`onWaiting` → `onSubagentWaiting` → `subagent:waiting`, persisted).
+  Waiting is derived (`status` idle and `waitingOn`, the labels of the open items), never stored.
+  - `ChildWorkPolicy.wake` → a resume through the manager's limiter (`admit`), like every run. Queued,
+    it shows as queued (`subagent:queued`) and a second wake changes nothing; a message from the
+    parent (`subagent_send`) joins that run's prompt; a message that reaches the agent as its run is
+    ending is answered by a run of its own right after.
+  - **The run starts from a fixed prompt, not the newest message as its trigger.** The turn-budget
+    wrapper could drive a run started with `sendCustomMessage(..., { triggerTurn: true })`, because
+    the call returns when the run is over. A fixed prompt (`WORK_WAKE_PROMPT` in `run.ts`) was
+    chosen because the run waits for a slot: a trigger message would exist only in memory until the
+    run starts, whereas every message is in the transcript when the host writes it, an item closes
+    once its message is there, messages that arrive while the run is queued keep their order, and a
+    parent's message joins the queued run's prompt with no second mechanism. The cost is one short
+    user message in the child's transcript per wake.
+  - The last item going away without a message (cancelled, or lost) while the agent waits makes it
+    done, and reports it then (`ChildWorkPolicy.changed`, from pi-work's new `onChange`).
+  - A run that does not complete (an error, the turn limit, a stop) does not wait: it ends the
+    assignment, and the agent's session is released after the run was reported, which shuts the
+    child's extensions down and so stops the work they run. After an error or the turn limit the
+    items stay open in the child's transcript, so a reopened agent is told they were lost. After a
+    **stop** they are cancelled first (`ChildWork.cancelOpen`, from pi-work's new
+    `WorkHostRuntime.cancelOpen`), so the work the user deliberately stopped is never reported lost.
+  - A run that ends with a question reports now, as before, whatever else is open (step 10 owns the
+    question's route to the parent); its session is kept, and the work's completion still wakes it.
+  - `abort()` stops a waiting agent (outcome `stopped`, items cancelled, reported, session
+    released), so ESC at the spawner stops waiting agents with the running ones.
+  - A record being disposed (`disposeSession`, the manager's dispose) starts no run for a wake that
+    arrives meanwhile. A finish with no run (the last item cancelled or lost) re-stamps
+    `completedAt`, so the completion message's duration, the retention window and the widget count
+    from when the work ran out, not from when the last run settled.
+- Retention: the sweep never releases the session of an agent with open work, however long it waits
+  (one condition; step 11 owns the full rule). `clearCompleted` (parent session start or switch)
+  leaves a waiting agent alone like a running one: disposing it would be silent, leaving the
+  spawner's item open and the dashboard showing it waiting.
+- Display: an idle agent with open work shows as `waiting: <labels>` in the widget (a row that
+  stays until the work is done, no clock, between the running and the finished), counted as
+  "waiting" in the status bar (`1 running, 2 waiting agents`), as a section of the watch overlay
+  (`waiting: CI`, never expiring), in the roster (`waiting: CI`, pinned like a running agent), in the
+  `subagent_get` report header (labels sanitized to one line), and in the dashboard (`subagent:waiting`, a `waiting` state whose note
+  names the work). The watch overlay's body rows are now inset one space from the panel's borders
+  (rows too narrow for the spaces are blank), as the spacing rule requires.
+- Nested delegation needs no code of its own: the agents a child starts are items in the child's
+  host, so a child orchestrator that ends its turn with a worker running waits, and the worker's
+  completion wakes it.
+- Tests: `child-work.test.ts` (the host on a fake session), `waiting-workers.test.ts` (parking, wake
+  through the limiter in order, a joined message, stop, failures, the question, retention),
+  `waiting-sdk.test.ts` (a real child with `job_watch`: waiting, woken, done; woken behind the agent
+  holding the only slot; stopped), `nested-delegation-sdk.test.ts`, plus rows, narrow-width and
+  ANSI/wide-Unicode tests for every changed display. `orchestrator-sdk.test.ts` pinned the old
+  unmanaged child (a worker's completion started a run of its own in a bare session, whose trigger was
+  the completion): it now spawns the orchestrator through a `SubagentManager`, so the run is the
+  manager's and starts with the completion followed by the wake prompt.
+- Behaviour changes users will notice: an agent that starts a job or an agent of its own and ends its
+  turn no longer reports "done" with a run to spare; the parent hears from it once the work is done,
+  and the widget shows `waiting: <label>` meanwhile. A waiting agent is also stopped by ESC at the
+  parent. Each wake adds a short user message to the child's transcript.
+
 ## 2026-11-09: Subagents are work items of the session that spawned them
 
 Roadmap step 8 (`docs/roadmaps/subagent-work-lifecycle.md`). The spawning session's work host

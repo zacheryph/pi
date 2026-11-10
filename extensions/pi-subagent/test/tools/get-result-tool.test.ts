@@ -17,6 +17,7 @@ import { createTestSubagent, makeStubExecution, stateForLabel } from "#test/help
 import {
   createMockSession,
   createSubagentSessionStub,
+  openItem,
   toSubagentSession,
 } from "#test/helpers/mock-session";
 import { STUB_CTX } from "#test/helpers/stub-ctx";
@@ -227,6 +228,20 @@ describe("GetResultTool", () => {
     expect(result.content[0].text).toContain("Status: running");
     expect(result.content[0].text).toContain("completion message arrives when it finishes");
     expect(record.consumed).toBe(false);
+  });
+
+  it("reports an idle agent with open work as waiting", async () => {
+    const record = createTestSubagent({ sessionReady: true });
+    const session = record.subagentSession as unknown as ReturnType<
+      typeof createSubagentSessionStub
+    >;
+    session.openItems.push(openItem("CI"));
+    const result = await execute(makeManager(new Map([["agent-1", record]])), {
+      agent_id: "agent-1",
+    });
+    expect(result.content[0].text).toContain("Status: waiting: CI");
+    // The retention rule keeps its session while the work is open, read or not.
+    expect(record.hasOpenWork()).toBe(true);
   });
 
   it("leaves the completion message owed after reading a finished result", async () => {

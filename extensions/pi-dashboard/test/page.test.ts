@@ -55,8 +55,10 @@ describe("renderPage", () => {
     expect(page).toContain(
       'fold(node, "fold:" + session.id + ":todos", finished.length + " completed"',
     );
+    // A waiting agent (idle on open work) is live too: it stays out of the folded finished row.
+    expect(page).toContain("const live = agents.filter(isLiveSubagent);");
     expect(page).toContain(
-      'const live = agents.filter((agent) => agent.state === "running" || agent.state === "queued");',
+      'return agent.state === "running" || agent.state === "queued" || agent.state === "waiting";',
     );
     expect(page).toContain('fold(node, "fold:" + session.id + ":subagents"');
     expect(page).toContain(

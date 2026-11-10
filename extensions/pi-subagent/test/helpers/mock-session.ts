@@ -3,6 +3,7 @@ import type { Mock } from "vitest";
 import { vi } from "vitest";
 import type { SubagentSession } from "#src/lifecycle/subagent-session";
 import { turnLoopResult } from "#test/helpers/turn-loop-result";
+import type { WorkItemView } from "../../../../packages/pi-work/src/index.ts";
 
 /** The core shape returned by `createMockSession`. */
 export interface MockSession {
@@ -64,9 +65,15 @@ export function createSubagentSessionStub(
   session: MockSession = createMockSession(),
   outputFile?: string,
 ) {
+  /** The items the stub's work host holds open; a test pushes and removes them. */
+  const openItems: WorkItemView[] = [];
   return {
     session,
     outputFile,
+    openItems,
+    openWork: vi.fn((): readonly WorkItemView[] => [...openItems]),
+    /** A stop calls off the open items, as the real host does. */
+    cancelWork: vi.fn((): number => openItems.splice(0).length),
     applyTurnLimits: vi.fn(),
     runTurnLoop: vi.fn().mockResolvedValue(turnLoopResult({ responseText: "done" })),
     resumeTurnLoop: vi.fn().mockResolvedValue(turnLoopResult({ responseText: "resumed" })),
@@ -96,6 +103,11 @@ export function createSubagentSessionStub(
     },
     getToolDefinition: vi.fn((name: string): unknown => session.getToolDefinition(name)),
   };
+}
+
+/** An open work item with the given label, as a child's work host lists it. */
+export function openItem(label: string, id = `item-${label}`): WorkItemView {
+  return { id, owner: "test", kind: "job", label, openedAt: 1 };
 }
 
 /**

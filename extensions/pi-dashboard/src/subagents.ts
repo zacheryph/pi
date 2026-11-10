@@ -6,6 +6,7 @@ export const SUBAGENT_CHANNELS = [
   "subagent:created",
   "subagent:started",
   "subagent:queued",
+  "subagent:waiting",
   "subagent:resuming",
   "subagent:notified",
   "subagent:completed",
@@ -60,6 +61,14 @@ export class SubagentTracker {
         agent.state = "queued";
         delete agent.note;
         break;
+      case "subagent:waiting": {
+        // A run ended with work open: idle, not done. The note names what it waits on.
+        agent.state = "waiting";
+        const reason = clip(raw.reason, 300);
+        if (reason) agent.note = reason;
+        else delete agent.note;
+        break;
+      }
       case "subagent:started":
       case "subagent:resuming":
         agent.state = "running";
@@ -75,6 +84,8 @@ export class SubagentTracker {
       case "subagent:resumed": {
         agent.state =
           TERMINAL[String(raw.status)] ?? (channel === "subagent:failed" ? "failed" : "completed");
+        // What the agent waited on is over: the note is the error of a failure, or nothing.
+        delete agent.note;
         const error = clip(raw.error, 300);
         if (error) agent.note = error;
         if (typeof raw.durationMs === "number" && Number.isFinite(raw.durationMs))
@@ -93,7 +104,10 @@ export class SubagentTracker {
     // Keep running agents; trim the oldest finished ones.
     while (this.agents.size > MAX_AGENTS) {
       const oldest = [...this.agents.values()].find(
-        (candidate) => candidate.state !== "running" && candidate.state !== "queued",
+        (candidate) =>
+          candidate.state !== "running" &&
+          candidate.state !== "queued" &&
+          candidate.state !== "waiting",
       );
       if (!oldest) break;
       this.agents.delete(oldest.id);

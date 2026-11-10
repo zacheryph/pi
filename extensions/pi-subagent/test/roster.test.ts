@@ -416,3 +416,69 @@ describe("idle roster lines at hostile widths of text", () => {
     expect(text).toContain(`"${"界".repeat(79)}…"`);
   });
 });
+
+// Roadmap step 9: an idle live agent with open work is waiting, whatever its last outcome.
+describe("a waiting agent in the roster", () => {
+  const record = saved({ id: "w1", description: "Review CI" });
+  const live = (waitingOn: readonly string[], overrides: Partial<LiveAgentLike> = {}) =>
+    ({ ...record, status: "idle", outcome: "completed", waitingOn, ...overrides }) as LiveAgentLike;
+  const line = (agent: LiveAgentLike) => formatRosterLine(buildRoster([record], () => agent)[0]);
+
+  it("is waiting when it is live and idle on open work", () => {
+    expect(rosterState("idle", "completed", undefined, true, ["CI"])).toBe("waiting");
+    expect(rosterState("idle", "error", undefined, true, ["CI"])).toBe("waiting");
+    // Not a state a saved record can be in: nothing live waits on anything.
+    expect(rosterState("idle", "completed", undefined, false, ["CI"])).toBe("completed");
+    // A run in flight is running, whatever its session holds.
+    expect(rosterState("running", undefined, undefined, true, ["CI"])).toBe("running");
+  });
+
+  it("names what it waits on", () => {
+    expect(line(live(["CI"]))).toBe('- w1 implementer "Review CI": waiting: CI');
+    expect(line(live(["CI", "answer"]))).toBe('- w1 implementer "Review CI": waiting: CI, answer');
+  });
+
+  it("is done as soon as nothing is open, with its last outcome", () => {
+    expect(line(live([]))).toContain("idle, last run completed");
+  });
+
+  it("is listed first, with the agents that need attention, and never dropped by the cap", () => {
+    const done = saved({ id: "done", completedAt: 99 });
+    const [first, second] = buildRoster([done, record], (id) =>
+      id === "w1" ? live(["CI"]) : undefined,
+    );
+    expect([first.id, second.id]).toEqual(["w1", "done"]);
+    const many = Array.from({ length: 30 }, (_, index) => saved({ id: `d${index}` }));
+    const card = formatRosterCard(
+      buildRoster([...many, record], (id) => (id === "w1" ? live(["CI"]) : undefined)),
+      "reload",
+    )!;
+    expect(card).toContain("w1 implementer");
+    expect(card.split("\n")).toHaveLength(CARD_MAX_LINES + 1);
+  });
+
+  it("says when it also asked a question, and that it cannot be reached", () => {
+    const both = live(["CI"], { pendingQuestion: "Which branch?" });
+    expect(line(both)).toBe(
+      '- w1 implementer "Review CI": waiting: CI · waiting for your answer: "Which branch?"',
+    );
+    const [entry] = buildRoster(
+      [record],
+      () => both,
+      () => false,
+    );
+    expect(formatRosterLine(entry)).toMatch(/\(cannot take a message\)$/);
+  });
+
+  it("cuts long, wide and ANSI-laden labels to one clean line", () => {
+    const text = line(live([`\x1b[31m${"漢字".repeat(200)}\x1b[0m\nnext`, "界".repeat(100)]));
+    expect(text).not.toContain("\n");
+    // oxlint-disable-next-line no-control-regex -- asserting no escape survives
+    expect(text).not.toMatch(/\x1b/);
+    const labels = text.split("waiting: ")[1];
+    expect(
+      Array.from(new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(labels)),
+    ).toHaveLength(160);
+    expect(labels.endsWith("…")).toBe(true);
+  });
+});

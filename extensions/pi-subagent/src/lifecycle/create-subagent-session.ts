@@ -19,6 +19,7 @@ import {
 import type { AgentConfigLookup } from "#src/config/agent-types";
 import { debugNote } from "#src/debug";
 import type { ChildLifecyclePublisher, SubagentHandoff } from "#src/lifecycle/child-lifecycle";
+import { ChildWork, type ChildWorkPolicy } from "#src/lifecycle/child-work";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import { SubagentSession } from "#src/lifecycle/subagent-session";
 import { builtinExtensionsFor } from "#src/session/builtin-extensions";
@@ -27,6 +28,7 @@ import { resolveToolSelection } from "#src/session/tool-selection";
 import type { ModelRegistry } from "#src/session/model-resolver";
 import { NotifyParentTool, type UpdateAnnouncer } from "#src/session/notify-parent-tool";
 import { provide } from "../../../../packages/pi-session-tree/src/index.ts";
+import { ensureWorkHost } from "../../../../packages/pi-work/src/index.ts";
 import { type AssemblerIO, assembleSessionConfig } from "#src/session/session-config";
 import type {
   AgentConfig,
@@ -66,6 +68,9 @@ export interface SessionManagerLike {
   newSession(opts: { parentSession?: string }): void;
   getSessionFile(): string | undefined;
   getSessionId(): string;
+  /** The child's own entries: where its work host persists open items. */
+  getBranch(): readonly { type: string; customType?: string; data?: unknown }[];
+  appendCustomEntry(customType: string, data?: unknown): string;
 }
 
 /** Options passed to EnvironmentIO/SessionFactoryIO methods. */
@@ -198,6 +203,13 @@ export interface CreateSubagentSessionParams {
    */
   askParent?: QuestionRecorder;
   /**
+   * What the child's work host asks of its agent. Supplied for every child a `Subagent` creates:
+   * the child's session then gets a managed `work:v1` host under its session id before its
+   * extensions bind, so nothing the child waits on can start a run of its own. Absent only for a
+   * session built outside a `Subagent`, which then gets the root host from `ensureWorkHost`.
+   */
+  work?: ChildWorkPolicy;
+  /**
    * Announces a mid-run update the child sends with `parent_notify`. Supplied
    * only for a background child whose operator left the channel on; its absence
    * installs no update tool.
@@ -221,6 +233,14 @@ function buildChildTools(params: CreateSubagentSessionParams): ToolDefinition[] 
   const tools: ToolDefinition[] = [];
   if (params.notifyParent) tools.push(new NotifyParentTool(params.notifyParent).toToolDefinition());
   return tools;
+}
+
+/**
+ * Inline extension of every managed child: `ensureWorkHost` wires the session's run boundaries
+ * (`agent_before_settle` above all) to the host offered under its id.
+ */
+function wireWorkHost(pi: Parameters<typeof ensureWorkHost>[0]): void {
+  ensureWorkHost(pi);
 }
 
 /**
@@ -323,7 +343,12 @@ export async function createSubagentSession(
     noContextFiles: true,
     systemPromptOverride: () => cfg.systemPrompt,
     appendSystemPromptOverride: () => [],
-    extensionFactories: builtinExtensionsFor(toolNames),
+    extensionFactories: [
+      ...builtinExtensionsFor(toolNames),
+      // The child's session reports its run boundaries to its managed host through this
+      // extension, whichever of the operator's extensions the child loads (or excludes).
+      ...(params.work ? [wireWorkHost] : []),
+    ],
   });
   await loader.reload();
 
@@ -372,6 +397,11 @@ export async function createSubagentSession(
   const withdrawAskRoute = askParent
     ? provide(sessionId, ASK_ROUTE_SERVICE, { record: (question: string) => askParent(question) })
     : undefined;
+  // The managed work host, offered the same way: `ensureWorkHost` in the child finds it, provides
+  // nothing, and only forwards the child's run boundaries to it.
+  const work = params.work
+    ? new ChildWork({ sessionId, session, store: sessionManager, policy: params.work })
+    : undefined;
   const subagentSession = new SubagentSession(session, {
     outputFile: sessionManager.getSessionFile(),
     sessionId,
@@ -381,6 +411,7 @@ export async function createSubagentSession(
     agentMaxTurns: cfg.agentMaxTurns,
     parentContext: snapshot.parentContext,
     lifecycle: deps.lifecycle,
+    ...(work ? { work } : {}),
     ...(withdrawAskRoute ? { onDispose: withdrawAskRoute } : {}),
   });
 
@@ -400,6 +431,9 @@ export async function createSubagentSession(
   try {
     // Bind extensions so that session_start fires and extensions can initialize.
     await session.bindExtensions({});
+    // Each extension has had its `session_start` and its chance to adopt what an earlier
+    // instance of this child left open: whatever nobody took is reported lost.
+    work?.settleStartup();
     const activeTools = new Set(session.getActiveToolNames());
     const missing = requiredTools.filter((name) => !activeTools.has(name));
     if (missing.length)

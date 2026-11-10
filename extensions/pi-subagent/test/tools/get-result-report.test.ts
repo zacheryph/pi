@@ -221,3 +221,38 @@ describe("formatAgentReport", () => {
     );
   });
 });
+
+describe("formatAgentReport for a waiting agent", () => {
+  it("says it is waiting, on what, and that its completion follows", () => {
+    const header = formatAgentReport(makeReport({ waitingOn: ["CI", "answer"] })).split("\n")[1];
+    expect(header).toContain("Status: waiting: CI, answer");
+    expect(header).toContain("its completion message follows");
+    expect(header).not.toContain("Status: completed");
+  });
+
+  it("keeps the header on one line whatever the labels hold", () => {
+    const report = formatAgentReport(
+      makeReport({
+        waitingOn: [
+          "CI\nchecks\r\n\tnow",
+          "\u001b[31mred\u001b[0m界",
+          "\u001b]0;title\u0007x",
+          "  ",
+        ],
+      }),
+    );
+    const [agent, header, ...rest] = report.split("\n");
+    expect(agent).toBe("Agent: agent-1");
+    expect(header).toContain("Status: waiting: CI checks now, red界, x (idle;");
+    expect(header).toContain("| Tool uses: 3 |");
+    expect(rest[0]).toMatch(/^Description:/);
+    // oxlint-disable-next-line no-control-regex -- asserting no escape survives
+    expect(header).not.toMatch(/[\u0000-\u001f\u007f-\u009f]/);
+  });
+
+  it("reads as done once nothing is open", () => {
+    const header = formatAgentReport(makeReport({ waitingOn: [] })).split("\n")[1];
+    expect(header).toContain("Status: completed");
+    expect(header).not.toContain("waiting");
+  });
+});

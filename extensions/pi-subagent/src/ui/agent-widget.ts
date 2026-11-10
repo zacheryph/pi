@@ -21,14 +21,17 @@ interface AgentSummary {
   readonly id: string;
   readonly status: string;
   readonly completedAt?: number;
+  /** Idle on open work: waiting, not done. */
+  readonly waiting?: boolean;
 }
 
-/** The widget's view of a record: its id, display label and end time. */
+/** The widget's view of a record: its id, display label, end time and whether it waits. */
 function summarize(record: Subagent): AgentSummary {
   return {
     id: record.id,
     status: displayStatus(record.status, record.outcome),
     completedAt: record.completedAt,
+    waiting: record.waitingOn.length > 0,
   };
 }
 
@@ -36,8 +39,10 @@ function summarize(record: Subagent): AgentSummary {
 export interface WidgetState {
   readonly runningCount: number;
   readonly queuedCount: number;
+  /** Idle agents with open work. They stay visible and show no clock. */
+  readonly waitingCount: number;
   readonly hasFinished: boolean;
-  /** True when runningCount > 0 || queuedCount > 0. Included for call-site readability. */
+  /** True while an agent is running, queued or waiting. Included for call-site readability. */
   readonly hasActive: boolean;
 }
 
@@ -51,18 +56,21 @@ export function assembleWidgetState(
 ): WidgetState {
   let runningCount = 0;
   let queuedCount = 0;
+  let waitingCount = 0;
   let hasFinished = false;
   for (const a of agents) {
     if (a.status === "running") {
       runningCount++;
     } else if (a.status === "queued") {
       queuedCount++;
+    } else if (a.waiting) {
+      waitingCount++;
     } else if (a.completedAt && shouldShowFinished(a.id, a.status)) {
       hasFinished = true;
     }
   }
-  const hasActive = runningCount > 0 || queuedCount > 0;
-  return { runningCount, queuedCount, hasFinished, hasActive };
+  const hasActive = runningCount > 0 || queuedCount > 0 || waitingCount > 0;
+  return { runningCount, queuedCount, waitingCount, hasFinished, hasActive };
 }
 
 /** The slice of the TUI the widget factory callback touches. */
@@ -164,6 +172,11 @@ export class AgentWidget implements SubagentManagerObserver {
 
   // ---- SubagentManagerObserver: react to lifecycle, self-drive the timer ----
 
+  /** A run ended with work open, or the work it waits on changed: no clock, so just redraw. */
+  onSubagentWaiting(_record: Subagent) {
+    this.update();
+  }
+
   /** A subagent started running — render, which arms the animation loop. */
   onSubagentStarted(_record: Subagent) {
     this.update();
@@ -230,6 +243,7 @@ export class AgentWidget implements SubagentManagerObserver {
       id: record.id,
       type: record.type,
       status: displayStatus(record.status, record.outcome),
+      waitingOn: record.waitingOn,
       description: record.description,
       toolUses: record.toolUses,
       startedAt: record.startedAt,
@@ -289,7 +303,8 @@ export class AgentWidget implements SubagentManagerObserver {
       const statusParts: string[] = [];
       if (state.runningCount > 0) statusParts.push(`${state.runningCount} running`);
       if (state.queuedCount > 0) statusParts.push(`${state.queuedCount} queued`);
-      const total = state.runningCount + state.queuedCount;
+      if (state.waitingCount > 0) statusParts.push(`${state.waitingCount} waiting`);
+      const total = state.runningCount + state.queuedCount + state.waitingCount;
       newStatusText = `${statusParts.join(", ")} agent${total === 1 ? "" : "s"}`;
     }
     if (newStatusText !== this.lastStatusText) {
@@ -305,13 +320,13 @@ export class AgentWidget implements SubagentManagerObserver {
    * Idempotent — only seeds when an entry is absent, so repeated updates within
    * a turn neither reset nor advance the age.
    *
-   * An agent that is queued or running again has no finished state to age: its
-   * entry is dropped, so the run a message started lingers as done when it
-   * ends, as the first run did.
+   * An agent that is queued, running again or waiting has no finished state to
+   * age: its entry is dropped, so the run a message started lingers as done when
+   * it ends, as the first run did.
    */
   private seedFinishedAgents(agents: readonly AgentSummary[]): void {
     for (const a of agents) {
-      if (a.status === "queued" || a.status === "running") {
+      if (a.status === "queued" || a.status === "running" || a.waiting) {
         this.finishedTurnAge.delete(a.id);
       } else if (a.completedAt && !this.finishedTurnAge.has(a.id)) {
         this.finishedTurnAge.set(a.id, 0);

@@ -4,6 +4,12 @@ import { AgentTypeRegistry } from "#src/config/agent-types";
 import type { Theme } from "#src/ui/display";
 import { renderWidgetLines, type WidgetAgent, widgetLineBudget } from "#src/ui/widget-renderer";
 import { withSlot } from "../../../../packages/pi-test-helpers/src/globals.ts";
+import {
+  expectBounded,
+  expectPadded,
+  NARROW_WIDTHS,
+  WIDE_TEXT,
+} from "../../../../packages/pi-test-helpers/src/render.ts";
 import { plainTheme, ansiTheme } from "../../../../packages/pi-test-helpers/src/theme.ts";
 
 const registry = new AgentTypeRegistry(() => new Map());
@@ -368,5 +374,115 @@ describe("terminal layout safety", () => {
     expect(lines[0]).toMatch(/ 3 queued ──$/);
     expect(lines[1]).toContain("live task");
     expect(lines[2]).toMatch(/^ \+2 more \(2 finished\) +$/);
+  });
+});
+
+describe("waiting rows", () => {
+  const waiting = (overrides: Partial<WidgetAgent> = {}) =>
+    makeAgent({
+      status: "completed",
+      completedAt: NOW - 5_000,
+      waitingOn: ["CI"],
+      description: "review CI",
+      ...overrides,
+    });
+
+  it("shows an idle agent with open work as waiting, with the labels, not as done", () => {
+    const lines = render({ agents: [waiting()] });
+    expect(lines).toHaveLength(2);
+    expect(lines[1]).toContain("agent: review CI");
+    expect(lines[1].endsWith("waiting: CI ")).toBe(true);
+    expect(lines.join("\n")).not.toContain("done");
+  });
+
+  it("names everything it waits on", () => {
+    const row = render({ agents: [waiting({ waitingOn: ["CI", "answer"] })] })[1];
+    expect(row.endsWith("waiting: CI, answer ")).toBe(true);
+  });
+
+  it("is done again once nothing is open", () => {
+    const row = render({ agents: [waiting({ waitingOn: [] })] })[1];
+    expect(row.endsWith("✓ done ")).toBe(true);
+    expect(row).not.toContain("waiting");
+  });
+
+  it("stays visible however old its last outcome, where a finished agent ages out", () => {
+    const agents = [waiting()];
+    expect(render({ agents, shouldShowFinished: () => false })).toHaveLength(2);
+    expect(
+      render({
+        agents: [makeAgent({ status: "completed", completedAt: NOW })],
+        shouldShowFinished: () => false,
+      }),
+    ).toEqual([]);
+  });
+
+  it("shows no clock, and does not animate", () => {
+    const agents = [waiting({ startedAt: NOW - 42_000 })];
+    const first = render({ agents, terminalWidth: 100, spinnerFrame: 0 });
+    expect(first[1]).toContain("--:--");
+    expect(first[1]).not.toContain("00:42");
+    vi.advanceTimersByTime(60_000);
+    expect(render({ agents, terminalWidth: 100, spinnerFrame: 7 })).toEqual(first);
+  });
+
+  it("sits between the running and the finished, and counts as active", () => {
+    const lines = render({
+      agents: [
+        makeAgent({ id: "f", status: "completed", completedAt: NOW, description: "finished task" }),
+        waiting({ id: "w", description: "waiting task" }),
+        makeAgent({ id: "r", description: "running task" }),
+      ],
+    });
+    expect(lines[1]).toContain("running task");
+    expect(lines[2]).toContain("waiting task");
+    expect(lines[3]).toContain("finished task");
+    const colors: string[] = [];
+    render({
+      agents: [waiting()],
+      theme: {
+        ...theme,
+        fg: (color: string, text: string) => {
+          colors.push(`${color}:${text}`);
+          return text;
+        },
+      },
+    });
+    expect(colors.some((color) => /^accent:.*Subagents$/.test(color))).toBe(true);
+  });
+
+  it("is counted as waiting in the overflow row", () => {
+    const agents = [
+      ...Array.from({ length: 12 }, (_, index) => makeAgent({ id: `r${index}` })),
+      waiting({ id: "w" }),
+    ];
+    expect(render({ agents }).at(-1)).toMatch(/^ \+3 more \(2 running, 1 waiting\) +$/);
+  });
+
+  it.each(NARROW_WIDTHS)(
+    "keeps ANSI and wide Unicode labels inside %i columns",
+    (terminalWidth) => {
+      const lines = render({
+        terminalWidth,
+        theme: ansiTheme,
+        agents: [
+          waiting({
+            description: WIDE_TEXT,
+            waitingOn: ["\u001b[31mCI界\u001b[0m\nnext", WIDE_TEXT, "\u001b]0;title\u0007x"],
+          }),
+        ],
+      });
+      expectBounded(lines, terminalWidth);
+      for (const line of lines.slice(1)) expectPadded(line, terminalWidth);
+      if (terminalWidth === 0) expect(lines).toEqual([]);
+    },
+  );
+
+  it("keeps labels on one row: no line break or control code survives", () => {
+    const lines = render({ agents: [waiting({ waitingOn: ["a\nb\tc", "d\r\ne\u001b[2J"] })] });
+    expect(lines).toHaveLength(2);
+    // oxlint-disable-next-line no-control-regex -- Intentionally matches terminal control characters.
+    for (const line of lines) expect(line).not.toMatch(/[\u0000-\u001f\u007f-\u009f]/);
+    expect(lines[1]).toContain("waiting: a b c, d e");
   });
 });

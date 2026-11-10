@@ -6,7 +6,7 @@
  */
 import type { AssistantMessage, Context } from "@earendil-works/pi-ai";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
-import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { type InlineExtension, SessionManager } from "@earendil-works/pi-coding-agent";
 import { expect, vi, onTestFinished } from "vitest";
 import subagentExtension from "#src/index";
 import { readPersistedRecords } from "#src/persisted-record";
@@ -78,6 +78,12 @@ export interface ParentOptions {
   manager?: SessionManager;
   /** An agent directory made earlier, to keep its settings across parents. */
   dir?: string;
+  /** More extensions for the parent, loaded after this one (a parent with jobs, say). */
+  extensions?: InlineExtension[];
+  /** More tool names the parent offers, so children can inherit them. */
+  tools?: string[];
+  /** Extension bindings, such as a UI context to show the widget through. */
+  bind?: Parameters<typeof fauxSession>[0]["bind"];
 }
 
 /** Channels the parent's bus is watched on. */
@@ -87,6 +93,7 @@ const WATCHED = [
   "subagent:completed",
   "subagent:failed",
   "subagent:queued",
+  "subagent:waiting",
   "subagent:resuming",
   "subagent:resumed",
   "subagent:steered",
@@ -124,7 +131,14 @@ export async function startParent(options: ParentOptions = {}) {
     models: [{ id: "worker" }],
     sessionManager: manager,
     // Children take their tools from the parent's, so it offers the built-ins too.
-    tools: [...BUILTIN_TOOLS, "subagent_start", "subagent_get", "subagent_send"],
+    tools: [
+      ...BUILTIN_TOOLS,
+      "subagent_start",
+      "subagent_get",
+      "subagent_send",
+      ...(options.tools ?? []),
+    ],
+    ...(options.bind ? { bind: options.bind } : {}),
     extensions: [
       subagentExtension,
       (pi) => {
@@ -134,6 +148,7 @@ export async function startParent(options: ParentOptions = {}) {
           );
         }
       },
+      ...(options.extensions ?? []),
     ],
   });
 

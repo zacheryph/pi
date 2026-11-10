@@ -35,8 +35,10 @@ open across live updates.
   completed ones fold away, except while they have unreviewed messages.
   Expand a task for its description, prerequisites and its full status and
   message history (fetched when you expand it).
-- **Subagents**: running and queued agents seen since the session's runtime
-  loaded, with duration, tool uses, tokens and the latest progress note;
+- **Subagents**: running, queued and waiting agents (idle on a job or an agent
+  of their own, with the work named in the note and no clock) seen since the
+  session's runtime loaded, with duration, tool uses, tokens and the latest
+  progress note;
   completed, failed and stopped ones fold away, with their error.
 - **Recent activity**: the last 12 tool calls with duration, failures, and
   what they touched: a file tool's path, or a bash command's first line.

@@ -6,11 +6,14 @@ import type { CompactionInfo } from "#src/types";
 import { AgentWidget, assembleWidgetState, type UICtx } from "#src/ui/agent-widget";
 import { makeModel } from "#test/helpers/make-model";
 import { createTestSubagent, makeStubExecution, stateForLabel } from "#test/helpers/make-subagent";
+import { createSubagentSessionStub, openItem } from "#test/helpers/mock-session";
 import type { DisplayStatus } from "#src/lifecycle/subagent-state";
 import { plainTheme } from "../../../../packages/pi-test-helpers/src/theme.ts";
 
-// Minimal agent fixture — only the three fields AgentSummary requires.
-function makeAgent(overrides: { id?: string; status?: string; completedAt?: number } = {}) {
+// Minimal agent fixture — only the fields AgentSummary reads.
+function makeAgent(
+  overrides: { id?: string; status?: string; completedAt?: number; waiting?: boolean } = {},
+) {
   return {
     id: "agent-1",
     status: "completed",
@@ -48,11 +51,17 @@ function stubTheme() {
 // arg of the most recent setWidget call, where a function means the widget is
 // registered/visible and undefined means it was cleared (the finished agent has
 // aged out).
-function makeWidget(agents: Array<{ id: string; status: string; completedAt?: number }>) {
+function makeWidget(
+  agents: Array<{ id: string; status: string; completedAt?: number; waitingOn?: string[] }>,
+) {
   // The fixtures name an agent by the label it shows (completed, error, ...); the
   // manager lists records with a status and an outcome.
   const listAgents = () =>
-    agents.map((agent) => ({ ...agent, ...stateForLabel(agent.status as DisplayStatus) }));
+    agents.map((agent) => ({
+      waitingOn: [] as string[],
+      ...agent,
+      ...stateForLabel(agent.status as DisplayStatus),
+    }));
   const manager = { listAgents } as unknown as SubagentManager;
   const registry = new AgentTypeRegistry(() => new Map());
   const widget = new AgentWidget(manager, registry);
@@ -69,6 +78,7 @@ describe("assembleWidgetState", () => {
       expect(assembleWidgetState([], alwaysShow)).toEqual({
         runningCount: 0,
         queuedCount: 0,
+        waitingCount: 0,
         hasFinished: false,
         hasActive: false,
       });
@@ -410,6 +420,154 @@ describe("AgentWidget — a finished agent that is sent a message", () => {
     widget.onSubagentResumeQueued({} as never);
 
     expect(setStatus).toHaveBeenLastCalledWith("subagent:status", "1 queued agent");
+  });
+});
+
+// Added by roadmap step 9: an idle agent with open work is waiting, not done. Nothing about
+// waiting is stored: the widget derives it from the agent's open work.
+describe("AgentWidget — a waiting agent", () => {
+  type Agents = Array<{ id: string; status: string; completedAt?: number; waitingOn?: string[] }>;
+  const waitingAgent = (waitingOn: string[] = ["CI"]) => ({
+    id: "w1",
+    status: "completed",
+    completedAt: 5000,
+    waitingOn,
+  });
+
+  it("counts waiting agents apart from running, queued and finished ones", () => {
+    const state = assembleWidgetState(
+      [
+        makeAgent({ status: "completed", waiting: true }),
+        makeAgent({ id: "b", status: "completed", waiting: true }),
+        makeAgent({ id: "c", status: "running" }),
+        makeAgent({ id: "d", status: "completed" }),
+      ],
+      alwaysShow,
+    );
+    expect(state).toEqual({
+      runningCount: 1,
+      queuedCount: 0,
+      waitingCount: 2,
+      hasFinished: true,
+      hasActive: true,
+    });
+  });
+
+  it("is active, not finished, when it is all that is left", () => {
+    const state = assembleWidgetState(
+      [makeAgent({ status: "completed", waiting: true })],
+      alwaysShow,
+    );
+    expect(state).toMatchObject({ waitingCount: 1, hasActive: true, hasFinished: false });
+  });
+
+  it("counts waiting agents on the status bar", () => {
+    const agents: Agents = [waitingAgent()];
+    const { widget, setStatus } = makeWidget(agents);
+    widget.update();
+    expect(setStatus).toHaveBeenLastCalledWith("subagent:status", "1 waiting agent");
+    agents.push({ id: "w2", status: "completed", completedAt: 5000, waitingOn: ["a"] });
+    agents.push({ id: "r1", status: "running" });
+    widget.onSubagentWaiting({} as never);
+    expect(setStatus).toHaveBeenLastCalledWith("subagent:status", "1 running, 2 waiting agents");
+  });
+
+  it("shows `waiting: <label>` and stays visible however many turns pass", () => {
+    // A real record over a session whose work host holds one open item.
+    const record = createTestSubagent({ id: "w1", status: "completed", sessionReady: true });
+    (
+      record.subagentSession as unknown as ReturnType<typeof createSubagentSessionStub>
+    ).openItems.push(openItem("CI"));
+    const manager = { listAgents: () => [record] } as unknown as SubagentManager;
+    const widget = new AgentWidget(manager, new AgentTypeRegistry(() => new Map()));
+    let renderFn:
+      | ((tui: unknown, theme: unknown) => { render(width: number): string[] })
+      | undefined;
+    widget.setUICtx({
+      setStatus: () => {},
+      setWidget: (_key, content) => {
+        renderFn = content as typeof renderFn;
+      },
+    });
+    widget.update();
+    for (let turn = 0; turn < 5; turn++) widget.onTurnStart();
+    expect(renderFn).toBeDefined();
+    const text = renderFn!(stubTui(), stubTheme()).render(100).join("\n");
+    expect(text).toContain("waiting: CI");
+    expect(text).not.toContain("done");
+  });
+
+  it("shows done, not nothing, when it finishes after waiting several parent turns", () => {
+    // Its last item was cancelled: no run in between, the same outcome and end time as before.
+    const record = createTestSubagent({ id: "w1", status: "completed", sessionReady: true });
+    const session = record.subagentSession as unknown as ReturnType<
+      typeof createSubagentSessionStub
+    >;
+    session.openItems.push(openItem("CI"));
+    const widget = new AgentWidget(
+      { listAgents: () => [record] } as unknown as SubagentManager,
+      new AgentTypeRegistry(() => new Map()),
+    );
+    let renderFn:
+      | ((tui: unknown, theme: unknown) => { render(width: number): string[] })
+      | undefined;
+    widget.setUICtx({
+      setStatus: () => {},
+      setWidget: (_key, content) => {
+        renderFn = content as typeof renderFn;
+      },
+    });
+    widget.update();
+    // Far longer than a finished agent lingers: waiting agents do not age.
+    for (let turn = 0; turn < 6; turn++) widget.onTurnStart();
+    session.openItems.length = 0;
+    widget.onSubagentWaiting(record);
+    const text = renderFn!(stubTui(), stubTheme()).render(100).join("\n");
+    expect(text).toContain("done");
+    expect(text).not.toContain("waiting");
+    // From here it lingers like any finished agent: one turn.
+    widget.onTurnStart();
+    expect(renderFn).toBeUndefined();
+  });
+
+  it("starts no animation timer: a waiting agent has no clock", () => {
+    vi.useFakeTimers();
+    try {
+      const { widget } = makeWidget([waitingAgent()]);
+      widget.onSubagentWaiting({} as never);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("redraws when what it waits on changes", () => {
+    const agents: Agents = [waitingAgent(["CI", "review"])];
+    const { widget, lastContent, setWidget } = makeWidget(agents);
+    widget.onSubagentWaiting({} as never);
+    const registered = setWidget.mock.calls.length;
+    agents[0] = waitingAgent(["review"]);
+    widget.onSubagentWaiting({} as never);
+    expect(typeof lastContent()).toBe("function");
+    expect(setWidget.mock.calls.length).toBe(registered);
+  });
+
+  it("is done when its work is: it lingers as finished for the usual turn, then leaves", () => {
+    const agents: Agents = [waitingAgent()];
+    const { widget, lastContent } = makeWidget(agents);
+    widget.update();
+    widget.onTurnStart();
+    widget.onTurnStart();
+    expect(typeof lastContent()).toBe("function");
+
+    // The work reported back: the agent runs, answers, and is done.
+    agents[0] = { id: "w1", status: "running" };
+    widget.onSubagentResuming({} as never);
+    agents[0] = { id: "w1", status: "completed", completedAt: 9000, waitingOn: [] };
+    widget.onSubagentResumed({} as never);
+    expect(typeof lastContent()).toBe("function");
+    widget.onTurnStart();
+    expect(lastContent()).toBeUndefined();
   });
 });
 

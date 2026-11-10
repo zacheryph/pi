@@ -126,7 +126,11 @@ export interface UsageSection {
   cost: number;
 }
 
-export type SubagentState = "queued" | "running" | "completed" | "failed" | "stopped";
+/**
+ * `waiting` is an idle agent with open work (a job, an agent of its own): not done, and not
+ * running either. Its `note` names what it waits on.
+ */
+export type SubagentState = "queued" | "running" | "waiting" | "completed" | "failed" | "stopped";
 
 /** Subagents seen on this session's bus while the dashboard was loaded, newest first. */
 export interface SubagentsSection {

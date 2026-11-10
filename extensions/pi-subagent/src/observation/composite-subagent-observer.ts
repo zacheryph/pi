@@ -21,6 +21,10 @@ export class CompositeSubagentObserver implements SubagentManagerObserver {
     this.delegates.push(observer);
   }
 
+  onSubagentWaiting(record: Subagent): void {
+    this.dispatch((o) => o.onSubagentWaiting?.(record), "onSubagentWaiting");
+  }
+
   onSubagentStarted(record: Subagent): void {
     this.dispatch((o) => o.onSubagentStarted(record), "onSubagentStarted");
   }

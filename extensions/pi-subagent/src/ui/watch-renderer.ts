@@ -8,7 +8,10 @@ import { ICONS } from "../../../../packages/pi-ui/src/index.ts";
 export interface WatchSection {
   id: string;
   label: string;
-  status: DisplayStatus;
+  /** `waiting` is an idle agent with open work (`waitingOn`), shown until the work is done. */
+  status: DisplayStatus | "waiting";
+  /** What a waiting agent waits on: the labels of its open work. */
+  waitingOn?: readonly string[];
   blocks: readonly WatchBlock[];
 }
 
@@ -32,9 +35,13 @@ export function renderWatchOverlay(
   height = Math.max(0, Math.floor(height));
   if (width < 4 || height < 4) return [];
   const inner = width - 2;
+  // Body rows keep a space on both sides of their content, away from the panel's borders; a
+  // panel too narrow for the spaces and any content has blank rows. Only the rules are chrome.
+  const cols = Math.max(0, inner - 2);
   const fit = (text: string) => {
-    const clipped = truncateToWidth(text, inner, "…");
-    return clipped + " ".repeat(Math.max(0, inner - visibleWidth(clipped)));
+    if (cols === 0) return " ".repeat(inner);
+    const clipped = truncateToWidth(text, cols, "…");
+    return ` ${clipped}${" ".repeat(Math.max(0, cols - visibleWidth(clipped)))} `;
   };
   const row = (text: string) => theme.fg("border", "│") + fit(text) + theme.fg("border", "│");
   // Corners plus a "──" cap on each side; the title and count sit inside the caps.
@@ -77,7 +84,7 @@ export function renderWatchOverlay(
       const icon =
         section.status === "running"
           ? ICONS.active
-          : section.status === "queued"
+          : section.status === "queued" || section.status === "waiting"
             ? ICONS.queued
             : section.status === "completed"
               ? ICONS.success
@@ -87,12 +94,14 @@ export function renderWatchOverlay(
           ? "error"
           : section.status === "completed"
             ? "success"
-            : "accent";
+            : section.status === "waiting"
+              ? "muted"
+              : "accent";
       const label = watchText(section.label).replace(/\s+/g, " ").trim();
+      const waitingOn = waitingText(section);
+      const state = section.status === "waiting" ? `waiting: ${waitingOn}` : section.status;
       lines.push(
-        row(
-          theme.fg(color, truncateToWidth(`── ${icon} ${label} · ${section.status}`, inner, "…")),
-        ),
+        row(theme.fg(color, truncateToWidth(`── ${icon} ${label} · ${state}`, cols, "…"))),
       );
       const tailRows = allocation - 1;
       const blocks: readonly WatchBlock[] = section.blocks.length
@@ -105,7 +114,9 @@ export function renderWatchOverlay(
                   ? "Queued…"
                   : section.status === "running"
                     ? "Working…"
-                    : "No text output.",
+                    : section.status === "waiting"
+                      ? `Waiting for ${waitingOn}…`
+                      : "No text output.",
             },
           ];
       let tail: string[] = [];
@@ -135,11 +146,11 @@ export function renderWatchOverlay(
                     : "text";
         // Reserve label columns while wrapping; put label on FIRST VISIBLE row,
         // not the offscreen start of a long block. Clip label safely on tiny panels.
-        const prefix = label ? truncateToWidth(`${label} `, inner - 1, "…") : "";
+        const prefix = label ? truncateToWidth(`${label} `, Math.max(0, cols - 1), "…") : "";
         const prefixWidth = visibleWidth(prefix);
         const indent = " ".repeat(prefixWidth);
         // Sanitize before trusted theme escapes; reapply color on every wrapped row.
-        const wrapped = wrapTextWithAnsi(watchText(activity.text), inner - prefixWidth)
+        const wrapped = wrapTextWithAnsi(watchText(activity.text), Math.max(1, cols - prefixWidth))
           .slice(-(tailRows - tail.length))
           .map((line, index) => theme.fg(color, (index === 0 ? prefix : indent) + line));
         tail = [...wrapped, ...tail];
@@ -154,4 +165,13 @@ export function renderWatchOverlay(
   while (lines.length < height - 1) lines.push(row(""));
   lines.push(rule("", "└", "┘"));
   return lines;
+}
+
+/** What a waiting section waits on, as one line. */
+function waitingText(section: WatchSection): string {
+  const labels = (section.waitingOn ?? [])
+    .map((label) => watchText(label).replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .join(", ");
+  return labels || "work";
 }

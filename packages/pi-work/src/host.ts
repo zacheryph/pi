@@ -62,6 +62,16 @@ export interface WorkHostOptions {
   landingMark?(): unknown;
   /** Called once per startup with the items closed as lost, after their message was written. */
   onLost?(items: readonly WorkItemView[]): void;
+  /**
+   * Called after the set of open items changed: an item was opened, completed, cancelled or
+   * closed as lost. Not called for `notify`, and not for the second half of a close (the
+   * landing confirmation of a completed item): `list()` already reads as it will afterwards.
+   * For whoever shows the open items or acts on there being none (a managed child that went
+   * idle on an item and now has none). Called after the change is fully applied, including any
+   * wake the completion's message caused, so a reader sees the state the session is in. A throw
+   * is swallowed.
+   */
+  onChange?(): void;
   now?(): number;
   newId?(): string;
 }
@@ -232,7 +242,9 @@ export class WorkHostRuntime implements WorkHost {
       ...(view.data !== undefined ? { data: view.data } : {}),
       at: view.openedAt,
     });
-    return this.track(view, true).handle;
+    const handle = this.track(view, true).handle;
+    this.changed();
+    return handle;
   }
 
   adopt(owner: string, adopt: (item: WorkItem) => boolean): void {
@@ -268,6 +280,7 @@ export class WorkHostRuntime implements WorkHost {
       // A stale context cannot take the message; the items are closed either way.
     }
     this.options.onLost?.(items);
+    this.changed();
     return items;
   }
 
@@ -290,6 +303,21 @@ export class WorkHostRuntime implements WorkHost {
     );
   }
 
+  /**
+   * Close every open item as cancelled, with no message: the session's owner stopped it, and what
+   * it waited on is called off, so nothing is lost on the next start. Not part of the producers'
+   * contract (`WorkHost`): only whoever runs the session calls it. Returns how many were closed.
+   * Producers' handles go inert; the work behind them is theirs to stop (a stopped session's
+   * shutdown does).
+   */
+  cancelOpen(): number {
+    if (this.disposed) return 0;
+    const open = [...this.entries.values()].filter((entry) => !entry.closed);
+    for (const entry of open) this.close(entry, "cancelled");
+    if (open.length) this.changed();
+    return open.length;
+  }
+
   /** The session is going away. Items stay persisted for the next instance to adopt or lose. */
   dispose(): void {
     if (this.disposed) return;
@@ -304,7 +332,9 @@ export class WorkHostRuntime implements WorkHost {
       notify: (message) => this.notify(entry, message),
       complete: (message) => this.complete(entry, message),
       cancel: () => {
-        if (this.live(entry)) this.close(entry, "cancelled");
+        if (!this.live(entry)) return;
+        this.close(entry, "cancelled");
+        this.changed();
       },
     };
     this.entries.set(view.id, entry);
@@ -338,6 +368,15 @@ export class WorkHostRuntime implements WorkHost {
       return;
     }
     if (!waiting) this.write(entry, "completed");
+    this.changed();
+  }
+
+  private changed(): void {
+    try {
+      this.options.onChange?.();
+    } catch {
+      // A display or a policy reacting to the change must not break the producer that caused it.
+    }
   }
 
   /** Whether completed items still wait for their message to reach the transcript. */

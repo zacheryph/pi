@@ -17,6 +17,7 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import type { ChildLifecyclePublisher, ChildRunIdentity } from "#src/lifecycle/child-lifecycle";
+import type { ChildWork } from "#src/lifecycle/child-work";
 import { emitChildSessionShutdown } from "#src/lifecycle/child-shutdown";
 import {
   normalizeMaxTurns,
@@ -29,6 +30,7 @@ import { getSessionContextPercent } from "#src/lifecycle/usage";
 import { extractText } from "#src/session/context";
 import { getAgentConversation } from "#src/session/conversation";
 import type { SessionMessage, ThinkingLevel } from "#src/types";
+import type { WorkItemView } from "../../../../packages/pi-work/src/index.ts";
 
 /** Outcome of one turn loop. */
 export interface TurnLoopResult {
@@ -71,6 +73,8 @@ export interface SubagentSessionMeta extends ChildRunIdentity {
   /** Parent context prepended to the run prompt, captured at spawn time. */
   parentContext: string | undefined;
   lifecycle: ChildLifecyclePublisher;
+  /** The child's managed work host; absent for a session built outside a `Subagent`. */
+  work?: ChildWork;
   /** Releases what the factory offered for this child, after its session is gone. */
   onDispose?: () => void;
 }
@@ -241,6 +245,20 @@ export class SubagentSession {
     );
   }
 
+  /**
+   * What the child is waiting on: the open items in its work host, oldest first. An idle agent
+   * with open items is waiting; one without is done. Nothing is stored, so this is always the
+   * host's current answer.
+   */
+  openWork(): readonly WorkItemView[] {
+    return this.meta.work?.openItems() ?? [];
+  }
+
+  /** The agent was stopped: close its open items as cancelled. Returns how many there were. */
+  cancelWork(): number {
+    return this.meta.work?.cancelOpen() ?? 0;
+  }
+
   /** Deliver a steer to the live session. */
   async steer(message: string): Promise<void> {
     await this._session.steer(message);
@@ -291,6 +309,8 @@ export class SubagentSession {
     await emitChildSessionShutdown(this._session);
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- dispose may not exist on all session implementations
     this._session.dispose?.();
+    // After the child's shutdown handlers ran, which may still close items.
+    this.meta.work?.dispose();
     this.meta.onDispose?.();
     this.meta.lifecycle.disposed({
       sessionId: this.meta.sessionId,

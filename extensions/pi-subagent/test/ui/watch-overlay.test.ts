@@ -18,6 +18,7 @@ function agent(overrides: Partial<WatchAgent> = {}) {
     description: "watch me",
     status: "running",
     outcome: undefined,
+    waitingOn: [],
     responseText: "",
     result: undefined,
     error: undefined,
@@ -424,5 +425,69 @@ describe("WatchOverlay lifecycle and visibility", () => {
     const count = f.ui.setWidget.mock.calls.length;
     f.watch.onSubagentStarted(agent().record);
     expect(f.ui.setWidget.mock.calls.length).toBe(count);
+  });
+});
+
+// Added by roadmap step 9: an idle agent with open work is waiting, not finished.
+describe("WatchOverlay — a waiting agent", () => {
+  const park = (a: ReturnType<typeof agent>, waitingOn: string[]) => {
+    a.record.status = "idle";
+    a.record.outcome = "completed";
+    a.record.waitingOn = waitingOn;
+  };
+
+  it("keeps its section, naming what it waits on, with no expiry while the work is open", () => {
+    const f = fixture();
+    const a = agent();
+    a.ready();
+    f.watch.onSubagentStarted(a.record);
+    f.watch.onSubagentSessionCreated(a.record);
+    park(a, ["CI"]);
+    f.watch.onSubagentWaiting(a.record);
+    expect(f.text()).toContain("· waiting: CI");
+
+    // A finished agent leaves after a few seconds; a waiting one stays however long it waits.
+    vi.advanceTimersByTime(10 * 60_000);
+    expect(f.text()).toContain("· waiting: CI");
+    expect(a.unsubscribe).not.toHaveBeenCalled();
+    f.watch.dispose();
+  });
+
+  it("follows the work as it changes, and finishes like any agent when the work is done", () => {
+    const f = fixture();
+    const a = agent();
+    a.ready();
+    f.watch.onSubagentStarted(a.record);
+    f.watch.onSubagentSessionCreated(a.record);
+    park(a, ["CI", "review"]);
+    f.watch.onSubagentWaiting(a.record);
+    expect(f.text()).toContain("Waiting for CI, review…");
+    park(a, ["review"]);
+    f.watch.onSubagentWaiting(a.record);
+    expect(f.text()).toContain("Waiting for review…");
+    expect(f.text()).not.toContain("CI");
+
+    // The work reported back: running again, then done and lingering as a finished agent.
+    a.record.status = "running";
+    a.record.outcome = undefined;
+    a.record.waitingOn = [];
+    f.watch.onSubagentResuming(a.record);
+    expect(f.text()).toContain("· running");
+    a.record.status = "idle";
+    a.record.outcome = "completed";
+    a.record.result = "all done";
+    f.watch.onSubagentResumed(a.record);
+    expect(f.text()).toContain("· completed");
+    vi.advanceTimersByTime(9_000);
+    expect(f.overlays.at(-1)!.handle.setHidden).toHaveBeenLastCalledWith(true);
+    f.watch.dispose();
+  });
+
+  it("shows an agent that was already waiting when the overlay opened", () => {
+    const a = agent();
+    park(a, ["CI"]);
+    const f = fixture([a.record]);
+    expect(f.text()).toContain("waiting: CI");
+    f.watch.dispose();
   });
 });
