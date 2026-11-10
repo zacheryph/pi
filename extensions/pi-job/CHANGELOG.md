@@ -3,6 +3,13 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-10: `job_read` test waits for the output
+
+- `test/extension.test.ts`: `job_list, job_read and job_kill` read the job's log once, right after
+  the pid file appeared. The log is written one event-loop turn after the child's stdout, so under
+  load the read could run first and see `(no output yet)`. It now waits for `started` to appear.
+  No source change.
+
 ## 2026-11-10: A reloaded parent's own children are not an unknown handoff
 
 Roadmap step 12 (`docs/roadmaps/subagent-work-lifecycle.md`): a parent reload now suspends the jobs
