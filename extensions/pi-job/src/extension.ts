@@ -9,6 +9,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { randomUUID } from "node:crypto";
 import { isAbsolute, resolve } from "node:path";
+import { parentOf } from "../../../packages/pi-session-tree/src/index.ts";
 import {
   ensureWorkHost,
   type Json,
@@ -386,7 +387,9 @@ export function createJobsExtension(options: JobsExtensionOptions = {}) {
       }
       for (const notice of await stopOrphans(owners)) ctxRef?.ui?.notify?.(notice, "warning");
       for (const [id, pending] of owners) {
-        if (!pending.token)
+        // A session this one delegated to is reopened by this one (its agents are restored at
+        // `session_start`), which takes its owner then: its handoff is not a mystery.
+        if (!pending.token && pending.parent !== sessionId)
           ctxRef?.ui?.notify?.(
             `pi-job: session ${id} is awaiting reload handoff; ownership is unknown, so its jobs/watches were not stopped.`,
             "warning",
@@ -411,6 +414,7 @@ export function createJobsExtension(options: JobsExtensionOptions = {}) {
         // goes with this instance: what ends meanwhile waits for the replacement's host.
         items.suspend();
         owner.token = undefined;
+        owner.parent = parentOf(sessionId);
         expireReloadOwner(sessionId, owner);
         retired = true;
         return;

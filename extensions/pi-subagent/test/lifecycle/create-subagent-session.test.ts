@@ -12,7 +12,7 @@ import type {
   CreateSessionOptions,
   ResourceLoaderOptions,
 } from "#src/lifecycle/create-subagent-session";
-import { createSubagentSession } from "#src/lifecycle/create-subagent-session";
+import { createSubagentSession, StaleSessionError } from "#src/lifecycle/create-subagent-session";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import { SubagentSession } from "#src/lifecycle/subagent-session";
 import type { AgentConfig } from "#src/types";
@@ -98,6 +98,22 @@ describe("createSubagentSession — assembly", () => {
       await reopen();
       expect(io.createSession.mock.calls[0][0]).toMatchObject({
         sessionStartEvent: { type: "session_start", reason: "resume" },
+      });
+    });
+
+    it("tells the child's extensions it is a reload when the parent reloaded: the one reason pi-job keeps jobs for", async () => {
+      await createSubagentSession(
+        {
+          snapshot: STUB_SNAPSHOT,
+          type: "explore",
+          cwd: "/worktree",
+          transcriptPath: "/old-parent/tasks/agent.jsonl",
+          startReason: "reload",
+        },
+        createSubagentSessionDeps({ io, exec, registry: mockAgentLookup }),
+      );
+      expect(io.createSession.mock.calls[0][0]).toMatchObject({
+        sessionStartEvent: { type: "session_start", reason: "reload" },
       });
     });
 
@@ -1040,5 +1056,118 @@ describe("createSubagentSession — the child's managed work host", () => {
     expect(service("child-session-id", WORK_SERVICE)).toBeUndefined();
     expect(subagent.openWork()).toEqual([]);
     expect(loadedBuiltinNames()).toEqual([]);
+  });
+});
+
+describe("createSubagentSession — a creation that was abandoned meanwhile", () => {
+  beforeEach(resetSessionTree);
+  const policy = () => ({ wake: vi.fn(), changed: vi.fn(), lost: vi.fn() });
+  const leftOpen = {
+    v: 1,
+    op: "open",
+    id: "old",
+    owner: "pi-job",
+    kind: "watch",
+    label: "CI",
+    at: 1,
+  };
+
+  /** A reopened transcript that holds one open item, which a stale creation must leave alone. */
+  function reopened() {
+    const session = arrangeFactory();
+    const appended: unknown[] = [];
+    const manager = {
+      newSession: vi.fn(),
+      getSessionFile: () => "/old/tasks/agent.jsonl",
+      getSessionId: () => "child-session-id",
+      getBranch: () => [{ type: "custom", customType: WORK_ENTRY, data: leftOpen }],
+      appendCustomEntry: vi.fn((_type: string, data: unknown) => {
+        appended.push(data);
+        return "e";
+      }),
+    };
+    io.openSessionManager.mockReturnValue(manager);
+    return { session, appended };
+  }
+  const params = (isStale: () => boolean) => ({
+    snapshot: STUB_SNAPSHOT,
+    type: "explore" as const,
+    cwd: "/worktree",
+    transcriptPath: "/old/tasks/agent.jsonl",
+    work: policy(),
+    isStale,
+  });
+
+  it("settles nothing and writes nothing when the extensions finish starting after it was abandoned", async () => {
+    const { session, appended } = reopened();
+    let stale = false;
+    session.bindExtensions.mockImplementation(async () => {
+      stale = true; // the bound passed while the extensions were starting
+    });
+    const lifecycle = createChildLifecycleMock();
+    await expect(
+      createSubagentSession(
+        params(() => stale),
+        createSubagentSessionDeps({ io, exec, registry: mockAgentLookup, lifecycle }),
+      ),
+    ).rejects.toBeInstanceOf(StaleSessionError);
+
+    // Not one write to the transcript a newer session owns: no lost close, no lost message.
+    expect(appended).toEqual([]);
+    expect(session.sendCustomMessage).not.toHaveBeenCalled();
+    // The session is discarded, but never announced as disposed: its id is the live agent's now.
+    expect(session.dispose).toHaveBeenCalledOnce();
+    expect(lifecycle.disposed).not.toHaveBeenCalled();
+    expect(lifecycle.bound).not.toHaveBeenCalled();
+    expect(service("child-session-id", WORK_SERVICE)).toBeUndefined();
+  });
+
+  it("offers nothing under the session id when it was abandoned before the session was built", async () => {
+    const { session } = reopened();
+    const newer = { open: vi.fn(), adopt: vi.fn(), list: vi.fn() };
+    // A newer session already holds the id.
+    const { provide } = await import("../../../../packages/pi-session-tree/src/index.ts");
+    provide("child-session-id", WORK_SERVICE, newer);
+    await expect(
+      createSubagentSession(
+        params(() => true),
+        defaultDeps(),
+      ),
+    ).rejects.toBeInstanceOf(StaleSessionError);
+    expect(service("child-session-id", WORK_SERVICE)).toBe(newer);
+    expect(session.bindExtensions).not.toHaveBeenCalled();
+  });
+
+  it("does not clobber a newer session's work host when the abandoned one is disposed", async () => {
+    reopened();
+    const newer = { open: vi.fn(), adopt: vi.fn(), list: vi.fn() };
+    const { provide } = await import("../../../../packages/pi-session-tree/src/index.ts");
+    let stale = false;
+    const session = arrangeFactory();
+    session.bindExtensions.mockImplementation(async () => {
+      // A newer session took the id while this one's extensions were starting.
+      provide("child-session-id", WORK_SERVICE, newer);
+      stale = true;
+    });
+    await expect(
+      createSubagentSession(
+        params(() => stale),
+        defaultDeps(),
+      ),
+    ).rejects.toBeInstanceOf(StaleSessionError);
+    expect(service("child-session-id", WORK_SERVICE)).toBe(newer);
+  });
+
+  it("is untouched when nobody abandoned it: the host settles its startup as before", async () => {
+    const { session, appended } = reopened();
+    await createSubagentSession(
+      params(() => false),
+      defaultDeps(),
+    );
+    expect(appended).toContainEqual(expect.objectContaining({ op: "close", reason: "lost" }));
+    expect(session.sendCustomMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ customType: WORK_LOST }),
+      { triggerTurn: false },
+    );
   });
 });

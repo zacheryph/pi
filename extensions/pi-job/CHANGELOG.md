@@ -3,6 +3,21 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-10: A reloaded parent's own children are not an unknown handoff
+
+Roadmap step 12 (`docs/roadmaps/subagent-work-lifecycle.md`): a parent reload now suspends the jobs
+of the subagents it keeps (pi-subagent tells a child holding open work that the session is
+`reload`ing, and reopens it at its own `session_start`).
+
+- `Owner.parent`: when an owner is suspended for a reload, pi-job records the session that delegated
+  it (`parentOf` in pi-session-tree). The parent's `session_start` skips the "awaiting reload handoff;
+  ownership is unknown" warning for owners whose `parent` is the starting session, because its own
+  pi-subagent takes them back a moment later (pi-job loads first in the bundle, so its `session_start`
+  runs before pi-subagent reopens the children). Another session's pending handoff still warns.
+  Without this every `/reload` of a parent with a waiting child printed that warning for the child.
+- Tests: an owner whose `parent` is the starting session raises no notice and another one still does;
+  a reload records the delegating session on the suspended owner.
+
 ## 2026-11-09: Reload race and work-contract gaps
 
 - `JobItems.adopt`: a job that is already terminal and was not stopped on request

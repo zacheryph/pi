@@ -102,6 +102,48 @@ describe("toPersistedRecord", () => {
   });
 });
 
+describe("waitingOn", () => {
+  /** A record as the writer copies from it: no version, and the model not yet a label. */
+  const source = (overrides: Partial<PersistedSubagentRecord> = {}) => {
+    const { version: _version, model: _model, ...rest } = persistedRecord(overrides);
+    return rest;
+  };
+  it("records what an idle agent waits on, and leaves it out for an agent that waits on nothing", () => {
+    const waiting = createTestSubagent({
+      status: "idle",
+      outcome: "completed",
+      sessionReady: true,
+    });
+    expect(toPersistedRecord(waiting)).not.toHaveProperty("waitingOn");
+    expect(toPersistedRecord({ ...source(), waitingOn: ["CI", "answer"] })).toMatchObject({
+      waitingOn: ["CI", "answer"],
+    });
+    expect(toPersistedRecord({ ...source(), waitingOn: [] })).not.toHaveProperty("waitingOn");
+  });
+
+  it("is never recorded for an agent with a run in flight", () => {
+    expect(
+      toPersistedRecord({
+        ...source({ status: "running", outcome: undefined }),
+        waitingOn: ["CI"],
+      }),
+    ).not.toHaveProperty("waitingOn");
+  });
+
+  it("is read back, and a record without it, or with a malformed one, is still valid", () => {
+    const entries = [
+      recordEntry({ ...persistedRecord({ id: "a" }), waitingOn: ["CI"] }),
+      recordEntry(persistedRecord({ id: "b" })),
+      recordEntry({ ...persistedRecord({ id: "c" }), waitingOn: [1, "x"] }),
+    ];
+    const byId = Object.fromEntries(readPersistedRecords(entries).map((r) => [r.id, r]));
+    expect(byId.a.waitingOn).toEqual(["CI"]);
+    expect(byId.b).not.toHaveProperty("waitingOn");
+    expect(byId.c).toBeDefined();
+    expect(byId.c).not.toHaveProperty("waitingOn");
+  });
+});
+
 describe("readPersistedRecords", () => {
   it("folds every lifecycle step into the last one per id", () => {
     const entries = [

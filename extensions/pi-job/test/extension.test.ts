@@ -11,6 +11,7 @@ import { alive, sleep, tempDir, waitForPid, waitUntil, tick } from "./helpers.ts
 import { JobManager } from "../src/jobs.ts";
 import { sessionOwners } from "../src/ownership.ts";
 import { openRecords, WORK_ENTRY, WORK_LOST } from "../../../packages/pi-work/src/index.ts";
+import { forget, link } from "../../../packages/pi-session-tree/src/index.ts";
 
 interface Sent {
   message: {
@@ -1179,4 +1180,54 @@ void test("a reload gap's completion is released by the first agent start when r
   assert.deepEqual(closeReasons(entries), ["completed"]);
   await next.emit("before_agent_start", { type: "before_agent_start" });
   assert.equal(next.sent.length, 1, "released once");
+});
+
+void test("a pending reload handoff of a session this one delegated to raises no notice; another session's still does", async (t) => {
+  const dir = tempDir(t);
+  const parentId = randomUUID();
+  const next = fakePi(false, parentId);
+  createJobsExtension({ logRoot: join(dir, "logs"), killGraceMs: 50, drainMs: 50 })(next.pi as any);
+  t.after(() => next.emit("session_shutdown", { reason: "quit" }));
+  // Suspended by a reload: no token, so nobody owns them until a session takes them back.
+  const suspended = (parent?: string) => ({
+    version: 4 as const,
+    token: undefined,
+    parent,
+    alive: () => undefined,
+    manager: { list: () => [] } as any,
+    items: { dispose: () => {} } as any,
+  });
+  const owners = sessionOwners();
+  owners.set("child-of-next", suspended(parentId));
+  owners.set("stranger", suspended());
+  t.after(() => {
+    owners.delete("child-of-next");
+    owners.delete("stranger");
+  });
+
+  await next.start("reload");
+
+  // The child is reopened by the session that is starting, which takes its owner then; the other
+  // session's handoff is still unknown to this one.
+  const awaiting = next.notes.filter((note) => /awaiting reload handoff/.test(note.text));
+  assert.equal(awaiting.length, 1);
+  assert.match(awaiting[0].text, /session stranger is awaiting reload handoff/);
+});
+
+void test("a reload records which session delegated the suspended one, so that session knows it will reopen it", async (t) => {
+  const dir = tempDir(t);
+  const childId = randomUUID();
+  const fake = fakePi(false, childId);
+  createJobsExtension({ logRoot: join(dir, "logs"), killGraceMs: 50, drainMs: 50 })(fake.pi as any);
+  link(childId, { parent: "the-parent" });
+  t.after(() => {
+    forget(childId);
+    sessionOwners().delete(childId);
+  });
+  await fake.start();
+  await fake.emit("session_shutdown", { reason: "reload" });
+  const owner = sessionOwners().get(childId);
+  assert.equal(owner?.token, undefined, "suspended: nobody owns it until it is taken back");
+  assert.equal(owner?.parent, "the-parent");
+  clearTimeout(owner?.reloadTimer);
 });

@@ -20,8 +20,12 @@
  * is the host's job.
  *
  * A session that shuts down leaves its items open on purpose: `dispose` makes this object inert
- * without closing them, so the next start of the spawning session finds them open and reports
- * them lost (roadmap step 12 will adopt them instead).
+ * without closing them. The next start of the spawning session (a reload or a restart) finds them
+ * open and adopts them (roadmap step 12): `adopt` takes the items of the agents it is about to
+ * restore, and once the restore knows which of them are still waiting, `settle` cancels the items
+ * of the others (the one report to the parent covers them) and opens an item for a waiting agent
+ * that had none. An item of an agent that is not restored (it was done, or its record is gone) is
+ * not adopted, and the host closes it as lost with its own message.
  */
 import { debugLog } from "#src/debug";
 import { completionMessage, questionMessage, updateMessage } from "#src/observation/notification";
@@ -54,6 +58,15 @@ export function itemLabel(record: Pick<Subagent, "id" | "type" | "description">)
   const description =
     flat.length > LABEL_DESCRIPTION ? `${flat.slice(0, LABEL_DESCRIPTION - 1)}…` : flat;
   return `${description} (${record.type} agent ${record.id})`;
+}
+
+/** What a restore found out about one agent, as far as its spawner's item is concerned. */
+export interface RestoredWork {
+  id: string;
+  type: string;
+  description: string;
+  /** The agent holds open work, or owes the answer to a message: its run is still to be reported. */
+  continuing: boolean;
 }
 
 /** What the lifecycle observer tells the work producer. */
@@ -132,7 +145,54 @@ export class SubagentWork implements AgentWork {
     this.requested.clear();
   }
 
-  private open(record: Subagent): WorkItem | undefined {
+  /**
+   * The start of the spawning session: take over the open items that the agents in `agentIds`
+   * left in its host. Called before the agents are restored, so a run the restore asks for finds
+   * its item instead of opening a second one. Every item of those agents is taken: the restore
+   * then keeps the ones of agents that go on (`settle`) and cancels the rest.
+   */
+  adopt(agentIds: ReadonlySet<string>): void {
+    const host = this.host();
+    if (!host || this.disposed) return;
+    host.adopt(WORK_OWNER, (item) => {
+      const agentId = (item.data as Partial<SubagentItemData> | undefined)?.agentId;
+      if (typeof agentId !== "string" || !agentIds.has(agentId)) return false;
+      if (this.items.has(agentId)) {
+        // One item per agent at a time: an extra one is the leftover of an earlier instance.
+        item.cancel();
+        return true;
+      }
+      this.items.set(agentId, item);
+      this.requested.add(agentId);
+      return true;
+    });
+  }
+
+  /**
+   * The restore of this agent is over. An agent that goes on keeps its adopted item, which its
+   * completion will close, or gets one if the host held none (its earlier one was lost). One
+   * that does not (done, interrupted, lost everything) has its item cancelled without a message:
+   * the single report to the parent tells it what happened, and a completion message for a run
+   * that was cut short would be a second one.
+   */
+  settle(agent: RestoredWork): void {
+    if (this.disposed) return;
+    if (agent.continuing) {
+      if (!this.items.has(agent.id)) {
+        this.requested.add(agent.id);
+        this.open(agent);
+      }
+      return;
+    }
+    const item = this.items.get(agent.id);
+    this.items.delete(agent.id);
+    this.requested.delete(agent.id);
+    item?.cancel();
+  }
+
+  private open(
+    record: Pick<Subagent, "id" | "type" | "description"> & { toolCallId?: string },
+  ): WorkItem | undefined {
     const host = this.host();
     if (!host) {
       debugLog("subagent work item", new Error("the session has no work host"));

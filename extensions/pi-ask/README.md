@@ -81,7 +81,9 @@ A subagent asks through the session's work host ([pi-work](../../packages/pi-wor
 
 pi-ask adopts its open question items at `session_start`, so a question survives a
 reload or restart of the subagent's session: it stays open, the delegator is not
-told again, and the host does not report it lost. A question item found in a
+told again, and the host does not report it lost. A parent `/reload` or restart
+reopens a waiting subagent without a model run (pi-subagent does it at its own
+`session_start`), which is what gives pi-ask this chance to adopt. A question item found in a
 session that asks the user is not adopted.
 
 The root session's route is unchanged.

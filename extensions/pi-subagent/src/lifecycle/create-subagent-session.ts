@@ -56,6 +56,17 @@ const DELEGATION_TOOL_NAMES = ["subagent_start", "subagent_get", "subagent_send"
 /** pi-ask's tool, which a child with a link to its parent can always call. */
 const ASK_TOOL_NAME = "ask";
 
+/**
+ * Thrown by `createSubagentSession` when `isStale` says the creation was abandoned: nothing was
+ * attached, and the session built so far was discarded without a write to the transcript.
+ */
+export class StaleSessionError extends Error {
+  constructor() {
+    super("the child session was abandoned while it was being created");
+    this.name = "StaleSessionError";
+  }
+}
+
 /** Tells the spawner a question the child asked, through the spawner's item for the child. */
 export type QuestionAnnouncer = (question: string) => void;
 
@@ -113,7 +124,7 @@ export interface CreateSessionOptions {
   resourceLoader: ResourceLoaderLike;
   thinkingLevel?: ThinkingLevel;
   /** Why the session starts, when it is not a fresh `startup`. */
-  sessionStartEvent?: { type: "session_start"; reason: "resume" };
+  sessionStartEvent?: { type: "session_start"; reason: "resume" | "reload" };
 }
 
 /**
@@ -224,6 +235,22 @@ export interface CreateSubagentSessionParams {
    * Its messages are the child's history, so `snapshot.parentContext` is unused.
    */
   transcriptPath?: string;
+  /**
+   * Whether this creation has been abandoned (a reopen the caller gave up on after a bound, or a
+   * manager that shut down meanwhile). Read at the points where the creation would touch what
+   * another session may own by then: once the transcript's session is built and once the child's
+   * extensions have started, where it also guards the host's every write. When it says yes the
+   * session is discarded without writing to the transcript or publishing `disposed`, and the call
+   * throws `StaleSessionError`. Without it, a creation that hangs and then completes would settle
+   * its startup against a transcript a newer session has been appending to since.
+   */
+  isStale?: () => boolean;
+  /**
+   * Why a reopened transcript's session starts, which its extensions see as `session_start`'s
+   * reason. `resume` (the default) is any reopen; `reload` is the spawning session reloading, the
+   * only reason pi-job takes its retained jobs back for (roadmap step 12). Needs `transcriptPath`.
+   */
+  startReason?: "resume" | "reload";
 }
 
 /**
@@ -356,6 +383,7 @@ export async function createSubagentSession(
     ],
   });
   await loader.reload();
+  if (params.isStale?.()) throw new StaleSessionError();
 
   // Create a persisted SessionManager so transcripts are written in Pi's
   // official JSONL format. Falls back to a temp directory when the parent
@@ -393,9 +421,20 @@ export async function createSubagentSession(
     resourceLoader: loader,
     thinkingLevel: cfg.thinkingLevel,
     ...(transcriptPath
-      ? { sessionStartEvent: { type: "session_start" as const, reason: "resume" as const } }
+      ? {
+          sessionStartEvent: {
+            type: "session_start" as const,
+            reason: params.startReason ?? ("resume" as const),
+          },
+        }
       : {}),
   });
+
+  if (params.isStale?.()) {
+    // Before anything is offered under the session id, which a newer session may now hold.
+    session.dispose();
+    throw new StaleSessionError();
+  }
 
   // Offered before the child's extensions bind, so pi-ask finds it on session_start.
   const announceQuestion = params.announceQuestion;
@@ -407,7 +446,13 @@ export async function createSubagentSession(
   // The managed work host, offered the same way: `ensureWorkHost` in the child finds it, provides
   // nothing, and only forwards the child's run boundaries to it.
   const work = params.work
-    ? new ChildWork({ sessionId, session, store: sessionManager, policy: params.work })
+    ? new ChildWork({
+        sessionId,
+        session,
+        store: sessionManager,
+        policy: params.work,
+        ...(params.isStale ? { isStale: params.isStale } : {}),
+      })
     : undefined;
   const subagentSession = new SubagentSession(session, {
     outputFile: sessionManager.getSessionFile(),
@@ -438,6 +483,9 @@ export async function createSubagentSession(
   try {
     // Bind extensions so that session_start fires and extensions can initialize.
     await session.bindExtensions({});
+    // Whatever kept the extensions from starting is over, but the agent may have been given up on
+    // meanwhile: its transcript then belongs to a newer session, so nothing is settled against it.
+    if (params.isStale?.()) throw new StaleSessionError();
     // Each extension has had its `session_start` and its chance to adopt what an earlier
     // instance of this child left open: whatever nobody took is reported lost.
     work?.settleStartup();
@@ -451,7 +499,7 @@ export async function createSubagentSession(
     // Initialization failed after session-created — dispose (child session_shutdown +
     // session.dispose() + emit disposed) before rethrowing so neither the
     // registration nor a partially-initialized extension's resources leak.
-    await subagentSession.dispose();
+    await subagentSession.dispose("quit", !(err instanceof StaleSessionError));
     throw err;
   }
 

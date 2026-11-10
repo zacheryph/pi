@@ -10,6 +10,7 @@ import type { Model } from "@earendil-works/pi-ai";
 import type { AgentSessionEvent, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { debugLog } from "#src/debug";
 import type { SubagentHandoff } from "#src/lifecycle/child-lifecycle";
+import type { ChildShutdownReason } from "#src/lifecycle/child-shutdown";
 import type { ReopenRefusal, ReopenSource } from "#src/lifecycle/cold-resume";
 import type { CreateSubagentSessionParams } from "#src/lifecycle/create-subagent-session";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
@@ -115,6 +116,30 @@ export type SendOutcome =
   | { kind: "joined" }
   | { kind: "started"; relaunched: boolean }
   | { kind: "refused"; reason: SendRefusal };
+
+/**
+ * What reopening an agent's session without a run produced (`Subagent.restore`).
+ *
+ * - `reopened`: the transcript is open again in a live session. `open` is what the agent holds
+ *   open now (adopted by its producers: a question pi-ask took over, a job pi-job took back in
+ *   its reload handoff), `lost` what nobody could take over, closed as lost with the message
+ *   already in the transcript, and `woken` whether a message that arrived during the startup has
+ *   asked for a run (a job that ended while the parent reloaded).
+ * - `unreachable`: the transcript cannot be reopened (see `reopenRefusal`).
+ * - `failed`: the session could not be built.
+ * - `timed-out`: building the session took longer than the bound it was given. Nothing is known
+ *   about the agent's work, and nothing was attached: if the session ever arrives it is disposed.
+ */
+export type RestoreOutcome =
+  | {
+      kind: "reopened";
+      open: readonly WorkItemView[];
+      lost: readonly WorkItemView[];
+      woken: boolean;
+    }
+  | { kind: "unreachable"; reason: ReopenRefusal }
+  | { kind: "failed"; error: unknown }
+  | { kind: "timed-out" };
 
 /**
  * The execution machinery a Subagent needs to run. A single mandatory
@@ -279,7 +304,8 @@ export class Subagent {
    * `SubagentManager.clearCompleted`, `releaseSession` itself (so no caller can bypass it) and the
    * "assignment ended" release (`abandonWork`, which calls the work off first so the rule holds).
    * What is not retention keeps its own semantics and does not ask: `disposeSession` (the parent
-   * shut down: it ends everything) and the disposal of a session a stopped run never attached.
+   * shut down: it ends the session but not the work, which stays open in the transcript for the
+   * next start) and the disposal of a session a stopped run never attached.
    */
   isDone(): boolean {
     return this.status === "idle" && !this.hasOpenWork();
@@ -363,6 +389,18 @@ export class Subagent {
   private parked = false;
   /** The record is being torn down for good (manager shutdown or clear): it starts no run. */
   private disposing = false;
+  /**
+   * The spawning session is going away with the agent's assignment intact (`suspend`): whatever
+   * the agent waits on stays open in its transcript, for the next start to adopt or report lost,
+   * and nothing here reports or calls anything off.
+   */
+  private suspended = false;
+  /** The session is being reopened without a run (`restore`); a wake that arrives is held. */
+  private restoring = false;
+  /** What the reopened session's host closed as lost at startup, for `restore` to report. */
+  private startupLost: WorkItemView[] = [];
+  /** A message arrived while the session was being reopened: a run owes it an answer. */
+  private wakeWhenRestored = false;
   /** This run's open work was called off: the agent holds none, and its session is released. */
   private workCancelled = false;
   /** What was called off and the agent not yet told (`reportCalledOff`). */
@@ -669,6 +707,9 @@ export class Subagent {
       work: {
         wake: () => this.requestWorkRun(),
         changed: () => this.workChanged(),
+        lost: (items) => {
+          this.startupLost.push(...items);
+        },
       },
       // A question reaches the parent through its item for this agent. The agent itself waits on
       // a question item in its own host, so nothing is recorded on this side.
@@ -916,6 +957,11 @@ export class Subagent {
    * that arrived as the run ended is answered by a run of its own right after.
    */
   private requestWorkRun(): void {
+    if (this.restoring) {
+      // The session is not attached yet: a run is asked for once it is (`restore`).
+      this.wakeWhenRestored = true;
+      return;
+    }
     if (this.status === "running") {
       this.wakeAfterRun = true;
       return;
@@ -933,7 +979,7 @@ export class Subagent {
    * what is left.
    */
   private workChanged(): void {
-    if (!this.parked || this.status !== "idle") return;
+    if (this.suspended || !this.parked || this.status !== "idle") return;
     if (this.hasOpenWork()) {
       this.execution.observer?.onWaiting?.(this);
       return;
@@ -955,6 +1001,9 @@ export class Subagent {
    * reads the live session.
    */
   private abandonWork(run: Run): void {
+    // A suspended agent's run was cut short by its parent going away, not by the agent: its work
+    // stays open, for the next start of the parent to take over or report lost.
+    if (this.suspended) return;
     if (this.current !== run || this.state.outcome === "completed") return;
     if (this.hasOpenWork()) this.cancelWork();
     // Before the release: after it the session cannot take the message.
@@ -980,7 +1029,10 @@ export class Subagent {
    */
   private finish(run: Run): void {
     run.listeners.release();
-    if (this.current !== run) return;
+    // A suspended agent reports nothing: the run the shutdown cut short is not an outcome, and
+    // the parent's saved record still reads queued or running, which is how the next start
+    // knows to report it (and to look for the work it left open).
+    if (this.suspended || this.current !== run) return;
     if (run.kind !== "initial") this.execution.observer?.onResumeFinished?.(this);
     else this.execution.observer?.onRunFinished?.(this);
   }
@@ -1044,6 +1096,124 @@ export class Subagent {
   }
 
   /**
+   * The spawning session is going away (a reload, a quit, a session switch) and this agent with
+   * it, but its assignment does not end: nothing here calls its work off (that is what a stop
+   * does). A run in flight or queued is cut short and the agent reads idle with the outcome
+   * `interrupted`, which the next start reads back from the parent's saved record; an agent
+   * waiting on work stays waiting. Its open items stay persisted in its own transcript, so the next
+   * start of the parent can reopen the agent and let their producers take them over, or report
+   * them lost. After this the record reports nothing and starts no run; `disposeSession` tears the
+   * session down.
+   */
+  suspend(): void {
+    this.suspended = true;
+    this.disposing = true;
+    this.parked = false;
+    this.wakeAfterRun = false;
+    if (!this.isActive()) return;
+    this.current.abort.abort();
+    this.state.markInterrupted();
+  }
+
+  /**
+   * Reopen this agent's saved transcript in a live session without a model run, so the producers
+   * of the work it left open can take it over (pi-job within its reload handoff, pi-ask always)
+   * and what nobody takes is closed as lost, written into the transcript for its next run.
+   *
+   * Nothing is admitted here: reopening takes no concurrency slot, and no run starts. A message
+   * that arrived during the startup (a job that ended while the parent reloaded) is reported as
+   * `woken`; the caller then asks for its run with `wake()`, through the limiter like any wake.
+   * Afterwards the agent is idle:
+   * waiting if it still holds open items (the spawner's item for it stays open), done if it holds
+   * none. `startReason` is `reload` for a parent reload and `resume` for a restart. `timeoutMs`
+   * bounds how long building the session may take (see `timed-out`).
+   */
+  async restore(startReason: "reload" | "resume", timeoutMs?: number): Promise<RestoreOutcome> {
+    const refusal =
+      this.execution.checkReopen?.(this) ?? (this.outputFile ? undefined : "session-released");
+    if (refusal) return { kind: "unreachable", reason: refusal };
+    this.restoring = true;
+    this.startupLost = [];
+    this.wakeWhenRestored = false;
+    let session: SubagentSession;
+    // Set when this restore gives up on the session (the bound passed): from then on the session
+    // must touch nothing, because `subagent_send` may reopen the same transcript at once. Also
+    // true when the record is torn down meanwhile (`disposing`: the manager shut down).
+    let abandoned = false;
+    try {
+      const runConfig = this.execution.getRunConfig?.();
+      const creating = this.execution.createSubagentSession({
+        ...this.sessionParams(runConfig),
+        transcriptPath: this.outputFile,
+        startReason,
+        isStale: () => abandoned || this.disposing,
+        model: this.model,
+        thinkingLevel: this.thinkingLevel,
+      });
+      // A session whose creation hangs (an extension that never finishes its `session_start`) must
+      // not hold the parent's startup: past the bound the agent is given up on for now. The
+      // session is never attached; if it ever arrives it is disposed, so nothing leaks and
+      // nothing runs in it.
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const bound =
+        timeoutMs === undefined
+          ? undefined
+          : new Promise<"timed-out">((resolve) => {
+              timer = setTimeout(() => resolve("timed-out"), timeoutMs);
+              timer.unref?.();
+            });
+      const result = await Promise.race([creating, ...(bound ? [bound] : [])]).finally(() =>
+        clearTimeout(timer),
+      );
+      if (result === "timed-out") {
+        this.restoring = false;
+        abandoned = true;
+        // A creation that honours `isStale` rejects with `StaleSessionError` and has discarded its
+        // session without a write; one that returns a session anyway gets it disposed here.
+        creating.then(
+          (late) => disposeQuietly(late, "restored session that arrived after the bound"),
+          (error: unknown) => debugLog("restore session after the bound", error),
+        );
+        return { kind: "timed-out" };
+      }
+      session = result;
+      session.applyTurnLimits({
+        maxTurns: this.execution.maxTurns,
+        defaultMaxTurns: runConfig?.defaultMaxTurns,
+        wrapUpTurns: runConfig?.wrapUpTurns,
+      });
+    } catch (error) {
+      this.restoring = false;
+      return { kind: "failed", error };
+    }
+    this.restoring = false;
+    if (this.disposing) {
+      // The manager shut down meanwhile and has torn down every session it could see.
+      await disposeQuietly(session, "restored session after shutdown");
+      return { kind: "failed", error: new Error("the spawning session shut down") };
+    }
+    this.subagentSession = session;
+    this.released = undefined;
+    const open = session.openWork();
+    const lost = this.startupLost;
+    this.startupLost = [];
+    // Waiting from here on: its completion is still owed to the spawner (`workChanged`).
+    this.parked = open.length > 0;
+    const woken = this.wakeWhenRestored;
+    this.wakeWhenRestored = false;
+    return { kind: "reopened", open, lost, woken };
+  }
+
+  /**
+   * Ask for the run a restored agent owes a message that arrived during its startup (`restore`
+   * reported `woken`): through the limiter, like every wake. The caller registers the record
+   * first, so what the run announces finds it.
+   */
+  wake(): void {
+    this.requestWorkRun();
+  }
+
+  /**
    * Drop the steers buffered for a run that ended without a session to give them
    * to. They were addressed to that run; flushed later they would reach the next
    * run's session as if the parent had just sent them.
@@ -1068,9 +1238,13 @@ export class Subagent {
    * Resolves once the child's extensions have shut down; a failing teardown is
    * swallowed so the caller's remaining cleanup still runs.
    */
-  async disposeSession(): Promise<void> {
+  async disposeSession(reason?: ChildShutdownReason): Promise<void> {
     this.disposing = true;
-    await disposeQuietly(this.subagentSession, "child session dispose");
+    // A reload is only told to a child the next start will reopen: one that holds open work. A
+    // child with none (a done agent kept for its retention window) ends like any released
+    // session, so pi-job does not keep an owner for it that nobody will take back.
+    const told = reason === "reload" && !this.hasOpenWork() ? "quit" : reason;
+    await disposeQuietly(this.subagentSession, "child session dispose", told);
     // A retention release already cleared subagentSession, but its shutdown
     // must finish before a reload can reopen the same transcript/session ID.
     await this.sessionRelease;
@@ -1118,9 +1292,10 @@ function callOffWork(session: SubagentSession): void {
 async function disposeQuietly(
   session: SubagentSession | undefined,
   context: string,
+  reason?: ChildShutdownReason,
 ): Promise<void> {
   try {
-    await session?.dispose();
+    await (reason ? session?.dispose(reason) : session?.dispose());
   } catch (err) {
     debugLog(context, err);
   }

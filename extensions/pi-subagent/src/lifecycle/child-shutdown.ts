@@ -26,10 +26,21 @@ export const CHILD_SHUTDOWN_TIMEOUT_MS = 5_000;
 
 const SESSION_SHUTDOWN = "session_shutdown";
 
+/**
+ * Why a child's extensions are told the session is going away.
+ *
+ * `reload` is the spawning session reloading in the same process: the child will be reopened
+ * (roadmap step 12) and what its extensions keep across a reload (pi-job's jobs and watches, in
+ * its reload handoff) is kept. `quit` is every other end: the process exits, the spawning session
+ * is replaced, or the child is released after its retention window. What outlives it is only
+ * what its transcript holds.
+ */
+export type ChildShutdownReason = "quit" | "reload";
+
 /** The event a disposed child session dispatches to its extensions. */
 interface ChildSessionShutdownEvent {
   type: typeof SESSION_SHUTDOWN;
-  reason: "quit";
+  reason: ChildShutdownReason;
 }
 
 /**
@@ -53,12 +64,13 @@ export interface ShutdownCapableSession {
 export async function emitChildSessionShutdown(
   session: ShutdownCapableSession,
   timeoutMs: number = CHILD_SHUTDOWN_TIMEOUT_MS,
+  reason: ChildShutdownReason = "quit",
 ): Promise<void> {
   const runner = session.extensionRunner;
   if (!runner || !hasShutdownHandlers(session)) return;
 
   try {
-    const emitted = runner.emit({ type: SESSION_SHUTDOWN, reason: "quit" });
+    const emitted = runner.emit({ type: SESSION_SHUTDOWN, reason });
     if ((await settleWithinBound(emitted, timeoutMs)) === "timed-out") {
       debugLog("child session_shutdown exceeded its bound (ms)", timeoutMs);
     }

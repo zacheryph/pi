@@ -65,7 +65,7 @@ subagent_start({
 
 Agents always run in the background: the call returns an ID immediately and the completion message wakes the parent when the agent finishes, so the parent can end its turn and stay available while the agent works.
 There is no foreground mode and no call that waits for an agent.
-Each run is an item in the parent's work host ([`packages/pi-work`](../../packages/pi-work/README.md)); the host writes the completion message into the transcript, wakes an idle parent, and answers it in the same run when the parent is running. After a reload or restart an agent that was still running comes back as lost work, named in a `work:lost` message, and can be given more with `subagent_send`.
+Each run is an item in the parent's work host ([`packages/pi-work`](../../packages/pi-work/README.md)); the host writes the completion message into the transcript, wakes an idle parent, and answers it in the same run when the parent is running. A reload or restart keeps the agents: see [Reload, restart and lost work](#reload-restart-and-lost-work).
 
 The completion message is the only thing that delivers an outcome: it carries the result up to 500 characters, so ask agents to store a large result with `stash_put` and name the handle in their final answer.
 In print and json mode (`pi -p`, `--mode json`) nothing can wake the parent once its turn ends, so the process can return before background agents finish.
@@ -260,7 +260,7 @@ What happens depends on the agent's state:
 | Unknown ID, or an idle agent whose transcript, directory or agent type is gone    | Refused, saying why; the refusal names the transcript when there is one.                                                                                                                                    |
 
 An idle agent's run continues its live session while it has one.
-Once that is gone — the retention window released it, or a `/reload`, `/resume` or session switch dropped it — the agent's saved transcript is reopened instead, with the type, model, thinking level, turn ceiling and directory on its last saved record.
+Once that is gone — the retention window released it, or a `/reload`, `/resume` or session switch dropped it, and the agent held nothing open — the agent's saved transcript is reopened instead, with the type, model, thinking level, turn ceiling and directory on its last saved record.
 It continues under the same ID and appends to the same transcript file, so results, messages and notifications work as usual, and a record still reading queued or running (a run a reload interrupted) takes a message the same way.
 This rebuilds a full session, so the first turn starts more slowly than with a live session.
 The agent's current profile for its type applies, and what the spawn passed in `handoff` is not saved, so after a reload a worker does not regain the todo tasks it was handed.
@@ -439,7 +439,7 @@ A child's `ask` (pi-ask) does not complete the child. It opens a **question item
 - The parent hears the question **once**, as a `subagent:question` message (`<subagent-question>`, with the question text and the exact `subagent_send` call). It is delivered through the agent's item like a `parent_notify` update, and never repeated: the roster, `subagent_get` and the eventual completion do not quote it.
 - The parent answers with `subagent_send`. The message closes the agent's question items (and only those: a job it still watches stays open) and is the prompt of the run the agent gets through the concurrency limit, so the child sees the answer as its next user message, after its own `ask` call and its result. There is no `subagent_wait`.
 - With a job also open, the job's completion wakes the child (it sees the completion and the wake prompt) while the question stays open; its run ends, and it waits again until every item is closed. The answer closes the question item only.
-- The question survives a restart of the process: pi-ask adopts its open question items at `session_start` (`adopt` on the child's host), so reopening the child's transcript neither closes nor reports it lost, and the parent is not told again. A `subagent_send` to an agent whose transcript is reopened with a question still open answers it, and the reopened child is not left waiting. (A parent `/reload` still stops its waiting children, which cancels their questions, until children are kept across reloads.)
+- The question survives a restart of the process: pi-ask adopts its open question items at `session_start` (`adopt` on the child's host), so reopening the child's transcript neither closes nor reports it lost, and the parent is not told again. A `subagent_send` to an agent whose transcript is reopened with a question still open answers it, and the reopened child is not left waiting. A parent `/reload` or restart keeps a waiting child and its question (see [Reload, restart and lost work](#reload-restart-and-lost-work)).
 - `terminate` ends the turn only when every tool call in the batch terminates, so the `ask` tool tells the model to call it on its own; a batch that mixes `ask` with other tools continues, and the tool result says the question was sent.
 - The root session's `ask` is unchanged: it asks the user in a dialog.
 
@@ -466,6 +466,33 @@ Each child's shutdown is bounded: a handler that never resolves is abandoned aft
 If you author an extension that runs in children, note that its `session_shutdown` handler now fires **once per child session** in addition to once for the parent.
 A handler that flushes a log, writes a summary, or closes a shared resource should be safe to run repeatedly within one process.
 Before this behavior existed, children fired `session_start` with no matching shutdown, so extension-owned resources accumulated for the life of the parent process.
+
+## Reload, restart and lost work
+
+A parent `/reload` or restart does not stop its agents or cancel what they wait on. Every agent keeps its saved record, and an agent that was **waiting** (idle with open work: a job, a watch, a question, an agent of its own) or whose **run was in progress** is brought back when the parent starts, so its work can be taken over. Nothing restarts on its own: no model run happens at startup, and reopening an agent takes no concurrency slot.
+
+| What the agent held                                   | After `/reload`                                                                                                              | After a restart (new process)                                                      |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| A job or watch (pi-job)                               | Kept: pi-job's reload handoff hands it to the reopened child. The agent is still `waiting: CI`, and its completion wakes it. | Lost: the process that ran it is gone.                                             |
+| A question to the parent (pi-ask)                     | Kept, still open; `subagent_send` answers it.                                                                                | Kept, still open; `subagent_send` answers it.                                      |
+| An agent of its own (nested delegation)               | Lost: a child's own subagents end with the reload.                                                                           | Lost.                                                                              |
+| A run in progress (running or queued)                 | Ends as `interrupted`, and the agent is idle. Any job it had started is kept as above.                                       | Ends as `interrupted`, and the agent is idle.                                      |
+| A message that arrived while the parent was reloading | The agent is queued for a run through the limiter (a job that ended in the gap wakes it).                                    | Already in its transcript; it sees it on its next run, and none starts at startup. |
+
+Which session starts decides what is restored: `reload`, `startup` and `resume` restore; `new` has no agents; `fork` copies a branch whose agents belong to the session it was forked from, so it reopens nothing. A session that is itself a child restores nothing, whatever the reason: its own subagents end with the reload that ended it. What a session shutdown does to the agents depends on why it ends: a run in progress is cut short as `interrupted`, a waiting agent keeps its work open in its own transcript, and nothing is cancelled or reported. A `reload` is told to the children that hold open work (pi-job keeps their jobs for the sessions it reopens); `quit`, `/new`, `/resume` and fork end their extensions for good, so their jobs die and the next start reports them lost.
+
+**What lost work looks like.** Work that nobody could take over is closed as lost and reported two ways, once per startup:
+
+- **The agent** is told in its own transcript (the `work:lost` message of pi-work's host, written without a run, or, when its transcript cannot be reopened in a session, straight into the file), so it sees what it lost on its next run.
+- **The parent** gets ONE message, `subagent:lost`, listing every agent that lost something and what: `- <id> <type> "<description>": its run was interrupted and did not finish; lost watch "CI"; still waiting on "answer"`. It starts no turn. The parent's own item for such an agent is closed without a completion message, so the report is the only message about it.
+
+An agent that lost everything it waited on is idle and takes `subagent_send`; one that still waits (on a question, or a job a reload kept) is still waiting. A saved record whose transcript, directory or agent type is gone cannot be reopened: its work is reported lost, and `subagent_send` says why it cannot take a message.
+
+The record of an agent that was waiting carries what it waited on (`waitingOn`), which is how the next start knows to reopen it; a corrected record is saved for an agent that was interrupted or lost its work, so a second reload does not report it again. Reopening is concurrent (at most four sessions at a time) and the parent's startup waits for it: a parent with many waiting agents starts a little slower.
+
+**A child that hangs is given up on after 20 seconds.** Reopening one agent is bounded (`RESTORE_TIMEOUT_MS`, 20 s, not a setting), because a child whose extension never finishes its `session_start` would otherwise hold the parent's startup for good, before the UI exists to interrupt it; a hung agent holds one of the four lanes for the bound at most, so the others are not delayed beyond it. On timeout the agent is treated as not reopened: its saved record is left as it was (so `subagent_send` can still reopen it, and the next start tries again), nothing is claimed lost (its work was not checked, and may still be open in its own transcript), and the parent's item for it is cancelled. It is named in the one `subagent:lost` message as "could not be reopened at startup". If its session does arrive later it is disposed, never attached, and nothing runs in it; it also writes nothing to the agent's transcript (no lost report, no new entries), so a `subagent_send` that reopened the transcript meanwhile is unaffected. A restore that completes after the parent shut down does the same: the session is disposed and nothing is registered or saved. A session that never arrives cannot be reclaimed.
+
+The report's text and its `details` are bounded: at most 30 agents and 8 items of each list are spelled out, every text is clipped to one line with control characters stripped, and quotes and backslashes inside quoted texts are escaped (`\"`). `details` carries `totalAgents`, and per agent `lostCount` and `waitingOnCount`, so nothing is dropped silently.
 
 ## Saved records and the roster card
 

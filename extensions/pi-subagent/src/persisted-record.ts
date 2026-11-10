@@ -61,6 +61,14 @@ export interface PersistedSubagentRecord {
   readonly maxTurns?: number;
   /** The directory the agent runs in; absent in entries written before it was recorded. */
   readonly cwd?: string;
+  /**
+   * The labels of the open work an idle agent was waiting on when the record was written
+   * (`CI`, `answer`); absent when it waited on nothing, and in entries written before it was
+   * recorded. It is what lets the next start of the parent (a reload or a restart) know which
+   * agents to reopen so their work can be taken over (roadmap step 12); the work itself is in the
+   * agent's own transcript.
+   */
+  readonly waitingOn?: readonly string[];
 }
 
 /** The fields a reader validates and returns: what labels a past run and opens its transcript. */
@@ -117,6 +125,10 @@ export function toPersistedRecord(record: PersistedRecordSource): PersistedSubag
     ...(record.thinkingLevel !== undefined ? { thinkingLevel: record.thinkingLevel } : {}),
     ...(record.maxTurns !== undefined ? { maxTurns: record.maxTurns } : {}),
     ...(record.cwd !== undefined ? { cwd: record.cwd } : {}),
+    // Only an idle agent waits.
+    ...(record.status === "idle" && record.waitingOn?.length
+      ? { waitingOn: [...record.waitingOn] }
+      : {}),
   };
 }
 
@@ -210,6 +222,9 @@ const OPTIONAL_STRINGS = [
 ] as const;
 const OPTIONAL_NUMBERS = ["completedAt", "maxTurns"] as const;
 
+const isLabels = (value: unknown): value is string[] =>
+  Array.isArray(value) && value.every((label) => typeof label === "string");
+
 const isOptional = (value: unknown, type: "string" | "number" | "object"): boolean =>
   value === undefined || value === null || typeof value === type;
 const orUndefined = <T>(value: T | null | undefined): T | undefined => value ?? undefined;
@@ -226,6 +241,9 @@ function asRecord(data: unknown): PersistedSubagentRecord | undefined {
   if (!OPTIONAL_STRINGS.every((key) => isOptional(fields[key], "string"))) return undefined;
   if (!OPTIONAL_NUMBERS.every((key) => isOptional(fields[key], "number"))) return undefined;
   if (!isOptional(fields.turnBudget, "object")) return undefined;
+  const waitingOn = fields.waitingOn;
+  // A malformed list is dropped, not fatal: the record is still a valid account of the run.
+  const labels = isLabels(waitingOn) ? waitingOn : undefined;
   const optional = <T>(key: string) => orUndefined(fields[key] as T | null | undefined);
   const model = optional<string>("model");
   return {
@@ -245,6 +263,7 @@ function asRecord(data: unknown): PersistedSubagentRecord | undefined {
       thinkingLevel: optional<ThinkingLevel>("thinkingLevel"),
       maxTurns: optional<number>("maxTurns"),
       cwd: optional<string>("cwd"),
+      waitingOn: labels,
     }),
     ...(model !== undefined ? { model } : {}),
   };

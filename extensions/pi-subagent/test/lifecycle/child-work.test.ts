@@ -39,7 +39,7 @@ type Listener = (event: { type: string; aborted?: boolean }) => void;
  * the way Pi does: a message sent while the session is idle is appended to the transcript at
  * once, one sent while it runs is held until `endTurn()`.
  */
-function fixture(options: { entries?: unknown[] } = {}) {
+function fixture(options: { entries?: unknown[]; isStale?: () => boolean } = {}) {
   let counter = 0;
   const entry = (fields: Omit<Entry, "id">): Entry => ({ id: `e${++counter}`, ...fields });
   const entries: Entry[] = (options.entries ?? []).map((data) =>
@@ -79,7 +79,13 @@ function fixture(options: { entries?: unknown[] } = {}) {
       return "entry";
     }),
   };
-  const work = new ChildWork({ sessionId: "child-1", session, store, policy });
+  const work = new ChildWork({
+    sessionId: "child-1",
+    session,
+    store,
+    policy,
+    ...(options.isStale ? { isStale: options.isStale } : {}),
+  });
   const emit = (type: string, extra: { aborted?: boolean } = {}) => {
     for (const listener of listeners) listener({ type, ...extra });
   };
@@ -111,6 +117,51 @@ function fixture(options: { entries?: unknown[] } = {}) {
     listeners,
   };
 }
+
+describe("a host whose creation was abandoned", () => {
+  const leftOpen = {
+    v: 1,
+    op: "open",
+    id: "old",
+    owner: "pi-job",
+    kind: "watch",
+    label: "CI",
+    at: 1,
+  };
+
+  it("writes nothing to the transcript: it settles no startup, opens no item and delivers no message", () => {
+    let stale = false;
+    const { work, sent, records, store } = fixture({ entries: [leftOpen], isStale: () => stale });
+    stale = true;
+    work.settleStartup();
+    expect(records().filter((r) => r.op === "close")).toEqual([]);
+    expect(sent).toEqual([]);
+    expect(() => work.host.open({ owner: "test", kind: "job", label: "late" })).toThrow(/stale/);
+    expect(store.appendCustomEntry).not.toHaveBeenCalled();
+    // The item the transcript holds stays open for the session that owns it now.
+    expect(work.openItems().map((view) => view.id)).toEqual(["old"]);
+  });
+
+  it("refuses a completion, so the item stays open instead of closing without its message", () => {
+    let stale = false;
+    const { work, sent, closes } = fixture({ isStale: () => stale });
+    const item = work.host.open({ owner: "test", kind: "job", label: "CI" });
+    stale = true;
+    item.complete({ customType: "test:done", content: "done" });
+    expect(sent).toEqual([]);
+    expect(closes()).toEqual([]);
+    expect(work.openItems().map((view) => view.id)).toEqual([item.id]);
+  });
+
+  it("withdraws only its own registration: a newer session's host under the same id stays", () => {
+    const first = fixture();
+    // A newer session provides its host under the same id (what a reopen does).
+    const second = fixture();
+    expect(service<WorkHost>("child-1", WORK_SERVICE)).toBe(second.work.host);
+    first.work.dispose();
+    expect(service<WorkHost>("child-1", WORK_SERVICE)).toBe(second.work.host);
+  });
+});
 
 describe("providing the host", () => {
   it("offers the host under the child's session id, and withdraws it with the session", () => {
@@ -323,6 +374,25 @@ describe("a reopened child", () => {
     work.settleStartup();
     expect(work.openItems().map((view) => view.id)).toEqual(["old"]);
     expect(sent).toEqual([]);
+  });
+
+  it("tells the agent's policy which items were closed as lost, once, and not those an owner adopted", () => {
+    const lost = vi.fn();
+    const first = fixture({ entries: [leftOpen] });
+    // The fixture's policy is shared by reference: give it a lost callback before startup.
+    Object.assign(first.policy, { lost });
+    first.work.settleStartup();
+    expect(lost).toHaveBeenCalledTimes(1);
+    expect(lost.mock.calls[0][0]).toMatchObject([
+      { id: "old", owner: "pi-job", kind: "watch", label: "CI" },
+    ]);
+
+    const adopted = vi.fn();
+    const second = fixture({ entries: [leftOpen] });
+    Object.assign(second.policy, { lost: adopted });
+    second.work.host.adopt("pi-job", () => true);
+    second.work.settleStartup();
+    expect(adopted).not.toHaveBeenCalled();
   });
 
   it("settles nothing once the session is gone", () => {

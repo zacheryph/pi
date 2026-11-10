@@ -214,7 +214,8 @@ condition on its result holds ([tool checks](extensions/pi-job/TOOL-CHECKS.md)).
 The agent ends its turn instead of polling. Each job or watch is an item in the
 session's [work host](packages/pi-work/README.md), and its completion is a message
 that wakes an idle session or is answered in the run in progress. A reload keeps
-the jobs and re-adopts their items; after a restart they are reported as lost.
+the jobs and re-adopts their items, also for a subagent's jobs (the waiting
+subagent is reopened without a model run); after a restart they are reported as lost.
 `job_list`, `job_read`, and `job_kill` inspect and stop work; `/job` lists or
 kills jobs for the user. POSIX only. Logs live under `~/.pi/agent/jobs/` for seven
 days. Do not also install `npm:@woksin/pi-jobs`. See the
@@ -274,6 +275,10 @@ roster card restores them to the model after compaction, reload, resume or `/tre
 `subagent_send` reaches an agent in any state: it steers a running one, and gives
 an idle one more work, reopening its saved transcript once its live session is
 gone, as long as that transcript and the agent's directory still exist.
+A `/reload` or restart keeps the agents: one waiting on a job or a question is
+reopened without a model run and still waiting, and what could not survive (jobs
+after a restart, a subagent's own subagents, a run in progress) is reported to
+the parent once, in one message, and to the agent in its own transcript.
 
 Background agents use a compact widget above Pi's editor:
 
@@ -539,8 +544,8 @@ questions). A producer opens an item in the session's work host and completes
 it with a message; the host persists open items, writes messages into the
 transcript, wakes an idle session, answers a message that arrives mid-run in
 that same run, and closes items nobody takes over after a restart as lost
-without starting a turn. pi-job is the only producer so far; there is nothing to
-configure.
+without starting a turn. pi-job, pi-subagent and pi-ask (a subagent's question to
+its parent) are producers; there is nothing to configure.
 
 ### Screenshot the TUI
 
