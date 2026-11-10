@@ -12,6 +12,7 @@ import { JobManager } from "../src/jobs.ts";
 import { sessionOwners } from "../src/ownership.ts";
 import { openRecords, WORK_ENTRY, WORK_LOST } from "../../../packages/pi-work/src/index.ts";
 import { forget, link } from "../../../packages/pi-session-tree/src/index.ts";
+import { waitFor } from "../../../packages/pi-test-helpers/src/wait.ts";
 
 interface Sent {
   message: {
@@ -246,7 +247,15 @@ void test("job_list, job_read and job_kill", async (t) => {
   const gc = await waitForPid(join(dir, "gc.pid"));
   const list = await call("job_list", {}, dir);
   assert.match(list.content[0].text, /^Running \(1\):\n  j1 · job · running · \d+s — long$/);
-  const out = await call("job_read", { id: "j1", tailLines: 5 }, dir);
+  // The log is written one event-loop turn after the child's stdout, so the pid file can exist
+  // before `started` is in the log: wait for the output instead of reading it once.
+  const out = await waitFor(
+    async () => {
+      const read = await call("job_read", { id: "j1", tailLines: 5 }, dir);
+      return read.content[0].text.endsWith("\noutput:\nstarted") ? read : undefined;
+    },
+    { timeout: 3000, what: "job output" },
+  );
   assert.match(out.content[0].text, /log: .*\noutput:\nstarted$/);
   const killed = await call("job_kill", { id: "j1" }, dir);
   assert.match(killed.content[0].text, /^Stopped: j1 · job · killed · exit 143 \(likely SIGTERM\)/);
