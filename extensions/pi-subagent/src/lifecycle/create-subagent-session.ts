@@ -28,7 +28,11 @@ import { resolveToolSelection } from "#src/session/tool-selection";
 import type { ModelRegistry } from "#src/session/model-resolver";
 import { NotifyParentTool, type UpdateAnnouncer } from "#src/session/notify-parent-tool";
 import { provide } from "../../../../packages/pi-session-tree/src/index.ts";
-import { ensureWorkHost } from "../../../../packages/pi-work/src/index.ts";
+import {
+  ensureWorkHost,
+  WORK_PARENT_SERVICE,
+  type WorkParent,
+} from "../../../../packages/pi-work/src/index.ts";
 import { type AssemblerIO, assembleSessionConfig } from "#src/session/session-config";
 import type {
   AgentConfig,
@@ -49,12 +53,11 @@ import type {
  */
 const DELEGATION_TOOL_NAMES = ["subagent_start", "subagent_get", "subagent_send"];
 
-/** pi-ask's tool, and the session-tree service that routes it to this parent. */
+/** pi-ask's tool, which a child with a link to its parent can always call. */
 const ASK_TOOL_NAME = "ask";
-const ASK_ROUTE_SERVICE = "ask:route";
 
-/** Records a question a child asks; the parent answers by resuming it. */
-export type QuestionRecorder = (question: string) => void;
+/** Tells the spawner a question the child asked, through the spawner's item for the child. */
+export type QuestionAnnouncer = (question: string) => void;
 
 // ── IO boundary ───────────────────────────────────────────────────────────────
 
@@ -197,11 +200,12 @@ export interface CreateSubagentSessionParams {
   model?: Model<any>;
   thinkingLevel?: ThinkingLevel;
   /**
-   * Records a question the child asks with pi-ask's `ask` tool. Supplied for
-   * every child; it is offered as the child's `ask:route` service, which turns
-   * `ask` toward this parent. Its absence leaves the child without a route.
+   * Tells the spawner a question the child asks with pi-ask's `ask` tool. Supplied for every
+   * child; it is offered as the child's `work:parent` service, which turns `ask` toward this
+   * parent: pi-ask opens a question item in the child's own work host (the child then waits on
+   * it) and calls this once. Its absence leaves the child without a parent to ask.
    */
-  askParent?: QuestionRecorder;
+  announceQuestion?: QuestionAnnouncer;
   /**
    * What the child's work host asks of its agent. Supplied for every child a `Subagent` creates:
    * the child's session then gets a managed `work:v1` host under its session id before its
@@ -373,7 +377,7 @@ export async function createSubagentSession(
   // pi-ask's `ask` is protocol like the core's own child tools: a child with a
   // route to its parent can always ask, whatever its tools: allowlist says.
   const protocolTools = [
-    ...(params.askParent ? [ASK_TOOL_NAME] : []),
+    ...(params.announceQuestion ? [ASK_TOOL_NAME] : []),
     ...childTools.map((tool) => tool.name),
   ];
   const { session } = await deps.io.createSession({
@@ -394,9 +398,11 @@ export async function createSubagentSession(
   });
 
   // Offered before the child's extensions bind, so pi-ask finds it on session_start.
-  const askParent = params.askParent;
-  const withdrawAskRoute = askParent
-    ? provide(sessionId, ASK_ROUTE_SERVICE, { record: (question: string) => askParent(question) })
+  const announceQuestion = params.announceQuestion;
+  const withdrawParentLink = announceQuestion
+    ? provide(sessionId, WORK_PARENT_SERVICE, {
+        question: (question: string) => announceQuestion(question),
+      } satisfies WorkParent)
     : undefined;
   // The managed work host, offered the same way: `ensureWorkHost` in the child finds it, provides
   // nothing, and only forwards the child's run boundaries to it.
@@ -413,7 +419,7 @@ export async function createSubagentSession(
     parentContext: snapshot.parentContext,
     lifecycle: deps.lifecycle,
     ...(work ? { work } : {}),
-    ...(withdrawAskRoute ? { onDispose: withdrawAskRoute } : {}),
+    ...(withdrawParentLink ? { onDispose: withdrawParentLink } : {}),
   });
 
   // Publish session-created before bindExtensions() so observers (e.g. the

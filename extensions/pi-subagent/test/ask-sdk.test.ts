@@ -11,10 +11,16 @@ import {
 import { toolCall } from "../../../packages/pi-test-helpers/src/faux-session.ts";
 
 // A real orchestrator session loads this extension and pi-ask, and spawns a
-// worker whose `ask` call turns toward the orchestrator: the worker ends its
-// turn with the question, and the question reaches the orchestrator in the
-// worker's completion message.
-it("routes a child's ask to its parent through pi-ask", async () => {
+// worker whose `ask` call turns toward the orchestrator.
+//
+// Rewritten by roadmap step 10 (was: "routes a child's ask to its parent through pi-ask": the
+// worker's question was recorded on its run, the worker ended its turn on a prose instruction and
+// completed carrying the question, and the question reached the orchestrator in the worker's
+// *completion* message). Now the question is an item in the worker's work host, the ask tool
+// terminates the worker's turn, and the orchestrator hears it in a `subagent:question` message
+// while the worker is idle and waiting: no completion yet. The end-to-end round trip, the
+// roster, a watch open beside the question and the reload cases are in question-sdk.test.ts.
+it("routes a child's ask to its parent through pi-ask: a question message, no completion", async () => {
   const dir = offlineAgentDir({ extensions: [EXTENSIONS.subagent, EXTENSIONS.ask] });
   const { session: orchestrator, faux } = await realChildSession(dir, {
     type: "orchestrate",
@@ -41,21 +47,24 @@ it("routes a child's ask to its parent through pi-ask", async () => {
       },
       (context) => {
         recorded = lastResult(context, "ask");
-        return fauxAssistantMessage("Waiting for the storage decision.");
+        return fauxAssistantMessage("Not reached: the ask call ended the turn.");
       },
     ],
   });
 
   await orchestrator.runTurnLoop("Delegate storage.", {});
-  // The worker's completion message wakes the orchestrator once more.
+  // The worker's question wakes the orchestrator once more.
   await vi.waitFor(() => expect(requests.parent).toHaveLength(3), { timeout: 10_000 });
   await orchestrator.session.waitForIdle();
 
   expect(childTools).toContain("ask");
-  expect(recorded).toContain("End your turn now");
-  const completion = JSON.stringify(requests.parent[2].messages.at(-1));
-  expect(completion).toContain("<task-notification>");
-  expect(completion).toContain("[Storage] Which database?");
-  expect(completion).toContain("a) Postgres");
-  expect(completion).toContain("subagent_send");
+  const question = JSON.stringify(requests.parent[2].messages.at(-1));
+  expect(question).toContain("<subagent-question>");
+  expect(question).not.toContain("<task-notification>");
+  expect(question).toContain("[Storage] Which database?");
+  expect(question).toContain("a) Postgres");
+  expect(question).toContain("subagent_send");
+  // The ask call ended the worker's turn: the model was not asked again, so it never saw the result.
+  expect(requests.child).toHaveLength(1);
+  expect(recorded).toBe("");
 }, 20_000);

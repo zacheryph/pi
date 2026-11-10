@@ -1735,12 +1735,7 @@ describe("resolveRetentionWindow", () => {
     it("holds for the long window, measured from completion", () => {
       expect(
         resolveRetentionWindow(
-          {
-            consumed: false,
-            completedAt: 5_000,
-            consumedAt: undefined,
-            pendingQuestion: undefined,
-          },
+          { consumed: false, completedAt: 5_000, consumedAt: undefined },
           policy,
         ),
       ).toEqual({ referenceAt: 5_000, windowMinutes: 720 });
@@ -1749,12 +1744,7 @@ describe("resolveRetentionWindow", () => {
     it("measures from zero when the record has no completion time", () => {
       expect(
         resolveRetentionWindow(
-          {
-            consumed: false,
-            completedAt: undefined,
-            consumedAt: undefined,
-            pendingQuestion: undefined,
-          },
+          { consumed: false, completedAt: undefined, consumedAt: undefined },
           policy,
         ),
       ).toEqual({ referenceAt: 0, windowMinutes: 720 });
@@ -1764,52 +1754,21 @@ describe("resolveRetentionWindow", () => {
   describe("an outcome the parent collected", () => {
     it("holds for the short window, measured from collection", () => {
       expect(
-        resolveRetentionWindow(
-          { consumed: true, completedAt: 5_000, consumedAt: 9_000, pendingQuestion: undefined },
-          policy,
-        ),
+        resolveRetentionWindow({ consumed: true, completedAt: 5_000, consumedAt: 9_000 }, policy),
       ).toEqual({ referenceAt: 9_000, windowMinutes: 10 });
     });
 
     it("measures from completion when that is the later of the two", () => {
       expect(
-        resolveRetentionWindow(
-          { consumed: true, completedAt: 9_000, consumedAt: 5_000, pendingQuestion: undefined },
-          policy,
-        ),
+        resolveRetentionWindow({ consumed: true, completedAt: 9_000, consumedAt: 5_000 }, policy),
       ).toEqual({ referenceAt: 9_000, windowMinutes: 10 });
     });
   });
 
-  describe("a collected outcome that still carries an unanswered question", () => {
-    it("holds for the long window, because the parent has not finished with it", () => {
-      expect(
-        resolveRetentionWindow(
-          {
-            consumed: true,
-            completedAt: 5_000,
-            consumedAt: 9_000,
-            pendingQuestion: "Which config wins?",
-          },
-          policy,
-        ),
-      ).toEqual({ referenceAt: 5_000, windowMinutes: 720 });
-    });
-
-    it("measures from completion rather than collection, as an uncollected outcome does", () => {
-      expect(
-        resolveRetentionWindow(
-          {
-            consumed: true,
-            completedAt: 9_000,
-            consumedAt: 5_000,
-            pendingQuestion: "Which config wins?",
-          },
-          policy,
-        ),
-      ).toEqual({ referenceAt: 9_000, windowMinutes: 720 });
-    });
-  });
+  // Removed by roadmap step 10: "a collected outcome that still carries an unanswered question
+  // holds for the long window". A question is an open item in the agent's session, and the sweep
+  // skips any agent with open work (waiting-workers.test.ts: "keeps its session however long it
+  // waits for the answer"), so the window rule needs no exception for it.
 });
 
 describe("SubagentManager — cold resume", () => {

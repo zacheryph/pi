@@ -115,14 +115,13 @@ const DEFAULT_RETENTION_POLICY: RetentionPolicy = {
 
 /**
  * Only what the retention rule reads. Narrower than `Subagent` so the rule
- * stays a plain function over four facts, testable without spawning an agent.
+ * stays a plain function over three facts, testable without spawning an agent.
  * `consumed` means the parent read the finished result with `subagent_get`.
  */
 export interface RetentionCandidate {
   consumed: boolean;
   completedAt: number | undefined;
   consumedAt: number | undefined;
-  pendingQuestion: string | undefined;
 }
 
 /** When a terminal record's session-release window opened, and how long it runs. */
@@ -137,17 +136,12 @@ export interface RetentionWindow {
  * A result the parent read releases on the short window, measured from the
  * later of completion and the read, so a late read still gets a full resume
  * window; one nobody read holds until the long safety cap.
- *
- * A record carrying an unanswered question is not read, whatever `consumed`
- * says: the parent has read the question but has not answered it, and the
- * answer is delivered by resuming the very session the short window would
- * release.
  */
 export function resolveRetentionWindow(
   record: RetentionCandidate,
   policy: RetentionPolicy,
 ): RetentionWindow {
-  if (record.consumed && record.pendingQuestion === undefined) {
+  if (record.consumed) {
     return {
       referenceAt: Math.max(record.completedAt ?? 0, record.consumedAt ?? 0),
       windowMinutes: policy.consumedSessionRetentionMinutes,
@@ -191,6 +185,11 @@ export interface SubagentManagerObserver {
    * vacant one.
    */
   onSubagentUpdate?(record: Subagent, message: string): void;
+  /**
+   * Fires when a child asks its parent a question: the child waits on a question item in its
+   * own host, and the parent is told here. Optional, like the update hook.
+   */
+  onSubagentQuestion?(record: Subagent, question: string): void;
   onSubagentCompacted(record: Subagent, info: CompactionInfo): void;
   /** Fires synchronously after a background agent record is created (before run). */
   onSubagentCreated(record: Subagent): void;
@@ -312,6 +311,7 @@ export class SubagentManager {
       ),
       onResumeFinished: guarded("onSubagentResumed", (agent) => observer?.onSubagentResumed(agent)),
       onUpdateSent: (agent, message) => observer?.onSubagentUpdate?.(agent, message),
+      onQuestionAsked: (agent, question) => observer?.onSubagentQuestion?.(agent, question),
       onCompacted: (agent, info) => observer?.onSubagentCompacted(agent, info),
     };
   }
@@ -516,7 +516,6 @@ export class SubagentManager {
         startedAt: saved.startedAt,
         completedAt: saved.completedAt,
         toolUses: saved.toolUses,
-        pendingQuestion: saved.pendingQuestion,
         turnBudget: saved.turnBudget,
       }),
       released: {
@@ -572,8 +571,9 @@ export class SubagentManager {
       if (record.isActive()) continue;
       if (!record.isSessionReady()) continue; // already released, or never had a session
       // Open work lives in the session and its completion lands there: an agent waiting on a
-      // job, an agent of its own or a question keeps its session however long it waits. (Step
-      // 11 owns the full rule; this is the one condition correctness needs before it.)
+      // job, an agent of its own or a question (an item like the others) keeps its session however
+      // long it waits. (Step 11 owns the full rule; this is the one condition correctness needs
+      // before it.)
       if (record.hasOpenWork()) continue;
       const { referenceAt, windowMinutes } = resolveRetentionWindow(record, policy);
       // Fire-and-forget: the sweep runs on an interval with no one to await it,

@@ -203,7 +203,7 @@ describe("composition root: message renderers", () => {
       .mocked(pi.registerMessageRenderer)
       .mock.calls.map((call: unknown[]) => call[0] as string);
 
-    expect(registered).toEqual(["subagent:completion", "subagent:update"]);
+    expect(registered).toEqual(["subagent:completion", "subagent:update", "subagent:question"]);
   });
 });
 

@@ -3,7 +3,7 @@
  *
  * The parent session appends one entry per lifecycle step of every agent it
  * starts — when it is queued or starts running, when a resume starts, and when
- * a run settles (including a run that ended its turn with a question) — so the
+ * a run settles — so the
  * session file outlives the in-memory `SubagentManager` (a `/reload` rebuilds
  * the extension; a `/resume` reopens the file). The entries sit on the branch
  * that started the agent, so they follow it through `/tree` and forks.
@@ -54,8 +54,6 @@ export interface PersistedSubagentRecord {
   /** The run's session JSONL, which a reader can open after the live session is gone. */
   readonly outputFile: string | undefined;
   readonly toolUses: number;
-  /** The question the agent ended its turn with, when it declared one. */
-  readonly pendingQuestion?: string;
   /** The model's `provider/id`; absent while an inherited model is still unknown. */
   readonly model?: string;
   readonly thinkingLevel?: ThinkingLevel;
@@ -115,7 +113,6 @@ export function toPersistedRecord(record: PersistedRecordSource): PersistedSubag
     completedAt: record.completedAt,
     outputFile: record.outputFile,
     toolUses: record.toolUses,
-    ...(record.pendingQuestion !== undefined ? { pendingQuestion: record.pendingQuestion } : {}),
     ...(record.model ? { model: `${record.model.provider}/${record.model.id}` } : {}),
     ...(record.thinkingLevel !== undefined ? { thinkingLevel: record.thinkingLevel } : {}),
     ...(record.maxTurns !== undefined ? { maxTurns: record.maxTurns } : {}),
@@ -207,7 +204,6 @@ const OPTIONAL_STRINGS = [
   "result",
   "error",
   "outputFile",
-  "pendingQuestion",
   "model",
   "thinkingLevel",
   "cwd",
@@ -246,7 +242,6 @@ function asRecord(data: unknown): PersistedSubagentRecord | undefined {
       completedAt: optional<number>("completedAt"),
       outputFile: optional<string>("outputFile"),
       toolUses,
-      pendingQuestion: optional<string>("pendingQuestion"),
       thinkingLevel: optional<ThinkingLevel>("thinkingLevel"),
       maxTurns: optional<number>("maxTurns"),
       cwd: optional<string>("cwd"),

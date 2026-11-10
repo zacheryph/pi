@@ -110,53 +110,32 @@ describe("GetResultTool", () => {
     expect(result.content[0].text).toContain("The bug is in the retry wrapper.");
   });
 
-  describe("send affordance", () => {
-    it("names the send call while the agent still takes messages", async () => {
-      const records = new Map([
-        ["agent-1", createTestSubagent({ pendingQuestion: "Which config?", sessionReady: true })],
-      ]);
+  // Rewritten by roadmap step 10 (was: the report quoted a question the agent "ended its turn
+  // with" and named the send call, also for a child that asked before its turn ended). A question
+  // is an open item: the agent is waiting on `answer`, and the parent heard the question when it
+  // was asked.
+  describe("an agent waiting for an answer", () => {
+    it("is waiting on `answer`, and says a message wakes it", async () => {
+      const record = createTestSubagent({ sessionReady: true });
+      const session = record.subagentSession as unknown as ReturnType<
+        typeof createSubagentSessionStub
+      >;
+      session.openItems.push(openItem("answer", "q1", "question"));
+      const result = await execute(makeManager(new Map([["agent-1", record]])), {
+        agent_id: "agent-1",
+      });
 
-      const result = await execute(makeManager(records), { agent_id: "agent-1" });
-
-      expect(result.content[0].text).toContain('subagent_send with agent_id: "agent-1"');
-    });
-
-    // Changed by roadmap step 7b (was: "cannot be resumed yet" for a child that asked before
-    // its turn ended). A send to a running child is a steer, which delivers the answer into
-    // the run, so naming the send call is right here too.
-    it("names the send call for a child that asked before its turn ended, since a send steers it", async () => {
-      // The reported path: ask_parent records the question during the run, and a
-      // pull in the window before the turn ends.
-      const records = new Map([
-        [
-          "agent-1",
-          createTestSubagent({
-            status: "running",
-            completedAt: undefined,
-            pendingQuestion: "Which config?",
-            sessionReady: true,
-          }),
-        ],
-      ]);
-
-      const result = await execute(makeManager(records), { agent_id: "agent-1" });
-
-      expect(result.content[0].text).toContain("Which config?");
-      expect(result.content[0].text).toContain('subagent_send with agent_id: "agent-1"');
-      expect(result.content[0].text).not.toContain("cannot be resumed yet");
+      expect(result.content[0].text).toContain("Status: waiting: answer");
+      expect(result.content[0].text).toContain("or when you send it a message");
     });
 
     it("forwards the record's refusal, so a swept record names no send", async () => {
-      const released = createTestSubagent({
-        pendingQuestion: "Which config?",
-        sessionReady: true,
-      });
+      const released = createTestSubagent({ sessionReady: true });
       await released.releaseSession();
       const records = new Map([["agent-1", released]]);
 
       const result = await execute(makeManager(records), { agent_id: "agent-1" });
 
-      expect(result.content[0].text).toContain("Which config?");
       expect(result.content[0].text).toContain(
         "its session was released and its saved transcript is gone",
       );
@@ -471,30 +450,34 @@ describe("GetResultTool — the branch's saved records", () => {
     expect(text).toContain("Full transcript available at: /tasks/saved-1.jsonl");
   });
 
-  it("names the call that answers a saved agent's question when it can take a message", async () => {
+  // Rewritten by roadmap step 10 (was: a saved record's question was quoted with the send call
+  // that answers it, or with why it could not be answered). A record written before the field was
+  // removed may still carry a question; it is read like any other saved record, without it.
+  it("reads a saved record that still carries a question as an ordinary one", async () => {
+    const old = { ...savedRecord(), pendingQuestion: "Postgres or SQLite?" };
     const result = await tool().execute(
       "tc",
       { agent_id: "saved-1" },
       signal,
       undefined,
-      branchCtx([savedRecord({ pendingQuestion: "Postgres or SQLite?" })]),
+      branchCtx([old]),
     );
     const text = result.content[0].text;
-    expect(text).toContain("This agent is waiting on an answer:\n\n  Postgres or SQLite?");
-    expect(text).toContain('Answer by calling subagent_send with agent_id: "saved-1"');
+    expect(text).not.toContain("Postgres or SQLite?");
+    expect(text).not.toContain("waiting on an answer");
+    expect(text).toContain('Send: available. Call subagent_send with agent_id: "saved-1"');
   });
 
-  it("says a saved agent's question cannot be answered when it cannot take a message", async () => {
+  it("says why a saved agent cannot take a message", async () => {
     const result = await tool(new Map(), "session-released").execute(
       "tc",
       { agent_id: "saved-1" },
       signal,
       undefined,
-      branchCtx([savedRecord({ pendingQuestion: "Postgres or SQLite?" })]),
+      branchCtx([savedRecord()]),
     );
     const text = result.content[0].text;
-    expect(text).toContain("can no longer be answered");
-    expect(text).toContain("  Postgres or SQLite?");
+    expect(text).toContain("Send: not available");
     expect(text).not.toContain("subagent_send");
   });
 
@@ -576,12 +559,19 @@ describe("GetResultTool — the branch's saved records", () => {
         completedAt: undefined,
         description: "still going",
       });
+      const asking = createTestSubagent({ id: "ask-1", sessionReady: true });
+      (
+        asking.subagentSession as unknown as ReturnType<typeof createSubagentSessionStub>
+      ).openItems.push(openItem("answer", "q1", "question"));
       const result = await list(
-        new Map([["run-1", running]]),
+        new Map([
+          ["run-1", running],
+          ["ask-1", asking],
+        ]),
         branchCtx([
           savedRecord({ id: "done-1", completedAt: 5_000 }),
           savedRecord({ id: "run-1", status: "running", description: "still going" }),
-          savedRecord({ id: "ask-1", pendingQuestion: "Which DB?" }),
+          savedRecord({ id: "ask-1" }),
           savedRecord({ id: "bad-1", status: "error", error: "boom" }),
         ]),
       );
@@ -595,7 +585,7 @@ describe("GetResultTool — the branch's saved records", () => {
         "bad-1",
         "done-1",
       ]);
-      expect(lines[1]).toContain('waiting for your answer: "Which DB?"');
+      expect(lines[1]).toContain(": waiting: answer");
       expect(lines[2]).toContain(": running");
       expect(result.details).toEqual({ kind: "list", total: 4 });
     });

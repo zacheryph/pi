@@ -6,6 +6,12 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import {
+  ensureWorkHost,
+  QUESTION_KIND,
+  type Json,
+  type WorkParent,
+} from "../../../packages/pi-work/src/index.ts";
+import {
   bodyRow,
   openInlineWindow,
   sanitizeLine,
@@ -37,13 +43,29 @@ import { resolveRoute, type AskRoute } from "./route.ts";
 
 export interface AskDetails {
   route: "user" | "parent";
-  status: "answered" | "cancelled" | "recorded";
+  /** `asked`: a question to the delegating agent, answered later by its next message to this session. */
+  status: "answered" | "cancelled" | "asked";
   questions: string[];
   answers?: AskAnswer[];
 }
 
-const RECORDED =
-  "Question recorded for the delegating agent. End your turn now: it answers by resuming you, and you continue with your context intact.";
+/** The `owner` of the question items this extension opens, and the ones it adopts. */
+export const WORK_OWNER = "pi-ask";
+
+/** The label of a question item: what a delegated session shows as `waiting: answer`. */
+const ITEM_LABEL = "answer";
+
+/** What a question item records; persisted with it, so it survives a reload and a restart. */
+interface QuestionItemData {
+  toolCallId: string;
+  /** The question texts, for whoever reads the open item. */
+  questions: string[];
+  /** The question as the delegator was told it. */
+  text: string;
+}
+
+const ASKED =
+  "Your question was sent to the delegating agent. Your turn ends now: its answer arrives as your next message, and you continue with your context intact. Do not call more tools.";
 
 const SHARED_GUIDELINES = [
   "Use ask only when the answer materially changes what you do: a real decision, conflicting requirements, or a missing fact. Otherwise state your assumption and continue.",
@@ -54,11 +76,11 @@ function toolText(route: AskRoute) {
   if (route.kind === "parent")
     return {
       description:
-        "Ask the agent that delegated this task 1-4 questions, each with optional choices, when you cannot finish without information or a decision only it has. The question is recorded against your run and you must end your turn right after this call; the delegating agent answers by resuming you, and you continue with your context intact.",
-      promptSnippet: "Ask the delegating agent a question, then end your turn",
+        "Ask the agent that delegated this task 1-4 questions, each with optional choices, when you cannot finish without information or a decision only it has. The question is sent to the delegating agent and your turn ends right after this call; you wait, and its answer arrives as your next message with your context intact.",
+      promptSnippet: "Ask the delegating agent a question; your turn ends and its answer wakes you",
       promptGuidelines: [
         ...SHARED_GUIDELINES,
-        "After ask returns, end your turn immediately with a one-line summary of what you are waiting for.",
+        "Call ask on its own, not together with other tools: your turn ends after it, and the delegating agent's answer arrives as your next message.",
       ],
     };
   return {
@@ -72,12 +94,22 @@ function toolText(route: AskRoute) {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
 
+/** An item this extension opened: a question that carries the text the delegator was told. */
+const isQuestion = (item: { kind: string; data?: unknown }): boolean =>
+  item.kind === QUESTION_KIND &&
+  isRecord(item.data) &&
+  typeof item.data.text === "string" &&
+  Array.isArray(item.data.questions);
+
 /** One ask tool, routed by session: a subagent asks its parent agent, the root session asks the user in an inline window. */
 export default function piAsk(pi: ExtensionAPI): void {
   // Per-session state lives in this closure, never in module scope: every
   // subagent session runs this factory again, and a same-cwd child may share
   // this module with its parent.
   let route: AskRoute = { kind: "user", mode: "tui" };
+  // The session's work host: a delegated session waits on a question item in it. Called first,
+  // so the host is provided (or found) before our own session_start runs.
+  const work = ensureWorkHost(pi);
   const notifications = new CmuxNotifications();
   /** Questionnaires on screen, by asking tool call id. */
   const open = new Map<string, { questions: AskQuestion[]; finish(outcome: AskOutcome): void }>();
@@ -115,11 +147,12 @@ export default function piAsk(pi: ExtensionAPI): void {
           if (!details || !Array.isArray(details.questions))
             return new Text(theme.fg("error", sanitizeLine(textOf(result))), 0, 0);
           const rows =
-            details.status === "recorded"
+            // "recorded" is what transcripts written before questions became work items say.
+            details.status === "asked" || (details.status as string) === "recorded"
               ? [
                   [
                     {
-                      text: "Asked the delegating agent; waiting to be resumed",
+                      text: "Asked the delegating agent; waiting for its answer",
                       tone: "muted" as const,
                     },
                   ],
@@ -154,10 +187,13 @@ export default function piAsk(pi: ExtensionAPI): void {
     const current = resolveRoute(ctx);
     const asked = questions.map((question) => question.question);
     if (current.kind === "parent") {
-      current.parent.record(formatForParent(questions));
+      askParent(current.parent, toolCallId, questions, asked);
       return {
-        content: [{ type: "text", text: RECORDED }],
-        details: { route: "parent", status: "recorded", questions: asked },
+        content: [{ type: "text", text: ASKED }],
+        details: { route: "parent", status: "asked", questions: asked },
+        // The turn ends after the tool batch (when every tool in it terminates): the session is
+        // then idle, waiting on the question item. The delegator's next message wakes it.
+        terminate: true,
       };
     }
     if (current.kind === "none")
@@ -177,6 +213,41 @@ export default function piAsk(pi: ExtensionAPI): void {
         ...(outcome.status === "answered" ? { answers: outcome.answers } : {}),
       },
     };
+  };
+
+  /**
+   * Open the question item in the session's own host, then tell the delegator. The item comes
+   * first: it is what keeps the session open and what a reload adopts, so a delegator that has
+   * heard the question always has a session that is waiting for its answer. A delegator that
+   * cannot be told leaves nobody to answer, so the item is withdrawn and the model hears why.
+   */
+  const askParent = (
+    parent: WorkParent,
+    toolCallId: string,
+    questions: AskQuestion[],
+    asked: string[],
+  ): void => {
+    const host = work.host();
+    if (!host)
+      throw new Error(
+        "This session has no work host to wait on the delegating agent's answer. Continue with your best judgment and say what you assumed.",
+      );
+    const text = formatForParent(questions);
+    const data: QuestionItemData = { toolCallId, questions: asked, text };
+    const item = host.open({
+      owner: WORK_OWNER,
+      kind: QUESTION_KIND,
+      label: ITEM_LABEL,
+      data: data as unknown as Json,
+    });
+    try {
+      parent.question(text);
+    } catch (error) {
+      item.cancel();
+      throw new Error(
+        `The delegating agent could not be reached (${error instanceof Error ? error.message : String(error)}). Continue with your best judgment and say what you assumed.`,
+      );
+    }
   };
 
   const askInline = async (
@@ -255,9 +326,14 @@ export default function piAsk(pi: ExtensionAPI): void {
 
   pi.on("session_start", (_event, ctx) => {
     const next = resolveRoute(ctx);
-    if (next.kind === route.kind) return;
-    route = next;
-    register();
+    if (next.kind !== route.kind) {
+      route = next;
+      register();
+    }
+    // A delegated session that was reloaded or restarted while a question stood: the question is
+    // still open and the delegator was told once, so take it over rather than have the host
+    // report it lost. Anywhere else a question item is not ours to keep.
+    work.host()?.adopt(WORK_OWNER, (item) => next.kind === "parent" && isQuestion(item));
   });
 
   pi.on("session_shutdown", () => notifications.shutdown());

@@ -1,30 +1,23 @@
 import { service } from "../../../packages/pi-session-tree/src/index.ts";
-
-/**
- * The service a delegating extension provides under a child session's id so
- * that `ask` reaches the child's parent agent instead of the user. pi-subagent
- * provides it for every subagent before the child's extensions bind.
- */
-export const ASK_ROUTE_SERVICE = "ask:route";
-
-export interface AskParentRoute {
-  /** Record the question against the child's run; the parent answers by resuming it. */
-  record(question: string): void;
-}
+import { WORK_PARENT_SERVICE, type WorkParent } from "../../../packages/pi-work/src/index.ts";
 
 /** Where `ask` sends questions in one session. */
 export type AskRoute =
-  | { kind: "parent"; parent: AskParentRoute }
-  | { kind: "user"; mode: "tui" | "rpc" }
-  | { kind: "none" };
+  /** A delegated session: the delegator is told, and the session waits on a question item. */
+  { kind: "parent"; parent: WorkParent } | { kind: "user"; mode: "tui" | "rpc" } | { kind: "none" };
 
+/**
+ * A session whose delegator offers `work:v1`'s parent link (pi-subagent does for every child,
+ * before the child's extensions bind) asks that delegator. Any other session with a terminal asks
+ * the user, as it always has.
+ */
 export function resolveRoute(ctx: {
   hasUI: boolean;
   mode: string;
   sessionManager: { getSessionId(): string };
 }): AskRoute {
-  const parent = service<AskParentRoute>(ctx.sessionManager.getSessionId(), ASK_ROUTE_SERVICE);
-  if (parent && typeof parent.record === "function") return { kind: "parent", parent };
+  const parent = service<WorkParent>(ctx.sessionManager.getSessionId(), WORK_PARENT_SERVICE);
+  if (parent && typeof parent.question === "function") return { kind: "parent", parent };
   if (ctx.hasUI && (ctx.mode === "tui" || ctx.mode === "rpc"))
     return { kind: "user", mode: ctx.mode };
   return { kind: "none" };

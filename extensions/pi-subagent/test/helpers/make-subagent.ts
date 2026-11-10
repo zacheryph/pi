@@ -65,8 +65,6 @@ export interface TestSubagentOptions {
   status?: SubagentStatus | DisplayStatus;
   outcome?: RunOutcome;
   result?: string;
-  /** Seed the question the agent ended its turn with. */
-  pendingQuestion?: string;
   /** Seed the run's turn limit and its use. */
   turnBudget?: TurnBudget;
   error?: string;

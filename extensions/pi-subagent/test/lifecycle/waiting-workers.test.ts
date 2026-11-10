@@ -26,6 +26,7 @@ function harness(limit = 1) {
     resumed: vi.fn(),
     queued: vi.fn(),
     resuming: vi.fn(),
+    question: vi.fn(),
   };
   const manager = new SubagentManager({
     registry: new AgentTypeRegistry(() => new Map()),
@@ -44,6 +45,7 @@ function harness(limit = 1) {
       onSubagentResumed: observed.resumed,
       onSubagentCompacted() {},
       onSubagentWaiting: observed.waiting,
+      onSubagentQuestion: observed.question,
     },
   });
   onTestFinished(() => manager.dispose());
@@ -61,6 +63,20 @@ function harness(limit = 1) {
   };
   return { manager, children, spawn, ...observed };
 }
+
+/** A child that asks its parent a question while a watch is still open: the question is an item. */
+const asking =
+  (question = "Which branch?", extra: (child: Child) => void = () => {}) =>
+  (child: Child) => {
+    extra(child);
+    child.stub.runTurnLoop.mockImplementation(async () => {
+      // What pi-ask does in the child: open the question item, then tell the parent.
+      child.stub.openItems.push(openItem("answer", "q1", "question"));
+      child.params.announceQuestion!(question);
+      return turnLoopResult();
+    });
+  };
+const askingWithJob = (question?: string) => asking(question, withJob("CI"));
 
 /** Park a child on one open item, as a job it started would. */
 const withJob =
@@ -347,24 +363,174 @@ describe("a run that does not complete", () => {
     expect(clean.record.outcome).toBe("error");
     expect(clean.stub.dispose).not.toHaveBeenCalled();
   });
+});
 
-  it("reports a question now, as it always has, whatever else it waits on", async () => {
+// Roadmap step 10: a question the child asks its parent is an item in the child's host, like a job.
+describe("an agent that asks its parent a question", () => {
+  it("is idle and waiting on `answer`, and the parent hears the question once", async () => {
+    const h = harness();
+    const child = await h.spawn(asking());
+    expect(child.record.status).toBe("idle");
+    expect(child.record.outcome).toBe("completed");
+    expect(child.record.waitingOn).toEqual(["answer"]);
+    expect(h.waiting).toHaveBeenCalledTimes(1);
+    expect(h.question).toHaveBeenCalledExactlyOnceWith(child.record, "Which branch?");
+    // Not done: nothing is reported to the spawner, which waits on the answer.
+    expect(h.completed).not.toHaveBeenCalled();
+    expect(child.stub.dispose).not.toHaveBeenCalled();
+  });
+
+  it("keeps its session however long it waits for the answer", async () => {
+    vi.useFakeTimers();
+    try {
+      const h = harness();
+      const child = await h.spawn(asking());
+      child.record.markConsumed();
+      await vi.advanceTimersByTimeAsync(13 * 60 * 60 * 1000);
+      expect(child.stub.dispose).not.toHaveBeenCalled();
+      expect(child.record.isSessionReady()).toBe(true);
+      expect(child.record.waitingOn).toEqual(["answer"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("is answered by the parent's message: the message is the run's prompt, and the question closes", async () => {
+    const h = harness();
+    const child = await h.spawn(asking());
+    const outcome = await child.record.send("Use Postgres.");
+    expect(outcome).toEqual({ kind: "started", relaunched: false });
+    expect(child.stub.answerQuestions).toHaveBeenCalled();
+    expect(child.stub.openItems).toEqual([]);
+    await child.record.promise;
+    expect(child.stub.resumeTurnLoop).toHaveBeenCalledTimes(1);
+    expect(child.stub.resumeTurnLoop.mock.calls[0][0]).toBe("Use Postgres.");
+    // Closing the question did not read as the end of the agent's work: one report, at the end.
+    expect(h.completed).not.toHaveBeenCalled();
+    expect(h.resumed).toHaveBeenCalledTimes(1);
+    expect(child.record.waitingOn).toEqual([]);
+  });
+
+  it("does not report the agent done when the answer closes its last item", async () => {
+    const h = harness();
+    const child = await h.spawn(asking());
+    const run = Promise.withResolvers<ReturnType<typeof turnLoopResult>>();
+    child.stub.resumeTurnLoop.mockReturnValueOnce(run.promise);
+    await child.record.send("Use Postgres.");
+    // The question is closed and the run is under way: the agent is running, not finished.
+    expect(child.stub.openItems).toEqual([]);
+    expect(child.record.status).toBe("running");
+    expect(h.resumed).not.toHaveBeenCalled();
+    run.resolve(turnLoopResult());
+    await child.record.promise;
+    expect(h.resumed).toHaveBeenCalledTimes(1);
+  });
+
+  // Decided here: a job completing wakes an agent that also waits on a question. The completion
+  // is a message the agent can act on, whatever the parent has not yet answered. The wake does not
+  // answer the question: it stays open (the child's own transcript shows the ask unanswered), the
+  // run ends, and the agent is waiting again until every item is closed.
+  it("with a job also open: the job's completion wakes it, the question stays open", async () => {
+    const h = harness();
+    const child = await h.spawn(askingWithJob());
+    expect(child.record.waitingOn).toEqual(["CI", "answer"]);
+    expect(h.question).toHaveBeenCalledTimes(1);
+
+    // The job completes: the host removes its item, writes the message, and asks for a run.
+    child.stub.openItems.splice(
+      child.stub.openItems.findIndex((item) => item.label === "CI"),
+      1,
+    );
+    child.params.work!.wake();
+    expect(child.record.status).toBe("running");
+    await child.record.promise;
+    expect(child.stub.resumeTurnLoop.mock.calls[0][0]).toBe(WORK_WAKE_PROMPT);
+    // Still waiting, now only on the answer; not done, not reported, and the parent is not told twice.
+    expect(child.record.status).toBe("idle");
+    expect(child.record.waitingOn).toEqual(["answer"]);
+    expect(h.completed).not.toHaveBeenCalled();
+    expect(h.resumed).not.toHaveBeenCalled();
+    expect(h.question).toHaveBeenCalledTimes(1);
+    expect(h.waiting).toHaveBeenCalledTimes(2);
+
+    // The answer closes the question item only, and ends the wait.
+    await child.record.send("Use Postgres.");
+    await child.record.promise;
+    expect(child.stub.resumeTurnLoop.mock.calls[1][0]).toBe("Use Postgres.");
+    expect(child.record.waitingOn).toEqual([]);
+    expect(h.resumed).toHaveBeenCalledTimes(1);
+  });
+
+  it("is answered by a message while a job is open: the question closes, the job stays", async () => {
+    const h = harness();
+    const child = await h.spawn(askingWithJob());
+    const run = Promise.withResolvers<ReturnType<typeof turnLoopResult>>();
+    child.stub.resumeTurnLoop.mockReturnValueOnce(run.promise);
+    await child.record.send("Use Postgres.");
+    expect(child.stub.openItems.map((item) => item.label)).toEqual(["CI"]);
+    run.resolve(turnLoopResult());
+    await child.record.promise;
+    // The run ended with the watch still open: the agent waits on it, and is not done.
+    expect(child.record.waitingOn).toEqual(["CI"]);
+    expect(h.completed).not.toHaveBeenCalled();
+    expect(h.resumed).not.toHaveBeenCalled();
+  });
+
+  it("closes the question when a message joins the run that is queued for it", async () => {
+    const h = harness(1);
+    const child = await h.spawn(askingWithJob());
+    const blocker = Promise.withResolvers<ReturnType<typeof turnLoopResult>>();
+    const busyId = h.manager.spawn(STUB_SNAPSHOT, "general-purpose", "busy", {
+      description: "busy",
+    });
+    h.children.get(busyId)!.stub.runTurnLoop.mockReturnValue(blocker.promise);
+    await tick();
+    child.params.work!.wake();
+    expect(child.record.status).toBe("queued");
+    expect(await child.record.send("Use Postgres.")).toEqual({ kind: "joined" });
+    expect(child.stub.openItems.map((item) => item.label)).toEqual(["CI"]);
+    blocker.resolve(turnLoopResult());
+    await child.record.promise;
+    expect(child.stub.resumeTurnLoop.mock.calls[0][0]).toContain("Use Postgres.");
+  });
+
+  it("closes the question when the message steers the run the question was asked in", async () => {
+    const h = harness();
+    const blocker = Promise.withResolvers<ReturnType<typeof turnLoopResult>>();
+    const id = h.manager.spawn(STUB_SNAPSHOT, "general-purpose", "work", { description: "work" });
+    const child = h.children.get(id)!;
+    child.stub.runTurnLoop.mockReturnValue(blocker.promise);
+    await tick();
+    // pi-ask opened the question and told the parent; the run is still finishing its tool batch.
+    child.stub.openItems.push(openItem("answer", "q1", "question"));
+    const record = h.manager.getRecord(id)!;
+    expect(record.status).toBe("running");
+    expect(await record.send("Use Postgres.")).toEqual({ kind: "steered", delivery: "delivered" });
+    expect(child.stub.steer).toHaveBeenCalledWith("Use Postgres.");
+    expect(child.stub.openItems).toEqual([]);
+    blocker.resolve(turnLoopResult());
+    await record.promise;
+    expect(record.waitingOn).toEqual([]);
+    expect(h.waiting).not.toHaveBeenCalled();
+  });
+
+  it("does not keep a question open on an agent that failed: a reopened agent is not told to wait", async () => {
     const h = harness();
     const child = await h.spawn((c) => {
-      c.stub.openItems.push(openItem("CI"));
+      asking()(c);
       c.stub.runTurnLoop.mockImplementation(async () => {
-        c.params.askParent!("Which branch?");
-        return turnLoopResult();
+        c.stub.openItems.push(openItem("answer", "q1", "question"));
+        c.params.announceQuestion!("Which branch?");
+        throw new Error("boom");
       });
     });
-    // Step 10 reworks how a question reaches the parent. Until then it is the completion's
-    // business, and holding it back until the work ran out would leave the parent unaware.
-    expect(h.completed).toHaveBeenCalledTimes(1);
+    await tick();
+    expect(child.record.outcome).toBe("error");
     expect(h.waiting).not.toHaveBeenCalled();
-    expect(child.record.pendingQuestion).toBe("Which branch?");
-    // The work is not abandoned: its session stays, and its completion still wakes the agent.
-    expect(child.stub.dispose).not.toHaveBeenCalled();
-    expect(child.record.hasOpenWork()).toBe(true);
+    expect(h.completed).toHaveBeenCalledTimes(1);
+    // The session is released with the question item left open in its transcript; whoever sends
+    // it a message next closes it when the transcript is reopened (see Run.answering).
+    expect(child.stub.dispose).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -430,21 +596,20 @@ describe("stopping a waiting agent", () => {
     expect(child.stub.openItems).toEqual([]);
   });
 
-  it("stops an agent that reported a question while work stayed open, without reporting twice", async () => {
+  // Rewritten by roadmap step 10 (was: "stops an agent that reported a question while work
+  // stayed open, without reporting twice"). A question no longer reports the agent: it waits like
+  // any other open item, so the stop is the one report.
+  it("stops an agent waiting on a question and a job, reporting once", async () => {
     const h = harness();
-    const child = await h.spawn((c) => {
-      c.stub.openItems.push(openItem("CI"));
-      c.stub.runTurnLoop.mockImplementation(async () => {
-        c.params.askParent!("Which branch?");
-        return turnLoopResult();
-      });
-    });
-    expect(h.completed).toHaveBeenCalledTimes(1);
+    const child = await h.spawn(askingWithJob());
+    expect(h.completed).not.toHaveBeenCalled();
     expect(h.manager.abort(child.record.id)).toBe(true);
     expect(child.record.outcome).toBe("stopped");
     expect(h.completed).toHaveBeenCalledTimes(1);
     await tick();
     expect(child.stub.dispose).toHaveBeenCalledTimes(1);
+    // Both are called off, so a reopened agent is told nothing was lost.
+    expect(child.stub.openItems).toEqual([]);
   });
 
   it("is stopped with everything else when the spawner is interrupted", async () => {

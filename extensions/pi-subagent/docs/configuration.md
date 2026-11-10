@@ -365,8 +365,8 @@ or shared concurrency pool across managers.
 Two names are always **added**, whatever an agent lists: `ask` (from pi-ask) and `parent_notify`.
 These are the child's channel back to the agent that delegated to it — protocol the core installs in every child, like the `<active_agent>` tag and the parent-context prefix.
 Neither reaches the filesystem, the shell, or the network, so a read-only agent stays read-only.
-`ask` reaches the parent through the `ask:route` service the core offers for every child: it records a question and tells the child to end its turn, so the delegating agent can answer with `subagent_send`; `parent_notify` sends a one-way update and returns at once.
-A question can outlive the chance to answer it — the saved transcript or the child's directory can go away, and a workspace is torn down at run end unless the child completed — so once `subagent_send` would be refused, the result reports the question and the reason rather than the call.
+`ask` reaches the parent through the `work:parent` service the core offers for every child: it opens a question item in the child's own work host (the child waits on it, as `waiting: answer`), tells the parent once in a `subagent:question` message, and ends the child's turn, so the delegating agent can answer with `subagent_send`; `parent_notify` sends a one-way update and returns at once.
+A question can outlive the chance to answer it — the saved transcript or the child's directory can go away — in which case `subagent_send` is refused and says why.
 Both go to every agent, `parent_notify` only while [`midRunUpdates`](#persistent-settings) is on.
 Where an update lands depends on whether an announcement can still reach you in time to act on it.
 It arrives as its own message when you are idle and the agent is still running — the one case where messaging it still steers it.
@@ -484,10 +484,10 @@ for validation, tool-access, and automation limitations.
 
 Runtime tuning values set via `/subagent:settings` (max concurrency, default max turns, wrap-up turns, the two session-retention windows, the abort-on-interrupt policy, and the mid-run update channel) persist across pi restarts.
 A completed subagent's record is kept for the whole parent session (so `subagent_get` never misses), and its saved `subagent:record` entry outlives a reload or resume; only its heavy in-memory session is released — after `consumedSessionRetentionMinutes` once the result has been read with `subagent_get`, or after the `unconsumedSessionRetentionMinutes` safety cap if it never was.
-An agent that asked a question and has not been answered holds the safety cap rather than the consumed window, because reading a question is not finishing with the agent — the answer is delivered by resuming the very session the short window would release.
+The sweep never releases an agent with open work, whatever the window says: an agent waiting on a job, an agent of its own or an unanswered question (an open item like the others) keeps its session until the work is closed, and the windows apply only after that.
 
 Set `midRunUpdates` to `false` to withhold `parent_notify` from every agent, leaving them no way to tell you anything before they finish.
-`ask` is unaffected: a blocked agent can still end its turn with a question.
+`ask` is unaffected: a blocked agent can still ask, which ends its turn and leaves it waiting on `answer`.
 Two files, merged on load:
 
 - **Global:** `~/.pi/agent/subagent.json` — your machine-wide defaults.

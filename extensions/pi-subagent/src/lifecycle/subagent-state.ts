@@ -110,8 +110,6 @@ export interface SubagentStateInit {
    */
   outcome?: RunOutcome;
   result?: string;
-  /** The question the agent ended its turn with — an outcome fact, like result. */
-  pendingQuestion?: string;
   /** The run's turn limit and its use — an outcome fact, like result. */
   turnBudget?: TurnBudget;
   error?: string;
@@ -186,13 +184,6 @@ export class SubagentState {
     return this._consumedAt != null;
   }
 
-  // The question this agent ended its turn with, if it declared one. Part of the
-  // outcome like _result, and set alongside it at the terminal transition.
-  private _pendingQuestion?: string;
-  get pendingQuestion(): string | undefined {
-    return this._pendingQuestion;
-  }
-
   // The run's turn budget, live: the turn loop reports it before the first turn
   // and after each boundary, so the last report is already the outcome's. Part
   // of the outcome like _result, and cleared where a run begins (markQueued).
@@ -246,7 +237,6 @@ export class SubagentState {
     this._status = init.status ?? "queued";
     this._outcome = this._status === "idle" ? (init.outcome ?? "completed") : undefined;
     this._result = init.result;
-    this._pendingQuestion = init.pendingQuestion;
     this._turnBudget = init.turnBudget;
     this._error = init.error;
     this._stoppedWhileQueued = init.stoppedWhileQueued ?? false;
@@ -349,7 +339,6 @@ export class SubagentState {
     this._error = undefined;
     this._consumedAt = undefined;
     this._turnBudget = undefined;
-    this._pendingQuestion = undefined;
     this._runUpdates.length = 0;
   }
 
@@ -417,11 +406,6 @@ export class SubagentState {
    */
   markConsumed(at?: number): void {
     this._consumedAt ??= at ?? Date.now();
-  }
-
-  /** Record the question the agent ended its turn with. */
-  setPendingQuestion(question: string | undefined): void {
-    this._pendingQuestion = question;
   }
 
   /** Stop the run: idle with outcome `stopped`. Always valid — no guard. */

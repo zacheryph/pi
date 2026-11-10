@@ -186,6 +186,15 @@ export class SubagentEventsObserver implements SubagentManagerObserver {
     this.work.update(record, message);
   }
 
+  /**
+   * A child asked its parent a question. Delivered once, through the agent's item; the agent
+   * waits on a question item in its own host, so nothing is persisted here and the next record
+   * is the waiting one (`onSubagentWaiting`).
+   */
+  onSubagentQuestion(record: Subagent, question: string): void {
+    this.work.question(record, question);
+  }
+
   onSubagentCompacted(record: Subagent, info: CompactionInfo): void {
     // Emit compacted event when agent's session compacts (preserves count on record).
     this.emit("subagent:compacted", {

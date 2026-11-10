@@ -128,7 +128,6 @@ export class GetResultTool {
       result: saved.result,
       error: saved.error,
       turnBudget: saved.turnBudget,
-      pendingQuestion: saved.pendingQuestion,
       model: saved.model,
       thinkingLevel: saved.thinkingLevel,
       cwd: saved.cwd,
@@ -177,7 +176,6 @@ export class GetResultTool {
       // and covers verbose after the live session was released (no conversation).
       transcriptPath: record.outputFile,
       runUpdates: record.runUpdates,
-      pendingQuestion: record.pendingQuestion,
       sendRefusal: record.sendRefusal,
       model: modelLabel(record.model),
     };
@@ -214,8 +212,8 @@ export class GetResultTool {
         "Check status and retrieve results from a background agent, or list this branch's agents.",
       description:
         "Check status and read the full result of a background agent without waiting for it. Use the agent ID returned by subagent_start. A running agent reports its status; its completion message arrives when it finishes, so end your turn instead of polling. " +
-        "Agents from before a reload, resume or compaction keep their saved result, question and transcript path, and the report says whether subagent_send can still reach them. " +
-        "Without agent_id, lists the agents started on this branch: waiting on a question first, then running, then idle agents whose last run failed or stopped, then completed ones, newest first.",
+        "Agents from before a reload, resume or compaction keep their saved result and transcript path, and the report says whether subagent_send can still reach them. " +
+        "Without agent_id, lists the agents started on this branch: waiting first, then running, then idle agents whose last run failed or stopped, then completed ones, newest first.",
       parameters: Type.Object({
         agent_id: Type.Optional(
           Type.String({

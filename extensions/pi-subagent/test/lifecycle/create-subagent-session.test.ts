@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import { service } from "../../../../packages/pi-session-tree/src/index.ts";
+import { WORK_PARENT_SERVICE, type WorkParent } from "../../../../packages/pi-work/src/index.ts";
 import { resetSessionTree } from "../../../../packages/pi-test-helpers/src/globals.ts";
 import {
   WORK_ENTRY,
@@ -643,12 +644,12 @@ describe("createSubagentSession — the core's own child tools", () => {
   // missing from the allowlist is dropped with no error (#725). Both halves are
   // asserted separately so dropping either one fails a test.
 
-  describe("when the run supplies an ask-back recorder", () => {
+  describe("when the run supplies a way to announce a question", () => {
     it("appends pi-ask's ask to the allowlist the agent declared", async () => {
       arrangeFactory();
 
       await createSubagentSession(
-        { snapshot: STUB_SNAPSHOT, type: "explore", askParent: vi.fn() },
+        { snapshot: STUB_SNAPSHOT, type: "explore", announceQuestion: vi.fn() },
         defaultDeps(),
       );
 
@@ -663,34 +664,52 @@ describe("createSubagentSession — the core's own child tools", () => {
       arrangeFactory();
 
       await createSubagentSession(
-        { snapshot: STUB_SNAPSHOT, type: "explore", askParent: vi.fn() },
+        { snapshot: STUB_SNAPSHOT, type: "explore", announceQuestion: vi.fn() },
         createSubagentSessionDeps({ io, exec, registry: createAgentLookup({ toolNames: [] }) }),
       );
 
       expect(io.createSession).toHaveBeenCalledWith(expect.objectContaining({ tools: ["ask"] }));
     });
 
-    it("offers the recorder as the child's ask:route before its extensions bind, and withdraws it on dispose", async () => {
+    // Rewritten by roadmap step 10 (was: offered the recorder as the child's `ask:route` service,
+    // whose `record(question)` stored the question on the agent). The service is now the child's
+    // link to the item its parent holds for it: `work:parent`, whose `question(text)` tells the
+    // parent. The question itself is an item in the child's own work host, opened by pi-ask.
+    it("offers the child a link to its parent as work:parent before its extensions bind, and withdraws it on dispose", async () => {
       arrangeFactory();
-      const askParent = vi.fn<(question: string) => void>();
+      const announceQuestion = vi.fn<(question: string) => void>();
       const deps = defaultDeps();
       let sessionId = "";
-      let routeAtBind: { record(question: string): void } | undefined;
+      let linkAtBind: WorkParent | undefined;
       vi.mocked(deps.lifecycle.bound).mockImplementation((event) => {
         sessionId = event.sessionId;
-        routeAtBind = service(event.sessionId, "ask:route");
+        linkAtBind = service(event.sessionId, WORK_PARENT_SERVICE);
       });
 
       const subagent = await createSubagentSession(
-        { snapshot: STUB_SNAPSHOT, type: "explore", askParent },
+        { snapshot: STUB_SNAPSHOT, type: "explore", announceQuestion },
         deps,
       );
 
-      expect(routeAtBind).toBeDefined();
-      routeAtBind!.record("Which config wins?");
-      expect(askParent).toHaveBeenCalledWith("Which config wins?");
+      expect(linkAtBind).toBeDefined();
+      linkAtBind!.question("Which config wins?");
+      expect(announceQuestion).toHaveBeenCalledWith("Which config wins?");
+      expect(service(sessionId, "ask:route")).toBeUndefined(); // the old record path is gone
       await subagent.dispose();
-      expect(service(sessionId, "ask:route")).toBeUndefined();
+      expect(service(sessionId, WORK_PARENT_SERVICE)).toBeUndefined();
+    });
+
+    it("offers no link to a parent when the run has no way to announce a question", async () => {
+      arrangeFactory();
+      const deps = defaultDeps();
+      let sessionId = "";
+      vi.mocked(deps.lifecycle.bound).mockImplementation(
+        (event) => void (sessionId = event.sessionId),
+      );
+
+      await createSubagentSession({ snapshot: STUB_SNAPSHOT, type: "explore" }, deps);
+
+      expect(service(sessionId, WORK_PARENT_SERVICE)).toBeUndefined();
     });
   });
 

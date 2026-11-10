@@ -309,15 +309,18 @@ export class WorkHostRuntime implements WorkHost {
   }
 
   /**
-   * Close every open item as cancelled, with no message: the session's owner stopped it, and what
-   * it waited on is called off, so nothing is lost on the next start. Not part of the producers'
-   * contract (`WorkHost`): only whoever runs the session calls it. Returns how many were closed.
-   * Producers' handles go inert; the work behind them is theirs to stop (a stopped session's
-   * shutdown does).
+   * Close the open items as cancelled, with no message: the session's owner called them off, so
+   * nothing is lost on the next start. Every open item, or only those `match` accepts (a parent's
+   * answer closes the questions the session asked and leaves its jobs alone). Not part of the
+   * producers' contract (`WorkHost`): only whoever runs the session calls it. Returns how many
+   * were closed. Producers' handles go inert; the work behind them is theirs to stop (a stopped
+   * session's shutdown does).
    */
-  cancelOpen(): number {
+  cancelOpen(match?: (item: WorkItemView) => boolean): number {
     if (this.disposed) return 0;
-    const open = [...this.entries.values()].filter((entry) => !entry.closed);
+    const open = [...this.entries.values()].filter(
+      (entry) => !entry.closed && (!match || match({ ...entry.view })),
+    );
     for (const entry of open) this.close(entry, "cancelled");
     if (open.length) this.changed();
     return open.length;

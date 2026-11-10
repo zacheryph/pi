@@ -3,6 +3,80 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-10: A child's question is an item in its work host, not a record on its run
+
+Roadmap step 10 (`docs/roadmaps/subagent-work-lifecycle.md`): a child's `ask` goes through the work
+contract. The root session's `ask` is unchanged (it asks the user in a dialog).
+
+- **A child that asks is idle and waiting.** pi-ask opens a `question` item (owner `pi-ask`, label
+  `answer`, data `{ toolCallId, questions, text }`) in the child's own host, tells the parent once,
+  and returns `terminate: true`: Pi ends the child's turn after the tool batch, the run settles
+  `completed` and, with the question open, parks like a run that left a job open (`waiting: answer`).
+  The question holds the child's session like any other open item (the retention guard of 9a
+  already skips agents with open work; a test now pins it for a question). 9a's carve-out is gone:
+  a run that ended with a question used to report at once, with the question, and keep its session
+  while work stayed open (`shouldPark`, and `stopWaiting`'s "already reported" case). Waiting for a
+  question is just waiting; `stopWaiting` now only guards a double report.
+- **The parent hears the question once.** The child reaches the item its parent holds for it through
+  a new `work:parent` service (`WORK_PARENT_SERVICE`, `WorkParent.question(text)`, in pi-work),
+  offered by `createSubagentSession` under the child's session id before its extensions bind, where
+  `ask:route` used to be. `announceQuestion` replaces `askParent`: it calls the new
+  `SubagentLifecycleObserver.onQuestionAsked`, `SubagentManagerObserver.onSubagentQuestion`, and
+  `AgentWork.question`, which `notify`s the agent's item with a `subagent:question` message
+  (`questionMessage`, `<subagent-question>` with the question text and the exact `subagent_send`
+  call; renderer `createQuestionRenderer`, registered like the update renderer). Nothing is
+  persisted for it and no event is emitted: the `subagent:waiting` that follows (`reason: answer`)
+  is the lifecycle signal. It is not gated by `midRunUpdates`, which is only for `parent_notify`.
+  If the spawner holds no item for the agent (its host was unreachable at the request, or was
+  replaced since), `SubagentWork.question` opens one on demand, as `runEnded` does, so the child is
+  never left waiting on a question nobody was told about (the observer chain swallows errors, so
+  throwing could not have reported it); with no host at all it only debug-logs.
+- **Rendering convention kept.** `createQuestionRenderer` draws like its siblings
+  (`createUpdateRenderer`, `createNotificationRenderer`): `Text(…, 0, 0)` with the header at column
+  0 and its detail rows indented by two spaces, inside Pi's custom-message box, which supplies the
+  edge inset. That is an existing convention I kept rather than changed in the siblings. Unlike
+  them, the question renderer also clips every row to the width (a double-width character cannot
+  be split by `Text` at one column), and its tests cover `NARROW_WIDTHS` and widths 1 to 12 with
+  wide characters and ANSI.
+- **`subagent_send` is the answer.** `Subagent.send` closes the agent's question items (new
+  `SubagentSession.answerQuestions`, `ChildWork.answerQuestions`, and pi-work's
+  `cancelOpen(match)`, which closes only the items it accepts) when the message steers the running
+  agent, joins its queued run, or starts its run, and the message is the run's prompt. A job the
+  child also waits on stays open. A live session closes them at once, after the run was requested
+  (so `workChanged` never reads the agent as finished); a session reopened from its transcript
+  closes them when the run attaches it (`Run.answering`), because pi-ask adopts the question at
+  `session_start` and the message that reopened the child is its answer. A wake run
+  (`WORK_WAKE_PROMPT`) does not answer anything.
+- **A job and a question open together.** The job's completion wakes the child (it sees the
+  completion and the wake prompt, and its own `ask` still without an answer); its run ends and it
+  waits again, now on the answer alone, until every item is closed. The wake does not answer or
+  re-announce the question.
+- **Removed.** The `ask:route` service and its `record` path (and pi-ask's `route.ts` contract on
+  it), `Subagent.askParent` and `QuestionRecorder`, `Subagent.pendingQuestion`,
+  `SubagentState.pendingQuestion` and `setPendingQuestion`, the question on `RetentionCandidate`
+  (and `resolveRetentionWindow`'s exception for a collected outcome with a question),
+  `renderQuestionAffordance` and the question parts of `OutcomeAddenda`, the completion message's
+  and `subagent_get` reports' question affordance, and the roster's `waiting for your answer: "…"`
+  line (a waiting agent's roster line is `waiting: <labels>`; `rosterState` lost its question
+  parameter, `QUESTION_MAX_CHARS` became `REASON_MAX_CHARS`).
+- **Until step 12, a parent reload still stops its waiting children.** `abortAll` stops them and a
+  stop cancels their open items, so a question a child was waiting on is closed (cancelled) by the
+  reload, not kept open. The adoption path is for a child session that is reopened with its question
+  still open: after a crash or restart of the process (the item was never closed), and after a
+  failed run that left it open.
+- **Saved records.** `pendingQuestion` is no longer written. A version 2 record that carries one is
+  still read: the field is ignored whatever its type, so such a record loads like any other.
+- Tests: `test/question-sdk.test.ts` (real sessions, scripted model: a child asks, its turn ends, the
+  parent sees the question once, `subagent_send` wakes it through the limiter with the answer as its
+  prompt; waiting on `answer` and keeping its session; a watch and a question open together; the
+  question across a restart from a copy of the child's file, adopted and not lost, and lost without
+  pi-ask; a child that failed after asking, reopened by the parent's send), plus unit tests in `waiting-workers`, `subagent`,
+  `child-work`, `subagent-work`, `notification`, `renderer` (narrow widths, wide characters, ANSI),
+  `roster`, `persisted-record` and the get-result suites. Tests that pinned the old model were
+  rewritten with a comment, not deleted: `ask-sdk` (the question used to arrive in the completion),
+  `records-sdk` (the question used to be quoted from the saved record after a reload),
+  `waiting-workers` (the carve-out), `outcome-delivery`, `get-result-*` and `roster`.
+
 ## 2026-11-10: A message that reaches a running child is answered in that run, and confirmed
 
 Roadmap step 9b (`docs/roadmaps/subagent-work-lifecycle.md`), the second half of step 9: mid-run

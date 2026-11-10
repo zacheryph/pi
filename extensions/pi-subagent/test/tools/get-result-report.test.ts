@@ -95,31 +95,23 @@ describe("renderReportBody", () => {
 });
 
 describe("formatAgentReport", () => {
-  it("surfaces a declared question as answerable, naming the send call", () => {
-    const text = formatAgentReport(makeReport({ id: "agent-7", pendingQuestion: "Which config?" }));
+  // Rewritten by roadmap step 10 (was three tests: a declared question surfaced as answerable
+  // with the send call, no affordance when nothing was asked, and a question a released session
+  // could not answer). The report no longer carries a question: the parent heard it in its own
+  // message when it was asked, and an agent waiting for the answer is waiting on `answer`.
+  it("reports an agent waiting for an answer as waiting on `answer`, with no question text", () => {
+    const text = formatAgentReport(makeReport({ id: "agent-7", waitingOn: ["answer"] }));
 
-    expect(text).toContain("This agent is waiting on an answer:");
-    expect(text).toContain("Which config?");
-    expect(text).toContain('subagent_send with agent_id: "agent-7"');
+    expect(text).toContain("Status: waiting: answer");
+    expect(text).toContain("or when you send it a message");
+    expect(text).not.toContain("waiting on an answer");
   });
 
-  it("adds no affordance when the agent asked nothing", () => {
-    expect(formatAgentReport(makeReport())).not.toContain("waiting on an answer");
-  });
+  it("says why a message would be refused, as for any idle agent", () => {
+    const text = formatAgentReport(makeReport({ id: "agent-7", sendRefusal: "session-released" }));
 
-  it("reports a question the released session can no longer answer, without a send call", () => {
-    const text = formatAgentReport(
-      makeReport({
-        id: "agent-7",
-        pendingQuestion: "Which config?",
-        sendRefusal: "session-released",
-      }),
-    );
-
-    expect(text).toContain("can no longer be answered");
+    expect(text).toContain("Send: not available, because");
     expect(text).toContain("its session was released and its saved transcript is gone");
-    expect(text).toContain("Which config?");
-    expect(text).not.toContain("subagent_send");
   });
 
   it("reports the updates the agent sent while the parent waited", () => {

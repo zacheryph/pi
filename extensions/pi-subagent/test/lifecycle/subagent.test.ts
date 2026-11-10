@@ -27,6 +27,7 @@ import {
   createMockSession,
   createSubagentSessionStub,
   emitResumeUsageAndCompaction,
+  openItem,
   toAgentSession,
   toSubagentSession,
 } from "#test/helpers/mock-session";
@@ -928,13 +929,13 @@ describe("Subagent — the mid-run update channel", () => {
     expect(factory.mock.calls[0][0].notifyParent).toBeUndefined();
   });
 
-  it("gives the child the ask-back recorder", async () => {
+  it("gives the child a way to tell its parent a question", async () => {
     const { factory } = createSpyFactory();
     const agent = createRunnableAgent({ createSubagentSession: factory });
 
     await agent.run();
 
-    expect(factory.mock.calls[0][0].askParent).toBeTypeOf("function");
+    expect(factory.mock.calls[0][0].announceQuestion).toBeTypeOf("function");
   });
 });
 
@@ -1031,127 +1032,79 @@ function createResumableAgent(overrides?: {
   return { agent, session, stub };
 }
 
-/**
- * Run an agent whose turn loop calls `ask_parent`, the way a real child does:
- * through the recorder the assembly factory installed on its session.
- *
- * Returns the recorder too, so a resumed run can ask again on the same session.
- */
-async function runAsking(
-  opts: Partial<TurnLoopResult> & { responseText: string; question?: string },
-) {
-  const stub = createSubagentSessionStub();
-  let askParent: ((question: string) => void) | undefined;
-  const agent = makeSubagent({
-    execution: makeStubExecution({
-      createSubagentSession: async (params: CreateSubagentSessionParams) => {
-        askParent = params.askParent;
-        return toSubagentSession(stub);
-      },
-    }),
-  });
-  stub.runTurnLoop.mockImplementation(() => {
-    if (opts.question !== undefined) askParent?.(opts.question);
-    const { question: _question, ...result } = opts;
-    return Promise.resolve(turnLoopResult(result));
-  });
-  await agent.run();
-  return { agent, stub, ask: (question: string) => askParent?.(question) };
-}
+// Roadmap step 10 rewrote this section (it was "ask-back": the child's question was recorded on
+// the agent as `pendingQuestion`, kept only as the last one, dropped when a run failed, and cleared
+// when a resumed run began). A question is now an item in the child's own host that pi-ask opens;
+// the agent only relays it to the parent, once, through the lifecycle observer, and the parent's
+// next message closes the item.
+describe("Subagent — a child's question to its parent", () => {
+  /** An agent whose factory hands back the announcer the assembly factory would install. */
+  async function runWithAnnouncer(
+    turn: (
+      announce: (question: string) => void,
+      stub: ReturnType<typeof createSpyFactory>["stub"],
+    ) => unknown,
+  ) {
+    const { factory, stub } = createSpyFactory();
+    const observer = { onQuestionAsked: vi.fn(), onWaiting: vi.fn() };
+    const agent = createRunnableAgent({ createSubagentSession: factory, observer });
+    stub.runTurnLoop.mockImplementation(async () => {
+      await turn(factory.mock.calls[0][0].announceQuestion!, stub);
+      return turnLoopResult({ responseText: "" });
+    });
+    await agent.run();
+    return { agent, stub, observer, factory };
+  }
 
-describe("Subagent — ask-back", () => {
-  it("hands the session factory a recorder for the child's question", async () => {
+  it("hands the session factory a way to announce the question", async () => {
     const { factory } = createSpyFactory();
     const agent = createRunnableAgent({ createSubagentSession: factory });
 
     await agent.run();
 
-    expect(factory.mock.calls[0][0].askParent).toBeTypeOf("function");
+    expect(factory.mock.calls[0][0].announceQuestion).toBeTypeOf("function");
   });
 
-  it("keeps only the last question when the child asks twice", async () => {
-    const { factory } = createSpyFactory();
-    const agent = createRunnableAgent({ createSubagentSession: factory });
-    await agent.run();
-    const ask = factory.mock.calls[0][0].askParent;
-
-    ask?.("first");
-    ask?.("second");
-
-    expect(agent.pendingQuestion).toBe("second");
-  });
-
-  it("drops a recorded question when the run fails, so no carrier invites a resume", async () => {
-    const { factory, stub } = createSpyFactory();
-    stub.runTurnLoop.mockImplementation(() => {
-      factory.mock.calls[0][0].askParent?.("Which config wins?");
-      return Promise.reject(new Error("boom"));
-    });
-    const agent = createRunnableAgent({ createSubagentSession: factory });
-
-    await agent.run();
-
-    expect(agent.status).toBe("idle");
-    expect(agent.outcome).toBe("error");
-    expect(agent.pendingQuestion).toBeUndefined();
-  });
-
-  it("drops a recorded question when a resumed run fails", async () => {
-    const { factory, stub } = createSpyFactory();
-    const agent = createRunnableAgent({ createSubagentSession: factory });
-    await agent.run();
-    stub.resumeTurnLoop.mockImplementation(() => {
-      factory.mock.calls[0][0].askParent?.("Which config wins?");
-      return Promise.reject(new Error("boom"));
+  it("tells the lifecycle observer each question, once, and records nothing on the agent", async () => {
+    const { agent, observer } = await runWithAnnouncer((announce) => {
+      announce("first");
+      announce("second");
     });
 
-    await agent.resume("continue");
-
-    expect(agent.status).toBe("idle");
-    expect(agent.outcome).toBe("error");
-    expect(agent.pendingQuestion).toBeUndefined();
+    expect(observer.onQuestionAsked.mock.calls).toEqual([
+      [agent, "first"],
+      [agent, "second"],
+    ]);
+    expect(agent).not.toHaveProperty("pendingQuestion");
+    // The result body is the child's own words, with no question mixed in.
+    expect(agent.result).toBe("");
   });
 
-  it("records a declared question and leaves the result body untouched", async () => {
-    const { agent } = await runAsking({
-      responseText: "I mapped the configs.",
-      question: "Which one is authoritative?",
-    });
-
-    expect(agent.pendingQuestion).toBe("Which one is authoritative?");
-    // The question never entered the body, so every carrier renders it once,
-    // as the affordance.
-    expect(agent.result).toBe("I mapped the configs.");
-  });
-
-  it("leaves pendingQuestion undefined when the child asked nothing", async () => {
-    const { agent } = await runAsking({ responseText: "All done." });
-
-    expect(agent.pendingQuestion).toBeUndefined();
-    expect(agent.result).toBe("All done.");
-  });
-
-  it("records a question an aborted run declared before it ran out of turns", async () => {
-    const { agent } = await runAsking({
-      responseText: "",
-      question: "Still stuck on which?",
-      turnBudget: EXHAUSTED,
+  it("is waiting, not done, while the question item is open", async () => {
+    const { agent, observer } = await runWithAnnouncer((announce, stub) => {
+      stub.openItems.push(openItem("answer", "q1", "question"));
+      announce("Which config?");
     });
 
     expect(agent.status).toBe("idle");
-    expect(agent.outcome).toBe("turn-limit");
-    expect(agent.pendingQuestion).toBe("Still stuck on which?");
+    expect(agent.waitingOn).toEqual(["answer"]);
+    expect(observer.onWaiting).toHaveBeenCalledTimes(1);
   });
 
-  it("completes the round trip: ask, answer by resuming, continue", async () => {
-    const { agent, stub } = await runAsking({ responseText: "", question: "Which config?" });
+  it("is answered by a message: the question closes and the message is the run's prompt", async () => {
+    const { agent, stub } = await runWithAnnouncer((announce, session) => {
+      session.openItems.push(openItem("answer", "q1", "question"));
+      announce("Which config?");
+    });
     stub.resumeTurnLoop.mockResolvedValue(
       turnLoopResult({ responseText: "Used the project config. Done." }),
     );
-    expect(agent.pendingQuestion).toBe("Which config?");
 
-    await agent.resume("The project one.");
+    expect(await agent.send("The project one.")).toEqual({ kind: "started", relaunched: false });
+    await agent.promise;
 
+    expect(stub.answerQuestions).toHaveBeenCalled();
+    expect(stub.openItems).toEqual([]);
     expect(stub.resumeTurnLoop).toHaveBeenCalledWith(
       "The project one.",
       expect.objectContaining({ signal: agent.abortController.signal }),
@@ -1159,21 +1112,78 @@ describe("Subagent — ask-back", () => {
     expect(agent.status).toBe("idle");
     expect(agent.outcome).toBe("completed");
     expect(agent.result).toBe("Used the project config. Done.");
-    // The question was answered, so it no longer stands.
-    expect(agent.pendingQuestion).toBeUndefined();
   });
 
-  it("records a follow-up question a resumed run declares", async () => {
-    const { agent, stub, ask } = await runAsking({ responseText: "", question: "Which config?" });
-    stub.resumeTurnLoop.mockImplementation(() => {
-      ask("And the fallback?");
-      return Promise.resolve(turnLoopResult({ responseText: "Thanks." }));
+  it("announces a follow-up question a resumed run asks", async () => {
+    const { agent, stub, observer, factory } = await runWithAnnouncer((announce) =>
+      announce("Which config?"),
+    );
+    stub.resumeTurnLoop.mockImplementation(async () => {
+      factory.mock.calls[0][0].announceQuestion!("And the fallback?");
+      return turnLoopResult({ responseText: "Thanks." });
     });
 
-    await agent.resume("The project one.");
+    await agent.send("The project one.");
+    await agent.promise;
 
-    expect(agent.pendingQuestion).toBe("And the fallback?");
-    expect(agent.result).toBe("Thanks.");
+    expect(observer.onQuestionAsked).toHaveBeenLastCalledWith(agent, "And the fallback?");
+    expect(observer.onQuestionAsked).toHaveBeenCalledTimes(2);
+  });
+
+  it("is an ordinary failed agent when the run fails after it asked", async () => {
+    const { factory, stub } = createSpyFactory();
+    const observer = { onQuestionAsked: vi.fn(), onWaiting: vi.fn() };
+    stub.runTurnLoop.mockImplementation(() => {
+      stub.openItems.push(openItem("answer", "q1", "question"));
+      factory.mock.calls[0][0].announceQuestion?.("Which config wins?");
+      return Promise.reject(new Error("boom"));
+    });
+    const agent = createRunnableAgent({ createSubagentSession: factory, observer });
+
+    await agent.run();
+
+    expect(agent.status).toBe("idle");
+    expect(agent.outcome).toBe("error");
+    expect(observer.onWaiting).not.toHaveBeenCalled();
+  });
+
+  it("closes a question left open in a released transcript when the message reopens it", async () => {
+    // A failed run released the session with its question item still in the transcript; pi-ask
+    // adopts it when the transcript is reopened, and the message that reopened it is the answer.
+    const reopened = createSubagentSessionStub();
+    reopened.openItems.push(openItem("answer", "q1", "question"));
+    reopened.resumeTurnLoop.mockResolvedValue(turnLoopResult({ responseText: "reopened" }));
+    const agent = new Subagent({
+      id: "released-1",
+      type: "general-purpose",
+      description: "released",
+      execution: makeStubExecution({
+        createSubagentSession: vi.fn(async () => toSubagentSession(reopened)),
+        checkReopen: () => undefined,
+      }),
+      state: new SubagentState({ status: "idle", outcome: "error" }),
+      released: { outputFile: "/t/a.jsonl", model: undefined, thinkingLevel: undefined },
+    });
+
+    await agent.send("Use Postgres.");
+    await agent.promise;
+
+    expect(reopened.openItems).toEqual([]);
+    expect(agent.waitingOn).toEqual([]);
+    expect(agent.outcome).toBe("completed");
+  });
+
+  it("leaves a question open when a work wake, not the parent, reopens the run", async () => {
+    const { agent, stub } = await runWithAnnouncer((announce, session) => {
+      session.openItems.push(openItem("answer", "q1", "question"));
+      announce("Which config?");
+    });
+    stub.resumeTurnLoop.mockResolvedValue(turnLoopResult({ responseText: "woken" }));
+
+    await agent.resume("Work you were waiting on has reported back.");
+
+    expect(stub.answerQuestions).not.toHaveBeenCalled();
+    expect(stub.openItems.map((item) => item.label)).toEqual(["answer"]);
   });
 });
 

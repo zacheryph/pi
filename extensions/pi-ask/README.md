@@ -37,12 +37,12 @@ cannot call it.
 
 The route is chosen when the session starts.
 
-| Session                          | Route  | What happens                                                                                       |
-| -------------------------------- | ------ | -------------------------------------------------------------------------------------------------- |
-| A subagent                       | parent | The question is recorded on the run; the subagent ends its turn and the parent answers by resuming |
-| Interactive terminal             | user   | An inline window opens under the transcript and waits for your answer                              |
-| RPC host (editor integrations)   | user   | One host dialog per question                                                                       |
-| No UI and no parent (print/json) | none   | The tool is hidden                                                                                 |
+| Session                          | Route  | What happens                                                                                                |
+| -------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------- |
+| A subagent                       | parent | The subagent waits on a question item and its turn ends; the parent is told once and answers with a message |
+| Interactive terminal             | user   | An inline window opens under the transcript and waits for your answer                                       |
+| RPC host (editor integrations)   | user   | One host dialog per question                                                                                |
+| No UI and no parent (print/json) | none   | The tool is hidden                                                                                          |
 
 While the inline window is open, the todo and subagent widgets above it shrink
 to their heading rule so the question keeps its rows. Scrolling the transcript
@@ -50,21 +50,41 @@ minimizes the window to three rows; any key or scrolling back to the end
 restores it.
 
 The tool's description and guidelines differ by route, because the two behave
-differently: asking you blocks and returns your answer, while asking a parent
-cannot block (no parent waits on a subagent), so the subagent records the
-question and ends its turn.
+differently: asking you blocks and returns your answer, while a subagent's
+question does not block. The subagent's turn ends (the tool returns
+`terminate: true`, so Pi stops after the tool batch; call `ask` on its own, since
+a batch that mixes it with other tools continues), the subagent is idle and
+waiting, and the parent's next message to it is the answer.
 
-A subagent reaches its parent through the `ask:route` service that pi-subagent
-offers under the child's session id before the child's extensions load.
-Another delegating extension can offer the same service:
+A subagent asks through the session's work host ([pi-work](../../packages/pi-work/README.md)):
 
-```ts
-provide(childSessionId, "ask:route", {
-  record(question: string) {
-    /* … */
-  },
-});
-```
+1. `ask` opens an item of kind `question` (owner `pi-ask`, label `answer`, data
+   `{ toolCallId, questions, text }`) in the subagent's own host. An open item keeps
+   a session from being released, so the question holds the subagent's session like
+   a running job does.
+2. It tells the parent once, through the `work:parent` service the delegating
+   extension offers under the child's session id before the child's extensions
+   load (pi-subagent does for every child). Another delegating extension can offer
+   the same service:
+
+   ```ts
+   provide(childSessionId, "work:parent", {
+     question(text: string) {
+       /* tell the delegator, once */
+     },
+   });
+   ```
+
+3. The delegator answers by closing the question item (`cancelOpen` on the child's
+   host, for items of kind `question`) and giving the subagent its answer as the next
+   prompt. pi-subagent does both in `subagent_send`.
+
+pi-ask adopts its open question items at `session_start`, so a question survives a
+reload or restart of the subagent's session: it stays open, the delegator is not
+told again, and the host does not report it lost. A question item found in a
+session that asks the user is not adopted.
+
+The root session's route is unchanged.
 
 ## Answering in the terminal
 

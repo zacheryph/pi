@@ -228,6 +228,66 @@ describe("SubagentWork", () => {
     });
   });
 
+  describe("a child's question", () => {
+    const running = (id = "live-1") => createTestSubagent({ id, status: "running" });
+
+    it("notifies through the agent's item, once, without closing it", () => {
+      const { work, items } = setup();
+      const record = running();
+      work.runRequested(record);
+      work.question(record, "[Storage] Which database?");
+      // The child is idle and waiting, not done: its item stays open until it completes.
+      expect(items[0].closed).toBe(false);
+      expect(items[0].events).toHaveLength(1);
+      const [event] = items[0].events;
+      expect(event.kind === "notify" && event.message.customType).toBe("subagent:question");
+      expect(event.kind === "notify" && event.message.content).toContain(
+        "[Storage] Which database?",
+      );
+      expect(event.kind === "notify" && event.message.content).toContain(
+        'subagent_send with agent_id: "live-1"',
+      );
+    });
+
+    // Changed by the step 10 repair (was: dropped with a debug log when the agent had no item).
+    // The child waits on its question item, so a question nobody was told about would leave it
+    // waiting for good: the item is opened on demand, as `runEnded` does.
+    it("opens the agent's item when it has none (a spawner whose host was reset), and delivers once", () => {
+      // This producer never saw the run requested: it holds no item for the agent.
+      const { work, items, messages } = setup();
+      const record = running();
+      work.question(record, "[Storage] Which database?");
+      expect(items).toHaveLength(1);
+      expect(messages()).toHaveLength(1);
+      expect(messages()[0].customType).toBe("subagent:question");
+      expect(messages()[0].content).toContain("[Storage] Which database?");
+      expect(items[0].closed).toBe(false);
+      // The next question rides the same item, and the completion closes it.
+      work.question(record, "And the fallback?");
+      expect(items).toHaveLength(1);
+      work.runEnded(done("live-1"));
+      expect(items[0].events.map((e) => e.kind)).toEqual(["notify", "notify", "complete"]);
+    });
+
+    it("is dropped, not thrown, when there is no host at all", () => {
+      const work = new SubagentWork(() => undefined);
+      expect(() => work.question(running(), "Which?")).not.toThrow();
+    });
+
+    it("is followed by the completion on the same item once the answer is in", () => {
+      const { work, items, messages } = setup();
+      const record = running();
+      work.runRequested(record);
+      work.question(record, "Which?");
+      work.runEnded(done("live-1"));
+      expect(items[0].events.map((e) => e.kind)).toEqual(["notify", "complete"]);
+      expect(messages().map((m) => m.customType)).toEqual([
+        "subagent:question",
+        "subagent:completion",
+      ]);
+    });
+  });
+
   describe("disposal", () => {
     it("delivers and closes nothing, leaving the open items for the next start to report", () => {
       const { work, items, messages } = setup();
@@ -235,6 +295,7 @@ describe("SubagentWork", () => {
       work.runRequested(record);
       work.dispose();
       work.update(record, "late");
+      work.question(record, "late");
       work.runEnded(record);
       work.runRequested(createTestSubagent({ id: "new" }));
       expect(messages()).toEqual([]);

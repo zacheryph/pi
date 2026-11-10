@@ -28,7 +28,7 @@ Every agent runs in the background: the parent starts it, ends its turn, and is 
 - **Custom agent types** — define agents in `.pi/agents/<name>.md` with YAML frontmatter: custom system prompts, model selection, thinking levels, tool restrictions
 - **orchestrate profile** — coordinate long-running projects with categorized todos, delegated work, and follow-ups in prior workers' sessions; available as a subagent or with `pi --agent orchestrate` ([usage and continuity](docs/configuration.md#orchestrate))
 - **One input tool** — `subagent_send` reaches an agent in any state, like typing into a main session: it steers a running agent mid-run, and gives an idle one (finished, failed or stopped) a new run that picks up where the agent left off, preserving full conversation context, even after a reload or once its session was released: the saved transcript is reopened.
-- **Ask-back** — an agent that needs information only you have calls `ask` (from the bundled pi-ask) and ends its turn, and every result surfaces the question with the exact `subagent_send` call that answers it; once that agent can no longer take a message, the result says so and why instead of naming a call that would be refused
+- **Ask-back** — an agent that needs information only you have calls `ask` (from the bundled pi-ask). Its turn ends and it waits (`waiting: answer`); you hear the question once, in its own message with the exact `subagent_send` call that answers it, and your answer wakes the agent with your message as its prompt
 - **Mid-run updates** — an agent that finds something material calls `parent_notify` and keeps working; the message arrives on its own while you are idle and that agent is still running, and otherwise rides that agent's own result, so you hear it exactly once and never as a stale prompt to message an agent that has finished
 - **Turn budgets** — `max_turns` is a hard ceiling, and an agent is told how many turns it has left while it still has room to wrap up, so it answers instead of being cut off
 - **Case-insensitive agent types** — `"explore"`, `"explore"`, `"EXPLORE"` all work.
@@ -278,9 +278,9 @@ Reading a finished result does not deliver it again and does not suppress its co
 | `agent_id` | string  | no       | Agent ID to check; omit to list this branch's agents |
 | `verbose`  | boolean | no       | Include full conversation log                        |
 
-Without `agent_id`, the result lists every agent started on the current branch — ID, type, description, status, and the question or error when there is one — waiting on a question first, then running, then idle agents whose last run failed or stopped, then completed ones, newest first.
+Without `agent_id`, the result lists every agent started on the current branch — ID, type, description, status, and what it waits on or why it failed — waiting first (a question it asked shows as `waiting: answer`), then running, then idle agents whose last run failed or stopped, then completed ones, newest first.
 
-An agent's ID keeps working after `/reload`, `/resume` or a session switch: when no live agent has it, `subagent_get` answers from the agent's last saved record — status, result, error, the question it ended with, and its transcript path — and says whether `subagent_send` can reach it, using the same check `subagent_send` makes.
+An agent's ID keeps working after `/reload`, `/resume` or a session switch: when no live agent has it, `subagent_get` answers from the agent's last saved record — status, result, error and its transcript path — and says whether `subagent_send` can reach it, using the same check `subagent_send` makes.
 An agent still running when that runtime went away is reported as interrupted.
 `Agent not found` means the current branch never started that ID, including an agent started on a branch `/tree` has since left.
 
@@ -417,7 +417,7 @@ A run that `subagent_send` starts for an idle agent goes through the same limit 
 ## Waiting for work
 
 Every child session has its own work host (`work:v1`, [pi-work](../../packages/pi-work/README.md)), offered under the child's session id before its extensions bind.
-A job the child starts (`job_start`, `job_watch`), an agent it starts itself (a child orchestrator's workers) and, later, a question to its parent are items in that host.
+A job the child starts (`job_start`, `job_watch`), an agent it starts itself (a child orchestrator's workers) and a question to its parent (`ask`) are items in that host.
 The host writes what they report into the child's transcript; it never starts a run by itself.
 
 When a run **completes** with items still open, the agent is idle and **waiting** instead of done:
@@ -429,8 +429,19 @@ When a run **completes** with items still open, the agent is idle and **waiting*
 - An item closes only once its result is in the child's transcript. A result Pi still holds mid-run is not there yet: if the process dies before the turn ends, the item is still open on disk and the next start reports it lost, with the result absent.
 - No message starts a run in a child by itself. Every run of a child begins through the manager (`Subagent.startRun`): the first, one a wake asks for, one a `subagent_send` starts. A wake that finds the child compacting (a child extension called `ctx.compact()`) waits for the compaction to end before it prompts, since Pi refuses a prompt meanwhile.
 - A waiting agent takes `subagent_send` like any idle agent. Stopping it (or ESC at the parent) stops it, reports `stopped`, and releases its session, which stops the work inside it.
-- A run that ends in an error, at the turn limit or by a stop does not wait: the assignment is over, the session is released, and the items stay open in the child's transcript, so a reopened agent is told the work was lost. A run that ends with a question reports it at once, as always, and keeps its session while work is open.
+- A run that ends in an error, at the turn limit or by a stop does not wait: the assignment is over, the session is released, and the items stay open in the child's transcript, so a reopened agent is told the work was lost. (A question it left open is the exception: pi-ask adopts it when the transcript is reopened, and the message that reopened it is the answer, so it closes at once.)
 - The retention sweep never releases the session of an agent with open work, however long it waits.
+
+### Asking the parent
+
+A child's `ask` (pi-ask) does not complete the child. It opens a **question item** in the child's own host (`kind: "question"`, `label: "answer"`, `data: { toolCallId, questions, text }`), tells the parent through the child's item in the parent's host, and returns `terminate: true`, which makes Pi end the child's turn after the tool batch. The child is then idle and waiting (`waiting: answer`), keeps its session, and has not completed, so nothing is reported as done.
+
+- The parent hears the question **once**, as a `subagent:question` message (`<subagent-question>`, with the question text and the exact `subagent_send` call). It is delivered through the agent's item like a `parent_notify` update, and never repeated: the roster, `subagent_get` and the eventual completion do not quote it.
+- The parent answers with `subagent_send`. The message closes the agent's question items (and only those: a job it still watches stays open) and is the prompt of the run the agent gets through the concurrency limit, so the child sees the answer as its next user message, after its own `ask` call and its result. There is no `subagent_wait`.
+- With a job also open, the job's completion wakes the child (it sees the completion and the wake prompt) while the question stays open; its run ends, and it waits again until every item is closed. The answer closes the question item only.
+- The question survives a restart of the process: pi-ask adopts its open question items at `session_start` (`adopt` on the child's host), so reopening the child's transcript neither closes nor reports it lost, and the parent is not told again. A `subagent_send` to an agent whose transcript is reopened with a question still open answers it, and the reopened child is not left waiting. (A parent `/reload` still stops its waiting children, which cancels their questions, until children are kept across reloads.)
+- `terminate` ends the turn only when every tool call in the batch terminates, so the `ask` tool tells the model to call it on its own; a batch that mixes `ask` with other tools continues, and the tool result says the question was sent.
+- The root session's `ask` is unchanged: it asks the user in a dialog.
 
 Nested delegation needs nothing more: the agents a child starts are items in the child's host, so a child orchestrator that ends its turn with a worker running waits, and the worker's completion wakes it.
 
@@ -457,8 +468,8 @@ Before this behavior existed, children fired `session_start` with no matching sh
 
 ## Saved records and the roster card
 
-The parent session appends a `subagent:record` custom entry for every lifecycle step of each agent it starts: when the agent is queued or starts running, when a resume starts, and when a run settles — including a run that ended its turn with a question.
-Each entry carries the agent's ID, type, description, status, result, error, turn budget, timings, tool count and transcript path, plus the question it is waiting on, its model and thinking level, the turn ceiling the spawn asked for, and the directory it runs in.
+The parent session appends a `subagent:record` custom entry for every lifecycle step of each agent it starts: when the agent is queued or starts running, when a resume starts, and when a run settles.
+Each entry carries the agent's ID, type, description, status, result, error, turn budget, timings, tool count and transcript path, plus its model and thinking level, the turn ceiling the spawn asked for, and the directory it runs in.
 The last entry for an ID wins.
 An entry records the agent's `status` (`queued`, `running` or `idle`) and, once idle, the `outcome` of its last run (`completed`, `turn-limit`, `error`, `stopped` or `interrupted`). Entries written before this shape, with a `status` of `completed`, `aborted`, `error`, `stopped`, `queued` or `running`, are still read: the first four become idle with that outcome, and a queued or running one becomes idle and interrupted.
 The entries sit on the branch that started the agent, so they follow it through `/tree` and forks, and entries written by older versions without the newer fields still load.
@@ -470,7 +481,7 @@ Until it lists them with `subagent_get` (no `agent_id`), each request ends with 
 
 ```text
 Subagents started by this session (restored after compaction; subagent_get <id> for details, subagent_send <id> to give an idle one more work):
-- 9a8b7c implementer "Migrate session store": waiting for your answer: "Postgres or SQLite?"
+- 9a8b7c implementer "Migrate session store": waiting: answer
 - 5e6f7a reviewer "Review CI": waiting: CI checks
 - d4e5f6 review "Review roadmap step 3": running
 - a1b2c3 implementer "Add token refresh": idle, last run completed 14:10
@@ -480,7 +491,7 @@ Subagents started by this session (restored after compaction; subagent_get <id> 
 
 The card is added to the request only: it is never written to the transcript or shown in the terminal.
 It holds at most 20 agent lines, dropping the oldest failed and completed agents first and counting them on the last line; waiting and running agents are never dropped.
-An idle agent shows how its last run ended, and `(cannot take a message)` when `subagent_send` would refuse it (its transcript or directory is gone). Descriptions are cut to 80 characters and questions to 160, without splitting a wide character or emoji.
+An idle agent shows how its last run ended, and `(cannot take a message)` when `subagent_send` would refuse it (its transcript or directory is gone). Descriptions are cut to 80 characters and what an agent waits on or why it failed to 160, without splitting a wide character or emoji.
 A branch that started no agents gets no card.
 
 ## Events
@@ -590,7 +601,7 @@ Anything attaching to the core subscribes to a lifecycle event — see [ADR-0002
   Tool restriction is allow/ask/deny in a permission layer, not a binary hide in a spawner — see [Migrating from `disallowed_tools`](#migrating-from-disallowed_tools).
 - _Settings-level overrides of an agent's tool selection._
   An agent's `tools:` frontmatter chooses its capabilities: omitted or `all` includes currently registered built-in and extension tools; explicit names restrict them; `-name` excludes. A global setting that widens a read-only `explore` agent's declared tools would violate its contract.
-  The core does install its own protocol in every child — the `<active_agent>` tag, the parent-context prefix, the `ask:route` that points pi-ask's `ask` at the parent, and the `parent_notify` tool — none of which reaches the filesystem, the shell, or the network.
+  The core does install its own protocol in every child — the `<active_agent>` tag, the parent-context prefix, the `work:parent` link that points pi-ask's `ask` at the parent, and the `parent_notify` tool — none of which reaches the filesystem, the shell, or the network.
 - _A global run-mode default._
   Agents always run in the background; there is no run mode to set.
 - _Provider seams with no consumer._

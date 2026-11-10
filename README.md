@@ -139,8 +139,9 @@ window shrinks to three rows (title, waiting question, hint) while you scroll
 back through the session, and
 the next key brings it back. RPC hosts get their own dialogs instead, and the
 dashboard can answer from the browser. In a subagent, `ask` goes to the agent
-that delegated the task: the question is recorded on the run, the subagent ends
-its turn, and the parent answers by resuming it. Where no one can answer (print
+that delegated the task: the subagent waits on a question item and its turn ends
+(`waiting: answer`), the parent is told once, and its `subagent_send` answers it
+and wakes the subagent. Where no one can answer (print
 mode), the tool is hidden. See the [package README](extensions/pi-ask/README.md).
 
 ### pi-dashboard

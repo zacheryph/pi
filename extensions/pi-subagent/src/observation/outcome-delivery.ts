@@ -84,8 +84,6 @@ const SEND_REFUSAL_CLAUSES: Record<Exclude<SendRefusal, "rebuilding">, string> =
 
 /**
  * One line on why this settled agent cannot take a message; empty when it can.
- * A message with a question to report uses `renderQuestionAffordance` instead,
- * which says the same thing about the question.
  */
 export function renderSendUnavailable(refusal: SendRefusal | undefined): string {
   if (!refusal || refusal === "rebuilding") return "";
@@ -128,79 +126,22 @@ export interface OutcomeBody {
 }
 
 /**
- * The trailing affordance for a child that ended its turn with a question.
- * Empty when the child asked nothing.
- *
- * Names the exact call that answers it when a message would be accepted, and why
- * it cannot be answered when one would be refused for good — the parent is never
- * told to make a call this extension declines.
- *
- * Takes the id, question, and refusal rather than a record: the three facts it
- * needs, so a caller holding any shape can call it.
- */
-export function renderQuestionAffordance(
-  agentId: string,
-  question: string | undefined,
-  refusal: SendRefusal | undefined,
-): string {
-  if (!question) return "";
-  const quoted = question
-    .split("\n")
-    .map((line) => `  ${line}`)
-    .join("\n");
-  if (refusal === "rebuilding") {
-    return (
-      "\n\nThis agent asked a question, but it was stopped while its session was being created or rebuilt " +
-      `and cannot take your answer yet:\n\n${quoted}\n\n` +
-      "Try again in a moment."
-    );
-  }
-  if (refusal) {
-    return (
-      "\n\nThis agent ended its run with a question that can no longer be answered \u2014 " +
-      `${SEND_REFUSAL_CLAUSES[refusal]}:\n\n${quoted}\n\n` +
-      "Spawn a new agent with the context it needs; this one cannot take a message."
-    );
-  }
-  return (
-    `\n\nThis agent is waiting on an answer:\n\n${quoted}\n\n` +
-    `Answer by calling subagent_send with agent_id: "${agentId}" and your answer as the message.`
-  );
-}
-
-/**
- * What a report appends after the outcome body: the run's updates, then the
- * call to action.
+ * What a report appends after the outcome body: the run's updates.
  *
  * The fields rather than a record, so a caller holding any shape can call it
  * — both `Subagent` and `AgentReport` satisfy this structurally.
  */
 export interface OutcomeAddenda {
-  id: string;
   runUpdates?: readonly string[];
-  pendingQuestion?: string;
-  /**
-   * Why a message would be refused; undefined when one would be accepted.
-   *
-   * Required rather than optional so a caller that forgets it fails to
-   * compile. An omitted optional would silently mean "accepts messages", which
-   * is the fail-open this field exists to close.
-   */
-  sendRefusal: SendRefusal | undefined;
 }
 
-/** The addenda tail a report appends, in one order. */
+/** The addenda tail a report appends: what the agent flagged along the way. */
 export function renderOutcomeAddenda(outcome: OutcomeAddenda): string {
-  return (
-    // What the agent flagged along the way, then the call to action.
-    renderRunUpdates(outcome.runUpdates) +
-    renderQuestionAffordance(outcome.id, outcome.pendingQuestion, outcome.sendRefusal)
-  );
+  return renderRunUpdates(outcome.runUpdates);
 }
 
 /**
- * The updates a child sent that no announcement delivered, quoted the way the
- * ask-back affordance quotes the child's question. Empty for a run the child
+ * The updates a child sent that no announcement delivered, quoted. Empty for a run the child
  * said nothing during — which is every run whose updates the parent received
  * as they happened.
  */

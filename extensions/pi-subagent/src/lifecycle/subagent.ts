@@ -69,6 +69,12 @@ export interface SubagentLifecycleObserver {
   onWaiting?(agent: Subagent): void;
   /** Fires when the running agent sends its parent a mid-run message. */
   onUpdateSent?(agent: Subagent, message: string): void;
+  /**
+   * Fires once for each question the agent asks its parent. The agent is waiting on a question
+   * item in its own host by then; the parent hears the question here, and answers with
+   * `subagent_send`.
+   */
+  onQuestionAsked?(agent: Subagent, question: string): void;
   /** Fires on compaction events during the run. */
   onCompacted?(agent: Subagent, info: CompactionInfo): void;
 }
@@ -215,9 +221,6 @@ export class Subagent {
   }
   get consumed(): boolean {
     return this.state.consumed;
-  }
-  get pendingQuestion(): string | undefined {
-    return this.state.pendingQuestion;
   }
   get runUpdates(): readonly string[] {
     return this.state.runUpdates;
@@ -389,8 +392,8 @@ export class Subagent {
    * first run from it.
    *
    * A getter rather than a predicate method because the reports read it
-   * as a field: `OutcomeAddenda` and `AgentReport` both declare it, and a live
-   * record satisfies them structurally only if it is a property.
+   * as a field: `AgentReport` declares it, and a live record satisfies it
+   * structurally only if it is a property.
    */
   get sendRefusal(): SendRefusal | undefined {
     if (this.isActive()) return undefined;
@@ -420,17 +423,35 @@ export class Subagent {
         return { kind: "steered", delivery: "buffered" };
       }
       await this.subagentSession.steer(message);
+      // A question asked as the run was ending: the steer is its answer.
+      this.subagentSession.answerQuestions();
       return { kind: "steered", delivery: "delivered" };
     }
     if (this.status === "queued") {
       this.current.addMessage(message);
+      this.answerQuestions(this.current);
       return { kind: "joined" };
     }
     const reason = this.sendRefusal;
     if (reason) return { kind: "refused", reason };
     const relaunched = !this.isSessionReady() && !this.released;
     void (relaunched ? this.relaunch(message) : this.resume(message, signal));
+    // After the run was asked for: the agent is no longer parked, so closing its questions does
+    // not read as the end of its work (`workChanged`).
+    this.answerQuestions(this.current);
     return { kind: "started", relaunched };
+  }
+
+  /**
+   * The parent's message answers the questions the agent asked: the message is, or joins, the
+   * prompt of `run`, so the question items close. A live session closes them now. A session that
+   * was released with a question open comes back with it adopted (pi-ask takes it over at
+   * `session_start`), so the run closes it when it attaches the reopened session (`attachSession`).
+   * Other items, a job it watches, stay open.
+   */
+  private answerQuestions(run: Run): void {
+    run.answering = true;
+    this.subagentSession?.answerQuestions();
   }
 
   /** Return the session conversation as formatted text, or undefined if no session. */
@@ -601,8 +622,10 @@ export class Subagent {
         wake: () => this.requestWorkRun(),
         changed: () => this.workChanged(),
       },
-      askParent: (question) => {
-        this.state.setPendingQuestion(question);
+      // A question reaches the parent through its item for this agent. The agent itself waits on
+      // a question item in its own host, so nothing is recorded on this side.
+      announceQuestion: (question) => {
+        this.execution.observer?.onQuestionAsked?.(this, question);
       },
       // The operator's setting is the whole gate (on when no run config is
       // supplied): where an update lands is decided per message, not per child.
@@ -663,6 +686,8 @@ export class Subagent {
   private attachSession(run: Run, session: SubagentSession): void {
     this.subagentSession = session;
     this.released = undefined;
+    // A reopened transcript with the question the parent is now answering still open in it.
+    if (run.answering) session.answerQuestions();
     this.flushPendingSteers();
     this.observeSession(run, session);
     this.execution.observer?.onSessionCreated?.(this);
@@ -808,14 +833,12 @@ export class Subagent {
    * Whether the run that just ended leaves the agent waiting rather than done.
    *
    * Only a run that completed on its own waits: a stop, a failure and the turn limit end the
-   * assignment, and `abandonWork` lets go of what it still held. A run that ended with a question
-   * reports now, with the question, as it always has: pi-ask's route to the parent is step 10's,
-   * and holding the question back until the work ran out would leave the parent unaware of it.
+   * assignment, and `abandonWork` lets go of what it still held. A question the child asked is
+   * an open item like a job: the child waits on it, and the parent was told when it was asked.
    * Work reported back while the run was ending counts as open work.
    */
   private shouldPark(): boolean {
-    if (this.state.outcome !== "completed" || this.state.pendingQuestion !== undefined)
-      return false;
+    if (this.state.outcome !== "completed") return false;
     return this.wakeAfterRun || this.hasOpenWork();
   }
 
@@ -885,19 +908,11 @@ export class Subagent {
     void this.releaseSession();
   }
 
-  /**
-   * The run failed. A question the child recorded is dropped: every carrier
-   * renders a pending question as "answer by resuming me", which is not the
-   * right next action after a failure, and the failure text already tells the
-   * parent to look.
-   */
+  /** The run failed. */
   private fail(run: Run, err: unknown): void {
     run.opening = false;
     this.discardPendingSteers(run);
-    if (this.current === run) {
-      this.state.markError(err);
-      this.state.setPendingQuestion(undefined);
-    }
+    if (this.current === run) this.state.markError(err);
     this.finish(run);
     this.abandonWork(run);
   }
@@ -961,8 +976,7 @@ export class Subagent {
    * waits on stops with it.
    */
   private stopWaiting(): boolean {
-    // Only an agent that has not reported owes its spawner the stop. One that reported with a
-    // question while work stayed open already did.
+    // Only an agent that has not reported owes its spawner the stop.
     const owed = this.parked;
     this.parked = false;
     this.wakeAfterRun = false;
