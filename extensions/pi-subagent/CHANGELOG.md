@@ -3,6 +3,68 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-10: A message that reaches a running child is answered in that run, and confirmed
+
+Roadmap step 9b (`docs/roadmaps/subagent-work-lifecycle.md`), the second half of step 9: mid-run
+delivery into a managed child.
+
+- **Landing confirmation for children.** `ChildWork` now runs its host with `confirmLanding`: a
+  completed item reads as closed for the agent at once, but its close record is written only when
+  the message is in the child's transcript, so a message Pi still holds mid-run is not lost
+  silently by a crash before the end of the turn (the item stays open on disk, and the next start
+  reports it lost, with the result absent). pi-work's new `LandingTracker` does the reading (the
+  `checkLanding` closure of `ensureWorkHost`, factored out), fed by the child session's own events
+  (`message_end`, `turn_start`, `agent_end`, `agent_settled`) and the transcript of its
+  `SessionManager`. `ChildWorkStore.getBranch` now returns whole entries, and
+  `ChildWorkSession.subscribe` events carry `aborted`.
+  - **One reader per host.** The inline extension of every child (`ensureWorkHost`) keeps
+    forwarding `agent_start`, `agent_settled` and `agent_before_settle` to the host and holds no
+    tracker: only the instance that provided a host reads its landing, so the transcript is read
+    once per boundary. The root host deliberately gets no final-settle wake (it wakes by
+    `triggerTurn: true`; a message in that window waits in the transcript for the next prompt).
+- **Final-settle race, fixed.** A message recorded after the run's last chance to continue (the job
+  ended between the final `agent_before_settle` and `agent_settled`) was appended to the
+  transcript with nothing to answer it: the host still counted the run as active, so it recorded
+  instead of waking, and the agent reported done with the message unanswered. At `agent_settled`
+  `ChildWork` now reads the transcript tail and, when it is a work message the host delivered with
+  no answer after it and the run was not stopped, calls `ChildWorkPolicy.wake`. The agent is still
+  running then, so the existing `wakeAfterRun` parks it and the answering run goes through the
+  limiter. New `WorkHostRuntime.delivers(customType)` in pi-work says which messages count.
+- **Another extension's message after the work message no longer hides it.** `continuesRun` and
+  the tail check (`LandingTracker.unanswered`) used to look at the newest message only, so a work
+  result followed by another extension's custom message at the end of a turn got neither a
+  continuation nor a wake. Both now skip custom messages of other types (and branch summaries) and
+  decide at the first message or compaction from the end.
+- **A wake that finds the child compacting waits.** Pi refuses `prompt()` while a manual
+  compaction runs ("Cannot submit a prompt while compaction is in progress"), which ended a wake run
+  in `error`. `SubagentSession` now waits for the compaction to end (`isCompacting`,
+  `waitForIdle`) before it prompts; a stop during the wait never prompts. The smallest sound
+  option: the condition passes by itself, and surfacing it as an error would have asked the parent
+  to retry what the harness can.
+- **No unmanaged run in a child, audited.** Every way a message reaches a child ends in the host
+  (`sendCustomMessage` with `triggerTurn: false`, wake through the manager) or in `Subagent.send`
+  (steer a running agent, join a queued run, `resume`/`relaunch` through the limiter): the work
+  host; pi-job in the child (it only opens and completes items); pi-subagent in a child that is
+  itself a spawner (`subagent-work.ts` uses the host's `open`/`complete`/`notify`); the parent's
+  `subagent_send`; the 9a wake prompt; the turn-budget warning (`triggerTurn: false`). No source file
+  of this repository sends a triggering message or a user message other than pi-work's root host,
+  and that host is never provided in a managed child, because the managed host is offered before
+  the child's extensions bind. Only a third-party extension the user loads into a child could
+  start a run of its own; the test helper `trackChildRuns` (test/helpers/managed-runs.ts) fails a
+  test if any run in a child does not begin in `SubagentSession.driveTurns`, and a test proves it
+  sees one.
+- Tests: `test/midrun-delivery-sdk.test.ts` (a real child with `job_watch`: a job finishing
+  mid-run is answered in the same run; two completions in one run; one that arrives while the
+  previous is being answered; one at the last `agent_before_settle`; one during `agent_settled`,
+  which gets a run of its own; an update that leaves the item open; a parent message to a waiting
+  child; a crash between `complete` and the end of the turn, restarted from a copy of the child's
+  session file), `test/compaction-wake-sdk.test.ts` (a real compaction held open), the landing and
+  final-settle cases of `test/lifecycle/child-work.test.ts`, the nested orchestrator answering its
+  worker mid-run in `test/nested-delegation-sdk.test.ts`, and the managed-run check in
+  `test/waiting-sdk.test.ts`. `child-work.test.ts` asserted that an item closes the moment its
+  message is written; its fixture now writes as Pi does (appended at once when idle, held until the
+  turn ends when running) and the two assertions wait for the message to land.
+
 ## 2026-11-09: A child has a managed work host, and waits instead of finishing
 
 Roadmap step 9a (`docs/roadmaps/subagent-work-lifecycle.md`). An agent whose run ends with open

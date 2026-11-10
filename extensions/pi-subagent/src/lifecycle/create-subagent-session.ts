@@ -236,8 +236,9 @@ function buildChildTools(params: CreateSubagentSessionParams): ToolDefinition[] 
 }
 
 /**
- * Inline extension of every managed child: `ensureWorkHost` wires the session's run boundaries
- * (`agent_before_settle` above all) to the host offered under its id.
+ * Inline extension of every managed child: `ensureWorkHost` forwards the session's run boundaries
+ * (`agent_before_settle` above all, which only an extension can answer) to the host offered under
+ * its id. It reads no landing: that is the host's own tracker (`ChildWork`).
  */
 function wireWorkHost(pi: Parameters<typeof ensureWorkHost>[0]): void {
   ensureWorkHost(pi);

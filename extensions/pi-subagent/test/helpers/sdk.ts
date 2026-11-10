@@ -41,6 +41,7 @@ export const EXTENSIONS = {
   todo: resolve(import.meta.dirname, "../../../pi-todo/src/index.ts"),
   lifecycleRecorder: resolve(import.meta.dirname, "../fixtures/lifecycle-recorder.ts"),
   fastJobs: resolve(import.meta.dirname, "../fixtures/fast-jobs.ts"),
+  workProbe: resolve(import.meta.dirname, "../fixtures/work-probe.ts"),
 };
 
 /** The built-in tools a parent session has. */
