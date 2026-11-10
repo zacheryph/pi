@@ -21,9 +21,11 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Key } from "@earendil-works/pi-tui";
 import { AgentTypeRegistry } from "#src/config/agent-types";
+import { debugLog } from "#src/debug";
 import { loadCustomAgents } from "#src/config/custom-agents";
 import { InterruptHandler } from "#src/handlers/interrupt";
 import { SessionLifecycleHandler } from "#src/handlers/lifecycle";
+import { StartupRestore } from "#src/handlers/restore";
 import { WidgetEventsHandler } from "#src/handlers/widget-events";
 import { RosterCard } from "#src/handlers/roster-card";
 import { createChildLifecyclePublisher } from "#src/lifecycle/child-lifecycle";
@@ -33,6 +35,7 @@ import {
   type SubagentSessionDeps,
 } from "#src/lifecycle/create-subagent-session";
 import { SubagentManager } from "#src/lifecycle/subagent-manager";
+import { transcriptWork } from "#src/lifecycle/transcript-work";
 import { CompositeSubagentObserver } from "#src/observation/composite-subagent-observer";
 import type {
   NotificationDetails,
@@ -47,6 +50,7 @@ import {
 import { SubagentEventsObserver } from "#src/observation/subagent-events-observer";
 import { SubagentWork } from "#src/observation/subagent-work";
 import { registerMainAgentProfile } from "#src/main-agent-profile";
+import { SUBAGENT_RECORD_ENTRY } from "#src/persisted-record";
 import { SubagentRuntime } from "#src/runtime";
 import { readBranchRecords } from "#src/roster";
 import { detectEnv } from "#src/session/env";
@@ -64,7 +68,8 @@ import { showAgentsBrowser } from "#src/ui/agents-browser";
 import { SessionNavigatorHandler } from "#src/ui/session-navigator";
 import { SubagentsSettingsHandler } from "#src/ui/subagents-settings";
 import { WatchOverlay } from "#src/ui/watch-overlay";
-import { ensureWorkHost } from "../../../packages/pi-work/src/index.ts";
+import { service } from "../../../packages/pi-session-tree/src/index.ts";
+import { ensureWorkHost, WORK_PARENT_SERVICE } from "../../../packages/pi-work/src/index.ts";
 
 export default function (pi: ExtensionAPI) {
   // ---- Register custom notification renderer ----
@@ -203,10 +208,53 @@ export default function (pi: ExtensionAPI) {
         snapshot: runtime.buildSnapshot(false),
         parentSession: runtime.getSessionInfo(),
       }),
+      persist: (record) => pi.appendEntry(SUBAGENT_RECORD_ENTRY, record),
     },
+    // A transcript no live session holds is read and settled with Pi's own session manager.
+    transcripts: transcriptWork((path) => SessionManager.open(path)),
   });
 
-  const lifecycle = new SessionLifecycleHandler(runtime, manager, () => work.dispose());
+  // A delegated session has a delegator above it, which offers `work:parent` under its id before
+  // its extensions bind. Its own subagents end with it, so it restores none (see StartupRestore).
+  const isDelegated = (ctx: unknown) => {
+    try {
+      const id = (
+        ctx as { sessionManager?: { getSessionId(): string } } | undefined
+      )?.sessionManager?.getSessionId();
+      return id !== undefined && service(id, WORK_PARENT_SERVICE) !== undefined;
+    } catch {
+      return false; // a stale context says nothing: not a delegated session we can tell
+    }
+  };
+  const lifecycle = new SessionLifecycleHandler(
+    runtime,
+    manager,
+    () => work.dispose(),
+    () => isDelegated(runtime.currentCtx),
+  );
+  const startupRestore = new StartupRestore({
+    manager,
+    work,
+    readRecords: (ctx) => readBranchRecords(ctx),
+    isChild: isDelegated,
+    // Written into the transcript, never a turn: lost work wakes nothing.
+    report: (message) => {
+      try {
+        pi.sendMessage(
+          {
+            customType: message.customType,
+            content: message.content,
+            display: true,
+            ...(message.details !== undefined ? { details: message.details } : {}),
+          },
+          { triggerTurn: false },
+        );
+      } catch (err) {
+        // The session was shut down while its agents were being restored: nobody is left to tell.
+        debugLog("report lost work", err);
+      }
+    },
+  });
 
   // Live widget: constructed after the manager (it polls listAgents()) and
   // registered as a lifecycle observer so it self-drives its update timer.
@@ -235,6 +283,9 @@ export default function (pi: ExtensionAPI) {
     (source) => manager.sendRefusalFor(source) === undefined,
   );
   pi.on("session_start", (event, ctx) => rosterCard.handleSessionStart(event, ctx));
+  // Last of ours: the widget has its context by now, so restored agents show. Pi awaits it, and
+  // runs it before the work host settles its startup, so the items it adopts are not lost.
+  pi.on("session_start", (event, ctx) => startupRestore.handleSessionStart(event, ctx));
   pi.on("session_tree", (_event, ctx) => {
     eventsObserver.refreshBranch();
     rosterCard.handleSessionTree(ctx);
@@ -243,10 +294,10 @@ export default function (pi: ExtensionAPI) {
   pi.on("context", (event, ctx) => rosterCard.handleContext(event, ctx));
   pi.on("session_shutdown", () => rosterCard.handleSessionShutdown());
   pi.on("session_before_switch", () => lifecycle.handleSessionBeforeSwitch());
-  pi.on("session_shutdown", () => lifecycle.handleSessionShutdown());
+  pi.on("session_shutdown", (event) => lifecycle.handleSessionShutdown(event));
   // Registered after the lifecycle handler on purpose. Pi awaits an extension's
   // handlers for an event in registration order, so the widget is torn down once
-  // `abortAll()` and the awaited `manager.dispose()` have finished — no terminal
+  // `suspend()` and the awaited `manager.dispose()` have finished — no terminal
   // transition is left to drive an `update()` at a half-disposed widget.
   pi.on("session_shutdown", () => {
     watch.dispose();

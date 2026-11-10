@@ -146,6 +146,7 @@ describe("an agent that ends its run with open work", () => {
     expect(child.params.work).toEqual({
       wake: expect.any(Function),
       changed: expect.any(Function),
+      lost: expect.any(Function),
     });
   });
 });

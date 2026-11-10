@@ -255,6 +255,26 @@ describe("SubagentState — markStopped", () => {
   });
 });
 
+describe("SubagentState — markInterrupted", () => {
+  it("ends a run in flight or queued as idle with the outcome interrupted", () => {
+    for (const status of ["running", "queued"] as const) {
+      const state = new SubagentState({ status });
+      state.markInterrupted(9000);
+      expect(state.status).toBe("idle");
+      expect(state.outcome).toBe("interrupted");
+      expect(state.completedAt).toBe(9000);
+      expect(state.stoppedWhileQueued).toBe(false);
+      expect(state.isTerminalError()).toBe(true);
+    }
+  });
+
+  it("reads as stopped to the people and events that only know the old words", () => {
+    const state = new SubagentState({ status: "running" });
+    state.markInterrupted();
+    expect(state.displayStatus).toBe("stopped");
+  });
+});
+
 describe("SubagentState — stopQueued", () => {
   it("leaves the agent idle with outcome stopped, and sets completedAt", () => {
     const state = new SubagentState({ status: "queued" });

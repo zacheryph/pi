@@ -418,6 +418,17 @@ export class SubagentState {
   }
 
   /**
+   * The spawning session is going away (a reload, a restart, a session switch) with this agent's
+   * run in flight or queued: idle with outcome `interrupted`, the same state a record that still
+   * read queued or running is rebuilt in. Not a stop: nothing the agent waits on is called off.
+   */
+  markInterrupted(completedAt?: number): void {
+    this._status = "idle";
+    this._outcome = "interrupted";
+    this._completedAt = completedAt ?? Date.now();
+  }
+
+  /**
    * Stop an agent that is still awaiting a concurrency slot. Records the
    * never-started fact only when the agent is genuinely still queued, so a
    * mis-targeted call cannot claim it.

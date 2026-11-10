@@ -42,6 +42,7 @@ export const EXTENSIONS = {
   lifecycleRecorder: resolve(import.meta.dirname, "../fixtures/lifecycle-recorder.ts"),
   fastJobs: resolve(import.meta.dirname, "../fixtures/fast-jobs.ts"),
   workProbe: resolve(import.meta.dirname, "../fixtures/work-probe.ts"),
+  hangOnReopen: resolve(import.meta.dirname, "../fixtures/hang-on-reopen.ts"),
 };
 
 /** The built-in tools a parent session has. */

@@ -168,9 +168,10 @@ describe("subagent records in a real parent session (offline faux provider)", ()
   // the question was a field of the saved record, and the roster and `subagent_get` quoted it as
   // "waiting for your answer" after the reload). The question is now a message the parent
   // received when it was asked, so it is in the parent's transcript, and an open item in the
-  // worker's own transcript; the saved record carries no question. Keeping a *waiting* agent
-  // waiting across a reload is roadmap step 12; until then the reloaded record is the idle agent's.
-  it("keeps what a worker asked across a reload: in the parent's transcript, and still answerable", async () => {
+  // worker's own transcript; the saved record carries no question.
+  // Rewritten again by roadmap step 12: a reload keeps a waiting agent waiting. The reloaded roster
+  // names it `waiting: answer` (it was `idle, last run completed` while a reload still stopped it).
+  it("keeps what a worker asked across a reload: in the parent's transcript, still open, and still answerable", async () => {
     const h = await parent();
     scriptSides(h.faux, {
       parent: [
@@ -213,10 +214,13 @@ describe("subagent records in a real parent session (offline faux provider)", ()
     expect(requests).toHaveLength(2);
     // The question the parent was told once is still in its conversation.
     expect(JSON.stringify(requests[0].messages)).toContain("[Storage] Which database?");
-    expect(tail(requests[0])).toContain(`${id} general-purpose \\"Pick storage\\": idle, last run`);
+    expect(tail(requests[0])).toContain(
+      `${id} general-purpose \\"Pick storage\\": waiting: answer`,
+    );
     const report = lastResult(requests[1], "subagent_get");
     expect(report).not.toContain("waiting on an answer");
-    expect(report).toContain("Send: available.");
+    // A live, waiting agent takes a message: the report says it is idle and what it waits on.
+    expect(report).toContain("Status: waiting: answer (idle; it wakes when the work reports back");
     expect(readPersistedRecords(h.manager.getBranch())[0]).not.toHaveProperty("pendingQuestion");
   }, 30_000);
 

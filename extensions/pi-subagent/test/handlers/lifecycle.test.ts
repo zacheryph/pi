@@ -8,7 +8,7 @@ describe("SessionLifecycleHandler", () => {
   let mockSetSessionContext: ReturnType<typeof vi.fn<LifecycleRuntime["setSessionContext"]>>;
   let mockClearSessionContext: ReturnType<typeof vi.fn<LifecycleRuntime["clearSessionContext"]>>;
   let mockClearCompleted: ReturnType<typeof vi.fn<LifecycleManager["clearCompleted"]>>;
-  let mockAbortAll: ReturnType<typeof vi.fn<LifecycleManager["abortAll"]>>;
+  let mockSuspend: ReturnType<typeof vi.fn<LifecycleManager["suspend"]>>;
   let mockDispose: ReturnType<typeof vi.fn<LifecycleManager["dispose"]>>;
   let mockDisposeNotifications: ReturnType<typeof vi.fn<() => void>>;
   let handler: SessionLifecycleHandler;
@@ -17,7 +17,7 @@ describe("SessionLifecycleHandler", () => {
     mockSetSessionContext = vi.fn();
     mockClearSessionContext = vi.fn();
     mockClearCompleted = vi.fn(() => Promise.resolve());
-    mockAbortAll = vi.fn();
+    mockSuspend = vi.fn();
     mockDispose = vi.fn(() => Promise.resolve());
     mockDisposeNotifications = vi.fn();
 
@@ -27,7 +27,7 @@ describe("SessionLifecycleHandler", () => {
     };
     manager = {
       clearCompleted: mockClearCompleted,
-      abortAll: mockAbortAll,
+      suspend: mockSuspend,
       dispose: mockDispose,
     };
 
@@ -101,13 +101,16 @@ describe("SessionLifecycleHandler", () => {
   });
 
   describe("handleSessionShutdown", () => {
+    // Rewritten by roadmap step 12 (was: "calls cleanup in correct order" with `abortAll`). A
+    // shutdown used to abort every agent, which cancelled the work waiting agents held. It now
+    // suspends them: runs are interrupted and work is left open for the next start.
     it("calls cleanup in correct order", async () => {
       const callOrder: string[] = [];
       mockClearSessionContext.mockImplementation(() => {
         callOrder.push("clearSessionContext");
       });
-      mockAbortAll.mockImplementation(() => {
-        callOrder.push("abortAll");
+      mockSuspend.mockImplementation(() => {
+        callOrder.push("suspend");
       });
       mockDisposeNotifications.mockImplementation(() => {
         callOrder.push("disposeNotifications");
@@ -117,17 +120,47 @@ describe("SessionLifecycleHandler", () => {
         return Promise.resolve();
       });
 
-      await handler.handleSessionShutdown();
+      await handler.handleSessionShutdown({ reason: "quit" });
 
-      // Notifications are torn down before the aborts: a terminal transition
-      // fires its nudge synchronously when no parent run is active, and Pi
-      // cannot recall a message already handed to it.
+      // The work items are silenced before the interruptions: a run cut short by the shutdown
+      // must not close its item or send a message, because Pi cannot recall one already handed
+      // to it, and the item left open is what the next start adopts or reports lost.
       expect(callOrder).toEqual([
         "clearSessionContext",
         "disposeNotifications",
-        "abortAll",
+        "suspend",
         "dispose",
       ]);
+    });
+
+    it("never stops or aborts an agent: it suspends them and leaves their work open", async () => {
+      await handler.handleSessionShutdown({ reason: "reload" });
+      expect(mockSuspend).toHaveBeenCalledTimes(1);
+      expect(Object.keys(manager)).not.toContain("abortAll");
+    });
+
+    it.each(["quit", "new", "resume", "fork"])(
+      "tells the children `quit` when the session ends with reason %s",
+      async (reason) => {
+        await handler.handleSessionShutdown({ reason });
+        expect(mockDispose).toHaveBeenCalledWith("quit");
+      },
+    );
+
+    it("tells the children `reload` when the session reloads, so their jobs can be kept", async () => {
+      await handler.handleSessionShutdown({ reason: "reload" });
+      expect(mockDispose).toHaveBeenCalledWith("reload");
+    });
+
+    it("tells the children `quit` when a delegated session reloads: its own subagents end with it", async () => {
+      const delegated = new SessionLifecycleHandler(
+        runtime,
+        manager,
+        mockDisposeNotifications,
+        () => true,
+      );
+      await delegated.handleSessionShutdown({ reason: "reload" });
+      expect(mockDispose).toHaveBeenCalledWith("quit");
     });
 
     it("resolves only after every child session has shut down", async () => {

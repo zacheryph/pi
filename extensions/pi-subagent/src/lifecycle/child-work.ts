@@ -57,6 +57,11 @@ export interface ChildWorkPolicy {
   wake(): void;
   /** The set of open items changed (opened, completed, cancelled or lost). */
   changed(): void;
+  /**
+   * Once per startup, the items nobody took over: closed as lost, with the message already in
+   * the transcript. For whoever reports a restart's losses to the agent's parent (step 12).
+   */
+  lost?(items: readonly WorkItemView[]): void;
 }
 
 /** The slice of `AgentSession` the host writes through and listens to. */
@@ -88,6 +93,12 @@ export interface ChildWorkParams {
   session: ChildWorkSession;
   store: ChildWorkStore;
   policy: ChildWorkPolicy;
+  /**
+   * Whether this host's creation was abandoned (a reopen that took too long and was given up on):
+   * the transcript belongs to a newer session by now, so the host writes nothing to it. Opening
+   * an item throws, a message is refused (its item stays open), and startup is not settled.
+   */
+  isStale?: () => boolean;
 }
 
 /** One child session's host, offered to its extensions, and what the agent reads from it. */
@@ -98,9 +109,12 @@ export class ChildWork {
   private readonly unsubscribe: () => void;
   private readonly landing: LandingTracker;
   private disposed = false;
+  private readonly stale: () => boolean;
 
   constructor(params: ChildWorkParams) {
     const { session, store, policy } = params;
+    const stale = () => params.isStale?.() === true;
+    this.stale = stale;
     this.landing = createLandingTracker({
       branch: () => store.getBranch(),
       target: () => this.host,
@@ -112,11 +126,17 @@ export class ChildWork {
             .getBranch()
             .filter((entry) => entry.type === "custom" && entry.customType === WORK_ENTRY)
             .map((entry) => entry.data),
-        append: (record: WorkRecord) => void store.appendCustomEntry(WORK_ENTRY, record),
+        append: (record: WorkRecord) => {
+          if (stale()) throw new Error("the child session is stale: its transcript is not its own");
+          void store.appendCustomEntry(WORK_ENTRY, record);
+        },
       },
       delivery: {
         isIdle: () => session.isIdle,
-        send: (items, mode) => this.send(session, policy, items, mode),
+        send: (items, mode) => {
+          if (stale()) throw new Error("the child session is stale: its transcript is not its own");
+          this.send(session, policy, items, mode);
+        },
         lost: (items) =>
           debugLog(
             "child work host",
@@ -127,6 +147,7 @@ export class ChildWork {
       confirmLanding: true,
       landingMark: () => this.landing.mark(),
       onChange: () => policy.changed(),
+      onLost: (items) => policy.lost?.(items),
     });
     // The session reports its own run boundaries, so `Delivery` knows whether a run is active and
     // the landing tracker knows when a held message may have been appended, without any
@@ -154,7 +175,7 @@ export class ChildWork {
    * The lost message is recorded in the transcript without starting a run.
    */
   settleStartup(): void {
-    if (!this.disposed) this.host.settleStartup();
+    if (!this.disposed && !this.stale()) this.host.settleStartup();
   }
 
   /**

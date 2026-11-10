@@ -18,7 +18,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import type { ChildLifecyclePublisher, ChildRunIdentity } from "#src/lifecycle/child-lifecycle";
 import type { ChildWork } from "#src/lifecycle/child-work";
-import { emitChildSessionShutdown } from "#src/lifecycle/child-shutdown";
+import { type ChildShutdownReason, emitChildSessionShutdown } from "#src/lifecycle/child-shutdown";
 import {
   normalizeMaxTurns,
   type TurnBudget,
@@ -324,19 +324,25 @@ export class SubagentSession {
    * unregisters the child from the permission system, so a shutdown handler
    * still resolves against a live registration.
    *
+   * `publish: false` skips the final `disposed` event, for a session that was discarded before it
+   * was ever used (see `StaleSessionError`).
+   *
    * Idempotent: the guard is set before the first await, so concurrent callers
    * (a retention sweep racing a manager teardown) emit and dispose exactly once.
    */
-  async dispose(): Promise<void> {
+  async dispose(reason: ChildShutdownReason = "quit", publish = true): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;
     this.turnFailure.unsubscribe();
-    await emitChildSessionShutdown(this._session);
+    await emitChildSessionShutdown(this._session, undefined, reason);
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- dispose may not exist on all session implementations
     this._session.dispose?.();
     // After the child's shutdown handlers ran, which may still close items.
     this.meta.work?.dispose();
     this.meta.onDispose?.();
+    // A session discarded as stale never published that it was in use, and its id may now belong
+    // to a newer session: `disposed` makes the registries forget the id, newer session included.
+    if (!publish) return;
     this.meta.lifecycle.disposed({
       sessionId: this.meta.sessionId,
       ...(this.meta.agentId !== undefined ? { agentId: this.meta.agentId } : {}),

@@ -7,8 +7,9 @@ import {
 
 /** A child session whose runner records what it was asked to emit. */
 function createShutdownCapableSession(overrides: Partial<ShutdownCapableSession> = {}) {
-  const emit = vi.fn((_event: { type: "session_shutdown"; reason: "quit" }): Promise<unknown> =>
-    Promise.resolve(undefined),
+  const emit = vi.fn(
+    (_event: { type: "session_shutdown"; reason: "quit" | "reload" }): Promise<unknown> =>
+      Promise.resolve(undefined),
   );
   const session: ShutdownCapableSession = {
     hasExtensionHandlers: vi.fn((_eventType: string): boolean => true),
@@ -26,6 +27,14 @@ describe("emitChildSessionShutdown — emission", () => {
 
     expect(emit).toHaveBeenCalledTimes(1);
     expect(emit).toHaveBeenCalledWith({ type: "session_shutdown", reason: "quit" });
+  });
+
+  it("tells the child the reason it is given: reload, so pi-job keeps its jobs for the reopened session", async () => {
+    const { session, emit } = createShutdownCapableSession();
+
+    await emitChildSessionShutdown(session, undefined, "reload");
+
+    expect(emit).toHaveBeenCalledWith({ type: "session_shutdown", reason: "reload" });
   });
 
   it("asks only about the session_shutdown handler set", async () => {

@@ -3,6 +3,143 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-10: A late session must not write to a reopened transcript; shutdown during a restore
+
+Second repair round on roadmap step 12.
+
+- **The hazard.** A child that hung past the restore bound kept its creation promise, and when the
+  session finally arrived `createSubagentSession` ran `settleStartup` against the transcript, which
+  `subagent_send` may have reopened and appended to meanwhile: a second `close:lost` and `work:lost`,
+  and entries hanging from a stale parent, so the entry tree forked and the reopened branch could end
+  at the late session's strays (the whole exchange missing). Its disposal also published `disposed`,
+  which makes the session registry forget the id the newer session holds.
+- **The fix.** `CreateSubagentSessionParams.isStale` (set by `Subagent.restore` when the bound passes,
+  and by the manager's shutdown) is checked after the loader reloads, after the session is built (before
+  anything is offered under the session id) and after `bindExtensions` returns; a stale creation throws
+  `StaleSessionError` and discards the session with no write to the transcript and **no** `disposed`
+  event (`SubagentSession.dispose(reason, publish)`). `ChildWork` takes the same check as a second layer:
+  a stale host refuses every write (`open` throws, a completion is refused so its item stays open,
+  `settleStartup` is skipped). The work service and `work:parent` registrations were already
+  token-guarded by `provide`, so the abandoned session's withdrawal never removes a newer one's
+  (now tested).
+- **Shutdown during a restore.** A record being reopened is in no registry, so `dispose` did not see
+  it. The manager now tracks `restoring` records: `suspend` and `dispose` mark them (their creation reads
+  stale and is discarded), and once disposed `restoreOne` starts no more agents and registers, persists,
+  closes and reports nothing for one that completes (a session a factory built anyway is disposed).
+  The report call in `index.ts` tolerates a session that is already gone.
+- **Docs.** `architecture.md` no longer says `details` carries every agent; both docs describe the stale
+  check.
+- **Tests.** `restore-sdk.test.ts`: a child waiting on an item nobody adopts hangs past the bound, the
+  parent `subagent_send`s it, and the late session arrives before and after the new run ends (one entry
+  tree leaf, exactly one `work:lost` and one lost close, the exchange on the reopened branch, the late
+  session shut down once, no `disposed` event); the fixture hangs only the first reopened session.
+  `create-subagent-session.test.ts` (a stale creation settles nothing, writes nothing, publishes nothing,
+  leaves a newer session's registration), `child-work.test.ts` (a stale host writes nothing; a newer
+  registration survives), `lifecycle/restore.test.ts` (a restore that completes after dispose registers
+  and writes nothing, with and without a factory that honours staleness). With every stale guard removed
+  the real-session tests fail; each layer is also pinned by its unit test.
+
+## 2026-11-10: Bound the restore of a hung child, bound the lost report's details, escape quotes
+
+Repair round on roadmap step 12 (same day, same change as the entry below).
+
+- **A hung child no longer blocks the parent's startup.** `StartupRestore` awaits `manager.restore`,
+  whose per-agent work awaited `createSubagentSession` (and so the child's `bindExtensions`) with no
+  bound; the UI has not started, so ESC cannot interrupt it. `Subagent.restore(startReason, timeoutMs)`
+  now races the creation against a timer (`RESTORE_TIMEOUT_MS`, 20 s, injectable as
+  `SubagentManagerOptions.restoreTimeoutMs`; no setting) and returns `timed-out`. The agent is
+  `unreachable: "timed-out"`: its saved record is left untouched (a later `subagent_send` reopens it, and
+  the next start tries again), nothing is closed or claimed lost (nothing is known), and its adopted
+  spawner item is cancelled. The creation promise is kept, so a session that arrives late is disposed
+  (never attached: no run, no slot, no leak). A hung agent holds one of the four lanes for the bound
+  at most. It appears in the one `subagent:lost` message as "could not be reopened at startup (opening its
+  session took too long), so its work was not checked", with a sentence that its work may still be open
+  and `subagent_send` reopens it; the header then reads "Subagent startup report" instead of claiming
+  work was lost.
+- **The report's `details` are bounded.** They were unbounded (500 agents x 50 items was 13.7 MB written
+  into the parent's session file). They now carry at most 30 agents and 8 items of each list, every text
+  clipped (200 characters, ids 40), plus `totalAgents` and per agent `lostCount` and `waitingOnCount`;
+  clipping looks only at the head of a long text, so a megabyte label costs nothing.
+- **Quotes in the report text.** Labels, descriptions and waiting labels are quoted with `"` and `\`
+  escaped, still one line with control characters stripped.
+- **Tests.** `lifecycle/restore.test.ts` (fake timers, a never-resolving creation: the others restore, the
+  late session is disposed once, the record is kept and not persisted, one lane at most, the injected
+  bound, no timer left behind), `restore-sdk.test.ts` (a real child that hangs in `session_start` through
+  `fixtures/hang-on-reopen.ts`: the reload returns, the other child is waiting, one message names the
+  hung one, its record is intact, the late session is disposed, `subagent_send` reopens it),
+  `handlers/restore.test.ts`, and `observation/lost-report.test.ts` (hostile and large input, the cap
+  and the counts, escaping, the timed-out wording). Removing the bound or the late disposal fails them.
+
+## 2026-11-10: Keep agents across a parent reload and restart, and report lost work
+
+Roadmap step 12 (`docs/roadmaps/subagent-work-lifecycle.md`): a parent shutdown no longer stops
+waiting agents, and the next start gives them back. See README "Reload, restart and lost work" and
+`docs/architecture/architecture.md` for the model.
+
+- **A shutdown suspends, it does not stop.** `session_shutdown` ran `abortAll` then `dispose`, which
+  cancelled the work waiting agents held and released their sessions. It now runs
+  `SubagentManager.suspend()` then `dispose(reason)`. `Subagent.suspend()` cuts a queued or running
+  run short (idle, outcome `interrupted`, new `SubagentState.markInterrupted`), never calls work off
+  (`abandonWork`, `workChanged` and `finish` do nothing while suspended), so the unwinding run reports
+  nothing and the parent's saved record keeps reading queued or running. Waiting agents stay waiting,
+  their items open in their own transcripts. `abortAll` is unchanged for ESC and stops still cancel.
+- **Why the session ends reaches the child.** `emitChildSessionShutdown` takes a reason (`quit` as
+  before, or `reload`); `SubagentSession.dispose(reason)` and `Subagent.disposeSession(reason)` pass it.
+  The parent's `reload` is told to a child that holds open work (so pi-job keeps its jobs in its
+  reload handoff for the session that is reopened); `quit`, `new`, `resume`, `fork`, a done agent and
+  any child of a delegated session get `quit`. A child's pi-subagent does not restore its own subagents
+  (they end with the reload, and their items are reported lost to the child).
+- **The saved record** gains an optional `waitingOn` (labels of an idle agent's open items), written
+  with every record (the waiting announcement and each change of the items persist it), omitted when
+  empty, ignored when malformed. Version 1 and earlier version 2 records read as before.
+- **Startup (`handlers/restore.ts`, `StartupRestore`)**, last of the `session_start` handlers, for the
+  root session and the reasons `reload`, `startup` and `resume` (`new` has no agents, `fork` is the
+  source session's): adopt the spawner's items (`SubagentWork.adopt`), `SubagentManager.restore`, settle
+  the items, report once. `restore` takes agents that were waiting (`waitingOn`) or queued or running (a
+  transcript peek through `lifecycle/transcript-work.ts` decides whether work was left open), reopens
+  them at most four at a time with `Subagent.restore`: `createSubagentSession` with `transcriptPath` and
+  a new `startReason` (`reload` or `resume`) as the child's `session_start` reason, **no run, no
+  `admit`**, so no slot is taken. The producers adopt (pi-job within its handoff, pi-ask always), the
+  child's host closes the rest as lost with the `work:lost` message in its transcript and tells the
+  agent through the new `ChildWorkPolicy.lost`. An agent that still holds items is registered waiting
+  (`onSubagentWaiting`); one that holds none is released and its record saved idle; one whose
+  transcript, directory or type is gone has its items closed lost in the file itself
+  (`SessionManager.open`, `appendCustomEntry`, `appendCustomMessageEntry`) or is reported from its
+  `waitingOn` labels. A message that arrives during the startup (a job that ended in the reload gap)
+  is answered by a run through the limiter (`Subagent.wake`); messages already in a transcript from
+  before a restart wake nothing. Interrupted records are corrected (saved idle, `interrupted`) so a
+  second start does not report them again.
+- **One message to the parent.** `observation/lost-report.ts`: a `subagent:lost` message listing every
+  agent that lost work or whose run was interrupted, and what it lost and still waits on. Written with
+  `triggerTurn: false`, so it wakes nothing. The spawner's items of those agents are cancelled without a
+  completion message (the report is the message); items of agents it did not restore are left to the
+  host's generic `work:lost`. Replaces step 8's behaviour of reporting an interrupted run as generic lost
+  work.
+- **Behaviour changes users notice.** After `/reload` a waiting agent is still `waiting: CI` and its
+  job's completion wakes it; a question is still open after a reload and a restart. A reload or restart
+  no longer stops waiting agents (the roster used to read `idle, last run completed`). A restart
+  reports lost jobs and the interrupted runs in one `subagent:lost` message instead of `work:lost`. The
+  parent's `session_start` waits for the agents to be reopened.
+- **Tests.** New: `restore-sdk.test.ts` (real sessions with a real `job_watch`: reload with a child
+  waiting on a job, a job that ends in the reload gap, a question, a nested subagent, an interrupted run
+  and an interrupted run that had a job, double reload, missing transcript, six agents with
+  `maxConcurrent: 2`; restart by copying the session files: lost job reported once with the question
+  adopted and no model run, an interrupted run, an interrupted run with a job; `quit`, `new`, `resume`
+  and `fork` shutdowns), `lifecycle/restore.test.ts` (manager level), `handlers/restore.test.ts`,
+  `observation/lost-report.test.ts`, `observation/subagent-work-restore.test.ts` (against pi-work's real
+  host), `lifecycle/transcript-work.test.ts` (a real session file), and cases in `persisted-record`,
+  `subagent-state`, `child-shutdown`, `child-work` and `create-subagent-session`. **Rewritten:**
+  `handlers/lifecycle.test.ts` ("calls cleanup in correct order" pinned `abortAll`; a shutdown now
+  suspends), `work-sdk.test.ts` ("reports an agent that was still running as lost work": it is now
+  an interrupted run in `subagent:lost`, not a host `work:lost`), `records-sdk.test.ts` (a question
+  across a reload: the roster reads `waiting: answer`, not `idle`), `waiting-workers.test.ts` (the
+  policy now has `lost`).
+- **Left for step 13.** The `work:lost` wording in the host still says "when this session started" for a
+  child that is reopened; `SavedAgents.find`/`rebuildFromSaved` remain the path for agents that were
+  not candidates; `Subagent.abandonWork`'s release and `Run.answering` still carry the adopted-question
+  paths of steps 10 and 11, which a restored question now uses; the `subagent:lost` message has no
+  custom renderer (it shows as Pi's default custom message).
+
 ## 2026-11-10: One retention rule: a session is released only for a done agent, and a done agent's is released after its window
 
 Roadmap step 11 (`docs/roadmaps/subagent-work-lifecycle.md`): the guards 9a and 10 put in the sweep and

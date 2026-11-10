@@ -169,6 +169,12 @@ fallback), so nothing wakes the session while later extensions are initializing.
 unchanged; numbering advances past session history. No subprocess is relaunched and no second
 watch loop is created.
 
+A subagent that waits on a job is handed off the same way: when its parent reloads, pi-subagent
+shuts the child down with reason `reload` (only a child that holds open work; a done child or any
+other session end is `quit`) and reopens it at the parent's `session_start` with reason `reload`
+and no model run. pi-job records the delegating session on the suspended owner, so the starting
+parent does not report its own children's handoffs as unknown.
+
 A stale attached runtime proves an owner is gone: its jobs/watches are stopped and reported
 with log paths. Another live session is never stopped; a pending reload handoff is unknown,
 reported and kept for at most five minutes. An unref'd handoff timer then stops its jobs/watches

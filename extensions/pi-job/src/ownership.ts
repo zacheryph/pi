@@ -11,6 +11,12 @@ export interface Owner {
   items: JobItems;
   /** Undefined while reload is between shutdown and session_start. */
   token?: object;
+  /**
+   * The session that delegated this one, recorded when the owner is suspended for a reload. A
+   * delegated session is reopened by the session that started it, which then takes its owner, so
+   * its pending handoff is no mystery to that session (see `session_start`).
+   */
+  parent?: string;
   alive: () => boolean | undefined;
 }
 

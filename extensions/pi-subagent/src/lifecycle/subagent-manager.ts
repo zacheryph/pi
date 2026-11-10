@@ -11,6 +11,7 @@ import type { Model } from "@earendil-works/pi-ai";
 import { composeAgentInstructions } from "#src/config/prompt-fragments";
 import { debugLog } from "#src/debug";
 import type { SubagentHandoff } from "#src/lifecycle/child-lifecycle";
+import type { ChildShutdownReason } from "#src/lifecycle/child-shutdown";
 import { type ReopenSource, reopenRefusal, resolveSavedModel } from "#src/lifecycle/cold-resume";
 import type { ConcurrencyLimiter } from "#src/lifecycle/concurrency-limiter";
 import type { CreateSubagentSessionParams } from "#src/lifecycle/create-subagent-session";
@@ -24,7 +25,9 @@ import {
 } from "#src/lifecycle/subagent";
 import type { SubagentSession } from "#src/lifecycle/subagent-session";
 import { SubagentState } from "#src/lifecycle/subagent-state";
-import type { PersistedSubagentRecord } from "#src/persisted-record";
+import type { TranscriptWork } from "#src/lifecycle/transcript-work";
+import type { LostWork } from "#src/observation/lost-report";
+import { type PersistedSubagentRecord, toPersistedRecord } from "#src/persisted-record";
 
 import type { RunConfig } from "#src/runtime";
 import type {
@@ -83,6 +86,56 @@ export interface SavedAgents {
   /** The latest record for this ID on the current branch. */
   find(id: string): PersistedSubagentRecord | undefined;
   parent(): { snapshot: ParentSnapshot; parentSession: ParentSessionInfo };
+  /**
+   * Append a corrected record to the branch: what a start (a reload or restart) found out about
+   * an agent it did not keep live. Absent, nothing is written.
+   */
+  persist?(record: PersistedSubagentRecord): void;
+}
+
+/** What `SubagentManager.restore` is asked to bring back. */
+export interface RestoreRequest {
+  /** The latest saved record of each agent on the branch, as `readPersistedRecords` returns them. */
+  records: readonly PersistedSubagentRecord[];
+  /** `reload` for the parent reloading in the same process, `resume` for a restart. */
+  startReason: "reload" | "resume";
+}
+
+/** What restoring one agent found, for the report to the parent and for adopting its item. */
+export interface RestoredAgent {
+  id: string;
+  type: string;
+  description: string;
+  /** Its run was in progress (the record read queued or running), and was cut short. */
+  interrupted: boolean;
+  /** The work nobody could take over, closed as lost. */
+  lost: LostWork[];
+  /** The labels of what it still waits on, after its producers took their items back. */
+  waitingOn: string[];
+  /** A message arrived during the startup, so a run through the limiter owes it an answer. */
+  woken: boolean;
+  /** Why its transcript could not be reopened, when it could not. */
+  unreachable?: string;
+  /** The agent is live in the manager and its spawner's item stays open (waiting or woken). */
+  continuing: boolean;
+}
+
+/** How many sessions a restore reopens at once. */
+export const RESTORE_CONCURRENCY = 4;
+
+/**
+ * How long reopening one agent's session may take before the restore gives up on it for now
+ * (milliseconds). Without a bound, one child whose extension never finishes its `session_start`
+ * would hold the parent's startup for good, before the UI exists to interrupt it.
+ */
+export const RESTORE_TIMEOUT_MS = 20_000;
+
+/**
+ * Whether a saved record is one a start has to look at: the agent was waiting on work, or its run
+ * was in progress. A done agent is neither, and stays a saved record.
+ */
+export function isRestoreCandidate(saved: PersistedSubagentRecord): boolean {
+  return saved.status !== "idle" || (saved.waitingOn?.length ?? 0) > 0;
 }
 
 /** Per-call knobs for a send. */
@@ -217,6 +270,10 @@ export interface SubagentManagerOptions {
   registry: SpawnTypeResolver;
   /** Absent, an agent with no live record is an unknown one. */
   savedAgents?: SavedAgents;
+  /** Reads and settles the work a transcript holds open, with no live session (restore). */
+  transcripts?: TranscriptWork;
+  /** Bound on reopening one agent in `restore` (default `RESTORE_TIMEOUT_MS`). */
+  restoreTimeoutMs?: number;
 }
 
 export interface AgentSpawnConfig {
@@ -267,6 +324,12 @@ export class SubagentManager {
   private getRetentionPolicy?: () => RetentionPolicy;
   private readonly registry: SpawnTypeResolver;
   private readonly savedAgents?: SavedAgents;
+  private readonly transcripts?: TranscriptWork;
+  private readonly restoreTimeoutMs: number;
+  /** Records being reopened by `restore`: not in `agents` until it is done with them. */
+  private readonly restoring = new Set<Subagent>();
+  /** `dispose` was called: a restore that completes now registers and writes nothing. */
+  private shutDown = false;
 
   constructor(options: SubagentManagerOptions) {
     this.createSubagentSession = options.createSubagentSession;
@@ -276,6 +339,8 @@ export class SubagentManager {
     this.getRetentionPolicy = options.getRetentionPolicy;
     this.registry = options.registry;
     this.savedAgents = options.savedAgents;
+    this.transcripts = options.transcripts;
+    this.restoreTimeoutMs = options.restoreTimeoutMs ?? RESTORE_TIMEOUT_MS;
     // Periodically release the heavy session of terminal agents past their
     // retention window. The lightweight record (with its result) is kept for the
     // session lifetime, so subagent_get never misses in-session.
@@ -508,6 +573,13 @@ export class SubagentManager {
    * current one for its type; the transcript carries everything else it knew.
    */
   private rebuildFromSaved(saved: PersistedSubagentRecord): Subagent {
+    const record = this.buildFromSaved(saved);
+    this.agents.set(saved.id, record);
+    return record;
+  }
+
+  /** The record `rebuildFromSaved` registers, not yet registered: idle, its session released. */
+  private buildFromSaved(saved: PersistedSubagentRecord): Subagent {
     const { snapshot, parentSession } = this.savedAgents!.parent();
     const resolved = this.resolveSpawn(saved.type, snapshot);
     const model = resolveSavedModel(saved.model, snapshot.modelRegistry);
@@ -541,7 +613,6 @@ export class SubagentManager {
         cwd: saved.cwd,
       }),
     });
-    this.agents.set(saved.id, record);
     return record;
   }
 
@@ -599,8 +670,8 @@ export class SubagentManager {
    * on open work stays. Disposing a waiting one here would be silent: it reports nothing, so the
    * spawner's item for it would stay open for good and the widget and dashboard would keep
    * showing it waiting. It ends the way every live agent does: its work completes and it
-   * reports, it is stopped (which reports), or the spawning session shuts down (`abortAll` then
-   * `dispose`).
+   * reports, it is stopped (which reports), or the spawning session shuts down (`suspend` then
+   * `dispose`; the next start restores it).
    */
   async clearCompleted(): Promise<void> {
     const teardowns: Promise<void>[] = [];
@@ -623,17 +694,215 @@ export class SubagentManager {
   }
 
   /**
+   * The spawning session is shutting down for a reload, a quit or a session switch: end what
+   * cannot go on, and leave what can for the next start (roadmap step 12). A run in flight or
+   * queued is cut short and the agent reads idle with the outcome `interrupted`; an agent
+   * waiting on work keeps waiting, with its items open in its own transcript. Nothing is called
+   * off (a stop does that), so the next start can reopen each agent, let its producers take their
+   * items back, and report what they could not. Call `dispose` after it.
+   *
+   * Pending thunks are dropped with the limiter: a queued run is interrupted, not started.
+   */
+  suspend(): void {
+    for (const record of this.agents.values()) record.suspend();
+    // A record being reopened is in no registry yet: marking it tells its creation it is stale.
+    for (const record of this.restoring) record.suspend();
+    this.limiter.clear();
+  }
+
+  /**
    * Tear down every record, resolving once each child's extensions have shut
    * down. The registry is emptied before the teardowns are awaited, so nothing
    * can reach a dying record; `allSettled` keeps one failing child from
    * abandoning its siblings.
+   *
+   * `reason` is what each child's extensions are told: `reload` when the spawning session
+   * reloads in this process (pi-job keeps a child's jobs for its reopened session), `quit` for
+   * every other end, and by default.
    */
-  async dispose(): Promise<void> {
+  async dispose(reason?: ChildShutdownReason): Promise<void> {
+    this.shutDown = true;
+    for (const record of this.restoring) record.suspend();
     clearInterval(this.sweepInterval);
     // Drop pending thunks
     this.limiter.clear();
-    const teardowns = [...this.agents.values()].map((record) => record.disposeSession());
+    const teardowns = [...this.agents.values()].map((record) => record.disposeSession(reason));
     this.agents.clear();
     await Promise.allSettled(teardowns);
   }
+
+  // ---- Restore (roadmap step 12) ----
+
+  /**
+   * Bring the agents a reload or restart left holding work back, without a model run.
+   *
+   * An agent is a candidate when its saved record says it was waiting on work (`waitingOn`) or its
+   * run was in progress (queued or running: the run was cut short, and its transcript may hold
+   * work its record never heard of). Every other agent stays a saved record, rebuilt when it is
+   * next sent a message. A candidate whose transcript holds open items is reopened in a live
+   * session (`Subagent.restore`), at most `RESTORE_CONCURRENCY` at a time, so the producers of its
+   * items can take them over (pi-job within its reload handoff, pi-ask always) and the rest is
+   * closed as lost, with the message in the agent's transcript. Reopening is not a run: no slot is
+   * taken, nothing is prompted. An agent that still holds an item afterwards is registered
+   * (waiting); one that holds none is released, recorded as idle, and stays a saved record. One
+   * whose transcript cannot be reopened has its items closed as lost in the file directly.
+   *
+   * Reopening one agent is bounded (`RESTORE_TIMEOUT_MS`): a session that takes longer is given up
+   * on (`unreachable: "timed-out"`), its record left untouched and its late session disposed, and
+   * it holds one of the concurrent lanes for the bound at most.
+   *
+   * Every candidate's record on the branch is corrected (an interrupted run is idle with the
+   * outcome `interrupted`), so the next start does not report it again. Returns what each one
+   * found, in the order of `records`, for the report to the parent and the adoption of its item.
+   */
+  async restore(request: RestoreRequest): Promise<RestoredAgent[]> {
+    const candidates = request.records.filter(
+      (saved) => !this.agents.has(saved.id) && isRestoreCandidate(saved),
+    );
+    return mapWithLimit(candidates, RESTORE_CONCURRENCY, async (saved) => {
+      try {
+        return await this.restoreOne(saved, request.startReason);
+      } catch (err) {
+        // One agent that cannot be restored must not keep the others from it.
+        debugLog(`restore agent ${saved.id}`, err);
+        return this.unreachable(saved, this.freshFinding(saved), "session-failed");
+      }
+    });
+  }
+
+  private freshFinding(saved: PersistedSubagentRecord): RestoredAgent {
+    return {
+      id: saved.id,
+      type: saved.type,
+      description: saved.description,
+      interrupted: saved.status !== "idle",
+      lost: [],
+      waitingOn: [],
+      woken: false,
+      continuing: false,
+    };
+  }
+
+  private async restoreOne(
+    saved: PersistedSubagentRecord,
+    startReason: "reload" | "resume",
+  ): Promise<RestoredAgent> {
+    const found = this.freshFinding(saved);
+    // Shut down before this agent's turn came: nothing is read, written or reopened.
+    if (this.shutDown) return found;
+    const path = saved.outputFile;
+    // A record that hinted at waiting work is reopened. One that was mid-run may or may not have
+    // left work open, and only its transcript knows.
+    const hinted = saved.status === "idle";
+    if (!hinted && !(path && this.transcripts?.openItems(path).length)) {
+      this.savedAgents?.persist?.(settledRecord(saved));
+      return found;
+    }
+    let record: Subagent;
+    try {
+      record = this.buildFromSaved(saved);
+    } catch (err) {
+      // Its profile no longer composes (say, a fragment file went away).
+      debugLog(`restore agent ${saved.id}`, err);
+      return this.unreachable(saved, found, "agent-type-unavailable");
+    }
+    this.restoring.add(record);
+    let outcome: Awaited<ReturnType<Subagent["restore"]>>;
+    try {
+      outcome = await record.restore(startReason, this.restoreTimeoutMs);
+    } finally {
+      this.restoring.delete(record);
+    }
+    if (this.shutDown) {
+      // The manager was disposed while this one was being reopened: its session, if it came up,
+      // was disposed by `restore`; nothing is registered, persisted or written to its transcript.
+      if (outcome.kind === "reopened") await record.disposeSession();
+      return found;
+    }
+    if (outcome.kind === "timed-out") {
+      // Nothing is known about its work, so nothing is closed or claimed lost, and its saved
+      // record is left as it was: a later `subagent_send` reopens it, and the next start tries
+      // again. Only the spawner's item (adopted before) is cancelled, and the report says so.
+      debugLog(
+        `restore agent ${saved.id}`,
+        new Error(`reopening took over ${this.restoreTimeoutMs} ms`),
+      );
+      found.unreachable = "timed-out";
+      return found;
+    }
+    if (outcome.kind !== "reopened") {
+      if (outcome.kind === "failed") debugLog(`restore agent ${saved.id}`, outcome.error);
+      return this.unreachable(
+        saved,
+        found,
+        outcome.kind === "unreachable" ? outcome.reason : "session-failed",
+      );
+    }
+    found.lost = outcome.lost.map(({ kind, label }) => ({ kind, label }));
+    found.woken = outcome.woken;
+    if (outcome.open.length === 0 && !outcome.woken) {
+      // Nothing left to wait for: done. Its session is not kept, and the record says so.
+      await record.releaseSession();
+      this.savedAgents?.persist?.(toPersistedRecord(record));
+      return found;
+    }
+    found.waitingOn = outcome.open.map((item) => item.label);
+    found.continuing = true;
+    this.agents.set(saved.id, record);
+    if (outcome.woken) record.wake();
+    else this.observer?.onSubagentWaiting?.(record);
+    return found;
+  }
+
+  /**
+   * The agent's transcript cannot be reopened in a session: whatever it held open can no longer be
+   * taken over, so it is closed as lost in the file and the agent is recorded idle.
+   */
+  private unreachable(
+    saved: PersistedSubagentRecord,
+    found: RestoredAgent,
+    reason: string,
+  ): RestoredAgent {
+    const path = saved.outputFile;
+    const items = path ? (this.transcripts?.openItems(path) ?? []) : [];
+    if (path && items.length > 0) this.transcripts?.closeLost(path, items);
+    found.lost =
+      items.length > 0
+        ? items.map(({ kind, label }) => ({ kind, label }))
+        : (saved.waitingOn ?? []).map((label) => ({ label }));
+    found.unreachable = reason;
+    this.savedAgents?.persist?.(settledRecord(saved));
+    return found;
+  }
+}
+
+/**
+ * A saved record as an agent that is not live reads: idle, a run that was in progress
+ * interrupted, and waiting on nothing. What is written back so that a start reports it once.
+ */
+function settledRecord(saved: PersistedSubagentRecord): PersistedSubagentRecord {
+  const { waitingOn: _waitingOn, ...rest } = saved;
+  return {
+    ...rest,
+    status: "idle",
+    outcome: saved.status === "idle" ? saved.outcome : "interrupted",
+  };
+}
+
+/** Map `items` with `fn`, at most `limit` at a time, keeping the order of `items`. */
+async function mapWithLimit<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = Array.from<R>({ length: items.length });
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const index = next++;
+      results[index] = await fn(items[index]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
 }

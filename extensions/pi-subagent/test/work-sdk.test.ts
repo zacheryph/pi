@@ -232,8 +232,12 @@ function closes(h: Parent): string[] {
     .map((entry) => entry.slice("close:".length));
 }
 
+// Rewritten by roadmap step 12 (was: "reports an agent that was still running as lost work, naming
+// it" through the host's generic `work:lost` message). The restart now adopts the parent's item for
+// the agent it can account for and reports the cut-short run itself, in the one message that lists
+// every agent that lost work: `subagent:lost`. The host reports nothing lost for it.
 describe("after a restart", () => {
-  it("reports an agent that was still running as lost work, naming it", async () => {
+  it("reports an agent that was still running as an interrupted run, in one message, naming it", async () => {
     const dir = offlineAgentDir();
     const manager = SessionManager.create(dir, dir);
     const first = await startParent({ dir, manager });
@@ -260,21 +264,27 @@ describe("after a restart", () => {
     });
     await settle();
 
-    // Nothing woke, nothing restarted, and the item is closed as lost.
+    // Nothing woke, nothing restarted, and the item is closed without a message of its own.
     expect(second.requests.parent).toHaveLength(0);
     expect(hostOf(second).list()).toEqual([]);
-    expect(closes(second)).toEqual(["lost"]);
-    const lost = second.manager
+    expect(closes(second)).toEqual(["cancelled"]);
+    const hostLost = second.manager
       .getBranch()
       .filter((entry) => entry.type === "custom_message" && entry.customType === WORK_LOST);
+    expect(hostLost).toEqual([]);
+    const lost = second.manager
+      .getBranch()
+      .filter((entry) => entry.type === "custom_message" && entry.customType === "subagent:lost");
     expect(lost).toHaveLength(1);
     const text = JSON.stringify(lost[0].type === "custom_message" ? lost[0].content : "");
-    expect(text).toContain("Work lost: 1 item");
-    expect(text).toContain(`subagent \\"Audit parser (general-purpose agent ${id})\\"`);
-    expect(text).toContain("pi-subagent");
+    expect(text).toContain("Subagent work lost: 1 agent");
+    expect(text).toContain(`${id} general-purpose \\"Audit parser\\"`);
+    expect(text).toContain("its run was interrupted");
     expect(lost[0].type === "custom_message" && lost[0].details).toMatchObject({
-      items: [{ owner: "pi-subagent", kind: "subagent" }],
+      agents: [{ id, interrupted: true, lost: [], waitingOn: [] }],
     });
+    // Recorded, so a second start does not report it again.
+    expect(second.savedRecord(id)).toMatchObject({ status: "idle", outcome: "interrupted" });
 
     // The model learns of it on its next run, and the agent can be given more work.
     second.script({
@@ -286,7 +296,7 @@ describe("after a restart", () => {
       child: [fauxAssistantMessage("Picked it up.")],
     });
     await second.session.prompt("What happened?");
-    expect(JSON.stringify(second.requests.parent[0].messages)).toContain("Work lost: 1 item");
+    expect(JSON.stringify(second.requests.parent[0].messages)).toContain("Subagent work lost");
     await untilAnnounced(second);
     expect(second.errors).toEqual([]);
   }, 30_000);
