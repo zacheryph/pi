@@ -25,6 +25,7 @@ import {
   type DeliveryHost,
 } from "./delivery.ts";
 import {
+  WORK_CALLED_OFF,
   WORK_LOST,
   type Json,
   type WorkHost,
@@ -144,8 +145,8 @@ const oneLine = (text: string, max: number): string => {
   return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
 };
 
-/** The single message that reports items nobody took over. Data only, so it can be written to a transcript file. */
-export function lostMessage(items: readonly WorkItemView[]): WorkMessage {
+/** One line per item (sanitised, clipped), at most `LOST_ITEMS` of them, for a message that lists work. */
+function itemLines(items: readonly WorkItemView[]): string[] {
   const lines = items
     .slice(0, LOST_ITEMS)
     .map(
@@ -153,6 +154,38 @@ export function lostMessage(items: readonly WorkItemView[]): WorkMessage {
         `- ${item.kind}${item.label ? ` "${oneLine(item.label, LOST_LABEL)}"` : ""} (${item.owner}, ${item.id})`,
     );
   if (items.length > LOST_ITEMS) lines.push(`- and ${items.length - LOST_ITEMS} more`);
+  return lines;
+}
+
+const itemDetails = (items: readonly WorkItemView[]) => ({
+  items: items.map((item) => ({
+    id: item.id,
+    owner: item.owner,
+    kind: item.kind,
+    label: item.label,
+  })),
+});
+
+/**
+ * The single message that says the session's owner called its open items off (a stop, a failed
+ * run, the turn limit). The model's context still holds what started the work ("you will be
+ * woken"), so this is what tells it that nothing will wake it. Data only, like `lostMessage`.
+ */
+export function calledOffMessage(items: readonly WorkItemView[]): WorkMessage {
+  const many = items.length !== 1;
+  return {
+    customType: WORK_CALLED_OFF,
+    content:
+      `Work called off: ${items.length} ${many ? "items were" : "item was"} still open when this agent's run ended without finishing, and ${many ? "were" : "was"} cancelled with it. ` +
+      `${many ? "They" : "It"} did not finish, and nothing will wake you for ${many ? "them" : "it"}. ` +
+      `Decide whether the work is still needed before relying on it or starting it again.\n${itemLines(items).join("\n")}`,
+    details: itemDetails(items),
+  };
+}
+
+/** The single message that reports items nobody took over. Data only, so it can be written to a transcript file. */
+export function lostMessage(items: readonly WorkItemView[]): WorkMessage {
+  const lines = itemLines(items);
   const noun = items.length === 1 ? "item" : "items";
   return {
     customType: WORK_LOST,
@@ -160,14 +193,7 @@ export function lostMessage(items: readonly WorkItemView[]): WorkMessage {
       `Work lost: ${items.length} ${noun} still open when this session started, and nothing took ${items.length === 1 ? "it" : "them"} over. ` +
       `${items.length === 1 ? "It was" : "They were"} closed without a result and nothing was restarted. ` +
       `Check whether the work is still needed before starting it again.\n${lines.join("\n")}`,
-    details: {
-      items: items.map((item) => ({
-        id: item.id,
-        owner: item.owner,
-        kind: item.kind,
-        label: item.label,
-      })),
-    },
+    details: itemDetails(items),
   };
 }
 
@@ -324,6 +350,23 @@ export class WorkHostRuntime implements WorkHost {
     for (const entry of open) this.close(entry, "cancelled");
     if (open.length) this.changed();
     return open.length;
+  }
+
+  /**
+   * Tell the session that `items` were called off (`cancelOpen`): one message that starts no turn
+   * and wakes nothing. It changes no item, so the owner calls it once the session can take the
+   * message, and before the session goes away. A stale context that cannot take it is ignored.
+   */
+  reportCalledOff(items: readonly WorkItemView[]): void {
+    if (this.disposed || items.length === 0) return;
+    try {
+      this.options.delivery.send(
+        [{ completionId: this.newId(), payload: calledOffMessage(items) }],
+        "record",
+      );
+    } catch {
+      // The items are closed either way.
+    }
   }
 
   /** The session is going away. Items stay persisted for the next instance to adopt or lose. */

@@ -99,8 +99,12 @@ interface ResolvedSpawn {
 }
 
 /**
- * Session-retention windows (minutes). `SettingsManager` satisfies this
- * structurally; a live getter (`getRetentionPolicy`) lets the sweep read the
+ * Session-retention windows (minutes), for an agent that is done (idle with no open work; see
+ * `Subagent.isDone`). `consumedSessionRetentionMinutes` applies once the parent read the finished
+ * result in full with `subagent_get`, `unconsumedSessionRetentionMinutes` (the safety cap) when it
+ * only had the completion message. Both are kept: the completion message is the one carrier of a
+ * result, but a result the parent went and read is the one it is done with. `SettingsManager`
+ * satisfies this structurally; a live getter (`getRetentionPolicy`) lets the sweep read the
  * current values without a construction-time settings dependency.
  */
 export interface RetentionPolicy {
@@ -114,9 +118,12 @@ const DEFAULT_RETENTION_POLICY: RetentionPolicy = {
 };
 
 /**
- * Only what the retention rule reads. Narrower than `Subagent` so the rule
- * stays a plain function over three facts, testable without spawning an agent.
- * `consumed` means the parent read the finished result with `subagent_get`.
+ * Only what the window choice reads. Narrower than `Subagent` so it stays a plain function over
+ * three facts, testable without spawning an agent. `consumed` means the parent read the finished
+ * result in full with `subagent_get`.
+ *
+ * Whether a session may be released at all is a different question, answered by
+ * `Subagent.isDone()` before any window is looked at.
  */
 export interface RetentionCandidate {
   consumed: boolean;
@@ -131,11 +138,13 @@ export interface RetentionWindow {
 }
 
 /**
- * Pick the retention window for one terminal record.
+ * Pick the retention window for one done record.
  *
  * A result the parent read releases on the short window, measured from the
  * later of completion and the read, so a late read still gets a full resume
- * window; one nobody read holds until the long safety cap.
+ * window; one nobody read holds until the long safety cap. Either way the clock starts when the
+ * agent is done, not when it first went idle: an agent that waited on work is stamped done
+ * when its last item closed.
  */
 export function resolveRetentionWindow(
   record: RetentionCandidate,
@@ -559,22 +568,22 @@ export class SubagentManager {
   }
 
   /**
-   * Release the heavy session of any terminal agent past its retention window,
-   * unless it still has open work. The record (with its result) is retained for
-   * the session lifetime; only the live `AgentSession` is freed.
-   * `resolveRetentionWindow` owns which window applies.
+   * The retention sweep: release the heavy session of any agent that is done and whose window
+   * has passed. The record (with its result) is retained for the session lifetime; only the live
+   * `AgentSession` is freed.
+   *
+   * The rule is `Subagent.isDone()`: an agent that is running, queued or waiting on open work
+   * (a job, a watch, a subagent of its own, a question) keeps its session however long that
+   * lasts. Its window starts when it is done: `completedAt`, which an agent that waited gets
+   * re-stamped to the moment its last item closed. `resolveRetentionWindow` owns which window
+   * applies.
    */
   private sweep() {
     const policy = this.getRetentionPolicy?.() ?? DEFAULT_RETENTION_POLICY;
     const now = Date.now();
     for (const record of this.agents.values()) {
-      if (record.isActive()) continue;
+      if (!record.isDone()) continue;
       if (!record.isSessionReady()) continue; // already released, or never had a session
-      // Open work lives in the session and its completion lands there: an agent waiting on a
-      // job, an agent of its own or a question (an item like the others) keeps its session however
-      // long it waits. (Step 11 owns the full rule; this is the one condition correctness needs
-      // before it.)
-      if (record.hasOpenWork()) continue;
       const { referenceAt, windowMinutes } = resolveRetentionWindow(record, policy);
       // Fire-and-forget: the sweep runs on an interval with no one to await it,
       // and Subagent.releaseSession() already swallows a failing teardown.
@@ -583,19 +592,20 @@ export class SubagentManager {
   }
 
   /**
-   * Remove all completed/stopped/errored records immediately.
-   * Called on session start/switch so tasks from a prior session don't persist.
+   * Remove the records of agents that are done, immediately. Called on session start/switch so
+   * tasks from a prior session don't persist.
    *
-   * Like a running or queued agent, an agent waiting on open work stays. Disposing it here would
-   * be silent: it reports nothing, so the spawner's item for it would stay open for good and the
-   * widget and dashboard would keep showing it waiting. It ends the way every live agent does:
-   * its work completes and it reports, it is stopped (which reports), or the spawning session
-   * shuts down (`abortAll` then `dispose`).
+   * The same rule as the sweep (`Subagent.isDone()`): an agent that is running, queued or waiting
+   * on open work stays. Disposing a waiting one here would be silent: it reports nothing, so the
+   * spawner's item for it would stay open for good and the widget and dashboard would keep
+   * showing it waiting. It ends the way every live agent does: its work completes and it
+   * reports, it is stopped (which reports), or the spawning session shuts down (`abortAll` then
+   * `dispose`).
    */
   async clearCompleted(): Promise<void> {
     const teardowns: Promise<void>[] = [];
     for (const [id, record] of this.agents) {
-      if (record.isActive() || record.hasOpenWork()) continue;
+      if (!record.isDone()) continue;
       teardowns.push(this.removeRecord(id, record));
     }
     await Promise.all(teardowns);

@@ -3,6 +3,98 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-10: One retention rule: a session is released only for a done agent, and a done agent's is released after its window
+
+Roadmap step 11 (`docs/roadmaps/subagent-work-lifecycle.md`): the guards 9a and 10 put in the sweep and
+`clearCompleted` become one explicit rule that every release asks.
+
+- **The rule, and its one predicate.** `Subagent.isDone()` is idle with no open work. Only a done
+  agent's session may be released. An agent that is running, queued or waiting (an open job, watch,
+  subagent of its own or question, alone or together) keeps its session however long it waits; it
+  is released only after the last item closes **and** the window then passes. Every path that frees
+  a finished agent's session asks it, and none keeps a `hasOpenWork()` check of its own:
+  - the retention sweep (`SubagentManager.sweep`, plus the window);
+  - `SubagentManager.clearCompleted`, which also drops the record (so a waiting agent stays until
+    it reports, is stopped, or the spawning session shuts down);
+  - `Subagent.releaseSession` itself, which now refuses unless the agent is done, so no caller,
+    present or future, can release a session that is running, queued or holds work;
+  - the "assignment ended" release (`abandonWork`), which now calls the work off first (below).
+    Not retention, so not asking: `disposeSession` (the spawning session shut down, via `abortAll`
+    then `dispose`, which ends everything) and a stop (which cancels the items first).
+- **The window starts when the agent is done.** `completedAt` is re-stamped when the last item
+  closes without a run (`markFinishedWithoutRun`, since 9a), so an agent that waited for days is not
+  released a minute after its work ends. A `subagent_get` of an agent that still waits no longer
+  marks it consumed (`GetResultTool` asks `isDone()`), and `markFinishedWithoutRun` forgets a read
+  made while it waited, so the short window cannot apply to a result nobody read.
+- **No work outlives its session (the 9a "abandon" path, revised).** A failed run, a run that hit
+  its turn limit and a stop used to release the session and, for a failure or the turn limit,
+  leave the items open in the child's transcript, so a reopened agent was told the work was
+  lost. `abandonWork` now cancels whatever is open (a stop already had, and this also closes what a
+  tool finishing as the stop landed opened) and then releases the session, which stops the jobs
+  and agents inside it. A released session therefore never holds an open item. Behaviour change: a
+  reopened failed or turn-limited agent is no longer sent `work:lost` (it is told the work was
+  called off instead, see below), and a question it had asked
+  is no longer adopted on reopen (the parent's `subagent_send` is simply its next prompt). A run
+  that held no work still keeps its session for the window. The same applies to a stop that lands
+  while a session is being created or reopened: the session it never attached is called off
+  (`cancelWork`) before it is disposed, so a question pi-ask adopted from the transcript does not
+  stay open in a stopped agent. What can still be open at the end of a session is the work of a
+  process that dies, or of a parent that shuts down mid-wait; pi-ask's adoption of such a question
+  (and `Run.answering`) remain for that, which is step 12's.
+- **A called-off agent is told (repair).** Cancelling on `abandonWork` left a reopened agent's
+  context holding the old `job_start` result ("you will be woken") with nothing saying the job was
+  killed, so it could end its turn waiting for a wake that never comes. Whenever items are called
+  off (a failed run, the turn limit, a user stop of an agent that held work, and a stop during the
+  creation or cold reopen of a session) the agent now gets ONE `work:called-off` message in its own
+  transcript, listing the items (kind, label, owner, id; sanitised and clipped like `work:lost`,
+  via pi-work's new `calledOffMessage` and `WorkHostRuntime.reportCalledOff`, written in `record`
+  mode through `ChildWork`/`SubagentSession.reportCalledOff`): "did not finish, nothing will wake
+  you for it, decide whether it is still needed". It starts no run and wakes nothing. It lands
+  before the release; for a stop of a running agent it is written once the run has unwound (Pi
+  would hold a mid-run message), and if the parent's message reaches the stopped agent first it is
+  written as that run is requested. An agent that held no work gets none. The reopen then has no
+  open items, so `settleStartup` reports nothing lost: no duplicate. The spawner's side is
+  unchanged. Tests: `called-off-sdk.test.ts` (real session: a `job_watch` child whose run fails is
+  told once, its job dies with the session, a later `subagent_send` reopens it with the notice
+  before the parent's message and no `work:lost`; no notice for a child without work),
+  `waiting-sdk` (stop), `question-sdk` (failed after asking), unit tests in `waiting-workers`
+  (turn limit, failure, stop, stop then send) and `subagent`, and pi-work's `reportCalledOff` and
+  `calledOffMessage` tests. The turn limit is covered at unit level only: through a real session
+  the harness's turn-limit stop surfaces as a provider error (see `turn-limit-message.test.ts`).
+- **Settings labels reworded, keys unchanged.** `/subagent:settings` shows "Session retention
+  (result read)" and "Session retention (result not read)" (were "Consumed-session retention" and
+  "Unconsumed-session retention"), with matching toasts and prompts. The keys
+  (`consumedSessionRetentionMinutes`, `unconsumedSessionRetentionMinutes`), defaults and loading
+  are untouched. The tests that pinned the label text (`subagents-settings`, `settings`) were
+  rewritten with a comment.
+- **The consumed flag: both windows are kept, on purpose.** Step 6 left `consumedAt` for retention
+  alone, and results now arrive only by the completion message, so "consumed" no longer means
+  delivered. It still carries one useful fact: the parent went and read the finished result in full
+  with `subagent_get`, the one signal that it has what it needs from the agent. The completion
+  message carries only a 500 character preview, so an agent nobody read is the one a parent is more
+  likely to come back to, and keeps the long safety cap. The names and defaults are unchanged
+  (`consumedSessionRetentionMinutes` 10, `unconsumedSessionRetentionMinutes` 720), both keys load
+  and apply exactly as before, and `/subagent:settings` is the same. Only the meaning is now
+  stated: the settings' doc comments, `RetentionPolicy`, `RetentionCandidate`, README and
+  docs/configuration.md describe "done" and "read the result", not delivery.
+- **Reopening, pinned end to end.** A released agent takes `subagent_send`, which reopens its
+  transcript (7b); `test/retention-sdk.test.ts` pins it on real sessions with a scripted model:
+  a done child is released after its window (12 hours unread, 10 minutes after `subagent_get`), a
+  `subagent_send` reopens it, and the child sees its earlier transcript, then the new message; a
+  child that waited on a `job_watch` survives sweeps at 13, 25 and 49 hours, is released only a
+  window after the job ended and it finished, and is reopened by `subagent_send`.
+- Tests: `waiting-workers.test.ts` (fake timers; each of job, watch, subagent of its own and
+  question open alone: kept through 30 hours of sweeps, then released a window after its item
+  closes, on the short window if read once done, kept by `clearCompleted` while it waits; two kinds
+  together, whichever closes last; 25 hours of minute sweeps interleaved with `clearCompleted`),
+  `subagent.test.ts` (`isDone`, `releaseSession` refusing a running, queued or waiting agent, the
+  stopped creation), `subagent-state.test.ts`, `get-result-tool.test.ts`. Tests that pinned the old
+  failure path were rewritten with a comment, not deleted: `waiting-workers` (turn limit, failure,
+  failed question: called off instead of left open) and `question-sdk` ("is closed by the parent's
+  send to a child that failed after asking, when its transcript is reopened" is now "calls off the
+  question of a child that failed after asking…"). Step 1's retention characterization tests pass
+  unchanged. The `releaseSession` unit tests now build idle agents, the only kind it releases.
+
 ## 2026-11-10: A child's question is an item in its work host, not a record on its run
 
 Roadmap step 10 (`docs/roadmaps/subagent-work-lifecycle.md`): a child's `ask` goes through the work

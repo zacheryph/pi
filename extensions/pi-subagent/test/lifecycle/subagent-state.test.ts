@@ -447,6 +447,15 @@ describe("SubagentState — consumption", () => {
     expect(state.consumed).toBe(true);
     expect(state.consumedAt).toBe(4200);
   });
+
+  it("forgets a read made while the agent still waited when its work runs out", () => {
+    // Finishing without a run re-stamps the end time (retention starts there); a read from before
+    // was of an unfinished result and must not pick the short window.
+    const state = new SubagentState({ status: "idle", completedAt: 1000, consumedAt: 2000 });
+    state.markFinishedWithoutRun(9000);
+    expect(state.completedAt).toBe(9000);
+    expect(state.consumed).toBe(false);
+  });
 });
 
 describe("SubagentState — activeTools", () => {

@@ -185,6 +185,16 @@ export class ChildWork {
   }
 
   /**
+   * Tell the child that `items`, just called off, did not finish: one message in its own
+   * transcript (appended at once, no run started, nothing woken). Without it the child's context
+   * still holds what started the work ("you will be woken") and nothing says it was killed. Call
+   * it before the session is released, while it can still take the message.
+   */
+  reportCalledOff(items: readonly WorkItemView[]): void {
+    if (!this.disposed) this.host.reportCalledOff(items);
+  }
+
+  /**
    * The delegator answered the child: close the question items it waits on, as cancelled (the
    * answer reaches the child as the run's prompt, not as a work message), and leave every other
    * item open. Returns how many were closed.
@@ -194,9 +204,12 @@ export class ChildWork {
   }
 
   /**
-   * The session is going away. Open items stay persisted in the child's transcript: if the child
-   * is ever reopened they are reported lost to it, which is accurate, because whatever they
-   * stood for died with the session.
+   * The session is going away. Retention never gets here with an item open (an agent with open
+   * work keeps its session, and a stop, a failure or the turn limit call the work off first), so
+   * what can still be open is the work of a session whose process is shutting down or dying. Those
+   * items stay persisted in the child's transcript: if the child is ever reopened they are adopted
+   * by their owner or reported lost to it, which is accurate, because whatever they stood for died
+   * with the session.
    */
   dispose(): void {
     if (this.disposed) return;

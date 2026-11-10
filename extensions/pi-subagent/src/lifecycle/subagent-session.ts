@@ -268,6 +268,14 @@ export class SubagentSession {
   }
 
   /**
+   * Write one message into the child's transcript saying `items` (just called off) did not
+   * finish and nothing will wake it for them. Starts no run.
+   */
+  reportCalledOff(items: readonly WorkItemView[]): void {
+    this.meta.work?.reportCalledOff(items);
+  }
+
+  /**
    * The delegator answered: close the questions the child is waiting on, and leave its other
    * items open (a job it still watches). The answer itself is the message that reaches the
    * child, not a work message. Returns how many questions there were.

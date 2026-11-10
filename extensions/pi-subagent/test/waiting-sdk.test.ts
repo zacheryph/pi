@@ -201,7 +201,7 @@ describe("a child that ends its turn with a job running", () => {
 
     // The stop called the watch off: its item is cancelled in the child's transcript, not left
     // open. So when the parent sends the stopped agent a message later, the reopened child sees
-    // that message and is not told about work the user deliberately stopped.
+    // it was told the work was called off (roadmap step 11), and is not told it was lost.
     const [id] = h.agentIds();
     const transcript = readFileSync(h.savedRecord(id)!.outputFile!, "utf8");
     expect(transcript).toContain('"reason":"cancelled"');
@@ -224,6 +224,12 @@ describe("a child that ends its turn with a job running", () => {
     expect(reopened).toHaveLength(1);
     expect(text(reopened[0])).toContain("Try again later");
     expect(text(reopened[0])).not.toContain("Work lost");
+    // It is told, once and before the parent's message, that the watch was called off: its
+    // context still holds the job_watch result promising a wake.
+    const seen = text(reopened[0]);
+    expect(seen.match(/Work called off/g)).toHaveLength(1);
+    expect(seen).toContain('watch \\"CI\\"');
+    expect(seen.indexOf("Work called off")).toBeLessThan(seen.indexOf("Try again later"));
     expect(h.errors).toEqual([]);
     expectNoUnmanagedRuns(runs); // every wake went through the agent and its limiter
   }, 40_000);

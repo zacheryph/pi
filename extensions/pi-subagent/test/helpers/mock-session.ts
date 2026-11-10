@@ -74,6 +74,8 @@ export function createSubagentSessionStub(
     openWork: vi.fn((): readonly WorkItemView[] => [...openItems]),
     /** A stop calls off the open items, as the real host does. */
     cancelWork: vi.fn((): number => openItems.splice(0).length),
+    /** The message that tells the child its called-off work did not finish. */
+    reportCalledOff: vi.fn((_items: readonly WorkItemView[]): void => {}),
     /** The parent's answer closes the question items and leaves the others open. */
     answerQuestions: vi.fn((): number => {
       const questions = openItems.filter((item) => item.kind === "question");

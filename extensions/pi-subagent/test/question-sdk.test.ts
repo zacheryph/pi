@@ -342,12 +342,16 @@ describe("a question across a reload or restart", () => {
     expect(h.errors).toEqual([]);
   }, 40_000);
 
-  it("is closed by the parent's send to a child that failed after asking, when its transcript is reopened", async () => {
+  // Rewritten by roadmap step 11 (was: "is closed by the parent's send to a child that failed
+  // after asking, when its transcript is reopened"). The failed run's session was released with the
+  // question still open in its transcript, for pi-ask to adopt when the agent was reopened. A
+  // session is never released with open work now: the failure ends the assignment, so the question
+  // is called off with the rest before the release, and the parent's send is just the next prompt.
+  it("calls off the question of a child that failed after asking, and its transcript is reopened by the parent's send", async () => {
     // `ask` alongside another tool call does not end the turn (terminate needs every tool in the
-    // batch to terminate), and this run then fails. The failed run's session is released with the
-    // question item still open in its transcript. The parent's next `subagent_send` reopens the
-    // transcript (pi-ask adopts the question) and the message that reopened it is the answer: the
-    // child is not left waiting on a question that was just answered, nor told it was lost.
+    // batch to terminate), and this run then fails. The question is cancelled and the session
+    // released. The parent's next `subagent_send` reopens the transcript with nothing open in it:
+    // the child is not left waiting on a question, nor told it was lost.
     const { h, ui } = await parentForQuestions();
     h.script({
       parent: [delegate("Pick storage"), fauxAssistantMessage("Started.")],
@@ -366,8 +370,11 @@ describe("a question across a reload or restart", () => {
     expect(h.announcements()[0].text).toContain("provider fell over");
     expect(ui.text()).not.toContain("waiting");
     const transcript = h.savedRecord(id)!.outputFile!;
+    await vi.waitFor(() => expect(h.seen("subagent:session:disposed")).toHaveLength(1));
     expect(trace(transcript)).toContain("open:question:answer");
-    expect(trace(transcript).some((entry) => entry.startsWith("close:"))).toBe(false);
+    expect(trace(transcript).filter((entry) => entry.startsWith("close:"))).toEqual([
+      "close:cancelled",
+    ]);
 
     const requests: Context[] = [];
     h.script({
@@ -388,10 +395,20 @@ describe("a question across a reload or restart", () => {
     expect(requests).toHaveLength(1);
     expect(lastUserText(requests[0])).toContain("Use Postgres.");
     expect(said(requests[0])).not.toContain("Work lost");
+    // It was told the question was called off (once, before the parent's message), so it does
+    // not wait for an answer that will never come.
+    expect(said(requests[0]).match(/Work called off/g)).toHaveLength(1);
+    expect(said(requests[0]).indexOf("Work called off")).toBeLessThan(
+      said(requests[0]).indexOf("Use Postgres."),
+    );
+    // Nothing more was closed by the send: the question was already called off.
     expect(trace(transcript).filter((entry) => entry.startsWith("close:"))).toEqual([
       "close:cancelled",
     ]);
     expect(trace(transcript)).not.toContain("message:work:lost");
+    expect(trace(transcript).filter((entry) => entry === "message:work:called-off")).toHaveLength(
+      1,
+    );
     // Done, not waiting on a question that was answered.
     expect(h.announcements()[1].text).toContain("Using Postgres. Done.");
     expect(h.errors).toEqual([]);

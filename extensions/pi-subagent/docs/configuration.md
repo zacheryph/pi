@@ -78,7 +78,7 @@ subagent owns its own ledger, and the parent receives its status through normal
 results and updates. The profile rereads todo after compaction/reload and records
 concise recovery notes. Live worker sessions remain subject to retention and
 runtime lifetime. After a reload or resume, `subagent_get` still answers for a
-worker's ID from its saved record (status, result, question, transcript path) and
+worker's ID from its saved record (status, last outcome, result, transcript path) and
 lists every worker the branch started, and `subagent_send` reopens the worker's
 saved transcript as long as it and the worker's directory still exist. If it is
 refused, the orchestrator uses saved task notes, results, transcripts, and artifacts
@@ -483,8 +483,22 @@ for validation, tool-access, and automation limitations.
 ## Persistent Settings
 
 Runtime tuning values set via `/subagent:settings` (max concurrency, default max turns, wrap-up turns, the two session-retention windows, the abort-on-interrupt policy, and the mid-run update channel) persist across pi restarts.
-A completed subagent's record is kept for the whole parent session (so `subagent_get` never misses), and its saved `subagent:record` entry outlives a reload or resume; only its heavy in-memory session is released — after `consumedSessionRetentionMinutes` once the result has been read with `subagent_get`, or after the `unconsumedSessionRetentionMinutes` safety cap if it never was.
-The sweep never releases an agent with open work, whatever the window says: an agent waiting on a job, an agent of its own or an unanswered question (an open item like the others) keeps its session until the work is closed, and the windows apply only after that.
+A subagent's record is kept for the whole parent session (so `subagent_get` never misses), and its saved `subagent:record` entry outlives a reload or resume; only its heavy in-memory session is ever released.
+
+**The retention rule.** A session is released only for an agent that is _done_: idle with no open work.
+An agent that is running, queued or _waiting_ (idle with an open job, watch, subagent of its own or question to its parent) keeps its session however long it waits, because the session is where the work lives and where its completion lands.
+The windows below apply only to a done agent, and start the moment it became done: for an agent that waited, when its last item closed, not when it first went idle.
+Once released, the agent takes `subagent_send` as ever: its transcript is reopened and it sees everything it did before plus the new message.
+Every path that frees a finished agent's session asks the same question (`Subagent.isDone()`): the retention sweep, the clearing of finished records when a session starts or switches, and the release that follows a stop, a failure or the turn limit.
+Those last three end the agent's assignment, so they call off its open work first (the items close as cancelled), tell the agent with one `work:called-off` message in its own transcript (which lists what was called off and says nothing will wake it for it; it starts no run), and release the session, which stops the jobs and agents inside it; nothing is left open in a released session's transcript. An agent that held no work is told nothing.
+A parent shutdown, reload or interrupt is not retention and keeps its own meaning: a stop cancels the work first, a shutdown ends every agent.
+
+Both windows are kept. The completion message is the one way a result reaches the parent, so "consumed" no longer means delivered; it means the parent went and read the finished result in full with `subagent_get`, the one signal that it has what it needs from the agent:
+
+- `consumedSessionRetentionMinutes` (default `10`) applies once the parent has read the done agent's result with `subagent_get`, measured from the later of the agent being done and the read. A read of an agent that still waits does not count.
+- `unconsumedSessionRetentionMinutes` (default `720`, the safety cap) applies when the parent only had the completion message.
+
+Existing settings keep working unchanged: both keys and their defaults load and apply as before. In `/subagent:settings` the two entries are now labelled "Session retention (result read)" and "Session retention (result not read)".
 
 Set `midRunUpdates` to `false` to withhold `parent_notify` from every agent, leaving them no way to tell you anything before they finish.
 `ask` is unaffected: a blocked agent can still ask, which ends its turn and leaves it waiting on `answer`.
@@ -496,7 +510,7 @@ Two files, merged on load:
   Written by `/subagent:settings`.
 
 **Precedence:** project overrides global on any field present in both.
-Missing fields fall back to the hardcoded defaults (max concurrency `4`, default max turns unlimited, wrap-up turns `2`, consumed-session retention `10` minutes, unconsumed-session retention `720` minutes, abort-all-on-interrupt `true`, mid-run updates `true`, watch-overlay width `third`, watch-overlay default visibility `false`, watch-overlay thinking visibility `true`).
+Missing fields fall back to the hardcoded defaults (max concurrency `4`, default max turns unlimited, wrap-up turns `2`, session retention after a result was read `10` minutes (`consumedSessionRetentionMinutes`), after it was not read `720` minutes (`unconsumedSessionRetentionMinutes`), abort-all-on-interrupt `true`, mid-run updates `true`, watch-overlay width `third`, watch-overlay default visibility `false`, watch-overlay thinking visibility `true`).
 
 **Example — global defaults for a beefy machine:**
 

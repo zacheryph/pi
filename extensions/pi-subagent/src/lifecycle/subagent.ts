@@ -267,13 +267,53 @@ export class Subagent {
   hasOpenWork(): boolean {
     return this.openWork().length > 0;
   }
+
   /**
-   * A user stop calls off the work the agent waits on: its items close as cancelled, so nothing
-   * is reported lost if the agent is reopened. The session is released after (`abandonWork`),
-   * and its shutdown stops what the extensions run.
+   * THE retention rule (roadmap step 11): an agent is done when it is idle with no open work, and
+   * only a done agent's session may be released. Idle with open work is waiting, not done: its
+   * session is where the work lives and where its completion lands, so it is kept however long it
+   * waits (a job, a watch, a subagent of its own and a question all count alike). A running or
+   * queued agent is not done either.
+   *
+   * Every release of a finished agent's session asks this and nothing else: the retention sweep,
+   * `SubagentManager.clearCompleted`, `releaseSession` itself (so no caller can bypass it) and the
+   * "assignment ended" release (`abandonWork`, which calls the work off first so the rule holds).
+   * What is not retention keeps its own semantics and does not ask: `disposeSession` (the parent
+   * shut down: it ends everything) and the disposal of a session a stopped run never attached.
+   */
+  isDone(): boolean {
+    return this.status === "idle" && !this.hasOpenWork();
+  }
+
+  /**
+   * A stop, a failure and the turn limit end the assignment, so the work the agent waits on is
+   * called off: its items close as cancelled and nothing is reported lost if the agent is
+   * reopened. The session is released after (`abandonWork`), and its shutdown stops what the
+   * extensions run. Closing the items first is what lets the release happen at all: the agent is
+   * then done, and a session is never released with open work.
    */
   private cancelWork(): void {
-    if (this.subagentSession?.cancelWork()) this.workCancelled = true;
+    const session = this.subagentSession;
+    if (!session) return;
+    const items = session.openWork();
+    if (session.cancelWork() > 0) {
+      this.workCancelled = true;
+      // Remembered for the message that tells the agent (`reportCalledOff`).
+      this.calledOff.push(...items);
+    }
+  }
+
+  /**
+   * Tell the agent what was called off: one short message in its own transcript, naming the items,
+   * so a reopened agent does not wait for work that was killed (its context still holds the
+   * `job_start` result saying it would be woken). Written once, when the session can take it (a
+   * stopped run has unwound, a failed one has ended) and before the session is released. It starts
+   * no run and wakes nothing. An agent that held no work is told nothing.
+   */
+  private reportCalledOff(): void {
+    const items = this.calledOff;
+    this.calledOff = [];
+    if (items.length > 0) this.subagentSession?.reportCalledOff(items);
   }
 
   /**
@@ -323,8 +363,10 @@ export class Subagent {
   private parked = false;
   /** The record is being torn down for good (manager shutdown or clear): it starts no run. */
   private disposing = false;
-  /** A stop cancelled open work: the session is released with it, though no item is left open. */
+  /** This run's open work was called off: the agent holds none, and its session is released. */
   private workCancelled = false;
+  /** What was called off and the agent not yet told (`reportCalledOff`). */
+  private calledOff: WorkItemView[] = [];
   /** Work reported back as the run was ending: answer it in a run of its own right after. */
   private wakeAfterRun = false;
 
@@ -444,10 +486,10 @@ export class Subagent {
 
   /**
    * The parent's message answers the questions the agent asked: the message is, or joins, the
-   * prompt of `run`, so the question items close. A live session closes them now. A session that
-   * was released with a question open comes back with it adopted (pi-ask takes it over at
-   * `session_start`), so the run closes it when it attaches the reopened session (`attachSession`).
-   * Other items, a job it watches, stay open.
+   * prompt of `run`, so the question items close. A live session closes them now. A session is
+   * never released with a question open, but a transcript whose process died with one open comes
+   * back with it adopted (pi-ask takes it over at `session_start`), so the run closes it when it
+   * attaches the reopened session (`attachSession`). Other items, a job it watches, stay open.
    */
   private answerQuestions(run: Run): void {
     run.answering = true;
@@ -545,6 +587,9 @@ export class Subagent {
     if (again) {
       // Release the previous run's listener handles before wiring this one's.
       previous.listeners.release();
+      // Called off by a stop that the new input follows before the run unwound: tell the live
+      // session now, since nothing releases it.
+      this.reportCalledOff();
       this.state.markQueued(Date.now());
       this.parked = false;
       this.wakeAfterRun = false;
@@ -574,6 +619,9 @@ export class Subagent {
         if (session && (run.abort.signal.aborted || this.current !== run)) {
           // Stopped while the session was being created: nothing will drive it, and a
           // second session for this agent may only start once this one is gone.
+          // A stop calls off the agent's work first, even for a session it never attached: a
+          // reopened transcript can hand the agent a question back (adopted at `session_start`).
+          callOffWork(session);
           await disposeQuietly(session, "stopped session creation");
           session = undefined;
         }
@@ -686,7 +734,7 @@ export class Subagent {
   private attachSession(run: Run, session: SubagentSession): void {
     this.subagentSession = session;
     this.released = undefined;
-    // A reopened transcript with the question the parent is now answering still open in it.
+    // A transcript reopened after a crash, with the question the parent is now answering in it.
     if (run.answering) session.answerQuestions();
     this.flushPendingSteers();
     this.observeSession(run, session);
@@ -798,6 +846,7 @@ export class Subagent {
       thinkingLevel: this.thinkingLevel,
     });
     if (run.abort.signal.aborted) {
+      callOffWork(session); // as above: a stop calls off what the reopened transcript gave back
       await disposeQuietly(session, "stopped cold resume");
       return undefined;
     }
@@ -895,16 +944,22 @@ export class Subagent {
   }
 
   /**
-   * A run that ended without completing leaves no one to answer the work the session still
-   * holds. Release the session, which shuts the child's extensions down and so stops whatever
-   * they run (jobs, agents of its own). After a failure the items stay open in the child's
-   * transcript, so if the agent is ever reopened it is told that the work was lost; after a stop
-   * they were already cancelled (`cancelWork`), so it is told nothing. Done after the run was
-   * reported, which still reads the live session.
+   * A run that ended without completing (a stop, a failure, the turn limit) ends the assignment:
+   * nothing is left to answer the work the session still holds. Call it off (a stop did already;
+   * this also closes what a tool finishing as the stop landed opened), then release the session,
+   * which shuts the child's extensions down and so stops whatever they run (jobs, agents of its
+   * own). Closing the items first keeps the one rule: an agent that is released holds no open
+   * work, so none is left open in its transcript to be reported lost, and none outlives the
+   * session that was running it. A run that held no work keeps its session for the retention
+   * window, so the parent can resume it cheaply. Done after the run was reported, which still
+   * reads the live session.
    */
   private abandonWork(run: Run): void {
     if (this.current !== run || this.state.outcome === "completed") return;
-    if (!this.hasOpenWork() && !this.workCancelled) return;
+    if (this.hasOpenWork()) this.cancelWork();
+    // Before the release: after it the session cannot take the message.
+    this.reportCalledOff();
+    if (!this.workCancelled) return;
     void this.releaseSession();
   }
 
@@ -932,7 +987,8 @@ export class Subagent {
 
   /**
    * Record the parent read this agent's finished result with `subagent_get`.
-   * Idempotent. Only the retention window reads it.
+   * Idempotent. Only the retention window reads it: a result the parent read in full is the one
+   * it is most likely done with, so its session is released after the short window.
    */
   markConsumed(at?: number): void {
     this.state.markConsumed(at);
@@ -1025,13 +1081,17 @@ export class Subagent {
    * pointer, dispose the session (firing `disposed`), clear it, and mark released.
    * A no-op once the session is gone — the retention sweep may call it repeatedly.
    *
+   * The retention rule is enforced here, not left to callers: a session is released only for an
+   * agent that is done (`isDone`), so no path, now or later, can release one that is running,
+   * queued or waiting on open work. Teardown that is not retention is `disposeSession`.
+   *
    * The record's own state is updated before the teardown is awaited, so a sweep
    * tick arriving mid-teardown sees a released record rather than starting a
    * second one.
    */
   async releaseSession(): Promise<void> {
     const session = this.subagentSession;
-    if (!session) return;
+    if (!session || !this.isDone()) return;
     this.released = {
       outputFile: session.outputFile,
       model: session.model,
@@ -1042,6 +1102,12 @@ export class Subagent {
     await this.sessionRelease;
     this.sessionRelease = undefined;
   }
+}
+
+/** Call off what a session holds and tell it so, for a session that is about to be disposed. */
+function callOffWork(session: SubagentSession): void {
+  const items = session.openWork();
+  if (session.cancelWork() > 0) session.reportCalledOff(items);
 }
 
 /**

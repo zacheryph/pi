@@ -56,9 +56,13 @@ export interface SubagentsSettings {
    * `load()` warns and strips it, so it is never applied, emitted, or saved.
    */
   legacyGraceTurns?: true;
-  /** Minutes a consumed agent's session is retained after its last relevance event. */
+  /**
+   * Minutes a done agent's session is retained once the parent read its finished result with
+   * `subagent_get` (measured from the later of being done and the read). Applies only to an agent
+   * with no open work; one that waits keeps its session.
+   */
   consumedSessionRetentionMinutes?: number;
-  /** Minutes an unconsumed agent's session is retained (safety cap). */
+  /** Minutes a done agent's session is retained when the parent only had the completion message (safety cap). */
   unconsumedSessionRetentionMinutes?: number;
   /**
    * When false, a parent interrupt (ESC) leaves running and queued subagents
@@ -364,19 +368,19 @@ export class SettingsManager {
     return this.saveAndNotify(`Wrap-up turns set to ${this.wrapUpTurns}`);
   }
 
-  /** Set the consumed-session retention window (minutes), persist, and return the toast. */
+  /** Set the window for a done agent whose result was read (minutes), persist, and return the toast. */
   applyConsumedSessionRetentionMinutes(n: number): Toast {
     this.consumedSessionRetentionMinutes = n; // setter normalizes: clamp [1, ceiling]
     return this.saveAndNotify(
-      `Consumed-session retention set to ${this.consumedSessionRetentionMinutes} min`,
+      `Session retention (result read) set to ${this.consumedSessionRetentionMinutes} min`,
     );
   }
 
-  /** Set the unconsumed-session retention window (minutes), persist, and return the toast. */
+  /** Set the window for a done agent whose result was not read (minutes), persist, and return the toast. */
   applyUnconsumedSessionRetentionMinutes(n: number): Toast {
     this.unconsumedSessionRetentionMinutes = n; // setter normalizes: clamp [1, ceiling]
     return this.saveAndNotify(
-      `Unconsumed-session retention set to ${this.unconsumedSessionRetentionMinutes} min`,
+      `Session retention (result not read) set to ${this.unconsumedSessionRetentionMinutes} min`,
     );
   }
 
