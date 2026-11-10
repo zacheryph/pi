@@ -22,6 +22,7 @@ function setup(
     confirmLanding?: boolean;
     throws?: boolean;
     landingMark?: () => unknown;
+    onChange?: () => void;
   } = {},
 ) {
   const records: unknown[] = [...(options.records ?? [])];
@@ -43,6 +44,7 @@ function setup(
     confirmLanding: options.confirmLanding,
     landingMark: options.landingMark,
     onLost,
+    onChange: options.onChange,
     now: () => 1000 + n,
     newId: () => `id${++n}`,
   });
@@ -140,6 +142,92 @@ describe("opening and closing items", () => {
     host.open({ owner: "a", kind: "job", label: "one" });
     host.open({ owner: "b", kind: "job", label: "two" });
     expect(host.list().map((item) => item.label)).toEqual(["one", "two"]);
+  });
+});
+
+describe("onChange", () => {
+  it("fires when an item opens, completes, is cancelled or is lost, and not for a notify", () => {
+    const seen: string[][] = [];
+    let list: () => string[] = () => [];
+    const { host, setIdle } = setup({
+      records: [opened("old")],
+      onChange: () => seen.push(list()),
+    });
+    list = () => host.list().map((item) => item.label);
+    setIdle(true);
+    const a = host.open({ owner: "test", kind: "job", label: "a" });
+    const b = host.open({ owner: "test", kind: "job", label: "b" });
+    a.notify({ customType: "test:ask", content: "?" });
+    expect(seen).toEqual([
+      ["CI", "a"],
+      ["CI", "a", "b"],
+    ]);
+    a.complete(DONE);
+    b.cancel();
+    expect(seen.slice(2)).toEqual([["CI", "b"], ["CI"]]);
+    host.settleStartup();
+    expect(seen.at(-1)).toEqual([]);
+    expect(seen).toHaveLength(5);
+  });
+
+  it("fires after the completion's message was handed to the wake policy", () => {
+    const events: string[] = [];
+    const host = createWorkHost({
+      store: { read: () => [], append: () => {} },
+      delivery: { isIdle: () => true, send: () => void events.push("wake") },
+      onChange: () => events.push("changed"),
+    });
+    host.start();
+    const item = host.open({ owner: "test", kind: "job", label: "x" });
+    events.length = 0;
+    // A listener that reads the session's state after the change must see the run that the
+    // message asked for, so the change is announced after the wake.
+    item.complete(DONE);
+    expect(events).toEqual(["wake", "changed"]);
+  });
+
+  it("does not fire when delivery refuses the result, and survives a throwing listener", () => {
+    const onChange = vi.fn(() => {
+      throw new Error("listener");
+    });
+    const { host, goStale } = setup({ onChange });
+    const item = host.open({ owner: "test", kind: "job", label: "CI" });
+    expect(onChange).toHaveBeenCalledTimes(1);
+    goStale();
+    item.complete(DONE);
+    expect(host.list()).toHaveLength(1);
+    expect(onChange).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("cancelOpen", () => {
+  it("closes every open item as cancelled with no message, so the next start loses nothing", () => {
+    const onChange = vi.fn();
+    const { host, records, sent } = setup({ onChange });
+    const a = host.open({ owner: "test", kind: "job", label: "a" });
+    host.open({ owner: "test", kind: "job", label: "b" });
+    onChange.mockClear();
+    expect(host.cancelOpen()).toBe(2);
+    expect(host.list()).toEqual([]);
+    expect(sent).toEqual([]);
+    expect(records.filter((record) => record.op === "close")).toMatchObject([
+      { reason: "cancelled" },
+      { reason: "cancelled" },
+    ]);
+    expect(onChange).toHaveBeenCalledTimes(1);
+    // The producers' handles are spent, and a restart finds nothing open.
+    a.complete(DONE);
+    expect(sent).toEqual([]);
+    expect(openRecords(records)).toEqual([]);
+    expect(host.cancelOpen()).toBe(0);
+  });
+
+  it("does nothing once the host is disposed", () => {
+    const { host, records } = setup();
+    host.open({ owner: "test", kind: "job", label: "a" });
+    host.dispose();
+    expect(host.cancelOpen()).toBe(0);
+    expect(openRecords(records)).toHaveLength(1);
   });
 });
 

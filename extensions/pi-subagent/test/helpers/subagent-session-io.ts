@@ -39,11 +39,15 @@ export function createSubagentSessionIO() {
       newSession: vi.fn(),
       getSessionFile: vi.fn().mockReturnValue("/mock/session-dir/tasks/reopened.jsonl"),
       getSessionId: vi.fn().mockReturnValue("reopened-session-id"),
+      getBranch: vi.fn().mockReturnValue([]),
+      appendCustomEntry: vi.fn().mockReturnValue("entry"),
     }),
     createSessionManager: vi.fn().mockReturnValue({
       newSession: vi.fn(),
       getSessionFile: vi.fn().mockReturnValue("/sessions/child.jsonl"),
       getSessionId: vi.fn().mockReturnValue("child-session-id"),
+      getBranch: vi.fn().mockReturnValue([]),
+      appendCustomEntry: vi.fn().mockReturnValue("entry"),
     }),
     createSettingsManager: vi.fn().mockReturnValue({}),
     // Identity by default: no package exclusions, so children inherit everything.
@@ -145,6 +149,9 @@ export { DEFAULT_AGENT_CONFIG };
 export function createFactorySession() {
   return {
     ...createMockSession(),
+    // What a managed child's work host reads and writes through.
+    isIdle: true,
+    sendCustomMessage: vi.fn().mockResolvedValue(undefined),
     prompt: vi.fn().mockResolvedValue(undefined),
     abort: vi.fn(),
     getActiveToolNames: vi.fn((): string[] => ["read"]),

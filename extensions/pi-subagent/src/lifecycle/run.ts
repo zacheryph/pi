@@ -105,3 +105,27 @@ export class Run {
 export function joinPrompt(prompt: string, message: string): string {
   return `${prompt}\n\n${message}`;
 }
+
+/**
+ * The prompt of a run the work host asked for: work an idle agent waited on reported back.
+ *
+ * The messages themselves are already in the transcript, where the host wrote them, so the run
+ * "starts from the transcript as it stands". The roadmap preferred starting it with the newest
+ * message as the trigger (`sendCustomMessage(..., { triggerTurn: true })`, as the root does), and
+ * the turn-budget wrapper could drive that: the call returns when the run is over. A fixed
+ * prompt was chosen instead because the run waits for a concurrency slot:
+ *
+ *  - A trigger message is appended when the run starts, so while the run is queued it would
+ *    exist only in memory. A fixed prompt keeps the invariant that the transcript is the inbox:
+ *    the host writes every message at once, closes its item once the message is in the
+ *    transcript, and a crash or a stop while queued loses nothing.
+ *  - Messages that arrive while the run is queued are appended at once too, so they keep their
+ *    order; a held trigger would land after them.
+ *  - A message from the parent that joins the queued run (`Run.addMessage`) simply follows this
+ *    prompt, with no second mechanism for merging a trigger with a prompt.
+ *
+ * The cost is one short user message in the child's transcript per wake.
+ */
+export const WORK_WAKE_PROMPT =
+  "Work you were waiting on has reported back. The messages are above in your conversation. " +
+  "Handle them and continue your assignment.";

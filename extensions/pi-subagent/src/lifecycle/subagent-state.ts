@@ -385,6 +385,14 @@ export class SubagentState {
     this._outcome = outcome;
   }
 
+  /**
+   * The agent finished with no run: it went idle on open work, and the work ran out. Its end
+   * time is now, not the time its last run settled, since the wait is part of the assignment.
+   */
+  markFinishedWithoutRun(completedAt?: number): void {
+    this._completedAt = completedAt ?? Date.now();
+  }
+
   /** The run finished. Always sets result; the outcome is `completed` unless a stop came first. */
   markCompleted(result: string, completedAt?: number): void {
     this._result = result;

@@ -13,7 +13,13 @@ import type { SubagentHandoff } from "#src/lifecycle/child-lifecycle";
 import type { ReopenRefusal, ReopenSource } from "#src/lifecycle/cold-resume";
 import type { CreateSubagentSessionParams } from "#src/lifecycle/create-subagent-session";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
-import { type Admission, joinPrompt, Run, type RunInit } from "#src/lifecycle/run";
+import {
+  type Admission,
+  joinPrompt,
+  Run,
+  type RunInit,
+  WORK_WAKE_PROMPT,
+} from "#src/lifecycle/run";
 import type { SubagentSession, TurnLoopResult } from "#src/lifecycle/subagent-session";
 import {
   type DisplayStatus,
@@ -23,6 +29,7 @@ import {
 } from "#src/lifecycle/subagent-state";
 import type { TurnBudget } from "#src/lifecycle/turn-limits";
 import type { LifetimeUsage } from "#src/lifecycle/usage";
+import type { WorkItemView } from "../../../../packages/pi-work/src/index.ts";
 import { subscribeSubagentObserver } from "#src/observation/record-observer";
 import type { RunConfig } from "#src/runtime";
 import type {
@@ -54,6 +61,12 @@ export interface SubagentLifecycleObserver {
   onResumeQueued?(agent: Subagent): void;
   /** Fires once when a resumed run reaches a terminal state. */
   onResumeFinished?(agent: Subagent): void;
+  /**
+   * Fires when a run ended and the agent is idle with open work: it is waiting, not done. No
+   * completion is reported then. It fires again when the set of open items changes while the
+   * agent waits, so a display can name what is left.
+   */
+  onWaiting?(agent: Subagent): void;
   /** Fires when the running agent sends its parent a mid-run message. */
   onUpdateSent?(agent: Subagent, message: string): void;
   /** Fires on compaction events during the run. */
@@ -240,6 +253,34 @@ export class Subagent {
     return this.state.canBeSteered();
   }
 
+  /** What the agent waits on: the open items in its work host, oldest first. */
+  openWork(): readonly WorkItemView[] {
+    return this.subagentSession?.openWork() ?? [];
+  }
+  /**
+   * Whether any work is open. Such an agent keeps its session, whatever it is doing: the session
+   * is where the work lives and where its completion lands.
+   */
+  hasOpenWork(): boolean {
+    return this.openWork().length > 0;
+  }
+  /**
+   * A user stop calls off the work the agent waits on: its items close as cancelled, so nothing
+   * is reported lost if the agent is reopened. The session is released after (`abandonWork`),
+   * and its shutdown stops what the extensions run.
+   */
+  private cancelWork(): void {
+    if (this.subagentSession?.cancelWork()) this.workCancelled = true;
+  }
+
+  /**
+   * The labels of what an idle agent waits on (`CI`, `Fix the parser (general-purpose agent …)`).
+   * Empty when the agent is queued or running, or idle with no open work, which is done.
+   */
+  get waitingOn(): readonly string[] {
+    return this.status === "idle" ? this.openWork().map((item) => item.label) : [];
+  }
+
   /**
    * The run in flight, or the last one to start. Everything that belongs to one
    * execution lives on it and is replaced as a unit by `startRun`. Until the
@@ -269,6 +310,20 @@ export class Subagent {
   private released?: ReleasedSessionInfo;
   /** A reopened transcript must not share its session ID with a dying session. */
   private sessionRelease?: Promise<void>;
+
+  /**
+   * The last run ended and the agent went idle on open work, so its completion is still owed to
+   * the spawner. Cleared when another run is requested, when the work runs out, and by a stop.
+   * Waiting is derived (idle with open items); this only remembers that the agent has not
+   * reported yet.
+   */
+  private parked = false;
+  /** The record is being torn down for good (manager shutdown or clear): it starts no run. */
+  private disposing = false;
+  /** A stop cancelled open work: the session is released with it, though no item is left open. */
+  private workCancelled = false;
+  /** Work reported back as the run was ending: answer it in a run of its own right after. */
+  private wakeAfterRun = false;
 
   // Steer buffer — messages queued before the session is ready
   private _pendingSteers: string[] = [];
@@ -470,6 +525,9 @@ export class Subagent {
       // Release the previous run's listener handles before wiring this one's.
       previous.listeners.release();
       this.state.markQueued(Date.now());
+      this.parked = false;
+      this.wakeAfterRun = false;
+      this.workCancelled = false;
     }
     const body = () => this.execute(run);
     run.promise = admit ? admit(body) : body();
@@ -537,6 +595,12 @@ export class Subagent {
       agentId: this.id,
       cwd: this.cwd,
       ...(this.execution.handoff ? { handoff: this.execution.handoff } : {}),
+      // The child's work host asks this agent for runs, so every message that wakes the child
+      // goes through the manager's limiter and this agent's turn budget.
+      work: {
+        wake: () => this.requestWorkRun(),
+        changed: () => this.workChanged(),
+      },
       askParent: (question) => {
         this.state.setPendingQuestion(question);
       },
@@ -723,13 +787,102 @@ export class Subagent {
   /**
    * The turn loop returned. The harness ending it at its turn limit is the one
    * way a returned run is not complete: that ends the run for good, as aborted.
+   *
+   * A run that completed with work still open does not end the agent's assignment: the agent
+   * goes idle and waiting (`park`), and its completion is reported once the work is done.
    */
   private settle(run: Run, result: TurnLoopResult): void {
     if (this.current === run) {
       if (result.turnBudget.phase === "exhausted") this.state.markTurnLimit(result.responseText);
       else this.state.markCompleted(result.responseText);
+      if (this.shouldPark()) {
+        this.park(run);
+        return;
+      }
     }
     this.finish(run);
+    this.abandonWork(run);
+  }
+
+  /**
+   * Whether the run that just ended leaves the agent waiting rather than done.
+   *
+   * Only a run that completed on its own waits: a stop, a failure and the turn limit end the
+   * assignment, and `abandonWork` lets go of what it still held. A run that ended with a question
+   * reports now, with the question, as it always has: pi-ask's route to the parent is step 10's,
+   * and holding the question back until the work ran out would leave the parent unaware of it.
+   * Work reported back while the run was ending counts as open work.
+   */
+  private shouldPark(): boolean {
+    if (this.state.outcome !== "completed" || this.state.pendingQuestion !== undefined)
+      return false;
+    return this.wakeAfterRun || this.hasOpenWork();
+  }
+
+  /**
+   * The run ended with the agent idle on open work. No completion is reported, and the spawner's
+   * item stays open: the agent is waiting, and the host wakes it through the manager when a
+   * message arrives for it.
+   */
+  private park(run: Run): void {
+    run.listeners.release();
+    this.parked = true;
+    if (this.wakeAfterRun) {
+      // A message arrived as the run was ending and found no idle session to wake: answer it.
+      this.wakeAfterRun = false;
+      this.requestWorkRun();
+      return;
+    }
+    this.execution.observer?.onWaiting?.(this);
+  }
+
+  /**
+   * The work host has a message for this agent, already in its transcript: make sure a run
+   * answers it. Idle, that is a run through the limiter like any other, with a fixed prompt (see
+   * `WORK_WAKE_PROMPT` for why it is not the message). Queued, the run that waits will see the
+   * message. Running, the host's end-of-run boundary answers it in the same run, and a message
+   * that arrived as the run ended is answered by a run of its own right after.
+   */
+  private requestWorkRun(): void {
+    if (this.status === "running") {
+      this.wakeAfterRun = true;
+      return;
+    }
+    const session = this.subagentSession;
+    // A manager that is shutting down disposes the sessions one by one: a wake that arrives
+    // before this session's turn must not start a run in it.
+    if (this.disposing || this.status !== "idle" || !session) return;
+    this.resume(WORK_WAKE_PROMPT).catch((err: unknown) => debugLog("work wake", err));
+  }
+
+  /**
+   * The set of open items changed. An agent that went idle on its work and has now none left
+   * (the last item was cancelled, or lost) is done: report it. One that still waits is shown with
+   * what is left.
+   */
+  private workChanged(): void {
+    if (!this.parked || this.status !== "idle") return;
+    if (this.hasOpenWork()) {
+      this.execution.observer?.onWaiting?.(this);
+      return;
+    }
+    this.parked = false;
+    this.state.markFinishedWithoutRun();
+    this.finish(this.current);
+  }
+
+  /**
+   * A run that ended without completing leaves no one to answer the work the session still
+   * holds. Release the session, which shuts the child's extensions down and so stops whatever
+   * they run (jobs, agents of its own). After a failure the items stay open in the child's
+   * transcript, so if the agent is ever reopened it is told that the work was lost; after a stop
+   * they were already cancelled (`cancelWork`), so it is told nothing. Done after the run was
+   * reported, which still reads the live session.
+   */
+  private abandonWork(run: Run): void {
+    if (this.current !== run || this.state.outcome === "completed") return;
+    if (!this.hasOpenWork() && !this.workCancelled) return;
+    void this.releaseSession();
   }
 
   /**
@@ -746,6 +899,7 @@ export class Subagent {
       this.state.setPendingQuestion(undefined);
     }
     this.finish(run);
+    this.abandonWork(run);
   }
 
   /**
@@ -780,19 +934,42 @@ export class Subagent {
    * running one by firing its current run's AbortController. Each run has its
    * own controller, so the lever always reaches whichever run is in flight. A
    * stopped queued agent leaves the active set, so its scheduled thunk no-ops
-   * on begin()'s guard when its slot frees. Returns false when there was
-   * nothing to stop. Stopping cancels nothing else: an idle agent takes a new
-   * run at once.
+   * on begin()'s guard when its slot frees. An agent idle on open work (waiting)
+   * is stopped too, and its session released, which stops the work. Returns
+   * false when there was nothing to stop. An idle agent with nothing open takes
+   * a new run at once.
    */
   abort(): boolean {
     if (this.status === "queued") {
       this.state.stopQueued();
+      this.cancelWork();
       this.finish(this.current);
+      this.abandonWork(this.current);
       return true;
     }
+    if (this.status === "idle" && this.hasOpenWork()) return this.stopWaiting();
     if (!this.isRunning()) return false;
     this.current.abort.abort();
     this.state.markStopped();
+    this.cancelWork();
+    return true;
+  }
+
+  /**
+   * Stop an agent that is idle on open work: it is stopped with the outcome `stopped`, which
+   * reports to the spawner and ends the assignment, and its session is released so the work it
+   * waits on stops with it.
+   */
+  private stopWaiting(): boolean {
+    // Only an agent that has not reported owes its spawner the stop. One that reported with a
+    // question while work stayed open already did.
+    const owed = this.parked;
+    this.parked = false;
+    this.wakeAfterRun = false;
+    this.state.markStopped();
+    this.cancelWork();
+    if (owed) this.finish(this.current);
+    this.abandonWork(this.current);
     return true;
   }
 
@@ -822,6 +999,7 @@ export class Subagent {
    * swallowed so the caller's remaining cleanup still runs.
    */
   async disposeSession(): Promise<void> {
+    this.disposing = true;
     await disposeQuietly(this.subagentSession, "child session dispose");
     // A retention release already cleared subagentSession, but its shutdown
     // must finish before a reload can reopen the same transcript/session ID.

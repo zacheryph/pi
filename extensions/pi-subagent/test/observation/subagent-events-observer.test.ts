@@ -6,6 +6,7 @@ import type { AgentWork } from "#src/observation/subagent-work";
 import { SubagentEventsObserver } from "#src/observation/subagent-events-observer";
 import type { CompactionInfo } from "#src/types";
 import { createTestSubagent } from "#test/helpers/make-subagent";
+import { createSubagentSessionStub, openItem } from "#test/helpers/mock-session";
 
 function makeWork(): AgentWork {
   return {
@@ -74,6 +75,45 @@ describe("SubagentEventsObserver", () => {
       expect(manager.getEntries()).toHaveLength(count);
     },
   );
+
+  describe("onSubagentWaiting", () => {
+    function waitingRecord(labels: string[]) {
+      const record = createTestSubagent({ sessionReady: true, status: "completed" });
+      (
+        record.subagentSession as unknown as ReturnType<typeof createSubagentSessionStub>
+      ).openItems.push(...labels.map((label) => openItem(label)));
+      return record;
+    }
+
+    it("announces what the agent waits on, on its own channel", () => {
+      const { observer, emit } = makeObserver();
+      const record = waitingRecord(["CI", "review"]);
+      observer.onSubagentWaiting(record);
+      expect(emit).toHaveBeenCalledExactlyOnceWith("subagent:waiting", {
+        id: record.id,
+        type: record.type,
+        description: record.description,
+        reason: "CI, review",
+      });
+    });
+
+    it("persists the record, and reports nothing to the spawner: it is not done", () => {
+      const { observer, appendEntry, work } = makeObserver();
+      observer.onSubagentWaiting(waitingRecord(["CI"]));
+      expect(appendEntry).toHaveBeenCalledTimes(1);
+      expect(work.runEnded).not.toHaveBeenCalled();
+      expect(work.runRequested).not.toHaveBeenCalled();
+    });
+
+    it("lets the spawner's item see the run that ends the wait", () => {
+      const { observer, work } = makeObserver();
+      const record = waitingRecord(["CI"]);
+      observer.onSubagentWaiting(record);
+      observer.onSubagentResuming(record);
+      observer.onSubagentResumed(record);
+      expect(work.runEnded).toHaveBeenCalledTimes(1);
+    });
+  });
 
   describe("onSubagentStarted", () => {
     it("emits subagent:started with id, type, description", () => {

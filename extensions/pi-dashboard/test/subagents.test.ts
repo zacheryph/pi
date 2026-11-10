@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SubagentTracker } from "#src/subagents";
+import { SUBAGENT_CHANNELS, SubagentTracker } from "#src/subagents";
 
 describe("SubagentTracker", () => {
   it("follows an agent from queued through running to a result", () => {
@@ -106,5 +106,85 @@ describe("SubagentTracker", () => {
     expect(ids).toHaveLength(20);
     expect(ids).toContain("long-runner");
     expect(ids[0]).toBe("a24");
+  });
+});
+
+describe("a waiting agent", () => {
+  it("is idle on open work, named by its note, until its work reports back", () => {
+    let now = 100;
+    const tracker = new SubagentTracker(() => now);
+    tracker.apply("subagent:created", { id: "w", type: "Agent", description: "Review CI" });
+    tracker.apply("subagent:started", { id: "w" });
+    expect(tracker.apply("subagent:waiting", { id: "w", reason: "CI checks" })).toBe(true);
+    expect(tracker.section()?.agents[0]).toMatchObject({
+      id: "w",
+      state: "waiting",
+      note: "CI checks",
+      since: 100,
+    });
+
+    // What it waits on changed: the note follows.
+    now = 200;
+    tracker.apply("subagent:waiting", { id: "w", reason: "CI checks, review" });
+    expect(tracker.section()?.agents[0]?.note).toBe("CI checks, review");
+
+    // The work reported back: queued for a slot, running, then done.
+    tracker.apply("subagent:queued", { id: "w" });
+    expect(tracker.section()?.agents[0]).toMatchObject({ state: "queued" });
+    expect(tracker.section()?.agents[0]?.note).toBeUndefined();
+    tracker.apply("subagent:resuming", { id: "w" });
+    expect(tracker.section()?.agents[0]?.state).toBe("running");
+    tracker.apply("subagent:resumed", { id: "w", status: "completed", durationMs: 5 });
+    expect(tracker.section()?.agents[0]).toMatchObject({ state: "completed", durationMs: 5 });
+    expect(tracker.section()?.agents[0]?.note).toBeUndefined();
+  });
+
+  it("keeps waiting agents when trimming the oldest finished ones", () => {
+    const tracker = new SubagentTracker(() => 1);
+    tracker.apply("subagent:waiting", { id: "keep", reason: "CI" });
+    for (let i = 0; i < 25; i++) {
+      tracker.apply("subagent:started", { id: `f${i}`, type: "Agent", description: "x" });
+      tracker.apply("subagent:completed", { id: `f${i}`, status: "completed" });
+    }
+    const ids = tracker.section()?.agents.map((agent) => agent.id) ?? [];
+    expect(ids).toContain("keep");
+    expect(ids).toHaveLength(20);
+  });
+
+  it("has a note only when it says what it waits on, and clips and ignores junk", () => {
+    const tracker = new SubagentTracker(() => 1);
+    tracker.apply("subagent:waiting", { id: "w", reason: "x".repeat(1000) });
+    expect(tracker.section()?.agents[0]?.note?.length).toBeLessThanOrEqual(300);
+    tracker.apply("subagent:waiting", { id: "w", reason: 5 });
+    expect(tracker.section()?.agents[0]?.note).toBeUndefined();
+    expect(tracker.apply("subagent:waiting", { reason: "no id" })).toBe(false);
+  });
+});
+
+describe("a waiting agent's note", () => {
+  it("is cleared when it finishes without an error, as it is when it runs again", () => {
+    const tracker = new SubagentTracker(() => 1);
+    for (const [channel, data] of [
+      ["subagent:completed", { status: "completed" }],
+      ["subagent:resumed", { status: "completed" }],
+      ["subagent:failed", { status: "error" }],
+    ] as const) {
+      const id = channel;
+      tracker.apply("subagent:waiting", { id, reason: "CI" });
+      // The last item was cancelled: the agent finished with no run in between.
+      tracker.apply(channel, { id, ...data });
+      expect(tracker.section()?.agents.find((agent) => agent.id === id)?.note).toBeUndefined();
+    }
+  });
+
+  it("is replaced by the error of a failure", () => {
+    const tracker = new SubagentTracker(() => 1);
+    tracker.apply("subagent:waiting", { id: "f", reason: "CI" });
+    tracker.apply("subagent:failed", { id: "f", status: "error", error: "boom" });
+    expect(tracker.section()?.agents[0]).toMatchObject({ state: "failed", note: "boom" });
+  });
+
+  it("is followed on the bus: the dashboard subscribes to the waiting channel", () => {
+    expect(SUBAGENT_CHANNELS).toContain("subagent:waiting");
   });
 });

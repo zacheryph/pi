@@ -161,6 +161,12 @@ export function resolveRetentionWindow(
 
 /** Observer interface for agent lifecycle notifications. */
 export interface SubagentManagerObserver {
+  /**
+   * Fires when a run ended and the agent is idle on open work (waiting, not done), and again
+   * when the work it waits on changes. No completion is reported while it waits. Optional: a
+   * consumer that does not show waiting agents has no use for it.
+   */
+  onSubagentWaiting?(record: Subagent): void;
   onSubagentStarted(record: Subagent): void;
   /** Session ready, before first prompt: live viewers can subscribe without polling. */
   onSubagentSessionCreated?(record: Subagent): void;
@@ -289,6 +295,7 @@ export class SubagentManager {
       observer?.onSubagentSessionCreated?.(agent),
     );
     return {
+      onWaiting: guarded("onSubagentWaiting", (agent) => observer?.onSubagentWaiting?.(agent)),
       onStarted: (agent) => observer?.onSubagentStarted(agent),
       onSessionCreated: (agent) => {
         sessionCreated(agent);
@@ -553,10 +560,10 @@ export class SubagentManager {
   }
 
   /**
-   * Release the heavy session of any terminal agent past its retention window.
-   * The record (with its result) is retained for the session lifetime; only the
-   * live `AgentSession` is freed. `resolveRetentionWindow` owns which window
-   * applies.
+   * Release the heavy session of any terminal agent past its retention window,
+   * unless it still has open work. The record (with its result) is retained for
+   * the session lifetime; only the live `AgentSession` is freed.
+   * `resolveRetentionWindow` owns which window applies.
    */
   private sweep() {
     const policy = this.getRetentionPolicy?.() ?? DEFAULT_RETENTION_POLICY;
@@ -564,6 +571,10 @@ export class SubagentManager {
     for (const record of this.agents.values()) {
       if (record.isActive()) continue;
       if (!record.isSessionReady()) continue; // already released, or never had a session
+      // Open work lives in the session and its completion lands there: an agent waiting on a
+      // job, an agent of its own or a question keeps its session however long it waits. (Step
+      // 11 owns the full rule; this is the one condition correctness needs before it.)
+      if (record.hasOpenWork()) continue;
       const { referenceAt, windowMinutes } = resolveRetentionWindow(record, policy);
       // Fire-and-forget: the sweep runs on an interval with no one to await it,
       // and Subagent.releaseSession() already swallows a failing teardown.
@@ -574,11 +585,17 @@ export class SubagentManager {
   /**
    * Remove all completed/stopped/errored records immediately.
    * Called on session start/switch so tasks from a prior session don't persist.
+   *
+   * Like a running or queued agent, an agent waiting on open work stays. Disposing it here would
+   * be silent: it reports nothing, so the spawner's item for it would stay open for good and the
+   * widget and dashboard would keep showing it waiting. It ends the way every live agent does:
+   * its work completes and it reports, it is stopped (which reports), or the spawning session
+   * shuts down (`abortAll` then `dispose`).
    */
   async clearCompleted(): Promise<void> {
     const teardowns: Promise<void>[] = [];
     for (const [id, record] of this.agents) {
-      if (record.isActive()) continue;
+      if (record.isActive() || record.hasOpenWork()) continue;
       teardowns.push(this.removeRecord(id, record));
     }
     await Promise.all(teardowns);

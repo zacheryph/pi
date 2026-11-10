@@ -19,6 +19,7 @@ export type WatchAgent = Pick<
   | "description"
   | "status"
   | "outcome"
+  | "waitingOn"
   | "responseText"
   | "result"
   | "error"
@@ -99,7 +100,7 @@ export class WatchOverlay implements SubagentManagerObserver {
       };
     });
     for (const record of this.manager.listAgents()) {
-      if (record.status === "running" || record.status === "queued") {
+      if (record.status === "running" || record.status === "queued" || isWaiting(record)) {
         const watched = this.track(record);
         if (watched && record.responseText) watched.tail.note(record.responseText, "text");
         this.subscribe(record);
@@ -132,6 +133,19 @@ export class WatchOverlay implements SubagentManagerObserver {
   }
   onSubagentSessionCreated(record: WatchAgent): void {
     this.subscribe(record);
+    this.refresh();
+  }
+  /**
+   * A run ended with work open: the agent is waiting, not finished. Its section stays (no linger
+   * clock, no unsubscribe) until the work is done and the run that finishes it ends.
+   */
+  onSubagentWaiting(record: WatchAgent): void {
+    const watched = this.track(record);
+    if (watched) {
+      watched.finishedAt = undefined;
+      this.subscribe(record);
+    }
+    this.scheduleExpiry();
     this.refresh();
   }
   onSubagentCompleted(record: WatchAgent): void {
@@ -211,7 +225,8 @@ export class WatchOverlay implements SubagentManagerObserver {
       .map(({ record, tail }) => ({
         id: record.id,
         label: `${getDisplayName(record.type, this.registry)}: ${record.description}`,
-        status: displayStatus(record.status, record.outcome),
+        status: isWaiting(record) ? "waiting" : displayStatus(record.status, record.outcome),
+        waitingOn: record.waitingOn,
         blocks: tail.visibleBlocks(this.settings.overlayShowThinking ?? true),
       }));
   }
@@ -312,6 +327,13 @@ export class WatchOverlay implements SubagentManagerObserver {
   }
 }
 
+/** An idle agent with open work. */
+function isWaiting(record: WatchAgent): boolean {
+  return record.status === "idle" && record.waitingOn.length > 0;
+}
+
 function priority(record: WatchAgent): number {
-  return record.status === "running" ? 0 : record.status === "queued" ? 1 : 2;
+  if (record.status === "running") return 0;
+  if (isWaiting(record)) return 1;
+  return record.status === "queued" ? 2 : 3;
 }

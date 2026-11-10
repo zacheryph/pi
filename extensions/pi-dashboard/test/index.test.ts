@@ -325,6 +325,29 @@ describe("pi-dashboard extension", () => {
     });
   });
 
+  it("follows a subagent that goes idle on open work (subagent:waiting) to its completion", async () => {
+    const env = setup({ detectTerminal: () => undefined });
+    const fake = load(env.deps);
+    const ctx = fakeCtx();
+    onCleanup(() => quit(fake, ctx));
+    await fake.emit("session_start", { reason: "startup" }, ctx);
+    const agentOf = async (state: string) =>
+      waitFor(async () => {
+        const [current] = await env.sessions();
+        const agent = (
+          current?.subagents as { agents: Array<{ state: string; note?: string }> } | undefined
+        )?.agents[0];
+        return agent?.state === state ? agent : undefined;
+      });
+
+    fake.publish("subagent:started", { id: "w", type: "Agent", description: "Review CI" });
+    fake.publish("subagent:waiting", { id: "w", reason: "CI checks" });
+    expect(await agentOf("waiting")).toMatchObject({ note: "CI checks" });
+    fake.publish("subagent:completed", { id: "w", status: "completed" });
+    const done = await agentOf("completed");
+    expect(done.note).toBeUndefined();
+  });
+
   it("answers stash preview and task history requests, and lists recent tool calls", async () => {
     const env = setup({ detectTerminal: () => undefined });
     const fake = load(env.deps);

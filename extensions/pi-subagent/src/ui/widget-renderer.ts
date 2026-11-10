@@ -25,6 +25,11 @@ export interface WidgetAgent {
   readonly id: string;
   readonly type: SubagentType;
   readonly status: DisplayStatus;
+  /**
+   * What an idle agent waits on (the labels of its open work). A non-empty list makes the agent
+   * waiting rather than done, whatever `status` says about its last run.
+   */
+  readonly waitingOn?: readonly string[];
   readonly description: string;
   readonly toolUses: number;
   readonly startedAt: number;
@@ -44,9 +49,25 @@ function singleLine(text: string): string {
   return sanitizeLine(text).replace(/\s+/g, " ").trim();
 }
 
-/** Queued agents have not started; finished durations stay fixed while lingering. */
+/**
+ * Whether the agent is waiting: idle (no run queued or running) on open work. Derived, never
+ * stored: the same agent is done once its work is.
+ */
+export function isWaiting(agent: Pick<WidgetAgent, "status" | "waitingOn">): boolean {
+  return agent.status !== "running" && agent.status !== "queued" && !!agent.waitingOn?.length;
+}
+
+/**
+ * Queued and waiting agents are not running, and no timer advances them, so they show no clock;
+ * finished durations stay fixed while lingering.
+ */
 function elapsedLabel(agent: WidgetAgent, now: number): string {
-  if (agent.status === "queued" || !Number.isFinite(agent.startedAt) || agent.startedAt <= 0)
+  if (
+    agent.status === "queued" ||
+    isWaiting(agent) ||
+    !Number.isFinite(agent.startedAt) ||
+    agent.startedAt <= 0
+  )
     return "--:--";
   const seconds = Math.max(0, Math.floor(((agent.completedAt ?? now) - agent.startedAt) / 1000));
   return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
@@ -67,6 +88,10 @@ function statusLine(agent: WidgetAgent, spinnerFrame: number, max: number): Line
       { text: spinner, tone: "accent" },
       { text: clipped.slice(spinner.length), tone: "muted" },
     ];
+  }
+  if (isWaiting(agent)) {
+    const labels = (agent.waitingOn ?? []).map(singleLine).filter(Boolean).join(", ");
+    return { text: fit(`waiting: ${labels || "work"}`), tone: "muted" };
   }
   if (agent.status === "queued") return { text: fit(`${ICONS.queued} queued`), tone: "dim" };
   if (wrappedUpAtTurnLimit(agent))
@@ -90,7 +115,7 @@ function agentRow(
 ): WidgetRow {
   // Decisions use the inset content width, as before the shared renderer.
   const content = Math.max(0, width - 2);
-  const active = isActiveStatus(agent.status);
+  const active = isActiveStatus(agent.status) || isWaiting(agent);
   const name = singleLine(getDisplayName(agent.type, registry));
   const left: Span[] = [];
   if (content >= 40) left.push({ text: elapsedLabel(agent, now), tone: "dim" }, "  ");
@@ -100,7 +125,7 @@ function agentRow(
     left,
     // Below 12 columns the task keeps the row; the status is dropped.
     right: content < 12 ? [] : [statusLine(agent, spinnerFrame, Math.floor(content * 0.4))],
-    group: agent.status === "running" ? "running" : "finished",
+    group: agent.status === "running" ? "running" : isWaiting(agent) ? "waiting" : "finished",
   };
 }
 
@@ -118,8 +143,8 @@ export function widgetLineBudget(terminalRows: number): number {
 }
 
 /**
- * Pure widget rendering. Running > lingering finished, one row each. Queued
- * agents get no rows; they are counted on the title bar.
+ * Pure widget rendering. Running > waiting > lingering finished, one row each. A waiting agent
+ * stays until its work is done. Queued agents get no rows; they are counted on the title bar.
  */
 export function renderWidgetLines(params: {
   agents: readonly WidgetAgent[];
@@ -143,21 +168,23 @@ export function renderWidgetLines(params: {
   if (width === 0) return [];
 
   const running = agents.filter((agent) => agent.status === "running");
+  const waiting = agents.filter(isWaiting);
   const queuedCount = agents.filter((agent) => agent.status === "queued").length;
   const finished = agents.filter(
     (agent) =>
       !isActiveStatus(agent.status) &&
+      !isWaiting(agent) &&
       agent.completedAt != null &&
       shouldShowFinished(agent.id, agent.status),
   );
-  const ordered = [...running, ...finished];
+  const ordered = [...running, ...waiting, ...finished];
   if (ordered.length === 0 && queuedCount === 0) return [];
 
   const now = Date.now();
   return renderWidget(
     {
       title: { label: "Subagents", icon: ICONS.agents },
-      active: running.length + queuedCount > 0,
+      active: running.length + queuedCount + waiting.length > 0,
       // Queued agents take no rows; their count rides the title bar.
       meta: queuedCount > 0 ? [{ text: `${queuedCount} queued`, tone: "dim" }] : [],
       rows: ordered.map((agent) => agentRow(agent, registry, spinnerFrame, width, now)),

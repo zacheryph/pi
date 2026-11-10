@@ -1,12 +1,15 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
-import { expect, it, vi } from "vitest";
+import { expect, it, onTestFinished, vi } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
+import { ConcurrencyLimiter } from "#src/lifecycle/concurrency-limiter";
+import { createSubagentSession } from "#src/lifecycle/create-subagent-session";
+import { SubagentManager } from "#src/lifecycle/subagent-manager";
 import {
   EXTENSIONS,
   offlineAgentDir,
-  realChildSession,
+  realChildDeps,
   BUILTIN_TOOLS,
   TODO_TOOLS,
   SUBAGENT_TOOLS,
@@ -19,18 +22,32 @@ import { toolCall } from "../../../packages/pi-test-helpers/src/faux-session.ts"
 
 // Scripted model responses exercise the real SDK, extensions, todo journals,
 // nested worker creation, and messaging a settled worker. This tests capabilities, not model judgment.
+//
+// The orchestrator is a managed child: an agent of a `SubagentManager`, which runs it, gives it its
+// work host and wakes it through the limiter. It used to be a bare session that a worker's
+// completion woke by starting a run of its own (the unmanaged behaviour of a child before roadmap
+// step 9); that no longer happens, so the test drives the run the way production does.
 it("a child orchestrator tracks work, delegates an implementation, and recalls the same worker", async () => {
   const dir = offlineAgentDir({ extensions: [EXTENSIONS.subagent, EXTENSIONS.todo] });
   const registry = new AgentTypeRegistry(() => new Map());
   const parentTools = [...BUILTIN_TOOLS, ...TODO_TOOLS, ...SUBAGENT_TOOLS];
-  const { session: orchestrator, faux } = await realChildSession(dir, {
+  const { faux, snapshot, deps } = await realChildDeps(dir, {
     type: "orchestrate",
     provider: "orchestrator-test",
     parentTools,
     systemPrompt: `PROJECT BASE\nCurrent working directory: ${dir}`,
     registry,
   });
-  expect(orchestrator.session.getActiveToolNames()).toEqual(expect.arrayContaining(parentTools));
+  const manager = new SubagentManager({
+    registry,
+    limiter: new ConcurrencyLimiter(() => 4),
+    createSubagentSession: (params) => createSubagentSession(params, deps),
+  });
+  onTestFinished(() => manager.dispose());
+  const agentId = manager.spawn(snapshot, "orchestrate", "Coordinate the artifact project.", {
+    description: "Coordinate the artifact project",
+  });
+  const record = manager.getRecord(agentId)!;
   let workerId: string | undefined;
   let workerTools: string[] = [];
   let workerSawRationale = false;
@@ -54,7 +71,9 @@ it("a child orchestrator tracks work, delegates an implementation, and recalls t
       fauxAssistantMessage("Worker started; waiting for its completion."),
       (context) => {
         workerId = agentIdIn(lastResult(context, "subagent_start"));
-        firstCompletion = text(context.messages.at(-1));
+        // The completion is a message in the transcript, followed by the prompt that starts the
+        // run the manager gave the waiting orchestrator (it used to be the run's own trigger).
+        firstCompletion = text(context.messages.slice(-2));
         return toolCall("todo_upsert", {
           tasks: [{ key: "implement", description: `Owner: ${workerId}; follow up on rationale` }],
         });
@@ -99,9 +118,15 @@ it("a child orchestrator tracks work, delegates an implementation, and recalls t
       },
     ],
   });
-  await orchestrator.runTurnLoop("Coordinate the artifact project.", {});
-  // Both completion messages wake the orchestrator; it is done once its last reply is given.
+  // The orchestrator ends its turn with a worker running: idle and waiting, then woken by each
+  // completion through the manager. It is done once its last reply is given.
+  await record.promise;
   await vi.waitFor(() => expect(queues.parent).toHaveLength(0), { timeout: 15_000 });
+  await vi.waitFor(() => expect(record.status === "idle" && !record.hasOpenWork()).toBe(true), {
+    timeout: 15_000,
+  });
+  const orchestrator = record.subagentSession!;
+  expect(orchestrator.session.getActiveToolNames()).toEqual(expect.arrayContaining(parentTools));
   await orchestrator.session.waitForIdle();
   expect(workerTools).toContain("write");
   for (const name of ["subagent_start", "subagent_get", "subagent_send"])

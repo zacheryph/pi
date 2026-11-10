@@ -16,6 +16,7 @@ import {
   renderSendUnavailable,
   renderStatusNote,
 } from "#src/observation/outcome-delivery";
+import { sanitizeLine } from "../../../../packages/pi-ui/src/index.ts";
 
 /** The data a subagent_get report renders from — only what the formatter reads. */
 export interface AgentReport {
@@ -36,6 +37,8 @@ export interface AgentReport {
   turnBudget?: TurnBudget;
   /** Whether the agent was stopped before the limiter ever admitted it. */
   stoppedWhileQueued: boolean;
+  /** What an idle agent waits on (the labels of its open work); empty or absent when nothing. */
+  waitingOn?: readonly string[];
   /** Present only when verbose was requested and a conversation is available. */
   conversation?: string;
   /** Persisted transcript path; rendered as a pointer so the parent can read it directly. */
@@ -74,11 +77,26 @@ export function renderReportBody(report: AgentReport): string {
   return renderOutcomeBody(report);
 }
 
+/** A label on one line: a child's own text must not break the header or carry terminal codes. */
+function oneLine(label: string): string {
+  return sanitizeLine(label).replace(/\s+/g, " ").trim();
+}
+
+/**
+ * The status the header names. An idle agent with open work is waiting, not done: it says what
+ * for, and that it needs nothing until that reports back.
+ */
+function renderStatus(report: AgentReport): string {
+  if (report.waitingOn?.length)
+    return `waiting: ${report.waitingOn.map(oneLine).filter(Boolean).join(", ")} (idle; it wakes when the work reports back, and its completion message follows)`;
+  return `${report.status}${renderStatusNote(report)}`;
+}
+
 /** Assemble the full subagent_get report text. */
 export function formatAgentReport(report: AgentReport): string {
   let output =
     `Agent: ${report.id}\n` +
-    `Type: ${report.displayName} | Status: ${report.status}${renderStatusNote(report)} | ${renderStatsParts(report).join(" | ")}\n` +
+    `Type: ${report.displayName} | Status: ${renderStatus(report)} | ${renderStatsParts(report).join(" | ")}\n` +
     (report.model ? `Model: ${report.model}\n` : "") +
     `Description: ${report.description}\n\n`;
   output += renderReportBody(report);

@@ -26,7 +26,10 @@ import { clearSlots, slots } from "../../../../packages/pi-test-helpers/src/glob
 import { tempDir, writeFiles } from "../../../../packages/pi-test-helpers/src/temp.ts";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import { createChildLifecyclePublisher } from "#src/lifecycle/child-lifecycle";
-import { createSubagentSession } from "#src/lifecycle/create-subagent-session";
+import {
+  createSubagentSession,
+  type SubagentSessionDeps,
+} from "#src/lifecycle/create-subagent-session";
 import { buildAgentPrompt } from "#src/session/prompts";
 import { LIFECYCLE_LOG } from "../fixtures/lifecycle-recorder.ts";
 
@@ -37,6 +40,7 @@ export const EXTENSIONS = {
   stash: resolve(import.meta.dirname, "../../../pi-stash/src/index.ts"),
   todo: resolve(import.meta.dirname, "../../../pi-todo/src/index.ts"),
   lifecycleRecorder: resolve(import.meta.dirname, "../fixtures/lifecycle-recorder.ts"),
+  fastJobs: resolve(import.meta.dirname, "../fixtures/fast-jobs.ts"),
 };
 
 /** The built-in tools a parent session has. */
@@ -94,59 +98,74 @@ export interface RealChildOptions {
 }
 
 /**
- * A child session of `type`, created as pi-subagent creates one, in the agent
- * directory `dir` (see `offlineAgentDir`). Disposed when the test ends, or
- * earlier by the test; a second dispose does nothing.
+ * What a real child needs to be created as pi-subagent creates one, in the agent directory `dir`
+ * (see `offlineAgentDir`): the faux provider, the parent snapshot to spawn under, and the
+ * `createSubagentSession` dependencies on real session, settings and resource-loader factories.
  */
-export async function realChildSession(dir: string, options: RealChildOptions) {
+export async function realChildDeps(dir: string, options: RealChildOptions) {
   const { faux, modelRuntime: runtime } = await fauxRuntime({
     dir,
     provider: options.provider,
     models: options.models ?? [{ id: "coordinator" }],
   });
   const parentTools = options.parentTools ?? [...BUILTIN_TOOLS, ...SUBAGENT_TOOLS];
+  const snapshot = {
+    cwd: dir,
+    systemPrompt: options.systemPrompt ?? "PROJECT BASE",
+    model: faux.getModel(),
+    modelRegistry: new ModelRegistry(runtime),
+  };
+  const deps: SubagentSessionDeps = {
+    registry: options.registry ?? new AgentTypeRegistry(() => new Map()),
+    exec: vi.fn(),
+    lifecycle: createChildLifecyclePublisher(() => {}),
+    resolvePromptInheritance: () => "full",
+    listParentToolNames: () => parentTools,
+    io: {
+      detectEnv: async () => ({ isGitRepo: false, branch: "", platform: "linux" }),
+      getAgentDir: () => dir,
+      deriveSessionDir: () => join(dir, "sessions"),
+      createSessionManager: (cwd, sessionDir) => SessionManager.create(cwd, sessionDir),
+      openSessionManager: (path, cwd) => SessionManager.open(path, undefined, cwd),
+      createSettingsManager: (cwd, agentDir) => SettingsManager.create(cwd, agentDir),
+      createLoaderSettingsManager: (settings) => settings,
+      createResourceLoader: (loaderOptions) =>
+        new DefaultResourceLoader({ ...loaderOptions, noSkills: true }),
+      createSession: async ({
+        sessionManager,
+        resourceLoader,
+        modelRegistry: _registry,
+        ...rest
+      }) =>
+        createAgentSession({
+          ...rest,
+          sessionManager: sessionManager as SessionManager,
+          resourceLoader: resourceLoader as ResourceLoader,
+          modelRuntime: runtime,
+        }),
+      assemblerIO: { buildAgentPrompt, loadProjectContext: () => undefined },
+    },
+  };
+  return { faux, runtime, snapshot, deps };
+}
+
+/**
+ * A child session of `type`, created as pi-subagent creates one, in the agent
+ * directory `dir` (see `offlineAgentDir`). Disposed when the test ends, or
+ * earlier by the test; a second dispose does nothing.
+ *
+ * Nobody manages it: no agent drives its runs or wakes it. A test that needs a
+ * child to wait and wake spawns it through a `SubagentManager` instead.
+ */
+export async function realChildSession(dir: string, options: RealChildOptions) {
+  const { faux, runtime, snapshot, deps } = await realChildDeps(dir, options);
   const session = await createSubagentSession(
     {
       type: options.type,
       ...(options.pinModel ? { model: faux.getModel() } : {}),
-      snapshot: {
-        cwd: dir,
-        systemPrompt: options.systemPrompt ?? "PROJECT BASE",
-        model: faux.getModel(),
-        modelRegistry: new ModelRegistry(runtime),
-      },
+      snapshot,
     },
-    {
-      registry: options.registry ?? new AgentTypeRegistry(() => new Map()),
-      exec: vi.fn(),
-      lifecycle: createChildLifecyclePublisher(() => {}),
-      resolvePromptInheritance: () => "full",
-      listParentToolNames: () => parentTools,
-      io: {
-        detectEnv: async () => ({ isGitRepo: false, branch: "", platform: "linux" }),
-        getAgentDir: () => dir,
-        deriveSessionDir: () => join(dir, "sessions"),
-        createSessionManager: (cwd, sessionDir) => SessionManager.create(cwd, sessionDir),
-        openSessionManager: (path, cwd) => SessionManager.open(path, undefined, cwd),
-        createSettingsManager: (cwd, agentDir) => SettingsManager.create(cwd, agentDir),
-        createLoaderSettingsManager: (settings) => settings,
-        createResourceLoader: (loaderOptions) =>
-          new DefaultResourceLoader({ ...loaderOptions, noSkills: true }),
-        createSession: async ({
-          sessionManager,
-          resourceLoader,
-          modelRegistry: _registry,
-          ...rest
-        }) =>
-          createAgentSession({
-            ...rest,
-            sessionManager: sessionManager as SessionManager,
-            resourceLoader: resourceLoader as ResourceLoader,
-            modelRuntime: runtime,
-          }),
-        assemblerIO: { buildAgentPrompt, loadProjectContext: () => undefined },
-      },
-    },
+    deps,
   );
   const dispose = session.dispose.bind(session);
   let disposed: Promise<void> | undefined;

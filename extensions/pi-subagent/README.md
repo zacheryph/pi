@@ -91,6 +91,12 @@ after the activity/outcome indicator. The header rule remains full-width.
 Queued agents take no rows; their count is right-aligned on the title bar. Finished agents show their outcome briefly,
 with a fixed elapsed duration and the original linger policy.
 
+An idle agent with open work (a job it started, an agent of its own) is **waiting**, not done: its row reads
+`waiting: CI`, shows no clock (`--:--`), sits between the running and the finished agents, and stays until the work
+is done. The status bar counts it (`1 running, 2 waiting agents`), and the watch overlay, `subagent_get`, the roster
+and the dashboard show it the same way. Waiting is derived from the agent's open work, never stored. See
+[Waiting for work](#waiting-for-work).
+
 Task and status columns are truncated by terminal-cell width, including ANSI and
 wide Unicode text. Narrow terminals omit elapsed time and the prompt-mode tag.
 A height cap prioritizes running, then finished agents; overflow is
@@ -408,6 +414,24 @@ Because that agent never started, the notification says so and offers no result 
 
 A run that `subagent_send` starts for an idle agent goes through the same limit as a first run. With a slot free it starts at once; with every slot taken, the call returns "Agent resume queued in background", `subagent:queued` is emitted, the widget and the dashboard show the agent as queued again, and the run starts when a slot opens. A message sent to an agent that is still queued joins its waiting run. Stopping a queued run leaves the agent as it was after a stop: idle, and open to another message.
 
+## Waiting for work
+
+Every child session has its own work host (`work:v1`, [pi-work](../../packages/pi-work/README.md)), offered under the child's session id before its extensions bind.
+A job the child starts (`job_start`, `job_watch`), an agent it starts itself (a child orchestrator's workers) and, later, a question to its parent are items in that host.
+The host writes what they report into the child's transcript; it never starts a run by itself.
+
+When a run **completes** with items still open, the agent is idle and **waiting** instead of done:
+
+- Nothing is reported to its spawner yet: the completion message comes once the agent is idle with no open work. The widget shows `waiting: <labels>`, `subagent:waiting` is emitted (`id`, `type`, `description`, `reason`: the labels), and the agent stays visible with no clock until the work is done.
+- When an item completes, its message is written into the child's transcript and the agent is asked for a run. The run goes through the concurrency limit like every other (`subagent:queued` while it waits, then `subagent:resuming`), with a fixed short prompt after the messages, so the transcript stays the inbox and a message that arrives while the run waits for a slot keeps its place. A message from the parent (`subagent_send`) joins that run's prompt.
+- If the run ends with the work still open (another job is running) the agent waits again; when nothing is left, it is done and its completion message is the last run's answer.
+- A message that reaches a running child is appended at the end of its turn and answered in the same run.
+- A waiting agent takes `subagent_send` like any idle agent. Stopping it (or ESC at the parent) stops it, reports `stopped`, and releases its session, which stops the work inside it.
+- A run that ends in an error, at the turn limit or by a stop does not wait: the assignment is over, the session is released, and the items stay open in the child's transcript, so a reopened agent is told the work was lost. A run that ends with a question reports it at once, as always, and keeps its session while work is open.
+- The retention sweep never releases the session of an agent with open work, however long it waits.
+
+Nested delegation needs nothing more: the agents a child starts are items in the child's host, so a child orchestrator that ends its turn with a worker running waits, and the worker's completion wakes it.
+
 ## Child session lifecycle
 
 A child session runs in the parent's process but is a full Pi session with its own extension set.
@@ -418,7 +442,7 @@ It receives the standard pair of session lifecycle events:
 | `session_start`    | Extensions are bound, before the child's first turn | `"startup"`, or `"resume"` when its transcript was reopened |
 | `session_shutdown` | The child session is disposed                       | `"quit"`                                                    |
 
-Disposal happens when the retention window for a finished agent expires, when the in-memory records of finished agents are cleared at session start or switch, when the parent session shuts down, or when child extension binding fails partway.
+Disposal happens when the retention window for a finished agent with no open work expires, when the in-memory records of finished agents are cleared at session start or switch, when the parent session shuts down, or when child extension binding fails partway.
 Clearing them loses no history: the session keeps every agent's saved record (see [Saved records and the roster card](#saved-records-and-the-roster-card)).
 It does **not** happen the moment an agent finishes: the session is retained so a resume is cheap, per the `consumedSessionRetentionMinutes` and `unconsumedSessionRetentionMinutes` settings above. A released agent still takes `subagent_send`, which reopens its transcript, at the cost of rebuilding the session.
 
@@ -445,6 +469,7 @@ Until it lists them with `subagent_get` (no `agent_id`), each request ends with 
 ```text
 Subagents started by this session (restored after compaction; subagent_get <id> for details, subagent_send <id> to give an idle one more work):
 - 9a8b7c implementer "Migrate session store": waiting for your answer: "Postgres or SQLite?"
+- 5e6f7a reviewer "Review CI": waiting: CI checks
 - d4e5f6 review "Review roadmap step 3": running
 - a1b2c3 implementer "Add token refresh": idle, last run completed 14:10
 - 77e0aa explorer "Map auth call sites": idle, last run failed: turn budget exhausted
@@ -467,6 +492,7 @@ Agent lifecycle events are emitted via `pi.events.emit()` so other extensions ca
 | `subagent:completed`        | Agent finished successfully                                                      | `id`, `type`, `status`, `turnBudget`, `durationMs`, `tokens` (lifetime `{ input, output, total }`), `toolUses`, `result` |
 | `subagent:failed`           | Agent errored, stopped, or aborted                                               | same as completed + `error`, `status`                                                                                    |
 | `subagent:queued`           | A message gave an idle agent a run that waits for a slot                         | `id`, `type`, `description`                                                                                              |
+| `subagent:waiting`          | A run ended with open work: the agent is idle and waiting, not done              | `id`, `type`, `description`, `reason` (the labels of what it waits on); again when that changes                          |
 | `subagent:resuming`         | An idle agent's new run started (also an agent's first run started by a message) | `id`, `type`, `description`                                                                                              |
 | `subagent:resumed`          | That run reached a terminal state (completed/error)                              | same as completed + `error`, `status` (`buildEventData` shape) — `status`/`error` discriminate                           |
 | `subagent:steered`          | Message delivered to a running agent, or added to a queued agent's waiting run   | `id`, `message`                                                                                                          |

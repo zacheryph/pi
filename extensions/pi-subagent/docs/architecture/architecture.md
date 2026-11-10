@@ -248,18 +248,21 @@ stateDiagram-v2
     running --> idle : run ended — outcome completed, turn-limit or error
     running --> idle : abort() — outcome stopped
     idle --> queued : resume (every run goes through the limiter)
+    idle --> queued : the work host wakes it (a message for its open work)
+    idle --> idle : abort() while waiting — outcome stopped, open items cancelled
     idle --> [*]
 
     note right of idle
         the last run's outcome is stored beside the status:
         completed, turn-limit, error, stopped or interrupted
         a run winding down after abort() keeps outcome stopped
+        idle with open work is WAITING, idle with none is DONE (derived, not stored)
     end note
 ```
 
 An agent is `queued` while a run waits for a concurrency slot (the first run and every later run alike), `running` while a run is active, and `idle` when it has no run.
 How the last run ended is its `outcome`, recorded beside the status together with the run's `result` and `error`: `completed`, `turn-limit` (the harness stopped it at the turn ceiling), `error`, `stopped` (an `abort()`), or `interrupted` (a record read back from storage that still said queued or running).
-An idle agent of any outcome accepts a new run; a stop ends the run and cancels nothing else.
+An idle agent of any outcome accepts a new run; a stop ends the run (and, for an agent waiting on work, cancels that work, see below).
 
 The status and outcome are the model; the words users and subscribers see are derived from them by `displayStatus` in `subagent-state.ts`: `completed`, `aborted` (outcome `turn-limit`), `stopped` (`stopped` and `interrupted`), `error`, or the status itself while queued or running.
 Tool output, the widget, the watch overlay, the completion message and its details, and the `status` field of the lifecycle events still use these six words.
@@ -283,6 +286,23 @@ A run a message starts is admitted exactly like a first run.
 With a free slot the run begins synchronously, so no extra event is sent.
 With every slot taken the run waits: `onResumeQueued` fires (the session record is saved as `queued`, `subagent:queued` is emitted, the widget counts it, and the `subagent_send` call says "Agent resume queued in background" with the queue position), and `onResumeStarted` (the `subagent:resuming` event) follows when the slot opens.
 Stopping a queued run leaves the agent idle with outcome `stopped`; its place in the limiter's queue is spent harmlessly, because a run only begins if it is still the current one.
+
+### Waiting: idle on open work
+
+Every child session has a managed `work:v1` host (`lifecycle/child-work.ts`, built with `packages/pi-work`'s `createWorkHost`), offered under the child's session id before its extensions bind.
+A job the child starts and an agent it starts itself are items in it; the host stores them as custom entries in the child's own session file and writes every message they report into the child's transcript at once (`triggerTurn: false`). It never starts a run itself.
+
+Waiting is **derived**, never stored: an `idle` agent with open items (`Subagent.waitingOn`, the items' labels) is waiting, one without is done.
+`Subagent.settle` applies it when a run ends:
+
+- A run that **completed** with open work _parks_. No completion is reported and the spawner's item stays open; the observer's `onWaiting` fires (`subagent:waiting`, persisted). A pending question is the exception: it reports at once, as always, and the agent keeps its session.
+- A run that failed, hit its turn limit or was stopped does not wait. A failure or the turn limit releases the session (stopping the work inside it) and leaves the items open in the child's transcript, so a reopened agent is told they were lost.
+- A message for an idle child makes the host call `ChildWorkPolicy.wake`, i.e. `Subagent.requestWorkRun`. That is a `resume` with a fixed prompt, admitted through the limiter like every run (queued, a second wake changes nothing; running, the message is answered in that run, or by one right after if it arrived as the run ended). A record being torn down starts no run.
+- The last item going away without a message (`ChildWorkPolicy.changed`, from the host's `onChange`) while the agent waits finishes it: its end time is re-stamped and it reports then.
+- **Stop cancels the work.** `abort()` of a waiting agent, of one queued or running for its work, and ESC at the spawner, close the agent's open items as cancelled (`ChildWork.cancelOpen`, no `work:lost` on reopen) and release its session, so the extensions' shutdown stops the jobs. The agent is idle with outcome `stopped`.
+- **Retention.** The sweep never releases the session of an agent with open work, and `clearCompleted` leaves such an agent alone like a running one; it ends when its work reports back, when it is stopped, or when the spawning session shuts down.
+
+The widget, status bar, roster, watch overlay, `subagent_get` and the dashboard show a waiting agent as `waiting: <labels>`, with no clock.
 
 ### One state rule for a message
 
@@ -382,6 +402,7 @@ src/
 │   └── session-dir.ts              session directory derivation
 │
 ├── lifecycle/                      agent execution and state tracking
+│   ├── child-work.ts               the child's managed `work:v1` host: the child's session file as its store, messages written into the transcript at once, a wake request to the agent for an idle child (never a run of its own), `cancelOpen` for a stop
 │   ├── subagent-manager.ts         collection manager + observer wiring + session-retention sweep (consumption-aware; an unanswered question holds the safety cap); the send choke point (`send`), refusing from the record's own predicate and reporting a discriminated outcome, so every front door declines the same messages; a run it starts begins synchronously and returns before the run ends, because every door is a background door
 │   ├── create-subagent-session.ts  assembly factory: MCP pattern expansion, Pi built-in selection, session creation, spawn-tool denylist, core child-tool install, binding
 │   ├── subagent-session.ts         born-complete child session: turn loop, steer, shutdown-then-dispose teardown
@@ -517,6 +538,7 @@ The core emits events on `pi.events` that any extension can observe:
 | `subagent:started`   | `{ id, type, description }`                                                                      | Agent begins running                                                                      |
 | `subagent:completed` | `{ id, type, description, status, turnBudget?, result?, error?, toolUses, durationMs, tokens? }` | Agent finishes successfully                                                               |
 | `subagent:failed`    | same as `completed` (`buildEventData` shape)                                                     | Agent ends in `error`/`stopped`/`aborted`                                                 |
+| `subagent:waiting`   | `{ id, type, description, reason }`                                                              | A run ended with open work: idle and waiting, not done; again when the work changes       |
 | `subagent:resuming`  | `{ id, type, description }`                                                                      | A resume starts, from either front door                                                   |
 | `subagent:resumed`   | same as `completed` (`buildEventData` shape)                                                     | Resumed run reaches a terminal state (`completed`/`error`); `status`/`error` discriminate |
 | `subagent:compacted` | `{ id, type, description, reason, tokensBefore, compactionCount }`                               | Child session compacts                                                                    |

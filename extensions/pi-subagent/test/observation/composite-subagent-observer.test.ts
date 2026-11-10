@@ -31,6 +31,17 @@ describe("CompositeSubagentObserver", () => {
       expect(b.onSubagentStarted).toHaveBeenCalledExactlyOnceWith(record);
     });
 
+    it("forwards onSubagentWaiting to the delegates that listen for it", () => {
+      const listening = { ...makeDelegate(), onSubagentWaiting: vi.fn() };
+      const deaf = makeDelegate();
+      const composite = new CompositeSubagentObserver([listening, deaf]);
+      const record = createTestSubagent({ id: "agent-w" });
+
+      expect(() => composite.onSubagentWaiting(record)).not.toThrow();
+
+      expect(listening.onSubagentWaiting).toHaveBeenCalledExactlyOnceWith(record);
+    });
+
     it("forwards onSubagentCreated to every delegate with the record", () => {
       const a = makeDelegate();
       const b = makeDelegate();

@@ -8,9 +8,10 @@ into the session's transcript and wakes the session when it is idle.
 
 pi-job and pi-subagent are producers. Each job or watch is an item, and a reload
 re-adopts it. Each subagent run a session asks for is an item in that session's
-host, completed by the run's completion message. The roadmap in
-`docs/roadmaps/subagent-work-lifecycle.md` ports pi-ask onto it and gives each
-child a managed host.
+host, completed by the run's completion message. Each subagent child has a managed
+host of its own, provided by pi-subagent, so a child that ends its turn with work open
+is waiting, not done. The roadmap in `docs/roadmaps/subagent-work-lifecycle.md` ports
+pi-ask onto it.
 
 ## The contract (`src/contract.ts`)
 
@@ -140,17 +141,27 @@ every item nobody adopted as **lost**:
 
 ## Providing a host for someone else
 
-`createWorkHost({ store, delivery, onLost })` (`src/host.ts`) is the host without
+`createWorkHost({ store, delivery, onLost, onChange })` (`src/host.ts`) is the host without
 Pi: `store` persists records and `delivery` is the **wake policy**, a
 `DeliveryHost`: whether the session is idle, and how a batch of messages reaches
 the transcript in mode `"wake"` or `"record"`. The root session sends with
-`sendMessage`. A managed child (roadmap step 9) provides its own under the child's
-session id before the child's extensions bind: it writes messages to the child's
-session and, for `"wake"`, asks the agent's manager for a run through the
-concurrency limiter. `ensureWorkHost` then finds that host, provides nothing and
-only forwards the session's run boundaries (`agent_start`, `agent_settled`,
-`agent_before_settle`) to it. The host decides when startup ends for it:
-`ensureWorkHost` only settles hosts it provided itself.
+`sendMessage`. A managed child (pi-subagent's `ChildWork`, roadmap step 9) provides
+its own under the child's session id before the child's extensions bind: its store is
+the child's session file, it writes messages to the child's transcript at once (a
+transport that appends directly leaves `confirmLanding` off) and, for `"wake"`, asks
+the agent's manager for a run through the concurrency limiter. `ensureWorkHost` then
+finds that host, provides nothing and only forwards the session's run boundaries
+(`agent_start`, `agent_settled`, `agent_before_settle`) to it. The host decides when
+startup ends for it: `ensureWorkHost` only settles hosts it provided itself, so the
+provider calls `settleStartup()` once the session's extensions have started.
+
+`cancelOpen()` on the runtime (not on the `WorkHost` producers see) closes every open item as
+cancelled with no message: the owner of the session stopped it, so the next start loses nothing.
+
+`onChange` is called after the set of open items changed (an item opened, completed,
+cancelled or lost; not for a `notify`), after any wake the change caused, so a reader sees
+the state the session is in. A display redraws on it, and an agent that went idle on its
+items learns that the last one is gone. A throwing listener is ignored.
 
 ## Development
 

@@ -22,7 +22,8 @@ import { sanitizeLine } from "../../../packages/pi-ui/src/index.ts";
  * Where an agent stands, for ordering and labelling. The last six are an idle
  * agent and how its last run ended.
  *
- * `waiting` is a completed run that ended its turn with a question.
+ * `waiting` is an idle live agent with open work (`waitingOn`: a job, an agent of its own), or
+ * a completed run that ended its turn with a question. Waiting is derived, never stored.
  * `interrupted` is a run that a reload or restart cut short: a record still
  * reading queued or running with no live agent behind it, or one whose last
  * outcome is `interrupted`.
@@ -46,6 +47,8 @@ export interface LiveAgentLike {
   /** How the last run ended; defined exactly when the agent is idle. */
   readonly outcome: RunOutcome | undefined;
   readonly pendingQuestion?: string | undefined;
+  /** The labels of the open work of an idle live agent; empty or absent when it has none. */
+  readonly waitingOn?: readonly string[] | undefined;
   readonly error?: string | undefined;
   readonly startedAt: number;
   readonly completedAt?: number | undefined;
@@ -62,6 +65,8 @@ export interface RosterEntry {
   readonly description: string;
   readonly state: RosterState;
   readonly pendingQuestion: string | undefined;
+  /** What a waiting agent waits on; empty for every other state. */
+  readonly waitingOn: readonly string[];
   readonly error: string | undefined;
   readonly startedAt: number;
   readonly completedAt: number | undefined;
@@ -84,8 +89,11 @@ export function rosterState(
   outcome: RunOutcome | undefined,
   pendingQuestion: string | undefined,
   live: boolean,
+  waitingOn: readonly string[] = [],
 ): RosterState {
   if (status === "queued" || status === "running") return live ? status : "interrupted";
+  // Idle on open work, whatever the last run was: the agent wakes when the work reports back.
+  if (live && waitingOn.length > 0) return "waiting";
   switch (outcome) {
     case "interrupted":
       return "interrupted";
@@ -146,11 +154,13 @@ export function buildRoster(
   const entries = records.map((record): RosterEntry => {
     const live = getLive(record.id);
     const source: LiveAgentLike = live ?? record;
+    const waitingOn = live?.waitingOn ?? [];
     const state = rosterState(
       source.status,
       source.outcome,
       source.pendingQuestion,
       live !== undefined,
+      waitingOn,
     );
     return {
       id: record.id,
@@ -158,6 +168,7 @@ export function buildRoster(
       description: source.description,
       state,
       pendingQuestion: source.pendingQuestion,
+      waitingOn: state === "waiting" ? waitingOn : [],
       error: source.error,
       startedAt: source.startedAt,
       completedAt: source.completedAt,
@@ -204,11 +215,17 @@ export function formatClock(at: number): string {
  */
 function stateText(entry: RosterEntry): string {
   switch (entry.state) {
-    case "waiting":
-      return (
-        `waiting for your answer: "${clipText(entry.pendingQuestion ?? "", QUESTION_MAX_CHARS)}"` +
-        unreachableSuffix(entry)
-      );
+    case "waiting": {
+      // Open work first: `waiting: CI`. A question the agent also asked follows it.
+      const question =
+        entry.pendingQuestion === undefined
+          ? ""
+          : `waiting for your answer: "${clipText(entry.pendingQuestion, QUESTION_MAX_CHARS)}"`;
+      const work = entry.waitingOn.length
+        ? `waiting: ${clipText(entry.waitingOn.join(", "), QUESTION_MAX_CHARS)}`
+        : "";
+      return [work, question].filter(Boolean).join(" · ") + unreachableSuffix(entry);
+    }
     case "queued":
       return "queued";
     case "running":

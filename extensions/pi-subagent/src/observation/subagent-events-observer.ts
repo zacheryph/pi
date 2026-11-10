@@ -46,6 +46,21 @@ export class SubagentEventsObserver implements SubagentManagerObserver {
     this.isOnBranch = deps.isOnBranch ?? (() => true);
   }
 
+  /**
+   * A run ended and the agent is idle on open work: waiting, not done. Announced on its own
+   * channel with what it waits on, and persisted so the branch's latest record is the run's
+   * result. Nothing is delivered to the spawner: its item stays open until the agent is done.
+   */
+  onSubagentWaiting(record: Subagent): void {
+    this.emit("subagent:waiting", {
+      id: record.id,
+      type: record.type,
+      description: record.description,
+      reason: record.waitingOn.join(", "),
+    });
+    this.persist(record);
+  }
+
   onSubagentStarted(record: Subagent): void {
     // Emit started event when agent transitions to running (including from queue).
     this.emit("subagent:started", {

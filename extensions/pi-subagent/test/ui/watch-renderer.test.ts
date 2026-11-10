@@ -2,7 +2,16 @@ import { visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it } from "vitest";
 import type { Theme } from "#src/ui/display";
 import { renderWatchOverlay, watchHeight, type WatchSection } from "#src/ui/watch-renderer";
-import { plainTheme, ansiTheme } from "../../../../packages/pi-test-helpers/src/theme.ts";
+import {
+  expectBounded,
+  NARROW_WIDTHS,
+  WIDE_TEXT,
+} from "../../../../packages/pi-test-helpers/src/render.ts";
+import {
+  plainTheme,
+  ansiTheme,
+  stripAnsi,
+} from "../../../../packages/pi-test-helpers/src/theme.ts";
 
 const theme: Theme = plainTheme;
 function section(id = "a", overrides: Partial<WatchSection> = {}): WatchSection {
@@ -217,5 +226,101 @@ describe("watch overlay renderer", () => {
       expect(line).not.toContain("\x1b[2J");
       expect(line).not.toContain("\n");
     }
+  });
+});
+
+describe("body rows are inset from the panel's borders", () => {
+  const BORDER_ROW = /^│ .* │$/;
+
+  it("keeps a space between the border and every body row", () => {
+    const lines = render(
+      [section(), section("b", { status: "waiting", waitingOn: ["CI"] })],
+      40,
+      14,
+    );
+    for (const line of lines.slice(1, -1)) {
+      expect(stripAnsi(line)).toMatch(BORDER_ROW);
+    }
+  });
+
+  it.each(NARROW_WIDTHS)(
+    "renders blank body rows, never touching a border, at %i columns",
+    (width) => {
+      const lines = render([section()], width, 8, ansiTheme);
+      expectBounded(lines, width, 8);
+      if (width < 4) expect(lines).toEqual([]);
+      for (const line of lines.slice(1, -1)) {
+        const plain = stripAnsi(line);
+        expect(visibleWidth(line)).toBe(width);
+        // Content, when any fits, has a space on both sides; otherwise the row is blank.
+        const inside = plain.slice(1, -1);
+        if (inside.trim()) {
+          expect(inside.startsWith(" ")).toBe(true);
+          expect(inside.endsWith(" ")).toBe(true);
+        }
+        if (width <= 4) expect(inside.trim()).toBe("");
+      }
+    },
+  );
+});
+
+describe("a waiting section", () => {
+  const waiting = (overrides: Partial<WatchSection> = {}) =>
+    section("w", { status: "waiting", waitingOn: ["CI"], ...overrides });
+
+  it("stays with the agent's last output, naming what it waits on", () => {
+    const lines = render([waiting()], 60);
+    const text = lines.join("\n");
+    expect(text).toMatch(/── \S Agent: task w · waiting: CI/u);
+    expect(text).toContain("latest output");
+    expect(text).not.toContain("running");
+    expect(lines.every((line) => visibleWidth(line) === 60)).toBe(true);
+  });
+
+  it("says what it waits on when it has no output of its own", () => {
+    const text = render([waiting({ blocks: [], waitingOn: ["CI", "answer"] })], 60).join("\n");
+    expect(text).toContain("waiting: CI, answer");
+    expect(text).toContain("Waiting for CI, answer…");
+  });
+
+  it("is a section, unlike a queued agent, and is not counted in the border", () => {
+    const lines = render([waiting(), section("q", { status: "queued", blocks: [] })], 60);
+    expect(lines[0]).toContain("1 queued");
+    expect(lines.join("\n")).toContain("task w");
+    expect(lines.join("\n")).not.toContain("task q");
+  });
+
+  it("is colored as pending, not as a failure or a success", () => {
+    const calls: Array<[string, string]> = [];
+    const colors: Theme = {
+      fg: (color, text) => {
+        calls.push([color, text]);
+        return text;
+      },
+      bold: (text) => text,
+    };
+    render([waiting()], 60, 14, colors);
+    expect(calls.find(([, text]) => text.includes("· waiting: CI"))?.[0]).toBe("muted");
+  });
+
+  it.each(NARROW_WIDTHS)("keeps ANSI and wide Unicode labels inside %i columns", (width) => {
+    const lines = render(
+      [
+        waiting({
+          label: `${WIDE_TEXT}\n\u001b[2Jinjected`,
+          waitingOn: ["\u001b[31mCI界\u001b[0m\nnext", WIDE_TEXT, "\u001b]0;title\u0007x"],
+          blocks: [],
+        }),
+      ],
+      width,
+      8,
+      ansiTheme,
+    );
+    expectBounded(lines, width, 8);
+    for (const line of lines) {
+      expect(line).not.toContain("\u001b[2J");
+      expect(line).not.toContain("\u001b]0");
+    }
+    if (width >= 4) for (const line of lines) expect(visibleWidth(line)).toBe(width);
   });
 });
