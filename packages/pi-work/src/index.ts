@@ -1,6 +1,8 @@
 export {
+  QUESTION_KIND,
   WORK_ENTRY,
   WORK_LOST,
+  WORK_PARENT_SERVICE,
   WORK_SERVICE,
   type Json,
   type TextPart,
@@ -9,6 +11,7 @@ export {
   type WorkItemSpec,
   type WorkItemView,
   type WorkMessage,
+  type WorkParent,
   type WorkRecord,
 } from "./contract.ts";
 export {

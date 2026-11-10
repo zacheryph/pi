@@ -1,10 +1,15 @@
 import type { ThemeColor } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
+import { Text, truncateToWidth } from "@earendil-works/pi-tui";
 import { isTerminalErrorStatus } from "#src/lifecycle/subagent-state";
 import { wrappedUpAtTurnLimit } from "#src/lifecycle/turn-limits";
-import type { NotificationDetails, UpdateDetails } from "#src/observation/notification";
+import type {
+  NotificationDetails,
+  QuestionDetails,
+  UpdateDetails,
+} from "#src/observation/notification";
+import { clipText } from "#src/roster";
 import { formatMs, formatTokens, formatTurnBudget } from "#src/ui/display";
-import { ICONS } from "../../../../packages/pi-ui/src/index.ts";
+import { ICONS, sanitizeLine } from "../../../../packages/pi-ui/src/index.ts";
 
 /** Narrow theme interface — only the methods the renderer actually calls. */
 interface RendererTheme {
@@ -20,6 +25,11 @@ interface RendererMessage {
 /** Narrow message interface for the update renderer. */
 interface UpdateMessage {
   details?: UpdateDetails;
+}
+
+/** Narrow message interface for the question renderer. */
+interface QuestionMessage {
+  details?: QuestionDetails;
 }
 
 /** Narrow render options — only the fields the renderer reads. */
@@ -133,5 +143,38 @@ export function createUpdateRenderer() {
       line += "\n  " + theme.fg("dim", expanded ? `  ${l}` : `${ICONS.subLine}  ${l}`);
     }
     return new Text(line, 0, 0);
+  };
+}
+
+/**
+ * Create the question renderer for `pi.registerMessageRenderer`: a child asked its parent a
+ * question and waits for the answer. Neither the running icon nor a completion: the agent is
+ * idle, and the next move is the parent's.
+ *
+ * The question is the child's text, so every line is stripped of terminal codes before it is
+ * drawn; wrapping to the width is the `Text`'s.
+ */
+export function createQuestionRenderer() {
+  return (
+    message: QuestionMessage,
+    { expanded }: RenderOptions,
+    theme: RendererTheme,
+  ): { render(width: number): string[]; invalidate(): void } | undefined => {
+    const d = message.details;
+    if (!d) return undefined;
+
+    let line = `${theme.fg("warning", "?")} ${theme.bold(sanitizeLine(d.description))} ${theme.fg("dim", "asked a question")}`;
+    const lines = d.question.split("\n").map(sanitizeLine);
+    for (const l of expanded ? lines.slice(0, 30) : [clipText(lines[0] ?? "", 80)]) {
+      line += "\n  " + theme.fg("dim", expanded ? `  ${l}` : `${ICONS.subLine}  ${l}`);
+    }
+    const text = new Text(line, 0, 0);
+    return {
+      // Text wraps but cannot split a double-width character across a one-column width, so a
+      // row it leaves too wide is clipped: nothing ever draws past the width.
+      render: (width) =>
+        text.render(width).map((row) => truncateToWidth(row, Math.max(0, width), "")),
+      invalidate: () => text.invalidate(),
+    };
   };
 }

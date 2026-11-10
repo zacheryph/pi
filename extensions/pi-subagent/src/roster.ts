@@ -22,8 +22,8 @@ import { sanitizeLine } from "../../../packages/pi-ui/src/index.ts";
  * Where an agent stands, for ordering and labelling. The last six are an idle
  * agent and how its last run ended.
  *
- * `waiting` is an idle live agent with open work (`waitingOn`: a job, an agent of its own), or
- * a completed run that ended its turn with a question. Waiting is derived, never stored.
+ * `waiting` is an idle live agent with open work (`waitingOn`: a job, an agent of its own, or a
+ * question it asked, labelled `answer`). Waiting is derived, never stored.
  * `interrupted` is a run that a reload or restart cut short: a record still
  * reading queued or running with no live agent behind it, or one whose last
  * outcome is `interrupted`.
@@ -46,7 +46,6 @@ export interface LiveAgentLike {
   readonly status: SubagentStatus;
   /** How the last run ended; defined exactly when the agent is idle. */
   readonly outcome: RunOutcome | undefined;
-  readonly pendingQuestion?: string | undefined;
   /** The labels of the open work of an idle live agent; empty or absent when it has none. */
   readonly waitingOn?: readonly string[] | undefined;
   readonly error?: string | undefined;
@@ -64,7 +63,6 @@ export interface RosterEntry {
   readonly type: string;
   readonly description: string;
   readonly state: RosterState;
-  readonly pendingQuestion: string | undefined;
   /** What a waiting agent waits on; empty for every other state. */
   readonly waitingOn: readonly string[];
   readonly error: string | undefined;
@@ -79,15 +77,14 @@ export interface RosterEntry {
 /** Card limits from the issue that introduced it: whole lines, cut at grapheme boundaries. */
 export const CARD_MAX_LINES = 20;
 export const DESCRIPTION_MAX_CHARS = 80;
-export const QUESTION_MAX_CHARS = 160;
+export const REASON_MAX_CHARS = 160;
 /** How many agents a `subagent_get` list shows before it counts the rest. */
 export const LIST_MAX_LINES = 50;
 
-/** The state an agent's status, last outcome, question and liveness put it in. */
+/** The state an agent's status, last outcome and liveness put it in. */
 export function rosterState(
   status: SubagentStatus,
   outcome: RunOutcome | undefined,
-  pendingQuestion: string | undefined,
   live: boolean,
   waitingOn: readonly string[] = [],
 ): RosterState {
@@ -105,7 +102,7 @@ export function rosterState(
       return "stopped";
     case "completed":
     case undefined:
-      return pendingQuestion !== undefined ? "waiting" : "completed";
+      return "completed";
   }
 }
 
@@ -144,7 +141,7 @@ function isPinned(entry: RosterEntry): boolean {
 
 /**
  * The branch's agents, overlaid with live state, in roster order: waiting on a
- * question, running, failed, then completed — each newest first.
+ * work, running, failed, then completed — each newest first.
  */
 export function buildRoster(
   records: readonly LiveAgentLike[],
@@ -155,19 +152,12 @@ export function buildRoster(
     const live = getLive(record.id);
     const source: LiveAgentLike = live ?? record;
     const waitingOn = live?.waitingOn ?? [];
-    const state = rosterState(
-      source.status,
-      source.outcome,
-      source.pendingQuestion,
-      live !== undefined,
-      waitingOn,
-    );
+    const state = rosterState(source.status, source.outcome, live !== undefined, waitingOn);
     return {
       id: record.id,
       type: source.type,
       description: source.description,
       state,
-      pendingQuestion: source.pendingQuestion,
       waitingOn: state === "waiting" ? waitingOn : [],
       error: source.error,
       startedAt: source.startedAt,
@@ -215,17 +205,12 @@ export function formatClock(at: number): string {
  */
 function stateText(entry: RosterEntry): string {
   switch (entry.state) {
-    case "waiting": {
-      // Open work first: `waiting: CI`. A question the agent also asked follows it.
-      const question =
-        entry.pendingQuestion === undefined
-          ? ""
-          : `waiting for your answer: "${clipText(entry.pendingQuestion, QUESTION_MAX_CHARS)}"`;
-      const work = entry.waitingOn.length
-        ? `waiting: ${clipText(entry.waitingOn.join(", "), QUESTION_MAX_CHARS)}`
-        : "";
-      return [work, question].filter(Boolean).join(" · ") + unreachableSuffix(entry);
-    }
+    case "waiting":
+      // What it waits on, a question included: `waiting: CI, answer`.
+      return (
+        `waiting: ${clipText(entry.waitingOn.join(", "), REASON_MAX_CHARS)}` +
+        unreachableSuffix(entry)
+      );
     case "queued":
       return "queued";
     case "running":
@@ -237,7 +222,7 @@ function stateText(entry: RosterEntry): string {
       );
     case "error":
       return (
-        `idle, last run failed: ${clipText(entry.error ?? "unknown error", QUESTION_MAX_CHARS)}` +
+        `idle, last run failed: ${clipText(entry.error ?? "unknown error", REASON_MAX_CHARS)}` +
         unreachableSuffix(entry)
       );
     case "aborted":
@@ -259,7 +244,7 @@ function unreachableSuffix(entry: RosterEntry): string {
   return entry.reachable === false ? " (cannot take a message)" : "";
 }
 
-/** One roster line: ID, type, description, state, and the question or error. */
+/** One roster line: ID, type, description, state, and what it waits on or why it failed. */
 export function formatRosterLine(entry: RosterEntry): string {
   const type = clipText(entry.type, DESCRIPTION_MAX_CHARS);
   const description = clipText(entry.description, DESCRIPTION_MAX_CHARS);

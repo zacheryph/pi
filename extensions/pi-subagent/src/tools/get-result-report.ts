@@ -12,7 +12,6 @@ import type { TurnBudget } from "#src/lifecycle/turn-limits";
 import {
   renderOutcomeAddenda,
   renderOutcomeBody,
-  renderQuestionAffordance,
   renderSendUnavailable,
   renderStatusNote,
 } from "#src/observation/outcome-delivery";
@@ -45,11 +44,10 @@ export interface AgentReport {
   transcriptPath?: string;
   /** The updates the agent sent that no announcement delivered. */
   runUpdates?: readonly string[];
-  /** The question the agent ended its turn with, when it declared one. */
-  pendingQuestion?: string;
   /**
    * Why a message would be refused; undefined when one would be accepted.
-   * Required, for the reason `OutcomeAddenda` gives.
+   * Required rather than optional so a caller that forgets it fails to compile: an omitted
+   * optional would silently mean "accepts messages", the fail-open this field exists to close.
    */
   sendRefusal: SendRefusal | undefined;
   /**
@@ -88,7 +86,7 @@ function oneLine(label: string): string {
  */
 function renderStatus(report: AgentReport): string {
   if (report.waitingOn?.length)
-    return `waiting: ${report.waitingOn.map(oneLine).filter(Boolean).join(", ")} (idle; it wakes when the work reports back, and its completion message follows)`;
+    return `waiting: ${report.waitingOn.map(oneLine).filter(Boolean).join(", ")} (idle; it wakes when the work reports back or when you send it a message, and its completion message follows)`;
   return `${report.status}${renderStatusNote(report)}`;
 }
 
@@ -101,7 +99,7 @@ export function formatAgentReport(report: AgentReport): string {
     `Description: ${report.description}\n\n`;
   output += renderReportBody(report);
   output += renderOutcomeAddenda(report);
-  if (!report.pendingQuestion && report.sendRefusal) {
+  if (report.sendRefusal) {
     const unavailable = renderSendUnavailable(report.sendRefusal);
     if (unavailable) output += `\n\n${unavailable}`;
   }
@@ -131,7 +129,6 @@ export interface SavedAgentReport {
   result: string | undefined;
   error: string | undefined;
   turnBudget?: TurnBudget;
-  pendingQuestion?: string;
   model: string | undefined;
   thinkingLevel?: string;
   cwd?: string;
@@ -166,10 +163,7 @@ export function formatSavedAgentReport(report: SavedAgentReport): string {
     ? "This agent was still running when this session was reloaded or replaced, so it never " +
       "finished. Its transcript shows how far it got."
     : renderOutcomeBody({ ...report, stoppedWhileQueued: false });
-  output +=
-    report.pendingQuestion && report.status === "completed"
-      ? renderQuestionAffordance(report.id, report.pendingQuestion, report.sendRefusal)
-      : `\n\n${renderSavedSendNote(report)}`;
+  output += `\n\n${renderSavedSendNote(report)}`;
   if (report.verbose) {
     output += "\n\nThe conversation is not in memory any more; read the transcript instead.";
   }

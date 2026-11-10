@@ -78,17 +78,15 @@ describe("toPersistedRecord", () => {
     expect(toPersistedRecord(running)).toMatchObject({ status: "running", outcome: undefined });
   });
 
-  it("records the question, model label, thinking level, turn ceiling and directory", () => {
+  it("records the model label, thinking level, turn ceiling and directory", () => {
     const record = toPersistedRecord({
       ...persistedRecord(),
-      pendingQuestion: "Postgres or SQLite?",
       model: { provider: "anthropic", id: "claude-x" },
       thinkingLevel: "high",
       maxTurns: 12,
       cwd: "/work/tree",
     });
     expect(record).toMatchObject({
-      pendingQuestion: "Postgres or SQLite?",
       model: "anthropic/claude-x",
       thinkingLevel: "high",
       maxTurns: 12,
@@ -98,7 +96,7 @@ describe("toPersistedRecord", () => {
 
   it("leaves unknown optional fields off the entry instead of writing undefined", () => {
     const record = toPersistedRecord({ ...persistedRecord(), model: undefined });
-    for (const key of ["pendingQuestion", "model", "thinkingLevel", "maxTurns", "cwd"]) {
+    for (const key of ["model", "thinkingLevel", "maxTurns", "cwd"]) {
       expect(record).not.toHaveProperty(key);
     }
   });
@@ -115,11 +113,11 @@ describe("readPersistedRecords", () => {
           completedAt: undefined,
         }),
       ),
-      recordEntry(persistedRecord({ pendingQuestion: "Which DB?" })),
+      recordEntry(persistedRecord()),
       recordEntry(
         persistedRecord({ id: "run-2", startedAt: 2000, status: "running", outcome: undefined }),
       ),
-      // A resume clears the question and runs again.
+      // A resume runs again.
       recordEntry(
         persistedRecord({ status: "running", outcome: undefined, completedAt: undefined }),
       ),
@@ -129,7 +127,6 @@ describe("readPersistedRecords", () => {
       ["run-2", "running"],
       ["run-1", "running"],
     ]);
-    expect(records[1]).not.toHaveProperty("pendingQuestion");
   });
 
   it("reads an entry written before the optional fields existed", () => {
@@ -141,13 +138,33 @@ describe("readPersistedRecords", () => {
     const full = {
       ...persistedRecord(),
       outcome: "turn-limit",
-      pendingQuestion: "Which DB?",
       model: "anthropic/claude-x",
       thinkingLevel: "medium",
       maxTurns: 4,
       cwd: "/w",
     };
     expect(readPersistedRecords([recordEntry(full)])).toStrictEqual([full]);
+  });
+
+  // Roadmap step 10 removed the field: a question is an open item in the agent's own transcript,
+  // not an outcome the parent's record carries. Records written before it may still hold one (any
+  // type), and are read like every other record, without it.
+  it("tolerates and ignores the question an earlier version recorded", () => {
+    for (const pendingQuestion of ["Which DB?", 7, null, { text: "Which DB?" }]) {
+      const [record] = readPersistedRecords([
+        recordEntry({ ...persistedRecord(), pendingQuestion }),
+      ]);
+      expect(record).toStrictEqual(persistedRecord());
+      expect(record).not.toHaveProperty("pendingQuestion");
+    }
+  });
+
+  it("writes no question, whatever a source object carries", () => {
+    const record = toPersistedRecord({
+      ...persistedRecord(),
+      pendingQuestion: "Postgres or SQLite?",
+    } as never);
+    expect(record).not.toHaveProperty("pendingQuestion");
   });
 
   it("treats JSON nulls as absent", () => {
@@ -158,7 +175,6 @@ describe("readPersistedRecords", () => {
   });
 
   it.each([
-    ["a numeric question", { pendingQuestion: 7 }],
     ["a model object", { model: { provider: "a", id: "b" } }],
     ["a string turn ceiling", { maxTurns: "12" }],
     ["a numeric directory", { cwd: 1 }],
@@ -319,7 +335,6 @@ describe("version 1 records", () => {
       ...v1,
       status: "error",
       error: "boom",
-      pendingQuestion: "Which DB?",
       model: "anthropic/claude-x",
       thinkingLevel: "high",
       maxTurns: 6,

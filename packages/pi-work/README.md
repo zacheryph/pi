@@ -183,6 +183,14 @@ provider calls `settleStartup()` once the session's extensions have started.
 
 `cancelOpen()` on the runtime (not on the `WorkHost` producers see) closes every open item as
 cancelled with no message: the owner of the session stopped it, so the next start loses nothing.
+`cancelOpen(match)` closes only the items `match` accepts: a delegator's answer closes the
+`QUESTION_KIND` items its child asked and leaves the child's jobs open.
+
+A delegated session reaches the item its delegator holds for it through the `WORK_PARENT_SERVICE`
+(`work:parent`) service the delegator offers under the session's id before the session's
+extensions bind. `WorkParent.question(text)` tells the delegator a question once; the asking
+session waits on an item of kind `QUESTION_KIND` in its own host (pi-ask opens it, and adopts it
+again after a reload or restart).
 
 `onChange` is called after the set of open items changed (an item opened, completed,
 cancelled or lost; not for a `notify`), after any wake the change caused, so a reader sees

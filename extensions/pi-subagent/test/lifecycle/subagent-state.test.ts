@@ -360,12 +360,6 @@ describe("SubagentState — markQueued", () => {
     expect(state.consumed).toBe(false);
   });
 
-  it("clears the question the earlier run ended with", () => {
-    const state = new SubagentState({ status: "idle", pendingQuestion: "Which branch?" });
-    state.markQueued(9000);
-    expect(state.pendingQuestion).toBeUndefined();
-  });
-
   it("forgets that an earlier run was stopped before it started", () => {
     const state = new SubagentState({ status: "queued" });
     state.stopQueued(1000);

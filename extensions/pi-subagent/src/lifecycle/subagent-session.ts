@@ -267,6 +267,15 @@ export class SubagentSession {
     return this.meta.work?.cancelOpen() ?? 0;
   }
 
+  /**
+   * The delegator answered: close the questions the child is waiting on, and leave its other
+   * items open (a job it still watches). The answer itself is the message that reaches the
+   * child, not a work message. Returns how many questions there were.
+   */
+  answerQuestions(): number {
+    return this.meta.work?.answerQuestions() ?? 0;
+  }
+
   /** Deliver a steer to the live session. */
   async steer(message: string): Promise<void> {
     await this._session.steer(message);

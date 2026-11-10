@@ -34,6 +34,7 @@ import { provide } from "../../../../packages/pi-session-tree/src/index.ts";
 import {
   createLandingTracker,
   createWorkHost,
+  QUESTION_KIND,
   WORK_ENTRY,
   WORK_SERVICE,
   type Completion,
@@ -181,6 +182,15 @@ export class ChildWork {
    */
   cancelOpen(): number {
     return this.disposed ? 0 : this.host.cancelOpen();
+  }
+
+  /**
+   * The delegator answered the child: close the question items it waits on, as cancelled (the
+   * answer reaches the child as the run's prompt, not as a work message), and leave every other
+   * item open. Returns how many were closed.
+   */
+  answerQuestions(): number {
+    return this.disposed ? 0 : this.host.cancelOpen((item) => item.kind === QUESTION_KIND);
   }
 
   /**

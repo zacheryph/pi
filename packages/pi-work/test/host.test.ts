@@ -222,6 +222,37 @@ describe("cancelOpen", () => {
     expect(host.cancelOpen()).toBe(0);
   });
 
+  it("closes only the items the filter accepts, and leaves the others open", () => {
+    const onChange = vi.fn();
+    const { host, records, sent } = setup({ onChange });
+    const job = host.open({ owner: "test", kind: "job", label: "CI" });
+    host.open({ owner: "test", kind: "question", label: "answer" });
+    host.open({ owner: "test", kind: "question", label: "answer" });
+    onChange.mockClear();
+    expect(host.cancelOpen((item) => item.kind === "question")).toBe(2);
+    expect(host.list()).toMatchObject([{ id: job.id, kind: "job" }]);
+    expect(sent).toEqual([]);
+    expect(openRecords(records)).toMatchObject([{ id: job.id }]);
+    expect(records.filter((record) => record.op === "close")).toMatchObject([
+      { reason: "cancelled" },
+      { reason: "cancelled" },
+    ]);
+    expect(onChange).toHaveBeenCalledTimes(1);
+    // The job still completes through its own handle.
+    job.complete(DONE);
+    expect(sent.at(-1)!.messages).toEqual([DONE]);
+  });
+
+  it("changes nothing when no open item matches", () => {
+    const onChange = vi.fn();
+    const { host } = setup({ onChange });
+    host.open({ owner: "test", kind: "job", label: "CI" });
+    onChange.mockClear();
+    expect(host.cancelOpen((item) => item.kind === "question")).toBe(0);
+    expect(host.list()).toHaveLength(1);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it("does nothing once the host is disposed", () => {
     const { host, records } = setup();
     host.open({ owner: "test", kind: "job", label: "a" });

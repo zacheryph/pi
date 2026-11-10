@@ -89,6 +89,11 @@ export class Run {
    * started for the agent (a stopped rebuild still owns the transcript).
    */
   opening = false;
+  /**
+   * The run's prompt is, or contains, the parent's message: it answers the questions the agent
+   * asked, so they close when the run has the agent's session (see `Subagent.send`).
+   */
+  answering = false;
   /** What the initial run's session factory was configured with; read for its turn loop. */
   runConfig?: RunConfig;
 

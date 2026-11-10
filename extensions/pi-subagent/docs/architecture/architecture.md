@@ -282,7 +282,7 @@ A run that a later one has replaced (stopped, then the agent took new input whil
 ### Every run goes through the limiter
 
 A run a message starts is admitted exactly like a first run.
-`Subagent.send` on an idle agent calls `Subagent.resume` (or `relaunch`, below), which queues the record at once (`markQueued`: status `queued`, the earlier run's result, error, question and turn budget cleared) and hands the run to `SubagentExecution.admit`, which the manager binds to the `ConcurrencyLimiter`.
+`Subagent.send` on an idle agent calls `Subagent.resume` (or `relaunch`, below), which queues the record at once (`markQueued`: status `queued`, the earlier run's result, error and turn budget cleared) and hands the run to `SubagentExecution.admit`, which the manager binds to the `ConcurrencyLimiter`.
 With a free slot the run begins synchronously, so no extra event is sent.
 With every slot taken the run waits: `onResumeQueued` fires (the session record is saved as `queued`, `subagent:queued` is emitted, the widget counts it, and the `subagent_send` call says "Agent resume queued in background" with the queue position), and `onResumeStarted` (the `subagent:resuming` event) follows when the slot opens.
 Stopping a queued run leaves the agent idle with outcome `stopped`; its place in the limiter's queue is spent harmlessly, because a run only begins if it is still the current one.
@@ -290,12 +290,12 @@ Stopping a queued run leaves the agent idle with outcome `stopped`; its place in
 ### Waiting: idle on open work
 
 Every child session has a managed `work:v1` host (`lifecycle/child-work.ts`, built with `packages/pi-work`'s `createWorkHost`), offered under the child's session id before its extensions bind.
-A job the child starts and an agent it starts itself are items in it; the host stores them as custom entries in the child's own session file and writes every message they report into the child's transcript at once (`triggerTurn: false`). It never starts a run itself.
+A job the child starts, an agent it starts itself and a question it asks its parent (pi-ask) are items in it; the host stores them as custom entries in the child's own session file and writes every message they report into the child's transcript at once (`triggerTurn: false`). It never starts a run itself.
 
 Waiting is **derived**, never stored: an `idle` agent with open items (`Subagent.waitingOn`, the items' labels) is waiting, one without is done.
 `Subagent.settle` applies it when a run ends:
 
-- A run that **completed** with open work _parks_. No completion is reported and the spawner's item stays open; the observer's `onWaiting` fires (`subagent:waiting`, persisted). A pending question is the exception: it reports at once, as always, and the agent keeps its session.
+- A run that **completed** with open work _parks_. No completion is reported and the spawner's item stays open; the observer's `onWaiting` fires (`subagent:waiting`, persisted). A question the child asked is an open item like a job: the agent waits on it (`waiting: answer`), and the parent's `subagent_send` closes it (`ChildWork.answerQuestions`) and is the run's prompt.
 - A run that failed, hit its turn limit or was stopped does not wait. A failure or the turn limit releases the session (stopping the work inside it) and leaves the items open in the child's transcript, so a reopened agent is told they were lost.
 - **Mid-run delivery.** A message sent while the child runs is held by Pi until the end of the turn. The `agent_before_settle` handler that `ensureWorkHost` registers in every child (the inline extension `wireWorkHost`) returns `continue: true` when the newest context message, or one still pending, is a work message the host delivered, so the model answers it in the same run. Nothing about it is stored on the agent: it does not go idle, wake or queue.
 - **Landing.** The host runs with `confirmLanding`: a completed item reads as closed for the agent at once (`openItems()` excludes it), but its close record is written only when the message is in the child's transcript. pi-work's `LandingTracker`, owned by `ChildWork` and fed by the child session's own events (`message_end`, `turn_start`, `agent_end`, `agent_settled`), reads the transcript for that. The inline extension forwards run boundaries only; it reads no landing, because a second reader would poll twice and drop marks that are not its own.
@@ -408,7 +408,7 @@ src/
 │
 ├── lifecycle/                      agent execution and state tracking
 │   ├── child-work.ts               the child's managed `work:v1` host: the child's session file as its store, messages written into the transcript at once, a wake request to the agent for an idle child (never a run of its own), `cancelOpen` for a stop
-│   ├── subagent-manager.ts         collection manager + observer wiring + session-retention sweep (consumption-aware; an unanswered question holds the safety cap); the send choke point (`send`), refusing from the record's own predicate and reporting a discriminated outcome, so every front door declines the same messages; a run it starts begins synchronously and returns before the run ends, because every door is a background door
+│   ├── subagent-manager.ts         collection manager + observer wiring + session-retention sweep (consumption-aware; an agent with open work, a question included, keeps its session); the send choke point (`send`), refusing from the record's own predicate and reporting a discriminated outcome, so every front door declines the same messages; a run it starts begins synchronously and returns before the run ends, because every door is a background door
 │   ├── create-subagent-session.ts  assembly factory: MCP pattern expansion, Pi built-in selection, session creation, spawn-tool denylist, core child-tool install, binding
 │   ├── subagent-session.ts         born-complete child session: turn loop, steer, shutdown-then-dispose teardown
 │   ├── turn-limits.ts              turn-budget policy: TurnBudget, the TurnBudgetTracker that decides warnings and stops, normalizeMaxTurns (minimum 2)
@@ -423,9 +423,9 @@ src/
 │
 ├── observation/                    progress tracking and notification
 │   ├── record-observer.ts          session-event stats observer
-│   ├── notification.ts             the completion and update messages (`completionMessage`, `updateMessage`) and the task-notification formatting; no delivery
+│   ├── notification.ts             the completion, update and question messages (`completionMessage`, `updateMessage`, `questionMessage`) and the task-notification formatting; no delivery
 │   ├── subagent-work.ts            the work producer for the spawning session: one `work:v1` item per run, opened when a run is requested, completed with the completion message when it ends (a stopped run delivers its message and cancels the item), `notify` for a mid-run update (only while the child is still running, since a terminated run's updates ride the completion message); holding while the parent runs and waking it are the host's (packages/pi-work)
-│   ├── outcome-delivery.ts         shared outcome rendering the completion message and the subagent_get report compose: one status vocabulary in two presentations, body, and the addenda tail (mid-run updates, then the ask-back affordance — which names a resume only when the record says one would be accepted, and says the completion message is coming when the child has merely not settled) in one fixed order
+│   ├── outcome-delivery.ts         shared outcome rendering the completion message and the subagent_get report compose: one status vocabulary in two presentations, body, and the addenda tail (mid-run updates) in one fixed order
 │   ├── renderer.ts                 notification and mid-run-update TUI components
 │   ├── composite-subagent-observer.ts fans manager notifications out to multiple observers; enumerates every member, so an optional one it omits is dropped silently
 │   └── subagent-events-observer.ts manager lifecycle observer (event emission + persistence + notification)
@@ -517,7 +517,7 @@ Selecting by allowlist rather than inheriting the parent's set keeps MCP, which 
 An allowlist entry starting with `mcp__` and containing `*` is a pattern (`mcp__github__*`), expanded at child creation against the tool names the parent has registered (`mcp-tool-patterns.ts`, fed by the composition root's `listParentToolNames`).
 Pi's allowlist matches names exactly and an MCP server's names exist only once it connects, so the parent's registry is the one place a whole server can be named from; the agent still writes the pattern, so this does not widen the allowlist on its behalf.
 
-The core does install its own **protocol** in every child, on its own authority and independent of the agent file: the `<active_agent>` tag, the parent-context prefix, the `ask:route` service that turns pi-ask's `ask` toward the parent, and the `parent_notify` tool.
+The core does install its own **protocol** in every child, on its own authority and independent of the agent file: the `<active_agent>` tag, the parent-context prefix, the `work:parent` service that turns pi-ask's `ask` toward the parent, and the `parent_notify` tool.
 The distinction the boundary draws is capability, not provenance.
 None of these reaches the filesystem, the shell, or the network — each can only put text into the session that spawned the child — so a read-only agent that gains them is still read-only, and the two failure modes that closed PR #612 (a read-only `explore` silently gaining `edit`/`write`; `subagent` re-entering the allowlist and reopening the recursion guard) remain refused.
 A child-facing tool is appended to the allowlist at the assembly factory rather than drawn from it, because Pi filters `customTools` through the same allowlist and would otherwise drop it with no error.

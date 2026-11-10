@@ -6,7 +6,6 @@ import {
   type OutcomeBody,
   renderOutcomeAddenda,
   renderOutcomeBody,
-  renderQuestionAffordance,
   renderRunUpdates,
   renderSendUnavailable,
   renderStatusLabel,
@@ -108,95 +107,10 @@ describe("renderSendUnavailable", () => {
   );
 });
 
-describe("renderQuestionAffordance", () => {
-  describe("when a message would be accepted", () => {
-    it("names the exact send call that answers the question", () => {
-      expect(renderQuestionAffordance("b15f500f-314b-49b", "Which config?", undefined)).toBe(
-        "\n\nThis agent is waiting on an answer:\n\n  Which config?\n\n" +
-          'Answer by calling subagent_send with agent_id: "b15f500f-314b-49b" and your answer as the message.',
-      );
-    });
-
-    it("indents every line of a multi-line question", () => {
-      expect(renderQuestionAffordance("agent-1", "A or B?\nOr C?", undefined)).toContain(
-        "  A or B?\n  Or C?",
-      );
-    });
-  });
-
-  describe("when a message would be refused", () => {
-    it("reports a released session without naming a send", () => {
-      expect(renderQuestionAffordance("agent-7", "Which config?", "session-released")).toBe(
-        "\n\nThis agent ended its run with a question that can no longer be answered \u2014 " +
-          "its session was released and its saved transcript is gone:\n\n  Which config?\n\n" +
-          "Spawn a new agent with the context it needs; this one cannot take a message.",
-      );
-    });
-
-    it("names a missing session as the reason", () => {
-      expect(renderQuestionAffordance("agent-7", "Which config?", "no-session")).toContain(
-        "it never started a session and its original task was not saved",
-      );
-    });
-
-    it("still reports the question itself", () => {
-      expect(renderQuestionAffordance("agent-7", "Which config?", "session-released")).toContain(
-        "  Which config?",
-      );
-    });
-
-    it("indents every line of a multi-line question", () => {
-      expect(renderQuestionAffordance("agent-1", "A or B?\nOr C?", "no-session")).toContain(
-        "  A or B?\n  Or C?",
-      );
-    });
-
-    it("names no send call for any reason", () => {
-      for (const refusal of ["rebuilding", "no-session", "session-released"] as const) {
-        expect(renderQuestionAffordance("agent-7", "Which config?", refusal)).not.toContain(
-          "subagent_send",
-        );
-      }
-    });
-  });
-
-  // Changed by roadmap step 7b (was: a question on a child that had not finished running said
-  // to end the turn and wait). A running child takes a message, so the only transient
-  // refusal left is a stopped rebuild that still owns the transcript.
-  describe("when a stopped rebuild still owns the transcript", () => {
-    it("says the question cannot be answered yet, and to try again", () => {
-      expect(renderQuestionAffordance("agent-7", "Which config?", "rebuilding")).toBe(
-        "\n\nThis agent asked a question, but it was stopped while its session was being created or rebuilt " +
-          "and cannot take your answer yet:\n\n  Which config?\n\n" +
-          "Try again in a moment.",
-      );
-    });
-
-    it("does not tell the parent to spawn a new agent, which a permanent refusal does", () => {
-      expect(renderQuestionAffordance("agent-7", "Which config?", "rebuilding")).not.toContain(
-        "Spawn a new agent",
-      );
-    });
-
-    it("indents every line of a multi-line question", () => {
-      expect(renderQuestionAffordance("agent-1", "A or B?\nOr C?", "rebuilding")).toContain(
-        "  A or B?\n  Or C?",
-      );
-    });
-  });
-
-  it("renders nothing when the child asked nothing", () => {
-    expect(renderQuestionAffordance("agent-1", undefined, undefined)).toBe("");
-  });
-
-  it("renders nothing for an empty question", () => {
-    expect(renderQuestionAffordance("agent-1", "", undefined)).toBe("");
-  });
-
-  it("renders nothing for an unanswerable agent that asked nothing", () => {
-    expect(renderQuestionAffordance("agent-1", undefined, "session-released")).toBe("");
-  });
-});
+// Removed by roadmap step 10: `renderQuestionAffordance` (a question the child "ended its turn with",
+// quoted after its outcome, with a send call that depended on whether the agent could be reached).
+// A question is now its own message to the parent when it is asked (`questionMessage`, tested in
+// notification.test.ts), and an agent that waits on one is an ordinary waiting agent.
 
 describe("renderOutcomeBody", () => {
   it("points a running agent at its completion message instead of reporting an outcome", () => {
@@ -247,50 +161,15 @@ describe("renderOutcomeBody", () => {
 });
 
 describe("renderOutcomeAddenda", () => {
-  function makeAddenda(overrides: Partial<OutcomeAddenda> = {}): OutcomeAddenda {
-    return { id: "agent-1", sendRefusal: undefined, ...overrides };
-  }
-
   it("renders nothing when the run produced no addenda", () => {
-    expect(renderOutcomeAddenda(makeAddenda())).toBe("");
+    expect(renderOutcomeAddenda({})).toBe("");
   });
 
-  it("composes the same text the carriers built by hand", () => {
-    const addenda = makeAddenda({
-      runUpdates: ["The bug is in the retry wrapper."],
-      pendingQuestion: "Which config?",
-    });
+  it("renders what the agent flagged along the way", () => {
+    const addenda: OutcomeAddenda = { runUpdates: ["The bug is in the retry wrapper."] };
 
-    expect(renderOutcomeAddenda(addenda)).toBe(
-      renderRunUpdates(addenda.runUpdates) +
-        renderQuestionAffordance(addenda.id, addenda.pendingQuestion, addenda.sendRefusal),
-    );
-  });
-
-  it("passes the refusal through, so the tail does not name a refused send", () => {
-    const rendered = renderOutcomeAddenda(
-      makeAddenda({ pendingQuestion: "Which config?", sendRefusal: "session-released" }),
-    );
-
-    expect(rendered).toContain("Which config?");
-    expect(rendered).not.toContain("subagent_send");
-  });
-
-  it("leads with what the agent flagged along the way", () => {
-    const rendered = renderOutcomeAddenda(
-      makeAddenda({
-        runUpdates: ["The bug is in the retry wrapper."],
-        pendingQuestion: "Which config?",
-      }),
-    );
-
-    // Both must be present, or the index comparison passes on a -1 that means
-    // "absent" rather than "earlier".
-    expect(rendered).toContain("retry wrapper");
-    expect(rendered).toContain("waiting on an answer");
-    expect(rendered.indexOf("retry wrapper")).toBeLessThan(
-      rendered.indexOf("waiting on an answer"),
-    );
+    expect(renderOutcomeAddenda(addenda)).toBe(renderRunUpdates(addenda.runUpdates));
+    expect(renderOutcomeAddenda(addenda)).toContain("retry wrapper");
   });
 });
 

@@ -13,6 +13,7 @@ function makeWork(): AgentWork {
     runRequested: vi.fn(),
     runEnded: vi.fn(),
     update: vi.fn(),
+    question: vi.fn(),
     dispose: vi.fn(),
   };
 }
@@ -263,7 +264,7 @@ describe("SubagentEventsObserver", () => {
       });
     });
 
-    it("records the agent running again, without its old question, and announces nothing", () => {
+    it("records the agent running again and announces nothing", () => {
       const { observer, appendEntry, work } = makeObserver();
 
       observer.onSubagentResuming(
@@ -274,7 +275,6 @@ describe("SubagentEventsObserver", () => {
         "subagent:record",
         expect.objectContaining({ id: "agent-1", status: "running" }),
       );
-      expect(appendEntry.mock.calls[0]?.[1]).not.toHaveProperty("pendingQuestion");
       expect(work.runEnded).not.toHaveBeenCalled();
     });
   });
@@ -531,6 +531,20 @@ describe("SubagentEventsObserver", () => {
       observer.onSubagentUpdate(createTestSubagent(), "Course change.");
 
       expect(appendEntry).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("onSubagentQuestion", () => {
+    it("hands the question to the agent's item and nothing else", () => {
+      const { observer, work, emit, appendEntry } = makeObserver();
+      const record = createTestSubagent({ id: "agent-1" });
+
+      observer.onSubagentQuestion(record, "[Storage] Which database?");
+
+      expect(work.question).toHaveBeenCalledExactlyOnceWith(record, "[Storage] Which database?");
+      // The waiting record that follows (onSubagentWaiting) is the one persisted.
+      expect(appendEntry).not.toHaveBeenCalled();
+      expect(emit).not.toHaveBeenCalled();
     });
   });
 });

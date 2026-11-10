@@ -74,6 +74,12 @@ export function createSubagentSessionStub(
     openWork: vi.fn((): readonly WorkItemView[] => [...openItems]),
     /** A stop calls off the open items, as the real host does. */
     cancelWork: vi.fn((): number => openItems.splice(0).length),
+    /** The parent's answer closes the question items and leaves the others open. */
+    answerQuestions: vi.fn((): number => {
+      const questions = openItems.filter((item) => item.kind === "question");
+      for (const item of questions) openItems.splice(openItems.indexOf(item), 1);
+      return questions.length;
+    }),
     applyTurnLimits: vi.fn(),
     runTurnLoop: vi.fn().mockResolvedValue(turnLoopResult({ responseText: "done" })),
     resumeTurnLoop: vi.fn().mockResolvedValue(turnLoopResult({ responseText: "resumed" })),
@@ -106,8 +112,8 @@ export function createSubagentSessionStub(
 }
 
 /** An open work item with the given label, as a child's work host lists it. */
-export function openItem(label: string, id = `item-${label}`): WorkItemView {
-  return { id, owner: "test", kind: "job", label, openedAt: 1 };
+export function openItem(label: string, id = `item-${label}`, kind = "job"): WorkItemView {
+  return { id, owner: "test", kind, label, openedAt: 1 };
 }
 
 /**

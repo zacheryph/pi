@@ -244,6 +244,55 @@ describe("changes", () => {
   });
 });
 
+describe("answering the child's questions", () => {
+  it("closes the question items and leaves the others open, with no message", () => {
+    const { work, sent, policy, closes } = fixture();
+    work.host.open({ owner: "pi-job", kind: "watch", label: "CI" });
+    work.host.open({ owner: "pi-ask", kind: "question", label: "answer" });
+    work.host.open({ owner: "pi-ask", kind: "question", label: "answer" });
+    policy.changed.mockClear();
+
+    expect(work.answerQuestions()).toBe(2);
+
+    expect(work.openItems().map((view) => view.kind)).toEqual(["watch"]);
+    expect(closes()).toMatchObject([{ reason: "cancelled" }, { reason: "cancelled" }]);
+    // The answer reaches the child as the run's prompt, not as a work message; no wake.
+    expect(sent).toEqual([]);
+    expect(policy.wake).not.toHaveBeenCalled();
+    expect(policy.changed).toHaveBeenCalledTimes(1);
+  });
+
+  it("closes nothing when the child asked nothing", () => {
+    const { work, policy } = fixture();
+    work.host.open({ owner: "pi-job", kind: "watch", label: "CI" });
+    policy.changed.mockClear();
+    expect(work.answerQuestions()).toBe(0);
+    expect(work.openItems()).toHaveLength(1);
+    expect(policy.changed).not.toHaveBeenCalled();
+  });
+
+  it("closes a question its owner adopted after a reopen, so the next start does not find it", () => {
+    const { work, closes } = fixture({
+      entries: [
+        { v: 1, op: "open", id: "q1", owner: "pi-ask", kind: "question", label: "answer", at: 1 },
+      ],
+    });
+    work.host.adopt("pi-ask", () => true);
+    work.settleStartup();
+    expect(work.openItems().map((view) => view.id)).toEqual(["q1"]);
+    expect(work.answerQuestions()).toBe(1);
+    expect(work.openItems()).toEqual([]);
+    expect(closes()).toMatchObject([{ id: "q1", reason: "cancelled" }]);
+  });
+
+  it("does nothing once the session is gone", () => {
+    const { work } = fixture();
+    work.host.open({ owner: "pi-ask", kind: "question", label: "answer" });
+    work.dispose();
+    expect(work.answerQuestions()).toBe(0);
+  });
+});
+
 describe("a reopened child", () => {
   const leftOpen = {
     v: 1,

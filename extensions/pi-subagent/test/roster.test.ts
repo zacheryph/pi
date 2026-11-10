@@ -45,22 +45,34 @@ function saved(
 
 const noneLive = () => undefined;
 
+/** A live agent idle on open work: what the roster derives `waiting` from. */
+const waitingLive = (record: PersistedSubagentRecord, waitingOn: readonly string[]) =>
+  ({ ...record, status: "idle", outcome: "completed", waitingOn }) as LiveAgentLike;
+
+/** A lookup that has each of `records` live and waiting for an answer. */
+const waitingOnAnswer = (records: readonly PersistedSubagentRecord[]) => (id: string) => {
+  const record = records.find((candidate) => candidate.id === id);
+  return record ? waitingLive(record, ["answer"]) : undefined;
+};
+
 describe("rosterState", () => {
-  it.each<[SubagentStatus, RunOutcome | undefined, string | undefined, boolean, string]>([
-    ["idle", "completed", undefined, true, "completed"],
-    ["idle", "completed", "Which DB?", false, "waiting"],
-    ["running", undefined, undefined, true, "running"],
-    ["queued", undefined, undefined, true, "queued"],
-    ["running", undefined, undefined, false, "interrupted"],
-    ["queued", undefined, undefined, false, "interrupted"],
-    ["idle", "error", undefined, false, "error"],
-    ["idle", "turn-limit", "Which DB?", false, "aborted"],
-    ["idle", "stopped", undefined, true, "stopped"],
-    ["idle", "stopped", "Which DB?", true, "stopped"],
+  // Rewritten by roadmap step 10: the table had a `pendingQuestion` column, and a completed run
+  // that ended with a question read as waiting. A question is an open item now, so waiting comes
+  // only from `waitingOn` (see "a waiting agent in the roster"); an outcome alone never waits.
+  it.each<[SubagentStatus, RunOutcome | undefined, boolean, string]>([
+    ["idle", "completed", true, "completed"],
+    ["idle", "completed", false, "completed"],
+    ["running", undefined, true, "running"],
+    ["queued", undefined, true, "queued"],
+    ["running", undefined, false, "interrupted"],
+    ["queued", undefined, false, "interrupted"],
+    ["idle", "error", false, "error"],
+    ["idle", "turn-limit", false, "aborted"],
+    ["idle", "stopped", true, "stopped"],
     // A run a reload or restart cut short, as a version 1 record reads back.
-    ["idle", "interrupted", undefined, false, "interrupted"],
-  ])("%s after %s, question %s, live %s → %s", (status, outcome, question, live, expected) => {
-    expect(rosterState(status, outcome, question, live)).toBe(expected);
+    ["idle", "interrupted", false, "interrupted"],
+  ])("%s after %s, live %s → %s", (status, outcome, live, expected) => {
+    expect(rosterState(status, outcome, live)).toBe(expected);
   });
 });
 
@@ -71,11 +83,15 @@ describe("buildRoster", () => {
       saved({ id: "failed", status: "error", error: "boom", startedAt: 5 }),
       saved({ id: "done-new", completedAt: 30 }),
       saved({ id: "running", status: "running", completedAt: undefined }),
-      saved({ id: "waiting", pendingQuestion: "Which DB?" }),
+      saved({ id: "waiting" }),
       saved({ id: "stopped", status: "stopped", startedAt: 6 }),
     ];
     const live = (id: string) =>
-      id === "running" ? ({ ...records[3], status: "running" } as LiveAgentLike) : undefined;
+      id === "running"
+        ? ({ ...records[3], status: "running" } as LiveAgentLike)
+        : id === "waiting"
+          ? waitingLive(records[4], ["answer"])
+          : undefined;
     expect(buildRoster(records, live).map((entry) => entry.id)).toEqual([
       "waiting",
       "running",
@@ -141,10 +157,19 @@ describe("formatRosterLine", () => {
   const line = (record: PersistedSubagentRecord, live?: LiveAgentLike) =>
     formatRosterLine(buildRoster([record], () => live)[0]);
 
-  it("quotes the question an agent is waiting on", () => {
-    expect(line(saved({ id: "9a8b7c", pendingQuestion: "Postgres or SQLite?" }))).toBe(
-      '- 9a8b7c implementer "Add token refresh": waiting for your answer: "Postgres or SQLite?"',
+  // Rewritten by roadmap step 10 (was: quoted the question an agent was waiting on, from its saved
+  // record). The question reaches the parent in its own message when it is asked; the roster says
+  // what the agent waits on, like any other item: `waiting: answer`.
+  it("says an agent waiting for an answer is waiting on `answer`", () => {
+    const record = saved({ id: "9a8b7c" });
+    expect(line(record, waitingLive(record, ["answer"]))).toBe(
+      '- 9a8b7c implementer "Add token refresh": waiting: answer',
     );
+  });
+
+  it("reads a saved record that still carries a question as the completed run it is", () => {
+    const old = { ...saved({ id: "9a8b7c" }), pendingQuestion: "Postgres or SQLite?" };
+    expect(line(old as PersistedSubagentRecord)).toMatch(/: idle, last run completed \d\d:\d\d$/);
   });
 
   it("labels a running agent", () => {
@@ -177,10 +202,12 @@ describe("formatRosterLine", () => {
     );
   });
 
-  it("cuts descriptions to 80 characters and questions to 160", () => {
-    const text = line(saved({ description: "d".repeat(200), pendingQuestion: "q".repeat(300) }));
+  it("cuts descriptions to 80 characters and errors to 160", () => {
+    const text = line(
+      saved({ description: "d".repeat(200), status: "error", error: "q".repeat(300) }),
+    );
     expect(text).toContain(`"${"d".repeat(79)}…"`);
-    expect(text).toContain(`"${"q".repeat(159)}…"`);
+    expect(text).toContain(`${"q".repeat(159)}…`);
     expect(text).not.toContain("d".repeat(80));
   });
 
@@ -208,13 +235,18 @@ describe("formatRosterCard", () => {
         startedAt: 3_000,
       }),
       saved({ id: "d4e5f6", type: "review", description: "Review step 3", status: "running" }),
-      saved({ id: "9a8b7c", description: "Migrate store", pendingQuestion: "Postgres?" }),
+      saved({ id: "9a8b7c", description: "Migrate store" }),
     ];
-    const live = (id: string) => (id === "d4e5f6" ? records[2] : undefined);
+    const live = (id: string) =>
+      id === "d4e5f6"
+        ? records[2]
+        : id === "9a8b7c"
+          ? waitingLive(records[3], ["answer"])
+          : undefined;
     expect(formatRosterCard(buildRoster(records, live), "compaction")).toBe(
       [
         "Subagents started by this session (restored after compaction; subagent_get <id> for details, subagent_send <id> to give an idle one more work):",
-        '- 9a8b7c implementer "Migrate store": waiting for your answer: "Postgres?"',
+        '- 9a8b7c implementer "Migrate store": waiting: answer',
         '- d4e5f6 review "Review step 3": running',
         '- 77e0aa explorer "Map auth call sites": idle, last run failed: turn budget exhausted',
         `- a1b2c3 implementer "Add token refresh": idle, last run completed ${formatClock(50_000_000)}`,
@@ -252,26 +284,28 @@ describe("formatRosterCard", () => {
     it("uses the singular for one agent left out", () => {
       // The overflow line takes a slot of its own, so only pinned agents filling
       // the card leave a single agent out.
-      const waiting = Array.from({ length: 20 }, (_, index) =>
-        saved({ id: `w-${index}`, pendingQuestion: "?" }),
-      );
+      const waiting = Array.from({ length: 20 }, (_, index) => saved({ id: `w-${index}` }));
       const lines = bodyLines(
-        formatRosterCard(buildRoster([...waiting, ...completed(1)], noneLive), "reload"),
+        formatRosterCard(
+          buildRoster([...waiting, ...completed(1)], waitingOnAnswer(waiting)),
+          "reload",
+        ),
       );
       expect(lines).toHaveLength(21);
       expect(lines.at(-1)).toBe("- 1 older completed agent not shown");
     });
 
     it("counts failed agents separately from completed ones", () => {
-      const waiting = Array.from({ length: 18 }, (_, index) =>
-        saved({ id: `w-${index}`, pendingQuestion: "?" }),
-      );
+      const waiting = Array.from({ length: 18 }, (_, index) => saved({ id: `w-${index}` }));
       const failed = [
         saved({ id: "f1", status: "error", error: "x" }),
         saved({ id: "f2", status: "error", error: "y" }),
       ];
       const lines = bodyLines(
-        formatRosterCard(buildRoster([...waiting, ...failed, ...completed(3)], noneLive), "reload"),
+        formatRosterCard(
+          buildRoster([...waiting, ...failed, ...completed(3)], waitingOnAnswer(waiting)),
+          "reload",
+        ),
       );
       expect(lines).toHaveLength(20);
       expect(lines.slice(0, 18).every((text) => text.includes("waiting"))).toBe(true);
@@ -363,10 +397,18 @@ describe("buildRoster — whether subagent_send reaches an agent", () => {
     expect(line(interrupted, false)).toMatch(/before it finished \(cannot take a message\)$/);
   });
 
-  it("warns only when a question cannot be answered", () => {
-    const waiting = saved({ pendingQuestion: "Which DB?" });
-    expect(line(waiting, true)).toMatch(/"Which DB\?"$/);
-    expect(line(waiting, false)).toMatch(/"Which DB\?" \(cannot take a message\)$/);
+  it("warns only when a waiting agent cannot take a message", () => {
+    const record = saved();
+    const waiting = (reachable: boolean) =>
+      formatRosterLine(
+        buildRoster(
+          [record],
+          () => waitingLive(record, ["answer"]),
+          () => reachable,
+        )[0],
+      );
+    expect(waiting(true)).toMatch(/: waiting: answer$/);
+    expect(waiting(false)).toMatch(/: waiting: answer \(cannot take a message\)$/);
   });
 
   it("does not ask about a queued or running agent, which always takes a message", () => {
@@ -425,12 +467,12 @@ describe("a waiting agent in the roster", () => {
   const line = (agent: LiveAgentLike) => formatRosterLine(buildRoster([record], () => agent)[0]);
 
   it("is waiting when it is live and idle on open work", () => {
-    expect(rosterState("idle", "completed", undefined, true, ["CI"])).toBe("waiting");
-    expect(rosterState("idle", "error", undefined, true, ["CI"])).toBe("waiting");
+    expect(rosterState("idle", "completed", true, ["CI"])).toBe("waiting");
+    expect(rosterState("idle", "error", true, ["CI"])).toBe("waiting");
     // Not a state a saved record can be in: nothing live waits on anything.
-    expect(rosterState("idle", "completed", undefined, false, ["CI"])).toBe("completed");
+    expect(rosterState("idle", "completed", false, ["CI"])).toBe("completed");
     // A run in flight is running, whatever its session holds.
-    expect(rosterState("running", undefined, undefined, true, ["CI"])).toBe("running");
+    expect(rosterState("running", undefined, true, ["CI"])).toBe("running");
   });
 
   it("names what it waits on", () => {
@@ -457,11 +499,11 @@ describe("a waiting agent in the roster", () => {
     expect(card.split("\n")).toHaveLength(CARD_MAX_LINES + 1);
   });
 
-  it("says when it also asked a question, and that it cannot be reached", () => {
-    const both = live(["CI"], { pendingQuestion: "Which branch?" });
-    expect(line(both)).toBe(
-      '- w1 implementer "Review CI": waiting: CI · waiting for your answer: "Which branch?"',
-    );
+  it("names a question it asked beside the work it waits on, and says when it cannot be reached", () => {
+    // Rewritten by roadmap step 10 (was: `waiting: CI · waiting for your answer: "..."`). The
+    // question is an item like the watch, labelled `answer`.
+    const both = live(["CI", "answer"]);
+    expect(line(both)).toBe('- w1 implementer "Review CI": waiting: CI, answer');
     const [entry] = buildRoster(
       [record],
       () => both,

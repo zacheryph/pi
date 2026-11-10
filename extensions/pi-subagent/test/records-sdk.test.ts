@@ -164,21 +164,43 @@ describe("subagent records in a real parent session (offline faux provider)", ()
     expect(h.errors).toEqual([]);
   }, 30_000);
 
-  it("keeps the question a worker ended with across a reload", async () => {
+  // Rewritten by roadmap step 10 (was: "keeps the question a worker ended with across a reload":
+  // the question was a field of the saved record, and the roster and `subagent_get` quoted it as
+  // "waiting for your answer" after the reload). The question is now a message the parent
+  // received when it was asked, so it is in the parent's transcript, and an open item in the
+  // worker's own transcript; the saved record carries no question. Keeping a *waiting* agent
+  // waiting across a reload is roadmap step 12; until then the reloaded record is the idle agent's.
+  it("keeps what a worker asked across a reload: in the parent's transcript, and still answerable", async () => {
     const h = await parent();
-    await delegateAndFinish(h, "Pick storage", [
-      toolCall("ask", {
-        questions: [
-          {
-            question: "Which database?",
-            header: "Storage",
-            options: [{ label: "Postgres" }, { label: "SQLite" }],
-          },
-        ],
-      }),
-      fauxAssistantMessage("Waiting for the storage decision."),
-    ]);
+    scriptSides(h.faux, {
+      parent: [
+        spawnChild("Pick storage"),
+        fauxAssistantMessage("Started."),
+        fauxAssistantMessage("Noted the question."),
+      ],
+      child: [
+        toolCall("ask", {
+          questions: [
+            {
+              question: "Which database?",
+              header: "Storage",
+              options: [{ label: "Postgres" }, { label: "SQLite" }],
+            },
+          ],
+        }),
+      ],
+    });
+    await h.session.prompt("Delegate Pick storage");
+    const asked = () =>
+      h.manager
+        .getEntries()
+        .filter(
+          (entry) => entry.type === "custom_message" && entry.customType === "subagent:question",
+        );
+    await vi.waitFor(() => expect(asked()).toHaveLength(1), { timeout: 15_000 });
+    await h.session.waitForIdle();
     const [id] = spawnedIds(h.manager);
+    expect(JSON.stringify(asked()[0])).toContain("[Storage] Which database?");
 
     await h.session.reload();
 
@@ -189,13 +211,13 @@ describe("subagent records in a real parent session (offline faux provider)", ()
     ]);
     await h.session.prompt("What did it ask?");
     expect(requests).toHaveLength(2);
-    expect(tail(requests[0])).toContain(
-      `${id} general-purpose \\"Pick storage\\": waiting for your answer: \\"[Storage] Which database?`,
-    );
+    // The question the parent was told once is still in its conversation.
+    expect(JSON.stringify(requests[0].messages)).toContain("[Storage] Which database?");
+    expect(tail(requests[0])).toContain(`${id} general-purpose \\"Pick storage\\": idle, last run`);
     const report = lastResult(requests[1], "subagent_get");
-    expect(report).toContain("This agent is waiting on an answer:");
-    expect(report).toContain("Which database?");
-    expect(report).toContain(`subagent_send with agent_id: \\"${id}\\"`);
+    expect(report).not.toContain("waiting on an answer");
+    expect(report).toContain("Send: available.");
+    expect(readPersistedRecords(h.manager.getBranch())[0]).not.toHaveProperty("pendingQuestion");
   }, 30_000);
 
   it("follows /tree: an agent spawned after the target point is gone from the list, by ID and on the card", async () => {

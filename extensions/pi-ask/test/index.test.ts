@@ -1,11 +1,20 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi, onTestFinished } from "vitest";
 import { provide } from "../../../packages/pi-session-tree/src/index.ts";
+import {
+  createWorkHost,
+  QUESTION_KIND,
+  WORK_PARENT_SERVICE,
+  WORK_SERVICE,
+  type WorkRecord,
+} from "../../../packages/pi-work/src/index.ts";
 import piAsk from "../src/index.ts";
 import { waitFor } from "../../../packages/pi-test-helpers/src/wait.ts";
 import { fakePi } from "../../../packages/pi-test-helpers/src/fake-pi.ts";
 import { resetSessionTree } from "../../../packages/pi-test-helpers/src/globals.ts";
 import { fakeCustomUi } from "../../../packages/pi-test-helpers/src/ui.ts";
+import { ansiTheme, plainTheme } from "../../../packages/pi-test-helpers/src/theme.ts";
+import { visibleWidth } from "@earendil-works/pi-tui";
 
 const { execFile } = vi.hoisted(() => ({ execFile: vi.fn() }));
 vi.mock("node:child_process", () => ({ execFile }));
@@ -27,6 +36,7 @@ type Tool = {
   execute: (...args: unknown[]) => Promise<{
     content: { type: string; text: string }[];
     details: Record<string, unknown>;
+    terminate?: boolean;
   }>;
 };
 
@@ -47,7 +57,8 @@ function harness(options: { mode?: string; hasUI?: boolean; sessionId?: string }
     mode: options.mode ?? "tui",
     hasUI: options.hasUI ?? true,
     ui,
-    sessionManager: { getSessionId: () => options.sessionId ?? "root" },
+    isIdle: () => true,
+    sessionManager: { getSessionId: () => options.sessionId ?? "root", getBranch: () => [] },
   } as unknown as ExtensionContext;
   piAsk(fake.api);
   const start = () => fake.emit("session_start", {}, ctx);
@@ -71,6 +82,27 @@ function harness(options: { mode?: string; hasUI?: boolean; sessionId?: string }
       return mounted.latest();
     },
   };
+}
+
+/**
+ * A delegated session as pi-subagent sets it up before the child's extensions bind: a work host
+ * under the session's id (`persisted` are the records an earlier instance left in its
+ * transcript) and a parent link to tell. Nothing else provides the host, so pi-ask's
+ * `ensureWorkHost` finds this one.
+ */
+function delegated(persisted: WorkRecord[] = [], options: { id?: string; parent?: boolean } = {}) {
+  const id = options.id ?? "child";
+  const records = [...persisted];
+  const send = vi.fn();
+  const host = createWorkHost({
+    store: { read: () => records, append: (record) => records.push(record) },
+    delivery: { isIdle: () => true, send, lost: vi.fn() },
+  });
+  host.start();
+  provide(id, WORK_SERVICE, host);
+  const question = vi.fn<(text: string) => void>();
+  if (options.parent !== false) provide(id, WORK_PARENT_SERVICE, { question });
+  return { host, question, send, records };
 }
 
 const params = {
@@ -105,16 +137,17 @@ describe("pi-ask routing", () => {
     await expect(h.ask(params)).rejects.toThrow("No one can answer questions in this session");
   });
 
-  it("turns toward the parent in a child session and records the question for it", async () => {
-    const record = vi.fn();
-    provide("child", "ask:route", { record });
+  it("turns toward the parent in a child session: a question item, the parent told, the turn ended", async () => {
+    const child = delegated();
     const h = harness({ mode: "print", hasUI: false, sessionId: "child" });
     await h.start();
     const tool = h.tools.get("ask")!;
     expect(tool.description).toContain("agent that delegated this task");
-    expect(tool.promptSnippet).toContain("then end your turn");
+    expect(tool.promptSnippet).toContain("your turn ends");
     const result = await h.ask(params);
-    expect(record).toHaveBeenCalledWith(
+    // The parent hears the question once, as text.
+    expect(child.question).toHaveBeenCalledTimes(1);
+    expect(child.question).toHaveBeenCalledWith(
       [
         "[Storage] Which database?",
         "   a) Postgres",
@@ -122,13 +155,167 @@ describe("pi-ask routing", () => {
         "   (choose one, or answer in your own words)",
       ].join("\n"),
     );
-    expect(result.content[0]!.text).toContain("End your turn now");
+    // The child waits on a question item in its own host: data a reload can adopt.
+    expect(child.host.list()).toMatchObject([
+      {
+        owner: "pi-ask",
+        kind: QUESTION_KIND,
+        label: "answer",
+        data: {
+          toolCallId: "call-1",
+          questions: ["Which database?"],
+          text: expect.stringContaining("[Storage] Which database?"),
+        },
+      },
+    ]);
+    // The turn ends after the tool batch. No dialog, no cmux, no answer to wait for.
+    expect(result.terminate).toBe(true);
+    expect(result.content[0]!.text).toContain("Your turn ends now");
     expect(result.details).toEqual({
       route: "parent",
-      status: "recorded",
+      status: "asked",
       questions: ["Which database?"],
     });
     expect(h.ui.custom).not.toHaveBeenCalled();
+  });
+
+  it("opens the item before it tells the parent", async () => {
+    const child = delegated();
+    const seen: unknown[] = [];
+    child.question.mockImplementation(() => seen.push(child.host.list().length));
+    const h = harness({ mode: "print", hasUI: false, sessionId: "child" });
+    await h.start();
+    await h.ask(params);
+    expect(seen).toEqual([1]);
+  });
+
+  it("withdraws the item and tells the model when the parent cannot be reached", async () => {
+    const child = delegated();
+    child.question.mockImplementation(() => {
+      throw new Error("the spawner is gone");
+    });
+    const h = harness({ mode: "print", hasUI: false, sessionId: "child" });
+    await h.start();
+    await expect(h.ask(params)).rejects.toThrow("could not be reached (the spawner is gone)");
+    expect(child.host.list()).toEqual([]);
+  });
+
+  it("refuses the question when the session has no work host to wait in", async () => {
+    provide("child", WORK_PARENT_SERVICE, { question: vi.fn() });
+    const h = harness({ mode: "print", hasUI: false, sessionId: "child" });
+    // No session_start: nothing has provided a host for this session yet.
+    await expect(h.ask(params)).rejects.toThrow("no work host");
+  });
+
+  it("asks the user in the root session, whatever else is offered", async () => {
+    // The root has a work host (ensureWorkHost provides it) and no parent link: nothing changes.
+    const h = harness();
+    await h.start();
+    const pending = h.ask(params);
+    await h.until(() => h.mounted !== undefined);
+    h.mounted!.handleInput?.("1");
+    const result = await pending;
+    expect(result.details.route).toBe("user");
+    expect(result.terminate).toBeUndefined();
+    expect(h.pi.appendEntry).not.toHaveBeenCalled(); // no question item in the root's host
+  });
+});
+
+describe("the row a parent question leaves in the transcript", () => {
+  const rendered = async (status: string, width: number, theme: typeof plainTheme = plainTheme) => {
+    const h = harness({ mode: "print", hasUI: false, sessionId: "child" });
+    await h.start();
+    const tool = h.registrations[0] as unknown as {
+      renderResult(
+        result: unknown,
+        options: { isPartial: boolean },
+        theme: unknown,
+      ): {
+        render(width: number): string[];
+      };
+    };
+    return tool
+      .renderResult(
+        { content: [], details: { route: "parent", status, questions: ["Which database?"] } },
+        { isPartial: false },
+        theme,
+      )
+      .render(width);
+  };
+
+  it.each(["asked", "recorded"])("says it is waiting for the answer (%s)", async (status) => {
+    expect(await rendered(status, 80)).toEqual([
+      " Asked the delegating agent; waiting for its answer".padEnd(79) + " ",
+    ]);
+  });
+
+  it.each([0, 1, 2, 3, 8, 20, 30])(
+    "keeps a space on both sides, or draws a blank row, at width %i",
+    async (width) => {
+      const [row] = await rendered("asked", width);
+      expect(visibleWidth(row)).toBe(width);
+      if (width <= 2) expect(row.trim()).toBe("");
+      else {
+        expect(row.startsWith(" ")).toBe(true);
+        expect(row.endsWith(" ")).toBe(true);
+      }
+    },
+  );
+
+  it("measures styled text by what is visible", async () => {
+    const [row] = await rendered("asked", 24, ansiTheme);
+    expect(visibleWidth(row)).toBe(24);
+    expect(row.startsWith(" ")).toBe(true);
+    expect(row.endsWith(" ")).toBe(true);
+  });
+});
+
+describe("a question across a reload or restart", () => {
+  const open = (
+    id: string,
+    over: Partial<Extract<WorkRecord, { op: "open" }>> = {},
+  ): WorkRecord => ({
+    v: 1,
+    op: "open",
+    id,
+    owner: "pi-ask",
+    kind: QUESTION_KIND,
+    label: "answer",
+    data: { toolCallId: "c1", questions: ["Which database?"], text: "Which database?" },
+    at: 1,
+    ...over,
+  });
+
+  it("adopts its open question at session start, so it is never reported lost", async () => {
+    const child = delegated([open("q1")]);
+    const h = harness({ mode: "print", hasUI: false, sessionId: "child" });
+    await h.start();
+    expect(child.host.settleStartup()).toEqual([]);
+    expect(child.host.list()).toMatchObject([{ id: "q1", kind: QUESTION_KIND }]);
+    expect(child.send).not.toHaveBeenCalled(); // no work:lost message
+    // The parent was told when the question was asked, not again now.
+    expect(child.question).not.toHaveBeenCalled();
+  });
+
+  it("does not adopt an item it did not write the way it writes questions", async () => {
+    const child = delegated([
+      open("bad", { data: { nothing: true } }),
+      open("job", { kind: "job" }),
+      open("other", { owner: "pi-job" }),
+    ]);
+    const h = harness({ mode: "print", hasUI: false, sessionId: "child" });
+    await h.start();
+    // pi-job's item is pi-job's to adopt: it was not offered to pi-ask, and here nothing took it.
+    expect(child.host.settleStartup().map((item) => item.id)).toEqual(["bad", "job", "other"]);
+    expect(child.host.list()).toEqual([]);
+  });
+
+  it("leaves a question item alone in a session that asks the user", async () => {
+    // A transcript forked from a child's: the root has no one to answer it.
+    const root = delegated([open("q1")], { id: "root", parent: false });
+    const h = harness();
+    await h.start();
+    expect(root.host.settleStartup().map((item) => item.id)).toEqual(["q1"]);
   });
 });
 
@@ -317,11 +504,12 @@ describe("inline cmux notification lifecycle", () => {
   });
 
   it.each(["rpc", "child", "print"])("does not notify on the %s route", async (route) => {
-    if (route === "child") provide("child", "ask:route", { record: vi.fn() });
+    if (route === "child") delegated();
     const h = harness(
       route === "child" ? { sessionId: "child" } : { mode: route, hasUI: route === "rpc" },
     );
     h.ui.select.mockResolvedValue("Postgres");
+    await h.start();
     if (route === "print") await expect(h.ask(params)).rejects.toThrow("No one can answer");
     else await h.ask(params);
     expect(execFile).not.toHaveBeenCalled();

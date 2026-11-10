@@ -10,7 +10,11 @@
  *    the same text and details the completion nudge always did;
  *  - the run ends because it was stopped: deliver the same message, then cancel the item (a
  *    stopped run is cancelled work, not finished work);
- *  - the child sends a mid-run update: `notify`, leaving the item open.
+ *  - the child sends a mid-run update: `notify`, leaving the item open;
+ *  - the child asks a question (pi-ask): `notify` with the question, once, leaving the item open.
+ *    The child waits on a question item in its own host, so the run ends, the child is idle and
+ *    waiting, and this item stays open: the child is not done. The parent's `subagent_send` is
+ *    the answer.
  *
  * Nothing here queues. Holding a message while the parent runs and answering it in the same run
  * is the host's job.
@@ -20,7 +24,7 @@
  * them lost (roadmap step 12 will adopt them instead).
  */
 import { debugLog } from "#src/debug";
-import { completionMessage, updateMessage } from "#src/observation/notification";
+import { completionMessage, questionMessage, updateMessage } from "#src/observation/notification";
 import type { Subagent } from "#src/types";
 import type { Json, WorkHost, WorkItem } from "../../../../packages/pi-work/src/index.ts";
 
@@ -60,6 +64,8 @@ export interface AgentWork {
   runEnded(record: Subagent): void;
   /** A running child sent its parent a message. */
   update(record: Subagent, message: string): void;
+  /** A child asked its parent a question. */
+  question(record: Subagent, question: string): void;
   /** The session is going away: forget the items without closing them. */
   dispose(): void;
 }
@@ -108,6 +114,16 @@ export class SubagentWork implements AgentWork {
     // This channel is delivering the message, so the completion message does not repeat it.
     record.markUpdateAnnounced(message);
     item.notify(updateMessage(record, message));
+  }
+
+  question(record: Subagent, question: string): void {
+    if (this.disposed) return;
+    // The child waits on its question item, so the parent must hear it: with no item for the run
+    // (the host was unreachable when it was requested, or was replaced since), open one now, as
+    // `runEnded` does. It then carries the completion when the agent is done.
+    const item = this.items.get(record.id) ?? this.open(record);
+    if (!item) return; // no host at all: `open` has logged it
+    item.notify(questionMessage(record, question));
   }
 
   dispose(): void {

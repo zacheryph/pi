@@ -138,7 +138,8 @@ export class SendTool {
         "- Running: the message interrupts it after its current tool execution and is injected into its conversation, redirecting its work mid-run.\n" +
         "- Queued (waiting for a concurrency slot): the message is added to the prompt it will start with. Stopping that waiting run drops the message.\n" +
         "- Idle (finished, failed, hit its turn limit or stopped): a new run starts with the message as its prompt, continuing from its earlier conversation. " +
-        "Use this to give a finished agent more work or to answer an agent that ended its turn with a question. " +
+        "Use this to give a finished agent more work, or to answer an agent that asked you a question (its question message says so): your message is the answer, and it closes the agent's open questions. " +
+        "An agent that is waiting on work, such as a job, is idle too: a message wakes it, and the work it waits on stays open. " +
         "If its session was released, the saved transcript is reopened, also after a reload, as long as the transcript and the directory it ran in still exist.\n" +
         "- Idle and never had a session (stopped while still queued, or its session could not be created): its first run starts, from its original task followed by the message. " +
         "After a reload the original task is gone, so such an agent cannot be reached; spawn a new one.\n" +

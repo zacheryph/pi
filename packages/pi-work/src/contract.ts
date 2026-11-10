@@ -17,6 +17,29 @@ export const WORK_ENTRY = "work:item";
 /** Custom message type the host writes for items nobody took over after a restart. */
 export const WORK_LOST = "work:lost";
 
+/**
+ * The `kind` of the item a delegated session opens when it asks the agent that delegated to it a
+ * question. It holds the session open like any other item until the delegator answers, and the
+ * delegator's answer closes it (see `WorkHostRuntime.cancelOpen`).
+ */
+export const QUESTION_KIND = "question";
+
+/**
+ * The service a delegating extension offers under a delegated session's id (before the
+ * session's extensions bind): the way the session reaches the item its delegator holds for it.
+ * Absent in a root session, which has no delegator.
+ */
+export const WORK_PARENT_SERVICE = "work:parent";
+
+export interface WorkParent {
+  /**
+   * Tell the delegator the session asked it a question, once. The question is plain text the
+   * delegator reads and answers; the session itself waits on a `QUESTION_KIND` item it opened in
+   * its own host. Throws when the delegator can no longer be reached.
+   */
+  question(text: string): void;
+}
+
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 
 export interface TextPart {

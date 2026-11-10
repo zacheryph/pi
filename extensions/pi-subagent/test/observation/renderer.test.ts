@@ -1,14 +1,24 @@
 import type { ThemeColor } from "@earendil-works/pi-coding-agent";
 import { describe, expect, expectTypeOf, it } from "vitest";
-import type { NotificationDetails, UpdateDetails } from "#src/observation/notification";
+import type {
+  NotificationDetails,
+  QuestionDetails,
+  UpdateDetails,
+} from "#src/observation/notification";
 import {
   buildPreviewLines,
   buildStatsParts,
   createNotificationRenderer,
+  createQuestionRenderer,
   createUpdateRenderer,
   resolveStatusPresentation,
 } from "#src/observation/renderer";
-import { markupTheme } from "../../../../packages/pi-test-helpers/src/theme.ts";
+import {
+  expectBounded,
+  NARROW_WIDTHS,
+  WIDE_TEXT,
+} from "../../../../packages/pi-test-helpers/src/render.ts";
+import { ansiTheme, markupTheme } from "../../../../packages/pi-test-helpers/src/theme.ts";
 
 /** Minimal theme stub — satisfies RendererTheme structurally. */
 const stubTheme = () => markupTheme;
@@ -28,7 +38,7 @@ function makeDetails(overrides: Partial<NotificationDetails> = {}): Notification
 }
 
 /** Render to a flat string for assertion; uses the public render() API. */
-function renderText(result: ReturnType<ReturnType<typeof createNotificationRenderer>>): string {
+function renderText(result: { render(width: number): string[] } | undefined): string {
   expect(result).toBeDefined();
   return result!.render(120).join("\n");
 }
@@ -324,4 +334,88 @@ describe("createUpdateRenderer", () => {
     expect(text).toContain("headline");
     expect(text).toContain("body");
   });
+});
+
+describe("createQuestionRenderer", () => {
+  function makeQuestion(overrides: Partial<QuestionDetails> = {}): QuestionDetails {
+    return {
+      id: "agent-1",
+      description: "Test agent",
+      question: "[Storage] Which database?\n   a) Postgres\n   b) SQLite",
+      ...overrides,
+    };
+  }
+
+  it("returns undefined when message has no details", () => {
+    expect(
+      createQuestionRenderer()({ details: undefined }, { expanded: false }, stubTheme()),
+    ).toBeUndefined();
+  });
+
+  it("draws a waiting agent as asking, neither running nor completed", () => {
+    const text = renderText(
+      createQuestionRenderer()({ details: makeQuestion() }, { expanded: false }, stubTheme()),
+    );
+    expect(text).toContain("[warning:?]");
+    expect(text).toContain("**Test agent**");
+    expect(text).toContain("asked a question");
+    expect(text).not.toContain("completed");
+    expect(text).not.toContain("●");
+  });
+
+  it("shows the first line only when collapsed, every line when expanded", () => {
+    const render = createQuestionRenderer();
+    const collapsed = renderText(
+      render({ details: makeQuestion() }, { expanded: false }, stubTheme()),
+    );
+    expect(collapsed).toContain("[Storage] Which database?");
+    expect(collapsed).not.toContain("Postgres");
+    const expanded = renderText(
+      render({ details: makeQuestion() }, { expanded: true }, stubTheme()),
+    );
+    expect(expanded).toContain("a) Postgres");
+    expect(expanded).toContain("b) SQLite");
+  });
+
+  it("strips terminal codes from the child's text", () => {
+    const text = renderText(
+      createQuestionRenderer()(
+        {
+          details: makeQuestion({
+            description: "\x1b[31mred\x1b[0m agent",
+            question: "\x1b]0;title\x07Which \x1b[1mone\x1b[0m?",
+          }),
+        },
+        { expanded: true },
+        stubTheme(),
+      ),
+    );
+    expect(text).not.toContain("\x1b[31m");
+    expect(text).not.toContain("\x1b[1m");
+    expect(text).not.toContain("\x07");
+    expect(text).toContain("Which one?");
+  });
+
+  // Like its siblings (the update and completion renderers), this one draws its rows from column
+  // 0 inside Pi's custom-message box, which supplies the inset. The tests pin that nothing overflows.
+  const wide = makeQuestion({
+    description: `${WIDE_TEXT} agent`,
+    question: `${WIDE_TEXT} どのデータベースを使いますか？ Which one 😀 should it use?\n   a) Postgres`,
+  });
+  const widths = [...NARROW_WIDTHS, ...Array.from({ length: 12 }, (_, i) => i + 1)];
+
+  it.each([...new Set(widths)].filter((width) => width > 0))(
+    "never draws past a width of %i, wide characters and ANSI included",
+    (width) => {
+      for (const theme of [stubTheme(), ansiTheme]) {
+        for (const expanded of [false, true]) {
+          const rows = createQuestionRenderer()({ details: wide }, { expanded }, theme)!.render(
+            width,
+          );
+          expect(rows.length).toBeGreaterThan(0);
+          expectBounded(rows, width);
+        }
+      }
+    },
+  );
 });

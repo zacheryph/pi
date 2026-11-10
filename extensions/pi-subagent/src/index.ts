@@ -34,8 +34,16 @@ import {
 } from "#src/lifecycle/create-subagent-session";
 import { SubagentManager } from "#src/lifecycle/subagent-manager";
 import { CompositeSubagentObserver } from "#src/observation/composite-subagent-observer";
-import type { NotificationDetails, UpdateDetails } from "#src/observation/notification";
-import { createNotificationRenderer, createUpdateRenderer } from "#src/observation/renderer";
+import type {
+  NotificationDetails,
+  QuestionDetails,
+  UpdateDetails,
+} from "#src/observation/notification";
+import {
+  createNotificationRenderer,
+  createQuestionRenderer,
+  createUpdateRenderer,
+} from "#src/observation/renderer";
 import { SubagentEventsObserver } from "#src/observation/subagent-events-observer";
 import { SubagentWork } from "#src/observation/subagent-work";
 import { registerMainAgentProfile } from "#src/main-agent-profile";
@@ -65,6 +73,7 @@ export default function (pi: ExtensionAPI) {
     createNotificationRenderer(),
   );
   pi.registerMessageRenderer<UpdateDetails>("subagent:update", createUpdateRenderer());
+  pi.registerMessageRenderer<QuestionDetails>("subagent:question", createQuestionRenderer());
 
   const registry = new AgentTypeRegistry(() => loadCustomAgents(process.cwd()));
 

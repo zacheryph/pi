@@ -1,11 +1,7 @@
 import type { DisplayStatus } from "#src/lifecycle/subagent-state";
 import type { TurnBudget } from "#src/lifecycle/turn-limits";
 import { getLifetimeTotal } from "#src/lifecycle/usage";
-import {
-  renderQuestionAffordance,
-  renderRunUpdates,
-  renderStatusLabel,
-} from "#src/observation/outcome-delivery";
+import { renderRunUpdates, renderStatusLabel } from "#src/observation/outcome-delivery";
 import type { Json, WorkMessage } from "../../../../packages/pi-work/src/index.ts";
 import type { Subagent } from "#src/types";
 
@@ -101,6 +97,24 @@ export function formatUpdateNotification(record: Subagent, message: string): str
 }
 
 /**
+ * Format a `<subagent-question>` block for a question a child asked its parent.
+ *
+ * The child is not running and not done: it waits on the answer, and the parent's next action
+ * is the exact `subagent_send` call that answers it. The question is delivered once, here; no
+ * later message repeats it.
+ */
+export function formatQuestionNotification(record: Subagent, question: string): string {
+  return joinNotificationLines([
+    "<subagent-question>",
+    `<task-id>${record.id}</task-id>`,
+    `<summary>Subagent "${escapeXml(record.description)}" asked a question and is waiting for your answer</summary>`,
+    `<question>${escapeXml(question)}</question>`,
+    "</subagent-question>",
+    `Answer by calling subagent_send with agent_id: "${record.id}" and your answer as the message. The agent resumes with your message as its next prompt.`,
+  ]);
+}
+
+/**
  * Format the block for an agent stopped before the limiter admitted it. Such an
  * agent never ran, so it has no result and no usage — reporting either (even as
  * zeroes) would point the parent at work that does not exist.
@@ -182,12 +196,20 @@ export const RESULT_PREVIEW_LENGTH = 500;
 /** Custom message types the parent's transcript holds, and the renderers are registered for. */
 export const COMPLETION_TYPE = "subagent:completion";
 export const UPDATE_TYPE = "subagent:update";
+export const QUESTION_TYPE = "subagent:question";
 
 /** Details the update renderer reads. */
 export interface UpdateDetails {
   id: string;
   description: string;
   message: string;
+}
+
+/** Details the question renderer reads. */
+export interface QuestionDetails {
+  id: string;
+  description: string;
+  question: string;
 }
 
 /**
@@ -201,8 +223,7 @@ function buildPointerLines(record: Subagent): string {
     // What the child flagged along the way leads: this message carries every
     // update no announcement delivered.
     renderRunUpdates(record.runUpdates) +
-    `${transcriptLine}\nCall subagent_get("${record.id}") to collect the full result.` +
-    renderQuestionAffordance(record.id, record.pendingQuestion, record.sendRefusal)
+    `${transcriptLine}\nCall subagent_get("${record.id}") to collect the full result.`
   );
 }
 
@@ -219,6 +240,19 @@ export function completionMessage(record: Subagent): WorkMessage {
     customType: COMPLETION_TYPE,
     content: notification + pointerLines,
     details: buildNotificationDetails(record, RESULT_PREVIEW_LENGTH) as unknown as Json,
+  };
+}
+
+/**
+ * The message that tells the parent a child asked it a question. Delivered through the agent's
+ * item when pi-ask opens the child's question item.
+ */
+export function questionMessage(record: Subagent, question: string): WorkMessage {
+  const details: QuestionDetails = { id: record.id, description: record.description, question };
+  return {
+    customType: QUESTION_TYPE,
+    content: formatQuestionNotification(record, question),
+    details: details as unknown as Json,
   };
 }
 
