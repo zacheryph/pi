@@ -23,21 +23,50 @@ interface SentMessage {
   options: { triggerTurn: boolean };
 }
 
-/** A session that records what the host writes, and reports the events it is told to. */
+interface Entry {
+  id: string;
+  type: string;
+  customType?: string;
+  data?: unknown;
+  content?: unknown;
+  details?: unknown;
+}
+
+type Listener = (event: { type: string; aborted?: boolean }) => void;
+
+/**
+ * A session that records what the host writes, and reports the events it is told to. It writes
+ * the way Pi does: a message sent while the session is idle is appended to the transcript at
+ * once, one sent while it runs is held until `endTurn()`.
+ */
 function fixture(options: { entries?: unknown[] } = {}) {
-  const entries: { type: string; customType?: string; data?: unknown }[] = (
-    options.entries ?? []
-  ).map((data) => ({ type: "custom", customType: WORK_ENTRY, data }));
+  let counter = 0;
+  const entry = (fields: Omit<Entry, "id">): Entry => ({ id: `e${++counter}`, ...fields });
+  const entries: Entry[] = (options.entries ?? []).map((data) =>
+    entry({ type: "custom", customType: WORK_ENTRY, data }),
+  );
   const sent: SentMessage[] = [];
-  const listeners = new Set<(event: { type: string }) => void>();
+  const held: SentMessage["message"][] = [];
+  const append = (message: SentMessage["message"]) =>
+    entries.push(
+      entry({
+        type: "custom_message",
+        customType: message.customType,
+        content: message.content,
+        details: message.details,
+      }),
+    );
+  const listeners = new Set<Listener>();
   const session = {
     isIdle: true as boolean,
     sendCustomMessage: vi.fn(
       async (message: SentMessage["message"], opts: SentMessage["options"]) => {
         sent.push({ message, options: opts });
+        if (session.isIdle) append(message);
+        else held.push(message);
       },
     ),
-    subscribe: vi.fn((listener: (event: { type: string }) => void) => {
+    subscribe: vi.fn((listener: Listener) => {
       listeners.add(listener);
       return () => void listeners.delete(listener);
     }),
@@ -46,17 +75,41 @@ function fixture(options: { entries?: unknown[] } = {}) {
   const store = {
     getBranch: () => entries,
     appendCustomEntry: vi.fn((customType: string, data?: unknown) => {
-      entries.push({ type: "custom", customType, data });
+      entries.push(entry({ type: "custom", customType, data }));
       return "entry";
     }),
   };
   const work = new ChildWork({ sessionId: "child-1", session, store, policy });
-  const emit = (type: string) => {
-    for (const listener of listeners) listener({ type });
+  const emit = (type: string, extra: { aborted?: boolean } = {}) => {
+    for (const listener of listeners) listener({ type, ...extra });
   };
+  /** The turn ends: Pi appends what it held. */
+  const endTurn = () => {
+    for (const message of held.splice(0)) append(message);
+    emit("turn_start");
+  };
+  /** The model answers: an assistant message is appended. */
+  const answer = () => void entries.push(entry({ type: "message" }));
   const records = () =>
-    entries.filter((entry) => entry.customType === WORK_ENTRY).map((entry) => entry.data);
-  return { work, session, policy, store, sent, emit, records, listeners };
+    entries.filter((e) => e.customType === WORK_ENTRY).map((e) => e.data as { op: string });
+  const closes = () => records().filter((record) => record.op === "close");
+  const microtasks = () => new Promise((resolve) => setImmediate(resolve));
+  return {
+    work,
+    session,
+    policy,
+    store,
+    sent,
+    held,
+    entries,
+    emit,
+    endTurn,
+    answer,
+    records,
+    closes,
+    microtasks,
+    listeners,
+  };
 }
 
 describe("providing the host", () => {
@@ -67,8 +120,8 @@ describe("providing the host", () => {
     expect(service<WorkHost>("child-1", WORK_SERVICE)).toBeUndefined();
   });
 
-  it("persists open items as custom entries in the child's own session file", () => {
-    const { work, store, records } = fixture();
+  it("persists open items as custom entries in the child's own session file", async () => {
+    const { work, store, records, microtasks } = fixture();
     const item = work.host.open({ owner: "test", kind: "job", label: "CI" });
     expect(store.appendCustomEntry).toHaveBeenCalledWith(
       WORK_ENTRY,
@@ -76,8 +129,10 @@ describe("providing the host", () => {
     );
     expect(work.openItems().map((view) => view.label)).toEqual(["CI"]);
     item.complete(DONE);
-    expect(records().at(-1)).toMatchObject({ op: "close", id: item.id, reason: "completed" });
+    // The item reads as closed at once; its close record follows once the message is in the file.
     expect(work.openItems()).toEqual([]);
+    await microtasks();
+    expect(records().at(-1)).toMatchObject({ op: "close", id: item.id, reason: "completed" });
   });
 
   it("stops listening to the session and goes inert once disposed", () => {
@@ -106,11 +161,12 @@ describe("a message for an idle child", () => {
     expect(policy.wake).toHaveBeenCalledTimes(1);
   });
 
-  it("closes the item once the message is written, since the transcript is the inbox", () => {
-    const { work, records } = fixture();
+  it("closes the item once the message is in the transcript", async () => {
+    const { work, closes, microtasks } = fixture();
     const item = work.host.open({ owner: "test", kind: "job", label: "CI" });
     item.complete(DONE);
-    expect(records().filter((record) => (record as { op: string }).op === "close")).toHaveLength(1);
+    await microtasks();
+    expect(closes()).toHaveLength(1);
   });
 
   it("asks for a run for each message that finds the session idle, which the agent folds into one", () => {
@@ -225,5 +281,177 @@ describe("a reopened child", () => {
     work.dispose();
     work.settleStartup();
     expect(sent).toEqual([]);
+  });
+});
+
+describe("landing confirmation", () => {
+  it("keeps a message Pi holds mid-run open on disk until the turn ends and it is in the transcript", async () => {
+    const { work, session, closes, emit, endTurn, microtasks } = fixture();
+    const item = work.host.open({ owner: "test", kind: "job", label: "CI" });
+    session.isIdle = false;
+    emit("agent_start");
+    item.complete(DONE);
+    // Closed for the agent (it no longer waits on it), not yet closed on disk.
+    expect(work.openItems()).toEqual([]);
+    await microtasks();
+    emit("message_end");
+    await microtasks();
+    expect(closes()).toEqual([]);
+
+    endTurn();
+    expect(closes()).toHaveLength(1);
+    expect(closes()[0]).toMatchObject({ reason: "completed" });
+  });
+
+  it("leaves the item open on disk when the process dies before the turn ends, so a restart reports it lost", async () => {
+    const { work, session, entries, emit, microtasks } = fixture();
+    const item = work.host.open({ owner: "test", kind: "job", label: "CI" });
+    session.isIdle = false;
+    emit("agent_start");
+    item.complete(DONE);
+    await microtasks();
+    // What a kill -9 right now leaves behind: the open record, and no message, and no close.
+    const onDisk = entries.filter((e) => e.type === "custom").map((e) => e.data);
+    expect(onDisk).toHaveLength(1);
+    work.dispose();
+    resetSessionTree();
+
+    const restarted = fixture({ entries: onDisk });
+    expect(restarted.work.openItems().map((view) => view.id)).toEqual([item.id]);
+    restarted.work.settleStartup();
+    expect(restarted.closes()[0]).toMatchObject({ id: item.id, reason: "lost" });
+    expect(restarted.sent.map((entry) => entry.message.customType)).toEqual([WORK_LOST]);
+    expect(restarted.entries.some((e) => e.customType === DONE.customType)).toBe(false);
+  });
+
+  it("stops waiting for a message that did not land by the time the run settled", async () => {
+    const { work, session, closes, emit, held, endTurn, microtasks } = fixture();
+    const item = work.host.open({ owner: "test", kind: "job", label: "CI" });
+    session.isIdle = false;
+    emit("agent_start");
+    item.complete(DONE);
+    held.length = 0; // Pi dropped it (a stale session)
+    emit("agent_settled");
+    await microtasks();
+    endTurn();
+    expect(closes()).toEqual([]);
+  });
+
+  it("does not take an identical message that landed before the send for the held one", async () => {
+    const { work, session, closes, emit, endTurn, microtasks } = fixture();
+    const first = work.host.open({ owner: "test", kind: "job", label: "a" });
+    const second = work.host.open({ owner: "test", kind: "job", label: "b" });
+    first.complete(DONE);
+    await microtasks();
+    expect(closes()).toHaveLength(1);
+
+    session.isIdle = false;
+    emit("agent_start");
+    second.complete(DONE); // byte-identical, held by Pi
+    await microtasks();
+    emit("turn_start");
+    emit("agent_end");
+    expect(closes()).toHaveLength(1);
+    endTurn();
+    expect(closes()).toHaveLength(2);
+  });
+
+  it("reads the transcript only while an item waits", async () => {
+    const { work, store, emit, microtasks } = fixture();
+    const reads = vi.spyOn(store, "getBranch");
+    emit("turn_start");
+    emit("agent_end");
+    emit("message_end");
+    await microtasks();
+    expect(reads).not.toHaveBeenCalled();
+    const item = work.host.open({ owner: "test", kind: "job", label: "CI" });
+    item.complete(DONE);
+    await microtasks();
+    expect(reads).toHaveBeenCalled();
+  });
+
+  it("closes a landed item at shutdown", () => {
+    const { work, session, closes, held, entries, emit } = fixture();
+    const item = work.host.open({ owner: "test", kind: "job", label: "CI" });
+    session.isIdle = false;
+    emit("agent_start");
+    item.complete(DONE);
+    const message = held.pop()!;
+    entries.push({
+      id: "landed",
+      type: "custom_message",
+      customType: message.customType,
+      content: message.content,
+      details: message.details,
+    });
+    work.dispose();
+    expect(closes()).toHaveLength(1);
+  });
+});
+
+describe("a message that arrives after the run's last chance to continue", () => {
+  const settle = (f: ReturnType<typeof fixture>, extra: { aborted?: boolean } = {}) => {
+    f.session.isIdle = true;
+    f.emit("agent_settled", extra);
+  };
+
+  it("asks the agent for a run when the transcript ends with a work message nobody answered", () => {
+    const f = fixture();
+    const item = f.work.host.open({ owner: "test", kind: "job", label: "CI" });
+    f.session.isIdle = false;
+    f.emit("agent_start");
+    f.answer(); // the model's last answer
+    item.complete(DONE); // too late for agent_before_settle to continue
+    f.endTurn(); // Pi appends it when the run winds down
+    expect(f.policy.wake).not.toHaveBeenCalled(); // the session counted as busy
+    settle(f);
+    expect(f.policy.wake).toHaveBeenCalledTimes(1);
+  });
+
+  it("asks for nothing when the model answered the message", () => {
+    const f = fixture();
+    const item = f.work.host.open({ owner: "test", kind: "job", label: "CI" });
+    f.session.isIdle = false;
+    f.emit("agent_start");
+    item.complete(DONE);
+    f.endTurn();
+    f.answer(); // the continuation
+    settle(f);
+    expect(f.policy.wake).not.toHaveBeenCalled();
+  });
+
+  it("asks for nothing after a stopped run: the message waits for the next run", () => {
+    const f = fixture();
+    const item = f.work.host.open({ owner: "test", kind: "job", label: "CI" });
+    f.session.isIdle = false;
+    f.emit("agent_start");
+    f.answer();
+    item.complete(DONE);
+    f.endTurn();
+    settle(f, { aborted: true });
+    expect(f.policy.wake).not.toHaveBeenCalled();
+  });
+
+  it("asks for nothing for a message the host did not deliver", () => {
+    const f = fixture();
+    f.session.isIdle = false;
+    f.emit("agent_start");
+    f.answer();
+    f.entries.push({ id: "x", type: "custom_message", customType: "other:note", content: "hi" });
+    settle(f);
+    expect(f.policy.wake).not.toHaveBeenCalled();
+  });
+
+  it("is not fooled by entries that are not model context after the message", () => {
+    const f = fixture();
+    const item = f.work.host.open({ owner: "test", kind: "job", label: "CI" });
+    f.session.isIdle = false;
+    f.emit("agent_start");
+    f.answer();
+    item.complete(DONE);
+    f.endTurn();
+    f.work.host.open({ owner: "test", kind: "job", label: "later" }); // a record entry after it
+    settle(f);
+    expect(f.policy.wake).toHaveBeenCalledTimes(1);
   });
 });

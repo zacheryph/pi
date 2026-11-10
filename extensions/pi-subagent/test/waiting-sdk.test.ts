@@ -15,6 +15,7 @@ import {
   startParent,
   untilAnnounced,
 } from "./characterization/harness.ts";
+import { expectNoUnmanagedRuns, trackChildRuns } from "./helpers/managed-runs.ts";
 import { EXTENSIONS, offlineAgentDir } from "./helpers/sdk.ts";
 import { widgetUi } from "./helpers/widget-ui.ts";
 
@@ -41,6 +42,7 @@ const watch = (gate: string, label = "CI") =>
   });
 
 async function parentWithJobs(options: { files?: Record<string, string | object> } = {}) {
+  const runs = trackChildRuns();
   const dir = offlineAgentDir({ extensions: [EXTENSIONS.fastJobs], files: options.files });
   const ui = widgetUi();
   const h = await startParent({
@@ -49,14 +51,14 @@ async function parentWithJobs(options: { files?: Record<string, string | object>
     tools: ["job_start", "job_watch"],
     bind: { uiContext: ui.uiContext },
   });
-  return { h, dir, ui, gate: join(dir, "ci-finished") };
+  return { h, dir, ui, runs, gate: join(dir, "ci-finished") };
 }
 
 const text = (request: Context) => JSON.stringify(request.messages);
 
 describe("a child that ends its turn with a job running", () => {
   it("is waiting, not done; the job wakes it; it answers and is done", async () => {
-    const { h, ui, gate } = await parentWithJobs();
+    const { h, ui, gate, runs } = await parentWithJobs();
     const childRequests: Context[] = [];
     h.script({
       parent: [
@@ -118,10 +120,11 @@ describe("a child that ends its turn with a job running", () => {
       result: "CI passed; review complete.",
     });
     expect(h.errors).toEqual([]);
+    expectNoUnmanagedRuns(runs); // every wake went through the agent and its limiter
   }, 40_000);
 
   it("is woken through the limiter, behind the agent that holds the only slot", async () => {
-    const { h, ui, gate } = await parentWithJobs({
+    const { h, ui, gate, runs } = await parentWithJobs({
       files: { "subagent.json": { maxConcurrent: 1 } },
     });
     const holder = gated(fauxAssistantMessage("Held, then done."));
@@ -169,10 +172,11 @@ describe("a child that ends its turn with a job running", () => {
     expect(h.announcements()[1].text).toContain("CI passed.");
     await vi.waitFor(() => expect(h.seen("subagent:resuming")).toHaveLength(1));
     expect(h.errors).toEqual([]);
+    expectNoUnmanagedRuns(runs); // every wake went through the agent and its limiter
   }, 40_000);
 
   it("is stopped with the work it waits on when the user interrupts", async () => {
-    const { h, ui, gate } = await parentWithJobs();
+    const { h, ui, gate, runs } = await parentWithJobs();
     const parentBusy = gated(fauxAssistantMessage("Interrupted."));
     h.script({
       parent: [delegate("Review CI"), fauxAssistantMessage("Started."), parentBusy.step],
@@ -221,5 +225,6 @@ describe("a child that ends its turn with a job running", () => {
     expect(text(reopened[0])).toContain("Try again later");
     expect(text(reopened[0])).not.toContain("Work lost");
     expect(h.errors).toEqual([]);
+    expectNoUnmanagedRuns(runs); // every wake went through the agent and its limiter
   }, 40_000);
 });

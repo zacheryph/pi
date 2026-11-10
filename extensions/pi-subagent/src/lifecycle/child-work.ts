@@ -15,9 +15,16 @@
  *    concurrency limiter. No message ever starts a run by itself, so no run escapes the limiter
  *    or the turn budget.
  *
- * Because a message is in the transcript when `send` returns, the host closes an item as soon as
- * it is completed (`confirmLanding` off). Landing confirmation for a message Pi holds mid-run is
- * the next step (9b).
+ * A message Pi holds mid-run is appended at the end of the turn, so the host closes a completed
+ * item only once its message is in the transcript (`confirmLanding`): a crash in between leaves the
+ * item open and the next start reports it lost. pi-work's `LandingTracker` reads the child's
+ * transcript for that, fed by the session's own events. It is the only reader: the inline
+ * extension of the child (`ensureWorkHost`) forwards run boundaries and reads no landing.
+ *
+ * A message that reaches the transcript after the run's last chance to continue (between its
+ * final `agent_before_settle` and `agent_settled`) has no continuation to answer it and finds no
+ * idle session to wake. At `agent_settled` the host reads the transcript tail and, when a work
+ * message is still unanswered, asks the agent for a run.
  *
  * The agent derives "waiting" from `openItems()`: an idle agent with open items is waiting, one
  * without is done. Nothing about waiting is stored.
@@ -25,11 +32,14 @@
 import { debugLog } from "#src/debug";
 import { provide } from "../../../../packages/pi-session-tree/src/index.ts";
 import {
+  createLandingTracker,
   createWorkHost,
   WORK_ENTRY,
   WORK_SERVICE,
   type Completion,
+  type LandingTracker,
   type SendMode,
+  type TranscriptEntry,
   type WorkHostRuntime,
   type WorkItemView,
   type WorkMessage,
@@ -61,12 +71,13 @@ export interface ChildWorkSession {
     },
     options: { triggerTurn: boolean },
   ): Promise<void>;
-  subscribe(listener: (event: { type: string }) => void): () => void;
+  /** `agent_settled` carries `aborted`: the run was stopped. */
+  subscribe(listener: (event: { type: string; aborted?: boolean }) => void): () => void;
 }
 
 /** The slice of `SessionManager` that persists open items. */
 export interface ChildWorkStore {
-  getBranch(): readonly { type: string; customType?: string; data?: unknown }[];
+  getBranch(): readonly (TranscriptEntry & { data?: unknown })[];
   appendCustomEntry(customType: string, data?: unknown): string;
 }
 
@@ -84,10 +95,15 @@ export class ChildWork {
   readonly host: WorkHostRuntime;
   private readonly withdraw: () => void;
   private readonly unsubscribe: () => void;
+  private readonly landing: LandingTracker;
   private disposed = false;
 
   constructor(params: ChildWorkParams) {
     const { session, store, policy } = params;
+    this.landing = createLandingTracker({
+      branch: () => store.getBranch(),
+      target: () => this.host,
+    });
     this.host = createWorkHost({
       store: {
         read: () =>
@@ -106,13 +122,26 @@ export class ChildWork {
             new Error(`${items.length} work message(s) not delivered: the session is gone`),
           ),
       },
+      // Pi holds a message sent mid-run until the turn ends: close the item once it is written.
+      confirmLanding: true,
+      landingMark: () => this.landing.mark(),
       onChange: () => policy.changed(),
     });
-    // The session reports its own run boundaries, so `Delivery` knows whether a run is active
-    // without any extension of the child wiring them.
+    // The session reports its own run boundaries, so `Delivery` knows whether a run is active and
+    // the landing tracker knows when a held message may have been appended, without any
+    // extension of the child wiring them.
     this.unsubscribe = session.subscribe((event) => {
-      if (event.type === "agent_start") this.host.agentStart();
-      else if (event.type === "agent_settled") this.host.agentSettled();
+      if (event.type === "agent_start") {
+        this.host.agentStart();
+      } else if (event.type === "agent_settled") {
+        this.settled(policy, event.aborted === true);
+      } else if (
+        event.type === "message_end" ||
+        event.type === "turn_start" ||
+        event.type === "agent_end"
+      ) {
+        this.landing.observe(event.type);
+      }
     });
     this.host.start();
     // Before the child's extensions bind, so each finds it on `session_start`.
@@ -125,6 +154,19 @@ export class ChildWork {
    */
   settleStartup(): void {
     if (!this.disposed) this.host.settleStartup();
+  }
+
+  /**
+   * The run is over, including its continuations, and Pi has appended every message it held.
+   * Close what landed, then answer a message that arrived too late for the run to continue: no
+   * boundary is left in this run to answer it, and the session counted as busy when it arrived, so
+   * nothing woke it. A stopped run answers nothing (the message waits for the next run).
+   */
+  private settled(policy: ChildWorkPolicy, aborted: boolean): void {
+    this.landing.observe("agent_settled");
+    this.host.agentSettled();
+    if (!aborted && this.landing.unanswered((customType) => this.host.delivers(customType)))
+      policy.wake();
   }
 
   /** The child's open items, oldest first. */
@@ -150,6 +192,8 @@ export class ChildWork {
     if (this.disposed) return;
     this.disposed = true;
     this.unsubscribe();
+    this.landing.check(); // a message already in the transcript closes its item before the host goes
+    this.landing.dispose();
     this.host.dispose();
     this.withdraw();
   }
@@ -172,6 +216,8 @@ export class ChildWork {
         )
         .catch((error: unknown) => debugLog("child work message", error));
     }
+    // Pi appends at once when it is neither streaming nor starting a run for it.
+    this.landing.sent();
     if (mode === "wake") policy.wake();
   }
 }

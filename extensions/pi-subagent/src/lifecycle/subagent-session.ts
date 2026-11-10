@@ -185,7 +185,15 @@ export class SubagentSession {
     const cleanupAbort = forwardAbortSignal(session, opts.signal);
 
     try {
-      await session.prompt(prompt);
+      // A run can begin while a compaction is under way (a wake that arrives as a child extension
+      // compacts): Pi refuses the prompt then, and the run would end in error for a condition
+      // that passes by itself. The compaction ends, or is cut short by a stop; then prompt.
+      let stoppedWhileWaiting = false;
+      if (session.isCompacting) {
+        await session.waitForIdle();
+        stoppedWhileWaiting = opts.signal?.aborted === true;
+      }
+      if (!stoppedWhileWaiting) await session.prompt(prompt);
       failIfProviderErrored(this.turnFailure.getFailure());
       onSucceeded?.(tracker.budget);
     } finally {

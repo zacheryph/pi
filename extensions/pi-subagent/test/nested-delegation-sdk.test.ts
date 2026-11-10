@@ -5,6 +5,7 @@ import { WORK_WAKE_PROMPT } from "#src/lifecycle/run";
 import { toolCall } from "../../../packages/pi-test-helpers/src/faux-session.ts";
 import { resetSessionTree } from "../../../packages/pi-test-helpers/src/globals.ts";
 import { gated, startParent, untilAnnounced, type Step } from "./characterization/harness.ts";
+import { expectNoUnmanagedRuns, trackChildRuns } from "./helpers/managed-runs.ts";
 import { EXTENSIONS, offlineAgentDir } from "./helpers/sdk.ts";
 import { widgetUi } from "./helpers/widget-ui.ts";
 
@@ -27,6 +28,7 @@ function sideOf(context: Context): Side {
 }
 
 it("a child orchestrator whose worker is still running is waiting, and wakes on its completion", async () => {
+  const runs = trackChildRuns();
   const dir = offlineAgentDir({ extensions: [EXTENSIONS.subagent] });
   const ui = widgetUi();
   const h = await startParent({ dir, bind: { uiContext: ui.uiContext } });
@@ -96,4 +98,71 @@ it("a child orchestrator whose worker is still running is waiting, and wakes on 
   expect(done).toBeGreaterThan(-1);
   await vi.waitFor(() => expect(requests.parent).toHaveLength(3), { timeout: 15_000 });
   expect(h.errors).toEqual([]);
+  // The worker's completion reached the orchestrator through its managed host, and the run that
+  // answered it was the manager's: two runs for the orchestrator, one for the worker.
+  expectNoUnmanagedRuns(runs);
+  expect(runs.managed).toBe(3);
+}, 40_000);
+
+it("a child orchestrator answers its worker's completion in the run it is in when it arrives", async () => {
+  const runs = trackChildRuns();
+  const dir = offlineAgentDir({ extensions: [EXTENSIONS.subagent] });
+  const ui = widgetUi();
+  const h = await startParent({ dir, bind: { uiContext: ui.uiContext } });
+
+  const worker = gated(fauxAssistantMessage("Parser fixed."));
+  const busy = gated(fauxAssistantMessage("Waiting on the worker."));
+  const requests: Record<Side, Context[]> = { parent: [], orchestrator: [], worker: [] };
+  const queues: Record<Side, Array<Step>> = {
+    parent: [
+      toolCall("subagent_start", {
+        subagent_type: "orchestrate",
+        description: "Coordinate the parser fix",
+        prompt: "[orchestrator] Get the parser fixed by a worker, then report.",
+      }),
+      fauxAssistantMessage("Started."),
+      fauxAssistantMessage("Noted."),
+    ],
+    orchestrator: [
+      toolCall("subagent_start", {
+        subagent_type: "general-purpose",
+        description: "Fix parser",
+        prompt: "[worker] Fix the parser.",
+      }),
+      busy.step,
+      fauxAssistantMessage("The worker fixed the parser. All done."),
+    ],
+    worker: [worker.step],
+  };
+  h.faux.setResponses(
+    Array.from({ length: 60 }, () => async (context: Context, options?: SimpleStreamOptions) => {
+      const side = sideOf(context);
+      requests[side].push(structuredClone(context));
+      const reply = queues[side].shift();
+      if (!reply) return fauxAssistantMessage("(unscripted)");
+      return typeof reply === "function" ? reply(context, options) : reply;
+    }),
+  );
+
+  await h.session.prompt("Get the parser fixed");
+  // The orchestrator is in its second request while the worker runs. The worker finishes now.
+  await busy.started;
+  await worker.started;
+  worker.release();
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  busy.release();
+  await untilAnnounced(h);
+
+  // Pi held the completion until the orchestrator's turn ended, and the same run answered it.
+  expect(requests.orchestrator).toHaveLength(3);
+  const answered = JSON.stringify(requests.orchestrator[2].messages);
+  expect(answered).toContain("Parser fixed.");
+  expect(answered).not.toContain(WORK_WAKE_PROMPT);
+  expect(h.seen("subagent:waiting")).toEqual([]);
+  expect(h.seen("subagent:resuming")).toEqual([]);
+  expect(h.announcements()).toHaveLength(1);
+  expect(h.announcements()[0].text).toContain("The worker fixed the parser. All done.");
+  expect(h.errors).toEqual([]);
+  expectNoUnmanagedRuns(runs);
+  expect(runs.managed).toBe(2); // one run for the orchestrator, one for the worker
 }, 40_000);
