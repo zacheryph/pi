@@ -107,9 +107,34 @@ the item's close record is written only once the message has landed:
   delivery is disposed (a stale context after a reload or a session replacement), and `complete`
   then leaves the item open instead of closing it as done.
 
-`WorkHostOptions.confirmLanding` turns the wait on; the root host sets it. A transport that writes
-the transcript itself (the managed child host of roadmap step 9) leaves it off. A transport that
-holds messages calls `host.messageLanded(message)` when one is in the transcript.
+`WorkHostOptions.confirmLanding` turns the wait on; the root host and a managed child's host both set
+it. A transport that writes the session file itself and never holds a message may leave it off. A
+transport that holds messages calls `host.messageLanded(message)` when one is in the transcript.
+
+### The landing tracker (`src/landing.ts`)
+
+`createLandingTracker({ branch, target })` is the reader. Whoever provides a host makes one tracker
+for it, passes `tracker.mark` as the host's `landingMark`, and reports the run boundaries to
+`tracker.observe(...)` (`message_end`, `turn_start`, `agent_end`, `agent_before_settle`,
+`agent_settled`, `session_tree`, `session_shutdown`) and every send to `tracker.sent()`. The tracker
+reads the newest transcript entries only while an item waits, hands each custom message to
+`host.messageLanded` with the mark check above, and gives up on what cannot land any more.
+
+- The root host (`ensureWorkHost`) and a managed child's host (pi-subagent's `ChildWork`) use the
+  same tracker; they differ only in where the transcript and the boundaries come from. The root
+  reads the session context and the extension events; the child reads its `SessionManager` and the
+  session's own events.
+- **One reader per host.** An extension that only finds a host that someone else provided
+  (`ensureWorkHost` in a managed child) forwards `agent_start`, `agent_settled` and
+  `agent_before_settle` to it and reads no landing. A second reader would poll twice and drop the
+  waiting items whose marks it did not make.
+- The final-settle wake is deliberately a managed-child feature. The root wakes an idle session with
+  `triggerTurn: true`; a message landing in the tiny window between the last `agent_before_settle`
+  and `agent_settled` waits in the transcript for the next prompt, and is never lost.
+- `tracker.unanswered(delivers)` answers a second transcript question: does the transcript end with a
+  message of a type the host delivered (`host.delivers(customType)`) and no answer after it? A
+  managed child asks it at `agent_settled` to find a message that arrived after the run's last
+  chance to continue.
 
 ## Persistence
 
@@ -147,11 +172,12 @@ Pi: `store` persists records and `delivery` is the **wake policy**, a
 the transcript in mode `"wake"` or `"record"`. The root session sends with
 `sendMessage`. A managed child (pi-subagent's `ChildWork`, roadmap step 9) provides
 its own under the child's session id before the child's extensions bind: its store is
-the child's session file, it writes messages to the child's transcript at once (a
-transport that appends directly leaves `confirmLanding` off) and, for `"wake"`, asks
-the agent's manager for a run through the concurrency limiter. `ensureWorkHost` then
+the child's session file, it writes messages to the child's transcript (appended at once
+while the child is idle, held by Pi until the end of the turn while it runs, so it
+confirms landing with its own tracker) and, for `"wake"`, asks the agent's manager for a
+run through the concurrency limiter. `ensureWorkHost` then
 finds that host, provides nothing and only forwards the session's run boundaries
-(`agent_start`, `agent_settled`, `agent_before_settle`) to it. The host decides when
+(`agent_start`, `agent_settled`, `agent_before_settle`) to it and reads no landing. The host decides when
 startup ends for it: `ensureWorkHost` only settles hosts it provided itself, so the
 provider calls `settleStartup()` once the session's extensions have started.
 

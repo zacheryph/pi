@@ -160,9 +160,9 @@ export interface BeforeSettleEvent {
 
 /**
  * Whether the run needs one more model request because a delivered message arrived after the
- * model's last answer: the newest message in the context is one (`isDelivered`), or one is still
- * pending (Pi appends pending messages right after this handler). Only for a run that
- * completed: after an abort the message waits in the transcript for the next run, and after an
+ * model's last answer: a message in the context's tail is one (`isDelivered`), not separated from
+ * the end by anything but other extensions' custom messages, or one is still pending (Pi appends
+ * pending messages right after this handler). Only for a run that completed: after an abort the message waits in the transcript for the next run, and after an
  * error continuing would just repeat the failing request.
  */
 export function continuesRun(
@@ -170,9 +170,13 @@ export function continuesRun(
   isDelivered: (message: ContextMessage) => boolean,
 ): boolean {
   if (event.outcome !== "completed") return false;
-  const delivered = (m: ContextMessage | undefined): boolean => !!m && isDelivered(m);
-  return (
-    delivered(event.context.contextMessages.at(-1)) ||
-    event.context.pendingMessages.some((m) => delivered(m))
-  );
+  if (event.context.pendingMessages.some((m) => isDelivered(m))) return true;
+  // Walk back over other extensions' custom messages (and branch summaries): they do not answer a
+  // work message. The first message of any other kind is the model's answer or a prompt.
+  for (let i = event.context.contextMessages.length - 1; i >= 0; i--) {
+    const m = event.context.contextMessages[i];
+    if (isDelivered(m)) return true;
+    if (m.role !== "custom" && m.role !== "branchSummary") return false;
+  }
+  return false;
 }

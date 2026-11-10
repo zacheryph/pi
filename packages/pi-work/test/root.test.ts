@@ -3,6 +3,7 @@ import { fakePi } from "../../pi-test-helpers/src/fake-pi.ts";
 import { resetSessionTree } from "../../pi-test-helpers/src/globals.ts";
 import { provide, service } from "../../pi-session-tree/src/index.ts";
 import {
+  createWorkHost,
   ensureWorkHost,
   WORK_ENTRY,
   WORK_LOST,
@@ -309,5 +310,120 @@ describe("waiting for a completion to land", () => {
     await h.emit("turn_start", {}, ctx);
     await h.emit("agent_end", {}, ctx);
     expect((work.host() as unknown as { awaitingLanding(): boolean }).awaitingLanding()).toBe(true);
+  });
+});
+
+describe("one reader of landing per host", () => {
+  const DONE = { customType: "test:done", content: "SAME" };
+  const boundaries = [
+    "turn_start",
+    "agent_end",
+    "message_end",
+    "session_tree",
+    "agent_before_settle",
+    "agent_settled",
+  ];
+  const event = {
+    outcome: "completed",
+    continue: false,
+    context: { contextMessages: [], pendingMessages: [] },
+  };
+
+  /** A context that counts how often the transcript is read. */
+  function counting(branch: unknown[] = [{ type: "message", id: "m1" }]) {
+    const base = context({ branch });
+    const reads = vi.fn(() => branch);
+    base.ctx.sessionManager.getBranch = reads;
+    return { ...base, reads, branch };
+  }
+
+  it("reads no landing for a host someone else provides, and never drops what it waits for", async () => {
+    // A managed child's host: it confirms landing with marks of its own, which a root-style
+    // reader would not recognize and would drop.
+    const host = createWorkHost({
+      store: { read: () => [], append: () => {} },
+      delivery: { isIdle: () => false, send: () => {} },
+      confirmLanding: true,
+      landingMark: () => "mine",
+    });
+    host.start();
+    provide("s1", WORK_SERVICE, host);
+    const h = fakePi();
+    ensureWorkHost(h.api);
+    const { ctx, reads } = counting();
+    await h.emit("session_start", { reason: "startup" }, ctx);
+    host.open({ owner: "test", kind: "job", label: "CI" }).complete(DONE);
+    expect(host.awaitingLanding()).toBe(true);
+
+    for (const name of boundaries) await h.emit(name, event, ctx);
+    await new Promise((resolve) => setImmediate(resolve));
+    await h.emit("session_shutdown", { reason: "quit" }, ctx);
+
+    expect(reads).not.toHaveBeenCalled();
+    expect(host.awaitingLanding()).toBe(true);
+    expect(host.landingMarks()).toEqual(["mine"]);
+  });
+
+  it("still forwards the run boundaries of a host someone else provides", async () => {
+    const hooks = { agentStart: vi.fn(), agentSettled: vi.fn(), continuesRun: vi.fn(() => true) };
+    provide("s1", WORK_SERVICE, { open: vi.fn(), adopt: vi.fn(), list: () => [], ...hooks });
+    const h = fakePi();
+    ensureWorkHost(h.api);
+    const { ctx } = counting();
+    await h.emit("session_start", { reason: "startup" }, ctx);
+    await h.emit("agent_start", {}, ctx);
+    expect(await h.emit("agent_before_settle", event, ctx)).toEqual({ continue: true });
+    await h.emit("agent_settled", {}, ctx);
+    expect(hooks.agentStart).toHaveBeenCalledTimes(1);
+    expect(hooks.continuesRun).toHaveBeenCalledTimes(1);
+    expect(hooks.agentSettled).toHaveBeenCalledTimes(1);
+  });
+
+  it("holds no tracker for a host someone else provides: a forwarding instance never reads the transcript", async () => {
+    // A host that says an item waits for its message to land: any reader would go and look.
+    const landing = {
+      awaitingLanding: vi.fn(() => true),
+      landingMarks: vi.fn(() => []),
+      reviseLanding: vi.fn(),
+      messageLanded: vi.fn(),
+    };
+    const hooks = { agentStart: vi.fn(), agentSettled: vi.fn(), continuesRun: vi.fn(() => false) };
+    provide("s1", WORK_SERVICE, {
+      open: vi.fn(),
+      adopt: vi.fn(),
+      list: () => [],
+      ...hooks,
+      ...landing,
+    });
+    const h = fakePi();
+    ensureWorkHost(h.api);
+    const { ctx, reads } = counting();
+    await h.emit("session_start", { reason: "startup" }, ctx);
+    for (const name of boundaries) await h.emit(name, event, ctx);
+    await h.emit("agent_start", {}, ctx);
+    await new Promise((resolve) => setImmediate(resolve));
+    await h.emit("session_shutdown", { reason: "quit" }, ctx);
+    expect(reads).not.toHaveBeenCalled();
+    for (const method of Object.values(landing)) expect(method).not.toHaveBeenCalled();
+    expect(hooks.agentStart).toHaveBeenCalled();
+    expect(hooks.agentSettled).toHaveBeenCalled();
+  });
+
+  it("reads the transcript once per boundary however many extensions share the host", async () => {
+    const reads: number[] = [];
+    for (const extensions of [1, 3]) {
+      resetSessionTree();
+      const pis = Array.from({ length: extensions }, () => fakePi());
+      const works = pis.map((pi) => ensureWorkHost(pi.api));
+      const { ctx, reads: read, branch } = counting();
+      for (const pi of pis) await pi.emit("session_start", { reason: "startup" }, ctx);
+      works[0].host()!.open({ owner: "test", kind: "job", label: "CI" }).complete(DONE);
+      await new Promise((resolve) => setImmediate(resolve)); // the check after the send
+      read.mockClear();
+      for (const pi of pis) await pi.emit("turn_start", {}, ctx);
+      expect(branch).toHaveLength(1);
+      reads.push(read.mock.calls.length);
+    }
+    expect(reads).toEqual([1, 1]);
   });
 });

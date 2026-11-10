@@ -303,6 +303,11 @@ export class WorkHostRuntime implements WorkHost {
     );
   }
 
+  /** Whether `customType` is one this host delivered: a message of it is work waiting for an answer. */
+  delivers(customType: string): boolean {
+    return this.delivered.has(customType);
+  }
+
   /**
    * Close every open item as cancelled, with no message: the session's owner stopped it, and what
    * it waited on is called off, so nothing is lost on the next start. Not part of the producers'
