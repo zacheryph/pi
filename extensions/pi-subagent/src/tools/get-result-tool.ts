@@ -83,8 +83,9 @@ export class GetResultTool {
 
     // Reading a finished result starts the short retention window for the
     // agent's session. It does not touch the completion message, which is
-    // delivered whatever the parent has read.
-    if (!record.isActive()) record.markConsumed();
+    // delivered whatever the parent has read. An agent still waiting on work has no finished
+    // result to read, so it does not count.
+    if (record.isDone()) record.markConsumed();
 
     const verbose = params.verbose === true;
     return textResult<GetResultDetails>(

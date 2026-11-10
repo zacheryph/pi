@@ -268,7 +268,7 @@ Provides `subagent_start`, `subagent_get`, and `subagent_send`, plus
 directory it prepared, such as a git worktree; that directory is never removed
 for it and the worker keeps taking messages there.
 The session records every agent's lifecycle, so `subagent_get` still answers for
-an agent's ID after a reload or resume (status, result, question, transcript
+an agent's ID after a reload or resume (status, last outcome, result, transcript
 path), lists the branch's agents when called without one, and a context-only
 roster card restores them to the model after compaction, reload, resume or `/tree`.
 `subagent_send` reaches an agent in any state: it steers a running one, and gives

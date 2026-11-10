@@ -380,6 +380,8 @@ export class SubagentState {
    */
   markFinishedWithoutRun(completedAt?: number): void {
     this._completedAt = completedAt ?? Date.now();
+    // A read made while it was still waiting was of an unfinished result.
+    this._consumedAt = undefined;
   }
 
   /** The run finished. Always sets result; the outcome is `completed` unless a stop came first. */

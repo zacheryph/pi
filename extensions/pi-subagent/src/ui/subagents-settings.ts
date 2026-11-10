@@ -108,9 +108,9 @@ const SETTINGS: readonly SettingDescriptor[] = [
   },
   {
     kind: "numeric",
-    label: "Consumed-session retention",
+    label: "Session retention (result read)",
     currentDisplay: (settings) => `${settings.consumedSessionRetentionMinutes} min`,
-    inputTitle: "Minutes to retain a consumed agent's session",
+    inputTitle: "Minutes to keep a done agent's session once its result was read with subagent_get",
     inputDefault: (settings) => String(settings.consumedSessionRetentionMinutes),
     minimum: 1,
     validationMessage: "Must be a positive integer.",
@@ -118,9 +118,9 @@ const SETTINGS: readonly SettingDescriptor[] = [
   },
   {
     kind: "numeric",
-    label: "Unconsumed-session retention",
+    label: "Session retention (result not read)",
     currentDisplay: (settings) => `${settings.unconsumedSessionRetentionMinutes} min`,
-    inputTitle: "Minutes to retain an unconsumed agent's session (safety cap)",
+    inputTitle: "Minutes to keep a done agent's session when its result was not read (safety cap)",
     inputDefault: (settings) => String(settings.unconsumedSessionRetentionMinutes),
     minimum: 1,
     validationMessage: "Must be a positive integer.",

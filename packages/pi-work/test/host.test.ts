@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  calledOffMessage,
   createWorkHost,
   lostMessage,
   openRecords,
   parseRecord,
+  WORK_CALLED_OFF,
   WORK_LOST,
   type BeforeSettleEvent,
   type Completion,
@@ -197,6 +199,74 @@ describe("onChange", () => {
     item.complete(DONE);
     expect(host.list()).toHaveLength(1);
     expect(onChange).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("reportCalledOff", () => {
+  const view = (id: string, kind: string, label: string) => ({
+    id,
+    owner: "pi-job",
+    kind,
+    label,
+    openedAt: 1,
+  });
+
+  it("writes one message that records and wakes nothing, and changes no item", () => {
+    const onChange = vi.fn();
+    const { host, sent, records } = setup({ onChange });
+    const open = host.open({ owner: "pi-job", kind: "watch", label: "CI watch" });
+    onChange.mockClear();
+    const before = records.length;
+    host.reportCalledOff([view("j1", "watch", "CI watch")]);
+    expect(sent).toHaveLength(1);
+    expect(sent[0].mode).toBe("record");
+    expect(sent[0].messages[0]).toMatchObject({
+      customType: WORK_CALLED_OFF,
+      content: expect.stringContaining('watch "CI watch" (pi-job, j1)'),
+    });
+    expect(records).toHaveLength(before);
+    expect(host.list()).toMatchObject([{ id: open.id }]);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("says nothing for no items, and ignores a context that cannot take the message", () => {
+    const { host, sent } = setup();
+    host.reportCalledOff([]);
+    expect(sent).toEqual([]);
+    const throwing = createWorkHost({
+      store: { read: () => [], append: () => {} },
+      delivery: {
+        isIdle: () => true,
+        send: () => {
+          throw new Error("stale");
+        },
+      },
+    });
+    throwing.start();
+    expect(() => throwing.reportCalledOff([view("j1", "job", "CI")])).not.toThrow();
+  });
+
+  it("says nothing once the host is disposed", () => {
+    const { host, sent } = setup();
+    host.dispose();
+    host.reportCalledOff([view("j1", "job", "CI")]);
+    expect(sent).toEqual([]);
+  });
+
+  it("describes the items as bounded, sanitised data that tells the model nothing will wake it", () => {
+    const items = Array.from({ length: 25 }, (_, i) => ({
+      ...view(`i${i}`, "job", `x\n${"y".repeat(500)}`),
+    }));
+    const message = calledOffMessage(items);
+    const text = message.content as string;
+    expect(text).toContain("25 items were");
+    expect(text).toContain("nothing will wake you");
+    expect(text).toContain("and 5 more");
+    expect(text.length).toBeLessThan(25 * 200);
+    expect(text.split("\n").filter((line) => line.startsWith("- "))).toHaveLength(21);
+    expect((message.details as { items: unknown[] }).items).toHaveLength(25);
+    expect(calledOffMessage(items.slice(0, 1)).content).toContain("1 item was");
+    expect(JSON.parse(JSON.stringify(message))).toEqual(message);
   });
 });
 

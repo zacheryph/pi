@@ -18,6 +18,13 @@ export const WORK_ENTRY = "work:item";
 export const WORK_LOST = "work:lost";
 
 /**
+ * Custom message type the host writes when the session's owner called its open items off (a stop,
+ * a failed run, the turn limit): the items were closed as cancelled, so nothing will wake the
+ * session for them.
+ */
+export const WORK_CALLED_OFF = "work:called-off";
+
+/**
  * The `kind` of the item a delegated session opens when it asks the agent that delegated to it a
  * question. It holds the session open like any other item until the delegator answers, and the
  * delegator's answer closes it (see `WorkHostRuntime.cancelOpen`).

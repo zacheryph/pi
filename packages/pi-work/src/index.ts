@@ -1,5 +1,6 @@
 export {
   QUESTION_KIND,
+  WORK_CALLED_OFF,
   WORK_ENTRY,
   WORK_LOST,
   WORK_PARENT_SERVICE,
@@ -24,6 +25,7 @@ export {
   type SendMode,
 } from "./delivery.ts";
 export {
+  calledOffMessage,
   createWorkHost,
   lostMessage,
   openRecords,

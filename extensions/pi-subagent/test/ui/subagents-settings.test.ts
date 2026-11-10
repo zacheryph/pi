@@ -24,13 +24,13 @@ function makeSettings() {
     unconsumedSessionRetentionMinutes: 720,
     applyConsumedSessionRetentionMinutes: vi.fn(
       (): { message: string; level: "info" | "warning" } => ({
-        message: "Consumed-session retention set to 30 min",
+        message: "Session retention (result read) set to 30 min",
         level: "info",
       }),
     ),
     applyUnconsumedSessionRetentionMinutes: vi.fn(
       (): { message: string; level: "info" | "warning" } => ({
-        message: "Unconsumed-session retention set to 1440 min",
+        message: "Session retention (result not read) set to 1440 min",
         level: "info",
       }),
     ),
@@ -88,8 +88,8 @@ describe("SubagentsSettingsHandler", () => {
       "Max concurrency (current: 4)",
       "Default max turns (current: unlimited)",
       "Wrap-up turns (current: 2)",
-      "Consumed-session retention (current: 10 min)",
-      "Unconsumed-session retention (current: 720 min)",
+      "Session retention (result read) (current: 10 min)",
+      "Session retention (result not read) (current: 720 min)",
       "Abort all subagents on ESC (current: on)",
       "Mid-run updates from background subagents (current: on)",
       "Overlay width (current: third)",
@@ -332,28 +332,34 @@ describe("SubagentsSettingsHandler — wrap-up turns", () => {
   });
 });
 
+// Labels reworded by roadmap step 11 (were "Consumed-session retention" / "Unconsumed-session
+// retention"): "consumed" no longer means delivered, only that the parent read the finished result
+// with subagent_get. The setting keys and defaults are unchanged.
 describe("SubagentsSettingsHandler — retention windows", () => {
   it("delegates a valid consumed window to applyConsumedSessionRetentionMinutes", async () => {
     const { handler, settings } = makeHandler();
-    const ui = makeMenuUI(["Consumed-session retention (current: 10 min)"]);
+    const ui = makeMenuUI(["Session retention (result read) (current: 10 min)"]);
     ui.input = vi.fn().mockResolvedValue("30");
     await handler.handle({ ui });
     expect(settings.applyConsumedSessionRetentionMinutes).toHaveBeenCalledWith(30);
-    expect(ui.notify).toHaveBeenCalledWith("Consumed-session retention set to 30 min", "info");
+    expect(ui.notify).toHaveBeenCalledWith("Session retention (result read) set to 30 min", "info");
   });
 
   it("delegates a valid unconsumed window to applyUnconsumedSessionRetentionMinutes", async () => {
     const { handler, settings } = makeHandler();
-    const ui = makeMenuUI(["Unconsumed-session retention (current: 720 min)"]);
+    const ui = makeMenuUI(["Session retention (result not read) (current: 720 min)"]);
     ui.input = vi.fn().mockResolvedValue("1440");
     await handler.handle({ ui });
     expect(settings.applyUnconsumedSessionRetentionMinutes).toHaveBeenCalledWith(1440);
-    expect(ui.notify).toHaveBeenCalledWith("Unconsumed-session retention set to 1440 min", "info");
+    expect(ui.notify).toHaveBeenCalledWith(
+      "Session retention (result not read) set to 1440 min",
+      "info",
+    );
   });
 
   it("rejects a consumed window below 1 with a warning and does not apply", async () => {
     const { handler, settings } = makeHandler();
-    const ui = makeMenuUI(["Consumed-session retention (current: 10 min)"]);
+    const ui = makeMenuUI(["Session retention (result read) (current: 10 min)"]);
     ui.input = vi.fn().mockResolvedValue("0");
     await handler.handle({ ui });
     expect(settings.applyConsumedSessionRetentionMinutes).not.toHaveBeenCalled();

@@ -1183,7 +1183,10 @@ describe("SettingsManager", () => {
       const sm = new SettingsManager({ emit: vi.fn(), cwd: projectDir, agentDir: "/nonexistent" });
       const toast = sm.applyConsumedSessionRetentionMinutes(30);
       expect(sm.consumedSessionRetentionMinutes).toBe(30);
-      expect(toast).toEqual({ message: "Consumed-session retention set to 30 min", level: "info" });
+      expect(toast).toEqual({
+        message: "Session retention (result read) set to 30 min",
+        level: "info",
+      });
       const written = JSON.parse(readFileSync(join(projectDir, ".pi", "subagent.json"), "utf-8"));
       expect(written.consumedSessionRetentionMinutes).toBe(30);
     });
@@ -1192,7 +1195,7 @@ describe("SettingsManager", () => {
       const sm = new SettingsManager({ emit: vi.fn(), cwd: projectDir, agentDir: "/nonexistent" });
       const toast = sm.applyConsumedSessionRetentionMinutes(0);
       expect(sm.consumedSessionRetentionMinutes).toBe(1);
-      expect(toast.message).toBe("Consumed-session retention set to 1 min");
+      expect(toast.message).toBe("Session retention (result read) set to 1 min");
     });
 
     it("sets the unconsumed window, persists, and reports the post-normalization value", () => {
@@ -1200,7 +1203,7 @@ describe("SettingsManager", () => {
       const toast = sm.applyUnconsumedSessionRetentionMinutes(1440);
       expect(sm.unconsumedSessionRetentionMinutes).toBe(1440);
       expect(toast).toEqual({
-        message: "Unconsumed-session retention set to 1440 min",
+        message: "Session retention (result not read) set to 1440 min",
         level: "info",
       });
       const written = JSON.parse(readFileSync(join(projectDir, ".pi", "subagent.json"), "utf-8"));

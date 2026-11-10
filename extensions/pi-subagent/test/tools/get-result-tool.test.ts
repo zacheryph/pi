@@ -221,6 +221,9 @@ describe("GetResultTool", () => {
     expect(result.content[0].text).toContain("Status: waiting: CI");
     // The retention rule keeps its session while the work is open, read or not.
     expect(record.hasOpenWork()).toBe(true);
+    // A waiting agent has no finished result: reading it does not start the short window (roadmap
+    // step 11), which would otherwise be running when the work ends.
+    expect(record.consumed).toBe(false);
   });
 
   it("leaves the completion message owed after reading a finished result", async () => {

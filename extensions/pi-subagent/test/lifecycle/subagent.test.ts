@@ -466,9 +466,11 @@ describe("Subagent — disposeSession", () => {
   });
 });
 
+// A session is released only for an agent that is done: idle with no open work (roadmap step 11).
+// The fixtures below are idle agents; the rule itself is pinned at the end of the block.
 describe("Subagent — releaseSession", () => {
   it("disposes the wrapped session and clears it (isSessionReady false)", async () => {
-    const record = makeSubagent();
+    const record = makeSubagent({ status: "idle" });
     const stub = createSubagentSessionStub(createMockSession(), "/path/to/session.jsonl");
     record.subagentSession = toSubagentSession(stub);
     await record.releaseSession();
@@ -477,7 +479,7 @@ describe("Subagent — releaseSession", () => {
   });
 
   it("captures outputFile so the getter still resolves it after release", async () => {
-    const record = makeSubagent();
+    const record = makeSubagent({ status: "idle" });
     record.subagentSession = toSubagentSession(
       createSubagentSessionStub(createMockSession(), "/path/to/session.jsonl"),
     );
@@ -497,7 +499,7 @@ describe("Subagent — releaseSession", () => {
   });
 
   it("clears the session before awaiting teardown, so a racing sweep releases once", async () => {
-    const record = makeSubagent();
+    const record = makeSubagent({ status: "idle" });
     const stub = createSubagentSessionStub(createMockSession(), "/path/to/session.jsonl");
     const teardown = Promise.withResolvers<void>(); // eslint-disable-line @typescript-eslint/no-invalid-void-type -- Promise.withResolvers<void> is valid; rule does not allow void in generic fn call type args
     stub.dispose = vi.fn((): Promise<void> => teardown.promise);
@@ -513,7 +515,7 @@ describe("Subagent — releaseSession", () => {
   });
 
   it("is a no-op on a second release — does not re-dispose, keeps the captured outputFile", async () => {
-    const record = makeSubagent();
+    const record = makeSubagent({ status: "idle" });
     const stub = createSubagentSessionStub(createMockSession(), "/path/to/session.jsonl");
     record.subagentSession = toSubagentSession(stub);
     await record.releaseSession();
@@ -523,7 +525,7 @@ describe("Subagent — releaseSession", () => {
   });
 
   it("disposeSession after release is a no-op (session already cleared)", async () => {
-    const record = makeSubagent();
+    const record = makeSubagent({ status: "idle" });
     const stub = createSubagentSessionStub(createMockSession(), "/path/to/session.jsonl");
     record.subagentSession = toSubagentSession(stub);
     await record.releaseSession();
@@ -545,6 +547,57 @@ describe("Subagent — releaseSession", () => {
     await expect(record.releaseSession()).resolves.toBeUndefined();
     expect(record.sendRefusal).toBeUndefined();
     expect(record.outputFile).toBeUndefined();
+  });
+  describe("the retention rule: only a done agent's session is released", () => {
+    function withSession(status: "queued" | "idle") {
+      const record = makeSubagent({ status });
+      const stub = createSubagentSessionStub(createMockSession(), "/path/to/session.jsonl");
+      record.subagentSession = toSubagentSession(stub);
+      return { record, stub };
+    }
+
+    it("is done when idle with nothing open", () => {
+      const { record } = withSession("idle");
+      expect(record.isDone()).toBe(true);
+    });
+
+    it("is not done while a run is queued or running, so releasing it does nothing", async () => {
+      const { record, stub } = withSession("queued");
+      expect(record.isDone()).toBe(false);
+      await record.releaseSession();
+      expect(stub.dispose).not.toHaveBeenCalled();
+      expect(record.isSessionReady()).toBe(true);
+    });
+
+    it.each([
+      ["a job", openItem("CI")],
+      [
+        "a subagent of its own",
+        openItem("Fix parser (general-purpose agent a1)", "a1", "subagent"),
+      ],
+      ["a question", openItem("answer", "q1", "question")],
+    ])("is waiting, not done, with %s open, so releasing it does nothing", async (_kind, item) => {
+      const { record, stub } = withSession("idle");
+      stub.openItems.push(item);
+      expect(record.isDone()).toBe(false);
+      await record.releaseSession();
+      expect(stub.dispose).not.toHaveBeenCalled();
+      expect(record.isSessionReady()).toBe(true);
+      expect(record.sendRefusal).toBeUndefined();
+    });
+
+    it("is released once the last item closes", async () => {
+      const { record, stub } = withSession("idle");
+      stub.openItems.push(openItem("CI"), openItem("review"));
+      await record.releaseSession();
+      stub.openItems.shift();
+      await record.releaseSession();
+      expect(stub.dispose).not.toHaveBeenCalled();
+      stub.openItems.shift();
+      await record.releaseSession();
+      expect(stub.dispose).toHaveBeenCalledOnce();
+      expect(record.isSessionReady()).toBe(false);
+    });
   });
 });
 
@@ -1148,8 +1201,9 @@ describe("Subagent — a child's question to its parent", () => {
   });
 
   it("closes a question left open in a released transcript when the message reopens it", async () => {
-    // A failed run released the session with its question item still in the transcript; pi-ask
-    // adopts it when the transcript is reopened, and the message that reopened it is the answer.
+    // A process that died left its question item open in the transcript (a session is never
+    // released with one); pi-ask adopts it when the transcript is reopened, and the message that
+    // reopened it is the answer.
     const reopened = createSubagentSessionStub();
     reopened.openItems.push(openItem("answer", "q1", "question"));
     reopened.resumeTurnLoop.mockResolvedValue(turnLoopResult({ responseText: "reopened" }));
@@ -2243,6 +2297,31 @@ describe("Subagent.send() — a run stopped while its session is being created",
     expect(agent.isSessionReady()).toBe(false);
     expect(agent.outcome).toBe("stopped");
     expect(agent.sendRefusal).toBeUndefined();
+  });
+
+  // Roadmap step 11: a stop calls off the agent's work before its session goes, even a session it
+  // never attached. A reopened transcript can hand the agent a question back (adopted at
+  // `session_start`), which would otherwise stay open in the transcript of a stopped agent.
+  it("calls off the work a reopened transcript gave back to a run that was stopped meanwhile", async () => {
+    const { factory, pending } = deferredFactory();
+    const agent = createRunnableAgent({ createSubagentSession: factory });
+    const run = agent.run();
+    agent.abort();
+
+    const arriving = sessionStub();
+    arriving.stub.openItems.push(openItem("answer", "q1", "question"));
+    pending[0].resolve(arriving.session);
+    await run;
+
+    expect(arriving.stub.cancelWork).toHaveBeenCalledTimes(1);
+    expect(arriving.stub.openItems).toEqual([]);
+    // The agent is told what was called off, before its session goes.
+    expect(arriving.stub.reportCalledOff).toHaveBeenCalledTimes(1);
+    expect(arriving.stub.reportCalledOff.mock.calls[0][0]).toMatchObject([{ label: "answer" }]);
+    expect(arriving.stub.reportCalledOff.mock.invocationCallOrder[0]).toBeLessThan(
+      arriving.stub.dispose.mock.invocationCallOrder[0],
+    );
+    expect(arriving.stub.dispose).toHaveBeenCalledTimes(1);
   });
 
   it("starts a first run once the stopped creation has unwound, leaking no session", async () => {

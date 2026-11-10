@@ -271,7 +271,7 @@ A message is refused when the transcript is gone, when the directory no longer e
 
 Check the status of an agent and read its full result without waiting for it, or list the agents this branch started.
 A running agent is reported as running; its completion message arrives when it finishes.
-Reading a finished result does not deliver it again and does not suppress its completion message; it only starts the shorter session-retention window.
+Reading a finished result does not deliver it again and does not suppress its completion message; it only starts the shorter session-retention window (`consumedSessionRetentionMinutes`). An agent that still waits on work has no finished result, so reading it starts nothing.
 
 | Parameter  | Type    | Required | Description                                          |
 | ---------- | ------- | -------- | ---------------------------------------------------- |
@@ -429,8 +429,8 @@ When a run **completes** with items still open, the agent is idle and **waiting*
 - An item closes only once its result is in the child's transcript. A result Pi still holds mid-run is not there yet: if the process dies before the turn ends, the item is still open on disk and the next start reports it lost, with the result absent.
 - No message starts a run in a child by itself. Every run of a child begins through the manager (`Subagent.startRun`): the first, one a wake asks for, one a `subagent_send` starts. A wake that finds the child compacting (a child extension called `ctx.compact()`) waits for the compaction to end before it prompts, since Pi refuses a prompt meanwhile.
 - A waiting agent takes `subagent_send` like any idle agent. Stopping it (or ESC at the parent) stops it, reports `stopped`, and releases its session, which stops the work inside it.
-- A run that ends in an error, at the turn limit or by a stop does not wait: the assignment is over, the session is released, and the items stay open in the child's transcript, so a reopened agent is told the work was lost. (A question it left open is the exception: pi-ask adopts it when the transcript is reopened, and the message that reopened it is the answer, so it closes at once.)
-- The retention sweep never releases the session of an agent with open work, however long it waits.
+- A run that ends in an error, at the turn limit or by a stop does not wait: the assignment is over, its open work is called off (the items close as cancelled), the agent is told so with one `work:called-off` message in its own transcript (no run starts, and a reopened agent does not wait for work that was killed), and the session is released, which stops the jobs and agents inside it. An agent that held no work gets no message.
+- A session is released only for an agent that is done (idle, nothing open). The retention sweep never releases an agent with open work, a question included, however long it waits; its window starts when the last item closes.
 
 ### Asking the parent
 
@@ -455,7 +455,8 @@ It receives the standard pair of session lifecycle events:
 | `session_start`    | Extensions are bound, before the child's first turn | `"startup"`, or `"resume"` when its transcript was reopened |
 | `session_shutdown` | The child session is disposed                       | `"quit"`                                                    |
 
-Disposal happens when the retention window for a finished agent with no open work expires, when the in-memory records of finished agents are cleared at session start or switch, when the parent session shuts down, or when child extension binding fails partway.
+Disposal happens when the retention window for a done agent (idle, no open work) expires, when the in-memory records of done agents are cleared at session start or switch, when a stop, a failure or the turn limit ends an agent that held work (its work is called off first), when the parent session shuts down, or when child extension binding fails partway.
+An agent that is running, queued or waiting on open work is never disposed by retention or clearing.
 Clearing them loses no history: the session keeps every agent's saved record (see [Saved records and the roster card](#saved-records-and-the-roster-card)).
 It does **not** happen the moment an agent finishes: the session is retained so a resume is cheap, per the `consumedSessionRetentionMinutes` and `unconsumedSessionRetentionMinutes` settings above. A released agent still takes `subagent_send`, which reopens its transcript, at the cost of rebuilding the session.
 

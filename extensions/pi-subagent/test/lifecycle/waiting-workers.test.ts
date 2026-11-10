@@ -84,6 +84,24 @@ const withJob =
   (child: Child) =>
     void child.stub.openItems.push(openItem(label));
 
+/**
+ * The agent was told, once and before its session was released, that these items were called off
+ * (roadmap step 11): without it a reopened agent still believes it will be woken for them.
+ */
+function expectToldOnce(child: Child, labels: string[]) {
+  expect(child.stub.reportCalledOff).toHaveBeenCalledTimes(1);
+  expect(child.stub.reportCalledOff.mock.calls[0][0].map((item) => item.label)).toEqual(labels);
+  expect(child.stub.reportCalledOff.mock.invocationCallOrder[0]).toBeLessThan(
+    child.stub.dispose.mock.invocationCallOrder[0],
+  );
+}
+
+/** Told once, the session still live. */
+function expectToldOnceLive(child: Child, labels: string[]) {
+  expect(child.stub.reportCalledOff).toHaveBeenCalledTimes(1);
+  expect(child.stub.reportCalledOff.mock.calls[0][0].map((item) => item.label)).toEqual(labels);
+}
+
 describe("an agent that ends its run with open work", () => {
   it("goes idle and waiting instead of done, and reports nothing to its spawner", async () => {
     const h = harness();
@@ -340,9 +358,12 @@ describe("a run that does not complete", () => {
     expect(h.completed).toHaveBeenCalledTimes(1);
     await tick();
     expect(child.stub.dispose).toHaveBeenCalledTimes(1);
-    // Not a stop: the items stay open, so a reopened agent hears its work was lost.
-    expect(child.stub.cancelWork).not.toHaveBeenCalled();
-    expect(child.stub.openItems).toHaveLength(1);
+    // Rewritten by roadmap step 11 (was: the items stayed open in the transcript, so a reopened
+    // agent heard its work was lost). A released session never has open work: the end of the
+    // assignment calls it off first, like a stop does.
+    expect(child.stub.cancelWork).toHaveBeenCalledTimes(1);
+    expect(child.stub.openItems).toEqual([]);
+    expectToldOnce(child, ["CI"]);
   });
 
   it("lets go of its work when the run failed, and keeps the session when nothing was open", async () => {
@@ -355,13 +376,17 @@ describe("a run that does not complete", () => {
     expect(failed.record.outcome).toBe("error");
     expect(h.waiting).not.toHaveBeenCalled();
     expect(failed.stub.dispose).toHaveBeenCalledTimes(1);
-    expect(failed.stub.cancelWork).not.toHaveBeenCalled();
-    expect(failed.stub.openItems).toHaveLength(1);
+    // Rewritten by roadmap step 11 (was: left open to be reported lost): called off, then released.
+    expect(failed.stub.cancelWork).toHaveBeenCalledTimes(1);
+    expect(failed.stub.openItems).toEqual([]);
+    expectToldOnce(failed, ["CI"]);
 
     const clean = await h.spawn((c) => c.stub.runTurnLoop.mockRejectedValue(new Error("boom")));
     await tick();
     expect(clean.record.outcome).toBe("error");
     expect(clean.stub.dispose).not.toHaveBeenCalled();
+    // Nothing was open, so there is nothing to tell it.
+    expect(clean.stub.reportCalledOff).not.toHaveBeenCalled();
   });
 });
 
@@ -514,7 +539,7 @@ describe("an agent that asks its parent a question", () => {
     expect(h.waiting).not.toHaveBeenCalled();
   });
 
-  it("does not keep a question open on an agent that failed: a reopened agent is not told to wait", async () => {
+  it("does not keep a question open on an agent that failed: it is called off and nothing waits", async () => {
     const h = harness();
     const child = await h.spawn((c) => {
       asking()(c);
@@ -528,8 +553,11 @@ describe("an agent that asks its parent a question", () => {
     expect(child.record.outcome).toBe("error");
     expect(h.waiting).not.toHaveBeenCalled();
     expect(h.completed).toHaveBeenCalledTimes(1);
-    // The session is released with the question item left open in its transcript; whoever sends
-    // it a message next closes it when the transcript is reopened (see Run.answering).
+    // Rewritten by roadmap step 11 (was: the session was released with the question left open in
+    // its transcript, for the next message to close). The failure ends the assignment: the
+    // question is called off with the rest, then the session is released.
+    expect(child.stub.cancelWork).toHaveBeenCalledTimes(1);
+    expect(child.stub.openItems).toEqual([]);
     expect(child.stub.dispose).toHaveBeenCalledTimes(1);
   });
 });
@@ -549,6 +577,8 @@ describe("stopping a waiting agent", () => {
     // reported lost if the agent is ever reopened.
     expect(child.stub.cancelWork).toHaveBeenCalledTimes(1);
     expect(child.stub.openItems).toEqual([]);
+    // It is told what was called off, so a reopened agent does not wait for it.
+    expectToldOnce(child, ["CI"]);
     // A late message finds no session to wake: nothing runs.
     child.params.work!.wake();
     await tick();
@@ -594,6 +624,29 @@ describe("stopping a waiting agent", () => {
     expect(child.stub.dispose).toHaveBeenCalledTimes(1);
     expect(child.stub.cancelWork).toHaveBeenCalled();
     expect(child.stub.openItems).toEqual([]);
+    // Written once, after the stopped run unwound (a message sent mid-run would be held by Pi),
+    // and before the release.
+    expectToldOnce(child, ["review"]);
+  });
+
+  it("tells a stopped agent what was called off even when new input reaches it before its run unwound", async () => {
+    const h = harness();
+    const child = await h.spawn(withJob("CI"));
+    const run = Promise.withResolvers<ReturnType<typeof turnLoopResult>>();
+    child.stub.resumeTurnLoop.mockReturnValueOnce(run.promise);
+    child.params.work!.wake();
+    expect(h.manager.abort(child.record.id)).toBe(true);
+    // Not told yet: the stopped run is still unwinding, and a message sent now would be held.
+    expect(child.stub.reportCalledOff).not.toHaveBeenCalled();
+    // The parent's message starts the next run on the same live session: nothing releases it,
+    // so the agent is told as that run is requested.
+    child.stub.resumeTurnLoop.mockResolvedValueOnce(turnLoopResult());
+    await h.manager.send(child.record.id, "Carry on without CI.");
+    expectToldOnceLive(child, ["CI"]);
+    run.resolve(turnLoopResult());
+    await child.record.promise;
+    await tick();
+    expect(child.stub.reportCalledOff).toHaveBeenCalledTimes(1); // once, not again at the release
   });
 
   // Rewritten by roadmap step 10 (was: "stops an agent that reported a question while work
@@ -620,38 +673,195 @@ describe("stopping a waiting agent", () => {
   });
 });
 
+// Roadmap step 11: one rule for every release. A session is released only for an agent that is
+// done (idle with no open work, `Subagent.isDone`), once its window has passed, and the window
+// starts when the last item closed. The default windows apply: 10 minutes after the parent read
+// the result with `subagent_get`, 12 hours otherwise.
 describe("retention", () => {
-  it("never releases the session of an agent with open work, however long it waits", async () => {
+  const MINUTE = 60 * 1000;
+  const HOUR = 60 * MINUTE;
+
+  /** Run `body` on fake timers (the sweep is the manager's own interval). */
+  async function onFakeTimers(body: () => Promise<void>) {
     vi.useFakeTimers();
     try {
+      await body();
+    } finally {
+      vi.useRealTimers();
+    }
+  }
+
+  /** One item of every kind a child can wait on. */
+  const kinds = [
+    ["a job", () => openItem("CI", "j1", "job")],
+    ["a watch", () => openItem("CI", "w1", "watch")],
+    [
+      "an agent of its own",
+      () => openItem("Fix parser (general-purpose agent a1)", "a1", "subagent"),
+    ],
+    ["a question", () => openItem("answer", "q1", "question")],
+  ] as const;
+
+  it("never releases the session of an agent with open work, however long it waits", async () => {
+    await onFakeTimers(async () => {
       const h = harness();
       const child = await h.spawn(withJob());
-      child.record.markConsumed();
-      await vi.advanceTimersByTimeAsync(13 * 60 * 60 * 1000);
+      // The sweep does not even ask for a release (`releaseSession` would refuse it, too).
+      const release = vi.spyOn(child.record, "releaseSession");
+      await vi.advanceTimersByTimeAsync(13 * HOUR);
+      expect(release).not.toHaveBeenCalled();
       expect(child.stub.dispose).not.toHaveBeenCalled();
       expect(child.record.isSessionReady()).toBe(true);
       expect(child.record.waitingOn).toEqual(["CI"]);
-    } finally {
-      vi.useRealTimers();
-    }
+    });
   });
 
-  it("releases it once the work is gone and the window has passed", async () => {
-    vi.useFakeTimers();
-    try {
+  it("keeps a waiting agent through every sweep and every clearCompleted", async () => {
+    await onFakeTimers(async () => {
       const h = harness();
       const child = await h.spawn(withJob());
-      child.record.markConsumed();
-      await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
+      const done = await h.spawn();
+      for (let minute = 1; minute <= 25 * 60; minute++) {
+        await vi.advanceTimersByTimeAsync(MINUTE); // one sweep a minute, for 25 hours
+        if (minute % 7 === 0) await h.manager.clearCompleted();
+      }
+      expect(h.manager.getRecord(child.record.id)).toBe(child.record);
+      expect(child.stub.dispose).not.toHaveBeenCalled();
+      expect(child.record.isSessionReady()).toBe(true);
+      expect(child.record.waitingOn).toEqual(["CI"]);
+      // The done agent beside it was not spared: it was released at its window, then cleared.
+      expect(h.manager.getRecord(done.record.id)).toBeUndefined();
+      expect(done.stub.dispose).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe.each(kinds)("with %s open", (_label, makeItem) => {
+    it("keeps the session however long it waits, then releases it a window after the item closes", async () => {
+      await onFakeTimers(async () => {
+        const h = harness();
+        const child = await h.spawn((c) => c.stub.openItems.push(makeItem()));
+        await vi.advanceTimersByTimeAsync(30 * HOUR); // well past the 12 hour cap
+        expect(child.stub.dispose).not.toHaveBeenCalled();
+        expect(child.record.isSessionReady()).toBe(true);
+
+        // The item closes without a message (cancelled, lost): the agent is done now.
+        child.stub.openItems.length = 0;
+        child.params.work!.changed();
+        expect(child.record.status).toBe("idle");
+        expect(child.record.isDone()).toBe(true);
+        // The wait does not count toward the window, which starts at this moment.
+        await vi.advanceTimersByTimeAsync(2 * MINUTE);
+        expect(child.stub.dispose).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(11 * HOUR);
+        expect(child.stub.dispose).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(2 * HOUR);
+        expect(child.stub.dispose).toHaveBeenCalledTimes(1);
+        expect(child.record.isSessionReady()).toBe(false);
+        // Released, not forgotten: the record stays, and the agent takes a message.
+        expect(h.manager.getRecord(child.record.id)).toBe(child.record);
+        expect(child.record.sendRefusal).toBe("session-released");
+      });
+    });
+
+    it("is released on the short window when the parent read its result once it was done", async () => {
+      await onFakeTimers(async () => {
+        const h = harness();
+        const child = await h.spawn((c) => c.stub.openItems.push(makeItem()));
+        await vi.advanceTimersByTimeAsync(5 * HOUR);
+        child.stub.openItems.length = 0;
+        child.params.work!.changed();
+        child.record.markConsumed();
+        await vi.advanceTimersByTimeAsync(9 * MINUTE);
+        expect(child.stub.dispose).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(3 * MINUTE);
+        expect(child.stub.dispose).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    it("is not cleared by clearCompleted while it waits, and is once it is done", async () => {
+      const h = harness();
+      const child = await h.spawn((c) => c.stub.openItems.push(makeItem()));
+      await h.manager.clearCompleted();
+      expect(h.manager.getRecord(child.record.id)).toBe(child.record);
       expect(child.stub.dispose).not.toHaveBeenCalled();
       child.stub.openItems.length = 0;
       child.params.work!.changed();
-      await vi.advanceTimersByTimeAsync(11 * 60 * 1000);
+      await h.manager.clearCompleted();
+      expect(h.manager.getRecord(child.record.id)).toBeUndefined();
       expect(child.stub.dispose).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("holds the session until the last of two kinds of item closes, then for the window", async () => {
+    await onFakeTimers(async () => {
+      const h = harness();
+      const job = openItem("CI", "j1", "job");
+      const question = openItem("answer", "q1", "question");
+      const child = await h.spawn((c) => c.stub.openItems.push(job, question));
+      await vi.advanceTimersByTimeAsync(13 * HOUR);
+      expect(child.stub.dispose).not.toHaveBeenCalled();
+
+      // The job's gone; the question is still open, so the agent waits on it alone.
+      child.stub.openItems.splice(child.stub.openItems.indexOf(job), 1);
+      child.params.work!.changed();
+      expect(child.record.waitingOn).toEqual(["answer"]);
+      await vi.advanceTimersByTimeAsync(13 * HOUR);
+      expect(child.stub.dispose).not.toHaveBeenCalled();
+      await h.manager.clearCompleted();
+      expect(h.manager.getRecord(child.record.id)).toBe(child.record);
+
+      // The question closes too (the parent's answer, a stop): now the window runs.
+      child.stub.openItems.length = 0;
+      child.params.work!.changed();
+      await vi.advanceTimersByTimeAsync(11 * HOUR);
+      expect(child.stub.dispose).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(2 * HOUR);
+      expect(child.stub.dispose).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("holds the session for an agent of its own and a watch open together, whichever closes last", async () => {
+    await onFakeTimers(async () => {
+      const h = harness();
+      const watchItem = openItem("CI", "w1", "watch");
+      const nested = openItem("Fix parser (general-purpose agent a1)", "a1", "subagent");
+      const child = await h.spawn((c) => c.stub.openItems.push(watchItem, nested));
+      child.stub.openItems.splice(child.stub.openItems.indexOf(nested), 1); // the worker finished
+      child.params.work!.changed();
+      await vi.advanceTimersByTimeAsync(20 * HOUR);
+      expect(child.stub.dispose).not.toHaveBeenCalled();
+      child.stub.openItems.length = 0; // the watch closes last
+      child.params.work!.changed();
+      await vi.advanceTimersByTimeAsync(13 * HOUR);
+      expect(child.stub.dispose).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("does not shorten the window for a result read while the agent still waited", async () => {
+    await onFakeTimers(async () => {
+      const h = harness();
+      const child = await h.spawn(withJob());
+      // A read of a waiting agent is not a read of a finished result.
+      child.record.markConsumed();
+      child.stub.openItems.length = 0;
+      child.params.work!.changed();
+      expect(child.record.consumed).toBe(false);
+      await vi.advanceTimersByTimeAsync(11 * MINUTE);
+      expect(child.stub.dispose).not.toHaveBeenCalled();
+    });
+  });
+
+  it("releases a done agent after its window, and keeps its record", async () => {
+    await onFakeTimers(async () => {
+      const h = harness();
+      const child = await h.spawn();
+      await vi.advanceTimersByTimeAsync(11 * HOUR);
+      expect(child.record.isSessionReady()).toBe(true);
+      await vi.advanceTimersByTimeAsync(2 * HOUR);
       expect(child.record.isSessionReady()).toBe(false);
-    } finally {
-      vi.useRealTimers();
-    }
+      expect(child.record.sendRefusal).toBe("session-released");
+      expect(h.manager.getRecord(child.record.id)).toBe(child.record);
+    });
   });
 });
 
