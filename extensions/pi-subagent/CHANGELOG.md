@@ -3,6 +3,12 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-10: Align orchestration prompts and add a bounded implementation profile
+
+- Correct the orchestrator's child lifecycle guidance: workers and delegated coordinators can wait on jobs or nested workers and wake through the limiter. A PR owner may use `babysit-pr` for CI and review follow-ups.
+- Add `implement`, a non-delegating profile for one bounded code change and its verification. Model and thinking settings inherit as usual; project coordination remains with `orchestrate`.
+- Keep handed-off task acceptance with the parent. Reviewers report the checked commit SHA and diff range; the parent records evidence and revalidates after code changes.
+
 ## 2026-11-10: A late session must not write to a reopened transcript; shutdown during a restore
 
 Second repair round on roadmap step 12.

@@ -1,6 +1,6 @@
 ---
 name: creating-agents
-description: Create, edit, override, hide or disable a pi-subagent agent type (an agent profile file in .pi/agents/<name>.md or ~/.pi/agent/agents/<name>.md). Covers where files live and which one wins, every frontmatter field, writing a description and guidance the orchestrator can choose by, prompt_mode, tool selection, visibility for skill-only agents, locked fields, fragments, and how to check the result. Use when asked to add a specialist or custom subagent, change or replace a built-in agent (general-purpose, orchestrate, explore, plan, review), make an agent a skill can call without listing it, or when subagent_start keeps picking general-purpose because no specialist fits.
+description: Create, edit, override, hide or disable a pi-subagent agent type (an agent profile file in .pi/agents/<name>.md or ~/.pi/agent/agents/<name>.md). Covers where files live and which one wins, every frontmatter field, writing a description and guidance the orchestrator can choose by, prompt_mode, tool selection, visibility for skill-only agents, locked fields, fragments, and how to check the result. Use when asked to add a specialist or custom subagent, change or replace a built-in agent (general-purpose, implement, orchestrate, explore, plan, review), make an agent a skill can call without listing it, or when subagent_start keeps picking general-purpose because no specialist fits.
 ---
 
 # Creating agents
@@ -171,7 +171,7 @@ so the body only adds the role:
    when the caller only needs a verdict.
 
 The built-ins in `extensions/pi-subagent/agents/` are worked examples:
-`review.md` for a verifier with a fixed output format, `explore.md` for a
+`implement.md` for a bounded implementation worker, `review.md` for a verifier with a fixed output format, `explore.md` for a
 read-only searcher, `orchestrate.md` for a coordinator that delegates.
 
 ## Example: `.pi/agents/migration-writer.md`

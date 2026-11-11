@@ -135,6 +135,18 @@ function harness(mode: ExtensionContext["mode"] = "tui") {
 }
 
 describe("main profile defaults and persistent body", () => {
+  it("starts the built-in implement profile without delegation tools", async () => {
+    const h = harness();
+    h.state.flag = "implement";
+    h.resolve.mockImplementation(() => resolveMainAgentProfile("implement", h.ctx));
+    await h.start();
+    expect(h.state.active).toContain("read");
+    expect(h.state.active).toContain("write");
+    for (const name of ["subagent_start", "subagent_get", "subagent_send"])
+      expect(h.state.active).not.toContain(name);
+    expect(h.ctx.shutdown).not.toHaveBeenCalled();
+  });
+
   it("selects the built-in orchestrator and restores its instructions without resetting tools", async () => {
     const h = harness();
     h.state.flag = "orchestrate";
