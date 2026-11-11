@@ -52,7 +52,15 @@ it.each(["general-purpose", "explore", "plan", "review", "no-tools"])(
       assignedTools: string[];
       listed: string;
       denied: string;
-    } = { unassignedTools: [], badHandoff: "", assignedTools: [], listed: "", denied: "" };
+      deniedCompletion: string;
+    } = {
+      unassignedTools: [],
+      badHandoff: "",
+      assignedTools: [],
+      listed: "",
+      denied: "",
+      deniedCompletion: "",
+    };
     const { queues } = scriptSides(faux, {
       parent: [
         // A restricted worker without a handoff still has no todo tools.
@@ -79,7 +87,13 @@ it.each(["general-purpose", "explore", "plan", "review", "no-tools"])(
         fauxAssistantMessage("Audit worker started."),
         // The audit worker's completion message wakes the orchestrator again.
         toolCall("todo_list", {}),
-        fauxAssistantMessage("Delegated."),
+        (context) => {
+          expect(lastResult(context, "todo_list")).toContain('"status":"in_progress"');
+          return toolCall("todo_upsert", {
+            tasks: [{ key: "audit", status: "completed", message: "Verified and accepted." }],
+          });
+        },
+        fauxAssistantMessage("Accepted."),
       ],
       child: [
         (context) => {
@@ -93,9 +107,13 @@ it.each(["general-purpose", "explore", "plan", "review", "no-tools"])(
         },
         (context) => {
           seen.listed = lastResult(context, "todo_list");
+          return toolCall("todo_upsert", { tasks: [{ key: "audit", status: "completed" }] });
+        },
+        (context) => {
+          seen.deniedCompletion = lastResult(context, "todo_upsert");
           return toolCall("todo_upsert", {
             tasks: [
-              { key: "audit", status: "completed", message: "Session cookie path is sound." },
+              { key: "audit", status: "in_progress", message: "Session cookie path is sound." },
               { key: "rotate-key", subject: "Rotate signing key", dependsOn: ["audit"] },
             ],
           });
@@ -134,6 +152,7 @@ it.each(["general-purpose", "explore", "plan", "review", "no-tools"])(
     expect(seen.listed).toContain("tests");
     expect(seen.listed).not.toContain("ship");
     expect(seen.denied).toContain("task ship is not assigned to you");
+    expect(seen.deniedCompletion).toContain("task audit can only be completed by the parent");
 
     const branch = orchestrator.session.sessionManager.getBranch();
     const journal = branch

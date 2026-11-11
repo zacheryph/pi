@@ -260,21 +260,21 @@ describe("handing tasks to a subagent", () => {
     await child.execute({
       action: "upsert",
       tasks: [
-        { key: "a", status: "completed", message: "No issues in the session cookie path." },
+        { key: "a", status: "in_progress", message: "No issues in the session cookie path." },
         { key: "a-followup", subject: "Rotate signing key", dependsOn: ["a"] },
       ],
     });
 
     const plan = replayTodoSession({ sessionManager: parent.manager });
     expect(plan.state.tasks.map((task) => [task.key, task.status])).toEqual([
-      ["a", "completed"],
+      ["a", "in_progress"],
       ["b", "pending"],
       ["c", "pending"],
       ["d", "completed"],
       ["a-followup", "pending"],
     ]);
     expect(plan.activity.get("a")?.updates.at(-1)).toMatchObject({
-      status: "completed",
+      status: "in_progress",
       message: "No issues in the session cookie path.",
       agent: "a3f2b1c4-0000-0000",
     });
@@ -288,6 +288,43 @@ describe("handing tasks to a subagent", () => {
     expect(await parent.context()).toContain('"key":"a-followup"');
     expect(replayTodoSession({ sessionManager: child.manager }).state.tasks).toEqual([]);
   });
+
+  it.each(["assigned", "ledger"])(
+    "requires parent acceptance for existing and new tasks with a %s claim",
+    async (scope) => {
+      const parent = await planned();
+      const child = await spawn(parent, { keys: ["a"], scope });
+      await child.execute({
+        action: "upsert",
+        tasks: [{ key: "a", status: "in_progress", message: "Implementation ready" }],
+      });
+      expect(await child.context()).toContain("Only the parent may complete these tasks");
+      const before = replayTodoSession({ sessionManager: parent.manager });
+      const entries = parent.manager.getEntries().length;
+      for (const task of [
+        { key: "a", status: "completed" as const },
+        { key: "new", subject: "Follow-up", status: "completed" as const },
+      ]) {
+        // A refused batch must not create a task, add a claim, or record an earlier message.
+        await expect(
+          child.execute({
+            action: "upsert",
+            tasks: [{ key: "a", message: "Must not be recorded" }, task],
+          }),
+        ).rejects.toThrow(`task ${task.key} can only be completed by the parent`);
+        expect(replayTodoSession({ sessionManager: parent.manager })).toEqual(before);
+        expect(parent.manager.getEntries()).toHaveLength(entries);
+      }
+      await parent.execute({
+        action: "upsert",
+        tasks: [{ key: "a", status: "completed", message: "Verified and accepted" }],
+      });
+      expect((await child.tasks()).find((task) => task.key === "a")?.status).toBe("completed");
+      expect(
+        replayTodoSession({ sessionManager: parent.manager }).activity.get("a")?.updates.at(-1),
+      ).toMatchObject({ status: "completed", message: "Verified and accepted" });
+    },
+  );
 
   it("refuses writes outside the claim, replace, and clearing everything", async () => {
     const parent = await planned();
@@ -314,9 +351,13 @@ describe("handing tasks to a subagent", () => {
   it("clears and removes only the child's own tasks", async () => {
     const parent = await planned();
     const child = await spawn(parent, { keys: ["a", "b"] });
-    await child.execute({ action: "upsert", tasks: [{ key: "a", status: "completed" }] });
+    await expect(child.execute({ action: "remove", keys: ["b"] })).rejects.toThrow(
+      "task b is unfinished; only the parent may remove it before acceptance",
+    );
+    await parent.execute({ action: "upsert", tasks: [{ key: "a", status: "completed" }] });
     await child.execute({ action: "clear", scope: "completed" });
     expect((await parent.tasks()).map((task) => task.key)).toEqual(["b", "c", "d"]);
+    await parent.execute({ action: "upsert", tasks: [{ key: "b", status: "completed" }] });
     await child.execute({ action: "remove", keys: ["b"] });
     expect((await parent.tasks()).map((task) => task.key)).toEqual(["c", "d"]);
   });
@@ -383,7 +424,7 @@ describe("handing tasks to a subagent", () => {
       child.execute({
         action: "upsert",
         baseRevision: after,
-        tasks: [{ key: "a", status: "completed" }],
+        tasks: [{ key: "a", message: "Ready for parent verification" }],
       }),
     ).rejects.toThrow(/stale todo revision: task a changed at revision \d+, after \d+/);
   });
@@ -406,8 +447,8 @@ describe("handing tasks to a subagent", () => {
     ).rejects.toThrow("no tasks are assigned to you any more");
 
     parent.bus.emit("subagent:resuming", { id: "a3f2b1c4-0000-0000" });
-    await child.execute({ action: "upsert", tasks: [{ key: "a", status: "completed" }] });
-    expect((await parent.tasks()).find((task) => task.key === "a")?.status).toBe("completed");
+    await child.execute({ action: "upsert", tasks: [{ key: "a", message: "Ready for review" }] });
+    expect((await parent.tasks()).find((task) => task.key === "a")?.status).toBe("in_progress");
     expect(claimEntries(parent).map((entry) => (entry as { op: string }).op)).toEqual([
       "claim",
       "release",
@@ -482,7 +523,10 @@ describe("handing tasks to a subagent", () => {
       toolCallId: "call-plain",
     });
     await plain.emit("session_start");
-    await plain.execute({ action: "upsert", tasks: [{ key: "own", subject: "My own notes" }] });
+    await plain.execute({
+      action: "upsert",
+      tasks: [{ key: "own", subject: "My own notes", status: "completed" }],
+    });
     expect((await plain.tasks()).map((task) => task.key)).toEqual(["own"]);
     expect((await parent.tasks()).map((task) => task.key)).toEqual(["a", "b", "c", "d"]);
 
