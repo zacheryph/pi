@@ -104,17 +104,20 @@ pi-personal/
 │       ├── docs/comparison.md           # base-selection report
 │       ├── CHANGELOG.md
 │       └── UPSTREAM.md
-└── packages/
-    ├── pi-ui/                           # shared terminal UI library (no migrations yet)
-    ├── pi-foundations/                  # shared settings + model lookup
-    ├── pi-scripted-model/               # fake model + bundle test harness (dev only)
-    ├── pi-test-helpers/                 # shared test helpers (dev only)
-    ├── pi-work/                         # work:v1 contract + root work host
-    │   ├── src/index.ts                 # WorkHost types, ensureWorkHost, boundary delivery
-    │   └── test/
-    └── pi-session-tree/                 # shared library, not an extension
-        ├── src/index.ts                 # cross-session registry (globalThis)
-        └── test/
+├── packages/
+│   ├── pi-ui/                           # shared terminal UI library (no migrations yet)
+│   ├── pi-foundations/                  # shared settings + model lookup
+│   ├── pi-scripted-model/               # fake model + bundle test harness (dev only)
+│   ├── pi-test-helpers/                 # shared test helpers (dev only)
+│   ├── pi-work/                         # work:v1 contract + root work host
+│   │   ├── src/index.ts                 # WorkHost types, ensureWorkHost, boundary delivery
+│   │   └── test/
+│   └── pi-session-tree/                 # shared library, not an extension
+│       ├── src/index.ts                 # cross-session registry (globalThis)
+│       └── test/
+└── test/                                # bundle scenario tests (dev only)
+    ├── scenarios/                       # one file per cross-extension behaviour
+    └── support/
 ```
 
 Each extension directory is an npm workspace with its own `package.json`,
@@ -492,7 +495,8 @@ are dev dependencies for testing and peer dependencies for runtime; Pi supplies 
 own modules when loading extensions.
 
 GitHub Actions runs `check` and `test` in parallel jobs per extension workspace,
-plus `verify:bundle` whenever any extension is selected.
+plus `verify:bundle` and the bundle scenario tests in `test/` whenever any
+workspace is selected.
 A repository-wide job always checks formatting and lint, including scripts. Pull requests
 select extensions with changes under their directory; changes to root
 manifests/lockfiles, `.nvmrc`, shared TypeScript or Oxc settings, workflows, or scripts
@@ -528,9 +532,18 @@ its local changes in `CHANGELOG.md`.
 [`packages/pi-scripted-model`](packages/pi-scripted-model/README.md) runs the
 whole bundle in-process against a scripted fake model: real tools, extensions
 and subagents, no API key or network. A scenario scripts each model response;
-`startSession` loads the bundle, `prompt` runs a turn, and `toolRuns()` returns
-every call with its result. Use it for behavior that spans extensions, such as
-todo handoff to a subagent. CI runs it whenever any extension changes.
+`startSession` loads the bundle, `prompt` runs a turn, `toolRuns()` returns
+every call with its result, and `requests()` every context the model was sent.
+Sessions can also be compacted and resumed.
+
+The `test/` workspace holds one scenario per behaviour that exists only when the
+extensions run together: a todo handed to a subagent and accepted by the
+parent, a subagent's stash entry adopted by the parent, a worktree's ledger
+naming the subagent that ran in it, a finished job waking the session, a
+subagent's question answered with `subagent_send`, and the context cards
+restored once each after compaction and resume. Add a scenario there for new
+cross-extension behaviour; assert on tool runs and model requests, not on
+internals. CI runs it whenever any extension or package changes.
 
 ### Shared test helpers
 
