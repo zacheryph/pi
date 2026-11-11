@@ -1,6 +1,5 @@
 /** Process-wide ownership survives module replacement, but never a Pi process restart. */
-import { CUSTOM_TYPE } from "./delivery.ts";
-import type { JobItems } from "./items.ts";
+import { CUSTOM_TYPE, type JobItems } from "./items.ts";
 import type { JobManager, JobSnapshot } from "./jobs.ts";
 
 export interface Owner {

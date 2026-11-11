@@ -1,7 +1,7 @@
 /**
  * The Pi SDK behaviour pi-job's delivery relies on, pinned with a real AgentSession on a scripted
  * model and a minimal probe extension (no pi-job code). If one of these fails after a Pi upgrade,
- * pi-job's completion delivery needs a second look (see src/delivery.ts).
+ * pi-job's completion delivery needs a second look (see packages/pi-work/src/delivery.ts).
  *
  *  - `sendMessage(msg, { triggerTurn: false })` during a run is held and appended to the
  *    transcript at the end of the current turn, never between a tool call and its result.

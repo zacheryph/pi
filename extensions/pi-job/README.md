@@ -114,10 +114,9 @@ non-reload session shutdown (nobody to wake; the item stays open, see [Restart](
 
 > A completion is a custom message in the session transcript, so **once sent it is never lost**:
 > Escape and abort leave it in the transcript and force no turn, and the next run sees it. A
-> completion that arrives while a run is active reaches the model **in that run**. Each model
-> context contains **at most one full copy** of each completion id, for messages in the current
-> indexed format; messages from older pi-job versions are only stubbed as a whole once all their ids
-> were shown. This is **not exactly-once** on the idle path: pi has no atomic wake API (see
+> completion that arrives while a run is active reaches the model **in that run**. The host
+> hands each completion to pi once. This is **not exactly-once** on the idle path: pi has no
+> atomic wake API (see
 > [UPSTREAM-ISSUES.md](https://github.com/woksin/pi-jobs/blob/main/UPSTREAM-ISSUES.md)).
 > A job that is still open when Pi restarts is not silently forgotten: the next start tells the
 > model it was lost.
@@ -134,7 +133,7 @@ session's work host ([`packages/pi-work`](../../packages/pi-work/README.md), `wo
 job ends, pi-job completes the item with the completion message, and the host does the rest. It is
 event-driven only: no timers, no polling, no queue of its own. Every completion is one
 `pi.sendMessage(…)` call made by the host, and pi's run boundaries do the scheduling. `src/items.ts`
-maps jobs to items; `src/delivery.ts` keeps the completion message type and `dedupeCompletions`.
+maps jobs to items and names the completion message type.
 
 | Situation when the job finishes                                      | What happens                                                                                                                                                                                                                                                                                                       |
 | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -146,13 +145,9 @@ maps jobs to items; `src/delivery.ts` keeps the completion message type and `ded
 After an error the handler does not continue the run either: another request would repeat the failure.
 
 **Duplicates.** Each completion carries a random UUID (`details.completions[].completionId`)
-and occupies its own content part (`details.completions[].part`). A model-context filter keeps
-the first copy of each id. In later messages it removes already-shown completion blocks,
-leaving a one-line note, and keeps the unseen ones. A message with nothing unseen becomes a
-one-line stub. The stub keeps the message in place, so the context never ends on an assistant
-message. Messages from older pi-job versions without part indices can only be stubbed as a
-whole; those versions also batched several completions into one message and could resend one.
-Job handles such as `j1` restart in every session and are never used for deduplication.
+and is its own message. The host spends an item's handle on `complete` and sends each message
+once, so no completion reaches the transcript twice and pi-job filters nothing from the model's
+context. Job handles such as `j1` restart in every session and never identify a completion.
 
 **Reload.** On `session_shutdown` with reason `reload`, the session's manager is retained in a
 process-wide registry (version 4), together with the object that maps its jobs to items. Node
@@ -308,8 +303,8 @@ npm test   # node --test, real processes and a real AgentSession, ~10 s
 ```
 
 `src/extension.ts` is the only pi-aware module and uses type-only pi imports; `jobs.ts`,
-`supervisor.ts`, `delivery.ts`, `items.ts`, `logwriter.ts`, `tail.ts`, `watch.ts`,
-`format.ts`, `logs.ts` are plain Node (`items.ts` and `delivery.ts` import only types
+`supervisor.ts`, `items.ts`, `logwriter.ts`, `tail.ts`, `watch.ts`,
+`format.ts`, `logs.ts` are plain Node (`items.ts` imports only types
 from `packages/pi-work`). Tests drive the extension through a fake
 `ExtensionAPI`, spawn real processes, and run delivery scenarios (Escape, abort, compaction,
 continuing the run) against the installed pi `AgentSession` with the faux model provider
