@@ -114,6 +114,62 @@ describe("defineScenario", () => {
       "done",
     );
   });
+
+  it("replies to a prompt by its text, wherever the turn falls", async () => {
+    const scenario = defineScenario({
+      replies: [["first"], ["second"]],
+      prompts: { "After compaction": ["keyed"] },
+    });
+    process.env[ENABLE_ENV] = "1";
+    const { text } = client(register(scenario)[0]!);
+    const summary = user("The conversation so far.");
+    expect(await text([summary, assistant, user("After compaction")])).toBe("keyed");
+    expect(await text([summary, assistant, user("Something else")])).toBe("second");
+  });
+
+  it("answers a compaction's summary request with the summary", async () => {
+    const scenario = defineScenario({ replies: [["not a summary"]], summary: "Summed up." });
+    process.env[ENABLE_ENV] = "1";
+    const { text } = client(register(scenario)[0]!);
+    const system = {
+      role: "system",
+      content: "You are a context summarization assistant. Your task is to read a conversation.",
+    };
+    expect(await text([system, user("<conversation>…</conversation>")])).toBe("Summed up.");
+    expect(await text([{ role: "system", content: "You are Pi." }, user("go")])).toBe(
+      "not a summary",
+    );
+  });
+
+  it("builds a step from the messages the model was sent", async () => {
+    const scenario = defineScenario({
+      replies: [[(messages) => `I saw ${messages.length} messages.`]],
+    });
+    process.env[ENABLE_ENV] = "1";
+    const { text } = client(register(scenario)[0]!);
+    expect(await text([user("go")])).toBe("I saw 1 messages.");
+  });
+
+  it("continues a subagent's steps across its turns", async () => {
+    const scenario = defineScenario({ replies: [] });
+    startAgent({
+      type: "general-purpose",
+      description: "asker",
+      prompt: "Ask, then answer.",
+      steps: [
+        [tool("ask", { questions: [] })],
+        (messages) => `Got ${JSON.stringify(messages.at(-1))}`,
+      ],
+    });
+    process.env[ENABLE_ENV] = "1";
+    const { tools, text } = client(register(scenario)[0]!);
+    expect(await tools([user("Ask, then answer.")])).toEqual(["ask"]);
+    // ask ends the turn; the answer subagent_send delivers starts the next one.
+    const answer = user("blue");
+    expect(await text([user("Ask, then answer."), assistant, toolResult, answer])).toBe(
+      `Got ${JSON.stringify(answer)}`,
+    );
+  });
 });
 
 describe("turnStarts", () => {
