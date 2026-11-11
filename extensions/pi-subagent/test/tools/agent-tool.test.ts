@@ -90,50 +90,8 @@ describe("AgentTool", () => {
   });
 });
 
-// Rewritten by roadmap step 7b. Resuming moved to subagent_send (test/tools/send-tool.test.ts
-// pins every refusal and outcome that used to live here); subagent_start refuses the old parameter
-// instead of ignoring it, because ignoring it would spawn a second agent that repeats the work.
-describe("AgentTool — the retired resume parameter", () => {
-  const resumeCall = {
-    prompt: "continue",
-    description: "resume",
-    subagent_type: "general-purpose",
-    resume: "agent-1",
-  };
-
-  it("starts nothing and points at subagent_send", async () => {
-    const deps = createToolDeps();
-
-    const result = await execute(deps, resumeCall);
-
-    expect(result.content[0].text).toBe(
-      "subagent_start no longer resumes agents, so nothing was started. " +
-        'Call subagent_send with agent_id: "agent-1" and your message instead.',
-    );
-    expect(deps.manager.spawn).not.toHaveBeenCalled();
-  });
-
-  it("refuses a resume that also names a cwd, without spawning", async () => {
-    const deps = createToolDeps();
-
-    const result = await execute(deps, { ...resumeCall, cwd: tmpdir() });
-
-    expect(result.content[0].text).toContain("subagent_start no longer resumes agents");
-    expect(deps.manager.spawn).not.toHaveBeenCalled();
-  });
-
-  it.for([null, "", undefined])(
-    "spawns normally when a model leaves resume out as %j",
-    async (resume) => {
-      const deps = createToolDeps();
-
-      await execute(deps, { ...resumeCall, resume });
-
-      expect(deps.manager.spawn).toHaveBeenCalledOnce();
-    },
-  );
-
-  it("is gone from the schema and the guidance, which names subagent_send", () => {
+describe("AgentTool — resuming belongs to subagent_send", () => {
+  it("has no resume parameter, and the guidance names subagent_send", () => {
     const def = makeTool(createToolDeps()).toToolDefinition();
     const properties = (def.parameters as { properties: Record<string, unknown> }).properties;
 

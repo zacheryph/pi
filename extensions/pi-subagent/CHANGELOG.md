@@ -3,6 +3,22 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-11: Drop compatibility with older records and settings
+
+Issue #129.
+
+- `persisted-record.ts`: removed `LEGACY_STATUS` and the version 1 read path. An entry without
+  `version: 2` is skipped, so a session written by an older version restores without those agents.
+- `settings.ts`: removed `legacyGraceTurns` and the `graceTurns` warning; the key is now dropped
+  silently like any unknown one. `warnAboutRetiredSettings` is `warnAboutAdjustedSettings` and only
+  reports a clamped `defaultMaxTurns`. `docs/configuration.md` no longer mentions `graceTurns`.
+- `subagent_start` no longer refuses a `resume` argument, which has not been in its schema since
+  roadmap step 7b; the schema test stays.
+- `get-result-renderer.ts`: `modelName` is documented as absent while an inherited model is
+  unknown, not as missing from older details.
+- Removed `test/legacy-records-sdk.test.ts`, the version 1 cases in `persisted-record.test.ts`,
+  `records-sdk.test.ts` and `ui/session-navigator.test.ts`, and the `resume` refusal tests.
+
 ## 2026-11-10: Publish branch-scoped subagent snapshots
 
 - Added `subagent:snapshot` version 1, built from the same saved-record/live-state roster as

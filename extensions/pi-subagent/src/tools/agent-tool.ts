@@ -67,16 +67,6 @@ export class AgentTool {
     // Reload custom agents so new .pi/agents/*.md files are picked up without restart
     this.registry.reload();
 
-    // `resume` is gone. Ignoring it would spawn a second agent that repeats the
-    // first one's work, so a caller still sending it is told where to go.
-    // A null or empty value is a model's way of leaving an optional out.
-    if (params.resume !== undefined && params.resume !== null && params.resume !== "") {
-      return textResult(
-        "subagent_start no longer resumes agents, so nothing was started. " +
-          `Call subagent_send with agent_id: ${JSON.stringify(params.resume)} and your message instead.`,
-      );
-    }
-
     // ---- Config resolution (pure) ----
     const resolved = resolveSpawnConfig(
       params,

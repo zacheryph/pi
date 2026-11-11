@@ -11,12 +11,9 @@
  * This module owns the entry's shape on both sides: the writer
  * (`SubagentEventsObserver`) builds it here, and readers fold it here.
  *
- * Two shapes exist. Version 1 (no `version` field) recorded one of six statuses:
- * `queued`, `running`, `completed`, `aborted`, `stopped` or `error`. Version 2
- * records the three-state `status` (`queued`, `running`, `idle`) and, for an idle
- * agent, how its last run ended in `outcome`. The writer only writes version 2;
- * the reader accepts both and returns every record in the version 2 shape (see
- * `LEGACY_STATUS`), so nothing past this module knows version 1 existed.
+ * An entry records the three-state `status` (`queued`, `running`, `idle`) and,
+ * for an idle agent, how its last run ended in `outcome`. The reader skips any
+ * entry that is not `PERSISTED_RECORD_VERSION`.
  */
 
 import type { RunOutcome, SubagentStatus } from "#src/lifecycle/subagent-state";
@@ -26,7 +23,7 @@ import type { SubagentType, ThinkingLevel } from "#src/types";
 /** The `customType` every persisted run record is appended under. */
 export const SUBAGENT_RECORD_ENTRY = "subagent:record";
 
-/** The shape this module writes. Entries with no `version` field are version 1. */
+/** The shape this module writes and the only one it reads. */
 export const PERSISTED_RECORD_VERSION = 2;
 
 /**
@@ -182,30 +179,12 @@ const RUN_OUTCOMES: ReadonlySet<string> = new Set<RunOutcome>([
   "interrupted",
 ]);
 
-/**
- * How a version 1 status reads in version 2. A run that ended keeps how it
- * ended; one still queued or running was cut short, because a reader only sees
- * a version 1 record after the process that wrote it is gone.
- */
-export const LEGACY_STATUS: Readonly<
-  Record<string, { status: SubagentStatus; outcome: RunOutcome }>
-> = {
-  completed: { status: "idle", outcome: "completed" },
-  aborted: { status: "idle", outcome: "turn-limit" },
-  error: { status: "idle", outcome: "error" },
-  stopped: { status: "idle", outcome: "stopped" },
-  queued: { status: "idle", outcome: "interrupted" },
-  running: { status: "idle", outcome: "interrupted" },
-};
-
-/** The status and outcome an entry records, in the version 2 shape, or undefined when invalid. */
+/** The status and outcome an entry records, or undefined when invalid. */
 function readStatus(
   fields: Record<string, unknown>,
 ): { status: SubagentStatus; outcome: RunOutcome | undefined } | undefined {
   const { version, status, outcome } = fields;
   if (typeof status !== "string") return undefined;
-  if (version === undefined)
-    return Object.hasOwn(LEGACY_STATUS, status) ? LEGACY_STATUS[status] : undefined;
   if (version !== PERSISTED_RECORD_VERSION || !SUBAGENT_STATUSES.has(status)) return undefined;
   if (status !== "idle") return { status: status as SubagentStatus, outcome: undefined };
   if (typeof outcome !== "string" || !RUN_OUTCOMES.has(outcome)) return undefined;
