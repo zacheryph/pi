@@ -264,10 +264,6 @@ export default function stashExtension(
   let store = dependencies.store;
   let config: StashConfig = { ...DEFAULT_CONFIG };
   let index = createEmptyIndex();
-  // The model saw receipts for entries it made in this context. After a
-  // compaction, resume, reload or /tree it may not have, so it gets the card;
-  // likewise once a subagent's entry is adopted here.
-  let showCard = false;
 
   /**
    * Hand a version to this session's parent, which adopts it and hands it on to
@@ -381,7 +377,7 @@ export default function stashExtension(
         record: adopted,
       });
       index = { records: [...index.records, adopted] };
-      showCard = true;
+      card.show();
       publish();
       passUp(candidate);
       return true;
@@ -734,7 +730,6 @@ export default function stashExtension(
 
   const restore = (ctx: ExtensionContext) => {
     index = replayStashIndex(ctx);
-    showCard = currentEntries(index).length > 0;
     publish();
   };
 
@@ -763,14 +758,16 @@ export default function stashExtension(
       op: "checkpoint",
       records: index.records,
     });
-    showCard = currentEntries(index).length > 0;
   });
-  contextCard(pi, {
+  // The model saw receipts for entries it made in this context. After a
+  // compaction, resume, reload or /tree it may not have, so it gets the card;
+  // likewise once a subagent's entry is adopted here.
+  const card = contextCard(pi, {
     type: CONTEXT_TYPE,
-    build: () => (showCard ? indexCard(index) : undefined),
+    restore: () => currentEntries(index).length > 0,
+    build: () => indexCard(index),
   });
   pi.on("session_shutdown", async () => {
     index = createEmptyIndex();
-    showCard = false;
   });
 }

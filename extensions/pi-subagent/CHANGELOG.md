@@ -7,8 +7,12 @@ recorded in [UPSTREAM.md](UPSTREAM.md).
 
 Issue #127. No behaviour change.
 
-- `RosterCard.handleContext` does the card's message surgery with `applyCard` from
-  `packages/pi-session-state`; the class keeps its `since` rule for when the card is due.
+- The `RosterCard` class is now `registerRosterCard(pi, { getLive, now, isReachable })`, built
+  on `contextCard` from `packages/pi-session-state` with `restore`. The helper strips and appends
+  the card, shows it after a compaction, reload, resume, fork or `/tree` when the branch has
+  agents, and hides it at shutdown; the roster keeps its rule that a `subagent_get` list result
+  after the card was shown turns it off. `index.ts` no longer registers the card's session,
+  context and shutdown handlers itself. The card's tests drive it through a fake Pi.
 - `readPersistedRecords`, the main agent profile snapshot and the work entries read by
   `transcript-work.ts` and `child-work.ts` use `customData` and `readEntries` instead of
   hand-written `type === "custom" && customType === ...` filters.

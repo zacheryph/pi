@@ -1,5 +1,5 @@
 import { HASH_PATTERN, type BlobStore } from "./store.ts";
-import { readEntries } from "../../../packages/pi-session-state/src/index.ts";
+import { readEntries, type BranchSource } from "../../../packages/pi-session-state/src/index.ts";
 
 /** Custom session entry; one per change, plus a checkpoint after compaction. */
 export const STASH_INDEX_TYPE = "stash:index";
@@ -85,9 +85,7 @@ function isCurrentJournal(data: unknown): data is {
 }
 
 /** Rebuilds the index from the current branch only; abandoned branches never leak in. */
-export function replayStashIndex(ctx: {
-  sessionManager: { getBranch(): Iterable<unknown> };
-}): StashIndex {
+export function replayStashIndex(ctx: BranchSource): StashIndex {
   let records: StashRecord[] = [];
   for (const data of readEntries(ctx, { type: STASH_INDEX_TYPE, guard: isCurrentJournal })) {
     if (data.op === "put" && isStashRecord(data.record)) records.push({ ...data.record });
