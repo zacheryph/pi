@@ -20,11 +20,17 @@ same-cwd subagent may share the module with its parent.
 ## Context card
 
 ```ts
-contextCard(pi, {
+const card = contextCard(pi, {
   type: "example:context",
-  // undefined for "no card now"; may be async.
-  build: (ctx, messages) => (showCard ? formatCard(state) : undefined),
+  // After session_start, session_tree and session_compact: is there state to restore?
+  restore: (ctx, event) => entries.length > 0,
+  // The card for this request; undefined for none. May be async.
+  build: (ctx, messages) => formatCard(state),
 });
+
+card.show(); // new state the model has not seen (an entry adopted from a subagent)
+card.hide(); // the model has seen it (a list result in its context)
+card.shownAt(); // when it was last shown; undefined while hidden
 ```
 
 Registers the `context` handler that strips the previous request's card of
@@ -34,17 +40,24 @@ returns `undefined` when nothing changed. `build` sees the messages with earlier
 cards already removed, so it can check whether a visible tool result already
 holds the state.
 
-Whether the card is due is the extension's rule: keep its flag (set it on
-`session_start`, `session_tree` or `session_compact`, clear it when the model
-has seen the state) and read it in `build`.
+With `restore`, the helper owns whether the card is shown. After each
+`session_start`, `session_tree` and `session_compact` it shows the card when
+`restore` returns true and hides it otherwise; `session_shutdown` hides it. While
+the card is hidden, `build` is not called. `restore` receives the event, so an
+extension can tell the card why it came back (`event.type`, and
+`event.reason` on start). The extension keeps its own rule for when the model has
+seen the state and calls `hide()` then, from `build` or from another handler.
 
-A `build` that returns a promise is awaited; a card that resolves after
-`session_shutdown` or a newer `session_start` is dropped, though the old card is
-still stripped. A synchronous `build` gives a synchronous result. Pass `now` to
-control the card's timestamp.
+Without `restore`, `build` alone decides on every request (pi-todo, whose card is
+due until a visible tool result already holds the state).
 
-`applyCard(messages, type, build, now?)` is the same message surgery as a plain
-function, for a handler that is tested on its own (pi-subagent's roster card).
+Async `restore` and `build` results that resolve after `session_shutdown` or a
+newer `session_start` are dropped, and so is a build that resolves after the card
+was hidden; the old card is still stripped. Synchronous callbacks give a
+synchronous result. Pass `now` to control timestamps.
+
+`contextCard` runs `restore` from its own handlers, so register it after the
+extension's handlers that rebuild the state `restore` reads.
 
 ## Tree service
 

@@ -12,7 +12,14 @@
  * this module owns only the message surgery.
  */
 
-import type { ContextEvent, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type {
+  ContextEvent,
+  ExtensionAPI,
+  ExtensionContext,
+  SessionCompactEvent,
+  SessionStartEvent,
+  SessionTreeEvent,
+} from "@earendil-works/pi-coding-agent";
 
 export type AgentMessage = ContextEvent["messages"][number];
 
@@ -20,7 +27,7 @@ export type AgentMessage = ContextEvent["messages"][number];
 export type CardResult = { messages: AgentMessage[] } | undefined;
 
 /** `messages` without any card of `type`. */
-export function stripCards(messages: readonly AgentMessage[], type: string): AgentMessage[] {
+function stripCards(messages: readonly AgentMessage[], type: string): AgentMessage[] {
   return messages.filter((message) => !(message.role === "custom" && message.customType === type));
 }
 
@@ -29,7 +36,7 @@ export function stripCards(messages: readonly AgentMessage[], type: string): Age
  * with earlier cards `stripped`: the card appended when there is one, the
  * stripped messages when a card was removed, and undefined when neither.
  */
-export function placeCard(
+function placeCard(
   messages: readonly AgentMessage[],
   stripped: AgentMessage[],
   type: string,
@@ -45,20 +52,8 @@ export function placeCard(
   };
 }
 
-/**
- * Strip earlier cards of `type`, then append the one `build` returns (undefined
- * for no card now). `build` sees the messages without earlier cards. Returns
- * undefined when the messages need no change.
- */
-export function applyCard(
-  messages: readonly AgentMessage[],
-  type: string,
-  build: (messages: AgentMessage[]) => string | undefined,
-  now: () => number = Date.now,
-): CardResult {
-  const stripped = stripCards(messages, type);
-  return placeCard(messages, stripped, type, build(stripped), now);
-}
+/** The session events after which the model may have lost what a card restores. */
+export type RestoreEvent = SessionStartEvent | SessionTreeEvent | SessionCompactEvent;
 
 export interface ContextCardOptions {
   /** The card's `customType`, e.g. `stash:context`. */
@@ -66,14 +61,38 @@ export interface ContextCardOptions {
   /**
    * The card to send with this request, or undefined for none. `messages` are
    * the request's messages without earlier cards. May be async; a result that
-   * resolves after `session_shutdown` or a newer `session_start` is dropped.
+   * resolves after `session_shutdown`, a newer `session_start`, or (with
+   * `restore`) once the card was hidden, is dropped.
    */
   build: (
     ctx: ExtensionContext,
     messages: AgentMessage[],
   ) => string | undefined | Promise<string | undefined>;
-  /** Clock for the card's timestamp. */
+  /**
+   * Makes the card restore-driven. After `session_start`, `session_tree` and
+   * `session_compact` the card is shown when this returns true and hidden
+   * otherwise; `session_shutdown` hides it, and so do `show`/`hide` calls. While
+   * it is hidden `build` is not called. Without `restore`, `build` alone
+   * decides on every request.
+   *
+   * Called after the extension's own handlers for the event that were
+   * registered before `contextCard`, so it can read state they rebuilt. May be
+   * async; a result that resolves after a newer session start or shutdown is
+   * dropped.
+   */
+  restore?: (ctx: ExtensionContext, event: RestoreEvent) => boolean | Promise<boolean>;
+  /** Clock for the card's timestamp and `shownAt`. */
   now?: () => number;
+}
+
+/** A registered card's visibility, for an extension whose card is restore-driven. */
+export interface ContextCard {
+  /** Show the card from the next request on (it holds state the model has not seen). */
+  show(): void;
+  /** Stop sending the card (the model has now seen the state). */
+  hide(): void;
+  /** When the card was last shown; undefined while it is hidden. */
+  shownAt(): number | undefined;
 }
 
 const isThenable = (value: unknown): value is PromiseLike<unknown> =>
@@ -81,25 +100,58 @@ const isThenable = (value: unknown): value is PromiseLike<unknown> =>
 
 /**
  * Register the `context` handler that keeps one card of `options.type` at the
- * end of every request while `build` returns one. Call it from the extension
- * factory; all state stays in this call's closure.
+ * end of every request while it is due. Call it from the extension factory,
+ * after the session handlers that rebuild the state `restore` reads; all state
+ * stays in this call's closure.
  */
-export function contextCard(pi: Pick<ExtensionAPI, "on">, options: ContextCardOptions): void {
-  const { type, build, now = Date.now } = options;
-  /** Bumped on every session start and shutdown, so a stale async build drops its card. */
+export function contextCard(
+  pi: Pick<ExtensionAPI, "on">,
+  options: ContextCardOptions,
+): ContextCard {
+  const { type, build, restore, now = Date.now } = options;
+  /** Bumped on every session start and shutdown, so stale async work drops its result. */
   let generation = 0;
-  const bump = () => {
-    generation += 1;
+  let shownAt: number | undefined;
+  const card: ContextCard = {
+    show: () => {
+      shownAt = now();
+    },
+    hide: () => {
+      shownAt = undefined;
+    },
+    shownAt: () => shownAt,
   };
-  pi.on("session_start", bump);
-  pi.on("session_shutdown", bump);
+  const set = (due: boolean) => (due ? card.show() : card.hide());
+  const restoreAfter = (event: RestoreEvent, ctx: ExtensionContext) => {
+    if (!restore) return;
+    const due = restore(ctx, event);
+    if (!isThenable(due)) return set(due);
+    const started = generation;
+    return Promise.resolve(due).then((value) => {
+      if (started === generation) set(value);
+    });
+  };
+
+  pi.on("session_start", (event, ctx) => {
+    generation += 1;
+    return restoreAfter(event, ctx);
+  });
+  pi.on("session_tree", (event, ctx) => restoreAfter(event, ctx));
+  pi.on("session_compact", (event, ctx) => restoreAfter(event, ctx));
+  pi.on("session_shutdown", () => {
+    generation += 1;
+    card.hide();
+  });
   pi.on("context", (event, ctx) => {
     const stripped = stripCards(event.messages, type);
-    const built = build(ctx, stripped);
+    const due = () => !restore || shownAt !== undefined;
+    const built = due() ? build(ctx, stripped) : undefined;
     if (!isThenable(built)) return placeCard(event.messages, stripped, type, built, now);
     const started = generation;
-    return Promise.resolve(built).then((card) =>
-      placeCard(event.messages, stripped, type, started === generation ? card : undefined, now),
-    );
+    return Promise.resolve(built).then((value) => {
+      const current = started === generation && due();
+      return placeCard(event.messages, stripped, type, current ? value : undefined, now);
+    });
   });
+  return card;
 }

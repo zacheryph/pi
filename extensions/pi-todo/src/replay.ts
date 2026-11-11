@@ -1,4 +1,4 @@
-import { customEntries } from "../../../packages/pi-session-state/src/index.ts";
+import { customEntries, type BranchSource } from "../../../packages/pi-session-state/src/index.ts";
 import {
   applyTodoReview,
   createTodoReviewState,
@@ -22,9 +22,7 @@ export interface TodoSessionSnapshot {
   claims: Map<string, TodoClaim>;
 }
 
-export function replayTodoSession(ctx: {
-  sessionManager: { getBranch(): Iterable<unknown> };
-}): TodoSessionSnapshot {
+export function replayTodoSession(ctx: BranchSource): TodoSessionSnapshot {
   let state = createEmptyTodoState();
   let activity: TodoActivity = new Map();
   let review = createTodoReviewState();
@@ -48,8 +46,6 @@ export function replayTodoSession(ctx: {
   return { state, activity, review, claims };
 }
 
-export function replayTaskState(ctx: {
-  sessionManager: { getBranch(): Iterable<unknown> };
-}): TodoState {
+export function replayTaskState(ctx: BranchSource): TodoState {
   return replayTodoSession(ctx).state;
 }

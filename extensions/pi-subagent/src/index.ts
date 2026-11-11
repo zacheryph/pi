@@ -27,7 +27,7 @@ import { InterruptHandler } from "#src/handlers/interrupt";
 import { SessionLifecycleHandler } from "#src/handlers/lifecycle";
 import { StartupRestore } from "#src/handlers/restore";
 import { WidgetEventsHandler } from "#src/handlers/widget-events";
-import { RosterCard } from "#src/handlers/roster-card";
+import { registerRosterCard } from "#src/handlers/roster-card";
 import { createChildLifecyclePublisher } from "#src/lifecycle/child-lifecycle";
 import { ConcurrencyLimiter } from "#src/lifecycle/concurrency-limiter";
 import {
@@ -288,27 +288,21 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_start", (event, ctx) => widgetEvents.handleSessionStart(event, ctx));
   pi.on("session_start", (_event, ctx) => watch.setContext(ctx));
   // Restore the branch's agents to the model's context after it may have lost
-  // them, until it lists them itself (see RosterCard).
-  const rosterCard = new RosterCard(
-    (id) => manager.getRecord(id),
-    Date.now,
-    (source) => manager.sendRefusalFor(source) === undefined,
-  );
-  pi.on("session_start", (event, ctx) => rosterCard.handleSessionStart(event, ctx));
+  // them, until it lists them itself (see registerRosterCard).
+  registerRosterCard(pi, {
+    getLive: (id) => manager.getRecord(id),
+    isReachable: (source) => manager.sendRefusalFor(source) === undefined,
+  });
   // Last of ours: the widget has its context by now, so restored agents show. Pi awaits it, and
   // runs it before the work host settles its startup, so the items it adopts are not lost.
   pi.on("session_start", async (event, ctx) => {
     await startupRestore.handleSessionStart(event, ctx);
     publishSnapshot();
   });
-  pi.on("session_tree", (_event, ctx) => {
+  pi.on("session_tree", () => {
     eventsObserver.refreshBranch();
-    rosterCard.handleSessionTree(ctx);
     publishSnapshot();
   });
-  pi.on("session_compact", (_event, ctx) => rosterCard.handleSessionCompact(ctx));
-  pi.on("context", (event, ctx) => rosterCard.handleContext(event, ctx));
-  pi.on("session_shutdown", () => rosterCard.handleSessionShutdown());
   pi.on("session_before_switch", () => lifecycle.handleSessionBeforeSwitch());
   pi.on("session_shutdown", (event) => lifecycle.handleSessionShutdown(event));
   // Registered after the lifecycle handler on purpose. Pi awaits an extension's

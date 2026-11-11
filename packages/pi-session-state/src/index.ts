@@ -1,11 +1,10 @@
 export {
-  applyCard,
   contextCard,
-  placeCard,
-  stripCards,
   type AgentMessage,
   type CardResult,
+  type ContextCard,
   type ContextCardOptions,
+  type RestoreEvent,
 } from "./context-card.ts";
 export {
   customData,

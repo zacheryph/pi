@@ -13,11 +13,11 @@
  * model has then seen the roster in its own context.
  */
 
-import type { SessionStartEvent } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, SessionStartEvent } from "@earendil-works/pi-coding-agent";
 import {
   type AgentMessage,
-  applyCard,
-  type CardResult,
+  contextCard,
+  type RestoreEvent,
 } from "../../../../packages/pi-session-state/src/index.ts";
 import {
   buildRoster,
@@ -34,10 +34,7 @@ export const ROSTER_CARD_TYPE = "subagent:roster";
 /** The `details.kind` a `subagent_get` list result carries. */
 export const SUBAGENT_LIST_KIND = "list";
 
-/** Why Pi started or replaced the session. */
-type SessionStartReason = SessionStartEvent["reason"];
-
-const START_REASONS: Record<SessionStartReason, RestoreReason> = {
+const START_REASONS: Record<SessionStartEvent["reason"], RestoreReason> = {
   reload: "reload",
   fork: "fork",
   // A process started on an existing session (`pi -c`) has resumed it too.
@@ -47,78 +44,46 @@ const START_REASONS: Record<SessionStartReason, RestoreReason> = {
   new: "resume",
 };
 
-/** The message slice the card reads and writes. */
-interface ContextMessages {
-  readonly messages: readonly AgentMessage[];
+function restoreReason(event: RestoreEvent): RestoreReason {
+  if (event.type === "session_start") return START_REASONS[event.reason];
+  return event.type === "session_tree" ? "/tree" : "compaction";
 }
 
-export class RosterCard {
-  /** When the card was last brought back; undefined while it is off. */
-  private since: number | undefined;
-  private reason: RestoreReason = "compaction";
+export interface RosterCardOptions {
+  getLive: (id: string) => LiveAgentLike | undefined;
+  now?: () => number;
+  isReachable?: ReachableCheck;
+}
 
-  constructor(
-    private readonly getLive: (id: string) => LiveAgentLike | undefined,
-    private readonly now: () => number = Date.now,
-    private readonly isReachable?: ReachableCheck,
-  ) {}
-
-  /** The session started: a reload, resume or fork may have lost the roster. */
-  handleSessionStart(event: { reason: SessionStartReason }, ctx: unknown): void {
-    this.restore(START_REASONS[event.reason], ctx);
-  }
-
-  /** `/tree` moved to another branch, with its own agents. */
-  handleSessionTree(ctx: unknown): void {
-    this.restore("/tree", ctx);
-  }
-
-  /** The conversation was summarized; the summary may drop agent IDs. */
-  handleSessionCompact(ctx: unknown): void {
-    this.restore("compaction", ctx);
-  }
-
-  handleSessionShutdown(): void {
-    this.since = undefined;
-  }
-
-  /**
-   * Bring the card back if the branch already holds agents the model may have
-   * lost track of. A branch with none (a fresh session, or `/tree` to before
-   * the first spawn) turns it off: an agent spawned after this point has its
-   * ID in the conversation already.
-   */
-  private restore(reason: RestoreReason, ctx: unknown): void {
-    const hasAgents = (readBranchRecords(ctx)?.length ?? 0) > 0;
-    this.since = hasAgents ? this.now() : undefined;
-    this.reason = reason;
-  }
-
-  /**
-   * Strip any earlier card, then append the current one while it is due.
-   * Returns undefined when the messages need no change.
-   */
-  handleContext(event: ContextMessages, ctx: unknown): CardResult {
-    return applyCard(
-      event.messages,
-      ROSTER_CARD_TYPE,
-      (messages) => this.card(messages, ctx),
-      this.now,
-    );
-  }
-
-  /** The card while it is due; turns it off once the model has listed the agents. */
-  private card(messages: readonly AgentMessage[], ctx: unknown): string | undefined {
-    if (this.since === undefined) return undefined;
-    if (listedSince(messages, this.since)) {
-      this.since = undefined;
-      return undefined;
-    }
-    const records = readBranchRecords(ctx);
-    return records
-      ? formatRosterCard(buildRoster(records, this.getLive, this.isReachable), this.reason)
-      : undefined;
-  }
+/**
+ * Register the roster card. A reload, resume, fork, `/tree` or compaction
+ * brings it back if the branch already holds agents the model may have lost
+ * track of. A branch with none (a fresh session, or `/tree` to before the first
+ * spawn) turns it off: an agent spawned after this point has its ID in the
+ * conversation already.
+ */
+export function registerRosterCard(
+  pi: Pick<ExtensionAPI, "on">,
+  { getLive, now = Date.now, isReachable }: RosterCardOptions,
+): void {
+  let reason: RestoreReason = "compaction";
+  const card = contextCard(pi, {
+    type: ROSTER_CARD_TYPE,
+    now,
+    restore: (ctx, event) => {
+      reason = restoreReason(event);
+      return (readBranchRecords(ctx)?.length ?? 0) > 0;
+    },
+    build: (ctx, messages) => {
+      const since = card.shownAt();
+      if (since !== undefined && listedSince(messages, since)) {
+        card.hide();
+        return undefined;
+      }
+      const records = readBranchRecords(ctx);
+      return records && formatRosterCard(buildRoster(records, getLive, isReachable), reason);
+    },
+  });
 }
 
 /** Whether a successful `subagent_get` list result arrived at or after `since`. */

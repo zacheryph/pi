@@ -76,9 +76,10 @@ bundle extension again. So:
   and persist with `pi.appendEntry`, so `/tree`, resume, reload and compaction
   work.
 - To give the model state it may have lost after a compaction, reload, resume
-  or `/tree`, use `contextCard(pi, { type, build })` from the same package.
-  Decide in `build` whether the card is due; the helper strips the old card and
-  appends the new one.
+  or `/tree`, use `contextCard(pi, { type, restore, build })` from the same
+  package. `restore` says whether there is state to bring back after those
+  events; call the returned `hide()` once the model has seen it. The helper
+  strips the old card, appends the new one and tracks whether it is shown.
 - Guard UI with `ctx.hasUI`; children have none.
 - A captured `ctx` goes stale after reload. Re-read it from each event.
 - To offer a service to other sessions, use `treeService(pi, name, api)` from

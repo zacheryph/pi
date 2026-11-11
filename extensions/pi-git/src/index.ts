@@ -163,11 +163,6 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
   let cwd = process.cwd();
   /** Bumped on every session start and shutdown, so a stale refresh drops its results. */
   let generation = 0;
-  /**
-   * The model may have lost this state: set by a compaction, reload, resume or
-   * /tree when there is something to restore, cleared by a list result it can see.
-   */
-  let showCard = false;
 
   const getConfig = () => (config ??= (dependencies.loadConfig ?? loadGitConfig)(cwd));
   const snapshot = (): GitSnapshotEvent =>
@@ -293,15 +288,11 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
   };
 
   /** Rebuild state from the session (start, resume, reload, /tree). */
-  const restore = async (ctx: ExtensionContext): Promise<void> => {
-    const started = generation;
+  const restore = (ctx: ExtensionContext): void => {
     const ledger = readLedger(ctx);
     records = ledger.worktrees;
     prs = ledger.prs;
     measured = new Map();
-    const card = await cardForLedger(ledger);
-    if (started !== generation) return;
-    showCard = card !== undefined;
     publish();
   };
 
@@ -309,34 +300,26 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
     generation += 1;
     cwd = ctx.cwd;
     config = undefined;
-    await restore(ctx);
+    restore(ctx);
     backgroundRefresh(ctx);
   });
   // Offered on session_start, withdrawn on session_shutdown; links this session's subagents.
   // Registered after the start handler above, which reads the ctx before anything awaits.
   const tree = treeService<GitTreeService>(pi, SERVICE_NAME, service);
-  pi.on("session_tree", async (_event, ctx) => {
-    await restore(ctx);
+  pi.on("session_tree", (_event, ctx) => {
+    restore(ctx);
     backgroundRefresh(ctx);
   });
-  pi.on("session_compact", async (_event, ctx) => {
-    const started = generation;
-    const card = await cardForLedger(readLedger(ctx));
-    if (started === generation) showCard = card !== undefined;
-  });
-  contextCard(pi, {
+  // The model may have lost this state after a compaction, reload, resume or
+  // /tree when there is something to restore; a list result it can see hides it.
+  const card = contextCard(pi, {
     type: CARD_TYPE,
     now,
-    // A list result may arrive while remotes resolve; it turns the card off.
-    build: async (ctx) => {
-      if (!showCard) return undefined;
-      const card = await cardForLedger(readLedger(ctx));
-      return showCard ? card : undefined;
-    },
+    restore: async (ctx) => (await cardForLedger(readLedger(ctx))) !== undefined,
+    build: (ctx) => cardForLedger(readLedger(ctx)),
   });
   pi.on("session_shutdown", () => {
     generation += 1;
-    showCard = false;
   });
 
   // Note which subagents run in a worktree: pi-subagent announces each child's
@@ -498,7 +481,7 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
       !event.isError &&
       !event.parentToolCallId
     )
-      showCard = false;
+      card.hide();
     // git_pr_status records what it read itself, including through nested MCP calls.
     if (event.toolName === "git_pr_status") return;
     if (event.parentToolCallId && ownCalls.has(event.parentToolCallId)) return;

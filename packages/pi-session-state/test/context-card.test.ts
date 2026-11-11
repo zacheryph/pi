@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type AgentMessage, applyCard, contextCard } from "#src/index";
+import { type AgentMessage, contextCard } from "#src/index";
 import { fakePi } from "../../pi-test-helpers/src/fake-pi.ts";
 
 const TYPE = "example:context";
@@ -21,47 +21,6 @@ function deferred<T>() {
   });
   return { promise, resolve };
 }
-
-describe("applyCard", () => {
-  it("returns undefined when there is no card and nothing to strip", () => {
-    expect(applyCard([user("hi")], TYPE, () => undefined)).toBeUndefined();
-  });
-
-  it("strips an earlier card when no card is due", () => {
-    const other = card("other", "other:context");
-    expect(applyCard([user("hi"), card("old"), other], TYPE, () => undefined)).toEqual({
-      messages: [user("hi"), other],
-    });
-  });
-
-  it("replaces an earlier card with the current one at the end", () => {
-    const result = applyCard(
-      [card("old"), user("hi")],
-      TYPE,
-      () => "new",
-      () => 42,
-    );
-    expect(result).toEqual({
-      messages: [
-        user("hi"),
-        { role: "custom", customType: TYPE, content: "new", display: false, timestamp: 42 },
-      ],
-    });
-  });
-
-  it("builds from the messages without earlier cards", () => {
-    let seen: AgentMessage[] = [];
-    applyCard([user("a"), card("old")], TYPE, (messages) => {
-      seen = messages;
-      return undefined;
-    });
-    expect(seen).toEqual([user("a")]);
-  });
-
-  it("treats an empty card as no card", () => {
-    expect(applyCard([user("hi")], TYPE, () => "")).toBeUndefined();
-  });
-});
 
 describe("contextCard", () => {
   it("passes ctx and stripped messages to build and returns synchronously for a sync build", async () => {
@@ -145,5 +104,115 @@ describe("contextCard", () => {
     expect(second({ type: "context", messages }, {})).toEqual({
       messages: [user("hi"), card("old a", "a:context")],
     });
+  });
+});
+
+describe("contextCard with restore", () => {
+  function setup(options: { due?: () => boolean | Promise<boolean>; build?: () => unknown } = {}) {
+    const fake = fakePi();
+    let clock = 10;
+    const events: string[] = [];
+    let built = 0;
+    const card = contextCard(fake.api, {
+      type: TYPE,
+      now: () => clock,
+      restore: (_ctx, event) => {
+        events.push(event.type);
+        return options.due ? options.due() : true;
+      },
+      build: () => {
+        built += 1;
+        return options.build ? (options.build() as string | undefined) : "card";
+      },
+    });
+    const context = (messages: AgentMessage[] = [user("hi")]) => fake.emit("context", { messages });
+    return {
+      fake,
+      card,
+      events,
+      context,
+      built: () => built,
+      tick: (to: number) => {
+        clock = to;
+      },
+    };
+  }
+
+  it("is hidden until a session event restores it, and never builds while hidden", async () => {
+    const h = setup();
+    expect(await h.context([user("hi"), card("old")])).toEqual({ messages: [user("hi")] });
+    expect(h.built()).toBe(0);
+    expect(h.card.shownAt()).toBeUndefined();
+  });
+
+  it.each(["session_start", "session_tree", "session_compact"])(
+    "asks restore after %s and shows the card when it returns true",
+    async (event) => {
+      const h = setup();
+      await h.fake.emit(event, event === "session_start" ? { reason: "reload" } : {});
+      expect(h.events).toEqual([event]);
+      expect(h.card.shownAt()).toBe(10);
+      expect(await h.context()).toMatchObject({
+        messages: [user("hi"), { customType: TYPE, content: "card" }],
+      });
+    },
+  );
+
+  it("hides the card when restore returns false, and at shutdown", async () => {
+    let due = true;
+    const h = setup({ due: () => due });
+    await h.fake.emit("session_start", { reason: "resume" });
+    due = false;
+    await h.fake.emit("session_tree");
+    expect(h.card.shownAt()).toBeUndefined();
+    due = true;
+    await h.fake.emit("session_compact");
+    await h.fake.emit("session_shutdown");
+    expect(h.card.shownAt()).toBeUndefined();
+    expect(await h.context()).toBeUndefined();
+  });
+
+  it("is shown and hidden by the extension", async () => {
+    const h = setup();
+    h.tick(20);
+    h.card.show();
+    expect(h.card.shownAt()).toBe(20);
+    expect(await h.context()).toMatchObject({ messages: [user("hi"), { content: "card" }] });
+    h.card.hide();
+    expect(await h.context([user("hi"), card("old")])).toEqual({ messages: [user("hi")] });
+  });
+
+  it("can hide itself from build, stripping the old card", async () => {
+    const h = setup({
+      build: () => {
+        h.card.hide();
+        return undefined;
+      },
+    });
+    h.card.show();
+    expect(await h.context([user("hi"), card("old")])).toEqual({ messages: [user("hi")] });
+    expect(h.card.shownAt()).toBeUndefined();
+  });
+
+  it("drops an async restore that resolves after a newer session start", async () => {
+    const first = deferred<boolean>();
+    let next: Promise<boolean> = first.promise;
+    const h = setup({ due: () => next });
+    const stale = h.fake.emit("session_start", { reason: "resume" });
+    next = Promise.resolve(false);
+    await h.fake.emit("session_start", { reason: "reload" });
+    first.resolve(true);
+    await stale;
+    expect(h.card.shownAt()).toBeUndefined();
+  });
+
+  it("drops an async build when the card is hidden before it resolves", async () => {
+    const pending = deferred<string | undefined>();
+    const h = setup({ build: () => pending.promise });
+    h.card.show();
+    const result = h.context([user("hi"), card("old")]);
+    h.card.hide();
+    pending.resolve("late");
+    expect(await result).toEqual({ messages: [user("hi")] });
   });
 });
