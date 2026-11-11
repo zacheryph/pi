@@ -21,6 +21,8 @@ export interface SubagentEventsObserverDeps {
   work: AgentWork;
   /** Whether the current branch already contains this agent's initial record. */
   isOnBranch?: (id: string) => boolean;
+  /** Publish a current projection only after its lifecycle record has landed. */
+  changed?: () => void;
 }
 
 /**
@@ -36,10 +38,12 @@ export class SubagentEventsObserver implements SubagentManagerObserver {
   private readonly appendEntry: AppendEntry;
   private readonly work: AgentWork;
   private readonly isOnBranch: (id: string) => boolean;
+  private readonly depsChanged: () => void;
   private readonly recorded = new Set<string>();
   private readonly pending = new Map<string, PersistedSubagentRecord>();
 
   constructor(deps: SubagentEventsObserverDeps) {
+    this.depsChanged = deps.changed ?? (() => {});
     this.emit = deps.emit;
     this.appendEntry = deps.appendEntry;
     this.work = deps.work;
@@ -158,6 +162,7 @@ export class SubagentEventsObserver implements SubagentManagerObserver {
     this.appendEntry(SUBAGENT_RECORD_ENTRY, data);
     this.recorded.add(record.id);
     this.pending.delete(record.id);
+    this.depsChanged();
   }
 
   /**
@@ -184,6 +189,7 @@ export class SubagentEventsObserver implements SubagentManagerObserver {
       message,
     });
     this.work.update(record, message);
+    this.depsChanged();
   }
 
   /**

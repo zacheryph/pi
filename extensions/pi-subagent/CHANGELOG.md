@@ -3,6 +3,17 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-10: Publish branch-scoped subagent snapshots
+
+- Added `subagent:snapshot` version 1, built from the same saved-record/live-state roster as
+  `subagent_get`. Startup restoration, tree navigation and lifecycle/progress changes publish
+  complete snapshots, including empty branches. Fine-grained lifecycle events remain unchanged.
+- The dashboard replaces its roster from that contract instead of reconstructing state from
+  only the events seen since it loaded. Restored history, waiting labels, interrupted runs,
+  live progress and branch changes are reflected without reading another extension's internals.
+- Real-session coverage pins running/completed updates, reload restoration and tree removal;
+  producer and dashboard tests cover live overrides, waiting, malformed snapshots and row limits.
+
 ## 2026-11-10: Align orchestration prompts and add a bounded implementation profile
 
 - Correct the orchestrator's child lifecycle guidance: workers and delegated coordinators can wait on jobs or nested workers and wake through the limiter. A PR owner may use `babysit-pr` for CI and review follow-ups.

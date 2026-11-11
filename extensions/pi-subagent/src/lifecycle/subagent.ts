@@ -250,6 +250,9 @@ export class Subagent {
   get runUpdates(): readonly string[] {
     return this.state.runUpdates;
   }
+  get latestUpdate(): string | undefined {
+    return this.state.latestUpdate;
+  }
   get turnBudget(): TurnBudget | undefined {
     return this.state.turnBudget;
   }

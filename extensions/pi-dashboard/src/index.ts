@@ -32,7 +32,7 @@ import {
 } from "./sections.ts";
 import { buildSnapshot } from "./snapshot.ts";
 import { StatusTracker } from "./status.ts";
-import { SUBAGENT_CHANNELS, SubagentTracker } from "./subagents.ts";
+import { SUBAGENT_SNAPSHOT_EVENT, SubagentTracker } from "./subagents.ts";
 import { detectTerminal, type TerminalAdapter } from "./terminal.ts";
 import { sessionUsage } from "./usage.ts";
 
@@ -210,10 +210,9 @@ export default function dashboardExtension(
     git = readGit(data);
     schedule();
   });
-  for (const channel of SUBAGENT_CHANNELS)
-    pi.events.on(channel, (data) => {
-      if (subagents.apply(channel, data)) schedule();
-    });
+  pi.events.on(SUBAGENT_SNAPSHOT_EVENT, (data) => {
+    if (subagents.apply(data)) schedule();
+  });
 
   pi.on("session_start", (_event, ctx) => {
     // Interactive sessions only; print, json and rpc runs (and subagent children, which run in print mode) are not shown.
