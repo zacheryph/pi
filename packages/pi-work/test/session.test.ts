@@ -286,6 +286,125 @@ describe("root host on a real session", () => {
     expect(requestTexts(h.requests[3]).join("\n")).toContain("RESULT: aborted");
   });
 
+  // These pin the safe half of the remaining root-wake gaps: a completion reaches the
+  // transcript exactly once and the next prompt sees it. They deliberately do not add a
+  // timer-based extension workaround for the SDK's missing post-idle wake boundary.
+  for (const outcome of ["succeeds", "fails", "is cancelled"] as const) {
+    it(`preserves a completion during manual compaction that ${outcome}`, async () => {
+      const fail = outcome === "fails";
+      const cancelled = outcome === "is cancelled";
+      const p = producer();
+      const entered = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      const hookIdle: boolean[] = [];
+      const compactor = (pi: ExtensionAPI) => {
+        pi.on("session_before_compact", async (event) => {
+          entered.resolve();
+          await release.promise;
+          if (cancelled) return { cancel: true };
+          if (fail) return undefined; // Pi's summarization request fails below.
+          return {
+            compaction: {
+              summary: "SUMMARY",
+              firstKeptEntryId: event.preparation.firstKeptEntryId,
+              tokensBefore: event.preparation.tokensBefore,
+            },
+          };
+        });
+        pi.on("session_compact", (_event, ctx) => {
+          hookIdle.push(ctx.isIdle());
+        });
+        pi.on("session_compact_failed", (_event, ctx) => {
+          hookIdle.push(ctx.isIdle());
+        });
+      };
+      const h = await fauxSession({
+        cleanup: onTestFinished,
+        extensions: [p.extension, compactor],
+        tools: ["open_work"],
+        settings: { compaction: { enabled: false, keepRecentTokens: 1 } },
+        responses: [toolCall("open_work", { label: "CI" }), fauxAssistantMessage("waiting")],
+      });
+      await h.session.prompt("start it");
+
+      const rawIdle: boolean[] = [];
+      h.session.subscribe((event) => {
+        if (event.type === "compaction_end") rawIdle.push(h.session.isIdle);
+      });
+      const compact = h.session.compact().catch((error: unknown) => error);
+      await entered.promise;
+      h.faux.setResponses([
+        ...(fail
+          ? [fauxAssistantMessage("", { stopReason: "error", errorMessage: "summary failed" })]
+          : []),
+        fauxAssistantMessage("saw the preserved result"),
+      ]);
+      p.items[0].complete({ customType: DONE, content: "RESULT: during compaction" });
+      expect(h.session.isIdle).toBe(false);
+      expect(
+        transcript(h.sessionManager).filter((entry) => entry === `custom:${DONE}`),
+      ).toHaveLength(1);
+      release.resolve();
+      const result = await compact;
+      if (fail || cancelled) expect(result).toBeInstanceOf(Error);
+      else expect(result).not.toBeInstanceOf(Error);
+
+      // Success fires the extension hook before teardown. The SDK's raw event is after it;
+      // failure already has a post-teardown extension hook, but no common idle contract.
+      expect(hookIdle).toEqual([fail || cancelled]);
+      expect(rawIdle).toEqual([true]);
+      expect(h.session.isIdle).toBe(true);
+      const beforeResume = fail ? 3 : 2; // Failure makes one summarization request, not an agent run.
+      expect(h.requests).toHaveLength(beforeResume);
+      expect(h.faux.getPendingResponseCount()).toBe(1);
+      expect(closeOrder(h.sessionManager)).toEqual(["message", "close:completed"]);
+
+      await h.session.prompt("continue");
+      expect(requestTexts(h.requests[beforeResume]).join("\n")).toContain(
+        "RESULT: during compaction",
+      );
+      expect(h.requests).toHaveLength(beforeResume + 1);
+      expect(h.errors).toEqual([]);
+    });
+  }
+
+  it("preserves a completion arriving after the work host's last settle decision", async () => {
+    const p = producer();
+    let completeLate = false;
+    const late = (pi: ExtensionAPI) => {
+      // The host's handler is registered first. This handler completes the item only after
+      // the host decided no continuation was needed, but before agent_settled clears its run.
+      pi.on("agent_before_settle", (event) => {
+        if (!completeLate || event.outcome !== "completed") return;
+        completeLate = false;
+        p.items[0].complete({ customType: DONE, content: "RESULT: final settlement window" });
+      });
+    };
+    const h = await fauxSession({
+      cleanup: onTestFinished,
+      extensions: [p.extension, late],
+      tools: ["open_work"],
+      responses: [toolCall("open_work", { label: "CI" }), fauxAssistantMessage("waiting")],
+    });
+    await h.session.prompt("start it");
+    h.faux.setResponses([fauxAssistantMessage("last answer"), fauxAssistantMessage("saw it")]);
+    completeLate = true;
+    await h.session.prompt("finish");
+    expect(h.session.isIdle).toBe(true);
+    expect(h.requests).toHaveLength(3);
+    expect(h.faux.getPendingResponseCount()).toBe(1);
+    expect(transcript(h.sessionManager).at(-1)).toBe(`custom:${DONE}`);
+    expect(closeOrder(h.sessionManager)).toEqual(["message", "close:completed"]);
+
+    await h.session.prompt("continue");
+    expect(requestTexts(h.requests[3]).join("\n")).toContain("RESULT: final settlement window");
+    expect(transcript(h.sessionManager).filter((entry) => entry === `custom:${DONE}`)).toHaveLength(
+      1,
+    );
+    expect(h.requests).toHaveLength(4);
+    expect(h.errors).toEqual([]);
+  });
+
   it("records a notify without closing the item", async () => {
     const p = producer();
     const h = await fauxSession({
