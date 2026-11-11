@@ -24,17 +24,11 @@ import {
 import { resolve } from "node:path";
 import { Type } from "typebox";
 import { showExplorer, sanitizeText } from "../../../packages/pi-ui/src/index.ts";
-import {
-  call,
-  node,
-  parentOf,
-  provide,
-  trackChildren,
-} from "../../../packages/pi-session-tree/src/index.ts";
-import { CARD_TYPE, contextCard } from "./card.ts";
+import { contextCard, treeService } from "../../../packages/pi-session-state/src/index.ts";
+import { CARD_TYPE, contextCard as ledgerCard } from "./card.ts";
 import { loadGitConfig, type GitConfig } from "./config.ts";
 import { GIT_SNAPSHOT_EVENT, snapshotEvent, type GitSnapshotEvent } from "./events.ts";
-import { foldLedger, type Ledger } from "./fold.ts";
+import { readLedger, type Ledger } from "./fold.ts";
 import { git, realPath, resolveCommit, type BaseRef, type WorktreeStatus } from "./git.ts";
 import { isWorktreeRecord, LEDGER_TYPE, type WorktreeRecord } from "./ledger.ts";
 import {
@@ -167,8 +161,6 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
   let found: FoundWorktree[] = [];
   let config: GitConfig | undefined;
   let cwd = process.cwd();
-  let sessionId: string | undefined;
-  let withdraw: (() => void) | undefined;
   /** Bumped on every session start and shutdown, so a stale refresh drops its results. */
   let generation = 0;
   /**
@@ -177,26 +169,21 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
    */
   let showCard = false;
 
-  trackChildren(pi);
-
   const getConfig = () => (config ??= (dependencies.loadConfig ?? loadGitConfig)(cwd));
   const snapshot = (): GitSnapshotEvent =>
     snapshotEvent(records.values(), measured, found, prs.values());
   const publish = () => pi.events.emit(GIT_SNAPSHOT_EVENT, snapshot());
 
-  /** Hand a record to `from`'s parent, which adopts it and passes it on up. */
-  const passUp = (from: string, record: LedgerRecord, persist = true) => {
-    const parent = parentOf(from);
-    if (parent)
-      call<GitTreeService, boolean>(parent, SERVICE_NAME, (s) => s.adopt(record, persist));
-  };
+  /** Hand a record to this session's parent, which adopts it and passes it on up. */
+  const passUp = (record: LedgerRecord, persist = true) =>
+    tree.parent((parent) => parent.adopt(record, persist));
 
   const append = (record: LedgerRecord) => {
     pi.appendEntry<LedgerRecord>(LEDGER_TYPE, record);
     if (record.kind === "pr") prs.set(record.key, record);
     else records.set(record.path, record);
     publish();
-    if (sessionId) passUp(sessionId, record);
+    passUp(record);
   };
 
   const update = (record: WorktreeRecord, change: Partial<WorktreeRecord>) =>
@@ -214,7 +201,7 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
         if (!persist && existing && samePrFacts(existing, adopted)) {
           prs.set(adopted.key, adopted);
           publish();
-          if (sessionId) passUp(sessionId, adopted, false);
+          passUp(adopted, false);
           return true;
         }
         append(adopted);
@@ -302,13 +289,13 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
         }),
       );
     }
-    return contextCard(ledger, repositories);
+    return ledgerCard(ledger, repositories);
   };
 
   /** Rebuild state from the session (start, resume, reload, /tree). */
   const restore = async (ctx: ExtensionContext): Promise<void> => {
     const started = generation;
-    const ledger = foldLedger(ctx.sessionManager.getEntries());
+    const ledger = readLedger(ctx);
     records = ledger.worktrees;
     prs = ledger.prs;
     measured = new Map();
@@ -322,48 +309,33 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
     generation += 1;
     cwd = ctx.cwd;
     config = undefined;
-    sessionId = ctx.sessionManager.getSessionId();
-    withdraw?.();
-    withdraw = provide(sessionId, SERVICE_NAME, service);
     await restore(ctx);
     backgroundRefresh(ctx);
   });
+  // Offered on session_start, withdrawn on session_shutdown; links this session's subagents.
+  // Registered after the start handler above, which reads the ctx before anything awaits.
+  const tree = treeService<GitTreeService>(pi, SERVICE_NAME, service);
   pi.on("session_tree", async (_event, ctx) => {
     await restore(ctx);
     backgroundRefresh(ctx);
   });
   pi.on("session_compact", async (_event, ctx) => {
     const started = generation;
-    const card = await cardForLedger(foldLedger(ctx.sessionManager.getEntries()));
+    const card = await cardForLedger(readLedger(ctx));
     if (started === generation) showCard = card !== undefined;
   });
-  pi.on("context", async (event, ctx) => {
-    const messages = event.messages.filter(
-      (message) => !(message.role === "custom" && message.customType === CARD_TYPE),
-    );
-    const started = generation;
-    const built = showCard
-      ? await cardForLedger(foldLedger(ctx.sessionManager.getEntries()))
-      : undefined;
-    const card = started === generation && showCard ? built : undefined;
-    if (!card) return messages.length === event.messages.length ? undefined : { messages };
-    return {
-      messages: [
-        ...messages,
-        {
-          role: "custom" as const,
-          customType: CARD_TYPE,
-          content: card,
-          display: false,
-          timestamp: now(),
-        },
-      ],
-    };
+  contextCard(pi, {
+    type: CARD_TYPE,
+    now,
+    // A list result may arrive while remotes resolve; it turns the card off.
+    build: async (ctx) => {
+      if (!showCard) return undefined;
+      const card = await cardForLedger(readLedger(ctx));
+      return showCard ? card : undefined;
+    },
   });
   pi.on("session_shutdown", () => {
     generation += 1;
-    withdraw?.();
-    withdraw = undefined;
     showCard = false;
   });
 
@@ -433,7 +405,7 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
     ) {
       prs.set(key, next);
       publish();
-      if (sessionId) passUp(sessionId, next, false);
+      passUp(next, false);
       return next;
     }
     append(next);
@@ -533,7 +505,7 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
     try {
       const observations = await observe(event as ToolResultLike, { cwd: ctx.cwd, resolveRepo });
       if (observations.length === 0) return;
-      const agentId = sessionId ? node(sessionId)?.agentId : undefined;
+      const agentId = tree.node()?.agentId;
       for (const observation of observations)
         recordPr(observation, {
           tool: event.toolName,
@@ -651,7 +623,7 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
               base: params.base,
               workspace: params.workspace,
               now: now(),
-              createdBy: sessionId ? node(sessionId)?.agentId : undefined,
+              createdBy: tree.node()?.agentId,
             },
             { signal },
           );
@@ -865,7 +837,7 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
               return { isError: outcome.isError, text: outputText(outcome.result.content) };
             }
           : undefined;
-        const agentId = sessionId ? node(sessionId)?.agentId : undefined;
+        const agentId = tree.node()?.agentId;
         ownCalls.add(id);
         let entries: StatusEntryValue[];
         try {

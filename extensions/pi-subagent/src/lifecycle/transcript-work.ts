@@ -11,6 +11,7 @@
  * and `appendCustomMessageEntry`. Only for a transcript no live session holds, since two writers
  * would interleave.
  */
+import { customData } from "../../../../packages/pi-session-state/src/index.ts";
 import { debugLog } from "#src/debug";
 import {
   lostMessage,
@@ -58,12 +59,7 @@ export function transcriptWork(
   return {
     openItems: (path) =>
       safely(path, "read", (store) =>
-        openRecords(
-          store
-            .getBranch()
-            .filter((entry) => entry.type === "custom" && entry.customType === WORK_ENTRY)
-            .map((entry) => entry.data),
-        ).map((record): WorkItemView => ({
+        openRecords(customData(store.getBranch(), WORK_ENTRY)).map((record): WorkItemView => ({
           id: record.id,
           owner: record.owner,
           kind: record.kind,

@@ -2,6 +2,11 @@
  * fold.ts — rebuild pi-git's state from the session's `git:ledger` entries.
  */
 
+import {
+  customData,
+  readEntries,
+  type EntriesSource,
+} from "../../../packages/pi-session-state/src/index.ts";
 import { isWorktreeRecord, LEDGER_TYPE, type WorktreeRecord } from "./ledger.ts";
 import { isPrRecord, type PrRecord } from "./prs.ts";
 
@@ -12,14 +17,21 @@ export interface Ledger {
   prs: Map<string, PrRecord>;
 }
 
-/** Fold every entry of the session; entries of other types and malformed data are skipped. */
-export function foldLedger(entries: Iterable<unknown>): Ledger {
+function fold(records: readonly unknown[]): Ledger {
   const ledger: Ledger = { worktrees: new Map(), prs: new Map() };
-  for (const entry of entries) {
-    const item = entry as { type?: unknown; customType?: unknown; data?: unknown };
-    if (item.type !== "custom" || item.customType !== LEDGER_TYPE) continue;
-    if (isWorktreeRecord(item.data)) ledger.worktrees.set(item.data.path, item.data);
-    else if (isPrRecord(item.data)) ledger.prs.set(item.data.key, item.data);
+  for (const data of records) {
+    if (isWorktreeRecord(data)) ledger.worktrees.set(data.path, data);
+    else if (isPrRecord(data)) ledger.prs.set(data.key, data);
   }
   return ledger;
+}
+
+/** Fold every entry of the session; entries of other types and malformed data are skipped. */
+export function foldLedger(entries: Iterable<unknown>): Ledger {
+  return fold(customData(entries, LEDGER_TYPE));
+}
+
+/** Fold `ctx`'s whole session, every branch (see the note at the top of ledger.ts). */
+export function readLedger(ctx: EntriesSource): Ledger {
+  return fold(readEntries(ctx, { type: LEDGER_TYPE, scope: "all" }));
 }

@@ -13,6 +13,7 @@
  * `LandingTracker` (landing.ts) of the instance that provided the host, and by no other: an
  * instance that only finds a host forwards the run boundaries and reads nothing.
  */
+import { readEntries } from "../../pi-session-state/src/index.ts";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { provide, service } from "../../pi-session-tree/src/index.ts";
 import {
@@ -117,11 +118,7 @@ export function ensureWorkHost(pi: ExtensionAPI): WorkAccess {
   };
 
   const store = (ctx: Context): WorkStore => ({
-    read: () =>
-      ctx.sessionManager
-        .getBranch()
-        .filter((entry) => entry.type === "custom" && entry.customType === WORK_ENTRY)
-        .map((entry) => entry.data),
+    read: () => readEntries(ctx, { type: WORK_ENTRY }),
     append: (record: WorkRecord) => pi.appendEntry(WORK_ENTRY, record),
   });
 

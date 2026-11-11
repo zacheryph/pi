@@ -72,6 +72,11 @@ for (const id of ancestors(childSessionId)) {
 }
 ```
 
+An extension that offers one service from its own session can use
+`treeService(pi, name, api)` from
+[`pi-session-state`](../pi-session-state/README.md) instead, which does the
+wiring above and adds `parent(fn)` for calling the parent's copy.
+
 - `provide(id, name, api)` returns a disposer. A later `provide` for the same
   name (a new extension instance after `/reload`) replaces the entry, and the
   old disposer then does nothing.

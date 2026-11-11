@@ -3,6 +3,16 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-11: Use the shared session-state helpers
+
+Issue #127. No behaviour change.
+
+- `RosterCard.handleContext` does the card's message surgery with `applyCard` from
+  `packages/pi-session-state`; the class keeps its `since` rule for when the card is due.
+- `readPersistedRecords`, the main agent profile snapshot and the work entries read by
+  `transcript-work.ts` and `child-work.ts` use `customData` and `readEntries` instead of
+  hand-written `type === "custom" && customType === ...` filters.
+
 ## 2026-11-11: Drop compatibility with older records and settings
 
 Issue #129.

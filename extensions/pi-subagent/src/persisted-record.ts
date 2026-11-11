@@ -16,6 +16,7 @@
  * entry that is not `PERSISTED_RECORD_VERSION`.
  */
 
+import { customData } from "../../../packages/pi-session-state/src/index.ts";
 import type { RunOutcome, SubagentStatus } from "#src/lifecycle/subagent-state";
 import type { TurnBudget } from "#src/lifecycle/turn-limits";
 import type { SubagentType, ThinkingLevel } from "#src/types";
@@ -140,9 +141,8 @@ export function readPersistedRecords(
   entries: readonly SessionEntryLike[],
 ): PersistedSubagentRecord[] {
   const records = new Map<string, PersistedSubagentRecord>();
-  for (const entry of entries) {
-    if (entry.type !== "custom" || entry.customType !== SUBAGENT_RECORD_ENTRY) continue;
-    const record = asRecord(entry.data);
+  for (const data of customData(entries, SUBAGENT_RECORD_ENTRY)) {
+    const record = asRecord(data);
     if (record) records.set(record.id, record);
   }
   return [...records.values()].sort((a, b) => b.startedAt - a.startedAt);

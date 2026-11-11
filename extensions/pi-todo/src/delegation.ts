@@ -1,11 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import {
-  call,
-  node,
-  parentOf,
-  provide,
-  trackChildren,
-} from "../../../packages/pi-session-tree/src/index.ts";
+import { treeService } from "../../../packages/pi-session-state/src/index.ts";
 import { cloneTodoActivity, type TodoActivity, type TodoTaskActivity } from "./activity.ts";
 import type { TodoRequest, TodoTaskPatch } from "./actions.ts";
 import {
@@ -214,7 +208,6 @@ export interface DelegationHost {
 
 /** A child session's link to the parent plan it works in. */
 export interface Delegated {
-  parent: string;
   agent: string;
   scope: TodoClaimScope;
 }
@@ -227,15 +220,12 @@ const errorText = (error: unknown) => (error instanceof Error ? error.message : 
  * find this session's claim and route the todo tool to the parent's broker.
  */
 export function createTodoDelegation(pi: ExtensionAPI, host: DelegationHost) {
-  // Link this session's subagents as pi-subagent creates them.
-  trackChildren(pi);
   const pending = new Map<string, { handoff: TodoHandoff; at: number }>();
   /** Last claim of each ended agent, for a resume. */
   const ended = new Map<string, TodoClaim>();
   /** Plan revision at which each key last changed, for per-key stale checks. */
   const lastChange = new Map<string, number>();
   let delegated: Delegated | undefined;
-  let withdraw: (() => void) | undefined;
 
   const held = (exceptCall?: string): Map<string, string> => {
     const holders = new Map(
@@ -318,6 +308,8 @@ export function createTodoDelegation(pi: ExtensionAPI, host: DelegationHost) {
       return broker.view(agent);
     },
   };
+  // Offered on session_start, withdrawn on session_shutdown; links this session's subagents.
+  const tree = treeService<TodoBroker>(pi, BROKER_NAME, broker);
 
   pi.events.on("subagent:session:prepare", (data) => {
     const event = (data ?? {}) as {
@@ -428,8 +420,7 @@ export function createTodoDelegation(pi: ExtensionAPI, host: DelegationHost) {
 
   /** Call the parent's broker; its refusals and absence become tool errors here. */
   const remote = <R>(fn: (broker: TodoBroker) => R): R => {
-    const link = delegated!;
-    const result = call<TodoBroker, R>(link.parent, BROKER_NAME, fn);
+    const result = tree.parent(fn);
     if (result.ok) return result.value;
     if (result.reason === "missing")
       throw new TodoValidationError("the parent session's task list is not available");
@@ -437,10 +428,8 @@ export function createTodoDelegation(pi: ExtensionAPI, host: DelegationHost) {
   };
 
   return {
-    /** Offer the broker, then look for this session's own claim in its parent. */
-    start(sessionId: string, replayedClaims: TodoClaims) {
-      withdraw?.();
-      withdraw = provide(sessionId, BROKER_NAME, broker);
+    /** Look for this session's own claim in its parent (start, resume, reload, /tree). */
+    start(replayedClaims: TodoClaims) {
       pending.clear();
       lastChange.clear();
       // Claims replayed on session start or tree navigation cannot safely carry
@@ -451,20 +440,13 @@ export function createTodoDelegation(pi: ExtensionAPI, host: DelegationHost) {
       // An agent from another branch must not reclaim keys on a later resume.
       ended.clear();
       delegated = undefined;
-      const parent = parentOf(sessionId);
-      const agent = node(sessionId)?.agentId;
-      if (parent && agent) {
-        const claim = call<TodoBroker, ReturnType<TodoBroker["claim"]>>(
-          parent,
-          BROKER_NAME,
-          (parentBroker) => parentBroker.claim(agent),
-        );
-        if (claim.ok && claim.value) delegated = { parent, agent, scope: claim.value.scope };
+      const agent = tree.node()?.agentId;
+      if (agent) {
+        const claim = tree.parent((parentBroker) => parentBroker.claim(agent));
+        if (claim.ok && claim.value) delegated = { agent, scope: claim.value.scope };
       }
     },
     stop() {
-      withdraw?.();
-      withdraw = undefined;
       delegated = undefined;
       pending.clear();
     },

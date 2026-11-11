@@ -1,4 +1,5 @@
 import { HASH_PATTERN, type BlobStore } from "./store.ts";
+import { readEntries } from "../../../packages/pi-session-state/src/index.ts";
 
 /** Custom session entry; one per change, plus a checkpoint after compaction. */
 export const STASH_INDEX_TYPE = "stash:index";
@@ -69,28 +70,26 @@ export function isStashRecord(value: unknown): value is StashRecord {
   );
 }
 
+/** A journal entry of this schema version; its op and records are checked as they replay. */
+function isCurrentJournal(data: unknown): data is {
+  schemaVersion: typeof STASH_SCHEMA_VERSION;
+  op?: unknown;
+  record?: unknown;
+  records?: unknown;
+} {
+  return (
+    !!data &&
+    typeof data === "object" &&
+    (data as { schemaVersion?: unknown }).schemaVersion === STASH_SCHEMA_VERSION
+  );
+}
+
 /** Rebuilds the index from the current branch only; abandoned branches never leak in. */
 export function replayStashIndex(ctx: {
   sessionManager: { getBranch(): Iterable<unknown> };
 }): StashIndex {
   let records: StashRecord[] = [];
-  for (const entry of ctx.sessionManager.getBranch()) {
-    if (!entry || typeof entry !== "object") continue;
-    const item = entry as { type?: unknown; customType?: unknown; data?: unknown };
-    if (
-      item.type !== "custom" ||
-      item.customType !== STASH_INDEX_TYPE ||
-      !item.data ||
-      typeof item.data !== "object"
-    )
-      continue;
-    const data = item.data as {
-      schemaVersion?: unknown;
-      op?: unknown;
-      record?: unknown;
-      records?: unknown;
-    };
-    if (data.schemaVersion !== STASH_SCHEMA_VERSION) continue;
+  for (const data of readEntries(ctx, { type: STASH_INDEX_TYPE, guard: isCurrentJournal })) {
     if (data.op === "put" && isStashRecord(data.record)) records.push({ ...data.record });
     else if (data.op === "checkpoint" && Array.isArray(data.records))
       records = data.records.filter(isStashRecord).map((record) => ({ ...record }));

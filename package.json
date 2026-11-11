@@ -11,6 +11,7 @@
     "extensions/pi-tldr",
     "extensions/pi-dashboard",
     "packages/pi-session-tree",
+    "packages/pi-session-state",
     "packages/pi-foundations",
     "packages/pi-ui",
     "packages/pi-scripted-model",

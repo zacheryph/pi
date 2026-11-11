@@ -13,7 +13,12 @@
  * model has then seen the roster in its own context.
  */
 
-import type { ContextEvent, SessionStartEvent } from "@earendil-works/pi-coding-agent";
+import type { SessionStartEvent } from "@earendil-works/pi-coding-agent";
+import {
+  type AgentMessage,
+  applyCard,
+  type CardResult,
+} from "../../../../packages/pi-session-state/src/index.ts";
 import {
   buildRoster,
   formatRosterCard,
@@ -22,8 +27,6 @@ import {
   type RestoreReason,
   type ReachableCheck,
 } from "#src/roster";
-
-type AgentMessage = ContextEvent["messages"][number];
 
 /** The `customType` the card is appended under. */
 export const ROSTER_CARD_TYPE = "subagent:roster";
@@ -95,33 +98,26 @@ export class RosterCard {
    * Strip any earlier card, then append the current one while it is due.
    * Returns undefined when the messages need no change.
    */
-  handleContext(event: ContextMessages, ctx: unknown): { messages: AgentMessage[] } | undefined {
-    const messages = event.messages.filter(
-      (message) => !(message.role === "custom" && message.customType === ROSTER_CARD_TYPE),
+  handleContext(event: ContextMessages, ctx: unknown): CardResult {
+    return applyCard(
+      event.messages,
+      ROSTER_CARD_TYPE,
+      (messages) => this.card(messages, ctx),
+      this.now,
     );
-    const unchanged = () => (messages.length === event.messages.length ? undefined : { messages });
-    if (this.since === undefined) return unchanged();
+  }
+
+  /** The card while it is due; turns it off once the model has listed the agents. */
+  private card(messages: readonly AgentMessage[], ctx: unknown): string | undefined {
+    if (this.since === undefined) return undefined;
     if (listedSince(messages, this.since)) {
       this.since = undefined;
-      return unchanged();
+      return undefined;
     }
     const records = readBranchRecords(ctx);
-    const card =
-      records &&
-      formatRosterCard(buildRoster(records, this.getLive, this.isReachable), this.reason);
-    if (!card) return unchanged();
-    return {
-      messages: [
-        ...messages,
-        {
-          role: "custom",
-          customType: ROSTER_CARD_TYPE,
-          content: card,
-          display: false,
-          timestamp: this.now(),
-        },
-      ],
-    };
+    return records
+      ? formatRosterCard(buildRoster(records, this.getLive, this.isReachable), this.reason)
+      : undefined;
   }
 }
 

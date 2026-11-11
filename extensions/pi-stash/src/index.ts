@@ -6,13 +6,8 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-import {
-  call,
-  node,
-  parentOf,
-  provide,
-  trackChildren,
-} from "../../../packages/pi-session-tree/src/index.ts";
+import { node } from "../../../packages/pi-session-tree/src/index.ts";
+import { contextCard, treeService } from "../../../packages/pi-session-state/src/index.ts";
 import { DEFAULT_CONFIG, loadStashConfig, type StashConfig } from "./config.ts";
 import {
   PREVIEW_MAX_BYTES,
@@ -273,21 +268,13 @@ export default function stashExtension(
   // compaction, resume, reload or /tree it may not have, so it gets the card;
   // likewise once a subagent's entry is adopted here.
   let showCard = false;
-  let sessionId: string | undefined;
-  let withdraw: (() => void) | undefined;
-  // Link this session's subagents as pi-subagent creates them.
-  trackChildren(pi);
 
   /**
-   * Hand a version to `from`'s parent, which adopts it and hands it on to its
-   * own parent, up to the root. A parent that is reloading or gone ends the
+   * Hand a version to this session's parent, which adopts it and hands it on to
+   * its own parent, up to the root. A parent that is reloading or gone ends the
    * chain there; every session below it keeps the entry regardless.
    */
-  const passUp = (from: string, record: StashRecord) => {
-    const parent = parentOf(from);
-    if (parent)
-      call<StashTreeService, boolean>(parent, SERVICE_NAME, (service) => service.adopt(record));
-  };
+  const passUp = (record: StashRecord) => tree.parent((parent) => parent.adopt(record));
 
   const getStore = () => (store ??= new BlobStore(defaultStashRoot()));
   const storeSize = (): StashSnapshotEvent["store"] => {
@@ -365,7 +352,7 @@ export default function stashExtension(
     index = { records: [...index.records, entry] };
     publish();
     // A subagent's entry also lands on its parent's branch, and from there on up.
-    passUp(createdBy, entry);
+    passUp(entry);
     return entry;
   };
 
@@ -396,10 +383,12 @@ export default function stashExtension(
       index = { records: [...index.records, adopted] };
       showCard = true;
       publish();
-      if (sessionId) passUp(sessionId, candidate);
+      passUp(candidate);
       return true;
     },
   };
+  // Offered on session_start, withdrawn on session_shutdown; links this session's subagents.
+  const tree = treeService<StashTreeService>(pi, SERVICE_NAME, service);
 
   pi.registerTool(
     defineTool<typeof PutParameters, PutDetails>({
@@ -752,9 +741,6 @@ export default function stashExtension(
   pi.on("session_start", async (_event, ctx) => {
     config = (dependencies.loadConfig ?? loadStashConfig)();
     restore(ctx);
-    sessionId = ctx.sessionManager.getSessionId();
-    withdraw?.();
-    withdraw = provide(sessionId, SERVICE_NAME, service);
     try {
       // Refresh what this session still references, then expire the rest.
       const hashes = index.records.map((entry) => entry.hash);
@@ -779,29 +765,11 @@ export default function stashExtension(
     });
     showCard = currentEntries(index).length > 0;
   });
-  pi.on("context", (event) => {
-    const messages = event.messages.filter(
-      (message) => !(message.role === "custom" && message.customType === CONTEXT_TYPE),
-    );
-    const card = showCard ? indexCard(index) : undefined;
-    if (!card) return messages.length === event.messages.length ? undefined : { messages };
-    return {
-      messages: [
-        ...messages,
-        {
-          role: "custom" as const,
-          customType: CONTEXT_TYPE,
-          content: card,
-          display: false,
-          timestamp: Date.now(),
-        },
-      ],
-    };
+  contextCard(pi, {
+    type: CONTEXT_TYPE,
+    build: () => (showCard ? indexCard(index) : undefined),
   });
   pi.on("session_shutdown", async () => {
-    withdraw?.();
-    withdraw = undefined;
-    sessionId = undefined;
     index = createEmptyIndex();
     showCard = false;
   });

@@ -1,3 +1,4 @@
+import { customData } from "../../../packages/pi-session-state/src/index.ts";
 import type {
   ActivitySection,
   GitSection,
@@ -53,18 +54,10 @@ export function cleanText(value: unknown): string | undefined {
 
 /** The latest main-agent profile on the branch, if the session runs one. */
 export function agentName(branch: Iterable<unknown>): string | undefined {
-  let name: string | undefined;
-  for (const entry of branch) {
-    if (!entry || typeof entry !== "object") continue;
-    const item = entry as {
-      type?: unknown;
-      customType?: unknown;
-      data?: { profile?: { name?: unknown } };
-    };
-    if (item.type === "custom" && item.customType === MAIN_AGENT_ENTRY)
-      name = cleanText(item.data?.profile?.name);
-  }
-  return name;
+  const latest = customData(branch, MAIN_AGENT_ENTRY).at(-1) as
+    | { profile?: { name?: unknown } }
+    | undefined;
+  return cleanText(latest?.profile?.name);
 }
 
 export function buildSnapshot(input: SnapshotInput): SessionSnapshot {

@@ -1,3 +1,4 @@
+import { customEntries } from "../../../packages/pi-session-state/src/index.ts";
 import {
   applyTodoReview,
   createTodoReviewState,
@@ -28,10 +29,8 @@ export function replayTodoSession(ctx: {
   let activity: TodoActivity = new Map();
   let review = createTodoReviewState();
   let claims = new Map<string, TodoClaim>();
-  for (const entry of ctx.sessionManager.getBranch()) {
-    if (!entry || typeof entry !== "object") continue;
-    const record = entry as { type?: unknown; customType?: unknown; data?: unknown };
-    if (record.type !== "custom") continue;
+  const types = [TODO_REVIEW_TYPE, TODO_CLAIMS_TYPE, TODO_JOURNAL_TYPE];
+  for (const record of customEntries(ctx.sessionManager.getBranch(), types)) {
     if (record.customType === TODO_REVIEW_TYPE) {
       review = applyTodoReview(review, record.data);
       continue;
@@ -40,7 +39,6 @@ export function replayTodoSession(ctx: {
       claims = applyTodoClaims(claims, record.data);
       continue;
     }
-    if (record.customType !== TODO_JOURNAL_TYPE) continue;
     // The journal is the only todo state replayed; a malformed entry keeps the last valid one.
     const next = readTodoState(record.data);
     if (!next) continue;

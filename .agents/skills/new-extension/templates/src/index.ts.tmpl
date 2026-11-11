@@ -7,7 +7,8 @@ export default function {{factory}}(pi: ExtensionAPI): void {
 
   /** Rebuild state from the current branch (start, resume, reload, /tree). */
   const restore = (_ctx: ExtensionContext): void => {
-    // Replay this extension's entries from _ctx.sessionManager.getBranch().
+    // Replay this extension's entries with readEntries(_ctx, { type, guard }) from
+    // packages/pi-session-state; add contextCard and treeService from there when needed.
   };
 
   pi.on("session_start", (_event, ctx) => restore(ctx));
