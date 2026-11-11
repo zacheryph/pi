@@ -717,7 +717,7 @@ describe("SettingsManager", () => {
       expect(sm.abortAllOnInterrupt).toBe(true);
     });
 
-    it("warns that graceTurns was removed, and neither applies, emits, nor persists it", () => {
+    it("drops an unknown key without a warning, and neither applies, emits, nor persists it", () => {
       mkdirSync(join(projectDir, ".pi"), { recursive: true });
       writeFileSync(
         join(projectDir, ".pi", "subagent.json"),
@@ -728,9 +728,7 @@ describe("SettingsManager", () => {
       const warnings = captureWarn(() => {
         expect(sm.load()).toEqual({ maxConcurrent: 6 });
       });
-      expect(warnings).toEqual([
-        "[pi-subagent] graceTurns was removed; set wrapUpTurns (turns left when a subagent is warned, default 2) instead.",
-      ]);
+      expect(warnings).toEqual([]);
       expect(emit).toHaveBeenCalledWith("subagent:settings:loaded", {
         settings: { maxConcurrent: 6 },
       });

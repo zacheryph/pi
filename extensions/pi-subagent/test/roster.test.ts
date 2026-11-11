@@ -69,7 +69,7 @@ describe("rosterState", () => {
     ["idle", "error", false, "error"],
     ["idle", "turn-limit", false, "aborted"],
     ["idle", "stopped", true, "stopped"],
-    // A run a reload or restart cut short, as a version 1 record reads back.
+    // A run a reload or restart cut short, as a restored agent records it.
     ["idle", "interrupted", false, "interrupted"],
   ])("%s after %s, live %s → %s", (status, outcome, live, expected) => {
     expect(rosterState(status, outcome, live)).toBe(expected);
@@ -196,7 +196,7 @@ describe("formatRosterLine", () => {
     expect(line(saved({ status: "running" }))).toContain(
       "idle, last run interrupted: the session was reloaded or replaced before it finished",
     );
-    // The same line for a run a version 1 record said was cut short.
+    // The same line for a run a restored agent recorded as cut short.
     expect(line(saved({ status: "idle", outcome: "interrupted" }))).toContain(
       "idle, last run interrupted: the session was reloaded or replaced before it finished",
     );

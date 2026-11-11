@@ -732,15 +732,6 @@ describe("SessionNavigatorHandler", () => {
     };
     const label = "agent (Old task) · 5 tools · completed · 3.0s · session released (snapshot)";
 
-    it("offers a run a version 1 entry recorded, with the label it always had", async () => {
-      const { version: _version, outcome: _outcome, ...v2 } = recordEntry.data;
-      const v1Entry = { ...recordEntry, data: { ...v2, status: "completed" } };
-      const ui = makeUI(undefined);
-      await handleWith(ui, [], { sessionEntries: [v1Entry] });
-      expect(ui.notify).not.toHaveBeenCalled();
-      expect(ui.select).toHaveBeenCalledWith("Subagent sessions", [label]);
-    });
-
     it("offers the runs the session recorded", async () => {
       const ui = makeUI(undefined);
       await handleWith(ui, [], { sessionEntries: [recordEntry] });

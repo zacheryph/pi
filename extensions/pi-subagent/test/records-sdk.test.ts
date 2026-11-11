@@ -296,46 +296,4 @@ describe("subagent records in a real parent session (offline faux provider)", ()
     );
     expect(JSON.stringify(h.manager.getEntries())).not.toContain(CARD);
   }, 30_000);
-
-  it("loads a session written before records carried the new fields", async () => {
-    const manager = SessionManager.inMemory(dir);
-    manager.appendMessage({ role: "user", content: "earlier", timestamp: 1 });
-    // As the previous release wrote it: terminal only, no question/model/cwd fields.
-    manager.appendCustomEntry(SUBAGENT_RECORD_ENTRY, {
-      id: "old-agent",
-      type: "Explore",
-      description: "Old run",
-      status: "completed",
-      result: "Old result.",
-      startedAt: 1_000,
-      completedAt: 2_000,
-      outputFile: "/tasks/old-agent.jsonl",
-      toolUses: 3,
-    });
-    // Older still: before toolUses, which readers skip.
-    manager.appendCustomEntry(SUBAGENT_RECORD_ENTRY, {
-      id: "ancient-agent",
-      type: "Explore",
-      description: "Ancient run",
-      status: "completed",
-      startedAt: 500,
-    });
-    const h = await parent(manager);
-    const requests: Context[] = [];
-    h.faux.setResponses([
-      capture(requests, toolCall("subagent_get", { agent_id: "old-agent" })),
-      capture(requests, fauxAssistantMessage("ok")),
-    ]);
-    await h.session.prompt("Status?");
-    expect(requests).toHaveLength(2);
-    expect(tail(requests[0])).toContain("restored after resume");
-    expect(tail(requests[0])).toContain(
-      'old-agent Explore \\"Old run\\": idle, last run completed',
-    );
-    expect(tail(requests[0])).not.toContain("ancient-agent");
-    const report = lastResult(requests[1], "subagent_get");
-    expect(report).toContain("Old result.");
-    expect(report).toContain("Full transcript available at: /tasks/old-agent.jsonl");
-    expect(h.errors).toEqual([]);
-  }, 30_000);
 });

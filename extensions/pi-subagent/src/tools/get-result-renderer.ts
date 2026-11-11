@@ -49,7 +49,7 @@ export interface GetResultDetails {
   /** Whether the conversation was requested, so the expanded view can say where it went. */
   verbose: boolean;
   transcriptPath?: string;
-  /** The model's `provider/id`; optional because details persisted by older versions lack it. */
+  /** The model's `provider/id`; absent while an inherited model is still unknown. */
   modelName?: string;
 }
 

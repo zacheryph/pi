@@ -179,7 +179,7 @@ export function assembleSessionConfig(
   if (agentConfig.definitionError !== undefined) {
     throw new Error(`Agent type "${agentConfig.name}" cannot load: ${agentConfig.definitionError}`);
   }
-  // A legacy/no-fragment queued spawn may see a registry reload at run-start.
+  // A queued spawn without fragments resolves its profile here, after any registry reload.
   // Never silently omit newly declared fragments or read them in this assembler.
   if (!options.agentConfig && (agentConfig.fragmentError || agentConfig.fragments?.length)) {
     throw new Error(

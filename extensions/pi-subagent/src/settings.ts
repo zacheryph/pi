@@ -52,11 +52,6 @@ export interface SubagentsSettings {
   /** Turns left when a subagent is warned about its budget. */
   wrapUpTurns?: number;
   /**
-   * Load-only marker: a settings file still names the removed `graceTurns`.
-   * `load()` warns and strips it, so it is never applied, emitted, or saved.
-   */
-  legacyGraceTurns?: true;
-  /**
    * Minutes a done agent's session is retained once the parent read its finished result with
    * `subagent_get` (measured from the later of being done and the read). Applies only to an agent
    * with no open work; one that waits keeps its session.
@@ -267,8 +262,8 @@ export class SettingsManager {
    * Returns the raw loaded settings object.
    */
   load(): SubagentsSettings {
-    const { legacyGraceTurns, ...settings } = loadSettings(this.agentDir, this.cwd);
-    warnAboutRetiredSettings(settings, legacyGraceTurns === true);
+    const settings = loadSettings(this.agentDir, this.cwd);
+    warnAboutAdjustedSettings(settings);
     if (settings.overlayWidth !== undefined) this._overlayWidth = settings.overlayWidth;
     if (typeof settings.overlayDefaultOpen === "boolean")
       this._overlayDefaultOpen = settings.overlayDefaultOpen;
@@ -442,15 +437,10 @@ function isIntegerIn(n: unknown, min: number, max: number): n is number {
 }
 
 /**
- * Tell the operator about settings this version reads differently, so a value
- * that stopped meaning what they wrote does not change behavior silently.
+ * Tell the operator about a setting that is applied differently from what
+ * they wrote, so it does not change behavior silently.
  */
-function warnAboutRetiredSettings(settings: SubagentsSettings, hasGraceTurns: boolean): void {
-  if (hasGraceTurns) {
-    console.warn(
-      `[pi-subagent] graceTurns was removed; set wrapUpTurns (turns left when a subagent is warned, default ${DEFAULT_WRAP_UP_TURNS}) instead.`,
-    );
-  }
+function warnAboutAdjustedSettings(settings: SubagentsSettings): void {
   if (isBelowMinimumTurns(settings.defaultMaxTurns)) {
     console.warn(
       `[pi-subagent] defaultMaxTurns ${settings.defaultMaxTurns} is below the minimum of ${MIN_MAX_TURNS}; using ${MIN_MAX_TURNS}.`,
@@ -469,9 +459,6 @@ function sanitize(raw: unknown): SubagentsSettings {
   if (isIntegerIn(r.maxConcurrent, 1, MAX_CONCURRENT_CEILING)) out.maxConcurrent = r.maxConcurrent;
   if (isIntegerIn(r.defaultMaxTurns, 0, MAX_TURNS_CEILING)) out.defaultMaxTurns = r.defaultMaxTurns;
   if (isIntegerIn(r.wrapUpTurns, 1, WRAP_UP_TURNS_CEILING)) out.wrapUpTurns = r.wrapUpTurns;
-  if ("graceTurns" in r) {
-    out.legacyGraceTurns = true;
-  }
   if (isIntegerIn(r.consumedSessionRetentionMinutes, 1, RETENTION_MINUTES_CEILING)) {
     out.consumedSessionRetentionMinutes = r.consumedSessionRetentionMinutes;
   }

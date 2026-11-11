@@ -551,7 +551,6 @@ Every project now starts with concurrency 16, a three-turn wrap-up warning, and 
 Individual projects can still override via `/subagent:settings`.
 
 `wrapUpTurns` is how many turns an agent has left when it is warned about its budget; see [Turn Budget](../README.md#turn-budget).
-It replaced `graceTurns`, which allowed extra turns past `max_turns`: a file that still sets `graceTurns` logs a `[pi-subagent] graceTurns was removed…` warning and the key is ignored, so replace it with `wrapUpTurns`.
 A `defaultMaxTurns` of `1` runs with `2`, the minimum, and logs a warning.
 
 **Failure behavior:** missing file is silent; malformed JSON logs a `[pi-subagent] Ignoring malformed settings at …` warning to stderr; invalid/out-of-range field values are dropped per-field; write failures downgrade the `/subagent:settings` toast to a warning with `(session only; failed to persist)`.

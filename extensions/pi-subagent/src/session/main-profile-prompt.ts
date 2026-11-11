@@ -2,7 +2,7 @@
 export const MAIN_AGENT_SECTION = "main_agent_profile";
 
 /** Remove only the exact captured main-profile section, never guessed tag spans.
- * A profile may quote cwd/skill tags that confuse the legacy inheritance anchors.
+ * A profile may quote cwd/skill tags that confuse the inheritance anchors.
  * Removing its known section first preserves existing child inheritance behavior.
  */
 export function withoutMainAgentSection(prompt: string, section: string | undefined): string {
