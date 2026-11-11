@@ -71,13 +71,22 @@ bundle extension again. So:
 - Keep all state in the factory's closure, never in module scope: a same-cwd
   child may share the parent's module instance.
 - Rebuild state in `restore` (the template wires it to `session_start` and
-  `session_tree`) from `ctx.sessionManager.getBranch()`, and persist with
-  `pi.appendEntry`, so `/tree`, resume, reload and compaction work.
+  `session_tree`) from your entries with `readEntries(ctx, { type, guard })`
+  from [`packages/pi-session-state`](../../../packages/pi-session-state/README.md),
+  and persist with `pi.appendEntry`, so `/tree`, resume, reload and compaction
+  work.
+- To give the model state it may have lost after a compaction, reload, resume
+  or `/tree`, use `contextCard(pi, { type, build })` from the same package.
+  Decide in `build` whether the card is due; the helper strips the old card and
+  appends the new one.
 - Guard UI with `ctx.hasUI`; children have none.
 - A captured `ctx` goes stale after reload. Re-read it from each event.
-- To reach another session (parent or child), use
-  `packages/pi-session-tree` (`provide`, `call`, `ancestors`) by relative path.
-  Never put a bare object on `globalThis`.
+- To offer a service to other sessions, use `treeService(pi, name, api)` from
+  `packages/pi-session-state`: it follows the session's children, provides on
+  `session_start`, withdraws on `session_shutdown`, and `tree.parent(fn)` calls
+  the parent's copy. For anything else across sessions, use
+  `packages/pi-session-tree` (`call`, `ancestors`) by relative path. Never put a
+  bare object on `globalThis`.
 
 **Talking to other extensions.** Publish state on the session's `pi.events` bus
 as `<name>:<event>` (see `pi-todo:snapshot`, `pi-stash:snapshot`), with a
@@ -131,7 +140,7 @@ added and what `verify:bundle` now asserts.
 Code that several extensions import goes in `packages/<name>/` instead: a
 workspace with no `pi` manifest entry, so Pi never loads it as an extension.
 Add it to `workspaces` only; extensions import it by relative path. CI re-tests
-every workspace when a package changes. See `packages/pi-session-tree/`. The
+every workspace when a package changes. See `packages/pi-session-state/`. The
 scaffold script does not cover packages.
 
 ## Changing the templates

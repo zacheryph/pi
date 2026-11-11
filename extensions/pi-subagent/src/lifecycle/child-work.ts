@@ -29,6 +29,7 @@
  * The agent derives "waiting" from `openItems()`: an idle agent with open items is waiting, one
  * without is done. Nothing about waiting is stored.
  */
+import { customData } from "../../../../packages/pi-session-state/src/index.ts";
 import { debugLog } from "#src/debug";
 import { provide } from "../../../../packages/pi-session-tree/src/index.ts";
 import {
@@ -121,11 +122,7 @@ export class ChildWork {
     });
     this.host = createWorkHost({
       store: {
-        read: () =>
-          store
-            .getBranch()
-            .filter((entry) => entry.type === "custom" && entry.customType === WORK_ENTRY)
-            .map((entry) => entry.data),
+        read: () => customData(store.getBranch(), WORK_ENTRY),
         append: (record: WorkRecord) => {
           if (stale()) throw new Error("the child session is stale: its transcript is not its own");
           void store.appendCustomEntry(WORK_ENTRY, record);

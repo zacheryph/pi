@@ -112,8 +112,11 @@ pi-personal/
 │   ├── pi-work/                         # work:v1 contract + root work host
 │   │   ├── src/index.ts                 # WorkHost types, ensureWorkHost, boundary delivery
 │   │   └── test/
-│   └── pi-session-tree/                 # shared library, not an extension
-│       ├── src/index.ts                 # cross-session registry (globalThis)
+│   ├── pi-session-tree/                 # shared library, not an extension
+│   │   ├── src/index.ts                 # cross-session registry (globalThis)
+│   │   └── test/
+│   └── pi-session-state/                # context card, tree service, entry replay
+│       ├── src/index.ts
 │       └── test/
 └── test/                                # bundle scenario tests (dev only)
     ├── scenarios/                       # one file per cross-extension behaviour

@@ -3,6 +3,20 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-11: Use the shared session-state helpers
+
+Issue #127. No behaviour change.
+
+- The `todo:context` card is registered with `contextCard` from `packages/pi-session-state`,
+  which owns stripping the previous card and appending the current one; `build` keeps the
+  rules for when the card is due, for a subagent's delegated view and for the session's own list.
+- `createTodoDelegation` offers the broker with `treeService` instead of `trackChildren`,
+  `provide` and a withdraw of its own. The broker is now provided on `session_start` only, not
+  again on `/tree`, which re-provided the same broker under the same id. `start` takes only the
+  replayed claims, finds the parent and agent id through the tree service, and `Delegated` no
+  longer carries the parent id.
+- `replayTodoSession` reads the journal, claims and review entries with `customEntries`.
+
 ## 2026-11-11: Replay only the todo journal
 
 Issue #129. Every mutation journals a `todo:journal` snapshot, and nothing writes `todo:state`, so

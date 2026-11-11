@@ -1,4 +1,5 @@
 /** Main profiles: startup defaults plus durable SYSTEM instructions, not capability locks. */
+import { readEntries } from "../../../packages/pi-session-state/src/index.ts";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
@@ -102,11 +103,8 @@ function restoredSnapshot(data: unknown): MainAgentSnapshot {
 }
 
 function branchSnapshot(ctx: ExtensionContext): MainAgentSnapshot | undefined {
-  const entry = ctx.sessionManager
-    .getBranch()
-    .filter((e) => e.type === "custom" && e.customType === MAIN_AGENT_ENTRY)
-    .at(-1);
-  return entry?.type === "custom" ? restoredSnapshot(entry.data) : undefined;
+  const entries = readEntries(ctx, { type: MAIN_AGENT_ENTRY });
+  return entries.length ? restoredSnapshot(entries.at(-1)) : undefined;
 }
 
 export function renderMainAgentSection(profile: AgentConfig): string {

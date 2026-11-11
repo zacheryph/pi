@@ -67,6 +67,7 @@ import {
   styleLine,
 } from "../../../packages/pi-ui/src/index.ts";
 import { replayTodoSession, TODO_JOURNAL_TYPE, TODO_REVIEW_TYPE } from "./replay.ts";
+import { contextCard } from "../../../packages/pi-session-state/src/index.ts";
 
 const WIDGET_KEY = "todo:widget";
 const CONTEXT_TYPE = "todo:context";
@@ -627,7 +628,7 @@ export default function todoExtension(
   const restoreDelegation = (ctx: ExtensionContext) => {
     restore(ctx);
     // Tree navigation also changes the authoritative claim and revision history.
-    delegation.start(ctx.sessionManager.getSessionId(), claims);
+    delegation.start(claims);
     updateWidget(ctx);
   };
   pi.on("session_start", async (_event, ctx) => restoreDelegation(ctx));
@@ -635,76 +636,53 @@ export default function todoExtension(
   pi.on("session_compact", async () => {
     pi.appendEntry(TODO_JOURNAL_TYPE, journal(state, activity));
   });
-  pi.on("context", (event) => {
-    const messages = event.messages.filter(
-      (message) => !(message.role === "custom" && message.customType === CONTEXT_TYPE),
-    );
-    if (config.contextSync === "off")
-      return messages.length === event.messages.length ? undefined : { messages };
-    const view = delegatedView();
-    if (delegation.delegated()) {
-      if (!view) return messages.length === event.messages.length ? undefined : { messages };
-      const visibleView = formatTodoState(view.state, undefined, view.activity);
-      const latestView = messages.findLast(
+  contextCard(pi, {
+    type: CONTEXT_TYPE,
+    build: (_ctx, messages) => {
+      if (config.contextSync === "off") return undefined;
+      const view = delegatedView();
+      if (delegation.delegated()) {
+        if (!view) return undefined;
+        const visibleView = formatTodoState(view.state, undefined, view.activity);
+        const latestView = messages.findLast(
+          (message) =>
+            message.role === "toolResult" &&
+            TODO_TOOL_NAMES.has(message.toolName) &&
+            !message.isError,
+        );
+        if (
+          latestView?.role === "toolResult" &&
+          latestView.content.some((item) => item.type === "text" && item.text === visibleView)
+        )
+          return undefined;
+        const header =
+          view.scope === "ledger"
+            ? `Your parent session handed you these tasks: ${view.keys.join(", ") || "(none left)"}. You may read its whole list below; update only your tasks, or add prerequisites to others. Your updates go to the parent's list.\n`
+            : "Your parent session handed you these tasks. Your todo updates go to its list; new tasks you add are yours too.\n";
+        return (
+          header +
+          "Only the parent may complete these tasks. Leave finished work in_progress and report the outcome in message; do not remove unfinished tasks.\n" +
+          formatTodoContext(view.state)
+        );
+      }
+      // Context transforms are transient, not transcript entries. Keep supplying
+      // one current snapshot until a visible, untruncated direct result already
+      // contains it. Otherwise command/nested-call edits would disappear again on
+      // the second request. This is state data, not a recurring work reminder.
+      const visibleState = formatTodoState(state, undefined, activity);
+      const latestResult = messages.findLast(
         (message) =>
           message.role === "toolResult" &&
           TODO_TOOL_NAMES.has(message.toolName) &&
           !message.isError,
       );
-      if (
-        latestView?.role === "toolResult" &&
-        latestView.content.some((item) => item.type === "text" && item.text === visibleView)
-      ) {
-        return messages.length === event.messages.length ? undefined : { messages };
-      }
-      const header =
-        view.scope === "ledger"
-          ? `Your parent session handed you these tasks: ${view.keys.join(", ") || "(none left)"}. You may read its whole list below; update only your tasks, or add prerequisites to others. Your updates go to the parent's list.\n`
-          : "Your parent session handed you these tasks. Your todo updates go to its list; new tasks you add are yours too.\n";
-      return {
-        messages: [
-          ...messages,
-          {
-            role: "custom" as const,
-            customType: CONTEXT_TYPE,
-            content:
-              header +
-              "Only the parent may complete these tasks. Leave finished work in_progress and report the outcome in message; do not remove unfinished tasks.\n" +
-              formatTodoContext(view.state),
-            display: false,
-            timestamp: Date.now(),
-          },
-        ],
-      };
-    }
-    // Context transforms are transient, not transcript entries. Keep supplying
-    // one current snapshot until a visible, untruncated direct result already
-    // contains it. Otherwise command/nested-call edits would disappear again on
-    // the second request. This is state data, not a recurring work reminder.
-    const visibleState = formatTodoState(state, undefined, activity);
-    const latestResult = messages.findLast(
-      (message) =>
-        message.role === "toolResult" && TODO_TOOL_NAMES.has(message.toolName) && !message.isError,
-    );
-    const alreadyVisible =
-      visibleState.endsWith("}") &&
-      latestResult?.role === "toolResult" &&
-      latestResult.content.some((item) => item.type === "text" && item.text === visibleState);
-    if (alreadyVisible || (state.revision === 0 && !state.tasks.length)) {
-      return messages.length === event.messages.length ? undefined : { messages };
-    }
-    return {
-      messages: [
-        ...messages,
-        {
-          role: "custom" as const,
-          customType: CONTEXT_TYPE,
-          content: formatTodoContext(state),
-          display: false,
-          timestamp: Date.now(),
-        },
-      ],
-    };
+      const alreadyVisible =
+        visibleState.endsWith("}") &&
+        latestResult?.role === "toolResult" &&
+        latestResult.content.some((item) => item.type === "text" && item.text === visibleState);
+      if (alreadyVisible || (state.revision === 0 && !state.tasks.length)) return undefined;
+      return formatTodoContext(state);
+    },
   });
   pi.on("session_shutdown", async () => {
     branchGeneration++;
