@@ -1,13 +1,13 @@
 ---
 name: babysit-pr
-description: Watch a pull request until it is green and every review comment is handled. Waits for CI on the head commit with job_watch or job_start instead of polling, reads the logs of failed checks, reproduces and fixes failures with the repository's own checks, pushes the fix, answers or fixes review comments, and repeats until the PR is green or a stop condition hits. Use when asked to babysit, watch, shepherd, or "get this PR green", or right after opening a PR that should land without supervision.
+description: Watch a pull request until it is green and every review comment is handled. Waits for CI on the head commit with job_watch or job_start instead of polling, reads the logs of failed checks, reproduces and fixes failures with the repository's own checks, pushes the fix, answers or fixes review comments, and repeats until the PR is green or a stop condition hits. Use when asked to babysit, watch, shepherd, or "get this PR green", or when delegated ownership of CI and review follow-ups for a PR.
 ---
 
 # Babysit a pull request
 
 Drive one pull request to green CI with every review comment handled, without
 polling. The agent sleeps while CI runs: `job_watch` or `job_start` wakes it when
-the checks finish, and the agent ends its turn in between.
+the checks finish, and the agent ends its turn in between. This works in both a main session and a delegated worker: an open watch keeps the worker waiting and its completion wakes it through the normal concurrency limit.
 
 ## Input and setup
 
@@ -29,7 +29,7 @@ the checks finish, and the agent ends its turn in between.
 Track the work with `todo_upsert`: one task per failing check or review thread, keyed
 `pr<number>-<slug>`, so a reload or compaction loses nothing. After a reload,
 `git_pr_list` names the PRs this session opened and `git_pr_status` reads them
-again.
+again. When tasks were handed to you with handoff.todo, update their messages and leave them in_progress; the delegator accepts and completes them after verification. At finish, report the exact head SHA, checks and unresolved review items.
 
 ## 1. Wait for CI on the head commit
 
@@ -71,7 +71,7 @@ Then **end your turn**. Do not poll, sleep, or call the check yourself while the
 watch runs. Each completion arrives as its own message: it wakes you when you are
 idle, and reaches you in the run you are in when you are not. If Pi restarts the
 watch is gone: you are told it was lost instead of left waiting for it, and you
-start it again if the PR still needs watching.
+read the current head again and start a replacement watch only if the PR still needs watching. A same-process reload can re-adopt the watch, so check job_list before starting another.
 
 If no checks appear within a few minutes of the push, look at the workflow
 triggers (`.github/workflows/`) before waiting longer: the change may not select
@@ -109,7 +109,7 @@ runs for the head SHA). For every check that did not succeed:
    for what you touched.
 4. Commit with a message naming the check that failed, following the
    repository's commit rules, and push to the PR branch.
-5. Record the fix on the check's task, then go back to step 1 with the new SHA.
+5. Record the fix and new SHA on the check's task, then go back to step 1. Earlier CI or reviewer evidence does not accept the new revision; rerun the affected verification and report its SHA to the delegator.
 
 Give each check at most three fix attempts. After that, stop and report what you
 tried and what you saw.

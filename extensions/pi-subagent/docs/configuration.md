@@ -7,7 +7,7 @@ For the tools, commands, events, and service API, see the [README](../README.md)
 
 ## Default Agent Types
 
-Built-in names are `general-purpose`, `explore`, `plan`, `orchestrate`, and `review`.
+Built-in names are `general-purpose`, `explore`, `plan`, `implement`, `orchestrate`, and `review`.
 The general-purpose profile displays as `agent`. If you override a renamed profile,
 rename its file to match (for example, `orchestrator.md` → `orchestrate.md`) and
 update `--agent` and `subagent_type` references.
@@ -15,6 +15,7 @@ update `--agent` and `subagent_type` references.
 | Type              | Tools                                          | Model                                                                 | Prompt Mode | Description                                                                                                                          |
 | ----------------- | ---------------------------------------------- | --------------------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | `general-purpose` | all available                                  | inherit                                                               | `append`    | Inherits the parent's prompt identity — same rules, CLAUDE.md, project conventions                                                   |
+| `implement`       | all available; no delegation                   | inherit                                                               | `replace`   | Implements one bounded change, runs relevant checks, and reports evidence for parent acceptance                                      |
 | `orchestrate`     | all available; explicit todo tools; `delegate` | inherit                                                               | `replace`   | Project manager: categorizes tasks, delegates work, tracks open items, and recalls prior workers                                     |
 | `explore`         | read, bash, grep, find, ls                     | newest Haiku (`anthropic/claude-haiku@latest`; falls back to inherit) | `replace`   | Fast codebase exploration (read-only); inherits the parent prompt as a base                                                          |
 | `plan`            | read, bash, grep, find, ls                     | inherit                                                               | `replace`   | Software architect for implementation planning (read-only); inherits the parent prompt as a base                                     |
@@ -25,6 +26,23 @@ Every other agent, and any agent file that does not set `prompt_mode`, uses `rep
 
 The built-in agents are ordinary agent files in this extension's [`agents/`](../agents) directory, in the same format and read by the same parser as your own.
 Override one by creating a `.md` file with the same name (e.g. `.pi/agents/general-purpose.md`), or **hide** or **disable** it per-project with `visibility` frontmatter.
+
+### implement
+
+Use `implement` for one substantial, bounded code change with acceptance criteria.
+It works in the supplied directory, implements and verifies the change itself,
+and returns evidence for the delegator to accept. It inherits the caller's model
+and thinking settings. Its tool defaults exclude subagent_start/get/send; a main
+session can still change active tools explicitly, as with other profiles. Use a domain specialist
+when one fits, and keep `orchestrate` for project coordination.
+
+```bash
+pi --agent implement "Add token expiry validation and run the auth checks"
+```
+
+The profile can own a job or CI watch without polling through model turns. When
+handed todo tasks it records outcomes and leaves completion to the delegator;
+without a handoff its local todo behavior is unchanged.
 
 ### orchestrate
 
@@ -59,10 +77,12 @@ The profile's instructions establish this working loop:
    in task descriptions. Keep raw implementation detail in the worker sessions.
    Workers run in the background and the orchestrator ends its turn instead of
    waiting on them, so you can talk to it while they work; each completion
-   notification wakes it. It waits for a pull request's CI the same way, with
-   `job_watch`, and hands only the fixes to workers. Run as a subagent, it
-   collects its workers with `subagent_get` before finishing instead.
-3. Collect results and verify acceptance criteria before completing todos: a
+   notification wakes it. It can own a PR watch with `job_watch` or assign that loop to a worker using
+   `babysit-pr`. A delegated orchestrator waits and wakes the same way: open jobs
+   and workers keep its assignment alive.
+3. Workers report outcomes and leave handed-off tasks `in_progress`; the parent
+   accepts them. Record the checked commit SHA and check results, and revalidate
+   affected criteria when the code changes. Collect results and verify acceptance criteria before completing todos: a
    `review` that did not do the work checks each implementation task. A
    `FAIL` goes back to the implementer with `subagent_send`; after two failed rounds the
    task stays `pending` with the findings. Record questions and follow-ups immediately. Waiting items stay `pending`

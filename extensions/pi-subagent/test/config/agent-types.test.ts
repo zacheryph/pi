@@ -370,12 +370,12 @@ describe("AgentTypeRegistry", () => {
       expect(prompt).toContain("once git_pr_status shows the PR merged");
     });
 
-    it("waits for CI itself and hands only the fixes to workers", () => {
+    it("can give a PR owner the CI and review follow-up loop", () => {
       const prompt = makeRegistry().resolveAgentConfig("orchestrate").systemPrompt;
-      expect(prompt).toContain("Wait for CI yourself");
-      expect(prompt).toContain("hand that work to a worker in the PR's worktree");
-      expect(prompt).toContain("Do not hand the waiting to a worker");
-      expect(prompt).not.toContain("babysit-pr");
+      expect(prompt).toContain("Own the CI watch yourself or assign it to a worker");
+      expect(prompt).toContain("A worker can use the babysit-pr skill");
+      expect(prompt).toContain("Keep one owner for that loop.");
+      expect(prompt).not.toContain("a watch it starts would wake no one");
     });
 
     it("stays available: delegates in the background and ends its turn instead of waiting", () => {
@@ -389,13 +389,12 @@ describe("AgentTypeRegistry", () => {
       expect(prompt).not.toContain("wait when progress depends on a worker");
     });
 
-    it("says what it can do as a subagent, where no call waits for a worker", () => {
+    it("keeps a delegated orchestrator waiting on its open work", () => {
       const prompt = makeRegistry().resolveAgentConfig("orchestrate").systemPrompt;
       expect(prompt).toContain("When you run as a subagent yourself");
-      expect(prompt).toContain("no call waits for a worker");
-      expect(prompt).toContain(
-        "list each worker you started, with its agent ID, in your final answer",
-      );
+      expect(prompt).toContain("Open work keeps you idle and waiting");
+      expect(prompt).toContain("its completion wakes you through the concurrency limiter");
+      expect(prompt).not.toContain("nothing wakes you");
     });
 
     it("asks workers to stash large results and name the handle in their final answer", () => {
@@ -415,6 +414,22 @@ describe("AgentTypeRegistry", () => {
       const registry = makeRegistry(new Map([["orchestrate", custom]]));
       expect(registry.resolveAgentConfig("orchestrate")).toBe(custom);
       expect(registry.isValidType("orchestrate")).toBe(false);
+    });
+  });
+
+  describe("implementation profile", () => {
+    it("loads as a non-delegating worker with inherited model settings", () => {
+      const registry = makeRegistry();
+      expect(registry.resolveType("IMPLEMENT")).toBe("implement");
+      expect(registry.getListedTypes()).toContain("implement");
+      expect(registry.resolveAgentConfig("implement")).toMatchObject({
+        name: "implement",
+        displayName: "implement",
+        promptMode: "replace",
+        toolNames: ["all", "-subagent_start", "-subagent_get", "-subagent_send"],
+      });
+      expect(registry.resolveAgentConfig("implement").delegate).not.toBe(true);
+      expect(registry.resolveAgentConfig("implement").model).toBeUndefined();
     });
   });
 

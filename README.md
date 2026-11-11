@@ -255,6 +255,10 @@ repository when a task spans several) and runs the task's workers there, so
 parallel workers never share a checkout. Use `pi --agent orchestrate` or
 delegate with `subagent_type: "orchestrate"`.
 
+The built-in `implement` profile owns one bounded change and its local verification,
+without delegating. Use it for substantial implementation assignments that do not
+need project coordination; `orchestrate` keeps its existing project-manager role.
+
 The built-in `review` profile verifies finished work: it runs the project's
 checks, judges each acceptance criterion with evidence, and reports
 `Verdict: PASS`, `FAIL`, or `BLOCKED` without fixing anything. The orchestrator
@@ -402,7 +406,9 @@ fixed). Review comments in scope are fixed and answered; larger asks go back to
 you. It stops after three attempts per check, on a decision only you can make, or
 on a conflict with the base branch. Never skips tests, pushes empty commits,
 rewrites others' history, approves, or merges. Uses `gh` when authenticated,
-otherwise the GitHub MCP tools, for logs, reruns and replies.
+otherwise the GitHub MCP tools, for logs, reruns and replies. A delegated worker
+can own this loop: its watch holds it waiting and wakes it when CI settles. It
+reports the final checked SHA and leaves handed-off task acceptance to its parent.
 
 ### make-it-easy
 
