@@ -56,6 +56,7 @@ describe("effective agent definitions", () => {
       "beta",
       "explore",
       "general-purpose",
+      "implement",
       "orchestrate",
       "plan",
       "review",
@@ -82,6 +83,7 @@ describe("effective agent definitions", () => {
     expect(view.items.map((item) => item.label)).toEqual([
       "explore",
       "general-purpose",
+      "implement",
       "orchestrate",
       "plan",
       "review",

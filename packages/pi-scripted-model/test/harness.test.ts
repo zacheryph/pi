@@ -88,7 +88,7 @@ describe("startSession", () => {
     expect(completion).toContain("<result>The note says hello.</result>");
   });
 
-  it("hands a todo to a subagent, which completes it in the parent's list", async () => {
+  it("hands a todo to a subagent, then accepts its outcome in the parent's list", async () => {
     open = await startSession({
       scenario: defineScenario({
         replies: [
@@ -98,11 +98,11 @@ describe("startSession", () => {
               startAgent({
                 type: "general-purpose",
                 description: "Implement it",
-                prompt: "Implement the impl task and mark it completed.",
+                prompt: "Implement the impl task and report the outcome for parent acceptance.",
                 steps: [
                   [
                     tool("todo_upsert", {
-                      tasks: [{ key: "impl", status: "completed", message: "Implemented." }],
+                      tasks: [{ key: "impl", status: "in_progress", message: "Implemented." }],
                     }),
                   ],
                   "Implemented.",
@@ -113,7 +113,16 @@ describe("startSession", () => {
             "Started.",
           ],
           // The completion message starts the next turn.
-          [[tool("todo_list", {})], "All done."],
+          [
+            [tool("todo_list", { key: "impl" })],
+            [
+              tool("todo_upsert", {
+                tasks: [{ key: "impl", status: "completed", message: "Verified and accepted." }],
+              }),
+            ],
+            [tool("todo_list", {})],
+            "All done.",
+          ],
         ],
       }),
     });
@@ -122,10 +131,32 @@ describe("startSession", () => {
     expect(spawn.isError, spawn.text).toBe(false);
 
     await untilCompleted(open);
-    const list = run(open, "todo_list");
-    expect(list.isError, list.text).toBe(false);
-    expect(list.text).toMatch(/completed/i);
-    expect(list.text).toContain("Implemented.");
+    expect(completionTexts(open)[0]).toContain("Implemented.");
+    const lists = open.toolRuns().filter((result) => result.name === "todo_list");
+    expect(lists).toHaveLength(2);
+    for (const list of lists) expect(list.isError, list.text).toBe(false);
+    expect(JSON.parse(lists[0].text).tasks).toMatchObject([
+      {
+        key: "impl",
+        subject: "Implement it",
+        status: "in_progress",
+        updates: expect.arrayContaining([
+          expect.objectContaining({
+            status: "in_progress",
+            message: "Implemented.",
+            agent: expect.any(String),
+          }),
+        ]),
+      },
+    ]);
+    expect(JSON.parse(lists[1].text).tasks).toEqual([
+      {
+        key: "impl",
+        subject: "Implement it",
+        status: "completed",
+        lastMessage: "Verified and accepted.",
+      },
+    ]);
   });
 
   it("hides credentials and HOME while open and restores them after", async () => {
