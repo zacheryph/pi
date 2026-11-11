@@ -190,7 +190,11 @@ subagent_start({
   ("Assigned tasks") show only its tasks with `scope: "assigned"`, or your whole list
   with `scope: "ledger"`. Its writes go to your list through
   [`pi-session-tree`](../../packages/pi-session-tree/README.md) and are checked there:
-  - It may change and message its own tasks, and remove or clear them once completed.
+  - It may change and message its own tasks, but only the parent may mark them
+    `completed`. Leave finished work `in_progress` and report the outcome in a
+    `message`; the parent verifies and accepts it. This applies to new tasks too.
+  - It cannot remove unfinished tasks. Once the parent completes a task, the child
+    may remove or clear it, subject to the existing dependency checks.
   - New tasks it adds join its claim.
   - With `ledger`, it may also add prerequisites (`dependsOn`, keeping the existing
     ones) to tasks it does not hold, for a blocker it found. Each addition leaves a

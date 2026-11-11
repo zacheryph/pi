@@ -78,7 +78,8 @@ const PREREQUISITE_FIELDS = new Set(["key", "dependsOn"]);
 
 /**
  * Check a subagent's write against its claim and turn it into a write on the
- * parent's plan. Claimed keys may change freely; new keys join the claim; with a
+ * parent's plan. Only the parent completes tasks; children report outcomes while
+ * their tasks stay unfinished. New keys join the claim; with a
  * `ledger` claim (and `childPrerequisites`), an unclaimed task may gain
  * prerequisites, each recorded as a flagged message. `baseRevision` is checked
  * per touched key against `lastChange`, so siblings' writes do not make it stale.
@@ -134,7 +135,15 @@ export function checkDelegatedRequest(
     }
     case "remove": {
       const keys = (request.keys ?? []).map((key) => key.trim());
-      for (const key of keys) if (byKey.has(key) && !held.has(key)) throw notYours(key);
+      for (const key of keys) {
+        const task = byKey.get(key);
+        if (!task) continue;
+        if (!held.has(key)) throw notYours(key);
+        if (task.status !== "completed")
+          throw new TodoValidationError(
+            `task ${key} is unfinished; only the parent may remove it before acceptance`,
+          );
+      }
       checkStale(keys);
       return { request: forwarded, newKeys: [] };
     }
@@ -144,6 +153,12 @@ export function checkDelegatedRequest(
       for (const patch of request.tasks ?? []) {
         const key = patch.key.trim();
         const existing = byKey.get(key);
+        if (!existing || held.has(key)) {
+          if (patch.status === "completed")
+            throw new TodoValidationError(
+              `task ${key} can only be completed by the parent; leave it in_progress and report the outcome in message`,
+            );
+        }
         if (!existing) {
           newKeys.push(key);
           tasks.push(patch);

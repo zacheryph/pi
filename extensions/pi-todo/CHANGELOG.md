@@ -3,6 +3,18 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-10: Parent acceptance for delegated tasks
+
+- Delegated workers cannot set assigned or newly added tasks to `completed`.
+  They leave finished work `in_progress` with an outcome message; the parent
+  verifies and completes it. Local task lists without a handoff are unchanged.
+- Delegated workers cannot remove unfinished tasks, so deleting an assignment
+  cannot bypass parent acceptance. They may still remove or clear their own
+  tasks after the parent completes them, with the existing dependency checks.
+- The todo tool guidance and delegated context describe the rule. Delegation
+  tests cover atomic refusal, parent completion and cleanup; the real-session
+  handoff test exercises a refused child completion followed by parent acceptance.
+
 ## 2026-11-09: README names subagent_send
 
 Roadmap step 7b (`docs/roadmaps/subagent-work-lifecycle.md`). The README's note
