@@ -1,5 +1,4 @@
 export const TODO_SCHEMA_VERSION = 2 as const;
-const LEGACY_TODO_SCHEMA_VERSION = 1 as const;
 /** Every todo tool; each result carries the full task state in its details. */
 export const TODO_TOOL_NAMES: ReadonlySet<string> = new Set([
   "todo_list",
@@ -8,7 +7,6 @@ export const TODO_TOOL_NAMES: ReadonlySet<string> = new Set([
   "todo_remove",
   "todo_clear",
 ]);
-export const TODO_STATE_CUSTOM_TYPE = "todo:state";
 export const MAX_TODO_TASKS = 50;
 export const MAX_TASK_DEPENDENCIES = 20;
 
@@ -401,122 +399,15 @@ function readRevision(value: unknown): number | undefined {
   return value;
 }
 
-function readCurrentState(value: Record<string, unknown>): TodoState | undefined {
+/**
+ * A persisted snapshot as a fresh, validated state, or undefined when it is not a
+ * current-schema snapshot with a consistent task graph.
+ */
+export function readTodoState(value: unknown): TodoState | undefined {
+  if (!isRecord(value) || value.schemaVersion !== TODO_SCHEMA_VERSION) return undefined;
   const revision = readRevision(value.revision);
   if (revision === undefined || !Array.isArray(value.tasks)) return undefined;
   const tasks = validatePersistedTasks(value.tasks);
   if (!tasks) return undefined;
   return { schemaVersion: TODO_SCHEMA_VERSION, revision, tasks };
-}
-
-function readLegacyState(value: Record<string, unknown>): TodoState | undefined {
-  const revision = readRevision(value.revision);
-  if (revision === undefined || !Array.isArray(value.tasks)) return undefined;
-
-  const droppedKeys = new Set<string>();
-  for (const candidate of value.tasks) {
-    if (!isRecord(candidate) || typeof candidate.key !== "string") continue;
-    if (candidate.archived === true || candidate.status === "cancelled")
-      droppedKeys.add(candidate.key.trim());
-  }
-
-  const migratedCandidates: unknown[] = [];
-  for (const candidate of value.tasks) {
-    if (!isRecord(candidate)) return undefined;
-    if (candidate.archived === true || candidate.status === "cancelled") continue;
-    migratedCandidates.push(
-      Array.isArray(candidate.dependsOn)
-        ? {
-            ...candidate,
-            dependsOn: candidate.dependsOn.filter(
-              (dependency) => typeof dependency !== "string" || !droppedKeys.has(dependency.trim()),
-            ),
-          }
-        : candidate,
-    );
-  }
-  const tasks = validatePersistedTasks(migratedCandidates);
-  if (!tasks) return undefined;
-  return { schemaVersion: TODO_SCHEMA_VERSION, revision, tasks };
-}
-
-function readState(value: unknown): TodoState | undefined {
-  if (!isRecord(value)) return undefined;
-  if (value.schemaVersion === TODO_SCHEMA_VERSION) return readCurrentState(value);
-  if (value.schemaVersion === LEGACY_TODO_SCHEMA_VERSION) return readLegacyState(value);
-  return undefined;
-}
-
-function readTodoStateEntry(rawEntry: unknown): TodoState | undefined {
-  if (!isRecord(rawEntry)) return undefined;
-
-  if (rawEntry.type === "custom" && rawEntry.customType === TODO_STATE_CUSTOM_TYPE) {
-    return readState(rawEntry.data);
-  }
-  if (rawEntry.type === "custom_message" && rawEntry.customType === TODO_STATE_CUSTOM_TYPE) {
-    return readState(rawEntry.details);
-  }
-  if (rawEntry.type !== "message" || !isRecord(rawEntry.message)) return undefined;
-  const message = rawEntry.message;
-  if (
-    message.role !== "toolResult" ||
-    typeof message.toolName !== "string" ||
-    !TODO_TOOL_NAMES.has(message.toolName)
-  )
-    return undefined;
-  return readState(message.details);
-}
-
-export function replayTodoState(ctx: {
-  sessionManager: { getBranch(): Iterable<unknown> };
-}): TodoState {
-  let state = createEmptyTodoState();
-  for (const rawEntry of ctx.sessionManager.getBranch()) {
-    const restored = readTodoStateEntry(rawEntry);
-    if (restored) state = restored;
-  }
-  return cloneTodoState(state);
-}
-
-/**
- * A compaction summary is not guaranteed to retain exact keys, dependencies,
- * and revision numbers. Legacy state migration also changes model-visible
- * semantics. Request one model-facing v2 checkpoint until a current-schema
- * todo result or custom message satisfies that requirement.
- */
-export function needsTodoContextCheckpoint(entries: Iterable<unknown>): boolean {
-  let needed = false;
-  for (const rawEntry of entries) {
-    if (!isRecord(rawEntry)) continue;
-    if (rawEntry.type === "compaction") {
-      needed = true;
-      continue;
-    }
-
-    let persisted: unknown;
-    let modelFacing = false;
-    if (rawEntry.type === "custom" && rawEntry.customType === TODO_STATE_CUSTOM_TYPE) {
-      persisted = rawEntry.data;
-    } else if (
-      rawEntry.type === "custom_message" &&
-      rawEntry.customType === TODO_STATE_CUSTOM_TYPE
-    ) {
-      persisted = rawEntry.details;
-      modelFacing = true;
-    } else if (rawEntry.type === "message" && isRecord(rawEntry.message)) {
-      const message = rawEntry.message;
-      if (
-        message.role === "toolResult" &&
-        typeof message.toolName === "string" &&
-        TODO_TOOL_NAMES.has(message.toolName)
-      ) {
-        persisted = message.details;
-        modelFacing = true;
-      }
-    }
-    if (!isRecord(persisted) || !readState(persisted)) continue;
-    if (persisted.schemaVersion === LEGACY_TODO_SCHEMA_VERSION) needed = true;
-    else if (persisted.schemaVersion === TODO_SCHEMA_VERSION && modelFacing) needed = false;
-  }
-  return needed;
 }

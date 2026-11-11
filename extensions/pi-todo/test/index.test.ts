@@ -9,7 +9,7 @@ import { visibleWidth } from "@earendil-works/pi-tui";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_CONFIG } from "../src/config.ts";
 import type { TodoRequest } from "../src/actions.ts";
-import { TODO_STATE_CUSTOM_TYPE, type TodoState } from "../src/state.ts";
+import type { TodoState } from "../src/state.ts";
 import { TODO_JOURNAL_TYPE } from "#src/replay.ts";
 import { showTodoBrowser } from "../src/ui/browser.ts";
 import { TODO_SNAPSHOT_EVENT, type TodoSnapshotEvent } from "#src/events.ts";
@@ -324,25 +324,14 @@ describe("restoration and model context", () => {
     reloaded.noContinuation();
   });
 
-  it("falls back to upstream checkpoints when no validated local journal exists", async () => {
+  it("restores only from a valid journal; tool results alone restore nothing", async () => {
     const source = await started();
-    const upstream = await source.execute(add("legacy"));
-    const session = SessionManager.inMemory("/legacy-test");
-    session.appendCustomEntry(TODO_STATE_CUSTOM_TYPE, upstream.details);
+    const direct = await source.execute(add("direct"));
+    const session = SessionManager.inMemory("/journal-test");
+    session.appendMessage(visibleResult(direct));
     session.appendCustomEntry(TODO_JOURNAL_TYPE, { schemaVersion: 999, revision: 100, tasks: [] });
     const env = await started({ session });
-    expect(await env.state()).toMatchObject({
-      revision: upstream.details.revision,
-      tasks: upstream.details.tasks,
-    });
-    await env.command("todo:update", "legacy in_progress");
-    const current = await env.state();
-    session.appendMessage(visibleResult(upstream));
-    expect(await (await started({ session })).state()).toEqual(current);
-    expect(env.pi.appendEntry).toHaveBeenCalledWith(
-      TODO_JOURNAL_TYPE,
-      expect.objectContaining({ revision: 2 }),
-    );
+    expect(await env.state()).toMatchObject({ revision: 0, tasks: [] });
   });
 
   it("isolates tree branches across reload and compaction, restoring exact keys/revision/dependencies", async () => {
