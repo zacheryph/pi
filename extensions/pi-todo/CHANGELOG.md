@@ -3,6 +3,20 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-11: Replay only the todo journal
+
+Issue #129. Every mutation journals a `todo:journal` snapshot, and nothing writes `todo:state`, so
+replay reads the journal alone.
+
+- `replayTodoSession` restores the last valid `todo:journal` snapshot on the branch and no longer
+  falls back to `todo:state` entries or todo tool-result details. It validates journal data with
+  the new `readTodoState` instead of wrapping it in a fake `getBranch()` for `replayTodoState`.
+- Removed `TODO_STATE_CUSTOM_TYPE`, schema version 1 (`readLegacyState` and its migration),
+  `replayTodoState` and the unused `needsTodoContextCheckpoint`.
+- Tests: `readTodoState` takes over the malformed-snapshot and isolation cases; the fallback and
+  version 1 cases are gone, and replay tests pin that tool results alone restore nothing.
+- A session written before the journal existed resumes with an empty list.
+
 ## 2026-11-10: Parent acceptance for delegated tasks
 
 - Delegated workers cannot set assigned or newly added tasks to `completed`.

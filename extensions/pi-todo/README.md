@@ -303,11 +303,10 @@ lower-priority layer; malformed files warn instead of preventing startup.
 Tasks live in the active session branch, never a shared project task file. Each
 mutation journals an immutable snapshot, task history included, with `pi.appendEntry`, covering commands
 and nested codemode tool calls whose result details Pi does not persist. Direct
-tool results also carry snapshots. Local journals are authoritative, so a delayed
-direct result cannot overwrite a newer command edit during replay. Older upstream
-results remain a fallback before the first local checkpoint. Reload, resume, tree
-navigation, and compaction restore the latest valid branch snapshot. Snapshots
-journaled before history existed restore with empty history. Review marks are a
+tool results also carry snapshots for the model, but replay reads only the
+journal, so a delayed direct result cannot overwrite a newer command edit.
+Reload, resume, tree navigation, and compaction restore the latest valid
+journaled snapshot on the branch. Review marks are a
 separate `todo:review` journal of per-task revision watermarks. Like
 tasks, they follow the branch. Compaction checkpoints state without
 sending steering messages or running the agent.

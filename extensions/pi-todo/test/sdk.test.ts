@@ -4,7 +4,6 @@ import { createCodemodeExtension, SessionManager } from "@earendil-works/pi-codi
 import { describe, expect, it, onTestFinished } from "vitest";
 import todoExtension from "#src/index";
 import { loadTodoConfig } from "#src/config";
-import { replayTodoState } from "#src/state";
 import {
   replayTaskState,
   replayTodoSession,
@@ -161,8 +160,6 @@ describe("real Pi SDK integration (offline faux provider)", () => {
     expect(snapshot(h.manager).revision).toBe(2);
     release();
     await running;
-    // Upstream tool-result-only replay would restore the late revision-one task.
-    expect(replayTodoState({ sessionManager: h.manager }).tasks).toHaveLength(1);
     expect(snapshot(h.manager).tasks).toEqual([]);
     const restored = await fixture({ manager: h.manager });
     await restored.session.prompt("After reload");

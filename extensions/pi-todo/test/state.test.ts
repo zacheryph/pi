@@ -3,14 +3,13 @@ import {
   MAX_TASK_DEPENDENCIES,
   MAX_TODO_TASKS,
   TODO_SCHEMA_VERSION,
-  TODO_STATE_CUSTOM_TYPE,
   TodoValidationError,
   cloneTodoState,
   createEmptyTodoState,
   getTodoTasks,
   isTaskBlocked,
   removeCompletedTasks,
-  replayTodoState,
+  readTodoState,
   writeTodoSnapshot,
   type TodoSnapshotInput,
   type TodoState,
@@ -24,24 +23,6 @@ function task(key: string, overrides: Partial<TodoTaskInput> = {}): TodoTaskInpu
 
 function stateWith(tasks: TodoTaskInput[]): TodoState {
   return cloneTodoState(writeTodoSnapshot(createEmptyTodoState(), { tasks }));
-}
-
-function customEntry(data: unknown) {
-  return { type: "custom", customType: TODO_STATE_CUSTOM_TYPE, data };
-}
-
-function toolEntry(details: unknown) {
-  return { type: "message", message: { role: "toolResult", toolName: "todo_upsert", details } };
-}
-
-function replay(entries: unknown[]): TodoState {
-  return replayTodoState({
-    sessionManager: {
-      *getBranch() {
-        yield* entries;
-      },
-    },
-  });
 }
 
 function expectRejected(
@@ -441,103 +422,17 @@ describe("snapshot isolation", () => {
   });
 });
 
-describe("replayTodoState", () => {
-  it("returns empty state when the active branch contains no valid todo checkpoint", () => {
-    expect(replay([])).toEqual(createEmptyTodoState());
-    expect(replay([null, {}, { type: "compaction" }, toolEntry({})])).toEqual(
-      createEmptyTodoState(),
-    );
-  });
-
-  it("uses the latest valid entry in branch order, not the highest revision or entry kind", () => {
-    const highRevision = { ...stateWith([task("old")]), revision: 100 };
-    const custom = { ...stateWith([task("custom")]), revision: 2 };
-    const details = writeTodoSnapshot(createEmptyTodoState(), { tasks: [task("tool")] });
-    expect(replay([toolEntry(highRevision), customEntry(custom)])).toEqual(custom);
-    expect(replay([customEntry(custom), toolEntry(details)])).toEqual(cloneTodoState(details));
-    expect(replay([toolEntry(details), customEntry(custom)])).toEqual(custom);
-    expect(
-      replay([
-        toolEntry(details),
-        { type: "custom_message", customType: TODO_STATE_CUSTOM_TYPE, details: custom },
-      ]),
-    ).toEqual(custom);
-  });
-
-  it("only reads getBranch, preserving branch-local state rather than abandoned entries", () => {
-    const branchState = stateWith([task("branch")]);
-    const abandoned = stateWith([task("abandoned")]);
-    const restored = replayTodoState({
-      sessionManager: {
-        getBranch: () => [customEntry(branchState)],
-        getEntries: () => [customEntry(branchState), toolEntry(abandoned)],
-      } as { getBranch(): Iterable<unknown> },
-    });
-    expect(restored).toEqual(branchState);
-  });
-
-  it.each([
-    {
-      label: "foreign custom type",
-      entry: (state: TodoState) => ({
-        type: "custom",
-        customType: "foreign-todo-state",
-        data: state,
-      }),
-    },
-    {
-      label: "foreign custom message",
-      entry: (state: TodoState) => ({
-        type: "custom_message",
-        customType: "foreign-todo-state",
-        details: state,
-      }),
-    },
-    {
-      label: "foreign tool",
-      entry: (state: TodoState) => ({
-        type: "message",
-        message: { role: "toolResult", toolName: "foreign_todo", details: state },
-      }),
-    },
-    {
-      label: "wrong role",
-      entry: (state: TodoState) => ({
-        type: "message",
-        message: { role: "assistant", toolName: "todo_upsert", details: state },
-      }),
-    },
-    {
-      label: "custom details instead of data",
-      entry: (state: TodoState) => ({
-        type: "custom",
-        customType: TODO_STATE_CUSTOM_TYPE,
-        details: state,
-      }),
-    },
-    {
-      label: "custom message data instead of details",
-      entry: (state: TodoState) => ({
-        type: "custom_message",
-        customType: TODO_STATE_CUSTOM_TYPE,
-        data: state,
-      }),
-    },
-    {
-      label: "tool content instead of details",
-      entry: (state: TodoState) => ({
-        type: "message",
-        message: { role: "toolResult", toolName: "todo_upsert", content: JSON.stringify(state) },
-      }),
-    },
-  ])("ignores $label without replacing valid state", ({ entry }) => {
-    const state = stateWith([task("valid")]);
-    expect(replay([customEntry(state), entry(stateWith([task("ignored")]))])).toEqual(state);
+describe("readTodoState", () => {
+  it("reads a current-schema snapshot", () => {
+    const state = stateWith([task("setup"), task("build", { dependsOn: ["setup"] })]);
+    expect(readTodoState(state)).toEqual(state);
+    expect(readTodoState(createEmptyTodoState())).toEqual(createEmptyTodoState());
   });
 
   it.each([
     { label: "null", data: null },
     { label: "unsupported schema", data: { schemaVersion: 999, revision: 1, tasks: [] } },
+    { label: "schema version 1", data: { schemaVersion: 1 } },
     { label: "negative revision", data: { revision: -1 } },
     { label: "fractional revision", data: { revision: 1.5 } },
     { label: "unsafe revision", data: { revision: Number.MAX_SAFE_INTEGER + 1 } },
@@ -579,23 +474,19 @@ describe("replayTodoState", () => {
         tasks: [task("a", { dependsOn: Array(MAX_TASK_DEPENDENCIES + 1).fill("b") }), task("b")],
       },
     },
-  ])("ignores malformed $label in both custom checkpoints and tool details", ({ data }) => {
-    const state = stateWith([task("valid")]);
+  ])("rejects malformed $label", ({ data }) => {
     const malformed =
       data === null
         ? null
         : { schemaVersion: TODO_SCHEMA_VERSION, revision: 10, tasks: [], ...data };
-    expect(replay([customEntry(state), customEntry(malformed), toolEntry(malformed)])).toEqual(
-      state,
-    );
+    expect(readTodoState(malformed)).toBeUndefined();
   });
 
-  it("returns fresh snapshots without aliasing persisted branch entries or other replays", () => {
+  it("returns fresh snapshots without aliasing the persisted value or other reads", () => {
     const persisted = stateWith([task("setup"), task("build", { dependsOn: ["setup"] })]);
     const original = structuredClone(persisted);
-    const entries = [customEntry(persisted)];
-    const first = replay(entries);
-    const second = replay(entries);
+    const first = readTodoState(persisted)!;
+    const second = readTodoState(persisted)!;
     expect(first.tasks[1]).not.toBe(persisted.tasks[1]);
     expect(first.tasks[1]!.dependsOn).not.toBe(persisted.tasks[1]!.dependsOn);
     first.tasks[1]!.subject = "Changed";
@@ -603,6 +494,6 @@ describe("replayTodoState", () => {
     first.tasks.pop();
     expect(persisted).toEqual(original);
     expect(second).toEqual(original);
-    expect(replay(entries)).toEqual(original);
+    expect(readTodoState(persisted)).toEqual(original);
   });
 });

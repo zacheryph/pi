@@ -5,7 +5,7 @@ import {
   TODO_JOURNAL_TYPE,
   TODO_REVIEW_TYPE,
 } from "#src/replay";
-import { createEmptyTodoState, TODO_STATE_CUSTOM_TYPE, writeTodoSnapshot } from "#src/state";
+import { createEmptyTodoState, writeTodoSnapshot } from "#src/state";
 
 const one = writeTodoSnapshot(createEmptyTodoState(), {
   tasks: [{ key: "first", subject: "First", status: "pending" }],
@@ -23,11 +23,11 @@ describe("authoritative local checkpoint replay", () => {
   it("uses current branch's last local journal even when old direct result arrives last", () => {
     expect(replay([local(one), local(two), result(one)])).toMatchObject({ revision: 2, tasks: [] });
   });
-  it("falls back to upstream tool details/custom entries only before local journaling", () => {
-    expect(replay([result(one)])).toMatchObject({ revision: 1, tasks: one.tasks });
-    expect(
-      replay([{ type: "custom", customType: TODO_STATE_CUSTOM_TYPE, data: one }]),
-    ).toMatchObject({ revision: 1 });
+  it("reads no state from tool results or todo:state entries", () => {
+    expect(replay([result(one)])).toEqual(createEmptyTodoState());
+    expect(replay([{ type: "custom", customType: "todo:state", data: one }])).toEqual(
+      createEmptyTodoState(),
+    );
   });
   it("ignores malformed local snapshots without discarding earlier valid checkpoint", () => {
     for (const invalid of [
@@ -86,13 +86,11 @@ describe("activity and review replay", () => {
     );
   });
 
-  it("replays legacy journals and upstream fallbacks with empty history", () => {
-    for (const branch of [[local(one)], [result(one)]]) {
-      const restored = replayTodoSession({ sessionManager: { getBranch: () => branch } });
-      expect(restored.state).toMatchObject({ revision: 1 });
-      expect(restored.activity.size).toBe(0);
-      expect(restored.review.tasks.size).toBe(0);
-    }
+  it("replays a journal without history with empty history", () => {
+    const restored = replayTodoSession({ sessionManager: { getBranch: () => [local(one)] } });
+    expect(restored.state).toMatchObject({ revision: 1 });
+    expect(restored.activity.size).toBe(0);
+    expect(restored.review.tasks.size).toBe(0);
   });
 
   it("does not let a later invalid snapshot or a stale journal's history leak forward", () => {
