@@ -15,9 +15,8 @@ import {
   type Json,
   type WorkMessage,
 } from "../../../packages/pi-work/src/index.ts";
-import { CUSTOM_TYPE, dedupeCompletions } from "./delivery.ts";
 import { formatJobList, formatJobLine, formatNotification, jobTitle } from "./format.ts";
-import { JobItems, WORK_OWNER } from "./items.ts";
+import { CUSTOM_TYPE, JobItems, WORK_OWNER } from "./items.ts";
 import { envLimit, JobManager, type JobSnapshot } from "./jobs.ts";
 import { defaultLogRoot, pruneLogs } from "./logs.ts";
 import {
@@ -277,10 +276,7 @@ export function createJobsExtension(options: JobsExtensionOptions = {}) {
         customType: CUSTOM_TYPE,
         content: [{ type: "text", text: formatNotification(job, tail) }],
         details: {
-          // `part`: the content part holding this completion (used by dedupeCompletions).
-          completions: [
-            { completionId: randomUUID(), part: 0, job: brief(job) as unknown as Json },
-          ],
+          completions: [{ completionId: randomUUID(), job: brief(job) as unknown as Json }],
         },
       };
     };
@@ -315,13 +311,6 @@ export function createJobsExtension(options: JobsExtensionOptions = {}) {
         throw error;
       }
     };
-
-    // The model sees each completion id at most once (transcripts of older versions may repeat one).
-    // Per completion for indexed messages; legacy unindexed messages are stubbed only as a whole.
-    pi.on("context", async (e: { messages: any[] }) => {
-      const messages = dedupeCompletions(e.messages);
-      return messages ? { messages } : undefined;
-    });
 
     // Every extension has started: the jobs that ended in a reload gap are completed now, so
     // nothing wakes the session while later extensions are still initializing. The first agent

@@ -3,6 +3,20 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-11: Drop the completion dedupe for older transcripts
+
+Issue #129. The work host hands each completion to pi once, under a fresh UUID, so a transcript
+written by the current version never repeats a completion; the filter only served older versions,
+which batched completions and could resend one.
+
+- Removed `src/delivery.ts` (`dedupeCompletions`, `completionRefs`, `DUPLICATE_STUB`) and the
+  `context` handler that called it. `CUSTOM_TYPE` moved to `src/items.ts`.
+- Completion details no longer carry `part`; nothing read it once the filter was gone.
+- Removed `test/delivery.test.ts`, the context-handler test in `test/extension.test.ts` and the
+  older-history test in `test/agent-session.test.ts`. The README's guarantee and duplicates notes
+  say what the host guarantees instead.
+- An old pi-job transcript may now show a repeated completion to the model.
+
 ## 2026-11-10: `job_read` test waits for the output
 
 - `test/extension.test.ts`: `job_list, job_read and job_kill` read the job's log once, right after

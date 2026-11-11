@@ -29,6 +29,9 @@ import type { JobManager, JobSnapshot } from "./jobs.ts";
 /** The `owner` of every item pi-job opens, and what it adopts after a reload. */
 export const WORK_OWNER = "pi-job";
 
+/** Custom message type of the completion message an item is completed with. */
+export const CUSTOM_TYPE = "job:completion";
+
 /** What an item records so that the job can be recognized again. Persisted with the item. */
 export interface JobItemData {
   jobId: string;

@@ -635,29 +635,6 @@ void test("jobs that finish in a reload gap are completed one by one once startu
   }
 });
 
-void test("context handler: a whole repeat of a completion id is stubbed; a new j1 is not", async (t) => {
-  const { emit } = await setup(t);
-  const msg = (deliveryId: string, completionId: string) => ({
-    role: "custom",
-    customType: CUSTOM_TYPE,
-    content: [{ type: "text", text: completionId }],
-    details: { deliveryId, completions: [{ completionId, job: { id: "j1" } }] },
-  });
-  const user = { role: "user", content: "hi" };
-  const res: any = await emit("context", {
-    type: "context",
-    messages: [user, msg("a", "c1"), msg("b", "c1"), msg("c", "c2")],
-  });
-  assert.deepEqual(
-    res.messages.map((m: any) => m.content?.[0]?.text ?? "user"),
-    ["user", "c1", "[pi-job: this completion was already delivered above; nothing new.]", "c2"],
-  );
-  assert.equal(
-    await emit("context", { type: "context", messages: [user, msg("a", "c1"), msg("b", "c2")] }),
-    undefined,
-  );
-});
-
 void test("each extension instance (e.g. a subagent session) owns its jobs", async (t) => {
   const a = await setup(t);
   const b = await setup(t);

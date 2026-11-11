@@ -1,7 +1,7 @@
 /**
  * Delivery against the real pi AgentSession (installed runtime) with the faux model provider.
  * Skipped when no installed runtime can be resolved (override: PI_RUNTIME_DIR).
- * Completions travel as custom messages through Pi's run boundaries (see src/delivery.ts): the
+ * Completions travel as custom messages through Pi's run boundaries (see packages/pi-work/src/delivery.ts): the
  * transcript is the inbox, so these tests assert what is in the transcript and what the model saw.
  * Two tests reproduce pi-side races on the idle path and are skipped with a pointer to
  * UPSTREAM-ISSUES.md.
@@ -30,8 +30,6 @@ interface HarnessOptions {
   extra?: (pi: any) => void;
   /** Extra extension, loaded before pi-job (so its handlers run before ours). */
   before?: (pi: any) => void;
-  /** Prepare the session history before the session starts (resume/fork). */
-  history?: (sessionManager: any) => void;
 }
 
 async function harness(t: Parameters<typeof tempDir>[0], opts: HarnessOptions = {}) {
@@ -82,7 +80,6 @@ async function harness(t: Parameters<typeof tempDir>[0], opts: HarnessOptions = 
   });
   await resourceLoader.reload();
   const sessionManager = pc.SessionManager.inMemory(dir);
-  opts.history?.(sessionManager);
   const { session } = await pc.createAgentSession({
     cwd: dir,
     agentDir,
@@ -411,37 +408,6 @@ void test(
     const last = JSON.stringify(h.contexts[2]);
     assert.match(last, /BATCH-A/);
     assert.match(last, /BATCH-B/);
-  },
-);
-
-void test(
-  "resumed history with an older j1 completion does not hide the new j1 from the model",
-  { skip },
-  async (t) => {
-    const history = (sm: any) => {
-      sm.appendMessage({
-        role: "user",
-        content: [{ type: "text", text: "earlier" }],
-        timestamp: Date.now(),
-      });
-      // Round-2 format (job handle only) and current format, both for an earlier "j1".
-      sm.appendCustomMessageEntry(CUSTOM_TYPE, "Job j1 succeeded: OLD-ONE", true, {
-        deliveryId: "old-1",
-        jobs: [{ id: "j1" }],
-      });
-      sm.appendCustomMessageEntry(CUSTOM_TYPE, "Job j1 succeeded: OLD-TWO", true, {
-        deliveryId: "old-2",
-        completions: [{ completionId: "00000000-0000-4000-8000-000000000000", job: { id: "j1" } }],
-      });
-    };
-    const h = await harness(t, { history });
-    h.faux.setResponses([h.startJob("echo NEW-J1"), h.reply("started"), h.reply("woken")]);
-    await h.session.prompt("go");
-    await waitUntil(() => h.assistantTexts().includes("woken"), 5000, "wake-up");
-    await idle(h.session);
-    assert.equal(h.maxSeen("NEW-J1"), 1, "the new j1 completion must reach the model");
-    assert.equal(h.maxSeen("OLD-ONE"), 1);
-    assert.equal(h.maxSeen("OLD-TWO"), 1);
   },
 );
 
