@@ -204,6 +204,11 @@ export class SubagentState {
     return this._runUpdates.filter((update) => !update.announced).map((update) => update.message);
   }
 
+  /** Latest update this run, including one already announced to the parent. */
+  get latestUpdate(): string | undefined {
+    return this._runUpdates.at(-1)?.message;
+  }
+
   // Stats — accumulated via mutation methods, readable via getters
   private _toolUses: number;
   get toolUses(): number {

@@ -48,6 +48,7 @@ import {
   createUpdateRenderer,
 } from "#src/observation/renderer";
 import { SubagentEventsObserver } from "#src/observation/subagent-events-observer";
+import { buildSubagentSnapshot, SUBAGENT_SNAPSHOT } from "#src/observation/snapshot";
 import { SubagentWork } from "#src/observation/subagent-work";
 import { registerMainAgentProfile } from "#src/main-agent-profile";
 import { SUBAGENT_RECORD_ENTRY } from "#src/persisted-record";
@@ -108,6 +109,7 @@ export default function (pi: ExtensionAPI) {
     emit: (channel, data) => pi.events.emit(channel, data),
     appendEntry: (customType, data) => pi.appendEntry(customType, data),
     work,
+    changed: () => publishSnapshot(),
     isOnBranch: (id) =>
       readBranchRecords(runtime.currentCtx)?.some((record) => record.id === id) ?? false,
   });
@@ -214,6 +216,16 @@ export default function (pi: ExtensionAPI) {
     transcripts: transcriptWork((path) => SessionManager.open(path)),
   });
 
+  const publishSnapshot = () => {
+    if (!runtime.currentCtx) return;
+    pi.events.emit(
+      SUBAGENT_SNAPSHOT,
+      buildSubagentSnapshot(readBranchRecords(runtime.currentCtx) ?? [], (id) =>
+        manager.getRecord(id),
+      ),
+    );
+  };
+
   // A delegated session has a delegator above it, which offers `work:parent` under its id before
   // its extensions bind. Its own subagents end with it, so it restores none (see StartupRestore).
   const isDelegated = (ctx: unknown) => {
@@ -285,10 +297,14 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_start", (event, ctx) => rosterCard.handleSessionStart(event, ctx));
   // Last of ours: the widget has its context by now, so restored agents show. Pi awaits it, and
   // runs it before the work host settles its startup, so the items it adopts are not lost.
-  pi.on("session_start", (event, ctx) => startupRestore.handleSessionStart(event, ctx));
+  pi.on("session_start", async (event, ctx) => {
+    await startupRestore.handleSessionStart(event, ctx);
+    publishSnapshot();
+  });
   pi.on("session_tree", (_event, ctx) => {
     eventsObserver.refreshBranch();
     rosterCard.handleSessionTree(ctx);
+    publishSnapshot();
   });
   pi.on("session_compact", (_event, ctx) => rosterCard.handleSessionCompact(ctx));
   pi.on("context", (event, ctx) => rosterCard.handleContext(event, ctx));

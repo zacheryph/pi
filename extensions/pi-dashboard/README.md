@@ -97,15 +97,15 @@ With notifications on, a new question notifies you with its text.
 
 ## Data sources
 
-| Section   | Source                                                                                                                                                                                                               |
-| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Todos     | `todo:snapshot` on the session's `pi.events` bus (history from the same event)                                                                                                                                       |
-| Stash     | `stash:snapshot` on the session's `pi.events` bus; previews through pi-stash's `stash:preview` request on the same bus                                                                                               |
-| Git       | `git:snapshot` on the session's `pi.events` bus. Only `https://<host>/<owner>/<repo>/pull/<n>` URLs become links; any other PR is dropped                                                                            |
-| Subagents | pi-subagent's `subagent:*` lifecycle events on the same bus. Its `globalThis` service is not used: subagent children load the extension in-process and replace it. Agents started before a `/reload` are not listed. |
-| Usage     | Usage on every entry in the session file, as Pi's `/session` sums it                                                                                                                                                 |
-| Activity  | Pi's `tool_execution_start` / `_end` for top-level calls (codemode's nested calls are left out)                                                                                                                      |
-| Questions | pi-ask's `ask:opened` and `ask:closed` events on the session's bus; answers through its `ask:answer` / `ask:answer-result` contract                                                                                  |
+| Section   | Source                                                                                                                                           |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Todos     | `todo:snapshot` on the session's `pi.events` bus (history from the same event)                                                                   |
+| Stash     | `stash:snapshot` on the session's `pi.events` bus; previews through pi-stash's `stash:preview` request on the same bus                           |
+| Git       | `git:snapshot` on the session's `pi.events` bus. Only `https://<host>/<owner>/<repo>/pull/<n>` URLs become links; any other PR is dropped        |
+| Subagents | `subagent:snapshot` on the session's bus: a full current-branch roster, including saved agents after reload; live state overrides saved records. |
+| Usage     | Usage on every entry in the session file, as Pi's `/session` sums it                                                                             |
+| Activity  | Pi's `tool_execution_start` / `_end` for top-level calls (codemode's nested calls are left out)                                                  |
+| Questions | pi-ask's `ask:opened` and `ask:closed` events on the session's bus; answers through its `ask:answer` / `ask:answer-result` contract              |
 
 Payloads are parsed defensively and bounded before they reach the hub. Stash
 content and task history are never part of the live session list; they are

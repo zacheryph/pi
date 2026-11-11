@@ -309,10 +309,17 @@ describe("pi-dashboard extension", () => {
       usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, cost: { total: 0.05 } },
     });
     await fake.emit("session_compact", {}, ctx);
-    fake.publish("subagent:started", {
-      id: "agent-1",
-      type: "Explore",
-      description: "Find auth files",
+    fake.publish("subagent:snapshot", {
+      version: 1,
+      agents: [
+        {
+          id: "agent-1",
+          type: "Explore",
+          description: "Find auth files",
+          state: "running",
+          startedAt: 100,
+        },
+      ],
     });
     await waitFor(async () => {
       const [current] = await env.sessions();
@@ -325,7 +332,7 @@ describe("pi-dashboard extension", () => {
     });
   });
 
-  it("follows a subagent that goes idle on open work (subagent:waiting) to its completion", async () => {
+  it("renders a restored waiting snapshot, then its completed replacement", async () => {
     const env = setup({ detectTerminal: () => undefined });
     const fake = load(env.deps);
     const ctx = fakeCtx();
@@ -340,10 +347,24 @@ describe("pi-dashboard extension", () => {
         return agent?.state === state ? agent : undefined;
       });
 
-    fake.publish("subagent:started", { id: "w", type: "Agent", description: "Review CI" });
-    fake.publish("subagent:waiting", { id: "w", reason: "CI checks" });
+    fake.publish("subagent:snapshot", {
+      version: 1,
+      agents: [
+        {
+          id: "w",
+          type: "Agent",
+          description: "Review CI",
+          state: "waiting",
+          startedAt: 100,
+          note: "CI checks",
+        },
+      ],
+    });
     expect(await agentOf("waiting")).toMatchObject({ note: "CI checks" });
-    fake.publish("subagent:completed", { id: "w", status: "completed" });
+    fake.publish("subagent:snapshot", {
+      version: 1,
+      agents: [{ id: "w", state: "completed", startedAt: 100 }],
+    });
     const done = await agentOf("completed");
     expect(done.note).toBeUndefined();
   });

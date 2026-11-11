@@ -132,14 +132,14 @@ export interface UsageSection {
  */
 export type SubagentState = "queued" | "running" | "waiting" | "completed" | "failed" | "stopped";
 
-/** Subagents seen on this session's bus while the dashboard was loaded, newest first. */
+/** The current branch's subagents in roster order, including restored history. */
 export interface SubagentsSection {
   agents: Array<{
     id: string;
     type: string;
     description: string;
     state: SubagentState;
-    /** When the dashboard first saw it. */
+    /** When this agent started. */
     since: number;
     durationMs?: number;
     toolUses?: number;

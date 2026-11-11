@@ -525,6 +525,15 @@ A branch that started no agents gets no card.
 
 ## Events
 
+`subagent:snapshot` publishes `{ version: 1, agents }` on the session's bus after startup
+restoration, `/tree`, and lifecycle/progress changes. It is a complete replacement for the
+current branch, including an empty roster. Each agent has the same `id`, `type`,
+`description`, `state`, `waitingOn`, `error`, `startedAt`, `completedAt`, and `live` fields
+as the roster used by `subagent_get`, plus `toolUses`, optional live `tokens`, and a
+`note` for waiting, progress, or failure. Saved branch records provide history; live
+records override their state. It carries no result text or transcript contents. Consumers
+subscribe before `session_start`, like the dashboard, and replace their view on each snapshot.
+
 Agent lifecycle events are emitted via `pi.events.emit()` so other extensions can react:
 
 | Event                       | When                                                                             | Key fields                                                                                                               |
