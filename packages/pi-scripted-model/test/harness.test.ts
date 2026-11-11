@@ -88,75 +88,53 @@ describe("startSession", () => {
     expect(completion).toContain("<result>The note says hello.</result>");
   });
 
-  it("hands a todo to a subagent, then accepts its outcome in the parent's list", async () => {
-    open = await startSession({
-      scenario: defineScenario({
-        replies: [
-          [
-            [tool("todo_upsert", { tasks: [{ key: "impl", subject: "Implement it" }] })],
-            [
-              startAgent({
-                type: "general-purpose",
-                description: "Implement it",
-                prompt: "Implement the impl task and report the outcome for parent acceptance.",
-                steps: [
-                  [
-                    tool("todo_upsert", {
-                      tasks: [{ key: "impl", status: "in_progress", message: "Implemented." }],
-                    }),
-                  ],
-                  "Implemented.",
-                ],
-                options: { handoff: { todo: { keys: ["impl"] } } },
-              }),
-            ],
-            "Started.",
-          ],
-          // The completion message starts the next turn.
-          [
-            [tool("todo_list", { key: "impl" })],
-            [
-              tool("todo_upsert", {
-                tasks: [{ key: "impl", status: "completed", message: "Verified and accepted." }],
-              }),
-            ],
-            [tool("todo_list", {})],
-            "All done.",
-          ],
-        ],
-      }),
+  it("records each request with its context cards, and compacts and resumes", async () => {
+    const scripted = defineScenario({
+      replies: [
+        [[tool("todo_upsert", { tasks: [{ key: "one", subject: "First task" }] })], "Planned."],
+      ],
+      prompts: { Again: ["Still here."], "And again": ["Back."] },
+      summary: "The user planned one task.",
     });
-    await open.prompt("Do the work");
-    const spawn = run(open, "subagent_start");
-    expect(spawn.isError, spawn.text).toBe(false);
+    const lifecycle: string[] = [];
+    open = await startSession({
+      scenario: (pi) => {
+        scripted(pi);
+        pi.on("session_start", (event) => {
+          lifecycle.push(`start:${event.reason}`);
+        });
+        pi.on("session_shutdown", (event) => {
+          lifecycle.push(`shutdown:${event.reason}`);
+        });
+      },
+    });
+    await open.prompt("Plan it");
+    const cardTypes = (index: number) =>
+      open!.requests()[index]!.messages.flatMap((m) => (m.role === "custom" ? [m.customType] : []));
+    // The todo_upsert result shows the list, so pi-todo adds no card yet.
+    expect(open.requests()).toHaveLength(2);
+    expect(cardTypes(1)).toEqual([]);
 
-    await untilCompleted(open);
-    expect(completionTexts(open)[0]).toContain("Implemented.");
-    const lists = open.toolRuns().filter((result) => result.name === "todo_list");
-    expect(lists).toHaveLength(2);
-    for (const list of lists) expect(list.isError, list.text).toBe(false);
-    expect(JSON.parse(lists[0].text).tasks).toMatchObject([
-      {
-        key: "impl",
-        subject: "Implement it",
-        status: "in_progress",
-        updates: expect.arrayContaining([
-          expect.objectContaining({
-            status: "in_progress",
-            message: "Implemented.",
-            agent: expect.any(String),
-          }),
-        ]),
-      },
-    ]);
-    expect(JSON.parse(lists[1].text).tasks).toEqual([
-      {
-        key: "impl",
-        subject: "Implement it",
-        status: "completed",
-        lastMessage: "Verified and accepted.",
-      },
-    ]);
+    const compaction = await open.compact();
+    expect(compaction.summary).toContain("The user planned one task.");
+    await open.prompt("Again");
+    // The summary replaced that result, so the list comes back as a card.
+    expect(open.requests()[2]!.messages[0]).toMatchObject({ role: "compactionSummary" });
+    expect(cardTypes(2)).toEqual(["todo:context"]);
+
+    const file = open.session.sessionFile;
+    await open.resume();
+    expect(lifecycle).toEqual(["start:startup", "shutdown:resume", "start:resume"]);
+    expect(open.session.sessionFile).toBe(file);
+    expect(open.extensionErrors).toEqual([]);
+    await open.prompt("And again");
+    // The resumed session holds the compacted transcript, and replies by prompt.
+    expect(open.requests()).toHaveLength(4);
+    expect(open.requests()[3]!.messages[0]).toMatchObject({ role: "compactionSummary" });
+    expect(open.session.messages.at(-1)).toMatchObject({
+      role: "assistant",
+      content: [{ type: "text", text: "Back." }],
+    });
   });
 
   it("hides credentials and HOME while open and restores them after", async () => {

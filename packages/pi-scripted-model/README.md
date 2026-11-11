@@ -43,7 +43,17 @@ const scenario = defineScenario({
   ends quietly.
 - Replies are chosen from the transcript, never from counters, so one script
   answers the main session and every subagent. A child is matched by its
-  `prompt`; when its steps run out it holds, still running.
+  `prompt`. Its steps run in order across all its turns, so after an `ask` the
+  answer `subagent_send` delivers gets the next step. When they run out it
+  holds, still running.
+- A step can be a function of the messages the model was sent, for arguments
+  only known at run time, such as an agent ID or a worktree path:
+  `(messages) => [tool("subagent_send", { agent_id: idFrom(messages), message: "blue" })]`.
+- `prompts` maps an exact user prompt to the reply for the turn it starts,
+  checked before `replies`. A compaction drops earlier turns from the context,
+  which moves the positions `replies` counts, so script turns after one here.
+- A compaction's summary request is answered with `summary` (default
+  `"Scripted summary."`).
 - User turns include the follow-ups Pi starts on its own, such as a background
   subagent's completion notice. Context an extension adds mid-turn (pi-todo's
   task list after a tool result, for example) does not start a turn.
@@ -70,18 +80,35 @@ try {
 extension and skill in the manifest), adds the scenario, selects the scripted
 model and binds the session as Pi's print mode does.
 
-| Option       | Default        | Effect                                                        |
-| ------------ | -------------- | ------------------------------------------------------------- |
-| `scenario`   | required       | The model, from `defineScenario`.                             |
-| `cwd`        | fresh temp dir | Working directory; tools such as `read` and `bash` run here.  |
-| `agentFiles` |                | Files for the agent directory, e.g. `{ "todo.json": {...} }`. |
-| `bundle`     | `true`         | `false` loads only the scenario.                              |
-| `mode`       | `"print"`      | The extension mode extensions see.                            |
+| Option       | Default        | Effect                                                         |
+| ------------ | -------------- | -------------------------------------------------------------- |
+| `scenario`   | required       | The model, from `defineScenario`.                              |
+| `cwd`        | fresh temp dir | Working directory; tools such as `read` and `bash` run here.   |
+| `agentFiles` |                | Files for the agent directory, e.g. `{ "todo.json": {...} }`.  |
+| `bundle`     | `true`         | `false` loads only the scenario.                               |
+| `mode`       | `"print"`      | The extension mode extensions see.                             |
+| `settings`   | see below      | Pi settings merged into the agent directory's `settings.json`. |
 
-The result exposes `session` (Pi's `AgentSession`), `prompt`, `toolRuns()`
-(each call with its arguments, result text, `isError` and `details`),
-`entries(customType?)`, every emitted event in `events`, `extensionErrors`, and
-`dispose()`.
+The session is saved to a file in the agent directory, as a real one is.
+`settings` defaults to `{ compaction: { keepRecentTokens: 1 } }`, so a session
+of a few short turns has something to compact.
+
+The result exposes:
+
+- `session`, Pi's current `AgentSession` (`resume` replaces it), and `prompt`.
+- `toolRuns()`: each main-session call with its arguments, result text,
+  `isError` and `details`. `collectToolRuns` builds the same list from any
+  messages, such as a subagent's transcript.
+- `requests()`: every main-session model request, oldest first and across
+  resumes, with the messages sent after every extension's `context` handler ran.
+  Context cards keep `role: "custom"` and their `customType` here (the provider
+  sees them as user messages), so a test can count each kind.
+- `compact()`: compact now, as `/compact` does.
+- `resume()`: settle the session, emit `session_shutdown`, then reopen its file
+  in a new session that starts with reason `"resume"`, as `/resume` does.
+- `entries(customType?)`, every emitted event in `events`, `extensionErrors`,
+  and `dispose()`, which ends the session with `session_shutdown` as quitting
+  does.
 
 Isolation: HOME, the agent directory (with its `settings.json`), TMPDIR and the
 default `cwd` are throwaway directories removed by `dispose`. While a session is
@@ -91,7 +118,8 @@ scripted ones is available, so a test cannot reach a real provider. The
 environment is restored on `dispose`. Because it is process-wide, only one
 session may be open per process; vitest runs each test file in its own worker.
 
-`test/harness.test.ts` shows end-to-end tests across extensions: a background
+`test/harness.test.ts` covers the harness itself, including a background
 subagent running its own script and announcing its result in a completion
-message, and a todo handed to a subagent that completes it in the parent's
-list. CI runs this package whenever any extension changes.
+message. Scenarios for behaviour across extensions live in the root
+[`test/`](../../test) workspace, which CI runs whenever any extension or
+package changes.

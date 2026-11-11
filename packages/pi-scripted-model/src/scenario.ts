@@ -35,11 +35,16 @@ export const TITLE_MODEL = "scripted-haiku";
  */
 export const HOLD = Symbol("hold");
 
+type Message = { role: string; content: unknown };
+
 /**
  * One model response. A string ends the turn with that text; a list of blocks
- * is one assistant message (tool calls run and the model is asked again).
+ * is one assistant message (tool calls run and the model is asked again). A
+ * function builds the response from the messages the model was sent, for
+ * arguments only known at run time, such as an agent ID.
  */
-export type Step = string | FauxContentBlock[] | typeof HOLD;
+export type Step = Response | ((messages: readonly Message[]) => Response);
+type Response = string | FauxContentBlock[] | typeof HOLD;
 
 export interface AgentScript {
   /** subagent_start's subagent_type, e.g. "general-purpose" or "Plan". */
@@ -48,7 +53,11 @@ export interface AgentScript {
   description: string;
   /** The agent's task. It also identifies the child session, so keep it unique. */
   prompt: string;
-  /** The child's responses. When they run out the child holds, still running. */
+  /**
+   * The child's responses, in order across all its turns: after an `ask`, the
+   * answer subagent_send delivers is answered by the next step. When they run
+   * out the child holds, still running.
+   */
   steps?: Step[];
   /** Extra subagent_start parameters (handoff, …). */
   options?: ToolArgs;
@@ -61,9 +70,20 @@ export interface Scenario {
    * A turn with no steps left ends quietly.
    */
   replies: Step[][];
+  /**
+   * Replies to turns started by these exact user prompts, checked before
+   * `replies`. Use them after a compaction: it drops earlier turns from the
+   * context, so the positions `replies` counts move.
+   */
+  prompts?: Record<string, Step[]>;
+  /** The summary a compaction asks the model for. Default "Scripted summary.". */
+  summary?: string;
   /** Session name pi-tldr suggests (shown in the TUI footer). */
   title?: string;
 }
+
+/** Pi's compaction asks for each summary under this system prompt. */
+const SUMMARY_PROMPT = "You are a context summarization assistant.";
 
 export const text = fauxText;
 export const thinking = fauxThinking;
@@ -83,8 +103,6 @@ export function startAgent(agent: AgentScript): FauxContentBlock {
     ...agent.options,
   });
 }
-
-type Message = { role: string; content: unknown };
 
 function messageText(message: Message): string {
   const { content } = message;
@@ -128,7 +146,13 @@ function hold(signal: AbortSignal | undefined) {
   });
 }
 
-function play(step: Step | undefined, signal: AbortSignal | undefined, holdWhenDone: boolean) {
+function play(
+  scripted: Step | undefined,
+  messages: readonly Message[],
+  signal: AbortSignal | undefined,
+  holdWhenDone: boolean,
+) {
+  const step = typeof scripted === "function" ? scripted(messages) : scripted;
   if (step === HOLD || (step === undefined && holdWhenDone)) return hold(signal);
   return fauxAssistantMessage(step ?? "");
 }
@@ -147,14 +171,14 @@ export function defineScenario(scenario: Scenario) {
     });
 
     const respond = (
-      context: { messages: Message[] },
-      options: { signal?: AbortSignal } | undefined,
+      { messages }: { messages: Message[] },
+      { signal }: { signal?: AbortSignal } = {},
       _state: unknown,
       model: { id: string },
     ) => {
-      const starts = turnStarts(context.messages);
+      const starts = turnStarts(messages);
       const turn = starts.length - 1;
-      const first = turn >= 0 ? messageText(context.messages[starts[0]!]!) : "";
+      const first = turn >= 0 ? messageText(messages[starts[0]!]!) : "";
       if (model.id === TITLE_MODEL) {
         const title = scenario.title ?? "scripted";
         // pi-tldr asks for a bare slug when naming, and for JSON when summarizing.
@@ -163,11 +187,18 @@ export function defineScenario(scenario: Scenario) {
           JSON.stringify({ title, premise: title, findings: "", status: "In progress" }),
         );
       }
-      const step = stepIndex(context.messages, starts[turn] ?? 0);
+      const system = messages.find((message) => message.role === "system");
+      if (system && messageText(system).startsWith(SUMMARY_PROMPT)) {
+        return fauxAssistantMessage(scenario.summary ?? "Scripted summary.");
+      }
       const agent = [...agents.values()].find((a) => first.includes(a.prompt));
-      if (agent) return play(agent.steps?.[step], options?.signal, true);
-      const reply = scenario.replies[turn] ?? [];
-      return play(reply[step], options?.signal, false);
+      if (agent) {
+        // A child's steps continue across its turns.
+        return play(agent.steps?.[stepIndex(messages, starts[0] ?? 0)], messages, signal, true);
+      }
+      const prompt = turn >= 0 ? messageText(messages[starts[turn]!]!) : "";
+      const reply = scenario.prompts?.[prompt] ?? scenario.replies[turn] ?? [];
+      return play(reply[stepIndex(messages, starts[turn] ?? 0)], messages, signal, false);
     };
 
     // The faux provider plays a queue; every entry is the same pure function.
