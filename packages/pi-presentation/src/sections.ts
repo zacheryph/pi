@@ -11,7 +11,7 @@ import type {
   StashSection,
   TodoHistory,
   TodoSection,
-} from "#src/protocol";
+} from "#src/contract";
 
 // Producers own the in-process contracts. These projections bound data for the
 // hub connection rather than revalidating the producers' internal state.

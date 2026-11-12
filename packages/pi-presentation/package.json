@@ -1,0 +1,33 @@
+{
+  "name": "pi-presentation",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared session presentation projections and producer read services.",
+  "keywords": [],
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "imports": {
+    "#src/*": "./src/*.ts",
+    "#test/*": "./test/*.ts",
+    "#foundations/*": "pi-foundations/*",
+    "#git/*": "pi-git/*",
+    "#session-state": "pi-session-state",
+    "#stash/*": "pi-stash/*",
+    "#subagent/*": "pi-subagent/*",
+    "#test-helpers": "pi-test-helpers",
+    "#todo/*": "pi-todo/*"
+  },
+  "exports": {
+    ".": "./src/service.ts",
+    "./*": "./src/*.ts"
+  }
+}

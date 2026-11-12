@@ -19,7 +19,8 @@
     "packages/pi-work",
     "extensions/pi-ask",
     "extensions/pi-git",
-    "test"
+    "test",
+    "packages/pi-presentation"
   ],
   "scripts": {
     "check": "npm run format:check && npm run lint && npm run typecheck",
@@ -86,7 +87,8 @@
     "pi-session-state": "file:packages/pi-session-state",
     "pi-session-tree": "file:packages/pi-session-tree",
     "pi-ui": "file:packages/pi-ui",
-    "pi-work": "file:packages/pi-work"
+    "pi-work": "file:packages/pi-work",
+    "pi-presentation": "file:packages/pi-presentation"
   },
   "type": "module"
 }
