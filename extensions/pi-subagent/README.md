@@ -548,7 +548,7 @@ Agent lifecycle events are emitted via `pi.events.emit()` so other extensions ca
 | `subagent:resumed`          | That run reached a terminal state (completed/error)                              | same as completed + `error`, `status` (`buildEventData` shape) — `status`/`error` discriminate                           |
 | `subagent:steered`          | Message delivered to a running agent, or added to a queued agent's waiting run   | `id`, `message`                                                                                                          |
 | `subagent:compacted`        | Agent's session successfully compacted                                           | `id`, `type`, `description`, `reason` (`"manual"` / `"threshold"` / `"overflow"`), `tokensBefore`, `compactionCount`     |
-| `subagent:settings:loaded`  | Persisted settings applied at extension init                                     | `settings` (merged global + project)                                                                                     |
+| `subagent:settings:loaded`  | Persisted settings applied at extension init                                     | `settings` (merged global + project, defaults filled in)                                                                 |
 | `subagent:settings:changed` | `/subagent:settings` mutation was applied                                        | `settings`, `persisted` (`boolean` — `false` on write failure)                                                           |
 
 `tokens.total` = `input + output + cacheWrite`.

@@ -3,6 +3,27 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-12: Settings declared with defineSettings
+
+Issue #128. `subagentSettings` in `src/settings.ts` declares every `subagent.json` field with
+pi-foundations' `defineSettings`, using its new `list` and `record` helpers for
+`excludedExtensionPackages` and `promptInheritance`.
+
+- Removed `sanitize`, `sanitizePromptInheritance`, `isOverlayWidth`, `isIntegerIn`, `loadSettings`,
+  `saveSettings` and the `DEFAULT_*` constants. `SubagentsSettings` is now the definition's
+  fully defaulted type and `SettingsSnapshot` is derived from it. Keys, ranges and defaults are
+  unchanged; `defaultMaxTurns` defaults to `0`, the on-disk marker for unlimited.
+- `SettingsManager` takes its initial values from the definition's defaults and applies every
+  loaded value through its setters. Getters, toggles, `apply*` methods and events are unchanged.
+- `subagent:settings:loaded` carries every setting with defaults filled in, not only the keys the
+  files set.
+- Invalid values, unknown keys (including the retired `graceTurns`) and invalid list or record
+  members now warn once per file, naming each, instead of being dropped silently. A file holding
+  a JSON array, string or null now warns too, instead of silently contributing nothing.
+- Saving patches the project file: keys the snapshot does not name are kept, and a malformed
+  project file is no longer overwritten; that save reports `(session only; failed to persist)`.
+- Tests: the sanitizer cases load files through the definition; the field cases are one table.
+
 ## 2026-11-11: Use the shared session-state helpers
 
 Issue #127. No behaviour change.

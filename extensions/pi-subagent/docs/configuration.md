@@ -553,7 +553,7 @@ Individual projects can still override via `/subagent:settings`.
 `wrapUpTurns` is how many turns an agent has left when it is warned about its budget; see [Turn Budget](../README.md#turn-budget).
 A `defaultMaxTurns` of `1` runs with `2`, the minimum, and logs a warning.
 
-**Failure behavior:** missing file is silent; malformed JSON logs a `[pi-subagent] Ignoring malformed settings at …` warning to stderr; invalid/out-of-range field values are dropped per-field; write failures downgrade the `/subagent:settings` toast to a warning with `(session only; failed to persist)`.
+**Failure behavior:** missing file is silent; a file that is not valid JSON or not a JSON object logs one `[pi-subagent] Ignoring settings at …` warning to stderr; invalid or out-of-range values, unknown keys, and invalid members of `excludedExtensionPackages` or `promptInheritance` are dropped with one warning per file naming each, and a dropped value falls back to the global file, then the default; a `/subagent:settings` change updates only the keys it saves and keeps the rest of the project file, refuses to overwrite a project file that is not a JSON object, and on that or any write failure downgrades the toast to a warning with `(session only; failed to persist)`.
 
 ### Watch overlay
 
