@@ -6,6 +6,8 @@ on:
       - "integrations/paseo/**"
       - "packages/pi-presentation/**"
       - "package*.json"
+      - ".oxlintrc.json"
+      - "tsconfig.base.json"
       - ".github/workflows/paseo.yml"
   push:
     branches: [main]
@@ -23,6 +25,7 @@ jobs:
             plugins/pi/package-lock.json
       - run: npm ci
       - run: npm ci --prefix plugins/pi
+      - run: npm run lint --prefix plugins/pi
       - run: npm run typecheck --prefix plugins/pi
       - run: npx tsc -p integrations/paseo/tsconfig.json
       - run: npm test --prefix plugins/pi

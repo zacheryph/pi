@@ -46,7 +46,7 @@ independent dashboard and are not imported by this plugin.
 
 ## Verify
 
-`npm run typecheck --prefix plugins/pi`, `npx tsc -p integrations/paseo/tsconfig.json`,
+`npm run lint --prefix plugins/pi`, `npm run typecheck --prefix plugins/pi`, `npx tsc -p integrations/paseo/tsconfig.json`,
 and `npm test --prefix plugins/pi` check the SDK, bridge and framing/lifecycle.
 
 Before rollout, validate in a real daemon/client: two agents in the same cwd show
@@ -55,3 +55,8 @@ returns; queued/waiting/failed states and outcome messages display; reload and
 branch/session replacement clear stale data; disconnect/reconnect refreshes
 state; phone layout scrolls without clipping. Confirm the Paseo RPC PID never
 appears in the standalone dashboard. These UI checks are still outstanding.
+
+Root lint excludes the separately installed Paseo plugin and bridge. The Paseo CI
+job installs their dependencies and runs the same Oxlint configuration against
+both directories before typechecking and testing them. Root formatting still
+covers the whole repository.
