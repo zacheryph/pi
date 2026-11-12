@@ -1,0 +1,16 @@
+import {
+  bool,
+  defineSettings,
+  type SettingsOf,
+} from "../../../packages/pi-foundations/src/settings.ts";
+
+/** {{settingsFiles}}. */
+export const {{settingsVar}} = defineSettings({
+  name: "{{topic}}",
+  scope: "{{scope}}",
+  fields: {
+    // Replace with this extension's settings; see packages/pi-foundations/README.md.
+    enabled: bool({ default: true }),
+  },
+});
+export type {{settingsType}} = SettingsOf<typeof {{settingsVar}}>;

@@ -30,14 +30,15 @@ node .agents/skills/new-extension/scripts/scaffold.mjs pi-<topic> \
 | `--description`       | Required. Used in `package.json`, the factory's doc comment, and the extension's README.                                                                                                 |
 | `--tool`, `--command` | Repeatable. Each gets a stub registration, a test, and an assertion in `scripts/verify-bundle.mjs`. A name another extension already uses is refused. Adding a tool also adds `typebox`. |
 | `--after`             | Load after that extension (Pi runs `session_start` handlers in load order). Default: last.                                                                                               |
+| `--settings`          | `global` or `layered`: also create `src/config.ts` with a `defineSettings` definition of that scope and a placeholder field.                                                             |
 | `--no-tui`            | Leave out `@earendil-works/pi-tui` when the extension renders nothing.                                                                                                                   |
 | `--no-install`        | Skip `npm install --ignore-scripts`; the lockfile is then stale until you run it. CI uses `npm ci`, so commit the updated lockfile.                                                      |
 
 It checks everything before writing anything, then:
 
 - creates `package.json` (using the root's shared development tools),
-  `tsconfig.json`, `vitest.config.ts`, `README.md`, `src/index.ts` and
-  `test/index.test.ts` from `templates/`;
+  `tsconfig.json`, `vitest.config.ts`, `README.md`, `src/index.ts`,
+  `test/index.test.ts` and, with `--settings`, `src/config.ts` from `templates/`;
 - adds the workspace and the `pi.extensions` entry to the root `package.json`;
 - adds the tools and commands to the lists `scripts/verify-bundle.mjs` asserts;
 - runs `npm install --ignore-scripts` (unless skipped), then formats the generated
@@ -93,10 +94,18 @@ bundle extension again. So:
 as `<name>:<event>` (see `pi-todo:snapshot`, `pi-stash:snapshot`), with a
 version field. pi-dashboard and others subscribe there.
 
-**Configuration.** Global file `~/.pi/agent/<topic>.json` via `getAgentDir()`,
-optional project override `.pi/<topic>.json`, sanitized field by field with
-defaults for anything missing or invalid (see `extensions/pi-todo/src/config.ts`).
-Never throw on a malformed file; warn and use defaults.
+**Configuration.** Declare settings once in `src/config.ts` with `defineSettings`
+from `packages/pi-foundations/src/settings.ts` (`--settings` scaffolds it; see
+`extensions/pi-todo/src/config.ts`). `name: "<topic>"` reads
+`<agent dir>/<topic>.json`; `scope: "layered"` adds the project override
+`.pi/<topic>.json`, `"global"` is for state every project shares. Each field
+names its validation and default (`bool`, `int`, `number`, `oneOf`, `string`,
+`optional`), and `SettingsOf<typeof xSettings>` is the loaded type, so write no
+separate interface, defaults object or sanitizer, and never read the file
+yourself. `load(ctx.cwd)` never throws: malformed files and invalid fields warn
+and fall back to defaults. `writable: true` adds `save(cwd, patch)` for a
+settings command. Call `load` behind a `dependencies.loadConfig` seam so tests
+can pass a config without files.
 
 **Tools.** Replace the stub `description` and `promptGuidelines`; define real
 `parameters`. Keep output bounded (Pi caps at 50 KB / 2,000 lines; stay well

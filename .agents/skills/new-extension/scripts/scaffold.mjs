@@ -5,7 +5,7 @@
 //
 //   node .agents/skills/new-extension/scripts/scaffold.mjs <pi-name> \
 //     --description "<one line>" [--tool <name>]... [--command <name>]... \
-//     [--after <pi-name>] [--no-tui] [--no-install]
+//     [--after <pi-name>] [--settings global|layered] [--no-tui] [--no-install]
 //
 // Run from the repository root. It refuses to touch anything when a check fails.
 
@@ -31,6 +31,7 @@ const { values, positionals } = parseArgs({
     tool: { type: "string", multiple: true, default: [] },
     command: { type: "string", multiple: true, default: [] },
     after: { type: "string" },
+    settings: { type: "string" },
     "no-tui": { type: "boolean", default: false },
     "no-install": { type: "boolean", default: false },
   },
@@ -43,6 +44,8 @@ if (!/^pi-[a-z0-9]+(-[a-z0-9]+)*$/.test(name))
 const description = values.description?.trim();
 if (!description) fail("--description is required");
 if (/[\r\n]|\*\//.test(description)) fail("--description must be one line and must not contain */");
+if (values.settings && !["global", "layered"].includes(values.settings))
+  fail(`--settings must be global or layered, not "${values.settings}"`);
 for (const tool of values.tool)
   if (!/^[a-z][a-z0-9_]*$/.test(tool)) fail(`tool "${tool}" must be snake_case`);
 for (const command of values.command)
@@ -164,6 +167,20 @@ const walk = (sub = "") =>
     return [path.replace(/\.tmpl$/, "")];
   });
 for (const path of walk()) files[path] = fill(template(path), vars);
+if (values.settings) {
+  const topic = name.slice("pi-".length);
+  const camel = topic.replace(/-([a-z0-9])/g, (_m, c) => c.toUpperCase());
+  files["src/config.ts"] = fill(template("snippets/config.ts"), {
+    topic,
+    scope: values.settings,
+    settingsVar: `${camel}Settings`,
+    settingsType: `${camel[0].toUpperCase()}${camel.slice(1)}Config`,
+    settingsFiles:
+      values.settings === "layered"
+        ? `\`<agent dir>/${topic}.json\`, overridden by the project's \`.pi/${topic}.json\``
+        : `Global only: \`<agent dir>/${topic}.json\``,
+  });
+}
 
 // ---- Edit the repository files (all checks passed above) ----
 
