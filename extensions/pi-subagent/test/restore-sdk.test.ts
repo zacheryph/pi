@@ -6,10 +6,9 @@ import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WORK_WAKE_PROMPT } from "#src/lifecycle/run";
-import { toolCall } from "../../../packages/pi-test-helpers/src/faux-session.ts";
-import { resetSessionTree } from "../../../packages/pi-test-helpers/src/globals.ts";
-import { createJobsExtension } from "../../pi-job/src/extension.ts";
-import { sessionOwners } from "../../pi-job/src/ownership.ts";
+import { toolCall, resetSessionTree } from "#test-helpers";
+import { createJobsExtension } from "#job";
+import { sessionOwners } from "#job/ownership";
 import {
   delegate,
   gated,
@@ -18,20 +17,20 @@ import {
   untilAnnounced,
   type Parent,
   type Step,
-} from "./characterization/harness.ts";
-import { expectNoUnmanagedRuns, trackChildRuns, type RunLog } from "./helpers/managed-runs.ts";
+} from "#test/characterization/harness";
+import { expectNoUnmanagedRuns, trackChildRuns, type RunLog } from "#test/helpers/managed-runs";
 import { RESTORE_TIMEOUT_MS } from "#src/lifecycle/subagent-manager";
-import { HANG, type Hang } from "./fixtures/hang-on-reopen.ts";
-import workProbe from "./fixtures/work-probe.ts";
-import todoExtension from "../../pi-todo/src/index.ts";
+import { HANG, type Hang } from "#test/fixtures/hang-on-reopen";
+import workProbe from "#test/fixtures/work-probe";
+import todoExtension from "#todo";
 import {
   EXTENSIONS,
   isChildRequest,
   lastResult,
   offlineAgentDir,
   TODO_TOOLS,
-} from "./helpers/sdk.ts";
-import { widgetUi } from "./helpers/widget-ui.ts";
+} from "#test/helpers/sdk";
+import { widgetUi } from "#test/helpers/widget-ui";
 
 // Roadmap step 12 on real sessions: a parent reload or restart keeps its agents. At the parent's
 // `session_start` the agents that held work are reopened without a model run, so the producers of

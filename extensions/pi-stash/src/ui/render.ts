@@ -1,7 +1,7 @@
-import { formatBytes, plural } from "../../../../packages/pi-foundations/src/format.ts";
-export { formatBytes } from "../../../../packages/pi-foundations/src/format.ts";
-import { sanitizeLine } from "../../../../packages/pi-ui/src/index.ts";
-import type { StashRecord } from "../state.ts";
+import { formatBytes, plural } from "#foundations/format";
+export { formatBytes } from "#foundations/format";
+import { sanitizeLine } from "#ui";
+import type { StashRecord } from "#src/state";
 
 export function formatAge(createdAt: number, now = Date.now()): string {
   const seconds = Math.max(0, Math.floor((now - createdAt) / 1000));

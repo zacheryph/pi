@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import { WatchOverlay } from "#src/ui/watch-overlay";
 import { createTestSubagent } from "#test/helpers/make-subagent";
-import { plainTheme } from "../../../../packages/pi-test-helpers/src/theme.ts";
+import { plainTheme } from "#test-helpers";
 
 function terminal() {
   const size = { columns: 120, rows: 30 };

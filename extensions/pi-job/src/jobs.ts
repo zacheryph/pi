@@ -9,11 +9,11 @@
 import { createHash, randomBytes } from "node:crypto";
 import { mkdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { DEFAULT_LOG_CAP_BYTES, LogWriter } from "./logwriter.ts";
-import { startProbe, type CheckRun, type ProbeOutcome, type WatchProbe } from "./probe.ts";
-import { SupervisedRun, type RunOutcome } from "./supervisor.ts";
-import { readTail, tailBuffer, TailSink, type Tail } from "./tail.ts";
-import { evaluateWatch, type CheckResult, type WatchUntil } from "./watch.ts";
+import { DEFAULT_LOG_CAP_BYTES, LogWriter } from "#src/logwriter";
+import { startProbe, type CheckRun, type ProbeOutcome, type WatchProbe } from "#src/probe";
+import { SupervisedRun, type RunOutcome } from "#src/supervisor";
+import { readTail, tailBuffer, TailSink, type Tail } from "#src/tail";
+import { evaluateWatch, type CheckResult, type WatchUntil } from "#src/watch";
 
 export type JobKind = "command" | "watch";
 export type JobStatus = "running" | "succeeded" | "failed" | "timed_out" | "killed" | "matched";

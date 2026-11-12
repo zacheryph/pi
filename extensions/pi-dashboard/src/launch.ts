@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { closeSync, mkdirSync, openSync, statSync, truncateSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import type { HubPaths } from "./protocol.ts";
+import type { HubPaths } from "#src/protocol";
 
 export const HUB_ENTRY = fileURLToPath(new URL("./hub/server.ts", import.meta.url));
 const MAX_LOG_BYTES = 1024 * 1024;

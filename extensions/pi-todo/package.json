@@ -17,10 +17,6 @@
     "LICENSE",
     "docs"
   ],
-  "imports": {
-    "#src/*": "./src/*",
-    "#test/*": "./test/*"
-  },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",
     "@earendil-works/pi-coding-agent": "*",
@@ -41,5 +37,18 @@
     "extensions": [
       "./src/index.ts"
     ]
+  },
+  "imports": {
+    "#src/*": "./src/*.ts",
+    "#test/*": "./test/*.ts",
+    "#foundations/*": "pi-foundations/*",
+    "#session-state": "pi-session-state",
+    "#session-tree": "pi-session-tree",
+    "#test-helpers": "pi-test-helpers",
+    "#ui": "pi-ui"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
   }
 }

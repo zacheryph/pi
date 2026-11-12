@@ -15,8 +15,8 @@ import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { fauxAssistantMessage, type FauxResponseStep } from "@earendil-works/pi-ai/providers/faux";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { fauxSession, messageText } from "../../../packages/pi-test-helpers/src/faux-session.ts";
-import { waitUntil } from "./helpers.ts";
+import { fauxSession, messageText } from "#test-helpers";
+import { waitUntil } from "#test/helpers";
 
 const PROBE = "probe:message";
 

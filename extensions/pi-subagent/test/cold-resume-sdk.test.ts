@@ -6,8 +6,8 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi, onTestFinished } from "vitest";
 import subagentExtension from "#src/index";
 import { readPersistedRecords, SUBAGENT_RECORD_ENTRY } from "#src/persisted-record";
-import { offlineAgentDir, scriptSides, spawnChild, capture, lastResult } from "./helpers/sdk.ts";
-import { fauxSession, toolCall } from "../../../packages/pi-test-helpers/src/faux-session.ts";
+import { offlineAgentDir, scriptSides, spawnChild, capture, lastResult } from "#test/helpers/sdk";
+import { fauxSession, toolCall } from "#test-helpers";
 
 // A real parent session spawns real child sessions through the extension, all
 // answered by one scripted faux provider. Every spawn and resume runs in the

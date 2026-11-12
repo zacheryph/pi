@@ -14,11 +14,7 @@
  */
 
 import type { ExtensionAPI, SessionStartEvent } from "@earendil-works/pi-coding-agent";
-import {
-  type AgentMessage,
-  contextCard,
-  type RestoreEvent,
-} from "../../../../packages/pi-session-state/src/index.ts";
+import { type AgentMessage, contextCard, type RestoreEvent } from "#session-state";
 import {
   buildRoster,
   formatRosterCard,

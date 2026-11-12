@@ -1,8 +1,8 @@
 import { join } from "node:path";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { expect, it, vi } from "vitest";
-import { offlineAgentDir, EXTENSIONS, realChildSession, BUILTIN_TOOLS } from "./helpers/sdk.ts";
-import { toolCall, toolResults } from "../../../packages/pi-test-helpers/src/faux-session.ts";
+import { offlineAgentDir, EXTENSIONS, realChildSession, BUILTIN_TOOLS } from "#test/helpers/sdk";
+import { toolCall, toolResults } from "#test-helpers";
 
 // Real SDK children with the repository's pi-stash extension loaded, as a
 // parent bundle would provide it. Checks capability, not model judgment.

@@ -1,6 +1,6 @@
 /** Main profiles: startup defaults plus durable SYSTEM instructions, not capability locks. */
-import { errorText } from "../../../packages/pi-foundations/src/errors.ts";
-import { readEntries } from "../../../packages/pi-session-state/src/index.ts";
+import { errorText } from "#foundations/errors";
+import { readEntries } from "#session-state";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
@@ -19,7 +19,7 @@ import { MAIN_AGENT_SECTION } from "#src/session/main-profile-prompt";
 import { resolveToolSelection } from "#src/session/tool-selection";
 import { LATEST_SUFFIX, resolveModel } from "#src/session/model-resolver";
 import type { AgentConfig } from "#src/types";
-import { sanitizeText } from "../../../packages/pi-ui/src/index.ts";
+import { sanitizeText } from "#ui";
 
 export const MAIN_AGENT_ENTRY = "agent:profile";
 export { MAIN_AGENT_SECTION } from "#src/session/main-profile-prompt";

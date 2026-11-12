@@ -1,14 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChildWork, type ChildWorkSession } from "#src/lifecycle/child-work";
-import { service } from "../../../../packages/pi-session-tree/src/index.ts";
-import { resetSessionTree } from "../../../../packages/pi-test-helpers/src/globals.ts";
-import {
-  WORK_ENTRY,
-  WORK_LOST,
-  WORK_SERVICE,
-  type WorkHost,
-  type WorkMessage,
-} from "../../../../packages/pi-work/src/index.ts";
+import { service } from "#session-tree";
+import { resetSessionTree } from "#test-helpers";
+import { WORK_ENTRY, WORK_LOST, WORK_SERVICE, type WorkHost, type WorkMessage } from "#work";
 
 // The managed host of a child session: the contract on a child's own session file, where a
 // message is written into the transcript at once and an idle child is woken by asking its agent

@@ -13,14 +13,14 @@ import {
   type TodoTaskActivity,
   unreviewedTodoTasks,
   unreviewedTodoUpdates,
-} from "#src/activity.ts";
+} from "#src/activity";
 import {
   applyTodoRequest,
   formatTodoContext,
   formatTodoState,
   type TodoRequest,
-} from "#src/actions.ts";
-import { createEmptyTodoState, type TodoState, TodoValidationError } from "#src/state.ts";
+} from "#src/actions";
+import { createEmptyTodoState, type TodoState, TodoValidationError } from "#src/state";
 
 const options = { singleActive: false };
 type Session = { state: TodoState; activity: TodoActivity };

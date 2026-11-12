@@ -1,8 +1,8 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, onTestFinished, vi } from "vitest";
-import { tempDir } from "../../../packages/pi-test-helpers/src/temp.ts";
-import { stashSettings } from "../src/config.ts";
+import { tempDir } from "#test-helpers";
+import { stashSettings } from "#src/config";
 let root: string;
 const DEFAULTS = {
   retentionDays: 30,

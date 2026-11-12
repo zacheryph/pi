@@ -1,13 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { KeybindingsManager, TUI_KEYBINDINGS } from "@earendil-works/pi-tui";
-import {
-  DetailView,
-  Explorer,
-  ICONS,
-  Widget,
-  sanitizeLine,
-  type UITheme,
-} from "../../src/index.ts";
+import { DetailView, Explorer, ICONS, Widget, sanitizeLine, type UITheme } from "#src/index";
 
 /** Fixture only: imports the source barrel through Pi's real loader, without workspace resolution. */
 export default function probe(_pi: ExtensionAPI): void {

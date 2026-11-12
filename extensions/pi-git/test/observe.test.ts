@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { observe, parsePrUrls, parseRemote, type ToolResultLike } from "../src/observe.ts";
-import { mergeStatus, observedStatus } from "../src/prs.ts";
+import { observe, parsePrUrls, parseRemote, type ToolResultLike } from "#src/observe";
+import { mergeStatus, observedStatus } from "#src/prs";
 
 const text = (value: string) => [{ type: "text", text: value }];
 const result = (

@@ -12,15 +12,9 @@ import {
   type SessionOptions,
   startSession,
   type ToolRun,
-} from "../../packages/pi-scripted-model/src/harness.ts";
+} from "#scripted-model/harness";
 
-export {
-  HOLD,
-  defineScenario,
-  startAgent,
-  text,
-  tool,
-} from "../../packages/pi-scripted-model/src/scenario.ts";
+export { HOLD, defineScenario, startAgent, text, tool } from "#scripted-model/scenario";
 export type { ModelRequest, ScriptedSession, ToolRun };
 
 let open: ScriptedSession | undefined;

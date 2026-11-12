@@ -10,12 +10,7 @@ import {
   TODO_JOURNAL_TYPE,
   TODO_REVIEW_TYPE,
 } from "#src/replay";
-import {
-  fauxSession,
-  loadResources,
-  toolCall,
-} from "../../../packages/pi-test-helpers/src/faux-session.ts";
-import { tempDir } from "../../../packages/pi-test-helpers/src/temp.ts";
+import { fauxSession, loadResources, toolCall, tempDir } from "#test-helpers";
 
 async function fixture(
   options: {

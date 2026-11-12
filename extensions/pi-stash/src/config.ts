@@ -1,9 +1,4 @@
-import {
-  defineSettings,
-  int,
-  number,
-  type SettingsOf,
-} from "../../../packages/pi-foundations/src/settings.ts";
+import { defineSettings, int, number, type SettingsOf } from "#foundations/settings";
 
 /**
  * Global only (`<agent dir>/stash.json`): the store is shared by every project,

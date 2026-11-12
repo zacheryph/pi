@@ -9,10 +9,6 @@
     "src",
     "README.md"
   ],
-  "imports": {
-    "#src/*": "./src/*",
-    "#test/*": "./test/*"
-  },
   "engines": {
     "node": ">=24"
   },
@@ -22,5 +18,12 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "fix": "oxfmt --write . && oxlint --fix . && oxfmt --write ."
+  },
+  "imports": {
+    "#src/*": "./src/*.ts",
+    "#test/*": "./test/*.ts"
+  },
+  "exports": {
+    "./*": "./src/*.ts"
   }
 }

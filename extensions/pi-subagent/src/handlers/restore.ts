@@ -7,7 +7,7 @@ import {
 import { type LostAgent, lostReport } from "#src/observation/lost-report";
 import type { RestoredWork } from "#src/observation/subagent-work";
 import type { PersistedSubagentRecord } from "#src/persisted-record";
-import type { WorkMessage } from "../../../../packages/pi-work/src/index.ts";
+import type { WorkMessage } from "#work";
 
 /**
  * The startup of the spawning session: bring back the agents the previous instance left holding

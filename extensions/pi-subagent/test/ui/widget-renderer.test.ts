@@ -3,14 +3,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import type { Theme } from "#src/ui/display";
 import { renderWidgetLines, type WidgetAgent, widgetLineBudget } from "#src/ui/widget-renderer";
-import { withSlot } from "../../../../packages/pi-test-helpers/src/globals.ts";
 import {
+  withSlot,
   expectBounded,
   expectPadded,
   NARROW_WIDTHS,
   WIDE_TEXT,
-} from "../../../../packages/pi-test-helpers/src/render.ts";
-import { plainTheme, ansiTheme } from "../../../../packages/pi-test-helpers/src/theme.ts";
+  plainTheme,
+  ansiTheme,
+} from "#test-helpers";
 
 const registry = new AgentTypeRegistry(() => new Map());
 const theme: Theme = plainTheme;

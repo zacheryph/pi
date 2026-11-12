@@ -1,9 +1,16 @@
 import type { Context } from "@earendil-works/pi-ai";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { describe, expect, it } from "vitest";
-import { toolCall } from "../../../../packages/pi-test-helpers/src/faux-session.ts";
-import { lastResult } from "../helpers/sdk.ts";
-import { delegate, gated, sendCall, shape, startParent, untilAnnounced } from "./harness.ts";
+import { toolCall } from "#test-helpers";
+import { lastResult } from "#test/helpers/sdk";
+import {
+  delegate,
+  gated,
+  sendCall,
+  shape,
+  startParent,
+  untilAnnounced,
+} from "#test/characterization/harness";
 
 // Sending a message to a running agent through subagent_send, from the parent's side.
 // Rewritten by roadmap step 7b: subagent_steer is gone, and subagent_send steers a running

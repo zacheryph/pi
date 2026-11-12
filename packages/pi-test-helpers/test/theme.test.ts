@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { ansiTheme, markupTheme, plainLines, plainTheme, stripAnsi } from "#src/theme.ts";
+import { ansiTheme, markupTheme, plainLines, plainTheme, stripAnsi } from "#src/index";
 
 it("plain leaves text alone; ansi wraps it in escape codes that strip back", () => {
   expect(plainTheme.fg("accent", plainTheme.bold("x"))).toBe("x");

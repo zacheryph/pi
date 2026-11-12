@@ -1,5 +1,5 @@
 // Loaded after provider.ts by Pi's real extension loader in sdk.test.ts.
-import { service, sessionTree } from "../../src/index.ts";
+import { service, sessionTree } from "#src/index";
 
 export default function consumer(): void {
   const slots = globalThis as Record<symbol, unknown>;

@@ -3,7 +3,7 @@ import type { BuildSystemPromptOptions, ToolInfo } from "@earendil-works/pi-codi
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
 import { detailText, field, section } from "#test/helpers";
-import { buildPromptView, buildToolsView, redactPromptDisplay } from "../src/insights.js";
+import { buildPromptView, buildToolsView, redactPromptDisplay } from "#src/insights";
 
 // Pi's real prompt builder is internal, not exported from the package entry.
 const entry = import.meta.resolve("@earendil-works/pi-coding-agent");

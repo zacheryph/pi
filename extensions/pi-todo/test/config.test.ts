@@ -1,8 +1,8 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
-import { todoSettings } from "../src/config.ts";
-import { settingsDirs } from "../../../packages/pi-test-helpers/src/temp.ts";
+import { todoSettings } from "#src/config";
+import { settingsDirs } from "#test-helpers";
 
 const DEFAULTS = {
   widget: true,

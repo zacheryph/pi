@@ -2,12 +2,7 @@ import type { Skill, ToolInfo } from "@earendil-works/pi-coding-agent";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { KeybindingsManager, TUI_KEYBINDINGS } from "@earendil-works/pi-tui";
 import { describe, expect, it } from "vitest";
-import {
-  DetailView,
-  Explorer,
-  sanitizeText,
-  type DisposableComponent,
-} from "../../../packages/pi-ui/src/index.ts";
+import { DetailView, Explorer, sanitizeText, type DisposableComponent } from "#ui";
 import { buildPromptView, buildSkillsView, buildToolsView } from "#src/insights";
 import { SKILL_READ_ENTRY } from "#src/skills";
 import type { InsightView } from "#src/types";

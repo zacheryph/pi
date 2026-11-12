@@ -22,8 +22,7 @@ import {
   type MainAgentSnapshot,
 } from "#src/main-agent-profile";
 import type { AgentConfig } from "#src/types";
-import { fauxRuntime, toolCall } from "../../../packages/pi-test-helpers/src/faux-session.ts";
-import { tempDir, writeFiles } from "../../../packages/pi-test-helpers/src/temp.ts";
+import { fauxRuntime, toolCall, tempDir, writeFiles } from "#test-helpers";
 
 /**
  * The active tools as a set. Pi keeps tools that stay active in place and

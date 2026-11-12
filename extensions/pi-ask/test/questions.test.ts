@@ -6,7 +6,7 @@ import {
   formatOutcome,
   readExternalAnswer,
   readQuestions,
-} from "../src/questions.ts";
+} from "#src/questions";
 
 const choice = {
   question: "Which database?",

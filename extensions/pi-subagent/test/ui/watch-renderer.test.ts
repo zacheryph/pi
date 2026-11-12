@@ -6,12 +6,10 @@ import {
   expectBounded,
   NARROW_WIDTHS,
   WIDE_TEXT,
-} from "../../../../packages/pi-test-helpers/src/render.ts";
-import {
   plainTheme,
   ansiTheme,
   stripAnsi,
-} from "../../../../packages/pi-test-helpers/src/theme.ts";
+} from "#test-helpers";
 
 const theme: Theme = plainTheme;
 function section(id = "a", overrides: Partial<WatchSection> = {}): WatchSection {

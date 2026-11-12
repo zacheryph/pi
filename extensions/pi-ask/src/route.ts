@@ -1,5 +1,5 @@
-import { service } from "../../../packages/pi-session-tree/src/index.ts";
-import { WORK_PARENT_SERVICE, type WorkParent } from "../../../packages/pi-work/src/index.ts";
+import { service } from "#session-tree";
+import { WORK_PARENT_SERVICE, type WorkParent } from "#work";
 
 /** Where `ask` sends questions in one session. */
 export type AskRoute =

@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import type { TerminalInfo } from "./protocol.ts";
+import type { TerminalInfo } from "#src/protocol";
 
 export type Run = (command: string, args: string[]) => Promise<void>;
 

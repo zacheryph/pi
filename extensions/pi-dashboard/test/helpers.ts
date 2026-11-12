@@ -2,9 +2,9 @@ import { request } from "node:http";
 import { connect, type Socket } from "node:net";
 import { onTestFinished } from "vitest";
 import { encode, type ReporterMessage, type SessionSnapshot } from "#src/protocol";
-import { tempDir as sharedTempDir } from "../../../packages/pi-test-helpers/src/temp.ts";
+import { tempDir as sharedTempDir } from "#test-helpers";
 
-export { sleep, waitFor } from "../../../packages/pi-test-helpers/src/wait.ts";
+export { sleep, waitFor } from "#test-helpers";
 
 export function onCleanup(cleanup: () => unknown): void {
   onTestFinished(async () => {

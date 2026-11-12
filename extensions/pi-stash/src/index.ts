@@ -1,4 +1,4 @@
-import { errorText } from "../../../packages/pi-foundations/src/errors.ts";
+import { errorText } from "#foundations/errors";
 import { randomBytes } from "node:crypto";
 import {
   defineTool,
@@ -7,9 +7,9 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-import { node } from "../../../packages/pi-session-tree/src/index.ts";
-import { contextCard, treeService } from "../../../packages/pi-session-state/src/index.ts";
-import { stashSettings, type StashConfig } from "./config.ts";
+import { node } from "#session-tree";
+import { contextCard, treeService } from "#session-state";
+import { stashSettings, type StashConfig } from "#src/config";
 import {
   PREVIEW_MAX_BYTES,
   PREVIEW_MAX_LINES,
@@ -20,7 +20,7 @@ import {
   type StashPreviewRequest,
   type StashPreviewResult,
   type StashSnapshotEvent,
-} from "./events.ts";
+} from "#src/events";
 import {
   DEFAULT_GET_BYTES,
   HARD_MAX_BYTES,
@@ -29,8 +29,8 @@ import {
   previewOf,
   sliceText,
   type SliceResult,
-} from "./slice.ts";
-import { literalContent, readCwdFile, readToolResult, type SourceText } from "./sources.ts";
+} from "#src/slice";
+import { literalContent, readCwdFile, readToolResult, type SourceText } from "#src/sources";
 import {
   countLines,
   createEmptyIndex,
@@ -45,11 +45,11 @@ import {
   type StashIndex,
   type StashJournal,
   type StashRecord,
-} from "./state.ts";
-import { BlobStore, defaultStashRoot } from "./store.ts";
-import { showStashBrowser } from "./ui/browser.ts";
-import { bodyRow, sanitizeLine, sanitizeText } from "../../../packages/pi-ui/src/index.ts";
-import { entrySummary, formatAge, formatBytes, originLabel, previewRows } from "./ui/render.ts";
+} from "#src/state";
+import { BlobStore, defaultStashRoot } from "#src/store";
+import { showStashBrowser } from "#src/ui/browser";
+import { bodyRow, sanitizeLine, sanitizeText } from "#ui";
+import { entrySummary, formatAge, formatBytes, originLabel, previewRows } from "#src/ui/render";
 
 const CONTEXT_TYPE = "stash:context";
 const CARD_ENTRIES = 20;

@@ -1,14 +1,9 @@
 /** JobItems with a fake host and manager (no pi, no processes). */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type {
-  WorkHost,
-  WorkItem,
-  WorkItemSpec,
-  WorkMessage,
-} from "../../../packages/pi-work/src/index.ts";
-import { JobItems, WORK_OWNER } from "../src/items.ts";
-import type { JobManager, JobSnapshot } from "../src/jobs.ts";
+import type { WorkHost, WorkItem, WorkItemSpec, WorkMessage } from "#work";
+import { JobItems, WORK_OWNER } from "#src/items";
+import type { JobManager, JobSnapshot } from "#src/jobs";
 
 const job = (over: Partial<JobSnapshot> = {}): JobSnapshot => ({
   id: "j1",

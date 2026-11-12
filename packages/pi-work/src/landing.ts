@@ -18,7 +18,7 @@
  * The tracker also answers a second transcript question for the managed child: does the
  * transcript end with a delivered message nobody answered (`unanswered`)?
  */
-import type { WorkHostRuntime } from "./host.ts";
+import type { WorkHostRuntime } from "#src/host";
 
 /** The slice of a transcript entry the tracker reads. */
 export interface TranscriptEntry {

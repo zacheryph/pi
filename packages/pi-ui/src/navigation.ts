@@ -1,5 +1,5 @@
 import { matchesKey, visibleWidth } from "@earendil-works/pi-tui";
-import type { UIKeys } from "./types.ts";
+import type { UIKeys } from "#src/types";
 
 /**
  * Footer hint. Lower priority numbers are more important; when hints do not fit

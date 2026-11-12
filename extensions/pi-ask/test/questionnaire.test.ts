@@ -1,9 +1,9 @@
 import { KeybindingsManager, TUI_KEYBINDINGS, visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
-import { sanitizeText } from "../../../packages/pi-ui/src/index.ts";
-import { Questionnaire } from "../src/questionnaire.ts";
-import { readQuestions, type AskOutcome } from "../src/questions.ts";
-import { ansiTheme } from "../../../packages/pi-test-helpers/src/theme.ts";
+import { sanitizeText } from "#ui";
+import { Questionnaire } from "#src/questionnaire";
+import { readQuestions, type AskOutcome } from "#src/questions";
+import { ansiTheme } from "#test-helpers";
 
 const theme = ansiTheme;
 const ENTER = "\r";

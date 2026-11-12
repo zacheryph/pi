@@ -5,7 +5,7 @@
  */
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { expect } from "vitest";
-import { stripAnsi } from "./theme.ts";
+import { stripAnsi } from "#src/theme";
 
 /** Double-width CJK and an emoji: width math must count columns, not code units. */
 export const WIDE_TEXT = "検索結果😀データ";

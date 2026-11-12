@@ -1,4 +1,4 @@
-import type { UsageSection } from "./protocol.ts";
+import type { UsageSection } from "#src/protocol";
 
 interface UsageLike {
   input?: unknown;

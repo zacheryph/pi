@@ -18,9 +18,8 @@ import type { PersistedSubagentRecord } from "#src/persisted-record";
 import { createSubagentSessionStub, openItem, toSubagentSession } from "#test/helpers/mock-session";
 import { STUB_SNAPSHOT } from "#test/helpers/stub-ctx";
 import { turnLoopResult } from "#test/helpers/turn-loop-result";
-import { tempDir } from "../../../../packages/pi-test-helpers/src/temp.ts";
-import { tick } from "../../../../packages/pi-test-helpers/src/wait.ts";
-import type { WorkItemView } from "../../../../packages/pi-work/src/index.ts";
+import { tempDir, tick } from "#test-helpers";
+import type { WorkItemView } from "#work";
 
 // Roadmap step 12 at the manager: bring back the agents a reload or restart left holding work,
 // without a model run and without a concurrency slot. The work host belongs to the child's

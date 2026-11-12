@@ -16,7 +16,7 @@
  * entry that is not `PERSISTED_RECORD_VERSION`.
  */
 
-import { customData } from "../../../packages/pi-session-state/src/index.ts";
+import { customData } from "#session-state";
 import type { RunOutcome, SubagentStatus } from "#src/lifecycle/subagent-state";
 import type { TurnBudget } from "#src/lifecycle/turn-limits";
 import type { SubagentType, ThinkingLevel } from "#src/types";

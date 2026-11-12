@@ -4,13 +4,13 @@
  * All functions are stateless and dependency-free (no SDK runtime imports, no widget lifecycle).
  * Consumed by the widget, the menu, tool modules, and the notification renderer.
  */
-import { formatDuration } from "../../../../packages/pi-foundations/src/format.ts";
+import { formatDuration } from "#foundations/format";
 
 import type { ThemeColor } from "@earendil-works/pi-coding-agent";
 import type { AgentConfigLookup } from "#src/config/agent-types";
 import type { TurnBudget } from "#src/lifecycle/turn-limits";
 import type { AgentInvocation, SubagentType } from "#src/types";
-import { ICONS } from "../../../../packages/pi-ui/src/index.ts";
+import { ICONS } from "#ui";
 
 // ---- Types ----
 

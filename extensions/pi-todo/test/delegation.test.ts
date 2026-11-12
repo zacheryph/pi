@@ -1,7 +1,7 @@
 import { createEventBus, SessionManager } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { resetSessionTree } from "../../../packages/pi-test-helpers/src/globals.ts";
-import { CONTEXT_TYPE, harness } from "./harness.ts";
+import { resetSessionTree } from "#test-helpers";
+import { CONTEXT_TYPE, harness } from "#test/harness";
 import { TODO_CLAIMS_TYPE } from "#src/claims";
 import { type TodoConfig } from "#src/config";
 import { TODO_SNAPSHOT_EVENT, type TodoSnapshotEvent } from "#src/events";

@@ -1,4 +1,4 @@
-import { errorText } from "../../../packages/pi-foundations/src/errors.ts";
+import { errorText } from "#foundations/errors";
 import { connect as netConnect, type Socket } from "node:net";
 import {
   encode,
@@ -8,7 +8,7 @@ import {
   type QuestionnaireAnswer,
   type ReporterMessage,
   type SessionSnapshot,
-} from "./protocol.ts";
+} from "#src/protocol";
 
 export interface ReporterOptions {
   socketPath: string;

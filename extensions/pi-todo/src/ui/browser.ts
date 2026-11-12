@@ -1,18 +1,18 @@
-import {
-  showExplorer,
-  type ExplorerItem,
-  type ExplorerView,
-  type ModalContext,
-} from "../../../../packages/pi-ui/src/index.ts";
+import { showExplorer, type ExplorerItem, type ExplorerView, type ModalContext } from "#ui";
 import {
   createTodoReviewState,
   lastTodoActivityAt,
   type TodoActivity,
   type TodoReviewState,
   unreviewedTodoTasks,
-} from "../activity.js";
-import type { TodoState } from "../state.js";
-import { formatTodoAge, orderedTodoTasks, todoTaskDetail, todoTaskPresentation } from "./render.js";
+} from "#src/activity";
+import type { TodoState } from "#src/state";
+import {
+  formatTodoAge,
+  orderedTodoTasks,
+  todoTaskDetail,
+  todoTaskPresentation,
+} from "#src/ui/render";
 
 export type TodoBrowserView = "all" | "unreviewed" | "recent";
 const TODO_VIEWS: readonly TodoBrowserView[] = ["all", "unreviewed", "recent"];

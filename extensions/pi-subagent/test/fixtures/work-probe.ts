@@ -13,8 +13,8 @@
 // still counts the run as active.
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { ensureWorkHost } from "../../../../packages/pi-work/src/index.ts";
-import type { WorkItem, WorkMessage } from "../../../../packages/pi-work/src/index.ts";
+import { ensureWorkHost } from "#work";
+import type { WorkItem, WorkMessage } from "#work";
 
 export const PROBE = Symbol.for("pi-subagent.test.work-probe");
 

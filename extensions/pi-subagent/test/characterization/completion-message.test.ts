@@ -1,8 +1,14 @@
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { describe, expect, it, vi } from "vitest";
-import { toolCall } from "../../../../packages/pi-test-helpers/src/faux-session.ts";
-import { lastResult } from "../helpers/sdk.ts";
-import { delegate, gated, shape, startParent, untilAnnounced } from "./harness.ts";
+import { toolCall } from "#test-helpers";
+import { lastResult } from "#test/helpers/sdk";
+import {
+  delegate,
+  gated,
+  shape,
+  startParent,
+  untilAnnounced,
+} from "#test/characterization/harness";
 
 // What the parent is told when a background agent ends, for each way it can end.
 // The parent is a real session; the message is read from its transcript.

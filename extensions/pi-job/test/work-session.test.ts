@@ -10,19 +10,14 @@ import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { WORK_ENTRY, WORK_LOST, WORK_SERVICE } from "../../../packages/pi-work/src/index.ts";
-import type { WorkHost } from "../../../packages/pi-work/src/index.ts";
-import { service } from "../../../packages/pi-session-tree/src/index.ts";
-import {
-  fauxSession,
-  messageText,
-  toolCall,
-} from "../../../packages/pi-test-helpers/src/faux-session.ts";
-import { resetSessionTree } from "../../../packages/pi-test-helpers/src/globals.ts";
-import { createJobsExtension, CUSTOM_TYPE } from "../src/extension.ts";
-import type { JobManager } from "../src/jobs.ts";
-import { sessionOwners } from "../src/ownership.ts";
-import { sleep, tempDir, waitUntil } from "./helpers.ts";
+import { WORK_ENTRY, WORK_LOST, WORK_SERVICE } from "#work";
+import type { WorkHost } from "#work";
+import { service } from "#session-tree";
+import { fauxSession, messageText, toolCall, resetSessionTree } from "#test-helpers";
+import { createJobsExtension, CUSTOM_TYPE } from "#src/extension";
+import type { JobManager } from "#src/jobs";
+import { sessionOwners } from "#src/ownership";
+import { sleep, tempDir, waitUntil } from "#test/helpers";
 
 type Cleanup = Parameters<typeof tempDir>[0];
 

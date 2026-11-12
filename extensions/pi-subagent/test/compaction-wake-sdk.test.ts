@@ -1,8 +1,8 @@
 import type { AssistantMessage, Context, SimpleStreamOptions } from "@earendil-works/pi-ai";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { expect, it } from "vitest";
-import { gated } from "./characterization/harness.ts";
-import { offlineAgentDir, realChildSession } from "./helpers/sdk.ts";
+import { gated } from "#test/characterization/harness";
+import { offlineAgentDir, realChildSession } from "#test/helpers/sdk";
 
 // A wake run (roadmap step 9) prompts the child's session; Pi refuses a prompt while a manual
 // compaction runs. A child extension can start one (`ctx.compact()`), and the wake can arrive

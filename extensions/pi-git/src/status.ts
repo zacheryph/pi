@@ -6,12 +6,12 @@
  * runs and reviews). Transient failures are retried (see `retry.ts`); nothing
  * here ever writes to GitHub.
  */
-import { isRecord } from "../../../packages/pi-foundations/src/guards.ts";
+import { isRecord } from "#foundations/guards";
 
 import { execFile } from "node:child_process";
-import { graphqlFacts, parsePrUrls, restFacts } from "./observe.ts";
-import { prKey, prUrl, type PrFacts, type PrRef } from "./prs.ts";
-import { withRetry, type RetryOptions } from "./retry.ts";
+import { graphqlFacts, parsePrUrls, restFacts } from "#src/observe";
+import { prKey, prUrl, type PrFacts, type PrRef } from "#src/prs";
+import { withRetry, type RetryOptions } from "#src/retry";
 
 /** The fields `gh pr view --json` is asked for. */
 export const GH_FIELDS =

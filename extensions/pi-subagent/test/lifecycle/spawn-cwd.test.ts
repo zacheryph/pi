@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
 import { resolveSpawnCwd } from "#src/lifecycle/spawn-cwd";
-import { tempDir } from "../../../../packages/pi-test-helpers/src/temp.ts";
+import { tempDir } from "#test-helpers";
 
 describe("resolveSpawnCwd", () => {
   let base: string;

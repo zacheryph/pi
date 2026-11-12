@@ -4,16 +4,16 @@
   "private": true,
   "license": "MIT",
   "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  },
   "description": "Shared terminal layout, views, overlays and widget primitives for the personal Pi bundle.",
   "files": [
     "src",
     "README.md",
     "LICENSE"
   ],
-  "imports": {
-    "#src/*": "./src/*",
-    "#test/*": "./test/*"
-  },
   "engines": {
     "node": ">=24"
   },
@@ -27,5 +27,11 @@
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
     "@earendil-works/pi-tui": "*"
+  },
+  "imports": {
+    "#src/*": "./src/*.ts",
+    "#test/*": "./test/*.ts",
+    "#foundations/*": "pi-foundations/*",
+    "#test-helpers": "pi-test-helpers"
   }
 }

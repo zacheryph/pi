@@ -1,7 +1,7 @@
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { expect, it } from "vitest";
 import type { SubagentSnapshot } from "#src/observation/snapshot";
-import { delegate, gated, startParent, untilAnnounced } from "./characterization/harness.ts";
+import { delegate, gated, startParent, untilAnnounced } from "#test/characterization/harness";
 
 it("publishes live state, restores finished history on reload, and replaces the roster after /tree", async () => {
   const snapshots: SubagentSnapshot[] = [];

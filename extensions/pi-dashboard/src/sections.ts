@@ -1,17 +1,17 @@
-import { GIT_SNAPSHOT_VERSION, type GitSnapshotEvent } from "../../pi-git/src/events.ts";
+import { GIT_SNAPSHOT_VERSION, type GitSnapshotEvent } from "#git/events";
 import {
   STASH_SNAPSHOT_VERSION,
   type StashPreviewResult,
   type StashSnapshotEvent,
-} from "../../pi-stash/src/events.ts";
-import { TODO_SNAPSHOT_VERSION, type TodoSnapshotEvent } from "../../pi-todo/src/events.ts";
+} from "#stash/events";
+import { TODO_SNAPSHOT_VERSION, type TodoSnapshotEvent } from "#todo/events";
 import type {
   GitSection,
   StashPreview,
   StashSection,
   TodoHistory,
   TodoSection,
-} from "./protocol.ts";
+} from "#src/protocol";
 
 // Producers own the in-process contracts. These projections bound data for the
 // hub connection rather than revalidating the producers' internal state.

@@ -16,8 +16,8 @@ import {
   startAgent,
   tool,
   untilMessages,
-} from "../support/session.ts";
-import { repository } from "../support/repo.ts";
+} from "#test/support/session";
+import { repository } from "#test/support/repo";
 
 const CARDS = ["git:context", "stash:context", "subagent:roster", "todo:context"];
 

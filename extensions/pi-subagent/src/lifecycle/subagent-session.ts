@@ -30,7 +30,7 @@ import { getSessionContextPercent } from "#src/lifecycle/usage";
 import { extractText } from "#src/session/context";
 import { getAgentConversation } from "#src/session/conversation";
 import type { SessionMessage, ThinkingLevel } from "#src/types";
-import type { WorkItemView } from "../../../../packages/pi-work/src/index.ts";
+import type { WorkItemView } from "#work";
 
 /** Outcome of one turn loop. */
 export interface TurnLoopResult {

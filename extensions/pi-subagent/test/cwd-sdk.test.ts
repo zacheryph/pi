@@ -11,8 +11,8 @@ import {
   agentIdIn,
   lastResult,
   scriptSides,
-} from "./helpers/sdk.ts";
-import { toolCall } from "../../../packages/pi-test-helpers/src/faux-session.ts";
+} from "#test/helpers/sdk";
+import { toolCall } from "#test-helpers";
 
 // A real orchestrator session hands a worker a directory it owns (a worktree)
 // through subagent_start's cwd, then resumes the worker there; both runs finish

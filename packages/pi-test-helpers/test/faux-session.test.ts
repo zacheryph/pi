@@ -7,8 +7,9 @@ import {
   messageText,
   toolCall,
   toolResults,
-} from "#src/faux-session.ts";
-import { clearSlots, slots } from "#src/globals.ts";
+  clearSlots,
+  slots,
+} from "#src/index";
 
 it("runs a real session against scripted responses and reads tool results back", async () => {
   const h = await fauxSession({

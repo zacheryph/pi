@@ -1,4 +1,4 @@
-import { errorText } from "../../../../packages/pi-foundations/src/errors.ts";
+import { errorText } from "#foundations/errors";
 import { dirname, join } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AgentTypeRegistry } from "#src/config/agent-types";
@@ -6,12 +6,7 @@ import { LOCKABLE_FIELDS, type LockableField } from "#src/config/invocation-conf
 import { composeAgentInstructions, parseFragments } from "#src/config/prompt-fragments";
 import { normalizeMaxTurns } from "#src/lifecycle/turn-limits";
 import type { AgentConfig, AgentVisibility } from "#src/types";
-import {
-  showExplorer,
-  type Block,
-  type ExplorerView,
-  type Tone,
-} from "../../../../packages/pi-ui/src/index.ts";
+import { showExplorer, type Block, type ExplorerView, type Tone } from "#ui";
 
 export type AgentsBrowserRegistry = Pick<
   AgentTypeRegistry,

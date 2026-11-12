@@ -1,8 +1,8 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it, onTestFinished, vi } from "vitest";
-import { settingsDirs } from "../../../packages/pi-test-helpers/src/temp.ts";
-import { gitSettings } from "../src/config.ts";
+import { settingsDirs } from "#test-helpers";
+import { gitSettings } from "#src/config";
 
 afterEach(() => vi.restoreAllMocks());
 const setup = () => settingsDirs(onTestFinished, "git.json", "pi-git-config-");

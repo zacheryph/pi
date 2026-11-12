@@ -1,7 +1,7 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it } from "vitest";
-import { type TodoState, type TodoTask } from "../src/state.js";
+import { type TodoState, type TodoTask } from "#src/state";
 import {
   formatTodoAge,
   formatTodoClock,
@@ -9,13 +9,9 @@ import {
   renderTodoText,
   todoTaskDetail,
   type TodoRenderConfig,
-} from "../src/ui/render.js";
-import {
-  renderBlocks,
-  sanitizeText as sanitizeTodoText,
-  type Block,
-} from "../../../packages/pi-ui/src/index.ts";
-import { plainTheme, ansiTheme, stripAnsi } from "../../../packages/pi-test-helpers/src/theme.ts";
+} from "#src/ui/render";
+import { renderBlocks, sanitizeText as sanitizeTodoText, type Block } from "#ui";
+import { plainTheme, ansiTheme, stripAnsi } from "#test-helpers";
 
 const theme = plainTheme as Theme;
 const colored = ansiTheme as Theme;

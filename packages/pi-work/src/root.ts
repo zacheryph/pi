@@ -20,9 +20,9 @@
  * `LandingTracker` (landing.ts) of the instance that provided the host, and by no other: an
  * instance that only finds a host forwards the run boundaries and reads nothing.
  */
-import { readEntries } from "../../pi-session-state/src/index.ts";
+import { readEntries } from "#session-state";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { provide, service } from "../../pi-session-tree/src/index.ts";
+import { provide, service } from "#session-tree";
 import {
   WORK_ENTRY,
   WORK_SERVICE,
@@ -31,10 +31,10 @@ import {
   type WorkHost,
   type WorkMessage,
   type WorkRecord,
-} from "./contract.ts";
-import type { BeforeSettleEvent, DeliveryHost } from "./delivery.ts";
-import { createWorkHost, type WorkHostRuntime, type WorkStore } from "./host.ts";
-import { createLandingTracker, type LandingTracker } from "./landing.ts";
+} from "#src/contract";
+import type { BeforeSettleEvent, DeliveryHost } from "#src/delivery";
+import { createWorkHost, type WorkHostRuntime, type WorkStore } from "#src/host";
+import { createLandingTracker, type LandingTracker } from "#src/landing";
 
 /** How a producer reaches the session's host. */
 export interface WorkAccess {

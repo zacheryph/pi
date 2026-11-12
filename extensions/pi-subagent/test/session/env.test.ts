@@ -2,7 +2,7 @@ import { execSync } from "node:child_process";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { detectEnv } from "#src/session/env";
 import type { ShellExec } from "#src/types";
-import { tempDir } from "../../../../packages/pi-test-helpers/src/temp.ts";
+import { tempDir } from "#test-helpers";
 
 /** ShellExec stub that shells out via child_process. */
 function mockExec(): ShellExec {

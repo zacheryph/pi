@@ -4,12 +4,7 @@
 
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import {
-  bool,
-  defineSettings,
-  string,
-  type SettingsOf,
-} from "../../../packages/pi-foundations/src/settings.ts";
+import { bool, defineSettings, string, type SettingsOf } from "#foundations/settings";
 
 /** Expand `~/` and resolve a relative root against `cwd`. */
 export function resolveRoot(root: string, cwd: string): string {

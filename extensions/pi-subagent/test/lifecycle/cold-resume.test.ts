@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
 import { reopenRefusal, resolveSavedModel } from "#src/lifecycle/cold-resume";
 import { makeModel } from "#test/helpers/make-model";
-import { tempDir } from "../../../../packages/pi-test-helpers/src/temp.ts";
+import { tempDir } from "#test-helpers";
 
 describe("reopenRefusal", () => {
   let dir: string;

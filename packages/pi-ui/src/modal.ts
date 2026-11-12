@@ -6,8 +6,8 @@ import type {
   OverlayOptions,
   TUI,
 } from "@earendil-works/pi-tui";
-import { sanitizeText } from "./text.ts";
-import type { DisposableComponent } from "./types.ts";
+import { sanitizeText } from "#src/text";
+import type { DisposableComponent } from "#src/types";
 
 export type ModalContext = Pick<ExtensionContext, "mode" | "hasUI" | "ui">;
 export type ModalFactory<T> = (

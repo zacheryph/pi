@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import { fakePi } from "../../../../packages/pi-test-helpers/src/fake-pi.ts";
+import { fakePi } from "#test-helpers";
 
 /**
  * A fake `pi` with every ExtensionAPI member pi-subagent's composition root

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ansiTheme } from "#src/theme.ts";
-import { fakeCustomUi, fakeTui } from "#src/ui.ts";
+import { ansiTheme, fakeCustomUi, fakeTui } from "#src/index";
 
 type Probe = { render(width: number): string[]; close(value: string): void };
 const factory = (

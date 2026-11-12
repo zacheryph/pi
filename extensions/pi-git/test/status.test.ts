@@ -1,9 +1,9 @@
 import { chmodSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
-import { tempDir } from "../../../packages/pi-test-helpers/src/temp.ts";
-import { isTransientError, withRetry } from "../src/retry.ts";
-import { checksSettled } from "../src/prs.ts";
+import { tempDir } from "#test-helpers";
+import { isTransientError, withRetry } from "#src/retry";
+import { checksSettled } from "#src/prs";
 import {
   fetchWithGh,
   fetchWithMcp,
@@ -12,7 +12,7 @@ import {
   parsePrTarget,
   runGh,
   type ToolRunner,
-} from "../src/status.ts";
+} from "#src/status";
 
 const REF = { host: "github.com", owner: "acme", repo: "api", number: 12 };
 const noSleep = { sleep: vi.fn(async () => undefined) };

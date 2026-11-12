@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { registerRosterCard, ROSTER_CARD_TYPE } from "#src/handlers/roster-card";
-import type { AgentMessage, CardResult } from "../../../../packages/pi-session-state/src/index.ts";
-import { fakePi } from "../../../../packages/pi-test-helpers/src/fake-pi.ts";
+import type { AgentMessage, CardResult } from "#session-state";
+import { fakePi } from "#test-helpers";
 import type { DisplayStatus, SubagentStatus } from "#src/lifecycle/subagent-state";
 import { type PersistedSubagentRecord, SUBAGENT_RECORD_ENTRY } from "#src/persisted-record";
 import type { LiveAgentLike } from "#src/roster";

@@ -11,13 +11,12 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import type { TSchema } from "typebox";
 import { expect, vi } from "vitest";
-import { fakePi } from "../../../packages/pi-test-helpers/src/fake-pi.ts";
-import { messageText } from "../../../packages/pi-test-helpers/src/faux-session.ts";
-import todoExtension, { type TodoExtensionDependencies } from "../src/index.ts";
-import { todoSettings, type TodoConfig } from "../src/config.ts";
-import type { TodoRequest } from "../src/actions.ts";
-import type { TodoDetails } from "../src/state.ts";
-import { TODO_JOURNAL_TYPE, TODO_REVIEW_TYPE } from "../src/replay.ts";
+import { fakePi, messageText } from "#test-helpers";
+import todoExtension, { type TodoExtensionDependencies } from "#src/index";
+import { todoSettings, type TodoConfig } from "#src/config";
+import type { TodoRequest } from "#src/actions";
+import type { TodoDetails } from "#src/state";
+import { TODO_JOURNAL_TYPE, TODO_REVIEW_TYPE } from "#src/replay";
 
 type Command = Omit<RegisteredCommand, "name" | "sourceInfo">;
 export type TodoTool = ToolDefinition<TSchema, TodoDetails>;

@@ -16,7 +16,7 @@ import {
   trackChildren,
   type CallResult,
   type SessionNode,
-} from "../../pi-session-tree/src/index.ts";
+} from "#session-tree";
 
 export interface TreeService<T> {
   /** This session's id; undefined before `session_start` and after `session_shutdown`. */

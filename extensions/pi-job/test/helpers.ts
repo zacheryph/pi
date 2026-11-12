@@ -1,9 +1,8 @@
 import { existsSync, readFileSync } from "node:fs";
 import type { TestContext } from "node:test";
-import { tempDir as sharedTempDir } from "../../../packages/pi-test-helpers/src/temp.ts";
-import { waitFor } from "../../../packages/pi-test-helpers/src/wait.ts";
+import { tempDir as sharedTempDir, waitFor } from "#test-helpers";
 
-export { sleep, tick } from "../../../packages/pi-test-helpers/src/wait.ts";
+export { sleep, tick } from "#test-helpers";
 
 /** A temp directory removed when the test ends. */
 export const tempDir = (t: Pick<TestContext, "after">): string => sharedTempDir(t, "pi-job-test-");

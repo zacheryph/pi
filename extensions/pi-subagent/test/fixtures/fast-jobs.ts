@@ -2,7 +2,7 @@
 // test. A child that loads it gets `job_start` and `job_watch` as a real session would.
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createJobsExtension } from "../../../pi-job/src/extension.ts";
+import { createJobsExtension } from "#job";
 
 export default createJobsExtension({
   logRoot: join(tmpdir(), "pi-subagent-test-jobs"),

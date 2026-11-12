@@ -5,7 +5,7 @@
  * finished agent leaves the widget after a turn of its parent, which a test may not catch.
  */
 import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
-import { plainTheme } from "../../../../packages/pi-test-helpers/src/theme.ts";
+import { plainTheme } from "#test-helpers";
 
 type Component = { render(width: number): string[]; invalidate(): void };
 type Factory = (tui: unknown, theme: unknown) => Component;

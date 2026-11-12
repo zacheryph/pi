@@ -18,7 +18,7 @@ import {
   type Line,
   type Span,
   type WidgetRow,
-} from "../../../../packages/pi-ui/src/index.ts";
+} from "#ui";
 
 /** Minimal agent snapshot for rendering — no class methods or mutation surface. */
 export interface WidgetAgent {

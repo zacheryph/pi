@@ -9,8 +9,8 @@ import {
   lifecycleLog,
   agentIdIn,
   lastResult,
-} from "./helpers/sdk.ts";
-import { toolCall } from "../../../packages/pi-test-helpers/src/faux-session.ts";
+} from "#test/helpers/sdk";
+import { toolCall } from "#test-helpers";
 
 // A real orchestrator session loads this extension and spawns a worker through
 // the subagent_start tool; the worker's lifecycle events reach the orchestrator's bus.

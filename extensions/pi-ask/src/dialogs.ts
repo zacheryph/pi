@@ -1,6 +1,6 @@
 import type { ExtensionUIContext, ExtensionUIDialogOptions } from "@earendil-works/pi-coding-agent";
-import type { AskAnswer, AskOutcome, AskQuestion } from "./questions.ts";
-import { TYPE_LABEL } from "./questionnaire.ts";
+import type { AskAnswer, AskOutcome, AskQuestion } from "#src/questions";
+import { TYPE_LABEL } from "#src/questionnaire";
 
 type Dialogs = Pick<ExtensionUIContext, "select" | "input">;
 

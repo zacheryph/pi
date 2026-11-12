@@ -1,5 +1,5 @@
-import { isRecord } from "../../../packages/pi-foundations/src/guards.ts";
-import { type TodoDetails, type TodoState, type TodoStatus, TodoValidationError } from "./state.ts";
+import { isRecord } from "#foundations/guards";
+import { type TodoDetails, type TodoState, type TodoStatus, TodoValidationError } from "#src/state";
 
 /**
  * Local sidecar beside upstream's pure snapshot engine: per-task status/message

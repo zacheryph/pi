@@ -2,9 +2,16 @@ import { rmSync } from "node:fs";
 import type { Context } from "@earendil-works/pi-ai";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { describe, expect, it } from "vitest";
-import { toolCall } from "../../../../packages/pi-test-helpers/src/faux-session.ts";
-import { lastResult } from "../helpers/sdk.ts";
-import { delegate, gated, sendCall, shape, startParent, untilAnnounced } from "./harness.ts";
+import { toolCall } from "#test-helpers";
+import { lastResult } from "#test/helpers/sdk";
+import {
+  delegate,
+  gated,
+  sendCall,
+  shape,
+  startParent,
+  untilAnnounced,
+} from "#test/characterization/harness";
 
 // What the parent sees of its agents after the session reloads. The extension
 // is torn down and set up again over the same session file, so nothing is live:

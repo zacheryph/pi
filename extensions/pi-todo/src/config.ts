@@ -1,10 +1,4 @@
-import {
-  bool,
-  defineSettings,
-  int,
-  oneOf,
-  type SettingsOf,
-} from "../../../packages/pi-foundations/src/settings.ts";
+import { bool, defineSettings, int, oneOf, type SettingsOf } from "#foundations/settings";
 
 /** Same layering as subagents, without requiring its package to be installed. */
 export const todoSettings = defineSettings({

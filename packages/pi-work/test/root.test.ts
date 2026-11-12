@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fakePi } from "../../pi-test-helpers/src/fake-pi.ts";
-import { resetSessionTree } from "../../pi-test-helpers/src/globals.ts";
-import { provide, service } from "../../pi-session-tree/src/index.ts";
+import { fakePi, resetSessionTree } from "#test-helpers";
+import { provide, service } from "#session-tree";
 import {
   createWorkHost,
   ensureWorkHost,
@@ -10,7 +9,7 @@ import {
   WORK_SERVICE,
   type WorkHost,
   type WorkRecord,
-} from "../src/index.ts";
+} from "#src/index";
 
 afterEach(resetSessionTree);
 

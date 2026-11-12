@@ -1,4 +1,4 @@
-import { isRecord } from "../../../packages/pi-foundations/src/guards.ts";
+import { isRecord } from "#foundations/guards";
 import { Type, type Static } from "typebox";
 
 export const MAX_QUESTIONS = 4;

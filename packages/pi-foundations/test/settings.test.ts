@@ -10,7 +10,7 @@ import {
   onTestFinished,
   vi,
 } from "vitest";
-import { settingsDirs, tempDir } from "../../pi-test-helpers/src/temp.ts";
+import { settingsDirs, tempDir } from "#test-helpers";
 import {
   bool,
   defineSettings,
@@ -25,7 +25,7 @@ import {
   patchSettingsFile,
   readSettingsFile,
   writeSettingsFile,
-} from "../src/settings.ts";
+} from "#src/settings";
 
 let root: string;
 beforeEach(() => {

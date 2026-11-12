@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { defer, type Defer } from "./cleanup.ts";
+import { defer, type Defer } from "#src/cleanup";
 
 /**
  * A fresh directory under the system temp dir, removed when `cleanup` runs.

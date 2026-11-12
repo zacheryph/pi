@@ -15,8 +15,8 @@ import {
   startAgent,
   tool,
   untilMessages,
-} from "../support/session.ts";
-import { git, repository } from "../support/repo.ts";
+} from "#test/support/session";
+import { git, repository } from "#test/support/repo";
 
 it("records the subagent that ran in a worktree", async () => {
   const repo = repository();

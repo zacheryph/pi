@@ -1,5 +1,5 @@
-import { errorText } from "../../../packages/pi-foundations/src/errors.ts";
-import { isRecord } from "../../../packages/pi-foundations/src/guards.ts";
+import { errorText } from "#foundations/errors";
+import { isRecord } from "#foundations/guards";
 import {
   defineTool,
   type AgentToolResult,
@@ -7,20 +7,10 @@ import {
   type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
-import {
-  ensureWorkHost,
-  QUESTION_KIND,
-  type Json,
-  type WorkParent,
-} from "../../../packages/pi-work/src/index.ts";
-import {
-  bodyRow,
-  openInlineWindow,
-  sanitizeLine,
-  styleLine,
-} from "../../../packages/pi-ui/src/index.ts";
-import { CmuxNotifications } from "./cmux.ts";
-import { askWithDialogs } from "./dialogs.ts";
+import { ensureWorkHost, QUESTION_KIND, type Json, type WorkParent } from "#work";
+import { bodyRow, openInlineWindow, sanitizeLine, styleLine } from "#ui";
+import { CmuxNotifications } from "#src/cmux";
+import { askWithDialogs } from "#src/dialogs";
 import {
   ASK_ANSWER,
   ASK_ANSWER_RESULT,
@@ -29,8 +19,8 @@ import {
   openedEvent,
   type AskAnswerResult,
   type AskClosedEvent,
-} from "./events.ts";
-import { Questionnaire } from "./questionnaire.ts";
+} from "#src/events";
+import { Questionnaire } from "#src/questionnaire";
 import {
   AskParameters,
   formatForParent,
@@ -40,8 +30,8 @@ import {
   type AskAnswer,
   type AskOutcome,
   type AskQuestion,
-} from "./questions.ts";
-import { resolveRoute, type AskRoute } from "./route.ts";
+} from "#src/questions";
+import { resolveRoute, type AskRoute } from "#src/route";
 
 export interface AskDetails {
   route: "user" | "parent";

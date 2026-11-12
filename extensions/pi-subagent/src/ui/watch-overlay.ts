@@ -10,7 +10,7 @@ import { OVERLAY_WIDTH_PERCENT, type OverlayWidth } from "#src/settings";
 import { getDisplayName } from "#src/ui/display";
 import { renderWatchOverlay, watchHeight, type WatchSection } from "#src/ui/watch-renderer";
 import { WatchTail, type WatchResources } from "#src/ui/watch-tail";
-import { PassiveOverlay } from "../../../../packages/pi-ui/src/index.ts";
+import { PassiveOverlay } from "#ui";
 
 export type WatchAgent = Pick<
   Subagent,

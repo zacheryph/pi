@@ -29,8 +29,7 @@ import {
 } from "#test/helpers/mock-session";
 import { STUB_SNAPSHOT } from "#test/helpers/stub-ctx";
 import { turnLoopResult } from "#test/helpers/turn-loop-result";
-import { tick } from "../../../../packages/pi-test-helpers/src/wait.ts";
-import { tempDir } from "../../../../packages/pi-test-helpers/src/temp.ts";
+import { tick, tempDir } from "#test-helpers";
 import { makeAgentConfig } from "#test/helpers/make-agent-config";
 import { fakeWorkHost } from "#test/helpers/fake-work-host";
 

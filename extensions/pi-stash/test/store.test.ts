@@ -9,7 +9,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it, onTestFinished } from "vitest";
-import { tempDir } from "../../../packages/pi-test-helpers/src/temp.ts";
+import { tempDir } from "#test-helpers";
 import { BlobStore, defaultStashRoot, hashText } from "#src/store";
 
 const temp = (): string => tempDir(onTestFinished, "pi-stash-store-");

@@ -55,7 +55,7 @@ import {
   type TranscriptSource,
 } from "#src/ui/session-navigation";
 import { TranscriptContent } from "#src/ui/transcript-content";
-import { labeledRule } from "../../../../packages/pi-ui/src/index.ts";
+import { labeledRule } from "#ui";
 
 // ─────────────────────────────────────────────────────────────────────────────
 

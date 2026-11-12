@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describePr, mergePr, mergeStatus, type PrRecord, type PrStatus } from "../src/prs.ts";
+import { describePr, mergePr, mergeStatus, type PrRecord, type PrStatus } from "#src/prs";
 
 /** A status as one observation at `at` records it: each field stamped with that time. */
 const seen = (

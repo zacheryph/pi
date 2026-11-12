@@ -41,7 +41,7 @@ import {
   type SessionStartEvent,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
-import { ENABLE_ENV, MODEL, PROVIDER } from "./scenario.ts";
+import { ENABLE_ENV, MODEL, PROVIDER } from "#src/scenario";
 
 /** The repository root: the package a session loads as its bundle. */
 export const REPOSITORY_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");

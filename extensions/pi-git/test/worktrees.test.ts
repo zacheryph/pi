@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
-import { worktreeStatus } from "../src/git.ts";
+import { worktreeStatus } from "#src/git";
 import {
   atRisk,
   branchSlug,
@@ -12,8 +12,8 @@ import {
   removeWorktree,
   within,
   worktreePath,
-} from "../src/worktrees.ts";
-import { addRemote, commit, run, sandbox, type Sandbox } from "./support/repos.ts";
+} from "#src/worktrees";
+import { addRemote, commit, run, sandbox, type Sandbox } from "#test/support/repos";
 
 let box: Sandbox;
 beforeEach(() => {

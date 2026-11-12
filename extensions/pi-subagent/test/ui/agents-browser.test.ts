@@ -11,10 +11,8 @@ import {
   showAgentsBrowser,
   type AgentsBrowserOptions,
 } from "#src/ui/agents-browser";
-import { Explorer, renderBlocks, type Block } from "../../../../packages/pi-ui/src/index.ts";
-import { plainTheme } from "../../../../packages/pi-test-helpers/src/theme.ts";
-import { tempDir } from "../../../../packages/pi-test-helpers/src/temp.ts";
-import { fakeCustomUi, fakeTui } from "../../../../packages/pi-test-helpers/src/ui.ts";
+import { Explorer, renderBlocks, type Block } from "#ui";
+import { plainTheme, tempDir, fakeCustomUi, fakeTui } from "#test-helpers";
 
 const identity = plainTheme;
 const plainDetail = (blocks: unknown) => renderBlocks(blocks as Block[], 1000, identity).join("\n");

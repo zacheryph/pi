@@ -16,8 +16,8 @@ import {
   createMockSession,
   createSubagentSessionStub,
   toSubagentSession,
-} from "./helpers/mock-session";
-import { subagentPi } from "./helpers/subagent-pi.ts";
+} from "#test/helpers/mock-session";
+import { subagentPi } from "#test/helpers/subagent-pi";
 
 const makePi = () =>
   subagentPi({

@@ -15,7 +15,7 @@
  * extensions did or did not install. `prepare` is a synchronous contribution hook:
  * extensions require tools before SDK creation, without the core knowing their keys.
  */
-import { errorText } from "../../../../packages/pi-foundations/src/errors.ts";
+import { errorText } from "#foundations/errors";
 
 import type { TurnBudget } from "#src/lifecycle/turn-limits";
 

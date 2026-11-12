@@ -12,7 +12,7 @@ import {
   renderStopped,
 } from "#src/tools/result-renderer";
 import type { AgentDetails, Theme } from "#src/ui/display";
-import { markupTheme } from "../../../../packages/pi-test-helpers/src/theme.ts";
+import { markupTheme } from "#test-helpers";
 
 const makeTheme = (): Theme => markupTheme;
 

@@ -1,8 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
-import { defer } from "#src/cleanup.ts";
-import { settingsDirs, tempDir, writeFiles } from "#src/temp.ts";
+import { defer, settingsDirs, tempDir, writeFiles } from "#src/index";
 
 describe("defer", () => {
   it("calls a function target or a node:test context's after", () => {

@@ -9,16 +9,12 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { randomUUID } from "node:crypto";
 import { isAbsolute, resolve } from "node:path";
-import { parentOf } from "../../../packages/pi-session-tree/src/index.ts";
-import {
-  ensureWorkHost,
-  type Json,
-  type WorkMessage,
-} from "../../../packages/pi-work/src/index.ts";
-import { formatJobList, formatJobLine, formatNotification, jobTitle } from "./format.ts";
-import { CUSTOM_TYPE, JobItems, WORK_OWNER } from "./items.ts";
-import { envLimit, JobManager, type JobSnapshot } from "./jobs.ts";
-import { defaultLogRoot, pruneLogs } from "./logs.ts";
+import { parentOf } from "#session-tree";
+import { ensureWorkHost, type Json, type WorkMessage } from "#work";
+import { formatJobList, formatJobLine, formatNotification, jobTitle } from "#src/format";
+import { CUSTOM_TYPE, JobItems, WORK_OWNER } from "#src/items";
+import { envLimit, JobManager, type JobSnapshot } from "#src/jobs";
+import { defaultLogRoot, pruneLogs } from "#src/logs";
 import {
   expireReloadOwner,
   highestJobId,
@@ -26,8 +22,8 @@ import {
   stopOrphans,
   takeReloadOwner,
   type Owner,
-} from "./ownership.ts";
-import type { WatchProbe } from "./probe.ts";
+} from "#src/ownership";
+import type { WatchProbe } from "#src/probe";
 import {
   assertWatchable,
   createToolProbe,
@@ -36,8 +32,8 @@ import {
   parseToolCheck,
   toolCheckTitle,
   type ExecuteTool,
-} from "./toolcheck.ts";
-import type { WatchUntil } from "./watch.ts";
+} from "#src/toolcheck";
+import type { WatchUntil } from "#src/watch";
 
 export { CUSTOM_TYPE };
 export const MAX_TIMEOUT_SECONDS = 4 * 3600;

@@ -21,9 +21,11 @@ import {
   fauxRuntime,
   toolCall,
   toolResults,
-} from "../../../../packages/pi-test-helpers/src/faux-session.ts";
-import { clearSlots, slots } from "../../../../packages/pi-test-helpers/src/globals.ts";
-import { tempDir, writeFiles } from "../../../../packages/pi-test-helpers/src/temp.ts";
+  clearSlots,
+  slots,
+  tempDir,
+  writeFiles,
+} from "#test-helpers";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import { createChildLifecyclePublisher } from "#src/lifecycle/child-lifecycle";
 import {
@@ -31,7 +33,7 @@ import {
   type SubagentSessionDeps,
 } from "#src/lifecycle/create-subagent-session";
 import { buildAgentPrompt } from "#src/session/prompts";
-import { LIFECYCLE_LOG } from "../fixtures/lifecycle-recorder.ts";
+import { LIFECYCLE_LOG } from "#test/fixtures/lifecycle-recorder";
 
 /** Extension entry points children can load, by name. */
 export const EXTENSIONS = {

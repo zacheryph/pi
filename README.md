@@ -130,9 +130,14 @@ Root `pi.extensions` lists entry points explicitly. Pi loads each as its own
 extension; helper files and tests are not loaded as extensions. `packages/` holds
 libraries shared by extensions, including [pi-ui](packages/pi-ui/README.md) for
 terminal views and widget layout. They are workspaces with no `pi` entry, and
-extensions import them by relative path. Workspaces simplify
-development commands. All manifests are private;
-nothing needs publishing.
+extensions import them through aliases. Each workspace's `package.json` maps
+`#src/*` and `#test/*` to its own modules, and shared aliases such as `#ui`,
+`#work`, `#foundations/settings` and `#test-helpers` to workspace packages.
+Those packages export TypeScript source; root `file:` dependencies create the
+runtime links for production Git installs. TypeScript, Vitest, Node and Pi's
+loader use these same manifests, without duplicate TypeScript `paths` mappings.
+Relative TypeScript imports, when needed, use `.ts`. All manifests remain
+private; nothing needs publishing.
 
 ## Extensions
 

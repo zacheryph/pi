@@ -5,7 +5,7 @@ import {
   type Completion,
   type DeliveryHost,
   type SendMode,
-} from "../src/index.ts";
+} from "#src/index";
 
 function setup() {
   const sent: { ids: string[]; mode: SendMode }[] = [];

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { type AgentMessage, contextCard } from "#src/index";
-import { fakePi } from "../../pi-test-helpers/src/fake-pi.ts";
+import { fakePi } from "#test-helpers";
 
 const TYPE = "example:context";
 

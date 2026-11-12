@@ -1,9 +1,9 @@
-import { errorText } from "../../../packages/pi-foundations/src/errors.ts";
+import { errorText } from "#foundations/errors";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { treeService } from "../../../packages/pi-session-state/src/index.ts";
-import { children, node } from "../../../packages/pi-session-tree/src/index.ts";
-import { cloneTodoActivity, type TodoActivity, type TodoTaskActivity } from "./activity.ts";
-import type { TodoRequest, TodoTaskPatch } from "./actions.ts";
+import { treeService } from "#session-state";
+import { children, node } from "#session-tree";
+import { cloneTodoActivity, type TodoActivity, type TodoTaskActivity } from "#src/activity";
+import type { TodoRequest, TodoTaskPatch } from "#src/actions";
 import {
   agentLabel,
   claimHolders,
@@ -14,8 +14,8 @@ import {
   type TodoClaimScope,
   type TodoClaimsEntry,
   type TodoHandoff,
-} from "./claims.ts";
-import { cloneTodoState, type TodoDetails, type TodoState, TodoValidationError } from "./state.ts";
+} from "#src/claims";
+import { cloneTodoState, type TodoDetails, type TodoState, TodoValidationError } from "#src/state";
 
 /** Session-tree service name. */
 export const BROKER_NAME = "todo:broker";

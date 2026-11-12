@@ -11,15 +11,9 @@
  * and `appendCustomMessageEntry`. Only for a transcript no live session holds, since two writers
  * would interleave.
  */
-import { customData } from "../../../../packages/pi-session-state/src/index.ts";
+import { customData } from "#session-state";
 import { debugLog } from "#src/debug";
-import {
-  lostMessage,
-  openRecords,
-  WORK_ENTRY,
-  type WorkItemView,
-  type WorkRecord,
-} from "../../../../packages/pi-work/src/index.ts";
+import { lostMessage, openRecords, WORK_ENTRY, type WorkItemView, type WorkRecord } from "#work";
 
 /** The slice of `SessionManager` this reads and writes through. */
 export interface TranscriptStore {

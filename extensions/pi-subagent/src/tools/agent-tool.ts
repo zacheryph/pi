@@ -20,7 +20,7 @@ import {
 } from "#src/tools/spawn-config";
 import type { ParentSessionInfo, Subagent } from "#src/types";
 import { type AgentDetails, getDisplayName, type Theme } from "#src/ui/display";
-import { ICONS } from "../../../../packages/pi-ui/src/index.ts";
+import { ICONS } from "#ui";
 
 // ---- Deps interfaces ----
 

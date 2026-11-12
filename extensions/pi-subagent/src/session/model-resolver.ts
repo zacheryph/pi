@@ -4,11 +4,8 @@
  */
 import type { Model } from "@earendil-works/pi-ai";
 
-import {
-  resolveModel,
-  type ModelRegistry as Registry,
-} from "../../../../packages/pi-foundations/src/models.ts";
-export { resolveModel, LATEST_SUFFIX } from "../../../../packages/pi-foundations/src/models.ts";
+import { resolveModel, type ModelRegistry as Registry } from "#foundations/models";
+export { resolveModel, LATEST_SUFFIX } from "#foundations/models";
 export type ModelRegistry = Registry<Model<any>>;
 
 /** Successful model resolution — `model` is the resolved or inherited model instance. */

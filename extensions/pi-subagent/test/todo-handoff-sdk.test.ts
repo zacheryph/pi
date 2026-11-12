@@ -11,8 +11,8 @@ import {
   TODO_TOOLS,
   SUBAGENT_TOOLS,
   lastResult,
-} from "./helpers/sdk.ts";
-import { toolCall } from "../../../packages/pi-test-helpers/src/faux-session.ts";
+} from "#test/helpers/sdk";
+import { toolCall } from "#test-helpers";
 
 // A real orchestrator session (pi-subagent + pi-todo) hands two tasks to a
 // worker through handoff.todo. Scripted model responses, real SDK sessions.

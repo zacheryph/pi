@@ -1,4 +1,4 @@
-import type { SubagentSnapshot } from "../../pi-subagent/src/observation/snapshot.ts";
+import type { SubagentSnapshot } from "#subagent/observation/snapshot";
 import { describe, expect, it } from "vitest";
 import { SubagentTracker } from "#src/subagents";
 

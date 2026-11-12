@@ -3,8 +3,8 @@ import { join } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { transcriptWork } from "#src/lifecycle/transcript-work";
-import { tempDir } from "../../../../packages/pi-test-helpers/src/temp.ts";
-import { WORK_ENTRY, WORK_LOST } from "../../../../packages/pi-work/src/index.ts";
+import { tempDir } from "#test-helpers";
+import { WORK_ENTRY, WORK_LOST } from "#work";
 
 // The work an agent's transcript holds open, read and settled with no live session, on a real
 // session file and Pi's own session manager.

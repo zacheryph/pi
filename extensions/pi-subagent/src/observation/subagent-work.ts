@@ -30,7 +30,7 @@
 import { debugLog } from "#src/debug";
 import { completionMessage, questionMessage, updateMessage } from "#src/observation/notification";
 import type { Subagent } from "#src/types";
-import type { Json, WorkHost, WorkItem } from "../../../../packages/pi-work/src/index.ts";
+import type { Json, WorkHost, WorkItem } from "#work";
 
 /** The `owner` of every item this extension opens. */
 export const WORK_OWNER = "pi-subagent";

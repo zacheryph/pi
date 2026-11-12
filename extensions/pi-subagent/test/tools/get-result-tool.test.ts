@@ -21,7 +21,7 @@ import {
   toSubagentSession,
 } from "#test/helpers/mock-session";
 import { STUB_CTX } from "#test/helpers/stub-ctx";
-import { plainTheme, markupTheme } from "../../../../packages/pi-test-helpers/src/theme.ts";
+import { plainTheme, markupTheme } from "#test-helpers";
 
 const testRegistry = new AgentTypeRegistry(() => new Map());
 

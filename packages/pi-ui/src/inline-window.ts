@@ -1,9 +1,9 @@
 import type { Focusable, TUI, TuiMouseEvent, TuiMouseEventResult } from "@earendil-works/pi-tui";
-import { bodyRow, labeledRule, titleText } from "./layout.ts";
-import type { ModalContext, ModalFactory } from "./modal.ts";
-import { paint } from "./style.ts";
-import { sanitizeLine } from "./text.ts";
-import type { DisposableComponent, Title, UITheme } from "./types.ts";
+import { bodyRow, labeledRule, titleText } from "#src/layout";
+import type { ModalContext, ModalFactory } from "#src/modal";
+import { paint } from "#src/style";
+import { sanitizeLine } from "#src/text";
+import type { DisposableComponent, Title, UITheme } from "#src/types";
 
 /**
  * What an inline window reads from the renderer. Pi's fullscreen TUI reports

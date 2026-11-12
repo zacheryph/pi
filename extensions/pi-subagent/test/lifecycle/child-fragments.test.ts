@@ -19,7 +19,7 @@ import {
   createSubagentSessionDeps,
   createSubagentSessionIO,
 } from "#test/helpers/subagent-session-io";
-import { tempDir } from "../../../../packages/pi-test-helpers/src/temp.ts";
+import { tempDir } from "#test-helpers";
 
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();

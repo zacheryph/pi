@@ -1,14 +1,13 @@
 import { existsSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
-import { fakePi } from "../../../packages/pi-test-helpers/src/fake-pi.ts";
-import { resetSessionTree } from "../../../packages/pi-test-helpers/src/globals.ts";
-import { GIT_SNAPSHOT_EVENT, type GitSnapshotEvent } from "../src/events.ts";
-import { service } from "../../../packages/pi-session-tree/src/index.ts";
-import piGit, { SERVICE_NAME } from "../src/index.ts";
-import { GhUnavailable, type GhRunner } from "../src/status.ts";
-import { LEDGER_TYPE, type WorktreeRecord } from "../src/ledger.ts";
-import { commit, run, sandbox, type Sandbox } from "./support/repos.ts";
+import { fakePi, resetSessionTree } from "#test-helpers";
+import { GIT_SNAPSHOT_EVENT, type GitSnapshotEvent } from "#src/events";
+import { service } from "#session-tree";
+import piGit, { SERVICE_NAME } from "#src/index";
+import { GhUnavailable, type GhRunner } from "#src/status";
+import { LEDGER_TYPE, type WorktreeRecord } from "#src/ledger";
+import { commit, run, sandbox, type Sandbox } from "#test/support/repos";
 
 /** One wall clock for every session in a test, as in a real process. */
 let clock = 1_000;
@@ -595,7 +594,7 @@ describe("subagents", () => {
     const child = await start("child");
     await child.tool("git_worktree_create", { repo: "src/api", branch: "tie" });
     const adopted = parent.ledger().at(-1)!;
-    const service = (await import("../../../packages/pi-session-tree/src/index.ts")).service<{
+    const service = (await import("#session-tree")).service<{
       adopt(record: unknown): boolean;
     }>("parent", "pi-git")!;
 

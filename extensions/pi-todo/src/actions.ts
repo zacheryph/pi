@@ -1,4 +1,4 @@
-import { latestTodoMessage, type TodoActivity, type TodoUpdate } from "./activity.ts";
+import { latestTodoMessage, type TodoActivity, type TodoUpdate } from "#src/activity";
 import {
   type TodoDetails,
   type TodoState,
@@ -6,7 +6,7 @@ import {
   TodoValidationError,
   removeCompletedTasks,
   writeTodoSnapshot,
-} from "./state.ts";
+} from "#src/state";
 
 /** Upstream input plus an optional history message; upstream ignores the extra field. */
 export interface TodoTaskPatch extends TodoTaskInput {

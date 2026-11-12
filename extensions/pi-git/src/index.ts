@@ -14,7 +14,7 @@
  * is published as `git:snapshot`, and a context-only card restores it for the
  * model after a compaction, reload, resume or `/tree`.
  */
-import { errorText } from "../../../packages/pi-foundations/src/errors.ts";
+import { errorText } from "#foundations/errors";
 
 import {
   defineTool,
@@ -24,14 +24,14 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { resolve } from "node:path";
 import { Type } from "typebox";
-import { showExplorer, sanitizeText } from "../../../packages/pi-ui/src/index.ts";
-import { contextCard, treeService } from "../../../packages/pi-session-state/src/index.ts";
-import { CARD_TYPE, contextCard as ledgerCard } from "./card.ts";
-import { gitSettings, type GitConfig } from "./config.ts";
-import { GIT_SNAPSHOT_EVENT, snapshotEvent, type GitSnapshotEvent } from "./events.ts";
-import { readLedger, type Ledger } from "./fold.ts";
-import { git, realPath, resolveCommit, type BaseRef, type WorktreeStatus } from "./git.ts";
-import { isWorktreeRecord, LEDGER_TYPE, type WorktreeRecord } from "./ledger.ts";
+import { showExplorer, sanitizeText } from "#ui";
+import { contextCard, treeService } from "#session-state";
+import { CARD_TYPE, contextCard as ledgerCard } from "#src/card";
+import { gitSettings, type GitConfig } from "#src/config";
+import { GIT_SNAPSHOT_EVENT, snapshotEvent, type GitSnapshotEvent } from "#src/events";
+import { readLedger, type Ledger } from "#src/fold";
+import { git, realPath, resolveCommit, type BaseRef, type WorktreeStatus } from "#src/git";
+import { isWorktreeRecord, LEDGER_TYPE, type WorktreeRecord } from "#src/ledger";
 import {
   observe,
   outputText,
@@ -39,7 +39,7 @@ import {
   type Observation,
   type RepoResolver,
   type ToolResultLike,
-} from "./observe.ts";
+} from "#src/observe";
 import {
   checksSettled,
   isPrRecord,
@@ -55,8 +55,8 @@ import {
   type PrFacts,
   type PrRecord,
   type PrRef,
-} from "./prs.ts";
-import type { RetryOptions } from "./retry.ts";
+} from "#src/prs";
+import type { RetryOptions } from "#src/retry";
 import {
   fetchWithGh,
   fetchWithMcp,
@@ -66,7 +66,7 @@ import {
   type Fetched,
   type GhRunner,
   type ToolRunner,
-} from "./status.ts";
+} from "#src/status";
 import {
   explorerView,
   listText,
@@ -74,7 +74,7 @@ import {
   prListText,
   prStatusText,
   statusText,
-} from "./view.ts";
+} from "#src/view";
 import {
   atRisk,
   createWorktree,
@@ -84,7 +84,7 @@ import {
   removeWorktree,
   within,
   type FoundWorktree,
-} from "./worktrees.ts";
+} from "#src/worktrees";
 
 /** Session-tree service name: a child hands its records to its parent through it. */
 export const SERVICE_NAME = "pi-git";

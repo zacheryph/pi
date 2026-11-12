@@ -45,7 +45,7 @@ with `WORK_SERVICE = "work:v1"`.
 ## Using it from an extension
 
 ```ts
-import { ensureWorkHost } from "../../../packages/pi-work/src/index.ts";
+import { ensureWorkHost } from "#work";
 
 export default function extension(pi: ExtensionAPI) {
   const work = ensureWorkHost(pi); // call from the factory, before registering session_start

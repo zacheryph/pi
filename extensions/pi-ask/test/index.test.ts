@@ -1,19 +1,22 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi, onTestFinished } from "vitest";
-import { provide } from "../../../packages/pi-session-tree/src/index.ts";
+import { provide } from "#session-tree";
 import {
   createWorkHost,
   QUESTION_KIND,
   WORK_PARENT_SERVICE,
   WORK_SERVICE,
   type WorkRecord,
-} from "../../../packages/pi-work/src/index.ts";
-import piAsk from "../src/index.ts";
-import { waitFor } from "../../../packages/pi-test-helpers/src/wait.ts";
-import { fakePi } from "../../../packages/pi-test-helpers/src/fake-pi.ts";
-import { resetSessionTree } from "../../../packages/pi-test-helpers/src/globals.ts";
-import { fakeCustomUi } from "../../../packages/pi-test-helpers/src/ui.ts";
-import { ansiTheme, plainTheme } from "../../../packages/pi-test-helpers/src/theme.ts";
+} from "#work";
+import piAsk from "#src/index";
+import {
+  waitFor,
+  fakePi,
+  resetSessionTree,
+  fakeCustomUi,
+  ansiTheme,
+  plainTheme,
+} from "#test-helpers";
 import { visibleWidth } from "@earendil-works/pi-tui";
 
 const { execFile } = vi.hoisted(() => ({ execFile: vi.fn() }));

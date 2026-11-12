@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { fakePi } from "#src/fake-pi.ts";
+import { fakePi } from "#src/index";
 
 describe("fakePi", () => {
   it("records registrations and drives handlers, tools and commands", async () => {

@@ -1,12 +1,6 @@
-import { errorText } from "../../../packages/pi-foundations/src/errors.ts";
-import {
-  DetailView,
-  openModal,
-  type Block,
-  type ModalContext,
-  type Title,
-} from "../../../packages/pi-ui/src/index.ts";
-import type { TldrResult } from "./core.js";
+import { errorText } from "#foundations/errors";
+import { DetailView, openModal, type Block, type ModalContext, type Title } from "#ui";
+import type { TldrResult } from "#src/core";
 
 const LOADING: Block[] = [{ text: "Summarizing session…", tone: "muted" }];
 const MAX_ERROR = 360;

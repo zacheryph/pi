@@ -30,7 +30,7 @@ import {
 } from "#src/lifecycle/subagent-state";
 import type { TurnBudget } from "#src/lifecycle/turn-limits";
 import type { LifetimeUsage } from "#src/lifecycle/usage";
-import type { WorkItemView } from "../../../../packages/pi-work/src/index.ts";
+import type { WorkItemView } from "#work";
 import { subscribeSubagentObserver } from "#src/observation/record-observer";
 import type { RunConfig } from "#src/runtime";
 import type {

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { CARD_LINES, CARD_TITLE_LENGTH, cardTitle, contextCard } from "../src/card.ts";
-import { foldLedger } from "../src/fold.ts";
-import { LEDGER_TYPE, type WorktreeRecord } from "../src/ledger.ts";
-import { prKey, type PrRecord, type PrStatus } from "../src/prs.ts";
+import { CARD_LINES, CARD_TITLE_LENGTH, cardTitle, contextCard } from "#src/card";
+import { foldLedger } from "#src/fold";
+import { LEDGER_TYPE, type WorktreeRecord } from "#src/ledger";
+import { prKey, type PrRecord, type PrStatus } from "#src/prs";
 
 const worktree = (name: string, overrides: Partial<WorktreeRecord> = {}): WorktreeRecord => ({
   v: 1,

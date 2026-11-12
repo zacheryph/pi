@@ -1,4 +1,4 @@
-import type { Badge, Block, Tone } from "../../../packages/pi-ui/src/index.ts";
+import type { Badge, Block, Tone } from "#ui";
 
 /** Plain-data views, captured when a command opens. No model or settings mutation. */
 export interface InsightLegend {

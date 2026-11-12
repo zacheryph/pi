@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { errorText } from "../src/errors.ts";
-import { isRecord } from "../src/guards.ts";
-import { formatBytes, formatDuration, oneLine, plural } from "../src/format.ts";
+import { errorText } from "#src/errors";
+import { isRecord } from "#src/guards";
+import { formatBytes, formatDuration, oneLine, plural } from "#src/format";
 
 describe("plain-data helpers", () => {
   it("rejects arrays even when they have record-like properties", () => {

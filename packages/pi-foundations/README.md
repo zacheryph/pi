@@ -3,8 +3,9 @@
 Shared settings, model lookup, guards and plain-data formatting primitives for this source bundle. This is a
 private library, not a Pi extension. Its settings module imports `getAgentDir`
 from Pi and `sanitizeLine` from `pi-ui`'s dependency-free `src/text.ts`; nothing
-else beyond Node. Import its source by relative path, just like
-`pi-session-tree`; Git installs do not link npm workspaces.
+else beyond Node. Import its modules through aliases such as
+`#foundations/settings` and `#foundations/format`. Workspace manifests map these
+to package exports; root `file:` dependencies create the links for Git installs.
 
 - `src/settings.ts`: `defineSettings` declares an extension's settings once:
 
@@ -55,8 +56,8 @@ Run `npm run check -w pi-foundations` and `npm test -w pi-foundations`.
 
 ## Plain-data helpers
 
-These modules have no Pi or pi-ui dependencies. Import them directly by relative
-source path; terminal sanitizing remains in pi-ui and at consumer boundaries.
+These modules have no Pi or pi-ui dependencies. Import them through
+`#foundations/*`; terminal sanitizing remains in pi-ui and at consumer boundaries.
 
 - `src/guards.ts`: `isRecord` accepts non-null objects, including objects with a
   custom or null prototype, and rejects arrays.

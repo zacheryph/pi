@@ -5,7 +5,7 @@
  */
 import { KeybindingsManager, TUI_KEYBINDINGS } from "@earendil-works/pi-tui";
 import { vi } from "vitest";
-import { plainTheme, type TestTheme } from "./theme.ts";
+import { plainTheme, type TestTheme } from "#src/theme";
 
 /** A terminal of `rows` x `columns` that records render requests. */
 export function fakeTui(rows = 30, columns = 80) {

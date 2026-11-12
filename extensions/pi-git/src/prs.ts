@@ -8,7 +8,7 @@
  * said; `git_pr_status` and `/git:refresh` read GitHub for fresh status.
  */
 
-import { LEDGER_VERSION } from "./ledger.ts";
+import { LEDGER_VERSION } from "#src/ledger";
 
 export type PrOrigin = "created" | "referenced";
 export type PrState = "open" | "closed" | "merged";

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { expectBounded, expectPadded, NARROW_WIDTHS, WIDE_TEXT } from "#src/render.ts";
+import { expectBounded, expectPadded, NARROW_WIDTHS, WIDE_TEXT } from "#src/index";
 
 describe("render assertions", () => {
   it("accept padded rows and blank rows too narrow for padding", () => {

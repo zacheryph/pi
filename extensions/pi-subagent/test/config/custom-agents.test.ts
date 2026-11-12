@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished } from "vitest";
 import { loadCustomAgents } from "#src/config/custom-agents";
 import { composeAgentInstructions } from "#src/config/prompt-fragments";
-import { tempDir } from "../../../../packages/pi-test-helpers/src/temp.ts";
+import { tempDir } from "#test-helpers";
 
 describe("loadCustomAgents", () => {
   let tmpDir: string;

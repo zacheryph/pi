@@ -7,7 +7,7 @@ import { SubagentManager } from "#src/lifecycle/subagent-manager";
 import { createSubagentSessionStub, openItem, toSubagentSession } from "#test/helpers/mock-session";
 import { STUB_SNAPSHOT } from "#test/helpers/stub-ctx";
 import { turnLoopResult } from "#test/helpers/turn-loop-result";
-import { tick } from "../../../../packages/pi-test-helpers/src/wait.ts";
+import { tick } from "#test-helpers";
 
 // An idle agent with open work is waiting, not done (roadmap step 9). The work host belongs to
 // the child's session; these tests stand in for it through `params.work`, the policy the agent

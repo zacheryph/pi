@@ -1,15 +1,10 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { KeybindingsManager, TUI_KEYBINDINGS } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
-import {
-  expectPadded,
-  NARROW_WIDTHS,
-  WIDE_TEXT,
-} from "../../../packages/pi-test-helpers/src/render.ts";
-import { ansiTheme, stripAnsi } from "../../../packages/pi-test-helpers/src/theme.ts";
-import { Explorer } from "../../../packages/pi-ui/src/index.ts";
-import type { GitSnapshotEvent, GitSnapshotPr, GitSnapshotWorktree } from "../src/events.ts";
-import { explorerView, LIST_LIMIT, listText, prExplorerView, statusText } from "../src/view.ts";
+import { expectPadded, NARROW_WIDTHS, WIDE_TEXT, ansiTheme, stripAnsi } from "#test-helpers";
+import { Explorer } from "#ui";
+import type { GitSnapshotEvent, GitSnapshotPr, GitSnapshotWorktree } from "#src/events";
+import { explorerView, LIST_LIMIT, listText, prExplorerView, statusText } from "#src/view";
 
 // Colors every token so width math must ignore escape sequences.
 const ansi = ansiTheme as Theme;

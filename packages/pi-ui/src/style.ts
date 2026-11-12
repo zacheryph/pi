@@ -1,6 +1,6 @@
 import { truncateToWidth } from "@earendil-works/pi-tui";
-import { sanitizeLine } from "./text.ts";
-import type { UIColor, UITheme } from "./types.ts";
+import { sanitizeLine } from "#src/text";
+import type { UIColor, UITheme } from "#src/types";
 
 /**
  * Semantic tones. Extensions say what text means; this module alone decides how

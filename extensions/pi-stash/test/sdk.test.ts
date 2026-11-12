@@ -15,16 +15,16 @@ import {
   type StashSnapshotEvent,
 } from "#src/events";
 import type { EventBus } from "@earendil-works/pi-coding-agent";
-import { provide, service } from "../../../packages/pi-session-tree/src/index.ts";
+import { provide, service } from "#session-tree";
 import {
   fauxSession,
   loadResources,
   toolCall as call,
   toolResults,
   type FauxRequest,
-} from "../../../packages/pi-test-helpers/src/faux-session.ts";
-import { resetSessionTree } from "../../../packages/pi-test-helpers/src/globals.ts";
-import { tempDir as makeTempDir } from "../../../packages/pi-test-helpers/src/temp.ts";
+  resetSessionTree,
+  tempDir as makeTempDir,
+} from "#test-helpers";
 
 afterEach(resetSessionTree);
 

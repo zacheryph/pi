@@ -7,20 +7,19 @@ import type { ToolResultMessage } from "@earendil-works/pi-ai";
 import { Check } from "typebox/value";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { todoSettings } from "../src/config.ts";
-import type { TodoRequest } from "../src/actions.ts";
-import type { TodoState } from "../src/state.ts";
-import { TODO_JOURNAL_TYPE } from "#src/replay.ts";
-import { showTodoBrowser } from "../src/ui/browser.ts";
-import { TODO_SNAPSHOT_EVENT, type TodoSnapshotEvent } from "#src/events.ts";
-import { CONTEXT_TYPE, harness, started, T0 } from "./harness.ts";
-import { plainTheme, ansiTheme, stripAnsi } from "../../../packages/pi-test-helpers/src/theme.ts";
-import { withSlot } from "../../../packages/pi-test-helpers/src/globals.ts";
+import { todoSettings } from "#src/config";
+import type { TodoRequest } from "#src/actions";
+import type { TodoState } from "#src/state";
+import { TODO_JOURNAL_TYPE } from "#src/replay";
+import { showTodoBrowser } from "#src/ui/browser";
+import { TODO_SNAPSHOT_EVENT, type TodoSnapshotEvent } from "#src/events";
+import { CONTEXT_TYPE, harness, started, T0 } from "#test/harness";
+import { plainTheme, ansiTheme, stripAnsi, withSlot } from "#test-helpers";
 
 // Browser interaction has its own component tests. Here test command routing,
 // branch snapshots, and headless behavior independently of terminal input.
-vi.mock("../src/ui/browser.ts", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../src/ui/browser.ts")>();
+vi.mock("#src/ui/browser", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("#src/ui/browser")>();
   return { ...actual, showTodoBrowser: vi.fn(actual.showTodoBrowser) };
 });
 afterEach(() => vi.clearAllMocks());

@@ -1,5 +1,5 @@
 // Loaded by Pi's real extension loader in sdk.test.ts; imports the library by relative path.
-import { provide, sessionTree } from "../../src/index.ts";
+import { provide, sessionTree } from "#src/index";
 
 export default function provider(): void {
   (globalThis as Record<symbol, unknown>)[Symbol.for("pi-session-tree.test.provider")] =

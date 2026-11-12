@@ -6,10 +6,10 @@ import {
   inlineWindowOpen,
   openInlineWindow,
   type InlineWindowHost,
-} from "../src/inline-window.ts";
-import { bodyRow } from "../src/layout.ts";
-import type { DisposableComponent } from "../src/types.ts";
-import { keys, plain, theme, wheel } from "./helpers.ts";
+} from "#src/inline-window";
+import { bodyRow } from "#src/layout";
+import type { DisposableComponent } from "#src/types";
+import { keys, plain, theme, wheel } from "#test/helpers";
 
 /** A fullscreen host whose transcript follows its end until scrolled. */
 function host(following: boolean | undefined = true) {

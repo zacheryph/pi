@@ -1,4 +1,4 @@
-import { errorText } from "../../../packages/pi-foundations/src/errors.ts";
+import { errorText } from "#foundations/errors";
 import { StringEnum } from "@earendil-works/pi-ai";
 import {
   type AgentToolResult,
@@ -22,14 +22,14 @@ import {
   type TodoReviewEntry,
   type TodoReviewState,
   unreviewedTodoTasks,
-} from "./activity.ts";
+} from "#src/activity";
 import {
   applyTodoRequest,
   formatTodoContext,
   formatTodoState,
   type TodoAction,
   type TodoRequest,
-} from "./actions.ts";
+} from "#src/actions";
 import {
   agentLabel,
   applyTodoClaims,
@@ -37,11 +37,11 @@ import {
   TODO_CLAIMS_TYPE,
   type TodoClaim,
   type TodoClaimsEntry,
-} from "./claims.ts";
-import { createTodoDelegation, type DelegatedView } from "./delegation.ts";
-import { registerTodoCommands } from "./commands.ts";
-import { todoSettings, type TodoConfig } from "./config.ts";
-import { TODO_SNAPSHOT_EVENT, todoSnapshotEvent } from "./events.ts";
+} from "#src/claims";
+import { createTodoDelegation, type DelegatedView } from "#src/delegation";
+import { registerTodoCommands } from "#src/commands";
+import { todoSettings, type TodoConfig } from "#src/config";
+import { TODO_SNAPSHOT_EVENT, todoSnapshotEvent } from "#src/events";
 import {
   cloneTodoState,
   createEmptyTodoState,
@@ -51,24 +51,17 @@ import {
   type TodoChangeSummary,
   type TodoDetails,
   type TodoState,
-} from "./state.ts";
+} from "#src/state";
 import {
   renderTodoText,
   todoMessageLine,
   todoTaskPresentation,
   todoWidgetView,
   type TodoRenderConfig,
-} from "./ui/render.ts";
-import {
-  bodyRow,
-  clip,
-  renderWidget,
-  sanitizeLine,
-  sanitizeText,
-  styleLine,
-} from "../../../packages/pi-ui/src/index.ts";
-import { replayTodoSession, TODO_JOURNAL_TYPE, TODO_REVIEW_TYPE } from "./replay.ts";
-import { contextCard } from "../../../packages/pi-session-state/src/index.ts";
+} from "#src/ui/render";
+import { bodyRow, clip, renderWidget, sanitizeLine, sanitizeText, styleLine } from "#ui";
+import { replayTodoSession, TODO_JOURNAL_TYPE, TODO_REVIEW_TYPE } from "#src/replay";
+import { contextCard } from "#session-state";
 
 const WIDGET_KEY = "todo:widget";
 const CONTEXT_TYPE = "todo:context";

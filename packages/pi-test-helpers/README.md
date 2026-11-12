@@ -3,15 +3,17 @@
 Test helpers shared by every workspace in this repository: temp directories,
 polling, themes, render assertions, a fake `ExtensionAPI`, and real Pi sessions
 on an offline faux model. Development only: no extension imports it, and it is
-not in the bundle manifest. Import a module by relative path, like the other
-packages:
+not in the bundle manifest. Import the barrel through the workspace alias:
 
 ```ts
-import { tempDir } from "../../../packages/pi-test-helpers/src/temp.ts";
+import { fakePi, tempDir, waitFor } from "#test-helpers";
 ```
 
-Each module stands alone, so a pure unit test does not load Pi's SDK. Modules
-marked _vitest_ import vitest; the rest also work under `node:test` (pi-job).
+The barrel evaluates all helper modules, including their Pi SDK and Vitest
+imports. Importing it does not create a session, register teardown hooks or
+clear global state. Modules marked _vitest_ use Vitest spies or assertions;
+the common helpers also work under `node:test` (pi-job). Package-internal
+imports stay direct so they do not cycle through the barrel.
 
 ## Cleanup (`src/cleanup.ts`)
 

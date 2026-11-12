@@ -6,7 +6,7 @@ import {
   renderGetResultLines,
 } from "#src/tools/get-result-renderer";
 import type { Theme } from "#src/ui/display";
-import { markupTheme } from "../../../../packages/pi-test-helpers/src/theme.ts";
+import { markupTheme } from "#test-helpers";
 
 const makeTheme = (): Theme => markupTheme;
 

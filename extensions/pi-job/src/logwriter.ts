@@ -1,5 +1,5 @@
 /** Size-capped, error-recording log file writer. */
-import { formatBytes } from "../../../packages/pi-foundations/src/format.ts";
+import { formatBytes } from "#foundations/format";
 import { closeSync, openSync, writeSync } from "node:fs";
 
 export const DEFAULT_LOG_CAP_BYTES = 50 * 1024 * 1024;

@@ -1,13 +1,13 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { tldrSettings } from "./config.js";
+import { tldrSettings } from "#src/config";
 import {
   parseTldrResponse,
   runTldrModel,
   selectTldrModel,
   sessionSnapshot,
   titleSlug,
-} from "./core.js";
-import { showTldr } from "./viewer.js";
+} from "#src/core";
+import { showTldr } from "#src/viewer";
 
 /** Autonomous title request is deliberately never awaited by the first agent run. */
 export default function piTldr(pi: ExtensionAPI): void {

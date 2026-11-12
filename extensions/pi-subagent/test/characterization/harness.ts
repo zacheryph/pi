@@ -19,13 +19,8 @@ import {
   offlineAgentDir,
   type Reply,
   scriptSides,
-} from "../helpers/sdk.ts";
-import {
-  fauxSession,
-  messageText,
-  toolCall,
-  toolResults,
-} from "../../../../packages/pi-test-helpers/src/faux-session.ts";
+} from "#test/helpers/sdk";
+import { fauxSession, messageText, toolCall, toolResults } from "#test-helpers";
 
 /** What one scripted reply may be: a message, or a function of the request it answers. */
 export type Step = Reply;

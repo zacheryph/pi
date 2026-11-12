@@ -10,8 +10,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import systemInsights from "#src/index";
 import { SKILL_READ_ENTRY } from "#src/skills";
 import type { InsightView } from "#src/types";
-import { fakeCustomUi } from "../../../packages/pi-test-helpers/src/ui.ts";
-import { fakePi } from "../../../packages/pi-test-helpers/src/fake-pi.ts";
+import { fakeCustomUi, fakePi } from "#test-helpers";
 
 const shown = vi.hoisted(() => [] as InsightView[]);
 vi.mock("#src/viewer", async (importOriginal) => {

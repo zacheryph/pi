@@ -2,7 +2,7 @@ import type { DisplayStatus } from "#src/lifecycle/subagent-state";
 import type { TurnBudget } from "#src/lifecycle/turn-limits";
 import { getLifetimeTotal } from "#src/lifecycle/usage";
 import { renderRunUpdates, renderStatusLabel } from "#src/observation/outcome-delivery";
-import type { Json, WorkMessage } from "../../../../packages/pi-work/src/index.ts";
+import type { Json, WorkMessage } from "#work";
 import type { Subagent } from "#src/types";
 
 /** Details attached to custom notification messages for visual rendering. */

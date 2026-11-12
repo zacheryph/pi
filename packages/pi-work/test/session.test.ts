@@ -15,11 +15,11 @@ import {
   messageText,
   toolCall,
   type FauxSession,
-} from "../../pi-test-helpers/src/faux-session.ts";
-import { resetSessionTree } from "../../pi-test-helpers/src/globals.ts";
-import { tempDir } from "../../pi-test-helpers/src/temp.ts";
-import { waitFor } from "../../pi-test-helpers/src/wait.ts";
-import { service } from "../../pi-session-tree/src/index.ts";
+  resetSessionTree,
+  tempDir,
+  waitFor,
+} from "#test-helpers";
+import { service } from "#session-tree";
 import {
   ensureWorkHost,
   WORK_ENTRY,
@@ -28,7 +28,7 @@ import {
   WORK_WAKE,
   type WorkHost,
   type WorkItem,
-} from "../src/index.ts";
+} from "#src/index";
 
 const DONE = "test:done";
 

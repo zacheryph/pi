@@ -10,10 +10,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { createJobsExtension, CUSTOM_TYPE } from "../src/extension.ts";
-import type { JobManager } from "../src/jobs.ts";
-import { sleep, tempDir, waitUntil } from "./helpers.ts";
-import { piAiEntry, runtimeDirectory } from "./runtime.ts";
+import { createJobsExtension, CUSTOM_TYPE } from "#src/extension";
+import type { JobManager } from "#src/jobs";
+import { sleep, tempDir, waitUntil } from "#test/helpers";
+import { piAiEntry, runtimeDirectory } from "#test/runtime";
 
 const RUNTIME = runtimeDirectory();
 const available = RUNTIME !== undefined && existsSync(join(RUNTIME, "dist/index.js"));

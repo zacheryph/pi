@@ -2,12 +2,11 @@ import type { Context, SimpleStreamOptions } from "@earendil-works/pi-ai";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { afterEach, expect, it, vi } from "vitest";
 import { WORK_WAKE_PROMPT } from "#src/lifecycle/run";
-import { toolCall } from "../../../packages/pi-test-helpers/src/faux-session.ts";
-import { resetSessionTree } from "../../../packages/pi-test-helpers/src/globals.ts";
-import { gated, startParent, untilAnnounced, type Step } from "./characterization/harness.ts";
-import { expectNoUnmanagedRuns, trackChildRuns } from "./helpers/managed-runs.ts";
-import { EXTENSIONS, offlineAgentDir } from "./helpers/sdk.ts";
-import { widgetUi } from "./helpers/widget-ui.ts";
+import { toolCall, resetSessionTree } from "#test-helpers";
+import { gated, startParent, untilAnnounced, type Step } from "#test/characterization/harness";
+import { expectNoUnmanagedRuns, trackChildRuns } from "#test/helpers/managed-runs";
+import { EXTENSIONS, offlineAgentDir } from "#test/helpers/sdk";
+import { widgetUi } from "#test/helpers/widget-ui";
 
 // Nested delegation needs no code of its own (roadmap step 9): the agents a child starts are items
 // in the child's own work host, so a child orchestrator that ends its turn with a worker running

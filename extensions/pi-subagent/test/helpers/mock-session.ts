@@ -3,7 +3,7 @@ import type { Mock } from "vitest";
 import { vi } from "vitest";
 import type { SubagentSession } from "#src/lifecycle/subagent-session";
 import { turnLoopResult } from "#test/helpers/turn-loop-result";
-import type { WorkItemView } from "../../../../packages/pi-work/src/index.ts";
+import type { WorkItemView } from "#work";
 
 /** The core shape returned by `createMockSession`. */
 export interface MockSession {

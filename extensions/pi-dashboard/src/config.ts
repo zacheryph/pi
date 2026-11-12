@@ -1,11 +1,5 @@
-import {
-  defineSettings,
-  int,
-  optional,
-  string,
-  type SettingsOf,
-} from "../../../packages/pi-foundations/src/settings.ts";
-import { DEFAULT_PORT } from "./protocol.ts";
+import { defineSettings, int, optional, string, type SettingsOf } from "#foundations/settings";
+import { DEFAULT_PORT } from "#src/protocol";
 
 /** Global only (`<agent dir>/dashboard.json`): one hub serves every project. */
 export const dashboardSettings = defineSettings({

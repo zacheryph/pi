@@ -142,6 +142,12 @@ const files = {
       version: "0.1.0",
       private: true,
       type: "module",
+      imports: {
+        "#src/*": "./src/*.ts",
+        "#test/*": "./test/*.ts",
+        "#test-helpers": "pi-test-helpers",
+        ...(values.settings ? { "#foundations/*": "pi-foundations/*" } : {}),
+      },
       description,
       keywords: ["pi-package", "pi-extension"],
       files: ["src", "README.md"],
