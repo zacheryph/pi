@@ -10,8 +10,10 @@ import { replayTodoSession } from "#src/replay";
 afterEach(resetSessionTree);
 
 /** One Pi session with pi-todo loaded and its own real event bus. */
-function session(config: Partial<TodoConfig> = {}) {
-  const manager = SessionManager.inMemory("/todo-delegation");
+function session(
+  config: Partial<TodoConfig> = {},
+  manager = SessionManager.inMemory("/todo-delegation"),
+) {
   const bus = createEventBus();
   const snapshots: TodoSnapshotEvent[] = [];
   bus.on(TODO_SNAPSHOT_EVENT, (data) => {
@@ -97,6 +99,8 @@ async function spawn(
   await child.emit("session_start");
   return child;
 }
+
+const AGENT = "a3f2b1c4-0000-0000";
 
 const claimEntries = (s: Session) =>
   s.manager
@@ -456,17 +460,125 @@ describe("handing tasks to a subagent", () => {
     ]);
   });
 
-  it("releases claims replayed at a later session start, since no subagent survives one", async () => {
+  it("releases on a disposed session, but not one that went with the parent's shutdown", async () => {
     const parent = await planned();
-    await spawn(parent, { keys: ["a"] });
-    const resumed = session();
-    for (const entry of parent.manager.getBranch())
-      resumed.manager.appendCustomEntry(
-        (entry as { customType: string }).customType,
-        (entry as { data: unknown }).data,
+    const child = await spawn(parent, { keys: ["a"] });
+    parent.bus.emit("subagent:session:disposed", {
+      sessionId: child.id,
+      agentId: AGENT,
+      kept: true,
+    });
+    expect(replayTodoSession({ sessionManager: parent.manager }).claims.size).toBe(1);
+    parent.bus.emit("subagent:session:disposed", { sessionId: child.id, agentId: AGENT });
+    expect(replayTodoSession({ sessionManager: parent.manager }).claims.size).toBe(0);
+  });
+
+  describe("across a reload or restart of the parent", () => {
+    /** The parent's next instance on the same session file, as a reload or restart makes it. */
+    async function restarted(parent: Session, child: Session) {
+      await child.execute({ action: "upsert", tasks: [{ key: "a", status: "in_progress" }] });
+      // pi-subagent disposes the children with the parent; their agents are kept.
+      parent.bus.emit("subagent:session:disposed", {
+        sessionId: child.id,
+        agentId: AGENT,
+        kept: true,
+      });
+      await child.emit("session_shutdown");
+      await parent.emit("session_shutdown");
+      return session({}, parent.manager);
+    }
+
+    /** pi-subagent reopens a waiting agent during its own session_start, before pi-todo's. */
+    async function reopened(next: Session) {
+      const child = session();
+      next.bus.emit("subagent:session:created", {
+        sessionId: child.id,
+        parentSessionId: next.id,
+        agentId: AGENT,
+      });
+      await child.emit("session_start");
+      return child;
+    }
+
+    it("keeps the claim of an agent that was reopened, and its updates reach the parent", async () => {
+      const parent = await planned();
+      const next = await restarted(parent, await spawn(parent, { keys: ["a", "b"] }));
+      const child = await reopened(next);
+      await next.emit("session_start");
+      await next.emit("resources_discover");
+
+      const plan = replayTodoSession({ sessionManager: next.manager });
+      expect(plan.claims.get(AGENT)?.keys).toEqual(["a", "b"]);
+      expect(plan.activity.get("a")?.updates.map((update) => update.message) ?? []).not.toContain(
+        "agent a3f2b1c4 ended (interrupted by a restart) with this task in progress",
       );
-    await resumed.emit("session_start");
-    expect(replayTodoSession({ sessionManager: resumed.manager }).claims.size).toBe(0);
+      expect(claimEntries(next).map((entry) => (entry as { op: string }).op)).toEqual(["claim"]);
+
+      // The child found no broker at its own start; it finds its claim when it next looks.
+      await child.execute({ action: "upsert", tasks: [{ key: "a", message: "CI is green" }] });
+      expect(
+        replayTodoSession({ sessionManager: next.manager }).activity.get("a")?.updates.at(-1),
+      ).toMatchObject({ message: "CI is green" });
+      expect(replayTodoSession({ sessionManager: child.manager }).state.tasks).toEqual([]);
+      expect(await child.context()).toContain("Your parent session handed you these tasks");
+    });
+
+    it("releases the claim of an agent that did not come back, and returns it on a later run", async () => {
+      const parent = await planned();
+      const next = await restarted(parent, await spawn(parent, { keys: ["a", "b"] }));
+      await next.emit("session_start");
+      // Kept until every extension has started: the agents are reopened during startup.
+      expect(replayTodoSession({ sessionManager: next.manager }).claims.size).toBe(1);
+      await next.emit("resources_discover");
+
+      const plan = replayTodoSession({ sessionManager: next.manager });
+      expect(plan.claims.size).toBe(0);
+      expect(plan.activity.get("a")?.updates.at(-1)).toMatchObject({
+        message: "agent a3f2b1c4 ended (interrupted by a restart) with this task in progress",
+      });
+      expect(plan.activity.get("b")?.updates ?? []).toEqual([]);
+      // The keys are free again for another agent.
+      expect(await next.emit("tool_call", handoffCall("other", { keys: ["b"] }))).toBeUndefined();
+      await next.emit("tool_result", { toolCallId: "other", isError: true });
+
+      // `subagent_send` runs the agent again: it gets back what nobody else holds.
+      next.bus.emit("subagent:resuming", { id: AGENT });
+      expect(replayTodoSession({ sessionManager: next.manager }).claims.get(AGENT)?.keys).toEqual([
+        "a",
+        "b",
+      ]);
+    });
+
+    it("reconciles at the first run where no resources_discover comes, and only once", async () => {
+      const parent = await planned();
+      const next = await restarted(parent, await spawn(parent, { keys: ["a"] }));
+      await next.emit("session_start");
+      await next.emit("before_agent_start");
+      expect(replayTodoSession({ sessionManager: next.manager }).claims.size).toBe(0);
+
+      // A claim made after startup is not reconciled away by the next run.
+      const child = await spawn(next, { keys: ["b"] }, "b7c1d2e3-0000-0000");
+      next.bus.emit("subagent:session:disposed", {
+        sessionId: child.id,
+        agentId: "b7c1d2e3-0000-0000",
+        kept: true,
+      });
+      await next.emit("before_agent_start");
+      expect(replayTodoSession({ sessionManager: next.manager }).claims.size).toBe(1);
+    });
+
+    it("releases at once the claims a fork inherits: its agents belong to the other session", async () => {
+      const parent = await planned();
+      await spawn(parent, { keys: ["a"] });
+      const forked = session();
+      for (const entry of parent.manager.getBranch())
+        forked.manager.appendCustomEntry(
+          (entry as { customType: string }).customType,
+          (entry as { data: unknown }).data,
+        );
+      await forked.emit("session_start", { reason: "fork" });
+      expect(replayTodoSession({ sessionManager: forked.manager }).claims.size).toBe(0);
+    });
   });
 
   it("reconciles stale claims, reservations and revisions after tree navigation", async () => {

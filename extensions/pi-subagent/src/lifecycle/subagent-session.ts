@@ -327,10 +327,13 @@ export class SubagentSession {
    * `publish: false` skips the final `disposed` event, for a session that was discarded before it
    * was ever used (see `StaleSessionError`).
    *
+   * `kept` marks the event for a session that goes away with its spawning session while the
+   * agent's record stays (see `ChildDisposedEvent.kept`).
+   *
    * Idempotent: the guard is set before the first await, so concurrent callers
    * (a retention sweep racing a manager teardown) emit and dispose exactly once.
    */
-  async dispose(reason: ChildShutdownReason = "quit", publish = true): Promise<void> {
+  async dispose(reason: ChildShutdownReason = "quit", publish = true, kept = false): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;
     this.turnFailure.unsubscribe();
@@ -347,6 +350,7 @@ export class SubagentSession {
       sessionId: this.meta.sessionId,
       ...(this.meta.agentId !== undefined ? { agentId: this.meta.agentId } : {}),
       ...(this.meta.toolCallId !== undefined ? { toolCallId: this.meta.toolCallId } : {}),
+      ...(kept ? { kept: true as const } : {}),
     });
   }
 }

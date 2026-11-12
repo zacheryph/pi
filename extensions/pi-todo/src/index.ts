@@ -626,14 +626,28 @@ export default function todoExtension(
     updateWidget(ctx);
     publish();
   };
-  const restoreDelegation = (ctx: ExtensionContext) => {
+  const restoreDelegation = (ctx: ExtensionContext, keepClaims = false) => {
     restore(ctx);
     // Tree navigation also changes the authoritative claim and revision history.
-    delegation.start(claims);
+    delegation.start(claims, keepClaims);
     updateWidget(ctx);
   };
-  pi.on("session_start", async (_event, ctx) => restoreDelegation(ctx));
+  // A start of the same session keeps its agents' claims: pi-subagent may reopen the agents.
+  // A fork's agents belong to the session it was forked from.
+  pi.on("session_start", async (event, ctx) =>
+    restoreDelegation(ctx, event.reason !== "fork" && event.reason !== "new"),
+  );
   pi.on("session_tree", async (_event, ctx) => restoreDelegation(ctx));
+  // `resources_discover` fires after every extension's session_start handler has finished, so
+  // the agents that go on are back by now. The first run is the fallback for a mode without it.
+  pi.on("resources_discover", async () => {
+    delegation.reconcile();
+    return undefined;
+  });
+  pi.on("before_agent_start", async () => {
+    delegation.reconcile();
+    return undefined;
+  });
   pi.on("session_compact", async () => {
     pi.appendEntry(TODO_JOURNAL_TYPE, journal(state, activity));
   });

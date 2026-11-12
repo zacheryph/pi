@@ -611,7 +611,8 @@ describe("suspending agents for a shutdown", () => {
     expect(child.stub.cancelWork).not.toHaveBeenCalled();
     expect(child.stub.reportCalledOff).not.toHaveBeenCalled();
     expect(child.stub.openItems).toHaveLength(1);
-    expect(child.stub.dispose).toHaveBeenCalledWith("reload");
+    // The last argument: the agent is kept, so what is tied to it (a todo claim) is too.
+    expect(child.stub.dispose).toHaveBeenCalledWith("reload", true, true);
     expect(h.events).toEqual([]);
     expect(agent.outcome).toBe("completed");
   });
@@ -621,7 +622,7 @@ describe("suspending agents for a shutdown", () => {
     const { child } = await waitingAgent(h);
     h.manager.suspend();
     await h.manager.dispose();
-    expect(child.stub.dispose).toHaveBeenCalledWith();
+    expect(child.stub.dispose).toHaveBeenCalledWith("quit", true, true);
   });
 
   it("cuts a running agent short as interrupted without calling its work off or reporting an outcome", async () => {

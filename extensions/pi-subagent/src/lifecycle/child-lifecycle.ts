@@ -154,6 +154,12 @@ export interface ChildCompletedEvent {
 export interface ChildDisposedEvent extends ChildRunIdentity {
   /** Child session id — the registry key. Must match `session-created`. */
   sessionId: string;
+  /**
+   * The session went away because the session that spawned it is shutting down (a reload, a quit,
+   * a session switch), not because the agent is done: its record is kept, and the next start may
+   * reopen it. Whoever tied something to the agent, not to this session, keeps it.
+   */
+  kept?: true;
 }
 
 /** Narrow emit seam — injected, never imports the Pi SDK. */

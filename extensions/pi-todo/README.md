@@ -207,10 +207,19 @@ subagent_start({
   widget and browser show `→ agent a3f2b1c4` on handed-over tasks; `todo:snapshot`
   tasks carry `claimedBy`.
 - **Released when the agent ends.** On `subagent:completed`, `failed`, `resumed` or
-  `child:disposed`, the claim is released and tasks it left `in_progress` get a
+  `subagent:session:disposed`, the claim is released and tasks it left `in_progress` get a
   flagged message ("agent a3f2b1c4 ended (failed) with this task in progress"). A
-  later run started by `subagent_send` (`subagent:resuming`) reclaims the agent's tasks that nobody else holds. Claims replayed at a later
-  session start are released, since no subagent survives one.
+  later run started by `subagent_send` (`subagent:resuming`) reclaims the agent's tasks that nobody else holds.
+- **Kept across a reload or restart.** A claim belongs to the agent, not to the
+  session it runs in. pi-subagent keeps agents when your session reloads or
+  restarts and reopens those still waiting on work (a CI watch, a question), so
+  their tasks stay theirs and their later updates still reach your list. Once
+  every extension has started, the claim of an agent that did not come back (its
+  run was cut short, or its work was lost) is released with the message "agent
+  a3f2b1c4 ended (interrupted by a restart) with this task in progress"; sending
+  it a message with `subagent_send` gives it back the tasks nobody else holds.
+  A fork and `/tree` release the claims they replay: those agents belong to
+  another session or branch.
 - You can still edit any task yourself, handed over or not.
 - A subagent working on handed-over tasks cannot hand them on to its own subagents
   yet; that `subagent_start` call is blocked. Without a handoff, a subagent keeps its own
