@@ -115,6 +115,6 @@ export async function showTodoBrowser(
   options: TodoBrowserOptions = {},
 ): Promise<void> {
   await showExplorer(ctx, todoExplorerView(state, options), {
-    unavailableMessage: "Read-only browser requires TUI mode.",
+    command: "/todo",
   });
 }

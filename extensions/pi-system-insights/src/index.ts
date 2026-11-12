@@ -15,11 +15,7 @@ export default function systemInsights(pi: ExtensionAPI): void {
     pi.registerCommand(name, {
       description,
       handler: async (_args, ctx) => {
-        if (ctx.mode !== "tui" || !ctx.hasUI) {
-          ctx.ui.notify("System insights requires interactive terminal mode.", "warning");
-          return;
-        }
-        await showInsightView(ctx, snapshot(ctx));
+        await showInsightView(ctx, () => snapshot(ctx));
       },
     });
   };

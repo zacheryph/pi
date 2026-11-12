@@ -19,7 +19,10 @@ import { withSlot } from "../../../packages/pi-test-helpers/src/globals.ts";
 
 // Browser interaction has its own component tests. Here test command routing,
 // branch snapshots, and headless behavior independently of terminal input.
-vi.mock("../src/ui/browser.ts", () => ({ showTodoBrowser: vi.fn(async () => {}) }));
+vi.mock("../src/ui/browser.ts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/ui/browser.ts")>();
+  return { ...actual, showTodoBrowser: vi.fn(actual.showTodoBrowser) };
+});
 afterEach(() => vi.clearAllMocks());
 
 const add = (key: string, subject = `Task ${key}`): TodoRequest => ({
@@ -574,9 +577,9 @@ describe("user commands", () => {
     const env = await started({ mode, hasUI: mode === "rpc" });
     await env.command("todo");
     await env.command("todo");
-    expect(showTodoBrowser).not.toHaveBeenCalled();
+    expect(showTodoBrowser).toHaveBeenCalled();
     expect(env.ui.notify).toHaveBeenCalledWith(
-      expect.stringContaining("requires TUI mode"),
+      expect.stringContaining("requires interactive terminal mode"),
       "warning",
     );
     expect(env.ui.custom).not.toHaveBeenCalled();
@@ -586,12 +589,13 @@ describe("user commands", () => {
     const headless = await started({ mode: "tui", hasUI: false });
     await headless.command("todo");
     await headless.command("todo:settings");
-    expect(showTodoBrowser).not.toHaveBeenCalled();
+    expect(showTodoBrowser).toHaveBeenCalled();
     expect(headless.ui.select).not.toHaveBeenCalled();
     expect(headless.ui.notify).toHaveBeenCalledWith(
       expect.stringContaining("settings require UI"),
       "warning",
     );
+    vi.mocked(showTodoBrowser).mockClear();
     const env = await started({ mode: "tui", hasUI: true });
     await env.execute(add("a"));
     await env.command("todo");

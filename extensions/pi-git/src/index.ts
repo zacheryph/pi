@@ -894,12 +894,9 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
       "Browse the pull requests this session opened or looked at, with the last status its tools showed",
     handler: async (_args, ctx) => {
       const current = snapshot();
-      if (!ctx.hasUI || ctx.mode !== "tui") {
-        ctx.ui.notify(sanitizeText(prListText(current.prs, true, now())), "info");
-        return;
-      }
-      await showExplorer(ctx, prExplorerView(current.prs, now()), {
-        unavailableMessage: "/git:prs requires interactive terminal mode.",
+      const at = now();
+      await showExplorer(ctx, prExplorerView(current.prs, at), {
+        fallback: () => prListText(current.prs, true, at),
       });
     },
   });
@@ -917,12 +914,9 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
         await removeInteractively(ctx);
         return;
       }
-      if (!ctx.hasUI || ctx.mode !== "tui") {
-        ctx.ui.notify(sanitizeText(listText(snapshot(), false)), "info");
-        return;
-      }
-      await showExplorer(ctx, explorerView(snapshot()), {
-        unavailableMessage: "/git:worktrees requires interactive terminal mode.",
+      const current = snapshot();
+      await showExplorer(ctx, explorerView(current), {
+        fallback: () => listText(current, false),
       });
     },
   });

@@ -63,7 +63,7 @@ describe("todo browser placement", () => {
     const { ctx, ui } = setup();
     await showTodoBrowser({ ...ctx, mode }, snapshot);
     expect(ui.custom).not.toHaveBeenCalled();
-    expect(ui.notify).toHaveBeenCalledWith("Read-only browser requires TUI mode.", "warning");
+    expect(ui.notify).toHaveBeenCalledWith("/todo requires interactive terminal mode.", "warning");
   });
 
   it("guards hasUI and captures state before opening", async () => {

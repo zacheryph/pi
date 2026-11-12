@@ -76,10 +76,6 @@ export function registerTodoCommands(pi: ExtensionAPI, controller: TodoControlle
     });
   };
   const list = async (_args: string, ctx: ExtensionCommandContext) => {
-    if (!ctx.hasUI || ctx.mode !== "tui") {
-      ctx.ui.notify("Task browser requires TUI mode. Use todo_list in other modes.", "warning");
-      return;
-    }
     await browse(ctx, "all");
   };
   register("todo", "Browse/search session tasks and dependency details", list);

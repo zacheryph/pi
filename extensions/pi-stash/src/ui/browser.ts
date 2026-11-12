@@ -4,6 +4,7 @@ import {
   type ExplorerView,
   type Line,
   type ModalContext,
+  type ModalOptions,
 } from "../../../../packages/pi-ui/src/index.ts";
 import { handleFor, type StashRecord } from "../state.ts";
 import { entrySummary, formatAge, formatBytes, originLabel, shortSession } from "./render.ts";
@@ -84,8 +85,10 @@ export async function showStashBrowser(
   entries: readonly StashRecord[],
   load: (record: StashRecord) => StashPreview,
   warning?: string,
+  options: ModalOptions = {},
 ): Promise<void> {
   await showExplorer(ctx, stashExplorerView(entries, load, warning), {
-    unavailableMessage: "/stash requires interactive terminal mode.",
+    command: "/stash",
+    ...options,
   });
 }

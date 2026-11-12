@@ -3,6 +3,10 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-12: Centralize browser fallback in pi-ui
+
+- Centralize browser availability in pi-ui; preserve non-TUI review journaling and branch guards.
+
 ## 2026-11-12: Settings declared with defineSettings
 
 Issue #128. `src/config.ts` declares `todoSettings` with pi-foundations' `defineSettings`

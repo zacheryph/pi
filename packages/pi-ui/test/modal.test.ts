@@ -115,6 +115,66 @@ describe("modal lifecycle", () => {
       expect(c.notify).toHaveBeenCalledOnce();
     }
   });
+  it.each(["print", "json", "rpc"] as const)(
+    "notifies sanitized fallback once in %s",
+    async (mode) => {
+      const c = context(mode);
+      const fallback = vi.fn(() => "before\x1b[31m red\x1b[0m\nsecond");
+      const build = vi.fn(() => ({ title: "Unused", items: [] }));
+      await showExplorer(c.ctx, build, { fallback, fallbackLevel: "warning" });
+      expect(fallback).toHaveBeenCalledOnce();
+      expect(build).not.toHaveBeenCalled();
+      expect(c.custom).not.toHaveBeenCalled();
+      expect(c.notify).toHaveBeenCalledExactlyOnceWith("before red\nsecond", "warning");
+    },
+  );
+  it("supports string and empty fallbacks and the default info level without UI", async () => {
+    const c = context("tui", false);
+    await openModal(c.ctx, vi.fn(), { fallback: "\x1b[2Jhello" });
+    expect(c.notify).toHaveBeenCalledExactlyOnceWith("hello", "info");
+    c.notify.mockClear();
+    await openModal(c.ctx, vi.fn(), { fallback: "" });
+    expect(c.notify).toHaveBeenCalledExactlyOnceWith("", "info");
+  });
+  it("uses one standard warning and sanitizes explicit overrides", async () => {
+    const c = context("print");
+    await showDetail(c.ctx, { title: "Unused", content: [] }, { command: "/example" });
+    expect(c.notify).toHaveBeenLastCalledWith(
+      "/example requires interactive terminal mode.",
+      "warning",
+    );
+    await openModal(c.ctx, vi.fn(), { unavailableMessage: "\x1b[2JCustom warning" });
+    expect(c.notify).toHaveBeenLastCalledWith("Custom warning", "warning");
+    await openModal(c.ctx, vi.fn());
+    expect(c.notify).toHaveBeenLastCalledWith(
+      "This view requires interactive terminal mode.",
+      "warning",
+    );
+  });
+  it("does not swallow fallback failures", async () => {
+    const c = context("print");
+    await expect(
+      openModal(c.ctx, vi.fn(), {
+        fallback: () => {
+          throw new Error("failed fallback");
+        },
+      }),
+    ).rejects.toThrow("failed fallback");
+    expect(c.notify).not.toHaveBeenCalled();
+    expect(c.custom).not.toHaveBeenCalled();
+  });
+  it("builds a lazy explorer once in TUI without evaluating the fallback", async () => {
+    const c = context();
+    const build = vi.fn(() => ({ title: "Lazy view", items: [] }));
+    const fallback = vi.fn(() => "unused");
+    const opening = showExplorer(c.ctx, build, { fallback });
+    const host = await c.mounted;
+    expect(build).toHaveBeenCalledOnce();
+    expect(fallback).not.toHaveBeenCalled();
+    expect(plain(host.render(80))).toContain("Lazy view");
+    host.handleInput?.("\x1b");
+    await opening;
+  });
   it("captures explorer nested data and detail titles before the factory runs", async () => {
     const c = context();
     const data = {

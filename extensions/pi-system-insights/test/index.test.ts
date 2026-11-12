@@ -9,10 +9,24 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import systemInsights from "#src/index";
 import { SKILL_READ_ENTRY } from "#src/skills";
-import { showInsightView } from "#src/viewer";
+import type { InsightView } from "#src/types";
+import { fakeCustomUi } from "../../../packages/pi-test-helpers/src/ui.ts";
 import { fakePi } from "../../../packages/pi-test-helpers/src/fake-pi.ts";
 
-vi.mock("#src/viewer", () => ({ showInsightView: vi.fn(async () => {}) }));
+const shown = vi.hoisted(() => [] as InsightView[]);
+vi.mock("#src/viewer", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("#src/viewer")>();
+  return {
+    ...actual,
+    showInsightView: vi.fn(async (ctx, view) => {
+      await actual.showInsightView(ctx, () => {
+        const snapshot = typeof view === "function" ? view() : view;
+        shown.push(snapshot);
+        return snapshot;
+      });
+    }),
+  };
+});
 
 const source = {
   path: "/project/skills/example/SKILL.md",
@@ -59,7 +73,7 @@ function harness() {
       skills: [skill],
       selectedTools: ["read"],
     })),
-    ui: { notify: vi.fn() },
+    ui: { notify: vi.fn(), custom: fakeCustomUi().custom },
   } as unknown as ExtensionCommandContext;
   systemInsights(pi);
   const events = new Map(
@@ -90,7 +104,10 @@ const result = (overrides: Partial<ToolResultEvent> = {}): ToolResultEvent =>
     ...overrides,
   }) as ToolResultEvent;
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  shown.length = 0;
+});
 
 describe("system insights commands", () => {
   it("registers exactly three commands and one metadata-only result observer", () => {
@@ -104,12 +121,7 @@ describe("system insights commands", () => {
   it("takes current effective prompt from getter, not base options", async () => {
     const h = harness();
     await h.commands.get("system:prompt")!.handler("", h.ctx);
-    expect(showInsightView).toHaveBeenCalledWith(
-      h.ctx,
-      expect.objectContaining({
-        text: "Exact current prompt\n<rules>custom</rules>",
-      }),
-    );
+    expect(shown[0]).toMatchObject({ text: "Exact current prompt\n<rules>custom</rules>" });
     expect(h.ctx.getSystemPromptOptions).not.toHaveBeenCalled();
     expect(h.appendEntry).not.toHaveBeenCalled();
   });
@@ -125,7 +137,7 @@ describe("system insights commands", () => {
       ],
     });
     await h.commands.get("system:tools")!.handler("", h.ctx);
-    const view = vi.mocked(showInsightView).mock.calls[0][1];
+    const view = shown[0];
     expect(view.items).toHaveLength(1);
     expect(JSON.stringify(view.items![0].detail)).not.toContain("Registry read description");
     expect(JSON.stringify(view.items![0].detail)).toContain("Rewritten model declaration");
@@ -139,7 +151,7 @@ describe("system insights commands", () => {
       "Before\n\n<tools>\nTool descriptions\n</tools>\n\n<skills>\nSkill catalog\n</skills>\n\nAfter";
     vi.mocked(h.ctx.getSystemPrompt).mockReturnValue(original);
     await h.commands.get("system:prompt")!.handler("", h.ctx);
-    const view = vi.mocked(showInsightView).mock.calls[0][1];
+    const view = shown[0];
     expect(view.text).toBe(
       "Before\n\n--- TOOLS [redacted] ---\n\n--- SKILLS [redacted] ---\n\nAfter",
     );
@@ -151,7 +163,7 @@ describe("system insights commands", () => {
   it("lists current discovered skills without reading files or adding evidence", async () => {
     const h = harness();
     await h.commands.get("system:skills")!.handler("", h.ctx);
-    const view = vi.mocked(showInsightView).mock.calls[0][1];
+    const view = shown[0];
     expect(view.items).toHaveLength(1);
     expect(view.items![0].description).toBe(skill.description);
     expect(JSON.stringify(view.items![0].detail)).toContain(skill.filePath);
@@ -162,7 +174,7 @@ describe("system insights commands", () => {
     const h = harness();
     const open = () => h.commands.get("system:skills")!.handler("", h.ctx);
     await open();
-    expect(vi.mocked(showInsightView).mock.lastCall![1].items![0].badge).toEqual({
+    expect(shown.at(-1)!.items![0].badge).toEqual({
       text: "[loaded]",
       tone: "dim",
     });
@@ -171,17 +183,17 @@ describe("system insights commands", () => {
       partial: false,
     });
     await open();
-    expect(vi.mocked(showInsightView).mock.lastCall![1].items![0].badge).toEqual({
+    expect(shown.at(-1)!.items![0].badge).toEqual({
       text: "[loaded]",
       tone: "success",
     });
     h.sessionManager.appendCompaction("Summary", marker, 100);
     await open();
-    expect(vi.mocked(showInsightView).mock.lastCall![1].items![0].badge).toEqual({
+    expect(shown.at(-1)!.items![0].badge).toEqual({
       text: "[loaded]",
       tone: "dim",
     });
-    expect(vi.mocked(showInsightView).mock.lastCall![1].legend).toEqual([
+    expect(shown.at(-1)!.legend).toEqual([
       { label: "[loaded]", tone: "success", meaning: "fresh observation" },
       { label: "[loaded]", tone: "dim", meaning: "unobserved/dirty" },
     ]);
@@ -194,7 +206,7 @@ describe("system insights commands", () => {
       Object.assign(h.ctx, { mode });
       for (const command of h.commands.values()) await command.handler("", h.ctx);
       expect(h.ctx.ui.notify).toHaveBeenCalledTimes(3);
-      expect(showInsightView).not.toHaveBeenCalled();
+      expect(shown).toHaveLength(0);
       expect(h.ctx.getSystemPrompt).not.toHaveBeenCalled();
       expect(h.ctx.getSystemPromptOptions).not.toHaveBeenCalled();
       expect(h.getAllTools).not.toHaveBeenCalled();
@@ -205,7 +217,7 @@ describe("system insights commands", () => {
     const h = harness();
     Object.assign(h.ctx, { hasUI: false });
     await h.commands.get("system:prompt")!.handler("", h.ctx);
-    expect(showInsightView).not.toHaveBeenCalled();
+    expect(shown).toHaveLength(0);
   });
 });
 
