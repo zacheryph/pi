@@ -1,5 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { sanitizeLine } from "../../pi-ui/src/text.ts";
 
 /**
  * Parameters for one layered settings load: describes where the files live,
@@ -94,4 +96,280 @@ export function patchSettingsFile(path: string, patch: object): void {
     return raw as Record<string, unknown>;
   });
   writeSettingsFile(path, { ...existing, ...patch }, true);
+}
+
+// ---- Declarative settings ----
+
+/** What a field's default or transform may depend on. */
+export interface SettingsContext {
+  /** Session working directory. */
+  cwd: string;
+  /** Pi agent directory holding the global file. */
+  agentDir: string;
+}
+
+/** Outcome of validating one raw JSON value; `reason` completes "`<key>` …". */
+export type FieldCheck<T> = { ok: true; value: T } | { ok: false; reason: string };
+
+/** Validates one setting. Without a default it can only be wrapped by `optional`. */
+export interface Validator<T> {
+  check(raw: unknown): FieldCheck<T>;
+}
+
+/** A validated setting with its default and an optional post-merge transform. */
+export interface Field<T> extends Validator<T> {
+  readonly default: T | ((context: SettingsContext) => T);
+  /** Applied to the merged value, default included. */
+  transform?(value: T, context: SettingsContext): T;
+}
+
+interface FieldOptions<T> {
+  default?: T | ((context: SettingsContext) => T);
+  transform?: (value: T, context: SettingsContext) => T;
+}
+
+/** A helper given a `default` builds a field; without one, a validator for `optional`. */
+export type Built<T, O> = O extends { default: unknown } ? Field<T> : Validator<T>;
+
+const ok = <T>(value: T): FieldCheck<T> => ({ ok: true, value });
+const fail = (reason: string): FieldCheck<never> => ({ ok: false, reason });
+
+function build<T, O extends FieldOptions<T>>(
+  check: (raw: unknown) => FieldCheck<T>,
+  options: O,
+): Built<T, O> {
+  const { default: fallback, transform } = options;
+  return { check, default: fallback, ...(transform ? { transform } : {}) } as Built<T, O>;
+}
+
+/** `true` or `false`. */
+export function bool<O extends FieldOptions<boolean>>(options: O): Built<boolean, O> {
+  return build(
+    (raw) => (typeof raw === "boolean" ? ok(raw) : fail("must be true or false")),
+    options,
+  );
+}
+
+interface RangeOptions {
+  min?: number;
+  max?: number;
+  /** Require a value strictly greater than `min`. */
+  exclusiveMin?: boolean;
+}
+
+function range(kind: string, { min, max, exclusiveMin }: RangeOptions): string {
+  if (min !== undefined && max !== undefined) return `must be ${kind} from ${min} to ${max}`;
+  if (min !== undefined)
+    return `must be ${kind} ${exclusiveMin ? "greater than" : "at least"} ${min}`;
+  if (max !== undefined) return `must be ${kind} at most ${max}`;
+  return `must be ${kind}`;
+}
+
+function inRange(value: number, { min, max, exclusiveMin }: RangeOptions): boolean {
+  if (min !== undefined && (exclusiveMin ? value <= min : value < min)) return false;
+  return max === undefined || value <= max;
+}
+
+/** A finite number, optionally bounded. */
+export function number<O extends FieldOptions<number> & RangeOptions>(
+  options: O,
+): Built<number, O> {
+  return build(
+    (raw) =>
+      typeof raw === "number" && Number.isFinite(raw) && inRange(raw, options)
+        ? ok(raw)
+        : fail(range("a number", options)),
+    options,
+  );
+}
+
+/** A safe integer, optionally bounded. */
+export function int<O extends FieldOptions<number> & RangeOptions>(options: O): Built<number, O> {
+  return build(
+    (raw) =>
+      typeof raw === "number" && Number.isSafeInteger(raw) && inRange(raw, options)
+        ? ok(raw)
+        : fail(range("an integer", options)),
+    options,
+  );
+}
+
+/** One of a fixed set of strings. */
+export function oneOf<const V extends string, O extends FieldOptions<V>>(
+  values: readonly V[],
+  options: O,
+): Built<V, O> {
+  return build(
+    (raw) =>
+      values.includes(raw as V)
+        ? ok(raw as V)
+        : fail(`must be one of ${values.map((value) => JSON.stringify(value)).join(", ")}`),
+    options,
+  );
+}
+
+/** A string, trimmed and required to be non-empty when asked. */
+export function string<O extends FieldOptions<string> & { trim?: boolean; nonEmpty?: boolean }>(
+  options: O,
+): Built<string, O> {
+  return build((raw) => {
+    if (typeof raw !== "string") return fail("must be a string");
+    const value = options.trim ? raw.trim() : raw;
+    return options.nonEmpty && !value ? fail("must be a non-empty string") : ok(value);
+  }, options);
+}
+
+/** A setting with no default: absent unless a file sets it. */
+export function optional<T>(validator: Validator<T>): Field<T | undefined> {
+  return { check: (raw) => validator.check(raw), default: undefined };
+}
+
+type ValueOf<F> = F extends { check(raw: unknown): FieldCheck<infer T> } ? T : never;
+type OptionalKeys<F> = { [K in keyof F]: undefined extends ValueOf<F[K]> ? K : never }[keyof F];
+
+/** The fully defaulted object a definition loads; `optional` fields may be absent. */
+export type SettingsValues<F extends Record<string, Field<unknown>>> = Flatten<
+  {
+    -readonly [K in keyof F as K extends OptionalKeys<F> ? never : K]: ValueOf<F[K]>;
+  } & { -readonly [K in OptionalKeys<F>]?: ValueOf<F[K]> }
+>;
+type Flatten<T> = { [K in keyof T]: T[K] };
+
+/** The loaded type of a definition, e.g. `SettingsOf<typeof stashSettings>`. */
+export type SettingsOf<S extends { defaults: (...args: never[]) => unknown }> = ReturnType<
+  S["defaults"]
+>;
+
+interface SettingsOptions<F extends Record<string, Field<unknown>>> {
+  /** Topic: files are `<agent dir>/<name>.json` and `.pi/<name>.json`; warnings say `[pi-<name>]`. */
+  name: string;
+  /** `global` reads only the agent directory; `layered` lets the project file override it. */
+  scope: "global" | "layered";
+  fields: F;
+  /** Offer `save`, which patches the project file. Layered definitions only. */
+  writable?: boolean;
+}
+
+export interface SettingsDefinition<F extends Record<string, Field<unknown>>> {
+  readonly name: string;
+  readonly scope: "global" | "layered";
+  readonly fields: F;
+  /** The global file, and the project file when layered. */
+  paths: (cwd: string, agentDir?: string) => { global: string; project?: string };
+  /** Every field at its default, transformed. Reads no files. */
+  defaults: (cwd?: string, agentDir?: string) => SettingsValues<F>;
+  /**
+   * Read the files and return a fully defaulted object. Never throws: a missing
+   * file is silent; an unreadable, unparseable or non-object file, or invalid
+   * and unknown fields, warn once per file and fall back to the lower layer.
+   */
+  load: (cwd: string, agentDir?: string) => SettingsValues<F>;
+}
+
+export interface WritableSettingsDefinition<
+  F extends Record<string, Field<unknown>>,
+> extends SettingsDefinition<F> {
+  /**
+   * Merge valid fields of `patch` into the project file, keeping its other keys.
+   * Invalid fields are dropped. Throws when the file cannot be read, parsed or written.
+   */
+  save: (cwd: string, patch: Partial<SettingsValues<F>>) => void;
+}
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === "object" && !Array.isArray(value);
+
+const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+/**
+ * Declare an extension's settings once: the files, every field's validation and
+ * default, and the loaded type. One behaviour for every extension; see `load`.
+ */
+export function defineSettings<const F extends Record<string, Field<unknown>>>(
+  options: SettingsOptions<F> & { writable: true },
+): WritableSettingsDefinition<F>;
+export function defineSettings<const F extends Record<string, Field<unknown>>>(
+  options: SettingsOptions<F>,
+): SettingsDefinition<F>;
+export function defineSettings<const F extends Record<string, Field<unknown>>>(
+  options: SettingsOptions<F>,
+): WritableSettingsDefinition<F> {
+  const { name, scope, fields, writable } = options;
+  if (writable && scope !== "layered") throw new Error(`[pi-${name}] only layered settings save`);
+  const filename = `${name}.json`;
+  const keys = Object.keys(fields) as (keyof F & string)[];
+  const warn = (text: string) => console.warn(sanitizeLine(`[pi-${name}] ${text}`));
+
+  const paths = (cwd: string, agentDir = getAgentDir()) => ({
+    global: join(agentDir, filename),
+    ...(scope === "layered" ? { project: join(cwd, ".pi", filename) } : {}),
+  });
+
+  const validate = (input: Record<string, unknown>, problems?: string[]) => {
+    const values: Record<string, unknown> = {};
+    for (const [key, raw] of Object.entries(input)) {
+      if (!Object.hasOwn(fields, key)) {
+        problems?.push(`${key} is not a setting`);
+        continue;
+      }
+      const result = fields[key].check(raw);
+      if (result.ok) values[key] = result.value;
+      else problems?.push(`${key} ${result.reason}`);
+    }
+    return values;
+  };
+
+  const readLayer = (path: string) => {
+    const input = readSettingsFile<Record<string, unknown>>(
+      path,
+      (raw) => {
+        if (!isObject(raw)) throw new Error("settings must be a JSON object");
+        return raw;
+      },
+      (error) => warn(`Ignoring settings at ${path}: ${message(error)}`),
+    );
+    const problems: string[] = [];
+    const values = validate(input, problems);
+    if (problems.length) warn(`Ignoring invalid settings at ${path}: ${problems.join("; ")}`);
+    return values;
+  };
+
+  const resolve = (layers: Record<string, unknown>[], context: SettingsContext) => {
+    const result: Record<string, unknown> = {};
+    for (const key of keys) {
+      const field = fields[key];
+      const layer = layers.findLast((values) => Object.hasOwn(values, key));
+      const value = layer
+        ? layer[key]
+        : typeof field.default === "function"
+          ? (field.default as (context: SettingsContext) => unknown)(context)
+          : field.default;
+      const final = field.transform ? field.transform(value, context) : value;
+      if (final !== undefined) result[key] = final;
+    }
+    return result as SettingsValues<F>;
+  };
+
+  const definition: SettingsDefinition<F> = {
+    name,
+    scope,
+    fields,
+    paths,
+    defaults: (cwd = process.cwd(), agentDir = getAgentDir()) => resolve([], { cwd, agentDir }),
+    load: (cwd, agentDir = getAgentDir()) => {
+      const { global, project } = paths(cwd, agentDir);
+      const layers = [readLayer(global), ...(project ? [readLayer(project)] : [])];
+      return resolve(layers, { cwd, agentDir });
+    },
+  };
+  if (!writable) return definition as WritableSettingsDefinition<F>;
+  return {
+    ...definition,
+    save: (cwd, patch) => {
+      const defined = Object.fromEntries(
+        Object.entries(patch).filter(([, value]) => value !== undefined),
+      );
+      patchSettingsFile(join(cwd, ".pi", filename), validate(defined));
+    },
+  };
 }
