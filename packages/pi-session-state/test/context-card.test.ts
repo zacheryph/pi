@@ -215,4 +215,43 @@ describe("contextCard with restore", () => {
     pending.resolve("late");
     expect(await result).toEqual({ messages: [user("hi")] });
   });
+
+  it("drops an async build even when the card is shown again at the same time", async () => {
+    const pending = deferred<string | undefined>();
+    let content: string | Promise<string | undefined> = pending.promise;
+    const h = setup({ build: () => content });
+    h.card.show();
+    const result = h.context([user("hi"), card("old")]);
+    h.card.hide();
+    h.card.show();
+    pending.resolve("stale");
+    expect(await result).toEqual({ messages: [user("hi")] });
+    content = "current";
+    expect(await h.context()).toMatchObject({ messages: [user("hi"), { content: "current" }] });
+  });
+
+  it("does not let an async restore undo a later explicit visibility change", async () => {
+    const pending = deferred<boolean>();
+    const h = setup({ due: () => pending.promise });
+    const starting = h.fake.emit("session_start");
+    h.card.hide();
+    pending.resolve(true);
+    await starting;
+    expect(h.card.shownAt()).toBeUndefined();
+  });
+
+  it.each(["session_tree", "session_compact"])(
+    "drops an async restore superseded by %s",
+    async (event) => {
+      const pending = deferred<boolean>();
+      let due: boolean | Promise<boolean> = pending.promise;
+      const h = setup({ due: () => due });
+      const starting = h.fake.emit("session_start");
+      due = false;
+      await h.fake.emit(event);
+      pending.resolve(true);
+      await starting;
+      expect(h.card.shownAt()).toBeUndefined();
+    },
+  );
 });

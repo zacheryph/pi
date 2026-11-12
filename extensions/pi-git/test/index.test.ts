@@ -4,7 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 
 import { fakePi } from "../../../packages/pi-test-helpers/src/fake-pi.ts";
 import { resetSessionTree } from "../../../packages/pi-test-helpers/src/globals.ts";
 import { GIT_SNAPSHOT_EVENT, type GitSnapshotEvent } from "../src/events.ts";
-import piGit from "../src/index.ts";
+import { service } from "../../../packages/pi-session-tree/src/index.ts";
+import piGit, { SERVICE_NAME } from "../src/index.ts";
 import { GhUnavailable, type GhRunner } from "../src/status.ts";
 import { LEDGER_TYPE, type WorktreeRecord } from "../src/ledger.ts";
 import { commit, run, sandbox, type Sandbox } from "./support/repos.ts";
@@ -357,9 +358,30 @@ describe("ledger", () => {
 });
 
 describe("background refresh", () => {
+  it("keeps the service withdrawn and card hidden when shutdown interrupts startup", async () => {
+    const first = await start();
+    await first.tool("git_worktree_create", { repo: "src/api", branch: "shutdown" });
+    first.pi.events.emit("subagent:session:created", {
+      agentId: "agent-1",
+      cwd: join(box.root, "api", "shutdown"),
+    });
+    const h = harness({
+      sessionId: "interrupted",
+      cwd: box.dir,
+      root: box.root,
+      entries: first.entries,
+    });
+    const starting = h.fire("session_start");
+    await h.fire("session_shutdown");
+    await starting;
+    expect(service("interrupted", SERVICE_NAME)).toBeUndefined();
+    const context = [...h.pi.on.mock.calls].find(([event]) => event === "context")!;
+    expect(await context[1]({ type: "context", messages: [] }, h.ctx)).toBeUndefined();
+  });
+
   /** A context that throws on every read, as Pi's does once its session is replaced. */
   const stale = (ctx: object) => {
-    for (const key of ["hasUI", "ui", "cwd"])
+    for (const key of ["hasUI", "ui", "cwd", "sessionManager"])
       Object.defineProperty(ctx, key, {
         get() {
           throw new Error("This extension ctx is stale after session replacement or reload.");

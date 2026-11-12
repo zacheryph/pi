@@ -7,7 +7,7 @@
  * on `session_shutdown`, and reach the copy in the parent session.
  */
 
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   call,
   node,
@@ -31,6 +31,11 @@ export interface TreeService<T> {
   parent<R>(fn: (api: T) => R): CallResult<R>;
 }
 
+export interface TreeServiceOptions {
+  /** Initialize synchronously in the same handler as provide, before Pi yields between handlers. */
+  start?: (ctx: ExtensionContext) => void;
+}
+
 /**
  * Offer `api` under `name` for the current session, from `session_start` until
  * `session_shutdown`. Call from the extension factory: it also starts following
@@ -43,6 +48,7 @@ export function treeService<T>(
   pi: Pick<ExtensionAPI, "on" | "events">,
   name: string,
   api: T,
+  options: TreeServiceOptions = {},
 ): TreeService<T> {
   trackChildren(pi);
   let id: string | undefined;
@@ -52,6 +58,7 @@ export function treeService<T>(
     withdraw?.();
     id = ctx.sessionManager.getSessionId();
     withdraw = provide(id, name, api);
+    options.start?.(ctx);
   });
   pi.on("session_shutdown", () => {
     withdraw?.();
