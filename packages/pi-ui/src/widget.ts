@@ -1,9 +1,9 @@
 import type { Component } from "@earendil-works/pi-tui";
-import { inlineWindowOpen } from "./inline-window.ts";
-import { bodyRow, cells, labeledRule, splitColumns, titleText } from "./layout.ts";
-import { copyLine, paint, styleLine, type Line } from "./style.ts";
-import { sanitizeLine } from "./text.ts";
-import type { Title, UITheme } from "./types.ts";
+import { inlineWindowOpen } from "#src/inline-window";
+import { bodyRow, cells, labeledRule, splitColumns, titleText } from "#src/layout";
+import { copyLine, paint, styleLine, type Line } from "#src/style";
+import { sanitizeLine } from "#src/text";
+import type { Title, UITheme } from "#src/types";
 
 export interface WidgetRow {
   left: Line;

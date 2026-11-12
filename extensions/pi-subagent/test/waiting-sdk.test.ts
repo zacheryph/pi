@@ -5,19 +5,18 @@ import type { Context } from "@earendil-works/pi-ai";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WORK_WAKE_PROMPT } from "#src/lifecycle/run";
-import { toolCall } from "../../../packages/pi-test-helpers/src/faux-session.ts";
-import { resetSessionTree } from "../../../packages/pi-test-helpers/src/globals.ts";
-import { createJobsExtension } from "../../pi-job/src/extension.ts";
+import { toolCall, resetSessionTree } from "#test-helpers";
+import { createJobsExtension } from "#job";
 import {
   delegate,
   gated,
   sendCall,
   startParent,
   untilAnnounced,
-} from "./characterization/harness.ts";
-import { expectNoUnmanagedRuns, trackChildRuns } from "./helpers/managed-runs.ts";
-import { EXTENSIONS, offlineAgentDir } from "./helpers/sdk.ts";
-import { widgetUi } from "./helpers/widget-ui.ts";
+} from "#test/characterization/harness";
+import { expectNoUnmanagedRuns, trackChildRuns } from "#test/helpers/managed-runs";
+import { EXTENSIONS, offlineAgentDir } from "#test/helpers/sdk";
+import { widgetUi } from "#test/helpers/widget-ui";
 
 // Roadmap step 9a on real sessions: a child that ends its turn with a job running is idle and
 // waiting, not done. The job's completion is a message in its transcript, and the manager (through

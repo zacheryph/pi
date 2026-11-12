@@ -5,8 +5,9 @@ registers no tools, commands, widgets, overlays, or event listeners on import.
 This first PR implements the library portion of [#45](https://github.com/zacheryph/pi/issues/45);
 existing extensions still use their original implementations. Migrations are separate work.
 
-Use relative source imports. Git-installed bundles do not link workspaces or build
-TypeScript, and the package's SDK-loader test verifies this import path:
+Use the `#ui` alias, mapped to `pi-ui` in each consuming workspace's manifest.
+Its exports load TypeScript source, and the root `file:` dependency creates the
+link for Git installs. The package's SDK-loader test verifies this import path:
 
 ```ts
 import {
@@ -22,7 +23,7 @@ import {
   sanitizeText,
   showDetail,
   showExplorer,
-} from "../../../packages/pi-ui/src/index.ts";
+} from "#ui";
 ```
 
 Pi supplies `@earendil-works/pi-tui` at runtime; coding-agent is used for SDK types.

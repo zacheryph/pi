@@ -17,14 +17,14 @@
  * nobody adopted as lost. A lost item never wakes the session by itself: a single `work:lost`
  * message is appended with `record`, which starts no turn.
  */
-import { oneLine } from "../../pi-foundations/src/format.ts";
+import { oneLine } from "#foundations/format";
 import {
   Delivery,
   continuesRun,
   type BeforeSettleEvent,
   type ContextMessage,
   type DeliveryHost,
-} from "./delivery.ts";
+} from "#src/delivery";
 import {
   WORK_CALLED_OFF,
   WORK_LOST,
@@ -35,7 +35,7 @@ import {
   type WorkItemView,
   type WorkMessage,
   type WorkRecord,
-} from "./contract.ts";
+} from "#src/contract";
 
 export interface WorkStore {
   /** Everything persisted under `WORK_ENTRY` so far, oldest first. Malformed data is skipped. */

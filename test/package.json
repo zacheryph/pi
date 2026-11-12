@@ -14,5 +14,9 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "fix": "oxfmt --write . && oxlint --fix . && oxfmt --write ."
+  },
+  "imports": {
+    "#test/*": "./*.ts",
+    "#scripted-model/*": "pi-scripted-model/*"
   }
 }

@@ -14,7 +14,7 @@ import {
   startAgent,
   tool,
   untilMessages,
-} from "../support/session.ts";
+} from "#test/support/session";
 
 it("hands a task to a subagent, sees its update and completes it in the parent", async () => {
   const pi = await session({

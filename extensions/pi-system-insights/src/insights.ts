@@ -1,10 +1,10 @@
 import type { Tool } from "@earendil-works/pi-ai";
 import type { BuildSystemPromptOptions, ToolInfo } from "@earendil-works/pi-coding-agent";
-import type { Block } from "../../../packages/pi-ui/src/index.ts";
-import { sourceSummary } from "./detail-format.js";
-import type { InsightView } from "./types.js";
+import type { Block } from "#ui";
+import { sourceSummary } from "#src/detail-format";
+import type { InsightView } from "#src/types";
 
-export { buildSkillsView } from "./skills.js";
+export { buildSkillsView } from "#src/skills";
 
 /** Display-only redaction of standalone root sections, not arbitrary XML or tag mentions. */
 export function redactPromptDisplay(prompt: string): string {

@@ -6,7 +6,7 @@
  * Consumed by GetResultTool.execute in get-result-tool.ts. Mirrors the
  * result-renderer.ts pattern used by the subagent_start tool's TUI renderer.
  */
-import { oneLine } from "../../../../packages/pi-foundations/src/format.ts";
+import { oneLine } from "#foundations/format";
 
 import type { DisplayStatus, SendRefusal } from "#src/lifecycle/subagent";
 import type { TurnBudget } from "#src/lifecycle/turn-limits";
@@ -16,7 +16,7 @@ import {
   renderSendUnavailable,
   renderStatusNote,
 } from "#src/observation/outcome-delivery";
-import { sanitizeLine } from "../../../../packages/pi-ui/src/index.ts";
+import { sanitizeLine } from "#ui";
 
 /** The data a subagent_get report renders from — only what the formatter reads. */
 export interface AgentReport {

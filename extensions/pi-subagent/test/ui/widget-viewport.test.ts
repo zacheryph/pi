@@ -15,7 +15,7 @@ import { AgentTypeRegistry } from "#src/config/agent-types";
 import type { SubagentManager } from "#src/lifecycle/subagent-manager";
 import { AgentWidget, type UICtx } from "#src/ui/agent-widget";
 import { createTestSubagent } from "#test/helpers/make-subagent";
-import { plainTheme } from "../../../../packages/pi-test-helpers/src/theme.ts";
+import { plainTheme } from "#test-helpers";
 
 /** A `Terminal` that reports fixed dimensions and discards every write. */
 function fakeTerminal(columns: number, rows: number): Terminal {

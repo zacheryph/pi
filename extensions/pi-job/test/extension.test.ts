@@ -4,20 +4,15 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { createJobsExtension, CUSTOM_TYPE, liveManagers, NOTIFY_BYTES } from "../src/extension.ts";
-import { piAiEntry, runtimeDirectory } from "./runtime.ts";
-import defaultExtension from "../src/extension.ts";
-import { alive, sleep, tempDir, waitForPid, waitUntil, tick } from "./helpers.ts";
-import { JobManager } from "../src/jobs.ts";
-import { sessionOwners } from "../src/ownership.ts";
-import {
-  openRecords,
-  WORK_ENTRY,
-  WORK_LOST,
-  WORK_WAKE,
-} from "../../../packages/pi-work/src/index.ts";
-import { forget, link } from "../../../packages/pi-session-tree/src/index.ts";
-import { waitFor } from "../../../packages/pi-test-helpers/src/wait.ts";
+import { createJobsExtension, CUSTOM_TYPE, liveManagers, NOTIFY_BYTES } from "#src/extension";
+import { piAiEntry, runtimeDirectory } from "#test/runtime";
+import defaultExtension from "#src/extension";
+import { alive, sleep, tempDir, waitForPid, waitUntil, tick } from "#test/helpers";
+import { JobManager } from "#src/jobs";
+import { sessionOwners } from "#src/ownership";
+import { openRecords, WORK_ENTRY, WORK_LOST, WORK_WAKE } from "#work";
+import { forget, link } from "#session-tree";
+import { waitFor } from "#test-helpers";
 
 interface Sent {
   message: {

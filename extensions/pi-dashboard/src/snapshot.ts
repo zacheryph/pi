@@ -1,4 +1,4 @@
-import { customData } from "../../../packages/pi-session-state/src/index.ts";
+import { customData } from "#session-state";
 import type {
   ActivitySection,
   GitSection,
@@ -10,7 +10,7 @@ import type {
   TerminalInfo,
   TodoSection,
   UsageSection,
-} from "./protocol.ts";
+} from "#src/protocol";
 
 /** Written by pi-subagent when a session starts with `--agent`. */
 const MAIN_AGENT_ENTRY = "agent:profile";

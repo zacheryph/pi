@@ -12,7 +12,7 @@ import type { DisplayStatus } from "#src/lifecycle/subagent-state";
 import type { TurnBudget } from "#src/lifecycle/turn-limits";
 import { renderOutcomeIcon } from "#src/tools/result-renderer";
 import type { Theme } from "#src/ui/display";
-import { ICONS } from "../../../../packages/pi-ui/src/index.ts";
+import { ICONS } from "#ui";
 
 /** How many report lines the expanded view draws before it defers to the transcript. */
 export const MAX_EXPANDED_LINES = 50;

@@ -1,9 +1,9 @@
 /** Model- and user-facing text (pure). */
-import { formatDuration, oneLine, plural } from "../../../packages/pi-foundations/src/format.ts";
-export { formatDuration } from "../../../packages/pi-foundations/src/format.ts";
+import { formatDuration, oneLine, plural } from "#foundations/format";
+export { formatDuration } from "#foundations/format";
 import { constants } from "node:os";
-import type { JobSnapshot } from "./jobs.ts";
-import type { Tail } from "./tail.ts";
+import type { JobSnapshot } from "#src/jobs";
+import type { Tail } from "#src/tail";
 
 export function jobTitle(job: JobSnapshot): string {
   return job.label ? job.label : oneLine(job.command, 80);

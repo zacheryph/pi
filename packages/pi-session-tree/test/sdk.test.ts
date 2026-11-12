@@ -1,7 +1,6 @@
 import { join } from "node:path";
 import { afterEach, expect, it, onTestFinished } from "vitest";
-import { loadResources } from "../../pi-test-helpers/src/faux-session.ts";
-import { clearSlots, resetSessionTree, slots } from "../../pi-test-helpers/src/globals.ts";
+import { loadResources, clearSlots, resetSessionTree, slots } from "#test-helpers";
 
 const keys = ["provider", "consumer", "seen"].map((name) =>
   Symbol.for(`pi-session-tree.test.${name}`),

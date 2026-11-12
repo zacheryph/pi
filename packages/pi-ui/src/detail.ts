@@ -16,15 +16,15 @@ import {
   layoutPanel,
   renderPanel,
   splitColumns,
-} from "./layout.ts";
-import { openModal, type ModalContext, type ModalOptions } from "./modal.ts";
+} from "#src/layout";
+import { openModal, type ModalContext, type ModalOptions } from "#src/modal";
 import {
   HINT_PRIORITY,
   layoutHints,
   navigationDelta,
   navigationHint,
   type Hint,
-} from "./navigation.ts";
+} from "#src/navigation";
 import {
   clip,
   copyLine,
@@ -34,9 +34,9 @@ import {
   type Badge,
   type Line,
   type Tone,
-} from "./style.ts";
-import { sanitizeLine, sanitizeText } from "./text.ts";
-import type { Title, UIKeys, UISurface, UITheme } from "./types.ts";
+} from "#src/style";
+import { sanitizeLine, sanitizeText } from "#src/text";
+import type { Title, UIKeys, UISurface, UITheme } from "#src/types";
 
 /**
  * Structured detail content. All text is untrusted plain text; the library owns

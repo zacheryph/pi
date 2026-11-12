@@ -3,7 +3,7 @@ import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works
 import type { DisplayStatus } from "#src/lifecycle/subagent-state";
 import type { Theme } from "#src/ui/display";
 import { watchText, type WatchBlock } from "#src/ui/watch-tail";
-import { ICONS } from "../../../../packages/pi-ui/src/index.ts";
+import { ICONS } from "#ui";
 
 export interface WatchSection {
   id: string;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { firstPhysicalLine, sanitizeLine, sanitizeText } from "../src/text.ts";
+import { firstPhysicalLine, sanitizeLine, sanitizeText } from "#src/text";
 
 const intros = [
   "\x1b]",

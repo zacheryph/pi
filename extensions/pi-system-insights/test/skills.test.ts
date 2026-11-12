@@ -17,8 +17,8 @@ import {
   normalizeSkillPath,
   SKILL_READ_ENTRY,
   skillReadEvidence,
-} from "../src/skills.js";
-import { tempDir } from "../../../packages/pi-test-helpers/src/temp.ts";
+} from "#src/skills";
+import { tempDir } from "#test-helpers";
 
 const cwd = "/project";
 const file = "/project/skills/sample/SKILL.md";

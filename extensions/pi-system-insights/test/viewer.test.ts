@@ -1,10 +1,10 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
-import { sanitizeText, type DisposableComponent } from "../../../packages/pi-ui/src/index.ts";
+import { sanitizeText, type DisposableComponent } from "#ui";
 import type { InsightView } from "#src/types";
 import { legendNotice, showInsightView, toExplorerView } from "#src/viewer";
-import { fakeCustomUi, fakeTui } from "../../../packages/pi-test-helpers/src/ui.ts";
+import { fakeCustomUi, fakeTui } from "#test-helpers";
 
 const ENTER = "\r";
 const palette: Record<string, number> = { success: 32, dim: 90, accent: 36, muted: 37 };

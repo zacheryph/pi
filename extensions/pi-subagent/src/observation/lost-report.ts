@@ -8,7 +8,7 @@
  * it lost, in one message. It starts no turn and restarts nothing: the parent or the user decides
  * whether the work is still needed and gives the agent more with `subagent_send`.
  */
-import type { Json, WorkMessage } from "../../../../packages/pi-work/src/index.ts";
+import type { Json, WorkMessage } from "#work";
 import { clipText as clipOneLine } from "#src/roster";
 
 /** The custom message type of the report. */

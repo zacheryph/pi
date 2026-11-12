@@ -1,7 +1,7 @@
 import { visibleWidth, type Component } from "@earendil-works/pi-tui";
-import { clip } from "./style.ts";
-import { firstPhysicalLine, sanitizeLine } from "./text.ts";
-import type { Title, UITheme } from "./types.ts";
+import { clip } from "#src/style";
+import { firstPhysicalLine, sanitizeLine } from "#src/text";
+import type { Title, UITheme } from "#src/types";
 
 /** Terminal dimensions and budgets are finite nonnegative integer cell counts. */
 export function cells(value: number): number {

@@ -1,7 +1,7 @@
 import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it, onTestFinished } from "vitest";
-import { tempDir } from "../../../packages/pi-test-helpers/src/temp.ts";
+import { tempDir } from "#test-helpers";
 import { guessMime, literalContent, readCwdFile, readToolResult } from "#src/sources";
 
 const temp = (): string => tempDir(onTestFinished, "pi-stash-sources-");

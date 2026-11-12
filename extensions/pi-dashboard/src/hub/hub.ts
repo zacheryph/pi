@@ -25,8 +25,8 @@ import {
   type HubPaths,
   type QuestionnaireAnswer,
   type SessionSnapshot,
-} from "../protocol.ts";
-import { renderPage } from "./page.ts";
+} from "#src/protocol";
+import { renderPage } from "#src/hub/page";
 
 export interface HubOptions {
   dir: string;

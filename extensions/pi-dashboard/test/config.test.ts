@@ -2,8 +2,8 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { tempDir } from "#test/helpers";
-import { dashboardSettings } from "../src/config.ts";
-import { DEFAULT_PORT } from "../src/protocol.ts";
+import { dashboardSettings } from "#src/config";
+import { DEFAULT_PORT } from "#src/protocol";
 let root: string, path: string;
 const load = () => dashboardSettings.load(root, root);
 beforeEach(() => {

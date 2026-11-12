@@ -11,7 +11,7 @@ import {
   record,
   type SettingsOf,
   string,
-} from "../../../packages/pi-foundations/src/settings.ts";
+} from "#foundations/settings";
 import { isBelowMinimumTurns, MIN_MAX_TURNS } from "#src/lifecycle/turn-limits";
 import type { PromptInheritance } from "#src/types";
 

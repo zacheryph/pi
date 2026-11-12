@@ -2,13 +2,9 @@
  * fold.ts — rebuild pi-git's state from the session's `git:ledger` entries.
  */
 
-import {
-  customData,
-  readEntries,
-  type EntriesSource,
-} from "../../../packages/pi-session-state/src/index.ts";
-import { isWorktreeRecord, LEDGER_TYPE, type WorktreeRecord } from "./ledger.ts";
-import { isPrRecord, type PrRecord } from "./prs.ts";
+import { customData, readEntries, type EntriesSource } from "#session-state";
+import { isWorktreeRecord, LEDGER_TYPE, type WorktreeRecord } from "#src/ledger";
+import { isPrRecord, type PrRecord } from "#src/prs";
 
 export interface Ledger {
   /** Latest record per worktree path, in creation order. */

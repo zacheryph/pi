@@ -40,5 +40,17 @@
     "extensions": [
       "./src/extension.ts"
     ]
+  },
+  "imports": {
+    "#src/*": "./src/*.ts",
+    "#test/*": "./test/*.ts",
+    "#foundations/*": "pi-foundations/*",
+    "#session-tree": "pi-session-tree",
+    "#test-helpers": "pi-test-helpers",
+    "#work": "pi-work"
+  },
+  "exports": {
+    ".": "./src/extension.ts",
+    "./*": "./src/*.ts"
   }
 }

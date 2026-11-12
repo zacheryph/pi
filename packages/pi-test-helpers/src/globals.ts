@@ -1,4 +1,4 @@
-import { SESSION_TREE_KEY } from "../../pi-session-tree/src/index.ts";
+import { SESSION_TREE_KEY } from "#session-tree";
 
 /** `globalThis` as a store of Symbol-keyed slots, as fixtures and the session tree use it. */
 export const slots = globalThis as Record<symbol, unknown>;

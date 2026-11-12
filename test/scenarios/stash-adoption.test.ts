@@ -13,7 +13,7 @@ import {
   startAgent,
   tool,
   untilMessages,
-} from "../support/session.ts";
+} from "#test/support/session";
 
 it("adopts a subagent's stash entry into the parent's list", async () => {
   const pi = await session({

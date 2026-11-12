@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { SESSION_TREE_KEY } from "../../pi-session-tree/src/index.ts";
-import { clearSlots, resetSessionTree, slots, withSlot } from "#src/globals.ts";
+import { SESSION_TREE_KEY } from "#session-tree";
+import { clearSlots, resetSessionTree, slots, withSlot } from "#src/index";
 
 describe("globals", () => {
   it("withSlot removes the slot after sync and async runs", async () => {

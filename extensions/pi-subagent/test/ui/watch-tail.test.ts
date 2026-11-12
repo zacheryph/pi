@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it, onTestFinished } from "vitest";
 import type { AgentSessionEvent } from "#src/types";
 import { WatchTail, watchText } from "#src/ui/watch-tail";
-import { tempDir } from "../../../../packages/pi-test-helpers/src/temp.ts";
+import { tempDir } from "#test-helpers";
 
 // Only content fields are used; keep streaming fixtures independent from model metadata.
 function assistant(

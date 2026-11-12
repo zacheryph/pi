@@ -1,4 +1,4 @@
-import { errorText } from "../../../packages/pi-foundations/src/errors.ts";
+import { errorText } from "#foundations/errors";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import {
   type TodoActivity,
@@ -6,13 +6,13 @@ import {
   type TodoReviewState,
   unreviewedTodoTasks,
   unreviewedTodoUpdates,
-} from "./activity.ts";
-import type { TodoRequest, TodoTaskPatch } from "./actions.ts";
-import type { TodoConfig } from "./config.ts";
-import { cloneTodoState, type TodoState } from "./state.ts";
-import { showTodoBrowser, type TodoBrowserView } from "./ui/browser.ts";
-import { formatTodoAge, todoMessageLine } from "./ui/render.ts";
-import { sanitizeLine, sanitizeText } from "../../../packages/pi-ui/src/index.ts";
+} from "#src/activity";
+import type { TodoRequest, TodoTaskPatch } from "#src/actions";
+import type { TodoConfig } from "#src/config";
+import { cloneTodoState, type TodoState } from "#src/state";
+import { showTodoBrowser, type TodoBrowserView } from "#src/ui/browser";
+import { formatTodoAge, todoMessageLine } from "#src/ui/render";
+import { sanitizeLine, sanitizeText } from "#ui";
 
 export interface TodoController {
   state(): TodoState;

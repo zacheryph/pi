@@ -20,8 +20,7 @@ import { loadCustomAgents } from "#src/config/custom-agents";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import type { AgentConfig } from "#src/types";
 import { makeModel } from "#test/helpers/make-model";
-import { tempDir } from "../../../packages/pi-test-helpers/src/temp.ts";
-import { fakePi } from "../../../packages/pi-test-helpers/src/fake-pi.ts";
+import { tempDir, fakePi } from "#test-helpers";
 
 function harness(mode: ExtensionContext["mode"] = "tui") {
   const model = makeModel({ reasoning: true });

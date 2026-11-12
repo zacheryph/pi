@@ -10,7 +10,7 @@
  * Nothing here deletes a branch, and removal refuses to drop uncommitted or
  * unpushed work unless forced.
  */
-import { errorText } from "../../../packages/pi-foundations/src/errors.ts";
+import { errorText } from "#foundations/errors";
 
 import { existsSync, readdirSync, rmdirSync, statSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
@@ -29,8 +29,8 @@ import {
   worktreeStatus,
   type BaseRef,
   type WorktreeStatus,
-} from "./git.ts";
-import { LEDGER_VERSION, type WorktreeRecord } from "./ledger.ts";
+} from "#src/git";
+import { LEDGER_VERSION, type WorktreeRecord } from "#src/ledger";
 
 const WORKSPACE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 

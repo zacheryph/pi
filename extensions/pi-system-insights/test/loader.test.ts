@@ -1,6 +1,6 @@
 import { join, resolve } from "node:path";
 import { expect, it, onTestFinished } from "vitest";
-import { loadResources } from "../../../packages/pi-test-helpers/src/faux-session.ts";
+import { loadResources } from "#test-helpers";
 
 it("loads standalone package through Pi discovery without duplicate commands or model tools", async () => {
   const root = resolve(import.meta.dirname, "..");

@@ -1,9 +1,9 @@
-import { errorText } from "./errors.ts";
-import { isRecord } from "./guards.ts";
+import { errorText } from "#src/errors";
+import { isRecord } from "#src/guards";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
-import { sanitizeLine } from "../../pi-ui/src/text.ts";
+import { sanitizeLine } from "#ui/text";
 
 /** Missing files are absent; callers choose whether other failures throw, warn or fall back. */
 export function readSettingsFile<T>(

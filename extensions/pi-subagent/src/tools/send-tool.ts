@@ -1,4 +1,4 @@
-import { errorText } from "../../../../packages/pi-foundations/src/errors.ts";
+import { errorText } from "#foundations/errors";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import type { AgentConfigLookup } from "#src/config/agent-types";

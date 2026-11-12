@@ -31,7 +31,7 @@ import {
 import type { AgentSessionEvent, SessionMessage } from "#src/types";
 import { describeActivity } from "#src/ui/display";
 import type { TranscriptSource } from "#src/ui/session-navigation";
-import { ICONS } from "../../../../packages/pi-ui/src/index.ts";
+import { ICONS } from "#ui";
 
 // ─────────────────────────────────────────────────────────────────────────────
 

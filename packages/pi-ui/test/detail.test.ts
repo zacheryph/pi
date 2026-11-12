@@ -7,8 +7,8 @@ import {
   renderBlocks,
   statusRule,
   type Block,
-} from "../src/detail.ts";
-import { bounded, keys, plain, surface, theme, wheel } from "./helpers.ts";
+} from "#src/detail";
+import { bounded, keys, plain, surface, theme, wheel } from "#test/helpers";
 
 const text = Array.from(
   { length: 80 },

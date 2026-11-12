@@ -19,8 +19,7 @@ import {
   sessionTree,
   trackChildren,
 } from "#src/index";
-import { sleep } from "../../pi-test-helpers/src/wait.ts";
-import { resetSessionTree, slots } from "../../pi-test-helpers/src/globals.ts";
+import { sleep, resetSessionTree, slots } from "#test-helpers";
 
 afterEach(resetSessionTree);
 

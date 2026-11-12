@@ -1,5 +1,5 @@
-import type { ActivitySection } from "./protocol.ts";
-import { clip } from "./sections.ts";
+import type { ActivitySection } from "#src/protocol";
+import { clip } from "#src/sections";
 
 const MAX_ENTRIES = 12;
 const MAX_SUMMARY = 80;

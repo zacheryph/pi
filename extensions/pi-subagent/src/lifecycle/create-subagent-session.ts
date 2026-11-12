@@ -27,12 +27,8 @@ import type { EnvInfo } from "#src/session/env";
 import { resolveToolSelection } from "#src/session/tool-selection";
 import type { ModelRegistry } from "#src/session/model-resolver";
 import { NotifyParentTool, type UpdateAnnouncer } from "#src/session/notify-parent-tool";
-import { provide } from "../../../../packages/pi-session-tree/src/index.ts";
-import {
-  ensureWorkHost,
-  WORK_PARENT_SERVICE,
-  type WorkParent,
-} from "../../../../packages/pi-work/src/index.ts";
+import { provide } from "#session-tree";
+import { ensureWorkHost, WORK_PARENT_SERVICE, type WorkParent } from "#work";
 import { type AssemblerIO, assembleSessionConfig } from "#src/session/session-config";
 import type {
   AgentConfig,

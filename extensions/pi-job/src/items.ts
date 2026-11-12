@@ -22,9 +22,9 @@
  * An item nobody adopts (jobs of an earlier process, or of another session whose records a fork
  * inherited) is closed as lost by the host, with one message that reaches the model.
  */
-import type { Json, WorkHost, WorkItem, WorkMessage } from "../../../packages/pi-work/src/index.ts";
-import { jobTitle } from "./format.ts";
-import type { JobManager, JobSnapshot } from "./jobs.ts";
+import type { Json, WorkHost, WorkItem, WorkMessage } from "#work";
+import { jobTitle } from "#src/format";
+import type { JobManager, JobSnapshot } from "#src/jobs";
 
 /** The `owner` of every item pi-job opens, and what it adopts after a reload. */
 export const WORK_OWNER = "pi-job";

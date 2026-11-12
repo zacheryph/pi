@@ -1,4 +1,4 @@
-import { errorText } from "../../../packages/pi-foundations/src/errors.ts";
+import { errorText } from "#foundations/errors";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES } from "@earendil-works/pi-coding-agent";
 
 export const DEFAULT_GET_BYTES = 16 * 1024;

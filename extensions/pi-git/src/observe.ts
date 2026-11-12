@@ -16,9 +16,9 @@
  * Other output is never scanned: a `git log` or a file that mentions PR URLs
  * is not the session checking those PRs.
  */
-import { isRecord } from "../../../packages/pi-foundations/src/guards.ts";
+import { isRecord } from "#foundations/guards";
 
-import { prUrl, type PrChecks, type PrFacts, type PrOrigin, type PrRef } from "./prs.ts";
+import { prUrl, type PrChecks, type PrFacts, type PrOrigin, type PrRef } from "#src/prs";
 
 export interface Observation {
   ref: PrRef;

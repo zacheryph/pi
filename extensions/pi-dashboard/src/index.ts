@@ -5,23 +5,20 @@ import {
   type ExtensionAPI,
   type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { GIT_SNAPSHOT_EVENT, type GitSnapshotEvent } from "../../pi-git/src/events.ts";
+import { GIT_SNAPSHOT_EVENT, type GitSnapshotEvent } from "#git/events";
 import {
   STASH_PREVIEW_REQUEST,
   STASH_SNAPSHOT_EVENT,
   type StashPreviewRequest,
   type StashPreviewResult,
   type StashSnapshotEvent,
-} from "../../pi-stash/src/events.ts";
-import {
-  SUBAGENT_SNAPSHOT,
-  type SubagentSnapshot,
-} from "../../pi-subagent/src/observation/snapshot.ts";
-import { TODO_SNAPSHOT_EVENT, type TodoSnapshotEvent } from "../../pi-todo/src/events.ts";
-import { ActivityTracker } from "./activity.ts";
-import { AskUserTracker } from "./ask-user.ts";
-import { dashboardSettings, type DashboardConfig } from "./config.ts";
-import { nodeRuntime, spawnHub } from "./launch.ts";
+} from "#stash/events";
+import { SUBAGENT_SNAPSHOT, type SubagentSnapshot } from "#subagent/observation/snapshot";
+import { TODO_SNAPSHOT_EVENT, type TodoSnapshotEvent } from "#todo/events";
+import { ActivityTracker } from "#src/activity";
+import { AskUserTracker } from "#src/ask-user";
+import { dashboardSettings, type DashboardConfig } from "#src/config";
+import { nodeRuntime, spawnHub } from "#src/launch";
 import {
   hubPaths,
   type CommandRequest,
@@ -30,14 +27,14 @@ import {
   type StashSection,
   type TodoSection,
   type UsageSection,
-} from "./protocol.ts";
-import { Reporter } from "./reporter.ts";
-import { readGit, readPreview, readStash, readTodoHistory, readTodos } from "./sections.ts";
-import { buildSnapshot } from "./snapshot.ts";
-import { StatusTracker } from "./status.ts";
-import { SubagentTracker } from "./subagents.ts";
-import { detectTerminal, type TerminalAdapter } from "./terminal.ts";
-import { sessionUsage } from "./usage.ts";
+} from "#src/protocol";
+import { Reporter } from "#src/reporter";
+import { readGit, readPreview, readStash, readTodoHistory, readTodos } from "#src/sections";
+import { buildSnapshot } from "#src/snapshot";
+import { StatusTracker } from "#src/status";
+import { SubagentTracker } from "#src/subagents";
+import { detectTerminal, type TerminalAdapter } from "#src/terminal";
+import { sessionUsage } from "#src/usage";
 
 /** One reporter per process: subagent children and other embedded sessions stay off the dashboard. */
 const SLOT = Symbol.for("dashboard:reporter");

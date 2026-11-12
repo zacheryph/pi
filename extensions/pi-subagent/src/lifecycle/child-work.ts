@@ -29,9 +29,9 @@
  * The agent derives "waiting" from `openItems()`: an idle agent with open items is waiting, one
  * without is done. Nothing about waiting is stored.
  */
-import { customData } from "../../../../packages/pi-session-state/src/index.ts";
+import { customData } from "#session-state";
 import { debugLog } from "#src/debug";
-import { provide } from "../../../../packages/pi-session-tree/src/index.ts";
+import { provide } from "#session-tree";
 import {
   createLandingTracker,
   createWorkHost,
@@ -46,7 +46,7 @@ import {
   type WorkItemView,
   type WorkMessage,
   type WorkRecord,
-} from "../../../../packages/pi-work/src/index.ts";
+} from "#work";
 
 /** What the host asks of the agent whose session it serves. */
 export interface ChildWorkPolicy {

@@ -1,11 +1,11 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { CURSOR_MARKER, renderFakeCursor, visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
-import type { DisposableComponent } from "../../../packages/pi-ui/src/index.ts";
-import { type TodoState } from "../src/state.js";
-import { showTodoBrowser, type TodoBrowserOptions } from "../src/ui/browser.js";
-import { applyTodoReview, createTodoReviewState, type TodoActivity } from "../src/activity.js";
-import { fakeCustomUi, fakeTui } from "../../../packages/pi-test-helpers/src/ui.ts";
+import type { DisposableComponent } from "#ui";
+import { type TodoState } from "#src/state";
+import { showTodoBrowser, type TodoBrowserOptions } from "#src/ui/browser";
+import { applyTodoReview, createTodoReviewState, type TodoActivity } from "#src/activity";
+import { fakeCustomUi, fakeTui } from "#test-helpers";
 
 type Browser = DisposableComponent & { focused: boolean; handleInput(data: string): void };
 const ENTER = "\r",

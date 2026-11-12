@@ -21,7 +21,7 @@ import {
   type SubagentsSettings,
 } from "#src/settings";
 import { captureWarn } from "#test/helpers/capture-warn";
-import { settingsDirs, type SettingsDirs } from "../../../packages/pi-test-helpers/src/temp.ts";
+import { settingsDirs, type SettingsDirs } from "#test-helpers";
 
 const DEFAULTS: SubagentsSettings = {
   overlayWidth: "third",

@@ -1,7 +1,7 @@
 import { CURSOR_MARKER } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
-import { Explorer, type ExplorerView } from "../src/explorer.ts";
-import { bounded, flush, keys, plain, surface, theme, wheel } from "./helpers.ts";
+import { Explorer, type ExplorerView } from "#src/explorer";
+import { bounded, flush, keys, plain, surface, theme, wheel } from "#test/helpers";
 
 /** Tags each tone so tests can assert semantic styling. */
 const tagged = {

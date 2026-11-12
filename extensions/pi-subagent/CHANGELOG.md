@@ -3,6 +3,12 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-11: Standardize source and test aliases
+
+- Use the pi-test-helpers barrel and shared workspace aliases alongside
+  `#src/*` and `#test/*`. Resolve them through package manifests instead of
+  duplicate TypeScript paths.
+
 ## 2026-11-12: `subagent:session:disposed` says when the agent is kept
 
 - `ChildDisposedEvent.kept`: set when a child session goes away because the session that spawned it

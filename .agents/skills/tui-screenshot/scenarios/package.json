@@ -1,3 +1,6 @@
 {
-  "type": "module"
+  "type": "module",
+  "imports": {
+    "#scripted-model/*": "pi-scripted-model/*"
+  }
 }

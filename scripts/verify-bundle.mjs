@@ -7,7 +7,9 @@ import { commandNameProblems, extensionName } from "./command-names.mjs";
 
 // Load the root package exactly as a local personal install, but never read or
 // modify the user's settings, project resources, or credentials. No model calls.
-const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const root = process.argv[2]
+  ? resolve(process.argv[2])
+  : resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const sandbox = mkdtempSync(join(tmpdir(), "pi-personal-bundle-"));
 const originalCwd = process.cwd();
 const originalAgentDir = process.env.PI_CODING_AGENT_DIR;

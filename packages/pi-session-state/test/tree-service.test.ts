@@ -1,13 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { treeService } from "#src/index";
-import {
-  CHILD_SESSION_CREATED,
-  CHILD_SESSION_DISPOSED,
-  node,
-  service,
-} from "../../pi-session-tree/src/index.ts";
-import { fakePi } from "../../pi-test-helpers/src/fake-pi.ts";
-import { resetSessionTree } from "../../pi-test-helpers/src/globals.ts";
+import { CHILD_SESSION_CREATED, CHILD_SESSION_DISPOSED, node, service } from "#session-tree";
+import { fakePi, resetSessionTree } from "#test-helpers";
 
 afterEach(resetSessionTree);
 

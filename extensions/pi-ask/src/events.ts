@@ -1,4 +1,4 @@
-import type { AskQuestion } from "./questions.ts";
+import type { AskQuestion } from "#src/questions";
 
 /**
  * pi-ask's contract on the session's `pi.events` bus. Payloads are JSON-safe and

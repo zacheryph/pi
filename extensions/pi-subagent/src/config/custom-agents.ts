@@ -3,7 +3,7 @@
  * (agents/) and user-defined agents from project (.pi/agents/) and global
  * ($PI_CODING_AGENT_DIR/agents/, default ~/.pi/agent/agents/) locations.
  */
-import { errorText } from "../../../../packages/pi-foundations/src/errors.ts";
+import { errorText } from "#foundations/errors";
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";

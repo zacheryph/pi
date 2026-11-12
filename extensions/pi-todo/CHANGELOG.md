@@ -3,6 +3,12 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-11: Standardize source and test aliases
+
+- Use `#src/*`, `#test/*` and shared workspace aliases, including the
+  pi-test-helpers barrel. Resolve aliases through package manifests instead of
+  duplicate TypeScript paths.
+
 ## 2026-11-12: Claims survive a reload or restart of the parent
 
 pi-subagent keeps agents across a reload or restart and reopens those that wait on work, but every

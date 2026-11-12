@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { Widget, renderWidget, type WidgetView } from "../src/widget.ts";
-import { ICONS } from "../src/icons.ts";
-import { bounded, plain, theme } from "./helpers.ts";
-import { clearSlots, slots } from "../../pi-test-helpers/src/globals.ts";
+import { Widget, renderWidget, type WidgetView } from "#src/widget";
+import { ICONS } from "#src/icons";
+import { bounded, plain, theme } from "#test/helpers";
+import { clearSlots, slots } from "#test-helpers";
 
 const tagged = {
   fg: (color: string, text: string) => `<${color}>${text}</${color}>`,

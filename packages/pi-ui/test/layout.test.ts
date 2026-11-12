@@ -11,8 +11,8 @@ import {
   renderPanel,
   splitColumns,
   titleText,
-} from "../src/layout.ts";
-import { bounded, plain, theme } from "./helpers.ts";
+} from "#src/layout";
+import { bounded, plain, theme } from "#test/helpers";
 
 const styled = theme.fg("accent", "界é👨‍👩‍👧‍👦 longer text");
 describe("terminal geometry", () => {

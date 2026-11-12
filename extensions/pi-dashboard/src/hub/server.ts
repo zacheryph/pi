@@ -1,7 +1,7 @@
 // Hub process entry. Pi sessions spawn it detached with plain Node, which
 // strips the types; it must not import Pi packages.
-import { DEFAULT_PORT, IDLE_GRACE_MS } from "../protocol.ts";
-import { Hub } from "./hub.ts";
+import { DEFAULT_PORT, IDLE_GRACE_MS } from "#src/protocol";
+import { Hub } from "#src/hub/hub";
 
 function option(name: string): string | undefined {
   const index = process.argv.indexOf(`--${name}`);

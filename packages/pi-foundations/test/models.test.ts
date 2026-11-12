@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compareNewestFirst, findExactModel, resolveModel } from "../src/models.ts";
+import { compareNewestFirst, findExactModel, resolveModel } from "#src/models";
 
 const models = [
   { provider: "a", id: "haiku-4-5-20251001", name: "Haiku", extra: 1 },

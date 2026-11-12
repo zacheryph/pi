@@ -5,7 +5,7 @@ export {
   type ContextCard,
   type ContextCardOptions,
   type RestoreEvent,
-} from "./context-card.ts";
+} from "#src/context-card";
 export {
   customData,
   customEntries,
@@ -14,5 +14,5 @@ export {
   type CustomEntryData,
   type EntriesSource,
   type ReadEntriesOptions,
-} from "./entries.ts";
-export { treeService, type TreeService, type TreeServiceOptions } from "./tree-service.ts";
+} from "#src/entries";
+export { treeService, type TreeService, type TreeServiceOptions } from "#src/tree-service";

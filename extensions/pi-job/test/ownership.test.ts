@@ -8,8 +8,8 @@ import {
   stopOrphans,
   takeReloadOwner,
   type Owner,
-} from "../src/ownership.ts";
-import { sleep } from "./helpers.ts";
+} from "#src/ownership";
+import { sleep } from "#test/helpers";
 
 void test("history high-water mark includes lists, old result text and completions, not other tools", () => {
   const entry = (message: any) => ({ type: "message", message });

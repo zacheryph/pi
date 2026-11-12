@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { flushMicrotasks, sleep, tick, waitFor } from "#src/wait.ts";
+import { flushMicrotasks, sleep, tick, waitFor } from "#src/index";
 
 describe("waitFor", () => {
   it("returns the first truthy value", async () => {

@@ -13,16 +13,19 @@
     "CHANGELOG.md"
   ],
   "imports": {
-    "#src/*": {
-      "types": "./src/*.ts",
-      "default": "./src/*.ts"
-    },
-    "#test/*": {
-      "types": "./test/*.ts",
-      "default": "./test/*.ts"
-    }
+    "#src/*": "./src/*.ts",
+    "#test/*": "./test/*.ts",
+    "#foundations/*": "pi-foundations/*",
+    "#job": "pi-job",
+    "#job/*": "pi-job/*",
+    "#session-state": "pi-session-state",
+    "#session-tree": "pi-session-tree",
+    "#test-helpers": "pi-test-helpers",
+    "#todo": "pi-todo",
+    "#ui": "pi-ui",
+    "#work": "pi-work"
   },
-  "description": "A focused, in-process sub-agent core for pi — autonomous agents plus lifecycle events other extensions build on. Friendly fork of @tintinweb/pi-subagents.",
+  "description": "A focused, in-process sub-agent core for pi \u2014 autonomous agents plus lifecycle events other extensions build on. Friendly fork of @tintinweb/pi-subagents.",
   "author": {
     "name": "Chris Lasher"
   },
@@ -69,5 +72,9 @@
     ],
     "video": "https://github.com/gotgenes/pi-subagents/raw/main/media/demo.mp4",
     "image": "https://github.com/gotgenes/pi-subagents/raw/main/media/screenshot.png"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
   }
 }

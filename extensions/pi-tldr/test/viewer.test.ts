@@ -1,12 +1,10 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
-import { sanitizeText, type DisposableComponent } from "../../../packages/pi-ui/src/index.ts";
-import type { TldrResult } from "../src/core.js";
-import { errorContent, showTldr, summaryContent } from "../src/viewer.js";
-import { ansiTheme } from "../../../packages/pi-test-helpers/src/theme.ts";
-import { flushMicrotasks as flush } from "../../../packages/pi-test-helpers/src/wait.ts";
-import { fakeCustomUi } from "../../../packages/pi-test-helpers/src/ui.ts";
+import { sanitizeText, type DisposableComponent } from "#ui";
+import type { TldrResult } from "#src/core";
+import { errorContent, showTldr, summaryContent } from "#src/viewer";
+import { ansiTheme, flushMicrotasks as flush, fakeCustomUi } from "#test-helpers";
 
 const summary: TldrResult = {
   title: "routing-migration",

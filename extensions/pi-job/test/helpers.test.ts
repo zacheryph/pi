@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-import { alive, tempDir, waitForPid, waitUntil } from "./helpers.ts";
+import { alive, tempDir, waitForPid, waitUntil } from "#test/helpers";
 
 for (const initial of [undefined, "", "0", "invalid"]) {
   void test(`waitForPid waits for a positive PID when the file starts as ${JSON.stringify(initial)}`, async (t) => {

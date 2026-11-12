@@ -16,7 +16,7 @@ import {
   textOf,
   tool,
   untilMessages,
-} from "../support/session.ts";
+} from "#test/support/session";
 
 it("tells the parent once and resumes the child with its answer", async () => {
   const pi = await session({

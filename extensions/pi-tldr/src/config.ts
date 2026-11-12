@@ -1,9 +1,4 @@
-import {
-  bool,
-  defineSettings,
-  string,
-  type SettingsOf,
-} from "../../../packages/pi-foundations/src/settings.ts";
+import { bool, defineSettings, string, type SettingsOf } from "#foundations/settings";
 
 /** Project settings override global settings. No configuration is written implicitly. */
 export const tldrSettings = defineSettings({

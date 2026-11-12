@@ -8,8 +8,8 @@ import {
   SUMMARY_MAX_TOKENS,
   TITLE_MAX_TOKENS,
   titleSlug,
-} from "../src/core.js";
-import { tldrSettings } from "../src/config.js";
+} from "#src/core";
+import { tldrSettings } from "#src/config";
 
 const fakeModel = (provider: string, id: string) =>
   ({ provider, id, name: id, type: "chat" }) as any;

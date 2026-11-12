@@ -7,8 +7,8 @@ import {
   type Line,
   type ModalContext,
   type ModalFactory,
-} from "../../../packages/pi-ui/src/index.ts";
-import type { InsightLegend, InsightView } from "./types.js";
+} from "#ui";
+import type { InsightLegend, InsightView } from "#src/types";
 
 export function insightTitle(title: string): string {
   return title.startsWith("System insights") ? title : `System insights · ${title}`;

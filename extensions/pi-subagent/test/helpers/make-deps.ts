@@ -6,9 +6,9 @@ import {
   type AgentToolRuntime,
   type AgentToolSettings,
 } from "#src/tools/agent-tool";
-import { makeModel } from "./make-model";
-import { createTestSubagent } from "./make-subagent";
-import { STUB_SNAPSHOT } from "./stub-ctx";
+import { makeModel } from "#test/helpers/make-model";
+import { createTestSubagent } from "#test/helpers/make-subagent";
+import { STUB_SNAPSHOT } from "#test/helpers/stub-ctx";
 
 /** Minimal registry with no user agents — sufficient for tool tests that don't exercise agent-type lookup. */
 const defaultRegistry = new AgentTypeRegistry(() => new Map());

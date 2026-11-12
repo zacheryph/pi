@@ -13,12 +13,7 @@ import {
   type ExtensionToolContext,
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import {
-  fauxSession,
-  messageText,
-  toolCall,
-} from "../../../packages/pi-test-helpers/src/faux-session.ts";
-import type { Defer } from "../../../packages/pi-test-helpers/src/cleanup.ts";
+import { fauxSession, messageText, toolCall, type Defer } from "#test-helpers";
 
 interface Seen {
   toolName: string;

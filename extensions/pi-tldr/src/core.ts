@@ -1,5 +1,5 @@
-import { compareNewestFirst, findExactModel } from "../../../packages/pi-foundations/src/models.ts";
-import { sanitizeLine } from "../../../packages/pi-ui/src/index.ts";
+import { compareNewestFirst, findExactModel } from "#foundations/models";
+import { sanitizeLine } from "#ui";
 import type { Model } from "@earendil-works/pi-ai";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 

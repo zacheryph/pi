@@ -21,7 +21,7 @@ const BUNDLE_TESTS = "test";
 // changes because events also expose types from state, roster and PR modules.
 const dashboardProducers = ["pi-todo", "pi-stash", "pi-git", "pi-subagent"];
 
-// Extensions import shared libraries from packages/ by relative path, so a change
+// Extensions import shared libraries from packages/ through aliases, so a change
 // there re-tests every workspace.
 export function selectExtensions(workspaces, changedFiles, all = false) {
   const runAll =

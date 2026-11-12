@@ -9,15 +9,15 @@ import {
   type UITheme,
   type WidgetRow,
   type WidgetView,
-} from "../../../../packages/pi-ui/src/index.ts";
+} from "#ui";
 import {
   isReviewable,
   type TodoActivity,
   type TodoReviewState,
   type TodoUpdate,
   unreviewedTodoUpdates,
-} from "../activity.js";
-import { isTaskBlocked, type TodoState, type TodoTask } from "../state.js";
+} from "#src/activity";
+import { isTaskBlocked, type TodoState, type TodoTask } from "#src/state";
 
 export interface TodoRenderConfig {
   maxVisible: number;

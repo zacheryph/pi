@@ -1,7 +1,7 @@
 import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import { describe, expect, it } from "vitest";
-import piGit from "../src/index.ts";
+import piGit from "#src/index";
 
 const tools = new Map<string, ToolDefinition>();
 piGit({

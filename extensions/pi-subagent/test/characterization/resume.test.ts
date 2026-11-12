@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import type { Context } from "@earendil-works/pi-ai";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { describe, expect, it, vi } from "vitest";
-import { lastResult } from "../helpers/sdk.ts";
+import { lastResult } from "#test/helpers/sdk";
 import {
   delegate,
   gated,
@@ -11,7 +11,7 @@ import {
   shape,
   startParent,
   untilAnnounced,
-} from "./harness.ts";
+} from "#test/characterization/harness";
 
 // Giving an idle agent more work, through subagent_send. Rewritten by roadmap step 7b: this
 // used to be subagent_start with `resume`. The run starts and reports as it did, with the

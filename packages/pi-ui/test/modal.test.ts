@@ -1,11 +1,11 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Focusable, OverlayHandle, OverlayOptions, TUI } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
-import { openModal, PassiveOverlay } from "../src/modal.ts";
-import { showExplorer } from "../src/explorer.ts";
-import { showDetail } from "../src/detail.ts";
-import type { DisposableComponent } from "../src/types.ts";
-import { keys, plain, surface, theme } from "./helpers.ts";
+import { openModal, PassiveOverlay } from "#src/modal";
+import { showExplorer } from "#src/explorer";
+import { showDetail } from "#src/detail";
+import type { DisposableComponent } from "#src/types";
+import { keys, plain, surface, theme } from "#test/helpers";
 
 type Factory = Parameters<ExtensionContext["ui"]["custom"]>[0];
 function context(mode: ExtensionContext["mode"] = "tui", hasUI = true) {

@@ -32,5 +32,14 @@
     "extensions": [
       "./src/index.ts"
     ]
+  },
+  "imports": {
+    "#src/*": "./src/*.ts",
+    "#test/*": "./test/*.ts",
+    "#foundations/*": "pi-foundations/*",
+    "#session-tree": "pi-session-tree",
+    "#test-helpers": "pi-test-helpers",
+    "#ui": "pi-ui",
+    "#work": "pi-work"
   }
 }

@@ -9,7 +9,7 @@ import type {
 } from "#src/observation/notification";
 import { clipText } from "#src/roster";
 import { formatMs, formatTokens, formatTurnBudget } from "#src/ui/display";
-import { ICONS, sanitizeLine } from "../../../../packages/pi-ui/src/index.ts";
+import { ICONS, sanitizeLine } from "#ui";
 
 /** Narrow theme interface — only the methods the renderer actually calls. */
 interface RendererTheme {

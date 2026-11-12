@@ -1,19 +1,20 @@
 import type { ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import { KeybindingsManager, TUI_KEYBINDINGS, visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
-import { fakePi } from "../../../packages/pi-test-helpers/src/fake-pi.ts";
 import {
+  fakePi,
   expectPadded,
   NARROW_WIDTHS,
   WIDE_TEXT,
-} from "../../../packages/pi-test-helpers/src/render.ts";
-import { ansiTheme, stripAnsi } from "../../../packages/pi-test-helpers/src/theme.ts";
+  ansiTheme,
+  stripAnsi,
+  flushMicrotasks as flush,
+} from "#test-helpers";
 import stashExtension from "#src/index";
 import type { StashRecord } from "#src/state";
-import { Explorer } from "../../../packages/pi-ui/src/index.ts";
+import { Explorer } from "#ui";
 import { showStashBrowser, stashExplorerView, type StashPreview } from "#src/ui/browser";
 import { formatAge, formatBytes, originLabel, previewRows } from "#src/ui/render";
-import { flushMicrotasks as flush } from "../../../packages/pi-test-helpers/src/wait.ts";
 
 // Colors every token so width math must ignore escape sequences.
 const ansi = ansiTheme as Theme;

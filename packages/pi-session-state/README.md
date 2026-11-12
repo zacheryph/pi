@@ -3,14 +3,10 @@
 A small library (not an extension) for the session wiring that extensions with
 persistent state share: a context-only card, a service in the
 [session tree](../pi-session-tree/README.md), and replay of custom entries.
-Import it by relative path, like the other packages:
+Import it through the workspace alias:
 
 ```ts
-import {
-  contextCard,
-  readEntries,
-  treeService,
-} from "../../../packages/pi-session-state/src/index.ts";
+import { contextCard, readEntries, treeService } from "#session-state";
 ```
 
 Every helper keeps its state in the closure of the call that made it, so call

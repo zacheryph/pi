@@ -16,7 +16,7 @@ import {
   readPersistedRecords,
   type SessionEntryLike,
 } from "#src/persisted-record";
-import { sanitizeLine } from "../../../packages/pi-ui/src/index.ts";
+import { sanitizeLine } from "#ui";
 
 /**
  * Where an agent stands, for ordering and labelling. The last six are an idle

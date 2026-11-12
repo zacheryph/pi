@@ -22,7 +22,7 @@ import {
 import { formatLifetimeTokens, textResult } from "#src/tools/helpers";
 import type { Subagent } from "#src/types";
 import { formatAgentDuration, getDisplayName, modelLabel, type Theme } from "#src/ui/display";
-import { BoundedLines, bodyRow, ICONS } from "../../../../packages/pi-ui/src/index.ts";
+import { BoundedLines, bodyRow, ICONS } from "#ui";
 
 // ---- Deps interfaces ----
 

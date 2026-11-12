@@ -10,10 +10,10 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import { JobManager, type JobSnapshot } from "../src/jobs.ts";
+import { JobManager, type JobSnapshot } from "#src/jobs";
 import { rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { alive, readPid, sleep, tempDir, waitForPid, waitUntil } from "./helpers.ts";
+import { alive, readPid, sleep, tempDir, waitForPid, waitUntil } from "#test/helpers";
 
 function setup(
   t: Parameters<typeof tempDir>[0],

@@ -2,15 +2,9 @@ import { copyFileSync } from "node:fs";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { service } from "../../../packages/pi-session-tree/src/index.ts";
-import { messageText, toolCall } from "../../../packages/pi-test-helpers/src/faux-session.ts";
-import { resetSessionTree } from "../../../packages/pi-test-helpers/src/globals.ts";
-import {
-  WORK_ENTRY,
-  WORK_LOST,
-  WORK_SERVICE,
-  type WorkHost,
-} from "../../../packages/pi-work/src/index.ts";
+import { service } from "#session-tree";
+import { messageText, toolCall, resetSessionTree } from "#test-helpers";
+import { WORK_ENTRY, WORK_LOST, WORK_SERVICE, type WorkHost } from "#work";
 import {
   delegate,
   gated,
@@ -18,8 +12,8 @@ import {
   startParent,
   untilAnnounced,
   type Parent,
-} from "./characterization/harness.ts";
-import { offlineAgentDir } from "./helpers/sdk.ts";
+} from "#test/characterization/harness";
+import { offlineAgentDir } from "#test/helpers/sdk";
 
 // pi-subagent as a work producer, on a real parent session: each run is an item in the parent's
 // work host, completed with the completion message. The host writes the messages into the

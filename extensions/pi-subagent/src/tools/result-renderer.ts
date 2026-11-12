@@ -10,7 +10,7 @@ import type { DisplayStatus } from "#src/lifecycle/subagent-state";
 import { type TurnBudget, wrappedUpAtTurnLimit } from "#src/lifecycle/turn-limits";
 import type { AgentDetails, Theme } from "#src/ui/display";
 import { formatMs, formatTurnBudget } from "#src/ui/display";
-import { ICONS, SPINNER } from "../../../../packages/pi-ui/src/index.ts";
+import { ICONS, SPINNER } from "#ui";
 
 // ---- Dispatcher ----
 

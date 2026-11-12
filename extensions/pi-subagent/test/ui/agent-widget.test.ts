@@ -8,7 +8,7 @@ import { makeModel } from "#test/helpers/make-model";
 import { createTestSubagent, makeStubExecution, stateForLabel } from "#test/helpers/make-subagent";
 import { createSubagentSessionStub, openItem } from "#test/helpers/mock-session";
 import type { DisplayStatus } from "#src/lifecycle/subagent-state";
-import { plainTheme } from "../../../../packages/pi-test-helpers/src/theme.ts";
+import { plainTheme } from "#test-helpers";
 
 // Minimal agent fixture — only the fields AgentSummary reads.
 function makeAgent(

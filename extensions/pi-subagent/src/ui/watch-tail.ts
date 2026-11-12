@@ -1,10 +1,10 @@
 /** Bounded, typed activity feed. Never imports inherited conversation history. */
-import { oneLine } from "../../../../packages/pi-foundations/src/format.ts";
+import { oneLine } from "#foundations/format";
 import { realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import type { AgentSessionEvent } from "#src/types";
-import { sanitizeText } from "../../../../packages/pi-ui/src/index.ts";
+import { sanitizeText } from "#ui";
 
 const MAX_ENTRIES = 32;
 const MAX_TEXT = 4096;

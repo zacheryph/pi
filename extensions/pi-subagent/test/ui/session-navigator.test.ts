@@ -25,7 +25,7 @@ import {
 } from "#src/ui/session-navigator";
 import { makeNavigable } from "#test/helpers/make-navigable";
 import { fakeSource, mockTui } from "#test/helpers/transcript-fixtures";
-import { stripAnsi } from "../../../../packages/pi-test-helpers/src/theme.ts";
+import { stripAnsi } from "#test-helpers";
 
 const registry = new AgentTypeRegistry(() => new Map());
 

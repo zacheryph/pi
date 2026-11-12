@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { DefaultResourceLoader, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
 import { builtinExtensionsFor } from "#src/session/builtin-extensions";
-import { tempDir } from "../../../../packages/pi-test-helpers/src/temp.ts";
+import { tempDir } from "#test-helpers";
 
 /** The names of the built-ins selected for `toolNames`, in selection order. */
 function namesFor(toolNames: string[]): string[] {

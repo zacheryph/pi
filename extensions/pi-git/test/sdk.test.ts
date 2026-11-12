@@ -8,13 +8,13 @@ import {
   toolCall as call,
   toolResults,
   type FauxRequest,
-} from "../../../packages/pi-test-helpers/src/faux-session.ts";
-import { resetSessionTree } from "../../../packages/pi-test-helpers/src/globals.ts";
-import { GIT_SNAPSHOT_EVENT, type GitSnapshotEvent } from "../src/events.ts";
-import piGit from "../src/index.ts";
-import { GhUnavailable } from "../src/status.ts";
-import { foldLedger } from "../src/fold.ts";
-import { sandbox, type Sandbox } from "./support/repos.ts";
+  resetSessionTree,
+} from "#test-helpers";
+import { GIT_SNAPSHOT_EVENT, type GitSnapshotEvent } from "#src/events";
+import piGit from "#src/index";
+import { GhUnavailable } from "#src/status";
+import { foldLedger } from "#src/fold";
+import { sandbox, type Sandbox } from "#test/support/repos";
 
 afterEach(resetSessionTree);
 

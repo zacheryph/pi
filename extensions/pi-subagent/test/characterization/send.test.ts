@@ -1,8 +1,15 @@
 import type { Context } from "@earendil-works/pi-ai";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { describe, expect, it, vi } from "vitest";
-import { lastResult } from "../helpers/sdk.ts";
-import { delegate, gated, sendCall, shape, startParent, untilAnnounced } from "./harness.ts";
+import { lastResult } from "#test/helpers/sdk";
+import {
+  delegate,
+  gated,
+  sendCall,
+  shape,
+  startParent,
+  untilAnnounced,
+} from "#test/characterization/harness";
 
 // What subagent_send does with an agent that has not run yet or never got a session: added by
 // roadmap step 7b. A running agent (steer.test.ts) and a finished one (resume.test.ts) are

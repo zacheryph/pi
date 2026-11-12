@@ -39,13 +39,7 @@ session id there, but Pi writes a file path there for forks.
 ## Services
 
 ```ts
-import {
-  ancestors,
-  call,
-  callAsync,
-  provide,
-  trackChildren,
-} from "../../../packages/pi-session-tree/src/index.ts";
+import { ancestors, call, callAsync, provide, trackChildren } from "#session-tree";
 
 export default function extension(pi: ExtensionAPI) {
   trackChildren(pi);
@@ -108,11 +102,11 @@ session is itself live.
 
 ## Importing
 
-Extensions import the source by relative path, as they do for pi-subagent'
-vendored service. Node subpath `imports` cannot point outside a package, and a
-Git-installed bundle does not link workspaces. `test/sdk.test.ts` loads two
-fixture extensions through Pi's real loader to check that the relative import
-resolves, and that two module copies share one registry.
+Extensions import `#session-tree`. Each consuming workspace maps that alias to
+`pi-session-tree`, whose package exports point to its source. The root `file:`
+dependency creates the link for Git installs too. `test/sdk.test.ts` loads two
+fixture extensions through Pi's real loader to check that the alias resolves,
+and that two module copies share one registry.
 
 ## Development
 

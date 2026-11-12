@@ -16,12 +16,8 @@ import {
   capture,
   lastResult,
   agentIdIn,
-} from "./helpers/sdk.ts";
-import {
-  fauxSession,
-  toolCall,
-  toolResults,
-} from "../../../packages/pi-test-helpers/src/faux-session.ts";
+} from "#test/helpers/sdk";
+import { fauxSession, toolCall, toolResults } from "#test-helpers";
 
 // A real parent session loads this extension and spawns real child sessions
 // through it, all answered by one scripted faux provider. Every spawn runs in

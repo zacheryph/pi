@@ -15,7 +15,7 @@ import {
   type TodoState,
   type TodoStatus,
   type TodoTaskInput,
-} from "../src/state.js";
+} from "#src/state";
 
 function task(key: string, overrides: Partial<TodoTaskInput> = {}): TodoTaskInput {
   return { key, subject: `Task ${key}`, status: "pending", ...overrides };

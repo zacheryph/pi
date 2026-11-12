@@ -3,6 +3,11 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-11: Standardize source and test aliases
+
+- Use package-local `#src/*` and `#test/*` aliases and shared workspace aliases,
+  including the pi-test-helpers barrel in Node tests; retain the Node test runner.
+
 ## 2026-11-12: Completions during a compaction are answered
 
 Issue #126. No source change in pi-job: the root work host (packages/pi-work) now starts one run,

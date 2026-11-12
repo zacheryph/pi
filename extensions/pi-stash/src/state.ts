@@ -1,5 +1,5 @@
-import { HASH_PATTERN, type BlobStore } from "./store.ts";
-import { readEntries, type BranchSource } from "../../../packages/pi-session-state/src/index.ts";
+import { HASH_PATTERN, type BlobStore } from "#src/store";
+import { readEntries, type BranchSource } from "#session-state";
 
 /** Custom session entry; one per change, plus a checkpoint after compaction. */
 export const STASH_INDEX_TYPE = "stash:index";

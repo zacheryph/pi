@@ -1,8 +1,8 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { type ScriptedSession, collectToolRuns, startSession } from "#src/harness.ts";
-import { defineScenario, startAgent, tool } from "#src/scenario.ts";
+import { type ScriptedSession, collectToolRuns, startSession } from "#src/harness";
+import { defineScenario, startAgent, tool } from "#src/scenario";
 
 let open: ScriptedSession | undefined;
 afterEach(async () => {

@@ -1,7 +1,7 @@
 /** Unit tests for job_watch tool checks (local addition): toolcheck.ts, probe.ts, watch.ts. */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { startProbe, type ProbeOutcome } from "../src/probe.ts";
+import { startProbe, type ProbeOutcome } from "#src/probe";
 import {
   assertWatchable,
   canonicalJson,
@@ -15,9 +15,9 @@ import {
   toolCheckTitle,
   type ExecuteTool,
   type ToolCallOutcome,
-} from "../src/toolcheck.ts";
-import { evaluateWatch, type CheckResult } from "../src/watch.ts";
-import { tick } from "./helpers.ts";
+} from "#src/toolcheck";
+import { evaluateWatch, type CheckResult } from "#src/watch";
+import { tick } from "#test/helpers";
 
 const ok = (structuredContent?: unknown, text = ""): ToolCallOutcome => ({
   isError: false,

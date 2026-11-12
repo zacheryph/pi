@@ -7,9 +7,9 @@ import {
   type Skill,
   type ToolResultEvent,
 } from "@earendil-works/pi-coding-agent";
-import type { Block } from "../../../packages/pi-ui/src/index.ts";
-import { sourceSummary } from "./detail-format.js";
-import type { InsightView } from "./types.js";
+import type { Block } from "#ui";
+import { sourceSummary } from "#src/detail-format";
+import type { InsightView } from "#src/types";
 
 /** Branch-local successful read evidence only; never skill contents. */
 export const SKILL_READ_ENTRY = "system:skill-read";

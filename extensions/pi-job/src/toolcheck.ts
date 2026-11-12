@@ -4,9 +4,9 @@
  * for model-issued calls. No model is involved, so only read-only or explicitly allowed tools
  * may be watched, and a failed call is inconclusive rather than a verdict.
  */
-import { errorText } from "../../../packages/pi-foundations/src/errors.ts";
-import { isRecord } from "../../../packages/pi-foundations/src/guards.ts";
-import type { ProbeResult, WatchProbe } from "./probe.ts";
+import { errorText } from "#foundations/errors";
+import { isRecord } from "#foundations/guards";
+import type { ProbeResult, WatchProbe } from "#src/probe";
 
 export interface MatchSpec {
   /** Dot path into the result, e.g. `check_runs.0.status`; empty for the whole result. */

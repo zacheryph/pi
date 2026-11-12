@@ -1,13 +1,13 @@
-import { customEntries, type BranchSource } from "../../../packages/pi-session-state/src/index.ts";
+import { customEntries, type BranchSource } from "#session-state";
 import {
   applyTodoReview,
   createTodoReviewState,
   readTodoActivity,
   type TodoActivity,
   type TodoReviewState,
-} from "./activity.ts";
-import { applyTodoClaims, TODO_CLAIMS_TYPE, type TodoClaim } from "./claims.ts";
-import { createEmptyTodoState, readTodoState, type TodoState } from "./state.ts";
+} from "#src/activity";
+import { applyTodoClaims, TODO_CLAIMS_TYPE, type TodoClaim } from "#src/claims";
+import { createEmptyTodoState, readTodoState, type TodoState } from "#src/state";
 
 /** Local journals are authoritative; direct results may arrive after newer edits. */
 export const TODO_JOURNAL_TYPE = "todo:journal";

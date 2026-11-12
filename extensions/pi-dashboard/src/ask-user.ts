@@ -1,6 +1,6 @@
-import { isRecord } from "../../../packages/pi-foundations/src/guards.ts";
-import type { Questionnaire, QuestionnaireAnswer } from "./protocol.ts";
-import { clip } from "./sections.ts";
+import { isRecord } from "#foundations/guards";
+import type { Questionnaire, QuestionnaireAnswer } from "#src/protocol";
+import { clip } from "#src/sections";
 
 // pi-ask's event contract (extensions/pi-ask/src/events.ts): payloads are
 // JSON-safe and listeners tolerate unknown fields.

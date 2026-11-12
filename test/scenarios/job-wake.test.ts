@@ -11,7 +11,7 @@ import {
   textOf,
   untilMessages,
   tool,
-} from "../support/session.ts";
+} from "#test/support/session";
 
 it("starts the next turn with the job's completion message", async () => {
   const pi = await session({

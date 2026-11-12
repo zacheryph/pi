@@ -13,12 +13,7 @@ import {
   createUpdateRenderer,
   resolveStatusPresentation,
 } from "#src/observation/renderer";
-import {
-  expectBounded,
-  NARROW_WIDTHS,
-  WIDE_TEXT,
-} from "../../../../packages/pi-test-helpers/src/render.ts";
-import { ansiTheme, markupTheme } from "../../../../packages/pi-test-helpers/src/theme.ts";
+import { expectBounded, NARROW_WIDTHS, WIDE_TEXT, ansiTheme, markupTheme } from "#test-helpers";
 
 /** Minimal theme stub — satisfies RendererTheme structurally. */
 const stubTheme = () => markupTheme;

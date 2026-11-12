@@ -6,10 +6,10 @@
  * stay absolute and agent ids whole, so both can be passed straight to a tool.
  */
 
-import { sanitizeLine } from "../../../packages/pi-ui/src/index.ts";
-import type { Ledger } from "./fold.ts";
-import type { WorktreeRecord } from "./ledger.ts";
-import { describePr, type PrRecord, type PrRef } from "./prs.ts";
+import { sanitizeLine } from "#ui";
+import type { Ledger } from "#src/fold";
+import type { WorktreeRecord } from "#src/ledger";
+import { describePr, type PrRecord, type PrRef } from "#src/prs";
 
 /** Local repository paths mapped to the verified identity of their origin remote. */
 export type CardRepositories = ReadonlyMap<string, Omit<PrRef, "number">>;

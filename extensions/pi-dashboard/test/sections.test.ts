@@ -1,10 +1,6 @@
-import type { TodoSnapshotEvent, TodoSnapshotTask } from "../../pi-todo/src/events.ts";
-import type { StashSnapshotEvent, StashSnapshotEntry } from "../../pi-stash/src/events.ts";
-import type {
-  GitSnapshotEvent,
-  GitSnapshotPr,
-  GitSnapshotWorktree,
-} from "../../pi-git/src/events.ts";
+import type { TodoSnapshotEvent, TodoSnapshotTask } from "#todo/events";
+import type { StashSnapshotEvent, StashSnapshotEntry } from "#stash/events";
+import type { GitSnapshotEvent, GitSnapshotPr, GitSnapshotWorktree } from "#git/events";
 import { describe, expect, it } from "vitest";
 import { clip, readGit, readPreview, readStash, readTodoHistory, readTodos } from "#src/sections";
 

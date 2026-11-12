@@ -5,11 +5,11 @@
  */
 
 import { basename } from "node:path";
-import type { Block, ExplorerItem, ExplorerView, Tone } from "../../../packages/pi-ui/src/index.ts";
-import type { GitSnapshotEvent, GitSnapshotPr, GitSnapshotWorktree } from "./events.ts";
-import { describePr, prLabel, type PrReview, type PrState } from "./prs.ts";
-import type { FoundWorktree } from "./worktrees.ts";
-import { atRisk, describeStatus } from "./worktrees.ts";
+import type { Block, ExplorerItem, ExplorerView, Tone } from "#ui";
+import type { GitSnapshotEvent, GitSnapshotPr, GitSnapshotWorktree } from "#src/events";
+import { describePr, prLabel, type PrReview, type PrState } from "#src/prs";
+import type { FoundWorktree } from "#src/worktrees";
+import { atRisk, describeStatus } from "#src/worktrees";
 
 /** Cap on worktrees listed in tool output and notifications. */
 export const LIST_LIMIT = 50;

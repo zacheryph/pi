@@ -48,10 +48,14 @@ Review `git diff` afterwards. Then add it to the root README (step 2), implement
 the stubs (step 3), and extend the tests (step 4).
 
 Keep helper modules beside `src/index.ts`; only the entry point is registered.
-Import siblings by relative path. Use `#src/*` aliases only with matching
-`imports` and `paths` entries, as `extensions/pi-todo` has. A runtime dependency
-goes in the **root** `dependencies`, since a Git install of the bundle installs
-only those; nested manifests alone expose nothing.
+Use `#src/*` and `#test/*` for local source and test modules. The scaffold declares
+them in the workspace's `package.json`, with `.ts` targets; do not duplicate them
+in TypeScript `paths`. Shared aliases map to workspace packages, for example
+`"#ui": "pi-ui"` or `"#foundations/*": "pi-foundations/*"` in the consuming
+manifest. Their `exports` point to TypeScript source. A runtime dependency goes
+in the **root** `dependencies` (`"pi-ui": "file:packages/pi-ui"` for a local
+package), so Git installs create the links too. Relative TypeScript imports,
+when needed for files outside these aliases, use `.ts`.
 
 ## 2. Add it to the root README
 
@@ -87,7 +91,7 @@ bundle extension again. So:
   `packages/pi-session-state`: it follows the session's children, provides on
   `session_start`, withdraws on `session_shutdown`, and `tree.parent(fn)` calls
   the parent's copy. For anything else across sessions, use
-  `packages/pi-session-tree` (`call`, `ancestors`) by relative path. Never put a
+  `#session-tree` (`call`, `ancestors`). Never put a
   bare object on `globalThis`.
 
 **Talking to other extensions.** Publish state on the session's `pi.events` bus
@@ -121,7 +125,8 @@ overlay; regular mode uses a custom screen (see `extensions/pi-system-insights`)
 
 - Use [`packages/pi-test-helpers`](../../../packages/pi-test-helpers/README.md)
   before writing a local helper: temp directories, polling, themes, padding
-  assertions, `ui.custom` mounting and SDK sessions are there.
+  assertions, `ui.custom` mounting and SDK sessions are there. Import them from
+  `#test-helpers` (the shared barrel).
 - `test/index.test.ts` starts with its `fakePi`, which records `on`,
   `registerTool` and `registerCommand`. Drive handlers with `emit`, tools with
   `runTool` and commands with `runCommand` (more examples:
@@ -149,9 +154,12 @@ added and what `verify:bundle` now asserts.
 
 Code that several extensions import goes in `packages/<name>/` instead: a
 workspace with no `pi` manifest entry, so Pi never loads it as an extension.
-Add it to `workspaces` only; extensions import it by relative path. CI re-tests
-every workspace when a package changes. See `packages/pi-session-state/`. The
-scaffold script does not cover packages.
+Add it to `workspaces`, expose its source through `exports`, and add the alias
+to consuming workspaces' `imports` maps. Runtime packages also need a root
+`file:` dependency so Pi's Git installer creates their links. Keep test-only
+packages out of root runtime dependencies. CI re-tests every workspace when a
+package changes. See `packages/pi-session-state/`. The scaffold script does not
+cover packages.
 
 ## Changing the templates
 

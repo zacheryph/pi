@@ -1,6 +1,6 @@
 import { Ajv2020 } from "ajv/dist/2020.js";
 import { describe, expect, it } from "vitest";
-import { fakePi } from "../../../packages/pi-test-helpers/src/fake-pi.ts";
+import { fakePi } from "#test-helpers";
 import stashExtension from "#src/index";
 
 const { api, tools } = fakePi();

@@ -74,5 +74,16 @@
     "typebox": "1.3.27",
     "typescript": "^7.0.2",
     "vitest": "^5.1.0"
+  },
+  "dependencies": {
+    "pi-git": "file:extensions/pi-git",
+    "pi-stash": "file:extensions/pi-stash",
+    "pi-subagent": "file:extensions/pi-subagent",
+    "pi-todo": "file:extensions/pi-todo",
+    "pi-foundations": "file:packages/pi-foundations",
+    "pi-session-state": "file:packages/pi-session-state",
+    "pi-session-tree": "file:packages/pi-session-tree",
+    "pi-ui": "file:packages/pi-ui",
+    "pi-work": "file:packages/pi-work"
   }
 }

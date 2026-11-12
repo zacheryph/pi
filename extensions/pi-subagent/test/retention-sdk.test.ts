@@ -4,18 +4,17 @@ import { join } from "node:path";
 import type { Context } from "@earendil-works/pi-ai";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { toolCall } from "../../../packages/pi-test-helpers/src/faux-session.ts";
-import { resetSessionTree } from "../../../packages/pi-test-helpers/src/globals.ts";
-import { createJobsExtension } from "../../pi-job/src/extension.ts";
+import { toolCall, resetSessionTree } from "#test-helpers";
+import { createJobsExtension } from "#job";
 import {
   delegate,
   type Parent,
   sendCall,
   startParent,
   untilAnnounced,
-} from "./characterization/harness.ts";
-import { expectNoUnmanagedRuns, trackChildRuns } from "./helpers/managed-runs.ts";
-import { EXTENSIONS, offlineAgentDir } from "./helpers/sdk.ts";
+} from "#test/characterization/harness";
+import { expectNoUnmanagedRuns, trackChildRuns } from "#test/helpers/managed-runs";
+import { EXTENSIONS, offlineAgentDir } from "#test/helpers/sdk";
 
 // Roadmap step 11 on real sessions (a scripted model): a session is released only for an agent that
 // is done, after its window, and `subagent_send` reopens it from its transcript. An agent waiting

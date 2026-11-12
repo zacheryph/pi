@@ -1,11 +1,11 @@
 import { KeybindingsManager, TUI_KEYBINDINGS, type TuiMouseEvent } from "@earendil-works/pi-tui";
 import { vi } from "vitest";
-import { sanitizeText } from "../src/text.ts";
-import type { UISurface, UITheme } from "../src/types.ts";
-import { ansiTheme } from "../../pi-test-helpers/src/theme.ts";
+import { sanitizeText } from "#src/text";
+import type { UISurface, UITheme } from "#src/types";
+import { ansiTheme } from "#test-helpers";
 
-export { expectBounded as bounded } from "../../pi-test-helpers/src/render.ts";
-export { flushMicrotasks as flush } from "../../pi-test-helpers/src/wait.ts";
+export { expectBounded as bounded } from "#test-helpers";
+export { flushMicrotasks as flush } from "#test-helpers";
 
 export const theme: UITheme = ansiTheme;
 export const keys = () => new KeybindingsManager(TUI_KEYBINDINGS);

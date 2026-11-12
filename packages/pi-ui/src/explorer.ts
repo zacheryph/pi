@@ -1,5 +1,5 @@
 /** MIT adaptation of the bundle's read-only browsers; see ../LICENSE. */
-import { errorText } from "../../pi-foundations/src/errors.ts";
+import { errorText } from "#foundations/errors";
 import {
   Input,
   matchesKey,
@@ -16,11 +16,11 @@ import {
   TextViewport,
   viewHeight,
   type DetailContent,
-} from "./detail.ts";
-import { ICONS } from "./icons.ts";
-import { cells, layoutPanel, renderPanel, splitColumns } from "./layout.ts";
-import { openModal, type ModalContext, type ModalOptions } from "./modal.ts";
-import { HINT_PRIORITY, navigationDelta, navigationHint, type Hint } from "./navigation.ts";
+} from "#src/detail";
+import { ICONS } from "#src/icons";
+import { cells, layoutPanel, renderPanel, splitColumns } from "#src/layout";
+import { openModal, type ModalContext, type ModalOptions } from "#src/modal";
+import { HINT_PRIORITY, navigationDelta, navigationHint, type Hint } from "#src/navigation";
 import {
   copyLine,
   paint,
@@ -29,9 +29,9 @@ import {
   styleLine,
   type Badge,
   type Line,
-} from "./style.ts";
-import { sanitizeLine } from "./text.ts";
-import type { Title, UIKeys, UISurface, UITheme } from "./types.ts";
+} from "#src/style";
+import { sanitizeLine } from "#src/text";
+import type { Title, UIKeys, UISurface, UITheme } from "#src/types";
 
 export interface ExplorerItem {
   /** Opaque identity, never rendered or normalized. */

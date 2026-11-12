@@ -2,10 +2,10 @@
  * events.ts — what pi-git publishes on the session's `pi.events` bus.
  */
 
-import type { WorktreeStatus } from "./git.ts";
-import type { WorktreeRecord } from "./ledger.ts";
-import type { PrRecord } from "./prs.ts";
-import type { FoundWorktree } from "./worktrees.ts";
+import type { WorktreeStatus } from "#src/git";
+import type { WorktreeRecord } from "#src/ledger";
+import type { PrRecord } from "#src/prs";
+import type { FoundWorktree } from "#src/worktrees";
 
 /**
  * This session's worktrees and pull requests, for pi-dashboard and other

@@ -1,10 +1,4 @@
-import type {
-  WorkHost,
-  WorkItem,
-  WorkItemSpec,
-  WorkItemView,
-  WorkMessage,
-} from "../../../../packages/pi-work/src/index.ts";
+import type { WorkHost, WorkItem, WorkItemSpec, WorkItemView, WorkMessage } from "#work";
 
 /** What happened to one item, in order. */
 export type ItemEvent =

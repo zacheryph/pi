@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { formatKey, layoutHints, navigationHint, type Hint } from "../src/navigation.ts";
-import { copyLine, plainText, styleBadge, styleLine, type Line } from "../src/style.ts";
-import { keys } from "./helpers.ts";
+import { formatKey, layoutHints, navigationHint, type Hint } from "#src/navigation";
+import { copyLine, plainText, styleBadge, styleLine, type Line } from "#src/style";
+import { keys } from "#test/helpers";
 
 const tagged = {
   fg: (color: string, text: string) => `<${color}>${text}</${color}>`,

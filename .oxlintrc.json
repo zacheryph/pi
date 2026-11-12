@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["typescript", "unicorn", "oxc"],
+  "plugins": ["typescript", "unicorn", "oxc", "import"],
   "categories": {
     "correctness": "error"
   },
@@ -14,6 +14,31 @@
   },
   "ignorePatterns": ["**/dist/**", "**/coverage/**"],
   "overrides": [
+    {
+      "files": ["**/*.ts"],
+      "rules": {
+        "import/extensions": [
+          "error",
+          "always",
+          {
+            "ignorePackages": true,
+            "checkTypeImports": true,
+            "pathGroupOverrides": [{ "pattern": "#*", "action": "ignore" }]
+          }
+        ],
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["./**/*.js", "../**/*.js", "!**/node_modules/**"],
+                "message": "Use .ts for relative TypeScript source imports."
+              }
+            ]
+          }
+        ]
+      }
+    },
     {
       "files": ["**/*.test.ts", "**/*.test.mjs"],
       "rules": {

@@ -17,8 +17,8 @@ import {
   CHILD_MARK,
   lastResult,
   scriptSides,
-} from "./helpers/sdk.ts";
-import { toolCall } from "../../../packages/pi-test-helpers/src/faux-session.ts";
+} from "#test/helpers/sdk";
+import { toolCall } from "#test-helpers";
 
 // Scripted model responses exercise the real SDK, extensions, todo journals,
 // nested worker creation, and messaging a settled worker. This tests capabilities, not model judgment.

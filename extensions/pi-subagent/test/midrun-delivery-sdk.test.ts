@@ -6,21 +6,20 @@ import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { createSubagentSession } from "#src/lifecycle/create-subagent-session";
 import { WORK_WAKE_PROMPT } from "#src/lifecycle/run";
-import { toolCall } from "../../../packages/pi-test-helpers/src/faux-session.ts";
-import { WorkHostRuntime } from "../../../packages/pi-work/src/index.ts";
-import { clearSlots, resetSessionTree } from "../../../packages/pi-test-helpers/src/globals.ts";
-import { createJobsExtension } from "../../pi-job/src/extension.ts";
+import { toolCall, clearSlots, resetSessionTree } from "#test-helpers";
+import { WorkHostRuntime } from "#work";
+import { createJobsExtension } from "#job";
 import {
   delegate,
   gated,
   sendCall,
   startParent,
   untilAnnounced,
-} from "./characterization/harness.ts";
-import workProbe, { PROBE, probe } from "./fixtures/work-probe.ts";
-import { expectNoUnmanagedRuns, trackChildRuns } from "./helpers/managed-runs.ts";
-import { EXTENSIONS, offlineAgentDir, realChildDeps } from "./helpers/sdk.ts";
-import { widgetUi } from "./helpers/widget-ui.ts";
+} from "#test/characterization/harness";
+import workProbe, { PROBE, probe } from "#test/fixtures/work-probe";
+import { expectNoUnmanagedRuns, trackChildRuns } from "#test/helpers/managed-runs";
+import { EXTENSIONS, offlineAgentDir, realChildDeps } from "#test/helpers/sdk";
+import { widgetUi } from "#test/helpers/widget-ui";
 
 // Roadmap step 9b on real sessions: what a managed child does with a work message that arrives
 // while it runs. Pi holds the message until the end of the turn and the host's

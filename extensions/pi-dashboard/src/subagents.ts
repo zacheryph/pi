@@ -1,9 +1,6 @@
-import {
-  SUBAGENT_SNAPSHOT_VERSION,
-  type SubagentSnapshot,
-} from "../../pi-subagent/src/observation/snapshot.ts";
-import type { SubagentsSection, SubagentState } from "./protocol.ts";
-import { clip } from "./sections.ts";
+import { SUBAGENT_SNAPSHOT_VERSION, type SubagentSnapshot } from "#subagent/observation/snapshot";
+import type { SubagentsSection, SubagentState } from "#src/protocol";
+import { clip } from "#src/sections";
 
 const MAX_AGENTS = 20;
 const STATES: Readonly<Record<SubagentSnapshot["agents"][number]["state"], SubagentState>> = {

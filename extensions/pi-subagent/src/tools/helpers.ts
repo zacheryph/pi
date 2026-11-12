@@ -1,4 +1,4 @@
-import { oneLine } from "../../../../packages/pi-foundations/src/format.ts";
+import { oneLine } from "#foundations/format";
 import type { AgentConfigLookup } from "#src/config/agent-types";
 import { getLifetimeTotal, type LifetimeUsage } from "#src/lifecycle/usage";
 import type { AgentConfig } from "#src/types";

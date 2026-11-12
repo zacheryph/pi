@@ -1,4 +1,4 @@
-import { errorText } from "../../../../packages/pi-foundations/src/errors.ts";
+import { errorText } from "#foundations/errors";
 import {
   showExplorer,
   type Block,
@@ -6,9 +6,9 @@ import {
   type Line,
   type ModalContext,
   type ModalOptions,
-} from "../../../../packages/pi-ui/src/index.ts";
-import { handleFor, type StashRecord } from "../state.ts";
-import { entrySummary, formatAge, formatBytes, originLabel, shortSession } from "./render.ts";
+} from "#ui";
+import { handleFor, type StashRecord } from "#src/state";
+import { entrySummary, formatAge, formatBytes, originLabel, shortSession } from "#src/ui/render";
 
 export interface StashPreview {
   lines: string[];

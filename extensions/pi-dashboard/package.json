@@ -12,10 +12,6 @@
     "src",
     "README.md"
   ],
-  "imports": {
-    "#src/*": "./src/*",
-    "#test/*": "./test/*"
-  },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*"
   },
@@ -33,5 +29,16 @@
     "extensions": [
       "./src/index.ts"
     ]
+  },
+  "imports": {
+    "#src/*": "./src/*.ts",
+    "#test/*": "./test/*.ts",
+    "#foundations/*": "pi-foundations/*",
+    "#git/*": "pi-git/*",
+    "#session-state": "pi-session-state",
+    "#stash/*": "pi-stash/*",
+    "#subagent/*": "pi-subagent/*",
+    "#test-helpers": "pi-test-helpers",
+    "#todo/*": "pi-todo/*"
   }
 }

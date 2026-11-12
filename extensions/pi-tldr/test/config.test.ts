@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, onTestFinished, vi } from "vitest";
-import { settingsDirs, type SettingsDirs } from "../../../packages/pi-test-helpers/src/temp.ts";
-import { tldrSettings } from "../src/config.ts";
+import { settingsDirs, type SettingsDirs } from "#test-helpers";
+import { tldrSettings } from "#src/config";
 let dirs: SettingsDirs;
 const DEFAULTS = { model: "auto", setSessionName: true };
 const load = () => tldrSettings.load(dirs.cwd, dirs.agentDir);

@@ -1,14 +1,13 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import piTldr from "../src/index.js";
-import { runTldrModel } from "../src/core.js";
-import { tldrSettings } from "../src/config.js";
-import { showTldr } from "../src/viewer.js";
-import { tick } from "../../../packages/pi-test-helpers/src/wait.ts";
-import { fakePi } from "../../../packages/pi-test-helpers/src/fake-pi.ts";
+import piTldr from "#src/index";
+import { runTldrModel } from "#src/core";
+import { tldrSettings } from "#src/config";
+import { showTldr } from "#src/viewer";
+import { tick, fakePi } from "#test-helpers";
 
-vi.mock("../src/core.js", async (importActual) => {
-  const actual = await importActual<typeof import("../src/core.js")>();
+vi.mock("#src/core", async (importActual) => {
+  const actual = await importActual<typeof import("#src/core")>();
   return {
     ...actual,
     runTldrModel: vi.fn(async (_ctx, _model, _prompt, task) =>
@@ -23,8 +22,8 @@ vi.mock("../src/core.js", async (importActual) => {
     ),
   };
 });
-vi.mock("../src/config.js", async (importActual) => {
-  const actual = await importActual<typeof import("../src/config.js")>();
+vi.mock("#src/config", async (importActual) => {
+  const actual = await importActual<typeof import("#src/config")>();
   return {
     ...actual,
     tldrSettings: {
@@ -33,7 +32,7 @@ vi.mock("../src/config.js", async (importActual) => {
     },
   };
 });
-vi.mock("../src/viewer.js", () => ({
+vi.mock("#src/viewer", () => ({
   showTldr: vi.fn(async (_ctx, load) => {
     await load(new AbortController().signal);
   }),

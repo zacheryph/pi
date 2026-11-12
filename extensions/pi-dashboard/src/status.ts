@@ -1,4 +1,4 @@
-import type { SessionStatus } from "./protocol.ts";
+import type { SessionStatus } from "#src/protocol";
 
 /**
  * Derives one status from Pi's lifecycle events. Priority: waiting on the

@@ -1,8 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Defer } from "../../../../packages/pi-test-helpers/src/cleanup.ts";
-import { tempDir } from "../../../../packages/pi-test-helpers/src/temp.ts";
+import { type Defer, tempDir } from "#test-helpers";
 
 /** Run git with a fixed identity and signing off, so tests never depend on the user's config. */
 export function run(cwd: string, ...args: string[]): string {

@@ -1,8 +1,7 @@
 import { join } from "node:path";
 import { expect, it, onTestFinished } from "vitest";
-import { loadResources } from "../../pi-test-helpers/src/faux-session.ts";
-import { clearSlots, slots } from "../../pi-test-helpers/src/globals.ts";
-import { plain } from "./helpers.ts";
+import { loadResources, clearSlots, slots } from "#test-helpers";
+import { plain } from "#test/helpers";
 
 it("imports and renders the library through Pi's real loader without linking or building the package", async () => {
   const key = Symbol.for("pi-ui.test.sdk");

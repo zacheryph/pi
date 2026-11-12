@@ -1,4 +1,4 @@
-import { errorText } from "../../../../packages/pi-foundations/src/errors.ts";
+import { errorText } from "#foundations/errors";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import type { AgentSpawnConfig } from "#src/lifecycle/subagent-manager";
 import { renderSpawnNotes, textResult } from "#src/tools/helpers";

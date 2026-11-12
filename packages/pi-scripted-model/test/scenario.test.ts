@@ -9,7 +9,7 @@ import {
   TITLE_MODEL,
   tool,
   turnStarts,
-} from "#src/scenario.ts";
+} from "#src/scenario";
 
 type Content = { type: string; text?: string; name?: string };
 type Provider = {

@@ -10,14 +10,14 @@ import {
   existsSync,
 } from "node:fs";
 import { join } from "node:path";
-import { cleanOutput, lastBytes, readTail, tailBuffer, tailText, TailSink } from "../src/tail.ts";
-import { outcomeFromStatus } from "../src/supervisor.ts";
-import { LogWriter } from "../src/logwriter.ts";
-import { evaluateWatch, type CheckResult } from "../src/watch.ts";
-import { exitText, formatDuration, formatJobList, formatNotification } from "../src/format.ts";
-import { resolveManagerOptions, settleSnapshot, type JobSnapshot } from "../src/jobs.ts";
-import { pruneLogs } from "../src/logs.ts";
-import { tempDir } from "./helpers.ts";
+import { cleanOutput, lastBytes, readTail, tailBuffer, tailText, TailSink } from "#src/tail";
+import { outcomeFromStatus } from "#src/supervisor";
+import { LogWriter } from "#src/logwriter";
+import { evaluateWatch, type CheckResult } from "#src/watch";
+import { exitText, formatDuration, formatJobList, formatNotification } from "#src/format";
+import { resolveManagerOptions, settleSnapshot, type JobSnapshot } from "#src/jobs";
+import { pruneLogs } from "#src/logs";
+import { tempDir } from "#test/helpers";
 
 const lines = (n: number, from = 1) =>
   Array.from({ length: n }, (_, i) => `line ${i + from}`).join("\n");

@@ -1,5 +1,5 @@
-import { renderBlocks, type Block } from "../../../packages/pi-ui/src/index.ts";
-import { plainTheme } from "../../../packages/pi-test-helpers/src/theme.ts";
+import { renderBlocks, type Block } from "#ui";
+import { plainTheme } from "#test-helpers";
 
 const identity = plainTheme;
 

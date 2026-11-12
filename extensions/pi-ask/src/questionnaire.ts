@@ -20,8 +20,8 @@ import {
   type Hint,
   type UIKeys,
   type UITheme,
-} from "../../../packages/pi-ui/src/index.ts";
-import type { AskAnswer, AskOutcome, AskQuestion } from "./questions.ts";
+} from "#ui";
+import type { AskAnswer, AskOutcome, AskQuestion } from "#src/questions";
 
 export const TYPE_LABEL = "Type something…";
 

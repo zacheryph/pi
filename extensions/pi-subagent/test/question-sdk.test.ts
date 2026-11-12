@@ -6,13 +6,12 @@ import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai/provid
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { createSubagentSession } from "#src/lifecycle/create-subagent-session";
 import { WORK_WAKE_PROMPT } from "#src/lifecycle/run";
-import { toolCall } from "../../../packages/pi-test-helpers/src/faux-session.ts";
-import { resetSessionTree } from "../../../packages/pi-test-helpers/src/globals.ts";
-import { createJobsExtension } from "../../pi-job/src/extension.ts";
-import { delegate, sendCall, startParent, untilAnnounced } from "./characterization/harness.ts";
-import { expectNoUnmanagedRuns, trackChildRuns } from "./helpers/managed-runs.ts";
-import { EXTENSIONS, offlineAgentDir, realChildDeps } from "./helpers/sdk.ts";
-import { widgetUi } from "./helpers/widget-ui.ts";
+import { toolCall, resetSessionTree } from "#test-helpers";
+import { createJobsExtension } from "#job";
+import { delegate, sendCall, startParent, untilAnnounced } from "#test/characterization/harness";
+import { expectNoUnmanagedRuns, trackChildRuns } from "#test/helpers/managed-runs";
+import { EXTENSIONS, offlineAgentDir, realChildDeps } from "#test/helpers/sdk";
+import { widgetUi } from "#test/helpers/widget-ui";
 
 // Roadmap step 10 on real sessions: a child's `ask` is an item in the child's work host. The child
 // ends its turn (the tool terminates it) and is idle and waiting; the parent hears the question

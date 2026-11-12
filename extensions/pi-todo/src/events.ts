@@ -3,8 +3,8 @@ import {
   type TodoActivity,
   type TodoReviewState,
   type TodoUpdate,
-} from "./activity.ts";
-import { isTaskBlocked, type TodoState, type TodoStatus } from "./state.ts";
+} from "#src/activity";
+import { isTaskBlocked, type TodoState, type TodoStatus } from "#src/state";
 
 /**
  * `pi.events` channel carrying the complete task list for other extensions in

@@ -6,7 +6,7 @@ subagents with no API key, no network and no cost, and get the same result on
 every run. The tui-screenshot skill uses the same scenarios for pictures of the TUI.
 
 Development only: it is not in the bundle manifest, and `verify:bundle` fails if
-it ever is. Import it by relative path, like the other packages.
+it ever is. Import its modules through `#scripted-model/*` aliases.
 
 ## Scenarios (`src/scenario.ts`)
 
@@ -14,7 +14,7 @@ A scenario is a Pi extension that registers the `pi-scripted` provider. Its
 `scripted-model` plays back a script instead of calling an API:
 
 ```ts
-import { defineScenario, startAgent, text, tool, HOLD } from "../src/scenario.ts";
+import { defineScenario, startAgent, text, tool, HOLD } from "#scripted-model/scenario";
 
 const scenario = defineScenario({
   replies: [
@@ -64,7 +64,7 @@ const scenario = defineScenario({
 ## Harness (`src/harness.ts`)
 
 ```ts
-import { startSession } from "../../../packages/pi-scripted-model/src/harness.ts";
+import { startSession } from "#scripted-model/harness";
 
 const pi = await startSession({ scenario });
 try {

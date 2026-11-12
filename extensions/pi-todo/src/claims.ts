@@ -1,5 +1,5 @@
-import { isRecord } from "../../../packages/pi-foundations/src/guards.ts";
-import type { TodoState } from "./state.ts";
+import { isRecord } from "#foundations/guards";
+import type { TodoState } from "#src/state";
 
 /**
  * Task delegation to subagents. A parent hands keys to a child through

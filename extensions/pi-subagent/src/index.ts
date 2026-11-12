@@ -69,8 +69,8 @@ import { showAgentsBrowser } from "#src/ui/agents-browser";
 import { SessionNavigatorHandler } from "#src/ui/session-navigator";
 import { SubagentsSettingsHandler } from "#src/ui/subagents-settings";
 import { WatchOverlay } from "#src/ui/watch-overlay";
-import { service } from "../../../packages/pi-session-tree/src/index.ts";
-import { ensureWorkHost, WORK_PARENT_SERVICE } from "../../../packages/pi-work/src/index.ts";
+import { service } from "#session-tree";
+import { ensureWorkHost, WORK_PARENT_SERVICE } from "#work";
 
 export default function (pi: ExtensionAPI) {
   // ---- Register custom notification renderer ----

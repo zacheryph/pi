@@ -4,8 +4,8 @@
  * output arrives through onOutput, exactly one outcome through onDone, and terminate() ends the
  * check now (its late result is ignored).
  */
-import { errorText } from "../../../packages/pi-foundations/src/errors.ts";
-import type { RunOutcome } from "./supervisor.ts";
+import { errorText } from "#foundations/errors";
+import type { RunOutcome } from "#src/supervisor";
 
 export interface ProbeResult {
   /** 0 when the check's condition holds, 1 when it does not. Ignored when `error` is set. */

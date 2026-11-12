@@ -1,13 +1,8 @@
 import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
-import { service } from "../../../../packages/pi-session-tree/src/index.ts";
-import { WORK_PARENT_SERVICE, type WorkParent } from "../../../../packages/pi-work/src/index.ts";
-import { resetSessionTree } from "../../../../packages/pi-test-helpers/src/globals.ts";
-import {
-  WORK_ENTRY,
-  WORK_LOST,
-  WORK_SERVICE,
-  type WorkHost,
-} from "../../../../packages/pi-work/src/index.ts";
+import { service } from "#session-tree";
+import { WORK_PARENT_SERVICE, type WorkParent } from "#work";
+import { resetSessionTree } from "#test-helpers";
+import { WORK_ENTRY, WORK_LOST, WORK_SERVICE, type WorkHost } from "#work";
 import type {
   CreateSessionOptions,
   ResourceLoaderOptions,
@@ -1126,7 +1121,7 @@ describe("createSubagentSession — a creation that was abandoned meanwhile", ()
     const { session } = reopened();
     const newer = { open: vi.fn(), adopt: vi.fn(), list: vi.fn() };
     // A newer session already holds the id.
-    const { provide } = await import("../../../../packages/pi-session-tree/src/index.ts");
+    const { provide } = await import("#session-tree");
     provide("child-session-id", WORK_SERVICE, newer);
     await expect(
       createSubagentSession(
@@ -1141,7 +1136,7 @@ describe("createSubagentSession — a creation that was abandoned meanwhile", ()
   it("does not clobber a newer session's work host when the abandoned one is disposed", async () => {
     reopened();
     const newer = { open: vi.fn(), adopt: vi.fn(), list: vi.fn() };
-    const { provide } = await import("../../../../packages/pi-session-tree/src/index.ts");
+    const { provide } = await import("#session-tree");
     let stale = false;
     const session = arrangeFactory();
     session.bindExtensions.mockImplementation(async () => {

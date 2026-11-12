@@ -4,7 +4,7 @@ import {
   versionsOf,
   type StashIndex,
   type StashRecord,
-} from "./state.ts";
+} from "#src/state";
 
 /**
  * `pi.events` channel carrying this branch's stash index for other extensions

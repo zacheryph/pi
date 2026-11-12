@@ -6,7 +6,7 @@ import {
   type TranscriptEntry,
   type WorkMessage,
   type WorkRecord,
-} from "../src/index.ts";
+} from "#src/index";
 
 const DONE: WorkMessage = { customType: "test:done", content: "SAME" };
 const base: TranscriptEntry[] = [

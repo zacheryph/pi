@@ -16,7 +16,7 @@ export {
   type WorkMessage,
   type WorkParent,
   type WorkRecord,
-} from "./contract.ts";
+} from "#src/contract";
 export {
   continuesRun,
   Delivery,
@@ -25,7 +25,7 @@ export {
   type ContextMessage,
   type DeliveryHost,
   type SendMode,
-} from "./delivery.ts";
+} from "#src/delivery";
 export {
   calledOffMessage,
   createWorkHost,
@@ -35,7 +35,7 @@ export {
   WorkHostRuntime,
   type WorkHostOptions,
   type WorkStore,
-} from "./host.ts";
+} from "#src/host";
 export {
   createLandingTracker,
   type LandingBoundary,
@@ -44,5 +44,5 @@ export {
   type LandingTracker,
   type LandingTrackerOptions,
   type TranscriptEntry,
-} from "./landing.ts";
-export { ensureWorkHost, WAKE_TEXT, type WorkAccess } from "./root.ts";
+} from "#src/landing";
+export { ensureWorkHost, WAKE_TEXT, type WorkAccess } from "#src/root";

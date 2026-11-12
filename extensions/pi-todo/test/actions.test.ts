@@ -4,13 +4,13 @@ import {
   formatTodoContext,
   formatTodoState,
   type TodoRequest,
-} from "../src/actions.ts";
+} from "#src/actions";
 import {
   createEmptyTodoState,
   type TodoState,
   type TodoTaskInput,
   TodoValidationError,
-} from "../src/state.ts";
+} from "#src/state";
 
 const options = { singleActive: false };
 const task = (key: string, patch: Partial<TodoTaskInput> = {}): TodoTaskInput => ({

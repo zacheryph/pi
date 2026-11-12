@@ -1,5 +1,5 @@
 /** Every todo tool; each result carries the full task state in its details. */
-import { isRecord } from "../../../packages/pi-foundations/src/guards.ts";
+import { isRecord } from "#foundations/guards";
 export const TODO_SCHEMA_VERSION = 2 as const;
 export const TODO_TOOL_NAMES: ReadonlySet<string> = new Set([
   "todo_list",

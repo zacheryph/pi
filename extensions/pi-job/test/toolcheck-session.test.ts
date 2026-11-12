@@ -8,15 +8,10 @@ import { join } from "node:path";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { createJobsExtension, CUSTOM_TYPE } from "../src/extension.ts";
-import type { JobManager } from "../src/jobs.ts";
-import {
-  fauxSession,
-  messageText,
-  toolCall,
-  toolResults,
-} from "../../../packages/pi-test-helpers/src/faux-session.ts";
-import { tempDir, waitUntil } from "./helpers.ts";
+import { createJobsExtension, CUSTOM_TYPE } from "#src/extension";
+import type { JobManager } from "#src/jobs";
+import { fauxSession, messageText, toolCall, toolResults } from "#test-helpers";
+import { tempDir, waitUntil } from "#test/helpers";
 
 type Ctx = Parameters<typeof tempDir>[0];
 

@@ -3,6 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "imports": {
+    "#src/*": "./src/*.ts",
+    "#test/*": "./test/*.ts",
+    "#foundations/*": "pi-foundations/*",
+    "#test-helpers": "pi-test-helpers",
+    "#ui": "pi-ui"
+  },
   "description": "Concise Pi session summaries and optional short terminal-tab names.",
   "keywords": [
     "pi-package",

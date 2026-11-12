@@ -23,8 +23,8 @@ import {
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import { join } from "node:path";
-import { defer, type Defer } from "./cleanup.ts";
-import { tempDir } from "./temp.ts";
+import { defer, type Defer } from "#src/cleanup";
+import { tempDir } from "#src/temp";
 
 type FauxCore = ReturnType<typeof createFauxCore>;
 type StreamSimple = FauxCore["streamSimple"];

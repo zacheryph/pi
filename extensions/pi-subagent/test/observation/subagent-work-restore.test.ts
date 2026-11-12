@@ -1,11 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { SubagentWork, WORK_KIND, WORK_OWNER } from "#src/observation/subagent-work";
 import { createTestSubagent } from "#test/helpers/make-subagent";
-import {
-  createWorkHost,
-  type WorkMessage,
-  type WorkRecord,
-} from "../../../../packages/pi-work/src/index.ts";
+import { createWorkHost, type WorkMessage, type WorkRecord } from "#work";
 
 // What the spawning session does with the items its previous instance left open (roadmap step 12),
 // against the real work host: persisted items, `adopt`, and the lost report at the end of startup.

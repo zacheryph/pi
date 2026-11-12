@@ -1,5 +1,5 @@
 /** Name-based, source-local prompt composition. Discovery records declarations; execution reads files. */
-import { errorText } from "../../../../packages/pi-foundations/src/errors.ts";
+import { errorText } from "#foundations/errors";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { AgentConfig } from "#src/types";

@@ -1,24 +1,17 @@
-import { GIT_SNAPSHOT_EVENT, type GitSnapshotEvent } from "../../pi-git/src/events.ts";
+import { GIT_SNAPSHOT_EVENT, type GitSnapshotEvent } from "#git/events";
 import {
   STASH_SNAPSHOT_EVENT,
   STASH_PREVIEW_REQUEST,
   type StashSnapshotEvent,
   type StashPreviewRequest,
-} from "../../pi-stash/src/events.ts";
-import {
-  TODO_SNAPSHOT_EVENT,
-  type TodoSnapshotEvent,
-  type TodoSnapshotTask,
-} from "../../pi-todo/src/events.ts";
-import {
-  SUBAGENT_SNAPSHOT,
-  type SubagentSnapshot,
-} from "../../pi-subagent/src/observation/snapshot.ts";
+} from "#stash/events";
+import { TODO_SNAPSHOT_EVENT, type TodoSnapshotEvent, type TodoSnapshotTask } from "#todo/events";
+import { SUBAGENT_SNAPSHOT, type SubagentSnapshot } from "#subagent/observation/snapshot";
 import { describe, expect, it, vi } from "vitest";
 import { Hub } from "#src/hub/hub";
 import dashboardExtension, { type DashboardDependencies } from "#src/index";
 import { get, onCleanup, post, tempDir, waitFor, sleep, listSessions } from "#test/helpers";
-import { fakePi } from "../../../packages/pi-test-helpers/src/fake-pi.ts";
+import { fakePi } from "#test-helpers";
 
 type SnapshotEvents = {
   [GIT_SNAPSHOT_EVENT]: GitSnapshotEvent;
