@@ -135,12 +135,12 @@ event-driven only: no timers, no polling, no queue of its own. Every completion 
 `pi.sendMessage(…)` call made by the host, and pi's run boundaries do the scheduling. `src/items.ts`
 maps jobs to items and names the completion message type.
 
-| Situation when the job finishes                                      | What happens                                                                                                                                                                                                                                                                                                       |
-| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Session idle                                                         | `triggerTurn: true`: pi starts a run with the completion as its prompt.                                                                                                                                                                                                                                            |
-| A run is active (`agent_start` … `agent_settled`)                    | `triggerTurn: false`, at once, one message per completion. Pi appends it at the end of the current turn, never between a tool call and its result. If another turn follows, the model sees it there. Otherwise the `agent_before_settle` handler returns `continue: true`: one more model request in the same run. |
-| Escape or abort during the run                                       | Nothing to do. The message is in the transcript, no turn is forced, and the next run sees it.                                                                                                                                                                                                                      |
-| pi busy without a run (manual compaction, branch summary on `/tree`) | `triggerTurn: false`: pi appends it at once. Nothing wakes the agent afterwards; the next run sees it.                                                                                                                                                                                                             |
+| Situation when the job finishes                                      | What happens                                                                                                                                                                                                                                                                                                          |
+| -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Session idle                                                         | `triggerTurn: true`: pi starts a run with the completion as its prompt.                                                                                                                                                                                                                                               |
+| A run is active (`agent_start` … `agent_settled`)                    | `triggerTurn: false`, at once, one message per completion. Pi appends it at the end of the current turn, never between a tool call and its result. If another turn follows, the model sees it there. Otherwise the `agent_before_settle` handler returns `continue: true`: one more model request in the same run.    |
+| Escape or abort during the run                                       | Nothing to do. The message is in the transcript, no turn is forced, and the next run sees it.                                                                                                                                                                                                                         |
+| pi busy without a run (manual compaction, branch summary on `/tree`) | `triggerTurn: false`: pi appends it at once. After a compaction that succeeded or failed, the root host starts one run for it when pi is idle (a `work:wake` message; see [pi-work](../../packages/pi-work/README.md#the-wake-the-root-host-owes)). After a cancelled compaction, or a `/tree`, the next run sees it. |
 
 After an error the handler does not continue the run either: another request would repeat the failure.
 
@@ -208,11 +208,15 @@ in `test/agent-session.test.ts`:
 - A completion that finishes while `/tree` summarizes a branch is appended to the branch that
   was current when it arrived. If the navigation then moves to another node, that branch is the
   one the user left, so the completion is in the session file but not in the new branch's context.
-- A completion that arrives after the last `agent_before_settle` but before `agent_settled` is
-  appended with no turn to follow; the next run sees it.
+- A completion that finishes while a `/tree` summary is cancelled or fails is not answered until
+  the next prompt: pi emits no event that says how the navigation ended (#5).
 
-Upstream issues #3, #4 and #5 no longer affect pi-job: nothing is queued in pi's follow-up
-queue, and nothing waits for a compaction or branch summary to end.
+A completion that arrives after the last `agent_before_settle` but before `agent_settled` is
+answered by a run of its own, started by the root host when pi is idle.
+
+Upstream issues #3 and #4 no longer affect pi-job: nothing is queued in pi's follow-up queue, and
+the root host waits for the end of a compaction through a command context's `waitForIdle()`, not
+through an event.
 
 ## Processes
 

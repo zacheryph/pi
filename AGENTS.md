@@ -19,6 +19,11 @@ may be the bare name (`/stash`, `/todo`); every other command is
 `npm run verify:bundle` enforces this. The only exception, `pi-system-insights`
 using `/system:*`, is listed in `scripts/command-names.mjs`.
 
+`packages/pi-work` is a library, not an extension, and registers one command of
+its own, `/work:wake`, through whichever extension provides the session's root
+work host. It is registered at `session_start`, so the bundle check does not see
+it.
+
 ## Vendored extensions
 
 Vendored code is ours. Upstream is recorded only so we know where the code came

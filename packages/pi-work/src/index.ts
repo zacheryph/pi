@@ -5,6 +5,8 @@ export {
   WORK_LOST,
   WORK_PARENT_SERVICE,
   WORK_SERVICE,
+  WORK_WAKE,
+  WORK_WAKE_COMMAND,
   type Json,
   type TextPart,
   type WorkHost,
@@ -43,4 +45,4 @@ export {
   type LandingTrackerOptions,
   type TranscriptEntry,
 } from "./landing.ts";
-export { ensureWorkHost, type WorkAccess } from "./root.ts";
+export { ensureWorkHost, WAKE_TEXT, type WorkAccess } from "./root.ts";

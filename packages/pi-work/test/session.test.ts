@@ -10,7 +10,12 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it, onTestFinished } from "vitest";
-import { fauxSession, messageText, toolCall } from "../../pi-test-helpers/src/faux-session.ts";
+import {
+  fauxSession,
+  messageText,
+  toolCall,
+  type FauxSession,
+} from "../../pi-test-helpers/src/faux-session.ts";
 import { resetSessionTree } from "../../pi-test-helpers/src/globals.ts";
 import { tempDir } from "../../pi-test-helpers/src/temp.ts";
 import { waitFor } from "../../pi-test-helpers/src/wait.ts";
@@ -20,6 +25,7 @@ import {
   WORK_ENTRY,
   WORK_LOST,
   WORK_SERVICE,
+  WORK_WAKE,
   type WorkHost,
   type WorkItem,
 } from "../src/index.ts";
@@ -106,6 +112,20 @@ const closeOrder = (manager: SessionManager) =>
         ? [`close:${entry.data.reason}`]
         : [],
   );
+
+/** Bind what Pi's modes bind for commands: the wake waits for idle through a command context. */
+const idleWait = (session: () => FauxSession["session"]) =>
+  ({
+    commandContextActions: { waitForIdle: () => session().waitForIdle() },
+  }) as unknown as NonNullable<Parameters<typeof fauxSession>[0]["bind"]>;
+
+/** Let every pending timer-free continuation run, so "nothing more happens" can be asserted. */
+const quiet = async () => {
+  for (let i = 0; i < 5; i++) await new Promise((resolve) => setImmediate(resolve));
+};
+
+const count = (manager: SessionManager, entry: string) =>
+  transcript(manager).filter((seen) => seen === entry).length;
 
 const requestTexts = (request: { messages: unknown[] }) =>
   (request.messages as { content?: unknown }[]).map((m) => messageText(m));
@@ -284,6 +304,245 @@ describe("root host on a real session", () => {
     h.faux.setResponses([fauxAssistantMessage("next")]);
     await h.session.prompt("again");
     expect(requestTexts(h.requests[3]).join("\n")).toContain("RESULT: aborted");
+  });
+
+  // Issue #126: a completion that reaches the transcript while Pi is busy without a run, or
+  // after a run's last chance to continue, is answered once Pi is idle again.
+  describe("wake after Pi was busy", () => {
+    type Outcome = "succeeds" | "fails" | "is cancelled by an extension" | "is aborted";
+
+    /** A session whose manual compaction blocks in `session_before_compact` until released. */
+    async function compacting(outcome: Outcome, options: { slowHandlerMs?: number } = {}) {
+      const p = producer();
+      const entered = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      const compactor = (pi: ExtensionAPI) => {
+        pi.on("session_before_compact", async (event) => {
+          entered.resolve();
+          await release.promise;
+          if (outcome === "is cancelled by an extension") return { cancel: true };
+          if (outcome === "fails") return undefined; // Pi's summarization request fails below.
+          return {
+            compaction: {
+              summary: "SUMMARY",
+              firstKeptEntryId: event.preparation.firstKeptEntryId,
+              tokensBefore: event.preparation.tokensBefore,
+            },
+          };
+        });
+        // UPSTREAM-ISSUES #4: a later handler still running when a `setImmediate` would fire.
+        if (options.slowHandlerMs)
+          pi.on("session_compact", async () => {
+            await new Promise((resolve) => setTimeout(resolve, options.slowHandlerMs));
+          });
+      };
+      const h: FauxSession = await fauxSession({
+        cleanup: onTestFinished,
+        extensions: [p.extension, compactor],
+        tools: ["open_work"],
+        settings: { compaction: { enabled: false, keepRecentTokens: 1 } },
+        bind: idleWait(() => h.session),
+        responses: [toolCall("open_work", { label: "CI" }), fauxAssistantMessage("waiting")],
+      });
+      await h.session.prompt("start it");
+      const compact = h.session.compact().catch((error: unknown) => error);
+      await entered.promise;
+      h.faux.setResponses([
+        ...(outcome === "fails"
+          ? [fauxAssistantMessage("", { stopReason: "error", errorMessage: "summary failed" })]
+          : []),
+        fauxAssistantMessage("saw the result"),
+      ]);
+      // A failed compaction makes one summarization request, which is not an agent run.
+      const before = outcome === "fails" ? 3 : 2;
+      return { p, h, compact, release, before };
+    }
+
+    for (const outcome of ["succeeds", "fails"] as const) {
+      it(`answers a completion that arrived during a manual compaction that ${outcome}`, async () => {
+        const { p, h, compact, release, before } = await compacting(outcome);
+        p.items[0].complete({ customType: DONE, content: "RESULT: during compaction" });
+        expect(h.session.isIdle).toBe(false);
+        expect(count(h.sessionManager, `custom:${DONE}`)).toBe(1);
+        release.resolve();
+        const result = await compact;
+        if (outcome === "fails") expect(result).toBeInstanceOf(Error);
+        else expect(result).not.toBeInstanceOf(Error);
+
+        await waitFor(() => h.requests.length === before + 1 && h.session.isIdle, {
+          what: "the run that answers the completion",
+        });
+        await quiet();
+        expect(h.requests).toHaveLength(before + 1);
+        expect(requestTexts(h.requests[before]).join("\n")).toContain("RESULT: during compaction");
+        expect(count(h.sessionManager, `custom:${DONE}`)).toBe(1);
+        expect(count(h.sessionManager, `custom:${WORK_WAKE}`)).toBe(1);
+        expect(transcript(h.sessionManager).slice(-2)).toEqual([
+          `custom:${WORK_WAKE}`,
+          "assistant",
+        ]);
+        expect(closeOrder(h.sessionManager)).toEqual(["message", "close:completed"]);
+        expect(h.errors).toEqual([]);
+      });
+    }
+
+    for (const outcome of ["is cancelled by an extension", "is aborted"] as const) {
+      it(`starts no run for a completion during a manual compaction that ${outcome}`, async () => {
+        const { p, h, compact, release, before } = await compacting(outcome);
+        p.items[0].complete({ customType: DONE, content: "RESULT: during compaction" });
+        if (outcome === "is aborted") h.session.abortCompaction();
+        release.resolve();
+        expect(await compact).toBeInstanceOf(Error);
+        await quiet();
+        expect(h.session.isIdle).toBe(true);
+        expect(h.requests).toHaveLength(before);
+        expect(count(h.sessionManager, `custom:${WORK_WAKE}`)).toBe(0);
+        expect(closeOrder(h.sessionManager)).toEqual(["message", "close:completed"]);
+
+        // The result is kept, and the next prompt sees it once.
+        await h.session.prompt("continue");
+        expect(requestTexts(h.requests[before]).join("\n")).toContain("RESULT: during compaction");
+        expect(count(h.sessionManager, `custom:${DONE}`)).toBe(1);
+        expect(h.requests).toHaveLength(before + 1);
+        expect(h.errors).toEqual([]);
+      });
+    }
+
+    it("answers several completions during one compaction with one run", async () => {
+      const { p, h, compact, release, before } = await compacting("succeeds");
+      const second = p.host()!.open({ owner: "test", kind: "job", label: "lint" });
+      p.items[0].complete({ customType: DONE, content: "RESULT: one" });
+      second.complete({ customType: DONE, content: "RESULT: two" });
+      release.resolve();
+      await compact;
+      await waitFor(() => h.requests.length === before + 1 && h.session.isIdle, {
+        what: "the run that answers both",
+      });
+      await quiet();
+      expect(h.requests).toHaveLength(before + 1);
+      const seen = requestTexts(h.requests[before]).join("\n");
+      expect(seen).toContain("RESULT: one");
+      expect(seen).toContain("RESULT: two");
+      expect(count(h.sessionManager, `custom:${WORK_WAKE}`)).toBe(1);
+      expect(h.errors).toEqual([]);
+    });
+
+    it("waits for a later extension's slow session_compact handler", async () => {
+      const { p, h, compact, release, before } = await compacting("succeeds", {
+        slowHandlerMs: 40,
+      });
+      p.items[0].complete({ customType: DONE, content: "RESULT: during compaction" });
+      release.resolve();
+      await compact;
+      await waitFor(() => h.requests.length === before + 1 && h.session.isIdle, {
+        what: "the run that answers the completion",
+      });
+      expect(count(h.sessionManager, `custom:${WORK_WAKE}`)).toBe(1);
+      expect(h.errors).toEqual([]);
+    });
+
+    it("leaves the answer to a prompt submitted as the compaction ends", async () => {
+      const { p, h, compact, release, before } = await compacting("succeeds");
+      p.items[0].complete({ customType: DONE, content: "RESULT: during compaction" });
+      // As interactive mode does with what the user queued during the compaction.
+      let prompted: Promise<void> | undefined;
+      h.session.subscribe((event) => {
+        if (event.type === "compaction_end") prompted = h.session.prompt("and now?");
+      });
+      release.resolve();
+      await compact;
+      await prompted;
+      await quiet();
+      expect(h.requests).toHaveLength(before + 1);
+      expect(requestTexts(h.requests[before]).join("\n")).toContain("RESULT: during compaction");
+      expect(count(h.sessionManager, `custom:${WORK_WAKE}`)).toBe(0);
+      expect(h.errors).toEqual([]);
+    });
+
+    it("keeps the result and starts nothing where no command context can wait for idle", async () => {
+      const p = producer();
+      const h = await fauxSession({
+        cleanup: onTestFinished,
+        extensions: [
+          p.extension,
+          (pi: ExtensionAPI) => {
+            pi.on("session_before_compact", (event) => ({
+              compaction: {
+                summary: "SUMMARY",
+                firstKeptEntryId: event.preparation.firstKeptEntryId,
+                tokensBefore: event.preparation.tokensBefore,
+              },
+            }));
+            pi.on("session_compact", () => {
+              p.items[0].complete({ customType: DONE, content: "RESULT: during compaction" });
+            });
+          },
+        ],
+        tools: ["open_work"],
+        settings: { compaction: { enabled: false, keepRecentTokens: 1 } },
+        responses: [toolCall("open_work", { label: "CI" }), fauxAssistantMessage("waiting")],
+      });
+      await h.session.prompt("start it");
+      h.faux.setResponses([fauxAssistantMessage("saw the result")]);
+      await h.session.compact();
+      await quiet();
+      expect(h.requests).toHaveLength(2);
+      expect(count(h.sessionManager, `custom:${DONE}`)).toBe(1);
+      expect(count(h.sessionManager, `custom:${WORK_WAKE}`)).toBe(0);
+      expect(h.errors).toEqual([]);
+    });
+
+    /** A session in which a later extension completes the item after the host's settle decision. */
+    async function lateCompletion(when: { abort?: boolean } = {}) {
+      const p = producer();
+      let completeLate = false;
+      const late = (pi: ExtensionAPI) => {
+        // The host's handler is registered first. This one completes the item after the host
+        // decided no continuation was needed, and before `agent_settled`.
+        pi.on("agent_before_settle", (event, ctx) => {
+          if (!completeLate || event.outcome !== "completed") return;
+          completeLate = false;
+          p.items[0].complete({ customType: DONE, content: "RESULT: final settlement window" });
+          if (when.abort) ctx.abort();
+        });
+      };
+      const h: FauxSession = await fauxSession({
+        cleanup: onTestFinished,
+        extensions: [p.extension, late],
+        tools: ["open_work"],
+        bind: idleWait(() => h.session),
+        responses: [toolCall("open_work", { label: "CI" }), fauxAssistantMessage("waiting")],
+      });
+      await h.session.prompt("start it");
+      h.faux.setResponses([fauxAssistantMessage("last answer"), fauxAssistantMessage("saw it")]);
+      completeLate = true;
+      await h.session.prompt("finish");
+      return { p, h };
+    }
+
+    it("answers a completion that arrived after the host's last settle decision", async () => {
+      const { h } = await lateCompletion();
+      await waitFor(() => h.requests.length === 4 && h.session.isIdle, {
+        what: "the run that answers the completion",
+      });
+      await quiet();
+      expect(h.requests).toHaveLength(4);
+      expect(requestTexts(h.requests[3]).join("\n")).toContain("RESULT: final settlement window");
+      expect(count(h.sessionManager, `custom:${DONE}`)).toBe(1);
+      expect(count(h.sessionManager, `custom:${WORK_WAKE}`)).toBe(1);
+      expect(closeOrder(h.sessionManager)).toEqual(["message", "close:completed"]);
+      expect(h.errors).toEqual([]);
+    });
+
+    it("starts no run for a late completion when the run is aborted", async () => {
+      const { h } = await lateCompletion({ abort: true });
+      await quiet();
+      expect(h.session.isIdle).toBe(true);
+      expect(h.requests).toHaveLength(3);
+      expect(count(h.sessionManager, `custom:${DONE}`)).toBe(1);
+      expect(count(h.sessionManager, `custom:${WORK_WAKE}`)).toBe(0);
+      expect(h.errors).toEqual([]);
+    });
   });
 
   it("records a notify without closing the item", async () => {
