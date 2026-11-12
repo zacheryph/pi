@@ -431,6 +431,8 @@ rewrites others' history, approves, or merges. Uses `gh` when authenticated,
 otherwise the GitHub MCP tools, for logs, reruns and replies. A delegated worker
 can own this loop: its watch holds it waiting and wakes it when CI settles. It
 reports the final checked SHA and leaves handed-off task acceptance to its parent.
+When the delegator holds the watch (as execute-roadmap does), the worker only
+handles the report it was handed and returns the new head SHA.
 
 ### make-it-easy
 
@@ -463,15 +465,35 @@ Nothing here depends on it.
 ### execute-roadmap
 
 Carries out a chosen make-it-easy roadmap. Each step becomes a `todo` with its
-`Depends on` mapped to `dependsOn`; ready steps go to subagents (steps that run
-in parallel each get their own git worktree from pi-git, and land on the roadmap
-branch in roadmap order); a `review` that did not do the work checks
-every step against its "Done when" and "Verification" lines before it is
-committed and completed. Two failed repair rounds block a step. A finding the roadmap did not anticipate
-stops the run and lands in the document's open questions instead of an
-improvised plan. The roadmap document stays the plan of record: its `Status:`
-and per-step `Landed:` lines are updated as work lands, so a later run resumes
-from the first unfinished step. It commits locally and pushes only when asked.
+`Depends on` mapped to `dependsOn`; ready steps go to subagents, each in its
+own git worktree from pi-git when several run at once; a `review` that did not
+do the work checks every step against its "Done when" and "Verification" lines
+before it is committed. Two failed repair rounds block a step. A finding the
+roadmap did not anticipate stops the run and lands in the document's open
+questions instead of an improvised plan. The roadmap document stays the plan of
+record: its `Status:` and per-step `Landed:` lines are updated as work lands,
+so a later run resumes from the first unfinished step.
+
+A run delivers one of two ways. **Local** commits each step on the roadmap
+branch and never pushes. **Pull requests** is used when you ask it to deliver or
+ship:
+
+- Each step that ships alone is a pull request branched from the remote default
+  branch; steps that cannot ship alone share the pull request of the step they
+  need. A step may open many pull requests.
+- Pull requests whose steps are independent and touch different files are open
+  at the same time. A dependent step starts only after what it depends on is
+  merged and verified.
+- The main session holds one `git_pr_watch` per pull request until it is
+  merged, hands failed checks and review comments to the worker that wrote the
+  change, and re-arms a watch that timed out or was lost.
+- When a pull request is green it alerts you with `user_notify`. It never
+  approves or merges: you do, or your auto-merge does.
+- After the merge it verifies the deploy with `job_watch` when the repository
+  has a way to (a deploy skill, agent instructions, or a check the step names),
+  and records the merge as unverified when it has none.
+- A failed deploy check holds the line: nothing new starts, you are notified,
+  and nothing is reverted.
 
 ### creating-agents
 

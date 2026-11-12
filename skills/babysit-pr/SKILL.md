@@ -27,6 +27,13 @@ ends its turn in between. This works in both a main session and a delegated work
   session or that the user told you to work on. For anyone else's branch, ask
   first. Never push to the default branch.
 
+A delegator may hold the watch itself and hand you only what a report named
+(failed checks, review comments, a conflict). Then skip step 1 and do not call
+`git_pr_watch`: do steps 2 to 4 for what you were handed, push, report the new
+head SHA and finish. The delegator's watch tells it what happens next. On a
+branch this session created you may resolve a conflict by rebasing onto the
+base and pushing with `--force-with-lease`.
+
 Track the work with `todo_upsert`: one task per failing check or review thread, keyed
 `pr<number>-<slug>`, so a reload or compaction loses nothing. After a reload,
 `git_pr_list` names the PRs this session opened and `git_pr_status` reads them
