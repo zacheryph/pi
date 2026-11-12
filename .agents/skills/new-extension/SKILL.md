@@ -100,7 +100,7 @@ from `packages/pi-foundations/src/settings.ts` (`--settings` scaffolds it; see
 `<agent dir>/<topic>.json`; `scope: "layered"` adds the project override
 `.pi/<topic>.json`, `"global"` is for state every project shares. Each field
 names its validation and default (`bool`, `int`, `number`, `oneOf`, `string`,
-`optional`), and `SettingsOf<typeof xSettings>` is the loaded type, so write no
+`optional`, `list`, `record`), and `SettingsOf<typeof xSettings>` is the loaded type, so write no
 separate interface, defaults object or sanitizer, and never read the file
 yourself. `load(ctx.cwd)` never throws: malformed files and invalid fields warn
 and fall back to defaults. `writable: true` adds `save(cwd, patch)` for a

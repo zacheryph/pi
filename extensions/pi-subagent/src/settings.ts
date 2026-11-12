@@ -1,12 +1,16 @@
 // Persistence for pi-subagent operational settings.
 // - Global:  ~/.pi/agent/subagent.json (agentDir injected at construction) — manual defaults, never written here
-// - Project: <cwd>/.pi/subagent.json — written by /agents → Settings; overrides global on load
+// - Project: <cwd>/.pi/subagent.json — written by /subagent:settings; overrides global on load
 
-import { join } from "node:path";
 import {
-  type LayeredSettingsSource,
-  loadLayeredSettings,
-  writeSettingsFile,
+  bool,
+  defineSettings,
+  int,
+  list,
+  oneOf,
+  record,
+  type SettingsOf,
+  string,
 } from "../../../packages/pi-foundations/src/settings.ts";
 import { isBelowMinimumTurns, MIN_MAX_TURNS } from "#src/lifecycle/turn-limits";
 import type { PromptInheritance } from "#src/types";
@@ -31,85 +35,86 @@ export const OVERLAY_WIDTH_PERCENT = {
   "four-fifths": "80%",
 } as const satisfies Record<OverlayWidth, `${number}%`>;
 
-function isOverlayWidth(value: unknown): value is OverlayWidth {
-  return typeof value === "string" && Object.hasOwn(OVERLAY_WIDTH_PRESETS, value);
-}
+// Sanity ceilings — prevent hand-edited configs from asking for values that
+// make no operational sense (e.g. 1e6 concurrent subagents). Permissive enough
+// that any realistic power-user setting passes through.
+const MAX_CONCURRENT_CEILING = 1024;
+const MAX_TURNS_CEILING = 10_000;
+const WRAP_UP_TURNS_CEILING = 1_000;
+// Retention windows: 1 minute floor, two-week ceiling (60 * 24 * 14).
+const RETENTION_MINUTES_CEILING = 20_160;
 
-export interface SubagentsSettings {
-  /** Overlay width as a fraction of the terminal width. */
-  overlayWidth?: OverlayWidth;
-  /** Fullscreen default visibility only before an explicit show/hide in the current session. */
-  overlayDefaultOpen?: boolean;
-  /** Show provider-emitted thinking in the watch feed; hidden thinking remains bounded and retained. */
-  overlayShowThinking?: boolean;
-  maxConcurrent?: number;
-  /**
-   * 0 = unlimited — the extension's single source of truth for that convention:
-   * `normalizeMaxTurns()` in turn-limits.ts treats 0 → `undefined`, and the
-   * `/agents` → Settings input prompt explicitly says "0 = unlimited".
-   */
-  defaultMaxTurns?: number;
-  /** Turns left when a subagent is warned about its budget. */
-  wrapUpTurns?: number;
-  /**
-   * Minutes a done agent's session is retained once the parent read its finished result with
-   * `subagent_get` (measured from the later of being done and the read). Applies only to an agent
-   * with no open work; one that waits keeps its session.
-   */
-  consumedSessionRetentionMinutes?: number;
-  /** Minutes a done agent's session is retained when the parent only had the completion message (safety cap). */
-  unconsumedSessionRetentionMinutes?: number;
-  /**
-   * When false, a parent interrupt (ESC) leaves running and queued subagents
-   * running.
-   */
-  abortAllOnInterrupt?: boolean;
-  /**
-   * When false, a background child is not given the `parent_notify` tool, so it
-   * cannot interrupt the parent with a mid-run finding. Ask-back is unaffected.
-   */
-  midRunUpdates?: boolean;
-  /**
-   * Pi package sources whose extensions child sessions must not load, matched
-   * against Pi's configured source string exactly (e.g. `npm:@scope/pkg`).
-   * The package's skills, prompts, and themes stay available to children.
-   */
-  excludedExtensionPackages?: string[];
-  /**
-   * Prompt-inheritance strategy per provider, keyed by the provider id of the
-   * child's resolved model. Every provider not listed inherits `"full"`.
-   * The key is the provider rather than the agent because re-homing is a
-   * property of the transport, and a per-spawn `model` override moves a child
-   * between transports (ADR 0009).
-   */
-  promptInheritance?: Record<string, PromptInheritance>;
-}
+export const subagentSettings = defineSettings({
+  name: "subagent",
+  scope: "layered",
+  writable: true,
+  fields: {
+    /** Overlay width as a fraction of the terminal width. */
+    overlayWidth: oneOf(Object.keys(OVERLAY_WIDTH_PRESETS) as OverlayWidth[], {
+      default: "third",
+    }),
+    /** Fullscreen default visibility only before an explicit show/hide in the current session. */
+    overlayDefaultOpen: bool({ default: false }),
+    /** Show provider-emitted thinking in the watch feed; hidden thinking remains bounded and retained. */
+    overlayShowThinking: bool({ default: true }),
+    maxConcurrent: int({ default: 4, min: 1, max: MAX_CONCURRENT_CEILING }),
+    /**
+     * 0 = unlimited — the extension's single source of truth for that convention:
+     * `normalizeMaxTurns()` in turn-limits.ts treats 0 → `undefined`, and the
+     * `/subagent:settings` input prompt explicitly says "0 = unlimited".
+     */
+    defaultMaxTurns: int({ default: 0, min: 0, max: MAX_TURNS_CEILING }),
+    /** Turns left when a subagent is warned about its budget. */
+    wrapUpTurns: int({ default: 2, min: 1, max: WRAP_UP_TURNS_CEILING }),
+    /**
+     * Minutes a done agent's session is retained once the parent read its finished result with
+     * `subagent_get` (measured from the later of being done and the read). Applies only to an agent
+     * with no open work; one that waits keeps its session.
+     */
+    consumedSessionRetentionMinutes: int({ default: 10, min: 1, max: RETENTION_MINUTES_CEILING }),
+    /** Minutes a done agent's session is retained when the parent only had the completion message (safety cap). */
+    unconsumedSessionRetentionMinutes: int({
+      default: 720,
+      min: 1,
+      max: RETENTION_MINUTES_CEILING,
+    }),
+    /** When false, a parent interrupt (ESC) leaves running and queued subagents running. */
+    abortAllOnInterrupt: bool({ default: true }),
+    /**
+     * When false, a background child is not given the `parent_notify` tool, so it
+     * cannot interrupt the parent with a mid-run finding. Ask-back is unaffected.
+     */
+    midRunUpdates: bool({ default: true }),
+    /**
+     * Pi package sources whose extensions child sessions must not load, matched
+     * against Pi's configured source string exactly (e.g. `npm:@scope/pkg`).
+     * The package's skills, prompts, and themes stay available to children.
+     */
+    excludedExtensionPackages: list(string({ trim: true, nonEmpty: true }), { unique: true }),
+    /**
+     * Prompt-inheritance strategy per provider, keyed by the provider id of the
+     * child's resolved model. Every provider not listed inherits `"full"`.
+     * The key is the provider rather than the agent because re-homing is a
+     * property of the transport, and a per-spawn `model` override moves a child
+     * between transports (ADR 0009).
+     */
+    promptInheritance: record(oneOf(["full", "portable"] satisfies PromptInheritance[], {})),
+  },
+});
+
+/** Every setting, defaults filled in. */
+export type SubagentsSettings = SettingsOf<typeof subagentSettings>;
 
 /**
- * The persisted form of the in-memory settings values.
- * `saveSettings` rewrites the whole project file from this shape, so every key
- * that must survive a `/subagent:settings` edit has to appear here.
+ * The persisted form of the in-memory settings values. `save` merges it into
+ * the project file, keeping keys it does not name. The hand-edited collections
+ * are present only when non-empty, so files that never set them gain no noise.
  */
-export interface SettingsSnapshot {
-  overlayWidth: OverlayWidth;
-  overlayDefaultOpen: boolean;
-  overlayShowThinking: boolean;
-  maxConcurrent: number;
-  defaultMaxTurns: number;
-  wrapUpTurns: number;
-  consumedSessionRetentionMinutes: number;
-  unconsumedSessionRetentionMinutes: number;
-  abortAllOnInterrupt: boolean;
-  midRunUpdates: boolean;
-  /**
-   * Present only when non-empty, so files that never set it gain no noise.
-   * It must round-trip: the key has no `/subagent:settings` affordance, so a
-   * hand-edited value would otherwise be erased by any unrelated setting change.
-   */
-  excludedExtensionPackages?: string[];
-  /** Present only when non-empty, and round-tripped for the same reason. */
-  promptInheritance?: Record<string, PromptInheritance>;
-}
+export type SettingsSnapshot = Omit<
+  SubagentsSettings,
+  "excludedExtensionPackages" | "promptInheritance"
+> &
+  Partial<Pick<SubagentsSettings, "excludedExtensionPackages" | "promptInheritance">>;
 
 /** What a settings change tells the user, and how loudly. */
 export interface Toast {
@@ -120,32 +125,24 @@ export interface Toast {
 /** Emit callback — a subset of `pi.events.emit` to keep helpers testable. */
 export type SettingsEmit = (event: string, payload: unknown) => void;
 
-const DEFAULT_MAX_CONCURRENT = 4;
-const DEFAULT_WRAP_UP_TURNS = 2;
-const DEFAULT_CONSUMED_RETENTION_MINUTES = 10;
-const DEFAULT_UNCONSUMED_RETENTION_MINUTES = 720;
-const DEFAULT_ABORT_ALL_ON_INTERRUPT = true;
-const DEFAULT_MID_RUN_UPDATES = true;
-const DEFAULT_OVERLAY_WIDTH: OverlayWidth = "third";
-const DEFAULT_OVERLAY_DEFAULT_OPEN = false;
-
 /**
  * Owns in-memory settings values and their load/save/persist cycle.
  * Replaces the scattered free-function + SettingsAppliers callback pattern.
  */
 export class SettingsManager {
-  private _overlayWidth: OverlayWidth = DEFAULT_OVERLAY_WIDTH;
-  private _overlayDefaultOpen: boolean = DEFAULT_OVERLAY_DEFAULT_OPEN;
-  private _overlayShowThinking = true;
-  private _defaultMaxTurns: number | undefined = undefined;
-  private _wrapUpTurns: number = DEFAULT_WRAP_UP_TURNS;
-  private _maxConcurrent: number = DEFAULT_MAX_CONCURRENT;
-  private _consumedSessionRetentionMinutes: number = DEFAULT_CONSUMED_RETENTION_MINUTES;
-  private _unconsumedSessionRetentionMinutes: number = DEFAULT_UNCONSUMED_RETENTION_MINUTES;
-  private _abortAllOnInterrupt: boolean = DEFAULT_ABORT_ALL_ON_INTERRUPT;
-  private _midRunUpdates: boolean = DEFAULT_MID_RUN_UPDATES;
-  private _excludedExtensionPackages: string[] = [];
-  private _promptInheritance: Record<string, PromptInheritance> = {};
+  // Assigned in the constructor from the definition's defaults.
+  private _overlayWidth!: OverlayWidth;
+  private _overlayDefaultOpen!: boolean;
+  private _overlayShowThinking!: boolean;
+  private _defaultMaxTurns: number | undefined;
+  private _wrapUpTurns!: number;
+  private _maxConcurrent!: number;
+  private _consumedSessionRetentionMinutes!: number;
+  private _unconsumedSessionRetentionMinutes!: number;
+  private _abortAllOnInterrupt!: boolean;
+  private _midRunUpdates!: boolean;
+  private _excludedExtensionPackages!: string[];
+  private _promptInheritance!: Record<string, PromptInheritance>;
 
   private readonly emit: SettingsEmit;
   private readonly cwd: string;
@@ -162,6 +159,23 @@ export class SettingsManager {
     this.cwd = deps.cwd;
     this.agentDir = deps.agentDir;
     this.onMaxConcurrentChanged = deps.onMaxConcurrentChanged;
+    this.apply(subagentSettings.defaults(this.cwd, this.agentDir));
+  }
+
+  /** Take every value from `settings`, normalized by the setters. */
+  private apply(settings: SubagentsSettings): void {
+    this._overlayWidth = settings.overlayWidth;
+    this._overlayDefaultOpen = settings.overlayDefaultOpen;
+    this._overlayShowThinking = settings.overlayShowThinking;
+    this.maxConcurrent = settings.maxConcurrent;
+    this.defaultMaxTurns = settings.defaultMaxTurns;
+    this.wrapUpTurns = settings.wrapUpTurns;
+    this.consumedSessionRetentionMinutes = settings.consumedSessionRetentionMinutes;
+    this.unconsumedSessionRetentionMinutes = settings.unconsumedSessionRetentionMinutes;
+    this._abortAllOnInterrupt = settings.abortAllOnInterrupt;
+    this._midRunUpdates = settings.midRunUpdates;
+    this._excludedExtensionPackages = [...settings.excludedExtensionPackages];
+    this._promptInheritance = { ...settings.promptInheritance };
   }
 
   get overlayWidth(): OverlayWidth {
@@ -257,32 +271,14 @@ export class SettingsManager {
   // ── Lifecycle methods ──
 
   /**
-   * Load merged settings (global + project), apply to in-memory values,
-   * and emit the `subagent:settings:loaded` lifecycle event.
-   * Returns the raw loaded settings object.
+   * Load merged settings (global + project, defaults filled in), apply them to
+   * the in-memory values, and emit the `subagent:settings:loaded` lifecycle event.
+   * Returns the loaded settings object.
    */
   load(): SubagentsSettings {
-    const settings = loadSettings(this.agentDir, this.cwd);
+    const settings = subagentSettings.load(this.cwd, this.agentDir);
     warnAboutAdjustedSettings(settings);
-    if (settings.overlayWidth !== undefined) this._overlayWidth = settings.overlayWidth;
-    if (typeof settings.overlayDefaultOpen === "boolean")
-      this._overlayDefaultOpen = settings.overlayDefaultOpen;
-    if (typeof settings.overlayShowThinking === "boolean")
-      this._overlayShowThinking = settings.overlayShowThinking;
-    if (typeof settings.maxConcurrent === "number") this.maxConcurrent = settings.maxConcurrent;
-    if (typeof settings.defaultMaxTurns === "number")
-      this.defaultMaxTurns = settings.defaultMaxTurns;
-    if (typeof settings.wrapUpTurns === "number") this.wrapUpTurns = settings.wrapUpTurns;
-    if (typeof settings.consumedSessionRetentionMinutes === "number")
-      this.consumedSessionRetentionMinutes = settings.consumedSessionRetentionMinutes;
-    if (typeof settings.unconsumedSessionRetentionMinutes === "number")
-      this.unconsumedSessionRetentionMinutes = settings.unconsumedSessionRetentionMinutes;
-    if (typeof settings.abortAllOnInterrupt === "boolean")
-      this._abortAllOnInterrupt = settings.abortAllOnInterrupt;
-    if (typeof settings.midRunUpdates === "boolean") this._midRunUpdates = settings.midRunUpdates;
-    // Assigned unconditionally: removing the key from disk must clear the value.
-    this._excludedExtensionPackages = [...(settings.excludedExtensionPackages ?? [])];
-    this._promptInheritance = { ...settings.promptInheritance };
+    this.apply(settings);
     this.emit("subagent:settings:loaded", { settings });
     return settings;
   }
@@ -411,29 +407,20 @@ export class SettingsManager {
    */
   saveAndNotify(successMsg: string): Toast {
     const snap = this.snapshot();
-    const persisted = saveSettings(snap, this.cwd);
+    let persisted = true;
+    try {
+      subagentSettings.save(this.cwd, snap);
+    } catch {
+      persisted = false;
+    }
     this.emit("subagent:settings:changed", { settings: snap, persisted });
     return persistToastFor(successMsg, persisted);
   }
 }
 
-// Sanity ceilings — prevent hand-edited configs from asking for values that
-// make no operational sense (e.g. 1e6 concurrent subagents). Permissive enough
-// that any realistic power-user setting passes through.
-const MAX_CONCURRENT_CEILING = 1024;
-const MAX_TURNS_CEILING = 10_000;
-const WRAP_UP_TURNS_CEILING = 1_000;
-// Retention windows: 1 minute floor, two-week ceiling (60 * 24 * 14).
-const RETENTION_MINUTES_CEILING = 20_160;
-
-/** Clamp a retention window to [1, RETENTION_MINUTES_CEILING] minutes. */
+/** Clamp/** Clamp a retention window to [1, RETENTION_MINUTES_CEILING] minutes. */
 function clampRetentionMinutes(n: number): number {
   return Math.min(RETENTION_MINUTES_CEILING, Math.max(1, n));
-}
-
-/** True when a value is an integer within [min, max]. */
-function isIntegerIn(n: unknown, min: number, max: number): n is number {
-  return Number.isInteger(n) && (n as number) >= min && (n as number) <= max;
 }
 
 /**
@@ -448,93 +435,9 @@ function warnAboutAdjustedSettings(settings: SubagentsSettings): void {
   }
 }
 
-/** Drop fields that don't match the expected shape. Silent — garbage becomes absent. */
-function sanitize(raw: unknown): SubagentsSettings {
-  if (!raw || typeof raw !== "object") return {};
-  const r = raw as Record<string, unknown>;
-  const out: SubagentsSettings = {};
-  if (isOverlayWidth(r.overlayWidth)) out.overlayWidth = r.overlayWidth;
-  if (typeof r.overlayDefaultOpen === "boolean") out.overlayDefaultOpen = r.overlayDefaultOpen;
-  if (typeof r.overlayShowThinking === "boolean") out.overlayShowThinking = r.overlayShowThinking;
-  if (isIntegerIn(r.maxConcurrent, 1, MAX_CONCURRENT_CEILING)) out.maxConcurrent = r.maxConcurrent;
-  if (isIntegerIn(r.defaultMaxTurns, 0, MAX_TURNS_CEILING)) out.defaultMaxTurns = r.defaultMaxTurns;
-  if (isIntegerIn(r.wrapUpTurns, 1, WRAP_UP_TURNS_CEILING)) out.wrapUpTurns = r.wrapUpTurns;
-  if (isIntegerIn(r.consumedSessionRetentionMinutes, 1, RETENTION_MINUTES_CEILING)) {
-    out.consumedSessionRetentionMinutes = r.consumedSessionRetentionMinutes;
-  }
-  if (isIntegerIn(r.unconsumedSessionRetentionMinutes, 1, RETENTION_MINUTES_CEILING)) {
-    out.unconsumedSessionRetentionMinutes = r.unconsumedSessionRetentionMinutes;
-  }
-  if (typeof r.abortAllOnInterrupt === "boolean") {
-    out.abortAllOnInterrupt = r.abortAllOnInterrupt;
-  }
-  if (typeof r.midRunUpdates === "boolean") {
-    out.midRunUpdates = r.midRunUpdates;
-  }
-  if (Array.isArray(r.excludedExtensionPackages)) {
-    const sources = r.excludedExtensionPackages
-      .filter((value): value is string => typeof value === "string")
-      .map((value) => value.trim())
-      .filter(Boolean);
-    out.excludedExtensionPackages = [...new Set(sources)];
-  }
-  const promptInheritance = sanitizePromptInheritance(r.promptInheritance);
-  if (promptInheritance) {
-    out.promptInheritance = promptInheritance;
-  }
-  return out;
-}
-
-/**
- * Keep only provider entries naming a known strategy, absent when none survive.
- *
- * Settings arrive from JSON, where the declared types are aspirations, so the
- * strategy is checked at run time rather than trusted.
- */
-function sanitizePromptInheritance(raw: unknown): Record<string, PromptInheritance> | undefined {
-  if (!raw || typeof raw !== "object") return undefined;
-  const rules: Record<string, PromptInheritance> = {};
-  for (const [provider, strategy] of Object.entries(raw as Record<string, unknown>)) {
-    if (strategy === "full" || strategy === "portable") {
-      rules[provider] = strategy;
-    }
-  }
-  return Object.keys(rules).length > 0 ? rules : undefined;
-}
-
-function projectPath(cwd: string): string {
-  return join(cwd, ".pi", "subagent.json");
-}
-
-/** Load merged settings: global provides defaults, project overrides. */
-export function loadSettings(agentDir: string, cwd: string): SubagentsSettings {
-  return loadLayeredSettings({
-    agentDir,
-    cwd,
-    filename: "subagent.json",
-    sanitize,
-    warnLabel: "pi-subagent",
-  } satisfies LayeredSettingsSource<SubagentsSettings>);
-}
-
-/**
- * Write project-local settings. Global is never touched from code.
- * Returns `true` on success, `false` if the write (or mkdir) failed so the
- * caller can surface a warning — persistence isn't fatal but isn't silent.
- */
-export function saveSettings(s: SubagentsSettings, cwd: string = process.cwd()): boolean {
-  const path = projectPath(cwd);
-  try {
-    writeSettingsFile(path, s);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 /**
  * Format the user-facing toast for a settings mutation. Pure function —
- * routes the success/failure of `saveSettings` into the right message + level
+ * routes the success/failure of the save into the right message + level
  * so the UI layer (index.ts) stays a thin wire between input and notification.
  */
 export function persistToastFor(successMsg: string, persisted: boolean): Toast {
