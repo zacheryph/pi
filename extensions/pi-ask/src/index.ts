@@ -1,3 +1,5 @@
+import { errorText } from "../../../packages/pi-foundations/src/errors.ts";
+import { isRecord } from "../../../packages/pi-foundations/src/guards.ts";
 import {
   defineTool,
   type AgentToolResult,
@@ -90,9 +92,6 @@ function toolText(route: AskRoute) {
     promptGuidelines: SHARED_GUIDELINES,
   };
 }
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  !!value && typeof value === "object" && !Array.isArray(value);
 
 /** An item this extension opened: a question that carries the text the delegator was told. */
 const isQuestion = (item: { kind: string; data?: unknown }): boolean =>
@@ -245,7 +244,7 @@ export default function piAsk(pi: ExtensionAPI): void {
     } catch (error) {
       item.cancel();
       throw new Error(
-        `The delegating agent could not be reached (${error instanceof Error ? error.message : String(error)}). Continue with your best judgment and say what you assumed.`,
+        `The delegating agent could not be reached (${errorText(error)}). Continue with your best judgment and say what you assumed.`,
       );
     }
   };

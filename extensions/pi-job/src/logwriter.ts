@@ -1,15 +1,8 @@
 /** Size-capped, error-recording log file writer. */
+import { formatBytes } from "../../../packages/pi-foundations/src/format.ts";
 import { closeSync, openSync, writeSync } from "node:fs";
 
 export const DEFAULT_LOG_CAP_BYTES = 50 * 1024 * 1024;
-
-function formatBytes(n: number): string {
-  return n >= 1024 * 1024
-    ? `${Math.round(n / (1024 * 1024))} MB`
-    : n >= 1024
-      ? `${Math.round(n / 1024)} KB`
-      : `${n} bytes`;
-}
 
 export class LogWriter {
   readonly path: string;
@@ -42,7 +35,7 @@ export class LogWriter {
       this.truncated = true;
       this.raw(
         Buffer.from(
-          `\n[pi-job: log truncated at ${formatBytes(this.capBytes)}; further output is discarded, the job keeps running]\n`,
+          `\n[pi-job: log truncated at ${formatBytes(this.capBytes, "log")}; further output is discarded, the job keeps running]\n`,
         ),
       );
     }

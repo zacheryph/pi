@@ -1,3 +1,4 @@
+import { isRecord } from "../../../packages/pi-foundations/src/guards.ts";
 import type { Questionnaire, QuestionnaireAnswer } from "./protocol.ts";
 import { clip } from "./sections.ts";
 
@@ -19,8 +20,6 @@ export interface Bus {
   on(channel: string, handler: (data: unknown) => void): () => void;
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  !!value && typeof value === "object" && !Array.isArray(value);
 const index = (value: unknown, below: number): number | undefined =>
   typeof value === "number" && Number.isInteger(value) && value >= 0 && value < below
     ? value

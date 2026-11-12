@@ -334,3 +334,16 @@ describe("WatchTail skill evidence", () => {
     expect(tail.blocks).toHaveLength(32);
   });
 });
+
+it("keeps the tail before flattening and bounding a tool argument", () => {
+  const tail = new WatchTail();
+  tail.apply({
+    type: "tool_execution_start",
+    toolCallId: "long",
+    toolName: "bash",
+    args: { command: "old-prefix" + "x".repeat(5000) + "\nlast" },
+  });
+  expect(texts(tail)[0]).not.toContain("old-prefix");
+  expect(texts(tail)[0]).toContain("bash " + "x".repeat(160));
+  expect(texts(tail)[0]).not.toContain("last");
+});

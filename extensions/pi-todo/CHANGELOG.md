@@ -3,6 +3,10 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-12: Share plain-data helpers through pi-foundations
+
+- Reuse the shared record guard and error text. Reject arrays in persisted task/state records, including arrays with task-like properties.
+
 ## 2026-11-12: Centralize browser fallback in pi-ui
 
 - Centralize browser availability in pi-ui; preserve non-TUI review journaling and branch guards.

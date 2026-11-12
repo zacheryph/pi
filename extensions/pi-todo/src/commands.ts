@@ -1,3 +1,4 @@
+import { errorText } from "../../../packages/pi-foundations/src/errors.ts";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import {
   type TodoActivity,
@@ -41,10 +42,7 @@ export function registerTodoCommands(pi: ExtensionAPI, controller: TodoControlle
         try {
           await handler(args.trim(), ctx);
         } catch (error) {
-          ctx.ui.notify(
-            sanitizeText(error instanceof Error ? error.message : String(error)),
-            "error",
-          );
+          ctx.ui.notify(sanitizeText(errorText(error)), "error");
         }
       },
     });
@@ -65,12 +63,7 @@ export function registerTodoCommands(pi: ExtensionAPI, controller: TodoControlle
         try {
           controller.markReviewed(marks, ctx);
         } catch (error) {
-          ctx.ui.notify(
-            sanitizeText(
-              `Review not saved: ${error instanceof Error ? error.message : String(error)}`,
-            ),
-            "error",
-          );
+          ctx.ui.notify(sanitizeText(`Review not saved: ${errorText(error)}`), "error");
         }
       },
     });

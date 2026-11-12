@@ -1,3 +1,4 @@
+import { errorText } from "../../../../packages/pi-foundations/src/errors.ts";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import type { AgentConfigLookup } from "#src/config/agent-types";
@@ -49,9 +50,7 @@ export class SendTool {
     try {
       result = await this.manager.send(params.agent_id, params.message);
     } catch (err) {
-      return textResult(
-        `Failed to send message to agent: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      return textResult(`Failed to send message to agent: ${errorText(err)}`);
     }
 
     switch (result.kind) {

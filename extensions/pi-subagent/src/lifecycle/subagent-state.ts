@@ -17,6 +17,7 @@
  * methods to it. Extracting it lets the lifecycle state machine and the
  * session-event observer be unit-tested without constructing an executor.
  */
+import { errorText } from "../../../../packages/pi-foundations/src/errors.ts";
 
 import type { TurnBudget } from "#src/lifecycle/turn-limits";
 import type { LifetimeUsage } from "#src/lifecycle/usage";
@@ -403,7 +404,7 @@ export class SubagentState {
 
   /** The run failed. Always sets error (formatted). */
   markError(error: unknown, completedAt?: number): void {
-    this._error = error instanceof Error ? error.message : String(error);
+    this._error = errorText(error);
     this.endRun("error", completedAt);
   }
 

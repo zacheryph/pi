@@ -4,6 +4,7 @@
  * output arrives through onOutput, exactly one outcome through onDone, and terminate() ends the
  * check now (its late result is ignored).
  */
+import { errorText } from "../../../packages/pi-foundations/src/errors.ts";
 import type { RunOutcome } from "./supervisor.ts";
 
 export interface ProbeResult {
@@ -65,7 +66,7 @@ export function startProbe(
         done({
           exitCode: null,
           signal: null,
-          error: err instanceof Error ? err.message : String(err),
+          error: errorText(err),
           inconclusive: true,
         }),
     );

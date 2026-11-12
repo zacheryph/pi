@@ -1,3 +1,4 @@
+import { errorText } from "../../../packages/pi-foundations/src/errors.ts";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { treeService } from "../../../packages/pi-session-state/src/index.ts";
 import { cloneTodoActivity, type TodoActivity, type TodoTaskActivity } from "./activity.ts";
@@ -211,8 +212,6 @@ export interface Delegated {
   agent: string;
   scope: TodoClaimScope;
 }
-
-const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 /**
  * Parent side: veto bad `handoff.todo` before a spawn, bind claims as children

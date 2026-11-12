@@ -3,6 +3,7 @@
  * (agents/) and user-defined agents from project (.pi/agents/) and global
  * ($PI_CODING_AGENT_DIR/agents/, default ~/.pi/agent/agents/) locations.
  */
+import { errorText } from "../../../../packages/pi-foundations/src/errors.ts";
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
@@ -111,7 +112,7 @@ function brokenAgent(
   sourcePath: string,
   err: unknown,
 ): AgentConfig {
-  const reason = err instanceof Error ? err.message : String(err);
+  const reason = errorText(err);
   return {
     name,
     description: name,

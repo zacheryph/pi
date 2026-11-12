@@ -3,6 +3,10 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-12: Share plain-data helpers through pi-foundations
+
+- Reuse plain-data guards, error text, whitespace and numeric formatting from pi-foundations; retain log units and completion wording.
+
 ## 2026-11-11: Drop the completion dedupe for older transcripts
 
 Issue #129. The work host hands each completion to pi once, under a fresh UUID, so a transcript

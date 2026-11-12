@@ -1,3 +1,4 @@
+import { errorText } from "../../../packages/pi-foundations/src/errors.ts";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES } from "@earendil-works/pi-coding-agent";
 
 export const DEFAULT_GET_BYTES = 16 * 1024;
@@ -204,9 +205,7 @@ export function sliceText(text: string, request: SliceRequest): SliceResult {
     try {
       regex = new RegExp(request.grep.pattern, request.grep.ignoreCase ? "i" : "");
     } catch (error) {
-      throw new Error(
-        `Invalid grep pattern: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      throw new Error(`Invalid grep pattern: ${errorText(error)}`);
     }
     const hits: number[] = [];
     for (let i = 0; i < all.length; i++) if (regex.test(all[i])) hits.push(i);
@@ -272,9 +271,7 @@ export function sliceText(text: string, request: SliceRequest): SliceResult {
     try {
       value = JSON.parse(text);
     } catch (error) {
-      throw new Error(
-        `Entry is not valid JSON, so jsonPath cannot be used: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      throw new Error(`Entry is not valid JSON, so jsonPath cannot be used: ${errorText(error)}`);
     }
     for (const part of parseJsonPath(request.jsonPath)) {
       if (typeof part === "number" && Array.isArray(value)) {

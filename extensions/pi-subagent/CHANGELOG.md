@@ -3,6 +3,10 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-12: Share plain-data helpers through pi-foundations
+
+- Reuse plain-data formatting and error text; keep terminal sanitization and watch-tail truncation order, agent duration policy, and all waiting labels.
+
 ## 2026-11-12: Centralize browser fallback in pi-ui
 
 - Prepare the definitions browser lazily behind pi-ui's TUI gate; preserve settings, navigation and passive-overlay policies.

@@ -27,7 +27,7 @@ import {
 } from "#src/lifecycle/subagent-state";
 import type { PersistedRunSummary } from "#src/persisted-record";
 import type { AgentSessionEvent, SessionMessage, SubagentType } from "#src/types";
-import { formatDuration, getDisplayName, type ModelIdentity } from "#src/ui/display";
+import { formatAgentDuration, getDisplayName, type ModelIdentity } from "#src/ui/display";
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -228,7 +228,7 @@ function buildHeading(
 
 function buildLabel(fields: LabelFields, registry: AgentConfigLookup, released = false): string {
   const name = getDisplayName(fields.type, registry);
-  const duration = formatDuration(fields.startedAt, fields.completedAt);
+  const duration = formatAgentDuration(fields.startedAt, fields.completedAt);
   const marker = released ? " · session released (snapshot)" : "";
   return `${name} (${fields.description}) · ${fields.toolUses} tools · ${displayStatus(fields.status, fields.outcome)} · ${duration}${marker}`;
 }

@@ -1,3 +1,4 @@
+import { isRecord } from "../../../packages/pi-foundations/src/guards.ts";
 import { type TodoDetails, type TodoState, type TodoStatus, TodoValidationError } from "./state.ts";
 
 /**
@@ -50,10 +51,6 @@ export interface TodoReviewEntry {
 }
 
 const STATUSES: ReadonlySet<unknown> = new Set(["pending", "in_progress", "completed"]);
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === "object" && !Array.isArray(value);
-}
 
 function readCount(value: unknown): number | undefined {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined;

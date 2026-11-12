@@ -1,4 +1,5 @@
 /** MIT adaptation of the bundle's read-only browsers; see ../LICENSE. */
+import { errorText } from "../../pi-foundations/src/errors.ts";
 import {
   Input,
   matchesKey,
@@ -100,10 +101,6 @@ export function snapshotExplorer(view: ExplorerView): ExplorerView {
     marker: view.marker && { ...view.marker },
     hints: view.hints?.map((hint) => ({ ...hint })),
   };
-}
-
-function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 export class Explorer implements Component, Focusable {

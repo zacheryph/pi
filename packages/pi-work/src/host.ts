@@ -17,6 +17,7 @@
  * nobody adopted as lost. A lost item never wakes the session by itself: a single `work:lost`
  * message is appended with `record`, which starts no turn.
  */
+import { oneLine } from "../../pi-foundations/src/format.ts";
 import {
   Delivery,
   continuesRun,
@@ -139,11 +140,6 @@ export function openRecords(raw: readonly unknown[]): Extract<WorkRecord, { op: 
   }
   return [...open.values()];
 }
-
-const oneLine = (text: string, max: number): string => {
-  const flat = text.replace(/\s+/g, " ").trim();
-  return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
-};
 
 /** One line per item (sanitised, clipped), at most `LOST_ITEMS` of them, for a message that lists work. */
 function itemLines(items: readonly WorkItemView[]): string[] {

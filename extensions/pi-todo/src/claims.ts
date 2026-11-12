@@ -1,3 +1,4 @@
+import { isRecord } from "../../../packages/pi-foundations/src/guards.ts";
 import type { TodoState } from "./state.ts";
 
 /**
@@ -37,8 +38,6 @@ export interface TodoClaim {
 export type TodoClaims = ReadonlyMap<string, TodoClaim>;
 
 const KEY_PATTERN = /^[a-z0-9][a-z0-9._-]{0,39}$/;
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  !!value && typeof value === "object" && !Array.isArray(value);
 const text = (value: unknown, max = 128): value is string =>
   typeof value === "string" && value.length > 0 && value.length <= max;
 
