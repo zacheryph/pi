@@ -23,7 +23,14 @@ import { expectNoUnmanagedRuns, trackChildRuns, type RunLog } from "./helpers/ma
 import { RESTORE_TIMEOUT_MS } from "#src/lifecycle/subagent-manager";
 import { HANG, type Hang } from "./fixtures/hang-on-reopen.ts";
 import workProbe from "./fixtures/work-probe.ts";
-import { EXTENSIONS, isChildRequest, offlineAgentDir } from "./helpers/sdk.ts";
+import todoExtension from "../../pi-todo/src/index.ts";
+import {
+  EXTENSIONS,
+  isChildRequest,
+  lastResult,
+  offlineAgentDir,
+  TODO_TOOLS,
+} from "./helpers/sdk.ts";
 import { widgetUi } from "./helpers/widget-ui.ts";
 
 // Roadmap step 12 on real sessions: a parent reload or restart keeps its agents. At the parent's
@@ -263,6 +270,77 @@ describe("a parent reload", () => {
     expect(h.errors).toEqual([]);
     expectNoUnmanagedRuns(runs);
     expect(runs.managed).toBe(managed + 1); // the one wake, through the agent and its limiter
+  }, 40_000);
+
+  it("keeps the todo tasks handed to a child that waits on a job: its later updates reach the parent's list", async () => {
+    const dir = offlineAgentDir({
+      extensions: [EXTENSIONS.fastJobs, EXTENSIONS.subagent, EXTENSIONS.todo],
+    });
+    const ui = widgetUi();
+    const manager = SessionManager.create(dir, dir);
+    // pi-todo after pi-subagent, as in the bundle: the child is reopened before the broker is offered.
+    const h = await startParent({
+      dir,
+      manager,
+      extensions: [parentJobs, todoExtension],
+      tools: ["job_start", "job_watch", ...TODO_TOOLS],
+      bind: { uiContext: ui.uiContext },
+    });
+    const gate = join(dir, "ci-finished");
+    let reported = "";
+    h.script({
+      parent: [
+        toolCall("todo_upsert", { tasks: [{ key: "ci", subject: "Get CI green" }] }),
+        delegate("Review CI", { handoff: { todo: { keys: ["ci"] } } }),
+        fauxAssistantMessage("Started."),
+        fauxAssistantMessage("Noted."),
+      ],
+      child: [
+        toolCall("todo_upsert", { tasks: [{ key: "ci", status: "in_progress" }] }),
+        watch(gate),
+        fauxAssistantMessage("Watching CI."),
+        // After the reload, woken by the watch.
+        toolCall("todo_upsert", { tasks: [{ key: "ci", message: "CI is green" }] }),
+        (context) => {
+          reported = lastResult(context, "todo_upsert");
+          return fauxAssistantMessage("CI passed; ready for acceptance.");
+        },
+      ],
+    });
+    const claims = () =>
+      manager
+        .getBranch()
+        .filter((entry) => entry.type === "custom" && entry.customType === "todo:claim")
+        .map((entry) => (entry as { data: { op: string } }).data.op);
+    const updates = () =>
+      (
+        manager
+          .getBranch()
+          .filter((entry) => entry.type === "custom" && entry.customType === "todo:journal")
+          .at(-1) as {
+          data: { activity: Record<string, { updates: { message?: string; agent?: string }[] }> };
+        }
+      ).data.activity.ci.updates;
+
+    await h.session.prompt("Delegate");
+    await vi.waitFor(() => expect(ui.text()).toContain("waiting: CI"), { timeout: 15_000 });
+    expect(claims()).toEqual(["claim"]);
+
+    await h.session.reload();
+    await vi.waitFor(() => expect(ui.text()).toContain("waiting: CI"), { timeout: 15_000 });
+    // The agent is still at work, so the tasks are still its own: nothing was handed back.
+    expect(claims()).toEqual(["claim"]);
+    expect(updates().filter((update) => update.message?.includes("ended ("))).toEqual([]);
+
+    writeFileSync(gate, "");
+    await untilAnnounced(h);
+    expect(reported).toContain("CI is green");
+    expect(reported).not.toContain("no tasks are assigned");
+    const green = updates().find((update) => update.message === "CI is green");
+    expect(green?.agent).toEqual(h.agentIds()[0]);
+    // Released when the agent is done, as before.
+    expect(claims()).toEqual(["claim", "release"]);
+    expect(h.errors).toEqual([]);
   }, 40_000);
 
   it("wakes the child when its job ended in the gap of the reload, through the limiter", async () => {

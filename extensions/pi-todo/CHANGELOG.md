@@ -3,6 +3,26 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-12: Claims survive a reload or restart of the parent
+
+pi-subagent keeps agents across a reload or restart and reopens those that wait on work, but every
+session start released the claims it replayed ("no subagent survives one"). A worker waiting on CI
+lost its tasks at a `/reload`: the parent's task read "ended (session ended)", and the worker's
+later updates went to a private list, because it was reopened before the parent's broker existed.
+
+- `src/delegation.ts`: `start(claims, keep)` keeps the replayed claims at a `startup`, `resume` or
+  `reload` start. New `reconcile()`, run at `resources_discover` (the first `before_agent_start` is
+  the fallback), releases the claims whose agent has no live child session by then, with the
+  outcome "interrupted by a restart", and remembers them so `subagent:resuming` gives the tasks
+  back. A `fork` start and `/tree` release at once, as before.
+- `subagent:session:disposed` with `kept: true` (the session went with the parent's shutdown)
+  releases nothing.
+- A child looks its claim up again while it has none (`resolveDelegated`), instead of once at its
+  own `session_start`.
+- README: the release rule names the real event and a new bullet describes what a reload keeps.
+- Tests: kept and released claims across a restart, the first-run fallback, a fork, the `kept`
+  event; pi-subagent's `restore-sdk.test.ts` covers it on real sessions.
+
 ## 2026-11-12: Share plain-data helpers through pi-foundations
 
 - Reuse the shared record guard and error text. Reject arrays in persisted task/state records, including arrays with task-like properties.

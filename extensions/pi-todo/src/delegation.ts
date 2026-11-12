@@ -1,6 +1,7 @@
 import { errorText } from "../../../packages/pi-foundations/src/errors.ts";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { treeService } from "../../../packages/pi-session-state/src/index.ts";
+import { children, node } from "../../../packages/pi-session-tree/src/index.ts";
 import { cloneTodoActivity, type TodoActivity, type TodoTaskActivity } from "./activity.ts";
 import type { TodoRequest, TodoTaskPatch } from "./actions.ts";
 import {
@@ -217,6 +218,12 @@ export interface Delegated {
  * Parent side: veto bad `handoff.todo` before a spawn, bind claims as children
  * are created, release them as agents end, and offer the broker. Child side:
  * find this session's claim and route the todo tool to the parent's broker.
+ *
+ * A claim belongs to an agent, not to the session it runs in. pi-subagent keeps
+ * agents across a reload or restart of the parent and reopens those that still
+ * wait on work, so a start of the parent keeps the claims it replays and, once
+ * every extension has started, releases only those whose agent did not come
+ * back (`reconcile`).
  */
 export function createTodoDelegation(pi: ExtensionAPI, host: DelegationHost) {
   const pending = new Map<string, { handoff: TodoHandoff; at: number }>();
@@ -225,6 +232,22 @@ export function createTodoDelegation(pi: ExtensionAPI, host: DelegationHost) {
   /** Plan revision at which each key last changed, for per-key stale checks. */
   const lastChange = new Map<string, number>();
   let delegated: Delegated | undefined;
+  /** Claims replayed at a start are kept until `reconcile` has seen which agents came back. */
+  let unreconciled = false;
+
+  /**
+   * This session's link to its parent's plan. Looked up again while there is none: a parent that
+   * restarts reopens its waiting subagents before its own pi-todo offers the broker, so the first
+   * look at the child's `session_start` can find nothing.
+   */
+  const resolveDelegated = (): Delegated | undefined => {
+    if (delegated) return delegated;
+    const agent = tree.node()?.agentId;
+    if (!agent) return undefined;
+    const claim = tree.parent((parentBroker) => parentBroker.claim(agent));
+    if (claim.ok && claim.value) delegated = { agent, scope: claim.value.scope };
+    return delegated;
+  };
 
   const held = (exceptCall?: string): Map<string, string> => {
     const holders = new Map(
@@ -316,7 +339,7 @@ export function createTodoDelegation(pi: ExtensionAPI, host: DelegationHost) {
       requireTools?: (names: readonly string[]) => void;
     };
     const handoff = readTodoHandoff(event.handoff);
-    if (!delegated && handoff && typeof handoff !== "string")
+    if (!resolveDelegated() && handoff && typeof handoff !== "string")
       event.requireTools?.(["todo_list", "todo_upsert"]);
   });
 
@@ -325,7 +348,7 @@ export function createTodoDelegation(pi: ExtensionAPI, host: DelegationHost) {
     const handoff = readTodoHandoff((event.input as Record<string, unknown> | undefined)?.handoff);
     if (handoff === undefined) return undefined;
     if (typeof handoff === "string") return { block: true, reason: handoff };
-    if (delegated) {
+    if (resolveDelegated()) {
       return {
         block: true,
         reason:
@@ -354,7 +377,7 @@ export function createTodoDelegation(pi: ExtensionAPI, host: DelegationHost) {
       );
       if (same) pending.delete(same[0]);
     }
-    if (delegated || !agent || !session || !handoff || typeof handoff === "string") return;
+    if (resolveDelegated() || !agent || !session || !handoff || typeof handoff === "string") return;
     // Re-check now: the plan or other claims may have changed since tool_call.
     const holders = held();
     const byKey = new Map(host.state().tasks.map((task) => [task.key, task]));
@@ -396,6 +419,8 @@ export function createTodoDelegation(pi: ExtensionAPI, host: DelegationHost) {
     if (agent) release(agent, statusOf(data));
   });
   pi.events.on("subagent:session:disposed", (data) => {
+    // `kept`: the session went with this one's shutdown, and the agent may be reopened.
+    if ((data as { kept?: unknown } | undefined)?.kept === true) return;
     const agent = agentOf(data);
     if (agent) release(agent, "ended");
   });
@@ -427,26 +452,47 @@ export function createTodoDelegation(pi: ExtensionAPI, host: DelegationHost) {
   };
 
   return {
-    /** Look for this session's own claim in its parent (start, resume, reload, /tree). */
-    start(replayedClaims: TodoClaims) {
+    /**
+     * Look for this session's own claim in its parent (start, resume, reload, /tree).
+     *
+     * `keep`: this is a start of the same session (startup, resume or reload), whose agents
+     * pi-subagent may bring back, so the replayed claims stay until `reconcile`. Otherwise the
+     * branch changed under them (`/tree`) or they belong to another session (a fork), and a
+     * claim cannot safely carry over even if the child session still exists.
+     */
+    start(replayedClaims: TodoClaims, keep = false) {
       pending.clear();
       lastChange.clear();
-      // Claims replayed on session start or tree navigation cannot safely carry
-      // into the new branch, even if the child session still exists.
-      // Snapshot the keys before release publishes journal changes to listeners.
-      const previousAgents = [...replayedClaims.keys()];
-      for (const agent of previousAgents) release(agent, "session ended");
+      unreconciled = keep;
+      if (!keep) {
+        // Snapshot the keys before release publishes journal changes to listeners.
+        const previousAgents = [...replayedClaims.keys()];
+        for (const agent of previousAgents) release(agent, "session ended");
+      }
       // An agent from another branch must not reclaim keys on a later resume.
       ended.clear();
       delegated = undefined;
-      const agent = tree.node()?.agentId;
-      if (agent) {
-        const claim = tree.parent((parentBroker) => parentBroker.claim(agent));
-        if (claim.ok && claim.value) delegated = { agent, scope: claim.value.scope };
-      }
+      resolveDelegated();
+    },
+    /**
+     * Every extension has started, so pi-subagent has reopened the agents that go on. Release the
+     * claims of the others: an agent whose run the restart cut short, or whose work was lost with
+     * it, holds no session now. It is remembered, so `subagent_send` gives it its tasks back.
+     */
+    reconcile() {
+      if (!unreconciled) return;
+      unreconciled = false;
+      const self = tree.sessionId();
+      const live = new Set(
+        (self === undefined ? [] : children(self)).map((child) => node(child)?.agentId),
+      );
+      // Copied: a release replaces the claims.
+      for (const agent of Array.from(host.claims().keys()))
+        if (!live.has(agent)) release(agent, "interrupted by a restart");
     },
     stop() {
       delegated = undefined;
+      unreconciled = false;
       pending.clear();
     },
     /** Record which keys a change touched, for per-key stale checks. */
@@ -458,7 +504,7 @@ export function createTodoDelegation(pi: ExtensionAPI, host: DelegationHost) {
       ])
         lastChange.set(key, details.revision);
     },
-    delegated: () => delegated,
+    delegated: resolveDelegated,
     view: () => remote((parentBroker) => parentBroker.view(delegated!.agent)),
     mutate: (request: TodoRequest) =>
       remote((parentBroker) => parentBroker.mutate(delegated!.agent, request)),

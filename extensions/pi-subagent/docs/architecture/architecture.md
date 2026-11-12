@@ -586,14 +586,14 @@ These are fire-and-forget broadcast events — no request IDs, no reply channels
 
 The child-execution lifecycle (`src/lifecycle/child-lifecycle.ts`) is published on the same bus, keyed by the child's session id:
 
-| Channel                      | Payload                                                                               | When                                                         |
-| ---------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| `subagent:session:spawning`  | `{ agentName, parentSessionId? }`                                                     | A child run starts, before its session exists                |
-| `subagent:session:prepare`   | `{ agentName, cwd, parentSessionId?, agentId?, toolCallId?, handoff?, requireTools }` | Synchronously, before SDK creation fixes the tool allowlist  |
-| `subagent:session:created`   | `{ sessionId, parentSessionId?, agentId?, toolCallId?, handoff? }`                    | Synchronously, before the child binds its extensions         |
-| `subagent:session:bound`     | `{ sessionId, parentSessionId?, agentId?, toolCallId? }`                              | Every child `session_start` handler has run                  |
-| `subagent:session:completed` | `{ sessionDir, agentName, turnBudget? }`                                              | The child's prompt resolved                                  |
-| `subagent:session:disposed`  | `{ sessionId, agentId?, toolCallId? }`                                                | After the child's `session_shutdown` and `session.dispose()` |
+| Channel                      | Payload                                                                                                          | When                                                         |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `subagent:session:spawning`  | `{ agentName, parentSessionId? }`                                                                                | A child run starts, before its session exists                |
+| `subagent:session:prepare`   | `{ agentName, cwd, parentSessionId?, agentId?, toolCallId?, handoff?, requireTools }`                            | Synchronously, before SDK creation fixes the tool allowlist  |
+| `subagent:session:created`   | `{ sessionId, parentSessionId?, agentId?, toolCallId?, handoff? }`                                               | Synchronously, before the child binds its extensions         |
+| `subagent:session:bound`     | `{ sessionId, parentSessionId?, agentId?, toolCallId? }`                                                         | Every child `session_start` handler has run                  |
+| `subagent:session:completed` | `{ sessionDir, agentName, turnBudget? }`                                                                         | The child's prompt resolved                                  |
+| `subagent:session:disposed`  | `{ sessionId, agentId?, toolCallId?, kept? }` (`kept`: the parent is shutting down and the agent's record stays) | After the child's `session_shutdown` and `session.dispose()` |
 
 `agentId` is the record id (`getRecord(id)`), `toolCallId` the parent's `subagent_start` call (absent for a service spawn), and `handoff` the spawn's extension-defined data.
 The core forwards `handoff` without interpreting it, so a companion extension can define a new key (pi-todo reads `todo`) without a core change. The key's owner documents its shape in its own tool guidance and validates it.

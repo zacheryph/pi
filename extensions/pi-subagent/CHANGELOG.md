@@ -3,6 +3,17 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-12: `subagent:session:disposed` says when the agent is kept
+
+- `ChildDisposedEvent.kept`: set when a child session goes away because the session that spawned it
+  is shutting down (a reload, a quit, a session switch) while the agent's record stays for the next
+  start. `SubagentSession.dispose` takes it as a third argument and `Subagent.disposeSession` passes
+  it for a suspended agent. A retention release, a clear and a failed creation leave it unset.
+- pi-todo reads it to keep the agent's task claim (see its changelog). pi-session-tree still forgets
+  the session either way.
+- Tests: `restore-sdk.test.ts` reloads a parent whose child holds handed-over todo tasks and waits on
+  a watch; the claim is kept and the woken child's update reaches the parent's list.
+
 ## 2026-11-12: Settings declared with defineSettings
 
 Issue #128. `subagentSettings` in `src/settings.ts` declares every `subagent.json` field with

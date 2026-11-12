@@ -1247,7 +1247,8 @@ export class Subagent {
     // child with none (a done agent kept for its retention window) ends like any released
     // session, so pi-job does not keep an owner for it that nobody will take back.
     const told = reason === "reload" && !this.hasOpenWork() ? "quit" : reason;
-    await disposeQuietly(this.subagentSession, "child session dispose", told);
+    // A suspended agent's session goes with its parent's; the agent itself is kept.
+    await disposeQuietly(this.subagentSession, "child session dispose", told, this.suspended);
     // A retention release already cleared subagentSession, but its shutdown
     // must finish before a reload can reopen the same transcript/session ID.
     await this.sessionRelease;
@@ -1296,9 +1297,10 @@ async function disposeQuietly(
   session: SubagentSession | undefined,
   context: string,
   reason?: ChildShutdownReason,
+  kept = false,
 ): Promise<void> {
   try {
-    await (reason ? session?.dispose(reason) : session?.dispose());
+    await session?.dispose(reason ?? "quit", true, kept);
   } catch (err) {
     debugLog(context, err);
   }
