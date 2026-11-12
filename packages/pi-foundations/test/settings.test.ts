@@ -15,10 +15,11 @@ import {
   bool,
   defineSettings,
   int,
-  loadLayeredSettings,
+  list,
   number,
   oneOf,
   optional,
+  record,
   string,
   type SettingsOf,
   patchSettingsFile,
@@ -58,21 +59,6 @@ describe("settings files", () => {
     expect(report).toHaveBeenCalledWith(expect.any(SyntaxError));
     expect(readSettingsFile(root, sanitize, report)).toEqual({});
     expect(report).toHaveBeenCalledTimes(2);
-  });
-
-  it("shallow-merges project settings over global settings and reports a bad layer", () => {
-    const agentDir = join(root, "agent"),
-      cwd = join(root, "project");
-    const global = join(agentDir, "settings.json"),
-      project = join(cwd, ".pi/settings.json");
-    writeSettingsFile(global, { count: 2 });
-    writeSettingsFile(project, { count: 3 });
-    const options = { agentDir, cwd, filename: "settings.json", sanitize, warnLabel: "test" };
-    expect(loadLayeredSettings(options)).toEqual({ count: 3 });
-    writeFileSync(project, "{bad");
-    const onError = vi.fn();
-    expect(loadLayeredSettings({ ...options, onError })).toEqual({ count: 2 });
-    expect(onError).toHaveBeenCalledWith(project, expect.any(SyntaxError));
   });
 
   it("preserves unknown settings on sparse patches and writes only the supplied file", () => {
@@ -269,6 +255,68 @@ describe("defineSettings", () => {
     env.writeProject(raw);
     expect(() => layered.save(env.cwd, { enabled: false })).toThrow();
     expect(readFileSync(env.projectFile, "utf8")).toBe(raw);
+  });
+
+  describe("list and record", () => {
+    const collections = defineSettings({
+      name: "demo",
+      scope: "layered",
+      fields: {
+        sources: list(string({ trim: true, nonEmpty: true }), { unique: true }),
+        rules: record(oneOf(["full", "portable"], {})),
+      },
+    });
+    const load = (env: ReturnType<typeof setup>) => collections.load(env.cwd, env.agentDir);
+
+    it("defaults to fresh empty collections", () => {
+      const env = setup();
+      const first = load(env);
+      expect(first).toEqual({ sources: [], rules: {} });
+      first.sources.push("x");
+      first.rules.x = "full";
+      expect(load(env)).toEqual({ sources: [], rules: {} });
+    });
+
+    it("keeps valid members, trims and dedupes, and names each one dropped", () => {
+      const env = setup();
+      env.writeProject({
+        sources: [" npm:a ", "npm:a", "", 3, "npm:b"],
+        rules: { openai: "portable", anthropic: "full", other: "half" },
+      });
+      expect(load(env)).toEqual({
+        sources: ["npm:a", "npm:b"],
+        rules: { openai: "portable", anthropic: "full" },
+      });
+      expect(env.warn).toHaveBeenCalledExactlyOnceWith(
+        `[pi-demo] Ignoring invalid settings at ${env.projectFile}: ` +
+          'sources[2] must be a non-empty string; sources[3] must be a string; rules.other must be one of "full", "portable"',
+      );
+    });
+
+    it("keeps a __proto__ key as data", () => {
+      const env = setup();
+      env.writeProject('{"rules":{"__proto__":"portable"}}');
+      const { rules } = load(env);
+      expect(Object.hasOwn(rules, "__proto__")).toBe(true);
+      expect(Object.getPrototypeOf(rules)).toBe(Object.prototype);
+    });
+
+    it("drops a collection of the wrong shape and keeps the lower layer", () => {
+      const env = setup();
+      env.writeGlobal({ sources: ["npm:a"], rules: { openai: "portable" } });
+      env.writeProject({ sources: "npm:b", rules: ["full"] });
+      expect(load(env)).toEqual({ sources: ["npm:a"], rules: { openai: "portable" } });
+      expect(env.warn).toHaveBeenCalledExactlyOnceWith(
+        expect.stringContaining("sources must be a list; rules must be an object"),
+      );
+    });
+
+    it("lets a project's empty collection replace the global one", () => {
+      const env = setup();
+      env.writeGlobal({ sources: ["npm:a"] });
+      env.writeProject({ sources: [] });
+      expect(load(env).sources).toEqual([]);
+    });
   });
 
   it("infers the loaded type from the fields", () => {
