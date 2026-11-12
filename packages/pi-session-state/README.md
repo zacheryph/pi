@@ -51,10 +51,11 @@ seen the state and calls `hide()` then, from `build` or from another handler.
 Without `restore`, `build` alone decides on every request (pi-todo, whose card is
 due until a visible tool result already holds the state).
 
-Async `restore` and `build` results that resolve after `session_shutdown` or a
-newer `session_start` are dropped, and so is a build that resolves after the card
-was hidden; the old card is still stripped. Synchronous callbacks give a
-synchronous result. Pass `now` to control timestamps.
+Async `restore` and `build` results are dropped after any newer restore event or
+explicit `show()`/`hide()` call, including a hide followed by a show at the same
+timestamp. Shutdown also invalidates pending work; the old card is still
+stripped. Synchronous callbacks give a synchronous result. Pass `now` to control
+timestamps.
 
 `contextCard` runs `restore` from its own handlers, so register it after the
 extension's handlers that rebuild the state `restore` reads.
@@ -80,6 +81,14 @@ the old instance's withdraw does nothing.
 The `session_start` handler is registered when `treeService` is called. Pi runs
 an extension's handlers in registration order, awaiting each, so call it after
 registering a `session_start` handler that must run first.
+
+Initialization that must happen together with registration can instead use
+`treeService(pi, name, service, { start: (ctx) => initialize(ctx) })`. `start` must
+be synchronous. It runs after providing the service, in the same handler, so
+shutdown cannot slip between initialization and registration. This also lets
+the extension read `ctx` before Pi yields between handlers. A later card restore
+should check `tree.sessionId()` before reading `ctx` if shutdown may have
+interrupted that start event (see pi-git).
 
 ## Entry replay
 

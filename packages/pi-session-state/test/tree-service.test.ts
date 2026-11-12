@@ -34,6 +34,26 @@ function instance() {
 }
 
 describe("treeService", () => {
+  it("initializes in the provide handler before shutdown can interrupt startup", async () => {
+    const fake = fakePi();
+    const api: Example = { adopt: () => true };
+    let initialized = false;
+    const ctx = sessionCtx("s1");
+    const tree = treeService(fake.api, NAME, api, {
+      start: (actual) => {
+        expect(actual).toBe(ctx);
+        expect(service("s1", NAME)).toBe(api);
+        initialized = true;
+      },
+    });
+    const starting = fake.emit("session_start", {}, ctx);
+    expect(initialized).toBe(true);
+    await fake.emit("session_shutdown");
+    await starting;
+    expect(tree.sessionId()).toBeUndefined();
+    expect(service("s1", NAME)).toBeUndefined();
+  });
+
   it("provides the service from session_start until session_shutdown", async () => {
     const { fake, api, tree } = instance();
     expect(tree.sessionId()).toBeUndefined();

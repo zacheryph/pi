@@ -8,8 +8,8 @@
  * shown in the TUI, and the previous request's card is stripped first so only
  * the current one is ever sent.
  *
- * Whether a card is due is each extension's own rule, decided inside `build`;
- * this module owns only the message surgery.
+ * Whether a card is due is each extension's own rule; this module owns the
+ * message surgery and optional restore-driven visibility.
  */
 
 import type {
@@ -61,8 +61,8 @@ export interface ContextCardOptions {
   /**
    * The card to send with this request, or undefined for none. `messages` are
    * the request's messages without earlier cards. May be async; a result that
-   * resolves after `session_shutdown`, a newer `session_start`, or (with
-   * `restore`) once the card was hidden, is dropped.
+   * resolves after shutdown, a newer restore event, or an explicit show/hide
+   * call is dropped, even if the card has since been shown again.
    */
   build: (
     ctx: ExtensionContext,
@@ -77,8 +77,8 @@ export interface ContextCardOptions {
    *
    * Called after the extension's own handlers for the event that were
    * registered before `contextCard`, so it can read state they rebuilt. May be
-   * async; a result that resolves after a newer session start or shutdown is
-   * dropped.
+   * async; a result superseded by another restore, shutdown or an explicit
+   * show/hide call is dropped.
    */
   restore?: (ctx: ExtensionContext, event: RestoreEvent) => boolean | Promise<boolean>;
   /** Clock for the card's timestamp and `shownAt`. */
@@ -109,49 +109,56 @@ export function contextCard(
   options: ContextCardOptions,
 ): ContextCard {
   const { type, build, restore, now = Date.now } = options;
-  /** Bumped on every session start and shutdown, so stale async work drops its result. */
-  let generation = 0;
+  /** Invalidates async work across restores and explicit visibility changes. */
+  let revision = 0;
   let shownAt: number | undefined;
   const card: ContextCard = {
     show: () => {
+      revision += 1;
       shownAt = now();
     },
     hide: () => {
+      revision += 1;
       shownAt = undefined;
     },
     shownAt: () => shownAt,
   };
   const set = (due: boolean) => (due ? card.show() : card.hide());
   const restoreAfter = (event: RestoreEvent, ctx: ExtensionContext) => {
+    const started = ++revision;
     if (!restore) return;
     const due = restore(ctx, event);
-    if (!isThenable(due)) return set(due);
-    const started = generation;
+    if (!isThenable(due)) {
+      if (started === revision) set(due);
+      return;
+    }
     return Promise.resolve(due).then((value) => {
-      if (started === generation) set(value);
+      if (started === revision) set(value);
     });
   };
 
   pi.on("session_start", (event, ctx) => {
-    generation += 1;
     return restoreAfter(event, ctx);
   });
   pi.on("session_tree", (event, ctx) => restoreAfter(event, ctx));
   pi.on("session_compact", (event, ctx) => restoreAfter(event, ctx));
   pi.on("session_shutdown", () => {
-    generation += 1;
     card.hide();
   });
   pi.on("context", (event, ctx) => {
     const stripped = stripCards(event.messages, type);
     const due = () => !restore || shownAt !== undefined;
+    const started = revision;
     const built = due() ? build(ctx, stripped) : undefined;
-    if (!isThenable(built)) return placeCard(event.messages, stripped, type, built, now);
-    const started = generation;
-    return Promise.resolve(built).then((value) => {
-      const current = started === generation && due();
-      return placeCard(event.messages, stripped, type, current ? value : undefined, now);
-    });
+    const finish = (value: string | undefined) =>
+      placeCard(
+        event.messages,
+        stripped,
+        type,
+        started === revision && due() ? value : undefined,
+        now,
+      );
+    return isThenable(built) ? Promise.resolve(built).then(finish) : finish(built);
   });
   return card;
 }

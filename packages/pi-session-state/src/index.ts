@@ -15,4 +15,4 @@ export {
   type EntriesSource,
   type ReadEntriesOptions,
 } from "./entries.ts";
-export { treeService, type TreeService } from "./tree-service.ts";
+export { treeService, type TreeService, type TreeServiceOptions } from "./tree-service.ts";

@@ -296,16 +296,17 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
     publish();
   };
 
-  pi.on("session_start", async (_event, ctx) => {
-    generation += 1;
-    cwd = ctx.cwd;
-    config = undefined;
-    restore(ctx);
-    backgroundRefresh(ctx);
+  // Initialize and provide together: a shutdown between separate start handlers
+  // must not let the older start provide the service again after it was withdrawn.
+  const tree = treeService<GitTreeService>(pi, SERVICE_NAME, service, {
+    start: (ctx) => {
+      generation += 1;
+      cwd = ctx.cwd;
+      config = undefined;
+      restore(ctx);
+      backgroundRefresh(ctx);
+    },
   });
-  // Offered on session_start, withdrawn on session_shutdown; links this session's subagents.
-  // Registered after the start handler above, which reads the ctx before anything awaits.
-  const tree = treeService<GitTreeService>(pi, SERVICE_NAME, service);
   pi.on("session_tree", (_event, ctx) => {
     restore(ctx);
     backgroundRefresh(ctx);
@@ -315,7 +316,14 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
   const card = contextCard(pi, {
     type: CARD_TYPE,
     now,
-    restore: async (ctx) => (await cardForLedger(readLedger(ctx))) !== undefined,
+    // A start event can reach this later handler after shutdown already ran.
+    restore: (ctx, event) => {
+      if (tree.sessionId() === undefined) return false;
+      // Start/tree already replayed before Pi yielded; their ctx may now be stale.
+      const ledger =
+        event.type === "session_compact" ? readLedger(ctx) : { worktrees: records, prs };
+      return cardForLedger(ledger).then((built) => built !== undefined);
+    },
     build: (ctx) => cardForLedger(readLedger(ctx)),
   });
   pi.on("session_shutdown", () => {
