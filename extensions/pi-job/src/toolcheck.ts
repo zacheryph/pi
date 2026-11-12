@@ -4,6 +4,8 @@
  * for model-issued calls. No model is involved, so only read-only or explicitly allowed tools
  * may be watched, and a failed call is inconclusive rather than a verdict.
  */
+import { errorText } from "../../../packages/pi-foundations/src/errors.ts";
+import { isRecord } from "../../../packages/pi-foundations/src/guards.ts";
 import type { ProbeResult, WatchProbe } from "./probe.ts";
 
 export interface MatchSpec {
@@ -42,10 +44,6 @@ export const DEFAULT_MAX_CHECK_ERRORS = 3;
 
 /** Never valid as a check: they change state, run arbitrary code, or would start more jobs. */
 const NEVER = new Set(["bash", "edit", "write", "codemode"]);
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 export function parseToolCheck(value: unknown): ToolCheckSpec {
   if (!isRecord(value)) throw new Error("toolCheck must be an object with tool and args.");
@@ -199,7 +197,7 @@ export function createToolProbe(
       try {
         outcome = await execute(spec.tool, spec.args, { signal });
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
+        const message = errorText(err);
         if (/stale/i.test(message)) {
           return {
             exitCode: 1,

@@ -423,6 +423,13 @@ describe("snapshot isolation", () => {
 });
 
 describe("readTodoState", () => {
+  it("rejects arrays carrying current-schema state or task fields", () => {
+    const valid = stateWith([task("setup")]);
+    expect(readTodoState(Object.assign([], valid))).toBeUndefined();
+    expect(readTodoState({ ...valid, tasks: [Object.assign([], valid.tasks[0])] })).toBeUndefined();
+    expect(readTodoState(valid)).toEqual(valid);
+  });
+
   it("reads a current-schema snapshot", () => {
     const state = stateWith([task("setup"), task("build", { dependsOn: ["setup"] })]);
     expect(readTodoState(state)).toEqual(state);

@@ -21,7 +21,7 @@ import {
 } from "#src/tools/get-result-report";
 import { formatLifetimeTokens, textResult } from "#src/tools/helpers";
 import type { Subagent } from "#src/types";
-import { formatDuration, getDisplayName, modelLabel, type Theme } from "#src/ui/display";
+import { formatAgentDuration, getDisplayName, modelLabel, type Theme } from "#src/ui/display";
 import { BoundedLines, bodyRow, ICONS } from "../../../../packages/pi-ui/src/index.ts";
 
 // ---- Deps interfaces ----
@@ -117,7 +117,7 @@ export class GetResultTool {
     const displayName = getDisplayName(saved.type, this.registry);
     const duration = interrupted
       ? "unknown"
-      : formatDuration(saved.startedAt, saved.completedAt ?? saved.startedAt);
+      : formatAgentDuration(saved.startedAt, saved.completedAt ?? saved.startedAt);
     const text = formatSavedAgentReport({
       id: saved.id,
       displayName,
@@ -165,7 +165,7 @@ export class GetResultTool {
       tokens: formatLifetimeTokens(record),
       contextPercent: record.getContextPercent(),
       compactionCount: record.compactionCount,
-      duration: formatDuration(record.startedAt, record.completedAt),
+      duration: formatAgentDuration(record.startedAt, record.completedAt),
       description: record.description,
       result: record.result,
       error: record.error,
@@ -195,7 +195,7 @@ export class GetResultTool {
       tokens: formatLifetimeTokens(record),
       contextPercent: record.getContextPercent(),
       compactionCount: record.compactionCount,
-      duration: formatDuration(record.startedAt, record.completedAt),
+      duration: formatAgentDuration(record.startedAt, record.completedAt),
       preview: buildPreview(record.result),
       error: record.error,
       turnBudget: record.turnBudget,

@@ -4,6 +4,7 @@
  * All functions are stateless and dependency-free (no SDK runtime imports, no widget lifecycle).
  * Consumed by the widget, the menu, tool modules, and the notification renderer.
  */
+import { formatDuration } from "../../../../packages/pi-foundations/src/format.ts";
 
 import type { ThemeColor } from "@earendil-works/pi-coding-agent";
 import type { AgentConfigLookup } from "#src/config/agent-types";
@@ -81,7 +82,7 @@ export function formatTurnBudget(budget: TurnBudget): string {
 
 /** Format milliseconds as human-readable duration. */
 export function formatMs(ms: number): string {
-  return `${(ms / 1000).toFixed(1)}s`;
+  return formatDuration(ms, "seconds");
 }
 
 /** A model as `provider/id`, the syntax the Agent tool's `model` argument accepts. */
@@ -95,7 +96,7 @@ export function modelLabel(model: ModelIdentity | undefined): string | undefined
 }
 
 /** Format duration from start/completed timestamps. */
-export function formatDuration(startedAt: number, completedAt?: number): string {
+export function formatAgentDuration(startedAt: number, completedAt?: number): string {
   if (completedAt) return formatMs(completedAt - startedAt);
   return `${formatMs(Date.now() - startedAt)} (running)`;
 }

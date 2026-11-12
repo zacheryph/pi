@@ -1,3 +1,4 @@
+import { isRecord } from "../../../packages/pi-foundations/src/guards.ts";
 import { Type, type Static } from "typebox";
 
 export const MAX_QUESTIONS = 4;
@@ -159,8 +160,6 @@ export function formatOutcome(outcome: AskOutcome): string {
 
 export type AnswerRejectCode = "invalid_payload" | "invalid_answer";
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  !!value && typeof value === "object" && !Array.isArray(value);
 const index = (value: unknown, below: number): number | undefined =>
   typeof value === "number" && Number.isInteger(value) && value >= 0 && value < below
     ? value

@@ -1,3 +1,4 @@
+import { errorText } from "../../../../packages/pi-foundations/src/errors.ts";
 import { dirname, join } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AgentTypeRegistry } from "#src/config/agent-types";
@@ -176,7 +177,7 @@ function agentDetail(
       blocks.push({ text: composed.systemPrompt || "(empty)" });
     } catch (error) {
       blocks.push({
-        text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+        text: `Error: ${errorText(error)}`,
         tone: "error",
       });
     }

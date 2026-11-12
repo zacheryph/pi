@@ -1,3 +1,4 @@
+import { errorText } from "../../../../packages/pi-foundations/src/errors.ts";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import type { AgentSpawnConfig } from "#src/lifecycle/subagent-manager";
 import { renderSpawnNotes, textResult } from "#src/tools/helpers";
@@ -54,7 +55,7 @@ export function spawnBackground(manager: BackgroundManagerDeps, params: Backgrou
       ...(execution.cwd ? { cwd: execution.cwd } : {}),
     });
   } catch (err) {
-    return textResult(err instanceof Error ? err.message : String(err));
+    return textResult(errorText(err));
   }
 
   const record = manager.getRecord(id);

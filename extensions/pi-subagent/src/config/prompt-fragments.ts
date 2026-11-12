@@ -1,4 +1,5 @@
 /** Name-based, source-local prompt composition. Discovery records declarations; execution reads files. */
+import { errorText } from "../../../../packages/pi-foundations/src/errors.ts";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { AgentConfig } from "#src/types";
@@ -61,9 +62,7 @@ export function composeAgentInstructions(
     try {
       return { name, path, content: readFile(path).trim() };
     } catch (error) {
-      throw new Error(
-        `Agent "${profile.name}" fragment "${name}" (${path}): ${error instanceof Error ? error.message : String(error)}`,
-      );
+      throw new Error(`Agent "${profile.name}" fragment "${name}" (${path}): ${errorText(error)}`);
     }
   });
   const parts = [...fragments.map((fragment) => fragment.content), body].filter(Boolean);

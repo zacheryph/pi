@@ -1,3 +1,4 @@
+import { errorText } from "../../../packages/pi-foundations/src/errors.ts";
 import {
   DetailView,
   openModal,
@@ -27,7 +28,7 @@ export function summaryContent(result: TldrResult): Block[] {
 }
 
 export function errorContent(error: unknown): Block[] {
-  const message = error instanceof Error ? error.message : String(error);
+  const message = errorText(error);
   return [{ text: `Couldn't summarize: ${message.slice(0, MAX_ERROR)}`, tone: "error" }];
 }
 

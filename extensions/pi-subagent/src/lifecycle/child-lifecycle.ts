@@ -15,6 +15,7 @@
  * extensions did or did not install. `prepare` is a synchronous contribution hook:
  * extensions require tools before SDK creation, without the core knowing their keys.
  */
+import { errorText } from "../../../../packages/pi-foundations/src/errors.ts";
 
 import type { TurnBudget } from "#src/lifecycle/turn-limits";
 
@@ -91,7 +92,7 @@ export function normalizeHandoff(
     json = JSON.stringify(value);
   } catch (err) {
     return {
-      error: `handoff must be JSON data: ${err instanceof Error ? err.message : String(err)}`,
+      error: `handoff must be JSON data: ${errorText(err)}`,
     };
   }
   const bytes = Buffer.byteLength(json, "utf8");

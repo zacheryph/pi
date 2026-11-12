@@ -1,3 +1,4 @@
+import { errorText } from "../../../packages/pi-foundations/src/errors.ts";
 import { randomBytes } from "node:crypto";
 import {
   defineTool,
@@ -308,7 +309,7 @@ export default function stashExtension(
     } catch (error) {
       return {
         ok: false,
-        error: sanitizeText(error instanceof Error ? error.message : String(error)),
+        error: sanitizeText(errorText(error)),
       };
     }
   };
@@ -674,7 +675,7 @@ export default function stashExtension(
           warning = `Store is ${formatBytes(usage.bytes)}, over the ${formatBytes(config.maxStoreBytes)} cap; run /stash:gc or lower retentionDays.`;
         }
       } catch (error) {
-        warning = `Unable to measure store: ${error instanceof Error ? error.message : String(error)}`;
+        warning = `Unable to measure store: ${errorText(error)}`;
       }
       // Preview is bounded like stash_get's hard cap; the store is never dumped whole.
       await showStashBrowser(
@@ -714,12 +715,7 @@ export default function stashExtension(
           "info",
         );
       } catch (error) {
-        ctx.ui.notify(
-          sanitizeText(
-            `Stash GC failed: ${error instanceof Error ? error.message : String(error)}`,
-          ),
-          "error",
-        );
+        ctx.ui.notify(sanitizeText(`Stash GC failed: ${errorText(error)}`), "error");
       }
     },
   });
@@ -739,12 +735,7 @@ export default function stashExtension(
       getStore().sweep(config.retentionDays, hashes);
     } catch (error) {
       if (ctx.hasUI)
-        ctx.ui.notify(
-          sanitizeText(
-            `Stash retention sweep failed: ${error instanceof Error ? error.message : String(error)}`,
-          ),
-          "warning",
-        );
+        ctx.ui.notify(sanitizeText(`Stash retention sweep failed: ${errorText(error)}`), "warning");
     }
   });
   pi.on("session_tree", async (_event, ctx) => restore(ctx));

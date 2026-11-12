@@ -1,20 +1,9 @@
 /** Model- and user-facing text (pure). */
+import { formatDuration, oneLine, plural } from "../../../packages/pi-foundations/src/format.ts";
+export { formatDuration } from "../../../packages/pi-foundations/src/format.ts";
 import { constants } from "node:os";
 import type { JobSnapshot } from "./jobs.ts";
 import type { Tail } from "./tail.ts";
-
-export function formatDuration(ms: number): string {
-  const s = Math.max(0, Math.round(ms / 1000));
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ${s % 60}s`;
-  return `${Math.floor(m / 60)}h ${m % 60}m`;
-}
-
-function oneLine(text: string, max = 120): string {
-  const flat = text.replace(/\s+/g, " ").trim();
-  return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
-}
 
 export function jobTitle(job: JobSnapshot): string {
   return job.label ? job.label : oneLine(job.command, 80);
@@ -50,7 +39,7 @@ export function formatNotification(job: JobSnapshot, tail: Tail, now = Date.now(
   const head = [`${kind} ${job.id} ${job.status.replace("_", " ")}: ${jobTitle(job)}`];
   const facts: string[] = [];
   if (job.kind === "watch") {
-    facts.push(`until ${job.until}`, `${job.checks ?? 0} check${job.checks === 1 ? "" : "s"}`);
+    facts.push(`until ${job.until}`, `${job.checks ?? 0} ${plural(job.checks ?? 0, "check")}`);
     const last = job.lastCheck;
     if (last) {
       const status = last.timedOut

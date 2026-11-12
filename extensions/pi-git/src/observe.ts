@@ -16,6 +16,7 @@
  * Other output is never scanned: a `git log` or a file that mentions PR URLs
  * is not the session checking those PRs.
  */
+import { isRecord } from "../../../packages/pi-foundations/src/guards.ts";
 
 import { prUrl, type PrChecks, type PrFacts, type PrOrigin, type PrRef } from "./prs.ts";
 
@@ -462,10 +463,6 @@ function strings(value: unknown, depth = 0, out: string[] = []): string[] {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === "object" && !Array.isArray(value);
-}
 
 function parseJson(text: string): unknown {
   const trimmed = text.trim();

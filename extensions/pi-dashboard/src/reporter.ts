@@ -1,3 +1,4 @@
+import { errorText } from "../../../packages/pi-foundations/src/errors.ts";
 import { connect as netConnect, type Socket } from "node:net";
 import {
   encode,
@@ -145,7 +146,7 @@ export class Reporter {
     if (!request || !handler) return reply({ error: "This session cannot do that." });
     handler(request).then(
       (data) => reply({ data }),
-      (error: unknown) => reply({ error: error instanceof Error ? error.message : String(error) }),
+      (error: unknown) => reply({ error: errorText(error) }),
     );
   }
 

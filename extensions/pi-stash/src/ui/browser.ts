@@ -1,3 +1,4 @@
+import { errorText } from "../../../../packages/pi-foundations/src/errors.ts";
 import {
   showExplorer,
   type Block,
@@ -13,10 +14,6 @@ export interface StashPreview {
   lines: string[];
   /** Shown after the lines, e.g. when the preview stops before the end. */
   note?: string;
-}
-
-function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 /** Metadata always renders; a read failure replaces only the contents section. */

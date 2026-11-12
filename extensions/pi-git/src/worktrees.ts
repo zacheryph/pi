@@ -10,6 +10,7 @@
  * Nothing here deletes a branch, and removal refuses to drop uncommitted or
  * unpushed work unless forced.
  */
+import { errorText } from "../../../packages/pi-foundations/src/errors.ts";
 
 import { existsSync, readdirSync, rmdirSync, statSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
@@ -173,7 +174,7 @@ export async function inspect(
   try {
     return { status: await worktreeStatus(path, base, options) };
   } catch (error) {
-    return { error: error instanceof Error ? error.message : String(error) };
+    return { error: errorText(error) };
   }
 }
 

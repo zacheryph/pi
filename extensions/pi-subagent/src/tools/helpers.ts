@@ -1,3 +1,4 @@
+import { oneLine } from "../../../../packages/pi-foundations/src/format.ts";
 import type { AgentConfigLookup } from "#src/config/agent-types";
 import { getLifetimeTotal, type LifetimeUsage } from "#src/lifecycle/usage";
 import type { AgentConfig } from "#src/types";
@@ -49,11 +50,6 @@ function formatTypeEntry(name: string, config: AgentConfig): string {
   const description = oneLine(config.description).replace(/\.$/, "");
   const guidance = config.guidance ? oneLine(config.guidance) : "";
   return `- ${name}${model}: ${description}${guidance ? `. ${guidance}` : ""}`;
-}
-
-/** Collapse a frontmatter value that may span lines into a single trimmed line. */
-function oneLine(text: string): string {
-  return text.replace(/\s+/g, " ").trim();
 }
 
 /** Derive a short model label from a model string. */

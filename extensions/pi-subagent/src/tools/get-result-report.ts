@@ -6,6 +6,7 @@
  * Consumed by GetResultTool.execute in get-result-tool.ts. Mirrors the
  * result-renderer.ts pattern used by the subagent_start tool's TUI renderer.
  */
+import { oneLine } from "../../../../packages/pi-foundations/src/format.ts";
 
 import type { DisplayStatus, SendRefusal } from "#src/lifecycle/subagent";
 import type { TurnBudget } from "#src/lifecycle/turn-limits";
@@ -75,18 +76,18 @@ export function renderReportBody(report: AgentReport): string {
   return renderOutcomeBody(report);
 }
 
-/** A label on one line: a child's own text must not break the header or carry terminal codes. */
-function oneLine(label: string): string {
-  return sanitizeLine(label).replace(/\s+/g, " ").trim();
-}
-
 /**
  * The status the header names. An idle agent with open work is waiting, not done: it says what
  * for, and that it needs nothing until that reports back.
  */
 function renderStatus(report: AgentReport): string {
-  if (report.waitingOn?.length)
-    return `waiting: ${report.waitingOn.map(oneLine).filter(Boolean).join(", ")} (idle; it wakes when the work reports back or when you send it a message, and its completion message follows)`;
+  if (report.waitingOn?.length) {
+    const labels = report.waitingOn
+      .map((label) => oneLine(sanitizeLine(label)))
+      .filter(Boolean)
+      .join(", ");
+    return `waiting: ${labels} (idle; it wakes when the work reports back or when you send it a message, and its completion message follows)`;
+  }
   return `${report.status}${renderStatusNote(report)}`;
 }
 

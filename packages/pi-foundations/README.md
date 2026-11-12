@@ -1,6 +1,6 @@
 # pi-foundations
 
-Shared settings and model lookup primitives for this source bundle. This is a
+Shared settings, model lookup, guards and plain-data formatting primitives for this source bundle. This is a
 private library, not a Pi extension. Its settings module imports `getAgentDir`
 from Pi and `sanitizeLine` from `pi-ui`'s dependency-free `src/text.ts`; nothing
 else beyond Node. Import its source by relative path, just like
@@ -50,3 +50,19 @@ model matching with Haiku/Luna auto selection. Subagents keeps invocation
 fallback policy and compatibility exports.
 
 Run `npm run check -w pi-foundations` and `npm test -w pi-foundations`.
+
+## Plain-data helpers
+
+These modules have no Pi or pi-ui dependencies. Import them directly by relative
+source path; terminal sanitizing remains in pi-ui and at consumer boundaries.
+
+- `src/guards.ts`: `isRecord` accepts non-null objects, including objects with a
+  custom or null prototype, and rejects arrays.
+- `src/errors.ts`: `errorText` preserves `Error.message` or falls back to `String`.
+- `src/format.ts`: `oneLine(text, max?)` collapses whitespace and optionally caps
+  the result including the ellipsis (zero returns empty text). `plural(n, one,
+  many?)` returns the word only. `formatBytes(bytes, style?)` defaults to stash's
+  adaptive display units; `"log"` retains pi-job's rounded KB/MB and `bytes`.
+  `formatDuration(ms, style?)` defaults to compact rounded job durations;
+  `"seconds"` retains the agent display's decimal seconds. Timestamp and running
+  suffix policies stay in the agent's `formatAgentDuration` wrapper.

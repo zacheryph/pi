@@ -1,17 +1,7 @@
+import { formatBytes, plural } from "../../../../packages/pi-foundations/src/format.ts";
+export { formatBytes } from "../../../../packages/pi-foundations/src/format.ts";
 import { sanitizeLine } from "../../../../packages/pi-ui/src/index.ts";
 import type { StashRecord } from "../state.ts";
-
-export function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  const units = ["KB", "MB", "GB"];
-  let value = bytes / 1024;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit++;
-  }
-  return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${units[unit]}`;
-}
 
 export function formatAge(createdAt: number, now = Date.now()): string {
   const seconds = Math.max(0, Math.floor((now - createdAt) / 1000));
@@ -33,7 +23,7 @@ export function originLabel(record: Pick<StashRecord, "createdBy" | "agent">): s
 }
 
 export function entrySummary(record: Pick<StashRecord, "bytes" | "lines">): string {
-  return `${formatBytes(record.bytes)} · ${record.lines} line${record.lines === 1 ? "" : "s"}`;
+  return `${formatBytes(record.bytes)} · ${record.lines} ${plural(record.lines, "line")}`;
 }
 
 /** Numbered preview rows; never more than `maxLines`. */

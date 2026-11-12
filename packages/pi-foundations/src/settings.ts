@@ -1,3 +1,5 @@
+import { errorText } from "./errors.ts";
+import { isRecord } from "./guards.ts";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
@@ -49,7 +51,7 @@ export function loadLayeredSettings<T>(source: LayeredSettingsSource<T>): Partia
     readSettingsFile(path, sanitize, (error) => {
       if (source.onError) source.onError(path, error);
       else {
-        const reason = error instanceof Error ? error.message : String(error);
+        const reason = errorText(error);
         console.warn(`[${warnLabel}] Ignoring malformed settings at ${path}: ${reason}`);
       }
     });
@@ -276,11 +278,6 @@ export interface WritableSettingsDefinition<
   save: (cwd: string, patch: Partial<SettingsValues<F>>) => void;
 }
 
-const isObject = (value: unknown): value is Record<string, unknown> =>
-  !!value && typeof value === "object" && !Array.isArray(value);
-
-const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
-
 /**
  * Declare an extension's settings once: the files, every field's validation and
  * default, and the loaded type. One behaviour for every extension; see `load`.
@@ -323,10 +320,10 @@ export function defineSettings<const F extends Record<string, Field<unknown>>>(
     const input = readSettingsFile<Record<string, unknown>>(
       path,
       (raw) => {
-        if (!isObject(raw)) throw new Error("settings must be a JSON object");
+        if (!isRecord(raw)) throw new Error("settings must be a JSON object");
         return raw;
       },
-      (error) => warn(`Ignoring settings at ${path}: ${message(error)}`),
+      (error) => warn(`Ignoring settings at ${path}: ${errorText(error)}`),
     );
     const problems: string[] = [];
     const values = validate(input, problems);

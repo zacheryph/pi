@@ -14,6 +14,7 @@
  * is published as `git:snapshot`, and a context-only card restores it for the
  * model after a compaction, reload, resume or `/tree`.
  */
+import { errorText } from "../../../packages/pi-foundations/src/errors.ts";
 
 import {
   defineTool,
@@ -1029,10 +1030,6 @@ function pickFacts(facts: PrFacts): Partial<StatusEntryValue> {
     ...(facts.headSha ? { headSha: facts.headSha } : {}),
     ...(facts.headRef ? { headRef: facts.headRef } : {}),
   };
-}
-
-function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function resolvePath(cwd: string, path: string): string {

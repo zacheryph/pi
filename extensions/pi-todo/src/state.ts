@@ -1,5 +1,6 @@
-export const TODO_SCHEMA_VERSION = 2 as const;
 /** Every todo tool; each result carries the full task state in its details. */
+import { isRecord } from "../../../packages/pi-foundations/src/guards.ts";
+export const TODO_SCHEMA_VERSION = 2 as const;
 export const TODO_TOOL_NAMES: ReadonlySet<string> = new Set([
   "todo_list",
   "todo_upsert",
@@ -330,10 +331,6 @@ export function removeCompletedTasks(state: TodoState): TodoDetails | undefined 
     tasks: nextTasks,
     baseRevision: state.revision,
   });
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === "object";
 }
 
 function readPersistedTask(candidate: unknown, index: number): ResolvedTodoTaskInput | undefined {

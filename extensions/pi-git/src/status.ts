@@ -6,6 +6,7 @@
  * runs and reviews). Transient failures are retried (see `retry.ts`); nothing
  * here ever writes to GitHub.
  */
+import { isRecord } from "../../../packages/pi-foundations/src/guards.ts";
 
 import { execFile } from "node:child_process";
 import { graphqlFacts, parsePrUrls, restFacts } from "./observe.ts";
@@ -192,10 +193,6 @@ export async function fetchWithMcp(
     throw new Error(`${tool}: pull request head changed while reading status; read it again`);
   retry.signal?.throwIfAborted();
   return { ...(pr.title ? { title: pr.title } : {}), facts, source: tool };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
 /** The GitHub MCP tool that reads pull requests, among the tools a call can reach. */

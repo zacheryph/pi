@@ -1,3 +1,4 @@
+import { errorText } from "../../../packages/pi-foundations/src/errors.ts";
 import { StringEnum } from "@earendil-works/pi-ai";
 import {
   type AgentToolResult,
@@ -368,7 +369,7 @@ export default function todoExtension(
       } catch (error) {
         ctx.ui.notify(
           sanitizeText(
-            `Task settings applied (session only; failed to persist): ${error instanceof Error ? error.message : String(error)}`,
+            `Task settings applied (session only; failed to persist): ${errorText(error)}`,
           ),
           "warning",
         );

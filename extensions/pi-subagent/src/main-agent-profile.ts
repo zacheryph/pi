@@ -1,4 +1,5 @@
 /** Main profiles: startup defaults plus durable SYSTEM instructions, not capability locks. */
+import { errorText } from "../../../packages/pi-foundations/src/errors.ts";
 import { readEntries } from "../../../packages/pi-session-state/src/index.ts";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -156,7 +157,7 @@ export function registerMainAgentProfile(
   }
 
   function fail(ctx: ExtensionContext, error: unknown): false {
-    failure = `Main agent blocked: ${error instanceof Error ? error.message : String(error)}`;
+    failure = `Main agent blocked: ${errorText(error)}`;
     // Pi swallows event errors. Input is handled below; context has a live abort
     // signal and stops the provider request. shutdown is advisory (print/SDK may
     // have no shutdown handler); neither process exit nor exit status is claimed.

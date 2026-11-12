@@ -1,4 +1,5 @@
 /** Bounded, typed activity feed. Never imports inherited conversation history. */
+import { oneLine } from "../../../../packages/pi-foundations/src/format.ts";
 import { realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
@@ -13,8 +14,8 @@ export function watchText(text: string): string {
   return sanitizeText(text).slice(-MAX_TEXT);
 }
 
-function oneLine(text: string): string {
-  return watchText(text).replace(/\s+/g, " ").trim();
+function watchLine(text: string): string {
+  return oneLine(watchText(text));
 }
 
 function textContent(result: unknown): string {
@@ -32,7 +33,7 @@ function toolArgument(args: unknown): string {
   if (!args || typeof args !== "object") return "";
   const values = args as Record<string, unknown>;
   for (const key of ["path", "file_path", "command", "pattern", "query", "description", "url"]) {
-    if (typeof values[key] === "string") return oneLine(values[key]).slice(0, 160);
+    if (typeof values[key] === "string") return watchLine(values[key]).slice(0, 160);
   }
   return "";
 }
@@ -88,7 +89,7 @@ export class WatchTail {
     this.skills = new Map(
       skills
         .filter((skill) => /(?:^|[/\\])SKILL\.md$/.test(skill.filePath))
-        .map((skill) => [watchSkillPath(skill.filePath, cwd), oneLine(skill.name).slice(0, 160)]),
+        .map((skill) => [watchSkillPath(skill.filePath, cwd), watchLine(skill.name).slice(0, 160)]),
     );
   }
 
@@ -138,7 +139,7 @@ export class WatchTail {
       return changed;
     }
     if (event.type === "tool_execution_start") {
-      const label = oneLine(`${event.toolName} ${toolArgument(event.args)}`);
+      const label = watchLine(`${event.toolName} ${toolArgument(event.args)}`);
       const args = event.args as Record<string, unknown> | undefined;
       const skill =
         event.toolName === "read" && typeof args?.path === "string" && args.path.trim()
@@ -158,7 +159,7 @@ export class WatchTail {
       const info =
         call?.name === event.toolName
           ? call
-          : { name: event.toolName, label: oneLine(event.toolName) };
+          : { name: event.toolName, label: watchLine(event.toolName) };
       const result = event.type === "tool_execution_update" ? event.partialResult : event.result;
       const lastLine = info.skill
         ? ""
@@ -171,7 +172,7 @@ export class WatchTail {
             : event.isError === true
               ? "error"
               : "pending";
-      return this.putTool(event.toolCallId, info, status, oneLine(lastLine).slice(0, 160));
+      return this.putTool(event.toolCallId, info, status, watchLine(lastLine).slice(0, 160));
     }
     if (event.type === "compaction_start") {
       this.note("Compacting context…");
