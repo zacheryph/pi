@@ -14,7 +14,7 @@ import { expect, vi } from "vitest";
 import { fakePi } from "../../../packages/pi-test-helpers/src/fake-pi.ts";
 import { messageText } from "../../../packages/pi-test-helpers/src/faux-session.ts";
 import todoExtension, { type TodoExtensionDependencies } from "../src/index.ts";
-import { DEFAULT_CONFIG, type TodoConfig } from "../src/config.ts";
+import { todoSettings, type TodoConfig } from "../src/config.ts";
 import type { TodoRequest } from "../src/actions.ts";
 import type { TodoDetails } from "../src/state.ts";
 import { TODO_JOURNAL_TYPE, TODO_REVIEW_TYPE } from "../src/replay.ts";
@@ -74,7 +74,7 @@ export function harness(options: HarnessOptions = {}) {
         }
       : {}),
   });
-  const loadConfig = vi.fn(() => ({ ...DEFAULT_CONFIG, ...options.config }));
+  const loadConfig = vi.fn((): TodoConfig => ({ ...todoSettings.defaults(), ...options.config }));
   const saveConfig = vi.fn();
   const clock = { now: T0 };
   todoExtension(fake.api, {

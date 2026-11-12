@@ -4,34 +4,12 @@
 
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
-import { loadLayeredSettings } from "../../../packages/pi-foundations/src/settings.ts";
-
-export interface GitConfig {
-  /**
-   * Directory that holds every worktree pi-git creates. `~/` expands to the
-   * home directory; a relative path is relative to the session's cwd.
-   * Default: `<agent dir>/worktrees`.
-   */
-  worktreeRoot: string;
-  /**
-   * Record pull requests the session only looked at, not just the ones it
-   * opened. Default true.
-   */
-  trackReferenced: boolean;
-}
-
-export const CONFIG_FILE = "git.json";
-
-export function sanitizeConfig(raw: unknown): Partial<GitConfig> {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
-  const input = raw as Record<string, unknown>;
-  const config: Partial<GitConfig> = {};
-  if (typeof input.worktreeRoot === "string" && input.worktreeRoot.trim())
-    config.worktreeRoot = input.worktreeRoot.trim();
-  if (typeof input.trackReferenced === "boolean") config.trackReferenced = input.trackReferenced;
-  return config;
-}
+import {
+  bool,
+  defineSettings,
+  string,
+  type SettingsOf,
+} from "../../../packages/pi-foundations/src/settings.ts";
 
 /** Expand `~/` and resolve a relative root against `cwd`. */
 export function resolveRoot(root: string, cwd: string): string {
@@ -40,16 +18,19 @@ export function resolveRoot(root: string, cwd: string): string {
   return resolve(cwd, root);
 }
 
-export function loadGitConfig(cwd: string, agentDir = getAgentDir()): GitConfig {
-  const loaded = loadLayeredSettings<GitConfig>({
-    agentDir,
-    cwd,
-    filename: CONFIG_FILE,
-    sanitize: sanitizeConfig,
-    warnLabel: "pi-git",
-  });
-  return {
-    worktreeRoot: resolveRoot(loaded.worktreeRoot ?? join(agentDir, "worktrees"), cwd),
-    trackReferenced: loaded.trackReferenced ?? true,
-  };
-}
+export const gitSettings = defineSettings({
+  name: "git",
+  scope: "layered",
+  fields: {
+    /** Holds every worktree pi-git creates. Default: `<agent dir>/worktrees`. */
+    worktreeRoot: string({
+      default: ({ agentDir }) => join(agentDir, "worktrees"),
+      trim: true,
+      nonEmpty: true,
+      transform: (root, { cwd }) => resolveRoot(root, cwd),
+    }),
+    /** Record pull requests the session only looked at, not just the ones it opened. */
+    trackReferenced: bool({ default: true }),
+  },
+});
+export type GitConfig = SettingsOf<typeof gitSettings>;

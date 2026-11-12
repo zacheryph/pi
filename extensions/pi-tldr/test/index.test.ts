@@ -2,7 +2,7 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import piTldr from "../src/index.js";
 import { runTldrModel } from "../src/core.js";
-import { loadTldrConfig } from "../src/config.js";
+import { tldrSettings } from "../src/config.js";
 import { showTldr } from "../src/viewer.js";
 import { tick } from "../../../packages/pi-test-helpers/src/wait.ts";
 import { fakePi } from "../../../packages/pi-test-helpers/src/fake-pi.ts";
@@ -23,10 +23,16 @@ vi.mock("../src/core.js", async (importActual) => {
     ),
   };
 });
-vi.mock("../src/config.js", async (importActual) => ({
-  ...(await importActual<typeof import("../src/config.js")>()),
-  loadTldrConfig: vi.fn(() => ({ model: "auto", setSessionName: true })),
-}));
+vi.mock("../src/config.js", async (importActual) => {
+  const actual = await importActual<typeof import("../src/config.js")>();
+  return {
+    ...actual,
+    tldrSettings: {
+      ...actual.tldrSettings,
+      load: vi.fn(() => ({ model: "auto", setSessionName: true })),
+    },
+  };
+});
 vi.mock("../src/viewer.js", () => ({
   showTldr: vi.fn(async (_ctx, load) => {
     await load(new AbortController().signal);
@@ -35,7 +41,7 @@ vi.mock("../src/viewer.js", () => ({
 
 type Command = Parameters<ExtensionAPI["registerCommand"]>[1];
 function harness(setSessionName: boolean, existing?: string) {
-  vi.mocked(loadTldrConfig).mockReturnValue({ model: "auto", setSessionName });
+  vi.mocked(tldrSettings.load).mockReturnValue({ model: "auto", setSessionName });
   let title = existing;
   const setName = vi.fn((value: string) => {
     title = value;

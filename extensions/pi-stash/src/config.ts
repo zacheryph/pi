@@ -1,53 +1,24 @@
-import { readSettingsFile } from "../../../packages/pi-foundations/src/settings.ts";
-import { join } from "node:path";
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
-
-export interface StashConfig {
-  /** Delete content not read or written for this many days. */
-  retentionDays: number;
-  /** Reject entries larger than this. */
-  maxEntryBytes: number;
-  /** Warn in /stash when the store is larger than this. */
-  maxStoreBytes: number;
-}
-
-export const DEFAULT_CONFIG: StashConfig = {
-  retentionDays: 30,
-  maxEntryBytes: 20 * 1024 * 1024,
-  maxStoreBytes: 1024 * 1024 * 1024,
-};
-export const CONFIG_FILE = "stash.json";
-
-export function sanitizeConfig(raw: unknown): Partial<StashConfig> {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
-  const input = raw as Record<string, unknown>;
-  const config: Partial<StashConfig> = {};
-  if (
-    typeof input.retentionDays === "number" &&
-    Number.isFinite(input.retentionDays) &&
-    input.retentionDays > 0
-  ) {
-    config.retentionDays = input.retentionDays;
-  }
-  for (const key of ["maxEntryBytes", "maxStoreBytes"] as const) {
-    const value = input[key];
-    if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) config[key] = value;
-  }
-  return config;
-}
+import {
+  defineSettings,
+  int,
+  number,
+  type SettingsOf,
+} from "../../../packages/pi-foundations/src/settings.ts";
 
 /**
  * Global only (`<agent dir>/stash.json`): the store is shared by every project,
  * so a project file must not shorten retention for everyone else's entries.
  */
-export function loadStashConfig(agentDir = getAgentDir()): StashConfig {
-  const path = join(agentDir, CONFIG_FILE);
-  return {
-    ...DEFAULT_CONFIG,
-    ...readSettingsFile(path, sanitizeConfig, (error) => {
-      console.warn(
-        `[pi-stash] Ignoring settings at ${path}: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }),
-  };
-}
+export const stashSettings = defineSettings({
+  name: "stash",
+  scope: "global",
+  fields: {
+    /** Delete content not read or written for this many days. */
+    retentionDays: number({ default: 30, min: 0, exclusiveMin: true }),
+    /** Reject entries larger than this. */
+    maxEntryBytes: int({ default: 20 * 1024 * 1024, min: 1 }),
+    /** Warn in /stash when the store is larger than this. */
+    maxStoreBytes: int({ default: 1024 * 1024 * 1024, min: 1 }),
+  },
+});
+export type StashConfig = SettingsOf<typeof stashSettings>;

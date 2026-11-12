@@ -1,55 +1,19 @@
-import { readSettingsFile } from "../../../packages/pi-foundations/src/settings.ts";
-import { join } from "node:path";
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
-
-export interface TldrConfig {
-  /** auto prefers the most recent available Haiku, then Luna. */
-  model: string;
-  /** Controls automatic session naming (Pi manages the terminal title). */
-  setSessionName: boolean;
-}
-
-export const DEFAULT_CONFIG: Readonly<TldrConfig> = {
-  model: "auto",
-  setSessionName: true,
-};
-
-function readConfig(path: string): Partial<TldrConfig> {
-  return readSettingsFile<TldrConfig>(
-    path,
-    (data) => {
-      if (!data || typeof data !== "object" || Array.isArray(data)) {
-        throw new Error(`${path} must contain a JSON object`);
-      }
-      const record = data as Record<string, unknown>;
-      if (
-        record.model !== undefined &&
-        (typeof record.model !== "string" || !record.model.trim())
-      ) {
-        throw new Error(`${path}: model must be a nonempty string`);
-      }
-      if (record.setSessionName !== undefined && typeof record.setSessionName !== "boolean") {
-        throw new Error(`${path}: setSessionName must be true or false`);
-      }
-      return {
-        ...(typeof record.model === "string" ? { model: record.model.trim() } : {}),
-        ...(typeof record.setSessionName === "boolean"
-          ? { setSessionName: record.setSessionName }
-          : {}),
-      };
-    },
-    (error) => {
-      if (error instanceof SyntaxError) throw new Error(`${path}: invalid JSON: ${String(error)}`);
-      throw error;
-    },
-  );
-}
+import {
+  bool,
+  defineSettings,
+  string,
+  type SettingsOf,
+} from "../../../packages/pi-foundations/src/settings.ts";
 
 /** Project settings override global settings. No configuration is written implicitly. */
-export function loadTldrConfig(cwd: string, agentDir = getAgentDir()): TldrConfig {
-  return {
-    ...DEFAULT_CONFIG,
-    ...readConfig(join(agentDir, "tldr.json")),
-    ...readConfig(join(cwd, ".pi", "tldr.json")),
-  };
-}
+export const tldrSettings = defineSettings({
+  name: "tldr",
+  scope: "layered",
+  fields: {
+    /** auto prefers the most recent available Haiku, then Luna. */
+    model: string({ default: "auto", trim: true, nonEmpty: true }),
+    /** Controls automatic session naming (Pi manages the terminal title). */
+    setSessionName: bool({ default: true }),
+  },
+});
+export type TldrConfig = SettingsOf<typeof tldrSettings>;

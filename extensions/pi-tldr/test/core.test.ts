@@ -9,14 +9,14 @@ import {
   TITLE_MAX_TOKENS,
   titleSlug,
 } from "../src/core.js";
-import { DEFAULT_CONFIG } from "../src/config.js";
+import { tldrSettings } from "../src/config.js";
 
 const fakeModel = (provider: string, id: string) =>
   ({ provider, id, name: id, type: "chat" }) as any;
 
 describe("pi-tldr core", () => {
   it("defaults to automatic naming and model discovery", () => {
-    expect(DEFAULT_CONFIG).toEqual({ model: "auto", setSessionName: true });
+    expect(tldrSettings.defaults()).toEqual({ model: "auto", setSessionName: true });
   });
 
   it("uses the newest Haiku over Luna, and accepts exact configured models", () => {

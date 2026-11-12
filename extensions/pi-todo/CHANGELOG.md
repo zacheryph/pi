@@ -3,6 +3,18 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-12: Settings declared with defineSettings
+
+Issue #128. `src/config.ts` declares `todoSettings` with pi-foundations' `defineSettings`
+instead of hand-written validation.
+
+- `TodoConfig` is now `SettingsOf<typeof todoSettings>`. `DEFAULT_CONFIG`, `CONFIG_FILE`,
+  `sanitizeConfig`, `loadTodoConfig` and `saveTodoConfig` are gone; use
+  `todoSettings.defaults()`, `.load(cwd, agentDir?)` and `.save(cwd, patch)`.
+- Same keys, defaults, layering and save behaviour. New: invalid and unknown fields in a file
+  warn once per file, naming each field, instead of being dropped silently.
+- Tests load files through the definition instead of calling `sanitizeConfig`.
+
 ## 2026-11-11: Use the shared session-state helpers
 
 Issue #127. No behaviour change.

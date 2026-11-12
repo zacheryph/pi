@@ -3,7 +3,7 @@ import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { createCodemodeExtension, SessionManager } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, onTestFinished } from "vitest";
 import todoExtension from "#src/index";
-import { loadTodoConfig } from "#src/config";
+import { todoSettings } from "#src/config";
 import {
   replayTaskState,
   replayTodoSession,
@@ -33,7 +33,7 @@ async function fixture(
     responses: options.responses,
     tools: ["todo_list", "todo_upsert", "todo_replace", "todo_remove", "todo_clear", "codemode"],
     extensions: [
-      (pi) => todoExtension(pi, { loadConfig: (cwd) => loadTodoConfig(cwd, dir) }),
+      (pi) => todoExtension(pi, { loadConfig: (cwd) => todoSettings.load(cwd, dir) }),
       createCodemodeExtension(),
       (pi) => {
         if (options.delayToolResult)
