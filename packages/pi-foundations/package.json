@@ -4,7 +4,7 @@
   "private": true,
   "license": "MIT",
   "type": "module",
-  "description": "Shared JSON settings and model lookup primitives for the personal Pi bundle.",
+  "description": "Shared declarative settings and model lookup primitives for the personal Pi bundle.",
   "files": [
     "src",
     "README.md"
@@ -22,5 +22,8 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "fix": "oxfmt --write . && oxlint --fix . && oxfmt --write ."
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
   }
 }
