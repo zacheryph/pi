@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": { "erasableSyntaxOnly": true, "types": ["node"] },
+  "include": ["extensions/pi-dashboard/src/hub", "extensions/pi-dashboard/src/protocol.ts"]
+}

@@ -111,6 +111,6 @@ and that two module copies share one registry.
 ## Development
 
 ```bash
-npm run check --workspace=pi-session-tree
-npm test --workspace=pi-session-tree
+npm run check
+npm run test:workspace -- pi-session-tree
 ```

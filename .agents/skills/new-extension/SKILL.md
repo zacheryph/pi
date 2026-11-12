@@ -36,8 +36,8 @@ node .agents/skills/new-extension/scripts/scaffold.mjs pi-<topic> \
 
 It checks everything before writing anything, then:
 
-- creates `package.json` (using the root's shared development tools),
-  `tsconfig.json`, `vitest.config.ts`, `README.md`, `src/index.ts`,
+- creates `package.json` (using the root's shared development tools and configs),
+  `README.md`, `src/index.ts`,
   `test/index.test.ts` and, with `--settings`, `src/config.ts` from `templates/`;
 - adds the workspace and the `pi.extensions` entry to the root `package.json`;
 - adds the tools and commands to the lists `scripts/verify-bundle.mjs` asserts;
@@ -141,8 +141,8 @@ overlay; regular mode uses a custom screen (see `extensions/pi-system-insights`)
 ## 5. Verify and open the PR
 
 ```bash
-npm run check -w extensions/<name>
-npm test -w extensions/<name>
+npm run check
+npm run test:workspace -- extensions/<name>
 npm run verify:bundle
 ```
 

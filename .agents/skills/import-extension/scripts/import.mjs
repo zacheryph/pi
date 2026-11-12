@@ -39,6 +39,8 @@ const root = resolve(skillDir, "../../..");
 const PERMISSIVE = new Set(["MIT", "ISC", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "0BSD"]);
 /** Top-level upstream files the integration removes. */
 const REMOVED = [
+  "tsconfig.json",
+  "vitest.config.ts",
   ".github",
   "package-lock.json",
   "pnpm-lock.yaml",
@@ -243,12 +245,13 @@ const pkgPath = join(root, dir, "package.json");
 const local = JSON.parse(readFileSync(pkgPath, "utf8"));
 local.private = true;
 delete local.publishConfig;
+delete local.scripts;
 if (Array.isArray(local.files))
   for (const record of ["UPSTREAM.md", "CHANGELOG.md"])
     if (!local.files.includes(record)) local.files.push(record);
 writeFileSync(pkgPath, `${JSON.stringify(local, null, 2)}\n`);
 changes.push(
-  "`package.json`: private, no `publishConfig`, `UPSTREAM.md` and `CHANGELOG.md` in `files`.",
+  "`package.json`: private, no development scripts or `publishConfig`, `UPSTREAM.md` and `CHANGELOG.md` in `files`.",
 );
 
 const today = new Date().toISOString().slice(0, 10);
@@ -335,11 +338,9 @@ execFileSync(
 const notes = [];
 const review = REVIEW.filter((path) => existsSync(join(root, dir, path)));
 if (review.length) notes.push(`Review upstream ${review.join(", ")}: keep or remove each.`);
-for (const script of ["check", "test"])
-  if (!local.scripts?.[script])
-    notes.push(
-      `Add a "${script}" script to ${dir}/package.json (CI runs it with no --if-present).`,
-    );
+notes.push(
+  "Review removed upstream scripts/configs in the import commit; migrate necessary test setup to the shared root tooling.",
+);
 const monorepo = Object.entries({
   ...local.dependencies,
   ...local.devDependencies,
@@ -371,11 +372,11 @@ ${[...changes, `Wrote ${dir}/UPSTREAM.md and ${dir}/CHANGELOG.md.`, `Registered 
 Still to do before committing the integration:
 ${[
   ...notes,
-  `Add a tsconfig.json extending ../../tsconfig.base.json if missing, and fix type errors in the code.`,
+  "Use the root TypeScript project and Vitest projects; fix type errors and adapt tests to the shared conventions.",
   "Assert its tools and commands in scripts/verify-bundle.mjs.",
   "Add it to the root README (layout tree, a section linking UPSTREAM.md and CHANGELOG.md, a License line).",
   "Record anything else you change in the CHANGELOG.md integration entry.",
-  `Run: npm run check -w ${dir} && npm test -w ${dir} && npm run verify:bundle`,
+  `Run: npm run check && npm run test:workspace -- ${dir} && npm run verify:bundle`,
 ]
   .map((line) => `  - ${line}`)
   .join("\n")}

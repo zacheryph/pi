@@ -52,7 +52,7 @@ Extensions own model preference and inheritance. TLDR keeps exact configured
 model matching with Haiku/Luna auto selection. Subagents keeps invocation
 fallback policy and compatibility exports.
 
-Run `npm run check -w pi-foundations` and `npm test -w pi-foundations`.
+Run `npm run check` and `npm run test:workspace -- pi-foundations`.
 
 ## Plain-data helpers
 

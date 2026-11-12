@@ -368,8 +368,8 @@ is a different helper: it clips trusted rows at line breaks and preserves stylin
 ## Validation
 
 ```sh
-npm run check -w pi-ui
-npm test -w pi-ui
+npm run check
+npm run test:workspace -- pi-ui
 npm run check
 npm run verify:bundle
 ```

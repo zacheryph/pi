@@ -6,8 +6,6 @@ import { readRepository, registrationProblems } from "./bundle-manifest.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-const scripts = { check: "x", test: "x" };
-
 /**
  * A consistent repository with one extension and one package; override parts per test.
  * @param {Partial<import("./bundle-manifest.mjs").Repository>} [overrides]
@@ -21,8 +19,8 @@ function fixture(overrides = {}) {
     },
     directories: ["extensions/pi-a", "packages/pi-lib"],
     workspaces: {
-      "extensions/pi-a": { name: "pi-a", scripts, pi: { extensions: ["./src/index.ts"] } },
-      "packages/pi-lib": { name: "pi-lib", scripts },
+      "extensions/pi-a": { name: "pi-a", pi: { extensions: ["./src/index.ts"] } },
+      "packages/pi-lib": { name: "pi-lib" },
     },
     exists: () => true,
     ...overrides,
@@ -73,15 +71,21 @@ void test("an extension's skills directory must be in root pi.skills", () => {
   ]);
 });
 
-void test("workspace name, scripts and entry point are checked", () => {
+void test("workspace name and entry point are checked without local scripts", () => {
   const repo = fixture();
   repo.workspaces["extensions/pi-a"] = { name: "a", scripts: { check: "x" } };
   assert.deepEqual(registrationProblems(repo), [
     'extensions/pi-a/package.json name is "a", expected "pi-a"',
-    'extensions/pi-a has no "test" script',
     "extensions/pi-a/package.json declares no pi.extensions entry point",
     "root pi.extensions has ./extensions/pi-a/src/index.ts, which no extension workspace declares",
   ]);
+});
+
+void test("a workspace without a supported test route is reported", () => {
+  const repo = fixture();
+  repo.manifest.workspaces.push("other");
+  repo.workspaces.other = { name: "other" };
+  assert.deepEqual(registrationProblems(repo), ["workspace other has no supported test runner"]);
 });
 
 void test("a workspace without package.json is reported", () => {

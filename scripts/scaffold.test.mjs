@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import {
   cpSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -35,9 +36,15 @@ for (const [name, args] of scenarios) {
       { recursive: true },
     );
     for (const path of [
+      ".gitignore",
       ".oxfmtrc.json",
       ".oxlintrc.json",
       "tsconfig.base.json",
+      "tsconfig.json",
+      "vitest.config.ts",
+      "scripts/workspaces.mjs",
+      "scripts/test-workspaces.mjs",
+      "scripts/test-workspace-setup.mjs",
       "scripts/verify-bundle.mjs",
     ]) {
       cpSync(join(root, path), join(fixture, path));
@@ -70,10 +77,22 @@ for (const [name, args] of scenarios) {
     const workspace = `extensions/${name}`;
     const generated = JSON.parse(readFileSync(join(fixture, workspace, "package.json"), "utf8"));
     assert.equal(generated.devDependencies, undefined, "workspaces use the shared root tools");
+    assert.equal(generated.scripts, undefined);
+    assert.equal(existsSync(join(fixture, workspace, "tsconfig.json")), false);
+    assert.equal(existsSync(join(fixture, workspace, "vitest.config.ts")), false);
+    writeFileSync(
+      join(fixture, workspace, "test/cwd.test.ts"),
+      `import { dirname } from "node:path";\nimport { expect, it } from "vitest";\nconst cwd = process.cwd();\nit("initializes tests in the workspace directory", () => expect(cwd).toBe(dirname(import.meta.dirname)));\n`,
+    );
+    run(process.execPath, [join(fixture, "node_modules/oxfmt/bin/oxfmt"), "--write", workspace]);
     const updated = JSON.parse(readFileSync(join(fixture, "package.json"), "utf8"));
     assert.deepEqual(updated.workspaces, [workspace]);
     assert.deepEqual(updated.pi.extensions, [`./${workspace}/src/index.ts`]);
-    run("npm", ["run", "check", "-w", workspace]);
-    run("npm", ["test", "-w", workspace]);
+    // This fixture has no dashboard hub or job e2e scripts. Check its generated
+    // code with the shared root project; the full repository checks those extras.
+    run("npm", ["run", "format:check"]);
+    run("npm", ["run", "lint"]);
+    run(process.execPath, [join(fixture, "node_modules/typescript/bin/tsc"), "--noEmit"]);
+    run("npm", ["run", "test:workspace", "--", workspace]);
   });
 }

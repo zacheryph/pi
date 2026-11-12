@@ -1,8 +1,18 @@
 {
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
+    "types": ["node"],
     "allowJs": true,
     "checkJs": false
   },
-  "include": ["scripts/**/*.mjs", ".agents/skills/*/scripts/**/*.mjs"]
+  "include": [
+    "extensions/*/src/**/*.ts",
+    "extensions/*/test/**/*.ts",
+    "packages/*/src/**/*.ts",
+    "packages/*/test/**/*.ts",
+    "test/**/*.ts",
+    "vitest.config.ts",
+    "scripts/**/*.mjs",
+    ".agents/skills/*/scripts/**/*.mjs"
+  ]
 }

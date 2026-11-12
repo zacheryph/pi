@@ -26,13 +26,6 @@
   "engines": {
     "node": ">=24"
   },
-  "scripts": {
-    "check": "oxfmt --check . && oxlint --deny-warnings . && npm run typecheck",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "typecheck": "tsc --noEmit",
-    "fix": "oxfmt --write . && oxlint --fix . && oxfmt --write ."
-  },
   "pi": {
     "extensions": [
       "./src/index.ts"

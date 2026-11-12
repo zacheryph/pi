@@ -60,9 +60,9 @@ Work through the script's list. It usually includes:
 
 - Upstream files it flagged for review (a nested `AGENTS.md`, `.pi/`, and so
   on): keep or remove each.
-- `check` and `test` scripts in the extension's `package.json`. CI runs both for
-  every changed workspace, with no `--if-present`. Prefer `tsc --noEmit` with a
-  `tsconfig.json` extending `../../tsconfig.base.json`, and fix type errors in
+- The root TypeScript and Vitest projects include registered workspaces
+  automatically. Keep development scripts and configs at the root; migrate any
+  necessary upstream test setup to the shared tooling, and fix type errors in
   the code.
 - Dependencies: Pi packages stay `"*"` peer dependencies; drop dev tools the
   root provides; move runtime dependencies to the root `dependencies` (a Git
@@ -77,7 +77,7 @@ Work through the script's list. It usually includes:
 - Every other change you make, as a bullet in the `CHANGELOG.md` integration
   entry.
 
-Then run `npm run check -w extensions/<name>`, `npm test -w extensions/<name>`
+Then run `npm run check`, `npm run test:workspace -- extensions/<name>`
 and `npm run verify:bundle`, and commit with `git -c commit.gpgsign=false
 commit`. If you can't run the imported code, say so and rely on CI; never call it
 verified without seeing it pass.

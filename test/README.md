@@ -22,7 +22,7 @@ session per process, so tests in a file run one after another; vitest runs
 the files in parallel workers.
 
 ```bash
-npm test -w test
+npm run test:workspace -- test
 ```
 
 CI runs this workspace whenever any extension or package changes. Nothing here

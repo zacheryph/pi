@@ -1,5 +1,0 @@
-{
-  "extends": "./tsconfig.json",
-  "compilerOptions": { "erasableSyntaxOnly": true, "types": ["node"] },
-  "include": ["src/hub", "src/protocol.ts"]
-}

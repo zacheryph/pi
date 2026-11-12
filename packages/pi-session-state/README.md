@@ -108,6 +108,6 @@ Folding the data stays with the extension.
 ## Checks
 
 ```bash
-npm run check --workspace=pi-session-state
-npm test --workspace=pi-session-state
+npm run check
+npm run test:workspace -- pi-session-state
 ```

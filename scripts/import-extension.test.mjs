@@ -62,6 +62,8 @@ function upstreamRepo(base, prefix, { license = "MIT", licenseAtRoot = false } =
     [`${p}.github/workflows/ci.yml`]: "on: push\n",
     [`${p}CHANGELOG.md`]: "# Upstream changelog\n",
     [`${p}package-lock.json`]: "{}\n",
+    [`${p}tsconfig.json`]: "{}\n",
+    [`${p}vitest.config.ts`]: "export default {};\n",
   });
   chmodSync(join(repo, p, "bin/run.sh"), 0o755);
   symlinkSync("src/index.ts", join(repo, p, "entry.ts"));
@@ -137,6 +139,8 @@ void test("imports a repository verbatim, then prepares the integration", (t) =>
     "extensions/pi-fixture/package-lock.json",
     "extensions/pi-fixture/package.json",
     "extensions/pi-fixture/src/index.ts",
+    "extensions/pi-fixture/tsconfig.json",
+    "extensions/pi-fixture/vitest.config.ts",
   ]);
   assert.ok(lstatSync(join(repo, "extensions/pi-fixture/entry.ts")).isSymbolicLink());
 
@@ -146,6 +150,9 @@ void test("imports a repository verbatim, then prepares the integration", (t) =>
   assert.equal(existsSync(join(dir, "package-lock.json")), false);
   const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
   assert.equal(pkg.private, true);
+  assert.equal(pkg.scripts, undefined);
+  assert.equal(existsSync(join(dir, "tsconfig.json")), false);
+  assert.equal(existsSync(join(dir, "vitest.config.ts")), false);
   assert.equal(pkg.publishConfig, undefined);
   assert.deepEqual(pkg.files, ["src", "UPSTREAM.md", "CHANGELOG.md"]);
   const sha = git(upstream, ["rev-parse", "HEAD"]);

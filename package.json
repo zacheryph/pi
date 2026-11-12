@@ -28,9 +28,11 @@
     "format:check": "oxfmt --check .",
     "lint": "oxlint --deny-warnings .",
     "lint:fix": "oxlint --fix .",
-    "typecheck": "tsc --noEmit && npm run typecheck --workspaces --if-present",
-    "test": "node --test scripts/*.test.mjs && npm run test --workspaces --if-present",
-    "verify:bundle": "node scripts/verify-bundle.mjs"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.hub.json && node scripts/check-job-e2e.mjs",
+    "test": "node --test scripts/*.test.mjs && node scripts/test-workspaces.mjs",
+    "verify:bundle": "node scripts/verify-bundle.mjs",
+    "test:workspace": "node scripts/test-workspaces.mjs",
+    "test:watch": "node scripts/test-workspaces.mjs --watch"
   },
   "description": "Personal collection of pi extensions, skills, and configurations",
   "keywords": [
@@ -85,5 +87,6 @@
     "pi-session-tree": "file:packages/pi-session-tree",
     "pi-ui": "file:packages/pi-ui",
     "pi-work": "file:packages/pi-work"
-  }
+  },
+  "type": "module"
 }
