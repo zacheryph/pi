@@ -23,6 +23,7 @@ import { ChildWork, type ChildWorkPolicy } from "#src/lifecycle/child-work";
 import type { ParentSnapshot } from "#src/lifecycle/parent-snapshot";
 import { SubagentSession } from "#src/lifecycle/subagent-session";
 import { builtinExtensionsFor } from "#src/session/builtin-extensions";
+import { reservedToolsExtension } from "#src/session/reserved-tools";
 import type { EnvInfo } from "#src/session/env";
 import { resolveToolSelection } from "#src/session/tool-selection";
 import type { ModelRegistry } from "#src/session/model-resolver";
@@ -373,6 +374,9 @@ export async function createSubagentSession(
     appendSystemPromptOverride: () => [],
     extensionFactories: [
       ...builtinExtensionsFor(toolNames),
+      // Reserved tools stay in the child's allowlist, so its own workers can still be
+      // given them; only the child's own calls are refused.
+      ...(cfg.reservedTools?.length ? [reservedToolsExtension(type, cfg.reservedTools)] : []),
       // The child's session reports its run boundaries to its managed host through this
       // extension, whichever of the operator's extensions the child loads (or excludes).
       ...(params.work ? [wireWorkHost] : []),

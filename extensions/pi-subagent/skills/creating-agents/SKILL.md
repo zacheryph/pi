@@ -51,6 +51,7 @@ Every field is optional. Unknown keys are ignored silently, so check spelling.
 | `display_name`    | name for the widget and UI                                            | the file name             |
 | `tools`           | `all`, a list, `-name` to remove, `none`                              | `all`                     |
 | `delegate`        | `true` to start, read and message its own agents                      | no delegation tools       |
+| `reserved_tools`  | tools it may not call itself; its workers still get them              | none                      |
 | `model`           | `provider/modelId`, `haiku`/`sonnet`/…, or `family@latest`            | the caller's model        |
 | `thinking`        | `off` `minimal` `low` `medium` `high` `xhigh` `max`                   | the caller's level        |
 | `max_turns`       | whole number; `0` is unlimited; a limit must be at least 2            | unlimited                 |
@@ -120,6 +121,10 @@ only for a near-copy of the caller with a small addition.
   `delegate`, all three are added even to an allowlist, and `-subagent_send`
   style exclusions still win. Only coordinating agents should delegate, and
   their body should say when to stop delegating: there is no depth limit.
+- A coordinator that must not do the work itself takes `reserved_tools`, not
+  `-name`: `-edit` also takes `edit` from every worker it starts, while
+  `reserved_tools: [edit, write, bash, job_start]` refuses only its own calls.
+  State the rule in the body as well, so the agent delegates before it is refused.
 - `ask` and `parent_notify` are always added; they reach only the caller.
 
 ## Visibility

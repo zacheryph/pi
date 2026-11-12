@@ -12,14 +12,14 @@ The general-purpose profile displays as `agent`. If you override a renamed profi
 rename its file to match (for example, `orchestrator.md` → `orchestrate.md`) and
 update `--agent` and `subagent_type` references.
 
-| Type              | Tools                                          | Model                                                                 | Prompt Mode | Description                                                                                                                          |
-| ----------------- | ---------------------------------------------- | --------------------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `general-purpose` | all available                                  | inherit                                                               | `append`    | Inherits the parent's prompt identity — same rules, CLAUDE.md, project conventions                                                   |
-| `implement`       | all available; no delegation                   | inherit                                                               | `replace`   | Implements one bounded change, runs relevant checks, and reports evidence for parent acceptance                                      |
-| `orchestrate`     | all available; explicit todo tools; `delegate` | inherit                                                               | `replace`   | Project manager: categorizes tasks, delegates work, tracks open items, and recalls prior workers                                     |
-| `explore`         | read, bash, grep, find, ls                     | newest Haiku (`anthropic/claude-haiku@latest`; falls back to inherit) | `replace`   | Fast codebase exploration (read-only); inherits the parent prompt as a base                                                          |
-| `plan`            | read, bash, grep, find, ls                     | inherit                                                               | `replace`   | Software architect for implementation planning (read-only); inherits the parent prompt as a base                                     |
-| `review`          | read, bash, grep, find, ls                     | inherit                                                               | `replace`   | Verifies finished work against its acceptance criteria; runs checks, reports `Verdict: PASS/FAIL/BLOCKED` with evidence, never fixes |
+| Type              | Tools                                                                                             | Model                                                                 | Prompt Mode | Description                                                                                                                          |
+| ----------------- | ------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `general-purpose` | all available                                                                                     | inherit                                                               | `append`    | Inherits the parent's prompt identity — same rules, CLAUDE.md, project conventions                                                   |
+| `implement`       | all available; no delegation                                                                      | inherit                                                               | `replace`   | Implements one bounded change, runs relevant checks, and reports evidence for parent acceptance                                      |
+| `orchestrate`     | all available; explicit todo tools; `delegate`; reserves edit, write, bash, job_start for workers | inherit                                                               | `replace`   | Project manager: categorizes tasks, delegates work, tracks open items, and recalls prior workers                                     |
+| `explore`         | read, bash, grep, find, ls                                                                        | newest Haiku (`anthropic/claude-haiku@latest`; falls back to inherit) | `replace`   | Fast codebase exploration (read-only); inherits the parent prompt as a base                                                          |
+| `plan`            | read, bash, grep, find, ls                                                                        | inherit                                                               | `replace`   | Software architect for implementation planning (read-only); inherits the parent prompt as a base                                     |
+| `review`          | read, bash, grep, find, ls                                                                        | inherit                                                               | `replace`   | Verifies finished work against its acceptance criteria; runs checks, reports `Verdict: PASS/FAIL/BLOCKED` with evidence, never fixes |
 
 The `general-purpose` agent is a copy of its parent — it receives the parent's inherited identity and nothing of its own, so it follows the same rules the parent does.
 Every other agent, and any agent file that does not set `prompt_mode`, uses `replace` mode: the parent prompt is the cacheable base and the agent's own instructions are appended last, giving them the final say.
@@ -104,10 +104,18 @@ saved transcript as long as it and the worker's directory still exist. If it is
 refused, the orchestrator uses saved task notes, results, transcripts, and artifacts
 to brief a replacement. Required work stays open until verified or explicitly rescoped.
 
-All available tools remain selected so the orchestrator can pass specialist
-capabilities to its workers. Delegating implementation and avoiding recursive
-orchestrator chains are profile instructions, not additional capability locks.
-Override `.pi/agents/orchestrate.md` to customize the profile.
+The orchestrator delegates research, design, implementation, debugging, testing
+and review, however a request is phrased: "can you", "can we" and "let's" ask
+for the outcome, not for it to do the work itself. It answers directly only from
+what it already holds or can confirm with one or two quick reads.
+`reserved_tools: [edit, write, bash, job_start]` keeps that in force: its own
+calls to those tools are refused with a reason that sends the work to a worker,
+while the workers it starts still receive them.
+
+All other available tools remain selected so the orchestrator can pass
+specialist capabilities to its workers. Avoiding recursive orchestrator chains is
+a profile instruction, not a capability lock. Override
+`.pi/agents/orchestrate.md` to customize the profile.
 
 ## What a child inherits from the parent's prompt
 
@@ -247,6 +255,7 @@ A file whose frontmatter is not valid YAML still takes its name, so it still ove
 | `display_name`    | —              | Display name for UI (e.g. widget, agent list)                                                                                                                                                                                                                             |
 | `tools`           | all available  | `all` for registered tools; explicit names restrict; `-name` removes; `none` disables tools. See [Tool selection](#tool-selection)                                                                                                                                        |
 | `delegate`        | `false`        | `true` lets the agent start, read and message agents of its own (`subagent_start`, `subagent_get`, `subagent_send`). Without it they are withheld, whatever `tools` selects. See [Tool selection](#tool-selection)                                                        |
+| `reserved_tools`  | —              | Tools the agent may not call itself. A call is refused with a reason that points at delegation. Unlike a `-name` exclusion, they stay registered, so the agent's own workers still receive them. See [Reserved tools](#reserved-tools)                                    |
 | `model`           | inherit parent | Model — `provider/modelId`, fuzzy name (`"haiku"`, `"sonnet"`), or `[provider/]family@latest` for the newest available model whose id contains `family`                                                                                                                   |
 | `thinking`        | inherit        | off, minimal, low, medium, high, xhigh, max. An unrecognized value is dropped, and the agent inherits the parent's level                                                                                                                                                  |
 | `max_turns`       | unlimited      | Turn ceiling: the harness stops the agent after this many turns (minimum 2). `0` or omit for unlimited                                                                                                                                                                    |
@@ -371,6 +380,25 @@ switch; naming them in `tools` does not opt in. With it, all three are added
 to the child's tools, even under an allowlist that names none of them, and an
 explicit exclusion such as `-subagent_send` still wins. The denylist remains
 enforced by the SDK across tool-registry refreshes.
+
+#### Reserved tools
+
+`tools` chooses what an agent's session has, and what its workers can be given:
+a child's tools resolve against its parent's registered tools, so a tool removed
+from a coordinating agent is also lost to every worker it starts.
+`reserved_tools` constrains only the agent itself, for both child agents and
+`--agent` main sessions:
+
+```yaml
+reserved_tools: [edit, write, bash, job_start]
+```
+
+The agent's own calls to the named tools are refused with a reason that points
+at `subagent_start`. A main session also leaves them out of its active tools at
+selection, and refuses the call even if they are turned back on; a child keeps
+them listed, because its active set cannot drop a tool without unregistering it.
+Reserve every tool that can do the work: `bash` alone leaves `job_start` able to
+run the same command.
 
 ```yaml
 tools: [all, todo_list, todo_upsert, todo_replace, todo_remove, todo_clear]

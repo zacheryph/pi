@@ -119,6 +119,7 @@ describe("effective agent definitions", () => {
     expect(field(text, "Source path")).toBe(config.sourcePath);
     expect(field(text, "Tools")).toBe("read, mcp__github__*");
     expect(field(text, "Delegate")).toBe("no");
+    expect(field(text, "Reserved tools")).toBe("(none)");
     expect(field(text, "Model")).toBe("provider/model");
     expect(field(text, "Thinking")).toBe("high");
     expect(field(text, "Max turns")).toBe("30");

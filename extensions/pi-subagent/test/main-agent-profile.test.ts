@@ -157,6 +157,7 @@ describe("main profile defaults and persistent body", () => {
     expect(selected.name).toBe("orchestrate");
     expect(h.state.active).toContain("todo_upsert");
     expect(h.state.active).toEqual(expect.arrayContaining([...MAIN_AGENT_REQUIRED_TOOLS]));
+    expect(h.state.active).not.toContain("write");
     expect((await h.prompt()).sections[MAIN_AGENT_SECTION]).toContain(selected.systemPrompt);
     h.manual();
     await h.start("reload");
@@ -623,13 +624,39 @@ describe("main profile defaults and persistent body", () => {
     expect(h.pi.appendEntry).toHaveBeenCalledTimes(2);
   });
 
-  it("tool defaults are not policy; deferred/codemode and manually added tools have no deny gate", async () => {
+  it("takes reserved tools out of the active set and refuses calls to them", async () => {
+    const h = harness();
+    h.state.profile.toolNames = ["read", "write"];
+    h.state.profile.reservedTools = ["write"];
+    await h.start();
+    expect(h.state.active).toEqual(["read", ...MAIN_AGENT_REQUIRED_TOOLS]);
+    expect(await h.fire("tool_call", { toolName: "write", input: {} })).toEqual({
+      block: true,
+      reason: expect.stringContaining("write is reserved for workers: as reader you coordinate"),
+    });
+    expect(await h.fire("tool_call", { toolName: "read", input: {} })).toBeUndefined();
+    // A restored session keeps the user's tools, but the refusal still holds.
+    h.manual();
+    await h.start("reload");
+    expect(h.state.active).toContain("write");
+    expect((await h.fire("tool_call", { toolName: "write", input: {} })).block).toBe(true);
+  });
+
+  it("refuses to restore a snapshot whose reserved tools are not a list of names", async () => {
+    const h = harness();
+    h.state.profile.reservedTools = ["write"];
+    await h.start();
+    h.state.branch.at(-1).data.profile.reservedTools = "write";
+    await h.start("reload");
+    expect(h.ctx.shutdown).toHaveBeenCalled();
+  });
+
+  it("tool defaults are not policy; without reserved_tools no call is refused", async () => {
     const h = harness();
     await h.start();
     h.manual();
     for (const toolName of ["write", "secret", "codemode", "tool_search"])
       expect(await h.fire("tool_call", { toolName, parentToolCallId: "nested" })).toBeUndefined();
-    expect(h.handlers.has("tool_call")).toBe(false);
     expect(h.handlers.has("turn_start")).toBe(false);
     expect(h.handlers.has("cache_warming_decision")).toBe(false);
   });

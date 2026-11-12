@@ -1,4 +1,7 @@
-/** Main profiles: startup defaults plus durable SYSTEM instructions, not capability locks. */
+/**
+ * Main profiles: startup defaults plus durable SYSTEM instructions. Tool defaults are
+ * not capability locks; only a profile's `reserved_tools` refuses calls.
+ */
 import { errorText } from "#foundations/errors";
 import { readEntries } from "#session-state";
 import { readFileSync } from "node:fs";
@@ -18,6 +21,7 @@ import { composeAgentInstructions, parseFragments } from "#src/config/prompt-fra
 import { MAIN_AGENT_SECTION } from "#src/session/main-profile-prompt";
 import { resolveToolSelection } from "#src/session/tool-selection";
 import { LATEST_SUFFIX, resolveModel } from "#src/session/model-resolver";
+import { reservedToolRefusal } from "#src/session/reserved-tools";
 import type { AgentConfig } from "#src/types";
 import { sanitizeText } from "#ui";
 
@@ -95,6 +99,11 @@ function restoredSnapshot(data: unknown): MainAgentSnapshot {
     typeof s.profile.systemPrompt !== "string" ||
     typeof s.profile.description !== "string" ||
     !["append", "replace"].includes(s.profile.promptMode) ||
+    (s.profile.reservedTools !== undefined &&
+      !(
+        Array.isArray(s.profile.reservedTools) &&
+        s.profile.reservedTools.every((name) => typeof name === "string")
+      )) ||
     s.profile.visibility === "disabled" ||
     ![undefined, "default", "global", "project"].includes(s.profile.source)
   ) {
@@ -223,8 +232,11 @@ export function registerMainAgentProfile(
       configured.filter((t) => t.exposure !== "hidden").map((t) => t.name),
     );
     // Explicit exclusions also apply to otherwise mandatory orchestration defaults.
+    // Reserved tools leave the active set only: they stay registered, and workers
+    // resolve their tools against the registered set, so they still receive them.
     const tools = [...new Set([...expanded.toolNames, ...MAIN_AGENT_REQUIRED_TOOLS])].filter(
-      (name) => !expanded.excludedToolNames.includes(name),
+      (name) =>
+        !expanded.excludedToolNames.includes(name) && !profile.reservedTools?.includes(name),
     );
     const missing = tools.filter(
       (name) => !configured.some((t) => t.name === name && t.exposure !== "hidden"),
@@ -339,6 +351,14 @@ export function registerMainAgentProfile(
     event.systemPromptOptions.sections[MAIN_AGENT_SECTION] = renderMainAgentSection(
       selected.profile,
     );
+  });
+  // Reserved tools are off at selection, but a restored session keeps its own tool
+  // set and the user can turn them back on: refuse the call whatever is active.
+  pi.on("tool_call", (event) => {
+    const profile = selected?.profile;
+    return profile?.reservedTools
+      ? reservedToolRefusal(event, profile.reservedTools, profile.name)
+      : undefined;
   });
   pi.on("context_with_system", (event, ctx) => {
     if (!ready(ctx) || !selected) return;

@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { expect, it, onTestFinished, vi } from "vitest";
@@ -56,11 +56,18 @@ it("a child orchestrator tracks work, delegates an implementation, and recalls t
   const text = (value: unknown) => JSON.stringify(value);
   const { queues } = scriptSides(faux, {
     parent: [
-      toolCall("todo_upsert", {
-        tasks: [
-          { key: "implement", subject: "Implementation: create artifact", status: "in_progress" },
-        ],
-      }),
+      // Its own write is refused and sent to a worker; the tool stays for its workers.
+      toolCall("write", { path: join(dir, "direct.txt"), content: "done myself" }),
+      (context) => {
+        const refusal = context.messages.at(-1);
+        expect(refusal).toMatchObject({ role: "toolResult", toolName: "write", isError: true });
+        expect(text(refusal)).toContain("write is reserved for workers");
+        return toolCall("todo_upsert", {
+          tasks: [
+            { key: "implement", subject: "Implementation: create artifact", status: "in_progress" },
+          ],
+        });
+      },
       toolCall("subagent_start", {
         subagent_type: "general-purpose",
         description: "Implement artifact",
@@ -142,6 +149,7 @@ it("a child orchestrator tracks work, delegates an implementation, and recalls t
     text(orchestrator.session.messages.filter((m) => m.role === "toolResult")),
   ).toContain("Project complete");
   expect(readFileSync(join(dir, "artifact.txt"), "utf8")).toBe("verified content");
+  expect(existsSync(join(dir, "direct.txt"))).toBe(false);
   const journal = orchestrator.session.sessionManager
     .getBranch()
     .filter((entry) => entry.type === "custom" && entry.customType === "todo:journal");
