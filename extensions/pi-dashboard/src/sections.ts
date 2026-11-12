@@ -1,48 +1,29 @@
+import { GIT_SNAPSHOT_VERSION, type GitSnapshotEvent } from "../../pi-git/src/events.ts";
+import {
+  STASH_SNAPSHOT_VERSION,
+  type StashPreviewResult,
+  type StashSnapshotEvent,
+} from "../../pi-stash/src/events.ts";
+import { TODO_SNAPSHOT_VERSION, type TodoSnapshotEvent } from "../../pi-todo/src/events.ts";
 import type {
-  GitPrState,
   GitSection,
   StashPreview,
   StashSection,
   TodoHistory,
   TodoSection,
-  TodoStatus,
 } from "./protocol.ts";
 
-// Other extensions publish their state on the session's pi.events bus. The
-// payloads are parsed defensively and bounded, so a large or malformed
-// emission cannot bloat or break the hub connection.
-
-/** pi-todo: `src/events.ts`. */
-export const TODO_SNAPSHOT_EVENT = "todo:snapshot";
-/** pi-stash: `src/events.ts`. */
-export const STASH_SNAPSHOT_EVENT = "stash:snapshot";
-/** pi-git: `src/events.ts`. */
-export const GIT_SNAPSHOT_EVENT = "git:snapshot";
-/** pi-stash: synchronous request for the head of one entry on this branch. */
-export const STASH_PREVIEW_REQUEST = "stash:preview";
+// Producers own the in-process contracts. These projections bound data for the
+// hub connection rather than revalidating the producers' internal state.
 const MAX_MESSAGE = 2_000;
 const MAX_UPDATES = 20;
-
 const MAX_TASKS = 100;
 const MAX_STASH_ENTRIES = 100;
 const MAX_SUBJECT = 160;
 const MAX_TEXT = 500;
 const MAX_KEY = 64;
-const STATUSES: ReadonlySet<unknown> = new Set(["pending", "in_progress", "completed"]);
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === "object" && !Array.isArray(value);
-}
-
-function count(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
-}
-
-function time(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
-}
-
-/** Keeps line breaks, drops other control characters, trims and caps. */
+/** Keeps line breaks, drops other controls, trims and caps. */
 export function clip(value: unknown, max: number): string | undefined {
   if (typeof value !== "string") return undefined;
   const text = value
@@ -54,216 +35,172 @@ export function clip(value: unknown, max: number): string | undefined {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
-export function readTodos(data: unknown): TodoSection | undefined {
-  if (!isRecord(data) || data.version !== 1 || !Array.isArray(data.tasks)) return undefined;
+export function readTodos(data: TodoSnapshotEvent | undefined): TodoSection | undefined {
+  if (data?.version !== TODO_SNAPSHOT_VERSION) return undefined;
   const tasks: TodoSection["tasks"] = [];
   for (const raw of data.tasks.slice(0, MAX_TASKS)) {
-    if (!isRecord(raw) || !STATUSES.has(raw.status)) continue;
     const key = clip(raw.key, MAX_KEY);
     const subject = clip(raw.subject, MAX_SUBJECT);
     if (!key || !subject) continue;
-    const updates = Array.isArray(raw.updates) ? raw.updates.filter(isRecord) : [];
-    const latest = updates.findLast((update) => typeof update.message === "string");
-    const message = latest ? clip(latest.message, MAX_TEXT) : undefined;
+    const latest = raw.updates.findLast((update) => update.message !== undefined);
+    const message = clip(latest?.message, MAX_TEXT);
     const description = clip(raw.description, MAX_TEXT);
-    const dependsOn = Array.isArray(raw.dependsOn)
-      ? raw.dependsOn.flatMap((item) => clip(item, MAX_KEY) ?? []).slice(0, 20)
-      : [];
-    const updatedAt = time(updates.at(-1)?.at) ?? time(raw.createdAt);
+    const dependsOn = (raw.dependsOn ?? [])
+      .flatMap((item) => clip(item, MAX_KEY) ?? [])
+      .slice(0, 20);
+    const updatedAt = raw.updates.at(-1)?.at ?? raw.createdAt;
     tasks.push({
       key,
       subject,
-      status: raw.status as TodoStatus,
-      blocked: raw.blocked === true,
-      unreviewed: count(raw.unreviewed) ?? 0,
+      status: raw.status,
+      blocked: raw.blocked,
+      unreviewed: raw.unreviewed,
       ...(description ? { description } : {}),
       ...(dependsOn.length ? { dependsOn } : {}),
-      ...(message
-        ? { message: { text: message, ...(time(latest?.at) ? { at: time(latest?.at) } : {}) } }
-        : {}),
-      ...(updatedAt ? { updatedAt } : {}),
+      ...(message && latest ? { message: { text: message, at: latest.at } } : {}),
+      ...(updatedAt !== undefined ? { updatedAt } : {}),
     });
   }
-  return { revision: count(data.revision) ?? 0, total: data.tasks.length, tasks };
+  return { revision: data.revision, total: data.tasks.length, tasks };
 }
 
-export function readStash(data: unknown): StashSection | undefined {
-  if (!isRecord(data) || data.version !== 1 || !Array.isArray(data.entries)) return undefined;
+export function readStash(data: StashSnapshotEvent | undefined): StashSection | undefined {
+  if (data?.version !== STASH_SNAPSHOT_VERSION) return undefined;
   const entries: StashSection["entries"] = [];
   for (const raw of data.entries.slice(0, MAX_STASH_ENTRIES)) {
-    if (!isRecord(raw)) continue;
     const name = clip(raw.name, MAX_KEY);
     const handle = clip(raw.handle, 128);
-    const bytes = count(raw.bytes);
-    const lines = count(raw.lines);
-    const createdAt = time(raw.createdAt);
-    if (!name || !handle || bytes === undefined || lines === undefined || !createdAt) continue;
+    if (!name || !handle) continue;
     const description = clip(raw.description, MAX_TEXT);
     entries.push({
       name,
       handle,
-      bytes,
-      lines,
-      createdAt,
+      bytes: raw.bytes,
+      lines: raw.lines,
+      createdAt: raw.createdAt,
       mime: clip(raw.mime, 64) ?? "text/plain",
       source: clip(raw.source, 200) ?? "content",
       createdBy: clip(raw.createdBy, 128) ?? "",
-      versions: count(raw.versions) ?? 1,
+      versions: raw.versions,
       ...(description ? { description } : {}),
     });
   }
-  const store = isRecord(data.store) ? data.store : undefined;
-  const bytes = count(store?.bytes);
-  const maxBytes = count(store?.maxBytes);
   return {
     total: data.entries.length,
     entries,
-    ...(bytes !== undefined && maxBytes ? { store: { bytes, maxBytes } } : {}),
+    ...(data.store ? { store: { ...data.store } } : {}),
   };
 }
 
 /** One task's history from pi-todo's latest snapshot event. */
-export function readTodoHistory(data: unknown, key: string): TodoHistory | undefined {
-  if (!isRecord(data) || data.version !== 1 || !Array.isArray(data.tasks)) return undefined;
-  const task = data.tasks.find((candidate) => isRecord(candidate) && candidate.key === key);
-  if (!isRecord(task)) return undefined;
-  const updates: TodoHistory["updates"] = [];
-  for (const raw of (Array.isArray(task.updates) ? task.updates : []).slice(-MAX_UPDATES)) {
-    if (!isRecord(raw) || !STATUSES.has(raw.status)) continue;
-    const at = time(raw.at);
-    if (!at) continue;
-    const message = clip(raw.message, MAX_MESSAGE);
-    updates.push({
-      revision: count(raw.revision) ?? 0,
-      at,
-      status: raw.status as TodoStatus,
-      ...(STATUSES.has(raw.from) ? { from: raw.from as TodoStatus } : {}),
-      ...(message ? { message } : {}),
-      ...(raw.by === "user" ? { byUser: true } : {}),
-    });
-  }
-  const createdAt = time(task.createdAt);
-  return { key, ...(createdAt ? { createdAt } : {}), updates };
+export function readTodoHistory(
+  data: TodoSnapshotEvent | undefined,
+  key: string,
+): TodoHistory | undefined {
+  if (data?.version !== TODO_SNAPSHOT_VERSION) return undefined;
+  const task = data.tasks.find((candidate) => candidate.key === key);
+  if (!task) return undefined;
+  return {
+    key,
+    ...(task.createdAt !== undefined ? { createdAt: task.createdAt } : {}),
+    updates: task.updates.slice(-MAX_UPDATES).map((raw) => {
+      const message = clip(raw.message, MAX_MESSAGE);
+      return {
+        revision: raw.revision,
+        at: raw.at,
+        status: raw.status,
+        ...(raw.from ? { from: raw.from } : {}),
+        ...(message ? { message } : {}),
+        ...(raw.by === "user" ? { byUser: true } : {}),
+      };
+    }),
+  };
 }
 
-/** Validates pi-stash's preview answer before it leaves the process. */
-export function readPreview(data: unknown): StashPreview | string {
-  if (!isRecord(data)) return "pi-stash did not answer; is it loaded?";
-  if (data.ok !== true)
-    return typeof data.error === "string" ? data.error.slice(0, 500) : "Preview failed.";
-  if (typeof data.handle !== "string" || !Array.isArray(data.lines))
-    return "pi-stash sent an unreadable preview.";
-  // pi-stash bounds this at 200 lines / 16 KB; keep a hard ceiling here too.
-  const lines = data.lines
-    .slice(0, 200)
-    .map((line) => (typeof line === "string" ? line.slice(0, 2_000) : ""));
+/** Bounds pi-stash's preview answer before it leaves the process. */
+export function readPreview(data: StashPreviewResult | undefined): StashPreview | string {
+  if (!data) return "pi-stash did not answer; is it loaded?";
+  if (!data.ok) return data.error.slice(0, 500);
   return {
     handle: data.handle,
-    lines,
-    total: count(data.total) ?? lines.length,
-    complete: data.complete === true,
+    lines: data.lines.slice(0, 200).map((line) => line.slice(0, 2_000)),
+    total: data.total,
+    complete: data.complete,
   };
 }
 
 const MAX_WORKTREES = 50;
 const MAX_PRS = 50;
-/** PRs read for the card's counts; a ledger beyond this is not a session's working set. */
+/** PRs read for the card counts; a larger ledger is not a session's working set. */
 const MAX_PRS_READ = 1000;
 const PR_URL = /^https:\/\/[A-Za-z0-9.-]+(?::\d+)?\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/pull\/\d+$/;
-const PR_STATES: ReadonlySet<unknown> = new Set(["open", "closed", "merged"]);
-const REVIEWS: ReadonlySet<unknown> = new Set(["approved", "changes_requested", "review_required"]);
 
 function lastSegment(path: string): string {
   return path.split(/[\\/]/).findLast(Boolean) ?? path;
 }
 
-/**
- * pi-git's snapshot: worktrees not yet removed, and pull requests. PR links
- * become anchors on the page, so only plain `https` pull request URLs pass.
- * Open and failing counts cover every PR; the list sent holds the first
- * {@link MAX_PRS}, PRs opened here first. Absent when there is nothing to show.
- */
-export function readGit(data: unknown): GitSection | undefined {
-  if (!isRecord(data) || data.version !== 1 || !Array.isArray(data.worktrees)) return undefined;
-  const live = data.worktrees.filter(
-    (raw) => isRecord(raw) && (raw.state === "active" || raw.state === "missing"),
-  ) as Record<string, unknown>[];
+/** Typed producer state, bounded for the wire and restricted to safe PR links. */
+export function readGit(data: GitSnapshotEvent | undefined): GitSection | undefined {
+  if (data?.version !== GIT_SNAPSHOT_VERSION) return undefined;
+  const live = data.worktrees.filter((raw) => raw.state !== "removed");
   const worktrees: GitSection["worktrees"] = [];
   for (const raw of live.slice(0, MAX_WORKTREES)) {
     const path = clip(raw.path, MAX_TEXT);
-    const repo = typeof raw.repo === "string" ? clip(lastSegment(raw.repo), MAX_KEY) : undefined;
+    const repo = clip(lastSegment(raw.repo), MAX_KEY);
     const branch = clip(raw.branch, MAX_SUBJECT);
     if (!path || !repo || !branch) continue;
     const workspace = clip(raw.workspace, MAX_KEY);
-    const status = isRecord(raw.status) ? raw.status : undefined;
-    const unpushed = count(status?.unpushed);
-    const base = isRecord(raw.base) ? clip(raw.base.ref, MAX_SUBJECT) : undefined;
+    const base = clip(raw.base.ref, MAX_SUBJECT);
     worktrees.push({
       path,
       repo,
       branch,
       ...(workspace ? { workspace } : {}),
-      state: raw.state as "active" | "missing",
-      agents: Array.isArray(raw.agents) ? raw.agents.length : 0,
-      ...(typeof status?.dirty === "boolean" ? { dirty: status.dirty } : {}),
-      ...(unpushed ? { unpushed } : {}),
-      ...(status?.merged === true && base ? { mergedInto: base } : {}),
+      state: raw.state === "active" ? "active" : "missing",
+      agents: raw.agents.length,
+      ...(raw.status?.dirty !== undefined ? { dirty: raw.status.dirty } : {}),
+      ...(raw.status?.unpushed ? { unpushed: raw.status.unpushed } : {}),
+      ...(raw.status?.merged && base ? { mergedInto: base } : {}),
     });
   }
-  const rawPrs = Array.isArray(data.prs) ? data.prs : [];
-  // Every PR is read (within a bound) so the card's counts cover them all;
-  // only MAX_PRS are sent for the detail panel.
   const all: GitSection["prs"] = [];
-  for (const raw of rawPrs.slice(0, MAX_PRS_READ)) {
-    if (!isRecord(raw)) continue;
-    const url = typeof raw.url === "string" && PR_URL.test(raw.url) ? raw.url : undefined;
+  for (const raw of data.prs.slice(0, MAX_PRS_READ)) {
+    if (!PR_URL.test(raw.url)) continue;
     const owner = clip(raw.owner, MAX_KEY);
     const repo = clip(raw.repo, MAX_KEY);
-    const number = count(raw.number);
-    if (!url || !owner || !repo || !number) continue;
-    if (raw.origin !== "created" && raw.origin !== "referenced") continue;
-    const status = isRecord(raw.status) ? raw.status : undefined;
-    const checks = isRecord(status?.checks) ? status.checks : undefined;
-    const passed = count(checks?.passed);
-    const failed = count(checks?.failed);
-    const pending = count(checks?.pending);
+    if (!owner || !repo) continue;
+    const status = raw.status;
     const title = clip(raw.title, MAX_SUBJECT);
-    const observedAt = time(status?.observedAt);
     all.push({
-      label: `${owner}/${repo}#${number}`,
-      url,
+      label: `${owner}/${repo}#${raw.number}`,
+      url: raw.url,
       ...(title ? { title } : {}),
       origin: raw.origin,
-      ...(PR_STATES.has(status?.state) ? { state: status?.state as GitPrState } : {}),
-      ...(typeof status?.draft === "boolean" ? { draft: status.draft } : {}),
-      ...(REVIEWS.has(status?.review)
-        ? { review: status?.review as NonNullable<GitSection["prs"][number]["review"]> }
-        : {}),
-      ...(passed !== undefined && failed !== undefined && pending !== undefined
-        ? { checks: { passed, failed, pending } }
-        : {}),
-      ...(typeof status?.mergeable === "boolean" ? { mergeable: status.mergeable } : {}),
-      ...(observedAt ? { observedAt } : {}),
+      ...(status?.state ? { state: status.state } : {}),
+      ...(status?.draft !== undefined ? { draft: status.draft } : {}),
+      ...(status?.review && status.review !== "none" ? { review: status.review } : {}),
+      ...(status?.checks ? { checks: { ...status.checks } } : {}),
+      ...(status?.mergeable !== undefined ? { mergeable: status.mergeable } : {}),
+      ...(status ? { observedAt: status.observedAt } : {}),
     });
   }
   const openCreated = all.filter(
     (pr) => pr.origin === "created" && pr.state !== "merged" && pr.state !== "closed",
   );
-  // Opened here first, each group keeping pi-git's most-recently-touched order.
   const prs = [
     ...all.filter((pr) => pr.origin === "created"),
     ...all.filter((pr) => pr.origin === "referenced"),
   ].slice(0, MAX_PRS);
-  const removed = data.worktrees.filter((raw) => isRecord(raw) && raw.state === "removed").length;
-  const other = Array.isArray(data.found) ? data.found.length : 0;
-  if (live.length === 0 && rawPrs.length === 0 && removed === 0 && other === 0) return undefined;
+  const removed = data.worktrees.filter((raw) => raw.state === "removed").length;
+  if (live.length === 0 && data.prs.length === 0 && removed === 0 && data.found.length === 0)
+    return undefined;
   return {
     worktrees,
     worktreeTotal: live.length,
     removed,
-    other,
+    other: data.found.length,
     prs,
-    prTotal: rawPrs.length,
+    prTotal: data.prs.length,
     openCreated: openCreated.length,
     failingCreated: openCreated.filter((pr) => (pr.checks?.failed ?? 0) > 0).length,
   };

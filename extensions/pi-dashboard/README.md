@@ -187,3 +187,8 @@ npm install --ignore-scripts
 npm run check --workspace=pi-dashboard
 npm test --workspace=pi-dashboard
 ```
+
+The reporter imports snapshot names and types from their producers. It keeps
+version guards and bounds output for the wire; the hub protocol remains free of
+Pi imports. Typechecking also checks the hub and protocol separately with
+`tsconfig.hub.json` so plain Node's erasable-syntax requirement stays enforced.

@@ -3,6 +3,10 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-12: Share the snapshot version with dashboard consumers
+
+- Export the version alongside the typed snapshot contract; dashboard projections now use that contract.
+
 ## 2026-11-11: Use the shared session-state helpers
 
 Issue #127. No behaviour change.

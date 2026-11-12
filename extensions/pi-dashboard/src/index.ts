@@ -5,6 +5,19 @@ import {
   type ExtensionAPI,
   type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import { GIT_SNAPSHOT_EVENT, type GitSnapshotEvent } from "../../pi-git/src/events.ts";
+import {
+  STASH_PREVIEW_REQUEST,
+  STASH_SNAPSHOT_EVENT,
+  type StashPreviewRequest,
+  type StashPreviewResult,
+  type StashSnapshotEvent,
+} from "../../pi-stash/src/events.ts";
+import {
+  SUBAGENT_SNAPSHOT,
+  type SubagentSnapshot,
+} from "../../pi-subagent/src/observation/snapshot.ts";
+import { TODO_SNAPSHOT_EVENT, type TodoSnapshotEvent } from "../../pi-todo/src/events.ts";
 import { ActivityTracker } from "./activity.ts";
 import { AskUserTracker } from "./ask-user.ts";
 import { dashboardSettings, type DashboardConfig } from "./config.ts";
@@ -19,20 +32,10 @@ import {
   type UsageSection,
 } from "./protocol.ts";
 import { Reporter } from "./reporter.ts";
-import {
-  GIT_SNAPSHOT_EVENT,
-  readGit,
-  readPreview,
-  readStash,
-  readTodoHistory,
-  readTodos,
-  STASH_PREVIEW_REQUEST,
-  STASH_SNAPSHOT_EVENT,
-  TODO_SNAPSHOT_EVENT,
-} from "./sections.ts";
+import { readGit, readPreview, readStash, readTodoHistory, readTodos } from "./sections.ts";
 import { buildSnapshot } from "./snapshot.ts";
 import { StatusTracker } from "./status.ts";
-import { SUBAGENT_SNAPSHOT_EVENT, SubagentTracker } from "./subagents.ts";
+import { SubagentTracker } from "./subagents.ts";
 import { detectTerminal, type TerminalAdapter } from "./terminal.ts";
 import { sessionUsage } from "./usage.ts";
 
@@ -81,7 +84,7 @@ export default function dashboardExtension(
   // Latest state other extensions published on this session's bus.
   let todos: TodoSection | undefined;
   /** pi-todo's latest event as sent, for task history requests; never sent whole. */
-  let todoEvent: unknown;
+  let todoEvent: TodoSnapshotEvent | undefined;
   let stash: StashSection | undefined;
   let git: GitSection | undefined;
   let subagents = new SubagentTracker();
@@ -165,8 +168,8 @@ export default function dashboardExtension(
   // pi-todo, pi-stash and pi-git publish on session start (before this extension's,
   // which loads last), so the first snapshot already carries their state.
   pi.events.on(TODO_SNAPSHOT_EVENT, (data) => {
-    todoEvent = data;
-    todos = readTodos(data);
+    todoEvent = data as TodoSnapshotEvent;
+    todos = readTodos(todoEvent);
     schedule();
   });
   // pi-ask questionnaires, answerable from the page through pi-ask's answer channel.
@@ -181,13 +184,13 @@ export default function dashboardExtension(
         return undefined;
       case "stash-preview": {
         // pi-stash answers synchronously, through its hash-checked store.
-        let reply: unknown;
+        let reply: StashPreviewResult | undefined;
         pi.events.emit(STASH_PREVIEW_REQUEST, {
           name: request.name,
-          respond: (value: unknown) => {
+          respond: (value) => {
             reply = value;
           },
-        });
+        } satisfies StashPreviewRequest);
         const preview = readPreview(reply);
         if (typeof preview === "string") throw new Error(preview);
         return preview;
@@ -203,15 +206,15 @@ export default function dashboardExtension(
     }
   };
   pi.events.on(STASH_SNAPSHOT_EVENT, (data) => {
-    stash = readStash(data);
+    stash = readStash(data as StashSnapshotEvent);
     schedule();
   });
   pi.events.on(GIT_SNAPSHOT_EVENT, (data) => {
-    git = readGit(data);
+    git = readGit(data as GitSnapshotEvent);
     schedule();
   });
-  pi.events.on(SUBAGENT_SNAPSHOT_EVENT, (data) => {
-    if (subagents.apply(data)) schedule();
+  pi.events.on(SUBAGENT_SNAPSHOT, (data) => {
+    if (subagents.apply(data as SubagentSnapshot)) schedule();
   });
 
   pi.on("session_start", (_event, ctx) => {

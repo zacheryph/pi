@@ -1,8 +1,32 @@
+import { GIT_SNAPSHOT_EVENT, type GitSnapshotEvent } from "../../pi-git/src/events.ts";
+import {
+  STASH_SNAPSHOT_EVENT,
+  STASH_PREVIEW_REQUEST,
+  type StashSnapshotEvent,
+  type StashPreviewRequest,
+} from "../../pi-stash/src/events.ts";
+import {
+  TODO_SNAPSHOT_EVENT,
+  type TodoSnapshotEvent,
+  type TodoSnapshotTask,
+} from "../../pi-todo/src/events.ts";
+import {
+  SUBAGENT_SNAPSHOT,
+  type SubagentSnapshot,
+} from "../../pi-subagent/src/observation/snapshot.ts";
 import { describe, expect, it, vi } from "vitest";
 import { Hub } from "#src/hub/hub";
 import dashboardExtension, { type DashboardDependencies } from "#src/index";
 import { get, onCleanup, post, tempDir, waitFor, sleep, listSessions } from "#test/helpers";
 import { fakePi } from "../../../packages/pi-test-helpers/src/fake-pi.ts";
+
+type SnapshotEvents = {
+  [GIT_SNAPSHOT_EVENT]: GitSnapshotEvent;
+  [STASH_SNAPSHOT_EVENT]: StashSnapshotEvent;
+  [TODO_SNAPSHOT_EVENT]: TodoSnapshotEvent;
+  [SUBAGENT_SNAPSHOT]: SubagentSnapshot;
+};
+type OtherChannel = "ask:opened" | "ask:answer-result";
 
 /** A fake pi with a renameable session name and a working event bus. */
 function dashboardPi() {
@@ -18,7 +42,10 @@ function dashboardPi() {
     rename: (next: string) => {
       name = next;
     },
-    publish: (channel: string, data: unknown) => fake.api.events.emit(channel, data),
+    publish: <K extends keyof SnapshotEvents | OtherChannel>(
+      channel: K,
+      data: K extends keyof SnapshotEvents ? SnapshotEvents[K] : unknown,
+    ) => fake.api.events.emit(channel, data),
   };
 }
 
@@ -122,7 +149,7 @@ describe("pi-dashboard extension", () => {
     const fake = load(env.deps);
     const ctx = fakeCtx();
     onCleanup(() => quit(fake, ctx));
-    const task = {
+    const task: TodoSnapshotTask = {
       key: "a",
       subject: "Add backoff",
       status: "in_progress",
@@ -131,7 +158,7 @@ describe("pi-dashboard extension", () => {
       updates: [],
     };
     // pi-todo and pi-stash load first and publish during their own session_start.
-    fake.publish("todo:snapshot", { version: 1, revision: 1, tasks: [task] });
+    fake.publish(TODO_SNAPSHOT_EVENT, { version: 1, revision: 1, tasks: [task] });
     await fake.emit("session_start", { reason: "startup" }, ctx);
     const [card] = await waitFor(async () => {
       const list = await env.sessions();
@@ -146,7 +173,7 @@ describe("pi-dashboard extension", () => {
     });
     expect(card?.stash).toBeUndefined();
 
-    fake.publish("stash:snapshot", {
+    fake.publish(STASH_SNAPSHOT_EVENT, {
       version: 1,
       entries: [
         {
@@ -163,7 +190,7 @@ describe("pi-dashboard extension", () => {
         },
       ],
     });
-    fake.publish("todo:snapshot", {
+    fake.publish(TODO_SNAPSHOT_EVENT, {
       version: 1,
       revision: 2,
       tasks: [{ ...task, status: "completed" }],
@@ -182,7 +209,7 @@ describe("pi-dashboard extension", () => {
     const ctx = fakeCtx();
     onCleanup(() => quit(fake, ctx));
     await fake.emit("session_start", { reason: "startup" }, ctx);
-    fake.publish("git:snapshot", {
+    fake.publish(GIT_SNAPSHOT_EVENT, {
       version: 1,
       worktrees: [
         {
@@ -192,6 +219,8 @@ describe("pi-dashboard extension", () => {
           base: { ref: "main", sha: "a" },
           agents: ["agent-1"],
           state: "active",
+          createdAt: 1,
+          updatedAt: 1,
           status: { dirty: true, detached: 0, unpushed: 2, merged: false },
         },
       ],
@@ -208,6 +237,8 @@ describe("pi-dashboard extension", () => {
           title: "Add login",
           status: { state: "open", observedAt: 5, source: "bash" },
           calls: [],
+          createdAt: 1,
+          updatedAt: 1,
         },
       ],
     });
@@ -309,7 +340,7 @@ describe("pi-dashboard extension", () => {
       usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, cost: { total: 0.05 } },
     });
     await fake.emit("session_compact", {}, ctx);
-    fake.publish("subagent:snapshot", {
+    fake.publish(SUBAGENT_SNAPSHOT, {
       version: 1,
       agents: [
         {
@@ -318,6 +349,11 @@ describe("pi-dashboard extension", () => {
           description: "Find auth files",
           state: "running",
           startedAt: 100,
+          completedAt: undefined,
+          waitingOn: [],
+          error: undefined,
+          live: true,
+          toolUses: 0,
         },
       ],
     });
@@ -347,7 +383,7 @@ describe("pi-dashboard extension", () => {
         return agent?.state === state ? agent : undefined;
       });
 
-    fake.publish("subagent:snapshot", {
+    fake.publish(SUBAGENT_SNAPSHOT, {
       version: 1,
       agents: [
         {
@@ -356,14 +392,32 @@ describe("pi-dashboard extension", () => {
           description: "Review CI",
           state: "waiting",
           startedAt: 100,
+          completedAt: undefined,
+          waitingOn: [],
+          error: undefined,
+          live: true,
+          toolUses: 0,
           note: "CI checks",
         },
       ],
     });
     expect(await agentOf("waiting")).toMatchObject({ note: "CI checks" });
-    fake.publish("subagent:snapshot", {
+    fake.publish(SUBAGENT_SNAPSHOT, {
       version: 1,
-      agents: [{ id: "w", state: "completed", startedAt: 100 }],
+      agents: [
+        {
+          id: "w",
+          type: "agent",
+          description: "Review CI",
+          state: "completed",
+          startedAt: 100,
+          completedAt: 200,
+          waitingOn: [],
+          error: undefined,
+          live: false,
+          toolUses: 0,
+        },
+      ],
     });
     const done = await agentOf("completed");
     expect(done.note).toBeUndefined();
@@ -375,8 +429,8 @@ describe("pi-dashboard extension", () => {
     const ctx = fakeCtx();
     onCleanup(() => quit(fake, ctx));
     // Stand-in for pi-stash's synchronous responder on the same bus.
-    fake.pi.events.on("stash:preview", (data) => {
-      const request = data as { name: string; respond(value: unknown): void };
+    fake.pi.events.on(STASH_PREVIEW_REQUEST, (data) => {
+      const request = data as StashPreviewRequest;
       request.respond(
         request.name === "notes"
           ? {
@@ -389,7 +443,7 @@ describe("pi-dashboard extension", () => {
           : { ok: false, error: `No stash entry named "${request.name}" on this branch.` },
       );
     });
-    fake.publish("todo:snapshot", {
+    fake.publish(TODO_SNAPSHOT_EVENT, {
       version: 1,
       revision: 2,
       tasks: [

@@ -1,9 +1,12 @@
+import {
+  SUBAGENT_SNAPSHOT_VERSION,
+  type SubagentSnapshot,
+} from "../../pi-subagent/src/observation/snapshot.ts";
 import type { SubagentsSection, SubagentState } from "./protocol.ts";
 import { clip } from "./sections.ts";
 
-export const SUBAGENT_SNAPSHOT_EVENT = "subagent:snapshot";
 const MAX_AGENTS = 20;
-const STATES: Readonly<Record<string, SubagentState>> = {
+const STATES: Readonly<Record<SubagentSnapshot["agents"][number]["state"], SubagentState>> = {
   queued: "queued",
   running: "running",
   waiting: "waiting",
@@ -13,43 +16,32 @@ const STATES: Readonly<Record<string, SubagentState>> = {
   stopped: "stopped",
   interrupted: "stopped",
 };
-const number = (value: unknown): value is number =>
-  typeof value === "number" && Number.isFinite(value) && value >= 0;
 
-/** A validated projection of the producer's current branch, never an event-derived state machine. */
+/** A typed projection of the producer's current branch, never an event-derived state machine. */
 export class SubagentTracker {
   private current: SubagentsSection | undefined;
 
   /** A valid full snapshot replaces the previous branch, including an empty one. */
-  apply(data: unknown): boolean {
-    if (!data || typeof data !== "object") return false;
-    const snapshot = data as { version?: unknown; agents?: unknown };
-    if (snapshot.version !== 1 || !Array.isArray(snapshot.agents)) return false;
+  apply(data: SubagentSnapshot | undefined): boolean {
+    if (data?.version !== SUBAGENT_SNAPSHOT_VERSION) return false;
     const agents: SubagentsSection["agents"] = [];
-    for (const item of snapshot.agents.slice(0, 1000)) {
-      if (!item || typeof item !== "object") continue;
-      const raw = item as Record<string, unknown>;
+    for (const raw of data.agents.slice(0, 1000)) {
       const id = clip(raw.id, 64);
-      const state =
-        typeof raw.state === "string" && Object.hasOwn(STATES, raw.state)
-          ? STATES[raw.state]
-          : undefined;
-      if (!id || !state || !number(raw.startedAt)) continue;
+      if (!id) continue;
       const note =
         clip(raw.note, 300) ?? (raw.state === "interrupted" ? "Run interrupted" : undefined);
-      const durationMs = number(raw.completedAt)
-        ? Math.max(0, raw.completedAt - raw.startedAt)
-        : undefined;
+      const durationMs =
+        raw.completedAt !== undefined ? Math.max(0, raw.completedAt - raw.startedAt) : undefined;
       agents.push({
         id,
         type: clip(raw.type, 64) ?? "agent",
         description: clip(raw.description, 200) ?? "",
-        state,
+        state: STATES[raw.state],
         since: raw.startedAt,
         ...(note ? { note } : {}),
         ...(durationMs !== undefined ? { durationMs } : {}),
-        ...(number(raw.toolUses) ? { toolUses: Math.floor(raw.toolUses) } : {}),
-        ...(number(raw.tokens) ? { tokens: raw.tokens } : {}),
+        toolUses: raw.toolUses,
+        ...(raw.tokens !== undefined ? { tokens: raw.tokens } : {}),
       });
     }
     const active = agents.filter((agent) => ["queued", "running", "waiting"].includes(agent.state));

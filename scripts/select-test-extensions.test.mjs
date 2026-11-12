@@ -8,7 +8,7 @@ import { changedFiles, selectExtensions } from "./select-test-extensions.mjs";
 
 const workspaces = [
   "extensions/pi-todo",
-  "extensions/pi-subagents",
+  "extensions/pi-subagent",
   "extensions/pi-system-insights",
   "packages/pi-session-tree",
 ];
@@ -23,9 +23,9 @@ void test("PRs select only changed extensions, once per extension", () => {
     selectExtensions(workspaces, [
       "extensions/pi-todo/src/index.ts",
       "extensions/pi-todo/test/example.test.ts",
-      "extensions/pi-subagents/README.md",
+      "extensions/pi-subagent/README.md",
     ]),
-    ["extensions/pi-subagents", "extensions/pi-todo"],
+    ["extensions/pi-subagent", "extensions/pi-todo"],
   );
 });
 
@@ -105,24 +105,60 @@ void test("git diff excludes base-only changes and selects both sides of cross-e
   try {
     git("init", "--initial-branch=main");
     mkdirSync(join(cwd, "extensions/pi-todo"), { recursive: true });
-    mkdirSync(join(cwd, "extensions/pi-subagents"), { recursive: true });
+    mkdirSync(join(cwd, "extensions/pi-subagent"), { recursive: true });
     writeFileSync(join(cwd, "extensions/pi-todo/old file.ts"), "example");
     const start = commit();
     writeFileSync(join(cwd, "package.json"), "{}");
     const base = commit();
     git("checkout", "-b", "pr", start);
-    git("mv", "extensions/pi-todo/old file.ts", "extensions/pi-subagents/new file.ts");
+    git("mv", "extensions/pi-todo/old file.ts", "extensions/pi-subagent/new file.ts");
     const head = commit();
     const paths = changedFiles(base, head, cwd);
     assert.deepEqual(paths.sort(), [
-      "extensions/pi-subagents/new file.ts",
+      "extensions/pi-subagent/new file.ts",
       "extensions/pi-todo/old file.ts",
     ]);
     assert.deepEqual(selectExtensions(workspaces, paths), [
-      "extensions/pi-subagents",
+      "extensions/pi-subagent",
       "extensions/pi-todo",
     ]);
   } finally {
     rmSync(cwd, { recursive: true, force: true });
   }
+});
+
+void test("producer source changes also select their dashboard consumer", () => {
+  const candidates = [
+    "extensions/pi-dashboard",
+    "extensions/pi-todo",
+    "extensions/pi-stash",
+    "extensions/pi-git",
+    "extensions/pi-subagent",
+    "extensions/pi-ask",
+    "test",
+  ];
+  for (const producer of ["pi-todo", "pi-stash", "pi-git", "pi-subagent"]) {
+    assert.deepEqual(
+      selectExtensions(candidates, [
+        `extensions/${producer}/src/events.ts`,
+        `extensions/${producer}/src/state.ts`,
+      ]),
+      ["extensions/pi-dashboard", `extensions/${producer}`, "test"].sort(),
+    );
+  }
+  assert.deepEqual(selectExtensions(candidates, ["extensions/pi-todo/test/events.test.ts"]), [
+    "extensions/pi-todo",
+    "test",
+  ]);
+  assert.deepEqual(selectExtensions(candidates, ["extensions/pi-ask/src/index.ts"]), [
+    "extensions/pi-ask",
+    "test",
+  ]);
+  assert.deepEqual(
+    selectExtensions(candidates, [
+      "extensions/pi-dashboard/src/index.ts",
+      "extensions/pi-todo/src/events.ts",
+    ]),
+    ["extensions/pi-dashboard", "extensions/pi-todo", "test"],
+  );
 });
