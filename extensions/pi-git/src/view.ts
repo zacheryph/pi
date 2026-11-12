@@ -8,6 +8,7 @@ import { basename } from "node:path";
 import type { Block, ExplorerItem, ExplorerView, Tone } from "#ui";
 import type { GitSnapshotEvent, GitSnapshotPr, GitSnapshotWorktree } from "#src/events";
 import { describePr, prLabel, type PrReview, type PrState } from "#src/prs";
+import { describeWatch } from "#src/watch";
 import type { FoundWorktree } from "#src/worktrees";
 import { atRisk, describeStatus } from "#src/worktrees";
 
@@ -203,6 +204,7 @@ export function prListText(
       lines.push(`- ${prLabel(pr)}${pr.title ? ` — ${pr.title}` : ""}`);
       const seen = observed(pr, now);
       lines.push(`  ${describePr(pr.status)}${seen ? ` (${seen})` : ""}`);
+      if (pr.watch) lines.push(`  ${describeWatch(pr.watch, now)}`);
       lines.push(`  ${pr.url}`);
     }
     if (group.length > LIST_LIMIT) lines.push(`…and ${group.length - LIST_LIMIT} more`);
@@ -221,6 +223,7 @@ function prDetail(pr: GitSnapshotPr, now: number): Block[] {
         ...(status?.headRef ? ([["Branch", status.headRef]] as const) : []),
         ...(status?.headSha ? ([["Head", status.headSha.slice(0, 12)]] as const) : []),
         ...(status ? ([["Observed", observed(pr, now)]] as const) : []),
+        ...(pr.watch ? ([["Watch", describeWatch(pr.watch, now)]] as const) : []),
         ["Origin", pr.origin === "created" ? "opened in this session" : "referenced"],
         ...(pr.createdBy ? ([["Recorded by", `subagent ${pr.createdBy}`]] as const) : []),
       ],

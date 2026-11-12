@@ -332,6 +332,7 @@ describe("readGit", () => {
             observedAt: 9,
             source: "bash",
           },
+          watch: { until: "merged", since: 5, deadline: 99 },
         }),
         pr({ url: "javascript:alert(1)//github.com/a/b/pull/1" }),
         pr({ url: "http://github.com/acme/api/pull/12" }),
@@ -355,6 +356,7 @@ describe("readGit", () => {
         checks: { passed: 3, failed: 1, pending: 0 },
         mergeable: false,
         observedAt: 9,
+        watching: "merged",
       },
       {
         label: "acme/api#13",

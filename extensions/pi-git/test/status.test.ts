@@ -29,8 +29,10 @@ const VIEW = JSON.stringify({
   headRefOid: "abc123",
   statusCheckRollup: [
     { __typename: "CheckRun", status: "COMPLETED", conclusion: "SUCCESS" },
-    { __typename: "CheckRun", status: "COMPLETED", conclusion: "FAILURE" },
+    { __typename: "CheckRun", name: "lint", status: "COMPLETED", conclusion: "FAILURE" },
   ],
+  comments: [{ body: "one" }, { body: "two" }],
+  reviews: [{ state: "APPROVED" }],
 });
 
 describe("parsePrTarget", () => {
@@ -69,6 +71,9 @@ describe("fetchWithGh", () => {
         headSha: "abc123",
         checks: { passed: 1, failed: 1, pending: 0 },
       },
+      failedChecks: ["lint"],
+      comments: 2,
+      reviews: 1,
     });
     expect(run).toHaveBeenCalledWith(
       [
@@ -181,12 +186,52 @@ describe("fetchWithMcp", () => {
         checks: { passed: 0, failed: 0, pending: 1 },
         review: "none",
       },
+      failedChecks: [],
+      reviews: 0,
     });
     expect(runTool).toHaveBeenCalledWith("mcp__github__pull_request_read", {
       method: "get",
       owner: "acme",
       repo: "api",
       pullNumber: 12,
+    });
+  });
+
+  it("names the failed checks and counts comments and reviews", async () => {
+    const answers: typeof replies = {
+      ...replies,
+      get: {
+        isError: false,
+        text: JSON.stringify({ ...JSON.parse(replies.get!.text), comments: 3 }),
+      },
+      get_check_runs: {
+        isError: false,
+        text: JSON.stringify({
+          check_runs: [
+            { name: "unit", status: "completed", conclusion: "failure" },
+            { name: "build", status: "completed", conclusion: "success" },
+          ],
+        }),
+      },
+      get_status: {
+        isError: false,
+        text: JSON.stringify({
+          sha: "def456",
+          total_count: 1,
+          statuses: [{ context: "deploy/preview", state: "failure" }],
+        }),
+      },
+      get_reviews: {
+        isError: false,
+        text: JSON.stringify([{ state: "COMMENTED", user: { login: "a" } }]),
+      },
+    };
+    const runTool: ToolRunner = async (_name, args) => answers[String(args.method)]!;
+    expect(await fetchWithMcp(REF, "mcp__github__pull_request_read", runTool)).toMatchObject({
+      facts: { checks: { passed: 1, failed: 2, pending: 0 } },
+      failedChecks: ["unit", "deploy/preview"],
+      comments: 3,
+      reviews: 1,
     });
   });
 

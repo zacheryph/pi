@@ -849,6 +849,7 @@ function prFacts(pr) {
     const counts = [pr.checks.failed ? pr.checks.failed + " failed" : "", pr.checks.pending ? pr.checks.pending + " pending" : "", pr.checks.passed ? pr.checks.passed + " passed" : ""].filter(Boolean);
     facts.push("checks " + (counts.length ? counts.join(", ") : "none"));
   }
+  if (pr.watching) facts.push(pr.watching === "merged" ? "watching until merged" : "watching CI");
   if (pr.observedAt) facts.push("seen " + ago(pr.observedAt) + " ago");
   return facts.join(" · ");
 }

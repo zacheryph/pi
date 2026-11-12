@@ -4,7 +4,7 @@
 
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { bool, defineSettings, string, type SettingsOf } from "#foundations/settings";
+import { bool, defineSettings, int, string, type SettingsOf } from "#foundations/settings";
 
 /** Expand `~/` and resolve a relative root against `cwd`. */
 export function resolveRoot(root: string, cwd: string): string {
@@ -26,6 +26,8 @@ export const gitSettings = defineSettings({
     }),
     /** Record pull requests the session only looked at, not just the ones it opened. */
     trackReferenced: bool({ default: true }),
+    /** Seconds between two reads of a pull request `git_pr_watch` waits on. */
+    watchIntervalSeconds: int({ default: 60, min: 5, max: 3600 }),
   },
 });
 export type GitConfig = SettingsOf<typeof gitSettings>;

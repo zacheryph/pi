@@ -33,7 +33,8 @@
     "#session-state": "pi-session-state",
     "#session-tree": "pi-session-tree",
     "#test-helpers": "pi-test-helpers",
-    "#ui": "pi-ui"
+    "#ui": "pi-ui",
+    "#work": "pi-work"
   },
   "exports": {
     ".": "./src/index.ts",

@@ -94,6 +94,10 @@ specific commit SHA. A PR number is a moving target: a push while you wait moves
 commit, and the result you are woken with may not describe the code you meant. The tool
 descriptions tell the model the same.
 
+To wait on a pull request itself (its checks, reviews or merge), pi-git's `git_pr_watch` does
+this without a watch to phrase: it reports each result with the head commit it is for. The tool
+descriptions point there.
+
 ## Completion message and delivery
 
 **Contents.** Status, title (label or command), exit status, duration and log path, plus any

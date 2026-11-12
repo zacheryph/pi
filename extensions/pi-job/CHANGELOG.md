@@ -3,6 +3,14 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-12: Point at git_pr_watch for pull requests
+
+Issue #138. pi-git's `git_pr_watch` waits on a pull request and reports each result with the head
+commit it is for, so a watch on a PR no longer has to be phrased by the model.
+
+- `job_start`'s description and guidelines, and the README's CI section, name `git_pr_watch` as the
+  way to wait on a pull request. The advice to watch an immutable target stays for everything else.
+
 ## 2026-11-11: Share workspace development tooling
 
 - Use the root TypeScript and test configuration and root development commands;

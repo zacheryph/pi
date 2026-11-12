@@ -182,6 +182,9 @@ export function readGit(data: GitSnapshotEvent | undefined): GitSection | undefi
       ...(status?.checks ? { checks: { ...status.checks } } : {}),
       ...(status?.mergeable !== undefined ? { mergeable: status.mergeable } : {}),
       ...(status ? { observedAt: status.observedAt } : {}),
+      ...(raw.watch?.until === "settled" || raw.watch?.until === "merged"
+        ? { watching: raw.watch.until }
+        : {}),
     });
   }
   const openCreated = all.filter(

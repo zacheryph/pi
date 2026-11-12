@@ -13,6 +13,9 @@
  * showed. Records a subagent makes are handed up to its parent's ledger. State
  * is published as `git:snapshot`, and a context-only card restores it for the
  * model after a compaction, reload, resume or `/tree`.
+ *
+ * `git_pr_watch` waits on a pull request: a work item (packages/pi-work) that
+ * reads it on a timer and wakes the session when it changes (see watch.ts).
  */
 import { errorText } from "#foundations/errors";
 
@@ -25,7 +28,8 @@ import {
 import { resolve } from "node:path";
 import { Type } from "typebox";
 import { showExplorer, sanitizeText } from "#ui";
-import { contextCard, treeService } from "#session-state";
+import { contextCard, readEntries, treeService, type EntriesSource } from "#session-state";
+import { ensureWorkHost } from "#work";
 import { CARD_TYPE, contextCard as ledgerCard } from "#src/card";
 import { gitSettings, type GitConfig } from "#src/config";
 import { GIT_SNAPSHOT_EVENT, snapshotEvent, type GitSnapshotEvent } from "#src/events";
@@ -68,6 +72,22 @@ import {
   type ToolRunner,
 } from "#src/status";
 import {
+  DEFAULT_TIMEOUT_SECONDS,
+  describeWatch,
+  FinalReadError,
+  isSavedBaseline,
+  MAX_TIMEOUT_SECONDS,
+  MAX_WATCHES,
+  MIN_TIMEOUT_SECONDS,
+  PrWatches,
+  WATCH_ENTRY,
+  WATCH_OWNER,
+  type Baseline,
+  type Reading,
+  type SavedBaseline,
+  type WatchUntil,
+} from "#src/watch";
+import {
   explorerView,
   listText,
   prExplorerView,
@@ -104,7 +124,37 @@ export interface GitExtensionDependencies {
   runGh?: GhRunner;
   /** Retry options for GitHub reads; tests replace the backoff sleep. */
   retry?: RetryOptions;
+  /** Milliseconds between a watch's reads; default: the `watchIntervalSeconds` setting. */
+  watchIntervalMs?: number;
 }
+
+/** What a watch needs to read through the GitHub MCP tools: the context of the call that started it. */
+interface McpAccess {
+  reader: string;
+  runTool: ToolRunner;
+}
+
+/** The session's tools as a `ToolRunner`, when the tool context can run them. */
+function mcpAccess(ctx: unknown, signal?: AbortSignal): McpAccess | undefined {
+  const toolCtx = ctx as Partial<ExtensionToolContext>;
+  if (typeof toolCtx.executeTool !== "function") return undefined;
+  const reader = findPullRequestReader((toolCtx.tools ?? []).map((tool) => tool.name));
+  if (!reader) return undefined;
+  return {
+    reader,
+    runTool: async (name, args) => {
+      const outcome = await toolCtx.executeTool!(name, args, signal ? { signal } : {});
+      return { isError: outcome.isError, text: outputText(outcome.result.content) };
+    },
+  };
+}
+
+/** Calls that read the same status again and again: an unchanged read writes no ledger entry. */
+const POLLING_TOOLS: ReadonlySet<string> = new Set([
+  "git_pr_status",
+  "git_pr_watch",
+  "/git:refresh",
+]);
 
 /** At most this many pull requests are read in one git_pr_status or /git:refresh. */
 const MAX_STATUS_READS = 20;
@@ -152,6 +202,8 @@ type Measured = { status: WorktreeStatus } | { error: string };
 type Target = { record: WorktreeRecord; base: BaseRef };
 
 export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDependencies = {}): void {
+  // First, so the session's work host is provided before this extension's session_start runs.
+  const work = ensureWorkHost(pi);
   // Per-session state lives in this closure, never in module scope: every
   // subagent session runs this factory again, and a same-cwd child may share
   // this module with its parent.
@@ -167,7 +219,7 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
 
   const getConfig = () => (config ??= (dependencies.loadConfig ?? gitSettings.load)(cwd));
   const snapshot = (): GitSnapshotEvent =>
-    snapshotEvent(records.values(), measured, found, prs.values());
+    snapshotEvent(records.values(), measured, found, prs.values(), watches.list());
   const publish = () => pi.events.emit(GIT_SNAPSHOT_EVENT, snapshot());
 
   /** Hand a record to this session's parent, which adopts it and passes it on up. */
@@ -305,6 +357,7 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
       cwd = ctx.cwd;
       config = undefined;
       restore(ctx);
+      adoptWatches(ctx);
       backgroundRefresh(ctx);
     },
   });
@@ -329,6 +382,10 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
   });
   pi.on("session_shutdown", () => {
     generation += 1;
+    // The watches' items stay open in the transcript: the next start adopts them.
+    watches.shutdown();
+    watchAccess.clear();
+    ownCalls.clear();
   });
 
   // Note which subagents run in a worktree: pi-subagent announces each child's
@@ -360,10 +417,17 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
    * confirms what the ledger already holds (a watch polling the same status)
    * refreshes the record in memory without writing another entry.
    */
-  const recordPr = (observation: Observation, toolCall: PrCall, source = toolCall.tool) => {
+  const recordPr = (
+    observation: Observation,
+    toolCall: PrCall,
+    source = toolCall.tool,
+    /** Record it even when only looked at and `trackReferenced` is off: the session waits on it. */
+    always = false,
+  ) => {
     const key = prKey(observation.ref);
     const existing = prs.get(key);
-    if (!existing && observation.origin === "referenced" && !getConfig().trackReferenced) return;
+    if (!always && !existing && observation.origin === "referenced" && !getConfig().trackReferenced)
+      return;
     const at = toolCall.at;
     const facts =
       observation.facts && Object.keys(observation.facts).length ? observation.facts : undefined;
@@ -390,11 +454,7 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
       calls: mergeCalls(base.calls, [toolCall]),
       updatedAt: existing ? Math.max(at, existing.updatedAt + 1) : at,
     };
-    if (
-      existing &&
-      (toolCall.tool === "git_pr_status" || toolCall.tool === "/git:refresh") &&
-      samePrFacts(existing, next)
-    ) {
+    if (existing && POLLING_TOOLS.has(toolCall.tool) && samePrFacts(existing, next)) {
       prs.set(key, next);
       publish();
       passUp(next, false);
@@ -404,7 +464,10 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
     return next;
   };
 
-  /** git_pr_status calls in flight; their nested MCP calls are recorded by the tool itself. */
+  /**
+   * git_pr_status calls in flight and the calls that started a watch still running; their nested
+   * MCP calls are recorded by the tool itself.
+   */
   const ownCalls = new Set<string>();
 
   /**
@@ -424,7 +487,7 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
     } catch (error) {
       if (!(error instanceof GhUnavailable)) throw error;
       if (!options.reader || !options.runTool)
-        throw new Error(
+        throw new FinalReadError(
           `${error.message}, and no GitHub MCP pull_request_read tool is available to read it instead`,
         );
       return fetchWithMcp(ref, options.reader, options.runTool, {
@@ -432,6 +495,91 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
         signal: options.signal,
       });
     }
+  };
+
+  /** Record what a fresh read showed about one PR. */
+  const recordFetched = (
+    ref: PrRef,
+    fetched: Fetched,
+    toolCall: Omit<PrCall, "at">,
+    always = false,
+  ) => {
+    const existing = prs.get(prKey(ref));
+    return recordPr(
+      {
+        ref,
+        url: existing?.url ?? prUrl(ref),
+        origin: existing?.origin ?? "referenced",
+        ...(fetched.title ? { title: fetched.title } : {}),
+        facts: fetched.facts,
+      },
+      { ...toolCall, at: now() },
+      fetched.source,
+      always,
+    );
+  };
+
+  /**
+   * How each running watch reaches the GitHub MCP tools, by PR key: the context of the newest
+   * git_pr_watch call for it, whose id its nested calls carry. Gone after a reload.
+   */
+  const watchAccess = new Map<string, McpAccess & { callId: string }>();
+  const bindAccess = (key: string, callId: string, access: McpAccess | undefined) => {
+    const previous = watchAccess.get(key);
+    if (previous && previous.callId !== callId) ownCalls.delete(previous.callId);
+    if (access) watchAccess.set(key, { ...access, callId });
+    else ownCalls.delete(callId);
+  };
+
+  /** Read a watched PR and record it. `gh` first; the MCP tools of the call that started the watch otherwise. */
+  const readWatched = async (
+    watch: { key: string; ref: PrRef; callId: string },
+    signal: AbortSignal,
+  ): Promise<Reading> => {
+    const started = generation;
+    const fetched = await readStatus(watch.ref, { signal, ...watchAccess.get(watch.key) });
+    signal.throwIfAborted();
+    if (started !== generation) throw new Error("The session changed while reading PR status.");
+    const agentId = tree.node()?.agentId;
+    recordFetched(
+      watch.ref,
+      fetched,
+      { tool: "git_pr_watch", toolCallId: watch.callId, ...(agentId ? { agentId } : {}) },
+      true,
+    );
+    return fetched;
+  };
+
+  const watches = new PrWatches({
+    host: () => work.host(),
+    read: readWatched,
+    saveBaseline: (saved) => pi.appendEntry<SavedBaseline>(WATCH_ENTRY, saved),
+    onChange: () => publish(),
+    onEnd: (watch) => {
+      const access = watchAccess.get(watch.key);
+      watchAccess.delete(watch.key);
+      if (access) ownCalls.delete(access.callId);
+    },
+    now,
+    intervalMs: () => dependencies.watchIntervalMs ?? getConfig().watchIntervalSeconds * 1000,
+  });
+
+  /**
+   * Take back the watches an earlier instance of this session left open, each from the newest
+   * baseline it saved. What is not adopted (a fork's inherited items) the host closes as lost.
+   */
+  const adoptWatches = (ctx: ExtensionContext & EntriesSource) => {
+    const host = work.host();
+    if (!host) return;
+    const sessionId = ctx.sessionManager.getSessionId();
+    const saved = new Map<string, Baseline>();
+    for (const entry of readEntries(ctx, {
+      type: WATCH_ENTRY,
+      scope: "all",
+      guard: isSavedBaseline,
+    }))
+      saved.set(entry.item, entry.baseline);
+    host.adopt(WATCH_OWNER, (item) => watches.adopt(item, sessionId, saved.get(item.id)));
   };
 
   /** Read and record each PR; read failures become entries, cancellation/session changes throw. */
@@ -454,17 +602,7 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
       try {
         const fetched = await readStatus(ref, options);
         ensureCurrent();
-        const recorded = recordPr(
-          {
-            ref,
-            url: base.url,
-            origin: existing?.origin ?? "referenced",
-            ...(fetched.title ? { title: fetched.title } : {}),
-            facts: fetched.facts,
-          },
-          { ...toolCall, at: now() },
-          fetched.source,
-        );
+        const recorded = recordFetched(ref, fetched, toolCall);
         entries.push({
           ...base,
           ...((recorded?.title ?? fetched.title)
@@ -491,8 +629,8 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
       !event.parentToolCallId
     )
       card.hide();
-    // git_pr_status records what it read itself, including through nested MCP calls.
-    if (event.toolName === "git_pr_status") return;
+    // git_pr_status and git_pr_watch record what they read themselves, including through nested MCP calls.
+    if (event.toolName === "git_pr_status" || event.toolName === "git_pr_watch") return;
     if (event.parentToolCallId && ownCalls.has(event.parentToolCallId)) return;
     try {
       const observations = await observe(event as ToolResultLike, { cwd: ctx.cwd, resolveRepo });
@@ -766,7 +904,7 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
       promptSnippet: "Read a pull request's current state, review and checks from GitHub.",
       promptGuidelines: [
         "Use git_pr_status to check a pull request's state, review decision, checks or conflicts, instead of reading them with gh or the GitHub MCP tools.",
-        'To wait for CI, start job_watch with toolCheck { tool: "git_pr_status", args: { pr }, match: { path: "prs.0.ciDone", equals: true } } and end your turn; then call git_pr_status again and compare headSha with the commit you pushed.',
+        "To wait for CI, a review or a merge, call git_pr_watch and end your turn; do not poll git_pr_status.",
       ],
       parameters: Type.Object({
         pr: Type.Optional(
@@ -818,17 +956,7 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
             structuredContent: { prs: [] },
           };
         }
-        const toolCtx = ctx as Partial<ExtensionToolContext>;
-        const canRun = typeof toolCtx.executeTool === "function";
-        const reader = canRun
-          ? findPullRequestReader((toolCtx.tools ?? []).map((tool) => tool.name))
-          : undefined;
-        const runTool: ToolRunner | undefined = canRun
-          ? async (name, args) => {
-              const outcome = await toolCtx.executeTool!(name, args, { signal });
-              return { isError: outcome.isError, text: outputText(outcome.result.content) };
-            }
-          : undefined;
+        const access = mcpAccess(ctx, signal);
         const agentId = tree.node()?.agentId;
         ownCalls.add(id);
         let entries: StatusEntryValue[];
@@ -836,7 +964,7 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
           entries = await readAndRecord(
             refs,
             { tool: "git_pr_status", toolCallId: id, ...(agentId ? { agentId } : {}) },
-            { signal, ...(reader ? { reader } : {}), ...(runTool ? { runTool } : {}) },
+            { signal, ...access },
           );
         } finally {
           ownCalls.delete(id);
@@ -851,6 +979,161 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
           details: { prs: entries },
           structuredContent: { prs: entries },
         };
+      },
+    }),
+  );
+
+  pi.registerTool(
+    defineTool({
+      name: "git_pr_watch",
+      label: "Git PR Watch",
+      description:
+        "Wait on a pull request without polling: reads it from GitHub on a timer while you end your turn, and wakes you with a message when something needs you. " +
+        "Reports, each with the head commit it is for: checks finished on the head (with the names of failed checks), the head moved (someone pushed), the review decision changed, reviews or comments were added, it now conflicts with its base, and it was merged or closed. " +
+        'until "settled" (default) ends the watch when checks finish on the head; until "merged" keeps it open through every report until the pull request is merged or closed. It also ends at timeoutSeconds. ' +
+        "The watch is open work: it keeps a subagent waiting, and survives a reload or resume. One watch per pull request: calling it again continues the same watch from the status it returns, so your own push or reply is not reported back to you. " +
+        `At most ${MAX_WATCHES} at a time. stop: true cancels the watch. ` +
+        "Reads through gh when it is installed and signed in, otherwise through the GitHub MCP pull_request_read tool; after a reload, through gh only. Never writes to GitHub.",
+      promptSnippet:
+        "Wait on a pull request and be woken when its checks, reviews or state change.",
+      promptGuidelines: [
+        "Use git_pr_watch to wait for a pull request's CI, a review or its merge, then end your turn: its message wakes you. Do not poll git_pr_status or build a job_watch for it.",
+        "After you push to a watched pull request or reply on it, call git_pr_watch again before ending your turn, so the watch continues from the new head.",
+      ],
+      parameters: Type.Object({
+        pr: Type.String({
+          description:
+            "A pull request URL, owner/repo#number, or a number in the current repository.",
+        }),
+        until: Type.Optional(
+          Type.Union([Type.Literal("settled"), Type.Literal("merged")], {
+            description:
+              'When the watch ends: "settled" once checks finish on the head (default), "merged" once it is merged or closed.',
+          }),
+        ),
+        timeoutSeconds: Type.Optional(
+          Type.Integer({
+            minimum: MIN_TIMEOUT_SECONDS,
+            maximum: MAX_TIMEOUT_SECONDS,
+            description: `End the watch after this long. Default ${DEFAULT_TIMEOUT_SECONDS}.`,
+          }),
+        ),
+        stop: Type.Optional(
+          Type.Boolean({ description: "Stop watching this pull request. Default false." }),
+        ),
+      }),
+      annotations: { openWorldHint: true },
+      async execute(id, params, signal, _update, ctx) {
+        try {
+          const repo = /^#?\d+$/.test(params.pr.trim()) ? await resolveRepo(ctx.cwd) : undefined;
+          const ref = parsePrTarget(params.pr, repo);
+          if (!ref)
+            throw new Error(
+              `"${params.pr}" is not a pull request URL, owner/repo#number, or a number in this repository`,
+            );
+          const key = prKey(ref);
+          const label = prLabel(ref);
+          const existing = watches.get(key);
+          const reply = (text: string, watching: boolean, entry?: StatusEntryValue) => ({
+            content: [{ type: "text" as const, text }],
+            details: { watching, ...(watches.get(key) ? { watch: watches.get(key) } : {}), entry },
+          });
+          if (params.stop === true)
+            return reply(
+              watches.stop(key) ? `Stopped watching ${label}.` : `${label} was not being watched.`,
+              false,
+            );
+          if (!existing && watches.size >= MAX_WATCHES)
+            throw new Error(
+              `${MAX_WATCHES} pull requests are already watched; stop one first (git_pr_list names them)`,
+            );
+
+          const access = mcpAccess(ctx);
+          const started = generation;
+          // Nested MCP reads of this call and of the watch it starts are recorded here, once.
+          ownCalls.add(id);
+          let fetched: Fetched;
+          try {
+            fetched = await readStatus(ref, { signal, ...mcpAccess(ctx, signal) });
+          } catch (error) {
+            ownCalls.delete(id);
+            throw error;
+          }
+          signal?.throwIfAborted();
+          if (started !== generation) throw new Error("the session changed while reading it");
+          const agentId = tree.node()?.agentId;
+          const recorded = recordFetched(
+            ref,
+            fetched,
+            { tool: "git_pr_watch", toolCallId: id, ...(agentId ? { agentId } : {}) },
+            true,
+          );
+          const url = recorded?.url ?? prUrl(ref);
+          const entry: StatusEntryValue = {
+            key,
+            label,
+            url,
+            ...(fetched.title ? { title: fetched.title } : {}),
+            ...pickFacts(fetched.facts),
+            ciDone: checksSettled(fetched.facts),
+            source: fetched.source,
+          };
+          const status = prStatusText([entry]);
+          const until: WatchUntil = params.until ?? existing?.until ?? "settled";
+          // Nothing left to wait for: say so now instead of waking the session for it.
+          const over =
+            fetched.facts.state === "merged" || fetched.facts.state === "closed"
+              ? `it is ${fetched.facts.state}`
+              : until === "settled" && entry.ciDone
+                ? `checks already finished on head ${(fetched.facts.headSha ?? "unknown").slice(0, 12)}`
+                : undefined;
+          if (over) {
+            watches.stop(key);
+            ownCalls.delete(id);
+            const hint =
+              fetched.facts.state === "open" || fetched.facts.state === undefined
+                ? ' If that is not the commit you pushed, GitHub has not caught up: call git_pr_watch again. To wait for reviews or the merge instead, pass until: "merged".'
+                : "";
+            return reply(`Not watching ${label}: ${over}.${hint}\n${status}`, false, entry);
+          }
+
+          if (existing && existing.until === until && params.timeoutSeconds === undefined) {
+            if (access) bindAccess(key, id, access);
+            else ownCalls.delete(id);
+            watches.rebase(key, fetched);
+            return reply(
+              `Already ${describeWatch(existing, now())}; it continues from this status. End your turn: a message wakes you.\n${status}`,
+              true,
+              entry,
+            );
+          }
+          // A changed `until` or timeout replaces the watch.
+          watches.stop(key);
+          const deadline = now() + (params.timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS) * 1000;
+          let opened;
+          try {
+            opened = watches.open({
+              ref,
+              url,
+              until,
+              deadline,
+              callId: id,
+              sessionId: ctx.sessionManager.getSessionId(),
+              reading: fetched,
+            });
+          } catch (error) {
+            ownCalls.delete(id);
+            throw error;
+          }
+          bindAccess(key, id, access);
+          return reply(
+            `Now ${describeWatch(opened, now())}. End your turn: a message wakes you when checks finish, the head moves, a review or comment arrives, or it is merged or closed.\n${status}`,
+            true,
+            entry,
+          );
+        } catch (error) {
+          throw new Error(`git_pr_watch: ${errorText(error)}`);
+        }
       },
     }),
   );

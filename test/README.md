@@ -5,14 +5,15 @@ Each scenario loads the whole bundle in-process on
 [pi-scripted-model](../packages/pi-scripted-model/README.md): real tools, real
 extensions and real subagents, no API key or network.
 
-| Scenario                            | What crosses extensions                                                                 |
-| ----------------------------------- | --------------------------------------------------------------------------------------- |
-| `scenarios/todo-delegation.test.ts` | pi-todo's broker and claims: a task handed to a subagent, updated there, accepted here. |
-| `scenarios/stash-adoption.test.ts`  | pi-stash `adopt`/`passUp`: a subagent's entry listed and read in the parent.            |
-| `scenarios/git-worktree.test.ts`    | pi-git's ledger names the subagent that ran in a worktree.                              |
-| `scenarios/job-wake.test.ts`        | pi-job through pi-work's root host: a finished job starts the next turn, once.          |
-| `scenarios/child-question.test.ts`  | pi-ask through pi-work's parent link: one question, answered with `subagent_send`.      |
-| `scenarios/context-cards.test.ts`   | One `todo`, `stash`, `git` and `subagent` card each after compaction and after resume.  |
+| Scenario                            | What crosses extensions                                                                  |
+| ----------------------------------- | ---------------------------------------------------------------------------------------- |
+| `scenarios/todo-delegation.test.ts` | pi-todo's broker and claims: a task handed to a subagent, updated there, accepted here.  |
+| `scenarios/stash-adoption.test.ts`  | pi-stash `adopt`/`passUp`: a subagent's entry listed and read in the parent.             |
+| `scenarios/git-worktree.test.ts`    | pi-git's ledger names the subagent that ran in a worktree.                               |
+| `scenarios/job-wake.test.ts`        | pi-job through pi-work's root host: a finished job starts the next turn, once.           |
+| `scenarios/child-question.test.ts`  | pi-ask through pi-work's parent link: one question, answered with `subagent_send`.       |
+| `scenarios/pr-watch.test.ts`        | pi-git through pi-work: a watched PR's report starts the next turn, here and in a child. |
+| `scenarios/context-cards.test.ts`   | One `todo`, `stash`, `git` and `subagent` card each after compaction and after resume.   |
 
 Assert on what the model was sent (`requests()`) and on tool runs
 (`toolRuns()`, or `childRuns` for a subagent's transcript), not on extension
