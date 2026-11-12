@@ -17,6 +17,10 @@ const sharedFiles = new Set([
 // extension: select them whenever any workspace is selected.
 const BUNDLE_TESTS = "test";
 
+// Producer contracts are imported directly by the dashboard. Include all source
+// changes because events also expose types from state, roster and PR modules.
+const dashboardProducers = ["pi-todo", "pi-stash", "pi-git", "pi-subagent"];
+
 // Extensions import shared libraries from packages/ by relative path, so a change
 // there re-tests every workspace.
 export function selectExtensions(workspaces, changedFiles, all = false) {
@@ -35,6 +39,14 @@ export function selectExtensions(workspaces, changedFiles, all = false) {
   const selected = candidates.filter(
     (workspace) => runAll || changedFiles.some((path) => path.startsWith(`${workspace}/`)),
   );
+  if (
+    candidates.includes("extensions/pi-dashboard") &&
+    !selected.includes("extensions/pi-dashboard") &&
+    changedFiles.some((path) =>
+      dashboardProducers.some((name) => path.startsWith(`extensions/${name}/src/`)),
+    )
+  )
+    selected.push("extensions/pi-dashboard");
   if (
     selected.length > 0 &&
     candidates.includes(BUNDLE_TESTS) &&

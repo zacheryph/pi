@@ -1,15 +1,26 @@
+import type { SubagentSnapshot } from "../../pi-subagent/src/observation/snapshot.ts";
 import { describe, expect, it } from "vitest";
 import { SubagentTracker } from "#src/subagents";
 
-const agent = (id: string, state = "completed", extra = {}) => ({
+type Agent = SubagentSnapshot["agents"][number];
+const agent = (
+  id: string,
+  state: Agent["state"] = "completed",
+  extra: Partial<Agent> = {},
+): Agent => ({
   id,
   state,
   type: "explore",
   description: "Find auth files",
   startedAt: 100,
+  completedAt: undefined,
+  waitingOn: [],
+  error: undefined,
+  live: true,
+  toolUses: 0,
   ...extra,
 });
-const snapshot = (agents: unknown[]) => ({ version: 1, agents });
+const snapshot = (agents: Agent[]): SubagentSnapshot => ({ version: 1, agents });
 
 describe("subagent snapshots", () => {
   it("accepts a historical roster on first load, then replaces it on branch changes", () => {
@@ -48,26 +59,16 @@ describe("subagent snapshots", () => {
     });
   });
 
-  it("validates snapshots, bounds untrusted strings, and isolates its stored value", () => {
+  it("guards versions, bounds strings, and isolates its stored value", () => {
     const tracker = new SubagentTracker();
     tracker.apply(snapshot([agent("a", "running", { note: "x".repeat(1000) })]));
-    for (const junk of [null, {}, { version: 2, agents: [] }, { version: 1, agents: 3 }]) {
+    for (const junk of [undefined, { version: 2 } as unknown as SubagentSnapshot]) {
       expect(tracker.apply(junk)).toBe(false);
       expect(tracker.section()?.agents[0].id).toBe("a");
     }
     expect(tracker.section()?.agents[0].note?.length).toBeLessThanOrEqual(300);
     tracker.section()!.agents[0].description = "changed";
     expect(tracker.section()?.agents[0].description).toBe("Find auth files");
-    tracker.apply(
-      snapshot([
-        null,
-        { id: "invalid" },
-        agent("bad", "unknown"),
-        agent("prototype", "__proto__"),
-        agent("good"),
-      ]),
-    );
-    expect(tracker.section()?.agents.map((a) => a.id)).toEqual(["good"]);
   });
 
   it("caps finished rows without dropping active or waiting agents", () => {

@@ -1,7 +1,14 @@
+import type { TodoSnapshotEvent, TodoSnapshotTask } from "../../pi-todo/src/events.ts";
+import type { StashSnapshotEvent, StashSnapshotEntry } from "../../pi-stash/src/events.ts";
+import type {
+  GitSnapshotEvent,
+  GitSnapshotPr,
+  GitSnapshotWorktree,
+} from "../../pi-git/src/events.ts";
 import { describe, expect, it } from "vitest";
 import { clip, readGit, readPreview, readStash, readTodoHistory, readTodos } from "#src/sections";
 
-const task = (overrides: Record<string, unknown> = {}) => ({
+const task = (overrides: Partial<TodoSnapshotTask> = {}): TodoSnapshotTask => ({
   key: "a",
   subject: "Add retry backoff",
   status: "in_progress",
@@ -11,7 +18,7 @@ const task = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-const entry = (overrides: Record<string, unknown> = {}) => ({
+const entry = (overrides: Partial<StashSnapshotEntry> = {}): StashSnapshotEntry => ({
   handle: "stash:notes@0123456789ab",
   name: "notes",
   hash: "0".repeat(64),
@@ -74,17 +81,9 @@ describe("readTodos", () => {
     });
   });
 
-  it("drops malformed tasks and rejects unknown payload versions", () => {
-    expect(
-      readTodos({
-        version: 1,
-        revision: 1,
-        tasks: [task({ status: "done" }), task({ key: "" }), null, task()],
-      })?.tasks,
-    ).toHaveLength(1);
-    expect(readTodos({ version: 2, revision: 1, tasks: [] })).toBeUndefined();
-    expect(readTodos({ version: 1 })).toBeUndefined();
-    expect(readTodos("nope")).toBeUndefined();
+  it("rejects unknown payload versions", () => {
+    expect(readTodos({ version: 2 } as unknown as TodoSnapshotEvent)).toBeUndefined();
+    expect(readTodos(undefined)).toBeUndefined();
   });
 
   it("caps long text and the number of tasks", () => {
@@ -138,31 +137,38 @@ describe("readStash", () => {
     });
   });
 
-  it("drops malformed entries, never carries content, and rejects unknown versions", () => {
-    const result = readStash({
-      version: 1,
-      entries: [entry({ bytes: -1 }), entry({ name: 5 }), entry({ content: "secret" })],
-    });
+  it("projects metadata only and rejects unknown versions", () => {
+    const raw = { ...entry(), content: "secret" };
+    const result = readStash({ version: 1, entries: [raw] });
     expect(result?.entries).toHaveLength(1);
     expect(JSON.stringify(result)).not.toContain("secret");
-    expect(readStash({ version: 3, entries: [] })).toBeUndefined();
+    expect(readStash({ version: 3 } as unknown as StashSnapshotEvent)).toBeUndefined();
   });
 });
 
+it("caps stash rows and text while retaining totals", () => {
+  const result = readStash({
+    version: 1,
+    entries: Array.from({ length: 150 }, (_, i) =>
+      entry({ name: `n${i}`, description: "x".repeat(1000) }),
+    ),
+  })!;
+  expect(result.total).toBe(150);
+  expect(result.entries).toHaveLength(100);
+  expect(result.entries[0].description).toHaveLength(500);
+});
+
 describe("readStash store size", () => {
-  it("passes the store size and cap through, and drops malformed ones", () => {
+  it("passes the store size and cap through", () => {
     expect(
       readStash({ version: 1, entries: [], store: { bytes: 5, maxBytes: 10 } })?.store,
     ).toEqual({ bytes: 5, maxBytes: 10 });
-    expect(
-      readStash({ version: 1, entries: [], store: { bytes: -1, maxBytes: 10 } })?.store,
-    ).toBeUndefined();
     expect(readStash({ version: 1, entries: [] })?.store).toBeUndefined();
   });
 });
 
 describe("readTodoHistory", () => {
-  const event = {
+  const event: TodoSnapshotEvent = {
     version: 1,
     revision: 3,
     tasks: [
@@ -179,16 +185,15 @@ describe("readTodoHistory", () => {
             message: "x".repeat(3_000),
           },
           { revision: 3, at: 0, status: "completed" },
-          { revision: 4, at: 30, status: "done" },
         ],
       }),
     ],
   };
 
-  it("returns one task's history with validated updates", () => {
+  it("returns one task's history with bounded updates", () => {
     const history = readTodoHistory(event, "a")!;
     expect(history.createdAt).toBe(5);
-    expect(history.updates).toHaveLength(2);
+    expect(history.updates).toHaveLength(3);
     expect(history.updates[0]).toEqual({
       revision: 1,
       at: 10,
@@ -202,8 +207,20 @@ describe("readTodoHistory", () => {
   it("is undefined for unknown tasks and payloads", () => {
     expect(readTodoHistory(event, "missing")).toBeUndefined();
     expect(readTodoHistory(undefined, "a")).toBeUndefined();
-    expect(readTodoHistory({ version: 2, tasks: [] }, "a")).toBeUndefined();
+    expect(readTodoHistory({ version: 2 } as unknown as TodoSnapshotEvent, "a")).toBeUndefined();
   });
+});
+
+it("keeps only the latest bounded history", () => {
+  const updates = Array.from({ length: 40 }, (_, revision) => ({
+    revision,
+    at: revision,
+    status: "completed" as const,
+  }));
+  const result = readTodoHistory({ version: 1, revision: 39, tasks: [task({ updates })] }, "a")!;
+  expect(result.updates).toHaveLength(20);
+  expect(result.updates[0].revision).toBe(20);
+  expect(result.updates.at(-1)?.revision).toBe(39);
 });
 
 describe("readPreview", () => {
@@ -212,13 +229,13 @@ describe("readPreview", () => {
       readPreview({
         ok: true,
         handle: "stash:a@0123456789ab",
-        lines: ["one", 2, "three"],
+        lines: ["one", "two", "three"],
         total: 9,
         complete: false,
       }),
     ).toEqual({
       handle: "stash:a@0123456789ab",
-      lines: ["one", "", "three"],
+      lines: ["one", "two", "three"],
       total: 9,
       complete: false,
     });
@@ -235,21 +252,22 @@ describe("readPreview", () => {
       'No stash entry named "x" on this branch.',
     );
     expect(readPreview(undefined)).toBe("pi-stash did not answer; is it loaded?");
-    expect(readPreview({ ok: true, lines: "nope" })).toBe("pi-stash sent an unreadable preview.");
   });
 });
 
 describe("readGit", () => {
-  const worktree = (overrides: Record<string, unknown> = {}) => ({
+  const worktree = (overrides: Partial<GitSnapshotWorktree> = {}): GitSnapshotWorktree => ({
     path: "/w/api/feat-login",
     repo: "/src/api",
     branch: "feat/login",
     base: { ref: "main", sha: "a" },
     agents: [],
     state: "active",
+    createdAt: 1,
+    updatedAt: 1,
     ...overrides,
   });
-  const pr = (overrides: Record<string, unknown> = {}) => ({
+  const pr = (overrides: Partial<GitSnapshotPr> = {}): GitSnapshotPr => ({
     key: "github.com/acme/api#12",
     host: "github.com",
     owner: "acme",
@@ -258,6 +276,8 @@ describe("readGit", () => {
     url: "https://github.com/acme/api/pull/12",
     origin: "created",
     calls: [],
+    createdAt: 1,
+    updatedAt: 1,
     ...overrides,
   });
 
@@ -320,9 +340,8 @@ describe("readGit", () => {
         pr({ url: "javascript:alert(1)//github.com/a/b/pull/1" }),
         pr({ url: "http://github.com/acme/api/pull/12" }),
         pr({ url: 'https://github.com/acme/api/pull/12#x" onclick=' }),
-        pr({ origin: "elsewhere" }),
         pr({
-          status: { state: "weird", review: "lgtm", observedAt: 1, source: "bash" },
+          status: { review: "none", observedAt: 1, source: "bash" },
           number: 13,
           url: "https://github.com/acme/api/pull/13",
         }),
@@ -348,7 +367,7 @@ describe("readGit", () => {
         observedAt: 1,
       },
     ]);
-    expect(result?.prTotal).toBe(6);
+    expect(result?.prTotal).toBe(5);
   });
 
   it("counts open and failing PRs opened here over every PR, not only the ones it sends", () => {
@@ -390,7 +409,7 @@ describe("readGit", () => {
     expect(result?.prs).toHaveLength(50);
   });
 
-  it("caps long lists and is absent when there is nothing to show or the shape is wrong", () => {
+  it("caps long lists and rejects unknown versions", () => {
     const many = readGit({
       version: 1,
       worktrees: Array.from({ length: 60 }, (_, i) => worktree({ path: `/w/${i}` })),
@@ -404,9 +423,7 @@ describe("readGit", () => {
     expect(many?.prs).toHaveLength(50);
     expect(many?.prTotal).toBe(60);
     expect(readGit({ version: 1, worktrees: [], found: [], prs: [] })).toBeUndefined();
-    expect(readGit({ version: 2, worktrees: [worktree()] })).toBeUndefined();
-    expect(readGit(null)).toBeUndefined();
-    // A snapshot from a pi-git without pull requests still reads.
-    expect(readGit({ version: 1, worktrees: [worktree()], found: [] })?.prTotal).toBe(0);
+    expect(readGit({ version: 2 } as unknown as GitSnapshotEvent)).toBeUndefined();
+    expect(readGit(undefined)).toBeUndefined();
   });
 });

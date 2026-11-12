@@ -4,6 +4,7 @@ import type { PersistedSubagentRecord } from "#src/persisted-record";
 import { buildRoster, type LiveAgentLike, type RosterEntry } from "#src/roster";
 
 export const SUBAGENT_SNAPSHOT = "subagent:snapshot";
+export const SUBAGENT_SNAPSHOT_VERSION = 1;
 
 interface SnapshotSource extends LiveAgentLike {
   readonly toolUses: number;
@@ -12,7 +13,7 @@ interface SnapshotSource extends LiveAgentLike {
 }
 
 export interface SubagentSnapshot {
-  version: 1;
+  version: typeof SUBAGENT_SNAPSHOT_VERSION;
   agents: Array<RosterEntry & { toolUses: number; tokens?: number; note?: string }>;
 }
 
@@ -23,7 +24,7 @@ export function buildSubagentSnapshot(
 ): SubagentSnapshot {
   const saved = new Map(records.map((record) => [record.id, record]));
   return {
-    version: 1,
+    version: SUBAGENT_SNAPSHOT_VERSION,
     agents: buildRoster(records, getLive).map((entry) => {
       const live = getLive(entry.id);
       const note =
