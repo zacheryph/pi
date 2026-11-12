@@ -207,8 +207,10 @@ tool. Each is **opened here** or **referenced**, with the last state, review,
 checks and conflicts its output showed and the tool calls that touched it.
 `git_pr_list` and `/git:prs` list them after a reload. `git_pr_status` reads a
 PR's current state, review, checks and head from GitHub (through `gh`, or the
-GitHub MCP tools without it, retrying transient failures) and records it; it is
-read-only, so `job_watch` can poll it until `ciDone`. `/git:refresh` re-reads
+GitHub MCP tools without it, retrying transient failures) and records it.
+`git_pr_watch` waits on a PR as open work and wakes the session when its checks
+finish, its head moves, a review or comment arrives, or it is merged or closed,
+each report naming the head commit it is for. `/git:refresh` re-reads
 every open PR and re-checks every worktree. After a compaction, reload, resume or
 `/tree`, a context-only card lists open PRs and worktrees until the model reads
 `git_pr_list` or `git_worktree_list`. State is published as `git:snapshot` for the
@@ -410,10 +412,9 @@ with `/skill:<name>`. Skills for working on this repository itself live in
 ### babysit-pr
 
 Drives one pull request to green CI with every review comment handled, without
-polling. It reads the PR with pi-git's `git_pr_status` and waits with
-`job_watch` polling it until checks settle (or a shell watch pinned to the head
-commit SHA, or `job_start` with `gh run watch`), ending its turn until they
-finish, then confirms the head SHA is still the one it pushed. A failed check
+polling. It waits with pi-git's `git_pr_watch`, ending its turn until the watch
+reports that checks finished on the head, and checks that head is the one it
+pushed. A failed check
 gets its log read and is classified: caused by
 the PR (reproduce locally with the same command, smallest fix, rerun, push),
 infrastructure (rerun the failed jobs once), or pre-existing (reported, not

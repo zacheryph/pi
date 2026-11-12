@@ -23,7 +23,10 @@ export interface GitSnapshotWorktree extends Omit<WorktreeRecord, "v" | "kind"> 
 }
 
 /** A pull request as the session last saw it. */
-export type GitSnapshotPr = Omit<PrRecord, "v" | "kind">;
+export interface GitSnapshotPr extends Omit<PrRecord, "v" | "kind"> {
+  /** Present while `git_pr_watch` waits on it in this session. Times are epoch milliseconds. */
+  watch?: { until: "settled" | "merged"; since: number; deadline: number };
+}
 
 export interface GitSnapshotEvent {
   version: typeof GIT_SNAPSHOT_VERSION;
@@ -40,7 +43,14 @@ export function snapshotEvent(
   statuses: ReadonlyMap<string, { status: WorktreeStatus } | { error: string }>,
   found: readonly FoundWorktree[],
   prs: Iterable<PrRecord> = [],
+  watches: Iterable<{
+    key: string;
+    until: "settled" | "merged";
+    since: number;
+    deadline: number;
+  }> = [],
 ): GitSnapshotEvent {
+  const watched = new Map([...watches].map((watch) => [watch.key, watch]));
   const worktrees = [...records]
     .sort((a, b) => b.createdAt - a.createdAt)
     .map(({ v: _v, kind: _kind, ...record }): GitSnapshotWorktree => {
@@ -49,6 +59,11 @@ export function snapshotEvent(
     });
   const pullRequests = [...prs]
     .sort((a, b) => b.updatedAt - a.updatedAt)
-    .map(({ v: _v, kind: _kind, ...record }): GitSnapshotPr => record);
+    .map(({ v: _v, kind: _kind, ...record }): GitSnapshotPr => {
+      const watch = watched.get(record.key);
+      if (!watch) return record;
+      const { until, since, deadline } = watch;
+      return { ...record, watch: { until, since, deadline } };
+    });
   return { version: GIT_SNAPSHOT_VERSION, worktrees, found: [...found], prs: pullRequests };
 }

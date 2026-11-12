@@ -1,13 +1,14 @@
 ---
 name: babysit-pr
-description: Watch a pull request until it is green and every review comment is handled. Waits for CI on the head commit with job_watch or job_start instead of polling, reads the logs of failed checks, reproduces and fixes failures with the repository's own checks, pushes the fix, answers or fixes review comments, and repeats until the PR is green or a stop condition hits. Use when asked to babysit, watch, shepherd, or "get this PR green", or when delegated ownership of CI and review follow-ups for a PR.
+description: Watch a pull request until it is green and every review comment is handled. Waits for CI, pushes and reviews with git_pr_watch instead of polling, reads the logs of failed checks, reproduces and fixes failures with the repository's own checks, pushes the fix, answers or fixes review comments, and repeats until the PR is green or a stop condition hits. Use when asked to babysit, watch, shepherd, or "get this PR green", or when delegated ownership of CI and review follow-ups for a PR.
 ---
 
 # Babysit a pull request
 
 Drive one pull request to green CI with every review comment handled, without
-polling. The agent sleeps while CI runs: `job_watch` or `job_start` wakes it when
-the checks finish, and the agent ends its turn in between. This works in both a main session and a delegated worker: an open watch keeps the worker waiting and its completion wakes it through the normal concurrency limit.
+polling. The agent sleeps while CI runs: `git_pr_watch` wakes it when the checks
+finish, someone pushes or reviews, or the PR is merged or closed, and the agent
+ends its turn in between. This works in both a main session and a delegated worker: an open watch keeps the worker waiting and its report wakes it through the normal concurrency limit.
 
 ## Input and setup
 
@@ -33,45 +34,29 @@ again. When tasks were handed to you with handoff.todo, update their messages an
 
 ## 1. Wait for CI on the head commit
 
-Watch `git_pr_status` until its checks settle. It works with `gh` and with the
-MCP tools alike, and succeeds once checks were reported and none is pending:
+Call `git_pr_watch { pr }` and **end your turn**. It reads the PR on a timer,
+through `gh` or the MCP tools alike, and wakes you with a message when checks
+finish on the head. The message names the head SHA the result is for and the
+checks that failed. Do not poll, sleep, or call `git_pr_status` yourself while
+the watch runs.
 
-```json
-{
-  "toolCheck": {
-    "tool": "git_pr_status",
-    "args": { "pr": "https://github.com/OWNER/REPO/pull/NUMBER" },
-    "match": { "path": "prs.0.ciDone", "equals": true }
-  },
-  "intervalSeconds": 60,
-  "timeoutSeconds": 3600,
-  "label": "CI for PR NUMBER at SHA"
-}
-```
-
-It polls the PR, so the commit it settles on may not be the one you pushed:
-step 2 checks `headSha` before trusting the result. When someone else pushes to
-the branch often, pin the watch to the commit instead with a shell watch (`gh`
-only), which succeeds once checks exist on the SHA and none is still queued or
-running:
-
-```json
-{
-  "check": "gh api 'repos/OWNER/REPO/commits/SHA/check-runs?per_page=100' --jq '.total_count > 0 and ([.check_runs[] | select(.status != \"completed\")] | length == 0)' | grep -qx true",
-  "intervalSeconds": 60,
-  "timeoutSeconds": 3600,
-  "label": "CI for PR NUMBER at SHA"
-}
-```
+- It also reports, without ending, a head that moved (someone pushed), a changed
+  review decision, new reviews or comments, and new conflicts with the base. It
+  ends when the PR is merged or closed, or at its timeout (two hours unless you
+  pass `timeoutSeconds`).
+- If it answers that checks already finished, it does not watch: go to step 2
+  with the status it returned. If the head it names is not the commit you just
+  pushed, GitHub has not caught up; call it again.
+- After you push or reply on the PR, call `git_pr_watch` again before ending
+  your turn. The same watch continues from the status it returns, so your own
+  push and replies are not reported back to you.
+- The watch survives a reload or resume. If a message says it was lost or could
+  no longer read the PR, read the PR with `git_pr_status` and call
+  `git_pr_watch` again if it still needs watching. `git_pr_list` shows which
+  PRs are watched.
 
 When a single workflow run carries everything, `job_start` with
-`gh run watch RUN_ID --exit-status` is cheaper.
-
-Then **end your turn**. Do not poll, sleep, or call the check yourself while the
-watch runs. Each completion arrives as its own message: it wakes you when you are
-idle, and reaches you in the run you are in when you are not. If Pi restarts the
-watch is gone: you are told it was lost instead of left waiting for it, and you
-read the current head again and start a replacement watch only if the PR still needs watching. A same-process reload can re-adopt the watch, so check job_list before starting another.
+`gh run watch RUN_ID --exit-status` works too.
 
 If no checks appear within a few minutes of the push, look at the workflow
 triggers (`.github/workflows/`) before waiting longer: the change may not select
@@ -79,12 +64,14 @@ any job.
 
 ## 2. Triage the results
 
-When woken, call `git_pr_status { pr }` and confirm `headSha` is still the SHA
-you watched. If someone else pushed, start again from step 1 with the new SHA
-and tell the user. If `checks.failed` is 0, CI is green; go to step 4.
+The message that woke you says which head the checks finished on. If it is not
+the SHA you pushed (it also reports `Head moved` when someone else pushed), tell
+the user, treat the new head as the one to get green, and wait again from
+step 1. If every check passed, CI is green; go to step 4.
 
-Otherwise list the failing checks with `gh pr checks NUMBER` (or the MCP check
-runs for the head SHA). For every check that did not succeed:
+Otherwise the message names the failed checks; `gh pr checks NUMBER` (or the
+MCP check runs for the head SHA) has their runs. For every check that did not
+succeed:
 
 1. Read its failing log: `gh run view RUN_ID --log-failed`, or the MCP job-logs
    tool. Find the first real error, not the last line.
@@ -116,8 +103,9 @@ tried and what you saw.
 
 ## 4. Handle review comments
 
-Read the review threads and top-level comments once CI is settled, and again
-after each push.
+Read the review threads and top-level comments once CI is settled, again after
+each push, and when a watch reports new reviews or comments. To be woken for
+reviews that arrive after CI is green, watch with `until: "merged"`.
 
 - A comment asking for a change within the PR's scope: make it, verify it as in
   step 3, push, and reply briefly with what changed and the commit.
@@ -152,5 +140,5 @@ Also stop, and report the same way, when:
 - Never push an empty commit, or close and reopen the PR, to start CI again.
 - Never rewrite history on a branch someone else pushes to.
 - One concern per commit. A fix commit contains only that fix.
-- Keep watching through `job_watch`/`job_start`. A turn that waits in the
-  foreground or polls in a loop wastes the session.
+- Keep waiting through `git_pr_watch`. A turn that waits in the foreground or
+  polls in a loop wastes the session.

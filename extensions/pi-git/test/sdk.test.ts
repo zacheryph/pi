@@ -43,7 +43,11 @@ async function fixture(
     extensions: [
       (pi) =>
         piGit(pi, {
-          loadConfig: () => ({ worktreeRoot: box.root, trackReferenced: true }),
+          loadConfig: () => ({
+            worktreeRoot: box.root,
+            trackReferenced: true,
+            watchIntervalSeconds: 60,
+          }),
           // As on a machine without gh: git_pr_status must read through the MCP tool.
           runGh: async () => {
             throw new GhUnavailable("gh is not installed");

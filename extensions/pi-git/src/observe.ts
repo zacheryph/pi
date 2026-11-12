@@ -292,6 +292,20 @@ function checksFromRollup(items: readonly unknown[]): PrChecks | undefined {
   return seen || items.length === 0 ? checks : undefined;
 }
 
+/**
+ * Names of the check runs and status contexts that failed, in the order given, once each. Items
+ * are GraphQL `statusCheckRollup` entries or REST check runs and commit statuses.
+ */
+export function failedCheckNames(items: readonly unknown[]): string[] {
+  const names = new Set<string>();
+  for (const item of items) {
+    if (!isRecord(item) || checkOutcome(item) !== "failed") continue;
+    const name = typeof item.name === "string" && item.name ? item.name : item.context;
+    if (typeof name === "string" && name) names.add(name);
+  }
+  return [...names];
+}
+
 /** One check run or status context, from GraphQL or REST, as passed, failed or pending. */
 function checkOutcome(item: Record<string, unknown>): keyof PrChecks | undefined {
   const state = typeof item.state === "string" ? item.state.toUpperCase() : undefined;

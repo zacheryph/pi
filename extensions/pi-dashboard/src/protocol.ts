@@ -108,6 +108,8 @@ export interface GitSection {
     /** False when GitHub reports merge conflicts. */
     mergeable?: boolean;
     observedAt?: number;
+    /** Present while `git_pr_watch` waits on it: what the watch waits for. */
+    watching?: "settled" | "merged";
   }>;
   prTotal: number;
   /** PRs opened here and not merged or closed, over every PR (not just `prs`). */

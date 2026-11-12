@@ -88,6 +88,7 @@ try {
     "git_worktree_remove",
     "git_pr_list",
     "git_pr_status",
+    "git_pr_watch",
   ]) {
     assert.ok(tools.includes(name), `Missing tool: ${name}`);
   }

@@ -9,19 +9,25 @@
 import { isRecord } from "#foundations/guards";
 
 import { execFile } from "node:child_process";
-import { graphqlFacts, parsePrUrls, restFacts } from "#src/observe";
+import { failedCheckNames, graphqlFacts, parsePrUrls, restFacts } from "#src/observe";
 import { prKey, prUrl, type PrFacts, type PrRef } from "#src/prs";
 import { withRetry, type RetryOptions } from "#src/retry";
 
 /** The fields `gh pr view --json` is asked for. */
 export const GH_FIELDS =
-  "number,url,title,state,isDraft,reviewDecision,mergeable,headRefName,headRefOid,statusCheckRollup";
+  "number,url,title,state,isDraft,reviewDecision,mergeable,headRefName,headRefOid,statusCheckRollup,comments,reviews";
 
 export interface Fetched {
   title?: string;
   facts: PrFacts;
   /** `gh`, or the name of the MCP tool used. */
   source: string;
+  /** Names of the failed checks on the head, when the checks were read completely. */
+  failedChecks?: string[];
+  /** How many top-level comments the pull request has, when the read showed them. */
+  comments?: number;
+  /** How many reviews were submitted (a reply in a review thread is one too), when read. */
+  reviews?: number;
 }
 
 /** `gh` cannot answer at all (not installed, not signed in): try another way. */
@@ -102,8 +108,18 @@ export async function fetchWithGh(
   }
   if (!json || typeof json !== "object" || Array.isArray(json))
     throw new Error("gh pr view returned no pull request");
-  const { title, facts } = graphqlFacts(json as Record<string, unknown>);
-  return { ...(title ? { title } : {}), facts: facts ?? {}, source: "gh" };
+  const pr = json as Record<string, unknown>;
+  const { title, facts } = graphqlFacts(pr);
+  return {
+    ...(title ? { title } : {}),
+    facts: facts ?? {},
+    source: "gh",
+    ...(facts?.checks && Array.isArray(pr.statusCheckRollup)
+      ? { failedChecks: failedCheckNames(pr.statusCheckRollup) }
+      : {}),
+    ...(Array.isArray(pr.comments) ? { comments: pr.comments.length } : {}),
+    ...(Array.isArray(pr.reviews) ? { reviews: pr.reviews.length } : {}),
+  };
 }
 
 /**
@@ -135,9 +151,12 @@ export async function fetchWithMcp(
       return undefined;
     }
   };
+  /** Top-level comments, as the PR object counts them. */
+  let comments: number | undefined;
   const getPr = async () => {
     const json = await read("get");
     const parsed = restFacts(json, "");
+    comments = isRecord(json) && typeof json.comments === "number" ? json.comments : undefined;
     if (!parsed.facts?.state) throw new Error(`${tool} returned no pull request`);
     const url = isRecord(json) && typeof json.html_url === "string" ? json.html_url : "";
     const shown = parsePrUrls(url)[0]?.ref;
@@ -164,6 +183,8 @@ export async function fetchWithMcp(
     }
     throw new Error(`${tool} returned incomplete ${method}`);
   };
+  let failedChecks: string[] | undefined;
+  let reviews: number | undefined;
   try {
     const runs = await pages("get_check_runs");
     const status = await read("get_status");
@@ -175,13 +196,17 @@ export async function fetchWithMcp(
       throw new Error(`${tool} returned incomplete commit statuses`);
     if (typeof status.sha === "string" && status.sha !== facts.headSha)
       throw new Error(`${tool} returned commit statuses for a different head`);
-    facts.checks = restFacts({ check_runs: [...runs, ...status.statuses] }, "").facts?.checks;
+    const all = [...runs, ...status.statuses];
+    facts.checks = restFacts({ check_runs: all }, "").facts?.checks;
+    if (facts.checks) failedChecks = failedCheckNames(all);
   } catch {
     retry.signal?.throwIfAborted();
     // Partial metadata is useful, but partial checks must never wake a CI watch.
   }
   try {
-    Object.assign(facts, restFacts(await pages("get_reviews"), "/reviews").facts);
+    const submitted = await pages("get_reviews");
+    Object.assign(facts, restFacts(submitted, "/reviews").facts);
+    reviews = submitted.length;
   } catch {
     retry.signal?.throwIfAborted();
   }
@@ -192,7 +217,14 @@ export async function fetchWithMcp(
   if (latest.facts?.headSha !== facts.headSha)
     throw new Error(`${tool}: pull request head changed while reading status; read it again`);
   retry.signal?.throwIfAborted();
-  return { ...(pr.title ? { title: pr.title } : {}), facts, source: tool };
+  return {
+    ...(pr.title ? { title: pr.title } : {}),
+    facts,
+    source: tool,
+    ...(failedChecks ? { failedChecks } : {}),
+    ...(comments !== undefined ? { comments } : {}),
+    ...(reviews !== undefined ? { reviews } : {}),
+  };
 }
 
 /** The GitHub MCP tool that reads pull requests, among the tools a call can reach. */

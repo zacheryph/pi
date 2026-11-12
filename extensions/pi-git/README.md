@@ -17,6 +17,7 @@ Subagents come and go; the next one continues in the same directory.
 | `git_worktree_remove` | `{ path, force? }`. Removes a worktree; the branch is always kept. Refuses when removal would lose work (uncommitted changes, or commits on a detached `HEAD`) unless `force`. |
 | `git_pr_list`         | `{ includeReferenced? }`. The pull requests this session opened or looked at, with the last status a tool showed for each. Read-only; reads the ledger, not GitHub.            |
 | `git_pr_status`       | `{ pr?, includeReferenced? }`. Reads pull requests' current status from GitHub and records it. Read-only on GitHub; see [Fresh status](#fresh-status).                         |
+| `git_pr_watch`        | `{ pr, until?, timeoutSeconds?, stop? }`. Waits on a pull request and wakes the session when it changes; see [Watching a pull request](#watching-a-pull-request).              |
 
 `git_worktree_create`:
 
@@ -102,7 +103,8 @@ review nor makes an older state look new, so a subagent's checks read cannot
 reopen a PR its parent saw merged. The record also keeps when and through which
 tool it was last seen, and the last 20 tool calls that touched it, with the
 subagent that made each.
-The observer never asks GitHub itself; `git_pr_status` and `/git:refresh` do.
+The observer never asks GitHub itself; `git_pr_status`, `git_pr_watch` and
+`/git:refresh` do.
 A PR seen in a subagent is handed up to its parent, and opened-here wins when
 the two disagree. A read that only confirms what the ledger holds (a watch
 polling the same status) updates the record in memory without writing another
@@ -132,20 +134,7 @@ counts, conflicts and head commit from GitHub and records them:
   `ciDone` is true once checks were reported and none is pending. A call where
   every PR failed to read is an error.
 
-It is read-only, so `job_watch` can poll it while the agent ends its turn:
-
-```json
-{
-  "toolCheck": {
-    "tool": "git_pr_status",
-    "args": { "pr": "https://github.com/acme/api/pull/12" },
-    "match": { "path": "prs.0.ciDone", "equals": true }
-  },
-  "intervalSeconds": 60,
-  "timeoutSeconds": 3600,
-  "label": "CI for acme/api#12"
-}
-```
+To wait for a change instead of reading once, use `git_pr_watch`.
 
 `/git:refresh` re-reads every open PR in the ledger (at most 20) and re-checks
 every worktree. A command cannot run other tools, so it reads through `gh`
@@ -154,6 +143,75 @@ only; without `gh` it says so and points at `git_pr_status`.
 The retry classifier in `src/retry.ts` is copied from
 [`@gotgenes/pi-github-tools`](https://github.com/gotgenes/pi-packages/tree/main/packages/pi-github-tools)
 6.1.0 and keeps its MIT notice.
+
+## Watching a pull request
+
+`git_pr_watch { pr }` waits on a pull request while the agent ends its turn. It
+opens one item in the session's work host (`packages/pi-work`; owner `pi-git`,
+kind `pr`, label `PR 12 CI`), reads the pull request every
+`watchIntervalSeconds` with the reader `git_pr_status` uses, and compares each
+reading with the one before it. Every reading also goes into the ledger and the
+`git:snapshot`.
+
+- `until`: `"settled"` (default) ends the watch when checks finish on the head;
+  `"merged"` keeps it open through every report until the pull request is merged
+  or closed.
+- `timeoutSeconds`: 60 to 86400, default 7200. The watch ends with a message
+  when it passes, so a forgotten watch does not keep a subagent waiting forever.
+- `stop: true` cancels the watch without a message.
+
+A report is a `git:pr-watch` message that wakes the session, or reaches it in
+the run it is in. Each names the head commit it is for:
+
+| What changed                                                    | Line in the message                                                                        |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Checks finished on the head, also after a rerun or a push       | `Checks finished on head 1a2b3c4d5e6f: 1 failed (lint), 3 passed.` (at most 10 names)      |
+| The head moved                                                  | `Head moved from 1a2b3c4d5e6f to 9f8e7d6c5b4a: someone pushed.`                            |
+| The review decision changed                                     | `Review decision is now changes requested (was review required).`                          |
+| Reviews or top-level comments were added                        | `1 new review and 2 new comments since the last report. …`                                 |
+| It now conflicts with its base                                  | `It now conflicts with its base branch.`                                                   |
+| It was merged or closed (ends the watch)                        | `Merged.` or `Closed without merging.`                                                     |
+| The timeout passed (ends the watch)                             | `Timed out before checks finish on its head.`                                              |
+| Five reads in a row failed, or it cannot be read any more (end) | `Its status could not be read 5 times in a row: …` / `Its status can no longer be read: …` |
+
+```text
+Pull request acme/api#12:
+Head moved from 1a2b3c4d5e6f to 9f8e7d6c5b4a: someone pushed.
+Still watching until it is merged or closed.
+https://github.com/acme/api/pull/12
+```
+
+The last line before the URL says whether the watch goes on (`Still watching
+until …`) or `The watch has ended.` The message's `details` hold
+`{ key, url, until, ended, headSha, events }`.
+
+- **Nothing to wait for.** A pull request that is already merged or closed, or
+  whose checks already finished with `until: "settled"`, is not watched: the
+  result says so, with the status and the head it read.
+- **One watch per pull request.** A second call returns the running watch and
+  continues it from the status it just read, so the agent's own push or reply is
+  not reported back to it. A different `until`, or a `timeoutSeconds`, replaces
+  the watch. At most 10 pull requests are watched in one session.
+- **Reviews and comments** are counted, not read: a new review, a reply in a
+  review thread (GitHub stores it as a review) and a new top-level comment each
+  raise a count, the agent's own included. Counts read through `gh` and through
+  MCP are never compared with each other.
+- **Reads.** `gh` first; without it, the GitHub MCP `pull_request_read` tool,
+  through the context of the `git_pr_watch` call that started the watch. Calls
+  the watch makes through that tool are not recorded a second time by the
+  observer. A failed read is retried after 2, 4, 8 and then at most 15
+  intervals; the fifth failure in a row ends the watch.
+- **Reload and resume.** The item persists the pull request, `until`, the
+  deadline and the baseline; each later change of the baseline is a `git:watch`
+  session entry. On the next start of the same session pi-git adopts the item
+  and continues from the newest baseline, so nothing is reported twice. The
+  tool context is gone then, so an adopted watch reads through `gh` only and
+  ends with a message when `gh` cannot answer. A fork does not inherit the
+  watch: its item is reported lost there.
+- **Subagents.** A watch is open work like a job: a delegated worker that ends
+  its turn stays waiting and is woken by the report.
+- `git_pr_list`, `/git:prs` and the dashboard show which pull requests are
+  watched.
 
 ## Context card
 
@@ -202,7 +260,8 @@ Pull requests and worktrees in this session (restored after compaction; stored d
 ## Events
 
 `git:snapshot` on the session's `pi.events` bus:
-`{ version: 1, worktrees, found, prs }`. `worktrees` are this session's
+`{ version: 1, worktrees, found, prs }`. A pull request `git_pr_watch` waits on
+carries `watch: { until, since, deadline }`. `worktrees` are this session's
 records, newest first, each with its last measured `status` (`dirty`,
 `detached`, `unpushed`, `merged`) or `error`. `found` are worktrees under the
 root the ledger does not name. `prs` are the pull request records, most
@@ -214,11 +273,14 @@ and each status refresh.
 `~/.pi/agent/git.json`, overridden by the project's `.pi/git.json`:
 
 ```json
-{ "worktreeRoot": "~/.pi/agent/worktrees", "trackReferenced": true }
+{ "worktreeRoot": "~/.pi/agent/worktrees", "trackReferenced": true, "watchIntervalSeconds": 60 }
 ```
 
 - `worktreeRoot` holds every worktree pi-git creates. `~/` expands to the home
   directory; a relative path is relative to the session's cwd. Default:
   `<agent dir>/worktrees`.
 - `trackReferenced`: also record pull requests the session only looked at.
-  Default `true`; with `false`, only PRs opened here are recorded.
+  Default `true`; with `false`, only PRs opened here are recorded. A watched
+  pull request is always recorded.
+- `watchIntervalSeconds`: seconds between two reads of a pull request
+  `git_pr_watch` waits on. 5 to 3600, default `60`.

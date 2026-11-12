@@ -62,7 +62,7 @@ export interface JobsExtensionOptions {
 const WAKE_NOTE =
   "Returns immediately. End your turn after starting: you are woken automatically when it finishes. Do not poll with job_list/job_read, sleep or bash loops.";
 const CI_NOTE =
-  "For CI, watch an immutable target: `gh run watch <run-id> --exit-status`, or the checks of a specific commit SHA — not a PR number, which can move to a newer commit while you wait.";
+  "For CI, watch an immutable target: `gh run watch <run-id> --exit-status`, or the checks of a specific commit SHA — not a PR number, which can move to a newer commit while you wait. To wait on a pull request itself (its checks, reviews or merge), use git_pr_watch.";
 
 const timeoutSchema = (description: string) => ({
   type: "number",
@@ -424,7 +424,7 @@ export function createJobsExtension(options: JobsExtensionOptions = {}) {
       promptSnippet: "Run long commands in the background; you are woken when they finish",
       promptGuidelines: [
         "For waits longer than a minute (CI, long builds, polling a condition) use job_start or job_watch, then end your turn; the completion notification wakes you. Never poll them.",
-        "For CI, watch an immutable target (`gh run watch <run-id> --exit-status`, or checks for a specific commit SHA), not a PR number.",
+        "For CI, watch an immutable target (`gh run watch <run-id> --exit-status`, or checks for a specific commit SHA), not a PR number. To wait on a pull request itself, use git_pr_watch.",
       ],
       parameters: startParams as any,
       async execute(

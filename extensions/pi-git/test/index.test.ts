@@ -2,6 +2,7 @@ import { existsSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { fakePi, resetSessionTree } from "#test-helpers";
+import type { GitConfig } from "#src/config";
 import { GIT_SNAPSHOT_EVENT, type GitSnapshotEvent } from "#src/events";
 import { service } from "#session-tree";
 import piGit, { SERVICE_NAME } from "#src/index";
@@ -21,7 +22,7 @@ function harness(options: {
   root: string;
   entries?: unknown[];
   trackReferenced?: boolean;
-  loadConfig?: () => { worktreeRoot: string; trackReferenced: boolean };
+  loadConfig?: () => GitConfig;
   runGh?: GhRunner;
 }) {
   const entries: unknown[] = [...(options.entries ?? [])];
@@ -38,6 +39,7 @@ function harness(options: {
       (() => ({
         worktreeRoot: options.root,
         trackReferenced: options.trackReferenced ?? true,
+        watchIntervalSeconds: 60,
       })),
     now: () => (frozen ? clock : (clock += 1)),
     ...(options.runGh ? { runGh: options.runGh } : {}),
@@ -56,7 +58,10 @@ function harness(options: {
     sessionManager: {
       getSessionId: () => options.sessionId,
       getEntries: () => entries,
+      // The session's work host (packages/pi-work) reads its open items from the branch.
+      getBranch: () => entries,
     },
+    isIdle: () => true,
   };
   const fire = (event: string, data: object = {}) => fake.emit(event, data, ctx);
   const tool = (name: string, params: Record<string, unknown>) =>
@@ -92,6 +97,7 @@ describe("pi-git registration", () => {
       "git_worktree_remove",
       "git_pr_list",
       "git_pr_status",
+      "git_pr_watch",
     ]);
     expect(h.commands.has("git:refresh")).toBe(true);
     expect(h.commands.has("git:worktrees")).toBe(true);
@@ -408,10 +414,10 @@ describe("background refresh", () => {
           throw new Error("config unreadable");
         },
       });
-      const started = h.fire("session_start");
+      // Every start handler has run by now; the refresh it began is still waiting for git.
+      await h.fire("session_start");
       if (shutdown) await h.fire("session_shutdown");
       stale(h.ctx);
-      await started;
       await new Promise((resolve) => setTimeout(resolve, 200));
       expect(rejections).toEqual([]);
       expect(h.ui.notify).not.toHaveBeenCalled();
@@ -1127,5 +1133,314 @@ describe("git_pr_status and /git:refresh", () => {
       ].join("\n"),
       "warning",
     );
+  });
+});
+
+describe("git_pr_watch", () => {
+  const URL = "https://github.com/acme/api/pull/12";
+  const KEY = "github.com/acme/api#12";
+  const run = (status: string, conclusion = "", name = "unit") => ({
+    __typename: "CheckRun",
+    name,
+    status,
+    conclusion,
+  });
+  const view = (overrides: Record<string, unknown> = {}) =>
+    JSON.stringify({
+      number: 12,
+      url: URL,
+      title: "Add login",
+      state: "OPEN",
+      isDraft: false,
+      reviewDecision: "REVIEW_REQUIRED",
+      mergeable: "MERGEABLE",
+      headRefName: "feat/login",
+      headRefOid: "abc123",
+      statusCheckRollup: [run("IN_PROGRESS")],
+      comments: [],
+      reviews: [],
+      ...overrides,
+    });
+  const failed = {
+    statusCheckRollup: [run("COMPLETED", "FAILURE", "lint"), run("COMPLETED", "SUCCESS")],
+  };
+  type Result = { content: { text: string }[]; details: { watching: boolean; watch?: unknown } };
+  const watching = async (
+    runGh: GhRunner,
+    options: { entries?: unknown[]; trackReferenced?: boolean } = {},
+  ) => {
+    const h = harness({ sessionId: "parent", cwd: box.dir, root: box.root, runGh, ...options });
+    await h.fire("session_start");
+    // Only the watch's timer is faked: git and the worktree refresh run for real.
+    // A second session of the same test keeps the clock its adopted watch already waits on.
+    if (!vi.isFakeTimers()) {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      onTestFinished(() => void vi.useRealTimers());
+    }
+    const watch = (params: Record<string, unknown> = {}) =>
+      h.tool("git_pr_watch", { pr: "acme/api#12", ...params }) as unknown as Promise<Result>;
+    /** The work messages the session's host sent, as text. */
+    const messages = () =>
+      h.pi.sendMessage.mock.calls.map(([message]) => (message as { content: string }).content);
+    const watched = () => h.snapshots.at(-1)!.prs.find((pr) => pr.key === KEY)?.watch;
+    return { ...h, watch, messages, watched };
+  };
+  const interval = () => vi.advanceTimersByTimeAsync(60_000);
+
+  it("watches a PR, shows it as watched, and wakes the session when checks finish", async () => {
+    let reply = view();
+    const h = await watching(vi.fn(async () => reply));
+    const result = await h.watch();
+    expect(result.content[0].text).toBe(
+      [
+        "Now watching until checks finish on its head (120m left). End your turn: a message wakes you when checks finish, the head moves, a review or comment arrives, or it is merged or closed.",
+        "- acme/api#12 — Add login",
+        "  open · review required · checks 1 pending · head abc123 (via gh)",
+        `  ${URL}`,
+      ].join("\n"),
+    );
+    expect(result.details).toMatchObject({ watching: true, watch: { key: KEY, until: "settled" } });
+    expect(h.watched()).toMatchObject({ until: "settled" });
+    const listed = await h.tool("git_pr_list", {});
+    expect(listed.content[0].text).toContain(
+      "  watching until checks finish on its head (120m left)",
+    );
+    // The watch's item is persisted as open work.
+    expect(h.entries).toContainEqual(
+      expect.objectContaining({
+        customType: "work:item",
+        data: expect.objectContaining({
+          op: "open",
+          owner: "pi-git",
+          kind: "pr",
+          label: "PR 12 CI",
+        }),
+      }),
+    );
+
+    await interval();
+    expect(h.messages()).toEqual([]);
+    reply = view(failed);
+    await interval();
+    expect(h.messages()).toEqual([
+      [
+        "Pull request acme/api#12:",
+        "Checks finished on head abc123: 1 failed (lint), 1 passed.",
+        "The watch has ended.",
+        URL,
+      ].join("\n"),
+    ]);
+    expect(h.pi.sendMessage.mock.calls[0]).toMatchObject([
+      { customType: "git:pr-watch" },
+      { triggerTurn: true },
+    ]);
+    expect(h.watched()).toBeUndefined();
+    // Each read went into the ledger, and an unchanged one wrote no entry.
+    const records = h.ledger().filter((record) => (record as { kind: string }).kind === "pr");
+    expect(records).toHaveLength(2);
+    expect(records.at(-1)).toMatchObject({
+      status: { checks: { passed: 1, failed: 1, pending: 0 } },
+      calls: [{ tool: "git_pr_watch", toolCallId: "call-1" }],
+    });
+  });
+
+  it("returns the existing watch for a second call and continues from what it read", async () => {
+    let reply = view();
+    const runGh = vi.fn(async () => reply);
+    const h = await watching(runGh);
+    await h.watch();
+    // The agent pushed, then called again: its own push is not reported back.
+    reply = view({ headRefOid: "def456" });
+    const again = await h.watch();
+    expect(again.content[0].text).toMatch(
+      /^Already watching until checks finish on its head \(\d+m left\); it continues from this status\./,
+    );
+    expect(again.content[0].text).toContain("head def456");
+    expect(
+      h.entries.filter((entry) => (entry as { customType?: string }).customType === "work:item"),
+    ).toHaveLength(1);
+    await interval();
+    expect(h.messages()).toEqual([]);
+    reply = view({ headRefOid: "def456", statusCheckRollup: [run("COMPLETED", "SUCCESS")] });
+    await interval();
+    expect(h.messages()[0]).toContain("Checks finished on head def456: all 1 passed.");
+  });
+
+  it("replaces the watch when until changes", async () => {
+    const h = await watching(async () => view());
+    await h.watch();
+    const result = await h.watch({ until: "merged", timeoutSeconds: 600 });
+    expect(result.content[0].text).toMatch(
+      /^Now watching until it is merged or closed \(10m left\)/,
+    );
+    expect(h.watched()).toMatchObject({ until: "merged" });
+  });
+
+  it("does not watch what has nothing left to wait for", async () => {
+    let reply = view(failed);
+    const h = await watching(async () => reply);
+    const settled = await h.watch();
+    expect(settled.content[0].text).toMatch(
+      /^Not watching acme\/api#12: checks already finished on head abc123\. If that is not the commit you pushed/,
+    );
+    expect(settled.details.watching).toBe(false);
+    expect(h.watched()).toBeUndefined();
+    // Reviews and the merge can still be waited for.
+    const open = await h.watch({ until: "merged" });
+    expect(open.details.watching).toBe(true);
+    reply = view({ state: "MERGED" });
+    const merged = await h.watch({ until: "merged" });
+    expect(merged.content[0].text).toMatch(/^Not watching acme\/api#12: it is merged\.\n/);
+    expect(h.watched()).toBeUndefined();
+    expect(h.messages()).toEqual([]);
+  });
+
+  it("stops on request", async () => {
+    const runGh = vi.fn(async () => view());
+    const h = await watching(runGh);
+    await h.watch();
+    expect((await h.watch({ stop: true })).content[0].text).toBe("Stopped watching acme/api#12.");
+    expect((await h.watch({ stop: true })).content[0].text).toBe(
+      "acme/api#12 was not being watched.",
+    );
+    expect(h.watched()).toBeUndefined();
+    await interval();
+    expect(runGh).toHaveBeenCalledTimes(1);
+  });
+
+  it("caps the watches of one session", async () => {
+    const h = await watching(async () => view());
+    for (let number = 1; number <= 10; number++) await h.watch({ pr: `acme/api#${number}` });
+    await expect(h.watch({ pr: "acme/api#11" })).rejects.toThrow(
+      "git_pr_watch: 10 pull requests are already watched",
+    );
+    // One that is already watched is not a new watch.
+    expect((await h.watch({ pr: "acme/api#3" })).details.watching).toBe(true);
+  });
+
+  it("fails without starting a watch when the PR cannot be read", async () => {
+    const h = await watching(async () => {
+      throw new Error("HTTP 404: Not Found");
+    });
+    await expect(h.watch()).rejects.toThrow("git_pr_watch: HTTP 404: Not Found");
+    await expect(h.watch({ pr: "feat/login" })).rejects.toThrow("is not a pull request URL");
+    expect(h.snapshots.at(-1)!.prs).toEqual([]);
+  });
+
+  it("records a watched PR even when referenced PRs are not tracked", async () => {
+    const h = await watching(async () => view(), { trackReferenced: false });
+    await h.watch();
+    expect(h.watched()).toBeDefined();
+  });
+
+  it("adopts its watch after a reload and continues from the saved baseline", async () => {
+    let reply = view();
+    const first = await watching(async () => reply);
+    await first.watch({ until: "merged" });
+    reply = view({
+      reviewDecision: "CHANGES_REQUESTED",
+      reviews: [{ state: "CHANGES_REQUESTED" }],
+    });
+    await interval();
+    expect(first.messages()).toEqual([
+      [
+        "Pull request acme/api#12:",
+        "Review decision is now changes requested (was review required).",
+        "1 new review since the last report. A reply in a review thread counts as a review, and your own are counted.",
+        "Still watching until it is merged or closed.",
+        URL,
+      ].join("\n"),
+    ]);
+    await first.fire("session_shutdown");
+    await interval();
+    expect(first.messages()).toHaveLength(1);
+
+    const second = await watching(async () => reply, { entries: first.entries });
+    expect(second.watched()).toMatchObject({ until: "merged" });
+    await second.fire("resources_discover");
+    // Nothing was lost, and what was already reported is not reported again.
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(second.messages()).toEqual([]);
+    reply = view({ state: "MERGED" });
+    await interval();
+    expect(second.messages()).toEqual([
+      ["Pull request acme/api#12:", "Merged.", "The watch has ended.", URL].join("\n"),
+    ]);
+  });
+
+  it("reads through the GitHub MCP tool of the call that started it when gh is unavailable", async () => {
+    const h = await watching(async () => {
+      throw new GhUnavailable("gh is not installed");
+    });
+    let conclusion: string | null = null;
+    const executeTool = vi.fn(async (_name: string, args: { method: string }) => {
+      const body: Record<string, unknown> = {
+        get: {
+          number: 12,
+          html_url: URL,
+          title: "Add login",
+          state: "open",
+          draft: false,
+          comments: 0,
+          head: { ref: "feat/login", sha: "abc123" },
+        },
+        get_check_runs: {
+          total_count: 1,
+          check_runs: [
+            { name: "unit", status: conclusion ? "completed" : "in_progress", conclusion },
+          ],
+        },
+        get_status: { sha: "abc123", total_count: 0, statuses: [] },
+        get_reviews: [],
+      };
+      return {
+        isError: false,
+        result: { content: [{ type: "text", text: JSON.stringify(body[args.method]) }] },
+      };
+    });
+    const ctx = { ...h.ctx, executeTool, tools: [{ name: "mcp__github__pull_request_read" }] };
+    const result = (await h.pi.registerTool.mock.calls
+      .map(([tool]) => tool)
+      .find((tool) => tool.name === "git_pr_watch")!
+      .execute("call-7", { pr: "acme/api#12" }, undefined, undefined, ctx)) as Result;
+    expect(result.content[0].text).toContain("(via mcp__github__pull_request_read)");
+    // The watch's nested reads are its own: the observer does not record them a second time.
+    const before = h.ledger().length;
+    await h.fire("tool_result", {
+      toolName: "mcp__github__pull_request_read",
+      toolCallId: "call-7/9",
+      parentToolCallId: "call-7",
+      input: { method: "get", owner: "acme", repo: "api", pullNumber: 12 },
+      content: [{ type: "text", text: "{}" }],
+      isError: false,
+    });
+    expect(h.ledger()).toHaveLength(before);
+
+    conclusion = "failure";
+    await interval();
+    expect(h.messages()[0]).toContain("Checks finished on head abc123: 1 failed (unit).");
+  });
+
+  it("ends an adopted watch that can only be read through MCP, which a reload took away", async () => {
+    let available = true;
+    const runGh: GhRunner = async () => {
+      if (!available) throw new GhUnavailable("gh is not signed in");
+      return view();
+    };
+    const first = await watching(runGh);
+    await first.watch();
+    await first.fire("session_shutdown");
+    available = false;
+    const second = await watching(runGh, { entries: first.entries });
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(second.messages()).toEqual([
+      [
+        "Pull request acme/api#12:",
+        "Its status can no longer be read: gh is not signed in, and no GitHub MCP pull_request_read tool is available to read it instead",
+        "Call git_pr_watch again once it can be read.",
+        "The watch has ended.",
+        URL,
+      ].join("\n"),
+    ]);
   });
 });
