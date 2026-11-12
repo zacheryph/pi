@@ -350,7 +350,17 @@ describe("AgentTypeRegistry", () => {
         promptMode: "replace",
         delegate: true,
         toolNames: ["all", "todo_list", "todo_upsert", "todo_replace", "todo_remove", "todo_clear"],
+        reservedTools: ["edit", "write", "bash", "job_start"],
       });
+    });
+
+    it("delegates the work however the request is phrased", () => {
+      const prompt = makeRegistry().resolveAgentConfig("orchestrate").systemPrompt;
+      expect(prompt).toContain("# Delegation boundary");
+      expect(prompt).toContain(
+        "as a request for the outcome, not an instruction to do it yourself",
+      );
+      expect(prompt).toContain("edit, write, bash and job_start are reserved for your workers");
     });
 
     it("runs implementation tasks in worktrees it hands to workers as cwd", () => {

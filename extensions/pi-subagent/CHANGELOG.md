@@ -3,6 +3,18 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-12: Reserve the orchestrator's work tools for its workers
+
+- New `reserved_tools` frontmatter: the agent's own calls to these tools are
+  refused with a reason pointing at `subagent_start`. They stay registered, so
+  its workers still receive them; a main session also leaves them inactive.
+  `/subagent:agents` shows the field.
+- `orchestrate` reserves `edit`, `write`, `bash` and `job_start`, and gains a
+  "Delegation boundary" section: "can you", "can we" and "let's" ask for an
+  outcome, not for the orchestrator to do the work. It answers only from what
+  it holds or one or two quick reads, and delegates research, design,
+  implementation, debugging, testing and review.
+
 ## 2026-11-11: Share workspace development tooling
 
 - Use the root TypeScript and test configuration and root development commands;
