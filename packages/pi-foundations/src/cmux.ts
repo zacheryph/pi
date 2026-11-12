@@ -3,20 +3,43 @@ import { execFile } from "node:child_process";
 const TIMEOUT_MS = 1_500;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Optional public-CLI notifications, owned by one extension session. */
+/** What a notification says. Plain text; the caller sanitizes and bounds it. */
+export interface CmuxMessage {
+  title: string;
+  body: string;
+}
+
+/**
+ * Optional native notifications through cmux's public CLI, owned by one extension session.
+ * Outside cmux, or with `CMUX_PI_HOOKS_DISABLED=1`, every method is a silent no-op.
+ */
 export class CmuxNotifications {
   private readonly pending = new Set<Promise<unknown>>();
   private readonly active = new Set<() => void>();
   private stopped = false;
 
-  /** Never wait for the CLI on the question's open/close path. */
-  open(): () => void {
-    const env = { ...process.env };
-    const surface = env.CMUX_SURFACE_ID || env.CMUX_PANEL_ID;
-    if (this.stopped || !surface || env.CMUX_PI_HOOKS_DISABLED === "1") return () => {};
-    const cli = env.CMUX_BUNDLED_CLI_PATH || "cmux";
-    const workspace = env.CMUX_WORKSPACE_ID || env.CMUX_TAB_ID;
-    const run = (args: string[]) => runCli(cli, args, env);
+  /**
+   * Show a notification that stays until the user clears it: for something they act on later,
+   * after this session has ended its turn. Resolves true when cmux accepted it.
+   */
+  send(message: CmuxMessage): Promise<boolean> {
+    const target = this.target();
+    if (!target) return Promise.resolve(false);
+    const sent = target
+      .run(["notify", "--title", message.title, "--body", message.body, ...target.where])
+      .then((output) => output !== undefined);
+    this.track(sent);
+    return sent;
+  }
+
+  /**
+   * Show a notification for as long as something is open on screen; the returned function
+   * dismisses exactly that one. Never waits for the CLI on the open/close path.
+   */
+  open(message: CmuxMessage): () => void {
+    const target = this.target();
+    if (!target) return () => {};
+    const run = (args: string[]) => target.run(args);
     let closed = false;
     let id: string | undefined;
     const close = () => {
@@ -34,12 +57,10 @@ export class CmuxNotifications {
           "--id-format",
           "uuids",
           "--title",
-          "Pi needs your input",
+          message.title,
           "--body",
-          "Answer the questions in your terminal.",
-          "--surface",
-          surface,
-          ...(workspace ? ["--workspace", workspace] : []),
+          message.body,
+          ...target.where,
         ]);
         if (!output) return;
         try {
@@ -73,6 +94,21 @@ export class CmuxNotifications {
     } finally {
       clearTimeout(timer);
     }
+  }
+
+  /** The CLI and the pane to notify, or nothing when this process is not in cmux. */
+  private target():
+    | { run(args: string[]): Promise<string | undefined>; where: string[] }
+    | undefined {
+    const env = { ...process.env };
+    const surface = env.CMUX_SURFACE_ID || env.CMUX_PANEL_ID;
+    if (this.stopped || !surface || env.CMUX_PI_HOOKS_DISABLED === "1") return undefined;
+    const cli = env.CMUX_BUNDLED_CLI_PATH || "cmux";
+    const workspace = env.CMUX_WORKSPACE_ID || env.CMUX_TAB_ID;
+    return {
+      run: (args) => runCli(cli, args, env),
+      where: ["--surface", surface, ...(workspace ? ["--workspace", workspace] : [])],
+    };
   }
 
   private track(task: Promise<unknown>): void {

@@ -62,6 +62,14 @@ These modules have no Pi or pi-ui dependencies. Import them through
 - `src/guards.ts`: `isRecord` accepts non-null objects, including objects with a
   custom or null prototype, and rejects arrays.
 - `src/errors.ts`: `errorText` preserves `Error.message` or falls back to `String`.
+- `src/cmux.ts`: `CmuxNotifications`, native notifications through cmux's public
+  CLI, one instance per extension session. `open(message)` shows a notification
+  for as long as something is on screen and returns the function that dismisses
+  exactly that one; `send(message)` shows one that stays and resolves whether
+  cmux took it; `shutdown()` dismisses the open ones and drains pending CLI
+  calls within a bound. Outside cmux, with `CMUX_PI_HOOKS_DISABLED=1`, or when
+  the CLI is missing, fails or hangs, every call is a silent no-op. Callers
+  sanitize and bound the text.
 - `src/format.ts`: `oneLine(text, max?)` collapses whitespace and optionally caps
   the result including the ellipsis (zero returns empty text). `plural(n, one,
   many?)` returns the word only. `formatBytes(bytes, style?)` defaults to stash's
