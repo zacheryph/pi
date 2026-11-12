@@ -3,6 +3,11 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-11: Share workspace development tooling
+
+- Use the root TypeScript and test configuration and root development commands;
+  retain the workspace manifest and source aliases.
+
 ## 2026-11-11: Standardize source and test aliases
 
 - Use package-local `#src/*` and `#test/*` aliases and shared workspace aliases,

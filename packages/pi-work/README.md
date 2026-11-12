@@ -233,8 +233,8 @@ items learns that the last one is gone. A throwing listener is ignored.
 ## Development
 
 ```bash
-npm run check --workspace=pi-work
-npm test --workspace=pi-work
+npm run check
+npm run test:workspace -- pi-work
 ```
 
 `test/session.test.ts` runs the root host against a real `AgentSession` on the

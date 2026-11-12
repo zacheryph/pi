@@ -67,6 +67,8 @@ void test("shared dependency, compiler, and CI changes select all extensions", (
     "package-lock.json",
     "tsconfig.base.json",
     "tsconfig.json",
+    "tsconfig.hub.json",
+    "vitest.config.ts",
     ".oxlintrc.json",
     ".oxfmtrc.json",
     ".github/workflows/extensions.yml",

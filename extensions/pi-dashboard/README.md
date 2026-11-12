@@ -184,8 +184,8 @@ From the repository root:
 
 ```bash
 npm install --ignore-scripts
-npm run check --workspace=pi-dashboard
-npm test --workspace=pi-dashboard
+npm run check
+npm run test:workspace -- pi-dashboard
 ```
 
 The reporter imports snapshot names and types from their producers. It keeps

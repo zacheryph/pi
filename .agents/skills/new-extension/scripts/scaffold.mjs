@@ -153,13 +153,6 @@ const files = {
       files: ["src", "README.md"],
       peerDependencies: peer,
       engines: { node: manifest.engines?.node ?? ">=24" },
-      scripts: {
-        check: "oxfmt --check . && oxlint --deny-warnings . && npm run typecheck",
-        fix: "oxfmt --write . && oxlint --fix . && oxfmt --write .",
-        typecheck: "tsc --noEmit",
-        test: "vitest run",
-        "test:watch": "vitest",
-      },
       pi: { extensions: ["./src/index.ts"] },
     },
     null,
@@ -235,5 +228,5 @@ Changed: ${["package.json", "scripts/verify-bundle.mjs", ...(values["no-install"
 
 Next: add it to the root README (layout tree and an Extensions section), implement
 src/index.ts, and extend the tests. Then:
-  npm run check -w ${dir} && npm test -w ${dir} && npm run verify:bundle${values["no-install"] ? "\n  (run npm install --ignore-scripts first: the lockfile is not updated)" : ""}
+  npm run check && npm run test:workspace -- ${dir} && npm run verify:bundle${values["no-install"] ? "\n  (run npm install --ignore-scripts first: the lockfile is not updated)" : ""}
 `);

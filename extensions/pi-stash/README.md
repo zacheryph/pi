@@ -168,6 +168,6 @@ From the repository root:
 
 ```bash
 npm install --ignore-scripts
-npm run check --workspace=pi-stash
-npm test --workspace=pi-stash
+npm run check
+npm run test:workspace -- pi-stash
 ```

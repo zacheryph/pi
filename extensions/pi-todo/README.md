@@ -339,8 +339,8 @@ pi-dashboard uses it for its task counts.
 ## Develop
 
 ```bash
-npm run check --workspace=pi-todo
-npm run test --workspace=pi-todo
+npm run check
+npm run test:workspace -- pi-todo
 npm run verify:bundle
 ```
 

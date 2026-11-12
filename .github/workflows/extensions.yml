@@ -34,7 +34,7 @@ jobs:
         run: node scripts/select-test-extensions.mjs
 
   test-extensions:
-    name: Check and test (${{ matrix.extension }})
+    name: Test (${{ matrix.extension }})
     needs: select-extensions
     if: needs.select-extensions.outputs.has-extensions == 'true'
     runs-on: ubuntu-26.04
@@ -53,14 +53,12 @@ jobs:
       - name: Install dependencies
         id: install
         run: npm ci --ignore-scripts
-      - name: Check formatting, lint, and types
-        run: npm run check --workspace="$EXTENSION"
       - name: Test
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        run: npm run test --workspace="$EXTENSION"
+        run: npm run test:workspace -- "$EXTENSION"
 
   repository-checks:
-    name: Check repository scripts and formatting
+    name: Check repository and scripts
     runs-on: ubuntu-26.04
     timeout-minutes: 10
     steps:
@@ -70,8 +68,7 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci --ignore-scripts
-      - run: npm run format:check
-      - run: npm run lint
+      - run: npm run check
       - run: node --test scripts/*.test.mjs
 
   verify-bundle:

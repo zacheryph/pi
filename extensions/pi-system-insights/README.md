@@ -101,6 +101,6 @@ npm run verify:bundle
 Package-only:
 
 ```bash
-npm run check --workspace=pi-system-insights
-npm test --workspace=pi-system-insights
+npm run check
+npm run test:workspace -- pi-system-insights
 ```

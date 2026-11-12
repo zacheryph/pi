@@ -4,9 +4,8 @@
 // missing step fails CI instead of silently leaving code out of the bundle.
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, posix } from "node:path";
+import { workspaceRunner } from "./workspaces.mjs";
 
-/** Scripts CI runs in every workspace (`npm run <script> --workspace=<dir>`). */
-const REQUIRED_SCRIPTS = ["check", "test"];
 const WORKSPACE_ROOTS = ["extensions", "packages"];
 
 /**
@@ -49,9 +48,7 @@ export function registrationProblems({ manifest, directories, workspaces, exists
     if (workspace.name !== base) {
       problems.push(`${dir}/package.json name is "${workspace.name}", expected "${base}"`);
     }
-    for (const script of REQUIRED_SCRIPTS) {
-      if (!workspace.scripts?.[script]) problems.push(`${dir} has no "${script}" script`);
-    }
+    if (!workspaceRunner(dir)) problems.push(`workspace ${dir} has no supported test runner`);
     const entries = (workspace.pi?.extensions ?? []).map((entry) => normal(join(dir, entry)));
     const skills = (workspace.pi?.skills ?? []).map((entry) => normal(join(dir, entry)));
     if (dir.startsWith("packages/") && (entries.length || skills.length)) {

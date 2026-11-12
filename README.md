@@ -57,6 +57,9 @@ Use `pi config` to enable or disable individual extensions within the bundle.
 pi-personal/
 ├── package.json                         # bundle manifest + private dev workspace
 ├── tsconfig.base.json
+├── tsconfig.json                        # shared source and test type checking
+├── tsconfig.hub.json                    # plain-Node hub syntax constraints
+├── vitest.config.ts                     # projects derived from npm workspaces
 ├── skills/
 │   ├── babysit-pr/                      # drives a pull request to green
 │   ├── execute-roadmap/                 # carries out a chosen roadmap
@@ -123,8 +126,9 @@ pi-personal/
     └── support/
 ```
 
-Each extension directory is an npm workspace with its own `package.json`,
-`tsconfig.json` (extending the root base), and `check`/`test` scripts.
+Each extension directory is an npm workspace with its own `package.json`.
+TypeScript configuration, Vitest projects and development commands live at the
+root; registering a workspace includes its source and tests automatically.
 
 Root `pi.extensions` lists entry points explicitly. Pi loads each as its own
 extension; helper files and tests are not loaded as extensions. `packages/` holds
@@ -497,22 +501,26 @@ enabled for runtime source. Terminal-control regexes have local lint explanation
 The fix command formats again after successful lint fixes so it leaves code ready
 for the formatting check.
 
-These check/test commands cover every development workspace. To run one
-workspace, pass it with `-w`, e.g. `npm test -w extensions/pi-todo`. Pi modules
+These check/test commands cover every development workspace. Run one with
+`npm run test:workspace -- pi-todo` (a name or directory), or watch it with
+`npm run test:watch -- pi-todo`. Direct Vitest filtering also works:
+`npx vitest run --project pi-todo`. Pi modules
 are dev dependencies for testing and peer dependencies for runtime; Pi supplies its
 own modules when loading extensions.
 
-GitHub Actions runs `check` and `test` in parallel jobs per extension workspace,
+GitHub Actions runs tests in parallel jobs per selected workspace,
 plus `verify:bundle` and the bundle scenario tests in `test/` whenever any
 workspace is selected.
-A repository-wide job always checks formatting and lint, including scripts. Pull requests
+A repository-wide job checks formatting, lint and types once, including scripts.
+It also checks the dashboard hub's plain-Node syntax constraints and the job e2e
+scripts. Pull requests
 select extensions with changes under their directory; changes to root
 manifests/lockfiles, `.nvmrc`, shared TypeScript or Oxc settings, workflows, or scripts
 select all extensions. Pushes to `main` always check and test all extensions.
 Unrelated PR changes skip the extension matrix.
 The repository job also checks registration
 (`scripts/bundle-manifest.test.mjs`): every directory under `extensions/` and
-`packages/` is a workspace named after it with `check` and `test` scripts, and root
+`packages/` is a workspace named after it with a supported test runner, and root
 `pi.extensions` and `pi.skills` are exactly what the extension workspaces declare. Matrix selection is tested with
 `node --test scripts/select-test-extensions.test.mjs`. CI reads its Node.js
 version from `.nvmrc`; `nvm use` or `fnm use` picks up the same version locally.
