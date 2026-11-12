@@ -10,7 +10,12 @@ import defaultExtension from "../src/extension.ts";
 import { alive, sleep, tempDir, waitForPid, waitUntil, tick } from "./helpers.ts";
 import { JobManager } from "../src/jobs.ts";
 import { sessionOwners } from "../src/ownership.ts";
-import { openRecords, WORK_ENTRY, WORK_LOST } from "../../../packages/pi-work/src/index.ts";
+import {
+  openRecords,
+  WORK_ENTRY,
+  WORK_LOST,
+  WORK_WAKE,
+} from "../../../packages/pi-work/src/index.ts";
 import { forget, link } from "../../../packages/pi-session-tree/src/index.ts";
 import { waitFor } from "../../../packages/pi-test-helpers/src/wait.ts";
 
@@ -542,8 +547,12 @@ void test("a completion sent before Escape is never resent or queued again", asy
   assert.equal(sent.length, 1, "pi already holds it in the transcript");
 });
 
-for (const event of ["session_compact", "session_compact_failed", "session_tree"]) {
-  void test(`busy without a run: recorded without a turn, nothing re-sent after ${event}`, async (t) => {
+for (const [event, payload] of [
+  ["session_compact", {}],
+  ["session_compact_failed", { aborted: true }],
+  ["session_tree", {}],
+] as const) {
+  void test(`busy without a run: recorded without a turn, nothing sent after ${event}`, async (t) => {
     const { dir, call, sent, state, emit, manager } = await setup(t);
     state.idle = false; // compacting / summarizing a branch: no agent_start, but not idle
     await call("job_start", { command: "echo busy", timeoutSeconds: 10 }, dir);
@@ -555,11 +564,29 @@ for (const event of ["session_compact", "session_compact_failed", "session_tree"
       "must not start a run while pi is busy",
     );
     state.idle = true;
-    await emit(event, { type: event });
+    await emit(event, { type: event, ...payload });
     await tick();
     assert.equal(sent.length, 1);
   });
 }
+
+void test("busy without a run: a compaction that failed is followed by one wake, not a second completion", async (t) => {
+  const { dir, call, sent, state, emit, manager } = await setup(t);
+  state.idle = false;
+  await call("job_start", { command: "echo busy", timeoutSeconds: 10 }, dir);
+  await waitUntil(() => manager()!.get("j1")?.status === "succeeded", 5000, "job");
+  assert.equal(sent.length, 1);
+  state.idle = true;
+  await emit("session_compact_failed", { type: "session_compact_failed", aborted: false });
+  await tick();
+  assert.equal(sent.length, 2);
+  assert.equal(sent[1].message.customType, WORK_WAKE);
+  assert.deepEqual(sent[1].options, { triggerTurn: true });
+  // Paid once: a second failure owes nothing.
+  await emit("session_compact_failed", { type: "session_compact_failed", aborted: false });
+  await tick();
+  assert.equal(sent.length, 2);
+});
 
 void test("a run started by our own wake records the completions that follow", async (t) => {
   const { dir, call, sent, state, emit, manager } = await setup(t);

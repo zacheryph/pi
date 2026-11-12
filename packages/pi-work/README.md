@@ -77,15 +77,49 @@ provides the **root host** unless a host is already offered under the session id
 A message is a custom message in the transcript, so the transcript is the inbox.
 The host sends it with `pi.sendMessage` and lets Pi's run boundaries do the rest:
 
-| When the message arrives           | What happens                                                                                                                                                                    |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Session idle                       | The root host sends it with `triggerTurn: true`: Pi starts a run with the message as its trigger.                                                                               |
-| A run is active                    | `triggerTurn: false`: Pi appends it at the end of the current turn. If no other turn follows, `agent_before_settle` returns `continue: true`: one more request in the same run. |
-| Escape or abort during the run     | The message is in the transcript, no turn is forced, and the next run sees it.                                                                                                  |
-| Pi busy without a run (compaction) | `triggerTurn: false`: appended at once, answered by the next run.                                                                                                               |
+| When the message arrives             | What happens                                                                                                                                                                    |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Session idle                         | The root host sends it with `triggerTurn: true`: Pi starts a run with the message as its trigger.                                                                               |
+| A run is active                      | `triggerTurn: false`: Pi appends it at the end of the current turn. If no other turn follows, `agent_before_settle` returns `continue: true`: one more request in the same run. |
+| Escape or abort during the run       | The message is in the transcript, no turn is forced, and the next run sees it.                                                                                                  |
+| Pi busy without a run (compaction)   | `triggerTurn: false`: appended at once. The root host then owes a wake, paid when Pi is idle (below).                                                                           |
+| After the run's last settle decision | Appended as the run ends. The root host owes a wake, paid when Pi is idle (below).                                                                                              |
 
 `src/delivery.ts` holds the mechanism (`Delivery`, `continuesRun`). It was moved
 here from pi-job, which now completes items and leaves delivery to the host.
+
+### The wake the root host owes
+
+A message can reach the transcript at a moment when nothing starts a run for it: Pi is busy
+without a run (a manual `/compact`), or the run is past its last chance to continue (another
+extension completed an item after the host's `agent_before_settle` handler, before
+`agent_settled`). The root host then owes the session a wake and pays it once Pi is idle, with one
+`work:wake` message (`WORK_WAKE`) sent with `triggerTurn: true`. The message carries no result:
+the results are the work messages before it. Several messages owed together are answered by one
+run.
+
+Pi has no extension event for "idle again", and `waitForIdle()` exists only on a command context.
+So the root host registers one command, `/work:wake` (`WORK_WAKE_COMMAND`), dispatches it to itself
+with `pi.sendUserMessage("/work:wake", { expandPromptTemplates: true })` and waits there. Pi
+resolves that wait on every path out of a compaction, a `/tree` summary or a run, however long
+other extensions' handlers take, so nothing is polled and no timer guesses. The command is
+registered by the extension instance that provides the root host, at `session_start`. Typed by a
+user it only reports whether anything waits.
+
+| What happened while the wake was owed                          | Result                                                                  |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| The compaction succeeded                                       | One run, when Pi is idle.                                               |
+| The compaction failed for a reason other than a cancel         | One run: the failure does not concern the work.                         |
+| The compaction was cancelled (Escape, an extension's `cancel`) | No run. The message waits for the next prompt, as after an aborted run. |
+| The run that ended was aborted, or failed                      | No run.                                                                 |
+| A prompt was submitted (one queued during the compaction too)  | No wake: that prompt's run sees the message.                            |
+| `/tree` moved the leaf, the session was reloaded or replaced   | The wake is dropped with the branch or instance it was owed on.         |
+| `/tree` was cancelled or its summary failed                    | No run: Pi emits no event that says how it ended.                       |
+
+Where no command context can wait (an `AgentSession` whose embedder binds no command actions), the
+wake is paid only if Pi is already idle; otherwise the message waits for the next prompt, as before.
+What remains Pi-side is in pi-job's `UPSTREAM-ISSUES.md`: an idle wake can still collide with a
+user prompt that is being prepared (#1).
 
 ### When an item closes
 
@@ -128,9 +162,8 @@ reads the newest transcript entries only while an item waits, hands each custom 
   (`ensureWorkHost` in a managed child) forwards `agent_start`, `agent_settled` and
   `agent_before_settle` to it and reads no landing. A second reader would poll twice and drop the
   waiting items whose marks it did not make.
-- The final-settle wake is deliberately a managed-child feature. The root wakes an idle session with
-  `triggerTurn: true`; a message landing in the tiny window between the last `agent_before_settle`
-  and `agent_settled` waits in the transcript for the next prompt, and is never lost.
+- Both hosts answer a message that landed between the last `agent_before_settle` and
+  `agent_settled`. A managed child asks its manager for a run; the root owes a wake (above).
 - `tracker.unanswered(delivers)` answers a second transcript question: does the transcript end with a
   message of a type the host delivered (`host.delivers(customType)`) and no answer after it? A
   managed child asks it at `agent_settled` to find a message that arrived after the run's last

@@ -25,6 +25,19 @@ export const WORK_LOST = "work:lost";
 export const WORK_CALLED_OFF = "work:called-off";
 
 /**
+ * Custom message type of the root host's wake: the message that starts a run for work messages
+ * that reached the transcript while Pi could not be woken (a compaction, or the end of a run after
+ * its last chance to continue). It carries no result; the results are the messages before it.
+ */
+export const WORK_WAKE = "work:wake";
+
+/**
+ * The slash command the root host registers and dispatches to itself to reach a command context,
+ * the only extension context with `waitForIdle()`. Typed by a user it reports that nothing waits.
+ */
+export const WORK_WAKE_COMMAND = "work:wake";
+
+/**
  * The `kind` of the item a delegated session opens when it asks the agent that delegated to it a
  * question. It holds the session open like any other item until the delegator answers, and the
  * delegator's answer closes it (see `WorkHostRuntime.cancelOpen`).

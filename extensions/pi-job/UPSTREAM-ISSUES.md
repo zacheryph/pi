@@ -1,9 +1,10 @@
 # Upstream issues (pi runtime) affecting pi-jobs delivery
 
-Draft issue texts for `@earendil-works/pi-coding-agent` (observed on 1.0.3; line numbers below refer to that version). pi-jobs does not
+Draft issue texts for `@earendil-works/pi-coding-agent` (observed on 1.0.3; line numbers below refer to that version; all five
+were checked again on 1.5.2, which changes none of them). pi-jobs does not
 work around these with timers or heuristics. The two races (#1 and #2) have deterministic
-reproductions in `test/agent-session.test.ts`; they are skipped and point here. Issues #3, #4 and
-#5 no longer affect pi-jobs (see each); they stay for other extensions that hit them. Line references are to
+reproductions in `test/agent-session.test.ts`; they are skipped and point here. Issues #3 and #4
+no longer affect pi-jobs, and #5 only in part (see each); they stay for other extensions that hit them. Line references are to
 `dist/core/agent-session.js`.
 
 ---
@@ -103,8 +104,11 @@ path.
 
 ## 4. No extension event after compaction state is cleared
 
-**No longer affects pi-jobs.** It no longer waits for compaction to end: a completion during
-compaction is appended at once with `triggerTurn: false`.
+**No longer affects pi-jobs.** A completion during compaction is appended at once with
+`triggerTurn: false`, and the root work host (packages/pi-work) starts a run for it once pi is idle.
+It learns that without this event: it dispatches a command of its own and awaits the command
+context's `waitForIdle()`, which pi resolves after the compaction state is cleared (checked on
+1.5.2). An extension event would still be the simpler contract.
 
 **Summary.** `session_compact` is emitted before `_clearManualCompactionState()`
 (l. 2205–2223), so `ctx.isIdle()` is still `false` inside the handler. `compaction_end` is
@@ -133,8 +137,12 @@ add an extension event that fires once the session is idle again (see #5).
 
 ## 5. No reliable post-teardown event for branch summarization (`/tree`)
 
-**No longer affects pi-jobs.** It no longer waits for the navigation to end: a completion during it
-is appended at once with `triggerTurn: false` (to the branch current when it arrived).
+**Affects pi-jobs only in the outcome.** A completion during the navigation is appended at once
+with `triggerTurn: false` (to the branch current when it arrived). The root work host can wait for
+the navigation to end (`waitForIdle()` on a command context), but no event says whether it was
+cancelled, aborted or failed, so it starts no run afterwards: the completion waits for the next
+prompt. `session_tree_end { outcome }` would let it answer after a failure, as it does after a
+failed compaction.
 
 **Summary.** `navigateTree()` sets `_branchSummaryAbortController` (busy, `isIdle() === false`)
 for the whole navigation and clears it in `finally` (l. 3198–3318).

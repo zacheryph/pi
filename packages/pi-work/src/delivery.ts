@@ -13,9 +13,10 @@
  *    abort the message stays in the transcript and no turn is forced; the next run sees it.
  *
  * What this does not do: wake an idle session that was busy without a run (a manual `/compact`
- * or `/tree`) when the message arrived. The message is in the transcript, and the next run
- * answers it. Pi-side races on the idle path are documented in pi-job's UPSTREAM-ISSUES.md
- * (#1, #2).
+ * or `/tree`) when the message arrived, or one whose run was past its last chance to continue.
+ * The message is in the transcript; whoever provides the host answers it (the root host owes a
+ * wake, see root.ts; a managed child asks its manager for a run). Pi-side races on the idle path
+ * are documented in pi-job's UPSTREAM-ISSUES.md (#1, #2).
  *
  * `Delivery` knows nothing about Pi: a `DeliveryHost` says whether Pi is idle and how to send,
  * which is also the seam for whoever provides a work host (the root session sends with

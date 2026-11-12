@@ -3,6 +3,20 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-12: Completions during a compaction are answered
+
+Issue #126. No source change in pi-job: the root work host (packages/pi-work) now starts one run,
+once pi is idle, for completions that arrived during a manual compaction or after a run's last
+chance to continue.
+
+- `test/extension.test.ts`: a compaction that failed is followed by one `work:wake` message that
+  starts a run, and by no second one; a cancelled compaction (`aborted: true`), a successful one
+  seen by a fake Pi with no command context, and a `/tree` are followed by nothing, as before.
+- README: the delivery table and the limitations list say what is answered and what still waits for
+  the next prompt. `UPSTREAM-ISSUES.md`: #4 notes the route the host takes instead of the missing
+  event, #5 that a cancelled or failed `/tree` is still not answered, and that 1.5.2 changes none of
+  the five.
+
 ## 2026-11-12: Share plain-data helpers through pi-foundations
 
 - Reuse plain-data guards, error text, whitespace and numeric formatting from pi-foundations; retain log units and completion wording.
