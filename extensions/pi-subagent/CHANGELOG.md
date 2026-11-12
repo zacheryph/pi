@@ -3,6 +3,15 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-12: Align the orchestrator with the execute-roadmap skill
+
+- `orchestrate` waits on pull requests with `git_pr_watch` (it named
+  `job_watch` on `git_pr_status` before), calls `user_notify` when it ends its
+  turn waiting on the user, and defers to the execute-roadmap skill for how a
+  roadmap's steps are delivered, verified and landed.
+- Removed what the babysit-pr and execute-roadmap skills already say: the
+  steps of fixing a failed check, and when a pull request's worktree goes.
+
 ## 2026-11-12: Reserve the orchestrator's work tools for its workers
 
 - New `reserved_tools` frontmatter: the agent's own calls to these tools are

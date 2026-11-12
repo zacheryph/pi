@@ -373,19 +373,28 @@ describe("AgentTypeRegistry", () => {
       expect(prompt).toContain("subagent_get without agent_id for the workers you started");
     });
 
-    it("checks pull requests with git_pr_status and waits for CI without polling", () => {
+    it("reads pull requests with git_pr_status and waits on them with git_pr_watch", () => {
       const prompt = makeRegistry().resolveAgentConfig("orchestrate").systemPrompt;
-      expect(prompt).toContain("Read its state, review decision and checks with git_pr_status");
-      expect(prompt).toContain("start job_watch on git_pr_status (match prs.0.ciDone)");
-      expect(prompt).toContain("once git_pr_status shows the PR merged");
+      expect(prompt).toContain("read it with git_pr_status rather than gh");
+      expect(prompt).toContain("Wait on it with git_pr_watch and end your turn; never poll.");
+      expect(prompt).not.toContain("job_watch on git_pr_status");
+      expect(prompt).toContain("a task to land a PR stays open until it is merged");
+      expect(prompt).toContain("Never approve or merge.");
     });
 
     it("can give a PR owner the CI and review follow-up loop", () => {
       const prompt = makeRegistry().resolveAgentConfig("orchestrate").systemPrompt;
-      expect(prompt).toContain("Own the CI watch yourself or assign it to a worker");
-      expect(prompt).toContain("A worker can use the babysit-pr skill");
-      expect(prompt).toContain("Keep one owner for that loop.");
+      expect(prompt).toContain("Keep one owner for a PR's watch");
+      expect(prompt).toContain("a worker that owns the whole loop with the babysit-pr skill");
       expect(prompt).not.toContain("a watch it starts would wake no one");
+    });
+
+    it("notifies the user when work waits on them, and defers to execute-roadmap", () => {
+      const prompt = makeRegistry().resolveAgentConfig("orchestrate").systemPrompt;
+      expect(prompt).toContain("call user_notify once for that event");
+      expect(prompt).toContain(
+        "To carry out a roadmap document, follow the execute-roadmap skill.",
+      );
     });
 
     it("stays available: delegates in the background and ends its turn instead of waiting", () => {
