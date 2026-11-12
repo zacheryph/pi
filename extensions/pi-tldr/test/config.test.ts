@@ -1,21 +1,26 @@
-import { beforeEach, expect, it, onTestFinished } from "vitest";
+import { afterEach, beforeEach, expect, it, onTestFinished, vi } from "vitest";
 import { settingsDirs, type SettingsDirs } from "../../../packages/pi-test-helpers/src/temp.ts";
-import { DEFAULT_CONFIG, loadTldrConfig } from "../src/config.ts";
-let dirs: SettingsDirs, agentDir: string, cwd: string;
+import { tldrSettings } from "../src/config.ts";
+let dirs: SettingsDirs;
+const DEFAULTS = { model: "auto", setSessionName: true };
+const load = () => tldrSettings.load(dirs.cwd, dirs.agentDir);
 beforeEach(() => {
   dirs = settingsDirs(onTestFinished, "tldr.json", "tldr-config-");
-  ({ agentDir, cwd } = dirs);
 });
-it("layers global and project settings without weakening strict validation", () => {
-  expect(loadTldrConfig(cwd, agentDir)).toEqual(DEFAULT_CONFIG);
+afterEach(() => vi.restoreAllMocks());
+it("layers global and project settings", () => {
+  expect(load()).toEqual(DEFAULTS);
   dirs.writeGlobal({ model: " custom/luna ", setSessionName: false });
   dirs.writeProject({ setSessionName: true });
-  expect(loadTldrConfig(cwd, agentDir)).toEqual({ model: "custom/luna", setSessionName: true });
+  expect(load()).toEqual({ model: "custom/luna", setSessionName: true });
 });
 it.each(["{bad", "[]", "null", '{"model":""}', '{"setSessionName":"yes"}'])(
-  "rejects invalid configuration %s with its path",
+  "warns about invalid configuration %s with its path and keeps the global layer",
   (raw) => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    dirs.writeGlobal({ model: "custom/luna" });
     dirs.writeProject(raw);
-    expect(() => loadTldrConfig(cwd, agentDir)).toThrow(dirs.projectFile);
+    expect(load()).toEqual({ ...DEFAULTS, model: "custom/luna" });
+    expect(warn).toHaveBeenCalledExactlyOnceWith(expect.stringContaining(dirs.projectFile));
   },
 );

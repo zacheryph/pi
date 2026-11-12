@@ -8,7 +8,7 @@ import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { node } from "../../../packages/pi-session-tree/src/index.ts";
 import { contextCard, treeService } from "../../../packages/pi-session-state/src/index.ts";
-import { DEFAULT_CONFIG, loadStashConfig, type StashConfig } from "./config.ts";
+import { stashSettings, type StashConfig } from "./config.ts";
 import {
   PREVIEW_MAX_BYTES,
   PREVIEW_MAX_LINES,
@@ -214,7 +214,7 @@ interface ListDetails {
 
 export interface StashExtensionDependencies {
   store?: BlobStore;
-  loadConfig?: () => StashConfig;
+  loadConfig?: (cwd: string) => StashConfig;
 }
 
 function listText(entries: StashRecord[], total: number, now = Date.now()): string {
@@ -262,7 +262,7 @@ export default function stashExtension(
   dependencies: StashExtensionDependencies = {},
 ): void {
   let store = dependencies.store;
-  let config: StashConfig = { ...DEFAULT_CONFIG };
+  let config = stashSettings.defaults();
   let index = createEmptyIndex();
 
   /**
@@ -734,7 +734,7 @@ export default function stashExtension(
   };
 
   pi.on("session_start", async (_event, ctx) => {
-    config = (dependencies.loadConfig ?? loadStashConfig)();
+    config = (dependencies.loadConfig ?? stashSettings.load)(ctx.cwd);
     restore(ctx);
     try {
       // Refresh what this session still references, then expire the rest.

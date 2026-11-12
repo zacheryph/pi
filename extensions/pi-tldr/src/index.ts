@@ -1,5 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { DEFAULT_CONFIG, loadTldrConfig, type TldrConfig } from "./config.js";
+import { tldrSettings } from "./config.js";
 import {
   parseTldrResponse,
   runTldrModel,
@@ -11,7 +11,7 @@ import { showTldr } from "./viewer.js";
 
 /** Autonomous title request is deliberately never awaited by the first agent run. */
 export default function piTldr(pi: ExtensionAPI): void {
-  let config: TldrConfig = { ...DEFAULT_CONFIG };
+  let config = tldrSettings.defaults();
   let generation = 0;
   let initialNamingAttempted = false;
   let currentSessionId: string | undefined;
@@ -43,12 +43,7 @@ export default function piTldr(pi: ExtensionAPI): void {
     initialNamingAttempted = ctx.sessionManager
       .getBranch()
       .some((e) => e.type === "message" && e.message.role === "user");
-    try {
-      config = loadTldrConfig(ctx.cwd);
-    } catch (error) {
-      config = { ...DEFAULT_CONFIG, setSessionName: false };
-      if (ctx.hasUI) ctx.ui.notify(`pi-tldr configuration: ${String(error)}`, "error");
-    }
+    config = tldrSettings.load(ctx.cwd);
   };
 
   const isCurrent = (ctx: ExtensionContext, token: number, sessionId: string): boolean =>

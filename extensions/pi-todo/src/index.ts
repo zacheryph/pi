@@ -39,7 +39,7 @@ import {
 } from "./claims.ts";
 import { createTodoDelegation, type DelegatedView } from "./delegation.ts";
 import { registerTodoCommands } from "./commands.ts";
-import { DEFAULT_CONFIG, loadTodoConfig, saveTodoConfig, type TodoConfig } from "./config.ts";
+import { todoSettings, type TodoConfig } from "./config.ts";
 import { TODO_SNAPSHOT_EVENT, todoSnapshotEvent } from "./events.ts";
 import {
   cloneTodoState,
@@ -182,7 +182,7 @@ export default function todoExtension(
   let activity: TodoActivity = new Map();
   let review: TodoReviewState = createTodoReviewState();
   let claims: Map<string, TodoClaim> = new Map();
-  let config = { ...DEFAULT_CONFIG };
+  let config = todoSettings.defaults();
   let uiContext: ExtensionContext | undefined;
   let widgetTui: TUI | undefined;
   let widgetRegistered = false;
@@ -363,7 +363,7 @@ export default function todoExtension(
       config = { ...config, ...patch };
       updateWidget(ctx);
       try {
-        (dependencies.saveConfig ?? saveTodoConfig)(ctx.cwd, patch);
+        (dependencies.saveConfig ?? todoSettings.save)(ctx.cwd, patch);
         ctx.ui.notify("Task settings saved to .pi/todo.json.", "info");
       } catch (error) {
         ctx.ui.notify(
@@ -620,7 +620,7 @@ export default function todoExtension(
     clearWidget();
     branchGeneration++;
     ({ state, activity, review, claims } = replayTodoSession(ctx));
-    config = (dependencies.loadConfig ?? loadTodoConfig)(ctx.cwd);
+    config = (dependencies.loadConfig ?? todoSettings.load)(ctx.cwd);
     uiContext = ctx;
     updateWidget(ctx);
     publish();

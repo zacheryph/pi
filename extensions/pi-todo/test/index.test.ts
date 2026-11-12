@@ -7,7 +7,7 @@ import type { ToolResultMessage } from "@earendil-works/pi-ai";
 import { Check } from "typebox/value";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_CONFIG } from "../src/config.ts";
+import { todoSettings } from "../src/config.ts";
 import type { TodoRequest } from "../src/actions.ts";
 import type { TodoState } from "../src/state.ts";
 import { TODO_JOURNAL_TYPE } from "#src/replay.ts";
@@ -378,7 +378,7 @@ describe("restoration and model context", () => {
     const env = await started({ config: { singleActive: true } });
     await env.execute(add("old"));
     env.session.newSession();
-    env.loadConfig.mockReturnValue({ ...DEFAULT_CONFIG, contextSync: "off" });
+    env.loadConfig.mockReturnValue({ ...todoSettings.defaults(), contextSync: "off" });
     await env.emit("session_start");
     expect(await env.state()).toMatchObject({ revision: 0, tasks: [] });
     expect(env.loadConfig).toHaveBeenCalledTimes(2);

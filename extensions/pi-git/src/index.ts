@@ -26,7 +26,7 @@ import { Type } from "typebox";
 import { showExplorer, sanitizeText } from "../../../packages/pi-ui/src/index.ts";
 import { contextCard, treeService } from "../../../packages/pi-session-state/src/index.ts";
 import { CARD_TYPE, contextCard as ledgerCard } from "./card.ts";
-import { loadGitConfig, type GitConfig } from "./config.ts";
+import { gitSettings, type GitConfig } from "./config.ts";
 import { GIT_SNAPSHOT_EVENT, snapshotEvent, type GitSnapshotEvent } from "./events.ts";
 import { readLedger, type Ledger } from "./fold.ts";
 import { git, realPath, resolveCommit, type BaseRef, type WorktreeStatus } from "./git.ts";
@@ -164,7 +164,7 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
   /** Bumped on every session start and shutdown, so a stale refresh drops its results. */
   let generation = 0;
 
-  const getConfig = () => (config ??= (dependencies.loadConfig ?? loadGitConfig)(cwd));
+  const getConfig = () => (config ??= (dependencies.loadConfig ?? gitSettings.load)(cwd));
   const snapshot = (): GitSnapshotEvent =>
     snapshotEvent(records.values(), measured, found, prs.values());
   const publish = () => pi.events.emit(GIT_SNAPSHOT_EVENT, snapshot());

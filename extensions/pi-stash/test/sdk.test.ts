@@ -5,7 +5,9 @@ import { afterEach, describe, expect, it, onTestFinished } from "vitest";
 import stashExtension from "#src/index";
 import { currentEntries, replayStashIndex, STASH_INDEX_TYPE } from "#src/state";
 import { BlobStore } from "#src/store";
-import { DEFAULT_CONFIG } from "#src/config";
+import { stashSettings } from "#src/config";
+
+const DEFAULTS = stashSettings.defaults();
 import {
   STASH_PREVIEW_REQUEST,
   STASH_SNAPSHOT_EVENT,
@@ -45,7 +47,7 @@ async function fixture(options: {
     responses: options.responses,
     extensions: [
       (pi) =>
-        stashExtension(pi, { store: options.store, loadConfig: () => ({ ...DEFAULT_CONFIG }) }),
+        stashExtension(pi, { store: options.store, loadConfig: () => stashSettings.defaults() }),
       createCodemodeExtension(),
       // Another extension on the same session bus, as pi-dashboard listens.
       (pi) => {
@@ -262,7 +264,7 @@ describe("pi-stash in a real AgentSession (offline faux provider)", () => {
         fauxAssistantMessage("done"),
       ],
     });
-    const size = { bytes: expect.any(Number), maxBytes: DEFAULT_CONFIG.maxStoreBytes };
+    const size = { bytes: expect.any(Number), maxBytes: DEFAULTS.maxStoreBytes };
     expect(h.snapshots).toEqual([{ version: 1, entries: [], store: size }]);
     await h.session.prompt("Work");
     expect(h.snapshots).toHaveLength(3);
@@ -282,7 +284,7 @@ describe("pi-stash in a real AgentSession (offline faux provider)", () => {
           versions: 2,
         },
       ],
-      store: { bytes: 14, maxBytes: DEFAULT_CONFIG.maxStoreBytes },
+      store: { bytes: 14, maxBytes: DEFAULTS.maxStoreBytes },
     });
     expect(JSON.stringify(h.snapshots)).not.toContain("lines\\n");
 

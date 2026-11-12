@@ -7,7 +7,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { ActivityTracker } from "./activity.ts";
 import { AskUserTracker } from "./ask-user.ts";
-import { loadDashboardConfig, type DashboardConfig } from "./config.ts";
+import { dashboardSettings, type DashboardConfig } from "./config.ts";
 import { nodeRuntime, spawnHub } from "./launch.ts";
 import {
   hubPaths,
@@ -43,7 +43,7 @@ const PUBLISH_DELAY_MS = 250;
 export interface DashboardDependencies {
   /** Hub directory; defaults to `<agent dir>/dashboard`. */
   dir?: string;
-  loadConfig?: () => DashboardConfig;
+  loadConfig?: (cwd: string) => DashboardConfig;
   spawnHub?: (paths: HubPaths, config: DashboardConfig) => void;
   openUrl?: (url: string) => Promise<void>;
   isHubReachable?: (url: string) => Promise<boolean>;
@@ -92,7 +92,7 @@ export default function dashboardExtension(
   let terminal: TerminalAdapter | undefined;
 
   const paths = () => hubPaths(dependencies.dir ?? join(getAgentDir(), "dashboard"));
-  const loadConfig = () => (dependencies.loadConfig ?? loadDashboardConfig)();
+  const loadConfig = (cwd: string) => (dependencies.loadConfig ?? dashboardSettings.load)(cwd);
 
   const snapshot = (ctx: ExtensionContext) => {
     if (ledgerStale) {
@@ -222,7 +222,7 @@ export default function dashboardExtension(
     current = ctx;
     status = new StatusTracker();
     terminal = (dependencies.detectTerminal ?? detectTerminal)();
-    const config = loadConfig();
+    const config = loadConfig(ctx.cwd);
     const hub = paths();
     reporter = new Reporter({
       socketPath: hub.socket,
@@ -296,7 +296,7 @@ export default function dashboardExtension(
   pi.registerCommand("dashboard", {
     description: "Open the web dashboard of running Pi sessions",
     handler: async (_args, ctx) => {
-      const config = loadConfig();
+      const config = loadConfig(ctx.cwd);
       const url = `http://127.0.0.1:${config.port}/`;
       const reachable = dependencies.isHubReachable ?? hubReachable;
       let up = await reachable(url);
