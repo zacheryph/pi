@@ -40,6 +40,7 @@ function harness(options: {
         worktreeRoot: options.root,
         trackReferenced: options.trackReferenced ?? true,
         watchIntervalSeconds: 60,
+        maxWatches: 10,
       })),
     now: () => (frozen ? clock : (clock += 1)),
     ...(options.runGh ? { runGh: options.runGh } : {}),
@@ -1167,9 +1168,26 @@ describe("git_pr_watch", () => {
   type Result = { content: { text: string }[]; details: { watching: boolean; watch?: unknown } };
   const watching = async (
     runGh: GhRunner,
-    options: { entries?: unknown[]; trackReferenced?: boolean } = {},
+    options: { entries?: unknown[]; trackReferenced?: boolean; maxWatches?: number } = {},
   ) => {
-    const h = harness({ sessionId: "parent", cwd: box.dir, root: box.root, runGh, ...options });
+    const { maxWatches, ...rest } = options;
+    const h = harness({
+      sessionId: "parent",
+      cwd: box.dir,
+      root: box.root,
+      runGh,
+      ...rest,
+      ...(maxWatches
+        ? {
+            loadConfig: () => ({
+              worktreeRoot: box.root,
+              trackReferenced: true,
+              watchIntervalSeconds: 60,
+              maxWatches,
+            }),
+          }
+        : {}),
+    });
     await h.fire("session_start");
     // Only the watch's timer is faked: git and the worktree refresh run for real.
     // A second session of the same test keeps the clock its adopted watch already waits on.
@@ -1316,6 +1334,15 @@ describe("git_pr_watch", () => {
     );
     // One that is already watched is not a new watch.
     expect((await h.watch({ pr: "acme/api#3" })).details.watching).toBe(true);
+  });
+
+  it("takes the cap from the maxWatches setting", async () => {
+    const h = await watching(async () => view(), { maxWatches: 2 });
+    await h.watch({ pr: "acme/api#1" });
+    await h.watch({ pr: "acme/api#2" });
+    await expect(h.watch({ pr: "acme/api#3" })).rejects.toThrow(
+      "git_pr_watch: 2 pull requests are already watched (the maxWatches setting)",
+    );
   });
 
   it("fails without starting a watch when the PR cannot be read", async () => {

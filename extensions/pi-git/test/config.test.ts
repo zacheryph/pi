@@ -13,6 +13,7 @@ it("defaults the worktree root under the agent directory and tracks referenced P
     worktreeRoot: join(dirs.agentDir, "worktrees"),
     trackReferenced: true,
     watchIntervalSeconds: 60,
+    maxWatches: 10,
   });
 });
 
@@ -23,6 +24,7 @@ it("expands ~/, resolves relative roots against cwd and lets the project overrid
     worktreeRoot: join(homedir(), "trees"),
     trackReferenced: false,
     watchIntervalSeconds: 60,
+    maxWatches: 10,
   });
   dirs.writeProject({ worktreeRoot: "../trees" });
   expect(gitSettings.load(dirs.cwd, dirs.agentDir).worktreeRoot).toBe(join(dirs.root, "trees"));
@@ -36,6 +38,7 @@ it("warns about an invalid root and keeps the lower layer", () => {
     worktreeRoot: join(dirs.agentDir, "worktrees"),
     trackReferenced: true,
     watchIntervalSeconds: 60,
+    maxWatches: 10,
   });
   expect(warn).toHaveBeenCalledExactlyOnceWith(
     expect.stringMatching(/^\[pi-git\] .*worktreeRoot must .*; trackReferenced must /),

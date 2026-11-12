@@ -77,7 +77,6 @@ import {
   FinalReadError,
   isSavedBaseline,
   MAX_TIMEOUT_SECONDS,
-  MAX_WATCHES,
   MIN_TIMEOUT_SECONDS,
   PrWatches,
   WATCH_ENTRY,
@@ -992,7 +991,7 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
         "Reports, each with the head commit it is for: checks finished on the head (with the names of failed checks), the head moved (someone pushed), the review decision changed, reviews or comments were added, it now conflicts with its base, and it was merged or closed. " +
         'until "settled" (default) ends the watch when checks finish on the head; until "merged" keeps it open through every report until the pull request is merged or closed. It also ends at timeoutSeconds. ' +
         "The watch is open work: it keeps a subagent waiting, and survives a reload or resume. One watch per pull request: calling it again continues the same watch from the status it returns, so your own push or reply is not reported back to you. " +
-        `At most ${MAX_WATCHES} at a time. stop: true cancels the watch. ` +
+        "A session watches a limited number at a time (the maxWatches setting, default 10). stop: true cancels the watch. " +
         "Reads through gh when it is installed and signed in, otherwise through the GitHub MCP pull_request_read tool; after a reload, through gh only. Never writes to GitHub.",
       promptSnippet:
         "Wait on a pull request and be woken when its checks, reviews or state change.",
@@ -1043,9 +1042,10 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
               watches.stop(key) ? `Stopped watching ${label}.` : `${label} was not being watched.`,
               false,
             );
-          if (!existing && watches.size >= MAX_WATCHES)
+          const { maxWatches } = getConfig();
+          if (!existing && watches.size >= maxWatches)
             throw new Error(
-              `${MAX_WATCHES} pull requests are already watched; stop one first (git_pr_list names them)`,
+              `${maxWatches} pull requests are already watched (the maxWatches setting); stop one first (git_pr_list names them)`,
             );
 
           const access = mcpAccess(ctx);

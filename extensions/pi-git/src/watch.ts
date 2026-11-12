@@ -35,8 +35,6 @@ export const WATCH_MESSAGE = "git:pr-watch";
 /** Custom entry type of a saved baseline (see `SavedBaseline`). */
 export const WATCH_ENTRY = "git:watch";
 
-/** At most this many pull requests are watched in one session. */
-export const MAX_WATCHES = 10;
 export const DEFAULT_TIMEOUT_SECONDS = 2 * 60 * 60;
 export const MIN_TIMEOUT_SECONDS = 60;
 export const MAX_TIMEOUT_SECONDS = 24 * 60 * 60;

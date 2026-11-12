@@ -28,6 +28,8 @@ export const gitSettings = defineSettings({
     trackReferenced: bool({ default: true }),
     /** Seconds between two reads of a pull request `git_pr_watch` waits on. */
     watchIntervalSeconds: int({ default: 60, min: 5, max: 3600 }),
+    /** How many pull requests one session may watch at a time. Each is read every interval. */
+    maxWatches: int({ default: 10, min: 1, max: 100 }),
   },
 });
 export type GitConfig = SettingsOf<typeof gitSettings>;

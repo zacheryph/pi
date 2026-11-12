@@ -47,6 +47,7 @@ async function fixture(
             worktreeRoot: box.root,
             trackReferenced: true,
             watchIntervalSeconds: 60,
+            maxWatches: 10,
           }),
           // As on a machine without gh: git_pr_status must read through the MCP tool.
           runGh: async () => {

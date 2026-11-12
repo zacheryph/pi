@@ -191,7 +191,8 @@ until …`) or `The watch has ended.` The message's `details` hold
 - **One watch per pull request.** A second call returns the running watch and
   continues it from the status it just read, so the agent's own push or reply is
   not reported back to it. A different `until`, or a `timeoutSeconds`, replaces
-  the watch. At most 10 pull requests are watched in one session.
+  the watch. One session watches at most
+  `maxWatches` pull requests (default 10).
 - **Reviews and comments** are counted, not read: a new review, a reply in a
   review thread (GitHub stores it as a review) and a new top-level comment each
   raise a count, the agent's own included. Counts read through `gh` and through
@@ -273,7 +274,12 @@ and each status refresh.
 `~/.pi/agent/git.json`, overridden by the project's `.pi/git.json`:
 
 ```json
-{ "worktreeRoot": "~/.pi/agent/worktrees", "trackReferenced": true, "watchIntervalSeconds": 60 }
+{
+  "worktreeRoot": "~/.pi/agent/worktrees",
+  "trackReferenced": true,
+  "watchIntervalSeconds": 60,
+  "maxWatches": 10
+}
 ```
 
 - `worktreeRoot` holds every worktree pi-git creates. `~/` expands to the home
@@ -284,3 +290,6 @@ and each status refresh.
   pull request is always recorded.
 - `watchIntervalSeconds`: seconds between two reads of a pull request
   `git_pr_watch` waits on. 5 to 3600, default `60`.
+- `maxWatches`: how many pull requests one session watches at a time. 1 to 100,
+  default `10`. Every watch reads its pull request each interval, so raise the
+  interval with it when a roadmap step opens many pull requests at once.
