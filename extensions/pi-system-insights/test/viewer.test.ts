@@ -99,9 +99,14 @@ describe("showInsightView", () => {
 
   it.each(["rpc", "json", "print"] as const)("warns in %s mode without custom", async (mode) => {
     const { ctx, ui } = context(mode);
-    await showInsightView(ctx, textView);
+    const prepare = vi.fn(() => textView);
+    await showInsightView(ctx, prepare);
+    expect(prepare).not.toHaveBeenCalled();
     expect(ui.custom).not.toHaveBeenCalled();
-    expect(ui.notify).toHaveBeenCalledWith("System insights viewer requires TUI mode.", "warning");
+    expect(ui.notify).toHaveBeenCalledWith(
+      "/system requires interactive terminal mode.",
+      "warning",
+    );
   });
 
   it("guards hasUI too", async () => {

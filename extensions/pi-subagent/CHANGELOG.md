@@ -3,6 +3,10 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-12: Centralize browser fallback in pi-ui
+
+- Prepare the definitions browser lazily behind pi-ui's TUI gate; preserve settings, navigation and passive-overlay policies.
+
 ## 2026-11-12: Share the snapshot version with dashboard consumers
 
 - Export the version alongside the typed snapshot contract; dashboard projections now use that contract.

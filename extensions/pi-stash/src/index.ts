@@ -676,17 +676,6 @@ export default function stashExtension(
       } catch (error) {
         warning = `Unable to measure store: ${error instanceof Error ? error.message : String(error)}`;
       }
-      if (!ctx.hasUI || ctx.mode !== "tui") {
-        ctx.ui.notify(
-          sanitizeText(
-            [warning, listText(entries.slice(0, LIST_LIMIT), entries.length)]
-              .filter(Boolean)
-              .join("\n"),
-          ),
-          warning ? "warning" : "info",
-        );
-        return;
-      }
       // Preview is bounded like stash_get's hard cap; the store is never dumped whole.
       await showStashBrowser(
         ctx,
@@ -701,6 +690,13 @@ export default function stashExtension(
           };
         },
         warning,
+        {
+          fallback: () =>
+            [warning, listText(entries.slice(0, LIST_LIMIT), entries.length)]
+              .filter(Boolean)
+              .join("\n"),
+          fallbackLevel: warning ? "warning" : "info",
+        },
       );
     },
   });

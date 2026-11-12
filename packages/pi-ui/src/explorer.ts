@@ -414,14 +414,20 @@ export class Explorer implements Component, Focusable {
 
 export async function showExplorer(
   ctx: ModalContext,
-  view: ExplorerView,
+  view: ExplorerView | (() => ExplorerView),
   options?: ModalOptions,
 ): Promise<void> {
-  const snapshot = snapshotExplorer(view);
+  const snapshot = typeof view === "function" ? view : snapshotExplorer(view);
   await openModal<void>(
     ctx,
     (tui, theme, keys, done) =>
-      new Explorer({ tui, theme, keys, view: snapshot, done: () => done(undefined) }),
+      new Explorer({
+        tui,
+        theme,
+        keys,
+        view: typeof snapshot === "function" ? snapshot() : snapshot,
+        done: () => done(undefined),
+      }),
     options,
   );
 }

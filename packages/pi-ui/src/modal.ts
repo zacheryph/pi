@@ -6,6 +6,7 @@ import type {
   OverlayOptions,
   TUI,
 } from "@earendil-works/pi-tui";
+import { sanitizeText } from "./text.ts";
 import type { DisposableComponent } from "./types.ts";
 
 export type ModalContext = Pick<ExtensionContext, "mode" | "hasUI" | "ui">;
@@ -18,6 +19,10 @@ export type ModalFactory<T> = (
 ) => DisposableComponent | Promise<DisposableComponent>;
 
 export interface ModalOptions {
+  /** Plain text used outside TUI; evaluated only when the view cannot open. */
+  fallback?: string | (() => string);
+  fallbackLevel?: "info" | "warning" | "error";
+  command?: string;
   unavailableMessage?: string;
   overlayOptions?: Omit<OverlayOptions, "nonCapturing">;
 }
@@ -32,10 +37,14 @@ export async function openModal<T>(
   options: ModalOptions = {},
 ): Promise<T | undefined> {
   if (ctx.mode !== "tui" || !ctx.hasUI) {
-    ctx.ui.notify(
-      options.unavailableMessage ?? "This view requires interactive terminal mode.",
-      "warning",
-    );
+    const hasFallback = options.fallback !== undefined;
+    const text = hasFallback
+      ? typeof options.fallback === "function"
+        ? options.fallback()
+        : options.fallback!
+      : (options.unavailableMessage ??
+        `${options.command ?? "This view"} requires interactive terminal mode.`);
+    ctx.ui.notify(sanitizeText(text), hasFallback ? (options.fallbackLevel ?? "info") : "warning");
     return undefined;
   }
   const controller = new AbortController();

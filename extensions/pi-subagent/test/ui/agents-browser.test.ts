@@ -354,7 +354,7 @@ describe("showAgentsBrowser", () => {
     expect(read).not.toHaveBeenCalled();
     expect(ui.custom).not.toHaveBeenCalled();
     expect(ui.notify).toHaveBeenCalledWith(
-      "Agent definitions browser requires TUI mode.",
+      "/subagent:agents requires interactive terminal mode.",
       "warning",
     );
   });

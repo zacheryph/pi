@@ -28,8 +28,6 @@ export interface AgentsBrowserOptions {
 type BrowserContext = Pick<ExtensionContext, "mode" | "hasUI" | "ui"> &
   Partial<Pick<ExtensionContext, "isProjectTrusted">>;
 
-const UNAVAILABLE = "Agent definitions browser requires TUI mode.";
-
 const VISIBILITY_TONE: Record<AgentVisibility, Tone> = {
   visible: "success",
   hidden: "muted",
@@ -42,16 +40,13 @@ export async function showAgentsBrowser(
   registry: AgentsBrowserRegistry,
   defaults: AgentsBrowserDefaults = {},
 ): Promise<void> {
-  if (ctx.mode !== "tui" || !ctx.hasUI) {
-    ctx.ui.notify(UNAVAILABLE, "warning");
-    return;
-  }
   await showExplorer(
     ctx,
-    buildAgentsView(registry, defaults, {
-      projectTrusted: ctx.isProjectTrusted?.() === true,
-    }),
-    { unavailableMessage: UNAVAILABLE },
+    () =>
+      buildAgentsView(registry, defaults, {
+        projectTrusted: ctx.isProjectTrusted?.() === true,
+      }),
+    { command: "/subagent:agents" },
   );
 }
 

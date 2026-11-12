@@ -66,6 +66,6 @@ export async function showTldr(
         );
       return view;
     },
-    { unavailableMessage: "/tldr requires interactive terminal mode." },
+    { command: "/tldr" },
   );
 }

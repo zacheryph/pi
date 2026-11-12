@@ -144,8 +144,8 @@ label, badge and `search` text. With a filter, Esc clears it before closing.
 Arrow keys, configured Pi alternate-screen paging/top/bottom bindings, Home/End
 and the mouse wheel navigate. Enter opens details, Esc returns, Ctrl+C closes,
 Tab/Shift+Tab switches views. Callbacks are synchronous; adapters should handle
-domain errors before returning. `showExplorer` snapshots synchronously before
-opening; for height limits, construct `Explorer` directly through `openModal`.
+domain errors before returning. `showExplorer` snapshots object input synchronously before
+opening; a factory input is evaluated only when mounting in TUI mode; for height limits, construct `Explorer` directly through `openModal`.
 
 ## Detail content and views
 
@@ -380,3 +380,18 @@ detail blocks, lazy load cancellation/errors, title updates, modal disposal,
 passive handle ownership, widget overflow groups and budgets, and Pi's real
 source loader. No model
 calls, user configuration changes or local network listeners are required.
+
+### Non-TUI fallback and lazy preparation
+
+`openModal`, `showExplorer` and `showDetail` accept `fallback: string | (() => string)`.
+Outside fullscreen TUI (including a context without UI), the helper sanitizes
+and notifies once with `fallbackLevel` (default `info`). Without a fallback,
+`command` names the standard warning; `unavailableMessage` can override it.
+Fallback callbacks never run in TUI mode, and view factories never run outside it.
+
+`showExplorer(ctx, view, options)` keeps its synchronous snapshot of object input.
+Use `showExplorer(ctx, () => buildView(), options)` when preparation must happen
+only after the TUI gate, such as reading agent definitions or prompt files.
+Fallback callbacks should produce text; keep domain mutations and review policies
+in their owning commands. These terminal concerns are independent of dashboard
+section contracts.
