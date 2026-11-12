@@ -3,61 +3,6 @@ import { dirname, join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { sanitizeLine } from "../../pi-ui/src/text.ts";
 
-/**
- * Parameters for one layered settings load: describes where the files live,
- * how to validate their contents, and what label to use in warnings.
- *
- * @public
- */
-export interface LayeredSettingsSource<T> {
-  /** Directory holding the global settings file (typically the Pi agent dir). */
-  agentDir: string;
-  /** Project root; the project file lives at `<cwd>/.pi/<filename>`. */
-  cwd: string;
-  /** Base filename for both layers, e.g. `"subagent.json"`. */
-  filename: string;
-  /**
-   * Validate and coerce parsed JSON into a partial settings object.
-   * Unknown or invalid fields should be silently dropped — return `{}` for
-   * unrecognised shapes. Never throw.
-   */
-  sanitize: (raw: unknown) => Partial<T>;
-  /**
-   * Short label used in the malformed-file warning prefix,
-   * e.g. `"pi-subagent"` → `"[pi-subagent] Ignoring malformed settings at …"`.
-   */
-  warnLabel: string;
-  /** Override error reporting (e.g. terminal-safe warnings). */
-  onError?: (path: string, error: unknown) => void;
-}
-
-/**
- * Load merged layered settings: global provides defaults, project overrides.
- *
- * - A missing file is silent — returns `{}` for that layer.
- * - A file that exists but cannot be parsed warns to stderr and returns `{}` for
- *   that layer, so startup proceeds normally.
- * - The two layers are merged with a shallow spread; project keys win.
- *
- * By default errors warn and fall back to `{}`. A custom error callback may throw.
- *
- * @public
- */
-export function loadLayeredSettings<T>(source: LayeredSettingsSource<T>): Partial<T> {
-  const { agentDir, cwd, filename, sanitize, warnLabel } = source;
-  const read = (path: string) =>
-    readSettingsFile(path, sanitize, (error) => {
-      if (source.onError) source.onError(path, error);
-      else {
-        const reason = error instanceof Error ? error.message : String(error);
-        console.warn(`[${warnLabel}] Ignoring malformed settings at ${path}: ${reason}`);
-      }
-    });
-  const global = read(join(agentDir, filename));
-  const project = read(join(cwd, ".pi", filename));
-  return { ...global, ...project };
-}
-
 /** Missing files are absent; callers choose whether other failures throw, warn or fall back. */
 export function readSettingsFile<T>(
   path: string,
@@ -108,8 +53,14 @@ export interface SettingsContext {
   agentDir: string;
 }
 
-/** Outcome of validating one raw JSON value; `reason` completes "`<key>` …". */
-export type FieldCheck<T> = { ok: true; value: T } | { ok: false; reason: string };
+/**
+ * Outcome of validating one raw JSON value; `reason` completes "`<key>` …".
+ * A collection that keeps its valid members lists each one it `dropped`, e.g.
+ * `[2] must be a string`, which also completes "`<key>` …".
+ */
+export type FieldCheck<T> =
+  | { ok: true; value: T; dropped?: string[] }
+  | { ok: false; reason: string };
 
 /** Validates one setting. Without a default it can only be wrapped by `optional`. */
 export interface Validator<T> {
@@ -131,6 +82,8 @@ interface FieldOptions<T> {
 /** A helper given a `default` builds a field; without one, a validator for `optional`. */
 export type Built<T, O> = O extends { default: unknown } ? Field<T> : Validator<T>;
 
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === "object" && !Array.isArray(value);
 const ok = <T>(value: T): FieldCheck<T> => ({ ok: true, value });
 const fail = (reason: string): FieldCheck<never> => ({ ok: false, reason });
 
@@ -219,6 +172,71 @@ export function string<O extends FieldOptions<string> & { trim?: boolean; nonEmp
   }, options);
 }
 
+/** Keep the valid members of an array and name the ones dropped. */
+function members<T>(
+  entries: [label: string, raw: unknown][],
+  item: Validator<T>,
+): { kept: [label: string, value: T][]; dropped: string[] } {
+  const kept: [string, T][] = [];
+  const dropped: string[] = [];
+  for (const [label, raw] of entries) {
+    const result = item.check(raw);
+    if (result.ok) kept.push([label, result.value]);
+    else dropped.push(`${label} ${result.reason}`);
+  }
+  return { kept, dropped };
+}
+
+const withDropped = <T>(value: T, dropped: string[]): FieldCheck<T> =>
+  dropped.length ? { ok: true, value, dropped } : ok(value);
+
+/**
+ * An array whose valid members are kept; each invalid one is dropped and named.
+ * `unique` removes repeats. Defaults to a fresh empty array.
+ */
+export function list<T>(
+  item: Validator<T>,
+  options: { unique?: boolean; default?: (context: SettingsContext) => T[] } = {},
+): Field<T[]> {
+  return {
+    check: (raw) => {
+      if (!Array.isArray(raw)) return fail("must be a list");
+      const { kept, dropped } = members(
+        raw.map((value, index) => [`[${index}]`, value]),
+        item,
+      );
+      const values = kept.map(([, value]) => value);
+      return withDropped(options.unique ? [...new Set(values)] : values, dropped);
+    },
+    default: options.default ?? (() => []),
+  };
+}
+
+/**
+ * A JSON object of keys to values; valid entries are kept, each invalid one is
+ * dropped and named. Defaults to a fresh empty object.
+ */
+export function record<T>(
+  item: Validator<T>,
+  options: { default?: (context: SettingsContext) => Record<string, T> } = {},
+): Field<Record<string, T>> {
+  return {
+    check: (raw) => {
+      if (!isObject(raw)) return fail("must be an object");
+      const { kept, dropped } = members(
+        Object.entries(raw).map(([key, value]) => [`.${key}`, value]),
+        item,
+      );
+      // Object.fromEntries defines own properties, so a "__proto__" key stays data.
+      return withDropped(
+        Object.fromEntries(kept.map(([label, value]) => [label.slice(1), value])),
+        dropped,
+      );
+    },
+    default: options.default ?? (() => ({})),
+  };
+}
+
 /** A setting with no default: absent unless a file sets it. */
 export function optional<T>(validator: Validator<T>): Field<T | undefined> {
   return { check: (raw) => validator.check(raw), default: undefined };
@@ -276,9 +294,6 @@ export interface WritableSettingsDefinition<
   save: (cwd: string, patch: Partial<SettingsValues<F>>) => void;
 }
 
-const isObject = (value: unknown): value is Record<string, unknown> =>
-  !!value && typeof value === "object" && !Array.isArray(value);
-
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 /**
@@ -313,8 +328,12 @@ export function defineSettings<const F extends Record<string, Field<unknown>>>(
         continue;
       }
       const result = fields[key].check(raw);
-      if (result.ok) values[key] = result.value;
-      else problems?.push(`${key} ${result.reason}`);
+      if (!result.ok) {
+        problems?.push(`${key} ${result.reason}`);
+        continue;
+      }
+      values[key] = result.value;
+      for (const entry of result.dropped ?? []) problems?.push(`${key}${entry}`);
     }
     return values;
   };

@@ -25,19 +25,21 @@ else beyond Node. Import its source by relative path, just like
   ```
 
   Field helpers: `bool`, `int({min, max})`, `number({min, max, exclusiveMin})`,
-  `oneOf([...])`, `string({trim, nonEmpty})` and `optional(...)` around a helper
-  given no `default`. A `default` may be a function of `{ cwd, agentDir }`; a
+  `oneOf([...])`, `string({trim, nonEmpty})`, `optional(...)` around a helper
+  given no `default`, and `list(item, {unique})` and `record(item)`, which keep
+  valid members and default to a fresh empty array or object. A `default` may be a function of `{ cwd, agentDir }`; a
   `transform` runs on the merged value, default included. `load` never throws:
   a missing file is silent; an unreadable, unparseable or non-object file warns
-  `[pi-<name>] Ignoring settings at <path>: <reason>`; invalid and unknown fields
-  are dropped with one warning per file that names each. Every warning is
+  `[pi-<name>] Ignoring settings at <path>: <reason>`; invalid and unknown fields,
+  and invalid list or record members, are dropped with one warning per file that
+  names each. Every warning is
   terminal-safe. Dropped values fall back to the lower layer, then the default.
   `save` keeps unknown keys, drops invalid fields and refuses a malformed file.
 
-  The lower-level `readSettingsFile`, `loadLayeredSettings`,
-  `writeSettingsFile` and `patchSettingsFile` remain for pi-subagent until it
-  moves onto a definition. Missing files are absent. Other errors throw unless
-  the caller supplies an error callback.
+  Every extension's settings use a definition. `defineSettings` is built on
+  `readSettingsFile`, `writeSettingsFile` and `patchSettingsFile`, which stay
+  exported: missing files are absent, and other errors throw unless the caller
+  supplies an error callback.
 
 - `src/models.ts`: `findExactModel`, `compareNewestFirst`, `resolveModel`, and
   structural model/registry types. Exact matching is case-insensitive; the full
