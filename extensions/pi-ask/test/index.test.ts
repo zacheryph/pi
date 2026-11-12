@@ -130,7 +130,7 @@ describe("pi-ask routing", () => {
     const tool = h.tools.get("ask")!;
     expect(tool.exposure).toBe("model-only");
     expect(tool.description).toContain("Ask the user");
-    expect(h.registrations).toHaveLength(1);
+    expect(h.registrations.map((tool) => tool.name)).toEqual(["ask", "user_notify"]);
   });
 
   it("hides ask where no one can answer, and refuses a stray call", async () => {
@@ -546,5 +546,83 @@ describe("inline cmux notification lifecycle", () => {
     expect(execFile).toHaveBeenCalledTimes(1);
     expect(h.ui.notify).not.toHaveBeenCalled();
     await h.shutdown();
+  });
+});
+
+describe("user_notify", () => {
+  const notify = (h: ReturnType<typeof harness>, args: unknown) =>
+    h.tools.get("user_notify")!.execute("call-n", args, undefined, undefined, h.ctx);
+  const message = { title: "PR 12 is ready for review", body: "Checks are green. https://x/12" };
+
+  it("sends the model's text as a notification that is never dismissed", async () => {
+    vi.stubEnv("CMUX_SURFACE_ID", "surface");
+    execFile.mockImplementation((_cli, _args, _options, callback) => callback(null, "OK", ""));
+    const h = harness();
+    await h.start();
+    expect(h.tools.get("user_notify")!.exposure).toBe("model-only");
+    const result = await notify(h, message);
+    expect(result.content[0]!.text).toBe("The user was notified.");
+    expect(result.details).toEqual({ ...message, delivered: true });
+    expect(execFile.mock.calls[0]![1]).toEqual([
+      "notify",
+      "--title",
+      message.title,
+      "--body",
+      message.body,
+      "--surface",
+      "surface",
+    ]);
+    await h.shutdown();
+    expect(execFile).toHaveBeenCalledTimes(1);
+  });
+
+  it("strips control sequences and line breaks from what it sends", async () => {
+    vi.stubEnv("CMUX_SURFACE_ID", "surface");
+    execFile.mockImplementation((_cli, _args, _options, callback) => callback(null, "OK", ""));
+    const h = harness();
+    await h.start();
+    const result = await notify(h, { title: "\x1b[31mred\x1b[0m", body: "one\ntwo" });
+    expect(result.details.title).toBe("red");
+    expect(result.details.body).not.toContain("\n");
+  });
+
+  it("says so, without failing, when no notification can be shown", async () => {
+    const h = harness();
+    await h.start();
+    const result = await notify(h, message);
+    expect(result.details.delivered).toBe(false);
+    expect(result.content[0]!.text).toContain("transcript only");
+    expect(execFile).not.toHaveBeenCalled();
+  });
+
+  it.each(["child", "print"])("is hidden and refused on the %s route", async (route) => {
+    vi.stubEnv("CMUX_SURFACE_ID", "surface");
+    if (route === "child") delegated();
+    const h = harness(route === "child" ? { sessionId: "child" } : { mode: "print", hasUI: false });
+    await h.start();
+    expect(h.tools.get("user_notify")!.exposure).toBe("hidden");
+    await expect(notify(h, message)).rejects.toThrow("Only the main session");
+    expect(execFile).not.toHaveBeenCalled();
+  });
+
+  it("pads its transcript row and warns when nothing was shown", async () => {
+    const h = harness();
+    await h.start();
+    const tool = h.tools.get("user_notify") as unknown as {
+      renderResult(
+        result: unknown,
+        options: { isPartial: boolean },
+        theme: unknown,
+      ): { render(width: number): string[] };
+    };
+    const result = await notify(h, { title: "t", body: "宽字符 wide body that will not fit" });
+    for (const width of [1, 2, 12, 40]) {
+      const rows = tool.renderResult(result, { isPartial: false }, ansiTheme).render(width);
+      expect(rows).toHaveLength(2);
+      for (const row of rows) expect(visibleWidth(row)).toBeLessThanOrEqual(width);
+    }
+    const wide = tool.renderResult(result, { isPartial: false }, plainTheme).render(60);
+    expect(wide[0]).toMatch(/^ 宽字符/);
+    expect(wide[1]).toContain("No native notification");
   });
 });

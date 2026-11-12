@@ -109,7 +109,7 @@ pi-personal/
 │       └── UPSTREAM.md
 ├── packages/
 │   ├── pi-ui/                           # shared terminal UI library (no migrations yet)
-│   ├── pi-foundations/                  # shared settings + model lookup
+│   ├── pi-foundations/                  # shared settings, model lookup, cmux notifications
 │   ├── pi-scripted-model/               # fake model + bundle test harness (dev only)
 │   ├── pi-test-helpers/                 # shared test helpers (dev only)
 │   ├── pi-work/                         # work:v1 contract + root work host
@@ -157,7 +157,13 @@ dashboard can answer from the browser. In a subagent, `ask` goes to the agent
 that delegated the task: the subagent waits on a question item and its turn ends
 (`waiting: answer`), the parent is told once, and its `subagent_send` answers it
 and wakes the subagent. Where no one can answer (print
-mode), the tool is hidden. See the [package README](extensions/pi-ask/README.md).
+mode), the tool is hidden.
+
+`user_notify` is the one-way counterpart, in the main session only: a native
+cmux notification with the agent's own text, for work that now waits on you
+outside the session (a pull request to review, a blocked step, a failed deploy
+check). It does not wait for an answer. See the
+[package README](extensions/pi-ask/README.md).
 
 ### pi-dashboard
 

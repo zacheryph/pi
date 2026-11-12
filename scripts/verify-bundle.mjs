@@ -83,6 +83,7 @@ try {
     "stash_get",
     "stash_list",
     "ask",
+    "user_notify",
     "git_worktree_create",
     "git_worktree_list",
     "git_worktree_remove",

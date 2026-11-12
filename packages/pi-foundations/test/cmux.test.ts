@@ -20,6 +20,7 @@ const { execFile } = vi.hoisted(() => ({
 }));
 vi.mock("node:child_process", () => ({ execFile }));
 
+const MESSAGE = { title: "Pi needs your input", body: "Answer the questions in your terminal." };
 const ID = "59A9DCD2-BB99-4BD2-8FC7-943073019662";
 const ID2 = "69A9DCD2-BB99-4BD2-8FC7-943073019662";
 const receipt = (id = ID) =>
@@ -49,7 +50,7 @@ describe("optional cmux notifications", () => {
     vi.stubEnv("CMUX_WORKSPACE_ID", "workspace");
     vi.stubEnv("CMUX_BUNDLED_CLI_PATH", "/installed/cmux");
     const notifications = new CmuxNotifications();
-    notifications.open()();
+    notifications.open(MESSAGE)();
     await notifications.shutdown();
     expect(execFile).not.toHaveBeenCalled();
   });
@@ -58,7 +59,7 @@ describe("optional cmux notifications", () => {
     vi.stubEnv("CMUX_SURFACE_ID", "surface");
     vi.stubEnv("CMUX_PI_HOOKS_DISABLED", "1");
     const notifications = new CmuxNotifications();
-    notifications.open()();
+    notifications.open(MESSAGE)();
     await notifications.shutdown();
     expect(execFile).not.toHaveBeenCalled();
   });
@@ -72,7 +73,7 @@ describe("optional cmux notifications", () => {
     vi.stubEnv("CMUX_SOCKET_CAPABILITY", "capability");
     vi.stubEnv("CMUX_SOCKET_PATH", "/socket/path");
     const notifications = new CmuxNotifications();
-    const close = notifications.open();
+    const close = notifications.open(MESSAGE);
     expect(execFile.mock.calls[0]!.slice(0, 3)).toEqual([
       "/path with spaces/cmux",
       [
@@ -111,11 +112,49 @@ describe("optional cmux notifications", () => {
     expect(execFile).toHaveBeenCalledTimes(2);
   });
 
+  it("sends a notification that stays: no receipt, no dismissal, not closed by shutdown", async () => {
+    vi.stubEnv("CMUX_SURFACE_ID", "surface");
+    vi.stubEnv("CMUX_WORKSPACE_ID", "workspace");
+    const notifications = new CmuxNotifications();
+    const sent = notifications.send({ title: "PR 12 needs review", body: "Checks are green." });
+    expect(execFile.mock.calls[0]!.slice(0, 2)).toEqual([
+      "cmux",
+      [
+        "notify",
+        "--title",
+        "PR 12 needs review",
+        "--body",
+        "Checks are green.",
+        "--surface",
+        "surface",
+        "--workspace",
+        "workspace",
+      ],
+    ]);
+    reply(0, "OK");
+    expect(await sent).toBe(true);
+    await notifications.shutdown();
+    expect(execFile).toHaveBeenCalledTimes(1);
+    expect(await notifications.send(MESSAGE)).toBe(false);
+    expect(execFile).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports a notification cmux did not take, or that has nowhere to go", async () => {
+    const notifications = new CmuxNotifications();
+    expect(await notifications.send(MESSAGE)).toBe(false);
+    expect(execFile).not.toHaveBeenCalled();
+    vi.stubEnv("CMUX_SURFACE_ID", "surface");
+    const sent = notifications.send(MESSAGE);
+    reply(0, "", new Error("socket denied"));
+    expect(await sent).toBe(false);
+    await notifications.shutdown();
+  });
+
   it("falls back to PATH, legacy panel/tab and leaves workspace optional", async () => {
     vi.stubEnv("CMUX_PANEL_ID", "panel");
     vi.stubEnv("CMUX_TAB_ID", "tab");
     const notifications = new CmuxNotifications();
-    notifications.open();
+    notifications.open(MESSAGE);
     expect(execFile.mock.calls[0]![0]).toBe("cmux");
     expect(execFile.mock.calls[0]![1].slice(-4)).toEqual([
       "--surface",
@@ -125,7 +164,7 @@ describe("optional cmux notifications", () => {
     ]);
     reply(0, "{}");
     vi.stubEnv("CMUX_TAB_ID", undefined);
-    notifications.open();
+    notifications.open(MESSAGE);
     expect(execFile.mock.calls[1]![1].slice(-2)).toEqual(["--surface", "panel"]);
     expect(execFile.mock.calls[1]![1]).not.toContain("--workspace");
     reply(1, "{}");
@@ -135,7 +174,7 @@ describe("optional cmux notifications", () => {
   it("cleans a delayed receipt after close without waiting or cancelling create", async () => {
     vi.stubEnv("CMUX_SURFACE_ID", "surface");
     const notifications = new CmuxNotifications();
-    const close = notifications.open();
+    const close = notifications.open(MESSAGE);
     close();
     expect(execFile).toHaveBeenCalledTimes(1);
     expect(execFile.mock.calls[0]![2]).not.toHaveProperty("signal");
@@ -151,8 +190,8 @@ describe("optional cmux notifications", () => {
   it("owns each receipt independently and never clears unrelated notices", async () => {
     vi.stubEnv("CMUX_SURFACE_ID", "surface");
     const notifications = new CmuxNotifications();
-    const close1 = notifications.open();
-    const close2 = notifications.open();
+    const close1 = notifications.open(MESSAGE);
+    const close2 = notifications.open(MESSAGE);
     reply(1, receipt(ID2));
     reply(0, receipt());
     await flush();
@@ -182,7 +221,7 @@ describe("optional cmux notifications", () => {
     async (output) => {
       vi.stubEnv("CMUX_SURFACE_ID", "surface");
       const notifications = new CmuxNotifications();
-      const close = notifications.open();
+      const close = notifications.open(MESSAGE);
       reply(0, output);
       await flush();
       close();
@@ -196,7 +235,7 @@ describe("optional cmux notifications", () => {
     async (message) => {
       vi.stubEnv("CMUX_SURFACE_ID", "surface");
       const notifications = new CmuxNotifications();
-      const close = notifications.open();
+      const close = notifications.open(MESSAGE);
       reply(0, receipt(), new Error(message));
       await flush();
       close();
@@ -211,8 +250,8 @@ describe("optional cmux notifications", () => {
     execFile.mockImplementationOnce(() => {
       throw new Error("spawn failed");
     });
-    notifications.open()();
-    const close = notifications.open();
+    notifications.open(MESSAGE)();
+    const close = notifications.open(MESSAGE);
     reply(1, receipt());
     await flush();
     close();
@@ -224,7 +263,7 @@ describe("optional cmux notifications", () => {
   it("drains pending creation and its exact cleanup on shutdown/reload", async () => {
     vi.stubEnv("CMUX_SURFACE_ID", "surface");
     const notifications = new CmuxNotifications();
-    notifications.open();
+    notifications.open(MESSAGE);
     let stopped = false;
     const shutdown = notifications.shutdown().then(() => {
       stopped = true;
@@ -237,7 +276,7 @@ describe("optional cmux notifications", () => {
     expect(stopped).toBe(false);
     reply(1, "OK");
     await shutdown;
-    notifications.open()();
+    notifications.open(MESSAGE)();
     await notifications.shutdown();
     expect(execFile).toHaveBeenCalledTimes(2);
   });
@@ -245,7 +284,7 @@ describe("optional cmux notifications", () => {
   it("closes already-created active notices on shutdown", async () => {
     vi.stubEnv("CMUX_SURFACE_ID", "surface");
     const notifications = new CmuxNotifications();
-    notifications.open();
+    notifications.open(MESSAGE);
     reply(0, receipt());
     await flush();
     const shutdown = notifications.shutdown();
@@ -259,7 +298,7 @@ describe("optional cmux notifications", () => {
     execFile.mockImplementation((cli, args, options, callback) => {
       actual.execFile(cli, args, options, callback);
     });
-    const dir = await mkdtemp(join(tmpdir(), "pi-ask-cmux-"));
+    const dir = await mkdtemp(join(tmpdir(), "pi-foundations-cmux-"));
     try {
       const cli = join(dir, "cmux");
       await writeFile(
@@ -273,7 +312,7 @@ describe("optional cmux notifications", () => {
       vi.stubEnv("CMUX_BUNDLED_CLI_PATH", cli);
       vi.stubEnv("CMUX_SURFACE_ID", "surface");
       const notifications = new CmuxNotifications();
-      const close = notifications.open();
+      const close = notifications.open(MESSAGE);
       close();
       await notifications.shutdown();
       expect(execFile).toHaveBeenCalledTimes(1);
@@ -286,7 +325,7 @@ describe("optional cmux notifications", () => {
     vi.useFakeTimers();
     vi.stubEnv("CMUX_SURFACE_ID", "surface");
     const notifications = new CmuxNotifications();
-    notifications.open();
+    notifications.open(MESSAGE);
     const shutdown = notifications.shutdown();
     await vi.advanceTimersByTimeAsync(3100);
     await shutdown;

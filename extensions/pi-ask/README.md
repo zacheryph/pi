@@ -1,7 +1,8 @@
 # pi-ask
 
 One `ask` tool for questions, routed by session: a subagent asks the agent that
-delegated to it, and the main session asks you.
+delegated to it, and the main session asks you. A second tool, `user_notify`,
+alerts you without waiting for an answer; see [Notifying you](#notifying-you).
 
 ## The tool
 
@@ -106,6 +107,29 @@ back to the end and restores the window; that key is not used as an answer. In
 regular mode your terminal owns scrollback, so the window stays inline at the
 bottom.
 
+## Notifying you
+
+`user_notify { title, body }` sends a native notification through cmux and
+returns at once. It is for the moment an agent ends its turn waiting on
+something only you can do outside the session: review or merge a pull request,
+unblock a step, look at a failed check. Unlike a questionnaire's notification
+it carries the model's own text, and nothing dismisses it: it stays until you
+clear it.
+
+| Field   | Limit          | Notes                                         |
+| ------- | -------------- | --------------------------------------------- |
+| `title` | 80 characters  | What needs you, in a few words                |
+| `body`  | 300 characters | What to do and where (a URL, a step, a check) |
+
+Both are reduced to one line of plain text before they are sent. The result
+says whether a notification was shown (`details.delivered`). Outside cmux, with
+`CMUX_PI_HOOKS_DISABLED=1`, or when the CLI fails, the call still succeeds: the
+message is in the transcript only and the model is told not to retry.
+
+Only the main session has the tool. In a subagent, and where there is no
+terminal, it is hidden and a stray call is refused; a subagent reports to its
+parent with `parent_notify` instead.
+
 ## Optional cmux notifications
 
 Inside cmux, opening a root terminal questionnaire also sends a native notification
@@ -118,6 +142,8 @@ This uses the public `cmux` CLI automatically when `CMUX_SURFACE_ID` (or legacy
 `CMUX_PANEL_ID`) is set, with an optional `CMUX_WORKSPACE_ID`/`CMUX_TAB_ID` target.
 It prefers `CMUX_BUNDLED_CLI_PATH`, then `cmux` on PATH, and preserves the inherited
 socket environment. Set `CMUX_PI_HOOKS_DISABLED=1` to opt out; no settings are needed.
+The CLI wrapper is `CmuxNotifications` in `packages/pi-foundations/src/cmux.ts`, shared
+with `user_notify`.
 Without cmux, or if the CLI fails or times out, questions work exactly as before.
 Creation and dismissal never wait on the question's interaction path; shutdown
 briefly drains pending work. If cmux creates a notification but its receipt is lost,
