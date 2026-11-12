@@ -10,7 +10,7 @@ import type {
   TerminalInfo,
   TodoSection,
   UsageSection,
-} from "#src/protocol";
+} from "#src/contract";
 
 /** Written by pi-subagent when a session starts with `--agent`. */
 const MAIN_AGENT_ENTRY = "agent:profile";

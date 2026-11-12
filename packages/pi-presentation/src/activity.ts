@@ -1,4 +1,4 @@
-import type { ActivitySection } from "#src/protocol";
+import type { ActivitySection } from "#src/contract";
 import { clip } from "#src/sections";
 
 const MAX_ENTRIES = 12;

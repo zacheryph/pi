@@ -5,36 +5,16 @@ import {
   type ExtensionAPI,
   type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { GIT_SNAPSHOT_EVENT, type GitSnapshotEvent } from "#git/events";
-import {
-  STASH_PREVIEW_REQUEST,
-  STASH_SNAPSHOT_EVENT,
-  type StashPreviewRequest,
-  type StashPreviewResult,
-  type StashSnapshotEvent,
-} from "#stash/events";
-import { SUBAGENT_SNAPSHOT, type SubagentSnapshot } from "#subagent/observation/snapshot";
-import { TODO_SNAPSHOT_EVENT, type TodoSnapshotEvent } from "#todo/events";
-import { ActivityTracker } from "#src/activity";
-import { AskUserTracker } from "#src/ask-user";
+import { PresentationService } from "#presentation";
+import { ActivityTracker } from "#presentation/activity";
 import { dashboardSettings, type DashboardConfig } from "#src/config";
 import { nodeRuntime, spawnHub } from "#src/launch";
-import {
-  hubPaths,
-  type CommandRequest,
-  type GitSection,
-  type HubPaths,
-  type StashSection,
-  type TodoSection,
-  type UsageSection,
-} from "#src/protocol";
+import { hubPaths, type CommandRequest, type HubPaths, type UsageSection } from "#src/protocol";
 import { Reporter } from "#src/reporter";
-import { readGit, readPreview, readStash, readTodoHistory, readTodos } from "#src/sections";
-import { buildSnapshot } from "#src/snapshot";
-import { StatusTracker } from "#src/status";
-import { SubagentTracker } from "#src/subagents";
+import { buildSnapshot } from "#presentation/snapshot";
+import { StatusTracker } from "#presentation/status";
 import { detectTerminal, type TerminalAdapter } from "#src/terminal";
-import { sessionUsage } from "#src/usage";
+import { sessionUsage } from "#presentation/usage";
 
 /** One reporter per process: subagent children and other embedded sessions stay off the dashboard. */
 const SLOT = Symbol.for("dashboard:reporter");
@@ -78,13 +58,7 @@ export default function dashboardExtension(
   let status = new StatusTracker();
   let current: ExtensionContext | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  // Latest state other extensions published on this session's bus.
-  let todos: TodoSection | undefined;
-  /** pi-todo's latest event as sent, for task history requests; never sent whole. */
-  let todoEvent: TodoSnapshotEvent | undefined;
-  let stash: StashSection | undefined;
-  let git: GitSection | undefined;
-  let subagents = new SubagentTracker();
+  const presentation = new PresentationService(pi.events);
   let activity = new ActivityTracker();
   // Usage scans the session file, so it refreshes only after events that change it.
   let usage: UsageSection | undefined;
@@ -108,14 +82,10 @@ export default function dashboardExtension(
       sessionName: pi.getSessionName(),
       thinking: pi.getThinkingLevel(),
       status: status.current(),
-      todos,
-      stash,
-      git,
+      ...presentation.snapshot(),
       usage,
-      subagents: subagents.section(),
       terminal: terminal?.info,
       activity: activity.section(),
-      questions: askUser.list(),
     });
   };
 
@@ -149,70 +119,24 @@ export default function dashboardExtension(
     reporter?.close(reason);
     reporter = undefined;
     current = undefined;
-    todos = undefined;
-    todoEvent = undefined;
-    stash = undefined;
-    git = undefined;
-    subagents = new SubagentTracker();
+    presentation.reset();
     activity = new ActivityTracker();
-    askUser.clear();
     usage = undefined;
     ledgerStale = true;
     terminal = undefined;
     if (slots[SLOT] === token) delete slots[SLOT];
   };
 
-  // pi-todo, pi-stash and pi-git publish on session start (before this extension's,
-  // which loads last), so the first snapshot already carries their state.
-  pi.events.on(TODO_SNAPSHOT_EVENT, (data) => {
-    todoEvent = data as TodoSnapshotEvent;
-    todos = readTodos(todoEvent);
-    schedule();
-  });
-  // pi-ask questionnaires, answerable from the page through pi-ask's answer channel.
-  const askUser = new AskUserTracker(pi.events, () => schedule());
+  presentation.subscribe(() => schedule());
 
-  /** Requests from the page, answered to that page only. Throw to report a failure. */
   const answer = async (request: CommandRequest): Promise<unknown> => {
-    switch (request.command) {
-      case "focus":
-        if (!terminal) throw new Error("This session's terminal does not support Focus.");
-        await terminal.focus();
-        return undefined;
-      case "stash-preview": {
-        // pi-stash answers synchronously, through its hash-checked store.
-        let reply: StashPreviewResult | undefined;
-        pi.events.emit(STASH_PREVIEW_REQUEST, {
-          name: request.name,
-          respond: (value) => {
-            reply = value;
-          },
-        } satisfies StashPreviewRequest);
-        const preview = readPreview(reply);
-        if (typeof preview === "string") throw new Error(preview);
-        return preview;
-      }
-      case "todo-history": {
-        const history = readTodoHistory(todoEvent, request.key);
-        if (!history) throw new Error(`No task "${request.key}" on this branch.`);
-        return history;
-      }
-      case "answer":
-        await askUser.answer(request.question, request.answer);
-        return undefined;
+    if (request.command === "focus") {
+      if (!terminal) throw new Error("This session's terminal does not support Focus.");
+      await terminal.focus();
+      return undefined;
     }
+    return presentation.request(request);
   };
-  pi.events.on(STASH_SNAPSHOT_EVENT, (data) => {
-    stash = readStash(data as StashSnapshotEvent);
-    schedule();
-  });
-  pi.events.on(GIT_SNAPSHOT_EVENT, (data) => {
-    git = readGit(data as GitSnapshotEvent);
-    schedule();
-  });
-  pi.events.on(SUBAGENT_SNAPSHOT, (data) => {
-    if (subagents.apply(data as SubagentSnapshot)) schedule();
-  });
 
   pi.on("session_start", (_event, ctx) => {
     // Interactive sessions only; print, json and rpc runs (and subagent children, which run in print mode) are not shown.
@@ -266,7 +190,7 @@ export default function dashboardExtension(
   });
   pi.on("tool_execution_end", (event, ctx) => {
     // However the asking call ended, its questionnaire is over.
-    askUser.close(event.toolCallId);
+    presentation.closeQuestion(event.toolCallId);
     if (event.parentToolCallId) return;
     status.toolEnd(event.toolCallId);
     activity.end(event.toolCallId, event.isError);

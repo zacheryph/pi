@@ -1,5 +1,5 @@
 import { SUBAGENT_SNAPSHOT_VERSION, type SubagentSnapshot } from "#subagent/observation/snapshot";
-import type { SubagentsSection, SubagentState } from "#src/protocol";
+import type { SubagentsSection, SubagentState } from "#src/contract";
 import { clip } from "#src/sections";
 
 const MAX_AGENTS = 20;

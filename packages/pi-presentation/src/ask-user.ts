@@ -1,5 +1,5 @@
 import { isRecord } from "#foundations/guards";
-import type { Questionnaire, QuestionnaireAnswer } from "#src/protocol";
+import type { Questionnaire, QuestionnaireAnswer } from "#src/contract";
 import { clip } from "#src/sections";
 
 // pi-ask's event contract (extensions/pi-ask/src/events.ts): payloads are
@@ -147,6 +147,9 @@ export class AskUserTracker {
 
   clear(): void {
     this.open.clear();
+    for (const finish of this.verdicts.values())
+      finish({ ok: false, reason: "Session presentation was reset." });
+    this.verdicts.clear();
   }
 
   /** Sends an answer and resolves once pi-ask accepts it; rejects with its reason otherwise. */

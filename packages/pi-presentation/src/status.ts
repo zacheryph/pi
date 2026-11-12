@@ -1,4 +1,4 @@
-import type { SessionStatus } from "#src/protocol";
+import type { SessionStatus } from "#src/contract";
 
 /**
  * Derives one status from Pi's lifecycle events. Priority: waiting on the

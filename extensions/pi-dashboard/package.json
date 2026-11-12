@@ -32,6 +32,8 @@
     "#stash/*": "pi-stash/*",
     "#subagent/*": "pi-subagent/*",
     "#test-helpers": "pi-test-helpers",
-    "#todo/*": "pi-todo/*"
+    "#todo/*": "pi-todo/*",
+    "#presentation": "pi-presentation",
+    "#presentation/*": "pi-presentation/*"
   }
 }

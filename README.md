@@ -597,3 +597,9 @@ Vendored subagents code retains its upstream [MIT license](extensions/pi-subagen
 Vendored todo engine retains its upstream [MIT license](extensions/pi-todo/LICENSE).
 Vendored jobs code retains its upstream [MIT license](extensions/pi-job/LICENSE).
 pi-git's GitHub retry classifier (`extensions/pi-git/src/retry.ts`) is copied from `@gotgenes/pi-github-tools` and keeps its MIT notice in the file.
+
+### Shared presentation services
+
+`packages/pi-presentation` provides renderer-independent session projections,
+producer subscriptions and owner-routed read requests. The terminal dashboard
+consumes it without exposing its transport to other UIs. See the package README.

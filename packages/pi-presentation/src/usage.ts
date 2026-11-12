@@ -1,4 +1,4 @@
-import type { UsageSection } from "#src/protocol";
+import type { UsageSection } from "#src/contract";
 
 interface UsageLike {
   input?: unknown;
