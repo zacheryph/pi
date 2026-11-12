@@ -1,0 +1,5 @@
+{
+  "id": "pi-harness",
+  "description": "Live Pi harness tasks and subagents",
+  "requirements": { "paseo": ">=0.16.0-beta.2" }
+}

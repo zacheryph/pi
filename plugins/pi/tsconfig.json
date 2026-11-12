@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "lib": ["ES2024"],
+    "types": ["node", "react"]
+  },
+  "include": ["index.client.tsx", "index.server.ts", "client", "server", "shared", "test"],
+  "exclude": ["test/bridge.test.ts"]
+}
