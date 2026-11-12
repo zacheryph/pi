@@ -1,18 +1,42 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi, onTestFinished } from "vitest";
 import {
-  loadSettings,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  type MockInstance,
+  vi,
+  onTestFinished,
+} from "vitest";
+import {
   OVERLAY_WIDTH_PRESETS,
   OVERLAY_WIDTH_PERCENT,
   type OverlayWidth,
   persistToastFor,
   SettingsManager,
-  saveSettings,
+  subagentSettings,
+  type SubagentsSettings,
 } from "#src/settings";
 import { captureWarn } from "#test/helpers/capture-warn";
 import { settingsDirs, type SettingsDirs } from "../../../packages/pi-test-helpers/src/temp.ts";
+
+const DEFAULTS: SubagentsSettings = {
+  overlayWidth: "third",
+  overlayDefaultOpen: false,
+  overlayShowThinking: true,
+  maxConcurrent: 4,
+  defaultMaxTurns: 0,
+  wrapUpTurns: 2,
+  consumedSessionRetentionMinutes: 10,
+  unconsumedSessionRetentionMinutes: 720,
+  abortAllOnInterrupt: true,
+  midRunUpdates: true,
+  excludedExtensionPackages: [],
+  promptInheritance: {},
+};
 
 /**
  * Tests for persistent settings. Uses two tmp directories:
@@ -21,16 +45,17 @@ import { settingsDirs, type SettingsDirs } from "../../../packages/pi-test-helpe
  *   Simulates the user's project root. Settings live at `<projectDir>/.pi/subagent.json`.
  */
 describe("settings persistence", () => {
-  let dirs: SettingsDirs;
   let globalDir: string;
   let projectDir: string;
   let globalFile: string;
   let projectFile: string;
   let writeGlobal: (obj: unknown) => void;
   let writeProject: (obj: unknown) => void;
+  let warn: MockInstance<typeof console.warn>;
+  const load = () => subagentSettings.load(projectDir, globalDir);
+  const save = (patch: Partial<SubagentsSettings>) => subagentSettings.save(projectDir, patch);
 
   beforeEach(() => {
-    dirs = settingsDirs(onTestFinished, "subagent.json");
     ({
       agentDir: globalDir,
       cwd: projectDir,
@@ -38,273 +63,159 @@ describe("settings persistence", () => {
       projectFile,
       writeGlobal,
       writeProject,
-    } = dirs);
+    } = settingsDirs(onTestFinished, "subagent.json"));
+    warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it("returns the defaults silently when both files are missing", () => {
+    expect(load()).toEqual(DEFAULTS);
+    expect(subagentSettings.defaults()).toEqual(DEFAULTS);
+    expect(warn).not.toHaveBeenCalled();
   });
 
-  it("returns {} when both files are missing", () => {
-    expect(loadSettings(globalDir, projectDir)).toEqual({});
+  it("warns once per malformed file and returns the defaults", () => {
+    writeGlobal("not json {{");
+    writeProject("also not json");
+    expect(load()).toEqual(DEFAULTS);
+    expect(warn).toHaveBeenCalledTimes(2);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringMatching(/^\[pi-subagent\] Ignoring settings at .*subagent\.json: /),
+    );
   });
 
-  it("returns {} when both files are malformed JSON", () => {
-    writeFileSync(globalFile, "not json {{");
-    mkdirSync(join(projectDir, ".pi"), { recursive: true });
-    writeFileSync(projectFile, "also not json");
-    expect(loadSettings(globalDir, projectDir)).toEqual({});
-  });
-
-  it("loads from global when no project file", () => {
-    writeGlobal({ maxConcurrent: 16, wrapUpTurns: 10 });
-    expect(loadSettings(globalDir, projectDir)).toEqual({ maxConcurrent: 16, wrapUpTurns: 10 });
-  });
-
-  it("loads from project when no global file", () => {
-    writeProject({ maxConcurrent: 8 });
-    expect(loadSettings(globalDir, projectDir)).toEqual({ maxConcurrent: 8 });
-  });
+  it.each(['["not", "an", "object"]', '"just a string"', "null"])(
+    "warns and returns the defaults when the JSON root is %s",
+    (raw) => {
+      writeProject(raw);
+      expect(load()).toEqual(DEFAULTS);
+      expect(warn).toHaveBeenCalledExactlyOnceWith(
+        expect.stringContaining("settings must be a JSON object"),
+      );
+    },
+  );
 
   it("merges global + project with project winning on conflicts", () => {
     writeGlobal({ maxConcurrent: 16, wrapUpTurns: 10 });
     writeProject({ maxConcurrent: 4, defaultMaxTurns: 50 });
-    expect(loadSettings(globalDir, projectDir)).toEqual({
+    expect(load()).toEqual({
+      ...DEFAULTS,
       maxConcurrent: 4, // project wins
       wrapUpTurns: 10, // from global
       defaultMaxTurns: 50, // from project only
     });
   });
 
-  it("round-trips values: saveSettings then loadSettings", () => {
-    const settings = {
-      maxConcurrent: 7,
-      defaultMaxTurns: 30,
-      wrapUpTurns: 3,
-    };
-    saveSettings(settings, projectDir);
-    expect(loadSettings(globalDir, projectDir)).toEqual(settings);
+  it("round-trips values, including defaultMaxTurns: 0 (unlimited marker)", () => {
+    const settings = { maxConcurrent: 7, defaultMaxTurns: 0, wrapUpTurns: 3 };
+    save(settings);
+    expect(load()).toEqual({ ...DEFAULTS, ...settings });
   });
 
-  it("saveSettings writes only to the project file; global is untouched", () => {
+  it("saves only to the project file, creating .pi/; global is untouched", () => {
     writeGlobal({ maxConcurrent: 16 });
-    saveSettings({ maxConcurrent: 2 }, projectDir);
-
-    // Project file contains the new value
+    expect(existsSync(join(projectDir, ".pi"))).toBe(false);
+    save({ maxConcurrent: 2 });
     expect(JSON.parse(readFileSync(projectFile, "utf-8"))).toEqual({ maxConcurrent: 2 });
-    // Global file unchanged
     expect(JSON.parse(readFileSync(globalFile, "utf-8"))).toEqual({ maxConcurrent: 16 });
   });
 
-  it("saveSettings creates <cwd>/.pi/ when missing", () => {
-    expect(existsSync(join(projectDir, ".pi"))).toBe(false);
-    saveSettings({ maxConcurrent: 4 }, projectDir);
-    expect(existsSync(projectFile)).toBe(true);
+  it("keeps keys it does not save and refuses to overwrite a malformed project file", () => {
+    writeProject({ futureField: "kept", maxConcurrent: 2 });
+    save({ maxConcurrent: 3 });
+    expect(JSON.parse(readFileSync(projectFile, "utf-8"))).toEqual({
+      futureField: "kept",
+      maxConcurrent: 3,
+    });
+    writeProject("not json {{");
+    expect(() => save({ maxConcurrent: 3 })).toThrow();
+    expect(readFileSync(projectFile, "utf-8")).toBe("not json {{");
   });
 
-  it("round-trips defaultMaxTurns: 0 (unlimited marker)", () => {
-    saveSettings({ defaultMaxTurns: 0 }, projectDir);
-    expect(loadSettings(globalDir, projectDir)).toEqual({ defaultMaxTurns: 0 });
-  });
-
-  it("ignores unknown extra fields on load (forward-compat)", () => {
+  it("names an unknown key in a warning and does not load it", () => {
     writeProject({ maxConcurrent: 2, futureField: "ignored" });
-    const loaded = loadSettings(globalDir, projectDir);
-    expect(loaded.maxConcurrent).toBe(2);
-    // Unknown fields are stripped by the sanitizer — old versions won't persist garbage
-    expect((loaded as Record<string, unknown>).futureField).toBeUndefined();
+    const loaded = load();
+    expect(loaded).toEqual({ ...DEFAULTS, maxConcurrent: 2 });
+    expect(warn).toHaveBeenCalledExactlyOnceWith(
+      expect.stringContaining("futureField is not a setting"),
+    );
   });
 
-  it("composes partial global + partial project correctly", () => {
-    writeGlobal({ wrapUpTurns: 10 });
-    writeProject({ maxConcurrent: 2 });
-    expect(loadSettings(globalDir, projectDir)).toEqual({ wrapUpTurns: 10, maxConcurrent: 2 });
-  });
-
-  describe("sanitizer", () => {
+  describe("field validation", () => {
     it.each<OverlayWidth>(["quarter", "third", "half", "two-thirds", "four-fifths"])(
       "accepts overlayWidth: %s",
       (overlayWidth) => {
         writeProject({ overlayWidth });
-        expect(loadSettings(globalDir, projectDir)).toEqual({ overlayWidth });
+        expect(load().overlayWidth).toBe(overlayWidth);
       },
     );
 
-    it.each(["full", "Third", " third ", "toString", "__proto__", 0.5, 33, null, true, {}])(
-      "drops invalid overlayWidth: %j",
-      (overlayWidth) => {
-        writeProject({ overlayWidth, wrapUpTurns: 3 });
-        expect(loadSettings(globalDir, projectDir)).toEqual({ wrapUpTurns: 3 });
-      },
-    );
-
-    it.each([true, false])("accepts overlayShowThinking: %s", (overlayShowThinking) => {
-      writeProject({ overlayShowThinking });
-      expect(loadSettings(globalDir, projectDir)).toEqual({ overlayShowThinking });
+    it.each([
+      [
+        "overlayWidth",
+        ["full", "Third", " third ", "toString", "__proto__", 0.5, 33, null, true, {}],
+      ],
+      ["overlayShowThinking", ["false", "true", 0, 1, null, {}, []]],
+      ["overlayDefaultOpen", ["false", "true", 0, 1, null, {}]],
+      ["maxConcurrent", [0, -3, 3.5, "four", null, 1025, 1_000_000]],
+      ["defaultMaxTurns", [-1, 10_001, 1_000_000]],
+      ["wrapUpTurns", [0, 1_001, 1_000_000]],
+      ["consumedSessionRetentionMinutes", [0, 12.5, 20_161]],
+      ["unconsumedSessionRetentionMinutes", [0, 12.5, 20_161]],
+      ["abortAllOnInterrupt", ["false", 0, null]],
+      ["midRunUpdates", ["false", 0, null]],
+      ["excludedExtensionPackages", ["npm:pkg", {}, null]],
+      ["promptInheritance", ["portable", [], null]],
+    ] as const)("drops invalid %s, keeps the global value and valid siblings", (key, values) => {
+      const fallback = { ...DEFAULTS, wrapUpTurns: 5, [key]: DEFAULTS[key] };
+      for (const value of values) {
+        warn.mockClear();
+        writeGlobal({ [key]: DEFAULTS[key] });
+        writeProject({ [key]: value, ...(key === "wrapUpTurns" ? {} : { wrapUpTurns: 5 }) });
+        expect(load(), JSON.stringify(value)).toEqual(
+          key === "wrapUpTurns" ? { ...fallback, wrapUpTurns: DEFAULTS.wrapUpTurns } : fallback,
+        );
+        expect(warn).toHaveBeenCalledExactlyOnceWith(expect.stringContaining(`${key} must be`));
+      }
     });
 
-    it.each(["false", "true", 0, 1, null, {}, []])(
-      "drops invalid overlayShowThinking: %j",
-      (overlayShowThinking) => {
-        writeGlobal({ overlayShowThinking: false });
-        writeProject({ overlayShowThinking });
-        expect(loadSettings(globalDir, projectDir)).toEqual({ overlayShowThinking: false });
-      },
-    );
-
-    it.each([true, false])("accepts overlayDefaultOpen: %s", (overlayDefaultOpen) => {
-      writeProject({ overlayDefaultOpen });
-      expect(loadSettings(globalDir, projectDir)).toEqual({ overlayDefaultOpen });
+    it("accepts the boundaries of every numeric range", () => {
+      const low = {
+        maxConcurrent: 1,
+        defaultMaxTurns: 0,
+        wrapUpTurns: 1,
+        consumedSessionRetentionMinutes: 1,
+        unconsumedSessionRetentionMinutes: 1,
+      };
+      const high = {
+        maxConcurrent: 1024,
+        defaultMaxTurns: 10_000,
+        wrapUpTurns: 1_000,
+        consumedSessionRetentionMinutes: 20_160,
+        unconsumedSessionRetentionMinutes: 20_160,
+      };
+      for (const bounds of [low, high]) {
+        writeProject(bounds);
+        expect(load()).toEqual({ ...DEFAULTS, ...bounds });
+      }
+      expect(warn).not.toHaveBeenCalled();
     });
 
-    it.each(["false", "true", 0, 1, null, {}])(
-      "drops non-boolean overlayDefaultOpen: %j",
-      (overlayDefaultOpen) => {
-        writeProject({ overlayDefaultOpen });
-        expect(loadSettings(globalDir, projectDir)).toEqual({});
-      },
-    );
+    it("keeps booleans as written", () => {
+      const flipped = {
+        overlayDefaultOpen: true,
+        overlayShowThinking: false,
+        abortAllOnInterrupt: false,
+        midRunUpdates: false,
+      };
+      writeProject(flipped);
+      expect(load()).toEqual({ ...DEFAULTS, ...flipped });
+    });
 
     it("keeps valid global overlay settings when project overrides are invalid", () => {
       writeGlobal({ overlayWidth: "half", overlayDefaultOpen: false });
       writeProject({ overlayWidth: "full", overlayDefaultOpen: "true" });
-      expect(loadSettings(globalDir, projectDir)).toEqual({
-        overlayWidth: "half",
-        overlayDefaultOpen: false,
-      });
-    });
-
-    it("lets valid project overlay settings override global settings", () => {
-      writeGlobal({ overlayWidth: "half", overlayDefaultOpen: false });
-      writeProject({ overlayWidth: "quarter", overlayDefaultOpen: true });
-      expect(loadSettings(globalDir, projectDir)).toEqual({
-        overlayWidth: "quarter",
-        overlayDefaultOpen: true,
-      });
-    });
-
-    it("drops maxConcurrent < 1", () => {
-      writeProject({ maxConcurrent: 0, wrapUpTurns: 5 });
-      expect(loadSettings(globalDir, projectDir)).toEqual({ wrapUpTurns: 5 });
-    });
-
-    it("drops negative maxConcurrent", () => {
-      writeProject({ maxConcurrent: -3 });
-      expect(loadSettings(globalDir, projectDir)).toEqual({});
-    });
-
-    it("drops non-integer maxConcurrent (floats, NaN, strings)", () => {
-      writeProject({ maxConcurrent: 3.5 });
-      expect(loadSettings(globalDir, projectDir).maxConcurrent).toBeUndefined();
-      writeProject({ maxConcurrent: "four" });
-      expect(loadSettings(globalDir, projectDir).maxConcurrent).toBeUndefined();
-      writeProject({ maxConcurrent: null });
-      expect(loadSettings(globalDir, projectDir).maxConcurrent).toBeUndefined();
-    });
-
-    it("accepts defaultMaxTurns: 0 (explicit unlimited)", () => {
-      writeProject({ defaultMaxTurns: 0 });
-      expect(loadSettings(globalDir, projectDir)).toEqual({ defaultMaxTurns: 0 });
-    });
-
-    it("drops negative defaultMaxTurns", () => {
-      writeProject({ defaultMaxTurns: -1 });
-      expect(loadSettings(globalDir, projectDir)).toEqual({});
-    });
-
-    it("drops wrapUpTurns < 1", () => {
-      writeProject({ wrapUpTurns: 0 });
-      expect(loadSettings(globalDir, projectDir)).toEqual({});
-    });
-
-    it("accepts retention windows within [1, 20160]", () => {
-      writeProject({
-        consumedSessionRetentionMinutes: 15,
-        unconsumedSessionRetentionMinutes: 1440,
-      });
-      expect(loadSettings(globalDir, projectDir)).toEqual({
-        consumedSessionRetentionMinutes: 15,
-        unconsumedSessionRetentionMinutes: 1440,
-      });
-    });
-
-    it("drops retention windows < 1, non-integer, or above the ceiling", () => {
-      writeProject({ consumedSessionRetentionMinutes: 0 });
-      expect(loadSettings(globalDir, projectDir).consumedSessionRetentionMinutes).toBeUndefined();
-      writeProject({ unconsumedSessionRetentionMinutes: 20_161 });
-      expect(loadSettings(globalDir, projectDir).unconsumedSessionRetentionMinutes).toBeUndefined();
-      writeProject({ consumedSessionRetentionMinutes: 12.5 });
-      expect(loadSettings(globalDir, projectDir).consumedSessionRetentionMinutes).toBeUndefined();
-    });
-
-    it("returns {} when the JSON root is not an object (array, string, null)", () => {
-      mkdirSync(join(projectDir, ".pi"), { recursive: true });
-      writeFileSync(projectFile, '["not", "an", "object"]');
-      expect(loadSettings(globalDir, projectDir)).toEqual({});
-      writeFileSync(projectFile, '"just a string"');
-      expect(loadSettings(globalDir, projectDir)).toEqual({});
-      writeFileSync(projectFile, "null");
-      expect(loadSettings(globalDir, projectDir)).toEqual({});
-    });
-
-    it("keeps valid fields while dropping invalid siblings", () => {
-      writeProject({
-        maxConcurrent: 4, // ok
-        defaultMaxTurns: -5, // dropped
-        wrapUpTurns: 3, // ok
-      });
-      expect(loadSettings(globalDir, projectDir)).toEqual({ maxConcurrent: 4, wrapUpTurns: 3 });
-    });
-
-    it("accepts values at the ceiling (maxConcurrent=1024, defaultMaxTurns=10000, wrapUpTurns=1000)", () => {
-      writeProject({ maxConcurrent: 1024, defaultMaxTurns: 10_000, wrapUpTurns: 1_000 });
-      expect(loadSettings(globalDir, projectDir)).toEqual({
-        maxConcurrent: 1024,
-        defaultMaxTurns: 10_000,
-        wrapUpTurns: 1_000,
-      });
-    });
-
-    it("drops values above the ceiling", () => {
-      writeProject({ maxConcurrent: 1025 });
-      expect(loadSettings(globalDir, projectDir).maxConcurrent).toBeUndefined();
-      writeProject({ defaultMaxTurns: 10_001 });
-      expect(loadSettings(globalDir, projectDir).defaultMaxTurns).toBeUndefined();
-      writeProject({ wrapUpTurns: 1_001 });
-      expect(loadSettings(globalDir, projectDir).wrapUpTurns).toBeUndefined();
-    });
-
-    it("drops absurdly large values (e.g. 1e6)", () => {
-      writeProject({
-        maxConcurrent: 1_000_000,
-        defaultMaxTurns: 1_000_000,
-        wrapUpTurns: 1_000_000,
-      });
-      expect(loadSettings(globalDir, projectDir)).toEqual({});
-    });
-
-    it("keeps abortAllOnInterrupt when it is a boolean", () => {
-      writeProject({ abortAllOnInterrupt: false });
-      expect(loadSettings(globalDir, projectDir)).toEqual({ abortAllOnInterrupt: false });
-      writeProject({ abortAllOnInterrupt: true });
-      expect(loadSettings(globalDir, projectDir)).toEqual({ abortAllOnInterrupt: true });
-    });
-
-    it("keeps midRunUpdates when it is a boolean", () => {
-      writeProject({ midRunUpdates: false });
-      expect(loadSettings(globalDir, projectDir)).toEqual({ midRunUpdates: false });
-      writeProject({ midRunUpdates: true });
-      expect(loadSettings(globalDir, projectDir)).toEqual({ midRunUpdates: true });
-    });
-
-    it("drops a non-boolean midRunUpdates", () => {
-      writeProject({ midRunUpdates: "false", wrapUpTurns: 5 });
-      expect(loadSettings(globalDir, projectDir)).toEqual({ wrapUpTurns: 5 });
-    });
-
-    it("drops a non-boolean abortAllOnInterrupt", () => {
-      writeProject({ abortAllOnInterrupt: "false", wrapUpTurns: 5 });
-      expect(loadSettings(globalDir, projectDir)).toEqual({ wrapUpTurns: 5 });
-      writeProject({ abortAllOnInterrupt: 0 });
-      expect(loadSettings(globalDir, projectDir)).toEqual({});
-      writeProject({ abortAllOnInterrupt: null });
-      expect(loadSettings(globalDir, projectDir)).toEqual({});
+      expect(load()).toMatchObject({ overlayWidth: "half", overlayDefaultOpen: false });
     });
 
     describe("excludedExtensionPackages", () => {
@@ -316,91 +227,48 @@ describe("settings persistence", () => {
             "npm:keep",
           ],
         });
-        expect(loadSettings(globalDir, projectDir)).toEqual({
-          excludedExtensionPackages: ["npm:@cortexkit/pi-magic-context", "npm:keep"],
-        });
+        expect(load().excludedExtensionPackages).toEqual([
+          "npm:@cortexkit/pi-magic-context",
+          "npm:keep",
+        ]);
+        expect(warn).not.toHaveBeenCalled();
       });
 
-      it("drops non-string and empty members", () => {
+      it("drops non-string and empty members and names each one", () => {
         writeProject({ excludedExtensionPackages: ["npm:keep", "", "   ", 42, null, {}] });
-        expect(loadSettings(globalDir, projectDir)).toEqual({
-          excludedExtensionPackages: ["npm:keep"],
-        });
+        expect(load().excludedExtensionPackages).toEqual(["npm:keep"]);
+        expect(warn).toHaveBeenCalledExactlyOnceWith(
+          expect.stringContaining(
+            "excludedExtensionPackages[1] must be a non-empty string; excludedExtensionPackages[2]",
+          ),
+        );
       });
 
-      it("drops the key entirely when the value is not an array", () => {
-        writeProject({ excludedExtensionPackages: "npm:@cortexkit/pi-magic-context" });
-        expect(loadSettings(globalDir, projectDir)).toEqual({});
-      });
-
-      it("keeps an empty array as an empty array", () => {
+      it("lets an empty project list replace the global one", () => {
+        writeGlobal({ excludedExtensionPackages: ["npm:global"] });
         writeProject({ excludedExtensionPackages: [] });
-        expect(loadSettings(globalDir, projectDir)).toEqual({ excludedExtensionPackages: [] });
+        expect(load().excludedExtensionPackages).toEqual([]);
       });
     });
 
     describe("promptInheritance", () => {
       it("keeps entries whose strategy is a known value", () => {
         writeProject({ promptInheritance: { "claude-bridge": "portable", anthropic: "full" } });
-        expect(loadSettings(globalDir, projectDir)).toEqual({
-          promptInheritance: { "claude-bridge": "portable", anthropic: "full" },
+        expect(load().promptInheritance).toEqual({
+          "claude-bridge": "portable",
+          anthropic: "full",
         });
       });
 
-      it("drops entries whose strategy is not a known value", () => {
+      it("drops entries whose strategy is not a known value and names each one", () => {
         writeProject({
           promptInheritance: { "claude-bridge": "portable", bogus: "sideways", nope: 42 },
         });
-        expect(loadSettings(globalDir, projectDir)).toEqual({
-          promptInheritance: { "claude-bridge": "portable" },
-        });
+        expect(load().promptInheritance).toEqual({ "claude-bridge": "portable" });
+        expect(warn).toHaveBeenCalledExactlyOnceWith(
+          expect.stringContaining("promptInheritance.bogus must be one of"),
+        );
       });
-
-      it("drops the key entirely when no entry survives", () => {
-        writeProject({ promptInheritance: { bogus: "sideways" } });
-        expect(loadSettings(globalDir, projectDir)).toEqual({});
-      });
-
-      it("drops the key entirely when the value is not an object", () => {
-        writeProject({ promptInheritance: "portable" });
-        expect(loadSettings(globalDir, projectDir)).toEqual({});
-      });
-    });
-  });
-
-  describe("save result + corrupt-file warning", () => {
-    it("saveSettings returns true on success", () => {
-      expect(saveSettings({ maxConcurrent: 2 }, projectDir)).toBe(true);
-      expect(JSON.parse(readFileSync(projectFile, "utf-8"))).toEqual({ maxConcurrent: 2 });
-    });
-
-    it("saveSettings returns false when the target dir cannot be created", () => {
-      // Place a regular file where the parent of the settings file would go —
-      // mkdirSync + writeFileSync both fail with ENOTDIR / EEXIST.
-      const filePosingAsCwd = join(tmpdir(), `pi-settings-notdir-${Date.now()}`);
-      writeFileSync(filePosingAsCwd, "");
-      try {
-        expect(saveSettings({ maxConcurrent: 1 }, filePosingAsCwd)).toBe(false);
-      } finally {
-        rmSync(filePosingAsCwd, { force: true });
-      }
-    });
-
-    it("warns to console.warn when an existing file is malformed", () => {
-      mkdirSync(join(projectDir, ".pi"), { recursive: true });
-      writeFileSync(projectFile, "not valid json {{{");
-      const warnings = captureWarn(() => {
-        expect(loadSettings(globalDir, projectDir)).toEqual({});
-      });
-      expect(warnings).toHaveLength(1);
-      expect(warnings[0]).toMatch(/Ignoring malformed settings/);
-    });
-
-    it("does NOT warn when a file is simply missing", () => {
-      const warnings = captureWarn(() => {
-        expect(loadSettings(globalDir, projectDir)).toEqual({});
-      });
-      expect(warnings).toEqual([]);
     });
   });
 
@@ -717,7 +585,7 @@ describe("SettingsManager", () => {
       expect(sm.abortAllOnInterrupt).toBe(true);
     });
 
-    it("drops an unknown key without a warning, and neither applies, emits, nor persists it", () => {
+    it("drops an unknown key with a warning, and neither applies, emits, nor persists it", () => {
       mkdirSync(join(projectDir, ".pi"), { recursive: true });
       writeFileSync(
         join(projectDir, ".pi", "subagent.json"),
@@ -726,11 +594,11 @@ describe("SettingsManager", () => {
       const emit = vi.fn();
       const sm = new SettingsManager({ emit, cwd: projectDir, agentDir: globalDir });
       const warnings = captureWarn(() => {
-        expect(sm.load()).toEqual({ maxConcurrent: 6 });
+        expect(sm.load()).toEqual({ ...DEFAULTS, maxConcurrent: 6 });
       });
-      expect(warnings).toEqual([]);
+      expect(warnings).toEqual([expect.stringContaining("graceTurns is not a setting")]);
       expect(emit).toHaveBeenCalledWith("subagent:settings:loaded", {
-        settings: { maxConcurrent: 6 },
+        settings: { ...DEFAULTS, maxConcurrent: 6 },
       });
       expect(sm.wrapUpTurns).toBe(2);
       expect(sm.snapshot()).not.toHaveProperty("graceTurns");
@@ -768,7 +636,7 @@ describe("SettingsManager", () => {
       sm.load();
       expect(emit).toHaveBeenCalledTimes(1);
       expect(emit).toHaveBeenCalledWith("subagent:settings:loaded", {
-        settings: { wrapUpTurns: 7 },
+        settings: { ...DEFAULTS, wrapUpTurns: 7 },
       });
     });
 
@@ -777,14 +645,14 @@ describe("SettingsManager", () => {
       writeFileSync(join(projectDir, ".pi", "subagent.json"), JSON.stringify({ maxConcurrent: 6 }));
       const sm = new SettingsManager({ emit: vi.fn(), cwd: projectDir, agentDir: globalDir });
       const result = sm.load();
-      expect(result).toEqual({ maxConcurrent: 6 });
+      expect(result).toEqual({ ...DEFAULTS, maxConcurrent: 6 });
     });
 
-    it("emits with empty settings when no files exist", () => {
+    it("emits the defaults when no files exist", () => {
       const emit = vi.fn();
       const sm = new SettingsManager({ emit, cwd: projectDir, agentDir: globalDir });
       sm.load();
-      expect(emit).toHaveBeenCalledWith("subagent:settings:loaded", { settings: {} });
+      expect(emit).toHaveBeenCalledWith("subagent:settings:loaded", { settings: DEFAULTS });
     });
 
     it("loads excluded extension package sources, and clears them when removed", () => {
@@ -1281,7 +1149,7 @@ describe("SettingsManager", () => {
         level: "info",
       });
       expect(sm.overlayShowThinking).toBe(false);
-      expect(loadSettings(dirs.agentDir, dirs.cwd).overlayShowThinking).toBe(false);
+      expect(subagentSettings.load(dirs.cwd, dirs.agentDir).overlayShowThinking).toBe(false);
       expect(emit).toHaveBeenLastCalledWith("subagent:settings:changed", {
         settings: sm.snapshot(),
         persisted: true,
@@ -1290,7 +1158,7 @@ describe("SettingsManager", () => {
         message: "Overlay thinking: shown",
         level: "info",
       });
-      expect(loadSettings(dirs.agentDir, dirs.cwd).overlayShowThinking).toBe(true);
+      expect(subagentSettings.load(dirs.cwd, dirs.agentDir).overlayShowThinking).toBe(true);
     });
 
     it("loads project thinking preference over global and preserves it through unrelated edits", () => {
@@ -1298,10 +1166,10 @@ describe("SettingsManager", () => {
       dirs.writeProject({ overlayShowThinking: false });
       const emit = vi.fn();
       const sm = manager(emit);
-      expect(sm.load()).toEqual({ overlayShowThinking: false });
+      expect(sm.load()).toEqual({ ...DEFAULTS, overlayShowThinking: false });
       expect(sm.overlayShowThinking).toBe(false);
       expect(emit).toHaveBeenCalledWith("subagent:settings:loaded", {
-        settings: { overlayShowThinking: false },
+        settings: { ...DEFAULTS, overlayShowThinking: false },
       });
       sm.applyWrapUpTurns(7);
       const reloaded = manager();
@@ -1331,11 +1199,11 @@ describe("SettingsManager", () => {
       dirs.writeProject({ overlayWidth: "quarter" });
       const emit = vi.fn();
       const sm = manager(emit);
-      expect(sm.load()).toEqual({ overlayWidth: "quarter", overlayDefaultOpen: false });
+      expect(sm.load()).toEqual({ ...DEFAULTS, overlayWidth: "quarter" });
       expect(sm.overlayWidth).toBe("quarter");
       expect(sm.overlayDefaultOpen).toBe(false);
       expect(emit).toHaveBeenCalledWith("subagent:settings:loaded", {
-        settings: { overlayWidth: "quarter", overlayDefaultOpen: false },
+        settings: { ...DEFAULTS, overlayWidth: "quarter" },
       });
     });
 
@@ -1357,7 +1225,7 @@ describe("SettingsManager", () => {
           level: "info",
         });
         expect(sm.overlayWidth).toBe(width);
-        expect(loadSettings(dirs.agentDir, dirs.cwd)).toEqual(sm.snapshot());
+        expect(subagentSettings.load(dirs.cwd, dirs.agentDir)).toMatchObject(sm.snapshot());
         expect(emit).toHaveBeenCalledWith("subagent:settings:changed", {
           settings: sm.snapshot(),
           persisted: true,
@@ -1373,7 +1241,7 @@ describe("SettingsManager", () => {
         level: "info",
       });
       expect(sm.overlayDefaultOpen).toBe(true);
-      expect(loadSettings(dirs.agentDir, dirs.cwd).overlayDefaultOpen).toBe(true);
+      expect(subagentSettings.load(dirs.cwd, dirs.agentDir).overlayDefaultOpen).toBe(true);
       expect(emit).toHaveBeenLastCalledWith("subagent:settings:changed", {
         settings: sm.snapshot(),
         persisted: true,
@@ -1382,7 +1250,7 @@ describe("SettingsManager", () => {
         "Overlay default visibility: hidden (before explicit show/hide this session)",
       );
       expect(sm.overlayDefaultOpen).toBe(false);
-      expect(loadSettings(dirs.agentDir, dirs.cwd).overlayDefaultOpen).toBe(false);
+      expect(subagentSettings.load(dirs.cwd, dirs.agentDir).overlayDefaultOpen).toBe(false);
     });
 
     it("round-trips non-default overlay settings through unrelated edits and reload", () => {
