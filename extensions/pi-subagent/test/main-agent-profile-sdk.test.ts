@@ -37,6 +37,7 @@ async function fixture(
     mode?: ExtensionContext["mode"];
     failure?: "startup" | "turn" | "context";
     flag?: string | null;
+    env?: string;
     modelOverride?: string;
     profileModel?: string;
     profileThinking?: AgentConfig["thinking"];
@@ -132,6 +133,7 @@ async function fixture(
             return profile;
           },
           diagnostic,
+          env: () => options.env,
         });
       },
       createCodemodeExtension(),
@@ -536,6 +538,58 @@ describe("main profile / installed SDK", () => {
     expect(h.calls).toHaveLength(1);
     expect(h.session.model?.id).toBe("other");
     expect(h.shutdown).not.toHaveBeenCalled();
+  });
+
+  it("PI_MAIN_AGENT starts a hosted session: instructions and tools apply, the host's model and thinking stay", async () => {
+    const h = await fixture({
+      mode: "rpc",
+      flag: null,
+      env: "reader",
+      profileModel: "main-profile-test/other",
+      profileThinking: "high",
+    });
+    await h.session.prompt("hello");
+    expect(h.calls[0]![0].id).toBe("first");
+    expect(h.calls[0]![2]?.reasoning).toBe("medium");
+    expect(JSON.stringify(h.calls[0]![1])).toContain("ONLY MAIN");
+    expect(activeToolSet(h.session)).toEqual(new Set(["read", ...MAIN_AGENT_REQUIRED_TOOLS]));
+    // The user sees which agent is active; the model is not shown the notice.
+    const notices = h.session.messages.filter(
+      (m) => m.role === "custom" && m.customType === "agent:notice",
+    );
+    expect(notices).toHaveLength(1);
+    expect(JSON.stringify(notices[0])).toContain("Agent reader · defaults applied");
+    expect(JSON.stringify(h.calls[0]![1])).not.toContain("defaults applied");
+    expect(h.shutdown).not.toHaveBeenCalled();
+  });
+
+  it("PI_MAIN_AGENT restart restores the saved profile and leaves the user's tools", async () => {
+    const snapshot = {
+      version: 1 as const,
+      profile: {
+        name: "reader",
+        description: "snapshot",
+        promptMode: "append" as const,
+        systemPrompt: "EXACT SAVED BODY",
+        toolNames: ["read"],
+      },
+    };
+    const h = await fixture({ mode: "rpc", flag: null, env: "reader", snapshot });
+    h.session.setActiveToolsByName(["write"]);
+    await h.session.prompt("hello");
+    expect(JSON.stringify(h.calls[0]![1])).toContain("EXACT SAVED BODY");
+    expect(activeToolSet(h.session)).toEqual(new Set(["write"]));
+  });
+
+  it("PI_MAIN_AGENT that cannot load blocks input and says why in the transcript", async () => {
+    const h = await fixture({ mode: "rpc", flag: null, env: "nope", failure: "startup" });
+    await h.session.prompt("first");
+    expect(h.calls).toHaveLength(0);
+    const notices = h.session.messages.filter(
+      (m) => m.role === "custom" && m.customType === "agent:notice",
+    );
+    expect(notices).toHaveLength(1);
+    expect(JSON.stringify(notices[0])).toContain("Main agent blocked: Unknown profile");
   });
 
   it("restores exact profile body without reapplying unavailable defaults", async () => {

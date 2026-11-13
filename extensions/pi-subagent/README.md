@@ -190,6 +190,37 @@ control model declarations; registered codemode/deferred tools may still be
 callable indirectly. No main-profile tool deny gate constrains later changes,
 child agents, trusted extensions, or nested/virtual model routing.
 
+### `PI_MAIN_AGENT`: choosing the agent from the environment
+
+A host that starts Pi for you and cannot pass `--agent`, such as bb, can set
+`PI_MAIN_AGENT=<profile>` instead. The profile's instructions and tool defaults
+apply as with `--agent`, with these differences:
+
+- `--agent` wins when both are given. An empty or whitespace-only value is
+  ignored, and surrounding whitespace is trimmed.
+- It selects only at process startup and only for a session with no saved
+  profile. A restart of the same session, which hosts do on every resume,
+  restores the saved profile exactly as an ordinary restart does and leaves the
+  tools the user has since changed alone. `/new` starts ordinary Pi.
+- The profile's `model` and `thinking` are **not** applied: the host passes its
+  own `--model` and `--thinking`, and they win. (`--agent-model` does not apply
+  either; use `--agent` for those.)
+- Subagent sessions ignore it, so workers keep their own profiles.
+- A profile that cannot load (unknown, disabled, untrusted project profile,
+  missing tools) blocks input as `--agent` does. Outside the terminal UI the
+  reason, and the "Agent X · defaults applied" line for a successful first
+  start, are also written to the transcript as a displayed message, because such
+  hosts drop notifications and status. The model never sees that message.
+
+With bb, set it for every project, or for one:
+
+```bash
+printf orchestrate | bb machine env set PI_MAIN_AGENT
+printf orchestrate | bb machine env set PI_MAIN_AGENT --project <project-id>
+```
+
+New Pi processes pick it up; a thread that already has a profile keeps it.
+
 ## Prompt fragments
 
 Profiles can share unconditional system instructions by name:

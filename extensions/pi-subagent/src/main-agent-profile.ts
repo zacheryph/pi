@@ -26,6 +26,10 @@ import type { AgentConfig } from "#src/types";
 import { sanitizeText } from "#ui";
 
 export const MAIN_AGENT_ENTRY = "agent:profile";
+/** Environment variable that selects the main agent when `--agent` is absent. */
+export const MAIN_AGENT_ENV = "PI_MAIN_AGENT";
+/** Displayed (never model-visible) notices for hosts that drop `notify`, such as RPC apps. */
+export const MAIN_AGENT_NOTICE_TYPE = "agent:notice";
 export { MAIN_AGENT_SECTION } from "#src/session/main-profile-prompt";
 export const MAIN_AGENT_REQUIRED_TOOLS = [
   "subagent_start",
@@ -42,6 +46,10 @@ export interface MainAgentSnapshot {
 export interface MainAgentProfileIO {
   resolveProfile(name: string, ctx: ExtensionContext): AgentConfig;
   diagnostic(message: string): void;
+  /** The `PI_MAIN_AGENT` value, if set. */
+  env(): string | undefined;
+  /** True for a delegated child session, which never takes its profile from the environment. */
+  isChild(ctx: ExtensionContext): boolean;
 }
 
 /** Main discovery uses the target session cwd, not the child registry's process.cwd closure. */
@@ -140,6 +148,8 @@ export function registerMainAgentProfile(
   const io: MainAgentProfileIO = {
     resolveProfile: resolveMainAgentProfile,
     diagnostic: (message) => console.error(message),
+    env: () => process.env[MAIN_AGENT_ENV],
+    isChild: () => false,
     ...overrides,
   };
   let selected: MainAgentSnapshot | undefined;
@@ -157,12 +167,26 @@ export function registerMainAgentProfile(
     description: "Override the initial --agent profile's model default (main session only)",
   });
 
-  function notice(ctx: ExtensionContext, message: string, error = false): void {
+  /**
+   * `display` also writes the message into the transcript outside the terminal UI: RPC
+   * hosts drop `notify` and `setStatus`, and without it a blocked agent looks like a hang.
+   */
+  function notice(ctx: ExtensionContext, message: string, error = false, display = false): void {
     if (lastNotice === message) return;
     lastNotice = message;
     const safe = sanitizeText(message);
     if (ctx.hasUI) ctx.ui.notify(safe, error ? "error" : "info");
     else io.diagnostic(safe);
+    if (display && ctx.mode !== "tui") {
+      try {
+        pi.sendMessage(
+          { customType: MAIN_AGENT_NOTICE_TYPE, content: safe, display: true },
+          { triggerTurn: false },
+        );
+      } catch {
+        /* The session is already shutting down: nobody is left to tell. */
+      }
+    }
   }
 
   function fail(ctx: ExtensionContext, error: unknown): false {
@@ -173,7 +197,7 @@ export function registerMainAgentProfile(
     if (ctx.signal) ctx.abort();
     ctx.shutdown();
     ctx.ui.setStatus("agent:status", "agent:blocked");
-    notice(ctx, failure, true);
+    notice(ctx, failure, true, true);
     return false;
   }
 
@@ -188,7 +212,12 @@ export function registerMainAgentProfile(
   }
 
   /** Apply defaults once for explicit selection. Never called on restoration or a turn. */
-  async function applyDefaults(profile: AgentConfig, ctx: ExtensionContext): Promise<string> {
+  async function applyDefaults(
+    profile: AgentConfig,
+    ctx: ExtensionContext,
+    /** The host chose the model and thinking level: apply instructions and tools only. */
+    hostModel = false,
+  ): Promise<string> {
     if (profile.definitionError)
       throw new Error(
         `Main agent profile "${profile.name}" cannot load: ${profile.definitionError}`,
@@ -197,7 +226,7 @@ export function registerMainAgentProfile(
       throw new Error(`Main agent profile "${profile.name}" is disabled.`);
     validateTrust(profile, ctx);
     let model = ctx.model;
-    if (profile.model) {
+    if (profile.model && !hostModel) {
       const slash = profile.model.indexOf("/");
       const resolved =
         slash < 0 || profile.model.toLowerCase().endsWith(LATEST_SUFFIX)
@@ -214,12 +243,12 @@ export function registerMainAgentProfile(
       }
       model = resolved;
     }
-    if (profile.thinking !== undefined) {
-      if (!parseThinkingLevel(profile.thinking))
-        throw new Error(thinkingLevelError(profile.thinking));
-      if (!model || !getSupportedThinkingLevels(model).includes(profile.thinking)) {
+    const thinking = hostModel ? undefined : profile.thinking;
+    if (thinking !== undefined) {
+      if (!parseThinkingLevel(thinking)) throw new Error(thinkingLevelError(thinking));
+      if (!model || !getSupportedThinkingLevels(model).includes(thinking)) {
         throw new Error(
-          `Thinking level ${profile.thinking} is unavailable for ${model ? `${model.provider}/${model.id}` : "the current model"}.`,
+          `Thinking level ${thinking} is unavailable for ${model ? `${model.provider}/${model.id}` : "the current model"}.`,
         );
       }
     }
@@ -254,10 +283,10 @@ export function registerMainAgentProfile(
         throw new Error(`Cannot authenticate profile model: ${model.provider}/${model.id}.`);
     }
     // Model switches choose Pi's own default thinking unless the profile specifies one.
-    if (profile.thinking !== undefined) {
-      pi.setThinkingLevel(profile.thinking);
-      if (pi.getThinkingLevel() !== profile.thinking)
-        throw new Error(`Cannot apply profile thinking: ${profile.thinking}.`);
+    if (thinking !== undefined) {
+      pi.setThinkingLevel(thinking);
+      if (pi.getThinkingLevel() !== thinking)
+        throw new Error(`Cannot apply profile thinking: ${thinking}.`);
     }
     pi.setActiveTools(tools);
     const active = pi.getActiveTools();
@@ -286,9 +315,17 @@ export function registerMainAgentProfile(
           /* explicit selection supersedes it */
         }
       } else saved = branchSnapshot(ctx);
+      // PI_MAIN_AGENT is for hosts that cannot pass --agent. It only starts a session that
+      // has no profile yet: the host restarts Pi on every resume, so re-applying would
+      // reset the user's tools. The flag wins, and delegated children never read it.
+      const envName =
+        override || !explicit || saved || io.isChild(ctx) ? "" : (io.env() ?? "").trim();
+      const fromEnv = envName !== "";
       selected = override
         ? { version: 1, profile: structuredClone(io.resolveProfile(flag.trim(), ctx)) }
-        : saved;
+        : fromEnv
+          ? { version: 1, profile: structuredClone(io.resolveProfile(envName, ctx)) }
+          : saved;
       if (override && selected) {
         // Core --model is not an extension flag. Launchers mirror their explicit
         // model here; replace only the effective snapshot, never the registry.
@@ -303,7 +340,9 @@ export function registerMainAgentProfile(
         return;
       }
       validateTrust(selected.profile, ctx);
-      const defaults = override ? await applyDefaults(selected.profile, ctx) : undefined;
+      // The host passes its own --model and --thinking, which win over the profile's.
+      const defaults =
+        override || fromEnv ? await applyDefaults(selected.profile, ctx, fromEnv) : undefined;
       if (!saved || JSON.stringify(saved) !== JSON.stringify(selected))
         pi.appendEntry(MAIN_AGENT_ENTRY, structuredClone(selected));
       const name = sanitizeText(selected.profile.name).replace(/\s+/g, " ").trim();
@@ -315,6 +354,8 @@ export function registerMainAgentProfile(
       notice(
         ctx,
         `Agent ${name} · ${defaults ? `defaults applied\n${defaults}` : "instructions restored; settings preserved"}${skipped.length ? `\nSubagent-only fields skipped: ${skipped.join(", ")}` : ""}`,
+        false,
+        defaults !== undefined,
       );
     } catch (error) {
       fail(ctx, error);
@@ -333,6 +374,13 @@ export function registerMainAgentProfile(
     selected = undefined;
     failure = undefined;
     runPromptOptions = undefined;
+  });
+  // The displayed notice is for the user; the model has no use for it.
+  pi.on("context", (event) => {
+    const messages = event.messages.filter(
+      (m) => !(m.role === "custom" && m.customType === MAIN_AGENT_NOTICE_TYPE),
+    );
+    return messages.length === event.messages.length ? undefined : { messages };
   });
   pi.on("input", (_event, ctx) => (ready(ctx) ? undefined : { action: "handled" }));
   // RPC/SDK may request summarization while shutdown is deferred or unavailable.

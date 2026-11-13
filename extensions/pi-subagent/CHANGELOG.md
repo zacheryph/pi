@@ -22,6 +22,20 @@ An app that hosts Pi over RPC drops `ctx.ui.notify` and never mounts `ctx.ui.cus
 - Tests: `test/rpc-commands.test.ts`, `agentsListText`, `transcriptText` and the navigator's
   text path.
 
+## 2026-11-13: Choose the main agent from `PI_MAIN_AGENT`
+
+- A host that cannot pass `--agent` (bb) can set `PI_MAIN_AGENT=<profile>`. It
+  applies instructions and tool defaults at startup to a session with no saved
+  profile; a restart restores the saved profile and keeps the user's tools. The
+  profile's `model` and `thinking` are not applied, so the host's `--model` and
+  `--thinking` win. `--agent` wins over the variable, an empty value is
+  ignored, and subagent sessions never read it.
+- Outside the terminal UI, a blocked main agent and a first-start "defaults
+  applied" notice are also written to the transcript as a displayed custom
+  message (`agent:notice`, never a model turn, removed from the model's
+  context), because RPC hosts drop `notify` and `setStatus`. Terminal behaviour
+  is unchanged.
+
 ## 2026-11-12: Align the orchestrator with the execute-roadmap skill
 
 - `orchestrate` waits on pull requests with `git_pr_watch` (it named
