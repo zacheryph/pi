@@ -109,6 +109,9 @@ pi-personal/
 │       └── UPSTREAM.md
 ├── packages/
 │   ├── pi-ui/                           # shared terminal UI library (no migrations yet)
+│   ├── pi-surface/                      # renderer-neutral view model + action registry
+│   │   ├── src/index.ts
+│   │   └── test/
 │   ├── pi-foundations/                  # shared settings, model lookup, cmux notifications
 │   ├── pi-scripted-model/               # fake model + bundle test harness (dev only)
 │   ├── pi-test-helpers/                 # shared test helpers (dev only)
@@ -133,10 +136,12 @@ root; registering a workspace includes its source and tests automatically.
 Root `pi.extensions` lists entry points explicitly. Pi loads each as its own
 extension; helper files and tests are not loaded as extensions. `packages/` holds
 libraries shared by extensions, including [pi-ui](packages/pi-ui/README.md) for
-terminal views and widget layout. They are workspaces with no `pi` entry, and
-extensions import them through aliases. Each workspace's `package.json` maps
-`#src/*` and `#test/*` to its own modules, and shared aliases such as `#ui`,
-`#work`, `#foundations/settings` and `#test-helpers` to workspace packages.
+terminal views and widget layout, and [pi-surface](packages/pi-surface/README.md)
+for the JSON view model pi-ui draws and the per-session action registry. They
+are workspaces with no `pi` entry, and extensions import them through aliases.
+Each workspace's `package.json` maps `#src/*` and `#test/*` to its own modules,
+and shared aliases such as `#ui`, `#surface`, `#work`, `#foundations/settings`
+and `#test-helpers` to workspace packages.
 Those packages export TypeScript source; root `file:` dependencies create the
 runtime links for production Git installs. TypeScript, Vitest, Node and Pi's
 loader use these same manifests, without duplicate TypeScript `paths` mappings.

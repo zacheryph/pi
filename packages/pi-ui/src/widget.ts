@@ -1,31 +1,19 @@
 import type { Component } from "@earendil-works/pi-tui";
 import { inlineWindowOpen } from "#src/inline-window";
 import { bodyRow, cells, labeledRule, splitColumns, titleText } from "#src/layout";
-import { copyLine, paint, styleLine, type Line } from "#src/style";
+import { copyLine, paint, styleLine } from "#src/style";
 import { sanitizeLine } from "#src/text";
-import type { Title, UITheme } from "#src/types";
+import type { UITheme } from "#src/types";
+import type { WidgetModel, WidgetRow } from "#surface";
 
-export interface WidgetRow {
-  left: Line;
-  /** Ordered right-column fallbacks; the first that fits is shown. */
-  right?: readonly Line[];
-  /** At narrow widths keep the last right fallback and clip the left instead. */
-  keepRight?: boolean;
-  /** Category counted in the overflow row: `+3 more (2 running, 1 finished)`. */
-  group?: string;
-}
-export interface WidgetView {
-  title: Title;
-  /** Accent heading while active, dim while idle. Default true. */
-  active?: boolean;
-  /** Ordered fallbacks shown at the right of the heading rule; dropped before the title clips. */
-  meta?: readonly Line[];
-  rows: readonly WidgetRow[];
+export type { WidgetModel, WidgetRow } from "#surface";
+
+/** pi-surface's widget model plus the terminal's row budgets. */
+export interface WidgetView extends WidgetModel {
   /** Total rows including the heading. `Infinity` means unbounded. */
   maxRows: number;
   /** Body rows before overflow. `Infinity` or omitted means no limit. */
   maxVisible?: number;
-  emptyText?: string;
   /**
    * Shown in Pi's widget area. While an inline window is open, a docked widget
    * shows only its heading so the window keeps its rows. Leave unset for tool

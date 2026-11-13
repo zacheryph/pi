@@ -25,6 +25,7 @@
     "#src/*": "./src/*.ts",
     "#test/*": "./test/*.ts",
     "#foundations/*": "pi-foundations/*",
-    "#test-helpers": "pi-test-helpers"
+    "#test-helpers": "pi-test-helpers",
+    "#surface": "pi-surface"
   }
 }

@@ -51,6 +51,13 @@ type Line = Span | readonly Span[]; // e.g. [{ text: handle, tone: "accent" }, {
 type Badge = { text: string; tone?: Tone }; // right-hand status, default tone "dim"
 ```
 
+These types, with `Title`, `Hint`, `Block`, `DetailContent` and the data parts
+of the widget and explorer models, belong to
+[pi-surface](../pi-surface/README.md), the renderer-neutral view model. pi-ui
+imports and re-exports them under the same names, so extensions import them
+from `#ui` as before. Everything that draws (components, themes, layout) stays
+here.
+
 Shared conventions the library enforces:
 
 - Selected list rows are `accent` across the whole label (badges keep their tone);
@@ -77,16 +84,16 @@ Shared conventions the library enforces:
 | Module             | Exports                                                                                                                                               | Responsibility                                                                       |
 | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
 | `text.ts`          | `sanitizeText`, `sanitizeLine`, `firstPhysicalLine`                                                                                                   | Untrusted plain text normalization; separate trusted-row clipping                    |
-| `style.ts`         | `Tone`, `Span`, `Line`, `Badge`, `styleLine`, `styleBadge`, `plainText`, `paint`, `copyLine`, `clip`, `ELLIPSIS`                                      | The single tone → theme mapping and the shared ellipsis                              |
+| `style.ts`         | `styleLine`, `styleBadge`, `plainText`, `paint`, `copyLine`, `clip`, `ELLIPSIS`; re-exports `Tone`, `Span`, `Line`, `Badge`                           | The single tone → theme mapping and the shared ellipsis                              |
 | `layout.ts`        | `bodyRow`, `splitColumns`, `labeledRule`, `divider`, `layoutPanel`, `fitPanelHeight`, `renderPanel`, `BoundedLines`, `cells`, `titleText`, `ICON_GAP` | Low-level width-aware rows, frames, titles, rules and column fallback                |
 | `icons.ts`         | `ICONS`, `SPINNER`                                                                                                                                    | Shared semantic vocabulary; callers schedule animation                               |
 | `navigation.ts`    | `navigationDelta`, `navigationHint`, `formatKey`, `layoutHints`, `hintText`, `Hint`, `HINT_PRIORITY`                                                  | Navigation and prioritized, wrapped footer hints from the same keybindings           |
 | `modal.ts`         | `openModal`, `PassiveOverlay`                                                                                                                         | Capturing centered overlays and separately owned noncapturing overlays               |
-| `detail.ts`        | `DetailView`, `showDetail`, `Block`, `renderBlocks`, `renderDetail`, `footerRows`, `statusRule`, `TextViewport`, `viewHeight`                         | Structured detail content, live loading/results/errors, scrolling                    |
-| `explorer.ts`      | `Explorer`, `showExplorer`, `snapshotExplorer`                                                                                                        | Snapshot filtering, tabs, badges, markers, status row and lazy detail drilldown      |
-| `widget.ts`        | `renderWidget`, `Widget`                                                                                                                              | Pure compact heading/body/overflow rendering                                         |
+| `detail.ts`        | `DetailView`, `showDetail`, `renderBlocks`, `renderDetail`, `footerRows`, `statusRule`, `TextViewport`, `viewHeight`; re-exports `Block`              | Structured detail content, live loading/results/errors, scrolling                    |
+| `explorer.ts`      | `Explorer`, `showExplorer`, `snapshotExplorer`, `ExplorerView`                                                                                        | Snapshot filtering, tabs, badges, markers, status row and lazy detail drilldown      |
+| `widget.ts`        | `renderWidget`, `Widget`, `WidgetView`                                                                                                                | Pure compact heading/body/overflow rendering                                         |
 | `inline-window.ts` | `openInlineWindow`, `InlineWindow`, `inlineWindowOpen`                                                                                                | Focused windows in the editor's place that minimize while the transcript is scrolled |
-| `types.ts`         | `UITheme`, `UIColor`, `UIKeys`, `UISurface`, `Title`, `DisposableComponent`                                                                           | Narrow SDK collaborators and presentation types                                      |
+| `types.ts`         | `UITheme`, `UIColor`, `UIKeys`, `UISurface`, `DisposableComponent`; re-exports `Title`                                                                | Narrow SDK collaborators and presentation types                                      |
 
 ## Explorers
 
@@ -120,7 +127,25 @@ await showExplorer(ctx, {
 ```
 
 The callbacks above are supplied by the consuming extension. They own review
-state, filesystem access, data limits and domain-specific formatting. `detail`
+state, filesystem access, data limits and domain-specific formatting.
+
+`loadDetail`, `onOpen` and `marker.onClear` also accept an action reference
+(`{ action, args? }`) from [pi-surface](../pi-surface/README.md), which keeps
+the whole view JSON. Pass the session's bus as `actions` and the explorer
+dispatches the action where it would have called the callback, with the
+reference's `args` plus `{ id }` (`{ ids }` for `onClear`):
+
+```ts
+await showExplorer(
+  ctx,
+  { title: "Stash", items, loadDetail: { action: "stash.inspect" } },
+  { command: "/stash", actions: pi.events },
+);
+```
+
+An action for `loadDetail` must resolve to `DetailContent`; a missing bus, an
+unknown action or any other result shows `Couldn't load: <message>`. Failures of
+`onOpen` and `onClear` actions are dropped. `detail`
 on an item is an alternative to `loadDetail`; the loader, when supplied, takes
 precedence. Nothing is loaded until Enter opens an item. Reopening loads again.
 Loading shows `Loading…`; errors render in place as `Couldn't load: <message>`.

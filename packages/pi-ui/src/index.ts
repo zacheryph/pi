@@ -1,4 +1,5 @@
 export * from "#src/types";
+export type { ActionBus, ActionRef, JsonObject, JsonValue } from "#surface";
 export * from "#src/text";
 export * from "#src/style";
 export * from "#src/icons";

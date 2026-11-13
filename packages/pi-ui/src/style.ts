@@ -1,21 +1,10 @@
 import { truncateToWidth } from "@earendil-works/pi-tui";
 import { sanitizeLine } from "#src/text";
 import type { UIColor, UITheme } from "#src/types";
+import type { Badge, Line, Span, Tone } from "#surface";
 
-/**
- * Semantic tones. Extensions say what text means; this module alone decides how
- * each tone looks, so every view shares one palette and selection rule.
- */
-export type Tone = "default" | "accent" | "muted" | "dim" | "success" | "warning" | "error";
-/** Untrusted plain text, optionally toned. Never pre-styled ANSI. */
-export type Span = string | { text: string; tone?: Tone; bold?: boolean };
-/** One logical line made of spans. */
-export type Line = Span | readonly Span[];
-/** Right-column label, e.g. a status. */
-export interface Badge {
-  text: string;
-  tone?: Tone;
-}
+// The semantic model is pi-surface's; this module alone decides how each tone looks.
+export type { Badge, Line, Span, Tone } from "#surface";
 
 /** Clipped text always ends in this marker so readers can tell content was cut. */
 export const ELLIPSIS = "…";

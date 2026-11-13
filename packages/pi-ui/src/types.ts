@@ -9,5 +9,4 @@ export type UISurface = Pick<TUI, "requestRender"> & {
   terminal: Pick<TUI["terminal"], "rows" | "columns">;
 };
 export type DisposableComponent = Component & { dispose?(): void };
-/** Plain text. `detail` renders as a breadcrumb: `icon  label / detail`. */
-export type Title = string | { label: string; icon?: string; detail?: string };
+export type { Title } from "#surface";
