@@ -1,4 +1,5 @@
 import { errorText } from "#foundations/errors";
+import { oneLine } from "#foundations/format";
 import { dirname, join } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AgentTypeRegistry } from "#src/config/agent-types";
@@ -44,6 +45,43 @@ export async function showAgentsBrowser(
       }),
     { command: "/subagent:agents" },
   );
+}
+
+/** Agents `agentsListText` lists before it counts the rest. */
+const MAX_LISTED_AGENTS = 60;
+
+/**
+ * The browser's list as plain text, for a host without the terminal UI: one row per agent with
+ * its visibility, source, model and a one-line description. Full definitions stay in the browser.
+ */
+export function agentsListText(
+  registry: AgentsBrowserRegistry,
+  defaults: AgentsBrowserDefaults = {},
+): string {
+  const names = [...registry.getAllTypes()].sort((a, b) =>
+    a.localeCompare(b, undefined, { sensitivity: "base" }),
+  );
+  const rows = names.slice(0, MAX_LISTED_AGENTS).map((name) => {
+    const config = registry.resolveAgentConfig(name);
+    const facts = [
+      config.definitionError ? "invalid" : (config.visibility ?? "visible"),
+      config.source === "default" ? "built-in" : config.source,
+      config.model ?? "inherits model",
+      `max turns ${maxTurnsSummary(config, defaults)}`,
+    ].filter(Boolean);
+    const note = config.definitionError ?? config.description;
+    return `- ${name} [${facts.join(" · ")}]${note ? ` — ${oneLine(note, 160)}` : ""}`;
+  });
+  if (names.length > rows.length) rows.push(`+${names.length - rows.length} more`);
+  return [
+    names.length
+      ? `Subagent agents (${names.length}), read-only effective definitions:`
+      : "No agents.",
+    ...rows,
+    ...(names.length
+      ? ["Full instructions and tools are in the terminal UI's /subagent:agents."]
+      : []),
+  ].join("\n");
 }
 
 /** Registry already contains winning definitions, including disabled overrides. */

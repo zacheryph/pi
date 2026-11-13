@@ -6,6 +6,7 @@
  */
 
 import { readFileSync } from "node:fs";
+import { userOutput } from "#foundations/user-output";
 import { join } from "node:path";
 import {
   createAgentSession,
@@ -65,7 +66,7 @@ import { AgentTool } from "#src/tools/agent-tool";
 import { GetResultTool } from "#src/tools/get-result-tool";
 import { SendTool } from "#src/tools/send-tool";
 import { AgentWidget } from "#src/ui/agent-widget";
-import { showAgentsBrowser } from "#src/ui/agents-browser";
+import { agentsListText, showAgentsBrowser } from "#src/ui/agents-browser";
 import { SessionNavigatorHandler } from "#src/ui/session-navigator";
 import { SubagentsSettingsHandler } from "#src/ui/subagents-settings";
 import { WatchOverlay } from "#src/ui/watch-overlay";
@@ -73,6 +74,8 @@ import { service } from "#session-tree";
 import { ensureWorkHost, WORK_PARENT_SERVICE } from "#work";
 
 export default function (pi: ExtensionAPI) {
+  // Command results: a notification in the terminal, a displayed message elsewhere.
+  const output = userOutput(pi, "subagent:output");
   // ---- Register custom notification renderer ----
   pi.registerMessageRenderer<NotificationDetails>(
     "subagent:completion",
@@ -355,7 +358,11 @@ export default function (pi: ExtensionAPI) {
     description: "Show/hide the tailing subagent watch overlay",
     handler: async (_args, ctx) => {
       if (ctx.mode !== "tui" || !ctx.hasUI) {
-        ctx.ui.notify("Subagent watch overlay requires interactive terminal mode.", "warning");
+        output.show(
+          ctx,
+          "The subagent watch overlay needs the terminal UI. /subagent:sessions shows a subagent's transcript, and subagent_get reports an agent's status and result.",
+          "warning",
+        );
         return;
       }
       watch.toggle();
@@ -369,7 +376,14 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("subagent:settings", {
     description: "Configure subagent settings (concurrency, turn limits, retention, watch overlay)",
     handler: async (_args, ctx) => {
-      await subagentsSettings.handle({ ui: ctx.ui });
+      await subagentsSettings.handle({
+        ui: {
+          select: (title, options) => ctx.ui.select(title, options),
+          input: (title, placeholder) => ctx.ui.input(title, placeholder),
+          // The host may drop notifications; the result of a change is shown as a message there.
+          notify: (message, level) => output.show(ctx, message, level),
+        },
+      });
     },
   });
 
@@ -380,6 +394,14 @@ export default function (pi: ExtensionAPI) {
     handler: async (_args, ctx) => {
       // Fresh definitions for this cwd; never mutate the registry of running children.
       const definitions = new AgentTypeRegistry(() => loadCustomAgents(ctx.cwd));
+      if (ctx.mode !== "tui") {
+        output.show(
+          ctx,
+          agentsListText(definitions, { defaultMaxTurns: settings.defaultMaxTurns }),
+          "info",
+        );
+        return;
+      }
       await showAgentsBrowser(ctx, definitions, { defaultMaxTurns: settings.defaultMaxTurns });
     },
   });
@@ -398,6 +420,9 @@ export default function (pi: ExtensionAPI) {
         cwd: ctx.cwd,
         readFile: (path) => readFileSync(path, "utf8"),
         sessionEntries: ctx.sessionManager.getEntries(),
+        // Without the terminal UI the pick is a dialog and the transcript a message.
+        terminal: ctx.mode === "tui",
+        show: (text, level) => output.show(ctx, text, level),
       });
     },
   });

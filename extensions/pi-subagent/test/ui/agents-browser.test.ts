@@ -7,6 +7,7 @@ import { loadCustomAgents } from "#src/config/custom-agents";
 import { BUILTIN_AGENTS_DIR } from "#src/config/default-agents";
 import type { AgentConfig } from "#src/types";
 import {
+  agentsListText,
   buildAgentsView,
   showAgentsBrowser,
   type AgentsBrowserOptions,
@@ -415,5 +416,44 @@ describe("showAgentsBrowser", () => {
     browser.handleInput("\r");
     expect(browser.render(120).join("\n")).toContain("20 (extension default)");
     expect(browser.render(120).join("\n")).toContain("# Instructions");
+  });
+});
+
+describe("agentsListText", () => {
+  it("lists each agent with its facts and a one-line description", () => {
+    const text = agentsListText(
+      new AgentTypeRegistry(
+        () =>
+          new Map([
+            ["auditor", agent({ model: "anthropic/claude-sonnet-4-6", maxTurns: 12 })],
+            ["hidden-one", agent({ name: "hidden-one", visibility: "hidden", description: "" })],
+            [
+              "broken",
+              agent({ name: "broken", definitionError: "Bad frontmatter\nline 3 \u001b[31mred" }),
+            ],
+          ]),
+      ),
+    );
+    const lines = text.split("\n");
+    expect(lines[0]).toMatch(/^Subagent agents \(\d+\), read-only effective definitions:$/);
+    expect(lines).toContain(
+      "- auditor [visible · anthropic/claude-sonnet-4-6 · max turns 12] — First line Second line",
+    );
+    expect(lines.some((line) => line.startsWith("- hidden-one [hidden ·"))).toBe(true);
+    expect(lines.some((line) => /^- broken \[invalid ·.*— Bad frontmatter line 3/.test(line))).toBe(
+      true,
+    );
+    expect(lines.at(-1)).toContain("/subagent:agents");
+  });
+
+  it("caps a long roster and counts the rest", () => {
+    const config = (index: number) => agent({ name: `agent-${String(index).padStart(2, "0")}` });
+    const text = agentsListText(
+      new AgentTypeRegistry(
+        () =>
+          new Map(Array.from({ length: 70 }, (_, index) => [config(index).name, config(index)])),
+      ),
+    );
+    expect(text).toMatch(/\n\+\d+ more\n/);
   });
 });

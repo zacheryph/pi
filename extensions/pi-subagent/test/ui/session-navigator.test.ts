@@ -594,6 +594,45 @@ describe("SessionNavigatorHandler", () => {
     expect(ui.custom).not.toHaveBeenCalled();
   });
 
+  it("shows the picked transcript as text through `show` when the pane cannot mount", async () => {
+    const messages = [
+      { role: "user", content: "Find the auth files" },
+      { role: "assistant", content: [{ type: "text", text: "picked agent reply" }] },
+    ] as unknown as SessionMessage[];
+    const ui = makeUI("agent (Test task) · 2 tools · completed · 3.0s");
+    const show = vi.fn();
+
+    await handleWith(ui, [makeNavigable({ agentMessages: messages })], { terminal: false, show });
+
+    expect(ui.select).toHaveBeenCalledOnce();
+    expect(ui.custom).not.toHaveBeenCalled();
+    expect(ui.notify).not.toHaveBeenCalled();
+    expect(show).toHaveBeenCalledOnce();
+    expect(show.mock.calls[0]).toEqual([
+      "agent (Test task)\nuser: Find the auth files\nassistant: picked agent reply",
+      "info",
+    ]);
+  });
+
+  it("sends the empty and unreadable cases through `show` too", async () => {
+    const show = vi.fn();
+    await handleWith(makeUI(), [], { terminal: false, show });
+    expect(show).toHaveBeenLastCalledWith("No subagent sessions to view.", "info");
+
+    const snapshot = makeNavigable({ isSessionReady: () => false, outputFile: "/gone.jsonl" });
+    const ui = makeUI(
+      "agent (Test task) · 2 tools · completed · 3.0s · session released (snapshot)",
+    );
+    await handleWith(ui, [snapshot], {
+      terminal: false,
+      show,
+      readFile: () => {
+        throw new Error("ENOENT");
+      },
+    });
+    expect(show).toHaveBeenLastCalledWith("Could not read the session transcript file.", "error");
+  });
+
   it("does not open the pane when the operator cancels the picker", async () => {
     const ui = makeUI(undefined);
     await handleWith(ui, [makeNavigable()]);
