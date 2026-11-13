@@ -1,19 +1,19 @@
 import { isRecord } from "#foundations/guards";
+import { dispatchAction, listActions } from "#surface";
 import type { Questionnaire, QuestionnaireAnswer } from "#src/contract";
 import { clip } from "#src/sections";
 
 // pi-ask's event contract (extensions/pi-ask/src/events.ts): payloads are
-// JSON-safe and listeners tolerate unknown fields.
+// JSON-safe and listeners tolerate unknown fields. Answers go through its action.
 export const ASK_OPENED_EVENT = "ask:opened";
 export const ASK_CLOSED_EVENT = "ask:closed";
-export const ASK_ANSWER_EVENT = "ask:answer";
-export const ASK_ANSWER_RESULT_EVENT = "ask:answer-result";
+/** pi-ask's action for answers (extensions/pi-ask/src/events.ts). */
+export const ASK_ANSWER_ACTION = "ask.answer";
 
 const MAX_QUESTIONNAIRES = 8;
 const MAX_QUESTIONS = 8;
 const MAX_OPTIONS = 20;
 const MAX_TEXT = 4_000;
-const VERDICT_TIMEOUT_MS = 2_000;
 
 export interface Bus {
   emit(channel: string, data: unknown): void;
@@ -101,16 +101,14 @@ export function readAnswer(
 
 /**
  * Follows pi-ask questionnaires on the session's bus and answers them through
- * its inbound answer channel. The first answer wins, whether
- * typed in the terminal or sent from the dashboard.
+ * pi-ask's `ask.answer` action. The first answer wins, whether typed in the
+ * terminal or sent from elsewhere.
  */
 export class AskUserTracker {
   private readonly open = new Map<string, Questionnaire>();
-  private readonly verdicts = new Map<string, (verdict: Record<string, unknown>) => void>();
   private readonly bus: Bus;
   private readonly onChange: () => void;
   private readonly now: () => number;
-  private requests = 0;
 
   constructor(bus: Bus, onChange: () => void, now: () => number = Date.now) {
     this.bus = bus;
@@ -128,10 +126,6 @@ export class AskUserTracker {
     bus.on(ASK_CLOSED_EVENT, (data) => {
       if (isRecord(data) && typeof data.toolCallId === "string") this.close(data.toolCallId);
     });
-    bus.on(ASK_ANSWER_RESULT_EVENT, (data) => {
-      if (isRecord(data) && typeof data.requestId === "string")
-        this.verdicts.get(data.requestId)?.(data);
-    });
   }
 
   list(): Questionnaire[] | undefined {
@@ -147,9 +141,6 @@ export class AskUserTracker {
 
   clear(): void {
     this.open.clear();
-    for (const finish of this.verdicts.values())
-      finish({ ok: false, reason: "Session presentation was reset." });
-    this.verdicts.clear();
   }
 
   /** Sends an answer and resolves once pi-ask accepts it; rejects with its reason otherwise. */
@@ -161,29 +152,21 @@ export class AskUserTracker {
       );
     const answer = readAnswer(data, questionnaire);
     if (typeof answer === "string") throw new Error(answer);
-    const requestId = `dashboard:${++this.requests}`;
-    const verdict = new Promise<Record<string, unknown> | undefined>((resolve) => {
-      const timer = setTimeout(() => resolve(undefined), VERDICT_TIMEOUT_MS);
-      this.verdicts.set(requestId, (value) => {
-        clearTimeout(timer);
-        resolve(value);
-      });
+    if (!listActions(this.bus).some((action) => action.id === ASK_ANSWER_ACTION))
+      throw new Error("pi-ask did not answer; is the pi-ask extension loaded?");
+    const result = await dispatchAction(this.bus, ASK_ANSWER_ACTION, {
+      toolCallId: id,
+      ...answer,
     });
-    try {
-      this.bus.emit(ASK_ANSWER_EVENT, { toolCallId: id, requestId, ...answer });
-      const result = await verdict;
-      if (!result) throw new Error("pi-ask did not answer; is the pi-ask extension loaded?");
-      if (result.ok !== true) {
-        if (result.code === "not_found") this.close(id);
-        throw new Error(
-          typeof result.reason === "string" && result.reason
-            ? `Not accepted: ${result.reason.slice(0, 300)}`
-            : "pi-ask refused the answer.",
-        );
-      }
-      this.close(id);
-    } finally {
-      this.verdicts.delete(requestId);
+    if (!isRecord(result) || result.ok !== true) {
+      if (isRecord(result) && result.code === "not_found") this.close(id);
+      const reason = isRecord(result) ? result.reason : undefined;
+      throw new Error(
+        typeof reason === "string" && reason
+          ? `Not accepted: ${reason.slice(0, 300)}`
+          : "pi-ask refused the answer.",
+      );
     }
+    this.close(id);
   }
 }

@@ -1,10 +1,6 @@
 import { GIT_SNAPSHOT_EVENT, type GitSnapshotEvent } from "#git/events";
-import {
-  STASH_SNAPSHOT_EVENT,
-  STASH_PREVIEW_REQUEST,
-  type StashSnapshotEvent,
-  type StashPreviewRequest,
-} from "#stash/events";
+import { STASH_SNAPSHOT_EVENT, type StashSnapshotEvent } from "#stash/events";
+import { defineAction, isJsonObject, type JsonValue } from "#surface";
 import { TODO_SNAPSHOT_EVENT, type TodoSnapshotEvent, type TodoSnapshotTask } from "#todo/events";
 import { SUBAGENT_SNAPSHOT, type SubagentSnapshot } from "#subagent/observation/snapshot";
 import { describe, expect, it, vi } from "vitest";
@@ -19,7 +15,7 @@ type SnapshotEvents = {
   [TODO_SNAPSHOT_EVENT]: TodoSnapshotEvent;
   [SUBAGENT_SNAPSHOT]: SubagentSnapshot;
 };
-type OtherChannel = "ask:opened" | "ask:answer-result";
+type OtherChannel = "ask:opened";
 
 /** A fake pi with a renameable session name and a working event bus. */
 function dashboardPi() {
@@ -421,35 +417,42 @@ describe("pi-dashboard extension", () => {
     const fake = load(env.deps);
     const ctx = fakeCtx();
     onCleanup(() => quit(fake, ctx));
-    // Stand-in for pi-stash's synchronous responder on the same bus.
-    fake.pi.events.on(STASH_PREVIEW_REQUEST, (data) => {
-      const request = data as StashPreviewRequest;
-      request.respond(
-        request.name === "notes"
-          ? {
-              ok: true,
-              handle: "stash:notes@0123456789ab",
-              lines: ["first", "second"],
-              total: 40,
-              complete: false,
-            }
-          : { ok: false, error: `No stash entry named "${request.name}" on this branch.` },
-      );
+    // Stand-in for pi-stash's stash.preview action on the same bus.
+    defineAction(fake.pi.events, {
+      id: "stash.preview",
+      title: "Preview",
+      handler: (args) => {
+        const name = isJsonObject(args) && typeof args.name === "string" ? args.name : "";
+        if (name !== "notes") throw new Error(`No stash entry named "${name}" on this branch.`);
+        return {
+          handle: "stash:notes@0123456789ab",
+          lines: ["first", "second"],
+          total: 40,
+          complete: false,
+        };
+      },
     });
-    fake.publish(TODO_SNAPSHOT_EVENT, {
-      version: 1,
-      revision: 2,
-      tasks: [
-        {
-          key: "fix",
-          subject: "Fix",
-          status: "completed",
-          blocked: false,
-          unreviewed: 0,
-          createdAt: 5,
-          updates: [{ revision: 2, at: 9, status: "completed", from: "pending", message: "done" }],
-        },
-      ],
+    const fix: TodoSnapshotTask = {
+      key: "fix",
+      subject: "Fix",
+      status: "completed",
+      blocked: false,
+      unreviewed: 0,
+      createdAt: 5,
+      updates: [{ revision: 2, at: 9, status: "completed", from: "pending", message: "done" }],
+    };
+    fake.publish(TODO_SNAPSHOT_EVENT, { version: 1, revision: 2, tasks: [fix] });
+    // Stand-in for pi-todo's todo.history action, answering from the same task.
+    defineAction(fake.pi.events, {
+      id: "todo.history",
+      title: "History",
+      handler: (args) => {
+        const key = isJsonObject(args) && typeof args.key === "string" ? args.key : "";
+        if (key !== fix.key) throw new Error(`No task "${key}" on this branch.`);
+        return JSON.parse(
+          JSON.stringify({ key, createdAt: fix.createdAt, updates: fix.updates }),
+        ) as JsonValue;
+      },
     });
     await fake.emit("session_start", { reason: "startup" }, ctx);
     await waitFor(async () => (await env.sessions()).length === 1);
@@ -515,33 +518,32 @@ describe("pi-dashboard extension", () => {
     expect(JSON.parse(response.body).error).toBe("pi-stash did not answer; is it loaded?");
   });
 
-  it("shows pi-ask questionnaires and answers them through pi-ask's channel", async () => {
+  it("shows pi-ask questionnaires and answers them through pi-ask's action", async () => {
     const env = setup({ detectTerminal: () => undefined });
     const fake = load(env.deps);
     const ctx = fakeCtx();
     onCleanup(() => quit(fake, ctx));
     const received: unknown[] = [];
-    // Stand-in for pi-ask's inbound answer channel.
-    fake.pi.events.on("ask:answer", (data) => {
-      const payload = data as {
-        requestId: string;
-        toolCallId: string;
-        answers?: Array<{ optionIndexes?: number[] }>;
-      };
-      received.push(payload);
-      const fits = payload.answers?.[0]?.optionIndexes?.[0] === 0;
-      fake.publish(
-        "ask:answer-result",
-        fits
-          ? { ok: true, requestId: payload.requestId, toolCallId: payload.toolCallId }
+    // Stand-in for pi-ask's ask.answer action.
+    defineAction(fake.pi.events, {
+      id: "ask.answer",
+      title: "Answer",
+      handler: (data) => {
+        const payload = data as {
+          toolCallId: string;
+          answers?: Array<{ optionIndexes?: number[] }>;
+        };
+        received.push(payload);
+        const fits = payload.answers?.[0]?.optionIndexes?.[0] === 0;
+        return fits
+          ? { ok: true, toolCallId: payload.toolCallId }
           : {
               ok: false,
               code: "invalid_answer",
               reason: "pick Retry",
-              requestId: payload.requestId,
               toolCallId: payload.toolCallId,
-            },
-      );
+            };
+      },
     });
     await fake.emit("session_start", { reason: "startup" }, ctx);
     fake.publish("ask:opened", {

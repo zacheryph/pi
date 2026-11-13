@@ -4,7 +4,11 @@ import {
   type StashPreviewResult,
   type StashSnapshotEvent,
 } from "#stash/events";
-import { TODO_SNAPSHOT_VERSION, type TodoSnapshotEvent } from "#todo/events";
+import {
+  TODO_SNAPSHOT_VERSION,
+  type TodoHistoryResult,
+  type TodoSnapshotEvent,
+} from "#todo/events";
 import type {
   GitSection,
   StashPreview,
@@ -99,7 +103,12 @@ export function readTodoHistory(
 ): TodoHistory | undefined {
   if (data?.version !== TODO_SNAPSHOT_VERSION) return undefined;
   const task = data.tasks.find((candidate) => candidate.key === key);
-  if (!task) return undefined;
+  return task && readTaskHistory({ ...task, key });
+}
+
+/** pi-todo's `todo.history` result (or one snapshot task), bounded for the wire. */
+export function readTaskHistory(task: TodoHistoryResult): TodoHistory {
+  const { key } = task;
   return {
     key,
     ...(task.createdAt !== undefined ? { createdAt: task.createdAt } : {}),

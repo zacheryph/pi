@@ -23,6 +23,7 @@
     "#session-state": "pi-session-state",
     "#stash/*": "pi-stash/*",
     "#subagent/*": "pi-subagent/*",
+    "#surface": "pi-surface",
     "#test-helpers": "pi-test-helpers",
     "#todo/*": "pi-todo/*"
   },

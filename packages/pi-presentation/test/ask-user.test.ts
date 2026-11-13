@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import { defineAction, type JsonValue } from "#surface";
 import {
-  ASK_ANSWER_EVENT,
-  ASK_ANSWER_RESULT_EVENT,
   ASK_CLOSED_EVENT,
   ASK_OPENED_EVENT,
   AskUserTracker,
@@ -51,19 +50,22 @@ const prompt = (toolCallId = "call-1") => ({
   ],
 });
 
-/** Stands in for pi-ask's answer channel: answers verdicts the way it does. */
+/** Stands in for pi-ask's ask.answer action: answers verdicts the way it does. Returns the payloads. */
 function piAsk(
   target: Bus,
   verdict: (payload: Record<string, unknown>) => Record<string, unknown>,
 ) {
-  target.on(ASK_ANSWER_EVENT, (data) => {
-    const payload = data as Record<string, unknown>;
-    target.emit(ASK_ANSWER_RESULT_EVENT, {
-      requestId: payload.requestId,
-      toolCallId: payload.toolCallId,
-      ...verdict(payload),
-    });
+  const received: unknown[] = [];
+  defineAction(target, {
+    id: "ask.answer",
+    title: "Answer",
+    handler: (args) => {
+      const payload = args as Record<string, unknown>;
+      received.push(payload);
+      return { toolCallId: payload.toolCallId, ...verdict(payload) } as JsonValue;
+    },
   });
+  return received;
 }
 
 describe("readPrompt", () => {
@@ -167,9 +169,9 @@ describe("AskUserTracker", () => {
     expect(changed).toHaveBeenCalledTimes(4);
   });
 
-  it("answers through pi-ask's channel and closes the questionnaire once accepted", async () => {
+  it("answers through pi-ask's action and closes the questionnaire once accepted", async () => {
     const events = bus();
-    piAsk(events, () => ({ ok: true }));
+    const received = piAsk(events, () => ({ ok: true }));
     const tracker = new AskUserTracker(events, () => {});
     events.emit(ASK_OPENED_EVENT, prompt());
     await tracker.answer("call-1", {
@@ -178,28 +180,25 @@ describe("AskUserTracker", () => {
         { questionIndex: 1, text: "smoke" },
       ],
     });
-    expect(events.sent.find(([channel]) => channel === ASK_ANSWER_EVENT)?.[1]).toEqual({
-      toolCallId: "call-1",
-      requestId: "dashboard:1",
-      answers: [
-        { questionIndex: 0, optionIndexes: [0] },
-        { questionIndex: 1, text: "smoke" },
-      ],
-    });
+    expect(received).toEqual([
+      {
+        toolCallId: "call-1",
+        answers: [
+          { questionIndex: 0, optionIndexes: [0] },
+          { questionIndex: 1, text: "smoke" },
+        ],
+      },
+    ]);
     expect(tracker.list()).toBeUndefined();
   });
 
   it("passes a decline through as cancel", async () => {
     const events = bus();
-    piAsk(events, () => ({ ok: true }));
+    const received = piAsk(events, () => ({ ok: true }));
     const tracker = new AskUserTracker(events, () => {});
     events.emit(ASK_OPENED_EVENT, prompt());
     await tracker.answer("call-1", { cancel: true });
-    expect(events.sent.find(([channel]) => channel === ASK_ANSWER_EVENT)?.[1]).toEqual({
-      toolCallId: "call-1",
-      requestId: "dashboard:1",
-      cancel: true,
-    });
+    expect(received).toEqual([{ toolCallId: "call-1", cancel: true }]);
   });
 
   it("reports pi-ask's refusal and keeps the questionnaire open unless it is gone", async () => {
@@ -217,31 +216,26 @@ describe("AskUserTracker", () => {
     expect(tracker.list()).toBeUndefined();
   });
 
-  it("refuses unknown questionnaires and malformed answers before emitting", async () => {
+  it("refuses unknown questionnaires and malformed answers before answering", async () => {
     const events = bus();
+    const received = piAsk(events, () => ({ ok: true }));
     const tracker = new AskUserTracker(events, () => {});
     await expect(tracker.answer("missing", { cancel: true })).rejects.toThrow("no longer open");
     events.emit(ASK_OPENED_EVENT, prompt());
     await expect(tracker.answer("call-1", { answers: [{ questionIndex: 9 }] })).rejects.toThrow(
       "does not exist",
     );
-    expect(events.sent.some(([channel]) => channel === ASK_ANSWER_EVENT)).toBe(false);
+    expect(received).toEqual([]);
   });
 
-  it("says when no pi-ask answer channel replies", async () => {
-    vi.useFakeTimers();
-    try {
-      const events = bus();
-      const tracker = new AskUserTracker(events, () => {});
-      events.emit(ASK_OPENED_EVENT, prompt());
-      const pending = expect(tracker.answer("call-1", { cancel: true })).rejects.toThrow(
-        "did not answer",
-      );
-      await vi.advanceTimersByTimeAsync(2_000);
-      await pending;
-    } finally {
-      vi.useRealTimers();
-    }
+  it("says when pi-ask is not there to answer", async () => {
+    const events = bus();
+    const tracker = new AskUserTracker(events, () => {});
+    events.emit(ASK_OPENED_EVENT, prompt());
+    await expect(tracker.answer("call-1", { cancel: true })).rejects.toThrow(
+      "pi-ask did not answer; is the pi-ask extension loaded?",
+    );
+    expect(tracker.list()).toHaveLength(1);
   });
 
   it("keeps at most 8 open questionnaires, dropping the oldest", () => {

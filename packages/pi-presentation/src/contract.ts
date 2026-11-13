@@ -1,3 +1,29 @@
+import type { JsonValue, ViewKind, ViewModel, WidgetModel } from "#surface";
+
+// The view model types (pi-surface), as types only, so client code can import this file.
+export type {
+  ActionRef,
+  Badge,
+  Block,
+  DetailContent,
+  DetailModel,
+  ExplorerItem,
+  ExplorerMarker,
+  ExplorerModel,
+  ExplorerTab,
+  Hint,
+  JsonObject,
+  JsonValue,
+  Line,
+  Span,
+  Title,
+  Tone,
+  ViewKind,
+  ViewModel,
+  WidgetModel,
+  WidgetRow,
+} from "#surface";
+
 export type SessionStatus =
   | { kind: "idle" }
   | { kind: "working" }
@@ -233,4 +259,57 @@ export interface StashPreview {
   lines: string[];
   total: number;
   complete: boolean;
+}
+
+/**
+ * A view the session offers (see pi-surface). A widget carries its current
+ * model, absent while it has nothing to show, or `error` when its provider
+ * failed; explorers and details are read on demand with the `view` request.
+ */
+export interface ViewSummary {
+  /** `<extension>.<view>`, e.g. `todo.widget`. */
+  id: string;
+  kind: ViewKind;
+  title: string;
+  model?: WidgetModel;
+  error?: string;
+}
+
+/** An action the session offers, for the `action` request. */
+export interface ActionSummary {
+  /** `<extension>.<verb>`, e.g. `todo.review`. */
+  id: string;
+  title: string;
+}
+
+/** What `PresentationService.snapshot()` returns. */
+export interface PresentationSnapshot {
+  todos?: TodoSection;
+  stash?: StashSection;
+  git?: GitSection;
+  subagents?: SubagentsSection;
+  questions?: Questionnaire[];
+  /** Every view on the session's bus, sorted by id; empty after `dispose()`. */
+  views: ViewSummary[];
+}
+
+/** A request to `PresentationService.request()`; `PresentationResults` names each result. */
+export type PresentationRequest =
+  | { command: "stash-preview"; name: string }
+  | { command: "todo-history"; key: string }
+  | { command: "answer"; question: string; answer: QuestionnaireAnswer }
+  | { command: "view"; id: string }
+  | { command: "actions" }
+  | { command: "action"; id: string; args?: JsonValue };
+
+/** The result of each request, by command. */
+export interface PresentationResults {
+  "stash-preview": StashPreview;
+  "todo-history": TodoHistory;
+  answer: undefined;
+  /** `null` while the view has nothing to show. */
+  view: ViewModel | null;
+  actions: ActionSummary[];
+  /** The action's JSON result; `null` when it returned nothing. */
+  action: JsonValue | null;
 }
