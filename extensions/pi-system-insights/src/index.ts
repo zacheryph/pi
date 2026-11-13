@@ -1,12 +1,16 @@
 import { getCurrentTools } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { userOutput } from "#foundations/user-output";
 import { buildPromptView, buildSkillsView, buildToolsView } from "#src/insights";
 import { normalizeSkillPath, SKILL_READ_ENTRY, skillReadEvidence } from "#src/skills";
 import type { InsightView } from "#src/types";
+import { insightText } from "#src/text";
 import { showInsightView } from "#src/viewer";
 
 /** Commands inspect snapshots only. No request hooks, tool activation, or skill-file reads. */
 export default function systemInsights(pi: ExtensionAPI): void {
+  // Outside the terminal there is no modal: the snapshot is shown as a message the model never sees.
+  const output = userOutput(pi, "system:output");
   const command = (
     name: string,
     description: string,
@@ -15,6 +19,10 @@ export default function systemInsights(pi: ExtensionAPI): void {
     pi.registerCommand(name, {
       description,
       handler: async (_args, ctx) => {
+        if (ctx.mode !== "tui") {
+          output.show(ctx, insightText(snapshot(ctx)), "info");
+          return;
+        }
         await showInsightView(ctx, () => snapshot(ctx));
       },
     });

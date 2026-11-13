@@ -14,5 +14,5 @@ it("loads standalone package through Pi discovery without duplicate commands or 
     "system:skills",
   ]);
   expect(extensions[0].tools.size).toBe(0);
-  expect([...extensions[0].handlers.keys()]).toEqual(["tool_result"]);
+  expect([...extensions[0].handlers.keys()]).toEqual(["context", "tool_result"]);
 });
