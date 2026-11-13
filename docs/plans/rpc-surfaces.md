@@ -44,7 +44,7 @@ React slots ─► bb.rpc ─► plugin server ─► same socket ─► pi-bb �
 | View model and actions | `pi-surface` (new)                 | Plain data: lines, blocks, widgets, explorers, action references. No `pi-tui` |
 | Projection             | `pi-presentation`                  | One session's sections, views and action dispatch                             |
 | Terminal renderer      | `pi-ui`                            | `pi-tui`; draws the view model                                                |
-| Dashboard              | `pi-dashboard`                     | Hub and page; terminal sessions only                                          |
+| Dashboard              | `pi-dashboard`                     | Hub and page; terminal sessions only. Frozen                                  |
 | bb adapter             | `pi-bb` (new) + `bb-plugin/` (new) | bb's plugin SDK; draws the view model in bb's slots                           |
 
 Rules that hold across layers:
@@ -53,8 +53,12 @@ Rules that hold across layers:
   marker, remove a worktree) it carries an action reference, not a function.
 - An action is registered once and called from a slash command, a terminal key
   hint or a remote request.
-- `pi-dashboard` stays terminal-only. `pi-bb` builds its own
-  `PresentationService` and never starts or reports to the dashboard hub.
+- A session reports to one surface, never two: the dashboard in the terminal,
+  `pi-bb` under RPC. `pi-bb` builds its own `PresentationService` and never
+  starts or reports to the dashboard hub.
+- `pi-dashboard` is frozen. It gets no new work, other packages do not have to
+  stay compatible with it, and it is removed (package 8) once bb's session
+  panel has replaced it.
 - Registries live on the session's `pi.events` bus, not `globalThis`: subagent
   children load the same extensions in the same process.
 - Text a user must see in RPC mode goes through
@@ -74,7 +78,7 @@ Each is one pull request. "Base" is the branch it stacks on.
 | 5   | `claude/rpc-5-bb-surface`         | `main` | `pi-bb` adapter and the bb plugin with one example per slot          |
 | 6   | `claude/rpc-6-presentation-views` | 1      | `pi-presentation` publishes views and dispatches actions             |
 | 7   | later                             | 5, 6   | bb plugin draws `pi-surface` views generically; actions from the app |
-| 8   | later                             | 6      | Dashboard page drawn from the view model                             |
+| 8   | later                             | 5      | Remove `pi-dashboard` once bb's session panel replaces it            |
 | 9   | later                             | 5      | Tool rows: structured `details` and bb timeline renderers            |
 
 ### 1. `pi-surface`: view model and action registry
@@ -169,7 +173,8 @@ Each is one pull request. "Base" is the branch it stacks on.
   providers on the bus; `PresentationService.snapshot()` gains `views`.
 - `request()` gains `view` (an explorer or detail model by id) and `action`
   (dispatch through the registry). `todo-history`, `stash-preview` and `answer`
-  become actions and keep their old request names as aliases.
+  become actions; their old request names stay as aliases only while the
+  dashboard exists.
 - pi-todo and pi-stash move first; pi-git and pi-subagent follow in 7.
 
 ### Later
@@ -177,8 +182,11 @@ Each is one pull request. "Base" is the branch it stacks on.
 - **7:** the bb plugin's thread tab and cards draw `pi-surface` models with one
   generic renderer and send actions back; the per-section components from 5
   shrink to layout.
-- **8:** `pi-dashboard`'s page (1,149 lines of per-section HTML) draws the
-  same models.
+- **8:** remove `pi-dashboard` (hub, page, reporter and tests, about 4,400
+  lines) and the request aliases kept for it. Its page is the one place that
+  draws every section a second time by hand; it is not worth porting to the
+  view model. Do this once the bb plugin's session panel covers the overview
+  and Focus is no longer needed for terminal sessions.
 - **9:** tool results carry structured `details` everywhere, and the plugin
   registers timeline renderers for subagent and todo rows.
 
