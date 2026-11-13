@@ -15,9 +15,7 @@
   "ignorePatterns": [
     "**/dist/**",
     "**/coverage/**",
-    "bb-plugin/components/ui/**",
-    "bb-plugin/lib/**",
-    "bb-plugin/hooks/**"
+    "bb-plugin/**"
   ],
   "overrides": [
     {

@@ -94,6 +94,7 @@ bb plugin dev       # after installing: rebuild and reload on save
 
 Snapshot types come from
 [`packages/pi-presentation/src/contract.ts`](../packages/pi-presentation/src/contract.ts)
-by `import type`. The root `npm run check` formats and lints this directory
-too, except the vendored shadcn copies in `components/ui/`, `lib/` and
-`hooks/`, which root oxlint ignores; root `tsc` does not include it.
+by `import type`. The root `npm run check` formats this directory but neither
+lints nor type-checks it: its types come from this directory's own
+`node_modules`, which the root install does not create. Run `npm run typecheck`
+and `npm test` here.
