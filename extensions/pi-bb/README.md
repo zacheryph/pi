@@ -11,8 +11,9 @@ channel past that: it builds a `PresentationService` (from
 session's full `SessionSnapshot` to the plugin, which draws it in bb's slots.
 See [bb's UI slots](../../docs/bb/ui-slots.md) for what appears where.
 
-Commands: `/bb` reports whether this session is connected. In RPC mode the
-answer is a displayed message, because bb drops `notify`.
+Commands: `/bb` reports whether this session is connected. Outside the terminal
+the answer is a displayed message kept out of the model's context, because bb
+drops `notify`.
 
 ## When it runs
 

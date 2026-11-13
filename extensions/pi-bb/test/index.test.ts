@@ -170,6 +170,7 @@ describe("pi-bb", () => {
     await fake.command("bb").handler("", ctx);
     expect(fake.pi.sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({ content: expect.stringContaining("refused"), display: true }),
+      { triggerTurn: false },
     );
   });
 
@@ -223,7 +224,11 @@ describe("pi-bb", () => {
     await child.command("bb").handler("", childCtx);
     expect(child.pi.sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({ content: expect.stringContaining("inactive in this session") }),
+      { triggerTurn: false },
     );
+    expect(child.shown()).toEqual([
+      expect.objectContaining({ customType: "bb:status", display: true, level: "info" }),
+    ]);
   });
 
   it("explains /bb when bb's environment is missing", async () => {
