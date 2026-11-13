@@ -346,7 +346,7 @@ export default function (pi: ExtensionAPI) {
 
   // Main-only profile hooks register after the orchestration tools exist. Child
   // sessions load fresh extension runtimes without this session's flag/snapshot.
-  registerMainAgentProfile(pi);
+  registerMainAgentProfile(pi, { isChild: isDelegated });
 
   // ---- Passive background-agent watch overlay ----
 

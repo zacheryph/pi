@@ -27,6 +27,8 @@ function harness(mode: ExtensionContext["mode"] = "tui") {
   const other = makeModel({ id: "other", reasoning: true });
   const state = {
     flag: "reader" as string | undefined,
+    env: undefined as string | undefined,
+    child: false,
     modelOverride: undefined as string | undefined,
     profile: {
       name: "reader",
@@ -95,8 +97,13 @@ function harness(mode: ExtensionContext["mode"] = "tui") {
   });
   const pi = fake.pi;
   const diagnostic = vi.fn();
-  const resolve = vi.fn(() => state.profile);
-  registerMainAgentProfile(fake.api, { resolveProfile: resolve, diagnostic });
+  const resolve = vi.fn((_name?: string, _ctx?: ExtensionContext) => state.profile);
+  registerMainAgentProfile(fake.api, {
+    resolveProfile: resolve,
+    diagnostic,
+    env: () => state.env,
+    isChild: () => state.child,
+  });
   // oxlint-disable-next-line typescript/no-explicit-any -- Handler results vary by event.
   const fire = (name: string, event: object = {}, context = ctx): Promise<any> =>
     fake.emit(name, event, context);
@@ -787,6 +794,232 @@ describe("main profile defaults and persistent body", () => {
       "info",
     );
     expect(h.ctx.abort).not.toHaveBeenCalled();
+  });
+});
+
+describe("PI_MAIN_AGENT", () => {
+  /** A host without --agent: the variable is set, the flag is not. */
+  function hosted(mode: ExtensionContext["mode"] = "rpc") {
+    const h = harness(mode);
+    h.state.flag = undefined;
+    h.state.env = "reader";
+    return h;
+  }
+  const displayed = (h: ReturnType<typeof harness>) =>
+    h.pi.sendMessage.mock.calls.map(([message, options]) => ({ message, options }));
+
+  it("applies the profile on first start: instructions and tools", async () => {
+    const h = hosted();
+    await h.start();
+    expect(h.resolve).toHaveBeenCalledWith("reader", h.ctx);
+    expect(h.state.active).toEqual(["read", ...MAIN_AGENT_REQUIRED_TOOLS]);
+    expect(h.state.branch[0].data).toEqual({ version: 1, profile: h.state.profile });
+    expect((await h.prompt()).sections[MAIN_AGENT_SECTION]).toContain("ONLY MAIN");
+  });
+
+  it("restores the saved snapshot on restart and leaves the user's tools alone", async () => {
+    const h = hosted();
+    await h.start();
+    h.manual();
+    h.resolve.mockClear();
+    await h.start();
+    expect(h.resolve).not.toHaveBeenCalled();
+    expect(h.state.active).toEqual(["write", "tool_search"]);
+    expect(h.pi.setActiveTools).toHaveBeenCalledTimes(1);
+    expect(h.pi.appendEntry).toHaveBeenCalledTimes(1);
+    expect((await h.prompt()).sections[MAIN_AGENT_SECTION]).toContain("ONLY MAIN");
+    expect(h.ctx.ui.notify).toHaveBeenLastCalledWith(
+      expect.stringContaining("instructions restored; settings preserved"),
+      "info",
+    );
+  });
+
+  it("keeps the snapshot instead of a profile edited since the first start", async () => {
+    const h = hosted();
+    await h.start();
+    h.state.profile.systemPrompt = "EDITED";
+    await h.start();
+    expect((await h.prompt()).sections[MAIN_AGENT_SECTION]).toContain("ONLY MAIN");
+    expect(h.state.branch).toHaveLength(1);
+  });
+
+  it("does not apply the profile's model or thinking, the host's win", async () => {
+    const h = hosted();
+    Object.assign(h.state.profile, { model: "anthropic/other", thinking: "high" });
+    const host = h.state.model;
+    await h.start();
+    expect(h.state.model).toBe(host);
+    expect(h.state.thinking).toBe("medium");
+    expect(h.pi.setModel).not.toHaveBeenCalled();
+    expect(h.pi.setThinkingLevel).not.toHaveBeenCalled();
+    expect(h.state.active).toEqual(["read", ...MAIN_AGENT_REQUIRED_TOOLS]);
+    expect(h.state.branch[0].data.profile).toMatchObject({ model: "anthropic/other" });
+    expect(h.ctx.shutdown).not.toHaveBeenCalled();
+  });
+
+  it("is not blocked by a profile model that is unavailable or a thinking level the host's model lacks", async () => {
+    const h = hosted();
+    Object.assign(h.state.profile, { model: "anthropic/missing", thinking: "xhigh" });
+    h.state.model = makeModel({ reasoning: false });
+    await h.start();
+    expect(h.ctx.shutdown).not.toHaveBeenCalled();
+    expect(await h.fire("input")).toBeUndefined();
+  });
+
+  it("--agent wins over the variable, including its model", async () => {
+    const h = hosted();
+    h.state.flag = "other-profile";
+    h.state.env = "reader";
+    Object.assign(h.state.profile, { model: "anthropic/other" });
+    await h.start();
+    expect(h.resolve).toHaveBeenCalledTimes(1);
+    expect(h.resolve).toHaveBeenCalledWith("other-profile", h.ctx);
+    expect(h.state.model.id).toBe("other");
+  });
+
+  it.each(["", "   ", "\t\n"])("ignores an empty variable (%j)", async (value) => {
+    const h = hosted();
+    h.state.env = value;
+    await h.start();
+    expect(h.resolve).not.toHaveBeenCalled();
+    expect(h.pi.appendEntry).not.toHaveBeenCalled();
+    expect(h.pi.setActiveTools).not.toHaveBeenCalled();
+    expect(h.pi.sendMessage).not.toHaveBeenCalled();
+    expect((await h.prompt()).sections[MAIN_AGENT_SECTION]).toBeUndefined();
+  });
+
+  it("trims the name", async () => {
+    const h = hosted();
+    h.state.env = "  reader \n";
+    await h.start();
+    expect(h.resolve).toHaveBeenCalledWith("reader", h.ctx);
+  });
+
+  it.each(["new", "resume", "fork", "reload"] as const)(
+    "only a startup selects from the variable, not %s",
+    async (reason) => {
+      const h = hosted();
+      await h.start(reason);
+      expect(h.resolve).not.toHaveBeenCalled();
+      expect(h.pi.setActiveTools).not.toHaveBeenCalled();
+    },
+  );
+
+  it("never applies to a delegated child session", async () => {
+    const h = hosted();
+    h.state.child = true;
+    await h.start();
+    expect(h.resolve).not.toHaveBeenCalled();
+    expect(h.pi.appendEntry).not.toHaveBeenCalled();
+    expect(h.pi.setActiveTools).not.toHaveBeenCalled();
+    expect(h.pi.sendMessage).not.toHaveBeenCalled();
+    expect((await h.prompt()).sections[MAIN_AGENT_SECTION]).toBeUndefined();
+  });
+
+  it("blocks input and reports an unknown profile, in the transcript for a host", async () => {
+    const h = hosted();
+    h.state.env = "nope";
+    h.resolve.mockImplementation(() => {
+      throw new Error('Unknown main agent profile: "nope".');
+    });
+    await h.start();
+    expect(await h.fire("input")).toEqual({ action: "handled" });
+    expect(h.ctx.ui.notify).toHaveBeenCalledWith(
+      'Main agent blocked: Unknown main agent profile: "nope".',
+      "error",
+    );
+    expect(displayed(h)).toEqual([
+      {
+        message: {
+          customType: "agent:notice",
+          content: 'Main agent blocked: Unknown main agent profile: "nope".',
+          display: true,
+        },
+        options: { triggerTurn: false },
+      },
+    ]);
+    // Every refused input re-reports, but the user sees the reason once.
+    await h.fire("input");
+    await h.fire("session_before_compact");
+    expect(h.pi.sendMessage).toHaveBeenCalledTimes(1);
+    expect(h.pi.appendEntry).not.toHaveBeenCalled();
+  });
+
+  it("shows the active agent once in the transcript", async () => {
+    const h = hosted();
+    await h.start();
+    expect(displayed(h)).toEqual([
+      {
+        message: {
+          customType: "agent:notice",
+          content: expect.stringMatching(/^Agent reader · defaults applied\n/),
+          display: true,
+        },
+        options: { triggerTurn: false },
+      },
+    ]);
+    // A restart restores quietly: no new transcript line on every resume.
+    await h.start();
+    expect(h.pi.sendMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["print", "json"] as const)(
+    "also writes the notices outside the terminal UI (%s)",
+    async (mode) => {
+      const h = hosted(mode);
+      await h.start();
+      expect(h.diagnostic).toHaveBeenCalledTimes(1);
+      expect(h.pi.sendMessage).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("leaves terminal behaviour alone: notify and status only", async () => {
+    const h = hosted("tui");
+    await h.start();
+    expect(h.ctx.ui.notify).toHaveBeenCalledTimes(1);
+    expect(h.ctx.ui.setStatus).toHaveBeenCalledWith("agent:status", "Agent · reader");
+    expect(h.pi.sendMessage).not.toHaveBeenCalled();
+    const failing = hosted("tui");
+    failing.resolve.mockImplementation(() => {
+      throw new Error("boom");
+    });
+    await failing.start();
+    expect(failing.ctx.ui.notify).toHaveBeenCalledWith("Main agent blocked: boom", "error");
+    expect(failing.pi.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("survives a session that is already shut down when it reports", async () => {
+    const h = hosted();
+    h.resolve.mockImplementation(() => {
+      throw new Error("boom");
+    });
+    h.pi.sendMessage.mockImplementation(() => {
+      throw new Error("stale");
+    });
+    await h.start();
+    expect(await h.fire("input")).toEqual({ action: "handled" });
+  });
+
+  it("keeps the notice out of the model's context", async () => {
+    const h = hosted();
+    const notice = { role: "custom", customType: "agent:notice", content: "x", display: true };
+    const other = { role: "custom", customType: "other", content: "y", display: true };
+    const user = { role: "user", content: "hi" };
+    expect(await h.fire("context", { messages: [user, notice, other] })).toEqual({
+      messages: [user, other],
+    });
+    expect(await h.fire("context", { messages: [user, other] })).toBeUndefined();
+  });
+
+  it("an empty --agent flag still wins and fails rather than falling back", async () => {
+    const h = hosted();
+    h.state.flag = "";
+    h.resolve.mockImplementation((name?: string) => {
+      throw new Error(`Unknown main agent profile: "${name}".`);
+    });
+    await h.start();
+    expect(h.resolve).toHaveBeenCalledTimes(1);
+    expect(h.resolve).toHaveBeenCalledWith("", h.ctx);
   });
 });
 
