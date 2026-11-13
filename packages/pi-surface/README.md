@@ -91,6 +91,57 @@ Define actions on `session_start` and dispose them on `session_shutdown`. Pi
 keeps the same bus across `/reload` and runs the extension factory again, so a
 definition made in the factory and never removed would answer twice.
 
+## Views
+
+A view is a named model an extension offers to every consumer of its session,
+such as a remote renderer reached through pi-presentation. Views live on the
+same bus as actions, as listeners on the `surface:views` channel, and are
+defined and disposed the same way.
+
+```ts
+const views = viewRegistry(pi.events);
+pi.on("session_start", () => {
+  views.dispose();
+  views.define({
+    id: "todo.widget", // <extension>.<view>
+    kind: "widget", // "widget" | "explorer" | "detail"
+    title: "Tasks",
+    model: () => (visible() ? widgetModel() : undefined), // built on every read
+  });
+});
+// After every change the model would show:
+views.changed("todo.widget");
+pi.on("session_shutdown", () => views.dispose());
+```
+
+| Kind       | Model           | Meant for                                        |
+| ---------- | --------------- | ------------------------------------------------ |
+| `widget`   | `WidgetModel`   | Small, always visible: a remote surface shows it |
+| `explorer` | `ExplorerModel` | A list opened on demand; details load by action  |
+| `detail`   | `DetailModel`   | One standalone detail, opened on demand          |
+
+| Function                       | Result                                                                    |
+| ------------------------------ | ------------------------------------------------------------------------- |
+| `defineView(bus, definition)`  | Defines and announces one view; returns the function that removes it      |
+| `listViews(bus)`               | `{ id, kind, title }[]` sorted by id                                      |
+| `readView(bus, id)`            | The current model, or `undefined` while the view has nothing to show      |
+| `announceView(bus, id)`        | Emits `surface:view-changed` with `{ version: 1, id }`                    |
+| `onViewChanged(bus, listener)` | Calls `listener(id)` for each announcement; returns the unsubscribe       |
+| `viewRegistry(bus)`            | `define`, `list`, `read`, `changed`, and `dispose` for everything defined |
+
+`defineView` throws for an id that is not `<extension>.<view>` (the same shape as
+an action id), an unknown kind, an empty title, and an id already defined on that
+bus. `readView` throws `Unknown view "<id>".`, the provider's own error, and
+`View "<id>" returned a model that is not JSON.` for anything but a JSON object.
+The model function runs in the reader, outside the bus emit, so a provider that
+throws does not disturb other listeners.
+
+An announcement carries only the id: consumers read the model again when they
+need it. Defining a view announces it; removing one does not, because removal
+happens at `session_shutdown`. A registry's `changed` does nothing for an id it
+does not currently define, so a late call after `dispose` never reaches a bus
+Pi has retired.
+
 ## How pi-ui uses it
 
 pi-ui imports these types and re-exports them under the same names, so

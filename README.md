@@ -117,7 +117,7 @@ pi-personal/
 │       └── UPSTREAM.md
 ├── packages/
 │   ├── pi-ui/                           # shared terminal UI library (no migrations yet)
-│   ├── pi-surface/                      # renderer-neutral view model + action registry
+│   ├── pi-surface/                      # renderer-neutral view model + action and view registries
 │   │   ├── src/index.ts
 │   │   └── test/
 │   ├── pi-foundations/                  # shared settings, model lookup, cmux notifications, command output
@@ -145,7 +145,7 @@ Root `pi.extensions` lists entry points explicitly. Pi loads each as its own
 extension; helper files and tests are not loaded as extensions. `packages/` holds
 libraries shared by extensions, including [pi-ui](packages/pi-ui/README.md) for
 terminal views and widget layout, and [pi-surface](packages/pi-surface/README.md)
-for the JSON view model pi-ui draws and the per-session action registry. They
+for the JSON view model pi-ui draws and the per-session action and view registries. They
 are workspaces with no `pi` entry, and extensions import them through aliases.
 Each workspace's `package.json` maps `#src/*` and `#test/*` to its own modules,
 and shared aliases such as `#ui`, `#surface`, `#work`, `#foundations/settings`
