@@ -12,6 +12,8 @@ coverage/
 *.swo
 *~
 
-# IDE
+# IDE / Harness
+.claude/
+.pi/
 .vscode/
 .idea/
