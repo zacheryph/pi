@@ -105,10 +105,17 @@ through the hash-checked store, or `{ ok: false, error }`. Only bare names of
 this branch's entries are accepted, not full handles. pi-dashboard uses both
 for its stash panel and previews.
 
-pi-stash also defines the `stash.inspect` action on the session's bus (see
+pi-stash also defines actions and a view on the session's bus (see
 [`pi-surface`](../../packages/pi-surface/README.md)) from session start to
-shutdown. Dispatched with `{ id: <handle> }` of an entry on this branch, it
-resolves to the detail blocks `/stash` shows when that entry is opened.
+shutdown:
+
+| Id               | Kind     | What it does                                                                                                                                                     |
+| ---------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `stash.inspect`  | action   | `{ id: <handle> }` of an entry on this branch resolves to the detail blocks `/stash` shows when that entry is opened                                             |
+| `stash.preview`  | action   | `{ name, maxLines?, maxBytes? }` resolves to `{ handle, lines, total, complete }`, the `stash:preview` answer without `ok`; it rejects with that request's error |
+| `stash.explorer` | explorer | The `/stash` list as a JSON `ExplorerModel`; its `loadDetail` is `stash.inspect`. Announced on every change to this branch's index                               |
+
+pi-presentation serves its `stash-preview` request through `stash.preview`.
 
 ## Subagents
 

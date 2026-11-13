@@ -14,6 +14,8 @@ import { stashSettings, type StashConfig } from "#src/config";
 import {
   PREVIEW_MAX_BYTES,
   PREVIEW_MAX_LINES,
+  STASH_EXPLORER_VIEW,
+  STASH_PREVIEW_ACTION,
   STASH_PREVIEW_REQUEST,
   STASH_SNAPSHOT_EVENT,
   stashEntryJson,
@@ -48,8 +50,8 @@ import {
   type StashRecord,
 } from "#src/state";
 import { BlobStore, defaultStashRoot } from "#src/store";
-import { showStashBrowser, stashInspectAction } from "#src/ui/browser";
-import { actionRegistry } from "#surface";
+import { showStashBrowser, stashExplorerView, stashInspectAction } from "#src/ui/browser";
+import { actionRegistry, isJsonObject, viewRegistry } from "#surface";
 import { bodyRow, sanitizeLine, sanitizeText } from "#ui";
 import { entrySummary, formatAge, formatBytes, originLabel, previewRows } from "#src/ui/render";
 
@@ -286,8 +288,25 @@ export default function stashExtension(
       return undefined;
     }
   };
-  const publish = () =>
+  // Actions and views live on this session's bus from session_start to session_shutdown,
+  // so a /reload, which runs this factory again on the same bus, does not leak them.
+  const actions = actionRegistry(pi.events);
+  const views = viewRegistry(pi.events);
+  const publish = () => {
     pi.events.emit(STASH_SNAPSHOT_EVENT, stashSnapshotEvent(index, storeSize()));
+    views.changed(STASH_EXPLORER_VIEW);
+  };
+  /** Shown above the `/stash` list when the shared store is over its cap or unreadable. */
+  const storeWarning = (): string | undefined => {
+    try {
+      const usage = getStore().usage();
+      if (usage.bytes > config.maxStoreBytes)
+        return `Store is ${formatBytes(usage.bytes)}, over the ${formatBytes(config.maxStoreBytes)} cap; run /stash:gc or lower retentionDays.`;
+    } catch (error) {
+      return `Unable to measure store: ${errorText(error)}`;
+    }
+    return undefined;
+  };
   const preview = (request: Partial<StashPreviewRequest>): StashPreviewResult => {
     const name = typeof request.name === "string" ? request.name : "";
     // Bare names only: the request may read this branch's entries, not arbitrary handles.
@@ -673,15 +692,7 @@ export default function stashExtension(
       "Browse this branch's stash entries (Enter shows details and a numbered content preview)",
     handler: async (_args, ctx) => {
       const entries = currentEntries(index);
-      let warning: string | undefined;
-      try {
-        const usage = getStore().usage();
-        if (usage.bytes > config.maxStoreBytes) {
-          warning = `Store is ${formatBytes(usage.bytes)}, over the ${formatBytes(config.maxStoreBytes)} cap; run /stash:gc or lower retentionDays.`;
-        }
-      } catch (error) {
-        warning = `Unable to measure store: ${errorText(error)}`;
-      }
+      const warning = storeWarning();
       if (ctx.mode !== "tui") {
         // No overlay here: list the entries as text; stash_get reads one.
         output.show(
@@ -693,7 +704,7 @@ export default function stashExtension(
         );
         return;
       }
-      // Details load through stash.inspect, defined at session_start.
+      // The same model as the stash.explorer view; details load through stash.inspect.
       await showStashBrowser(ctx, entries, pi.events, warning, {
         fallback: () =>
           [warning, listText(entries.slice(0, LIST_LIMIT), entries.length)]
@@ -728,11 +739,9 @@ export default function stashExtension(
     publish();
   };
 
-  // Actions live on this session's bus from session_start to session_shutdown,
-  // so a /reload, which runs this factory again on the same bus, does not leak them.
-  const actions = actionRegistry(pi.events);
-  const defineActions = () => {
+  const defineSurface = () => {
     actions.dispose();
+    views.dispose();
     actions.define(
       stashInspectAction(
         // The latest record wins, as in the list the browser shows.
@@ -749,11 +758,28 @@ export default function stashExtension(
         },
       ),
     );
+    actions.define<Partial<StashPreviewRequest>>({
+      id: STASH_PREVIEW_ACTION,
+      title: "Read the head of a stash entry on this branch by name",
+      parse: (args) => (isJsonObject(args) ? args : {}),
+      handler: (request) => {
+        const result = preview(request);
+        if (!result.ok) throw new Error(result.error);
+        const { ok: _ok, ...head } = result;
+        return head;
+      },
+    });
+    views.define({
+      id: STASH_EXPLORER_VIEW,
+      kind: "explorer",
+      title: "Stash",
+      model: () => stashExplorerView(currentEntries(index), storeWarning()),
+    });
   };
 
   pi.on("session_start", async (_event, ctx) => {
     config = (dependencies.loadConfig ?? stashSettings.load)(ctx.cwd);
-    defineActions();
+    defineSurface();
     restore(ctx);
     try {
       // Refresh what this session still references, then expire the rest.
@@ -783,6 +809,7 @@ export default function stashExtension(
   });
   pi.on("session_shutdown", async () => {
     actions.dispose();
+    views.dispose();
     index = createEmptyIndex();
   });
 }

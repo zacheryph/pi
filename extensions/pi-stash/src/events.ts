@@ -71,6 +71,16 @@ export type StashPreviewResult =
  */
 export const STASH_INSPECT_ACTION = "stash.inspect";
 
+/**
+ * Action: `stash:preview` as an action. `{ name, maxLines?, maxBytes? }`
+ * resolves to `{ handle, lines, total, complete }` under the same rules and
+ * caps, and rejects with the request's error message.
+ */
+export const STASH_PREVIEW_ACTION = "stash.preview";
+
+/** View (see pi-surface): the `/stash` explorer's JSON model for this branch. */
+export const STASH_EXPLORER_VIEW = "stash.explorer";
+
 /** One entry as `stash_list` and the snapshot event report it. */
 export function stashEntryJson(record: StashRecord, index: StashIndex) {
   return {
