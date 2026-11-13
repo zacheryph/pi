@@ -1,4 +1,5 @@
 import { errorText } from "#foundations/errors";
+import type { UserOutput } from "#foundations/user-output";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import {
   type TodoActivity,
@@ -11,10 +12,12 @@ import type { TodoRequest, TodoTaskPatch } from "#src/actions";
 import type { TodoConfig } from "#src/config";
 import { cloneTodoState, type TodoState } from "#src/state";
 import { showTodoBrowser, type TodoBrowserView } from "#src/ui/browser";
-import { formatTodoAge, todoMessageLine } from "#src/ui/render";
+import { formatTodoAge, renderTodoText, todoMessageLine } from "#src/ui/render";
 import { sanitizeLine, sanitizeText } from "#ui";
 
 export interface TodoController {
+  /** Where command results go: a notification in the terminal, a displayed message elsewhere. */
+  output: UserOutput;
   state(): TodoState;
   config(): TodoConfig;
   activity(): TodoActivity;
@@ -30,6 +33,9 @@ export interface TodoController {
   configure(patch: Partial<TodoConfig>, ctx: ExtensionCommandContext): void;
 }
 
+/** Rows of the task listing outside the terminal browser; the rest is counted. */
+const MAX_LISTED_TASKS = 40;
+
 export function registerTodoCommands(pi: ExtensionAPI, controller: TodoController): void {
   const register = (
     name: string,
@@ -42,7 +48,7 @@ export function registerTodoCommands(pi: ExtensionAPI, controller: TodoControlle
         try {
           await handler(args.trim(), ctx);
         } catch (error) {
-          ctx.ui.notify(sanitizeText(errorText(error)), "error");
+          controller.output.show(ctx, sanitizeText(errorText(error)), "error");
         }
       },
     });
@@ -63,12 +69,34 @@ export function registerTodoCommands(pi: ExtensionAPI, controller: TodoControlle
         try {
           controller.markReviewed(marks, ctx);
         } catch (error) {
-          ctx.ui.notify(sanitizeText(`Review not saved: ${errorText(error)}`), "error");
+          controller.output.show(
+            ctx,
+            sanitizeText(`Review not saved: ${errorText(error)}`),
+            "error",
+          );
         }
       },
     });
   };
+  /** The browser's content as text, for a host without the terminal UI. */
+  const listing = (): string => {
+    const state = controller.state();
+    const flagged = unreviewedTodoTasks(state, controller.activity(), controller.review());
+    return [
+      ...renderTodoText(state, {
+        maxVisible: MAX_LISTED_TASKS,
+        showCompleted: true,
+        assignees: controller.assignees(),
+        unreviewed: new Map([...flagged].map(([key, update]) => [key, update.message ?? ""])),
+      }),
+      "Change tasks with /todo:add, /todo:update, /todo:remove or /todo:clear; /todo:review lists new task messages.",
+    ].join("\n");
+  };
   const list = async (_args: string, ctx: ExtensionCommandContext) => {
+    if (ctx.mode !== "tui") {
+      controller.output.show(ctx, listing(), "info");
+      return;
+    }
     await browse(ctx, "all");
   };
   register("todo", "Browse/search session tasks and dependency details", list);
@@ -90,7 +118,8 @@ export function registerTodoCommands(pi: ExtensionAPI, controller: TodoControlle
           todoReviewMarks(state, activity, review, all ? undefined : keys),
           ctx,
         );
-        ctx.ui.notify(
+        controller.output.show(
+          ctx,
           count
             ? `Marked ${count} task${count === 1 ? "" : "s"} reviewed.`
             : "No unreviewed task messages.",
@@ -105,7 +134,7 @@ export function registerTodoCommands(pi: ExtensionAPI, controller: TodoControlle
       // Without a browser, this notification is the review.
       const flagged = unreviewedTodoTasks(state, activity, review);
       if (!flagged.size) {
-        ctx.ui.notify("No unreviewed task messages.", "info");
+        controller.output.show(ctx, "No unreviewed task messages.", "info");
         return;
       }
       const now = controller.now();
@@ -117,7 +146,7 @@ export function registerTodoCommands(pi: ExtensionAPI, controller: TodoControlle
               `${sanitizeLine(key)} [${update.status}] ${formatTodoAge(update.at, now)}: ${todoMessageLine(update.message ?? "")}`,
           ),
       );
-      ctx.ui.notify(lines.join("\n"), "info");
+      controller.output.show(ctx, lines.join("\n"), "info");
       controller.markReviewed(todoReviewMarks(state, activity, review), ctx);
     },
   );
@@ -128,11 +157,19 @@ export function registerTodoCommands(pi: ExtensionAPI, controller: TodoControlle
       const session = ctx.sessionManager.getSessionId();
       const branch = controller.branchToken();
       const subject = args || (ctx.hasUI ? await ctx.ui.input("New task subject") : undefined);
-      if (!subject?.trim()) return;
+      if (!subject?.trim()) {
+        // A cancelled dialog is an answer; with no dialog to ask, say what to type.
+        if (!ctx.hasUI) throw new Error("Usage: /todo:add <subject>");
+        return;
+      }
       guardSession(ctx, session, branch, controller);
       const key = newTaskKey(subject, controller.state());
       controller.mutate({ action: "upsert", tasks: [{ key, subject }] }, ctx);
-      ctx.ui.notify(`Added ${key} (pending). Agent sees change on its next request.`, "info");
+      controller.output.show(
+        ctx,
+        `Added ${key} (pending). Agent sees change on its next request.`,
+        "info",
+      );
     },
   );
   register(
@@ -183,7 +220,7 @@ export function registerTodoCommands(pi: ExtensionAPI, controller: TodoControlle
         throw new Error("dependsOn must be an array of task keys");
       }
       controller.mutate({ action: "upsert", tasks: [{ ...fields, key } as TodoTaskPatch] }, ctx);
-      ctx.ui.notify(`Updated ${key}.`, "info");
+      controller.output.show(ctx, `Updated ${key}.`, "info");
     },
   );
   register(
@@ -192,7 +229,7 @@ export function registerTodoCommands(pi: ExtensionAPI, controller: TodoControlle
     (args, ctx) => {
       if (!args) throw new Error("Usage: /todo:remove <key> [key ...]");
       controller.mutate({ action: "remove", keys: args.split(/\s+/) }, ctx);
-      ctx.ui.notify("Removed tasks. Agent sees change on its next request.", "info");
+      controller.output.show(ctx, "Removed tasks. Agent sees change on its next request.", "info");
     },
   );
   register(
@@ -210,7 +247,7 @@ export function registerTodoCommands(pi: ExtensionAPI, controller: TodoControlle
       const session = ctx.sessionManager.getSessionId();
       const branch = controller.branchToken();
       if (!controller.state().tasks.length) {
-        ctx.ui.notify("Task list already empty.", "info");
+        controller.output.show(ctx, "Task list already empty.", "info");
         return;
       }
       if (scope === "all" && controller.config().confirmClear && !parts.includes("--yes")) {
@@ -225,7 +262,8 @@ export function registerTodoCommands(pi: ExtensionAPI, controller: TodoControlle
       }
       guardSession(ctx, session, branch, controller);
       controller.mutate({ action: "clear", scope, baseRevision: revision }, ctx);
-      ctx.ui.notify(
+      controller.output.show(
+        ctx,
         scope === "all"
           ? "Cleared task list."
           : "Cleared unneeded completed tasks; prerequisites of open work retained.",
@@ -238,7 +276,11 @@ export function registerTodoCommands(pi: ExtensionAPI, controller: TodoControlle
     "Configure task display and policies (project overrides global defaults)",
     async (_args, ctx) => {
       if (!ctx.hasUI) {
-        ctx.ui.notify("Task settings require UI. Edit .pi/todo.json instead.", "warning");
+        controller.output.show(
+          ctx,
+          "Task settings require UI. Edit .pi/todo.json instead.",
+          "warning",
+        );
         return;
       }
       const config = controller.config();

@@ -566,22 +566,93 @@ describe("user commands", () => {
     const before = await env.state(),
       journal = structuredClone(env.session.getEntries());
     await env.command(String(name), String(args));
-    expect(env.ui.notify).toHaveBeenLastCalledWith(expect.stringMatching(error as RegExp), "error");
+    expect(env.notices).toHaveBeenLastCalledWith(expect.stringMatching(error as RegExp), "error");
     expect(await env.state()).toEqual(before);
     expect(env.session.getEntries()).toEqual(journal);
     env.noContinuation();
   });
 
-  it.each(["print", "json", "rpc"] as const)("guards browser in %s mode", async (mode) => {
-    const env = await started({ mode, hasUI: mode === "rpc" });
+  it.each(["print", "json", "rpc"] as const)(
+    "lists tasks as a displayed message instead of opening the browser in %s mode",
+    async (mode) => {
+      const env = await started({ mode, hasUI: mode === "rpc" });
+      await env.command("todo");
+      await env.execute({
+        action: "upsert",
+        tasks: [
+          { key: "a", subject: "Task a", status: "in_progress" },
+          { key: "b", subject: "Task \u001b[31mb\u001b[0m", dependsOn: ["a"] },
+        ],
+      });
+      await env.command("todo");
+      expect(showTodoBrowser).not.toHaveBeenCalled();
+      expect(env.ui.custom).not.toHaveBeenCalled();
+      expect(env.ui.notify).not.toHaveBeenCalled();
+      const [empty, listed] = env.shown();
+      expect(empty).toMatchObject({ customType: "todo:output", display: true, level: "info" });
+      expect(empty.text).toContain("No tasks");
+      expect(listed.text.split("\n")).toEqual([
+        "Todos 0/2 completed",
+        "▸ a: Task a [in_progress]",
+        "○ b: Task b ← a [blocked]",
+        expect.stringContaining("/todo:review"),
+      ]);
+      expect(env.pi.sendMessage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ display: true }),
+        { triggerTurn: false },
+      );
+      env.noContinuation();
+    },
+  );
+
+  it("caps a long task listing and flags tasks with new messages", async () => {
+    const env = await started({ mode: "rpc", hasUI: true });
+    await env.execute({
+      action: "upsert",
+      tasks: Array.from({ length: 45 }, (_, index) => ({
+        key: `t${index}`,
+        subject: `Task ${index}`,
+      })),
+    });
+    await env.execute({ action: "upsert", tasks: [{ key: "t3", message: "Look at this" }] });
     await env.command("todo");
-    await env.command("todo");
-    expect(showTodoBrowser).toHaveBeenCalled();
-    expect(env.ui.notify).toHaveBeenCalledWith(
-      expect.stringContaining("requires interactive terminal mode"),
-      "warning",
-    );
-    expect(env.ui.custom).not.toHaveBeenCalled();
+    const [listed] = env.shown();
+    const lines = listed.text.split("\n");
+    expect(lines).toContain("+5 more");
+    expect(lines.length).toBeLessThan(50);
+    expect(listed.text).toContain("new: Look at this");
+  });
+
+  it("keeps the terminal on notifications, not messages", async () => {
+    const env = await started({ mode: "tui", hasUI: true });
+    await env.execute(add("a"));
+    await env.command("todo:update", "a in_progress");
+    expect(env.ui.notify).toHaveBeenLastCalledWith("Updated a.", "info");
+    expect(env.shown()).toEqual([]);
+    expect(env.pi.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("keeps command output out of the model's context", async () => {
+    const env = await started({ mode: "rpc", hasUI: true });
+    await env.execute(add("a"));
+    await env.command("todo:update", "a in_progress");
+    const [sent] = env.pi.sendMessage.mock.calls[0] as [Record<string, unknown>];
+    const messages = [
+      { role: "user", content: "hi" },
+      { role: "custom", ...sent },
+      { role: "custom", customType: "other", content: "kept", display: true },
+    ];
+    const handlers = env.handlers.get("context") ?? [];
+    const filtered = handlers.map((handler) => handler({ messages }, env.ctx));
+    expect(filtered[0]).toEqual({ messages: [messages[0], messages[2]] });
+  });
+
+  it("asks what to add when /todo:add has no subject and no dialog", async () => {
+    const env = await started({ mode: "print", hasUI: false });
+    await env.command("todo:add");
+    expect(env.shown()).toEqual([
+      expect.objectContaining({ level: "error", text: "Usage: /todo:add <subject>" }),
+    ]);
   });
 
   it("guards browser/settings without UI and passes cloned state to TUI browser", async () => {
@@ -590,7 +661,7 @@ describe("user commands", () => {
     await headless.command("todo:settings");
     expect(showTodoBrowser).toHaveBeenCalled();
     expect(headless.ui.select).not.toHaveBeenCalled();
-    expect(headless.ui.notify).toHaveBeenCalledWith(
+    expect(headless.notices).toHaveBeenCalledWith(
       expect.stringContaining("settings require UI"),
       "warning",
     );
@@ -634,7 +705,7 @@ describe("user commands", () => {
       return "Stale task";
     });
     await env.command("todo:add");
-    expect(env.ui.notify).toHaveBeenLastCalledWith(
+    expect(env.notices).toHaveBeenLastCalledWith(
       "Session changed while command was open; reopen command",
       "error",
     );
@@ -656,7 +727,7 @@ describe("user commands", () => {
       return true;
     });
     await env.command("todo:clear");
-    expect(env.ui.notify).toHaveBeenLastCalledWith(
+    expect(env.notices).toHaveBeenLastCalledWith(
       expect.stringContaining("stale todo revision"),
       "error",
     );
@@ -669,7 +740,7 @@ describe("user commands", () => {
       return true;
     });
     await env.command("todo:clear");
-    expect(env.ui.notify).toHaveBeenLastCalledWith(
+    expect(env.notices).toHaveBeenLastCalledWith(
       "Session changed while command was open; reopen command",
       "error",
     );
@@ -679,7 +750,7 @@ describe("user commands", () => {
     expect(env.ui.confirm).toHaveBeenCalledTimes(confirms);
     expect((await env.state()).tasks).toEqual([]);
     await env.command("todo:clear");
-    expect(env.ui.notify).toHaveBeenLastCalledWith("Task list already empty.", "info");
+    expect(env.notices).toHaveBeenLastCalledWith("Task list already empty.", "info");
     env.noContinuation();
   });
 
@@ -704,7 +775,7 @@ describe("user commands", () => {
     });
     const writes = env.pi.appendEntry.mock.calls.length;
     await env.command("todo:clear");
-    expect(env.ui.notify).toHaveBeenLastCalledWith(
+    expect(env.notices).toHaveBeenLastCalledWith(
       expect.stringMatching(/changed while command was open/),
       "error",
     );
@@ -720,7 +791,7 @@ describe("user commands", () => {
       return true;
     });
     await env.command("todo:clear");
-    expect(env.ui.notify).toHaveBeenLastCalledWith("Cleared task list.", "info");
+    expect(env.notices).toHaveBeenLastCalledWith("Cleared task list.", "info");
     expect((await env.state()).tasks).toEqual([]);
     env.noContinuation();
   });
@@ -742,10 +813,7 @@ describe("user commands", () => {
     const before = await env.state(),
       entries = structuredClone(env.session.getEntries());
     await env.command("todo:clear", "completed");
-    expect(env.ui.notify).toHaveBeenLastCalledWith(
-      expect.stringContaining("singleActive"),
-      "error",
-    );
+    expect(env.notices).toHaveBeenLastCalledWith(expect.stringContaining("singleActive"), "error");
     await expect(env.execute({ action: "clear", scope: "completed" })).rejects.toThrow(
       "singleActive",
     );
@@ -765,12 +833,12 @@ describe("user commands", () => {
       ],
     });
     await env.command("todo:clear");
-    expect(env.ui.notify).toHaveBeenLastCalledWith("Use /todo:clear all --yes without UI", "error");
+    expect(env.notices).toHaveBeenLastCalledWith("Use /todo:clear all --yes without UI", "error");
     expect(env.snapshots()).toHaveLength(1);
     await env.command("todo:clear", "completed");
     expect((await env.state()).tasks.map((t) => t.key)).toEqual(["root", "work"]);
     await env.command("todo:remove", "root");
-    expect(env.ui.notify).toHaveBeenLastCalledWith(
+    expect(env.notices).toHaveBeenLastCalledWith(
       expect.stringContaining("references missing task root"),
       "error",
     );
@@ -795,14 +863,14 @@ describe("user commands", () => {
       choices.find((c) => c.startsWith("Show widget")),
     );
     await env.command("todo:settings");
-    expect(env.ui.notify.mock.calls).toHaveLength(3);
-    for (const [text] of env.ui.notify.mock.calls) {
+    expect(env.notices.mock.calls).toHaveLength(3);
+    for (const [text] of env.notices.mock.calls) {
       // oxlint-disable-next-line no-control-regex -- Intentionally matches terminal control characters.
       expect(text).not.toMatch(/[\x00-\x1f\x7f-\x9f\u202e\u200e]/);
       expect(text).not.toContain("clipboard");
       expect(text).not.toContain("Pi:c");
     }
-    expect(env.ui.notify).toHaveBeenLastCalledWith(
+    expect(env.notices).toHaveBeenLastCalledWith(
       expect.stringContaining("failed to persist"),
       "warning",
     );
@@ -820,7 +888,7 @@ describe("user commands", () => {
     );
     await env.command("todo:settings");
     expect(saveConfig).toHaveBeenCalledWith(env.ctx.cwd, { singleActive: true });
-    expect(env.ui.notify).toHaveBeenLastCalledWith(
+    expect(env.notices).toHaveBeenLastCalledWith(
       "Task settings applied (session only; failed to persist): permission denied",
       "warning",
     );
@@ -849,7 +917,7 @@ describe("user commands", () => {
       visible();
       env.ui.input.mockResolvedValueOnce(value);
       await env.command("todo:settings");
-      expect(env.ui.notify).toHaveBeenLastCalledWith(
+      expect(env.notices).toHaveBeenLastCalledWith(
         "Visible tasks must be an integer from 1 to 12",
         "error",
       );
@@ -879,7 +947,7 @@ describe("user commands", () => {
     });
     await env.command("todo:settings");
     expect(env.saveConfig).toHaveBeenCalledTimes(saves);
-    expect(env.ui.notify).toHaveBeenLastCalledWith(
+    expect(env.notices).toHaveBeenLastCalledWith(
       "Session changed while command was open; reopen command",
       "error",
     );
@@ -933,7 +1001,7 @@ describe("task messages and review", () => {
 
     env.clock.now += 1_000;
     await env.command("todo:review", "all");
-    expect(env.ui.notify).toHaveBeenLastCalledWith("Marked 1 task reviewed.", "info");
+    expect(env.notices).toHaveBeenLastCalledWith("Marked 1 task reviewed.", "info");
     expect(env.reviews().map((entry) => entry.type === "custom" && entry.data)).toEqual([
       { at: T0 + 61_000, tasks: { a: 2 } },
     ]);
@@ -949,12 +1017,12 @@ describe("task messages and review", () => {
       ).details.revision,
     ).toBe(3);
     await env.command("todo:review", "all");
-    expect(env.ui.notify).toHaveBeenLastCalledWith("No unreviewed task messages.", "info");
+    expect(env.notices).toHaveBeenLastCalledWith("No unreviewed task messages.", "info");
     expect(env.reviews()).toHaveLength(1);
 
     const reloaded = await started({ session: env.session });
     await reloaded.command("todo:review");
-    expect(reloaded.ui.notify).toHaveBeenLastCalledWith("No unreviewed task messages.", "info");
+    expect(reloaded.notices).toHaveBeenLastCalledWith("No unreviewed task messages.", "info");
     const listed = await reloaded.execute({ action: "list", key: "a" });
     expect(JSON.parse((listed.content[0] as { text: string }).text).tasks[0].updates).toEqual([
       {
@@ -980,20 +1048,20 @@ describe("task messages and review", () => {
     });
     await env.execute({ action: "upsert", tasks: [{ key: "a", message: "second note" }] });
     await env.command("todo:review", "a missing");
-    expect(env.ui.notify).toHaveBeenLastCalledWith("Unknown task: missing", "error");
+    expect(env.notices).toHaveBeenLastCalledWith("Unknown task: missing", "error");
     expect(env.reviews()).toHaveLength(0);
     await env.command("todo:review", "b");
-    expect(env.ui.notify).toHaveBeenLastCalledWith("Marked 1 task reviewed.", "info");
+    expect(env.notices).toHaveBeenLastCalledWith("Marked 1 task reviewed.", "info");
     await env.command("todo:review");
-    const [[text]] = env.ui.notify.mock.calls.slice(-1);
+    const [[text]] = env.notices.mock.calls.slice(-1);
     expect(text).toBe("a [pending] just now: second note\na [pending] just now: first note");
     expect(env.reviews()).toHaveLength(2);
     await env.command("todo:review");
-    expect(env.ui.notify).toHaveBeenLastCalledWith("No unreviewed task messages.", "info");
+    expect(env.notices).toHaveBeenLastCalledWith("No unreviewed task messages.", "info");
 
     await env.execute({ action: "upsert", tasks: [{ key: "b", message: `${hostile}\nagain` }] });
     await env.command("todo:review");
-    expect(env.ui.notify.mock.calls.at(-1)?.[0]).toBe("b [pending] just now: badend again");
+    expect(env.notices.mock.calls.at(-1)?.[0]).toBe("b [pending] just now: badend again");
     env.noContinuation();
   });
 
@@ -1021,11 +1089,11 @@ describe("task messages and review", () => {
       ],
     });
     await env.command("todo:review");
-    expect(env.ui.notify).toHaveBeenLastCalledWith("No unreviewed task messages.", "info");
+    expect(env.notices).toHaveBeenLastCalledWith("No unreviewed task messages.", "info");
     await env.command("todo:update", 'fix-auth {"message":3}');
-    expect(env.ui.notify).toHaveBeenLastCalledWith("message must be a string", "error");
+    expect(env.notices).toHaveBeenLastCalledWith("message must be a string", "error");
     await env.command("todo:update", `fix-auth pending ${"x".repeat(2001)}`);
-    expect(env.ui.notify).toHaveBeenLastCalledWith(
+    expect(env.notices).toHaveBeenLastCalledWith(
       expect.stringContaining("message must be at most 2000"),
       "error",
     );
@@ -1062,7 +1130,7 @@ describe("task messages and review", () => {
     });
     vi.mocked(showTodoBrowser).mock.calls[3][2]!.onReview!(new Map([["b", 2]]));
     expect(env.reviews()).toHaveLength(0);
-    expect(env.ui.notify).toHaveBeenLastCalledWith("Review not saved: disk full", "error");
+    expect(env.notices).toHaveBeenLastCalledWith("Review not saved: disk full", "error");
     env.noContinuation();
   });
 
@@ -1082,11 +1150,11 @@ describe("task messages and review", () => {
     await env.emit("session_tree");
     await env.execute(complete("a", "Right outcome"));
     await env.command("todo:review");
-    expect(env.ui.notify.mock.calls.at(-1)?.[0]).toBe("a [completed] just now: Right outcome");
+    expect(env.notices.mock.calls.at(-1)?.[0]).toBe("a [completed] just now: Right outcome");
     env.session.branch(left);
     await env.emit("session_tree");
     await env.command("todo:review");
-    expect(env.ui.notify).toHaveBeenLastCalledWith("No unreviewed task messages.", "info");
+    expect(env.notices).toHaveBeenLastCalledWith("No unreviewed task messages.", "info");
     expect(
       JSON.parse(
         ((await env.execute({ action: "list", key: "a" })).content[0] as { text: string }).text,
