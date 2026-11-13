@@ -36,6 +36,7 @@ function fakePi(throwOnSend = false, sessionId = randomUUID(), entries: any[] = 
   const handlers = new Map<string, ((...a: any[]) => any)[]>();
   const sent: Sent[] = [];
   const notes: { text: string; level: string }[] = [];
+  const shown: Sent[] = [];
   // Session state as pi would report it; startRunOnSend mimics pi starting a run on send.
   const state = { idle: true, startRunOnSend: false, stale: false };
   const ui = { notify: (text: string, level: string) => notes.push({ text, level }) };
@@ -62,6 +63,18 @@ function fakePi(throwOnSend = false, sessionId = randomUUID(), entries: any[] = 
     appendEntry: (customType: string, data: unknown) =>
       void entries.push({ type: "custom", customType, data }),
     sendMessage: (message: any, options: any) => {
+      // Command output is for the user: it lands in `notes` (text without its lead-in) and `shown`.
+      if (message.details?.userOutput === true) {
+        const lead = { info: "", warning: "Warning: ", error: "Error: " }[
+          message.details.level as string
+        ];
+        shown.push({ message, options });
+        notes.push({
+          text: String(message.content).slice(lead?.length ?? 0),
+          level: message.details.level,
+        });
+        return;
+      }
       sent.push({ message, options });
       if (throwOnSend) throw new Error("sendMessage failed: session gone");
       // Pi appends the message to the transcript (here at once; mid-run Pi does at the turn's end).
@@ -85,6 +98,7 @@ function fakePi(throwOnSend = false, sessionId = randomUUID(), entries: any[] = 
     commands,
     handlers,
     sent,
+    shown,
     notes,
     state,
     entries,
@@ -284,6 +298,33 @@ void test("/job command lists and kills", async (t) => {
   assert.match(notes[1].text, /^Stopped: j1 · job · killed/);
   await commands.get("job").handler("kill", ctx(dir));
   assert.equal(notes[2].level, "warning");
+});
+
+void test("/job shows its output as a displayed message that does not start a turn", async (t) => {
+  const { dir, call, commands, ctx, sent, shown, entries } = await setup(t);
+  await call("job_start", { command: "sleep 100", timeoutSeconds: 60 }, dir);
+  const rpc = { ...ctx(dir), mode: "rpc", hasUI: true };
+  await commands.get("job").handler("", rpc);
+  await commands.get("job").handler("nonsense", rpc);
+  assert.equal(shown.length, 2);
+  const [list, usage] = shown;
+  assert.equal(list.message.customType, "job:output");
+  assert.equal(list.message.display, true);
+  assert.deepEqual(list.options, { triggerTurn: false });
+  assert.match(String(list.message.content as string), /^Running \(1\):\n {2}j1 · job · running/);
+  assert.equal(usage.message.content, "Warning: Usage: /job [kill <id>]");
+  assert.deepEqual(sent, []);
+  assert.deepEqual(
+    entries.filter((entry) => entry.type === "custom_message"),
+    [],
+  );
+  // The terminal keeps its notification and sends nothing.
+  const notified: string[] = [];
+  const tui = { ...rpc, mode: "tui", ui: { notify: (text: string) => notified.push(text) } };
+  await commands.get("job").handler("", tui);
+  assert.match(notified[0], /^Running \(1\):/);
+  assert.equal(shown.length, 2);
+  await commands.get("job").handler("kill j1", rpc);
 });
 
 void test("session_shutdown kills running jobs without notifying", async (t) => {
