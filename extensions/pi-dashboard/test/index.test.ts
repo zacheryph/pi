@@ -677,6 +677,32 @@ describe("pi-dashboard extension", () => {
     const ctx = fakeCtx("print");
     await fake.commands.get("dashboard")!.handler("", ctx);
     expect(openUrl).not.toHaveBeenCalled();
-    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("not running"), "warning");
+    expect(ctx.ui.notify).not.toHaveBeenCalled();
+    expect(fake.shown()).toEqual([
+      expect.objectContaining({
+        customType: "dashboard:output",
+        display: true,
+        level: "warning",
+        text: expect.stringContaining("not running"),
+      }),
+    ]);
+  });
+
+  it("/dashboard shows the URL as a message, without opening it, outside the terminal", async () => {
+    const env = setup();
+    const openUrl = vi.fn(async () => {});
+    const fake = load({ ...env.deps, openUrl, isHubReachable: async () => true });
+    const ctx = fakeCtx("rpc");
+    await fake.commands.get("dashboard")!.handler("", ctx);
+    expect(openUrl).not.toHaveBeenCalled();
+    expect(ctx.ui.notify).not.toHaveBeenCalled();
+    expect(fake.shown()).toEqual([
+      expect.objectContaining({
+        level: "info",
+        text: expect.stringMatching(
+          /^Dashboard: http:\/\/127\.0\.0\.1:7317\/ \(.*terminal sessions/,
+        ),
+      }),
+    ]);
   });
 });

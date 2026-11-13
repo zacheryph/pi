@@ -104,7 +104,8 @@ with `pi.sendUserMessage("/work:wake", { expandPromptTemplates: true })` and wai
 resolves that wait on every path out of a compaction, a `/tree` summary or a run, however long
 other extensions' handlers take, so nothing is polled and no timer guesses. The command is
 registered by the extension instance that provides the root host, at `session_start`. Typed by a
-user it only reports whether anything waits.
+user it only reports whether anything waits: as a notification in the terminal, as a displayed
+message kept out of the model's context elsewhere (an app that runs Pi over RPC drops notifications).
 
 | What happened while the wake was owed                          | Result                                                                  |
 | -------------------------------------------------------------- | ----------------------------------------------------------------------- |

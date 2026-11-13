@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { userOutput } from "#foundations/user-output";
 import {
   getAgentDir,
   VERSION,
@@ -50,6 +51,7 @@ export default function dashboardExtension(
   pi: ExtensionAPI,
   dependencies: DashboardDependencies = {},
 ): void {
+  const output = userOutput(pi, "dashboard:output");
   const pid = dependencies.pid ?? process.pid;
   const startedAt = Math.round(Date.now() - process.uptime() * 1000);
   const slots = globalThis as Record<symbol, unknown>;
@@ -230,7 +232,8 @@ export default function dashboardExtension(
         up = await reachable(url);
       }
       if (!up) {
-        ctx.ui.notify(
+        output.show(
+          ctx,
           reporter
             ? `Dashboard is not reachable at ${url}. Check ${paths().log}, or set "port" in ~/.pi/agent/dashboard.json if the port is taken.`
             : `Dashboard is not running at ${url}. It starts with the first interactive Pi session.`,
@@ -238,7 +241,16 @@ export default function dashboardExtension(
         );
         return;
       }
-      ctx.ui.notify(`Dashboard: ${url}`, "info");
+      if (ctx.mode !== "tui") {
+        // The host may not be this machine's desktop, so the URL is shown rather than opened.
+        output.show(
+          ctx,
+          `Dashboard: ${url} (it lists terminal sessions; this session is not one of them)`,
+          "info",
+        );
+        return;
+      }
+      output.show(ctx, `Dashboard: ${url}`, "info");
       const open =
         dependencies.openUrl ??
         (async (target: string) => {

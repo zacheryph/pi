@@ -20,6 +20,7 @@
  * `LandingTracker` (landing.ts) of the instance that provided the host, and by no other: an
  * instance that only finds a host forwards the run boundaries and reads nothing.
  */
+import { userOutput, type OutputContext } from "#foundations/user-output";
 import { readEntries } from "#session-state";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { provide, service } from "#session-tree";
@@ -76,10 +77,16 @@ export const WAKE_TEXT =
   "Its messages are above in the conversation. Handle them and continue.";
 
 /** The slice of a command context the wake command reads. */
-interface CommandContext {
+interface CommandContext extends Partial<OutputContext> {
   waitForIdle?(): Promise<void>;
-  ui?: { notify?(message: string, level?: "info" | "warning" | "error"): void };
 }
+
+/** The command context as an output target; a partial one (a test's) shows nothing. */
+const outputTarget = (ctx: CommandContext): OutputContext => ({
+  mode: ctx.mode ?? "print",
+  hasUI: ctx.hasUI ?? false,
+  ui: ctx.ui ?? { notify() {} },
+});
 
 const isHost = (value: unknown): value is WorkHost =>
   !!value &&
@@ -93,6 +100,8 @@ export function ensureWorkHost(pi: ExtensionAPI): WorkAccess {
   const known = accesses.get(pi);
   if (known) return known;
 
+  /** The wake command's replies: a notification in the terminal, a displayed message elsewhere. */
+  const output = userOutput(pi, "work:output");
   let sessionId: string | undefined;
   let ctxRef: Context | undefined;
   /** The host this instance provided, if the session had none, with the tracker that reads its landings. */
@@ -183,7 +192,8 @@ export function ensureWorkHost(pi: ExtensionAPI): WorkAccess {
         handler: async (_args: string, ctx: unknown) => {
           const command = ctx as CommandContext;
           if (!waiting) {
-            command.ui?.notify?.(
+            output.show(
+              outputTarget(command),
               owed
                 ? "pi-work: the work that reported back is answered when Pi is idle."
                 : "pi-work: no work is waiting for an answer.",
