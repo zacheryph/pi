@@ -80,6 +80,7 @@ function harness(setSessionName: boolean, existing?: string) {
     pi,
     ctx,
     commands,
+    shown: fake.shown,
     emit,
     setName,
     setEntries: (next: object[]) => {
@@ -168,5 +169,52 @@ describe("pi-tldr integration", () => {
     expect(h.setName).toHaveBeenLastCalledWith("routing-rollout-progress");
     expect(h.ctx.ui.setTitle).not.toHaveBeenCalled();
     expect(h.ctx.ui.setStatus).not.toHaveBeenCalled();
+  });
+
+  it("summarizes as a displayed message when there is no terminal modal", async () => {
+    const h = harness(true);
+    (h.ctx as any).mode = "rpc";
+    h.emit("session_start");
+    h.setEntries([h.user]);
+    await h.commands.get("tldr")!.handler("", h.ctx);
+    expect(showTldr).not.toHaveBeenCalled();
+    expect(h.ctx.ui.notify).not.toHaveBeenCalled();
+    expect(h.shown()).toEqual([
+      expect.objectContaining({
+        customType: "tldr:output",
+        display: true,
+        level: "info",
+        text: [
+          "TLDR · routing-rollout-progress",
+          "Premise: Move routes",
+          "Findings / turns:",
+          "- Identified dependencies",
+          "Current status: Awaiting PR",
+        ].join("\n"),
+      }),
+    ]);
+    expect(h.setName).toHaveBeenCalledWith("routing-rollout-progress");
+  });
+
+  it("reports a failed summary and an empty session as messages outside the terminal", async () => {
+    const h = harness(true);
+    (h.ctx as any).mode = "rpc";
+    h.emit("session_start");
+    await h.commands.get("tldr")!.handler("", h.ctx);
+    h.setEntries([h.user]);
+    vi.mocked(runTldrModel).mockRejectedValueOnce(new Error("model offline"));
+    await h.commands.get("tldr")!.handler("", h.ctx);
+    expect(h.shown().map(({ level, text }) => [level, text])).toEqual([
+      ["info", "No session messages to summarize yet."],
+      ["error", "pi-tldr: Error: model offline"],
+    ]);
+  });
+
+  it("keeps the terminal on the modal and notifications", async () => {
+    const h = harness(true);
+    h.setEntries([h.user]);
+    await h.commands.get("tldr")!.handler("", h.ctx);
+    expect(showTldr).toHaveBeenCalledOnce();
+    expect(h.shown()).toEqual([]);
   });
 });
