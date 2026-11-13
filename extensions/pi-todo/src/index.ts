@@ -42,7 +42,12 @@ import {
 import { createTodoDelegation, type DelegatedView } from "#src/delegation";
 import { registerTodoCommands } from "#src/commands";
 import { todoSettings, type TodoConfig } from "#src/config";
-import { TODO_SNAPSHOT_EVENT, todoSnapshotEvent } from "#src/events";
+import {
+  TODO_EXPLORER_VIEW,
+  TODO_SNAPSHOT_EVENT,
+  TODO_WIDGET_VIEW,
+  todoSnapshotEvent,
+} from "#src/events";
 import {
   cloneTodoState,
   createEmptyTodoState,
@@ -57,9 +62,18 @@ import {
   renderTodoText,
   todoMessageLine,
   todoTaskPresentation,
+  todoWidgetModel,
   todoWidgetView,
   type TodoRenderConfig,
 } from "#src/ui/render";
+import { todoExplorerModel } from "#src/ui/browser";
+import {
+  todoHistoryAction,
+  todoInspectAction,
+  todoReviewAction,
+  type TodoSurfaceSource,
+} from "#src/surface";
+import { actionRegistry, viewRegistry } from "#surface";
 import { bodyRow, clip, renderWidget, sanitizeLine, sanitizeText, styleLine } from "#ui";
 import { replayTodoSession, TODO_JOURNAL_TYPE, TODO_REVIEW_TYPE } from "#src/replay";
 import { contextCard } from "#session-state";
@@ -214,18 +228,28 @@ export default function todoExtension(
           ),
         };
   const widgetState = (view = delegatedView()) => view?.state ?? state;
+  /** Unreviewed completed tasks stay visible even when completed tasks are hidden. */
+  const widgetShown = (view = delegatedView()) => {
+    const shown = widgetState(view);
+    return (
+      config.widget &&
+      shown.tasks.length > 0 &&
+      (config.showCompleted ||
+        !shown.tasks.every((task) => task.status === "completed") ||
+        !!widgetConfig(view).unreviewed?.size)
+    );
+  };
+  // Views and actions live on this session's bus from session_start to session_shutdown,
+  // so a /reload, which runs this factory again on the same bus, does not leak them.
+  const views = viewRegistry(pi.events);
+  const actions = actionRegistry(pi.events);
   const updateWidget = (ctx?: ExtensionContext) => {
     if (ctx) uiContext = ctx;
+    views.changed(TODO_WIDGET_VIEW);
+    views.changed(TODO_EXPLORER_VIEW);
     if (!uiContext?.hasUI) return;
-    // Unreviewed completed tasks stay visible even when completed tasks are hidden.
     const shown = widgetState();
-    if (
-      !config.widget ||
-      !shown.tasks.length ||
-      (!config.showCompleted &&
-        shown.tasks.every((task) => task.status === "completed") &&
-        !widgetConfig().unreviewed?.size)
-    ) {
+    if (!widgetShown()) {
       clearWidget();
       return;
     }
@@ -631,9 +655,59 @@ export default function todoExtension(
   };
   // A start of the same session keeps its agents' claims: pi-subagent may reopen the agents.
   // A fork's agents belong to the session it was forked from.
-  pi.on("session_start", async (event, ctx) =>
-    restoreDelegation(ctx, event.reason !== "fork" && event.reason !== "new"),
-  );
+  const surfaceSource: TodoSurfaceSource = {
+    state: () => state,
+    activity: () => activity,
+    review: () => review,
+    assignees,
+    now,
+    branch: () => branchGeneration,
+    // The terminal drops a failed marker action, so say here that the review was not saved.
+    markReviewed: (marks) => {
+      try {
+        return markReviewed(marks);
+      } catch (error) {
+        if (uiContext?.hasUI)
+          uiContext.ui.notify(sanitizeText(`Review not saved: ${errorText(error)}`), "error");
+        throw error;
+      }
+    },
+  };
+  const defineSurface = () => {
+    views.dispose();
+    actions.dispose();
+    actions.define(todoInspectAction(surfaceSource));
+    actions.define(todoReviewAction(surfaceSource));
+    actions.define(todoHistoryAction(surfaceSource));
+    views.define({
+      id: TODO_WIDGET_VIEW,
+      kind: "widget",
+      title: "Tasks",
+      model: () => {
+        const view = delegatedView();
+        return widgetShown(view)
+          ? todoWidgetModel(widgetState(view), widgetConfig(view))
+          : undefined;
+      },
+    });
+    views.define({
+      id: TODO_EXPLORER_VIEW,
+      kind: "explorer",
+      title: "Todos",
+      model: () =>
+        todoExplorerModel(state, {
+          activity,
+          review,
+          now: now(),
+          assignees: assignees(),
+          branch: branchGeneration,
+        }),
+    });
+  };
+  pi.on("session_start", async (event, ctx) => {
+    defineSurface();
+    restoreDelegation(ctx, event.reason !== "fork" && event.reason !== "new");
+  });
   pi.on("session_tree", async (_event, ctx) => restoreDelegation(ctx));
   // `resources_discover` fires after every extension's session_start handler has finished, so
   // the agents that go on are back by now. The first run is the fallback for a mode without it.
@@ -698,6 +772,8 @@ export default function todoExtension(
   });
   pi.on("session_shutdown", async () => {
     branchGeneration++;
+    views.dispose();
+    actions.dispose();
     delegation.stop();
     clearWidget();
     uiContext = undefined;

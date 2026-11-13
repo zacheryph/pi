@@ -11,7 +11,17 @@ import { todoSettings } from "#src/config";
 import type { TodoRequest } from "#src/actions";
 import type { TodoState } from "#src/state";
 import { TODO_JOURNAL_TYPE } from "#src/replay";
-import { showTodoBrowser } from "#src/ui/browser";
+import { showTodoBrowser, todoExplorerModel } from "#src/ui/browser";
+import {
+  dispatchAction,
+  listActions,
+  listViews,
+  onViewChanged,
+  readView,
+  type Block,
+  type ExplorerModel,
+} from "#surface";
+import { todoWidgetModel } from "#src/ui/render";
 import { TODO_SNAPSHOT_EVENT, type TodoSnapshotEvent } from "#src/events";
 import { CONTEXT_TYPE, harness, started, T0 } from "#test/harness";
 import { plainTheme, ansiTheme, stripAnsi, withSlot } from "#test-helpers";
@@ -1101,15 +1111,22 @@ describe("task messages and review", () => {
     env.noContinuation();
   });
 
-  it("TUI review opens the unreviewed browser view with session-guarded review callbacks", async () => {
+  it("TUI review opens the unreviewed browser view whose review marks are session-guarded", async () => {
     const env = await started({ mode: "tui", hasUI: true });
+    /** What the browser opened by call `n` does when it clears the marks on `ids`. */
+    const clearMarks = (n: number, ids: string[]) => {
+      const [, state, options] = vi.mocked(showTodoBrowser).mock.calls[n];
+      const onClear = todoExplorerModel(state, options).marker?.onClear;
+      if (!onClear) throw new Error("no marker");
+      return dispatchAction(options!.actions!, onClear.action, { ...onClear.args, ids });
+    };
     await env.execute({ action: "upsert", tasks: [{ key: "a", subject: "A", message: "Done" }] });
     await env.command("todo:review");
     const [, state, options] = vi.mocked(showTodoBrowser).mock.calls[0];
     expect(state.tasks.map((task) => task.key)).toEqual(["a"]);
-    expect(options).toMatchObject({ view: "unreviewed", now: T0 });
+    expect(options).toMatchObject({ view: "unreviewed", now: T0, actions: env.pi.events });
     expect(options?.activity?.get("a")?.updates).toHaveLength(1);
-    options!.onReview!(new Map([["a", 1]]));
+    await expect(clearMarks(0, ["a"])).resolves.toEqual({ reviewed: 1 });
     expect(env.reviews()).toHaveLength(1);
     expect(env.ui.setWidget).toHaveBeenCalled();
     await env.command("todo");
@@ -1117,10 +1134,9 @@ describe("task messages and review", () => {
 
     await env.execute({ action: "upsert", tasks: [{ key: "a", message: "Again" }] });
     await env.command("todo");
-    const stale = vi.mocked(showTodoBrowser).mock.calls[2][2]!;
     env.session.newSession();
     await env.emit("session_start");
-    stale.onReview!(new Map([["a", 2]]));
+    await expect(clearMarks(2, ["a"])).rejects.toThrow("changed branch or session");
     expect(env.reviews()).toHaveLength(0);
     await env.execute(add("b"));
     await env.execute({ action: "upsert", tasks: [{ key: "b", message: "Note" }] });
@@ -1128,7 +1144,7 @@ describe("task messages and review", () => {
     env.pi.appendEntry.mockImplementationOnce(() => {
       throw new Error("disk full");
     });
-    vi.mocked(showTodoBrowser).mock.calls[3][2]!.onReview!(new Map([["b", 2]]));
+    await expect(clearMarks(3, ["b"])).rejects.toThrow("disk full");
     expect(env.reviews()).toHaveLength(0);
     expect(env.notices).toHaveBeenLastCalledWith("Review not saved: disk full", "error");
     env.noContinuation();
@@ -1391,5 +1407,135 @@ describe("snapshot events", () => {
         .at(-1)
         ?.tasks.map((task) => task.key),
     ).toEqual(["a"]);
+  });
+});
+
+describe("views and actions on the session bus", () => {
+  const lastSnapshot = (env: Awaited<ReturnType<typeof started>>) =>
+    env.pi.events.emit.mock.calls
+      .filter(([channel]) => channel === TODO_SNAPSHOT_EVENT)
+      .map(([, data]) => data as TodoSnapshotEvent)
+      .at(-1)!;
+
+  it("defines todo.widget, todo.explorer and the todo actions from start to shutdown", async () => {
+    const env = await started({ mode: "tui", hasUI: true });
+    const bus = env.pi.events;
+    expect(listViews(bus)).toEqual([
+      { id: "todo.explorer", kind: "explorer", title: "Todos" },
+      { id: "todo.widget", kind: "widget", title: "Tasks" },
+    ]);
+    expect(listActions(bus).map((action) => action.id)).toEqual([
+      "todo.history",
+      "todo.inspect",
+      "todo.review",
+    ]);
+    // Like the terminal widget, the view has nothing to show without tasks.
+    expect(readView(bus, "todo.widget")).toBeUndefined();
+
+    const announced: string[] = [];
+    onViewChanged(bus, (id) => announced.push(id));
+    await env.execute({ action: "upsert", tasks: [{ key: "a", subject: "A", message: "Done" }] });
+    await env.execute(add("b"));
+    expect(announced).toContain("todo.widget");
+    expect(announced).toContain("todo.explorer");
+
+    const widget = readView(bus, "todo.widget");
+    expect(JSON.parse(JSON.stringify(widget))).toEqual(widget);
+    expect(widget).toEqual(
+      todoWidgetModel(await env.state(), {
+        ...todoSettings.defaults(),
+        assignees: new Map(),
+        unreviewed: new Map([["a", "Done"]]),
+      }),
+    );
+
+    const explorer = readView(bus, "todo.explorer") as ExplorerModel;
+    expect(JSON.parse(JSON.stringify(explorer))).toEqual(explorer);
+    expect(explorer.items.map((item) => [item.id, item.marked])).toEqual([
+      ["a", true],
+      ["b", false],
+    ]);
+    expect(explorer.loadDetail).toEqual({ action: "todo.inspect", args: { reviewed: {} } });
+    expect(explorer.marker?.onClear).toEqual({
+      action: "todo.review",
+      args: { revisions: { a: 1 }, branch: expect.any(Number) },
+    });
+
+    await env.emit("session_shutdown");
+    expect(listViews(bus)).toEqual([]);
+    expect(listActions(bus)).toEqual([]);
+    await env.emit("session_start");
+    expect(listViews(bus)).toHaveLength(2);
+  });
+
+  it("todo.inspect shows the detail /todo showed, against the review state a list passes", async () => {
+    const env = await started({ mode: "tui", hasUI: true });
+    const bus = env.pi.events;
+    await env.execute({ action: "upsert", tasks: [{ key: "a", subject: "A", message: "Done" }] });
+    const explorer = readView(bus, "todo.explorer") as ExplorerModel;
+    const open = () =>
+      dispatchAction(bus, "todo.inspect", { ...explorer.loadDetail!.args, id: "a" });
+    const fresh = await open();
+    expect(fresh).toContainEqual({ heading: "Activity (newest first; ● = unreviewed)" });
+    expect(fresh).toContainEqual({ lines: ["    Done"] });
+
+    // Opening the task reviews it; the detail still shows what the list showed as new.
+    await dispatchAction(bus, explorer.marker!.onClear!.action, {
+      ...explorer.marker!.onClear!.args,
+      ids: ["a"],
+    });
+    expect(env.reviews()).toHaveLength(1);
+    await expect(open()).resolves.toEqual(fresh);
+    // Without the list's review state, the current one applies.
+    const live = (await dispatchAction(bus, "todo.inspect", { id: "a" })) as Block[];
+    expect(live).toContainEqual({ heading: "Activity (newest first)" });
+    await expect(dispatchAction(bus, "todo.inspect", { id: "zz" })).rejects.toThrow(
+      'No task "zz" on this branch.',
+    );
+    await expect(dispatchAction(bus, "todo.inspect", {})).rejects.toThrow("expected { id");
+  });
+
+  it("todo.review marks the latest messages as /todo:review does", async () => {
+    const env = await started();
+    const bus = env.pi.events;
+    await env.execute({
+      action: "upsert",
+      tasks: [
+        { key: "a", subject: "A", message: "One" },
+        { key: "b", subject: "B", message: "Two" },
+      ],
+    });
+    await expect(dispatchAction(bus, "todo.review", { ids: ["zz"] })).rejects.toThrow(
+      'No task "zz" on this branch.',
+    );
+    await expect(dispatchAction(bus, "todo.review", { ids: ["a"] })).resolves.toEqual({
+      reviewed: 1,
+    });
+    expect(lastSnapshot(env).tasks.map((task) => task.unreviewed)).toEqual([0, 1]);
+    await expect(dispatchAction(bus, "todo.review")).resolves.toEqual({ reviewed: 1 });
+    await expect(dispatchAction(bus, "todo.review")).resolves.toEqual({ reviewed: 0 });
+    expect(env.reviews()).toHaveLength(2);
+    await expect(dispatchAction(bus, "todo.review", { revisions: [] })).rejects.toThrow(
+      "revisions must map task keys to revisions",
+    );
+  });
+
+  it("todo.history returns the task's history as the snapshot event carries it", async () => {
+    const env = await started();
+    await env.execute({ action: "upsert", tasks: [{ key: "a", subject: "A" }] });
+    await env.execute({
+      action: "upsert",
+      tasks: [{ key: "a", status: "in_progress", message: "Go" }],
+    });
+    const task = lastSnapshot(env).tasks[0];
+    expect(task.updates).toHaveLength(1);
+    await expect(dispatchAction(env.pi.events, "todo.history", { key: "a" })).resolves.toEqual({
+      key: "a",
+      createdAt: task.createdAt,
+      updates: task.updates,
+    });
+    await expect(dispatchAction(env.pi.events, "todo.history", { key: "zz" })).rejects.toThrow(
+      'No task "zz" on this branch.',
+    );
   });
 });

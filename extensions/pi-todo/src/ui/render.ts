@@ -7,6 +7,7 @@ import {
   type Line,
   type Span,
   type UITheme,
+  type WidgetModel,
   type WidgetRow,
   type WidgetView,
 } from "#ui";
@@ -248,12 +249,13 @@ function statusFallbacks(task: TodoTask, state: TodoState, assignee?: string): L
   ];
 }
 
-/** Shared widget description; selection, ordering and limits stay todo-owned. */
-export function todoWidgetView(
-  state: TodoState,
-  config: TodoRenderConfig,
-  maxRows = Infinity,
-): WidgetView {
+/**
+ * The widget as plain JSON, for any renderer: the `todo.widget` view and,
+ * with the terminal's row budgets added, the widget above the editor. Every
+ * selected task is a row; `config.maxVisible` only decides whether the visible
+ * rows need an unreviewed-marker gutter.
+ */
+export function todoWidgetModel(state: TodoState, config: TodoRenderConfig): WidgetModel {
   const { tasks, maxVisible, unreviewed } = renderSelection(state, config);
   const done = state.tasks.filter((task) => task.status === "completed").length;
   const progress: Span = {
@@ -296,10 +298,18 @@ export function todoWidgetView(
     active: state.tasks.some((task) => task.status === "in_progress"),
     meta,
     rows,
-    maxRows,
-    maxVisible,
     emptyText: state.tasks.length ? "No unfinished tasks" : "No tasks",
   };
+}
+
+/** The terminal widget: the JSON model plus row budgets. Selection, order and limits stay todo-owned. */
+export function todoWidgetView(
+  state: TodoState,
+  config: TodoRenderConfig,
+  maxRows = Infinity,
+): WidgetView {
+  const { maxVisible } = renderSelection(state, config);
+  return { ...todoWidgetModel(state, config), maxRows, maxVisible };
 }
 
 /**

@@ -1,4 +1,10 @@
-import { showExplorer, type ExplorerItem, type ExplorerView, type ModalContext } from "#ui";
+import {
+  showExplorer,
+  type ActionBus,
+  type ExplorerItem,
+  type ExplorerModel,
+  type ModalContext,
+} from "#ui";
 import {
   createTodoReviewState,
   lastTodoActivityAt,
@@ -6,39 +12,40 @@ import {
   type TodoReviewState,
   unreviewedTodoTasks,
 } from "#src/activity";
+import { TODO_INSPECT_ACTION, TODO_REVIEW_ACTION } from "#src/events";
 import type { TodoState } from "#src/state";
-import {
-  formatTodoAge,
-  orderedTodoTasks,
-  todoTaskDetail,
-  todoTaskPresentation,
-} from "#src/ui/render";
+import { formatTodoAge, orderedTodoTasks, todoTaskPresentation } from "#src/ui/render";
 
 export type TodoBrowserView = "all" | "unreviewed" | "recent";
 const TODO_VIEWS: readonly TodoBrowserView[] = ["all", "unreviewed", "recent"];
 
 export interface TodoBrowserOptions {
-  /** Enables history details, unreviewed markers and view tabs. */
+  /** Enables unreviewed markers, view tabs and the review state details are shown against. */
   activity?: TodoActivity;
   review?: TodoReviewState;
   now?: number;
   view?: TodoBrowserView;
-  /** Review watermarks (key → revision) for messages this snapshot showed. */
-  onReview?: (marks: ReadonlyMap<string, number>) => void;
   /** Subagent holding each delegated task, as a display label. */
   assignees?: ReadonlyMap<string, string>;
+  /** The branch this snapshot was taken on; `todo.review` refuses marks for another. */
+  branch?: number;
+  /** The session's bus, where `todo.inspect` and `todo.review` are defined. */
+  actions?: ActionBus;
 }
 
 /**
- * Task snapshot for the shared explorer. Task mutations belong exclusively to
- * explicit commands/tools; the only write is review state, through onReview.
+ * Task snapshot for the shared explorer, as plain JSON. Details load through
+ * `todo.inspect`; task mutations belong exclusively to explicit commands and
+ * tools, and the only write is review state, through `todo.review`.
  */
-export function todoExplorerView(state: TodoState, options: TodoBrowserOptions = {}): ExplorerView {
+export function todoExplorerModel(
+  state: TodoState,
+  options: TodoBrowserOptions = {},
+): ExplorerModel {
   const now = options.now ?? Date.now();
   const history = options.activity && {
     activity: options.activity,
     review: options.review ?? createTodoReviewState(),
-    now,
   };
   const unreviewed = history
     ? unreviewedTodoTasks(state, history.activity, history.review)
@@ -54,7 +61,6 @@ export function todoExplorerView(state: TodoState, options: TodoBrowserOptions =
       badge: { text: `${presentation.glyph} ${presentation.label}`, tone: presentation.color },
       marked: unreviewed.has(task.key),
       search: `${task.description ?? ""} ${task.status} ${(task.dependsOn ?? []).join(" ")} ${messages.join(" ")}${assignee ? ` ${assignee}` : ""}`,
-      detail: todoTaskDetail(task, state, history, assignee),
     };
   });
   const base = {
@@ -63,7 +69,12 @@ export function todoExplorerView(state: TodoState, options: TodoBrowserOptions =
     items,
     hints: [{ keys: "/todo:add" }, { keys: "/todo:clear" }],
   };
-  if (!history) return { ...base, notices: [{ text: "Read-only task snapshot", tone: "muted" }] };
+  if (!history)
+    return {
+      ...base,
+      notices: [{ text: "Read-only task snapshot", tone: "muted" }],
+      loadDetail: { action: TODO_INSPECT_ACTION },
+    };
   const order = new Map(state.tasks.map((task, index) => [task.key, index]));
   const recent = state.tasks
     .map((task) => task.key)
@@ -72,17 +83,6 @@ export function todoExplorerView(state: TodoState, options: TodoBrowserOptions =
         (lastTodoActivityAt(b, history.activity) ?? -1) -
           (lastTodoActivityAt(a, history.activity) ?? -1) || order.get(a)! - order.get(b)!,
     );
-  // Each shown message is reviewed once, at the revision this snapshot displayed.
-  const pending = new Map(unreviewed);
-  const review = (keys: string[]) => {
-    const marks = new Map<string, number>();
-    for (const key of keys) {
-      const update = pending.get(key);
-      if (update) marks.set(key, update.revision);
-      pending.delete(key);
-    }
-    if (marks.size) options.onReview?.(marks);
-  };
   const reviewed = history.review.at;
   return {
     ...base,
@@ -102,10 +102,35 @@ export function todoExplorerView(state: TodoState, options: TodoBrowserOptions =
       { label: "Recent", ids: recent },
     ],
     initialTab: Math.max(0, TODO_VIEWS.indexOf(options.view ?? "all")),
-    // Opening a marked task, or Ctrl+R on the filtered list, reviews it.
+    // Opening a marked task, or Ctrl+R on the filtered list, reviews it, each at
+    // the revision this snapshot displayed.
     ...(unreviewed.size
-      ? { marker: { label: "unreviewed", clearAction: "mark reviewed", onClear: review } }
+      ? {
+          marker: {
+            label: "unreviewed",
+            clearAction: "mark reviewed",
+            onClear: {
+              action: TODO_REVIEW_ACTION,
+              args: {
+                revisions: Object.fromEntries(
+                  [...unreviewed].map(([key, update]) => [key, update.revision]),
+                ),
+                ...(options.branch === undefined ? {} : { branch: options.branch }),
+              },
+            },
+          },
+        }
       : {}),
+    // Details show the review state this list showed, so messages it marked as
+    // new stay marked in the detail that opening the task just reviewed.
+    loadDetail: {
+      action: TODO_INSPECT_ACTION,
+      args: {
+        reviewed: Object.fromEntries(
+          [...history.review.tasks].map(([key, { revision, at }]) => [key, { revision, at }]),
+        ),
+      },
+    },
   };
 }
 
@@ -114,7 +139,8 @@ export async function showTodoBrowser(
   state: TodoState,
   options: TodoBrowserOptions = {},
 ): Promise<void> {
-  await showExplorer(ctx, todoExplorerView(state, options), {
+  await showExplorer(ctx, todoExplorerModel(state, options), {
     command: "/todo",
+    actions: options.actions,
   });
 }

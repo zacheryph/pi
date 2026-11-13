@@ -5,7 +5,9 @@ import type { DisposableComponent } from "#ui";
 import { type TodoState } from "#src/state";
 import { showTodoBrowser, type TodoBrowserOptions } from "#src/ui/browser";
 import { applyTodoReview, createTodoReviewState, type TodoActivity } from "#src/activity";
-import { fakeCustomUi, fakeTui } from "#test-helpers";
+import { todoInspectAction, todoReviewAction } from "#src/surface";
+import { actionRegistry } from "#surface";
+import { fakeCustomUi, fakeEventBus, fakeTui } from "#test-helpers";
 
 type Browser = DisposableComponent & { focused: boolean; handleInput(data: string): void };
 const ENTER = "\r",
@@ -21,6 +23,39 @@ const snapshot: TodoState = {
     description: `hidden detail\n${body}`,
   })),
 };
+type ReviewSpy = (marks: ReadonlyMap<string, number>) => void;
+/**
+ * The browser as /todo opens it: todo.inspect and todo.review on a session bus,
+ * reading a copy of the state taken when it opened, with review writes going to
+ * `onReview`.
+ */
+async function browse(
+  ctx: ExtensionContext,
+  state: TodoState,
+  options: TodoBrowserOptions = {},
+  onReview: ReviewSpy = () => {},
+) {
+  const bus = fakeEventBus();
+  const copy = structuredClone(state);
+  const source = {
+    state: () => copy,
+    activity: () => options.activity ?? new Map(),
+    review: () => options.review ?? createTodoReviewState(),
+    assignees: () => options.assignees ?? new Map<string, string>(),
+    now: () => options.now ?? Date.now(),
+    branch: () => 0,
+    markReviewed: (marks: ReadonlyMap<string, number>) => {
+      onReview(marks);
+      return marks.size;
+    },
+  };
+  const actions = actionRegistry(bus);
+  actions.define(todoInspectAction(source));
+  actions.define(todoReviewAction(source));
+  await showTodoBrowser(ctx, state, { ...options, branch: 0, actions: bus });
+}
+/** Details load through an action; let it resolve. */
+const settle = () => new Promise((resolve) => setImmediate(resolve));
 function setup(rows = 40) {
   const mounted = fakeCustomUi<Browser>({ tui: fakeTui(rows, 100) });
   const ui = { notify: vi.fn(), custom: mounted.custom };
@@ -29,7 +64,7 @@ function setup(rows = 40) {
 }
 async function open(state = snapshot, rows = 40) {
   const env = setup(rows);
-  await showTodoBrowser(env.ctx, state);
+  await browse(env.ctx, state);
   const browser = env.components[0];
   browser.focused = true;
   return { ...env, browser };
@@ -77,10 +112,11 @@ describe("todo browser placement", () => {
       state.tasks[0].description = "mutated detail";
       return original(factory);
     });
-    await showTodoBrowser(env.ctx, state);
+    await browse(env.ctx, state);
     const browser = env.components[0];
     expect(output(browser)).not.toContain("mutated");
     browser.handleInput(ENTER);
+    await settle();
     expect(output(browser)).toContain("row000");
   });
 });
@@ -98,6 +134,7 @@ describe("read-only todo browser", () => {
     expect(output(browser)).toMatch(/t1: Task1 ← t0 +○ blocked/);
     expect(selected(browser)).toBe("t1");
     browser.handleInput(ENTER);
+    await settle();
     expect(output(browser)).toMatch(/╭─+ Todos \/ t1: Task1 ← t0 ─+╮/);
     expect(output(browser)).toContain("Dependencies");
     expect(output(browser)).toContain("• t0 — pending");
@@ -125,6 +162,7 @@ describe("read-only todo browser", () => {
     Object.freeze(frozen.tasks);
     const { browser } = await open(Object.freeze(frozen));
     browser.handleInput(ENTER);
+    await settle();
     expect(output(browser)).toContain("row000");
     expect(output((await open({ ...snapshot, tasks: [] })).browser)).toContain("No tasks.");
   });
@@ -176,14 +214,13 @@ describe("todo browser history views and review", () => {
   ]);
   async function openHistory(options: Partial<TodoBrowserOptions> = {}) {
     const env = setup();
-    const onReview = vi.fn<(marks: ReadonlyMap<string, number>) => void>();
-    await showTodoBrowser(env.ctx, state, {
-      activity,
-      review: createTodoReviewState(),
-      now,
+    const onReview = vi.fn<ReviewSpy>();
+    await browse(
+      env.ctx,
+      state,
+      { activity, review: createTodoReviewState(), now, ...options },
       onReview,
-      ...options,
-    });
+    );
     const browser = env.components[0];
     browser.focused = true;
     return { ...env, browser, onReview };
@@ -223,6 +260,7 @@ describe("todo browser history views and review", () => {
     const { browser, onReview } = await openHistory();
     browser.handleInput(ENTER);
     expect(onReview).toHaveBeenCalledWith(new Map([["c", 3]]));
+    await settle();
     expect(output(browser)).toContain("Activity (newest first; ● = unreviewed)");
     expect(output(browser)).toMatch(/● just now \(\d\d:\d\d:\d\d\) · r3 · pending → in_progress/);
     expect(output(browser)).toContain("    Delegated to subagent");
@@ -274,8 +312,12 @@ describe("todo browser history views and review", () => {
       ],
     ]);
     const { browser, tui } = await openHistory({ activity: hostile });
-    for (const step of [() => {}, () => browser.handleInput(ENTER)]) {
-      step();
+    const enter = async () => {
+      browser.handleInput(ENTER);
+      await settle();
+    };
+    for (const step of [async () => {}, enter]) {
+      await step();
       for (const height of [3, 5, 10, 40]) {
         tui.terminal.rows = height;
         for (let width = 1; width <= 30; width++) {
