@@ -28,6 +28,7 @@
   "imports": {
     "#src/*": "./src/*.ts",
     "#test/*": "./test/*.ts",
+    "#foundations/*": "pi-foundations/*",
     "#test-helpers": "pi-test-helpers",
     "#ui": "pi-ui"
   }

@@ -87,6 +87,8 @@ function harness() {
     getCommands,
     ctx,
     sessionManager,
+    pi: fake.pi,
+    shown: fake.shown,
   };
 }
 
@@ -112,9 +114,40 @@ describe("system insights commands", () => {
   it("registers exactly three commands and one metadata-only result observer", () => {
     const h = harness();
     expect([...h.commands.keys()]).toEqual(["system:prompt", "system:tools", "system:skills"]);
-    expect([...h.events.keys()]).toEqual(["tool_result"]);
+    // The context handler only keeps command output (shown outside the terminal) out of the model's context.
+    expect([...h.events.keys()]).toEqual(["context", "tool_result"]);
     expect(h.getAllTools).not.toHaveBeenCalled();
     expect(h.appendEntry).not.toHaveBeenCalled();
+  });
+
+  it("shows each view as a displayed message outside the terminal", async () => {
+    const h = harness();
+    const rpc = { ...h.ctx, mode: "rpc" } as ExtensionCommandContext;
+    for (const name of ["system:prompt", "system:tools", "system:skills"])
+      await h.commands.get(name)!.handler("", rpc);
+    expect(shown).toEqual([]);
+    expect(h.ctx.ui.notify).not.toHaveBeenCalled();
+    expect(h.shown().map(({ customType, display, level }) => [customType, display, level])).toEqual(
+      Array(3).fill(["system:output", true, "info"]),
+    );
+    const [prompt, tools, skills] = h.shown().map((entry) => entry.text.split("\n"));
+    expect(prompt.at(0)).toBe("System insights · System prompt");
+    expect(prompt).toContain("Exact current prompt");
+    expect(tools).toEqual(
+      expect.arrayContaining([expect.stringMatching(/^- read .*active/), "1 tool"]),
+    );
+    expect(skills).toEqual(expect.arrayContaining([expect.stringMatching(/^- example /)]));
+    expect(skills.at(-1)).toBe("Item details are in the terminal UI.");
+    expect(h.pi.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ display: true }), {
+      triggerTurn: false,
+    });
+  });
+
+  it("keeps the terminal on the modal and sends no message", async () => {
+    const h = harness();
+    await h.commands.get("system:prompt")!.handler("", h.ctx);
+    expect(shown).toHaveLength(1);
+    expect(h.shown()).toEqual([]);
   });
 
   it("takes current effective prompt from getter, not base options", async () => {
@@ -200,15 +233,15 @@ describe("system insights commands", () => {
   });
 
   for (const mode of ["rpc", "print", "json"] as const) {
-    it(`guards ${mode} before snapshot or custom UI`, async () => {
+    it(`reads the snapshot on request and shows it as text in ${mode} mode, never in the modal`, async () => {
       const h = harness();
       Object.assign(h.ctx, { mode });
       for (const command of h.commands.values()) await command.handler("", h.ctx);
-      expect(h.ctx.ui.notify).toHaveBeenCalledTimes(3);
+      expect(h.shown()).toHaveLength(3);
+      expect(h.ctx.ui.notify).not.toHaveBeenCalled();
       expect(shown).toHaveLength(0);
-      expect(h.ctx.getSystemPrompt).not.toHaveBeenCalled();
-      expect(h.ctx.getSystemPromptOptions).not.toHaveBeenCalled();
-      expect(h.getAllTools).not.toHaveBeenCalled();
+      expect(h.ctx.getSystemPrompt).toHaveBeenCalledOnce();
+      expect(h.appendEntry).not.toHaveBeenCalled();
     });
   }
 

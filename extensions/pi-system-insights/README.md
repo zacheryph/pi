@@ -22,7 +22,10 @@ color legend are shown above the list and the detail. Details open with the name
 and badge, then aligned fields and sections (description, input schema, snippets,
 guidelines).
 
-Fullscreen TUI only: RPC, print, JSON and Pi's regular renderer do not open viewers.
+The viewers open in the fullscreen TUI only. Elsewhere (an app that runs Pi over RPC,
+print or JSON mode) each command shows the same snapshot as plain text in a displayed
+message, up to 120 lines: the prompt itself, or one row per tool or skill without its
+details. The message is for you and is kept out of the model's context.
 
 Use ↑/↓ to navigate, Enter to inspect, Esc to return to the list, then Esc to
 close. Type to filter lists; Esc clears an active filter before closing. Ctrl+C
