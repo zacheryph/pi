@@ -12,7 +12,13 @@
     "typescript/no-misused-promises": "error",
     "typescript/await-thenable": "error"
   },
-  "ignorePatterns": ["**/dist/**", "**/coverage/**"],
+  "ignorePatterns": [
+    "**/dist/**",
+    "**/coverage/**",
+    "bb-plugin/components/ui/**",
+    "bb-plugin/lib/**",
+    "bb-plugin/hooks/**"
+  ],
   "overrides": [
     {
       "files": ["**/*.ts"],
