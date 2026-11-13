@@ -185,7 +185,7 @@ in RPC mode and drops Pi's widgets, status line and overlays. Install the
 `pi-surface` bb plugin from [`bb-plugin/`](bb-plugin/README.md) and every Pi
 thread in bb gets: a Todos and a Subagents card above the composer, the agent
 and task counts in the context row, stash, worktree and pull request entries in
-the thread context card, a stash picker (Ctrl+Shift+S) that inserts a handle into
+the thread context card, a stash picker (Mod+Shift+S) that inserts a handle into
 the draft, a **Pi** side-panel tab with tasks and their history, subagents,
 stash previews, Git, recent tool calls and usage, row badges for running
 subagents and open questions, and a **Pi sessions** page listing every
