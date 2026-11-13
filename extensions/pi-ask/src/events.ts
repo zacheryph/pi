@@ -14,6 +14,12 @@ export const ASK_CLOSED = "ask:closed";
 export const ASK_ANSWER = "ask:answer";
 /** The one reply to each `ask:answer` request. */
 export const ASK_ANSWER_RESULT = "ask:answer-result";
+/**
+ * Action on the session's bus (see pi-surface): `ask:answer` as an action. It
+ * takes the same payload and resolves to the `AskAnswerResult` that request
+ * would reply with, refusals included.
+ */
+export const ASK_ANSWER_ACTION = "ask.answer";
 
 export interface AskOpenedEvent {
   toolCallId: string;
