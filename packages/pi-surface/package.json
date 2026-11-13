@@ -4,7 +4,7 @@
   "private": true,
   "license": "MIT",
   "type": "module",
-  "description": "Renderer-neutral view models and a per-session action registry, drawn by pi-ui in the terminal and by other renderers elsewhere.",
+  "description": "Renderer-neutral view models and per-session action and view registries, drawn by pi-ui in the terminal and by other renderers elsewhere.",
   "files": [
     "src",
     "README.md"
