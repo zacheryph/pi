@@ -12,8 +12,10 @@ import { bodyRow, openInlineWindow, sanitizeLine, styleLine } from "#ui";
 import { CmuxNotifications } from "#foundations/cmux";
 import { Type } from "typebox";
 import { askWithDialogs } from "#src/dialogs";
+import { actionRegistry } from "#surface";
 import {
   ASK_ANSWER,
+  ASK_ANSWER_ACTION,
   ASK_ANSWER_RESULT,
   ASK_CLOSED,
   ASK_OPENED,
@@ -377,40 +379,46 @@ export default function piAsk(pi: ExtensionAPI): void {
     }
   };
 
-  pi.events.on(ASK_ANSWER, (data) => {
-    const reply = (result: AskAnswerResult) => pi.events.emit(ASK_ANSWER_RESULT, result);
+  /** Answers an open questionnaire from outside the terminal; the first answer wins. */
+  const answer = (data: unknown): AskAnswerResult => {
     const requestId =
       isRecord(data) && typeof data.requestId === "string" ? data.requestId : undefined;
-    if (!isRecord(data) || typeof data.toolCallId !== "string") {
-      reply({
+    if (!isRecord(data) || typeof data.toolCallId !== "string")
+      return {
         ok: false,
         code: "invalid_payload",
         reason: "toolCallId is required.",
         ...(requestId ? { requestId } : {}),
-      });
-      return;
-    }
+      };
     const echo = { toolCallId: data.toolCallId, ...(requestId ? { requestId } : {}) };
     const entry = open.get(data.toolCallId);
-    if (!entry) {
-      reply({
+    if (!entry)
+      return {
         ok: false,
         code: "not_found",
         reason: "No open questionnaire has that id.",
         ...echo,
-      });
-      return;
-    }
+      };
     const outcome = readExternalAnswer(entry.questions, data);
-    if ("code" in outcome) {
-      reply({ ok: false, code: outcome.code, reason: outcome.reason, ...echo });
-      return;
-    }
+    if ("code" in outcome)
+      return { ok: false, code: outcome.code, reason: outcome.reason, ...echo };
     entry.finish(outcome);
-    reply({ ok: true, ...echo });
-  });
+    return { ok: true, ...echo };
+  };
+  pi.events.on(ASK_ANSWER, (data) => pi.events.emit(ASK_ANSWER_RESULT, answer(data)));
+
+  // ask.answer lives on this session's bus from session_start to session_shutdown,
+  // so a /reload, which runs this factory again on the same bus, does not leak it.
+  const actions = actionRegistry(pi.events);
 
   pi.on("session_start", (_event, ctx) => {
+    actions.dispose();
+    actions.define({
+      id: ASK_ANSWER_ACTION,
+      title: "Answer or cancel an open questionnaire",
+      // The ask:answer reply, refusals included: a refusal is a verdict, not a failure.
+      handler: (args) => ({ ...answer(args) }),
+    });
     const next = resolveRoute(ctx);
     if (next.kind !== route.kind) {
       route = next;
@@ -423,7 +431,10 @@ export default function piAsk(pi: ExtensionAPI): void {
     work.host()?.adopt(WORK_OWNER, (item) => next.kind === "parent" && isQuestion(item));
   });
 
-  pi.on("session_shutdown", () => notifications.shutdown());
+  pi.on("session_shutdown", () => {
+    actions.dispose();
+    return notifications.shutdown();
+  });
 
   register();
   registerNotify();

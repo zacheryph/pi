@@ -9,6 +9,7 @@ import {
   type WorkRecord,
 } from "#work";
 import piAsk from "#src/index";
+import { dispatchAction, listActions } from "#surface";
 import {
   waitFor,
   fakePi,
@@ -73,7 +74,10 @@ function harness(options: { mode?: string; hasUI?: boolean; sessionId?: string }
     pi,
     tools,
     registrations: pi.registerTool.mock.calls.map(([tool]) => tool),
-    sent: events.emitted,
+    /** What pi-ask published; the action registry's own requests are not publications. */
+    get sent() {
+      return events.emitted.filter(([channel]) => !channel.startsWith("surface:"));
+    },
     events,
     ui,
     ctx,
@@ -378,6 +382,42 @@ describe("asking the user in the terminal", () => {
     ]);
     const result = await pending;
     expect(result.content[0]!.text).toContain('"DuckDB" (own words)');
+  });
+
+  it("answers through the ask.answer action as ask:answer does, from start to shutdown", async () => {
+    const h = harness();
+    await h.start();
+    expect(listActions(h.events)).toEqual([{ id: "ask.answer", title: expect.any(String) }]);
+    const pending = h.ask(params);
+    await h.until(() => h.mounted !== undefined);
+
+    await expect(dispatchAction(h.events, "ask.answer", { toolCallId: "nope" })).resolves.toEqual(
+      expect.objectContaining({ ok: false, code: "not_found", toolCallId: "nope" }),
+    );
+    await expect(dispatchAction(h.events, "ask.answer")).resolves.toEqual(
+      expect.objectContaining({ ok: false, code: "invalid_payload" }),
+    );
+    await expect(
+      dispatchAction(h.events, "ask.answer", {
+        toolCallId: "call-1",
+        answers: [{ questionIndex: 0, optionIndexes: [0, 1] }],
+      }),
+    ).resolves.toEqual(expect.objectContaining({ ok: false, code: "invalid_answer" }));
+    await expect(
+      dispatchAction(h.events, "ask.answer", {
+        toolCallId: "call-1",
+        requestId: "r1",
+        answers: [{ questionIndex: 0, optionIndexes: [1] }],
+      }),
+    ).resolves.toEqual({ ok: true, toolCallId: "call-1", requestId: "r1" });
+    expect((await pending).content[0]!.text).toBe(
+      'The user answered:\n- Which database? → "SQLite"',
+    );
+    // The action replies to its caller only; nothing goes out on ask:answer-result.
+    expect(h.sent.some(([channel]) => channel === "ask:answer-result")).toBe(false);
+
+    await h.shutdown();
+    expect(listActions(h.events)).toEqual([]);
   });
 
   it("dismisses the questionnaire when the call is aborted", async () => {

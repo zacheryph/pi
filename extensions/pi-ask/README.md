@@ -165,8 +165,13 @@ call's id (`src/events.ts`):
 | `ask:answer-result` | out       | `{ ok, code?: "not_found" \| "invalid_payload" \| "invalid_answer", reason?, requestId?, toolCallId? }`          |
 
 `ask:answer` is checked all or nothing: every question answered once, a
-single-select with exactly one choice or text. pi-dashboard answers from the
-browser this way; the first answer wins.
+single-select with exactly one choice or text. The first answer wins.
+
+From session start to shutdown pi-ask also defines the `ask.answer` action on
+the same bus (see [`pi-surface`](../../packages/pi-surface/README.md)). It takes
+the `ask:answer` payload and resolves to the `ask:answer-result` reply, refusals
+included, to its caller only. pi-presentation's `answer` request, which
+pi-dashboard uses from the browser, goes through it.
 
 ## Configuration
 
