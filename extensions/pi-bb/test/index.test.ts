@@ -1,5 +1,6 @@
-import { STASH_PREVIEW_REQUEST, type StashPreviewRequest } from "#stash/events";
-import { TODO_SNAPSHOT_EVENT, type TodoSnapshotEvent } from "#todo/events";
+import { STASH_PREVIEW_ACTION } from "#stash/events";
+import { defineAction, isJsonObject, type JsonValue } from "#surface";
+import { TODO_HISTORY_ACTION, TODO_SNAPSHOT_EVENT, type TodoSnapshotEvent } from "#todo/events";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 import piBb, { type BbDependencies } from "#src/index";
 import { CLOSE_UNAUTHORIZED, ENV_THREAD, ENV_TOKEN, ENV_URL, readSurfaceEnv } from "#src/protocol";
@@ -109,13 +110,27 @@ describe("pi-bb", () => {
     const plugin = new FakePlugin();
     const url = await plugin.start();
     const fake = load(bbEnv(url));
-    fake.api.events.on(STASH_PREVIEW_REQUEST, (data) => {
-      const request = data as StashPreviewRequest;
-      request.respond(
-        request.name === "notes"
-          ? { ok: true, handle: "stash:notes@0123", lines: ["first"], total: 1, complete: true }
-          : { ok: false, error: `No stash entry named "${request.name}" on this branch.` },
-      );
+    // Stand-ins for pi-stash's and pi-todo's actions, which the presentation service dispatches.
+    defineAction(fake.api.events, {
+      id: STASH_PREVIEW_ACTION,
+      title: "Preview",
+      handler: (args) => {
+        const name = isJsonObject(args) && typeof args.name === "string" ? args.name : "";
+        if (name !== "notes") throw new Error(`No stash entry named "${name}" on this branch.`);
+        return { handle: "stash:notes@0123", lines: ["first"], total: 1, complete: true };
+      },
+    });
+    defineAction(fake.api.events, {
+      id: TODO_HISTORY_ACTION,
+      title: "History",
+      handler: (args) => {
+        const key = isJsonObject(args) && typeof args.key === "string" ? args.key : "";
+        const task = tasks.tasks.find((candidate) => candidate.key === key);
+        if (!task) throw new Error(`No task "${key}" on this branch.`);
+        return JSON.parse(
+          JSON.stringify({ key, createdAt: task.createdAt, updates: task.updates }),
+        ) as JsonValue;
+      },
     });
     fake.api.events.emit(TODO_SNAPSHOT_EVENT, tasks);
     await start(fake);
