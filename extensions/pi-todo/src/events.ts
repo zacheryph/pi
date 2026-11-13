@@ -38,6 +38,40 @@ export interface TodoSnapshotEvent {
   tasks: TodoSnapshotTask[];
 }
 
+/*
+ * Actions and views on this session's bus (see pi-surface), defined from
+ * session start to shutdown.
+ */
+
+/**
+ * Action: `{ id: <key>, reviewed? }` resolves to the task's detail blocks, as
+ * `/todo` shows them. `reviewed` (key → `{ revision, at }`) is the review state
+ * a list showed; without it the current review state is used.
+ */
+export const TODO_INSPECT_ACTION = "todo.inspect";
+/**
+ * Action: mark task messages reviewed; resolves to `{ reviewed: <tasks advanced> }`.
+ * `{ ids?, revisions?, branch? }`: with `revisions` (key → revision a list
+ * showed), marks those of `ids` (default: all of them) up to that revision;
+ * without, marks the latest message of `ids` (default: every task). A `branch`
+ * other than the current one is refused, so a stale list cannot mark a
+ * different branch.
+ */
+export const TODO_REVIEW_ACTION = "todo.review";
+/** Action: `{ key }` resolves to that task's `TodoHistoryResult` on this branch. */
+export const TODO_HISTORY_ACTION = "todo.history";
+/** Widget view: the task widget above the editor, absent when the terminal hides it. */
+export const TODO_WIDGET_VIEW = "todo.widget";
+/** Explorer view: the `/todo` browser on its All tab. */
+export const TODO_EXPLORER_VIEW = "todo.explorer";
+
+/** A task's creation time and its status and message history, oldest first. */
+export interface TodoHistoryResult {
+  key: string;
+  createdAt?: number;
+  updates: TodoUpdate[];
+}
+
 export function todoSnapshotEvent(
   state: TodoState,
   activity: TodoActivity,

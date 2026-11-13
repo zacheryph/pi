@@ -54,28 +54,16 @@ export function registerTodoCommands(pi: ExtensionAPI, controller: TodoControlle
     });
   };
   const browse = async (ctx: ExtensionCommandContext, view: TodoBrowserView) => {
-    const session = ctx.sessionManager.getSessionId();
-    const branch = controller.branchToken();
     await showTodoBrowser(ctx, cloneTodoState(controller.state()), {
       activity: controller.activity(),
       review: controller.review(),
       now: controller.now(),
       view,
       assignees: controller.assignees(),
-      // Never journal a stale snapshot's marks into a replaced session or branch.
-      onReview: (marks) => {
-        if (ctx.sessionManager.getSessionId() !== session || controller.branchToken() !== branch)
-          return;
-        try {
-          controller.markReviewed(marks, ctx);
-        } catch (error) {
-          controller.output.show(
-            ctx,
-            sanitizeText(`Review not saved: ${errorText(error)}`),
-            "error",
-          );
-        }
-      },
+      // todo.review refuses a stale snapshot's marks once the session or branch is replaced.
+      branch: controller.branchToken(),
+      // Details and reviews go through todo.inspect and todo.review on this session's bus.
+      actions: pi.events,
     });
   };
   /** The browser's content as text, for a host without the terminal UI. */

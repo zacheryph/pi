@@ -8,9 +8,11 @@ import {
   renderTodoLines,
   renderTodoText,
   todoTaskDetail,
+  todoWidgetModel,
+  todoWidgetView,
   type TodoRenderConfig,
 } from "#src/ui/render";
-import { renderBlocks, sanitizeText as sanitizeTodoText, type Block } from "#ui";
+import { renderBlocks, renderWidget, sanitizeText as sanitizeTodoText, type Block } from "#ui";
 import { plainTheme, ansiTheme, stripAnsi } from "#test-helpers";
 
 const theme = plainTheme as Theme;
@@ -35,6 +37,32 @@ const unsafe =
   "safe\x1b[2J\x1b]52;c;evil\x07\x1b_Pi:c\x07\x1bPpayload\x1b\\\x9b31m\x08\r\u202e\u2066\u200e\u061cend";
 
 describe("todo rendering", () => {
+  it("draws the widget from a JSON model plus the terminal's row budgets", () => {
+    const s = state([
+      task("ready"),
+      task("active", "in_progress"),
+      task("done", "completed"),
+      task("wait", "pending", ["ready"]),
+    ]);
+    const c: TodoRenderConfig = {
+      maxVisible: 2,
+      showCompleted: true,
+      unreviewed: new Map([["done", "Shipped\nit"]]),
+      assignees: new Map([["active", "agent 1a2b"]]),
+    };
+    const model = todoWidgetModel(s, c);
+    // The model survives JSON unchanged and carries no terminal budgets.
+    expect(JSON.parse(JSON.stringify(model))).toEqual(model);
+    expect(model).not.toHaveProperty("maxRows");
+    expect(model.rows).toHaveLength(4);
+    expect(todoWidgetView(s, c, 4)).toEqual({ ...model, maxRows: 4, maxVisible: 2 });
+    for (const width of [20, 60, 100])
+      for (const rows of [2, 4, Infinity])
+        expect(renderWidget({ ...model, maxRows: rows, maxVisible: 2 }, width, colored)).toEqual(
+          renderTodoLines(s, c, width, colored, rows),
+        );
+  });
+
   it("keeps top rule static with labeled progress; status right and key left", () => {
     const s = state([
       task("ready"),

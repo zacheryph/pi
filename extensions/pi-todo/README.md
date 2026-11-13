@@ -233,8 +233,10 @@ subagent_start({
 ## UI
 
 The widget and browser render through the bundle's shared `packages/pi-ui`
-library (`renderWidget` and `showExplorer`); this extension supplies task
-selection, ordering, status colors and review callbacks.
+library (`renderWidget` and `showExplorer`) from JSON models (see
+[Persistence and integration boundaries](#persistence-and-integration-boundaries));
+this extension supplies task selection, ordering, status colors and the
+`todo.inspect` and `todo.review` actions.
 
 Above-editor widget uses a static top rule with the Nerd Font tasks icon
 (`nf-fa-tasks`, U+F0AE); use a patched Nerd Font, preferably its Mono variant.
@@ -340,6 +342,24 @@ is a fresh copy: `{ version: 1, revision, tasks }`, where each task adds `blocke
 `claimedBy` (the subagent's agent id) when the task is handed over.
 Each subagent has its own bus, so listeners see only their own session's tasks.
 pi-dashboard uses it for its task counts.
+
+From session start to shutdown pi-todo also defines views and actions on the
+same bus (see [`pi-surface`](../../packages/pi-surface/README.md)), so a remote
+surface reached through `pi-presentation` can draw the widget and the browser
+and act on them:
+
+| Id              | Kind     | What it does                                                                                                                                                                                        |
+| --------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `todo.widget`   | widget   | The above-editor widget as a JSON `WidgetModel`; nothing while the terminal would hide it (no tasks, `widget` off, only hidden completed tasks)                                                     |
+| `todo.explorer` | explorer | The `/todo` browser on its All tab as a JSON `ExplorerModel`; `loadDetail` is `todo.inspect` and the unreviewed marker's `onClear` is `todo.review`                                                 |
+| `todo.inspect`  | action   | `{ id, reviewed? }` resolves to the task's detail blocks; `reviewed` (key → `{ revision, at }`) is the review state a list showed, so messages it marked new stay marked after opening reviews them |
+| `todo.review`   | action   | `{ ids?, revisions?, branch? }` marks messages reviewed and resolves to `{ reviewed }`; see `src/events.ts`. A `branch` from a list taken before a session or branch change is refused              |
+| `todo.history`  | action   | `{ key }` resolves to `{ key, createdAt?, updates }`, the task's history as `todo:snapshot` carries it                                                                                              |
+
+The terminal draws the same models: the widget is `todo.widget`'s model with the
+terminal's row budgets, and `/todo` opens the `todo.explorer` model, loading
+details through `todo.inspect` and saving reviews through `todo.review`. The
+views announce a change after every plan change, review and settings change.
 
 ## Develop
 

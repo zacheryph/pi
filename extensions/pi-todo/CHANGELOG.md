@@ -3,6 +3,29 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-13: Widget and browser as views and actions on the session bus
+
+So a remote surface (through pi-presentation) can draw the widget and the
+browser and act on them, pi-todo offers them on the session's bus through
+pi-surface, from session start to shutdown. The terminal draws the same models.
+
+- `src/ui/render.ts`: `todoWidgetModel` builds the widget as a JSON
+  `WidgetModel`; `todoWidgetView` adds the terminal's row budgets to it.
+  Rendering is unchanged.
+- `src/ui/browser.ts`: `todoExplorerModel` replaces `todoExplorerView` and is
+  plain JSON. Items no longer carry their detail: `loadDetail` is
+  `{ action: "todo.inspect", args: { reviewed } }`, and the marker's `onClear`
+  is `{ action: "todo.review", args: { revisions, branch } }` instead of the
+  `onReview` callback. `showTodoBrowser` takes the session's bus as `actions`.
+- `src/surface.ts` (new): the `todo.inspect`, `todo.review` and `todo.history`
+  actions. `todo.review` refuses a list's marks after a session or branch
+  change (the `onReview` guard) and still reports `Review not saved: …` when
+  the journal write fails.
+- `src/index.ts`: defines the actions and the `todo.widget` and
+  `todo.explorer` views at session start, removes them at shutdown, and
+  announces both views on every widget update.
+- `src/events.ts`: the action and view ids and `TodoHistoryResult`.
+
 ## 2026-11-13: Commands report without a terminal
 
 An app that hosts Pi over RPC drops `ctx.ui.notify`, so `/todo` opened nothing and the other
