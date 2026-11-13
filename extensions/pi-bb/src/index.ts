@@ -1,4 +1,5 @@
 import { VERSION, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { userOutput } from "#foundations/user-output";
 import { PresentationService } from "#presentation";
 import { ActivityTracker } from "#presentation/activity";
 import type { UsageSection } from "#presentation/contract";
@@ -195,14 +196,12 @@ export default function piBb(pi: ExtensionAPI, dependencies: BbDependencies = {}
     schedule(ctx);
   });
 
+  const output = userOutput(pi, "bb:status");
   pi.registerCommand("bb", {
     description: "Show whether this session reports to bb's pi-surface plugin",
     handler: async (_args, ctx) => {
-      const text = statusText(client?.state, endpoint);
-      // bb drops notify; a displayed message reaches its timeline.
-      if (ctx.mode === "rpc")
-        pi.sendMessage({ customType: "bb:status", content: text, display: true });
-      else if (ctx.hasUI) ctx.ui.notify(text, "info");
+      // bb drops notify; outside the terminal this is a displayed message kept out of the model's context.
+      output.show(ctx, statusText(client?.state, endpoint));
     },
   });
 }
