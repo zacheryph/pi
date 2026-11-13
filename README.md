@@ -112,7 +112,7 @@ pi-personal/
 │   ├── pi-surface/                      # renderer-neutral view model + action registry
 │   │   ├── src/index.ts
 │   │   └── test/
-│   ├── pi-foundations/                  # shared settings, model lookup, cmux notifications
+│   ├── pi-foundations/                  # shared settings, model lookup, cmux notifications, command output
 │   ├── pi-scripted-model/               # fake model + bundle test harness (dev only)
 │   ├── pi-test-helpers/                 # shared test helpers (dev only)
 │   ├── pi-work/                         # work:v1 contract + root work host

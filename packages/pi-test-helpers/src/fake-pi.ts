@@ -58,6 +58,46 @@ export function fakeEventBus() {
 
 export type FakeEventBus = ReturnType<typeof fakeEventBus>;
 
+/** A command's text as pi-foundations' `userOutput` sent it outside the terminal. */
+export interface ShownOutput {
+  customType: string;
+  /** The message content, with the "Warning: " or "Error: " lead-in. */
+  content: string;
+  /** The content without the lead-in. */
+  text: string;
+  level: "info" | "warning" | "error";
+  display: boolean;
+  options: unknown;
+}
+
+const LEAD_IN = { info: "", warning: "Warning: ", error: "Error: " } as const;
+
+/** The displayed custom messages `sendMessage` received from `userOutput`, in order. */
+export function shownOutput(sendMessage: { mock: { calls: unknown[][] } }): ShownOutput[] {
+  const shown: ShownOutput[] = [];
+  for (const [message, options] of sendMessage.mock.calls) {
+    const sent = message as {
+      customType?: string;
+      content?: unknown;
+      display?: boolean;
+      details?: { userOutput?: boolean; level?: ShownOutput["level"] };
+    };
+    if (sent.details?.userOutput !== true || typeof sent.content !== "string") continue;
+    const level = sent.details.level ?? "info";
+    shown.push({
+      customType: sent.customType ?? "",
+      content: sent.content,
+      text: sent.content.startsWith(LEAD_IN[level])
+        ? sent.content.slice(LEAD_IN[level].length)
+        : sent.content,
+      level,
+      display: sent.display === true,
+      options,
+    });
+  }
+  return shown;
+}
+
 /**
  * Build the fake. `extra` adds or replaces `ExtensionAPI` members, such as
  * `getSessionName`, `exec`, or an `appendEntry` that writes to a real
@@ -111,6 +151,8 @@ export function fakePi<Extra extends object = object>(extra: Extra = {} as Extra
     commands,
     entries,
     events,
+    /** What `userOutput` showed through `sendMessage`, in order. */
+    shown: () => shownOutput(pi.sendMessage),
     tool,
     command,
     /**
