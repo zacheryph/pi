@@ -135,9 +135,12 @@ handles. See [`../pi-subagent/UPSTREAM.md`](../pi-subagent/UPSTREAM.md).
   description, origin, then a numbered content preview (up to 2,000 lines /
   50 KB). Nothing is read from the store until an entry is opened; a read error
   shows below the metadata. Warns when the store is over its size cap. The list
-  is a plain JSON model; details load through `stash.inspect`.
+  is a plain JSON model; details load through `stash.inspect`. Outside the
+  terminal UI (an app that runs Pi over RPC, say) it lists up to 100 entries as a
+  displayed message instead; the agent reads one with `stash_get`.
 - `/stash:gc` deletes content not read or written for `retentionDays` and reports
-  what it freed.
+  what it freed, as a notification or, outside the terminal UI, a displayed
+  message. Both are kept out of the model's context.
 
 ## Retention and limits
 
