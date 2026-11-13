@@ -10,6 +10,7 @@
     "#presentation": "pi-presentation",
     "#presentation/*": "pi-presentation/*",
     "#stash/*": "pi-stash/*",
+    "#surface": "pi-surface",
     "#todo/*": "pi-todo/*",
     "#test-helpers": "pi-test-helpers"
   },
