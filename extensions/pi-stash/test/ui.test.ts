@@ -1,7 +1,9 @@
 import type { ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import { KeybindingsManager, TUI_KEYBINDINGS, visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
+import { defineAction, dispatchAction } from "#surface";
 import {
+  fakeEventBus,
   fakePi,
   expectPadded,
   NARROW_WIDTHS,
@@ -11,9 +13,14 @@ import {
   flushMicrotasks as flush,
 } from "#test-helpers";
 import stashExtension from "#src/index";
-import type { StashRecord } from "#src/state";
+import { handleFor, type StashRecord } from "#src/state";
 import { Explorer } from "#ui";
-import { showStashBrowser, stashExplorerView, type StashPreview } from "#src/ui/browser";
+import {
+  showStashBrowser,
+  stashExplorerView,
+  stashInspectAction,
+  type StashPreview,
+} from "#src/ui/browser";
 import { formatAge, formatBytes, originLabel, previewRows } from "#src/ui/render";
 
 // Colors every token so width math must ignore escape sequences.
@@ -64,6 +71,15 @@ describe("render helpers", () => {
 
 describe("stash explorer", () => {
   const NOW = Date.now();
+  /** The session bus with `stash.inspect` defined over `entries`, as session_start does. */
+  const inspectBus = (entries: StashRecord[], load: (record: StashRecord) => StashPreview) => {
+    const bus = fakeEventBus();
+    defineAction(
+      bus,
+      stashInspectAction((id) => entries.find((entry) => handleFor(entry) === id), load),
+    );
+    return bus;
+  };
   const make = (
     entries: StashRecord[],
     rows = 12,
@@ -77,14 +93,38 @@ describe("stash explorer", () => {
       tui: { requestRender: vi.fn(), terminal: { rows, columns: 80 } },
       theme: ansi,
       keys: new KeybindingsManager(TUI_KEYBINDINGS),
-      view: stashExplorerView(entries, load, "Store is over the cap", NOW),
+      view: stashExplorerView(entries, "Store is over the cap", NOW),
       done,
+      actions: inspectBus(entries, load),
     });
     return { browser, done, load };
   };
 
+  it("builds a JSON model whose detail loads through the stash.inspect action", () => {
+    const view = stashExplorerView(
+      [record({ agent: "a3f2b1c4-9d8e", via: "adopt" }), record({ name: "plain" })],
+      "Store is over the cap",
+      NOW,
+    );
+    expect(JSON.parse(JSON.stringify(view))).toStrictEqual(view);
+    expect(view.loadDetail).toEqual({ action: "stash.inspect" });
+  });
+
+  it("refuses bad arguments and handles that are not on this branch", async () => {
+    const bus = inspectBus([record()], () => ({ lines: ["x"] }));
+    await expect(dispatchAction(bus, "stash.inspect", { id: 1 })).rejects.toThrow(
+      'Invalid arguments for "stash.inspect": expected { id: <stash handle> }',
+    );
+    await expect(dispatchAction(bus, "stash.inspect", { id: "stash:other@aaaa" })).rejects.toThrow(
+      "No stash entry stash:other@aaaa on this branch.",
+    );
+    await expect(
+      dispatchAction(bus, "stash.inspect", { id: "stash:auth-findings@3f9a1c2b7d01" }),
+    ).resolves.toContainEqual({ lines: ["x"], numbered: 1 });
+  });
+
   it("maps entries to accent handles, muted descriptions and dim size/age badges", () => {
-    const view = stashExplorerView([record({ agent: "a3f2b1c4-9d8e", via: "adopt" })], vi.fn());
+    const view = stashExplorerView([record({ agent: "a3f2b1c4-9d8e", via: "adopt" })]);
     expect(view.items[0]).toMatchObject({
       id: "stash:auth-findings@3f9a1c2b7d01",
       label: [
@@ -94,7 +134,7 @@ describe("stash explorer", () => {
       badge: { text: "↑ agent a3f2b1c4 · 12 KB · 340 lines · 1h" },
     });
     // Only adopted rows name their origin; a session's own entries stay as they were.
-    expect(stashExplorerView([record({ agent: "a3f2b1c4" })], vi.fn()).items[0].badge!.text).toBe(
+    expect(stashExplorerView([record({ agent: "a3f2b1c4" })]).items[0].badge!.text).toBe(
       "12 KB · 340 lines · 1h",
     );
   });
@@ -195,14 +235,14 @@ describe("stash explorer", () => {
     await showStashBrowser(
       { mode: "tui", hasUI: true, ui: { custom, notify } } as unknown as ExtensionContext,
       [record()],
-      () => ({ lines: ["content"] }),
+      fakeEventBus(),
     );
     expect(custom).toHaveBeenCalledOnce();
     expect(custom.mock.calls[0][1]).toMatchObject({ overlay: true });
     await showStashBrowser(
       { mode: "rpc", hasUI: false, ui: { custom, notify } } as unknown as ExtensionContext,
       [record()],
-      () => ({ lines: ["content"] }),
+      fakeEventBus(),
     );
     expect(custom).toHaveBeenCalledOnce();
     expect(notify).toHaveBeenCalledWith("/stash requires interactive terminal mode.", "warning");

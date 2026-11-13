@@ -3,7 +3,7 @@ import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { createCodemodeExtension, SessionManager } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it, onTestFinished } from "vitest";
 import stashExtension from "#src/index";
-import { currentEntries, replayStashIndex, STASH_INDEX_TYPE } from "#src/state";
+import { currentEntries, handleFor, replayStashIndex, STASH_INDEX_TYPE } from "#src/state";
 import { BlobStore } from "#src/store";
 import { stashSettings } from "#src/config";
 
@@ -14,8 +14,9 @@ import {
   type StashPreviewResult,
   type StashSnapshotEvent,
 } from "#src/events";
-import type { EventBus } from "@earendil-works/pi-coding-agent";
+import { createEventBus, type EventBus } from "@earendil-works/pi-coding-agent";
 import { provide, service } from "#session-tree";
+import { dispatchAction, listActions } from "#surface";
 import {
   fauxSession,
   loadResources,
@@ -35,6 +36,8 @@ async function fixture(options: {
   store: BlobStore;
   responses?: ReturnType<typeof fauxAssistantMessage>[];
   keepRecentTokens?: number;
+  /** The session's raw bus, which outlives the extensions' stale `pi.events` after shutdown. */
+  eventBus?: EventBus;
 }) {
   const snapshots: StashSnapshotEvent[] = [];
   let bus: EventBus | undefined;
@@ -45,6 +48,7 @@ async function fixture(options: {
     settings: { compaction: { enabled: false, keepRecentTokens: options.keepRecentTokens } },
     tools: ["bash", "stash_put", "stash_get", "stash_list", "codemode"],
     responses: options.responses,
+    ...(options.eventBus ? { loader: { eventBus: options.eventBus } } : {}),
     extensions: [
       (pi) =>
         stashExtension(pi, { store: options.store, loadConfig: () => stashSettings.defaults() }),
@@ -324,6 +328,37 @@ describe("pi-stash in a real AgentSession (offline faux provider)", () => {
       ok: false,
       error: "Invalid stash entry name.",
     });
+  }, 20_000);
+
+  it("defines stash.inspect on its own session's bus until the session shuts down", async () => {
+    const store = new BlobStore(tempDir("pi-stash-root-"));
+    const bus = createEventBus();
+    const h = await fixture({
+      store,
+      eventBus: bus,
+      responses: [
+        call("stash_put", { name: "log", content: "one\ntwo\n" }),
+        fauxAssistantMessage("done"),
+      ],
+    });
+    const other = await fixture({ store });
+    await h.session.prompt("Work");
+    expect(listActions(bus)).toEqual([{ id: "stash.inspect", title: expect.any(String) }]);
+    const handle = handleFor(currentEntries(replayStashIndex({ sessionManager: h.manager }))[0]);
+    await expect(dispatchAction(bus, "stash.inspect", { id: handle })).resolves.toContainEqual({
+      lines: ["one", "two"],
+      numbered: 1,
+    });
+    // Another session's stash.inspect sees only its own branch.
+    await expect(dispatchAction(other.bus, "stash.inspect", { id: handle })).rejects.toThrow(
+      `No stash entry ${handle} on this branch.`,
+    );
+    h.session.dispose(); // session_shutdown removes the action from the bus
+    expect(listActions(bus)).toEqual([]);
+    await expect(dispatchAction(bus, "stash.inspect", { id: handle })).rejects.toThrow(
+      'Unknown action "stash.inspect".',
+    );
+    expect(listActions(other.bus)).toHaveLength(1);
   }, 20_000);
 
   it("rejects bad sources and oversized entries as tool errors", async () => {

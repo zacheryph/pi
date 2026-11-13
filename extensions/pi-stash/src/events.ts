@@ -64,6 +64,13 @@ export type StashPreviewResult =
   | { ok: true; handle: string; lines: string[]; total: number; complete: boolean }
   | { ok: false; error: string };
 
+/**
+ * Action on this session's bus (see pi-surface): `{ id: <handle> }` resolves to
+ * the entry's detail blocks with a bounded content preview. The `/stash`
+ * browser loads details through it.
+ */
+export const STASH_INSPECT_ACTION = "stash.inspect";
+
 /** One entry as `stash_list` and the snapshot event report it. */
 export function stashEntryJson(record: StashRecord, index: StashIndex) {
   return {
