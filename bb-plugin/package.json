@@ -15,6 +15,7 @@
       "icon": "Layers"
     },
     "server": "./server.ts",
+    "app": "./app.tsx",
     "skills": [
       "skills"
     ]
@@ -25,11 +26,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@get-bb/plugin-sdk": "0.6.132",
     "@radix-ui/react-slot": "^1.5.0",
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@get-bb/plugin-sdk": "0.6.132",
     "@pierre/diffs": "~1.2.12",
     "@radix-ui/react-alert-dialog": "^1.2.1",
     "@radix-ui/react-context-menu": "^2.4.1",
