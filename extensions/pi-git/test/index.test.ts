@@ -72,7 +72,22 @@ function harness(options: {
       .filter((entry) => (entry as { customType?: string }).customType === LEDGER_TYPE)
       .map((entry) => (entry as { data: WorktreeRecord }).data);
   const { pi, tools, commands } = fake;
-  return { pi, ctx, ui, tools, commands, entries, snapshots, fire, tool, ledger };
+  /** The context in another mode, as an RPC host or the terminal runs a command. */
+  const inMode = (mode: "tui" | "rpc" | "json" | "print") => ({ ...ctx, mode });
+  return {
+    pi,
+    ctx,
+    ui,
+    tools,
+    commands,
+    entries,
+    snapshots,
+    fire,
+    tool,
+    ledger,
+    shown: fake.shown,
+    inMode,
+  };
 }
 
 let box: Sandbox;
@@ -141,7 +156,7 @@ describe("context card", () => {
   });
   /** What the next request would hold, given the messages it starts from. */
   const contextOf = async (h: Awaited<ReturnType<typeof start>>, messages = [user]) => {
-    const context = [...h.pi.on.mock.calls].find(([event]) => event === "context")!;
+    const context = [...h.pi.on.mock.calls].findLast(([event]) => event === "context")!;
     const handler = context[1] as (
       event: unknown,
       ctx: unknown,
@@ -381,7 +396,7 @@ describe("background refresh", () => {
     await h.fire("session_shutdown");
     await starting;
     expect(service("interrupted", SERVICE_NAME)).toBeUndefined();
-    const context = [...h.pi.on.mock.calls].find(([event]) => event === "context")!;
+    const context = [...h.pi.on.mock.calls].findLast(([event]) => event === "context")!;
     expect(await context[1]({ type: "context", messages: [] }, h.ctx)).toBeUndefined();
   });
 
@@ -619,10 +634,50 @@ describe("/git:worktrees", () => {
     const h = await start();
     await h.tool("git_worktree_create", { repo: "src/api", branch: "feat/x" });
     await h.commands.get("git:worktrees")!.handler("", h.ctx);
-    expect(h.ui.notify).toHaveBeenCalledWith(
-      `- ${join(box.root, "api", "feat-x")}\n  api @ feat/x — clean`,
-      "info",
-    );
+    expect(h.ui.notify).not.toHaveBeenCalled();
+    expect(h.shown()).toEqual([
+      expect.objectContaining({
+        customType: "git:output",
+        display: true,
+        level: "info",
+        text: `- ${join(box.root, "api", "feat-x")}\n  api @ feat/x — clean`,
+      }),
+    ]);
+    expect(h.pi.sendMessage).toHaveBeenLastCalledWith(expect.anything(), { triggerTurn: false });
+  });
+
+  it("opens the explorer in the terminal and sends no message", async () => {
+    const h = await start();
+    await h.tool("git_worktree_create", { repo: "src/api", branch: "feat/x" });
+    const custom = vi.fn(async () => undefined);
+    const ctx = { ...h.inMode("tui"), ui: { ...h.ui, custom } };
+    await h.commands.get("git:worktrees")!.handler("", ctx);
+    expect(custom).toHaveBeenCalledOnce();
+    expect(h.shown()).toEqual([]);
+  });
+
+  it("tells a session without dialogs how to remove one instead", async () => {
+    const h = await start();
+    await h.commands.get("git:worktrees")!.handler("remove", { ...h.ctx, hasUI: false });
+    expect(h.shown()).toEqual([
+      expect.objectContaining({
+        level: "warning",
+        text: expect.stringContaining("git_worktree_remove"),
+      }),
+    ]);
+  });
+
+  it("removes a picked worktree through the host's dialogs and reports it as a message", async () => {
+    const h = await start();
+    await h.tool("git_worktree_create", { repo: "src/api", branch: "wip" });
+    const path = join(box.root, "api", "wip");
+    await h.commands.get("git:worktrees")!.handler("remove", h.inMode("rpc"));
+    expect(h.ui.select).toHaveBeenCalledOnce();
+    expect(h.shown().at(-1)).toMatchObject({
+      level: "info",
+      text: `Removed ${path}; branch wip is kept.`,
+    });
+    expect(h.ui.notify).not.toHaveBeenCalled();
   });
 
   it("removes a picked worktree after confirmation, warning about unsaved work", async () => {
@@ -734,10 +789,15 @@ describe("pull requests", () => {
     const opened = await reloaded.tool("git_pr_list", { includeReferenced: false });
     expect(opened.content[0].text).not.toContain("Referenced");
     await reloaded.commands.get("git:prs")!.handler("", reloaded.ctx);
-    expect(reloaded.ui.notify).toHaveBeenCalledWith(
-      expect.stringContaining("- acme/api#12"),
-      "info",
-    );
+    expect(reloaded.ui.notify).not.toHaveBeenCalled();
+    expect(reloaded.shown()).toEqual([
+      expect.objectContaining({
+        customType: "git:output",
+        display: true,
+        level: "info",
+        text: expect.stringContaining("- acme/api#12"),
+      }),
+    ]);
   });
 
   it("hands a PR a subagent opened up to its parent, with the subagent's id", async () => {
@@ -1116,22 +1176,28 @@ describe("git_pr_status and /git:refresh", () => {
       isError: false,
     });
     await h.commands.get("git:refresh")!.handler("", h.ctx);
-    expect(h.ui.notify).toHaveBeenLastCalledWith(
-      "Refreshed 1 of 1 open pull request; worktrees checked.",
-      "info",
-    );
+    expect(h.shown().at(-1)).toMatchObject({
+      level: "info",
+      text: "Refreshed 1 of 1 open pull request; worktrees checked.",
+    });
     expect(prEntries(h).at(-1)).toMatchObject({
       status: { checks: { passed: 1, failed: 0, pending: 0 } },
       calls: [{ toolCallId: "c1" }, { tool: "/git:refresh" }],
     });
     fail = true;
     await h.commands.get("git:refresh")!.handler("", h.ctx);
-    expect(h.ui.notify).toHaveBeenLastCalledWith(
-      [
+    expect(h.shown().at(-1)).toMatchObject({
+      level: "warning",
+      text: [
         "Refreshed 0 of 1 open pull request; worktrees checked.",
         "acme/api#12: gh is not installed, and no GitHub MCP pull_request_read tool is available to read it instead",
         "Without gh, ask the agent to run git_pr_status, which can read through the GitHub MCP tools.",
       ].join("\n"),
+    });
+    // The terminal keeps its notification.
+    await h.commands.get("git:refresh")!.handler("", h.inMode("tui"));
+    expect(h.ui.notify).toHaveBeenLastCalledWith(
+      expect.stringContaining("Refreshed 0 of 1 open pull request"),
       "warning",
     );
   });

@@ -18,6 +18,7 @@
  * reads it on a timer and wakes the session when it changes (see watch.ts).
  */
 import { errorText } from "#foundations/errors";
+import { userOutput } from "#foundations/user-output";
 
 import {
   defineTool,
@@ -203,6 +204,7 @@ type Target = { record: WorktreeRecord; base: BaseRef };
 export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDependencies = {}): void {
   // First, so the session's work host is provided before this extension's session_start runs.
   const work = ensureWorkHost(pi);
+  const output = userOutput(pi, "git:output");
   // Per-session state lives in this closure, never in module scope: every
   // subagent session runs this factory again, and a same-cwd child may share
   // this module with its parent.
@@ -1169,7 +1171,7 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
             ]
           : []),
       ];
-      ctx.ui.notify(sanitizeText(lines.join("\n")), failed.length ? "warning" : "info");
+      output.show(ctx, sanitizeText(lines.join("\n")), failed.length ? "warning" : "info");
     },
   });
 
@@ -1179,6 +1181,10 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
     handler: async (_args, ctx) => {
       const current = snapshot();
       const at = now();
+      if (ctx.mode !== "tui") {
+        output.show(ctx, prListText(current.prs, true, at), "info");
+        return;
+      }
       await showExplorer(ctx, prExplorerView(current.prs, at), {
         fallback: () => prListText(current.prs, true, at),
       });
@@ -1192,13 +1198,17 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
       try {
         await refresh();
       } catch (error) {
-        ctx.ui.notify(sanitizeText(`Could not check worktrees: ${errorText(error)}`), "warning");
+        output.show(ctx, sanitizeText(`Could not check worktrees: ${errorText(error)}`), "warning");
       }
       if (args.trim() === "remove") {
         await removeInteractively(ctx);
         return;
       }
       const current = snapshot();
+      if (ctx.mode !== "tui") {
+        output.show(ctx, listText(current, false), "info");
+        return;
+      }
       await showExplorer(ctx, explorerView(current), {
         fallback: () => listText(current, false),
       });
@@ -1206,7 +1216,14 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
   });
 
   const removeInteractively = async (ctx: ExtensionContext) => {
-    if (!ctx.hasUI) return;
+    if (!ctx.hasUI) {
+      output.show(
+        ctx,
+        "Removing a worktree needs a dialog to pick one and confirm; ask the agent to use git_worktree_remove.",
+        "warning",
+      );
+      return;
+    }
     const current = snapshot();
     const candidates = [
       ...current.worktrees
@@ -1221,7 +1238,7 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
       })),
     ];
     if (candidates.length === 0) {
-      ctx.ui.notify("No worktrees to remove.", "info");
+      output.show(ctx, "No worktrees to remove.", "info");
       return;
     }
     const choice = await ctx.ui.select(
@@ -1232,7 +1249,7 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
     if (!picked) return;
     const found = await target(picked.path);
     if (!found) {
-      ctx.ui.notify(sanitizeText(`${picked.path} is no longer a worktree.`), "warning");
+      output.show(ctx, sanitizeText(`${picked.path} is no longer a worktree.`), "warning");
       return;
     }
     const { record } = found;
@@ -1256,12 +1273,17 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
     try {
       // The user saw the risk and confirmed, so a risky removal is forced.
       const unpushed = await remove(found, risk !== undefined);
-      ctx.ui.notify(
+      output.show(
+        ctx,
         sanitizeText(`Removed ${record.path}; branch ${record.branch} is kept.${unpushed}`),
         "info",
       );
     } catch (error) {
-      ctx.ui.notify(sanitizeText(`Could not remove ${record.path}: ${errorText(error)}`), "error");
+      output.show(
+        ctx,
+        sanitizeText(`Could not remove ${record.path}: ${errorText(error)}`),
+        "error",
+      );
     }
   };
 }

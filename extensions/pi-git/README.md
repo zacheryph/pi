@@ -249,14 +249,19 @@ Pull requests and worktrees in this session (restored after compaction; stored d
 ## Commands
 
 - `/git:worktrees` opens a browser with **This session**, **Removed** and
-  **Other** tabs; Enter shows a worktree's details. Outside the interactive
-  terminal it prints the list. `/git:worktrees remove` picks a worktree to
+  **Other** tabs; Enter shows a worktree's details. Outside the terminal
+  UI it shows the list as a message. `/git:worktrees remove` picks a worktree to
   remove and asks for confirmation, naming any work removal would lose.
 - `/git:prs` opens a browser with **Opened here** and **Referenced** tabs;
   Enter shows a PR's status, branch, when it was seen, and the tool calls that
   touched it. Outside the interactive terminal it prints the list.
 - `/git:refresh` reads every open PR fresh through `gh` and re-checks every
   worktree, then reports what it could not read.
+
+Outside the terminal UI (an app that runs Pi over RPC, say) the lists and every
+command result arrive as displayed messages instead of notifications, and the
+host's own dialogs pick and confirm a worktree to remove. These messages are for
+you: they stay out of the model's context and never start a turn.
 
 ## Events
 
