@@ -60,6 +60,11 @@ pi-personal/
 ├── tsconfig.json                        # shared source and test type checking
 ├── tsconfig.hub.json                    # plain-Node hub syntax constraints
 ├── vitest.config.ts                     # projects derived from npm workspaces
+├── bb-plugin/                           # bb plugin for pi-bb (own package, not a workspace)
+│   ├── server.ts                        # session socket, RPC, fixtures, env for Pi threads
+│   ├── app.tsx                          # one registration per bb UI slot
+│   └── ui/                              # React components, fed by the session snapshot
+├── docs/bb/ui-slots.md                  # bb's UI slots with screenshots
 ├── skills/
 │   ├── babysit-pr/                      # drives a pull request to green
 │   ├── execute-roadmap/                 # carries out a chosen roadmap
@@ -70,6 +75,9 @@ pi-personal/
 │   ├── pi-ask/
 │   │   ├── src/index.ts                 # ask tool, routed to the parent agent or the user
 │   │   ├── test/
+│   ├── pi-bb/
+│   │   ├── src/index.ts                 # session reporter to the bb plugin + /bb command
+│   │   └── test/
 │   ├── pi-dashboard/
 │   │   ├── src/index.ts                 # session reporter + /dashboard command
 │   │   ├── src/hub/server.ts            # web hub (plain Node, not a Pi extension)
@@ -169,6 +177,26 @@ cmux notification with the agent's own text, for work that now waits on you
 outside the session (a pull request to review, a blocked step, a failed deploy
 check). It does not wait for an answer. See the
 [package README](extensions/pi-ask/README.md).
+
+### pi-bb
+
+Shows this bundle's session state in [bb](https://getbb.app), which runs Pi
+in RPC mode and drops Pi's widgets, status line and overlays. Install the
+`pi-surface` bb plugin from [`bb-plugin/`](bb-plugin/README.md) and every Pi
+thread in bb gets: a Todos and a Subagents card above the composer, the agent
+and task counts in the context row, stash, worktree and pull request entries in
+the thread context card, a stash picker (Ctrl+Shift+S) that inserts a handle into
+the draft, a **Pi** side-panel tab with tasks and their history, subagents,
+stash previews, Git, recent tool calls and usage, row badges for running
+subagents and open questions, and a **Pi sessions** page listing every
+connected session.
+
+The extension does nothing outside bb: it connects only in RPC mode, for the
+thread's main session, when the plugin has given the Pi process its endpoint
+(`PI_BB_SURFACE_URL`, `PI_BB_SURFACE_TOKEN`). `/bb` says whether this session
+is connected. It never starts or reports to the dashboard hub. See the
+[extension README](extensions/pi-bb/README.md) and
+[bb's UI slots](docs/bb/ui-slots.md).
 
 ### pi-dashboard
 

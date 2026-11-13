@@ -118,6 +118,7 @@ try {
     "git:worktrees",
     "git:prs",
     "git:refresh",
+    "bb",
   ]) {
     assert.ok(commands.includes(name), `Missing command: ${name}`);
   }
