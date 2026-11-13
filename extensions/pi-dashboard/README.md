@@ -89,7 +89,7 @@ whole answer. **Decline** turns it down, as Esc does in the terminal.
 The terminal window stays open meanwhile, and the first answer wins. If you
 answer in the terminal first, the form says so and stops accepting input.
 Closing the form keeps your draft until the question is answered. Answers go
-through pi-ask's `ask:answer` event on the session's bus, which validates them
+through pi-ask's `ask.answer` action on the session's bus, which validates them
 strictly: an answer that does not fit is refused with pi-ask's reason and the
 question stays open.
 
@@ -99,13 +99,13 @@ With notifications on, a new question notifies you with its text.
 
 | Section   | Source                                                                                                                                           |
 | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Todos     | `todo:snapshot` on the session's `pi.events` bus (history from the same event)                                                                   |
-| Stash     | `stash:snapshot` on the session's `pi.events` bus; previews through pi-stash's `stash:preview` request on the same bus                           |
+| Todos     | `todo:snapshot` on the session's `pi.events` bus; history through pi-todo's `todo.history` action on the same bus                                |
+| Stash     | `stash:snapshot` on the session's `pi.events` bus; previews through pi-stash's `stash.preview` action on the same bus                            |
 | Git       | `git:snapshot` on the session's `pi.events` bus. Only `https://<host>/<owner>/<repo>/pull/<n>` URLs become links; any other PR is dropped        |
 | Subagents | `subagent:snapshot` on the session's bus: a full current-branch roster, including saved agents after reload; live state overrides saved records. |
 | Usage     | Usage on every entry in the session file, as Pi's `/session` sums it                                                                             |
 | Activity  | Pi's `tool_execution_start` / `_end` for top-level calls (codemode's nested calls are left out)                                                  |
-| Questions | pi-ask's `ask:opened` and `ask:closed` events on the session's bus; answers through its `ask:answer` / `ask:answer-result` contract              |
+| Questions | pi-ask's `ask:opened` and `ask:closed` events on the session's bus; answers through its `ask.answer` action                                      |
 
 Payloads are parsed defensively and bounded before they reach the hub. Stash
 content and task history are never part of the live session list; they are
