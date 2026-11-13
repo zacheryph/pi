@@ -285,7 +285,10 @@ delegate with `subagent_type: "orchestrate"`. A host that cannot pass `--agent`
 sets `PI_MAIN_AGENT=orchestrate` instead; it starts sessions that have no saved
 profile and leaves the host's model and thinking choice alone (in bb:
 `printf orchestrate | bb machine env set PI_MAIN_AGENT --project <project-id>`,
-omit `--project` for every project). See the
+omit `--project` for every project). Every profile that can run as the main
+agent is also a model, `agent/orchestrate`, `agent/review`, and so on, so a host
+with a model picker (bb) can choose the agent there; `"agentModels": false` in
+`subagent.json` turns that off. See the
 [extension docs](extensions/pi-subagent/README.md#pi_main_agent-choosing-the-agent-from-the-environment).
 
 The built-in `implement` profile owns one bounded change and its local verification,

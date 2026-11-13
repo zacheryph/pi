@@ -3,6 +3,7 @@
  */
 
 import type { Model } from "@earendil-works/pi-ai";
+import { inheritableModel } from "#src/agent-models";
 import { buildParentContext } from "#src/session/context";
 import { MAIN_AGENT_SECTION, withoutMainAgentSection } from "#src/session/main-profile-prompt";
 import type { ModelRegistry } from "#src/session/model-resolver";
@@ -81,7 +82,8 @@ export function buildParentSnapshot(
       ctx.getSystemPrompt(),
       promptOptions?.sections?.[MAIN_AGENT_SECTION],
     ),
-    model: ctx.model,
+    // The narrow context is Pi's own at runtime, which is what routing reads.
+    model: inheritableModel(ctx.model, ctx as unknown as Parameters<typeof inheritableModel>[1]),
     modelRegistry: ctx.modelRegistry,
     // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- || intentional: converts empty string to undefined as well as null/undefined
     parentContext: parentContext || undefined,

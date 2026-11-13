@@ -3,6 +3,27 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-13: Offer agents as models, `agent/<name>`
+
+- Every profile `--agent` accepts (hidden ones excluded) is registered as a
+  virtual model under the provider `agent`, named `Agent · <name>`, so a host
+  that lists Pi's models, such as bb's picker, can choose a main agent. Selecting
+  one at startup (`--provider agent --model <name>`) or later (`/model`) applies
+  the profile like `--agent` does, minus the model and thinking, which the host
+  keeps. Picking another agent model switches profile; picking a physical model
+  afterwards leaves the profile in place. `--agent` beats an agent model, which
+  beats `PI_MAIN_AGENT`.
+- Routing: tool follow-ups stay on the model that handled the turn and retries
+  on the one that failed; a new turn runs on the profile's `model` when it
+  resolves and has credentials, else the session's last model, else Pi's
+  default. The selected thinking level passes through for Pi to clamp.
+- A profile that cannot load when picked in a running session blocks input with
+  the reason without ending the session; picking any other model lifts it.
+- A subagent whose parent runs an agent model inherits the physical model
+  behind it, and never applies the profile of a model it inherits.
+- New setting `agentModels` (default `true`, hand-edited in `subagent.json`)
+  turns the registration off.
+
 ## 2026-11-13: Commands answer without a terminal
 
 An app that hosts Pi over RPC drops `ctx.ui.notify` and never mounts `ctx.ui.custom()`, so

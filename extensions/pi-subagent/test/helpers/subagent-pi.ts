@@ -8,7 +8,15 @@ import { fakePi } from "#test-helpers";
  * fans one event out to all of an extension's handlers.
  */
 export function subagentPi(extra: object = {}) {
+  // oxlint-disable-next-line typescript/no-explicit-any -- Definitions are inspected loosely.
+  const virtualModels = new Map<string, any>();
   const fake = fakePi({
+    registerVirtualModel: vi.fn((model: { provider: string; id: string }) => {
+      virtualModels.set(`${model.provider}/${model.id}`, model);
+    }),
+    unregisterVirtualModel: vi.fn((provider: string, id: string) => {
+      virtualModels.delete(`${provider}/${id}`);
+    }),
     registerMessageRenderer: vi.fn(),
     registerFlag: vi.fn(),
     getFlag: vi.fn(),
@@ -23,6 +31,8 @@ export function subagentPi(extra: object = {}) {
     pi: fake.pi as any,
     tools: fake.tools,
     handlers: fake.handlers,
+    /** Virtual models registered so far, keyed `provider/id`. */
+    virtualModels,
     fire: fake.emit,
   };
 }

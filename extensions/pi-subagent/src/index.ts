@@ -51,6 +51,7 @@ import {
 import { SubagentEventsObserver } from "#src/observation/subagent-events-observer";
 import { buildSubagentSnapshot, SUBAGENT_SNAPSHOT } from "#src/observation/snapshot";
 import { SubagentWork } from "#src/observation/subagent-work";
+import { registerAgentModels } from "#src/agent-models";
 import { registerMainAgentProfile } from "#src/main-agent-profile";
 import { SUBAGENT_RECORD_ENTRY } from "#src/persisted-record";
 import { SubagentRuntime } from "#src/runtime";
@@ -346,7 +347,20 @@ export default function (pi: ExtensionAPI) {
 
   // Main-only profile hooks register after the orchestration tools exist. Child
   // sessions load fresh extension runtimes without this session's flag/snapshot.
-  registerMainAgentProfile(pi, { isChild: isDelegated });
+  // Agents as models (`agent/<name>`), registered now because `--provider agent --model <name>`
+  // resolves before a session starts; the session start narrows them to its directory and trust.
+  const agentModels = registerAgentModels(pi, {
+    enabled: settings.agentModels,
+    source: { cwd: process.cwd(), isProjectTrusted: () => true },
+  });
+  pi.on("session_start", (_event, ctx) => {
+    if (isDelegated(ctx)) return;
+    agentModels.sync(ctx, agentModels.profileOf(ctx.model));
+  });
+  registerMainAgentProfile(pi, {
+    isChild: isDelegated,
+    agentModel: (model) => agentModels.profileOf(model),
+  });
 
   // ---- Passive background-agent watch overlay ----
 

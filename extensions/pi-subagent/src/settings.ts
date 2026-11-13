@@ -86,6 +86,12 @@ export const subagentSettings = defineSettings({
      */
     midRunUpdates: bool({ default: true }),
     /**
+     * When false, no `agent/<name>` virtual models are registered, so a host's model picker
+     * lists no agents. `--agent` and `PI_MAIN_AGENT` are unaffected. Read at startup and
+     * on `/reload`.
+     */
+    agentModels: bool({ default: true }),
+    /**
      * Pi package sources whose extensions child sessions must not load, matched
      * against Pi's configured source string exactly (e.g. `npm:@scope/pkg`).
      * The package's skills, prompts, and themes stay available to children.
@@ -112,7 +118,7 @@ export type SubagentsSettings = SettingsOf<typeof subagentSettings>;
  */
 export type SettingsSnapshot = Omit<
   SubagentsSettings,
-  "excludedExtensionPackages" | "promptInheritance"
+  "excludedExtensionPackages" | "promptInheritance" | "agentModels"
 > &
   Partial<Pick<SubagentsSettings, "excludedExtensionPackages" | "promptInheritance">>;
 
@@ -141,6 +147,7 @@ export class SettingsManager {
   private _unconsumedSessionRetentionMinutes!: number;
   private _abortAllOnInterrupt!: boolean;
   private _midRunUpdates!: boolean;
+  private _agentModels!: boolean;
   private _excludedExtensionPackages!: string[];
   private _promptInheritance!: Record<string, PromptInheritance>;
 
@@ -174,6 +181,7 @@ export class SettingsManager {
     this.unconsumedSessionRetentionMinutes = settings.unconsumedSessionRetentionMinutes;
     this._abortAllOnInterrupt = settings.abortAllOnInterrupt;
     this._midRunUpdates = settings.midRunUpdates;
+    this._agentModels = settings.agentModels;
     this._excludedExtensionPackages = [...settings.excludedExtensionPackages];
     this._promptInheritance = { ...settings.promptInheritance };
   }
@@ -247,6 +255,13 @@ export class SettingsManager {
 
   get abortAllOnInterrupt(): boolean {
     return this._abortAllOnInterrupt;
+  }
+
+  // ── agentModels: hand-edited only; no /subagent:settings affordance ──
+
+  /** Whether each main-capable profile is offered as an `agent/<name>` model. */
+  get agentModels(): boolean {
+    return this._agentModels;
   }
 
   // ── excludedExtensionPackages: hand-edited only; no /subagent:settings affordance ──
