@@ -306,6 +306,7 @@ Watch-overlay width uses a preset selector (quarter, third, half, two-thirds, fo
 default visibility and thinking visibility are toggles. The overlay starts closed
 at third width, with thinking enabled.
 Changes persist across pi restarts (see [Persistent Settings](./docs/configuration.md#persistent-settings)).
+The menu uses Pi's dialogs, so an app that runs Pi over RPC shows it too; each result is a notification in the terminal and a displayed message elsewhere.
 
 ### `/subagent:agents`
 
@@ -321,9 +322,12 @@ frame with padding, prioritized footer hints and an 80% overlay in Pi's
 fullscreen TUI (the regular renderer is not supported). Arrow keys navigate;
 PgUp/PgDn and Home/End page or jump; the mouse wheel scrolls. Esc returns from
 details, clears an active filter, or closes; Ctrl+C closes from either view.
-Non-TUI modes do not open the browser. Reopen to refresh the snapshot.
+Outside the terminal UI (an app that runs Pi over RPC, say) the command lists the profiles as a
+displayed message instead. Reopen to refresh the snapshot.
 
 ### `/subagent:watch`
+
+Outside the terminal UI the command says it needs the terminal and points at `/subagent:sessions` and `subagent_get`.
 
 `Ctrl+Alt+S` or `/subagent:watch` toggles a read-only overlay anchored at the right
 of Pi's **fullscreen** display. It leaves keyboard focus with the editor and
@@ -361,6 +365,7 @@ this during output bursts. See [watch-overlay decision](./docs/decisions/0013-pa
 Pick any subagent — running, or completed with its live session already released — and read its full session transcript in pi's native per-entry viewer.
 Read-only: no messaging, no session takeover (messages go through the `subagent_send` tool).
 Runs that finished earlier in the session stay listed after a `/reload`, and a resumed session lists the runs it recorded; both open from their saved transcript.
+Outside the terminal UI the host's own picker chooses the agent and the transcript's last 80 lines arrive as a displayed message.
 
 The viewer is framed by two rules in the style of pi's editor border, coloured for the agent's thinking level:
 

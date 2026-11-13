@@ -53,6 +53,7 @@ import {
   liveSource,
   type NavigableSubagent,
   type TranscriptSource,
+  transcriptText,
 } from "#src/ui/session-navigation";
 import { TranscriptContent } from "#src/ui/transcript-content";
 import { labeledRule } from "#ui";
@@ -133,6 +134,16 @@ export interface SessionNavigatorParams {
   readFile: (path: string) => string;
   /** The parent session's entries, whose run records outlive the manager's. */
   sessionEntries: readonly SessionEntryLike[];
+  /**
+   * Where text goes: defaults to `ui.notify`. A host that drops notifications
+   * (an app over RPC) passes a sender that shows it another way.
+   */
+  show?: (text: string, level: "info" | "warning" | "error") => void;
+  /**
+   * False when the pane cannot mount (no terminal UI): after the pick, the
+   * transcript is shown as text through `show` instead. Default true.
+   */
+  terminal?: boolean;
 }
 
 /** How a scroll move treats following new output; by default it follows when it lands on the bottom. */
@@ -171,10 +182,12 @@ export class SessionNavigatorHandler {
     cwd,
     readFile,
     sessionEntries,
+    show = (text, level) => ui.notify(text, level),
+    terminal = true,
   }: SessionNavigatorParams): Promise<void> {
     const entries = listNavigableAgents(agents, registry, readPersistedRuns(sessionEntries));
     if (entries.length === 0) {
-      ui.notify("No subagent sessions to view.", "info");
+      show("No subagent sessions to view.", "info");
       return;
     }
 
@@ -192,7 +205,11 @@ export class SessionNavigatorHandler {
           ? liveSource(entry.record)
           : fileSnapshotSource(entry.outputFile, readFile);
     } catch {
-      ui.notify("Could not read the session transcript file.", "error");
+      show("Could not read the session transcript file.", "error");
+      return;
+    }
+    if (!terminal) {
+      show(transcriptText(entry.heading, source), "info");
       return;
     }
     const markdownTheme = getMarkdownTheme();

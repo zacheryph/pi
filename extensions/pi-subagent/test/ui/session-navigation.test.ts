@@ -7,6 +7,8 @@ import {
   listNavigableAgents,
   liveSource,
   type NavigableSubagent,
+  TRANSCRIPT_TEXT_LINES,
+  transcriptText,
   type TranscriptSource,
 } from "#src/ui/session-navigation";
 import { makeNavigable } from "#test/helpers/make-navigable";
@@ -313,5 +315,74 @@ describe("fileSnapshotSource", () => {
     });
     const source = fileSnapshotSource("/tasks/empty.jsonl", () => headerOnly);
     expect(source.getMessages()).toEqual([]);
+  });
+});
+
+describe("transcriptText", () => {
+  const heading = { name: "explore", description: "Find auth files" };
+  const source = (messages: unknown[], streaming?: ReturnType<TranscriptSource["streaming"]>) => ({
+    getMessages: () => messages as SessionMessage[],
+    streaming: () => streaming,
+  });
+
+  it("heads the transcript and shows prompts, replies, tool calls and result first lines", () => {
+    const text = transcriptText(
+      heading,
+      source([
+        { role: "user", content: "Find the auth files" },
+        {
+          role: "assistant",
+          content: [
+            { type: "thinking", thinking: "hidden" },
+            { type: "text", text: "Looking." },
+            { type: "toolCall", id: "c1", name: "grep", arguments: {} },
+          ],
+        },
+        {
+          role: "toolResult",
+          toolName: "grep",
+          isError: false,
+          content: [{ type: "text", text: "src/auth.ts:1\nsrc/other.ts:2" }],
+        },
+        { role: "toolResult", toolName: "read", isError: true, content: [] },
+        { role: "assistant", content: [{ type: "text", text: "Done." }] },
+      ]),
+    );
+    expect(text.split("\n")).toEqual([
+      "explore (Find auth files)",
+      "user: Find the auth files",
+      "assistant: Looking.",
+      "  [tool call: grep]",
+      "  [grep result] src/auth.ts:1",
+      "  [read failed]",
+      "assistant: Done.",
+    ]);
+    expect(text).not.toContain("hidden");
+  });
+
+  it("says when there is nothing yet and what a running agent is doing", () => {
+    expect(transcriptText(heading, source([]))).toBe(
+      "explore (Find auth files)\n(no messages yet)",
+    );
+    const running = transcriptText(
+      heading,
+      source([], { activeTools: new Map([["c1", "bash"]]), responseText: "Almost" }),
+    );
+    expect(running.split("\n").slice(-2)).toEqual(["running: bash", "writing: Almost"]);
+  });
+
+  it("keeps the last lines and the start of a long message, and counts what it left out", () => {
+    const messages = Array.from({ length: TRANSCRIPT_TEXT_LINES + 20 }, (_, index) => ({
+      role: "user",
+      content: `line ${index}`,
+    }));
+    const lines = transcriptText(heading, source(messages)).split("\n");
+    expect(lines[1]).toBe("… 20 earlier lines not shown");
+    expect(lines.at(-1)).toBe(`user: line ${TRANSCRIPT_TEXT_LINES + 19}`);
+    expect(lines).toHaveLength(2 + TRANSCRIPT_TEXT_LINES);
+
+    const long = transcriptText(heading, source([{ role: "user", content: "x".repeat(5000) }]));
+    expect(long.split("\n")[1]).toHaveLength("user: ".length + 600);
+    expect(long).toMatch(/…$/);
   });
 });

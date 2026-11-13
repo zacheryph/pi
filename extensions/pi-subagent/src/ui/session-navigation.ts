@@ -19,6 +19,7 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import type { AgentConfigLookup } from "#src/config/agent-types";
+import { extractAssistantContent } from "#src/session/content-items";
 import {
   displayStatus,
   isRunningStatus,
@@ -231,4 +232,70 @@ function buildLabel(fields: LabelFields, registry: AgentConfigLookup, released =
   const duration = formatAgentDuration(fields.startedAt, fields.completedAt);
   const marker = released ? " · session released (snapshot)" : "";
   return `${name} (${fields.description}) · ${fields.toolUses} tools · ${displayStatus(fields.status, fields.outcome)} · ${duration}${marker}`;
+}
+
+/** Lines of transcript a text view keeps, from the end; earlier ones are counted. */
+export const TRANSCRIPT_TEXT_LINES = 80;
+/** Characters of one message a text view keeps. */
+const TRANSCRIPT_TEXT_MESSAGE = 600;
+
+/** The text a message carries, tool calls named, for a plain-text transcript. */
+function messageText(message: SessionMessage): string | undefined {
+  const { role, content } = message as { role: string; content?: unknown };
+  const parts = Array.isArray(content) ? (content as ReadonlyArray<{ type: string }>) : [];
+  const text =
+    typeof content === "string"
+      ? content
+      : parts
+          .map((part) => (part.type === "text" ? ((part as { text?: string }).text ?? "") : ""))
+          .filter(Boolean)
+          .join("\n");
+  const clip = (value: string) =>
+    value.length > TRANSCRIPT_TEXT_MESSAGE
+      ? `${value.slice(0, TRANSCRIPT_TEXT_MESSAGE - 1)}…`
+      : value;
+  if (role === "user") return text ? `user: ${clip(text)}` : undefined;
+  if (role === "assistant") {
+    const { textParts, toolNames } = extractAssistantContent(parts);
+    const lines = [
+      ...(textParts.length ? [`assistant: ${clip(textParts.join("\n"))}`] : []),
+      ...toolNames.map((name) => `  [tool call: ${name}]`),
+    ];
+    return lines.length ? lines.join("\n") : undefined;
+  }
+  if (role === "toolResult") {
+    const { toolName, isError } = message as { toolName?: string; isError?: boolean };
+    const first = text.split("\n", 1)[0] ?? "";
+    return `  [${toolName ?? "tool"} ${isError ? "failed" : "result"}] ${clip(first)}`.trimEnd();
+  }
+  return undefined;
+}
+
+/**
+ * A subagent's transcript as plain text, for a host without the terminal pane:
+ * the heading, then the last `TRANSCRIPT_TEXT_LINES` lines of messages (tool
+ * calls and result first lines only), then what a running agent is doing now.
+ */
+export function transcriptText(
+  heading: EntryHeading,
+  source: Pick<TranscriptSource, "getMessages" | "streaming">,
+): string {
+  const lines = source.getMessages().flatMap((message) => messageText(message)?.split("\n") ?? []);
+  const kept = lines.slice(-TRANSCRIPT_TEXT_LINES);
+  const streaming = source.streaming();
+  return [
+    `${heading.name} (${heading.description})`,
+    ...(lines.length > kept.length
+      ? [`… ${lines.length - kept.length} earlier lines not shown`]
+      : []),
+    ...(kept.length ? kept : ["(no messages yet)"]),
+    ...(streaming
+      ? [
+          ...(streaming.activeTools.size
+            ? [`running: ${[...streaming.activeTools.values()].join(", ")}`]
+            : []),
+          ...(streaming.responseText ? [`writing: ${streaming.responseText.slice(-200)}`] : []),
+        ]
+      : []),
+  ].join("\n");
 }

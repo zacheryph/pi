@@ -3,6 +3,25 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-13: Commands answer without a terminal
+
+An app that hosts Pi over RPC drops `ctx.ui.notify` and never mounts `ctx.ui.custom()`, so
+`/subagent:agents`, `/subagent:sessions` and `/subagent:watch` showed nothing there, and
+`/subagent:settings` changed a setting without saying so.
+
+- Command results go through pi-foundations' `userOutput`: a notification in the terminal, a
+  displayed custom message (`subagent:output`, `triggerTurn: false`) elsewhere, kept out of the
+  model's context.
+- `/subagent:agents` lists the profiles as text (`agentsListText`, at most 60 rows).
+- `/subagent:sessions` keeps the host's picker, then shows the transcript's last 80 lines as text
+  (`transcriptText`) instead of mounting the pane. `SessionNavigatorHandler` takes `show` and
+  `terminal` for this; without them it behaves as before.
+- `/subagent:watch` says the overlay needs the terminal UI and names `/subagent:sessions` and
+  `subagent_get`.
+- `/subagent:settings` reports each change through the same output.
+- Tests: `test/rpc-commands.test.ts`, `agentsListText`, `transcriptText` and the navigator's
+  text path.
+
 ## 2026-11-12: Align the orchestrator with the execute-roadmap skill
 
 - `orchestrate` waits on pull requests with `git_pr_watch` (it named
