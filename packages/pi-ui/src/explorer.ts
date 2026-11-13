@@ -21,60 +21,43 @@ import { ICONS } from "#src/icons";
 import { cells, layoutPanel, renderPanel, splitColumns } from "#src/layout";
 import { openModal, type ModalContext, type ModalOptions } from "#src/modal";
 import { HINT_PRIORITY, navigationDelta, navigationHint, type Hint } from "#src/navigation";
-import {
-  copyLine,
-  paint,
-  plainText,
-  styleBadge,
-  styleLine,
-  type Badge,
-  type Line,
-} from "#src/style";
+import { copyLine, paint, plainText, styleBadge, styleLine } from "#src/style";
 import { sanitizeLine } from "#src/text";
-import type { Title, UIKeys, UISurface, UITheme } from "#src/types";
+import type { UIKeys, UISurface, UITheme } from "#src/types";
+import {
+  dispatchAction,
+  isDetailContent,
+  type ActionBus,
+  type ActionRef,
+  type ExplorerItem,
+  type ExplorerMarker as MarkerModel,
+  type ExplorerModel,
+  type JsonObject,
+} from "#surface";
 
-export interface ExplorerItem {
-  /** Opaque identity, never rendered or normalized. */
-  id: string;
-  label: Line;
-  /** Extra searchable text that is not displayed. */
-  search?: string;
-  /** Right column in the list, and beside the label in the detail header. */
-  badge?: Badge;
-  /** Shown in the marker column while `ExplorerView.marker` is set. */
-  marked?: boolean;
-  detail?: DetailContent;
+export type { ExplorerItem, ExplorerModel, ExplorerTab } from "#surface";
+
+/** Either form of behaviour: a callback, or a reference to an action on the session's bus. */
+type Behaviour<Fn> = Fn | ActionRef<JsonObject>;
+
+export interface ExplorerMarker extends Omit<MarkerModel, "onClear"> {
+  /**
+   * Opening a marked item, or Ctrl+R on the filtered list, clears marks locally
+   * and reports them: a callback gets the ids, an action gets `{ ids }`.
+   */
+  onClear?: Behaviour<(ids: string[]) => void>;
 }
-export interface ExplorerTab {
-  label: string;
-  ids: readonly string[];
-  emptyText?: string;
-}
-export interface ExplorerMarker {
-  /** What a mark means, counted in the status row: "unreviewed". */
-  label: string;
-  /** Ctrl+R hint, e.g. "mark reviewed". Present only with `onClear`. */
-  clearAction?: string;
-  /** Opening a marked item, or Ctrl+R on the filtered list, clears marks locally and reports them. */
-  onClear?: (ids: string[]) => void;
-}
-export interface ExplorerView {
-  title: Title;
-  items: readonly ExplorerItem[];
-  /** Counted noun for the status row and empty states. Default `["item", "items"]`. */
-  noun?: readonly [singular: string, plural: string];
-  /** One row each above the list, e.g. a scope note, warning or legend. */
-  notices?: readonly Line[];
-  tabs?: readonly ExplorerTab[];
-  initialTab?: number;
+/** pi-surface's explorer model, whose behaviour may also be callbacks. */
+export interface ExplorerView extends Omit<ExplorerModel, "marker" | "onOpen" | "loadDetail"> {
   marker?: ExplorerMarker;
-  /** Empty-list text when no tab supplies its own. */
-  emptyText?: string;
-  /** Extension hints, e.g. related commands. Default priority `HINT_PRIORITY.extension`. */
-  hints?: readonly Hint[];
-  onOpen?: (id: string) => void;
-  /** Called only on opening an item; supersedes `item.detail`. */
-  loadDetail?: (id: string, signal: AbortSignal) => DetailContent | Promise<DetailContent>;
+  onOpen?: Behaviour<(id: string) => void>;
+  /**
+   * Called only on opening an item; supersedes `item.detail`. An action gets
+   * `{ id }` and must resolve to `DetailContent`.
+   */
+  loadDetail?: Behaviour<
+    (id: string, signal: AbortSignal) => DetailContent | Promise<DetailContent>
+  >;
 }
 export interface ExplorerOptions {
   tui: UISurface;
@@ -83,6 +66,16 @@ export interface ExplorerOptions {
   view: ExplorerView;
   done: () => void;
   heightFraction?: number;
+  /** The session's bus (`pi.events`) that resolves the view's action references. */
+  actions?: ActionBus;
+}
+
+function copyBehaviour<Fn>(behaviour: Behaviour<Fn>): Behaviour<Fn>;
+function copyBehaviour<Fn>(behaviour: Behaviour<Fn> | undefined): Behaviour<Fn> | undefined;
+function copyBehaviour<Fn>(behaviour: Behaviour<Fn> | undefined): Behaviour<Fn> | undefined {
+  return typeof behaviour === "object" && behaviour !== null
+    ? (structuredClone(behaviour) as ActionRef<JsonObject>)
+    : behaviour;
 }
 
 export function snapshotExplorer(view: ExplorerView): ExplorerView {
@@ -98,8 +91,10 @@ export function snapshotExplorer(view: ExplorerView): ExplorerView {
     noun: view.noun && [view.noun[0], view.noun[1]],
     notices: view.notices?.map(copyLine),
     tabs: view.tabs?.map((tab) => ({ ...tab, ids: [...tab.ids] })),
-    marker: view.marker && { ...view.marker },
+    marker: view.marker && { ...view.marker, onClear: copyBehaviour(view.marker.onClear) },
     hints: view.hints?.map((hint) => ({ ...hint })),
+    onOpen: copyBehaviour(view.onOpen),
+    loadDetail: copyBehaviour(view.loadDetail),
   };
 }
 
@@ -159,9 +154,34 @@ export class Explorer implements Component, Focusable {
     this.filtered = this.tabItems().filter((item) => this.search.get(item.id)!.includes(query));
     this.selected = 0;
   }
+  /** Resolve an action reference through the session's bus, adding the call's context to its arguments. */
+  private dispatch(ref: ActionRef<JsonObject>, context: JsonObject): Promise<unknown> {
+    const bus = this.options.actions;
+    if (!bus) return Promise.reject(new Error(`no action registry for "${ref.action}"`));
+    return dispatchAction(bus, ref.action, { ...ref.args, ...context });
+  }
+  /** Callbacks report synchronously; an action's failure has nowhere to show and is dropped. */
+  private notify<Args extends unknown[]>(
+    behaviour: Behaviour<(...args: Args) => void> | undefined,
+    context: JsonObject,
+    ...args: Args
+  ): void {
+    if (typeof behaviour === "function") behaviour(...args);
+    else if (behaviour) this.dispatch(behaviour, context).catch(() => {});
+  }
   private clearMarks(ids: string[]): void {
     const cleared = ids.filter((id) => this.marked.delete(id));
-    if (cleared.length && this.view.marker) this.view.marker.onClear?.(cleared);
+    if (cleared.length && this.view.marker)
+      this.notify(this.view.marker.onClear, { ids: cleared }, cleared);
+  }
+  private loadDetail(id: string, signal: AbortSignal): DetailContent | Promise<DetailContent> {
+    const load = this.view.loadDetail!;
+    if (typeof load === "function") return load(id, signal);
+    return this.dispatch(load, { id }).then((content) => {
+      if (!isDetailContent(content))
+        throw new Error(`action "${load.action}" returned no detail content`);
+      return content;
+    });
   }
   private hints(): Hint[] {
     const { marker, tabs } = this.view;
@@ -269,7 +289,7 @@ export class Explorer implements Component, Focusable {
     const item = this.filtered[this.selected];
     if (!item) return;
     this.detail = item;
-    this.view.onOpen?.(item.id);
+    this.notify(this.view.onOpen, { id: item.id }, item.id);
     this.clearMarks([item.id]);
     this.load?.abort();
     if (!this.view.loadDetail) {
@@ -283,7 +303,7 @@ export class Explorer implements Component, Focusable {
     void Promise.resolve()
       .then(() => {
         if (controller.signal.aborted) return "";
-        return this.view.loadDetail!(item.id, controller.signal);
+        return this.loadDetail(item.id, controller.signal);
       })
       .then(
         (content) => {
@@ -409,12 +429,18 @@ export class Explorer implements Component, Focusable {
   }
 }
 
+export interface ShowExplorerOptions extends ModalOptions {
+  /** The session's bus (`pi.events`) that resolves the view's action references. */
+  actions?: ActionBus;
+}
+
 export async function showExplorer(
   ctx: ModalContext,
   view: ExplorerView | (() => ExplorerView),
-  options?: ModalOptions,
+  options?: ShowExplorerOptions,
 ): Promise<void> {
   const snapshot = typeof view === "function" ? view : snapshotExplorer(view);
+  const { actions, ...modal } = options ?? {};
   await openModal<void>(
     ctx,
     (tui, theme, keys, done) =>
@@ -424,7 +450,8 @@ export async function showExplorer(
         keys,
         view: typeof snapshot === "function" ? snapshot() : snapshot,
         done: () => done(undefined),
+        actions,
       }),
-    options,
+    options && modal,
   );
 }

@@ -25,35 +25,12 @@ import {
   navigationHint,
   type Hint,
 } from "#src/navigation";
-import {
-  clip,
-  copyLine,
-  paint,
-  styleBadge,
-  styleLine,
-  type Badge,
-  type Line,
-  type Tone,
-} from "#src/style";
+import { clip, copyLine, paint, styleBadge, styleLine, type Badge, type Line } from "#src/style";
 import { sanitizeLine, sanitizeText } from "#src/text";
 import type { Title, UIKeys, UISurface, UITheme } from "#src/types";
+import type { Block, DetailContent } from "#surface";
 
-/**
- * Structured detail content. All text is untrusted plain text; the library owns
- * styling, wrapping and spacing so every detail view reads the same way.
- */
-export type Block =
-  /** Section heading; a blank row precedes every heading but the first row. */
-  | { heading: string }
-  /** Aligned `label  value` rows; values wrap under themselves. */
-  | { fields: readonly (readonly [label: string, value: Line])[] }
-  /** Free text; newlines are kept and long lines wrap. */
-  | { text: string; tone?: Tone }
-  | { bullets: readonly string[] }
-  /** Preformatted lines, e.g. a file preview; optionally numbered from `numbered`. */
-  | { lines: readonly string[]; numbered?: boolean | number };
-/** A plain string is shorthand for one text block. */
-export type DetailContent = string | readonly Block[];
+export type { Block, DetailContent, DetailModel } from "#surface";
 /** Low-level escape hatch for caller-owned views: trusted, already styled physical rows. */
 export type RowRenderer = (width: number) => readonly string[];
 

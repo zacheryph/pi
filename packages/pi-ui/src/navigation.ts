@@ -1,15 +1,8 @@
 import { matchesKey, visibleWidth } from "@earendil-works/pi-tui";
 import type { UIKeys } from "#src/types";
+import type { Hint } from "#surface";
 
-/**
- * Footer hint. Lower priority numbers are more important; when hints do not fit
- * their row budget, the highest number is dropped first. Priority 0 is never dropped.
- */
-export interface Hint {
-  keys: string;
-  action?: string;
-  priority?: number;
-}
+export type { Hint } from "#surface";
 
 /** Shared priorities so every view drops hints in the same order. */
 export const HINT_PRIORITY = { action: 0, view: 1, extension: 2, navigation: 3 } as const;
