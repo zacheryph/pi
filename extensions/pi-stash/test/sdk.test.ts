@@ -16,7 +16,8 @@ import {
 } from "#src/events";
 import { createEventBus, type EventBus } from "@earendil-works/pi-coding-agent";
 import { provide, service } from "#session-tree";
-import { dispatchAction, listActions } from "#surface";
+import { dispatchAction, listActions, listViews, onViewChanged, readView } from "#surface";
+import { stashExplorerView } from "#src/ui/browser";
 import {
   fauxSession,
   loadResources,
@@ -330,7 +331,7 @@ describe("pi-stash in a real AgentSession (offline faux provider)", () => {
     });
   }, 20_000);
 
-  it("defines stash.inspect on its own session's bus until the session shuts down", async () => {
+  it("defines its actions and explorer view on its own session's bus until the session shuts down", async () => {
     const store = new BlobStore(tempDir("pi-stash-root-"));
     const bus = createEventBus();
     const h = await fixture({
@@ -342,8 +343,14 @@ describe("pi-stash in a real AgentSession (offline faux provider)", () => {
       ],
     });
     const other = await fixture({ store });
+    const announced: string[] = [];
+    onViewChanged(bus, (id) => announced.push(id));
     await h.session.prompt("Work");
-    expect(listActions(bus)).toEqual([{ id: "stash.inspect", title: expect.any(String) }]);
+    expect(announced).toContain("stash.explorer");
+    expect(listActions(bus)).toEqual([
+      { id: "stash.inspect", title: expect.any(String) },
+      { id: "stash.preview", title: expect.any(String) },
+    ]);
     const handle = handleFor(currentEntries(replayStashIndex({ sessionManager: h.manager }))[0]);
     await expect(dispatchAction(bus, "stash.inspect", { id: handle })).resolves.toContainEqual({
       lines: ["one", "two"],
@@ -353,12 +360,42 @@ describe("pi-stash in a real AgentSession (offline faux provider)", () => {
     await expect(dispatchAction(other.bus, "stash.inspect", { id: handle })).rejects.toThrow(
       `No stash entry ${handle} on this branch.`,
     );
-    h.session.dispose(); // session_shutdown removes the action from the bus
+    // stash.preview answers exactly what the stash:preview request does, minus `ok`.
+    const { ok: _ok, ...head } = h.preview({ name: "log" }) as Extract<
+      StashPreviewResult,
+      { ok: true }
+    >;
+    await expect(dispatchAction(bus, "stash.preview", { name: "log" })).resolves.toEqual(head);
+    await expect(
+      dispatchAction(bus, "stash.preview", { name: "log", maxLines: 1 }),
+    ).resolves.toEqual({ ...head, lines: ["one"], complete: false });
+    await expect(dispatchAction(bus, "stash.preview", { name: "gone" })).rejects.toThrow(
+      'No stash entry named "gone" on this branch.',
+    );
+    await expect(dispatchAction(bus, "stash.preview", { name: handle })).rejects.toThrow(
+      "Invalid stash entry name.",
+    );
+    await expect(dispatchAction(bus, "stash.preview")).rejects.toThrow("Invalid stash entry name.");
+
+    // stash.explorer is the /stash model, plain JSON, loading details through stash.inspect.
+    expect(listViews(bus)).toEqual([{ id: "stash.explorer", kind: "explorer", title: "Stash" }]);
+    const model = readView(bus, "stash.explorer");
+    expect(JSON.parse(JSON.stringify(model))).toEqual(model);
+    const entries = currentEntries(replayStashIndex({ sessionManager: h.manager }));
+    expect(model).toEqual({
+      ...stashExplorerView(entries),
+      items: [expect.objectContaining({ id: handle, search: "log" })],
+    });
+    expect(model).toMatchObject({ loadDetail: { action: "stash.inspect" } });
+
+    h.session.dispose(); // session_shutdown removes the actions and views from the bus
     expect(listActions(bus)).toEqual([]);
+    expect(listViews(bus)).toEqual([]);
     await expect(dispatchAction(bus, "stash.inspect", { id: handle })).rejects.toThrow(
       'Unknown action "stash.inspect".',
     );
-    expect(listActions(other.bus)).toHaveLength(1);
+    expect(listActions(other.bus)).toHaveLength(2);
+    expect(listViews(other.bus)).toHaveLength(1);
   }, 20_000);
 
   it("rejects bad sources and oversized entries as tool errors", async () => {
