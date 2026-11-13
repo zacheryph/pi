@@ -558,7 +558,7 @@ Two files, merged on load:
   Written by `/subagent:settings`.
 
 **Precedence:** project overrides global on any field present in both.
-Missing fields fall back to the hardcoded defaults (max concurrency `4`, default max turns unlimited, wrap-up turns `2`, session retention after a result was read `10` minutes (`consumedSessionRetentionMinutes`), after it was not read `720` minutes (`unconsumedSessionRetentionMinutes`), abort-all-on-interrupt `true`, mid-run updates `true`, watch-overlay width `third`, watch-overlay default visibility `false`, watch-overlay thinking visibility `true`).
+Missing fields fall back to the hardcoded defaults (max concurrency `4`, default max turns unlimited, wrap-up turns `2`, session retention after a result was read `10` minutes (`consumedSessionRetentionMinutes`), after it was not read `720` minutes (`unconsumedSessionRetentionMinutes`), abort-all-on-interrupt `true`, mid-run updates `true`, agent models `true` (`agentModels`, hand-edited only: whether each main-capable profile is offered as an `agent/<name>` model, see the [README](../README.md#agents-as-models-agentname)), watch-overlay width `third`, watch-overlay default visibility `false`, watch-overlay thinking visibility `true`).
 
 **Example — global defaults for a beefy machine:**
 

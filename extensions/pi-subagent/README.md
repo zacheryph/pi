@@ -221,6 +221,51 @@ printf orchestrate | bb machine env set PI_MAIN_AGENT --project <project-id>
 
 New Pi processes pick it up; a thread that already has a profile keeps it.
 
+### Agents as models: `agent/<name>`
+
+Every profile that can run as the main agent is also offered as a virtual model
+under the provider `agent`: `agent/orchestrate`, `agent/implement`, and so on,
+shown as `Agent · <name>`. A host that lists Pi's models gets a way to pick an
+agent without `--agent` or an environment variable. In bb the agents appear in
+the model picker as `agent/<name>`; the thread's reasoning picker offers the
+usual levels.
+
+```bash
+pi --provider agent --model orchestrate      # at startup
+/model agent/review                          # or later, in a session
+```
+
+- **Which profiles.** The ones `--agent` would accept: they parse, are not
+  `disabled`, have valid thinking and fragments, and project profiles pass Pi
+  project trust. `visibility: hidden` profiles run by name but are not offered.
+- **Selecting one applies the profile like `--agent`**: its instructions and
+  tool defaults, saved in the session so a restart restores them. The model is
+  not taken from the profile's `model` or `thinking` as a startup default;
+  routing (below) supplies the model instead. Picking a different agent model
+  switches profile; picking a physical model afterwards keeps the applied
+  profile for the rest of the session, as `/model` after `--agent` does.
+- **Routing.** A new turn runs on the profile's own `model` when it resolves and
+  has credentials, else on the model the session last answered with, else on
+  Pi's configured default. Tool follow-ups stay on the model that handled the
+  turn and retries on the model that failed, so prompt caches stay valid. The
+  thinking level you pick passes through and Pi clamps it to that model.
+- **Precedence.** `--agent` beats an agent model, which beats `PI_MAIN_AGENT`.
+  A restart of a session whose saved profile is the same agent restores it
+  without resetting tools. Subagent sessions do not take the profile of an
+  agent model they inherit; they inherit the physical model behind it.
+- **A profile that cannot load** (for example an untrusted project profile)
+  blocks input with the reason, as `--agent` does. When it was picked in a
+  running session, picking any other model lifts the block and the agent that
+  was running stays.
+- **Turning it off.** Set `"agentModels": false` in `~/.pi/agent/subagent.json`
+  or `.pi/subagent.json` (default `true`; read at startup and on `/reload`).
+  `--agent` and `PI_MAIN_AGENT` keep working.
+
+Pi chooses its startup model from physical models first, so the agent models
+never become the default while any provider has credentials. With none
+configured, the first agent model is the only model Pi can select, and a prompt
+fails with "no model to run on" until a provider is logged in.
+
 ## Prompt fragments
 
 Profiles can share unconditional system instructions by name:

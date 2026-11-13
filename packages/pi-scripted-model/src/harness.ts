@@ -293,8 +293,10 @@ export async function startSession(options: SessionOptions): Promise<ScriptedSes
       const model = session.modelRuntime.getModel(PROVIDER, MODEL);
       if (!model) throw new Error(`pi-scripted-model: the scenario did not register ${PROVIDER}`);
       await session.setModel(model);
+      // A virtual model (an extension's `agent/<name>`) only routes to a physical one, so it
+      // is real only if some other physical model is.
       const real = (await session.modelRuntime.getAllAvailable()).filter(
-        (available) => available.provider !== PROVIDER,
+        (available) => available.provider !== PROVIDER && available.api !== "pi-virtual",
       );
       if (real.length > 0) {
         throw new Error(

@@ -29,6 +29,7 @@ function harness(mode: ExtensionContext["mode"] = "tui") {
     flag: "reader" as string | undefined,
     env: undefined as string | undefined,
     child: false,
+    agents: new Set(["reader", "planner"]),
     modelOverride: undefined as string | undefined,
     profile: {
       name: "reader",
@@ -103,6 +104,8 @@ function harness(mode: ExtensionContext["mode"] = "tui") {
     diagnostic,
     env: () => state.env,
     isChild: () => state.child,
+    agentModel: (model) =>
+      model?.provider === "agent" && state.agents.has(model.id) ? model.id : undefined,
   });
   // oxlint-disable-next-line typescript/no-explicit-any -- Handler results vary by event.
   const fire = (name: string, event: object = {}, context = ctx): Promise<any> =>
@@ -1020,6 +1023,217 @@ describe("PI_MAIN_AGENT", () => {
     await h.start();
     expect(h.resolve).toHaveBeenCalledTimes(1);
     expect(h.resolve).toHaveBeenCalledWith("", h.ctx);
+  });
+});
+
+describe("agent models", () => {
+  const agent = (id: string) => makeModel({ provider: "agent", id, api: "pi-virtual" });
+  /** A session that opens on an agent model, as `--provider agent --model <id>` does. */
+  function onAgent(id = "reader", mode: ExtensionContext["mode"] = "rpc") {
+    const h = harness(mode);
+    h.state.flag = undefined;
+    h.state.model = agent(id);
+    h.resolve.mockImplementation((name?: string) => ({ ...h.state.profile, name: name! }));
+    return h;
+  }
+  const select = (h: ReturnType<typeof harness>, model: ReturnType<typeof agent>, source = "set") =>
+    h.fire("model_select", { model, previousModel: h.state.model, source });
+  const picked = (h: ReturnType<typeof harness>, model: ReturnType<typeof agent>) => {
+    const previous = h.state.model;
+    h.state.model = model;
+    return h.fire("model_select", { model, previousModel: previous, source: "set" });
+  };
+  const savedNames = (h: ReturnType<typeof harness>) =>
+    h.state.branch.map((e) => e.data.profile.name);
+
+  it("applies the profile an agent model names at startup, leaving the model alone", async () => {
+    const h = onAgent();
+    Object.assign(h.state.profile, { model: "anthropic/other", thinking: "high" });
+    const chosen = h.state.model;
+    await h.start();
+    expect(h.resolve).toHaveBeenCalledWith("reader", h.ctx);
+    expect(h.state.model).toBe(chosen);
+    expect(h.pi.setModel).not.toHaveBeenCalled();
+    expect(h.pi.setThinkingLevel).not.toHaveBeenCalled();
+    expect(h.state.active).toEqual(["read", ...MAIN_AGENT_REQUIRED_TOOLS]);
+    expect(savedNames(h)).toEqual(["reader"]);
+    expect((await h.prompt()).sections[MAIN_AGENT_SECTION]).toContain("ONLY MAIN");
+    expect(h.pi.sendMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("restores the saved profile when the agent model names the same agent", async () => {
+    const h = onAgent();
+    await h.start();
+    h.manual();
+    h.state.model = agent("reader");
+    h.resolve.mockClear();
+    await h.start();
+    expect(h.resolve).not.toHaveBeenCalled();
+    expect(h.state.active).toEqual(["write", "tool_search"]);
+    expect(savedNames(h)).toEqual(["reader"]);
+  });
+
+  it("switches to the agent model's profile when the saved one is another agent", async () => {
+    const h = onAgent("planner");
+    h.state.branch = [
+      {
+        type: "custom",
+        customType: MAIN_AGENT_ENTRY,
+        data: { version: 1, profile: { ...h.state.profile, name: "reader" } },
+      },
+    ];
+    await h.start("resume");
+    expect(h.resolve).toHaveBeenCalledWith("planner", h.ctx);
+    expect(savedNames(h)).toEqual(["reader", "planner"]);
+  });
+
+  it("applies on /new too, since the new session starts on the agent model", async () => {
+    const h = onAgent();
+    await h.start("new");
+    expect(savedNames(h)).toEqual(["reader"]);
+  });
+
+  it("an agent model wins over PI_MAIN_AGENT, and --agent wins over both", async () => {
+    const h = onAgent("planner");
+    h.state.env = "reader";
+    await h.start();
+    expect(h.resolve).toHaveBeenCalledTimes(1);
+    expect(h.resolve).toHaveBeenCalledWith("planner", h.ctx);
+    const flagged = onAgent("planner");
+    flagged.state.flag = "reader";
+    await flagged.start();
+    expect(flagged.resolve).toHaveBeenCalledTimes(1);
+    expect(flagged.resolve).toHaveBeenCalledWith("reader", flagged.ctx);
+  });
+
+  it("ignores a model of provider agent that no profile registered", async () => {
+    const h = onAgent("ghost");
+    await h.start();
+    expect(h.resolve).not.toHaveBeenCalled();
+    expect(h.state.branch).toEqual([]);
+  });
+
+  it("never applies to a delegated child that inherited the parent's model", async () => {
+    const h = onAgent();
+    h.state.child = true;
+    await h.start();
+    await picked(h, agent("planner"));
+    expect(h.resolve).not.toHaveBeenCalled();
+    expect(h.state.branch).toEqual([]);
+  });
+
+  it("applies the profile when an agent model is picked later, and shows it", async () => {
+    const h = harness("rpc");
+    h.state.flag = undefined;
+    h.resolve.mockImplementation((name?: string) => ({ ...h.state.profile, name: name! }));
+    await h.start();
+    expect(h.state.branch).toEqual([]);
+    const before = h.state.model;
+    await picked(h, agent("reader"));
+    expect(savedNames(h)).toEqual(["reader"]);
+    expect(h.state.active).toEqual(["read", ...MAIN_AGENT_REQUIRED_TOOLS]);
+    expect(h.pi.setModel).not.toHaveBeenCalled();
+    expect(h.state.model).not.toBe(before);
+    expect(h.ctx.ui.setStatus).toHaveBeenLastCalledWith("agent:status", "Agent · reader");
+    expect(h.pi.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringContaining("Agent reader · defaults applied"),
+      }),
+      { triggerTurn: false },
+    );
+    expect((await h.prompt()).sections[MAIN_AGENT_SECTION]).toContain("ONLY MAIN");
+  });
+
+  it("switches profile when a different agent model is picked", async () => {
+    const h = onAgent();
+    await h.start();
+    h.state.profile.systemPrompt = "PLANNER BODY";
+    await picked(h, agent("planner"));
+    expect(savedNames(h)).toEqual(["reader", "planner"]);
+    expect((await h.prompt()).sections[MAIN_AGENT_SECTION]).toContain("PLANNER BODY");
+    expect((await h.prompt()).sections[MAIN_AGENT_SECTION]).toContain('name="planner"');
+  });
+
+  it("does nothing when the agent already running is picked again", async () => {
+    const h = onAgent();
+    await h.start();
+    await picked(h, agent("reader"));
+    expect(savedNames(h)).toEqual(["reader"]);
+    expect(h.pi.setActiveTools).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the profile in place when a physical model is picked afterwards", async () => {
+    const h = onAgent();
+    await h.start();
+    h.manual();
+    await picked(h, makeModel({ id: "plain" }));
+    expect(savedNames(h)).toEqual(["reader"]);
+    expect(h.state.active).toEqual(["write", "tool_search"]);
+    expect((await h.prompt()).sections[MAIN_AGENT_SECTION]).toContain("ONLY MAIN");
+    expect(await h.fire("input")).toBeUndefined();
+  });
+
+  it("does not treat a restored selection as a choice", async () => {
+    const h = harness("rpc");
+    h.state.flag = undefined;
+    await select(h, agent("reader"), "restore");
+    expect(h.resolve).not.toHaveBeenCalled();
+  });
+
+  it("blocks input, without ending the session, when the picked profile cannot load", async () => {
+    const h = onAgent();
+    await h.start();
+    h.resolve.mockImplementation(() => {
+      throw new Error(
+        'Main agent profile "planner" requires Pi project trust (--approve or /trust).',
+      );
+    });
+    await picked(h, agent("planner"));
+    expect(await h.fire("input")).toEqual({ action: "handled" });
+    expect(h.ctx.shutdown).not.toHaveBeenCalled();
+    expect(h.ctx.abort).not.toHaveBeenCalled();
+    expect(h.pi.sendMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ content: expect.stringContaining("requires Pi project trust") }),
+      { triggerTurn: false },
+    );
+    expect(savedNames(h)).toEqual(["reader"]);
+    // Choosing any model lifts the block and keeps the agent that was running.
+    await picked(h, makeModel({ id: "plain" }));
+    expect(await h.fire("input")).toBeUndefined();
+    expect(h.ctx.ui.setStatus).toHaveBeenLastCalledWith("agent:status", "Agent · reader");
+    expect((await h.prompt()).sections[MAIN_AGENT_SECTION]).toContain("ONLY MAIN");
+  });
+
+  it("recovers from a failed switch by picking another agent", async () => {
+    const h = onAgent();
+    await h.start();
+    h.resolve.mockImplementationOnce(() => {
+      throw new Error("nope");
+    });
+    await picked(h, agent("planner"));
+    expect(await h.fire("input")).toEqual({ action: "handled" });
+    h.resolve.mockImplementation((name?: string) => ({ ...h.state.profile, name: name! }));
+    await picked(h, agent("planner"));
+    expect(await h.fire("input")).toBeUndefined();
+    expect(savedNames(h)).toEqual(["reader", "planner"]);
+  });
+
+  it("a startup failure stays terminal even if a model is picked", async () => {
+    const h = onAgent();
+    h.resolve.mockImplementation(() => {
+      throw new Error("boom");
+    });
+    await h.start();
+    expect(h.ctx.shutdown).toHaveBeenCalled();
+    await picked(h, makeModel({ id: "plain" }));
+    expect(await h.fire("input")).toEqual({ action: "handled" });
+  });
+
+  it("leaves terminal sessions showing the choice through notify only", async () => {
+    const h = onAgent("reader", "tui");
+    await h.start();
+    expect(h.ctx.ui.notify).toHaveBeenCalledTimes(1);
+    expect(h.pi.sendMessage).not.toHaveBeenCalled();
   });
 });
 

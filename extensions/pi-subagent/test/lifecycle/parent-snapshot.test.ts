@@ -52,6 +52,30 @@ describe("buildParentSnapshot", () => {
     expect(snapshot.model).toBe(model);
   });
 
+  it("hands a child the physical model behind an agent model, not the agent model", () => {
+    const physical = { id: "claude-haiku", provider: "anthropic", api: "anthropic-messages" };
+    const agent = { id: "orchestrate", provider: "agent", api: "pi-virtual" };
+    const snapshot = buildParentSnapshot(
+      makeCtx({
+        model: agent,
+        modelRegistry: {
+          find: vi.fn(() => physical),
+          getAvailable: vi.fn(() => [physical]),
+          hasConfiguredAuth: vi.fn(() => true),
+        },
+        sessionManager: {
+          getBranch: vi.fn(() => [
+            {
+              type: "message",
+              message: { role: "assistant", provider: "anthropic", model: "claude-haiku" },
+            },
+          ]),
+        },
+      }),
+    );
+    expect(snapshot.model).toBe(physical);
+  });
+
   it("captures modelRegistry from ctx", () => {
     const registry = { find: vi.fn(), getAvailable: vi.fn(() => []) };
     const snapshot = buildParentSnapshot(makeCtx({ modelRegistry: registry }));

@@ -6,7 +6,7 @@ import { errorText } from "#foundations/errors";
 import { readEntries } from "#session-state";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
+import { getSupportedThinkingLevels, type Api, type Model } from "@earendil-works/pi-ai";
 import {
   getAgentDir,
   parseFrontmatter,
@@ -26,6 +26,8 @@ import type { AgentConfig } from "#src/types";
 import { sanitizeText } from "#ui";
 
 export const MAIN_AGENT_ENTRY = "agent:profile";
+/** Provider id of the virtual models that run a profile as the main agent: `agent/<name>`. */
+export const AGENT_PROVIDER = "agent";
 /** Environment variable that selects the main agent when `--agent` is absent. */
 export const MAIN_AGENT_ENV = "PI_MAIN_AGENT";
 /** Displayed (never model-visible) notices for hosts that drop `notify`, such as RPC apps. */
@@ -50,10 +52,15 @@ export interface MainAgentProfileIO {
   env(): string | undefined;
   /** True for a delegated child session, which never takes its profile from the environment. */
   isChild(ctx: ExtensionContext): boolean;
+  /** The profile an agent model names, or undefined for any other model. */
+  agentModel(model: { provider: string; id: string } | undefined): string | undefined;
 }
 
+/** What resolving a main profile reads: the session cwd and whether Pi trusts the project. */
+export type ProfileSource = Pick<ExtensionContext, "cwd" | "isProjectTrusted">;
+
 /** Main discovery uses the target session cwd, not the child registry's process.cwd closure. */
-export function resolveMainAgentProfile(name: string, ctx: ExtensionContext): AgentConfig {
+export function resolveMainAgentProfile(name: string, ctx: ProfileSource): AgentConfig {
   const registry = new AgentTypeRegistry(() => loadCustomAgents(ctx.cwd));
   const key = registry.resolveType(name);
   if (!key) throw new Error(`Unknown main agent profile: "${name}".`);
@@ -89,7 +96,47 @@ export function resolveMainAgentProfile(name: string, ctx: ExtensionContext): Ag
   return profile;
 }
 
-function validateTrust(profile: AgentConfig, ctx: ExtensionContext): void {
+/**
+ * Every profile `--agent <name>` accepts for this source: it parses, is not disabled, passes
+ * project trust, and has valid thinking and fragments. Hidden profiles run by name but are
+ * not advertised, so pickers leave them out.
+ */
+export function listMainAgentProfiles(source: ProfileSource): AgentConfig[] {
+  const registry = new AgentTypeRegistry(() => loadCustomAgents(source.cwd));
+  const profiles: AgentConfig[] = [];
+  for (const name of registry.getAllTypes()) {
+    try {
+      const profile = resolveMainAgentProfile(name, source);
+      if ((profile.visibility ?? "visible") === "visible") profiles.push(profile);
+    } catch {
+      /* Cannot run as the main agent: not offered. */
+    }
+  }
+  return profiles;
+}
+
+/** A profile's `model` as an available model, or undefined. */
+export function resolveProfileModel(
+  spec: string,
+  modelRegistry: ExtensionContext["modelRegistry"],
+): Model<Api> | undefined {
+  const slash = spec.indexOf("/");
+  const resolved =
+    slash < 0 || spec.toLowerCase().endsWith(LATEST_SUFFIX)
+      ? resolveModel(spec, modelRegistry)
+      : modelRegistry.find(spec.slice(0, slash), spec.slice(slash + 1));
+  if (
+    !resolved ||
+    typeof resolved === "string" ||
+    !modelRegistry
+      .getAvailable()
+      .some((m) => m.provider === resolved.provider && m.id === resolved.id)
+  )
+    return undefined;
+  return resolved;
+}
+
+function validateTrust(profile: AgentConfig, ctx: ProfileSource): void {
   if (profile.source === "project" && !ctx.isProjectTrusted()) {
     throw new Error(
       `Main agent profile "${profile.name}" requires Pi project trust (--approve or /trust).`,
@@ -150,10 +197,13 @@ export function registerMainAgentProfile(
     diagnostic: (message) => console.error(message),
     env: () => process.env[MAIN_AGENT_ENV],
     isChild: () => false,
+    agentModel: (model) => (model?.provider === AGENT_PROVIDER ? model.id : undefined),
     ...overrides,
   };
   let selected: MainAgentSnapshot | undefined;
   let failure: string | undefined;
+  /** The failure came from picking an agent model: input is blocked, but the session lives. */
+  let switchFailure = false;
   let lastNotice: string | undefined;
   let runPromptOptions: BuildSystemPromptOptions | undefined;
 
@@ -190,6 +240,7 @@ export function registerMainAgentProfile(
   }
 
   function fail(ctx: ExtensionContext, error: unknown): false {
+    switchFailure = false;
     failure = `Main agent blocked: ${errorText(error)}`;
     // Pi swallows event errors. Input is handled below; context has a live abort
     // signal and stops the provider request. shutdown is advisory (print/SDK may
@@ -202,7 +253,8 @@ export function registerMainAgentProfile(
   }
 
   function ready(ctx: ExtensionContext): boolean {
-    if (failure) return fail(ctx, failure.replace(/^Main agent blocked: /, ""));
+    if (failure)
+      return switchFailure ? false : fail(ctx, failure.replace(/^Main agent blocked: /, ""));
     try {
       if (selected) validateTrust(selected.profile, ctx);
       return true;
@@ -227,20 +279,8 @@ export function registerMainAgentProfile(
     validateTrust(profile, ctx);
     let model = ctx.model;
     if (profile.model && !hostModel) {
-      const slash = profile.model.indexOf("/");
-      const resolved =
-        slash < 0 || profile.model.toLowerCase().endsWith(LATEST_SUFFIX)
-          ? resolveModel(profile.model, ctx.modelRegistry)
-          : ctx.modelRegistry.find(profile.model.slice(0, slash), profile.model.slice(slash + 1));
-      if (
-        !resolved ||
-        typeof resolved === "string" ||
-        !ctx.modelRegistry
-          .getAvailable()
-          .some((m) => m.provider === resolved.provider && m.id === resolved.id)
-      ) {
-        throw new Error(`Unavailable profile model: ${profile.model}.`);
-      }
+      const resolved = resolveProfileModel(profile.model, ctx.modelRegistry);
+      if (!resolved) throw new Error(`Unavailable profile model: ${profile.model}.`);
       model = resolved;
     }
     const thinking = hostModel ? undefined : profile.thinking;
@@ -298,34 +338,48 @@ export function registerMainAgentProfile(
     return `${ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "current model"} · thinking ${pi.getThinkingLevel()} · ${tools.length} active tools${pending}`;
   }
 
-  async function restore(ctx: ExtensionContext, explicit: boolean): Promise<void> {
+  /**
+   * `explicit` is a process startup, the only time `--agent` and `PI_MAIN_AGENT` apply.
+   * `atStart` is any session start, when an agent model that is already selected applies.
+   */
+  async function restore(ctx: ExtensionContext, explicit: boolean, atStart = false): Promise<void> {
     selected = undefined;
     failure = undefined;
+    switchFailure = false;
     runPromptOptions = undefined;
     lastNotice = undefined;
     try {
       const flag = pi.getFlag("agent");
       const override = explicit && typeof flag === "string";
+      // A session that starts on an agent model runs that agent unless its saved profile
+      // already is that agent; the flag, being explicit, still wins. Children inherit the
+      // parent's model and must not take on its profile.
+      const modelAgent =
+        atStart && !override && !io.isChild(ctx) ? io.agentModel(ctx.model) : undefined;
       let saved: MainAgentSnapshot | undefined;
-      // Explicit flag can recover a corrupt snapshot. Valid saved state still deduplicates.
-      if (override) {
+      // An explicit selection can recover a corrupt snapshot. Valid saved state still deduplicates.
+      if (override || modelAgent) {
         try {
           saved = branchSnapshot(ctx);
         } catch {
           /* explicit selection supersedes it */
         }
       } else saved = branchSnapshot(ctx);
+      const byModel = modelAgent !== undefined && saved?.profile.name !== modelAgent;
       // PI_MAIN_AGENT is for hosts that cannot pass --agent. It only starts a session that
       // has no profile yet: the host restarts Pi on every resume, so re-applying would
-      // reset the user's tools. The flag wins, and delegated children never read it.
+      // reset the user's tools. The flag and an agent model win, and delegated children
+      // never read it.
       const envName =
-        override || !explicit || saved || io.isChild(ctx) ? "" : (io.env() ?? "").trim();
+        override || byModel || !explicit || saved || io.isChild(ctx) ? "" : (io.env() ?? "").trim();
       const fromEnv = envName !== "";
-      selected = override
-        ? { version: 1, profile: structuredClone(io.resolveProfile(flag.trim(), ctx)) }
-        : fromEnv
-          ? { version: 1, profile: structuredClone(io.resolveProfile(envName, ctx)) }
-          : saved;
+      // The host passes its own --model and --thinking, which win over the profile's.
+      const hostModel = fromEnv || byModel;
+      const wanted = override ? flag.trim() : byModel ? modelAgent : fromEnv ? envName : undefined;
+      selected =
+        wanted === undefined
+          ? saved
+          : { version: 1, profile: structuredClone(io.resolveProfile(wanted, ctx)) };
       if (override && selected) {
         // Core --model is not an extension flag. Launchers mirror their explicit
         // model here; replace only the effective snapshot, never the registry.
@@ -340,32 +394,76 @@ export function registerMainAgentProfile(
         return;
       }
       validateTrust(selected.profile, ctx);
-      // The host passes its own --model and --thinking, which win over the profile's.
       const defaults =
-        override || fromEnv ? await applyDefaults(selected.profile, ctx, fromEnv) : undefined;
+        wanted !== undefined ? await applyDefaults(selected.profile, ctx, hostModel) : undefined;
       if (!saved || JSON.stringify(saved) !== JSON.stringify(selected))
         pi.appendEntry(MAIN_AGENT_ENTRY, structuredClone(selected));
-      const name = sanitizeText(selected.profile.name).replace(/\s+/g, " ").trim();
-      ctx.ui.setStatus("agent:status", `Agent · ${name}`);
-      const skipped = [
-        selected.profile.maxTurns !== undefined && "max_turns",
-        selected.profile.inheritContext !== undefined && "inherit_context",
-      ].filter(Boolean);
-      notice(
-        ctx,
-        `Agent ${name} · ${defaults ? `defaults applied\n${defaults}` : "instructions restored; settings preserved"}${skipped.length ? `\nSubagent-only fields skipped: ${skipped.join(", ")}` : ""}`,
-        false,
-        defaults !== undefined,
-      );
+      announce(ctx, selected, defaults);
     } catch (error) {
       fail(ctx, error);
+    }
+  }
+
+  function announce(ctx: ExtensionContext, snapshot: MainAgentSnapshot, defaults?: string): void {
+    const name = sanitizeText(snapshot.profile.name).replace(/\s+/g, " ").trim();
+    ctx.ui.setStatus("agent:status", `Agent · ${name}`);
+    const skipped = [
+      snapshot.profile.maxTurns !== undefined && "max_turns",
+      snapshot.profile.inheritContext !== undefined && "inherit_context",
+    ].filter(Boolean);
+    notice(
+      ctx,
+      `Agent ${name} · ${defaults ? `defaults applied\n${defaults}` : "instructions restored; settings preserved"}${skipped.length ? `\nSubagent-only fields skipped: ${skipped.join(", ")}` : ""}`,
+      false,
+      defaults !== undefined,
+    );
+  }
+
+  /**
+   * An agent model was picked in a running session: run that agent, with the model the
+   * virtual model routes to. A profile that cannot load blocks input until another model is
+   * picked; it does not end the session, because the user can still choose.
+   */
+  async function switchAgent(ctx: ExtensionContext, wanted: string): Promise<void> {
+    try {
+      const snapshot: MainAgentSnapshot = {
+        version: 1,
+        profile: structuredClone(io.resolveProfile(wanted, ctx)),
+      };
+      const defaults = await applyDefaults(snapshot.profile, ctx, true);
+      selected = snapshot;
+      runPromptOptions = undefined;
+      pi.appendEntry(MAIN_AGENT_ENTRY, structuredClone(snapshot));
+      announce(ctx, snapshot, defaults);
+    } catch (error) {
+      failure = `Main agent blocked: ${errorText(error)}`;
+      switchFailure = true;
+      ctx.ui.setStatus("agent:status", "agent:blocked");
+      notice(ctx, failure, true, true);
     }
   }
 
   pi.on("session_start", async (event, ctx) => {
     // The CLI flag belongs only to the initial session (including CLI resume).
     // Pi retains flag values across replacements: never reuse it for /new or /resume.
-    await restore(ctx, event.reason === "startup");
+    await restore(ctx, event.reason === "startup", true);
+  });
+  pi.on("model_select", async (event, ctx) => {
+    if (event.source === "restore") return;
+    if (switchFailure) {
+      // A failed switch is not terminal: choosing any model clears it and keeps the old profile.
+      failure = undefined;
+      switchFailure = false;
+      lastNotice = undefined;
+      ctx.ui.setStatus(
+        "agent:status",
+        selected ? `Agent · ${sanitizeText(selected.profile.name)}` : undefined,
+      );
+    }
+    if (failure || io.isChild(ctx)) return;
+    const wanted = io.agentModel(event.model);
+    if (wanted === undefined || selected?.profile.name === wanted) return;
+    await switchAgent(ctx, wanted);
   });
   pi.on("session_tree", async (_event, ctx) => {
     await restore(ctx, false);
@@ -373,6 +471,7 @@ export function registerMainAgentProfile(
   pi.on("session_shutdown", () => {
     selected = undefined;
     failure = undefined;
+    switchFailure = false;
     runPromptOptions = undefined;
   });
   // The displayed notice is for the user; the model has no use for it.

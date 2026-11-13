@@ -34,6 +34,7 @@ const DEFAULTS: SubagentsSettings = {
   unconsumedSessionRetentionMinutes: 720,
   abortAllOnInterrupt: true,
   midRunUpdates: true,
+  agentModels: true,
   excludedExtensionPackages: [],
   promptInheritance: {},
 };
@@ -164,6 +165,7 @@ describe("settings persistence", () => {
       ["unconsumedSessionRetentionMinutes", [0, 12.5, 20_161]],
       ["abortAllOnInterrupt", ["false", 0, null]],
       ["midRunUpdates", ["false", 0, null]],
+      ["agentModels", ["false", 0, null]],
       ["excludedExtensionPackages", ["npm:pkg", {}, null]],
       ["promptInheritance", ["portable", [], null]],
     ] as const)("drops invalid %s, keeps the global value and valid siblings", (key, values) => {
