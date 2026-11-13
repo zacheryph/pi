@@ -64,7 +64,7 @@ work and goes idle, while the dashboard tab is open but not focused. Clicking a
 notification opens that session. The filter and toggle are remembered per
 browser.
 
-`/dashboard` shows the URL and opens it in your browser.
+`/dashboard` shows the URL and opens it in your browser. Outside the terminal UI (an app that runs Pi over RPC, say) it only shows the URL, as a displayed message; that session is not listed.
 
 ## Focus
 

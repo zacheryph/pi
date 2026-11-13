@@ -426,3 +426,36 @@ describe("one reader of landing per host", () => {
     expect(reads).toEqual([1, 1]);
   });
 });
+
+describe("/work:wake outside the terminal", () => {
+  it("answers a manual call as a displayed message, and as a notification in the terminal", async () => {
+    const h = fakePi();
+    ensureWorkHost(h.api);
+    const { ctx } = context();
+    await h.emit("session_start", { reason: "startup" }, ctx);
+    expect(h.commands.has("work:wake")).toBe(true);
+
+    const rpc = { ...ctx, mode: "rpc", hasUI: true };
+    await h.runCommand("work:wake", "", rpc);
+    expect(rpc.ui.notify).not.toHaveBeenCalled();
+    expect(h.shown()).toEqual([
+      expect.objectContaining({
+        customType: "work:output",
+        display: true,
+        level: "info",
+        text: "pi-work: no work is waiting for an answer.",
+      }),
+    ]);
+    expect(h.pi.sendMessage).toHaveBeenLastCalledWith(expect.objectContaining({ display: true }), {
+      triggerTurn: false,
+    });
+
+    const tui = { ...ctx, mode: "tui", hasUI: true };
+    await h.runCommand("work:wake", "", tui);
+    expect(tui.ui.notify).toHaveBeenCalledWith(
+      "pi-work: no work is waiting for an answer.",
+      "info",
+    );
+    expect(h.shown()).toHaveLength(1);
+  });
+});
