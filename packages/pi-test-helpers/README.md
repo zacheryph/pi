@@ -24,16 +24,16 @@ file needs its own `afterEach` list of cleanups.
 
 ## Modules
 
-| Module            | Exports                                                                                                                                                                 |
-| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `temp.ts`         | `tempDir(cleanup, prefix?)`; `writeFiles(root, files)`, objects written as JSON; `settingsDirs(cleanup, filename)`, an agent dir and a project for layered config files |
-| `wait.ts`         | `waitFor(check, { timeout, interval, what })` returns the first truthy value; `sleep`, `tick`, `flushMicrotasks`                                                        |
-| `theme.ts`        | `plainTheme`, `ansiTheme` (real SGR codes), `markupTheme` (`[color:text]`, `**bold**`), `stripAnsi` (colors only: leaked controls stay visible), `plainLines`           |
-| `render.ts`       | _vitest_. `expectPadded(row, width)` (the AGENTS.md spacing rule), `expectBounded(lines, width, height?)`, `NARROW_WIDTHS`, `WIDE_TEXT`                                 |
-| `globals.ts`      | `slots`, `clearSlots(...keys)`, `withSlot(key, value, run)`, `resetSessionTree()`                                                                                       |
-| `fake-pi.ts`      | _vitest_. `fakePi(extra?)`: spies for `on`, `registerTool`, `registerCommand`, `appendEntry`, `sendMessage`, a working `events` bus; `emit`, `runTool`, `runCommand`    |
-| `ui.ts`           | _vitest_. `fakeCustomUi({ theme, tui, awaitDone })`: a `ui.custom` spy that mounts each component; `fakeTui(rows, columns)`, `keybindings()`                            |
-| `faux-session.ts` | `fauxSession(options)`, `fauxRuntime`, `toolCall`, `toolResults`, `messageText`, `loadResources`                                                                        |
+| Module            | Exports                                                                                                                                                                                                                                                                   |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `temp.ts`         | `tempDir(cleanup, prefix?)`; `writeFiles(root, files)`, objects written as JSON; `settingsDirs(cleanup, filename)`, an agent dir and a project for layered config files                                                                                                   |
+| `wait.ts`         | `waitFor(check, { timeout, interval, what })` returns the first truthy value; `sleep`, `tick`, `flushMicrotasks`                                                                                                                                                          |
+| `theme.ts`        | `plainTheme`, `ansiTheme` (real SGR codes), `markupTheme` (`[color:text]`, `**bold**`), `stripAnsi` (colors only: leaked controls stay visible), `plainLines`                                                                                                             |
+| `render.ts`       | _vitest_. `expectPadded(row, width)` (the AGENTS.md spacing rule), `expectBounded(lines, width, height?)`, `NARROW_WIDTHS`, `WIDE_TEXT`                                                                                                                                   |
+| `globals.ts`      | `slots`, `clearSlots(...keys)`, `withSlot(key, value, run)`, `resetSessionTree()`                                                                                                                                                                                         |
+| `fake-pi.ts`      | _vitest_. `fakePi(extra?)`: spies for `on`, `registerTool`, `registerCommand`, `appendEntry`, `sendMessage`, a working `events` bus; `emit`, `runTool`, `runCommand`; `shown()` and `shownOutput(spy)`, the texts pi-foundations' `userOutput` sent as displayed messages |
+| `ui.ts`           | _vitest_. `fakeCustomUi({ theme, tui, awaitDone })`: a `ui.custom` spy that mounts each component; `fakeTui(rows, columns)`, `keybindings()`                                                                                                                              |
+| `faux-session.ts` | `fauxSession(options)`, `fauxRuntime`, `toolCall`, `toolResults`, `messageText`, `loadResources`                                                                                                                                                                          |
 
 ## Unit tests of an extension factory
 

@@ -36,6 +36,7 @@ import {
   createAgentSession,
   DefaultResourceLoader,
   type ExtensionFactory,
+  type ExtensionUIContext,
   type SessionEntry,
   SessionManager,
   type SessionStartEvent,
@@ -60,6 +61,11 @@ export interface SessionOptions {
   bundle?: boolean;
   /** Extension mode reported to extensions. Default "print". */
   mode?: ExtensionMode;
+  /**
+   * The UI context extensions get (`ctx.hasUI` is true with one). Default none, as in print mode.
+   * With `mode: "rpc"` it plays an RPC host: dialogs answer, `custom` returns undefined.
+   */
+  ui?: ExtensionUIContext;
   /** Pi settings merged into the agent directory's `settings.json`, e.g. `{ compaction: … }`. */
   settings?: Record<string, unknown>;
 }
@@ -271,6 +277,7 @@ export async function startSession(options: SessionOptions): Promise<ScriptedSes
       session.subscribe((event) => events.push(event));
       await session.bindExtensions({
         mode: options.mode ?? "print",
+        ...(options.ui ? { uiContext: options.ui } : {}),
         commandContextActions: {
           waitForIdle: () => session.waitForIdle(),
           newSession: async () => ({ cancelled: true }),

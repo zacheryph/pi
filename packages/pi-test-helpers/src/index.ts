@@ -3,11 +3,13 @@ export { defer, type Cleanup, type Defer } from "#src/cleanup";
 export {
   fakeEventBus,
   fakePi,
+  shownOutput,
   type CustomEntry,
   type FakeCommand,
   type FakeEventBus,
   type FakePi,
   type FakeTool,
+  type ShownOutput,
 } from "#src/fake-pi";
 export {
   fauxRuntime,

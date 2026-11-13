@@ -54,6 +54,28 @@ fallback policy and compatibility exports.
 
 Run `npm run check` and `npm run test:workspace -- pi-foundations`.
 
+## Command output
+
+- `src/user-output.ts`: `userOutput(pi, customType)` returns `{ show(ctx, text, level?) }`,
+  the one way a slash command shows text to the user. In the terminal UI
+  (`ctx.mode === "tui"`) it calls `ctx.ui.notify(text, level)` unchanged. Anywhere
+  else it sends a displayed custom message, because an RPC host such as bb drops
+  `notify` but renders `display: true` messages in its timeline. The text is
+  sanitized, a warning or error leads with `Warning: ` or `Error: `, and it is
+  capped at 120 lines / 12,000 characters (`capOutput`, with a line saying how
+  much was left out). `isTerminal(ctx)` is true when a command may open an overlay.
+
+  The message is sent with `{ triggerTurn: false }`, so it never starts a model
+  turn; while a run is active Pi holds it until the turn ends instead of steering
+  it between a tool call and its result. Pi puts every custom message in the
+  model's context, so `userOutput` registers one `context` handler per `pi` that
+  drops messages marked `details.userOutput`; it returns nothing when there is
+  none, which leaves Pi's cached prefix alone. Call it from the extension factory
+  (before any session resumes), not lazily from a command. The message stays in
+  the session file and the host's timeline. Pi's compaction summaries are built from
+  session entries, so they may still mention it.
+  Dialogs (`ctx.ui.select/confirm/input`) need no helper: RPC hosts render them.
+
 ## Plain-data helpers
 
 These modules have no Pi or pi-ui dependencies. Import them through

@@ -87,6 +87,7 @@ model and binds the session as Pi's print mode does.
 | `agentFiles` |                | Files for the agent directory, e.g. `{ "todo.json": {...} }`.  |
 | `bundle`     | `true`         | `false` loads only the scenario.                               |
 | `mode`       | `"print"`      | The extension mode extensions see.                             |
+| `ui`         | none           | The UI context (`hasUI` is true with one), e.g. a fake RPC UI. |
 | `settings`   | see below      | Pi settings merged into the agent directory's `settings.json`. |
 
 The session is saved to a file in the agent directory, as a real one is.
