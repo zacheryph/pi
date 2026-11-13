@@ -1,4 +1,5 @@
 import { errorText } from "#foundations/errors";
+import { userOutput } from "#foundations/user-output";
 import { randomBytes } from "node:crypto";
 import {
   defineTool,
@@ -55,6 +56,8 @@ import { entrySummary, formatAge, formatBytes, originLabel, previewRows } from "
 const CONTEXT_TYPE = "stash:context";
 const CARD_ENTRIES = 20;
 const LIST_LIMIT = 200;
+/** Rows `/stash` lists as text outside the terminal. */
+const COMMAND_LIST_LIMIT = 100;
 const PREVIEW_ROWS = 10;
 /** Session-tree service name other sessions' pi-stash calls. */
 const SERVICE_NAME = "stash:service";
@@ -263,6 +266,7 @@ export default function stashExtension(
   pi: ExtensionAPI,
   dependencies: StashExtensionDependencies = {},
 ): void {
+  const output = userOutput(pi, "stash:output");
   let store = dependencies.store;
   let config = stashSettings.defaults();
   let index = createEmptyIndex();
@@ -678,6 +682,17 @@ export default function stashExtension(
       } catch (error) {
         warning = `Unable to measure store: ${errorText(error)}`;
       }
+      if (ctx.mode !== "tui") {
+        // No overlay here: list the entries as text; stash_get reads one.
+        output.show(
+          ctx,
+          [warning, listText(entries.slice(0, COMMAND_LIST_LIMIT), entries.length)]
+            .filter(Boolean)
+            .join("\n"),
+          warning ? "warning" : "info",
+        );
+        return;
+      }
       // Details load through stash.inspect, defined at session_start.
       await showStashBrowser(ctx, entries, pi.events, warning, {
         fallback: () =>
@@ -697,12 +712,13 @@ export default function stashExtension(
           config.retentionDays,
           index.records.map((entry) => entry.hash),
         );
-        ctx.ui.notify(
+        output.show(
+          ctx,
           `Stash GC: removed ${result.removed} blob${result.removed === 1 ? "" : "s"}, freed ${formatBytes(result.freedBytes)}; ${result.kept} kept (retention ${config.retentionDays}d).`,
           "info",
         );
       } catch (error) {
-        ctx.ui.notify(sanitizeText(`Stash GC failed: ${errorText(error)}`), "error");
+        output.show(ctx, sanitizeText(`Stash GC failed: ${errorText(error)}`), "error");
       }
     },
   });
