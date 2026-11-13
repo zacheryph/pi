@@ -1,4 +1,5 @@
 import { errorText } from "#foundations/errors";
+import { userOutput } from "#foundations/user-output";
 import { StringEnum } from "@earendil-works/pi-ai";
 import {
   type AgentToolResult,
@@ -172,6 +173,7 @@ export default function todoExtension(
   dependencies: TodoExtensionDependencies = {},
 ): void {
   const now = dependencies.now ?? Date.now;
+  const output = userOutput(pi, "todo:output");
   let state = createEmptyTodoState();
   let activity: TodoActivity = new Map();
   let review: TodoReviewState = createTodoReviewState();
@@ -342,6 +344,7 @@ export default function todoExtension(
   };
 
   registerTodoCommands(pi, {
+    output,
     state: () => cloneTodoState(state),
     config: () => ({ ...config }),
     activity: () => cloneTodoActivity(activity),
@@ -358,9 +361,10 @@ export default function todoExtension(
       updateWidget(ctx);
       try {
         (dependencies.saveConfig ?? todoSettings.save)(ctx.cwd, patch);
-        ctx.ui.notify("Task settings saved to .pi/todo.json.", "info");
+        output.show(ctx, "Task settings saved to .pi/todo.json.", "info");
       } catch (error) {
-        ctx.ui.notify(
+        output.show(
+          ctx,
           sanitizeText(
             `Task settings applied (session only; failed to persist): ${errorText(error)}`,
           ),

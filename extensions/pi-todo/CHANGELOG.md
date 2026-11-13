@@ -3,6 +3,18 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-13: Commands report without a terminal
+
+An app that hosts Pi over RPC drops `ctx.ui.notify`, so `/todo` opened nothing and the other
+commands' results were never shown.
+
+- Outside the terminal UI, `/todo` shows the task list as text (`renderTodoText`, at most 40 rows)
+  and every command result and error goes through pi-foundations' `userOutput`: a notification in
+  the terminal, a displayed custom message elsewhere, kept out of the model's context.
+- `/todo:add` with no subject and no dialog to ask reports its usage instead of doing nothing.
+- `test/harness.ts` collects both channels in `notices`; `test/index.test.ts` covers the message
+  channel, the listing cap and the context filter.
+
 ## 2026-11-11: Share workspace development tooling
 
 - Use the root TypeScript and test configuration and root development commands;

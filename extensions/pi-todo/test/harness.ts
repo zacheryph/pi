@@ -11,7 +11,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import type { TSchema } from "typebox";
 import { expect, vi } from "vitest";
-import { fakePi, messageText } from "#test-helpers";
+import { fakePi, messageText, shownOutput } from "#test-helpers";
 import todoExtension, { type TodoExtensionDependencies } from "#src/index";
 import { todoSettings, type TodoConfig } from "#src/config";
 import type { TodoRequest } from "#src/actions";
@@ -19,6 +19,7 @@ import type { TodoDetails } from "#src/state";
 import { TODO_JOURNAL_TYPE, TODO_REVIEW_TYPE } from "#src/replay";
 
 type Command = Omit<RegisteredCommand, "name" | "sourceInfo">;
+const isOutput = (message: unknown) => shownOutput({ mock: { calls: [[message]] } }).length > 0;
 export type TodoTool = ToolDefinition<TSchema, TodoDetails>;
 export const CONTEXT_TYPE = "todo:context";
 export const T0 = Date.UTC(2026, 9, 22, 12);
@@ -40,8 +41,10 @@ export interface HarnessOptions {
  */
 export function harness(options: HarnessOptions = {}) {
   const session = options.session ?? SessionManager.inMemory(options.cwd ?? "/todo-test");
+  /** Every text the user was shown: a notification in the terminal, a displayed message elsewhere. */
+  const notices = vi.fn<(text: string, level: string) => void>();
   const ui = {
-    notify: vi.fn(),
+    notify: vi.fn((text: string, level: string) => notices(text, level)),
     setWidget: vi.fn(),
     custom: vi.fn(),
     input: vi
@@ -63,6 +66,11 @@ export function harness(options: HarnessOptions = {}) {
   const fake = fakePi({
     appendEntry: vi.fn((type: string, data: unknown) => {
       session.appendCustomEntry(type, data);
+    }),
+    sendMessage: vi.fn((message: unknown) => {
+      for (const shown of shownOutput({ mock: { calls: [[message]] } })) {
+        notices(shown.text, shown.level);
+      }
     }),
     ...(bus
       ? {
@@ -104,7 +112,8 @@ export function harness(options: HarnessOptions = {}) {
   const entriesOf = (type: string) =>
     session.getEntries().filter((e) => e.type === "custom" && e.customType === type);
   const noContinuation = () => {
-    expect(fake.pi.sendMessage).not.toHaveBeenCalled();
+    // Command output is shown to the user and never continues the session.
+    expect(fake.pi.sendMessage.mock.calls.filter(([m]) => !isOutput(m))).toEqual([]);
     expect(fake.pi.sendUserMessage).not.toHaveBeenCalled();
   };
   return {
@@ -113,6 +122,8 @@ export function harness(options: HarnessOptions = {}) {
     commands,
     handlers: fake.handlers,
     ui,
+    notices,
+    shown: fake.shown,
     ctx,
     pi: fake.pi,
     loadConfig,

@@ -136,6 +136,11 @@ session or branch changed. Non-UI clear-all
 requires `--yes` unless confirmation is disabled. Model tool `clear` is already
 explicit and does not open a dialog.
 
+Outside the terminal UI, for example in an app that runs Pi over RPC, `/todo`
+shows the task list as plain text and every command reports its result as a
+displayed message instead of a notification. These messages are for you: they
+are kept out of the model's context and never start a turn.
+
 ## Messages and review
 
 In a long session with several tasks and subagents, an outcome reported in chat is
