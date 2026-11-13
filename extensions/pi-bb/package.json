@@ -1,0 +1,36 @@
+{
+  "name": "pi-bb",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "imports": {
+    "#src/*": "./src/*.ts",
+    "#test/*": "./test/*.ts",
+    "#foundations/*": "pi-foundations/*",
+    "#presentation": "pi-presentation",
+    "#presentation/*": "pi-presentation/*",
+    "#stash/*": "pi-stash/*",
+    "#todo/*": "pi-todo/*",
+    "#test-helpers": "pi-test-helpers"
+  },
+  "description": "Shows this bundle's session state (todos, subagents, stash, git, questions) in bb's UI through the pi-surface bb plugin",
+  "keywords": [
+    "pi-package",
+    "pi-extension"
+  ],
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  }
+}
