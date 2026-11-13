@@ -1,12 +1,14 @@
 import { errorText } from "#foundations/errors";
+import { isJsonObject, type ActionBus, type ActionDefinition } from "#surface";
 import {
   showExplorer,
   type Block,
-  type ExplorerView,
+  type ExplorerModel,
   type Line,
   type ModalContext,
   type ModalOptions,
 } from "#ui";
+import { STASH_INSPECT_ACTION } from "#src/events";
 import { handleFor, type StashRecord } from "#src/state";
 import { entrySummary, formatAge, formatBytes, originLabel, shortSession } from "#src/ui/render";
 
@@ -42,13 +44,36 @@ export function stashDetail(record: StashRecord, load: (record: StashRecord) => 
   return blocks;
 }
 
-/** Explorer snapshot. Previews load lazily on Enter; nothing reads the store before that. */
+/**
+ * `stash.inspect` with `{ id: <handle> }`: one entry's detail blocks, for a user
+ * who opened it. Only handles of entries on this branch resolve.
+ */
+export function stashInspectAction(
+  find: (handle: string) => StashRecord | undefined,
+  load: (record: StashRecord) => StashPreview,
+): ActionDefinition<{ id: string }> {
+  return {
+    id: STASH_INSPECT_ACTION,
+    title: "Show a stash entry's details and content preview",
+    parse: (args) => {
+      if (!isJsonObject(args) || typeof args.id !== "string")
+        throw new Error("expected { id: <stash handle> }");
+      return { id: args.id };
+    },
+    handler: ({ id }) => {
+      const record = find(id);
+      if (!record) throw new Error(`No stash entry ${id} on this branch.`);
+      return stashDetail(record, load);
+    },
+  };
+}
+
+/** Explorer model, plain JSON. Previews load lazily on Enter through `stash.inspect`. */
 export function stashExplorerView(
   entries: readonly StashRecord[],
-  load: (record: StashRecord) => StashPreview,
   warning?: string,
   now = Date.now(),
-): ExplorerView {
+): ExplorerModel {
   const byId = new Map(entries.map((entry) => [handleFor(entry), entry]));
   const total = entries.reduce((sum, entry) => sum + entry.bytes, 0);
   const notices: Line[] = [];
@@ -72,20 +97,21 @@ export function stashExplorerView(
         text: `${record.via === "adopt" ? `↑ ${originLabel(record)} · ` : ""}${entrySummary(record)} · ${formatAge(record.createdAt, now)}`,
       },
     })),
-    loadDetail: (id) => stashDetail(byId.get(id)!, load),
+    loadDetail: { action: STASH_INSPECT_ACTION },
   };
 }
 
-/** Read-only list → detail modal. Owns no files or state beyond its snapshot. */
+/** Read-only list → detail modal. `actions` is the session's bus where `stash.inspect` is defined. */
 export async function showStashBrowser(
   ctx: ModalContext,
   entries: readonly StashRecord[],
-  load: (record: StashRecord) => StashPreview,
+  actions: ActionBus,
   warning?: string,
   options: ModalOptions = {},
 ): Promise<void> {
-  await showExplorer(ctx, stashExplorerView(entries, load, warning), {
+  await showExplorer(ctx, stashExplorerView(entries, warning), {
     command: "/stash",
     ...options,
+    actions,
   });
 }

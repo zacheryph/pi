@@ -47,7 +47,8 @@ import {
   type StashRecord,
 } from "#src/state";
 import { BlobStore, defaultStashRoot } from "#src/store";
-import { showStashBrowser } from "#src/ui/browser";
+import { showStashBrowser, stashInspectAction } from "#src/ui/browser";
+import { actionRegistry } from "#surface";
 import { bodyRow, sanitizeLine, sanitizeText } from "#ui";
 import { entrySummary, formatAge, formatBytes, originLabel, previewRows } from "#src/ui/render";
 
@@ -677,28 +678,14 @@ export default function stashExtension(
       } catch (error) {
         warning = `Unable to measure store: ${errorText(error)}`;
       }
-      // Preview is bounded like stash_get's hard cap; the store is never dumped whole.
-      await showStashBrowser(
-        ctx,
-        entries,
-        (entry) => {
-          const head = headLines(getStore().read(entry.hash), HARD_MAX_LINES, HARD_MAX_BYTES);
-          return {
-            lines: head.lines,
-            note: head.complete
-              ? undefined
-              : `Preview stops here; ${head.total} lines total. Read the rest with stash_get.`,
-          };
-        },
-        warning,
-        {
-          fallback: () =>
-            [warning, listText(entries.slice(0, LIST_LIMIT), entries.length)]
-              .filter(Boolean)
-              .join("\n"),
-          fallbackLevel: warning ? "warning" : "info",
-        },
-      );
+      // Details load through stash.inspect, defined at session_start.
+      await showStashBrowser(ctx, entries, pi.events, warning, {
+        fallback: () =>
+          [warning, listText(entries.slice(0, LIST_LIMIT), entries.length)]
+            .filter(Boolean)
+            .join("\n"),
+        fallbackLevel: warning ? "warning" : "info",
+      });
     },
   });
 
@@ -725,8 +712,32 @@ export default function stashExtension(
     publish();
   };
 
+  // Actions live on this session's bus from session_start to session_shutdown,
+  // so a /reload, which runs this factory again on the same bus, does not leak them.
+  const actions = actionRegistry(pi.events);
+  const defineActions = () => {
+    actions.dispose();
+    actions.define(
+      stashInspectAction(
+        // The latest record wins, as in the list the browser shows.
+        (handle) => index.records.findLast((entry) => handleFor(entry) === handle),
+        // Preview is bounded like stash_get's hard cap; the store is never dumped whole.
+        (entry) => {
+          const head = headLines(getStore().read(entry.hash), HARD_MAX_LINES, HARD_MAX_BYTES);
+          return {
+            lines: head.lines,
+            note: head.complete
+              ? undefined
+              : `Preview stops here; ${head.total} lines total. Read the rest with stash_get.`,
+          };
+        },
+      ),
+    );
+  };
+
   pi.on("session_start", async (_event, ctx) => {
     config = (dependencies.loadConfig ?? stashSettings.load)(ctx.cwd);
+    defineActions();
     restore(ctx);
     try {
       // Refresh what this session still references, then expire the rest.
@@ -755,6 +766,7 @@ export default function stashExtension(
     build: () => indexCard(index),
   });
   pi.on("session_shutdown", async () => {
+    actions.dispose();
     index = createEmptyIndex();
   });
 }

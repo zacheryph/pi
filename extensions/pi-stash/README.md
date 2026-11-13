@@ -105,6 +105,11 @@ through the hash-checked store, or `{ ok: false, error }`. Only bare names of
 this branch's entries are accepted, not full handles. pi-dashboard uses both
 for its stash panel and previews.
 
+pi-stash also defines the `stash.inspect` action on the session's bus (see
+[`pi-surface`](../../packages/pi-surface/README.md)) from session start to
+shutdown. Dispatched with `{ id: <handle> }` of an entry on this branch, it
+resolves to the detail blocks `/stash` shows when that entry is opened.
+
 ## Subagents
 
 **A subagent's entries appear in its ancestors' stash.** When a subagent stores an
@@ -129,7 +134,8 @@ handles. See [`../pi-subagent/UPSTREAM.md`](../pi-subagent/UPSTREAM.md).
   only): a filterable list → Enter loads that entry's name, full hash,
   description, origin, then a numbered content preview (up to 2,000 lines /
   50 KB). Nothing is read from the store until an entry is opened; a read error
-  shows below the metadata. Warns when the store is over its size cap.
+  shows below the metadata. Warns when the store is over its size cap. The list
+  is a plain JSON model; details load through `stash.inspect`.
 - `/stash:gc` deletes content not read or written for `retentionDays` and reports
   what it freed.
 
