@@ -56,6 +56,18 @@ function cleanText(value: unknown, max = 800): string {
   return sanitizeLine(value).replace(/\s+/g, " ").trim().slice(0, max);
 }
 
+/** The summary as plain text: the viewer's content, for a host without the terminal modal. */
+export function summaryText(result: TldrResult): string {
+  const findings = result.findings.split(/\s*;\s*/).filter(Boolean);
+  return [
+    `TLDR · ${result.title || "session"}`,
+    `Premise: ${result.premise}`,
+    "Findings / turns:",
+    ...findings.map((finding) => `- ${finding}`),
+    `Current status: ${result.status}`,
+  ].join("\n");
+}
+
 export function parseTldrResponse(raw: string): TldrResult {
   const candidate = raw.replace(/^\s*```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "");
   let data: unknown;

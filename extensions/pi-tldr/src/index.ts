@@ -1,3 +1,4 @@
+import { userOutput } from "#foundations/user-output";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { tldrSettings } from "#src/config";
 import {
@@ -5,12 +6,14 @@ import {
   runTldrModel,
   selectTldrModel,
   sessionSnapshot,
+  summaryText,
   titleSlug,
 } from "#src/core";
 import { showTldr } from "#src/viewer";
 
 /** Autonomous title request is deliberately never awaited by the first agent run. */
 export default function piTldr(pi: ExtensionAPI): void {
+  const output = userOutput(pi, "tldr:output");
   let config = tldrSettings.defaults();
   let generation = 0;
   let initialNamingAttempted = false;
@@ -137,21 +140,17 @@ export default function piTldr(pi: ExtensionAPI): void {
   pi.registerCommand("tldr", {
     description: "Concise current-session premise, major findings, and status",
     handler: async (_args, ctx) => {
-      if (ctx.mode !== "tui" || !ctx.hasUI) {
-        ctx.ui.notify("/tldr requires interactive terminal mode.", "warning");
-        return;
-      }
       const content = sessionSnapshot(ctx);
       if (
         !ctx.sessionManager
           .getBranch()
           .some((e) => e.type === "message" && e.message.role === "user")
       ) {
-        ctx.ui.notify("No session messages to summarize yet.", "info");
+        output.show(ctx, "No session messages to summarize yet.", "info");
         return;
       }
       if (summaryInProgress) {
-        ctx.ui.notify("/tldr is already summarizing this session.", "info");
+        output.show(ctx, "/tldr is already summarizing this session.", "info");
         return;
       }
       const token = generation;
@@ -160,9 +159,11 @@ export default function piTldr(pi: ExtensionAPI): void {
       summaryAbort = controller;
       summaryInProgress = true;
       try {
-        // Open the modal immediately; its body handles loading and errors.
-        await showTldr(ctx, async (modalSignal) => {
-          const signal = AbortSignal.any([modalSignal, controller.signal]);
+        const summarize = async (modalSignal?: AbortSignal) => {
+          const signal = AbortSignal.any([
+            ...(modalSignal ? [modalSignal] : []),
+            controller.signal,
+          ]);
           if (signal.aborted) throw new Error("Summarization cancelled");
           const model = selectTldrModel(ctx, config.model);
           const result = parseTldrResponse(
@@ -172,10 +173,17 @@ export default function piTldr(pi: ExtensionAPI): void {
             throw new Error("Summarization cancelled");
           if (mayRename(ctx, token, sessionId) && result.title) applyTitle(result.title);
           return result;
-        });
+        };
+        if (ctx.mode !== "tui" || !ctx.hasUI) {
+          // No modal to show loading in: the host gets the summary once it is ready.
+          output.show(ctx, summaryText(await summarize()), "info");
+        } else {
+          // Open the modal immediately; its body handles loading and errors.
+          await showTldr(ctx, summarize);
+        }
       } catch (error) {
         if (!controller.signal.aborted && isCurrent(ctx, token, sessionId))
-          ctx.ui.notify(`pi-tldr: ${String(error)}`, "error");
+          output.show(ctx, `pi-tldr: ${String(error)}`, "error");
       } finally {
         controller.abort();
         if (summaryAbort === controller) {
