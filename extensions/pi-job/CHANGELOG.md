@@ -3,6 +3,16 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-13: `/job` answers without a terminal
+
+An app that hosts Pi over RPC drops `ctx.ui.notify`, so `/job` and `/job kill` showed nothing.
+
+- `/job` output goes through pi-foundations' `userOutput`: a notification in the terminal, a
+  displayed custom message (`job:output`, `triggerTurn: false`) elsewhere, kept out of the model's
+  context by a `context` handler.
+- `test/extension.test.ts`: the fake `pi` collects that output in `notes` and `shown`; a new test
+  covers the message shape, that nothing reaches `sent`, and that the terminal still notifies.
+
 ## 2026-11-12: Point at git_pr_watch for pull requests
 
 Issue #138. pi-git's `git_pr_watch` waits on a pull request and reports each result with the head

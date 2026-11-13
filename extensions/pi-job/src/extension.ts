@@ -8,6 +8,7 @@
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { randomUUID } from "node:crypto";
+import { userOutput } from "#foundations/user-output";
 import { isAbsolute, resolve } from "node:path";
 import { parentOf } from "#session-tree";
 import { ensureWorkHost, type Json, type WorkMessage } from "#work";
@@ -252,6 +253,7 @@ export function createJobsExtension(options: JobsExtensionOptions = {}) {
     // The session's work host delivers what jobs finish with. Called first, so the host is
     // provided (and the session's run boundaries are wired) before our own session_start runs.
     const work = ensureWorkHost(pi);
+    const output = userOutput(pi, "job:output");
 
     const live = liveManagers();
     // Latest context seen (pi's contexts read live state; a stale one throws).
@@ -585,18 +587,18 @@ export function createJobsExtension(options: JobsExtensionOptions = {}) {
       handler: async (args: string, ctx: any) => {
         const [sub, id] = args.trim().split(/\s+/);
         if (sub === "kill") {
-          if (!id) return ctx.ui.notify("Usage: /job kill <id>", "warning");
+          if (!id) return output.show(ctx, "Usage: /job kill <id>", "warning");
           try {
             const job = await manager.kill(id);
             items.cancel(job.id);
-            ctx.ui.notify(`Stopped: ${formatJobLine(job)}`, "info");
+            output.show(ctx, `Stopped: ${formatJobLine(job)}`, "info");
           } catch (err) {
-            ctx.ui.notify((err as Error).message, "error");
+            output.show(ctx, (err as Error).message, "error");
           }
           return;
         }
-        if (sub) return ctx.ui.notify("Usage: /job [kill <id>]", "warning");
-        ctx.ui.notify(`${formatJobList(manager.list())}\nlogs: ${logRoot}`, "info");
+        if (sub) return output.show(ctx, "Usage: /job [kill <id>]", "warning");
+        output.show(ctx, `${formatJobList(manager.list())}\nlogs: ${logRoot}`, "info");
       },
     });
   };

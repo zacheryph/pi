@@ -57,7 +57,9 @@ for managed packages. Other runtime versions are not guaranteed.
 
 Ask the agent to run a long command with `job_start` or wait for a condition with `job_watch`.
 It should end its turn instead of polling, then continue when the completion message arrives.
-Use `/job` to see session jobs or `/job kill j1` to stop one. Commands run with your user
+Use `/job` to see session jobs or `/job kill j1` to stop one. Outside the terminal UI (an app
+that runs Pi over RPC, say) the reply is a displayed message that stays out of the model's
+context and starts no turn. Commands run with your user
 permissions and inherited environment; only run commands you trust. Logs can contain
 sensitive output, so do not publish them.
 
