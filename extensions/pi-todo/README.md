@@ -78,13 +78,13 @@ Record an outcome with the status change that produced it:
 `message` goes into the task's history, not its description. The user sees it
 flagged until they review it; see [Messages and review](#messages-and-review).
 
-| Tool           | Arguments        | Annotations | Behavior                                                                                 |
-| -------------- | ---------------- | ----------- | ---------------------------------------------------------------------------------------- |
-| `todo_list`    | optional `key`   | read-only   | Read revision/plan; one key returns its full description                                 |
-| `todo_upsert`  | `tasks`          | additive    | Add/patch only named keys; inherit omitted fields                                        |
-| `todo_replace` | `tasks`          | destructive | Authoritative plan; omitted keys deleted; `[]` clears                                    |
-| `todo_remove`  | `keys`           | destructive | Delete named tasks; dangling live dependencies rejected                                  |
-| `todo_clear`   | optional `scope` | destructive | `all` (default) clears; `completed` removes only completed tasks not needed by open work |
+| Tool           | Arguments        | Annotations | Behavior                                                                               |
+| -------------- | ---------------- | ----------- | -------------------------------------------------------------------------------------- |
+| `todo_list`    | optional `key`   | read-only   | Read revision/plan; one key returns its full description, or an archived task's record |
+| `todo_upsert`  | `tasks`          | additive    | Add/patch only named keys; inherit omitted fields                                      |
+| `todo_replace` | `tasks`          | destructive | Authoritative plan; omitted keys deleted; `[]` clears                                  |
+| `todo_remove`  | `keys`           | destructive | Delete named tasks; dangling live dependencies rejected                                |
+| `todo_clear`   | optional `scope` | destructive | `all` (default) clears the list and archive; `completed` archives every completed task |
 
 Each tool's schema requires only its own arguments, and the read-only annotation lets
 `job_watch` tool checks and read-only agents use `todo_list` without write access.
@@ -104,7 +104,31 @@ prerequisite is completed. Reopening a prerequisite while its dependent is activ
 or completed is rejected unless the entire resulting plan is valid. Multiple
 independent active tasks are permitted by default for parallel subagent work.
 
-Safety limits: 50 tasks, 20 dependencies/task, 160-character subjects,
+### Archived tasks
+
+The list keeps every pending and in-progress task and the 10 most recently
+completed ones. When another task completes, the one that completed longest ago
+moves to the archive, so a session that runs for days does not carry every
+finished task in the model's context. The effects of old work usually live
+elsewhere (a merged pull request, a ticket, a document); its task record is no
+longer worth the tokens.
+
+- Full-list output adds `archivedCompleted`, the number of archived tasks.
+  `todo_list` with an archived key returns its record: subject, completion time
+  and the first 240 characters of its last message.
+- The archive keeps the 200 most recently archived records; older ones are
+  dropped. A task's history and its unreviewed messages go with it.
+- A prerequisite on an archived task is already satisfied: archiving drops the
+  link, and a write naming an archived key in `dependsOn` leaves it out. A key
+  named as a task in the same write is a new task with that key.
+- `todo_clear` with `scope: "completed"` archives every completed task now;
+  clearing everything also empties the archive. `todo_replace` and `todo_remove`
+  delete, and never touch the archive.
+- Archived records are journaled apart from the list (`todo:archive`, only the
+  records each change archived), so a long archive is not rewritten on every edit.
+
+Safety limits: 50 pending or in-progress tasks (a list holds at most 60 with the
+recently completed ones), 20 dependencies/task, 160-character subjects,
 2,000-character descriptions and messages, 40-character keys, and the latest 10
 history updates per task. Plan output abbreviates
 descriptions and is bounded at 30,000 characters / 48 KB; `list` with `key` gives full task
@@ -123,8 +147,8 @@ details. Validation failures never mutate state.
 | `/todo:update fix-auth-bug completed Verified by hand`                               | Change status and record a note                                                  |
 | `/todo:update fix-auth-bug {"dependsOn":["inspect"],"description":"Recheck expiry"}` | Sparse field patch; `message` also accepted                                      |
 | `/todo:remove fix-auth-bug`                                                          | Remove one or more space-separated keys                                          |
-| `/todo:clear completed`                                                              | Clear finished tasks while preserving prerequisites of open work                 |
-| `/todo:clear`                                                                        | Clear all, with confirmation by default                                          |
+| `/todo:clear completed`                                                              | Archive every completed task                                                     |
+| `/todo:clear`                                                                        | Clear all tasks and the archive, with confirmation by default                    |
 | `/todo:clear all --yes`                                                              | Explicitly bypass confirmation                                                   |
 | `/todo:settings`                                                                     | Built-in select/input settings menu, like subagents                              |
 
@@ -331,7 +355,8 @@ tool results also carry snapshots for the model, but replay reads only the
 journal, so a delayed direct result cannot overwrite a newer command edit.
 Reload, resume, tree navigation, and compaction restore the latest valid
 journaled snapshot on the branch. Review marks are a
-separate `todo:review` journal of per-task revision watermarks. Like
+separate `todo:review` journal of per-task revision watermarks, and archived
+tasks a `todo:archive` journal of the records each change archived. Like
 tasks, they follow the branch. Compaction checkpoints state without
 sending steering messages or running the agent.
 

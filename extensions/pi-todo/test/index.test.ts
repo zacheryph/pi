@@ -904,7 +904,7 @@ describe("user commands", () => {
     env.noContinuation();
   });
 
-  it("headless clear needs --yes unless confirmation disabled; completed clear retains blockers", async () => {
+  it("headless clear needs --yes unless confirmation disabled; completed clear archives", async () => {
     const env = await started();
     await env.execute({
       action: "upsert",
@@ -918,13 +918,19 @@ describe("user commands", () => {
     expect(env.notices).toHaveBeenLastCalledWith("Use /todo:clear all --yes without UI", "error");
     expect(env.snapshots()).toHaveLength(1);
     await env.command("todo:clear", "completed");
-    expect((await env.state()).tasks.map((t) => t.key)).toEqual(["root", "work"]);
-    await env.command("todo:remove", "root");
-    expect(env.notices).toHaveBeenLastCalledWith(
-      expect.stringContaining("references missing task root"),
-      "error",
-    );
+    expect((await env.state()).tasks).toEqual([
+      { key: "work", subject: "Work", status: "pending" },
+    ]);
+    expect(env.archives()).toEqual([
+      {
+        tasks: [
+          expect.objectContaining({ key: "root" }),
+          expect.objectContaining({ key: "unused" }),
+        ],
+      },
+    ]);
     await env.command("todo:clear", "all --yes");
+    expect(env.archives().at(-1)).toEqual({ clear: true });
     expect((await env.state()).tasks).toEqual([]);
     const noConfirm = await started({ config: { confirmClear: false } });
     await noConfirm.execute(add("a"));

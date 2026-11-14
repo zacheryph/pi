@@ -4,6 +4,7 @@ import { treeService } from "#session-state";
 import { children, node } from "#session-tree";
 import { cloneTodoActivity, type TodoActivity, type TodoTaskActivity } from "#src/activity";
 import type { TodoRequest, TodoTaskPatch } from "#src/actions";
+import type { ArchivedTask, TodoArchive } from "#src/archive";
 import {
   agentLabel,
   claimHolders,
@@ -29,6 +30,8 @@ export interface DelegatedView {
   scope: TodoClaimScope;
   /** Keys this subagent holds. */
   keys: string[];
+  /** Archived tasks the subagent could see, so its notes tell archiving from deletion. */
+  archived?: ArchivedTask[];
 }
 
 /** What a parent's pi-todo offers its subagents' pi-todo (see pi-session-tree). */
@@ -45,6 +48,7 @@ export function delegatedView(
   state: TodoState,
   activity: TodoActivity,
   claim: TodoClaim,
+  archive: TodoArchive = new Map(),
 ): DelegatedView {
   const present = new Set(state.tasks.map((task) => task.key));
   const keys = claim.keys.filter((key) => present.has(key));
@@ -60,6 +64,9 @@ export function delegatedView(
     ),
     scope: claim.scope,
     keys,
+    archived: [...archive.values()]
+      .filter((task) => claim.scope === "ledger" || claim.keys.includes(task.key))
+      .map((task) => ({ ...task })),
   };
 }
 
@@ -200,6 +207,8 @@ export interface DelegationHost {
   now(): number;
   state(): TodoState;
   activity(): TodoActivity;
+  /** Completed tasks moved off the list. */
+  archive(): TodoArchive;
   claims(): TodoClaims;
   config(): { childPrerequisites: boolean };
   /** Journal and apply a claims entry. */
@@ -303,7 +312,7 @@ export function createTodoDelegation(pi: ExtensionAPI, host: DelegationHost) {
     view(agent) {
       const claim = host.claims().get(agent);
       if (!claim) throw new TodoValidationError("no tasks are assigned to you any more");
-      return delegatedView(host.state(), host.activity(), claim);
+      return delegatedView(host.state(), host.activity(), claim, host.archive());
     },
     mutate(agent, request) {
       const claim = host.claims().get(agent);
@@ -501,6 +510,7 @@ export function createTodoDelegation(pi: ExtensionAPI, host: DelegationHost) {
         ...details.change.added,
         ...details.change.updated,
         ...details.change.removed,
+        ...(details.change.archived ?? []),
       ])
         lastChange.set(key, details.revision);
     },

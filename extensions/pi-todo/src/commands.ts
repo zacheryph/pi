@@ -26,6 +26,8 @@ export interface TodoController {
   assignees(): ReadonlyMap<string, string>;
   now(): number;
   branchToken(): number;
+  /** Completed tasks archived off the list. */
+  archived(): number;
   /** Command edits are recorded as user updates, never flagged for review. */
   mutate(request: TodoRequest, ctx: ExtensionCommandContext): void;
   /** Journals review watermarks that advance; returns how many tasks advanced. */
@@ -62,6 +64,7 @@ export function registerTodoCommands(pi: ExtensionAPI, controller: TodoControlle
       assignees: controller.assignees(),
       // todo.review refuses a stale snapshot's marks once the session or branch is replaced.
       branch: controller.branchToken(),
+      archived: controller.archived(),
       // Details and reviews go through todo.inspect and todo.review on this session's bus.
       actions: pi.events,
     });
@@ -69,6 +72,7 @@ export function registerTodoCommands(pi: ExtensionAPI, controller: TodoControlle
   /** The browser's content as text, for a host without the terminal UI. */
   const listing = (): string => {
     const state = controller.state();
+    const archived = controller.archived();
     const flagged = unreviewedTodoTasks(state, controller.activity(), controller.review());
     return [
       ...renderTodoText(state, {
@@ -77,6 +81,9 @@ export function registerTodoCommands(pi: ExtensionAPI, controller: TodoControlle
         assignees: controller.assignees(),
         unreviewed: new Map([...flagged].map(([key, update]) => [key, update.message ?? ""])),
       }),
+      ...(archived > 0
+        ? [`${archived} earlier completed task${archived === 1 ? "" : "s"} archived.`]
+        : []),
       "Change tasks with /todo:add, /todo:update, /todo:remove or /todo:clear; /todo:review lists new task messages.",
     ].join("\n");
   };
@@ -222,7 +229,7 @@ export function registerTodoCommands(pi: ExtensionAPI, controller: TodoControlle
   );
   register(
     "todo:clear",
-    "Clear tasks: /todo:clear [all|completed] [--yes]; completed keeps needed blockers",
+    "Clear tasks: /todo:clear [all|completed] [--yes]; completed archives finished tasks",
     async (args, ctx) => {
       const parts = args ? args.split(/\s+/) : [];
       if (
@@ -252,9 +259,7 @@ export function registerTodoCommands(pi: ExtensionAPI, controller: TodoControlle
       controller.mutate({ action: "clear", scope, baseRevision: revision }, ctx);
       controller.output.show(
         ctx,
-        scope === "all"
-          ? "Cleared task list."
-          : "Cleared unneeded completed tasks; prerequisites of open work retained.",
+        scope === "all" ? "Cleared task list." : "Archived completed tasks.",
         "info",
       );
     },

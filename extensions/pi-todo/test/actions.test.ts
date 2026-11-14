@@ -125,9 +125,10 @@ describe("explicit todo actions", () => {
         /references missing task root/,
       );
       rejected(state, { action: "remove", keys: ["root"] }, /references missing task root/);
+      // Clearing completed tasks drops the link: a completed prerequisite is satisfied.
       expect(
-        applyTodoRequest(state, { action: "clear", scope: "completed" }, options).revision,
-      ).toBe(state.revision);
+        applyTodoRequest(state, { action: "clear", scope: "completed" }, options).tasks,
+      ).toEqual([{ key: "work", subject: "Task work", status }]);
       expect(
         applyTodoRequest(state, { action: "remove", keys: ["root", "work"] }, options).tasks,
       ).toEqual([]);
@@ -141,7 +142,7 @@ describe("explicit todo actions", () => {
     },
   );
 
-  it("clear completed removes only unneeded history; clear all is explicit and unconditional", () => {
+  it("clear completed removes every finished task; clear all is explicit and unconditional", () => {
     const state = stateWith([
       task("root", { status: "completed" }),
       task("required", { status: "completed", dependsOn: ["root"] }),
@@ -149,11 +150,8 @@ describe("explicit todo actions", () => {
       task("unused", { status: "completed" }),
     ]);
     const next = applyTodoRequest(state, { action: "clear", scope: "completed" }, options);
-    expect(next.tasks).toEqual([
-      { key: "required", subject: "Task required", status: "completed" },
-      state.tasks[2],
-    ]);
-    expect(next.change.removed).toEqual(["root", "unused"]);
+    expect(next.tasks).toEqual([{ key: "work", subject: "Task work", status: "pending" }]);
+    expect(next.change.removed).toEqual(["root", "required", "unused"]);
     expect(applyTodoRequest(next, { action: "clear", scope: "completed" }, options).revision).toBe(
       next.revision,
     );

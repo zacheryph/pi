@@ -1,6 +1,6 @@
 import { createEventBus, SessionManager } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { resetSessionTree } from "#test-helpers";
+import { messageText, resetSessionTree } from "#test-helpers";
 import { harness } from "#test/harness";
 import { TODO_CLAIMS_TYPE } from "#src/claims";
 import { type TodoConfig } from "#src/config";
@@ -406,6 +406,31 @@ describe("handing tasks to a subagent", () => {
     await expect(
       child.execute({ action: "upsert", tasks: [{ key: "b", status: "completed" }] }),
     ).rejects.toThrow("not assigned to you");
+  });
+
+  it("shows a ledger child the parent's archive, so its notes tell archiving from deletion", async () => {
+    const parent = await planned();
+    const child = await spawn(parent, { keys: ["a"], scope: "ledger" });
+    child.see(await child.execute({ action: "list" }));
+    // Ten more completions push d, the oldest completed task, into the archive.
+    await parent.execute({
+      action: "upsert",
+      tasks: Array.from({ length: 10 }, (_, i) => ({
+        key: `done-${i}`,
+        subject: `Done ${i}`,
+        status: "completed" as const,
+      })),
+    });
+    const listed = JSON.parse(messageText(await child.execute({ action: "list" })));
+    expect(listed.archivedCompleted).toBe(1);
+    expect(listed.tasks.map((task: { key: string }) => task.key)).not.toContain("d");
+    expect(messageText(await child.execute({ action: "list", key: "d" }))).toContain(
+      '"subject":"Done already"',
+    );
+    const note = await child.sync();
+    expect(note).toContain("done-0: added");
+    // It saw d completed: archiving it is not news, and it was not deleted.
+    expect(note).not.toMatch(/^- d:/m);
   });
 
   it("turns prerequisite additions off with childPrerequisites", async () => {

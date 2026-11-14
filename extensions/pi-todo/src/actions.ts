@@ -92,7 +92,11 @@ export function applyTodoRequest(
     case "clear":
       requireFields(request, ["scope"]);
       if (request.scope === "completed") {
-        tasks = (removeCompletedTasks(state) ?? state).tasks;
+        // An omitted dependsOn would keep the links to the removed tasks: [] states their absence.
+        tasks = (removeCompletedTasks(state) ?? state).tasks.map((task) => ({
+          ...task,
+          dependsOn: task.dependsOn ?? [],
+        }));
         break;
       }
       tasks = [];
@@ -130,11 +134,13 @@ export const TODO_OUTPUT_TRUNCATED = "[Output truncated.";
 /**
  * Bounded model output; list(key) returns an individual task's full details and
  * update history. Never depends on review state: viewing must not change it.
+ * `archived` counts the completed tasks moved off the list.
  */
 export function formatTodoState(
   state: TodoState,
   key?: string,
   activity: TodoActivity = new Map(),
+  archived = 0,
 ): string {
   const tasks = key ? state.tasks.filter((task) => task.key === key) : state.tasks;
   const payload = JSON.stringify({
@@ -157,6 +163,7 @@ export function formatTodoState(
         ...(message ? { lastMessage: message.slice(0, 120) } : {}),
       };
     }),
+    ...(!key && archived > 0 ? { archivedCompleted: archived } : {}),
   });
   if (payload.length <= 30_000 && Buffer.byteLength(payload, "utf8") <= 48_000) return payload;
   let excerpt = payload.slice(0, 29_800);
