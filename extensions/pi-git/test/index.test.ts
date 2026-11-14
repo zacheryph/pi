@@ -130,10 +130,9 @@ describe("pi-git registration", () => {
   });
 });
 
-describe("context card", () => {
+describe("restore card", () => {
   const CARD = "Pull requests and worktrees in this session";
-  type Message = { role: string; customType?: string; content?: string; display?: boolean };
-  const user: Message = { role: "user", content: "hi" };
+  const COMPACTION = { type: "compaction" };
   const prEntry = (number = 12) => ({
     type: "custom",
     customType: LEDGER_TYPE,
@@ -154,19 +153,36 @@ describe("context card", () => {
       updatedAt: 1,
     },
   });
-  /** What the next request would hold, given the messages it starts from. */
-  const contextOf = async (h: Awaited<ReturnType<typeof start>>, messages = [user]) => {
-    const context = [...h.pi.on.mock.calls].findLast(([event]) => event === "context")!;
-    const handler = context[1] as (
-      event: unknown,
-      ctx: unknown,
-    ) => Promise<{ messages: Message[] } | undefined>;
-    return (await handler({ type: "context", messages }, h.ctx))?.messages ?? messages;
+  /** Compact the session: a compaction entry on the branch, then the event. */
+  const compact = async (h: Awaited<ReturnType<typeof start>>) => {
+    h.entries.push(COMPACTION);
+    await h.fire("session_compact");
   };
-  const cards = (messages: Message[]) => messages.filter((m) => m.customType === "git:context");
+  /** The cards written to the branch so far, oldest first. */
+  const written = (h: Awaited<ReturnType<typeof start>>) => {
+    const calls = h.pi.sendMessage.mock.calls.filter(
+      ([message]) => (message as { customType?: string }).customType === "git:context",
+    );
+    for (const [message, options] of calls) {
+      expect(message).toMatchObject({ display: false });
+      expect(options).toEqual({ triggerTurn: false });
+    }
+    return calls.map(([message]) => (message as { content: string }).content);
+  };
+  /** Start a session whose sendMessage appends cards to the branch, as Pi does. */
+  const startWriting = async (entries: unknown[] = []) => {
+    const h = harness({ sessionId: "parent", cwd: box.dir, root: box.root, entries });
+    h.pi.sendMessage.mockImplementation((message: { customType?: string }) => {
+      if (message.customType === "git:context")
+        h.entries.push({ type: "custom_message", customType: message.customType });
+    });
+    await h.fire("session_start");
+    return h;
+  };
+
   it("uses the worktree repository's remote rather than its directory name", async () => {
     run(box.api, "remote", "add", "origin", "https://github.com/acme/api.git");
-    const h = await start();
+    const h = await startWriting();
     await h.tool("git_worktree_create", { repo: "src/api", branch: "fix" });
     const path = join(box.root, "api", "fix");
     h.pi.events.emit("subagent:session:created", { agentId: "agent-1", cwd: path });
@@ -180,20 +196,19 @@ describe("context card", () => {
         status: { state: "merged", headRef: "fix", observedAt: 1, source: "bash" },
       },
     });
-    await h.fire("session_compact");
-    expect(cards(await contextOf(h))[0]?.content).toContain(`worktree ${path} on fix: no PR yet`);
+    await compact(h);
+    expect(written(h).at(-1)).toContain(`worktree ${path} on fix: no PR yet`);
     h.entries.push({
       ...entry,
       data: { ...entry.data, status: { ...entry.data.status, headRef: "fix" } },
     });
-    expect(cards(await contextOf(h))[0]?.content).toContain(
-      `PR 12 "Add login": open, worktree ${path}`,
-    );
+    await compact(h);
+    expect(written(h).at(-1)).toContain(`PR 12 "Add login": open, worktree ${path}`);
   });
 
-  it("arms the card for a worktree with a closed PR even without recorded agents", async () => {
+  it("writes the card for a worktree with a closed PR even without recorded agents", async () => {
     run(box.api, "remote", "add", "origin", "https://github.com/acme/api.git");
-    const h = await start();
+    const h = await startWriting();
     await h.tool("git_worktree_create", { repo: "src/api", branch: "fix" });
     const entry = prEntry();
     h.entries.push({
@@ -203,104 +218,67 @@ describe("context card", () => {
         status: { state: "closed", headRef: "fix", observedAt: 1, source: "bash" },
       },
     });
-    for (const event of ["session_compact", "session_tree", "session_start"]) {
-      await h.fire(event);
-      expect(cards(await contextOf(h))[0]?.content).toContain(
-        `worktree ${join(box.root, "api", "fix")} on fix: no open PR`,
-      );
-    }
-  });
-  const listResult = (toolName: string, extra: Record<string, unknown> = {}) => ({
-    toolName,
-    toolCallId: "call-1",
-    input: {},
-    content: [{ type: "text", text: "" }],
-    isError: false,
-    ...extra,
+    await compact(h);
+    expect(written(h)).toEqual([
+      expect.stringContaining(`worktree ${join(box.root, "api", "fix")} on fix: no open PR`),
+    ]);
   });
 
-  it("gives a session with no ledger entries no card, and adds none for new work", async () => {
-    const h = await start();
-    expect(await contextOf(h)).toEqual([user]);
-    await h.fire("session_compact");
-    expect(await contextOf(h)).toEqual([user]);
+  it("writes no card for a session with no ledger entries, even after compaction", async () => {
+    const h = await startWriting();
+    await compact(h);
     await h.tool("git_worktree_create", { repo: "src/api", branch: "feat/x" });
     h.pi.events.emit("subagent:session:created", {
       agentId: "agent-1",
       cwd: join(box.root, "api", "feat-x"),
     });
-    expect(await contextOf(h)).toEqual([user]);
+    expect(written(h)).toEqual([]);
   });
 
-  it("appends one hidden card last after a resume or reload, without touching the transcript", async () => {
-    const h = await start("parent", [prEntry()]);
-    const before = h.entries.length;
-    const messages = await contextOf(h);
-    expect(messages.slice(0, -1)).toEqual([user]);
-    expect(messages.at(-1)).toMatchObject({
-      role: "custom",
-      customType: "git:context",
-      display: false,
-      content: expect.stringContaining('PR 12 "Add login": open'),
-    });
-    // A later request replaces the previous card instead of stacking another.
-    const again = await contextOf(h, messages as (typeof user)[]);
-    expect(cards(again)).toHaveLength(1);
-    expect(again.at(-1)?.content).toContain(CARD);
-    expect(h.entries).toHaveLength(before);
-  });
-
-  it("appears after a compaction once there is something to restore", async () => {
-    const h = await start();
-    h.entries.push(prEntry());
-    expect(await contextOf(h)).toEqual([user]);
-    await h.fire("session_compact");
-    expect(cards(await contextOf(h))).toHaveLength(1);
-  });
-
-  it.each(["git_pr_list", "git_worktree_list"])("stops after a %s result", async (name) => {
-    const h = await start("parent", [prEntry()]);
-    expect(cards(await contextOf(h))).toHaveLength(1);
-    await h.fire("tool_result", listResult(name));
-    const messages = await contextOf(h);
-    expect(cards(messages)).toEqual([]);
-    // A card left in the messages is stripped too.
-    const stale = { role: "custom", customType: "git:context", content: "old" };
-    expect(await contextOf(h, [user, stale as typeof user])).toEqual([user]);
-  });
-
-  it("keeps showing past a failed or nested list and any other tool", async () => {
-    const h = await start("parent", [prEntry()]);
-    await h.fire("tool_result", listResult("git_pr_list", { isError: true }));
-    await h.fire("tool_result", listResult("git_worktree_list", { parentToolCallId: "outer" }));
-    await h.fire("tool_result", listResult("read"));
-    await h.fire("tool_result", listResult("git_pr_status"));
-    expect(cards(await contextOf(h))).toHaveLength(1);
-  });
-
-  it("comes back after a compaction, /tree or reload that follows a list result", async () => {
-    const h = await start("parent", [prEntry()]);
-    for (const event of ["session_compact", "session_tree", "session_start"]) {
-      await h.fire("tool_result", listResult("git_pr_list"));
-      expect(cards(await contextOf(h))).toEqual([]);
+  it.each(["session_start", "session_tree"])(
+    "writes nothing after %s on a branch without a compaction",
+    async (event) => {
+      const h = await startWriting([prEntry()]);
       await h.fire(event);
-      expect(cards(await contextOf(h))).toHaveLength(1);
-    }
+      expect(written(h)).toEqual([]);
+    },
+  );
+
+  it("writes one hidden card on resume when a compaction has none, and no other after", async () => {
+    const h = await startWriting([prEntry(), COMPACTION]);
+    expect(written(h)).toEqual([expect.stringContaining('PR 12 "Add login": open')]);
+    expect(written(h)[0]).toContain(CARD);
+    await h.fire("session_tree");
+    await h.fire("session_start");
+    expect(written(h)).toHaveLength(1);
   });
 
-  it("shows what the ledger holds now, not what it held at the event", async () => {
-    const h = await start("parent", [prEntry()]);
+  it("writes a fresh card after each compaction", async () => {
+    const h = await startWriting([prEntry()]);
+    await compact(h);
+    await compact(h);
+    expect(written(h)).toHaveLength(2);
+  });
+
+  it("writes what the ledger holds at the compaction", async () => {
+    const h = await startWriting([prEntry()]);
     h.entries.push({
       ...prEntry(),
       data: { ...prEntry().data, status: { state: "merged", observedAt: 2, source: "bash" } },
     });
-    expect(await contextOf(h)).toEqual([user]);
+    await compact(h);
+    expect(written(h)).toEqual([]);
   });
 
-  it("stops at shutdown", async () => {
-    const h = await start("parent", [prEntry()]);
-    await h.fire("session_shutdown");
-    expect(await contextOf(h)).toEqual([user]);
+  it("registers no context handler of its own: nothing is added to each request", async () => {
+    const h = await startWriting([prEntry(), COMPACTION]);
+    for (const [event, handler] of h.pi.on.mock.calls) {
+      if (event !== "context") continue;
+      const messages = [{ role: "user", content: "hi" }];
+      expect(await (handler as (e: unknown, c: unknown) => unknown)({ messages }, h.ctx)).toBe(
+        undefined,
+      );
+    }
   });
 });
 
@@ -379,25 +357,28 @@ describe("ledger", () => {
 });
 
 describe("background refresh", () => {
-  it("keeps the service withdrawn and card hidden when shutdown interrupts startup", async () => {
+  it("keeps the service withdrawn and writes no card when shutdown interrupts startup", async () => {
     const first = await start();
     await first.tool("git_worktree_create", { repo: "src/api", branch: "shutdown" });
     first.pi.events.emit("subagent:session:created", {
       agentId: "agent-1",
       cwd: join(box.root, "api", "shutdown"),
     });
+    // A compaction with no card after it: a start that ran to the end would write one.
     const h = harness({
       sessionId: "interrupted",
       cwd: box.dir,
       root: box.root,
-      entries: first.entries,
+      entries: [...first.entries, { type: "compaction" }],
     });
     const starting = h.fire("session_start");
     await h.fire("session_shutdown");
     await starting;
     expect(service("interrupted", SERVICE_NAME)).toBeUndefined();
-    const context = [...h.pi.on.mock.calls].findLast(([event]) => event === "context")!;
-    expect(await context[1]({ type: "context", messages: [] }, h.ctx)).toBeUndefined();
+    expect(h.pi.sendMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ customType: "git:context" }),
+      expect.anything(),
+    );
   });
 
   /** A context that throws on every read, as Pi's does once its session is replaced. */

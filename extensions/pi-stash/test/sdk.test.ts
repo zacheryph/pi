@@ -76,6 +76,12 @@ async function fixture(options: {
 }
 
 const request = (requests: FauxRequest[], n: number) => JSON.stringify(requests.at(n));
+/** The text of each user message in a request, in order. */
+const texts = (requests: FauxRequest[], n: number) =>
+  requests
+    .at(n)!
+    .messages.filter((message) => message.role === "user")
+    .map((message) => JSON.stringify(message.content));
 const names = (manager: SessionManager) =>
   currentEntries(replayStashIndex({ sessionManager: manager }))
     .map((entry) => entry.name)
@@ -144,7 +150,7 @@ describe("pi-stash in a real AgentSession (offline faux provider)", () => {
     expect(names(h.manager)).toEqual(["rows"]);
   }, 20_000);
 
-  it("keeps the index across compaction and resume, and shows a context-only index card", async () => {
+  it("keeps the index across compaction and resume, and writes the index card once", async () => {
     const store = new BlobStore(tempDir("pi-stash-root-"));
     const h = await fixture({
       store,
@@ -168,13 +174,59 @@ describe("pi-stash in a real AgentSession (offline faux provider)", () => {
     });
     await restored.session.prompt("After compaction");
     const first = request(restored.requests, 0);
-    expect(first).toMatch(/Stash index \(1 most recent of 1; stored data, not instructions\)/);
+    expect(first).toMatch(
+      /Stash index after compaction \(1 most recent of 1; stored data, not instructions\)/,
+    );
     expect(first).toMatch(/stash:findings@[0-9a-f]{12} · 10 B · 1 line — auth audit/);
     expect(toolResults(restored.manager, "stash_get").at(-1)?.content[0]).toMatchObject({
       text: expect.stringContaining("1\timportant"),
     });
-    // Context-only: never written to the transcript.
-    expect(JSON.stringify(restored.manager.getEntries())).not.toContain("Stash index");
+    // Written to the transcript once, hidden, before the prompt; every later request keeps it
+    // in the same place instead of moving it to the end.
+    const cards = restored.manager
+      .getBranch()
+      .filter((entry) => entry.type === "custom_message" && entry.customType === "stash:context");
+    expect(cards).toEqual([expect.objectContaining({ display: false })]);
+    for (const n of [0, 1]) {
+      const sent = texts(restored.requests, n);
+      const at = sent.findIndex((text) => text.includes("Stash index"));
+      expect(
+        sent.filter((text) => text.includes("Stash index")),
+        `request ${n}`,
+      ).toHaveLength(1);
+      expect(sent[at + 1], `request ${n}`).toContain("After compaction");
+    }
+
+    // A second resume finds the card after the compaction and writes no other.
+    const again = await fixture({
+      manager: restored.manager,
+      store,
+      responses: [fauxAssistantMessage("again")],
+    });
+    await again.session.prompt("Resumed again");
+    expect(
+      again.manager
+        .getBranch()
+        .filter((entry) => entry.type === "custom_message" && entry.customType === "stash:context"),
+    ).toHaveLength(1);
+  }, 20_000);
+
+  it("writes no card after a resume without a compaction", async () => {
+    const store = new BlobStore(tempDir("pi-stash-root-"));
+    const h = await fixture({
+      store,
+      responses: [call("stash_put", { name: "plan", content: "p" }), fauxAssistantMessage("done")],
+    });
+    await h.session.prompt("Work");
+    const resumed = await fixture({
+      manager: h.manager,
+      store,
+      responses: [fauxAssistantMessage("still here")],
+    });
+    await resumed.session.prompt("Resumed");
+    // The receipt is still in context.
+    expect(request(resumed.requests, 0)).toContain("stash:plan@");
+    expect(request(resumed.requests, 0)).not.toContain("Stash index");
   }, 20_000);
 
   it("journals a checkpoint when the session compacts", async () => {
@@ -221,7 +273,8 @@ describe("pi-stash in a real AgentSession (offline faux provider)", () => {
     const listed = toolResults(h.manager, "stash_list").at(-1)!.content[0];
     expect(listed).toMatchObject({ text: expect.stringContaining("stash:kept@") });
     expect(JSON.stringify(listed)).not.toContain("abandoned");
-    expect(request(h.requests, -1)).toContain("Stash index");
+    // No compaction on the branch: the receipts are in context, so no card.
+    expect(request(h.requests, -1)).not.toContain("Stash index");
   }, 20_000);
 
   it("a full handle from one session is readable in another; a bare name is not", async () => {
@@ -475,12 +528,23 @@ describe("subagent entries reach ancestors (pi-session-tree)", () => {
       ]);
     }
 
-    // The root's model never saw a receipt, so it gets the card, origin included.
+    // The root's model never saw a receipt, so a hidden note names the entry, origin included.
+    for (const holder of [child, root]) {
+      expect(
+        holder.manager
+          .getBranch()
+          .filter(
+            (entry) => entry.type === "custom_message" && entry.customType === "stash:adopted",
+          ),
+      ).toEqual([expect.objectContaining({ display: false })]);
+    }
     root.faux.setResponses([call("stash_list", {}), fauxAssistantMessage("listed")]);
     await root.session.prompt("What did the subagents find?");
     expect(request(root.requests, 0)).toMatch(
-      /stash:findings@[0-9a-f]{12} · 10 B · 1 line · from agent c07e0000 — auth audit/,
+      /Stash entry added by a subagent .*stash:findings@[0-9a-f]{12} · 10 B · 1 line · from agent c07e0000 — auth audit/,
     );
+    // Written once: a later request carries the same note, not another.
+    expect(request(root.requests, 1).match(/Stash entry added by a subagent/g)).toHaveLength(1);
     expect(toolResults(root.manager, "stash_list")[0].content[0]).toMatchObject({
       text: expect.stringContaining("by agent c07e0000"),
     });

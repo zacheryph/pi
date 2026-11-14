@@ -80,11 +80,12 @@ bundle extension again. So:
   from [`packages/pi-session-state`](../../../packages/pi-session-state/README.md),
   and persist with `pi.appendEntry`, so `/tree`, resume, reload and compaction
   work.
-- To give the model state it may have lost after a compaction, reload, resume
-  or `/tree`, use `contextCard(pi, { type, restore, build })` from the same
-  package. `restore` says whether there is state to bring back after those
-  events; call the returned `hide()` once the model has seen it. The helper
-  strips the old card, appends the new one and tracks whether it is shown.
+- To give the model state a compaction summarized away, use
+  `restoreCard(pi, { type, build })` from the same package: it writes one hidden
+  card into the transcript after each compaction. Reach for the per-request
+  `contextCard(pi, { type, build })` only for state that changes under the
+  model on every request; it is resent at the end of each request, which costs
+  prompt caching and draws replies.
 - Guard UI with `ctx.hasUI`; children have none.
 - A captured `ctx` goes stale after reload. Re-read it from each event.
 - To offer a service to other sessions, use `treeService(pi, name, api)` from

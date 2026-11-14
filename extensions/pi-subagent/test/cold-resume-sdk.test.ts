@@ -254,15 +254,13 @@ describe("cold resume in a real parent session (offline faux provider)", () => {
     ]);
     await h.session.prompt("Check on the worker");
 
-    // The roster card, restored after the reload, shows the agent idle with its last
-    // outcome, and says nothing against sending to it.
-    const card = JSON.stringify(requests[0].messages.at(-1));
-    expect(card).toMatch(/idle, last run completed \d\d:\d\d/);
-    expect(card).not.toContain("cannot take a message");
     expect(lastResult(requests[1], "subagent_get")).toContain(
       `Send: available. Call subagent_send with agent_id: \\"${id}\\"`,
     );
-    expect(lastResult(requests[2], "subagent_get")).toMatch(/idle, last run completed \d\d:\d\d/);
+    // The list shows the agent idle with its last outcome, and says nothing against sending to it.
+    const listed = lastResult(requests[2], "subagent_get");
+    expect(listed).toMatch(/idle, last run completed \d\d:\d\d/);
+    expect(listed).not.toContain("cannot take a message");
   }, 30_000);
 
   it("resumes an agent whose run a reload interrupted", async () => {

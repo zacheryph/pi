@@ -3,6 +3,20 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-14: Write the roster card once after a compaction
+
+- The roster card was a context-only message appended to the end of every
+  request after a compaction, reload, resume or `/tree`, until the model listed
+  its agents. It is now written into the transcript once after a compaction
+  (`restoreCard` from `packages/pi-session-state`), as a hidden `custom` message:
+  it keeps its place, so later requests do not repeat it at the end and the
+  prompt cache keeps working. A reload, resume or `/tree` keeps the
+  `subagent_start` results in context and writes no card, unless the branch's
+  latest compaction has none yet.
+- The card always reads `restored after compaction` and says the status may have
+  changed since; `RestoreReason` and the `subagent_get` list stop rule are gone.
+  `SUBAGENT_LIST_KIND` moved to `tools/get-result-tool.ts`.
+
 ## 2026-11-13: Offer agents as models, `agent/<name>`
 
 - Every profile `--agent` accepts (hidden ones excluded) is registered as a

@@ -144,7 +144,7 @@ const cardCount = (messages: unknown[]) =>
   messages.filter((message) => JSON.stringify(message).includes(CARD)).length;
 
 describe("pi-git in a real AgentSession (offline faux provider)", () => {
-  it("restores PRs and worktrees with a context card after compaction, until a list result", async () => {
+  it("restores PRs and worktrees with a card written once after compaction", async () => {
     const box = sandbox(onTestFinished);
     const manager = SessionManager.inMemory(box.dir);
     const worktree = join(box.root, "api", "feat-login");
@@ -175,40 +175,41 @@ describe("pi-git in a real AgentSession (offline faux provider)", () => {
     ]);
     await h.session.prompt("After compaction.");
     await h.session.prompt("Which PRs?");
-    const [first, withList, afterList] = messages(h.requests);
-    // Once per request, as its last message, on each request until the list result.
-    expect(cardCount(first)).toBe(1);
-    expect(cardCount(withList)).toBe(1);
-    const card = JSON.stringify(first.at(-1));
-    expect(card).toContain(CARD);
+    // Written into the transcript once, before the first prompt after the compaction: every
+    // later request carries it in the same place, list result or not.
+    expect(messages(h.requests).map(cardCount)).toEqual([1, 1, 1]);
+    for (const request of messages(h.requests)) {
+      const texts = request.map((message) => JSON.stringify(message));
+      const at = texts.findIndex((text) => text.includes(CARD));
+      expect(texts.slice(at + 1).find((text) => text.includes('"role":"user"'))).toContain(
+        "After compaction.",
+      );
+    }
+    const [first] = messages(h.requests);
+    const card = JSON.stringify(first.find((message) => JSON.stringify(message).includes(CARD)));
     expect(card).toContain("github.com/acme/api PR 66: open");
     expect(card).toContain(`worktree ${worktree} on feat/login: no PR yet (agent agent-1)`);
-    expect(JSON.stringify(withList.at(-1))).toContain(CARD);
-    expect(cardCount(afterList)).toBe(0);
-    // Context-only: never written to the transcript.
-    expect(JSON.stringify(manager.getEntries())).not.toContain(CARD);
-
-    h.requests.length = 0;
-    h.faux.setResponses([fauxAssistantMessage("No card.")]);
-    await h.session.prompt("And now?");
-    expect(messages(h.requests).map(cardCount)).toEqual([0]);
-
-    // /tree brings it back.
-    const target = manager.getBranch().find((entry) => entry.type === "message")!;
-    await h.session.navigateTree(target.id);
-    h.requests.length = 0;
-    h.faux.setResponses([fauxAssistantMessage("Card again.")]);
-    await h.session.prompt("After /tree.");
-    expect(messages(h.requests).map(cardCount)).toEqual([1]);
+    const written = () =>
+      manager
+        .getBranch()
+        .filter((entry) => entry.type === "custom_message" && entry.customType === "git:context");
+    expect(written()).toEqual([expect.objectContaining({ display: false })]);
     h.session.dispose();
 
-    // A reload does too: a new session on the same session file.
+    // A reload finds the card after the compaction and writes no other.
     const reloaded = await fixture(box, manager);
-    reloaded.faux.setResponses([fauxAssistantMessage("Card again.")]);
+    reloaded.faux.setResponses([fauxAssistantMessage("Same card.")]);
     await reloaded.session.prompt("After reload.");
-    const [afterReload] = messages(reloaded.requests);
-    expect(cardCount(afterReload)).toBe(1);
-    expect(JSON.stringify(afterReload.at(-1))).toContain(CARD);
+    expect(messages(reloaded.requests).map(cardCount)).toEqual([1]);
+    expect(written()).toHaveLength(1);
+
+    // /tree to before the compaction: that branch holds the tool results, so no card.
+    const target = manager.getBranch().find((entry) => entry.type === "message")!;
+    await reloaded.session.navigateTree(target.id);
+    reloaded.requests.length = 0;
+    reloaded.faux.setResponses([fauxAssistantMessage("No card.")]);
+    await reloaded.session.prompt("After /tree.");
+    expect(messages(reloaded.requests).map(cardCount)).toEqual([0]);
   }, 30_000);
 
   it("gives a session with no ledger entries no card, even after compaction", async () => {

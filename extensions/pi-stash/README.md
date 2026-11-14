@@ -83,10 +83,14 @@ branch on start, resume, reload and `/tree`, so abandoned branches drop out.
   content store is shared, so handles cross between parent and children. A prefix
   matching more than one blob fails and lists the candidates.
 
-**Context:** after compaction, resume, reload or `/tree`, and once a subagent's entry
-has been adopted, each model request gets a bounded, context-only _index card_ (the
-20 most recent entries: handle, size, origin of adopted entries, description). It is
-never written to the transcript or shown as a message.
+**Context:** the model sees a receipt for every entry it stores. After a compaction
+summarizes those away, pi-stash writes an _index card_ into the transcript once (the
+20 most recent entries: handle, size, origin of adopted entries, description), as a
+hidden message: the model reads it, the TUI does not show it. It stays where it was
+written, so later requests do not repeat it and the prompt cache keeps working. A
+resume, reload or `/tree` keeps the receipts in context and writes nothing, unless
+the branch's latest compaction has no card yet. When a subagent's entry is adopted,
+a one-line hidden note naming it is written the same way, after the current turn.
 
 ## Events
 
@@ -123,7 +127,7 @@ pi-presentation serves its `stash-preview` request through `stash.preview`.
 entry, it hands the entry to its parent's pi-stash, which journals it on its own
 branch (`via: "adopt"`) and hands it to its own parent, and so on up to the root.
 The entry's `id` makes adoption idempotent, so a repeat ends the chain. It then shows up in their `stash_list`,
-`/stash`, index card and `stash:snapshot`, marked with the agent that stored it
+`/stash`, adoption note, index card and `stash:snapshot`, marked with the agent that stored it
 (`↑ agent a3f2b1c4`). Parent links come from pi-subagent's child lifecycle events
 through [`pi-session-tree`](../../packages/pi-session-tree/README.md). Because the
 entry is journaled where it lands, a parent `/tree` back to before the spawn drops it
