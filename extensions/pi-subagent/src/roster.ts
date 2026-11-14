@@ -279,20 +279,15 @@ function capRoster(entries: readonly RosterEntry[], maxLines: number): string[] 
   ];
 }
 
-/** Why the card is back, worded for its header. */
-export type RestoreReason = "compaction" | "reload" | "resume" | "fork" | "/tree";
-
 /**
- * The context card: the branch's agents after the model lost track of them.
- * Undefined when the branch started none.
+ * The roster card: the branch's agents, written once after a compaction
+ * summarized away the results that named them. Undefined when the branch
+ * started none.
  */
-export function formatRosterCard(
-  entries: readonly RosterEntry[],
-  reason: RestoreReason,
-): string | undefined {
+export function formatRosterCard(entries: readonly RosterEntry[]): string | undefined {
   if (!entries.length) return undefined;
   return [
-    `Subagents started by this session (restored after ${reason}; subagent_get <id> for details, subagent_send <id> to give an idle one more work):`,
+    "Subagents started by this session (restored after compaction; their status may have changed since: subagent_get for the current list, subagent_get <id> for details, subagent_send <id> to give an idle one more work):",
     ...capRoster(entries, CARD_MAX_LINES),
   ].join("\n");
 }

@@ -586,11 +586,11 @@ The entries sit on the branch that started the agent, so they follow it through 
 Once the child session is ready, another running entry saves its resolved model, directory and transcript path so an interrupted run can be inspected.
 Lifecycle updates from an agent hidden by `/tree` do not add it to the new branch; the latest update is held in memory and written when `/tree` returns to a branch containing that agent.
 
-After a compaction, `/reload`, `/resume` or `/tree`, the model may have lost track of the agents it started.
-Until it lists them with `subagent_get` (no `agent_id`), each request ends with a roster card built from the branch's records and any still-live agents:
+A compaction summarizes away the results that named the agents the model started.
+Once after it, a roster card built from the branch's records and any still-live agents is written into the transcript:
 
 ```text
-Subagents started by this session (restored after compaction; subagent_get <id> for details, subagent_send <id> to give an idle one more work):
+Subagents started by this session (restored after compaction; their status may have changed since: subagent_get for the current list, subagent_get <id> for details, subagent_send <id> to give an idle one more work):
 - 9a8b7c implementer "Migrate session store": waiting: answer
 - 5e6f7a reviewer "Review CI": waiting: CI checks
 - d4e5f6 review "Review roadmap step 3": running
@@ -599,7 +599,8 @@ Subagents started by this session (restored after compaction; subagent_get <id> 
 - 2 older completed agents not shown
 ```
 
-The card is added to the request only: it is never written to the transcript or shown in the terminal.
+The card is a hidden message: the model reads it, the terminal does not show it. It stays where it was written, so later requests do not repeat it and the prompt cache keeps working.
+A `/reload`, `/resume` or `/tree` keeps the results in context and writes no card, unless the branch's latest compaction has none yet.
 It holds at most 20 agent lines, dropping the oldest failed and completed agents first and counting them on the last line; waiting and running agents are never dropped.
 An idle agent shows how its last run ended, and `(cannot take a message)` when `subagent_send` would refuse it (its transcript or directory is gone). Descriptions are cut to 80 characters and what an agent waits on or why it failed to 160, without splitting a wide character or emoji.
 A branch that started no agents gets no card.

@@ -221,7 +221,7 @@ describe("formatRosterLine", () => {
 
 describe("formatRosterCard", () => {
   it("is absent for a branch that started no agents", () => {
-    expect(formatRosterCard([], "compaction")).toBeUndefined();
+    expect(formatRosterCard([])).toBeUndefined();
   });
 
   it("matches the documented layout for a mix of states", () => {
@@ -243,20 +243,14 @@ describe("formatRosterCard", () => {
         : id === "9a8b7c"
           ? waitingLive(records[3], ["answer"])
           : undefined;
-    expect(formatRosterCard(buildRoster(records, live), "compaction")).toBe(
+    expect(formatRosterCard(buildRoster(records, live))).toBe(
       [
-        "Subagents started by this session (restored after compaction; subagent_get <id> for details, subagent_send <id> to give an idle one more work):",
+        "Subagents started by this session (restored after compaction; their status may have changed since: subagent_get for the current list, subagent_get <id> for details, subagent_send <id> to give an idle one more work):",
         '- 9a8b7c implementer "Migrate store": waiting: answer',
         '- d4e5f6 review "Review step 3": running',
         '- 77e0aa explorer "Map auth call sites": idle, last run failed: turn budget exhausted',
         `- a1b2c3 implementer "Add token refresh": idle, last run completed ${formatClock(50_000_000)}`,
       ].join("\n"),
-    );
-  });
-
-  it("names the event that brought it back", () => {
-    expect(formatRosterCard(buildRoster([saved()], noneLive), "/tree")).toMatch(
-      /^Subagents started by this session \(restored after \/tree;/,
     );
   });
 
@@ -268,13 +262,13 @@ describe("formatRosterCard", () => {
     const bodyLines = (card: string | undefined) => card!.split("\n").slice(1);
 
     it("shows exactly twenty agents without an overflow line", () => {
-      const lines = bodyLines(formatRosterCard(buildRoster(completed(20), noneLive), "reload"));
+      const lines = bodyLines(formatRosterCard(buildRoster(completed(20), noneLive)));
       expect(lines).toHaveLength(20);
       expect(lines.at(-1)).not.toContain("not shown");
     });
 
     it("keeps nineteen whole lines and counts the oldest completed agents left out", () => {
-      const lines = bodyLines(formatRosterCard(buildRoster(completed(21), noneLive), "reload"));
+      const lines = bodyLines(formatRosterCard(buildRoster(completed(21), noneLive)));
       expect(lines).toHaveLength(20);
       expect(lines[0]).toContain("done-20");
       expect(lines[18]).toContain("done-2");
@@ -286,10 +280,7 @@ describe("formatRosterCard", () => {
       // the card leave a single agent out.
       const waiting = Array.from({ length: 20 }, (_, index) => saved({ id: `w-${index}` }));
       const lines = bodyLines(
-        formatRosterCard(
-          buildRoster([...waiting, ...completed(1)], waitingOnAnswer(waiting)),
-          "reload",
-        ),
+        formatRosterCard(buildRoster([...waiting, ...completed(1)], waitingOnAnswer(waiting))),
       );
       expect(lines).toHaveLength(21);
       expect(lines.at(-1)).toBe("- 1 older completed agent not shown");
@@ -304,7 +295,6 @@ describe("formatRosterCard", () => {
       const lines = bodyLines(
         formatRosterCard(
           buildRoster([...waiting, ...failed, ...completed(3)], waitingOnAnswer(waiting)),
-          "reload",
         ),
       );
       expect(lines).toHaveLength(20);
@@ -319,7 +309,7 @@ describe("formatRosterCard", () => {
       );
       const records = [...running, ...completed(2)];
       const live = (id: string) => records.find((record) => record.id === id && id.startsWith("r"));
-      const lines = bodyLines(formatRosterCard(buildRoster(records, live), "reload"));
+      const lines = bodyLines(formatRosterCard(buildRoster(records, live)));
       expect(lines.filter((text) => text.endsWith(": running"))).toHaveLength(22);
       expect(lines.at(-1)).toBe("- 2 older completed agents not shown");
     });
@@ -493,7 +483,6 @@ describe("a waiting agent in the roster", () => {
     const many = Array.from({ length: 30 }, (_, index) => saved({ id: `d${index}` }));
     const card = formatRosterCard(
       buildRoster([...many, record], (id) => (id === "w1" ? live(["CI"]) : undefined)),
-      "reload",
     )!;
     expect(card).toContain("w1 implementer");
     expect(card.split("\n")).toHaveLength(CARD_MAX_LINES + 1);

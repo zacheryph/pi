@@ -6,7 +6,6 @@ import type { AgentConfigLookup } from "#src/config/agent-types";
 import type { ReopenSource } from "#src/lifecycle/cold-resume";
 import type { SendRefusal } from "#src/lifecycle/subagent";
 import { displayStatus } from "#src/lifecycle/subagent-state";
-import { SUBAGENT_LIST_KIND } from "#src/handlers/roster-card";
 import type { PersistedSubagentRecord } from "#src/persisted-record";
 import { buildRoster, formatRosterList, readBranchRecords } from "#src/roster";
 import {
@@ -33,7 +32,10 @@ export interface GetResultToolManager {
   sendRefusalFor(source: { id: string } & ReopenSource): SendRefusal | undefined;
 }
 
-/** What a `subagent_get` list result carries for the TUI and the roster card's stop rule. */
+/** The `details.kind` a `subagent_get` list result carries. */
+export const SUBAGENT_LIST_KIND = "list";
+
+/** What a `subagent_get` list result carries for the TUI. */
 export interface GetListDetails {
   kind: typeof SUBAGENT_LIST_KIND;
   total: number;

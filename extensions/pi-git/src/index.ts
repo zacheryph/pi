@@ -29,7 +29,7 @@ import {
 import { resolve } from "node:path";
 import { Type } from "typebox";
 import { showExplorer, sanitizeText } from "#ui";
-import { contextCard, readEntries, treeService, type EntriesSource } from "#session-state";
+import { readEntries, restoreCard, treeService, type EntriesSource } from "#session-state";
 import { ensureWorkHost } from "#work";
 import { CARD_TYPE, contextCard as ledgerCard } from "#src/card";
 import { gitSettings, type GitConfig } from "#src/config";
@@ -366,20 +366,18 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
     restore(ctx);
     backgroundRefresh(ctx);
   });
-  // The model may have lost this state after a compaction, reload, resume or
-  // /tree when there is something to restore; a list result it can see hides it.
-  const card = contextCard(pi, {
+  // A compaction summarizes away the tool results that showed this state, so
+  // the ledger is written back once after it.
+  restoreCard(pi, {
     type: CARD_TYPE,
-    now,
-    // A start event can reach this later handler after shutdown already ran.
-    restore: (ctx, event) => {
-      if (tree.sessionId() === undefined) return false;
+    build: (ctx, event) => {
+      // A start event can reach this later handler after shutdown already ran.
+      if (tree.sessionId() === undefined) return undefined;
       // Start/tree already replayed before Pi yielded; their ctx may now be stale.
       const ledger =
         event.type === "session_compact" ? readLedger(ctx) : { worktrees: records, prs };
-      return cardForLedger(ledger).then((built) => built !== undefined);
+      return cardForLedger(ledger);
     },
-    build: (ctx) => cardForLedger(readLedger(ctx)),
   });
   pi.on("session_shutdown", () => {
     generation += 1;
@@ -623,13 +621,6 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
 
   // Every tool call: did it touch a pull request? Parsing only; never changes the result.
   pi.on("tool_result", async (event, ctx) => {
-    // The model reads a list result only when it made the call itself and it worked.
-    if (
-      (event.toolName === "git_pr_list" || event.toolName === "git_worktree_list") &&
-      !event.isError &&
-      !event.parentToolCallId
-    )
-      card.hide();
     // git_pr_status and git_pr_watch record what they read themselves, including through nested MCP calls.
     if (event.toolName === "git_pr_status" || event.toolName === "git_pr_watch") return;
     if (event.parentToolCallId && ownCalls.has(event.parentToolCallId)) return;

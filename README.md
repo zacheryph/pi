@@ -129,7 +129,7 @@ pi-personal/
 │   ├── pi-session-tree/                 # shared library, not an extension
 │   │   ├── src/index.ts                 # cross-session registry (globalThis)
 │   │   └── test/
-│   └── pi-session-state/                # context card, tree service, entry replay
+│   └── pi-session-state/                # restore and context cards, tree service, entry replay
 │       ├── src/index.ts
 │       └── test/
 └── test/                                # bundle scenario tests (dev only)
@@ -250,9 +250,8 @@ GitHub MCP tools without it, retrying transient failures) and records it.
 `git_pr_watch` waits on a PR as open work and wakes the session when its checks
 finish, its head moves, a review or comment arrives, or it is merged or closed,
 each report naming the head commit it is for. `/git:refresh` re-reads
-every open PR and re-checks every worktree. After a compaction, reload, resume or
-`/tree`, a context-only card lists open PRs and worktrees until the model reads
-`git_pr_list` or `git_worktree_list`. State is published as `git:snapshot` for the
+every open PR and re-checks every worktree. After a compaction, a hidden card
+written once into the transcript lists open PRs and worktrees. State is published as `git:snapshot` for the
 dashboard. The root
 is set by `worktreeRoot` in `~/.pi/agent/git.json` or `.pi/git.json`;
 `trackReferenced: false` keeps only PRs opened here. See [extension docs](extensions/pi-git/README.md) and the
@@ -338,8 +337,8 @@ directory it prepared, such as a git worktree; that directory is never removed
 for it and the worker keeps taking messages there.
 The session records every agent's lifecycle, so `subagent_get` still answers for
 an agent's ID after a reload or resume (status, last outcome, result, transcript
-path), lists the branch's agents when called without one, and a context-only
-roster card restores them to the model after compaction, reload, resume or `/tree`.
+path), lists the branch's agents when called without one, and a hidden roster
+card written once after a compaction restores them to the model.
 `subagent_send` reaches an agent in any state: it steers a running one, and gives
 an idle one more work, reopening its saved transcript once its live session is
 gone, as long as that transcript and the agent's directory still exist.
@@ -626,8 +625,8 @@ The `test/` workspace holds one scenario per behaviour that exists only when the
 extensions run together: a todo handed to a subagent and accepted by the
 parent, a subagent's stash entry adopted by the parent, a worktree's ledger
 naming the subagent that ran in it, a finished job waking the session, a
-subagent's question answered with `subagent_send`, and the context cards
-restored once each after compaction and resume. Add a scenario there for new
+subagent's question answered with `subagent_send`, and the cards restored once
+each after compaction and resume. Add a scenario there for new
 cross-extension behaviour; assert on tool runs and model requests, not on
 internals. CI runs it whenever any extension or package changes.
 

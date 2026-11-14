@@ -89,8 +89,11 @@ async function delegateAndFinish(
   await untilCompleted(h, count);
 }
 
-/** The last message of a request, where the card sits when it is sent. */
-const tail = (context: Context | undefined) => JSON.stringify(context?.messages.at(-1));
+/** The roster cards written to a session's branch. */
+const writtenCards = (manager: SessionManager) =>
+  manager
+    .getBranch()
+    .filter((entry) => entry.type === "custom_message" && entry.customType === "subagent:roster");
 
 describe("subagent records in a real parent session (offline faux provider)", () => {
   it("restores a transcript path from a record captured before the child finishes", async () => {
@@ -118,7 +121,7 @@ describe("subagent records in a real parent session (offline faux provider)", ()
     expect(report).toContain(`Full transcript available at: ${running!.outputFile}`);
   }, 30_000);
 
-  it("answers subagent_get from the record after a reload, and shows the card until a list", async () => {
+  it("answers subagent_get from the record after a reload, which writes no card", async () => {
     const h = await parent();
     await delegateAndFinish(h, "Map auth", [fauxAssistantMessage("Mapped auth call sites.")]);
     const [id] = spawnedIds(h.manager);
@@ -143,11 +146,9 @@ describe("subagent records in a real parent session (offline faux provider)", ()
     ]);
     await h.session.prompt("Check on the worker");
     expect(h.faux.getPendingResponseCount()).toBe(0);
-    expect(requests.map(cards)).toEqual([1, 1, 0]);
-    expect(tail(requests[0])).toContain("restored after reload");
-    expect(tail(requests[0])).toContain(
-      `${id} general-purpose \\"Map auth\\": idle, last run completed`,
-    );
+    // No compaction: the subagent_start result still names the agent.
+    expect(requests.map(cards)).toEqual([0, 0, 0]);
+    expect(JSON.stringify(requests[0].messages)).toContain(id!);
     const report = lastResult(requests[1], "subagent_get");
     expect(report).toContain("Mapped auth call sites.");
     expect(report).toContain("Full transcript available at: ");
@@ -155,8 +156,7 @@ describe("subagent records in a real parent session (offline faux provider)", ()
     expect(lastResult(requests[2], "subagent_get")).toContain(
       `- ${id} general-purpose \\"Map auth\\": idle, last run completed`,
     );
-    // Context-only: the card is never written to the transcript.
-    expect(JSON.stringify(h.manager.getEntries())).not.toContain(CARD);
+    expect(writtenCards(h.manager)).toEqual([]);
     expect(h.errors).toEqual([]);
   }, 30_000);
 
@@ -210,9 +210,7 @@ describe("subagent records in a real parent session (offline faux provider)", ()
     expect(requests).toHaveLength(2);
     // The question the parent was told once is still in its conversation.
     expect(JSON.stringify(requests[0].messages)).toContain("[Storage] Which database?");
-    expect(tail(requests[0])).toContain(
-      `${id} general-purpose \\"Pick storage\\": waiting: answer`,
-    );
+    expect(cards(requests[0])).toBe(0);
     const report = lastResult(requests[1], "subagent_get");
     expect(report).not.toContain("waiting on an answer");
     // A live, waiting agent takes a message: the report says it is idle and what it waits on.
@@ -220,7 +218,7 @@ describe("subagent records in a real parent session (offline faux provider)", ()
     expect(readPersistedRecords(h.manager.getBranch())[0]).not.toHaveProperty("pendingQuestion");
   }, 30_000);
 
-  it("follows /tree: an agent spawned after the target point is gone from the list, by ID and on the card", async () => {
+  it("follows /tree: an agent spawned after the target point is gone, by ID and from the list", async () => {
     const h = await parent();
     await delegateAndFinish(h, "Kept work", [fauxAssistantMessage("kept")]);
     const target = h.manager.getLeafId()!;
@@ -238,9 +236,9 @@ describe("subagent records in a real parent session (offline faux provider)", ()
     ]);
     await h.session.prompt("Where are we?");
     expect(requests).toHaveLength(3);
-    expect(tail(requests[0])).toContain("restored after /tree");
-    expect(tail(requests[0])).toContain(kept);
-    expect(tail(requests[0])).not.toContain(abandoned);
+    // No compaction on the branch: no card, and the kept agent's start result is in context.
+    expect(cards(requests[0])).toBe(0);
+    expect(JSON.stringify(requests[0].messages)).toContain(kept!);
     // The abandoned agent is still alive in this runtime, but not on this branch.
     expect(lastResult(requests[1], "subagent_get")).toContain(
       `Agent not found: \\"${abandoned}\\"`,
@@ -265,7 +263,7 @@ describe("subagent records in a real parent session (offline faux provider)", ()
     expect(cards(requests[0])).toBe(0);
   }, 30_000);
 
-  it("ends each request after compaction with the card, sent once", async () => {
+  it("writes the card into the transcript once after compaction, before the next prompt", async () => {
     const h = await parent();
     await delegateAndFinish(h, "Index repo", [fauxAssistantMessage("indexed")]);
     h.faux.setResponses([fauxAssistantMessage("more")]);
@@ -283,13 +281,20 @@ describe("subagent records in a real parent session (offline faux provider)", ()
       capture(requests, fauxAssistantMessage("Still noted.")),
     ]);
     await h.session.prompt("After compaction");
-    // Still due: no list result has arrived since the compaction.
     await h.session.prompt("And again");
+    // One card, in the same place in both requests: before the first prompt, not at the end.
     expect(requests.map(cards)).toEqual([1, 1]);
-    expect(tail(requests[0])).toContain("restored after compaction");
-    expect(tail(requests[0])).toContain(
-      `${id} general-purpose \\"Index repo\\": idle, last run completed`,
-    );
-    expect(JSON.stringify(h.manager.getEntries())).not.toContain(CARD);
+    for (const request of requests) {
+      const texts = request.messages.map((message) => JSON.stringify(message));
+      const at = texts.findIndex((text) => text.includes(CARD));
+      expect(texts[at]).toContain("restored after compaction");
+      expect(texts[at]).toContain(
+        `${id} general-purpose \\"Index repo\\": idle, last run completed`,
+      );
+      expect(texts.slice(at + 1).find((text) => text.includes('"role":"user"'))).toContain(
+        "After compaction",
+      );
+    }
+    expect(writtenCards(h.manager)).toEqual([expect.objectContaining({ display: false })]);
   }, 30_000);
 });

@@ -1,32 +1,58 @@
 # pi-session-state
 
 A small library (not an extension) for the session wiring that extensions with
-persistent state share: a context-only card, a service in the
-[session tree](../pi-session-tree/README.md), and replay of custom entries.
-Import it through the workspace alias:
+persistent state share: a card that restores state after a compaction, a
+context-only card, a service in the [session tree](../pi-session-tree/README.md),
+and replay of custom entries. Import it through the workspace alias:
 
 ```ts
-import { contextCard, readEntries, treeService } from "#session-state";
+import { contextCard, readEntries, restoreCard, treeService } from "#session-state";
 ```
 
 Every helper keeps its state in the closure of the call that made it, so call
 them from the extension factory. Never keep their results in module scope: a
 same-cwd subagent may share the module with its parent.
 
+## Restore card
+
+```ts
+restoreCard(pi, {
+  type: "example:context",
+  // The card's text; undefined when there is nothing to restore. May be async.
+  build: (ctx, event) => formatCard(state),
+});
+```
+
+For state the model saw in tool results (handles, IDs, paths) that a compaction
+summarizes away. After `session_compact` it writes the card into the transcript
+once, with `pi.sendMessage({ customType: type, content, display: false },
+{ triggerTurn: false })`: hidden in the TUI, sent to the model like any other
+message. Pi holds a message sent while a run streams until the turn ends, so the
+card never lands between a tool call and its result.
+
+The card stays where it was written: later requests carry it in the same place,
+so the model reads it once and the conversation's prompt cache keeps working.
+The next compaction summarizes it with everything else and writes a fresh one.
+
+Only a compaction loses state. After `session_start` (any reason) and
+`session_tree` the card is written only when the branch's latest compaction has
+no card of `type` after it, such as a session compacted before the extension
+wrote cards; `cardMissing(ctx, type)` is that check. `build` is not called
+otherwise.
+
+`build` runs after the extension's own handlers for the event that were
+registered before `restoreCard`, so register it after the handlers that rebuild
+the state it reads. An async result is dropped after shutdown, a newer restore
+event, or once a card of `type` reached the branch.
+
 ## Context card
 
 ```ts
-const card = contextCard(pi, {
+contextCard(pi, {
   type: "example:context",
-  // After session_start, session_tree and session_compact: is there state to restore?
-  restore: (ctx, event) => entries.length > 0,
   // The card for this request; undefined for none. May be async.
-  build: (ctx, messages) => formatCard(state),
+  build: (ctx, messages) => (alreadyVisible(messages) ? undefined : formatCard(state)),
 });
-
-card.show(); // new state the model has not seen (an entry adopted from a subagent)
-card.hide(); // the model has seen it (a list result in its context)
-card.shownAt(); // when it was last shown; undefined while hidden
 ```
 
 Registers the `context` handler that strips the previous request's card of
@@ -36,25 +62,13 @@ returns `undefined` when nothing changed. `build` sees the messages with earlier
 cards already removed, so it can check whether a visible tool result already
 holds the state.
 
-With `restore`, the helper owns whether the card is shown. After each
-`session_start`, `session_tree` and `session_compact` it shows the card when
-`restore` returns true and hides it otherwise; `session_shutdown` hides it. While
-the card is hidden, `build` is not called. `restore` receives the event, so an
-extension can tell the card why it came back (`event.type`, and
-`event.reason` on start). The extension keeps its own rule for when the model has
-seen the state and calls `hide()` then, from `build` or from another handler.
-
-Without `restore`, `build` alone decides on every request (pi-todo, whose card is
-due until a visible tool result already holds the state).
-
-Async `restore` and `build` results are dropped after any newer restore event or
-explicit `show()`/`hide()` call, including a hide followed by a show at the same
-timestamp. Shutdown also invalidates pending work; the old card is still
-stripped. Synchronous callbacks give a synchronous result. Pass `now` to control
-timestamps.
-
-`contextCard` runs `restore` from its own handlers, so register it after the
-extension's handlers that rebuild the state `restore` reads.
+The card is the last message of every request while `build` returns one, so the
+model reads it as the newest message, and on providers with explicit cache
+breakpoints (Anthropic) the conversation is not cached while it is sent. Keep it
+for state that changes under the model and must be current on every request
+(pi-todo's list, which commands and subagents edit), and return undefined as
+soon as a visible tool result holds the state. Use `restoreCard` for everything
+else. Pass `now` to control timestamps.
 
 ## Tree service
 

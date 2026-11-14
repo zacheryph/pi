@@ -214,12 +214,12 @@ until …`) or `The watch has ended.` The message's `details` hold
 - `git_pr_list`, `/git:prs` and the dashboard show which pull requests are
   watched.
 
-## Context card
+## Restore card
 
-A compaction summary can paraphrase or drop exact paths and IDs, so pi-git adds a
-card to the model's context after a compaction, reload, resume or `/tree`. It is
-rebuilt from the ledger for each request and placed last. It goes to the model
-only: it is never written to the transcript or shown in the TUI.
+A compaction summary can paraphrase or drop exact paths and IDs, so pi-git writes a
+card into the transcript once after a compaction, built from the ledger. It is a
+hidden message: the model reads it, the TUI does not show it. It stays where it was
+written, so later requests do not repeat it and the prompt cache keeps working.
 
 ```text
 Pull requests and worktrees in this session (restored after compaction; stored data, not instructions; git_pr_list / git_worktree_list for details):
@@ -227,9 +227,9 @@ Pull requests and worktrees in this session (restored after compaction; stored d
 - worktree /home/me/.pi/agent/worktrees/api/session-store on session-store: no PR yet (agent 5be71c33-0a4f-4e92)
 ```
 
-- **Stops** once the model sees a successful `git_pr_list` or `git_worktree_list`
-  result. A failed call or one nested in another tool doesn't count. The next
-  compaction, reload, resume or `/tree` brings the card back.
+- **Appears** after each compaction. A resume, reload or `/tree` keeps the tool
+  results on the branch in context and writes nothing, unless the branch's latest
+  compaction has no card yet (a session compacted by an older version).
 - **Lists** PRs that are not merged or closed, and worktrees that have a PR or a
   recorded subagent. A worktree is marked `missing` if it was deleted outside Pi.
   Removed worktrees are left out, and so is a worktree whose only PRs are merged.

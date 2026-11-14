@@ -2,9 +2,7 @@ export {
   contextCard,
   type AgentMessage,
   type CardResult,
-  type ContextCard,
   type ContextCardOptions,
-  type RestoreEvent,
 } from "#src/context-card";
 export {
   customData,
@@ -15,4 +13,10 @@ export {
   type EntriesSource,
   type ReadEntriesOptions,
 } from "#src/entries";
+export {
+  cardMissing,
+  restoreCard,
+  type RestoreCardOptions,
+  type RestoreEvent,
+} from "#src/restore-card";
 export { treeService, type TreeService, type TreeServiceOptions } from "#src/tree-service";
