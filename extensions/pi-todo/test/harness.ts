@@ -1,7 +1,6 @@
 import {
   SessionManager,
-  type ContextEvent,
-  type ContextEventResult,
+  type BeforeAgentStartEventResult,
   type EventBus,
   type ExtensionCommandContext,
   type ExtensionContext,
@@ -17,11 +16,21 @@ import { todoSettings, type TodoConfig } from "#src/config";
 import type { TodoRequest } from "#src/actions";
 import type { TodoDetails } from "#src/state";
 import { TODO_JOURNAL_TYPE, TODO_REVIEW_TYPE } from "#src/replay";
+import { TODO_SYNC_TYPE } from "#src/sync";
 
 type Command = Omit<RegisteredCommand, "name" | "sourceInfo">;
 const isOutput = (message: unknown) => shownOutput({ mock: { calls: [[message]] } }).length > 0;
+const isNote = (message: unknown) =>
+  (message as { customType?: unknown } | undefined)?.customType === TODO_SYNC_TYPE;
 export type TodoTool = ToolDefinition<TSchema, TodoDetails>;
-export const CONTEXT_TYPE = "todo:context";
+
+/** A note as Pi hands it on: its custom type, text, visibility and details. */
+interface SentNote {
+  customType: string;
+  content: string;
+  display: boolean;
+  details?: unknown;
+}
 export const T0 = Date.UTC(2026, 9, 22, 12);
 
 export interface HarnessOptions {
@@ -41,6 +50,8 @@ export interface HarnessOptions {
  */
 export function harness(options: HarnessOptions = {}) {
   const session = options.session ?? SessionManager.inMemory(options.cwd ?? "/todo-test");
+  const record = (note: SentNote) =>
+    session.appendCustomMessageEntry(note.customType, note.content, note.display, note.details);
   /** Every text the user was shown: a notification in the terminal, a displayed message elsewhere. */
   const notices = vi.fn<(text: string, level: string) => void>();
   const ui = {
@@ -68,6 +79,8 @@ export function harness(options: HarnessOptions = {}) {
       session.appendCustomEntry(type, data);
     }),
     sendMessage: vi.fn((message: unknown) => {
+      // Idle, Pi appends a note to the branch at once.
+      if (isNote(message)) record(message as SentNote);
       for (const shown of shownOutput({ mock: { calls: [[message]] } })) {
         notices(shown.text, shown.level);
       }
@@ -106,14 +119,59 @@ export function harness(options: HarnessOptions = {}) {
   /** The text a tool call returned to the model. */
   const text = async (request: TodoRequest) => messageText(await execute(request));
   const command = (name: string, args = "") => fake.runCommand(name, args, ctx) as Promise<void>;
-  const context = async (messages: ContextEvent["messages"] = []) =>
-    (await emit("context", { messages })) as ContextEventResult | undefined;
+  /**
+   * Start a run as Pi does: the note `before_agent_start` returns, if any, joins the branch.
+   * Returns its text.
+   */
+  const sync = async () => {
+    const result = (await emit("before_agent_start", {
+      prompt: "Carry on",
+      messageType: "user",
+    })) as BeforeAgentStartEventResult | undefined;
+    const note = result?.message as SentNote | undefined;
+    if (!note) return undefined;
+    expect(note).toMatchObject({ customType: TODO_SYNC_TYPE, display: false });
+    record(note);
+    return note.content;
+  };
+  /** End a turn; returns the text of the note written for it, if any. */
+  const turnEnd = async () => {
+    const before = notes().length;
+    await emit("turn_end");
+    return notes().slice(before).at(-1)?.content;
+  };
+  /** Put a tool result the model saw on the branch. */
+  const see = (result: { content: unknown; details: unknown }, toolName = "todo_upsert") =>
+    session.appendMessage({
+      role: "toolResult",
+      toolCallId: "visible-todo",
+      toolName,
+      content: result.content,
+      details: JSON.parse(JSON.stringify(result.details)),
+      isError: false,
+      timestamp: 1,
+    } as never);
+  /** The notes on the branch, oldest first. */
+  const notes = () =>
+    session
+      .getBranch()
+      .flatMap((entry) =>
+        entry.type === "custom_message" && entry.customType === TODO_SYNC_TYPE
+          ? [{ content: entry.content as string, display: entry.display, details: entry.details }]
+          : [],
+      );
   const state = async () => (await execute({ action: "list" })).details;
   const entriesOf = (type: string) =>
     session.getEntries().filter((e) => e.type === "custom" && e.customType === type);
   const noContinuation = () => {
-    // Command output is shown to the user and never continues the session.
-    expect(fake.pi.sendMessage.mock.calls.filter(([m]) => !isOutput(m))).toEqual([]);
+    // Command output is shown to the user and never continues the session; nor does a note.
+    expect(
+      fake.pi.sendMessage.mock.calls.filter(
+        ([m, options]) =>
+          !isOutput(m) &&
+          !(isNote(m) && (options as { triggerTurn?: boolean })?.triggerTurn === false),
+      ),
+    ).toEqual([]);
     expect(fake.pi.sendUserMessage).not.toHaveBeenCalled();
   };
   return {
@@ -134,7 +192,10 @@ export function harness(options: HarnessOptions = {}) {
     text,
     tool,
     command,
-    context,
+    sync,
+    turnEnd,
+    see,
+    notes,
     state,
     snapshots: () => entriesOf(TODO_JOURNAL_TYPE),
     reviews: () => entriesOf(TODO_REVIEW_TYPE),

@@ -129,7 +129,7 @@ pi-personal/
 │   ├── pi-session-tree/                 # shared library, not an extension
 │   │   ├── src/index.ts                 # cross-session registry (globalThis)
 │   │   └── test/
-│   └── pi-session-state/                # restore and context cards, tree service, entry replay
+│   └── pi-session-state/                # restore card, tree service, entry replay
 │       ├── src/index.ts
 │       └── test/
 └── test/                                # bundle scenario tests (dev only)

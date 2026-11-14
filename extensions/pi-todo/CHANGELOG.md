@@ -3,6 +3,30 @@
 Local changes to this vendored copy, newest first. Where it came from is
 recorded in [UPSTREAM.md](UPSTREAM.md).
 
+## 2026-11-14: Notes in the transcript replace the per-request todo card
+
+The `todo:context` card was added to the end of every model request while the
+list differed from the model's last todo result: after a compaction until the next
+todo call, after a `/todo` edit, after a subagent's update. As the last message it
+held the conversation's cache breakpoint, so the history could not be reused from
+the prompt cache while it was sent, and the model read it as the newest message.
+
+- `src/sync.ts` (new): a `todo:sync` note, written into the transcript as a hidden
+  `custom` message only when the list differs from what the model last saw. What it
+  saw is read from the branch: the latest successful, untruncated whole-list todo
+  result, or the latest note, still in context after the latest compaction. The
+  note lists what changed since (status, subject, description, prerequisites, the
+  latest message, and who changed it where the task's history records it); it holds
+  the whole list when the model has none, or when the changes would be longer.
+- `src/index.ts`: notes are written by `before_agent_start` (after the prompt),
+  at `turn_end` (held by Pi until the turn's results are in) and after
+  `session_compact`. A note held while a run streams counts as seen until it
+  reaches the branch. `todo_list` with `key` records the key in its details, so it
+  does not count as showing the whole list. The tool guideline describes the note.
+- `src/actions.ts`: `formatTodoContext` is gone; `TODO_OUTPUT_TRUNCATED` names the
+  marker a truncated result carries.
+- `contextSync` keeps its values: `changes` writes notes, `off` writes none.
+
 ## 2026-11-13: Widget and browser as views and actions on the session bus
 
 So a remote surface (through pi-presentation) can draw the widget and the

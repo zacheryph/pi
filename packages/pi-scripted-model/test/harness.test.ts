@@ -111,16 +111,16 @@ describe("startSession", () => {
     await open.prompt("Plan it");
     const cardTypes = (index: number) =>
       open!.requests()[index]!.messages.flatMap((m) => (m.role === "custom" ? [m.customType] : []));
-    // The todo_upsert result shows the list, so pi-todo adds no card yet.
+    // The todo_upsert result shows the list, so pi-todo writes no note yet.
     expect(open.requests()).toHaveLength(2);
     expect(cardTypes(1)).toEqual([]);
 
     const compaction = await open.compact();
     expect(compaction.summary).toContain("The user planned one task.");
     await open.prompt("Again");
-    // The summary replaced that result, so the list comes back as a card.
+    // The summary replaced that result, so the list comes back as a note written after it.
     expect(open.requests()[2]!.messages[0]).toMatchObject({ role: "compactionSummary" });
-    expect(cardTypes(2)).toEqual(["todo:context"]);
+    expect(cardTypes(2)).toEqual(["todo:sync"]);
 
     const file = open.session.sessionFile;
     await open.resume();

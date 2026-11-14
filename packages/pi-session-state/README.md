@@ -2,11 +2,11 @@
 
 A small library (not an extension) for the session wiring that extensions with
 persistent state share: a card that restores state after a compaction, a
-context-only card, a service in the [session tree](../pi-session-tree/README.md),
-and replay of custom entries. Import it through the workspace alias:
+service in the [session tree](../pi-session-tree/README.md), and replay of
+custom entries. Import it through the workspace alias:
 
 ```ts
-import { contextCard, readEntries, restoreCard, treeService } from "#session-state";
+import { readEntries, restoreCard, treeService } from "#session-state";
 ```
 
 Every helper keeps its state in the closure of the call that made it, so call
@@ -45,30 +45,11 @@ registered before `restoreCard`, so register it after the handlers that rebuild
 the state it reads. An async result is dropped after shutdown, a newer restore
 event, or once a card of `type` reached the branch.
 
-## Context card
-
-```ts
-contextCard(pi, {
-  type: "example:context",
-  // The card for this request; undefined for none. May be async.
-  build: (ctx, messages) => (alreadyVisible(messages) ? undefined : formatCard(state)),
-});
-```
-
-Registers the `context` handler that strips the previous request's card of
-`type` and appends the current one as a `custom` message with `display: false`,
-so it is never written to the transcript or shown in the TUI. The handler
-returns `undefined` when nothing changed. `build` sees the messages with earlier
-cards already removed, so it can check whether a visible tool result already
-holds the state.
-
-The card is the last message of every request while `build` returns one, so the
-model reads it as the newest message, and on providers with explicit cache
-breakpoints (Anthropic) the conversation is not cached while it is sent. Keep it
-for state that changes under the model and must be current on every request
-(pi-todo's list, which commands and subagents edit), and return undefined as
-soon as a visible tool result holds the state. Use `restoreCard` for everything
-else. Pass `now` to control timestamps.
+Nothing in this bundle adds a message to the end of every request: a message
+there moves on each call, so the model reads it as the newest message, and on
+providers with explicit cache breakpoints (Anthropic) the conversation is not
+cached while it is sent. State that changes under the model is written into the
+transcript when it changes instead (pi-todo's `todo:sync` note).
 
 ## Tree service
 

@@ -87,7 +87,7 @@ function prLine(pr: PrRecord, worktrees: readonly WorktreeRecord[]): string {
  * reached, PRs opened here or tied to a worktree come first, then worktrees,
  * then PRs the session only looked at, each newest first.
  */
-export function contextCard(
+export function ledgerCard(
   ledger: Ledger,
   repositories: CardRepositories = new Map(),
 ): string | undefined {
