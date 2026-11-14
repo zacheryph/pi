@@ -50,6 +50,9 @@ function snapshot(manager: SessionManager) {
   return replayTaskState({ sessionManager: manager });
 }
 
+/** How many times `text` holds `part`. */
+const occurrences = (text: string, part: string) => text.split(part).length - 1;
+
 describe("real Pi SDK integration (offline faux provider)", () => {
   it("loads standalone package with one tool per action and expected commands", async () => {
     const { extensions, errors } = await loadResources(onTestFinished, {
@@ -98,12 +101,15 @@ describe("real Pi SDK integration (offline faux provider)", () => {
         ),
       ).toHaveLength(0);
       expect(snapshot(h.manager).tasks.map((task) => task.key)).toEqual(["inspect", "verify"]);
+      // The model never saw the nested result: the turn's end writes the whole list.
       const nextRequest = JSON.stringify(h.requests[1]);
-      expect(nextRequest).toContain("Current task list (revision 1)");
+      expect(occurrences(nextRequest, "Current todo list")).toBe(1);
+      expect(nextRequest).toContain('\\"revision\\":1');
       expect(nextRequest).toContain('\\"dependsOn\\":[\\"inspect\\"]');
       const reloaded = await fixture({ manager: h.manager });
       await reloaded.session.prompt("Resume");
-      expect(JSON.stringify(reloaded.requests[0])).toContain("Current task list (revision 1)");
+      // Written once: the reload finds it on the branch.
+      expect(occurrences(JSON.stringify(reloaded.requests[0]), "Current todo list")).toBe(1);
       expect(snapshot(reloaded.manager).tasks).toEqual(snapshot(h.manager).tasks);
     },
     20_000,
@@ -116,17 +122,19 @@ describe("real Pi SDK integration (offline faux provider)", () => {
     expect(snapshot(h.manager).tasks[0]).toMatchObject({ key: "fix-auth", status: "pending" });
     await h.session.prompt("Continue");
     expect(h.requests).toHaveLength(1);
-    expect(JSON.stringify(h.requests[0])).toContain("Current task list (revision 1)");
+    expect(JSON.stringify(h.requests[0])).toContain("Current todo list");
     h.faux.setResponses([fauxAssistantMessage("still tracked")]);
     await h.session.prompt("Another request without direct todo results");
     expect(h.requests).toHaveLength(2);
-    expect(JSON.stringify(h.requests[1])).toContain("Current task list (revision 1)");
+    // The note stays where it was written; no second copy.
+    expect(occurrences(JSON.stringify(h.requests[1]), "Current todo list")).toBe(1);
     await h.session.prompt("/todo:clear all --yes");
     expect(h.requests).toHaveLength(2);
     h.faux.setResponses([fauxAssistantMessage("done again")]);
     await h.session.prompt("Next");
     expect(h.requests).toHaveLength(3);
-    expect(JSON.stringify(h.requests[2])).toContain("Current task list (revision 2)");
+    expect(JSON.stringify(h.requests[2])).toContain("(revision 1 → 2;");
+    expect(JSON.stringify(h.requests[2])).toContain("- fix-auth: removed");
     expect(snapshot(h.manager).tasks).toEqual([]);
   });
 
@@ -159,7 +167,8 @@ describe("real Pi SDK integration (offline faux provider)", () => {
     const restored = await fixture({ manager: h.manager });
     await restored.session.prompt("After reload");
     expect(snapshot(restored.manager).tasks).toEqual([]);
-    expect(JSON.stringify(restored.requests[0])).toContain("Current task list (revision 2)");
+    // The delayed result showed revision 1; the end of its turn told the model about the clear.
+    expect(JSON.stringify(restored.requests[0])).toContain("- old: removed");
   }, 20_000);
 
   it("real tree navigation restores branch-local state instead of abandoned additions", async () => {
@@ -188,10 +197,10 @@ describe("real Pi SDK integration (offline faux provider)", () => {
     await h.session.prompt("Work");
     const secondRequest = JSON.stringify(h.requests[1]);
     expect(secondRequest).toContain("tracked");
-    expect(secondRequest).not.toContain("Current task list");
+    expect(secondRequest).not.toContain("Current todo list");
     h.faux.setResponses([fauxAssistantMessage("done again")]);
     await h.session.prompt("Still tracked");
-    expect(JSON.stringify(h.requests[2])).not.toContain("Current task list");
+    expect(JSON.stringify(h.requests[2])).not.toContain("Current todo list");
     expect(snapshot(h.manager).tasks.map((task) => task.key)).toEqual(["tracked"]);
   });
 
@@ -256,7 +265,7 @@ describe("real Pi SDK integration (offline faux provider)", () => {
     expect(restored.review.tasks.get("audit")?.revision).toBe(1);
     await reloaded.session.prompt("Next");
     // The direct result is still the current baseline; review added no snapshot.
-    expect(JSON.stringify(reloaded.requests[0])).not.toContain("Current task list");
+    expect(JSON.stringify(reloaded.requests[0])).not.toContain("Current todo list");
   }, 20_000);
 
   it("restores exact keys/dependencies after compaction omits task history", async () => {
@@ -272,7 +281,8 @@ describe("real Pi SDK integration (offline faux provider)", () => {
     await restored.session.prompt("After compaction");
     expect(snapshot(restored.manager).tasks.map((task) => task.key)).toEqual(["inspect", "verify"]);
     const request = JSON.stringify(restored.requests[0]);
-    expect(request).toContain("Current task list (revision 1)");
+    expect(request).toContain("Current todo list");
+    expect(request).toContain('\\"revision\\":1');
     expect(request).toContain('\\"dependsOn\\":[\\"inspect\\"]');
     expect(restored.requests).toHaveLength(1);
   }, 20_000);

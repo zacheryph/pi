@@ -82,10 +82,10 @@ bundle extension again. So:
   work.
 - To give the model state a compaction summarized away, use
   `restoreCard(pi, { type, build })` from the same package: it writes one hidden
-  card into the transcript after each compaction. Reach for the per-request
-  `contextCard(pi, { type, build })` only for state that changes under the
-  model on every request; it is resent at the end of each request, which costs
-  prompt caching and draws replies.
+  card into the transcript after each compaction. For state that changes under
+  the model, write a hidden `pi.sendMessage(..., { triggerTurn: false })` note
+  when it changes, as pi-todo does. Never add a message to the end of every
+  request from a `context` handler: it costs prompt caching and draws replies.
 - Guard UI with `ctx.hasUI`; children have none.
 - A captured `ctx` goes stale after reload. Re-read it from each event.
 - To offer a service to other sessions, use `treeService(pi, name, api)` from

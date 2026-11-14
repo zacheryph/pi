@@ -31,7 +31,7 @@ import { Type } from "typebox";
 import { showExplorer, sanitizeText } from "#ui";
 import { readEntries, restoreCard, treeService, type EntriesSource } from "#session-state";
 import { ensureWorkHost } from "#work";
-import { CARD_TYPE, contextCard as ledgerCard } from "#src/card";
+import { CARD_TYPE, ledgerCard } from "#src/card";
 import { gitSettings, type GitConfig } from "#src/config";
 import { GIT_SNAPSHOT_EVENT, snapshotEvent, type GitSnapshotEvent } from "#src/events";
 import { readLedger, type Ledger } from "#src/fold";

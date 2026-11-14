@@ -13,7 +13,7 @@ extensions and real subagents, no API key or network.
 | `scenarios/job-wake.test.ts`        | pi-job through pi-work's root host: a finished job starts the next turn, once.           |
 | `scenarios/child-question.test.ts`  | pi-ask through pi-work's parent link: one question, answered with `subagent_send`.       |
 | `scenarios/pr-watch.test.ts`        | pi-git through pi-work: a watched PR's report starts the next turn, here and in a child. |
-| `scenarios/context-cards.test.ts`   | One `todo`, `stash`, `git` and `subagent` card each after compaction and after resume.   |
+| `scenarios/context-cards.test.ts`   | One `todo`, `stash`, `git` and `subagent` card each, written once after compaction.      |
 
 Assert on what the model was sent (`requests()`) and on tool runs
 (`toolRuns()`, or `childRuns` for a subagent's transcript), not on extension

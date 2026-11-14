@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CARD_LINES, CARD_TITLE_LENGTH, cardTitle, contextCard } from "#src/card";
+import { CARD_LINES, CARD_TITLE_LENGTH, cardTitle, ledgerCard } from "#src/card";
 import { foldLedger } from "#src/fold";
 import { LEDGER_TYPE, type WorktreeRecord } from "#src/ledger";
 import { prKey, type PrRecord, type PrStatus } from "#src/prs";
@@ -41,7 +41,7 @@ const pr = (
 
 /** Through the real fold, as the extension builds it: the latest entry for each wins. */
 const card = (...records: Array<WorktreeRecord | PrRecord>) =>
-  contextCard(
+  ledgerCard(
     foldLedger(records.map((data) => ({ type: "custom", customType: LEDGER_TYPE, data }))),
     new Map([
       ["/src/api", { host: "github.com", owner: "acme", repo: "api" }],
@@ -51,7 +51,7 @@ const card = (...records: Array<WorktreeRecord | PrRecord>) =>
 
 const bodyOf = (text: string | undefined) => text!.split("\n").slice(1);
 
-describe("contextCard", () => {
+describe("ledgerCard", () => {
   it.each([{ owner: "other-org" }, { host: "github.example.com" }])(
     "does not link a same-named repository with a different identity: %j",
     (identity) => {
@@ -74,7 +74,7 @@ describe("contextCard", () => {
     const ledger = foldLedger(
       [active, merged].map((data) => ({ type: "custom", customType: LEDGER_TYPE, data })),
     );
-    expect(contextCard(ledger)).toContain("worktree /w/api/fix");
+    expect(ledgerCard(ledger)).toContain("worktree /w/api/fix");
   });
 
   it("links a renamed checkout through its verified remote identity", () => {
@@ -84,7 +84,7 @@ describe("contextCard", () => {
       [active, open].map((data) => ({ type: "custom", customType: LEDGER_TYPE, data })),
     );
     expect(
-      contextCard(
+      ledgerCard(
         ledger,
         new Map([[active.repo, { host: "github.com", owner: "acme", repo: "api" }]]),
       ),

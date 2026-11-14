@@ -14,12 +14,7 @@ import {
   unreviewedTodoTasks,
   unreviewedTodoUpdates,
 } from "#src/activity";
-import {
-  applyTodoRequest,
-  formatTodoContext,
-  formatTodoState,
-  type TodoRequest,
-} from "#src/actions";
+import { applyTodoRequest, formatTodoState, type TodoRequest } from "#src/actions";
 import { createEmptyTodoState, type TodoState, TodoValidationError } from "#src/state";
 
 const options = { singleActive: false };
@@ -346,6 +341,5 @@ describe("persisted activity", () => {
     expect(
       JSON.parse(formatTodoState(long.state, undefined, long.activity)).tasks[1].lastMessage,
     ).toHaveLength(120);
-    expect(formatTodoContext(long.state)).not.toContain("mmm");
   });
 });

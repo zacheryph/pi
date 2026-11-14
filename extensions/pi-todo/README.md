@@ -129,8 +129,8 @@ details. Validation failures never mutate state.
 | `/todo:settings`                                                                     | Built-in select/input settings menu, like subagents                              |
 
 Commands never submit a user prompt, schedule a continuation, start subagents,
-or mark unrelated work completed. On its next model request, the agent gets a
-context-only snapshot of changed state by default. Clear confirmation rejects
+or mark unrelated work completed. When the next run starts, the agent gets a
+hidden note listing what changed (see `contextSync` below). Clear confirmation rejects
 stale revisions if tasks changed while the dialog was open, and cancels if the
 session or branch changed. Non-UI clear-all
 requires `--yes` unless confirmation is disabled. Model tool `clear` is already
@@ -306,11 +306,19 @@ lower-priority layer; malformed files warn instead of preventing startup.
 - `maxVisible`: 1–12 task rows; short terminals further limit widget height.
 - `showCompleted`: hides completed tasks in the widget, except ones with unreviewed messages.
 - `singleActive`: reject mutations resulting in multiple active tasks. No implicit demotion.
-- `contextSync`: `changes` supplies one current snapshot while retained model
-  history lacks an untruncated direct tool result for that state. Transient snapshots
-  remain on subsequent requests so user/nested-tool edits cannot disappear again.
-  `off` disables sync. No periodic work reminders or forced turns. With sync off,
-  explicitly call `list` after user changes or compaction.
+- `contextSync`: `changes` writes a hidden note (`todo:sync`) into the transcript
+  when the list differs from what the model last saw: its latest untruncated
+  whole-list todo result, or the latest note, still in context after the last
+  compaction. The note lists each changed task (status, subject, description,
+  prerequisites, the latest message, and who changed it when the task's history
+  records it) and counts the rest; it holds the whole list instead when the model
+  has none (a new session's first run, a subagent's first look at its tasks, after
+  a compaction) or when the changes would be longer than the list. Notes are
+  written when a run starts (after its prompt), at the end of a turn in which the
+  list changed (a subagent's updates), and after a compaction. Each is written
+  once and keeps its place, so later requests do not repeat it and the prompt
+  cache keeps working. `off` writes no notes; then call `todo_list` after user
+  changes or compaction. No periodic work reminders or forced turns.
 - `childPrerequisites`: let a subagent holding a `ledger` claim add prerequisites to
   tasks it does not hold (see [Handing tasks to subagents](#handing-tasks-to-subagents)).
 
