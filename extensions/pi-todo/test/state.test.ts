@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   MAX_TASK_DEPENDENCIES,
+  MAX_OPEN_TASKS,
   MAX_TODO_TASKS,
   TODO_SCHEMA_VERSION,
   TodoValidationError,
@@ -285,13 +286,24 @@ describe("writeTodoSnapshot", () => {
     }
   });
 
-  it("accepts the task limit and rejects one extra task without mutation", () => {
-    const tasks = Array.from({ length: MAX_TODO_TASKS }, (_, index) => task(`task-${index}`));
+  it("accepts the open task limit and rejects one extra open task without mutation", () => {
+    const tasks = Array.from({ length: MAX_OPEN_TASKS }, (_, index) => task(`task-${index}`));
     const state = stateWith(tasks);
-    expect(state.tasks).toHaveLength(MAX_TODO_TASKS);
+    expect(state.tasks).toHaveLength(MAX_OPEN_TASKS);
     expectRejected(
       state,
       { tasks: [...tasks, task("extra")] },
+      `at most ${MAX_OPEN_TASKS} tasks may be pending or in_progress (51 requested)`,
+    );
+    // Completed tasks do not count against it, only against the hard bound.
+    const done = (index: number) => task(`done-${index}`, { status: "completed" });
+    const full = Array.from({ length: MAX_TODO_TASKS - MAX_OPEN_TASKS }, (_, index) => done(index));
+    expect(writeTodoSnapshot(state, { tasks: [...tasks, ...full] }).tasks).toHaveLength(
+      MAX_TODO_TASKS,
+    );
+    expectRejected(
+      state,
+      { tasks: [...tasks, ...full, done(999)] },
       `tasks supports at most ${MAX_TODO_TASKS} items`,
     );
   });
@@ -337,7 +349,7 @@ describe("isTaskBlocked", () => {
 });
 
 describe("removeCompletedTasks", () => {
-  it("keeps completed direct blockers of unfinished work and cleans removed dependencies", () => {
+  it("removes every completed task and drops the links to them", () => {
     const state = stateWith([
       task("root", { status: "completed" }),
       task("required", { status: "completed", dependsOn: ["root"] }),
@@ -348,40 +360,22 @@ describe("removeCompletedTasks", () => {
     const original = structuredClone(state);
     const result = removeCompletedTasks(state)!;
     expect(result.tasks).toEqual([
-      { key: "required", subject: "Task required", status: "completed" },
-      { key: "waiting", subject: "Task waiting", status: "pending", dependsOn: ["required"] },
-      { key: "running", subject: "Task running", status: "in_progress", dependsOn: ["required"] },
+      { key: "waiting", subject: "Task waiting", status: "pending" },
+      { key: "running", subject: "Task running", status: "in_progress" },
     ]);
     expect(result.change).toEqual({
       added: [],
-      updated: ["required"],
-      removed: ["root", "unneeded"],
+      updated: ["waiting", "running"],
+      removed: ["root", "required", "unneeded"],
     });
     expect(result.revision).toBe(state.revision + 1);
     expect(state).toEqual(original);
     expect(removeCompletedTasks(result)).toBeUndefined();
-
-    const finished = writeTodoSnapshot(result, {
-      tasks: [
-        { key: "required" },
-        { key: "waiting", status: "completed" },
-        { key: "running", status: "completed" },
-      ],
-    });
-    expect(removeCompletedTasks(finished)?.tasks).toEqual([]);
   });
 
   it("returns undefined when nothing can be removed", () => {
     expect(removeCompletedTasks(createEmptyTodoState())).toBeUndefined();
     expect(removeCompletedTasks(stateWith([task("pending")]))).toBeUndefined();
-    expect(
-      removeCompletedTasks(
-        stateWith([
-          task("required", { status: "completed" }),
-          task("pending", { dependsOn: ["required"] }),
-        ]),
-      ),
-    ).toBeUndefined();
   });
 });
 

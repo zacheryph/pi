@@ -314,7 +314,7 @@ export function todoWidgetView(
 
 /**
  * Pure widget/tool summary; never reads terminal dimensions. Caller owns widget
- * task/height limits. Expanded tools can request all 50 tasks. Invalid maxVisible
+ * task/height limits. Expanded tools can request every task. Invalid maxVisible
  * defaults to 5; finite values floor to at least 1. Optional maxRows explicitly
  * bounds rows, reserving overflow space; no height limit applies by default.
  */

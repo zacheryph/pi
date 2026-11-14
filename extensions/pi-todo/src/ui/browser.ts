@@ -31,6 +31,8 @@ export interface TodoBrowserOptions {
   branch?: number;
   /** The session's bus, where `todo.inspect` and `todo.review` are defined. */
   actions?: ActionBus;
+  /** Completed tasks archived off the list. */
+  archived?: number;
 }
 
 /**
@@ -38,6 +40,9 @@ export interface TodoBrowserOptions {
  * `todo.inspect`; task mutations belong exclusively to explicit commands and
  * tools, and the only write is review state, through `todo.review`.
  */
+const archivedNotice = (count = 0) =>
+  count > 0 ? ` · ${count} earlier completed task${count === 1 ? "" : "s"} archived` : "";
+
 export function todoExplorerModel(
   state: TodoState,
   options: TodoBrowserOptions = {},
@@ -88,7 +93,7 @@ export function todoExplorerModel(
     ...base,
     notices: [
       {
-        text: `Read-only task snapshot · last reviewed ${reviewed === undefined ? "never" : formatTodoAge(reviewed, now)}`,
+        text: `Read-only task snapshot · last reviewed ${reviewed === undefined ? "never" : formatTodoAge(reviewed, now)}${archivedNotice(options.archived)}`,
         tone: "muted",
       },
     ],

@@ -8,7 +8,14 @@ export const TODO_TOOL_NAMES: ReadonlySet<string> = new Set([
   "todo_remove",
   "todo_clear",
 ]);
-export const MAX_TODO_TASKS = 50;
+/** Pending and in-progress tasks the list may hold. */
+export const MAX_OPEN_TASKS = 50;
+/**
+ * Hard bound on any one list. After archiving a list holds at most
+ * `MAX_OPEN_TASKS` plus the recently completed tasks; a change may pass through
+ * more completed tasks before they are archived.
+ */
+export const MAX_TODO_TASKS = 120;
 export const MAX_TASK_DEPENDENCIES = 20;
 
 export type TodoStatus = "pending" | "in_progress" | "completed";
@@ -47,6 +54,8 @@ export interface TodoChangeSummary {
   added: string[];
   updated: string[];
   removed: string[];
+  /** Completed tasks moved to the archive by this change. */
+  archived?: string[];
 }
 
 export interface TodoDetails extends TodoState {
@@ -248,6 +257,12 @@ export function writeTodoSnapshot(state: TodoState, input: TodoSnapshotInput): T
       ),
     );
   }
+  const open = normalized.filter((task) => task.status !== "completed").length;
+  if (open > MAX_OPEN_TASKS) {
+    throw new TodoValidationError(
+      `at most ${MAX_OPEN_TASKS} tasks may be pending or in_progress (${open} requested); complete or remove some first`,
+    );
+  }
 
   const removedTasks = state.tasks.filter((task) => !keys.has(task.key));
   const removedByKey = new Map(removedTasks.map((task) => [task.key, task]));
@@ -305,22 +320,14 @@ function todoTaskToInput(task: TodoTask, removedKeys: ReadonlySet<string>): Todo
 }
 
 /**
- * Remove completed tasks that are no longer direct prerequisites of unfinished
- * work. Dependencies pointing at removed tasks are deleted from survivors so
+ * Remove every completed task. Dependencies pointing at removed tasks are
+ * deleted from survivors (a completed prerequisite is already satisfied), so
  * the resulting snapshot remains self-contained and valid.
  */
 export function removeCompletedTasks(state: TodoState): TodoDetails | undefined {
   const tasks = getTodoTasks(state);
-  const required = new Set<string>();
-  for (const task of tasks) {
-    if (task.status !== "pending" && task.status !== "in_progress") continue;
-    for (const dependency of task.dependsOn ?? []) required.add(dependency);
-  }
-
   const removedKeys = new Set(
-    tasks
-      .filter((task) => task.status === "completed" && !required.has(task.key))
-      .map((task) => task.key),
+    tasks.filter((task) => task.status === "completed").map((task) => task.key),
   );
   if (removedKeys.size === 0) return undefined;
 

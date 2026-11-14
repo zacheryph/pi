@@ -62,8 +62,8 @@ One todo per roadmap step, created with a single sparse `todo_upsert`, never `to
 | `dependsOn`   | The step's `Depends on`, mapped to keys. Steps without one depend on nothing.                                                                                                            |
 
 Also add one task, `<prefix>-done`, that depends on every step: "Roadmap
-complete: update document status". The ledger holds at most 50 tasks; a roadmap
-longer than that is not one roadmap, so stop and say so.
+complete: update document status". The ledger holds at most 50 unfinished tasks; a
+roadmap longer than that is not one roadmap, so stop and say so.
 
 A step's task carries its stage as its `message`, rewritten at each change, so
 the ledger always says where the step is and who it waits on:

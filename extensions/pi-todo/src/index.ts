@@ -26,6 +26,16 @@ import {
 } from "#src/activity";
 import { applyTodoRequest, formatTodoState, type TodoAction, type TodoRequest } from "#src/actions";
 import {
+  applyTodoArchive,
+  archiveCompleted,
+  archivedOnly,
+  formatArchivedTask,
+  MAX_RECENT_COMPLETED,
+  TODO_ARCHIVE_TYPE,
+  type TodoArchive,
+  type TodoArchiveEntry,
+} from "#src/archive";
+import {
   agentLabel,
   applyTodoClaims,
   claimHolders,
@@ -45,8 +55,8 @@ import {
 import {
   cloneTodoState,
   createEmptyTodoState,
+  MAX_OPEN_TASKS,
   MAX_TASK_DEPENDENCIES,
-  MAX_TODO_TASKS,
   type TodoChangeSummary,
   type TodoDetails,
   type TodoState,
@@ -78,6 +88,8 @@ import {
 } from "#src/sync";
 
 const WIDGET_KEY = "todo:widget";
+/** A write names at most every task a list holds once archiving is done. */
+const MAX_WRITE_TASKS = MAX_OPEN_TASKS + MAX_RECENT_COMPLETED;
 const TaskPatch = Type.Object(
   {
     key: Type.String({
@@ -125,7 +137,7 @@ const UpsertParameters = Type.Object(
   {
     tasks: Type.Array(TaskPatch, {
       minItems: 1,
-      maxItems: MAX_TODO_TASKS,
+      maxItems: MAX_WRITE_TASKS,
       description: "Tasks to add or patch; omitted keys and fields stay unchanged",
     }),
     baseRevision: Type.Optional(BaseRevision),
@@ -135,7 +147,7 @@ const UpsertParameters = Type.Object(
 const ReplaceParameters = Type.Object(
   {
     tasks: Type.Array(TaskPatch, {
-      maxItems: MAX_TODO_TASKS,
+      maxItems: MAX_WRITE_TASKS,
       description: "The complete new list; every key not listed is deleted; [] empties it",
     }),
     baseRevision: Type.Optional(BaseRevision),
@@ -153,7 +165,8 @@ const ClearParameters = Type.Object(
   {
     scope: Type.Optional(
       StringEnum(["all", "completed"] as const, {
-        description: "Default all; completed keeps prerequisites of unfinished tasks",
+        description:
+          "Default all (also empties the archive); completed archives every finished task",
       }),
     ),
     baseRevision: Type.Optional(BaseRevision),
@@ -192,6 +205,7 @@ export default function todoExtension(
   let activity: TodoActivity = new Map();
   let review: TodoReviewState = createTodoReviewState();
   let claims: Map<string, TodoClaim> = new Map();
+  let archive: TodoArchive = new Map();
   let config = todoSettings.defaults();
   let uiContext: ExtensionContext | undefined;
   let widgetTui: TUI | undefined;
@@ -307,16 +321,36 @@ export default function todoExtension(
     ...cloneTodoState(snapshot),
     activity: serializeTodoActivity(history),
   });
+  /** A prerequisite naming an archived task is already satisfied: leave it out of the write. */
+  const withoutArchivedPrerequisites = (request: TodoRequest): TodoRequest => {
+    if (!request.tasks || !archive.size) return request;
+    const named = new Set(request.tasks.map((patch) => patch.key.trim()));
+    const live = new Set(request.action === "replace" ? [] : state.tasks.map((task) => task.key));
+    const satisfied = (key: unknown) =>
+      typeof key === "string" &&
+      archive.has(key.trim()) &&
+      !named.has(key.trim()) &&
+      !live.has(key.trim());
+    return {
+      ...request,
+      tasks: request.tasks.map((patch) =>
+        Array.isArray(patch.dependsOn) && patch.dependsOn.some(satisfied)
+          ? { ...patch, dependsOn: patch.dependsOn.filter((key) => !satisfied(key)) }
+          : patch,
+      ),
+    };
+  };
   const mutate = (
     request: TodoRequest,
     ctx?: ExtensionContext,
     by?: "user",
     agent?: string,
   ): TodoDetails => {
+    const write = withoutArchivedPrerequisites(request);
     const recorded = recordTodoActivity(
       state,
-      applyTodoRequest(state, request, config),
-      request.tasks,
+      applyTodoRequest(state, write, config),
+      write.tasks,
       activity,
       {
         at: now(),
@@ -324,19 +358,44 @@ export default function todoExtension(
         ...(agent ? { agent } : {}),
       },
     );
-    const next = recorded.details;
+    const clearing = request.action === "clear";
+    // Reading never writes, so a list from before archiving existed waits for the next change.
+    const filed =
+      request.action === "list"
+        ? { details: recorded.details, activity: recorded.activity, archived: [] }
+        : archiveCompleted({
+            previous: state,
+            previousActivity: activity,
+            next: recorded.details,
+            activity: recorded.activity,
+            removed:
+              clearing && request.scope === "completed" ? recorded.details.change.removed : [],
+          });
+    const next = filed.details;
+    const entries: TodoArchiveEntry[] = [
+      ...(clearing && request.scope !== "completed" && archive.size
+        ? [{ clear: true as const }]
+        : []),
+      ...(filed.archived.length ? [{ tasks: filed.archived }] : []),
+    ];
+    if (next.revision === state.revision && !entries.length) return next;
+    // Nested codemode calls never persist tool-result details. Journal every
+    // change, including human commands, BEFORE publishing it in memory.
+    for (const entry of entries) pi.appendEntry(TODO_ARCHIVE_TYPE, entry);
+    if (next.revision !== state.revision)
+      pi.appendEntry(TODO_JOURNAL_TYPE, journal(next, filed.activity));
+    archive = entries.reduce<TodoArchive>(applyTodoArchive, archive);
     if (next.revision !== state.revision) {
-      // Nested codemode calls never persist tool-result details. Journal every
-      // change, including human commands, BEFORE publishing it in memory.
-      pi.appendEntry(TODO_JOURNAL_TYPE, journal(next, recorded.activity));
       state = cloneTodoState(next);
-      activity = recorded.activity;
+      activity = filed.activity;
       delegation.changed(next);
-      updateWidget(ctx);
-      publish();
     }
+    updateWidget(ctx);
+    publish();
     return next;
   };
+  /** Completed tasks off the list, for the model's output. */
+  const archivedCount = (shown: TodoState = state) => archivedOnly(archive, shown).length;
   /** Claims journal: append before applying, like every other journal here. */
   const journalClaims = (entry: TodoClaimsEntry) => {
     pi.appendEntry(TODO_CLAIMS_TYPE, entry);
@@ -348,6 +407,7 @@ export default function todoExtension(
     now,
     state: () => state,
     activity: () => activity,
+    archive: () => archive,
     claims: () => claims,
     config: () => config,
     journalClaims,
@@ -376,6 +436,7 @@ export default function todoExtension(
     assignees,
     now,
     branchToken: () => branchGeneration,
+    archived: () => archivedCount(),
     mutate: (request, ctx) => {
       mutate(request, ctx, "user");
     },
@@ -405,9 +466,31 @@ export default function todoExtension(
   ): Promise<AgentToolResult<TodoToolDetails>> => {
     if (signal?.aborted)
       throw signal.reason instanceof Error ? signal.reason : new Error("Todo operation cancelled");
+    /** `todo_list` with the key of a task archived off `shown`. */
+    const archivedResult = (shown: TodoState, filed: TodoArchive) => {
+      if (request.action !== "list" || request.key === undefined) return undefined;
+      const key = request.key;
+      const task = filed.get(key);
+      if (!task || shown.tasks.some((candidate) => candidate.key === key)) return undefined;
+      if (request.baseRevision !== undefined && request.baseRevision !== shown.revision)
+        throw new Error(
+          `stale todo revision: expected ${request.baseRevision}, current revision is ${shown.revision}`,
+        );
+      return {
+        content: [{ type: "text" as const, text: formatArchivedTask(shown.revision, task) }],
+        details: {
+          ...cloneTodoState(shown),
+          change: { added: [], updated: [], removed: [] },
+          key,
+        },
+      };
+    };
     if (delegation.delegated()) {
       // A subagent's delegated tasks live in its parent's list; the parent checks every write.
       const view = request.action === "list" ? delegation.view() : delegation.mutate(request);
+      const filed: TodoArchive = new Map((view.archived ?? []).map((task) => [task.key, task]));
+      const archived = archivedResult(view.state, filed);
+      if (archived) return archived;
       if (request.key !== undefined && !view.state.tasks.some((task) => task.key === request.key)) {
         throw new Error(`unknown task: ${request.key}`);
       }
@@ -417,18 +500,28 @@ export default function todoExtension(
         change: { added: [], updated: [], removed: [] },
         ...(request.key !== undefined ? { key: request.key } : {}),
       };
-      return {
-        content: [{ type: "text", text: formatTodoState(view.state, request.key, view.activity) }],
-        details: shown,
-      };
+      const text = formatTodoState(
+        view.state,
+        request.key,
+        view.activity,
+        archivedOnly(filed, view.state).length,
+      );
+      return { content: [{ type: "text", text }], details: shown };
     }
+    const archived = archivedResult(state, archive);
+    if (archived) return archived;
     const details = mutate(request, ctx);
     const messages = (request.tasks ?? []).flatMap((patch) => {
       const message = patch.message?.trim();
       return message ? [{ key: patch.key.trim(), message }] : [];
     });
     return {
-      content: [{ type: "text", text: formatTodoState(details, request.key, activity) }],
+      content: [
+        {
+          type: "text",
+          text: formatTodoState(details, request.key, activity, archivedCount(details)),
+        },
+      ],
       details: {
         ...details,
         ...(messages.length ? { messages } : {}),
@@ -511,17 +604,19 @@ export default function todoExtension(
           ];
         }),
       ),
-      ...changed("removed").map((key) =>
-        bodyRow(
-          styleLine(
-            [
-              { text: "✗ ", tone: "dim" },
-              { text: key, tone: "muted" },
-              { text: " · removed", tone: "dim" },
-            ],
-            theme,
+      ...(["removed", "archived"] as const).flatMap((kind) =>
+        changed(kind).map((key) =>
+          bodyRow(
+            styleLine(
+              [
+                { text: kind === "removed" ? "✗ " : "✓ ", tone: "dim" },
+                { text: key, tone: "muted" },
+                { text: ` · ${kind}`, tone: "dim" },
+              ],
+              theme,
+            ),
+            width,
           ),
-          width,
         ),
       ),
     ];
@@ -598,7 +693,7 @@ export default function todoExtension(
   registerTodoTool({
     action: "list",
     description:
-      "Read session tasks with their stable keys, statuses, dependencies and the current revision to pass as baseRevision. With key, returns that task's full details and update history.",
+      "Read session tasks with their stable keys, statuses, dependencies and the current revision to pass as baseRevision. With key, returns that task's full details and update history. The list keeps every unfinished task and the 10 most recently completed; older completed tasks are archived (archivedCompleted counts them), and list with an archived key returns its subject, completion time and last message.",
     promptSnippet: "Read tasks and the revision for stale-write protection",
     parameters: ListParameters,
     annotations: READ_ONLY,
@@ -612,6 +707,7 @@ export default function todoExtension(
       "Use todo_upsert for work needing 3+ steps or when the user requests tracking; skip trivial questions. Add multiple tasks in one todo_upsert before substantive work.",
       "todo_upsert adds or updates only named keys. Omitted keys and fields remain unchanged. New keys require subject and default to pending.",
       "Keep keys stable. Call todo_list after restoration or concurrent changes and pass its revision as baseRevision when updating. todo_replace, todo_remove and todo_clear delete tasks; use them only when deletion is intended.",
+      "At most 50 tasks may be pending or in_progress. Completed tasks beyond the 10 most recent leave the list for an archive; a prerequisite on an archived task is already satisfied and is dropped. todo_list with an archived key shows what was done.",
       "dependsOn contains real prerequisite keys. Cycles and missing keys are rejected; dependencies must be completed before a task starts or completes. Update completion/handoff together atomically when useful.",
       "Mark in_progress explicitly before work and completed only after verification succeeds. Multiple active tasks are permitted unless singleActive is configured. Subagent completion alone is not verification and never updates tasks automatically.",
       "When the user should see an outcome (findings, results, decisions, failures, subagent outcomes, handoffs), add message to that task in the same todo_upsert as its status change. Messages persist in task history and stay flagged until the user reviews them, so they survive later chat output. Keep them concise and self-contained; routine status changes need none.",
@@ -624,7 +720,7 @@ export default function todoExtension(
   registerTodoTool({
     action: "replace",
     description:
-      "Replace the whole task list. Every key not listed is deleted; [] empties the list. Use only when the plan fundamentally changed; prefer todo_upsert for edits.",
+      "Replace the whole task list. Every key not listed is deleted; [] empties the list. Archived tasks are not part of the list and stay archived. Use only when the plan fundamentally changed; prefer todo_upsert for edits.",
     promptSnippet: "Replace the entire task list, deleting omitted keys",
     parameters: ReplaceParameters,
     annotations: DESTRUCTIVE,
@@ -640,7 +736,7 @@ export default function todoExtension(
   registerTodoTool({
     action: "clear",
     description:
-      "Delete every task, or with scope completed only finished tasks that no unfinished task still depends on.",
+      "Delete every task and the archive, or with scope completed move every finished task to the archive now.",
     promptSnippet: "Delete all tasks or only finished ones",
     parameters: ClearParameters,
     annotations: DESTRUCTIVE,
@@ -649,7 +745,7 @@ export default function todoExtension(
   const restore = (ctx: ExtensionContext) => {
     clearWidget();
     branchGeneration++;
-    ({ state, activity, review, claims } = replayTodoSession(ctx));
+    ({ state, activity, review, claims, archive } = replayTodoSession(ctx));
     config = (dependencies.loadConfig ?? todoSettings.load)(ctx.cwd);
     uiContext = ctx;
     updateWidget(ctx);
@@ -709,6 +805,7 @@ export default function todoExtension(
           now: now(),
           assignees: assignees(),
           branch: branchGeneration,
+          archived: archivedCount(),
         }),
     });
   };
@@ -741,6 +838,7 @@ export default function todoExtension(
       seen: held && (!fromBranch || held.revision > fromBranch.revision) ? held : fromBranch,
       current: view?.state ?? state,
       activity: view?.activity ?? activity,
+      archive: view ? new Map((view.archived ?? []).map((task) => [task.key, task])) : archive,
       author: (update) => {
         if (update.by === "user") return "by the user";
         if (update.agent)
