@@ -6,6 +6,8 @@ import {
   isDetailContent,
   isJsonObject,
   isJsonValue,
+  isLine,
+  isSpan,
   type DetailModel,
   type ExplorerModel,
   type JsonValue,
@@ -115,5 +117,20 @@ describe("view models are JSON", () => {
 
     expect(isActionRef({ action: "todo.review", args: { ids: ["t1"] } })).toBe(true);
     expect(isActionRef({ args: {} })).toBe(false);
+  });
+});
+
+describe("spans", () => {
+  it("accept a state icon and refuse unknown ones", () => {
+    expect(isSpan({ text: "✓", tone: "success", icon: "done" })).toBe(true);
+    expect(isSpan({ text: "", icon: "waiting" })).toBe(true);
+    expect(isLine([{ text: "▸", icon: "active" }, " in_progress"])).toBe(true);
+    expect(isSpan({ text: "x", icon: "sparkles" })).toBe(false);
+  });
+
+  it("accept a clock's start time, and refuse one that is not a finite number", () => {
+    expect(isSpan({ text: "01:23", tone: "dim", since: 1_700_000_000_000 })).toBe(true);
+    expect(isSpan({ text: "01:23", since: "yesterday" })).toBe(false);
+    expect(isSpan({ text: "01:23", since: Number.NaN })).toBe(false);
   });
 });
