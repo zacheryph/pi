@@ -44,6 +44,10 @@ shows only where icons are drawn. `since` marks a span's text as an elapsed
 clock that started at that time (epoch milliseconds), so a renderer that does
 not redraw on a timer, such as bb drawing a snapshot, can keep it running.
 
+A widget row's `lead` is a short column before its text, such as a clock. The
+terminal draws it two spaces before `left`; bb draws it after the row's state
+icon (the icon span in its right column), which starts every row.
+
 Every model type is a type alias, so a model is assignable to `JsonValue`.
 `isJsonValue`, `isJsonObject`, `isDetailContent`, `isBlock`, `isLine`, `isSpan`
 and `isActionRef` check data that arrives from elsewhere, such as an action's

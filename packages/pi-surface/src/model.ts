@@ -81,6 +81,11 @@ export type DetailModel = { title: Title; content: DetailContent };
 export type Hint = { keys: string; action?: string; priority?: number };
 
 export type WidgetRow = {
+  /**
+   * A short column before the row's text, such as an elapsed clock. The terminal
+   * draws it two spaces before `left`; bb draws it after the row's state icon.
+   */
+  lead?: Line;
   left: Line;
   /** Ordered right-column fallbacks; the first that fits is shown. */
   right?: readonly Line[];
