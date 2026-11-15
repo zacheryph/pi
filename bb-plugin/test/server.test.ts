@@ -43,7 +43,7 @@ async function setup() {
     await socket.receive(
       JSON.stringify({
         type: "hello",
-        version: 1,
+        version: 2,
         threadId,
         token: await tokenFor(threadId),
         snapshot: snapshot(overrides),
@@ -125,7 +125,7 @@ describe("pi-surface server", () => {
     await forged.receive(
       JSON.stringify({
         type: "hello",
-        version: 1,
+        version: 2,
         threadId: THREAD,
         token: await tokenFor("thr_other"),
         snapshot: snapshot(),
@@ -153,24 +153,24 @@ describe("pi-surface server", () => {
   it("forwards app requests to the session and returns its answer or error", async () => {
     const { harness, connect } = await setup();
     const socket = await connect();
-    const preview = harness.behavior.callRpc("request", {
+    const detail = harness.behavior.callRpc("request", {
       threadId: THREAD,
-      request: { command: "stash-preview", name: "notes" },
+      request: { command: "action", id: "stash.inspect", args: { id: "stash:notes@0123" } },
     });
     await new Promise((resolve) => setTimeout(resolve, 10));
     const [sent] = sentRequests(socket);
     expect(sent).toMatchObject({
       type: "request",
-      request: { command: "stash-preview", name: "notes" },
+      request: { command: "action", id: "stash.inspect", args: { id: "stash:notes@0123" } },
     });
     await socket.receive(
-      JSON.stringify({ type: "result", id: sent!.id, ok: true, data: { lines: ["a"] } }),
+      JSON.stringify({ type: "result", id: sent!.id, ok: true, data: [{ lines: ["a"] }] }),
     );
-    expect(await preview).toEqual({ data: { lines: ["a"] } });
+    expect(await detail).toEqual({ data: [{ lines: ["a"] }] });
 
     const history = harness.behavior.callRpc("request", {
       threadId: THREAD,
-      request: { command: "todo-history", key: "gone" },
+      request: { command: "action", id: "todo.inspect", args: { id: "gone" } },
     });
     await new Promise((resolve) => setTimeout(resolve, 10));
     const second = sentRequests(socket)[1]!;
@@ -182,9 +182,22 @@ describe("pi-surface server", () => {
     await expect(
       harness.behavior.callRpc("request", {
         threadId: "thr_none",
-        request: { command: "todo-history", key: "x" },
+        request: { command: "action", id: "todo.inspect", args: { id: "x" } },
       }),
     ).rejects.toMatchObject({ code: "not_found" });
+    // Only action ids reach the session.
+    await expect(
+      harness.behavior.callRpc("request", {
+        threadId: THREAD,
+        request: { command: "action", id: "Not An Id" },
+      }),
+    ).rejects.toThrow();
+    await expect(
+      harness.behavior.callRpc("request", {
+        threadId: THREAD,
+        request: { command: "stash-preview", name: "notes" },
+      }),
+    ).rejects.toThrow();
   });
 
   it("keeps a disconnected session live through the grace period, then shows it as saved", async () => {
@@ -204,7 +217,7 @@ describe("pi-surface server", () => {
     await expect(
       harness.behavior.callRpc("request", {
         threadId: THREAD,
-        request: { command: "todo-history", key: "x" },
+        request: { command: "action", id: "todo.inspect", args: { id: "x" } },
       }),
     ).rejects.toMatchObject({ code: "conflict", message: expect.stringContaining("next turn") });
   });
@@ -298,9 +311,15 @@ describe("pi-surface server", () => {
     expect(
       await harness.behavior.callRpc("request", {
         threadId: "thr_demo",
-        request: { command: "stash-preview", name: "review-notes" },
+        request: {
+          command: "action",
+          id: "stash.inspect",
+          args: { id: "stash:review-notes@3f9c2a81d0e4" },
+        },
       }),
-    ).toMatchObject({ data: { lines: expect.any(Array) } });
+    ).toMatchObject({
+      data: expect.arrayContaining([expect.objectContaining({ lines: expect.any(Array) })]),
+    });
 
     await connect();
     expect((await harness.behavior.runCli(["fixture", "--thread", THREAD])).exitCode).toBe(1);

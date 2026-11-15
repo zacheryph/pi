@@ -6,7 +6,7 @@ import {
   useComposer,
   useRpc,
 } from "@get-bb/plugin-sdk/app";
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 import {
   rpcContract,
   type SessionSnapshot,
@@ -14,6 +14,7 @@ import {
   type SnapshotResult,
   type SurfaceRequest,
 } from "../contract.ts";
+import type { RunAction } from "./surface.tsx";
 
 const NONE: SnapshotResult = { snapshot: null, source: null, connected: false };
 
@@ -59,39 +60,22 @@ export function useOpenSessionTab(): () => boolean {
   return useCallback(() => panel.openTab({ tab: SESSION_TAB }), [panel]);
 }
 
-export type Loaded<T> =
-  | { state: "idle" }
-  | { state: "loading" }
-  | { state: "done"; value: T }
-  | { state: "error"; message: string };
-
-/** One on-demand request to the thread's session (a stash preview, a task's history). */
-export function useSessionRequest<T>(threadId: string) {
+/**
+ * Runs an action on the thread's session (an explorer's `loadDetail`, say). Undefined for a
+ * saved snapshot: no Pi runs for the thread to ask.
+ */
+export function useRunAction(
+  threadId: string,
+  source: SnapshotResult["source"],
+): RunAction | undefined {
   const rpc = useRpc<typeof rpcContract>();
-  const [loaded, setLoaded] = useState<Record<string, Loaded<T>>>({});
-  const load = useCallback(
-    (key: string, request: SurfaceRequest) => {
-      setLoaded((current) => ({ ...current, [key]: { state: "loading" } }));
-      rpc.call("request", { threadId, request }).then(
-        ({ data }) =>
-          setLoaded((current) => ({ ...current, [key]: { state: "done", value: data as T } })),
-        (error: unknown) =>
-          setLoaded((current) => ({
-            ...current,
-            [key]: {
-              state: "error",
-              message: error instanceof Error ? error.message : String(error),
-            },
-          })),
-      );
+  const run = useCallback<RunAction>(
+    async (action, args) => {
+      // zod's JSON type is mutable; the arguments are JSON either way.
+      const request = { command: "action", id: action, args } as SurfaceRequest;
+      return (await rpc.call("request", { threadId, request })).data;
     },
     [rpc, threadId],
   );
-  const forget = useCallback((key: string) => {
-    setLoaded((current) => {
-      const { [key]: _gone, ...rest } = current;
-      return rest;
-    });
-  }, []);
-  return { loaded, load, forget };
+  return source === "live" || source === "fixture" ? run : undefined;
 }

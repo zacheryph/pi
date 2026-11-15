@@ -1,5 +1,5 @@
-// Pure helpers shared by the slots: counts, labels and bb icon names.
-import type { SessionSnapshot, SubagentState, TodoSection, TodoStatus } from "../contract.ts";
+// Pure helpers shared by the slots: counts and labels.
+import type { SessionSnapshot, SubagentState, TodoSection } from "../contract.ts";
 
 type Task = TodoSection["tasks"][number];
 
@@ -19,19 +19,6 @@ export function todoCounts(todos: TodoSection | undefined): TodoCounts | undefin
   };
 }
 
-/** bb icon for a task row; blocked pending tasks show a lock. */
-export function taskIcon(status: TodoStatus, blocked = false): string {
-  if (status === "completed") return "CircleCheck";
-  if (status === "in_progress") return "Loading";
-  return blocked ? "Lock" : "Circle";
-}
-
-export function taskLabel(status: TodoStatus, blocked = false): string {
-  if (status === "completed") return "Done";
-  if (status === "in_progress") return "In progress";
-  return blocked ? "Blocked" : "Pending";
-}
-
 const RUNNING: ReadonlySet<SubagentState> = new Set(["queued", "running"]);
 
 export function isRunning(state: SubagentState): boolean {
@@ -40,23 +27,6 @@ export function isRunning(state: SubagentState): boolean {
 
 export function runningAgents(snapshot: SessionSnapshot | null | undefined): number {
   return snapshot?.subagents?.agents.filter((agent) => isRunning(agent.state)).length ?? 0;
-}
-
-export function agentIcon(state: SubagentState): string {
-  switch (state) {
-    case "queued":
-      return "Clock";
-    case "running":
-      return "Loading";
-    case "waiting":
-      return "Pause";
-    case "completed":
-      return "CircleCheck";
-    case "failed":
-      return "CircleX";
-    case "stopped":
-      return "X";
-  }
 }
 
 /** Shown for a saved snapshot: no Pi runs for the thread until its next turn. */
@@ -99,12 +69,6 @@ export function compact(value: number): string {
   if (value < 10_000) return `${(value / 1000).toFixed(1)}k`;
   if (value < 1_000_000) return `${Math.round(value / 1000)}k`;
   return `${(value / 1_000_000).toFixed(1)}M`;
-}
-
-export function bytes(value: number): string {
-  if (value < 1024) return `${value} B`;
-  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
-  return `${(value / 1024 / 1024).toFixed(1)} MB`;
 }
 
 /** `#212` from `owner/repo#212`. */

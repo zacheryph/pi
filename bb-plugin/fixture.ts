@@ -1,11 +1,17 @@
 // A canned, realistic session for `bb pi-surface fixture`, so every slot can be
 // seen without a model run. Names and paths are invented.
 import type {
+  Block,
+  ExplorerModel,
+  JsonValue,
   SessionSnapshot,
-  StashPreview,
+  StateIcon,
   SurfaceRequest,
-  TodoHistory,
+  SubagentState,
   TodoStatus,
+  Tone,
+  ViewSummary,
+  WidgetModel,
 } from "./contract.ts";
 
 const MINUTE = 60_000;
@@ -146,8 +152,13 @@ const STASH = [
   },
 ];
 
-/** A full session snapshot with every section filled, timed relative to `now`. */
+/** A full session snapshot with every section and view filled, timed relative to `now`. */
 export function fixtureSnapshot(now = Date.now()): SessionSnapshot {
+  const sections = fixtureSections(now);
+  return { ...sections, views: fixtureViews(sections, now) };
+}
+
+function fixtureSections(now: number): SessionSnapshot {
   const ago = (minutes: number) => now - minutes * MINUTE;
   return {
     id: "fixture",
@@ -331,37 +342,311 @@ export function fixtureSnapshot(now = Date.now()): SessionSnapshot {
   };
 }
 
+/** `mm:ss`, as pi-subagent's clock reads. */
+function clockText(ms: number): string {
+  const seconds = Math.max(0, Math.floor(ms / 1000));
+  return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+// ── Views ──────────────────────────────────────────────────────────────────
+// What the bundle's extensions offer for the data above, shaped as they shape it.
+
+const TASK_STATUS: Record<
+  TodoStatus,
+  { glyph: string; label: string; tone: Tone; icon: StateIcon }
+> = {
+  completed: { glyph: "✓", label: "completed", tone: "success", icon: "done" },
+  in_progress: { glyph: "▸", label: "in_progress", tone: "accent", icon: "active" },
+  pending: { glyph: "○", label: "pending", tone: "dim", icon: "pending" },
+};
+
+function taskStatus(task: FixtureTask) {
+  return task.blocked
+    ? { glyph: "○", label: "blocked", tone: "warning" as const, icon: "blocked" as const }
+    : TASK_STATUS[task.status];
+}
+
+const AGENT_STATE: Record<SubagentState, { label: string; tone: Tone }> = {
+  queued: { label: "queued", tone: "dim" },
+  running: { label: "running", tone: "accent" },
+  waiting: { label: "waiting", tone: "muted" },
+  completed: { label: "done", tone: "success" },
+  failed: { label: "error", tone: "error" },
+  stopped: { label: "stopped", tone: "dim" },
+};
+
+function fixtureViews(snapshot: SessionSnapshot, now: number): ViewSummary[] {
+  const done = TASKS.filter((task) => task.status === "completed").length;
+  const todoWidget: WidgetModel = {
+    title: { label: "Todos" },
+    active: true,
+    meta: [`${done}/${TASKS.length}`],
+    // Finished tasks with unreviewed messages stay in the widget, as in pi-todo's.
+    rows: TASKS.map((task) => {
+      const status = taskStatus(task);
+      return {
+        left: `${task.key}: ${task.subject}${task.dependsOn ? ` ← ${task.dependsOn.join(", ")}` : ""}`,
+        // As pi-todo marks them: the glyph stands for the task's state.
+        right: [
+          [
+            { text: status.glyph, tone: status.tone, icon: status.icon },
+            { text: ` ${status.label}`, tone: status.tone },
+          ],
+          [{ text: status.glyph, tone: status.tone, icon: status.icon }],
+        ],
+        keepRight: true,
+      };
+    }),
+    emptyText: "No unfinished tasks",
+  };
+  const unreviewed = TASKS.filter((task) => task.status === "completed");
+  const todoExplorer: ExplorerModel = {
+    title: "Todos",
+    noun: ["task", "tasks"],
+    notices: [{ text: "Read-only task snapshot · last reviewed 50m ago", tone: "muted" }],
+    items: TASKS.map((task) => {
+      const status = taskStatus(task);
+      return {
+        id: task.key,
+        label: `${task.key}: ${task.subject}${task.dependsOn ? ` ← ${task.dependsOn.join(", ")}` : ""}`,
+        badge: { text: `${status.glyph} ${status.label}`, tone: status.tone },
+        marked: task.status === "completed",
+      };
+    }),
+    tabs: [
+      { label: "All", ids: TASKS.map((task) => task.key) },
+      { label: "Unreviewed", ids: unreviewed.map((task) => task.key) },
+    ],
+    marker: {
+      label: "unreviewed",
+      clearAction: "mark reviewed",
+      onClear: { action: "todo.review", args: { branch: 1 } },
+    },
+    loadDetail: { action: "todo.inspect" },
+  };
+  const agents = snapshot.subagents?.agents ?? [];
+  const running = agents.filter((agent) => agent.state === "running");
+  const subagentWidget: WidgetModel = {
+    title: { label: "Subagents" },
+    active: running.length > 0,
+    meta: [],
+    rows: running.map((agent) => ({
+      // As pi-subagent builds it: a running clock carries its start.
+      left: [
+        { text: clockText(now - agent.since), tone: "dim", since: agent.since },
+        "  ",
+        { text: agent.type, bold: true },
+        ": ",
+        { text: agent.description, tone: "muted" },
+      ],
+      right: [
+        [
+          { text: "●", tone: "accent", icon: "active" },
+          { text: ` ${agent.note ?? "thinking…"}`, tone: "muted" },
+        ],
+      ],
+      group: "running",
+    })),
+  };
+  const subagentExplorer: ExplorerModel = {
+    title: "Subagents",
+    noun: ["subagent", "subagents"],
+    items: agents.map((agent) => {
+      const state = AGENT_STATE[agent.state];
+      return {
+        id: agent.id,
+        label: [
+          { text: agent.type, tone: "accent" },
+          { text: ` — ${agent.description}`, tone: "muted" },
+        ],
+        badge: { text: state.label, tone: state.tone },
+        detail: [
+          {
+            fields: [
+              ["Agent", agent.type],
+              ["Id", agent.id],
+              ["State", { text: state.label, tone: state.tone }],
+              ["Tool uses", String(agent.toolUses ?? 0)],
+              ...(agent.tokens ? ([["Tokens", String(agent.tokens)]] as const) : []),
+            ],
+          },
+          ...(agent.note
+            ? [
+                { heading: agent.state === "running" ? "Latest update" : "Note" },
+                { text: agent.note },
+              ]
+            : []),
+        ],
+      };
+    }),
+    tabs: [
+      { label: "All", ids: agents.map((agent) => agent.id) },
+      { label: "Active", ids: running.map((agent) => agent.id) },
+    ],
+  };
+  const stashExplorer: ExplorerModel = {
+    title: "Stash",
+    noun: ["entry", "entries"],
+    notices: [{ text: "25.3 KB stored on this branch", tone: "muted" }],
+    items: (snapshot.stash?.entries ?? []).map((entry) => ({
+      id: entry.handle,
+      label: [
+        { text: entry.handle, tone: "accent" },
+        ...(entry.description ? [{ text: ` — ${entry.description}`, tone: "muted" as const }] : []),
+      ],
+      badge: { text: `${entry.lines} lines · ${Math.round((now - entry.createdAt) / MINUTE)}m` },
+    })),
+    loadDetail: { action: "stash.inspect" },
+  };
+  const git = snapshot.git;
+  const worktrees: ExplorerModel = {
+    title: "Git worktrees",
+    noun: ["worktree", "worktrees"],
+    items: (git?.worktrees ?? []).map((worktree) => {
+      const state = worktree.mergedInto
+        ? `merged into ${worktree.mergedInto}`
+        : [
+            worktree.dirty ? "uncommitted changes" : "",
+            worktree.unpushed ? `${worktree.unpushed} unpushed` : "",
+          ]
+            .filter(Boolean)
+            .join("; ") || "clean";
+      const tone: Tone = worktree.dirty || worktree.unpushed ? "warning" : "success";
+      return {
+        id: worktree.path,
+        label: [
+          { text: `${worktree.repo} @ ${worktree.branch}`, tone: "accent" },
+          { text: ` — ${worktree.path}`, tone: "muted" },
+        ],
+        badge: { text: state, tone },
+        detail: [
+          {
+            fields: [
+              ["Path", worktree.path],
+              ["Branch", worktree.branch],
+              ["State", { text: state, tone }],
+            ],
+          },
+        ],
+      };
+    }),
+  };
+  const prs: ExplorerModel = {
+    title: "Pull requests",
+    noun: ["pull request", "pull requests"],
+    items: (git?.prs ?? []).map((pr) => {
+      const failing = (pr.checks?.failed ?? 0) > 0;
+      const status = [
+        pr.draft ? "draft" : pr.state,
+        ...(pr.checks
+          ? [`checks ${pr.checks.passed}✓ ${pr.checks.failed}✗ · ${pr.checks.pending} pending`]
+          : []),
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      const tone: Tone = pr.state === "merged" ? "success" : failing ? "error" : "default";
+      return {
+        id: pr.url,
+        label: [
+          { text: pr.label, tone: "accent" },
+          ...(pr.title ? [{ text: ` — ${pr.title}`, tone: "muted" as const }] : []),
+        ],
+        badge: { text: status, tone },
+        detail: [
+          {
+            fields: [
+              ["URL", pr.url],
+              ...(pr.title ? ([["Title", pr.title]] as const) : []),
+              ["Status", { text: status, tone }],
+              ["Origin", pr.origin === "created" ? "opened in this session" : "referenced"],
+            ],
+          },
+        ],
+      };
+    }),
+    tabs: [
+      {
+        label: "Opened here",
+        ids: (git?.prs ?? []).filter((pr) => pr.origin === "created").map((pr) => pr.url),
+      },
+      {
+        label: "Referenced",
+        ids: (git?.prs ?? []).filter((pr) => pr.origin === "referenced").map((pr) => pr.url),
+      },
+    ],
+  };
+  return [
+    { id: "git.prs", kind: "explorer", title: "Pull requests", model: prs },
+    { id: "git.worktrees", kind: "explorer", title: "Git worktrees", model: worktrees },
+    { id: "stash.explorer", kind: "explorer", title: "Stash", model: stashExplorer },
+    { id: "subagent.explorer", kind: "explorer", title: "Subagents", model: subagentExplorer },
+    { id: "subagent.widget", kind: "widget", title: "Subagents", model: subagentWidget },
+    { id: "todo.explorer", kind: "explorer", title: "Todos", model: todoExplorer },
+    { id: "todo.widget", kind: "widget", title: "Tasks", model: todoWidget },
+  ];
+}
+
+function idArg(args: JsonValue | undefined): string {
+  const id = (args as { id?: unknown } | null | undefined)?.id;
+  if (typeof id !== "string") throw new Error("expected { id }");
+  return id;
+}
+
 /** Answers what a real session would, from the same canned data. */
 export function fixtureResponder(now = Date.now()) {
+  const at = (minutes: number) => new Date(now - minutes * MINUTE).toISOString();
   return (request: SurfaceRequest): unknown => {
-    switch (request.command) {
-      case "stash-preview": {
-        const entry = STASH.find((candidate) => candidate.name === request.name);
-        if (!entry) throw new Error(`No stash entry named "${request.name}" on this branch.`);
-        return {
-          handle: stashHandle(entry.name),
-          lines: entry.preview,
-          total: entry.lines,
-          complete: entry.preview.length >= entry.lines,
-        } satisfies StashPreview;
+    if (request.command === "answer")
+      throw new Error("This is a fixture session; answers go nowhere.");
+    switch (request.id) {
+      case "todo.inspect": {
+        const key = idArg(request.args);
+        const task = TASKS.find((candidate) => candidate.key === key);
+        if (!task) throw new Error(`No task "${key}" on this branch.`);
+        const status = taskStatus(task);
+        const blocks: Block[] = [
+          {
+            fields: [
+              ["Status", { text: status.label, tone: status.tone }],
+              ...(task.dependsOn ? ([["Depends on", task.dependsOn.join(", ")]] as const) : []),
+            ],
+          },
+          ...(task.description ? [{ text: task.description }] : []),
+          { heading: "History" },
+          task.history.length
+            ? {
+                bullets: task.history.map(
+                  (update) =>
+                    `${at(update.minutesAgo)} · ${update.from ? `${update.from} → ` : ""}${update.status}${update.message ? ` · ${update.message}` : ""}`,
+                ),
+              }
+            : { text: "No updates yet.", tone: "muted" },
+        ];
+        return blocks;
       }
-      case "todo-history": {
-        const task = TASKS.find((candidate) => candidate.key === request.key);
-        if (!task) throw new Error(`No task "${request.key}" on this branch.`);
-        return {
-          key: task.key,
-          createdAt: now - 55 * MINUTE,
-          updates: task.history.map((update, index) => ({
-            revision: index + 2,
-            at: now - update.minutesAgo * MINUTE,
-            status: update.status,
-            ...(update.from ? { from: update.from } : {}),
-            ...(update.message ? { message: update.message } : {}),
-          })),
-        } satisfies TodoHistory;
+      case "stash.inspect": {
+        const handle = idArg(request.args);
+        const entry = STASH.find((candidate) => stashHandle(candidate.name) === handle);
+        if (!entry) throw new Error(`No stash entry "${handle}" on this branch.`);
+        const blocks: Block[] = [
+          {
+            fields: [
+              ["Handle", handle],
+              ["Source", entry.source],
+              ["Size", `${entry.lines} lines, ${entry.bytes} bytes`],
+            ],
+          },
+          { lines: entry.preview, numbered: true },
+          ...(entry.preview.length < entry.lines
+            ? [{ text: `Preview stops here; ${entry.lines} lines total.`, tone: "muted" as const }]
+            : []),
+        ];
+        return blocks;
       }
-      case "answer":
-        throw new Error("This is a fixture session; answers go nowhere.");
+      case "todo.review":
+        return { reviewed: 1 };
+      default:
+        throw new Error(`Unknown action "${request.id}".`);
     }
   };
 }

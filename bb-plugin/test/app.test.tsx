@@ -78,30 +78,54 @@ describe("pi-surface app", () => {
     expect(app.pendingInteractions.map((slot) => slot.id)).toEqual(["questionnaire"]);
   });
 
-  it("draws the Todos stack card with counts and the active task, and its task list", async () => {
+  it("draws the todo.widget view as the Todos stack card", async () => {
     const banner = app.composerCustomizations[0]!.banners![0]!;
     const slot = renderSlot(banner, {}, { rpc: rpcFor(fixture), composer: threadComposer });
     // The test host draws bb's card as a section with its title; bb collapses it.
     const card = await slot.findByTestId("bb-collapsible-stack-card");
     expect(card.dataset.active).toBe("true");
-    expect(card.querySelector("h3")?.textContent).toBe(
-      "Todos 3/7 · Move retries into the queue worker",
-    );
-    const list = await slot.findByRole("list", { name: "Tasks" });
-    expect(list.querySelectorAll("li")).toHaveLength(7);
-    expect(list.textContent).toContain("Retry and dead-letter tests");
-    expect(list.textContent).toContain("blocked");
+    expect(card.querySelector("h3")?.textContent).toBe("Todos · 3/7");
+    const list = await slot.findByRole("list", { name: "Todos" });
+    const rows = Array.from(list.querySelectorAll(":scope > li"));
+    expect(rows).toHaveLength(7);
+    // Each task's state is bb's icon in the leading column.
+    expect(rows.map((row) => row.firstElementChild?.getAttribute("aria-label"))).toEqual([
+      "done",
+      "done",
+      "done",
+      "active",
+      "blocked",
+      "pending",
+      "pending",
+    ]);
+    expect(list.textContent).toContain("tests: Retry and dead-letter tests ← worker");
   });
 
-  it("draws one row per subagent in the Subagents card", async () => {
+  it("draws the subagent.widget view as the Subagents stack card", async () => {
     const banner = app.composerCustomizations[0]!.banners![1]!;
     const slot = renderSlot(banner, {}, { rpc: rpcFor(fixture), composer: threadComposer });
     const card = await slot.findByTestId("bb-collapsible-stack-card");
-    expect(card.querySelector("h3")?.textContent).toBe("Subagents · 2 running");
+    expect(card.querySelector("h3")?.textContent).toBe("Subagents");
     const list = await slot.findByRole("list", { name: "Subagents" });
-    expect(list.querySelectorAll(":scope > li")).toHaveLength(3);
+    expect(list.querySelectorAll(":scope > li")).toHaveLength(2);
     expect(list.textContent).toContain("Map every webhook delivery path");
-    expect(list.textContent).toContain("running");
+    expect(list.textContent).toContain("Reading src/admin/replay.ts");
+    // As in the terminal: the clock, the agent type bold with its separator, the status at the right.
+    expect((await slot.findByText("explore")).className).toContain("font-semibold");
+    const rows = Array.from(list.querySelectorAll(":scope > li"));
+    expect(rows[0]!.textContent).toMatch(/^\d+:\d\d {2}explore: Map every webhook delivery path/);
+    expect(rows[0]!.lastElementChild?.querySelector('[aria-label="active"]')).toBeTruthy();
+  });
+
+  it("draws no card for a widget view with nothing to show", async () => {
+    const quiet = {
+      ...fixture,
+      views: fixture.views!.filter((view) => view.id !== "subagent.widget"),
+    };
+    const banner = app.composerCustomizations[0]!.banners![1]!;
+    const slot = renderSlot(banner, {}, { rpc: rpcFor(quiet), composer: threadComposer });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(slot.container.textContent).toBe("");
   });
 
   it("insets card bodies and the context segment like bb's card header (12px)", async () => {
@@ -109,7 +133,7 @@ describe("pi-surface app", () => {
     // measures the real pixels in bb.
     const classes = (el: Element | null | undefined) => el?.className.split(/\s+/) ?? [];
     for (const [index, name] of [
-      [0, "Tasks"],
+      [0, "Todos"],
       [1, "Subagents"],
     ] as const) {
       const banner = app.composerCustomizations[0]!.banners![index]!;
@@ -118,6 +142,8 @@ describe("pi-surface app", () => {
       expect(classes(list)).toEqual(expect.arrayContaining(["px-3", "pt-3"]));
       for (const row of Array.from(list.querySelectorAll(":scope > li"))) {
         expect(classes(row).filter((c) => /^-?(p|px|pl|pr|m|mx|ml|mr)-/.test(c))).toEqual([]);
+        // A header-icon-wide leading column, so text starts under the card's title.
+        expect(classes(row.firstElementChild)).toEqual(expect.arrayContaining(["size-3.5"]));
       }
       cleanup();
     }
@@ -194,44 +220,70 @@ describe("pi-surface app", () => {
     });
   });
 
-  it("loads a task's history and a stash preview on demand in the Pi tab", async () => {
+  it("draws every explorer view in the Pi tab, loading details through actions", async () => {
     const tab = app.tabs[0]!;
     const slot = renderSlot(
       tab as never,
       { threadId: THREAD, environment: null },
       { rpc: rpcFor(fixture) },
     );
-    fireEvent.click(await slot.findByText("Move retries into the queue worker"));
+    for (const section of ["Todos", "Subagents", "Stash", "Git worktrees", "Pull requests"])
+      expect(await slot.findByText(section)).toBeTruthy();
+    fireEvent.click(await slot.findByText("worker: Move retries into the queue worker"));
     expect(
       await slot.findByText(/Worker picks up due attempts; wiring the ack path now\./, {
         selector: "li",
       }),
     ).toBeTruthy();
-    fireEvent.click(await slot.findByText("review-notes"));
+    // Opening a task with an unreviewed message reviews it, as the terminal does.
+    fireEvent.click(await slot.findByText("schema: Add the delivery_attempts table"));
+    fireEvent.click(await slot.findByText("stash:review-notes@3f9c2a81d0e4"));
     expect(await slot.findByText(/delivery_attempts needs an index/)).toBeTruthy();
-    expect(slot.inspection.rpcCalls.map((call) => call.method)).toContain("request");
+    const actions = slot.inspection.rpcCalls
+      .filter((call) => call.method === "request")
+      .map((call) => (call.input as { request: { id?: string; args?: unknown } }).request);
+    expect(actions).toEqual(
+      expect.arrayContaining([
+        { command: "action", id: "todo.inspect", args: { id: "worker" } },
+        { command: "action", id: "todo.review", args: { branch: 1, ids: ["schema"] } },
+        {
+          command: "action",
+          id: "stash.inspect",
+          args: { id: "stash:review-notes@3f9c2a81d0e4" },
+        },
+      ]),
+    );
   });
 
-  it("shows a saved session's state in the Pi tab without asking Pi for details", async () => {
-    const rpc = rpcFor(fixture);
-    const saved = {
-      ...rpc,
-      snapshot: (input: unknown) => ({
-        ...(rpc.snapshot as (i: unknown) => object)(input),
-        source: "saved",
-        connected: false,
-      }),
-    } as typeof rpc;
+  it("opens inline details, and a pull request's URL in bb", async () => {
     const slot = renderSlot(
       app.tabs[0]! as never,
       { threadId: THREAD, environment: null },
-      { rpc: saved },
+      { rpc: rpcFor(fixture) },
     );
-    expect(await slot.findByText(/Not running/)).toBeTruthy();
-    fireEvent.click(await slot.findByText("Move retries into the queue worker"));
-    fireEvent.click(await slot.findByText("review-notes"));
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(slot.inspection.rpcCalls.map((call) => call.method)).not.toContain("request");
+    fireEvent.click(await slot.findByText("acme/webhooks#212"));
+    fireEvent.click(
+      await slot.findByRole("button", { name: "https://github.com/acme/webhooks/pull/212" }),
+    );
+    expect(slot.inspection.navigateCalls).toContainEqual({
+      method: "openUrl",
+      url: "https://github.com/acme/webhooks/pull/212",
+    });
+  });
+
+  it("shows why a view is missing", async () => {
+    const broken = {
+      ...fixture,
+      views: [
+        { id: "git.prs", kind: "explorer" as const, title: "Pull requests", error: "Too large" },
+      ],
+    };
+    const slot = renderSlot(
+      app.tabs[0]! as never,
+      { threadId: THREAD, environment: null },
+      { rpc: rpcFor(broken) },
+    );
+    expect((await slot.findByRole("alert")).textContent).toBe("Too large");
   });
 
   it("sends every question's answer as one submission from the questionnaire form", async () => {

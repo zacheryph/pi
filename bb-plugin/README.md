@@ -37,19 +37,30 @@ for a thread whose Pi session is connected. Remove the plugin with
 
 ## What it shows
 
-| Slot                                | Registration                                                        | Content                                                  |
-| ----------------------------------- | ------------------------------------------------------------------- | -------------------------------------------------------- |
-| Composer banner (stack card)        | `app.composer.customize({ banners, chrome: "bare" })`               | Todos card, Subagents card                               |
-| Thread context segment              | `app.slots.experimental_threadContextSegment`                       | Agent name, task and subagent counts; opens the Pi tab   |
-| Thread context card row and section | `experimental_threadContextCardRow` / `…Section`                    | Stash count; worktrees and pull requests with checks     |
-| Composer action                     | `app.composer.customize({ actions })`                               | Opens the Pi tab                                         |
-| Composer popup                      | `experimental_popups` + `app.composer.experimental_registerCommand` | Stash picker (Mod+Shift+S, or the + menu)                |
-| Thread tab                          | `app.slots.experimental_tab({ context: { kind: "thread" } })`       | Whole session; task history and stash previews on demand |
-| Thread row metadata                 | `app.slots.experimental_threadRowMetadata`                          | Open-question and running-subagent badge                 |
-| Sidebar navigation                  | `app.slots.navPanel` with `experimental_useBadge`                   | **Pi sessions** page of every connected session          |
-| Pending interaction                 | `app.slots.pendingInteraction` + `bb.ui.requestInput`               | pi-ask's open questionnaire as one form                  |
+| Slot                                | Registration                                                        | Content                                                |
+| ----------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------------ |
+| Composer banner (stack card)        | `app.composer.customize({ banners, chrome: "bare" })`               | Todos card, Subagents card: the widget views           |
+| Thread context segment              | `app.slots.experimental_threadContextSegment`                       | Agent name, task and subagent counts; opens the Pi tab |
+| Thread context card row and section | `experimental_threadContextCardRow` / `…Section`                    | Stash count; worktrees and pull requests with checks   |
+| Composer action                     | `app.composer.customize({ actions })`                               | Opens the Pi tab                                       |
+| Composer popup                      | `experimental_popups` + `app.composer.experimental_registerCommand` | Stash picker (Mod+Shift+S, or the + menu)              |
+| Thread tab                          | `app.slots.experimental_tab({ context: { kind: "thread" } })`       | Whole session; every explorer view, details on demand  |
+| Thread row metadata                 | `app.slots.experimental_threadRowMetadata`                          | Open-question and running-subagent badge               |
+| Sidebar navigation                  | `app.slots.navPanel` with `experimental_useBadge`                   | **Pi sessions** page of every connected session        |
+| Pending interaction                 | `app.slots.pendingInteraction` + `bb.ui.requestInput`               | pi-ask's open questionnaire as one form                |
 
 Every slot renders nothing for a thread without a session.
+
+The stack cards and the Pi tab draw the session's
+[pi-surface](../packages/pi-surface/README.md) views with one renderer
+(`ui/surface.tsx`): each widget view is a stack card, each explorer view a
+section of the tab, and an explorer's `loadDetail`, `onOpen` and
+`marker.onClear` go back to the session as actions. Which widget gets a card,
+with which icon, is the table in `ui/stack-cards.tsx`; the tab's order is
+`EXPLORER_ORDER` in `ui/session-tab.tsx`, with any other explorer after. A new
+view in an extension shows in the tab with no plugin change. The context row,
+context card, stash picker, row badge and sessions page read the snapshot's
+sections for their counts.
 `/plugins/pi-surface/sessions/gallery` (not linked) draws the components that
 bb shows only behind experiments, for the docs.
 
@@ -69,7 +80,8 @@ bb shows only behind experiments, for the docs.
   last snapshot as `saved` until the next turn starts Pi again: tasks, stash,
   git, usage and finished subagents as they were; status idle, no open
   questions, and subagents that were running marked stopped. Requests to a
-  saved session (a task's history, a stash preview) are refused. A deleted
+  saved session (an action such as a task's or stash entry's details) are
+  refused, so the tab opens only details a view carries inline. A deleted
   thread's row is removed; rows untouched for 30 days are pruned at load.
 - **Environment.** `bb.providers.experimental_contributeEnv("pi", …)` returns
   `PI_BB_SURFACE_URL` as `{ serverPath: "/api/v1/plugins/pi-surface/http/session" }`,
@@ -81,8 +93,9 @@ bb shows only behind experiments, for the docs.
   `thread:<id>` and `sessions`; the server calls `bb.rpc.experimental_invalidate`
   on every change, so all mounted slots share one live read per thread and
   refresh together over bb's realtime socket. `request({ threadId, request })`
-  forwards `stash-preview`, `todo-history` and `answer` to the session and
-  waits up to 10 seconds; a fixture answers from canned data.
+  forwards `action { id, args? }` (an action on the session's bus) and
+  `answer` to the session and waits up to 10 seconds; a fixture answers from
+  canned data.
 - **Questions.** When a live session reports an open pi-ask questionnaire, the
   server calls `bb.ui.requestInput` with renderer `questionnaire`; the form's
   answer goes back as an `answer` request, and the form is withdrawn when Pi
