@@ -61,8 +61,16 @@ bb shows only behind experiments, for the docs.
   `bb.storage.kv`, so it is valid for that thread only and survives plugin
   reloads. Bad tokens close with 4401, other protocol versions with 4400, and
   an older process for the same thread with 4409 once a newer one says hello.
-  The latest snapshot per thread is kept in memory; a disconnected session
-  stays 15 seconds, which covers `/reload` and bb's process restarts.
+  A disconnected session stays live for 15 seconds, which covers `/reload` and
+  bb's process restarts.
+- **Saved sessions.** Every live snapshot is also written to the plugin's
+  SQLite database (`archive.ts`). When no Pi comes back for a thread (bb
+  restarted, the plugin reloaded, bb stopped the process) the thread shows its
+  last snapshot as `saved` until the next turn starts Pi again: tasks, stash,
+  git, usage and finished subagents as they were; status idle, no open
+  questions, and subagents that were running marked stopped. Requests to a
+  saved session (a task's history, a stash preview) are refused. A deleted
+  thread's row is removed; rows untouched for 30 days are pruned at load.
 - **Environment.** `bb.providers.experimental_contributeEnv("pi", …)` returns
   `PI_BB_SURFACE_URL` as `{ serverPath: "/api/v1/plugins/pi-surface/http/session" }`,
   which bb's host expands against its `BB_SERVER_URL`, and the thread's token.

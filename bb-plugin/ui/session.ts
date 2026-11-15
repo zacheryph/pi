@@ -11,17 +11,25 @@ import {
   rpcContract,
   type SessionSnapshot,
   type SessionSummary,
+  type SnapshotResult,
   type SurfaceRequest,
 } from "../contract.ts";
 
-export function useSession(threadId: string | null | undefined): SessionSnapshot | null {
+const NONE: SnapshotResult = { snapshot: null, source: null, connected: false };
+
+/** The thread's snapshot and where it comes from (a running Pi, a saved copy, a fixture). */
+export function useSessionResult(threadId: string | null | undefined): SnapshotResult {
   const query = experimental_useRpcQuery({
     contract: rpcContract,
     method: "snapshot",
     input: { threadId: threadId ?? "-" },
     enabled: !!threadId,
   });
-  return threadId ? (query.data?.snapshot ?? null) : null;
+  return threadId ? (query.data ?? NONE) : NONE;
+}
+
+export function useSession(threadId: string | null | undefined): SessionSnapshot | null {
+  return useSessionResult(threadId).snapshot;
 }
 
 export function useSessions(): SessionSummary[] {

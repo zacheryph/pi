@@ -314,7 +314,7 @@ async function thread() {
 /**
  * A thread showing the plugin's canned fixture session (the docs' data). The
  * plugin refuses a fixture for a thread whose Pi session is connected, so the
- * thread's Pi is stopped first and its session left to expire (15 s).
+ * thread's Pi is stopped first and its session left to turn from live to saved (15 s).
  */
 async function fixture() {
   const state = readState();
@@ -327,7 +327,11 @@ async function fixture() {
     setScenario(previous);
   }
   bb(state, ["thread", "stop", id]);
-  await waitFor("the Pi session to expire", () => !liveSessions(state).includes(id), 60_000);
+  await waitFor(
+    "the Pi session to stop being live",
+    () => !liveSessions(state).includes(id),
+    60_000,
+  );
   bb(state, ["pi-surface", "fixture", "--thread", id]);
   console.log(id);
 }

@@ -9,6 +9,7 @@ import { rpcContract } from "./contract.ts";
 import { fixtureResponder, fixtureSnapshot } from "./fixture.ts";
 import { ENV_TOKEN, ENV_URL, SESSION_PATH } from "./protocol.ts";
 import { QUESTIONNAIRE_RENDERER, QuestionBridge } from "./questions.ts";
+import { snapshotArchive } from "./archive.ts";
 import { SessionError, SessionStore, type SessionConnection } from "./sessions.ts";
 import { newSecret, threadToken, verifyThreadToken } from "./token.ts";
 
@@ -18,7 +19,7 @@ const SECRET_KEY = "session-secret";
 
 const USAGE = [
   "Usage:",
-  "  bb pi-surface list                    Sessions the plugin knows, live and fixture",
+  "  bb pi-surface list                    Sessions the plugin knows: live, saved and fixture",
   "  bb pi-surface fixture --thread <id>   Show a canned session on a thread (no model run)",
   "  bb pi-surface clear --thread <id>     Remove that thread's fixture",
 ].join("\n");
@@ -70,6 +71,8 @@ export function createPlugin(options: PluginOptions = {}) {
     });
 
     const store = new SessionStore({
+      archive: snapshotArchive(bb.storage),
+      onError: (message) => bb.log.warn(message),
       verify: async (threadId, token) => verifyThreadToken(await signingSecret(), threadId, token),
       onChange: (threadId) => {
         bb.rpc.experimental_invalidate([`thread:${threadId}`, "sessions"]);
@@ -78,6 +81,8 @@ export function createPlugin(options: PluginOptions = {}) {
       },
       ...options,
     });
+
+    bb.events.on("thread.deleted", ({ thread }) => store.forget(thread.id));
 
     bb.http.experimental_websocket(
       SESSION_PATH,
@@ -171,7 +176,7 @@ export function createPlugin(options: PluginOptions = {}) {
               stdout: sessions
                 .map(
                   (session) =>
-                    `${session.threadId}  ${session.source}${session.connected ? "" : " (disconnected)"}  ${session.status}  ${session.name ?? session.cwd}`,
+                    `${session.threadId}  ${session.source}${session.source === "live" && !session.connected ? " (reconnecting)" : ""}  ${session.status}  ${session.name ?? session.cwd}`,
                 )
                 .join("\n"),
             };

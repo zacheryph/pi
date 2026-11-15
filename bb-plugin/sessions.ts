@@ -22,6 +22,23 @@ export interface SessionSocket {
 /** Answers requests for a fixture session, which has no Pi process behind it. */
 export type FixtureResponder = (request: SurfaceRequest) => unknown;
 
+/** A live session's last snapshot, kept so a thread shows its state while no Pi runs for it. */
+export interface SavedSnapshot {
+  threadId: string;
+  snapshot: SessionSnapshot;
+  savedAt: number;
+}
+
+/**
+ * Where live snapshots outlast the plugin: bb restarts, plugin reloads and Pi
+ * processes bb stopped. Synchronous, like the plugin's SQLite database.
+ */
+export interface SnapshotArchive {
+  load(): SavedSnapshot[];
+  save(saved: SavedSnapshot): void;
+  delete(threadId: string): void;
+}
+
 interface Pending {
   resolve(value: unknown): void;
   reject(error: Error): void;
@@ -30,7 +47,8 @@ interface Pending {
 
 interface Entry {
   threadId: string;
-  source: "live" | "fixture";
+  /** Saved: a live session's last snapshot, with no Pi process behind it. */
+  source: "live" | "fixture" | "saved";
   snapshot: SessionSnapshot;
   updatedAt: number;
   connection?: SessionConnection;
@@ -43,7 +61,11 @@ export interface SessionStoreOptions {
   verify(threadId: string, token: string): boolean | Promise<boolean>;
   /** A thread's session appeared, changed or went away. */
   onChange(threadId: string): void;
-  /** How long a disconnected session's last snapshot stays; covers /reload and process restarts. */
+  /** Keeps live snapshots across plugin loads. */
+  archive?: SnapshotArchive;
+  /** Reports archive failures; the store keeps working from memory. */
+  onError?(message: string): void;
+  /** How long a disconnected session stays live before it is shown as saved; covers /reload and process restarts. */
   graceMs?: number;
   /** How long a session gets to say hello after connecting. */
   helloTimeoutMs?: number;
@@ -141,7 +163,16 @@ export class SessionStore {
   private nextId = 1;
   private disposed = false;
 
-  constructor(private readonly options: SessionStoreOptions) {}
+  constructor(private readonly options: SessionStoreOptions) {
+    for (const saved of this.archived(() => options.archive?.load() ?? [])) {
+      this.entries.set(saved.threadId, {
+        threadId: saved.threadId,
+        source: "saved",
+        snapshot: offline(saved.snapshot, saved.savedAt),
+        updatedAt: saved.savedAt,
+      });
+    }
+  }
 
   verify(threadId: string, token: string): boolean | Promise<boolean> {
     return this.options.verify(threadId, token);
@@ -160,7 +191,7 @@ export class SessionStore {
     return {
       snapshot: entry.snapshot,
       source: entry.source,
-      connected: entry.source === "fixture" || !!entry.connection,
+      connected: isConnected(entry),
     };
   }
 
@@ -191,6 +222,18 @@ export class SessionStore {
     this.options.onChange(threadId);
   }
 
+  /** The thread is gone: drop whatever the store holds for it, saved copy included. */
+  forget(threadId: string): void {
+    this.archived(() => this.options.archive?.delete(threadId));
+    const entry = this.entries.get(threadId);
+    if (!entry) return;
+    clearTimeout(entry.drop);
+    this.entries.delete(threadId);
+    // A Pi still reporting for a deleted thread is told not to come back.
+    entry.connection?.refuse(CLOSE_REPLACED, "thread deleted");
+    this.options.onChange(threadId);
+  }
+
   /** Removes a fixture; live sessions are left alone. */
   clearFixture(threadId: string): boolean {
     const entry = this.entries.get(threadId);
@@ -205,6 +248,11 @@ export class SessionStore {
     const entry = this.entries.get(threadId);
     if (!entry) throw new SessionError("not_found", "No Pi session for this thread.");
     if (entry.source === "fixture") return entry.fixture?.(request);
+    if (entry.source === "saved")
+      throw new SessionError(
+        "conflict",
+        "Pi is not running for this thread. It starts again with the thread's next turn.",
+      );
     const connection = entry.connection;
     if (!connection) throw new SessionError("conflict", "The Pi session is reconnecting.");
     const id = this.nextId++;
@@ -241,6 +289,7 @@ export class SessionStore {
     });
     // The newest process for a thread wins (bb restarts Pi on resume).
     if (previous && previous !== connection) previous.refuse(CLOSE_REPLACED, "replaced");
+    this.save(threadId, snapshot);
     this.options.onChange(threadId);
   }
 
@@ -249,6 +298,7 @@ export class SessionStore {
     if (!entry || entry.connection !== connection) return;
     entry.snapshot = snapshot;
     entry.updatedAt = this.now();
+    this.save(entry.threadId, snapshot);
     this.options.onChange(entry.threadId);
   }
 
@@ -279,9 +329,15 @@ export class SessionStore {
     if (!entry || entry.connection !== connection) return;
     entry.connection = undefined;
     if (this.disposed) return;
+    // No process came back: keep showing what it last reported, as saved.
     entry.drop = setTimeout(() => {
       if (this.entries.get(threadId) !== entry || entry.connection) return;
-      this.entries.delete(threadId);
+      this.entries.set(threadId, {
+        threadId,
+        source: "saved",
+        snapshot: offline(entry.snapshot, this.now()),
+        updatedAt: entry.updatedAt,
+      });
       this.options.onChange(threadId);
     }, this.options.graceMs ?? 15_000);
     entry.drop.unref?.();
@@ -300,6 +356,52 @@ export class SessionStore {
   private now(): number {
     return this.options.now?.() ?? Date.now();
   }
+
+  private save(threadId: string, snapshot: SessionSnapshot): void {
+    this.archived(() => this.options.archive?.save({ threadId, snapshot, savedAt: this.now() }));
+  }
+
+  /** Runs an archive call; a failing archive costs persistence, never the live view. */
+  private archived<T>(run: () => T): T | [] {
+    try {
+      return run();
+    } catch (error) {
+      this.options.onError?.(
+        `snapshot archive: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return [];
+    }
+  }
+}
+
+function isConnected(entry: Entry): boolean {
+  return entry.source === "fixture" || !!entry.connection;
+}
+
+/**
+ * A snapshot as it stands once its Pi process is gone. What lives in the
+ * session file (tasks, stash, git, usage, finished subagents) stays; what died
+ * with the process is settled: nothing is working, no question is open, no
+ * tool or subagent is running.
+ */
+export function offline(snapshot: SessionSnapshot, since: number): SessionSnapshot {
+  const { questions: _questions, activity, subagents, ...rest } = snapshot;
+  return {
+    ...rest,
+    status: { kind: "idle", since },
+    ...(activity ? { activity: activity.map(({ running: _running, ...call }) => call) } : {}),
+    ...(subagents
+      ? {
+          subagents: {
+            agents: subagents.agents.map((agent) =>
+              agent.state === "queued" || agent.state === "running" || agent.state === "waiting"
+                ? { ...agent, state: "stopped" as const, note: "Stopped with Pi" }
+                : agent,
+            ),
+          },
+        }
+      : {}),
+  };
 }
 
 function summarize(entry: Entry): SessionSummary {
@@ -309,7 +411,7 @@ function summarize(entry: Entry): SessionSummary {
   return {
     threadId: entry.threadId,
     source: entry.source,
-    connected: entry.source === "fixture" || !!entry.connection,
+    connected: isConnected(entry),
     updatedAt: entry.updatedAt,
     cwd: snapshot.cwd,
     ...(snapshot.name ? { name: snapshot.name } : {}),

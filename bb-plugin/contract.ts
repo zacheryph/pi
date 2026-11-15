@@ -28,8 +28,12 @@ const threadId = z.string().min(1).max(128);
 /** One connected (or fixture) session in the sessions list. */
 export interface SessionSummary {
   threadId: string;
-  /** Live: a Pi process is connected now. Fixture: installed by `bb pi-surface fixture`. */
-  source: "live" | "fixture";
+  /**
+   * Live: a Pi process reports for the thread. Saved: no Pi runs for it now
+   * (bb restarted, or stopped it), and this is what it last reported. Fixture:
+   * installed by `bb pi-surface fixture`.
+   */
+  source: "live" | "fixture" | "saved";
   /** False during the grace period after the session's socket closed. */
   connected: boolean;
   updatedAt: number;
@@ -46,7 +50,7 @@ export interface SessionSummary {
 
 export interface SnapshotResult {
   snapshot: SessionSnapshot | null;
-  source: "live" | "fixture" | null;
+  source: "live" | "fixture" | "saved" | null;
   connected: boolean;
 }
 

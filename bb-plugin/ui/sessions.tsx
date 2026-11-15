@@ -131,7 +131,11 @@ export function SessionList({
                 ) : null}
               </span>
               <span className="truncate text-xs text-muted-foreground">
-                {session.connected ? STATUS[session.status] : "Disconnected"}
+                {session.source === "saved"
+                  ? "Not running"
+                  : session.connected
+                    ? STATUS[session.status]
+                    : "Reconnecting"}
                 {session.todos ? ` · ${session.todos.done}/${session.todos.total} tasks` : ""}
                 {session.runningAgents ? ` · ${session.runningAgents} agents running` : ""}
                 {session.questions ? " · question waiting" : ""}

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { SessionSnapshot } from "../contract.ts";
 import { fixtureSnapshot } from "../fixture.ts";
 import { createPlugin } from "../server.ts";
+import { offline } from "../sessions.ts";
 
 const THREAD = "thr_live";
 
@@ -23,9 +24,11 @@ afterEach(async () => {
   for (const host of hosts.splice(0)) await host.dispose();
 });
 
+const OPTIONS = { graceMs: 30, helloTimeoutMs: 200, requestTimeoutMs: 500 };
+
 async function setup() {
   const { bb, harness } = createFakePluginHost({ pluginId: "pi-surface" });
-  await createPlugin({ graceMs: 30, helloTimeoutMs: 200, requestTimeoutMs: 500 })(bb);
+  await createPlugin(OPTIONS)(bb);
   hosts.push({ dispose: () => harness.lifecycle.dispose() });
   const tokenFor = async (threadId: string) => {
     const entries = await harness.behavior.resolveProviderEnv("pi", {
@@ -54,7 +57,14 @@ async function setup() {
       source: string | null;
       connected: boolean;
     }>;
-  return { harness, tokenFor, connect, read };
+  /** A bb restart or plugin reload: a new generation over the same storage. */
+  const reload = async () => {
+    const next = await harness.lifecycle.reload(createPlugin(OPTIONS));
+    hosts.push({ dispose: () => next.harness.lifecycle.dispose() });
+    return (threadId = THREAD) =>
+      next.harness.behavior.callRpc("snapshot", { threadId }) as ReturnType<typeof read>;
+  };
+  return { harness, tokenFor, connect, read, reload };
 }
 
 const sentRequests = (socket: { sent: readonly (string | Uint8Array)[] }) =>
@@ -177,8 +187,8 @@ describe("pi-surface server", () => {
     ).rejects.toMatchObject({ code: "not_found" });
   });
 
-  it("keeps a disconnected session through the grace period, then drops it", async () => {
-    const { connect, read } = await setup();
+  it("keeps a disconnected session live through the grace period, then shows it as saved", async () => {
+    const { harness, connect, read } = await setup();
     const socket = await connect();
     await socket.close(1000, "replace");
     expect(await read()).toMatchObject({ source: "live", connected: false });
@@ -186,7 +196,85 @@ describe("pi-surface server", () => {
     expect(await read()).toMatchObject({ connected: true, snapshot: { name: "after reload" } });
     await again.close();
     await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(await read()).toMatchObject({
+      source: "saved",
+      connected: false,
+      snapshot: { name: "after reload" },
+    });
+    await expect(
+      harness.behavior.callRpc("request", {
+        threadId: THREAD,
+        request: { command: "todo-history", key: "x" },
+      }),
+    ).rejects.toMatchObject({ code: "conflict", message: expect.stringContaining("next turn") });
+  });
+
+  it("shows a thread's last snapshot after a bb restart until its Pi reconnects", async () => {
+    const { connect, reload } = await setup();
+    const fixture = fixtureSnapshot(1000);
+    const socket = await connect(THREAD, {
+      status: { kind: "tool", tool: "bash", since: 5 },
+      todos: fixture.todos!,
+      subagents: fixture.subagents!,
+      questions: fixture.questions!,
+      activity: [{ tool: "bash", at: 5, running: true }],
+    });
+    await socket.receive(
+      JSON.stringify({
+        type: "update",
+        snapshot: snapshot({
+          name: "latest",
+          todos: fixture.todos!,
+          subagents: fixture.subagents!,
+        }),
+      }),
+    );
+    const read = await reload();
+    const restored = await read();
+    expect(restored).toMatchObject({ source: "saved", connected: false });
+    // What lives in the session file stays; what died with Pi is settled.
+    expect(restored.snapshot).toMatchObject({ name: "latest", status: { kind: "idle" } });
+    expect(restored.snapshot?.todos).toEqual(fixture.todos);
+    expect(restored.snapshot?.questions).toBeUndefined();
+    const states = restored.snapshot?.subagents?.agents.map((agent) => agent.state);
+    expect(states).not.toContain("running");
+    expect(states).toContain("stopped");
+    expect(restored.snapshot?.subagents?.agents.length).toBe(fixture.subagents!.agents.length);
+  });
+
+  it("settles a saved snapshot's running tool calls and open questions", () => {
+    const fixture = fixtureSnapshot(1000);
+    const settled = offline(
+      snapshot({
+        status: { kind: "working", since: 1 },
+        questions: fixture.questions!,
+        activity: [{ tool: "bash", at: 5, running: true }],
+        subagents: {
+          agents: [
+            { id: "a", type: "Explore", description: "x", state: "waiting", since: 1 },
+            { id: "b", type: "Plan", description: "y", state: "completed", since: 1 },
+          ],
+        },
+      }),
+      99,
+    );
+    expect(settled.status).toEqual({ kind: "idle", since: 99 });
+    expect(settled.questions).toBeUndefined();
+    expect(settled.activity).toEqual([{ tool: "bash", at: 5 }]);
+    expect(settled.subagents?.agents.map((agent) => agent.state)).toEqual(["stopped", "completed"]);
+  });
+
+  it("forgets a deleted thread's snapshot, across restarts too", async () => {
+    const { harness, connect, read, reload } = await setup();
+    const socket = await connect();
+    await socket.close();
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect((await read()).source).toBe("saved");
+    await harness.behavior.emitThreadEvent("thread.deleted", {
+      thread: { id: THREAD } as never,
+    });
     expect((await read()).snapshot).toBeNull();
+    expect((await (await reload())()).snapshot).toBeNull();
   });
 
   it("lets the newest process for a thread take over", async () => {
