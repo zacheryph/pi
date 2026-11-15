@@ -12,20 +12,21 @@ import { QuestionnaireInteraction } from "./ui/questionnaire.tsx";
 import { SESSION_TAB } from "./ui/session.ts";
 import { SessionTab, useSessionTabVisible } from "./ui/session-tab.tsx";
 import { RowBadge, SessionsPage, useSessionsBadge, useSessionsByThread } from "./ui/sessions.tsx";
-import { SubagentsBanner, TodosBanner } from "./ui/stack-cards.tsx";
+import { WIDGET_CARDS, widgetBanner } from "./ui/stack-cards.tsx";
 import { GitCardSection, PiSegment, StashCardRow } from "./ui/thread-context.tsx";
 
 export default definePluginApp((app) => {
-  // 1. Above the editor: bb's collapsible stack cards.
+  // 1. Above the editor: bb's collapsible stack cards, one per widget view.
   // 4. In the composer's control row: open the Pi tab.
   // 5. A composer popup, opened by a composer command or the + menu.
   app.composer.customize({
     id: "pi",
     scopes: ["thread"],
-    banners: [
-      { id: "todos", chrome: "bare", component: TodosBanner },
-      { id: "subagents", chrome: "bare", component: SubagentsBanner },
-    ],
+    banners: WIDGET_CARDS.map((card) => ({
+      id: card.banner,
+      chrome: "bare" as const,
+      component: widgetBanner(card.view, card.icon),
+    })),
     actions: [{ id: "open-session", component: OpenPanelAction }],
     plusMenu: [
       {

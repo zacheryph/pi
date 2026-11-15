@@ -9,18 +9,33 @@ import type {
 } from "../packages/pi-presentation/src/contract.ts";
 
 export type {
+  ActionRef,
+  Badge,
+  Block,
+  DetailContent,
+  DetailModel,
+  ExplorerItem,
+  ExplorerModel,
   GitSection,
+  JsonObject,
+  JsonValue,
+  Line,
   Questionnaire,
   QuestionnaireAnswer,
   SessionSnapshot,
   SessionStatus,
-  StashPreview,
   StashSection,
   SubagentsSection,
   SubagentState,
-  TodoHistory,
   TodoSection,
   TodoStatus,
+  Span,
+  StateIcon,
+  Title,
+  Tone,
+  ViewSummary,
+  WidgetModel,
+  WidgetRow,
 } from "../packages/pi-presentation/src/contract.ts";
 
 const threadId = z.string().min(1).max(128);
@@ -54,10 +69,16 @@ export interface SnapshotResult {
   connected: boolean;
 }
 
+/** `<extension>.<verb>`, as pi-surface defines an action id. */
+const actionId = z
+  .string()
+  .max(200)
+  .regex(/^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)+$/);
+
 /** Requests the app may forward to a session; the same shapes pi-bb accepts. */
 export const requestSchema = z.discriminatedUnion("command", [
-  z.object({ command: z.literal("stash-preview"), name: z.string().min(1).max(200) }).strict(),
-  z.object({ command: z.literal("todo-history"), key: z.string().min(1).max(200) }).strict(),
+  /** Run an action on the session's bus, e.g. an explorer's `loadDetail` with `{ id }`. */
+  z.object({ command: z.literal("action"), id: actionId, args: z.json().optional() }).strict(),
   z
     .object({
       command: z.literal("answer"),

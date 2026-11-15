@@ -2,7 +2,8 @@
 // Every message from a session is untrusted: parse it here, then pass typed values on.
 import type { SessionSnapshot, SurfaceRequest } from "./contract.ts";
 
-export const PROTOCOL_VERSION = 1;
+/** 2: snapshots carry every view's model, and the app runs actions instead of named requests. */
+export const PROTOCOL_VERSION = 2;
 export const ENV_URL = "PI_BB_SURFACE_URL";
 export const ENV_TOKEN = "PI_BB_SURFACE_TOKEN";
 /** WebSocket route; bb mounts it at `/api/v1/plugins/<id>/http/session`. */
