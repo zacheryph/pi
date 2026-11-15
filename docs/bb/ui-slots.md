@@ -45,17 +45,20 @@ optional `dismiss`, `children`). Plugin banners sit above bb's own cards.
 
 Each card is one of the session's widget views (see
 [pi-surface](../../packages/pi-surface/README.md)), drawn by the plugin's
-generic renderer: **Todos** is `todo.widget` (`Todos · 3/7`, active while a task
-is in progress) and **Subagents** is `subagent.widget` (running, waiting and
-just-finished agents with their latest activity). The title is the widget's
-title and its fullest meta. Rows read as the terminal draws them at full
-width: the left line, then the fullest right-column fallback, with state glyphs
-as bb's icons in place. A subagent row is its clock, the agent type in bold,
-the description and, at the right, the spinner and activity; the clock carries
-its start time, so bb keeps it running between snapshots. A row whose most
-compact form is only its state glyph, a task, shows that state as its leading
-icon instead (a check, a spinner, a lock, a circle…), and a finished task is
-struck through.
+generic renderer: **Todos** is `todo.widget` (`Todos · 1 active / 3 pending`,
+active while a task is in progress) and **Subagents** is `subagent.widget`
+(`Subagents · 2 active`: running, waiting and just-finished agents with their
+latest activity). The title is the widget's title and its fullest meta; both
+widgets count active and pending work the same way, leaving out a zero.
+
+Every row has one shape: its state as bb's icon, always first and under the
+card header's icon, in the colour of the terminal's glyph (a check, a spinner, a
+lock, a circle…); the row's lead; its text, with the key or agent type always
+bold; and at the right the rest of the fullest status the terminal draws there.
+A task row is its icon, `key: subject` and its status label, with the agent
+holding it first (`→ agent a3f2b1c4 · in_progress`). A subagent row is its
+icon, its clock, `type: description` and its activity; the clock carries its
+start time, so bb keeps it running between snapshots.
 A widget with nothing to show draws no card. The plugin keeps only a small
 table of which widget gets a card and which bb icon it has.
 
