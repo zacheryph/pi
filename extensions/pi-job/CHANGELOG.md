@@ -32,10 +32,20 @@ Changes recorded automatically from Git history, newest first.
 - 2026-10-29: chore\(deps\): align dev dependencies with Pi and Node 24, upgrade Vitest 5 ([#15](https://github.com/zacheryph/pi/pull/15))
 - 2026-10-29: feat\(pi-jobs\): vendor woksin/pi-jobs, pin Pi 1.4.0, and add a vendor-extension skill ([#12](https://github.com/zacheryph/pi/pull/12))
 
-## Upstream
+## Initial import
 
-Imported on 2026-10-29.
+- Source: [`woksin/pi-jobs`](https://github.com/woksin/pi-jobs), repository root.
+- Pinned revision: `a1c27af538b059815beddbb4c4f2c98cfe1eb3e9`
+  (2026-10-23, “docs: refresh README”).
+- Version: `@woksin/pi-jobs` 0.3.1; tested with Pi 1.3.0 and Node.js 22.19+ at import.
+- Imported: 2026-10-29.
+- License: MIT; original notice retained in [LICENSE](LICENSE).
 
-Imported from upstream; see [UPSTREAM.md](UPSTREAM.md). Upstream's changelog was
-cleared at import; for earlier history see the
-[source changelog](https://github.com/woksin/pi-jobs/blob/a1c27af538b059815beddbb4c4f2c98cfe1eb3e9/CHANGELOG.md).
+Copied every tracked file except `.github/` from a shallow checkout with
+`git ls-files | tar`. The first import-branch commit was the source copy alone;
+`diff -r` against that checkout showed no differences. The bundle loads
+`src/extension.ts` as editable source, not a submodule or npm runtime dependency.
+Do not also install the published `@woksin/pi-jobs` package.
+
+Earlier upstream history is in the
+[pinned source changelog](https://github.com/woksin/pi-jobs/blob/a1c27af538b059815beddbb4c4f2c98cfe1eb3e9/CHANGELOG.md).

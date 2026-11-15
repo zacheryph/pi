@@ -296,8 +296,8 @@ AGENTS.md (UI spacing tests at narrow widths, `commit.gpgsign=false`).
 - `subagents:child:session-created`, `bound` and `disposed` gain `agentId` and
   `toolCallId`; `session-created` also gains `handoff`. All are optional additions to
   the payload.
-- Update `docs/architecture/architecture.md` (event table) and `UPSTREAM.md` (local
-  changes).
+- Update `docs/architecture/architecture.md` (event table); the weekly workflow
+  records local changes in the changelog.
 - Tests: payload contents for tool spawns and service spawns. (A resume reuses the
   live child session, so `session-created` fires once per agent.)
 

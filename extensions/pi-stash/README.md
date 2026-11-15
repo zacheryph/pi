@@ -137,7 +137,7 @@ every session below it keeps its copy either way. A top-level session's entries 
 The bundled `pi-subagent` lets Explore and Plan call `stash_get` and `stash_list`;
 Explore can also call `stash_put` to return large findings as a handle. The
 orchestrator is told to brief workers with handles and ask for large results as
-handles. See [`../pi-subagent/UPSTREAM.md`](../pi-subagent/UPSTREAM.md).
+handles. See the [subagent documentation](../pi-subagent/README.md).
 
 ## Commands
 

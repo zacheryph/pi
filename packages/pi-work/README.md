@@ -119,8 +119,8 @@ message kept out of the model's context elsewhere (an app that runs Pi over RPC 
 
 Where no command context can wait (an `AgentSession` whose embedder binds no command actions), the
 wake is paid only if Pi is already idle; otherwise the message waits for the next prompt, as before.
-What remains Pi-side is in pi-job's `UPSTREAM-ISSUES.md`: an idle wake can still collide with a
-user prompt that is being prepared (#1).
+An idle wake can still collide with a user prompt that is being prepared. See
+[pi-job’s runtime limitations](../../extensions/pi-job/README.md#known-pi-side-limitations).
 
 ### When an item closes
 

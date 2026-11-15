@@ -109,10 +109,21 @@ Changes recorded automatically from Git history, newest first.
 - 2026-10-08: Compact subagent widget and configure project defaults ([a73808c](https://github.com/zacheryph/pi/commit/a73808ce78001ef21c1cea8b78e5beb714d7fada))
 - 2026-10-08: Set up personal Pi bundle with vendored subagents ([091282e](https://github.com/zacheryph/pi/commit/091282e5a9b72a2b4efe73431a446244da652ddb))
 
-## Upstream
+## Initial import
 
-Imported on 2026-10-22.
+- Source: [`gotgenes/pi-packages`](https://github.com/gotgenes/pi-packages),
+  directory `packages/pi-subagents`, itself forked from
+  [`tintinweb/pi-subagents`](https://github.com/tintinweb/pi-subagents).
+- Pinned revision: `29bfbfe605d726c78f6120977b08666716e048f2`.
+- Version: `23.2.0`.
+- Recorded import date: 2026-10-22, described by the original import notes as
+  this repository's first commit.
+- License: MIT; original notice retained in [LICENSE](LICENSE).
 
-Imported from upstream; see [UPSTREAM.md](UPSTREAM.md). Upstream's changelog was
-cleared at import; for earlier history see the
-[source changelog](https://github.com/gotgenes/pi-packages/blob/29bfbfe605d726c78f6120977b08666716e048f2/packages/pi-subagents/CHANGELOG.md).
+Copied source, tests, docs, changelog, README, license, and type-build tooling.
+Omitted media and contributor-only `.pi/` and `AGENTS.md` configuration.
+The bundle loads `src/index.ts` as editable source, not a submodule or npm runtime
+dependency. Do not also install the published upstream extension.
+
+Earlier upstream history is in the
+[pinned source changelog](https://github.com/gotgenes/pi-packages/blob/29bfbfe605d726c78f6120977b08666716e048f2/packages/pi-subagents/CHANGELOG.md).

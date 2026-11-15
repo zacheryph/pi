@@ -3,8 +3,8 @@
  * Skipped when no installed runtime can be resolved (override: PI_RUNTIME_DIR).
  * Completions travel as custom messages through Pi's run boundaries (see packages/pi-work/src/delivery.ts): the
  * transcript is the inbox, so these tests assert what is in the transcript and what the model saw.
- * Two tests reproduce pi-side races on the idle path and are skipped with a pointer to
- * UPSTREAM-ISSUES.md.
+ * Two tests reproduce pi-side races on the idle path and are skipped with self-contained
+ * reasons; see Known pi-side limitations in the README.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -20,8 +20,7 @@ const available = RUNTIME !== undefined && existsSync(join(RUNTIME, "dist/index.
 const skip = available
   ? false
   : "pi runtime not found; install @earendil-works/pi-coding-agent or set PI_RUNTIME_DIR";
-const upstream = (n: number, what: string) =>
-  available ? `pi-side race, see UPSTREAM-ISSUES.md #${n}: ${what}` : skip;
+const runtimeRace = (what: string) => (available ? `pi-side race: ${what}` : skip);
 
 let providerSeq = 0;
 
@@ -521,7 +520,7 @@ void test(
 
 void test(
   "prompt race: a completion while a prompt is still preparing loses the user's prompt",
-  { skip: upstream(1, "no atomic run reservation") },
+  { skip: runtimeRace("no atomic run reservation") },
   async (t) => {
     let gate!: () => void;
     let armed = false;
@@ -561,7 +560,7 @@ void test(
 
 void test(
   "deferred settled action runs during a compaction started by a LATER agent_settled handler",
-  { skip: upstream(2, "deferred actions are not revalidated") },
+  { skip: runtimeRace("deferred actions are not revalidated") },
   async (t) => {
     // Deterministic and independent of pi-job (which no longer sends from agent_settled): a waker
     // whose agent_settled handler sends a triggerTurn message, then a one-shot compactor after it,

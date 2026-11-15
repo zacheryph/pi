@@ -38,19 +38,9 @@ export function lookupPullRequests(repository, sha) {
   ).flat();
 }
 
-function upstreamNote(previous, hasUpstream) {
-  const heading = previous.match(
-    /^## (?:(\d{4}-\d{2}-\d{2}): )?(?:Vendored|Imported|Import|Upstream)\s*$/im,
-  );
-  if (!heading)
-    return hasUpstream
-      ? "\n## Upstream\n\nSee [UPSTREAM.md](UPSTREAM.md) for import provenance.\n"
-      : "";
-  const rest = previous.slice(heading.index + heading[0].length).trim();
-  const next = rest.search(/^## /m);
-  const body = (next < 0 ? rest : rest.slice(0, next)).trim();
-  const date = heading[1] ? `Imported on ${heading[1]}.\n\n` : "";
-  return `\n## Upstream\n\n${date}${body}\n`;
+function initialImport(previous) {
+  const start = previous.search(/^## Initial import\s*$/m);
+  return start < 0 ? "" : `\n${previous.slice(start).trimEnd()}\n`;
 }
 
 function historicalPaths(cwd, workspace, head) {
@@ -155,8 +145,8 @@ export function generateChangelogs({
       if (content === previous)
         throw new Error(`Expected a blank line after checkpoint in ${path}.`);
     } else {
-      const upstream = upstreamNote(previous, existsSync(join(cwd, workspace, "UPSTREAM.md")));
-      content = `# Changelog\n\nChanges recorded automatically from Git history, newest first.\n\n${block.trimEnd()}\n${upstream}`;
+      const provenance = initialImport(previous);
+      content = `# Changelog\n\nChanges recorded automatically from Git history, newest first.\n\n${block.trimEnd()}\n${provenance}`;
     }
     if (content !== previous) updates.push({ path, content, count: commits.length });
   }

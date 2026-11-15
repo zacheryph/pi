@@ -47,8 +47,8 @@ and a `pi.extensions` entry in upstream's `package.json`. Then it:
   upstream's tree hash**;
 - leaves these integration changes uncommitted: removes upstream's `.github/`
   and lockfiles, copies a monorepo's root license into the package, marks
-  `package.json` private without `publishConfig`, writes `UPSTREAM.md` and
-  `CHANGELOG.md`, registers the workspace and its `pi.extensions` entries in the
+  `package.json` private without `publishConfig`, writes provenance in the
+  `CHANGELOG.md` Initial import entry, registers the workspace and its `pi.extensions` entries in the
   root `package.json`, and runs `npm install --ignore-scripts`;
 - prints what is left to do.
 
@@ -72,28 +72,31 @@ Work through the script's list. It usually includes:
 - An entry point that is build output: point the root `pi.extensions` entry at
   the TypeScript source, since the bundle has no build step.
 - `scripts/verify-bundle.mjs`: assert its tools and commands.
-- Root `README.md`: the layout tree, an `### <name>` section linking `UPSTREAM.md`
-  and `CHANGELOG.md` with a warning not to install the published package too,
+- Root `README.md`: the layout tree, an `### <name>` section linking
+  `CHANGELOG.md#initial-import` with a warning not to install the published package too,
   and a line under License.
-- Every other change you make, as a bullet in the `CHANGELOG.md` integration
-  entry.
+- Remove separate upstream provenance, issue, sync-tracking, and comparison
+  documents, and fix references to them. Retain license files and useful local
+  architecture docs, runtime limitations, and regression tests. Describe
+  integration changes in the PR; the weekly workflow records the commits.
 
 Then run `npm run check`, `npm run test:workspace -- extensions/<name>`
 and `npm run verify:bundle`, and commit with `git -c commit.gpgsign=false
 commit`. If you can't run the imported code, say so and rely on CI; never call it
 verified without seeing it pass.
 
-## The records
+## The initial entry
 
-- `UPSTREAM.md` is provenance only (source, directory, commit, tree hash,
-  version, license, import date and commit). The script writes it; it is not
-  edited after import.
-- `CHANGELOG.md` holds local changes, newest first. After the initial integration
-  record, leave it to the weekly changelog workflow; do not edit it in feature or
-  fix commits. Preserve its `changelog:through` checkpoint. Upstream's changelog
-  is replaced at import. The workflow rebuilds these entries from Git history
-  and retains the import note and pinned source changelog link in an Upstream
-  section, without inventing an unknown import date.
+Use `## Initial import` as the oldest entry in `CHANGELOG.md`. Record the source,
+directory, pinned revision, verified tree hash, version, license, import date and
+import commit, plus the pinned source changelog link when available. Leave unknown
+historical import dates unspecified. Keep license notices in their original files.
+Do not add a checkpoint pointing at a topic-branch commit: it may disappear when
+the PR is squash-merged. The first weekly run adds its checkpoint from main.
+
+Keep this entry intact. Subsequent entries come from the weekly workflow; do not
+edit the changelog in feature or fix commits. The generator preserves the entire
+Initial import entry, including nested headings, on incremental runs and rebuilds.
 
 ## The PR
 

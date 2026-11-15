@@ -45,8 +45,19 @@ Changes recorded automatically from Git history, newest first.
 - 2026-10-08: Add spaced Nerd Font icons to subagent and todo titles ([fb5a26a](https://github.com/zacheryph/pi/commit/fb5a26a51f025779cbd12392e1cb99b786edcbaf))
 - 2026-10-08: Add dependency-aware todo planner with subagent-style UX ([#1](https://github.com/zacheryph/pi/pull/1))
 
-## Upstream
+## Initial import
 
-Imported on 2026-10-08.
+- Source: [`99percentpeople/pi-extensions`](https://github.com/99percentpeople/pi-extensions),
+  directory `extensions/todo`.
+- Pinned revision: `a7ae6b89a211c35b657e886e9ceeafbf51616c22`.
+- Version: `@99percentpeople/pi-todo` 1.2.8.
+- Imported: 2026-10-08.
+- License: MIT; Zach Yuen's original copyright and permission notice remain in
+  [LICENSE](LICENSE).
 
-Imported from upstream; see [UPSTREAM.md](UPSTREAM.md).
+Sparse-cloned the pinned source into a temporary checkout, extracted the todo
+state engine and license, then removed the checkout. `src/state.ts` was copied
+byte-for-byte from `extensions/todo/state.ts` at that revision. The original
+extension entry point, settings, and UI were not imported. This is editable
+source, not a submodule or nested Git repository. Preserve the engine's pure
+validation/replay API when updating it.

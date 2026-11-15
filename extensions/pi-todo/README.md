@@ -1,10 +1,8 @@
 # pi-todo
 
 Dependency-aware, session-scoped tasks. Built on the pure atomic state engine from
-[`@99percentpeople/pi-todo`](UPSTREAM.md), with explicit operations and UX matching
+[`@99percentpeople/pi-todo`](CHANGELOG.md#initial-import), with explicit operations and UX matching
 this bundle's subagents and system-insights extensions.
-
-[Comparison and base-selection report](docs/comparison.md).
 
 ## Load
 
@@ -402,5 +400,5 @@ npm run test:workspace -- pi-todo
 npm run verify:bundle
 ```
 
-MIT upstream license retained in [LICENSE](LICENSE). See [UPSTREAM.md](UPSTREAM.md)
+MIT upstream license retained in [LICENSE](LICENSE). See the [initial import entry](CHANGELOG.md#initial-import)
 for the pinned source and [CHANGELOG.md](CHANGELOG.md) for local adaptations.

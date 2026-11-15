@@ -330,7 +330,7 @@ describe("root host on a real session", () => {
             },
           };
         });
-        // UPSTREAM-ISSUES #4: a later handler still running when a `setImmediate` would fire.
+        // A later compaction handler is still running when a `setImmediate` would fire.
         if (options.slowHandlerMs)
           pi.on("session_compact", async () => {
             await new Promise((resolve) => setTimeout(resolve, options.slowHandlerMs));

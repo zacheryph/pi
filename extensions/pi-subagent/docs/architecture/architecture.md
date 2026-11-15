@@ -35,7 +35,6 @@ This is the full inventory, with the decision record or design principle each re
 | Time-based scheduling (cron / interval / one-shot dispatch)                   | Design principle 4                                                                                    |
 | Ad-hoc cross-extension event RPC (`subagent:rpc:*`)                           | Design principle 3; §"What the core dropped"                                                          |
 | Group-join / consolidated completion notifications                            | §"What the core dropped"                                                                              |
-| Model-scope enforcement (an `enabledModels` allowlist in the core)            | `docs/comparison-with-upstream.md` only — the weakest entry here                                      |
 | Per-agent tool restriction policy (`disallowed_tools`, a built-in denylist)   | [ADR-0002](../decisions/0002-extensions-on-a-minimal-core.md); §"Child tool selection"                |
 | Widening a child's tool allowlist with capability tools on the agent's behalf | §"Child tool selection"; operator position on the additive-key case                                   |
 | A global run-mode default                                                     | Operator position; every agent runs in the background, so there is no mode to default                 |
@@ -47,7 +46,6 @@ This is the full inventory, with the decision record or design principle each re
 | Bespoke transcript rendering in the core                                      | [ADR-0004](../decisions/0004-reconsider-ui-direction.md) Decision B                                   |
 | Agent-definition authoring UI (wizard, config editor, `/agents` menu)         | [ADR-0004](../decisions/0004-reconsider-ui-direction.md) Decision C                                   |
 | A foreground mode, or any call that blocks the parent on an agent             | Roadmap `docs/roadmaps/subagent-work-lifecycle.md` step 6; the completion message is the only carrier |
-| Propagating the parent's `pi -e <path>` ephemeral extensions to children      | [ADR-0001](../decisions/0001-deferred-patches.md), now superseded — restate before citing             |
 
 Extracting the surviving UI to a separate package is a **not now with criteria**, not a decline: [ADR-0004](../decisions/0004-reconsider-ui-direction.md) Decision D names the revisit conditions.
 
@@ -765,17 +763,11 @@ The boundaries above were not deduced top-down; they were surfaced by friction.
 Each place the target got _harder_ to test marked a domain seam drawn through the middle of a class.
 That method — testability friction as a boundary probe, with its limits — is recorded in the `improvement-discovery` skill so it outlives this phase.
 
-## Relationship with upstream
+## Import provenance
 
-This fork (`@gotgenes/pi-subagents` in the [gotgenes/pi-packages] monorepo) is a hard fork of [tintinweb/pi-subagent].
-The decomposition diverges materially from upstream's direction.
-
-The three upstream PRs (#71, #72, #73) remain open.
-If they land, upstream gains the peer-dep fix and the two RepOne patches.
-This fork continues independently regardless.
-
-Upstream fixes and ideas are cherry-picked when they align with this fork's scope.
-The upstream test suite is run periodically as a regression canary for the session assembly core.
+The [initial changelog entry](../../CHANGELOG.md#initial-import) records the source
+lineage, pinned revision, version, license, and original import details. This code
+is maintained independently; there is no upstream sync or contribution tracking.
 
 [gotgenes/pi-packages]: https://github.com/gotgenes/pi-packages
 [tintinweb/pi-subagent]: https://github.com/tintinweb/pi-subagent

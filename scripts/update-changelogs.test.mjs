@@ -49,12 +49,12 @@ function apply(cwd, updates) {
   for (const { path, content } of updates) write(cwd, path, content);
 }
 
-void test("fully replaces legacy entries and keeps dated or undated upstream provenance", (t) => {
+void test("rebuilds entries while preserving complete dated or undated initial imports", (t) => {
   const legacy = "# Changelog\n\nIntroduction.\n\n## 2026-02-01: Old verbose entry\n\nDetails.\n\n";
   const cwd = fixture(t, {
-    "extensions/a/CHANGELOG.md": `${legacy}## 2026-01-01: Vendored\n\nSee [UPSTREAM.md](UPSTREAM.md).\n`,
+    "extensions/a/CHANGELOG.md": `${legacy}## Initial import\n\nImported on 2026-01-01.\n\n### Source\n\nPinned revision: abc123.\n`,
     "extensions/a/src.ts": "old",
-    "packages/b/CHANGELOG.md": `${legacy}## Upstream\n\nImport date unknown; see [UPSTREAM.md](UPSTREAM.md).\n`,
+    "packages/b/CHANGELOG.md": `${legacy}## Initial import\n\nImport date unknown; pinned revision: def456.\n`,
     "packages/b/src.ts": "old",
   });
   commit(cwd, { "extensions/a/src.ts": "new", "packages/b/src.ts": "new" }, "shared change");
@@ -70,8 +70,9 @@ void test("fully replaces legacy entries and keeps dated or undated upstream pro
   assert.equal(calls.length, 2);
   assert.match(updates[0].content, /- 2026-11-15: shared change/);
   assert.match(updates[0].content, /- 2026-11-15: initial/);
-  assert.match(updates[0].content, /## Upstream\n\nImported on 2026-01-01\./);
-  assert.match(updates[1].content, /Import date unknown; see \[UPSTREAM.md\]/);
+  assert.match(updates[0].content, /## Initial import\n\nImported on 2026-01-01\./);
+  assert.match(updates[1].content, /Import date unknown; pinned revision: def456/);
+  assert.match(updates[0].content, /### Source\n\nPinned revision: abc123\./);
   for (const update of updates)
     assert.doesNotMatch(update.content, /Introduction|Old verbose entry|Details\./);
   apply(cwd, updates);
@@ -84,8 +85,8 @@ void test("rebuilds through directory renames and retains provenance without an 
     {
       "extensions/old/package.json": '{"name":"example"}',
       "extensions/old/src.ts": "old",
-      "extensions/old/CHANGELOG.md": "# Changelog\n\n## Old details\n\nDiscard me.\n",
-      "extensions/old/UPSTREAM.md": "# Upstream\n\nSource and commit; import date unknown.\n",
+      "extensions/old/CHANGELOG.md":
+        "# Changelog\n\n## Old details\n\nDiscard me.\n\n## Initial import\n\nSource and commit; import date unknown.\n",
     },
     ["extensions/new"],
   );
@@ -97,7 +98,7 @@ void test("rebuilds through directory renames and retains provenance without an 
   assert.equal(updates[0].count, 3);
   assert.match(updates[0].content, /before rename/);
   assert.match(updates[0].content, /rename extension/);
-  assert.match(updates[0].content, /See \[UPSTREAM.md\]\(UPSTREAM.md\) for import provenance/);
+  assert.match(updates[0].content, /## Initial import\n\nSource and commit; import date unknown\./);
   assert.doesNotMatch(updates[0].content, /Imported on|Discard me/);
 });
 

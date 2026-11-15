@@ -34,22 +34,23 @@ contributing changes back.
 
 Import with the `import-extension` skill and its script: the first commit is a
 verbatim copy of upstream, verified by tree hash; integration and changes follow
-in later commits. Each vendored extension keeps two records:
+in later commits. The oldest `CHANGELOG.md` entry, `## Initial import`, holds
+provenance: source, directory, pinned commit, tree hash when available, version,
+license, import date when known, and any pinned source changelog link. Write it
+once during integration; keep license files. Do not create separate provenance,
+upstream issue, sync-tracking, or upstream comparison files.
 
-- `UPSTREAM.md` holds only provenance: source, pinned commit, tree hash, version,
-  license and import date. It is written at import and not edited after.
-- `CHANGELOG.md` is maintained by the weekly changelog workflow; do not edit it
-  in feature or fix PRs. Keep commit subjects descriptive: each becomes an entry
-  with its UTC commit date and introducing PR link (or commit link). Preserve
-  the `changelog:through` checkpoint. Its Upstream section points at `UPSTREAM.md`
-  and preserves import notes and any link to the pinned source changelog.
+The weekly workflow maintains later entries; do not edit them in feature or fix
+PRs. Keep commit subjects descriptive: each becomes an entry with its UTC commit
+date and introducing PR link (or commit link). Preserve `changelog:through` and
+the complete Initial import entry, including during a full rebuild.
 
 ## Changelogs
 
 The same weekly workflow maintains `CHANGELOG.md` for every registered workspace
 under `extensions/` and `packages/`, creating missing logs from Git history.
 Logs without a checkpoint are rebuilt from full history, following directory
-renames and retaining only import/upstream provenance from the previous log.
+renames and retaining the complete Initial import entry from the previous log.
 See the root README's Changelogs section for checkpoint and workflow details.
 
 ## Git commits
