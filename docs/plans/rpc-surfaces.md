@@ -77,7 +77,7 @@ Each is one pull request. "Base" is the branch it stacks on.
 | 4   | `claude/rpc-4-agent-models`       | 3      | Agents as virtual models in the model picker                         |
 | 5   | `claude/rpc-5-bb-surface`         | `main` | `pi-bb` adapter and the bb plugin with one example per slot          |
 | 6   | `claude/rpc-6-presentation-views` | 1      | `pi-presentation` publishes views and dispatches actions             |
-| 7   | later                             | 5, 6   | bb plugin draws `pi-surface` views generically; actions from the app |
+| 7   | `claude/eloquent-mayer-a107he`    | 5, 6   | bb plugin draws `pi-surface` views generically; actions from the app |
 | 8   | later                             | 5      | Remove `pi-dashboard` once bb's session panel replaces it            |
 | 9   | later                             | 5      | Tool rows: structured `details` and bb timeline renderers            |
 
@@ -176,12 +176,36 @@ Each is one pull request. "Base" is the branch it stacks on.
   become actions; their old request names stay as aliases only while the
   dashboard exists.
 - pi-todo and pi-stash move first; pi-git and pi-subagent follow in 7.
+- The snapshot carried only widget models here; 7 adds every kind.
+
+### 7. Views in bb
+
+- pi-git offers `git.worktrees` and `git.prs` (its two explorers); pi-subagent
+  offers `subagent.widget` (one model builder for the terminal widget and the
+  view) and `subagent.explorer` (the branch's roster).
+- `PresentationService.snapshot().views` carries every view's model, not only
+  widgets, so a client draws everything from the snapshot, a saved snapshot
+  included; a model over 256 KB is sent as an error. pi-dashboard leaves views
+  out of what it sends its hub.
+- pi-bb protocol 2: the snapshot carries `views`, and the app's requests are
+  `action { id, args? }` and `answer`. The bb plugin no longer sends
+  `stash-preview` or `todo-history`; pi-presentation keeps them for the
+  dashboard until 8.
+- The plugin's `ui/surface.tsx` draws widgets, explorers and details. Widget
+  views are the stack cards, from a table of view id and icon; explorer views
+  are the Pi tab's sections, in a fixed order with any other after. Items open
+  inline details, or run `loadDetail` on the session; `onOpen` and
+  `marker.onClear` run too. The header, questions, activity and usage stay
+  bespoke; the context row, context card, stash picker, row badge and sessions
+  page still read sections for their counts.
+- Views leave out what only a redrawing terminal keeps current: the subagent
+  widget's elapsed clock, and a running agent's duration.
+- Not done: actions on one item from the app, such as removing a worktree.
+  That needs an item action (label, action reference, confirmation) in the
+  explorer model and a key for it in the terminal's explorer.
 
 ### Later
 
-- **7:** the bb plugin's thread tab and cards draw `pi-surface` models with one
-  generic renderer and send actions back; the per-section components from 5
-  shrink to layout.
 - **8:** remove `pi-dashboard` (hub, page, reporter and tests, about 4,400
   lines) and the request aliases kept for it. Its page is the one place that
   draws every section a second time by hand; it is not worth porting to the

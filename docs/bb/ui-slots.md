@@ -14,7 +14,7 @@ slot below is `experimental_` unless noted; recheck after a bb upgrade.
 All images show fixture data from `bb pi-surface fixture --thread <id>`, cropped
 to the plugin's own element, light theme, 2x. The `bb-screenshot` skill
 (`.agents/skills/bb-screenshot/`) runs a private bb with the plugin and scripted
-Pi sessions and takes these crops; images 1 and 2 were last made with it.
+Pi sessions and takes these crops; images 1, 2 and 6 were last made with it.
 
 - **Live** images were captured from the bb web UI on loopback with headless
   Chromium, on a real thread page with the plugin installed.
@@ -43,10 +43,21 @@ sit. Register a banner with `chrome: "bare"` and draw
 `experimental_CollapsibleStackCard` (`label`, `title`, `icon`, `isActive`,
 optional `dismiss`, `children`). Plugin banners sit above bb's own cards.
 
-We draw two cards: **Todos** (`Todos 3/7 · <active task>`, active while a task
-is in progress, expanding to the task list with status glyphs) and
-**Subagents** (`Subagents · 2 running`, one row per agent with type,
-description, state, duration, tool count and latest note).
+Each card is one of the session's widget views (see
+[pi-surface](../../packages/pi-surface/README.md)), drawn by the plugin's
+generic renderer: **Todos** is `todo.widget` (`Todos · 3/7`, active while a task
+is in progress) and **Subagents** is `subagent.widget` (running, waiting and
+just-finished agents with their latest activity). The title is the widget's
+title and its fullest meta. Rows read as the terminal draws them at full
+width: the left line, then the fullest right-column fallback, with state glyphs
+as bb's icons in place. A subagent row is its clock, the agent type in bold,
+the description and, at the right, the spinner and activity; the clock carries
+its start time, so bb keeps it running between snapshots. A row whose most
+compact form is only its state glyph, a task, shows that state as its leading
+icon instead (a check, a spinner, a lock, a circle…), and a finished task is
+struck through.
+A widget with nothing to show draws no card. The plugin keeps only a small
+table of which widget gets a card and which bb icon it has.
 
 ![Todos and Subagents cards, collapsed](../images/bb/stack-cards.png)
 
@@ -58,8 +69,9 @@ Spacing: bb draws the card frame, the header (`px-3 py-1.5`: a 12px inset,
 14px icon, 6px gap to the title) and the collapse row at the bottom, and wraps
 `children` with no padding of its own. The body's padding is ours: the cards
 pad it `px-3 pt-3` and give rows the header's icon size and gap, so the body has
-the header's 12px inset on the left, right and top and its icons and text line
-up under the header's. The card takes no `className`, so the header and the
+the header's 12px inset on the left, right and top, and each row keeps a
+leading column as wide as the header's icon, so row text lines up under the
+header's title. The card takes no `className`, so the header and the
 collapse row cannot change. `bb-shot.mjs --check` in the `bb-screenshot` skill
 measures this in bb.
 
@@ -156,12 +168,19 @@ A tab in the thread's side panel. `experimental_tab({ context: { kind:
 pins one destination; `availability: "action"` would add a launcher for
 closable instances instead. Ours is the fixed **Pi** tab, visible only on
 threads with a session: header (name, status, agent, model, thinking, context
-use), open questions, todos (a task opens its status history, fetched from the
-session on demand), subagents, stash (an entry opens a preview of its first
-lines on demand), Git, recent tool calls and usage. It uses bb's
-`experimental_InfoSection`, `InfoList` and `InfoListRow`.
+use), open questions, then every explorer view the session offers, then recent
+tool calls and usage. The explorers are drawn by the generic renderer as Info
+sections: `todo.explorer`, `subagent.explorer`, `stash.explorer`,
+`git.worktrees` and `git.prs` in that order, any other after them. Each has its
+tabs beside the heading, its notices, and items with a badge that open into
+their detail: inline when the view carries it (subagents, worktrees, pull
+requests, where a URL opens in bb), otherwise through the view's `loadDetail`
+action on the session (a task's details and history, a stash entry's
+contents). Opening a task with an unreviewed message runs the view's
+`marker.onClear` (`todo.review`), as opening it in the terminal does. It uses
+bb's `experimental_InfoSection`, `InfoList` and `InfoListRow`.
 
-![Pi tab with one task history and one stash preview open](../images/bb/thread-tab.png)
+![Pi tab with a task, a pull request and a stash entry open](../images/bb/thread-tab.png)
 
 Limits: bb keeps a closed panel's tab mounted, so a tab that polls should pause
 with `experimental_useTabVisible()`; ours only reads the shared live query.
