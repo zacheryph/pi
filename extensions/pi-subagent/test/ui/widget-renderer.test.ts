@@ -63,7 +63,8 @@ describe("compact widget heading and rows", () => {
   it("renders a top rule and exactly one row per agent, without a box or bottom rule", () => {
     const lines = render({ agents: [makeAgent(), makeAgent({ id: "second", type: "explore" })] });
     expect(lines).toHaveLength(3);
-    expect(lines[0]).toBe(`──   Subagents ${"─".repeat(64)}`);
+    expect(lines[0]).toMatch(/^── \S {2}Subagents ─+ 2 active ──$/u);
+    expect(visibleWidth(lines[0])).toBe(80);
     expect(lines[1]).toContain("01:23  agent: test task");
     expect(lines[2]).toContain("explore: test task");
     expect(lines.join("\n")).not.toMatch(/[╭╮╰╯│├└⎿]/);
@@ -74,7 +75,7 @@ describe("compact widget heading and rows", () => {
     const agents = [makeAgent(), makeAgent({ id: "second", status: "queued" })];
     const expanded = render({ agents });
     withSlot(open, 1, () => expect(render({ agents })).toEqual([expanded[0]]));
-    expect(expanded[0]).toContain("1 queued");
+    expect(expanded[0]).toContain("1 active / 1 pending");
   });
 
   it("keeps the header icon static while agent status spinners advance", () => {
@@ -131,21 +132,21 @@ describe("compact widget heading and rows", () => {
     }
   });
 
-  it("counts queued agents on the title bar, right-aligned, with no per-agent rows", () => {
+  it("counts queued agents as pending on the title bar, right-aligned, with no per-agent rows", () => {
     const agents = [
       makeAgent({ id: "q1", status: "queued", description: "first queued task" }),
       makeAgent({ id: "q2", status: "queued", description: "second queued task" }),
     ];
     const lines = render({ agents });
     expect(lines).toHaveLength(1);
-    expect(lines[0]).toMatch(/^── \S {2}Subagents ─+ 2 queued ──$/u);
+    expect(lines[0]).toMatch(/^── \S {2}Subagents ─+ 2 pending ──$/u);
     expect(visibleWidth(lines[0])).toBe(80);
     expect(lines.join("\n")).not.toContain("queued task");
     vi.advanceTimersByTime(60_000);
     expect(render({ agents })).toEqual(lines);
   });
 
-  it("shows running and finished rows with the queued count only on the title", () => {
+  it("shows running and finished rows, counting active and pending agents on the title", () => {
     const lines = render({
       agents: [
         makeAgent({ id: "f", status: "completed", completedAt: NOW, description: "finished task" }),
@@ -154,20 +155,24 @@ describe("compact widget heading and rows", () => {
       ],
     });
     expect(lines).toHaveLength(3);
-    expect(lines[0]).toMatch(/ 1 queued ──$/);
+    // Finished agents are not counted.
+    expect(lines[0]).toMatch(/ 1 active \/ 1 pending ──$/);
     expect(lines[1]).toContain("running task");
     expect(lines[2]).toContain("finished task");
   });
 
-  it("omits the queued count when none are queued and drops it rather than crowd the title when narrow", () => {
-    expect(render()[0]).not.toContain("queued");
+  it("leaves out a zero count, and drops the counts rather than crowd the title when narrow", () => {
+    expect(render()[0]).toMatch(/ 1 active ──$/);
+    expect(render()[0]).not.toContain("pending");
+    const finished = makeAgent({ status: "completed", completedAt: NOW });
+    expect(render({ agents: [finished] })[0]).toMatch(/^── \S {2}Subagents ─+$/u);
     for (const width of [1, 2, 8, 12, 16]) {
       const [heading] = render({ agents: [makeAgent({ status: "queued" })], terminalWidth: width });
       expect(visibleWidth(heading)).toBeLessThanOrEqual(width);
-      expect(heading).not.toContain("queued");
+      expect(heading).not.toContain("pending");
     }
     const wide = render({ agents: [makeAgent({ status: "queued" })], terminalWidth: 40 })[0];
-    expect(wide).toContain("1 queued");
+    expect(wide).toContain("1 pending");
     expect(visibleWidth(wide)).toBe(40);
   });
 
@@ -360,7 +365,7 @@ describe("terminal layout safety", () => {
     ];
     const lines = render({ agents });
     expect(lines).toHaveLength(12);
-    expect(lines[0]).toMatch(/ 1 queued ──$/);
+    expect(lines[0]).toMatch(/ 12 active \/ 1 pending ──$/);
     expect(lines.at(-1)).toMatch(/^ \+3 more \(2 running, 1 finished\) +$/);
   });
 
@@ -377,7 +382,7 @@ describe("terminal layout safety", () => {
       ],
     });
     expect(lines).toHaveLength(3);
-    expect(lines[0]).toMatch(/ 3 queued ──$/);
+    expect(lines[0]).toMatch(/ 1 active \/ 3 pending ──$/);
     expect(lines[1]).toContain("live task");
     expect(lines[2]).toMatch(/^ \+2 more \(2 finished\) +$/);
   });
@@ -509,18 +514,13 @@ describe("subagentWidgetModel", () => {
     expect(model).toMatchObject({
       title: { label: "Subagents" },
       active: true,
-      meta: [{ text: "1 queued", tone: "dim" }],
+      meta: [{ text: "1 active / 1 pending", tone: "muted" }],
     });
     expect(model?.rows).toHaveLength(2);
     expect(model?.rows[0]).toEqual({
       // A running clock carries its start, so a surface that does not redraw can keep it going.
-      left: [
-        { text: "01:23", tone: "dim", since: NOW - 83_000 },
-        "  ",
-        { text: "agent", bold: true },
-        ": ",
-        { text: "test task", tone: "muted" },
-      ],
+      lead: { text: "01:23", tone: "dim", since: NOW - 83_000 },
+      left: [{ text: "agent", bold: true }, ": ", { text: "test task", tone: "muted" }],
       // A still glyph instead of the terminal's spinner frame; the line is not clipped.
       right: [
         [
@@ -531,7 +531,13 @@ describe("subagentWidgetModel", () => {
       group: "running",
     });
     // A finished agent's time is fixed: no start to count from.
-    expect((model!.rows[1]!.left as readonly unknown[])[0]).toEqual({ text: "01:22", tone: "dim" });
+    expect(model!.rows[1]!.lead).toEqual({ text: "01:22", tone: "dim" });
+    // The name stays bold once the agent finishes, as a done task's key does.
+    expect((model!.rows[1]!.left as readonly unknown[])[0]).toEqual({
+      text: "agent",
+      tone: "dim",
+      bold: true,
+    });
     expect(model?.rows[1]).toMatchObject({
       right: [
         [
