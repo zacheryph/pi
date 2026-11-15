@@ -274,6 +274,18 @@ root the ledger does not name. `prs` are the pull request records, most
 recently touched first. Emitted on session start, `/tree`, every ledger change,
 and each status refresh.
 
+From session start to shutdown pi-git also defines two views on the same bus
+(see [`pi-surface`](../../packages/pi-surface/README.md)), so a remote surface
+reached through `pi-presentation` draws what the terminal's explorers show:
+
+| Id              | Kind     | What it shows                                                                                    |
+| --------------- | -------- | ------------------------------------------------------------------------------------------------ |
+| `git.worktrees` | explorer | The `/git:worktrees` explorer: this session's worktrees, removed ones and others under the root  |
+| `git.prs`       | explorer | The `/git:prs` explorer: pull requests opened here and ones looked at, with what tools last read |
+
+Items carry their details inline. Both views announce a change whenever
+`git:snapshot` is emitted.
+
 ## Configuration
 
 `~/.pi/agent/git.json`, overridden by the project's `.pi/git.json`:

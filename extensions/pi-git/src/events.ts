@@ -15,6 +15,10 @@ import type { FoundWorktree } from "#src/worktrees";
 export const GIT_SNAPSHOT_EVENT = "git:snapshot";
 export const GIT_SNAPSHOT_VERSION = 1;
 
+/** pi-surface views: the `/git:worktrees` and `/git:prs` explorers, defined while a session runs. */
+export const GIT_WORKTREES_VIEW = "git.worktrees";
+export const GIT_PRS_VIEW = "git.prs";
+
 export interface GitSnapshotWorktree extends Omit<WorktreeRecord, "v" | "kind"> {
   /** Last measured git status of an active worktree; absent until measured. */
   status?: WorktreeStatus;

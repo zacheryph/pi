@@ -1,11 +1,12 @@
 /**
  * view.ts — plain-text listings for tools and non-interactive modes, and the
- * `/git:worktrees` explorer. Paths, branch names and errors are untrusted text;
+ * `/git:worktrees` and `/git:prs` explorers, which are also the `git.worktrees`
+ * and `git.prs` views. Paths, branch names and errors are untrusted text;
  * pi-ui sanitizes them in the explorer, and tool output is plain text.
  */
 
 import { basename } from "node:path";
-import type { Block, ExplorerItem, ExplorerView, Tone } from "#ui";
+import type { Block, ExplorerItem, ExplorerModel, Tone } from "#surface";
 import type { GitSnapshotEvent, GitSnapshotPr, GitSnapshotWorktree } from "#src/events";
 import { describePr, prLabel, type PrReview, type PrState } from "#src/prs";
 import { describeWatch } from "#src/watch";
@@ -98,7 +99,7 @@ function detail(worktree: GitSnapshotWorktree): Block[] {
   ];
 }
 
-export function explorerView(snapshot: GitSnapshotEvent): ExplorerView {
+export function explorerView(snapshot: GitSnapshotEvent): ExplorerModel {
   const items: ExplorerItem[] = snapshot.worktrees.map((worktree) => ({
     id: worktree.path,
     label: [
@@ -245,7 +246,7 @@ function prDetail(pr: GitSnapshotPr, now: number): Block[] {
   ];
 }
 
-export function prExplorerView(prs: readonly GitSnapshotPr[], now = Date.now()): ExplorerView {
+export function prExplorerView(prs: readonly GitSnapshotPr[], now = Date.now()): ExplorerModel {
   const items: ExplorerItem[] = prs.map((pr) => ({
     id: pr.key,
     label: [
