@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { Widget, renderWidget, type WidgetView } from "#src/widget";
+import { Widget, renderWidget, stateCounts, type WidgetView } from "#src/widget";
 import { ICONS } from "#src/icons";
 import { bounded, plain, theme } from "#test/helpers";
 import { clearSlots, slots } from "#test-helpers";
@@ -56,6 +56,25 @@ describe("pure widget layout", () => {
     expect(body(false, 8)).toBe(" ide… ✓ ");
     expect(body(false, 4)).toBe(" i… ");
     expect(body(true, 4)).toBe("  ✓ ");
+  });
+  it("counts active and pending work, leaving out zeros", () => {
+    expect(stateCounts({ active: 2, pending: 3 })).toEqual({
+      text: "2 active / 3 pending",
+      tone: "muted",
+    });
+    expect(stateCounts({ active: 0, pending: 1 })).toEqual({ text: "1 pending", tone: "muted" });
+    expect(stateCounts({ active: 1, pending: 0 })).toEqual({ text: "1 active", tone: "muted" });
+    expect(stateCounts({ active: 0, pending: 0 })).toBeUndefined();
+  });
+  it("draws a row's lead two spaces before its text", () => {
+    const row = {
+      lead: { text: "01:05", tone: "dim" as const },
+      left: "explore: map",
+      right: ["ok"],
+    };
+    expect(
+      plain(renderWidget({ title: "T", rows: [row], maxRows: 2 }, 30, theme)).split("\n")[1],
+    ).toBe(" 01:05  explore: map       ok ");
   });
   it("never wraps a task/agent row or exceeds any viewport budget", () => {
     for (let width = 0; width <= 80; width++)

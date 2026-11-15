@@ -4,7 +4,7 @@ import { bodyRow, cells, labeledRule, splitColumns, titleText } from "#src/layou
 import { copyLine, paint, styleLine } from "#src/style";
 import { sanitizeLine } from "#src/text";
 import type { UITheme } from "#src/types";
-import type { WidgetModel, WidgetRow } from "#surface";
+import type { Line, WidgetModel, WidgetRow } from "#surface";
 
 export type { WidgetModel, WidgetRow } from "#surface";
 
@@ -40,6 +40,25 @@ function overflowText(rows: readonly WidgetRow[], hidden: readonly WidgetRow[]):
   return `+${hidden.length} more${summary ? ` (${summary})` : ""}`;
 }
 
+/**
+ * A widget heading's counts, read the same in every widget: `2 active / 3 pending`.
+ * A zero count is left out, and with both zero there is no line at all.
+ */
+export function stateCounts(counts: { active: number; pending: number }): Line | undefined {
+  const parts = [
+    ...(counts.active > 0 ? [`${counts.active} active`] : []),
+    ...(counts.pending > 0 ? [`${counts.pending} pending`] : []),
+  ];
+  return parts.length ? { text: parts.join(" / "), tone: "muted" } : undefined;
+}
+
+/** A row's text: its lead column, if any, two spaces before `left`. */
+function rowText(row: WidgetRow): Line {
+  if (row.lead === undefined) return row.left;
+  const spans = (line: Line) => (Array.isArray(line) ? line : [line]);
+  return [...spans(row.lead), "  ", ...spans(row.left)];
+}
+
 /** No sorting, timers, events, terminal reads, or task/agent lifecycle. */
 export function renderWidget(view: WidgetView, width: number, theme: UITheme): string[] {
   width = cells(width);
@@ -63,7 +82,7 @@ export function renderWidget(view: WidgetView, width: number, theme: UITheme): s
     const right = (row.right ?? []).map((line) => styleLine(line, theme));
     lines.push(
       bodyRow(
-        splitColumns(styleLine(row.left, theme), right, Math.max(0, width - 2), {
+        splitColumns(styleLine(rowText(row), theme), right, Math.max(0, width - 2), {
           keepRight: row.keepRight,
         }),
         width,
@@ -102,6 +121,7 @@ function snapshot(view: WidgetView): WidgetView {
     meta: view.meta?.map(copyLine),
     rows: view.rows.map((row) => ({
       ...row,
+      ...(row.lead === undefined ? {} : { lead: copyLine(row.lead) }),
       left: copyLine(row.left),
       right: row.right?.map(copyLine),
     })),
