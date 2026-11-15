@@ -2,8 +2,9 @@
 
 Changes recorded automatically from Git history, newest first.
 
-<!-- changelog:through 6ba5f77b02f5787c9c080d78f6a2b02da99b7ee4 -->
+<!-- changelog:through aa756f8a1345f53efab119ea3193ee7fe53f79ec -->
 
+- 2026-11-15: docs: consolidate import provenance in initial changelog entries ([#177](https://github.com/zacheryph/pi/pull/177))
 - 2026-11-14: fix\(cards\): write restore cards into the transcript once after compaction ([#173](https://github.com/zacheryph/pi/pull/173))
 - 2026-11-13: feat\(pi-stash\): offer the stash.explorer view and the stash.preview action ([#172](https://github.com/zacheryph/pi/pull/172))
 - 2026-11-13: feat\(pi-stash\): /stash lists entries and /stash:gc reports without a terminal ([#171](https://github.com/zacheryph/pi/pull/171))
