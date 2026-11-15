@@ -16,6 +16,7 @@ import {
   renderWidget,
   sanitizeLine,
   SPINNER,
+  stateCounts,
   type Line,
   type Span,
   type WidgetRow,
@@ -146,12 +147,15 @@ function agentRow(
   const content = Math.max(0, width - 2);
   const active = isActiveStatus(agent.status) || isWaiting(agent);
   const name = singleLine(getDisplayName(agent.type, registry));
-  const left: Span[] = [];
-  if (content >= 40) left.push(clockSpan(agent, now), "  ");
-  left.push(active ? { text: name, bold: true } : { text: name, tone: "dim" });
-  left.push(": ", { text: singleLine(agent.description), tone: active ? "muted" : "dim" });
   return {
-    left,
+    // The clock leads the row when there is room; the terminal draws it two spaces before the name.
+    ...(content >= 40 ? { lead: clockSpan(agent, now) } : {}),
+    left: [
+      // The name is always bold, as a task's key is; a finished agent's is dim.
+      active ? { text: name, bold: true } : { text: name, tone: "dim", bold: true },
+      ": ",
+      { text: singleLine(agent.description), tone: active ? "muted" : "dim" },
+    ],
     // Below 12 columns the task keeps the row; the status is dropped.
     right: content < 12 ? [] : [statusLine(agent, spinner, Math.floor(content * 0.4))],
     group: agent.status === "running" ? "running" : isWaiting(agent) ? "waiting" : "finished",
@@ -202,6 +206,8 @@ export function subagentWidgetModel(params: WidgetModelParams): WidgetModel | un
       shouldShowFinished(agent.id, agent.status),
   );
   const ordered = [...running, ...waiting, ...finished];
+  // Waiting agents still hold open work, so they count as active; queued ones have not started.
+  const counts = stateCounts({ active: running.length + waiting.length, pending: queuedCount });
   if (ordered.length === 0 && queuedCount === 0) return undefined;
 
   const now = params.now ?? Date.now();
@@ -210,8 +216,8 @@ export function subagentWidgetModel(params: WidgetModelParams): WidgetModel | un
   return {
     title: { label: "Subagents", icon: ICONS.agents },
     active: running.length + queuedCount + waiting.length > 0,
-    // Queued agents take no rows; their count rides the title bar.
-    meta: queuedCount > 0 ? [{ text: `${queuedCount} queued`, tone: "dim" }] : [],
+    // Queued agents take no rows; they are the pending count on the title bar.
+    meta: counts ? [counts] : [],
     rows: ordered.map((agent) => agentRow(agent, registry, spinner, width, now)),
   };
 }

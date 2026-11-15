@@ -76,10 +76,9 @@ In print and json mode (`pi -p`, `--mode json`) nothing can wake the parent once
 The extension renders a persistent widget above the editor showing active agents:
 
 ```text
-──   Subagents ────────────────────────────────────────────
+──   Subagents ──────────────────── 2 active / 1 pending ──
 00:12  agent: Refactor auth module                ⠹ editing…
 00:04  explore: Find auth files                ⠹ searching…
- ◦ 1 queued
 ```
 
 This personal fork uses only a top rule, without side walls or a bottom border.
@@ -89,7 +88,7 @@ use a patched Nerd Font, preferably its Mono variant. Each running agent's
 activity indicator animates.
 Agent rows reserve one leading space before elapsed time and one trailing space
 after the activity/outcome indicator. The header rule remains full-width.
-Queued agents take no rows; their count is right-aligned on the title bar. Finished agents show their outcome briefly,
+The title bar counts active and pending agents, right-aligned, as the todo widget counts tasks: running and waiting agents are active, queued agents are pending and take no rows, finished agents are not counted, and a zero count is left out. The agent's name is bold while it runs. Finished agents show their outcome briefly,
 with a fixed elapsed duration and the original linger policy.
 
 An idle agent with open work (a job it started, an agent of its own) is **waiting**, not done: its row reads
@@ -488,7 +487,7 @@ The widget shows a warned agent's turn count in the warning color.
 
 Every agent is subject to a configurable concurrency limit (default: 4).
 Excess agents are automatically queued and start as running agents complete.
-The widget shows queued agents as a collapsed count.
+The widget counts queued agents as pending on its title bar.
 It also bounds its own height to the terminal's, collapsing the agents that do not fit into a `+N more` summary, so a short pane keeps its conversation visible.
 
 Stopping a still-queued agent produces the same completion notification a running agent's stop does.
@@ -620,10 +619,10 @@ From session start to shutdown pi-subagent also defines two views on the same bu
 [`pi-surface`](../../packages/pi-surface/README.md)), so a remote surface reached through
 `pi-presentation` draws the widget and the roster:
 
-| Id                  | Kind     | What it shows                                                                                                                                            |
-| ------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `subagent.widget`   | widget   | The above-editor widget's agents as a JSON `WidgetModel`, with whole rows and a still glyph for the spinner; a running clock carries its start (`since`) |
-| `subagent.explorer` | explorer | Every agent in `subagent:snapshot`, with its state as a badge and its facts and note inline; an `Active` tab                                             |
+| Id                  | Kind     | What it shows                                                                                                                                                                             |
+| ------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `subagent.widget`   | widget   | The above-editor widget's agents as a JSON `WidgetModel`, with whole rows and a still glyph for the spinner; the clock is the row's `lead`, and a running one carries its start (`since`) |
+| `subagent.explorer` | explorer | Every agent in `subagent:snapshot`, with its state as a badge and its facts and note inline; an `Active` tab                                                                              |
 
 Both announce a change with every `subagent:snapshot`, and the widget again at each turn,
 when finished agents age out of it.
