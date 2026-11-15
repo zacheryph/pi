@@ -3,6 +3,7 @@ import {
   renderWidget,
   sanitizeLine,
   sanitizeText,
+  stateCounts,
   type Block,
   type Line,
   type Span,
@@ -132,6 +133,8 @@ export function renderTodoText(
   if (tasks.length > shown.length) lines.push(`+${tasks.length - shown.length} more`);
   return lines;
 }
+
+const lineSpans = (line: Line): Span[] => (Array.isArray(line) ? [...line] : [line as Span]);
 
 const pad = (value: number) => String(value).padStart(2, "0");
 
@@ -266,23 +269,18 @@ function statusFallbacks(task: TodoTask, state: TodoState, assignee?: string): L
  */
 export function todoWidgetModel(state: TodoState, config: TodoRenderConfig): WidgetModel {
   const { tasks, maxVisible, unreviewed } = renderSelection(state, config);
-  const done = state.tasks.filter((task) => task.status === "completed").length;
-  const progress: Span = {
-    text: `${done}/${state.tasks.length}`,
-    tone: done === state.tasks.length && done > 0 ? "success" : "muted",
-  };
-  // Narrow terminals drop the unreviewed count before progress; rows keep markers.
+  const active = state.tasks.filter((task) => task.status === "in_progress").length;
+  const counts = stateCounts({
+    active,
+    pending: state.tasks.filter((task) => task.status === "pending").length,
+  });
+  // Narrow terminals drop the unreviewed count before the counts; rows keep markers.
+  const fresh: Span = { text: `${UNREVIEWED_MARK} ${unreviewed.size} new`, tone: "accent" };
   const meta: Line[] = [
     ...(unreviewed.size
-      ? [
-          [
-            { text: `${UNREVIEWED_MARK} ${unreviewed.size} new`, tone: "accent" as const },
-            { text: " · ", tone: "dim" as const },
-            progress,
-          ],
-        ]
+      ? [counts ? [fresh, { text: " · ", tone: "dim" as const }, ...lineSpans(counts)] : [fresh]]
       : []),
-    [progress],
+    ...(counts ? [counts] : []),
   ];
   // Only reserve a marker gutter when a visible row needs it.
   const gutter = tasks.slice(0, maxVisible).some((task) => unreviewed.has(task.key));
@@ -291,10 +289,12 @@ export function todoWidgetModel(state: TodoState, config: TodoRenderConfig): Wid
     const left: Span[] = [];
     if (gutter)
       left.push(message === undefined ? "  " : { text: `${UNREVIEWED_MARK} `, tone: "accent" });
-    left.push({
-      text: taskLeft(task),
-      tone: task.status === "completed" && message === undefined ? "muted" : "default",
-    });
+    // The key is always bold, as a subagent's name is.
+    const tone = task.status === "completed" && message === undefined ? "muted" : "default";
+    left.push(
+      { text: sanitizeLine(task.key), tone, bold: true },
+      { text: taskLeft(task).slice(sanitizeLine(task.key).length), tone },
+    );
     if (message !== undefined) left.push({ text: ` — ${todoMessageLine(message)}`, tone: "dim" });
     return {
       left,
@@ -304,7 +304,7 @@ export function todoWidgetModel(state: TodoState, config: TodoRenderConfig): Wid
   });
   return {
     title: { label: config.title ?? "Todos", icon: ICONS.tasks },
-    active: state.tasks.some((task) => task.status === "in_progress"),
+    active: active > 0,
     meta,
     rows,
     emptyText: state.tasks.length ? "No unfinished tasks" : "No tasks",

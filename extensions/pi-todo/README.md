@@ -262,14 +262,17 @@ this extension supplies task selection, ordering, status colors and the
 
 Above-editor widget uses a static top rule with the Nerd Font tasks icon
 (`nf-fa-tasks`, U+F0AE); use a patched Nerd Font, preferably its Mono variant.
-Each task occupies one physical row, with identity left and lifecycle status
-right. Body rows reserve one space on each side. Theme tokens match subagents. Active work appears
+Each task occupies one physical row, with identity left (the key bold, as the
+subagent widget bolds an agent's name) and lifecycle status right. The header
+counts active and pending tasks, `1 active / 2 pending`, as the subagent widget
+counts agents; blocked tasks count as pending, completed tasks are not counted,
+and a zero count is left out. Body rows reserve one space on each side. Theme tokens match subagents. Active work appears
 first, then ready tasks, blocked tasks, and completed tasks. Dependency keys stay
 visible; overflow becomes `+N more`. Completed tasks remain in state until
 explicitly cleared; hiding them affects display only.
 
 ```text
-──   Todos ──────────────────────────────────────── 1/3 ──
+──   Todos ─────────────────────── 1 active / 1 pending ──
 ▸ build Build change ← inspect                  in progress
 ○ verify Verify change ← build                     blocked
 ✓ inspect Inspect implementation                  completed
@@ -278,12 +281,12 @@ explicitly cleared; hiding them affects display only.
 Unreviewed messages add `● N new` to the header. Their tasks move to the top, newest
 first, and stay visible when completed tasks are hidden. Those rows get a `●`
 marker and a dim message excerpt; other rows get a blank two-column gutter so
-columns stay aligned. Narrow terminals drop the count before the progress, then
+columns stay aligned. Narrow terminals drop the new count before the other counts, then
 the icon; on narrow rows the assignee badge drops first, then the task identity
 clips before the status label, and the status glyph always stays.
 
 ```text
-──   Todos ─────────────────────────────────────────── ● 1 new · 1/3 ──
+──   Todos ────────────────────────── ● 1 new · 1 active / 1 pending ──
  ● inspect: Inspect implementation — Auth in src/auth/token ✓ completed
    build: Build change ← inspect                          ▸ in_progress
    verify: Verify change ← build                              ○ blocked
