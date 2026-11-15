@@ -1,9 +1,19 @@
 // Slot 1: composer banners (chrome "bare") drawn as bb's collapsible stack cards.
+//
+// bb draws the card's header (12px inset, 14px icon, 6px gap) and the collapse
+// row, but leaves the body's padding to us. The body matches the header: the
+// same 12px inset on the left, right and top, and the same icon size and gap,
+// so row icons and text line up under the header's icon and title.
 import { experimental_CollapsibleStackCard as CollapsibleStackCard } from "@get-bb/plugin-sdk/app";
 import { Icon } from "@/components/ui/icon";
 import type { SessionSnapshot } from "../contract.ts";
 import { agentIcon, duration, isRunning, taskIcon, taskLabel, todoCounts } from "./format.ts";
 import { useComposerThread, useSession } from "./session.ts";
+
+/** The card body's padding: the header's 12px inset on three sides. */
+export const STACK_CARD_BODY_CLASS = "px-3 pt-3 pb-1";
+/** One body row: the header's icon-to-title gap, no padding of its own. */
+const ROW_CLASS = "flex min-w-0 gap-1.5";
 
 export function TodosCard({ snapshot }: { snapshot: SessionSnapshot }) {
   const counts = todoCounts(snapshot.todos);
@@ -13,9 +23,9 @@ export function TodosCard({ snapshot }: { snapshot: SessionSnapshot }) {
     : `Todos ${counts.done}/${counts.total}`;
   return (
     <CollapsibleStackCard label="Todos" title={title} icon="ListTodo" isActive={!!counts.active}>
-      <ul className="flex flex-col gap-1 text-sm" aria-label="Tasks">
+      <ul className={`flex flex-col gap-1 text-sm ${STACK_CARD_BODY_CLASS}`} aria-label="Tasks">
         {snapshot.todos.tasks.map((task) => (
-          <li key={task.key} className="flex min-w-0 items-center gap-2 px-1">
+          <li key={task.key} className={`${ROW_CLASS} items-center`}>
             <Icon
               name={taskIcon(task.status, task.blocked)}
               aria-label={taskLabel(task.status, task.blocked)}
@@ -39,7 +49,7 @@ export function TodosCard({ snapshot }: { snapshot: SessionSnapshot }) {
           </li>
         ))}
         {snapshot.todos.total > snapshot.todos.tasks.length ? (
-          <li className="px-1 text-xs text-muted-foreground">
+          <li className="text-xs text-muted-foreground">
             {snapshot.todos.total - snapshot.todos.tasks.length} more in the Pi tab
           </li>
         ) : null}
@@ -58,9 +68,12 @@ export function SubagentsCard({ snapshot, now }: { snapshot: SessionSnapshot; no
   const at = now ?? Date.now();
   return (
     <CollapsibleStackCard label="Subagents" title={title} icon="Bot" isActive={running > 0}>
-      <ul className="flex flex-col gap-1.5 text-sm" aria-label="Subagents">
+      <ul
+        className={`flex flex-col gap-1.5 text-sm ${STACK_CARD_BODY_CLASS}`}
+        aria-label="Subagents"
+      >
         {agents.map((agent) => (
-          <li key={agent.id} className="flex min-w-0 items-start gap-2 px-1">
+          <li key={agent.id} className={`${ROW_CLASS} items-start`}>
             <Icon
               name={agentIcon(agent.state)}
               aria-label={agent.state}

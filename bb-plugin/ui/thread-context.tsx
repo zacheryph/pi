@@ -26,11 +26,13 @@ export function SegmentSummary({
     ...(agents ? [`${agents} ${agents === 1 ? "agent" : "agents"}`] : []),
     ...(snapshot.questions?.length ? ["question"] : []),
   ];
+  // bb's segment padding (its CONTEXT_CARD_SEGMENT_CLASS): inside the row's
+  // 4px inset it puts the icon 12px from the card edge, like the stack cards.
   return (
     <button
       type="button"
       onClick={onOpen}
-      className="inline-flex min-w-0 items-center gap-1.5 rounded px-1 text-xs text-muted-foreground hover:text-foreground"
+      className="inline-flex min-h-6 min-w-0 items-center gap-1.5 rounded px-2 py-1 text-xs text-muted-foreground hover:bg-state-hover hover:text-foreground"
       title="Open the Pi session tab"
     >
       <Icon name="Layers" className="size-3.5 shrink-0" />

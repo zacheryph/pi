@@ -92,6 +92,12 @@ npm run build       # bb plugin build .
 bb plugin dev       # after installing: rebuild and reload on save
 ```
 
+To see a change in bb without installing anything of your own, the
+`bb-screenshot` skill (`.agents/skills/bb-screenshot/`) runs a private bb with
+this plugin and Pi sessions on a scripted model, takes screenshots of the
+slots, and checks that the stack cards and the context row share bb's 12px
+inset (`bb-shot.mjs --check`).
+
 Snapshot types come from
 [`packages/pi-presentation/src/contract.ts`](../packages/pi-presentation/src/contract.ts)
 by `import type`. The root `npm run check` formats this directory but neither

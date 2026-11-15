@@ -104,6 +104,39 @@ describe("pi-surface app", () => {
     expect(list.textContent).toContain("running");
   });
 
+  it("insets card bodies and the context segment like bb's card header (12px)", async () => {
+    // jsdom has no layout; the bb-screenshot skill's `bb-shot.mjs --check`
+    // measures the real pixels in bb.
+    const classes = (el: Element | null | undefined) => el?.className.split(/\s+/) ?? [];
+    for (const [index, name] of [
+      [0, "Tasks"],
+      [1, "Subagents"],
+    ] as const) {
+      const banner = app.composerCustomizations[0]!.banners![index]!;
+      const slot = renderSlot(banner, {}, { rpc: rpcFor(fixture), composer: threadComposer });
+      const list = await slot.findByRole("list", { name });
+      expect(classes(list)).toEqual(expect.arrayContaining(["px-3", "pt-3"]));
+      for (const row of Array.from(list.querySelectorAll(":scope > li"))) {
+        expect(classes(row).filter((c) => /^-?(p|px|pl|pr|m|mx|ml|mr)-/.test(c))).toEqual([]);
+      }
+      cleanup();
+    }
+    const props = {
+      threadId: THREAD,
+      projectId: "proj",
+      environment: null,
+      segments: [],
+      isExpanded: false,
+      onToggle: () => {},
+    };
+    const segment = renderSlot({ component: app.threadContextSegments[0]!.summary }, props, {
+      rpc: rpcFor(fixture),
+    });
+    const button = await segment.findByRole("button", { name: /3\/7 tasks/ });
+    // bb's CONTEXT_CARD_SEGMENT_CLASS, inside the row's p-1.
+    expect(classes(button)).toEqual(expect.arrayContaining(["px-2", "py-1", "min-h-6"]));
+  });
+
   it("renders nothing without a session, in every thread slot", async () => {
     const empty = rpcFor(null);
     const banner = renderSlot(
