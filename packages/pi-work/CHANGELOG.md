@@ -2,8 +2,9 @@
 
 Changes recorded automatically from Git history, newest first.
 
-<!-- changelog:through 6ba5f77b02f5787c9c080d78f6a2b02da99b7ee4 -->
+<!-- changelog:through aa756f8a1345f53efab119ea3193ee7fe53f79ec -->
 
+- 2026-11-15: docs: consolidate import provenance in initial changelog entries ([#177](https://github.com/zacheryph/pi/pull/177))
 - 2026-11-13: feat\(pi-dashboard,pi-work\): /dashboard and /work:wake answer without a terminal ([#171](https://github.com/zacheryph/pi/pull/171))
 - 2026-11-12: refactor: centralize workspace configs and development commands ([#153](https://github.com/zacheryph/pi/pull/153))
 - 2026-11-12: refactor: standardize workspace aliases and shared test helpers ([#149](https://github.com/zacheryph/pi/pull/149))
