@@ -86,6 +86,40 @@ describe("todo rendering", () => {
     ]);
   });
 
+  it("always bolds a task's key, as the subagent widget bolds a name", () => {
+    const s = state([task("active", "in_progress"), task("done", "completed")]);
+    const [active, done] = todoWidgetModel(s, config).rows;
+    expect(active!.left).toEqual([
+      { text: "active", tone: "default", bold: true },
+      { text: ": Task active", tone: "default" },
+    ]);
+    expect(done!.left).toEqual([
+      { text: "done", tone: "muted", bold: true },
+      { text: ": Task done", tone: "muted" },
+    ]);
+    const unseen = todoWidgetModel(s, { ...config, unreviewed: new Map([["done", "Note"]]) });
+    expect(unseen.rows[0]!.left).toContainEqual({ text: "done", tone: "default", bold: true });
+  });
+
+  it("counts active and pending tasks in the heading, leaving out zeros", () => {
+    const meta = (tasks: TodoTask[]) => todoWidgetModel(state(tasks), config).meta;
+    // Blocked tasks are pending; completed tasks and the total are not counted.
+    expect(
+      meta([
+        task("a", "in_progress"),
+        task("b"),
+        task("c", "pending", ["b"]),
+        task("d", "completed"),
+      ]),
+    ).toEqual([{ text: "1 active / 2 pending", tone: "muted" }]);
+    expect(meta([task("b"), task("d", "completed")])).toEqual([
+      { text: "1 pending", tone: "muted" },
+    ]);
+    expect(meta([task("a", "in_progress")])).toEqual([{ text: "1 active", tone: "muted" }]);
+    expect(meta([task("d", "completed")])).toEqual([]);
+    expect(meta([])).toEqual([]);
+  });
+
   it("keeps top rule static with labeled progress; status right and key left", () => {
     const s = state([
       task("ready"),
@@ -94,7 +128,7 @@ describe("todo rendering", () => {
       task("wait", "pending", ["ready"]),
     ]);
     const lines = render(s);
-    expect(lines[0]).toMatch(/^──   Todos ─+ 1\/4 ──$/);
+    expect(lines[0]).toMatch(/^──   Todos ─+ 1 active \/ 2 pending ──$/);
     expect(visibleWidth(lines[0])).toBe(100);
     expect(lines.slice(1)).toEqual([
       expect.stringMatching(/^ active: Task active +▸ in_progress $/),
@@ -117,13 +151,16 @@ describe("todo rendering", () => {
           calls.push(`${token}:${text}`);
           return text;
         },
+        bold: (text: string) => text,
       } as Theme;
       const s = state([task("one", status)]);
-      const lines = renderTodoLines(s, config, 20, t);
-      expect(lines[0]).toBe(`──   Todos ─ ${status === "completed" ? "1/1" : "0/1"} ──`);
-      expect(visibleWidth(lines[0])).toBe(20);
-      expect(calls).toContain("border: ──");
-      // Progress drops before the title; then the icon; then the label clips.
+      const meta = { pending: "1 pending", in_progress: "1 active", completed: "" }[status];
+      const width = meta ? 17 + meta.length : 20;
+      const lines = renderTodoLines(s, config, width, t);
+      expect(lines[0]).toBe(meta ? `──   Todos ─ ${meta} ──` : `──   Todos ${"─".repeat(8)}`);
+      expect(visibleWidth(lines[0])).toBe(width);
+      expect(calls.some((call) => call.startsWith("border:"))).toBe(true);
+      // The counts drop before the title; then the icon; then the label clips.
       expect(render(s, config, 19)[0]).toBe("──   Todos ───────");
       expect(calls).toContain(`${color}:  Todos`);
       expect(render(s, config, 11)[0]).toBe("── Todos ──");
@@ -132,15 +169,15 @@ describe("todo rendering", () => {
     }
   });
 
-  it("reserves trailing border columns for multi-digit progress with ANSI styling", () => {
-    const s = state(Array.from({ length: 50 }, (_, i) => task(`k${i}`, "completed")));
-    for (const width of [22, 30, 80]) {
+  it("reserves trailing border columns for multi-digit counts with ANSI styling", () => {
+    const s = state(Array.from({ length: 50 }, (_, i) => task(`k${i}`, "in_progress")));
+    for (const width of [26, 30, 80]) {
       const header = render(s, config, width)[0];
-      expect(header).toMatch(/^──   Todos ─* 50\/50 ──$/);
+      expect(header).toMatch(/^──   Todos ─* 50 active ──$/);
       expect(visibleWidth(header)).toBe(width);
       expect(visibleWidth(renderTodoLines(s, config, width, colored)[0])).toBe(width);
     }
-    expect(render(s, config, 21)[0]).toMatch(/^──   Todos ─+$/);
+    expect(render(s, config, 25)[0]).toMatch(/^──   Todos ─+$/);
   });
 
   it("orders stably and hides completed without changing state or overflow counts", () => {
@@ -158,7 +195,7 @@ describe("todo rendering", () => {
     expect(lines[2]).toContain("r2:");
     expect(lines[3]).toMatch(/^ \+2 more +$/);
     expect(lines.join("\n")).not.toContain("done:");
-    expect(lines[0]).toContain("1/5");
+    expect(lines[0]).toContain("1 active / 3 pending");
     expect(JSON.stringify(s)).toBe(before);
     expect(
       render(state([task("done", "completed")]), { ...config, showCompleted: false })[1],
@@ -344,6 +381,7 @@ describe("todo rendering", () => {
         tokens.push(token);
         return text;
       },
+      bold: (text: string) => text,
     } as Theme;
     const s = state([
       task("done", "completed"),
@@ -373,19 +411,26 @@ describe("unreviewed message rendering", () => {
   ]);
   const c = { ...config, unreviewed };
 
-  it("counts new messages in the header, falling back to progress then title on narrow widths", () => {
-    expect(render(s, c)[0]).toMatch(/^──   Todos ─+ ● 2 new · 2\/4 ──$/);
+  it("counts new messages in the header, falling back to the counts then title on narrow widths", () => {
+    const counts = "1 active / 1 pending";
+    expect(render(s, c)[0]).toMatch(/^──   Todos ─+ ● 2 new · 1 active \/ 1 pending ──$/);
     expect(visibleWidth(render(s, c)[0])).toBe(100);
-    for (let width = 1; width <= 40; width++) {
+    for (let width = 1; width <= 60; width++) {
       const header = render(s, c, width)[0];
       expect(visibleWidth(header)).toBeLessThanOrEqual(width);
       expect(visibleWidth(renderTodoLines(s, c, width, colored)[0])).toBeLessThanOrEqual(width);
-      if (header.includes("new")) expect(header).toMatch(/^──   Todos [─ ]+● 2 new · 2\/4 ──$/);
+      if (header.includes("new"))
+        expect(header).toMatch(/^──   Todos [─ ]+● 2 new · 1 active \/ 1 pending ──$/);
     }
-    expect(render(s, c, 30)[0]).toBe("──   Todos ─ ● 2 new · 2/4 ──");
-    expect(render(s, c, 29)[0]).toMatch(/^──   Todos ─+ 2\/4 ──$/);
-    expect(render(s, c, 20)[0]).toBe("──   Todos ─ 2/4 ──");
-    expect(render(s, c, 19)[0]).toBe("──   Todos ───────");
+    expect(render(s, c, 47)[0]).toBe(`──   Todos ─ ● 2 new · ${counts} ──`);
+    expect(render(s, c, 46)[0]).toMatch(/^──   Todos ─+ 1 active \/ 1 pending ──$/);
+    expect(render(s, c, 37)[0]).toBe(`──   Todos ─ ${counts} ──`);
+    expect(render(s, c, 36)[0]).toBe(`──   Todos ${"─".repeat(24)}`);
+    // With nothing active or pending, only the new count remains.
+    const finished = state([task("done", "completed")]);
+    expect(render(finished, { ...c, unreviewed: new Map([["done", "x"]]) })[0]).toMatch(
+      /^──   Todos ─+ ● 1 new ──$/,
+    );
     expect(render(s)[0]).not.toContain("new");
   });
 
@@ -413,6 +458,7 @@ describe("unreviewed message rendering", () => {
         calls.push(`${token}:${text}`);
         return text;
       },
+      bold: (text: string) => text,
     } as Theme;
     renderTodoLines(
       state([task("done", "completed")]),
