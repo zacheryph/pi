@@ -1,320 +1,52 @@
 # Changelog
 
-Local changes to this vendored copy, newest first. Where it came from is
-recorded in [UPSTREAM.md](UPSTREAM.md).
-
-## 2026-11-14: Notes in the transcript replace the per-request todo card
-
-The `todo:context` card was added to the end of every model request while the
-list differed from the model's last todo result: after a compaction until the next
-todo call, after a `/todo` edit, after a subagent's update. As the last message it
-held the conversation's cache breakpoint, so the history could not be reused from
-the prompt cache while it was sent, and the model read it as the newest message.
-
-- `src/sync.ts` (new): a `todo:sync` note, written into the transcript as a hidden
-  `custom` message only when the list differs from what the model last saw. What it
-  saw is read from the branch: the latest successful, untruncated whole-list todo
-  result, or the latest note, still in context after the latest compaction. The
-  note lists what changed since (status, subject, description, prerequisites, the
-  latest message, and who changed it where the task's history records it); it holds
-  the whole list when the model has none, or when the changes would be longer.
-- `src/index.ts`: notes are written by `before_agent_start` (after the prompt),
-  at `turn_end` (held by Pi until the turn's results are in) and after
-  `session_compact`. A note held while a run streams counts as seen until it
-  reaches the branch. `todo_list` with `key` records the key in its details, so it
-  does not count as showing the whole list. The tool guideline describes the note.
-- `src/actions.ts`: `formatTodoContext` is gone; `TODO_OUTPUT_TRUNCATED` names the
-  marker a truncated result carries.
-- `contextSync` keeps its values: `changes` writes notes, `off` writes none.
-
-## 2026-11-13: Widget and browser as views and actions on the session bus
-
-So a remote surface (through pi-presentation) can draw the widget and the
-browser and act on them, pi-todo offers them on the session's bus through
-pi-surface, from session start to shutdown. The terminal draws the same models.
-
-- `src/ui/render.ts`: `todoWidgetModel` builds the widget as a JSON
-  `WidgetModel`; `todoWidgetView` adds the terminal's row budgets to it.
-  Rendering is unchanged.
-- `src/ui/browser.ts`: `todoExplorerModel` replaces `todoExplorerView` and is
-  plain JSON. Items no longer carry their detail: `loadDetail` is
-  `{ action: "todo.inspect", args: { reviewed } }`, and the marker's `onClear`
-  is `{ action: "todo.review", args: { revisions, branch } }` instead of the
-  `onReview` callback. `showTodoBrowser` takes the session's bus as `actions`.
-- `src/surface.ts` (new): the `todo.inspect`, `todo.review` and `todo.history`
-  actions. `todo.review` refuses a list's marks after a session or branch
-  change (the `onReview` guard) and still reports `Review not saved: …` when
-  the journal write fails.
-- `src/index.ts`: defines the actions and the `todo.widget` and
-  `todo.explorer` views at session start, removes them at shutdown, and
-  announces both views on every widget update.
-- `src/events.ts`: the action and view ids and `TodoHistoryResult`.
-
-## 2026-11-13: Commands report without a terminal
-
-An app that hosts Pi over RPC drops `ctx.ui.notify`, so `/todo` opened nothing and the other
-commands' results were never shown.
-
-- Outside the terminal UI, `/todo` shows the task list as text (`renderTodoText`, at most 40 rows)
-  and every command result and error goes through pi-foundations' `userOutput`: a notification in
-  the terminal, a displayed custom message elsewhere, kept out of the model's context.
-- `/todo:add` with no subject and no dialog to ask reports its usage instead of doing nothing.
-- `test/harness.ts` collects both channels in `notices`; `test/index.test.ts` covers the message
-  channel, the listing cap and the context filter.
-
-## 2026-11-11: Share workspace development tooling
-
-- Use the root TypeScript and test configuration and root development commands;
-  retain the workspace manifest and source aliases.
-
-## 2026-11-11: Standardize source and test aliases
-
-- Use `#src/*`, `#test/*` and shared workspace aliases, including the
-  pi-test-helpers barrel. Resolve aliases through package manifests instead of
-  duplicate TypeScript paths.
-
-## 2026-11-12: Claims survive a reload or restart of the parent
-
-pi-subagent keeps agents across a reload or restart and reopens those that wait on work, but every
-session start released the claims it replayed ("no subagent survives one"). A worker waiting on CI
-lost its tasks at a `/reload`: the parent's task read "ended (session ended)", and the worker's
-later updates went to a private list, because it was reopened before the parent's broker existed.
-
-- `src/delegation.ts`: `start(claims, keep)` keeps the replayed claims at a `startup`, `resume` or
-  `reload` start. New `reconcile()`, run at `resources_discover` (the first `before_agent_start` is
-  the fallback), releases the claims whose agent has no live child session by then, with the
-  outcome "interrupted by a restart", and remembers them so `subagent:resuming` gives the tasks
-  back. A `fork` start and `/tree` release at once, as before.
-- `subagent:session:disposed` with `kept: true` (the session went with the parent's shutdown)
-  releases nothing.
-- A child looks its claim up again while it has none (`resolveDelegated`), instead of once at its
-  own `session_start`.
-- README: the release rule names the real event and a new bullet describes what a reload keeps.
-- Tests: kept and released claims across a restart, the first-run fallback, a fork, the `kept`
-  event; pi-subagent's `restore-sdk.test.ts` covers it on real sessions.
-
-## 2026-11-12: Share plain-data helpers through pi-foundations
-
-- Reuse the shared record guard and error text. Reject arrays in persisted task/state records, including arrays with task-like properties.
-
-## 2026-11-12: Centralize browser fallback in pi-ui
-
-- Centralize browser availability in pi-ui; preserve non-TUI review journaling and branch guards.
-
-## 2026-11-12: Settings declared with defineSettings
-
-Issue #128. `src/config.ts` declares `todoSettings` with pi-foundations' `defineSettings`
-instead of hand-written validation.
-
-- `TodoConfig` is now `SettingsOf<typeof todoSettings>`. `DEFAULT_CONFIG`, `CONFIG_FILE`,
-  `sanitizeConfig`, `loadTodoConfig` and `saveTodoConfig` are gone; use
-  `todoSettings.defaults()`, `.load(cwd, agentDir?)` and `.save(cwd, patch)`.
-- Same keys, defaults, layering and save behaviour. New: invalid and unknown fields in a file
-  warn once per file, naming each field, instead of being dropped silently.
-- Tests load files through the definition instead of calling `sanitizeConfig`.
-
-## 2026-11-11: Use the shared session-state helpers
-
-Issue #127. No behaviour change.
-
-- The `todo:context` card is registered with `contextCard` from `packages/pi-session-state`,
-  which owns stripping the previous card and appending the current one; `build` keeps the
-  rules for when the card is due, for a subagent's delegated view and for the session's own list.
-- `createTodoDelegation` offers the broker with `treeService` instead of `trackChildren`,
-  `provide` and a withdraw of its own. The broker is now provided on `session_start` only, not
-  again on `/tree`, which re-provided the same broker under the same id. `start` takes only the
-  replayed claims, finds the parent and agent id through the tree service, and `Delegated` no
-  longer carries the parent id.
-- `replayTodoSession` reads the journal, claims and review entries with `customEntries`.
-
-## 2026-11-11: Replay only the todo journal
-
-Issue #129. Every mutation journals a `todo:journal` snapshot, and nothing writes `todo:state`, so
-replay reads the journal alone.
-
-- `replayTodoSession` restores the last valid `todo:journal` snapshot on the branch and no longer
-  falls back to `todo:state` entries or todo tool-result details. It validates journal data with
-  the new `readTodoState` instead of wrapping it in a fake `getBranch()` for `replayTodoState`.
-- Removed `TODO_STATE_CUSTOM_TYPE`, schema version 1 (`readLegacyState` and its migration),
-  `replayTodoState` and the unused `needsTodoContextCheckpoint`.
-- Tests: `readTodoState` takes over the malformed-snapshot and isolation cases; the fallback and
-  version 1 cases are gone, and replay tests pin that tool results alone restore nothing.
-- A session written before the journal existed resumes with an empty list.
-
-## 2026-11-10: Parent acceptance for delegated tasks
-
-- Delegated workers cannot set assigned or newly added tasks to `completed`.
-  They leave finished work `in_progress` with an outcome message; the parent
-  verifies and completes it. Local task lists without a handoff are unchanged.
-- Delegated workers cannot remove unfinished tasks, so deleting an assignment
-  cannot bypass parent acceptance. They may still remove or clear their own
-  tasks after the parent completes them, with the existing dependency checks.
-- The todo tool guidance and delegated context describe the rule. Delegation
-  tests cover atomic refusal, parent completion and cleanup; the real-session
-  handoff test exercises a refused child completion followed by parent acceptance.
-
-## 2026-11-09: README names subagent_send
-
-Roadmap step 7b (`docs/roadmaps/subagent-work-lifecycle.md`). The README's note
-on releasing a handed-over claim says a later run started by `subagent_send`
-(`subagent:resuming`) reclaims the agent's tasks, where it said a resume did.
-pi-todo's events and code are unchanged: `subagent:resuming` and
-`subagent:resumed` still carry every run a message starts, including the first
-run of an agent that never had a session. No source change.
-
-## 2026-11-08: Faux sessions from pi-test-helpers
-
-- `test/sdk.test.ts` runs on `packages/pi-test-helpers`' `fauxSession` and
-  `loadResources` and reads provider requests from `requests`; `test/harness.ts`
-  reads tool text with `messageText`. No source change.
-
-## 2026-11-08: ui.custom stub from pi-test-helpers
-
-- `browser.test.ts` mounts the browser with `packages/pi-test-helpers`'
-  `fakeCustomUi` and `fakeTui`. No source change.
-
-## 2026-11-08: One test harness for index and delegation tests
-
-- `test/harness.ts`: the fake-`pi` harness `index.test.ts` defined, built on
-  `packages/pi-test-helpers`' `fakePi`, now also serves `delegation.test.ts`,
-  which had its own copy; it takes a real event bus for the delegation tests. No
-  source change.
-
-## 2026-11-08: Widget render test uses plainTheme
-
-- `index.test.ts` renders the inline widget with `packages/pi-test-helpers`'
-  `plainTheme`, the last identity theme stub in the suite. No source change.
-
-## 2026-11-08: Global test slots from pi-test-helpers
-
-- `delegation.test.ts` resets pi-session-tree with `packages/pi-test-helpers`'
-  `resetSessionTree`, and `index.test.ts` sets the inline-window slot with
-  `withSlot`. No source change.
-
-## 2026-11-08: Test themes from pi-test-helpers
-
-- Theme stubs and SGR stripping in `index`, `ui` and `browser` tests come from
-  `packages/pi-test-helpers` (`plainTheme`, `ansiTheme`, `stripAnsi`). No source
-  change.
-
-## 2026-11-08: Layered settings fixture from pi-test-helpers
-
-- `test/config.test.ts` lays out its agent directory and project with
-  `packages/pi-test-helpers`' `settingsDirs`. No source change.
-
-## 2026-11-08: Test temp directories from pi-test-helpers
-
-- `test/config.test.ts` creates its directory with `packages/pi-test-helpers`'
-  `tempDir`, removed when the test ends. No source change.
-
-## 2026-11-06: Supply tools required by todo handoffs
-
-- `src/delegation.ts`: request only `todo_list` and `todo_upsert` through
-  pi-subagent's pre-creation hook for valid `handoff.todo` payloads. Restricted
-  workers can now read and update their claims without broadening repository
-  capabilities or admitting destructive todo tools. No handoff adds no tools.
-- Cover valid, absent, malformed, and unsupported onward handoffs; real SDK
-  coverage in pi-subagent verifies restricted profiles and scoped parent writes.
-
-## 2026-11-04: Expanded tool results list only changed tasks
-
-- `src/index.ts`: an expanded todo tool result shows its summary and one inset
-  row per task the call added, updated or removed, instead of the whole task
-  list rendered as a widget. Each upsert no longer repeats the widget's heading
-  and list in the transcript; the docked widget is the one full view.
-
-## 2026-11-01: One tool per action and resource-scoped identifiers (#57)
-
-- `src/index.ts`: one sequential tool per action (`todo_list`, `todo_upsert`,
-  `todo_replace`, `todo_remove`, `todo_clear`) instead of a single
-  action-dispatched `todo` tool, each with its own schema and annotations.
-- `src/state.ts` (upstream file): `TODO_TOOL_NAME` became the `TODO_TOOL_NAMES`
-  set, so replay and checkpoint detection read results of every todo tool, and
-  the state entry type `pi-todo-state` became `todo:state`.
-- `src/replay.ts`: review entries are `todo:review` (was
-  `pi-personal:todo-review`); results of the todo tools remain a fallback until a
-  branch has a local checkpoint.
-- `src/claims.ts`, `src/delegation.ts`: the subagent handoff key is
-  `handoff.todo` (was `handoff.todos`), and claims are journaled in `todo:claim`
-  entries (was `pi-personal:todo-claims`). A claimed subagent's todo tool calls
-  route to its claim.
-
-## 2026-10-31: Shared pi-ui (#50)
-
-- `src/ui/`: compact widget and browser built on this repository's shared
-  `packages/pi-ui` library (`renderWidget`, `showExplorer`, sanitizers), replacing
-  helpers adapted locally from the subagents/system-insights conventions. The
-  extension keeps task selection/ordering, status mapping, detail content and
-  review callbacks; layout, framing, input and sanitization come from pi-ui.
-
-## 2026-10-31: Shared Oxc tooling (#42)
-
-- Source, tests, and documentation follow the bundle's Oxc formatting and lint
-  rules, including `src/state.ts`, which is no longer byte-for-byte with
-  upstream.
-
-## 2026-10-31: Task handoff to subagents (#40)
-
-- `src/claims.ts`, `src/delegation.ts`: task handoff to subagents through
-  pi-subagents' `handoff.todos`. A `tool_call` veto and reservation, claims
-  journaled in `pi-personal:todo-claims` (claim/release, branch-scoped, beside the
-  engine), release on agent end, and a broker offered through
-  `packages/pi-session-tree`. A subagent with a claim routes its `todo` calls to
-  it, scoped to its claim or the whole ledger. Updates carry an optional `agent`
-  attribution in history.
-
-## 2026-10-29: Snapshots on `pi.events` (#23)
-
-- `src/events.ts`: read-only `todo:snapshot` emission on the session's
-  `pi.events` bus after start, branch changes, plan changes, and reviews, for
-  other extensions such as pi-dashboard.
-
-## 2026-10-29: Task messages, update history, and review tracking (#7)
-
-- `src/activity.ts`: per-task status/message history and user review watermarks,
-  kept as a sidecar beside upstream snapshots so `src/state.ts` stays unchanged.
-  Message-only patches advance the revision here. See
-  [plan 0001](docs/plans/0001-task-messages-and-review.md).
-- `src/replay.ts`: journal `activity` restores leniently, and
-  `pi-personal:todo-review` entries restore review watermarks.
-- `src/commands.ts`: adds the review command.
-
-## 2026-10-22: Local extension around the upstream engine
-
-Upstream provides stable-key snapshots, optional revision checks, immutable state,
-cycle/missing-dependency validation, readiness enforcement, completed-task pruning,
-and validated branch replay. We wrap that engine rather than rebuilding graph
-validation. Explicit `clear completed` invokes its pruning helper; no automatic
-cleanup runs.
-
-Upstream extension entry/settings/UI are replaced locally:
-
-- `src/actions.ts`: explicit list/upsert/replace/remove/clear operations. Upsert
-  preserves omitted keys and defaults new tasks to pending. Optional single-active
-  policy never demotes another task implicitly.
-- `src/index.ts`: sequential tool, durable custom-entry journal for nested tools
-  and user commands, branch restoration, context-only current-state sync while
-  model history lacks a current full result, independent rendering lifecycle.
-  No forced continuation or steering messages.
-- `src/replay.ts`: validated local journal entries take precedence over
-  potentially delayed direct results. Upstream snapshots remain a fallback until
-  a branch has a local checkpoint; pure engine remains unchanged.
-- `src/commands.ts`: browser/add/update/remove/clear/settings commands; revision
-  and session/branch-generation guards around asynchronous dialogs; no prompt
-  submission.
-- `src/config.ts`: independent global/project layered settings, no shared-settings
-  package dependency. Project writes preserve unrelated settings fields.
-- `src/ui/`: compact widget and browser locally adapted from this repository's
-  subagents/system-insights conventions. Helpers stay local so standalone loading
-  does not depend on another extension's internal modules.
-- `test/`: local regression tests for validation, additive operations, persistence,
-  lifecycle/context behavior, commands/settings, and terminal rendering.
-
-The upstream tool accepts an authoritative full list and deletes omitted keys.
-Our tool requires an explicit action and only `replace` has those semantics. Agent
-instructions using upstream's old schema need updating. No rpiv schema migration
-or modifications to personal package installation settings are performed.
-
-## 2026-10-08: Vendored
+Changes recorded automatically from Git history, newest first.
+
+<!-- changelog:through 6ba5f77b02f5787c9c080d78f6a2b02da99b7ee4 -->
+
+- 2026-11-14: feat\(pi-todo\): write todo changes into the transcript instead of a per-request card ([#174](https://github.com/zacheryph/pi/pull/174))
+- 2026-11-13: feat\(pi-todo\): offer the widget and /todo browser as views and actions ([#172](https://github.com/zacheryph/pi/pull/172))
+- 2026-11-13: feat\(pi-todo\): /todo and its commands answer without a terminal ([#171](https://github.com/zacheryph/pi/pull/171))
+- 2026-11-12: refactor: centralize workspace configs and development commands ([#153](https://github.com/zacheryph/pi/pull/153))
+- 2026-11-12: refactor: standardize workspace aliases and shared test helpers ([#149](https://github.com/zacheryph/pi/pull/149))
+- 2026-11-12: fix\(pi-todo\): keep an agent's task claim across a reload or restart ([#151](https://github.com/zacheryph/pi/pull/151))
+- 2026-11-12: refactor\(pi-foundations\): consolidate plain-data helpers ([#147](https://github.com/zacheryph/pi/pull/147))
+- 2026-11-12: refactor\(pi-ui\): centralize non-TUI modal fallbacks ([#146](https://github.com/zacheryph/pi/pull/146))
+- 2026-11-12: refactor: declare stash, git, todo, dashboard and tldr settings with defineSettings ([#144](https://github.com/zacheryph/pi/pull/144))
+- 2026-11-12: refactor: let contextCard own whether the card is shown ([#142](https://github.com/zacheryph/pi/pull/142))
+- 2026-11-12: refactor: extract shared session-state plumbing into pi-session-state ([#142](https://github.com/zacheryph/pi/pull/142))
+- 2026-11-11: refactor\(pi-todo\): replay only the todo journal ([#141](https://github.com/zacheryph/pi/pull/141))
+- 2026-11-11: fix\(pi-todo\): reserve delegated task acceptance for the parent ([#124](https://github.com/zacheryph/pi/pull/124))
+- 2026-11-10: Replace steer and resume with subagent\_send ([#121](https://github.com/zacheryph/pi/pull/121))
+- 2026-11-08: test: add fauxSession and build SDK tests on it ([#104](https://github.com/zacheryph/pi/pull/104))
+- 2026-11-08: test: add fakeCustomUi and mount ui.custom components with it ([#104](https://github.com/zacheryph/pi/pull/104))
+- 2026-11-08: test\(pi-todo\): share one harness between index and delegation tests ([#104](https://github.com/zacheryph/pi/pull/104))
+- 2026-11-08: test\(pi-todo\): render the inline widget with plainTheme ([#104](https://github.com/zacheryph/pi/pull/104))
+- 2026-11-08: test: add helpers for Symbol-keyed globals and the session tree ([#104](https://github.com/zacheryph/pi/pull/104))
+- 2026-11-08: test: add plain and ANSI test themes and replace inline theme stubs ([#104](https://github.com/zacheryph/pi/pull/104))
+- 2026-11-08: test: add settingsDirs for layered config fixtures ([#104](https://github.com/zacheryph/pi/pull/104))
+- 2026-11-08: test: add pi-test-helpers with tempDir and use it for test temp directories ([#104](https://github.com/zacheryph/pi/pull/104))
+- 2026-11-06: fix\(pi-todo\): supply tools for restricted-agent handoffs ([#102](https://github.com/zacheryph/pi/pull/102))
+- 2026-11-04: fix\(pi-todo\): stop expanded tool results from repeating the widget ([#76](https://github.com/zacheryph/pi/pull/76))
+- 2026-11-02: docs\(vendor\): keep UPSTREAM.md to vendoring details and log local changes in CHANGELOG.md ([#65](https://github.com/zacheryph/pi/pull/65))
+- 2026-11-01: fix\(pi-ui\): stop the inline window flickering on short scrolls and collapse docked widgets while it is open ([#64](https://github.com/zacheryph/pi/pull/64))
+- 2026-11-01: refactor\(pi-subagent\): rename pi-subagents and pi-subagents-worktrees, and scope their identifiers ([#59](https://github.com/zacheryph/pi/pull/59))
+- 2026-11-01: refactor\(pi-todo\): one tool per action and resource-scoped identifiers ([#57](https://github.com/zacheryph/pi/pull/57))
+- 2026-11-01: refactor\(pi-todo\): render widget and browser with shared pi-ui ([#50](https://github.com/zacheryph/pi/pull/50))
+- 2026-11-01: refactor: share settings and model lookup in pi-foundations ([#44](https://github.com/zacheryph/pi/pull/44))
+- 2026-10-31: chore: adopt Oxc and TypeScript 7 across all workspaces ([#42](https://github.com/zacheryph/pi/pull/42))
+- 2026-10-31: feat\(pi-todo\): hand tasks to subagents that update them in the parent's list ([#40](https://github.com/zacheryph/pi/pull/40))
+- 2026-10-30: feat: publish todo and stash snapshots on pi.events; show counts on dashboard cards ([#23](https://github.com/zacheryph/pi/pull/23))
+- 2026-10-29: chore: share stricter compiler settings and drop redundant vitest aliases ([#17](https://github.com/zacheryph/pi/pull/17))
+- 2026-10-29: chore\(deps\): align dev dependencies with Pi and Node 24, upgrade Vitest 5 ([#15](https://github.com/zacheryph/pi/pull/15))
+- 2026-10-29: feat\(pi-jobs\): vendor woksin/pi-jobs, pin Pi 1.4.0, and add a vendor-extension skill ([#12](https://github.com/zacheryph/pi/pull/12))
+- 2026-10-29: feat\(pi-todo\): task messages, update history, and review tracking ([#7](https://github.com/zacheryph/pi/pull/7))
+- 2026-10-08: Close todo progress header with trailing border ([94b3cd3](https://github.com/zacheryph/pi/commit/94b3cd323a127a2f7be67e3e8f0c6da177164508))
+- 2026-10-08: Add spaced Nerd Font icons to subagent and todo titles ([fb5a26a](https://github.com/zacheryph/pi/commit/fb5a26a51f025779cbd12392e1cb99b786edcbaf))
+- 2026-10-08: Add dependency-aware todo planner with subagent-style UX ([#1](https://github.com/zacheryph/pi/pull/1))
+
+## Upstream
+
+Imported on 2026-10-08.
 
 Imported from upstream; see [UPSTREAM.md](UPSTREAM.md).

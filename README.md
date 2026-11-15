@@ -612,6 +612,38 @@ commits a verbatim copy of upstream, verified by tree hash, and prepares the
 integration. Each imported extension records its provenance in `UPSTREAM.md` and
 its local changes in `CHANGELOG.md`.
 
+### Changelogs
+
+The [Weekly changelogs workflow](.github/workflows/changelogs.yml) runs every
+Monday at 09:17 UTC and can also be started with **Run workflow**. It opens or
+updates one PR on `automation/weekly-changelogs` for all registered extension
+and package workspaces. No new entries means no PR. Feature and fix PRs should
+leave changelogs alone; use descriptive commit messages instead.
+
+Each new entry is a single bullet: the UTC commit date, the first line of the
+commit message, and a link to the merged PR that introduced it. Direct commits
+get a commit link. Changes to any file inside a workspace count, except its
+`CHANGELOG.md`; root-only changes are not attributed to workspaces. Original
+commits in merged branches are included; merge wrapper commits are omitted.
+
+Each changelog carries a hidden `changelog:through` commit checkpoint. Runs scan
+everything since that commit, even after missed weeks or a manual changelog edit.
+An open update PR is regenerated from the default branch on each run, so changes
+merged while it waits are picked up. Keep the checkpoint when correcting an entry.
+Logs without a checkpoint are rebuilt from full Git history, following earlier
+workspace names through directory renames. Old hand-written entries are replaced;
+an **Upstream** section retains import notes and source links. Unknown import dates
+stay unspecified. `UPSTREAM.md` is unchanged. To explicitly rebuild checkpointed
+logs, run `node scripts/update-changelogs.mjs --rebuild` with `GITHUB_REPOSITORY`
+and `GH_TOKEN` set, from a checkout of the default branch. Invalid checkpoints
+or failed PR lookups stop generation without writing updates.
+
+In **Settings → Actions → General → Workflow permissions**, enable **Allow GitHub
+Actions to create and approve pull requests**. The workflow uses `GITHUB_TOKEN`
+with contents and pull request write permissions; no extra secret is needed.
+GitHub may require **Approve workflows to run** on the generated PR before its
+checks run.
+
 ### Test the bundle end to end
 
 [`packages/pi-scripted-model`](packages/pi-scripted-model/README.md) runs the

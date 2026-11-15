@@ -15,7 +15,8 @@ The point is a clean history:
    added, removed or edited. Its tree hash equals upstream's, so anyone can
    check it.
 2. **Integration commit:** everything that makes it part of the bundle.
-3. **Later commits:** behaviour changes, each with a `CHANGELOG.md` entry.
+3. **Later commits:** behaviour changes with descriptive commit subjects;
+   the weekly workflow records them in `CHANGELOG.md`.
 
 ## 1. Run the script
 
@@ -87,10 +88,12 @@ verified without seeing it pass.
 - `UPSTREAM.md` is provenance only (source, directory, commit, tree hash,
   version, license, import date and commit). The script writes it; it is not
   edited after import.
-- `CHANGELOG.md` holds every local change, newest first, each added in the same
-  commit as the change. Upstream's changelog is replaced at import; the oldest
-  entry points at `UPSTREAM.md` and links the source changelog at the pinned
-  commit when there was one.
+- `CHANGELOG.md` holds local changes, newest first. After the initial integration
+  record, leave it to the weekly changelog workflow; do not edit it in feature or
+  fix commits. Preserve its `changelog:through` checkpoint. Upstream's changelog
+  is replaced at import. The workflow rebuilds these entries from Git history
+  and retains the import note and pinned source changelog link in an Upstream
+  section, without inventing an unknown import date.
 
 ## The PR
 
