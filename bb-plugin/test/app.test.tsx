@@ -84,7 +84,7 @@ describe("pi-surface app", () => {
     // The test host draws bb's card as a section with its title; bb collapses it.
     const card = await slot.findByTestId("bb-collapsible-stack-card");
     expect(card.dataset.active).toBe("true");
-    expect(card.querySelector("h3")?.textContent).toBe("Todos · 3/7");
+    expect(card.querySelector("h3")?.textContent).toBe("Todos · 1 active / 3 pending");
     const list = await slot.findByRole("list", { name: "Todos" });
     const rows = Array.from(list.querySelectorAll(":scope > li"));
     expect(rows).toHaveLength(7);
@@ -99,22 +99,28 @@ describe("pi-surface app", () => {
       "pending",
     ]);
     expect(list.textContent).toContain("tests: Retry and dead-letter tests ← worker");
+    // The key is bold; a task held by a subagent names it at the right, before its status.
+    expect(rows[3]!.querySelector(".font-semibold")?.textContent).toBe("worker");
+    expect(rows[3]!.lastElementChild?.textContent).toBe("→ agent a3f2b1c4 · in_progress");
+    expect(rows[5]!.lastElementChild?.textContent).toBe("pending");
   });
 
   it("draws the subagent.widget view as the Subagents stack card", async () => {
     const banner = app.composerCustomizations[0]!.banners![1]!;
     const slot = renderSlot(banner, {}, { rpc: rpcFor(fixture), composer: threadComposer });
     const card = await slot.findByTestId("bb-collapsible-stack-card");
-    expect(card.querySelector("h3")?.textContent).toBe("Subagents");
+    expect(card.querySelector("h3")?.textContent).toBe("Subagents · 2 active");
     const list = await slot.findByRole("list", { name: "Subagents" });
     expect(list.querySelectorAll(":scope > li")).toHaveLength(2);
     expect(list.textContent).toContain("Map every webhook delivery path");
     expect(list.textContent).toContain("Reading src/admin/replay.ts");
-    // As in the terminal: the clock, the agent type bold with its separator, the status at the right.
+    // The state icon, the clock, the agent type bold with its separator, the activity at the right.
     expect((await slot.findByText("explore")).className).toContain("font-semibold");
     const rows = Array.from(list.querySelectorAll(":scope > li"));
-    expect(rows[0]!.textContent).toMatch(/^\d+:\d\d {2}explore: Map every webhook delivery path/);
-    expect(rows[0]!.lastElementChild?.querySelector('[aria-label="active"]')).toBeTruthy();
+    expect(rows[0]!.children[0]!.getAttribute("aria-label")).toBe("active");
+    expect(rows[0]!.children[1]!.textContent).toMatch(/^\d+:\d\d$/);
+    expect(rows[0]!.children[2]!.textContent).toBe("explore: Map every webhook delivery path");
+    expect(rows[0]!.lastElementChild?.textContent).toBe("Reading src/admin/replay.ts");
   });
 
   it("draws no card for a widget view with nothing to show", async () => {

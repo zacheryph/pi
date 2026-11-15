@@ -7,6 +7,7 @@ import {
   DetailView,
   ExplorerSection,
   plainText,
+  splitState,
   WidgetRows,
   widgetTitle,
   type RunAction,
@@ -68,7 +69,7 @@ describe("lines and widgets", () => {
     expect(rows[0]!.firstElementChild?.className).toContain("size-3.5");
   });
 
-  it("draws a subagent row as the terminal does: clock, bold name, status at the right", async () => {
+  it("draws a subagent row as coloured state icon, clock, bold name, then the activity", async () => {
     vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
     try {
       const start = Date.now() - 83_000;
@@ -76,13 +77,8 @@ describe("lines and widgets", () => {
         title: "Subagents",
         rows: [
           {
-            left: [
-              { text: "01:23", tone: "dim", since: start },
-              "  ",
-              { text: "explore", bold: true },
-              ": ",
-              { text: "Map the paths", tone: "muted" },
-            ],
+            lead: { text: "01:23", tone: "dim", since: start },
+            left: [{ text: "explore", bold: true }, ": ", { text: "Map the paths", tone: "muted" }],
             right: [
               [
                 { text: "●", tone: "accent", icon: "active" },
@@ -94,7 +90,7 @@ describe("lines and widgets", () => {
             left: "waiter",
             right: [
               [
-                { text: "", icon: "waiting" },
+                { text: "", tone: "muted", icon: "waiting" },
                 { text: "waiting: answer", tone: "muted" },
               ],
             ],
@@ -106,44 +102,50 @@ describe("lines and widgets", () => {
         ":scope > li",
       );
       const active = rows[0]!;
-      // No leading icon: the status, glyph and activity, stays at the right.
-      expect(active.firstElementChild?.getAttribute("aria-label")).toBeNull();
-      expect(active.textContent).toBe("01:23  explore: Map the paths Reading replay.ts");
-      expect(active.lastElementChild?.querySelector('[aria-label="active"]')).toBeTruthy();
+      // The state icon first, in its glyph's colour, then the clock; the activity stays right.
+      expect(active.children[0]!.getAttribute("aria-label")).toBe("active");
+      expect(active.children[0]!.getAttribute("class")).toContain("text-primary");
+      expect(active.children[1]!.textContent).toBe("01:23");
+      expect(active.textContent).toBe("01:23explore: Map the pathsReading replay.ts");
       expect(slot.getByText("explore").className).toContain("font-semibold");
       // The clock keeps running between snapshots.
       await act(() => vi.advanceTimersByTimeAsync(2_000));
       expect(slot.getByText("01:25")).toBeTruthy();
-      // An icon-only glyph before text is drawn in place too.
-      expect(rows[1]!.lastElementChild?.querySelector('[aria-label="waiting"]')).toBeTruthy();
+      // An icon-only glyph (the terminal draws none) is the state icon all the same.
+      expect(rows[1]!.firstElementChild?.getAttribute("aria-label")).toBe("waiting");
       expect(rows[1]!.textContent).toBe("waiterwaiting: answer");
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it("shows a row whose compact form is only its state glyph as a leading icon", async () => {
+  it("draws a task row as its coloured state icon, the task, then its status and assignee", async () => {
+    const glyph = (text: string, tone: "success" | "accent", icon: "done" | "active") => ({
+      text,
+      tone,
+      icon,
+    });
+    const badge = { text: "→ agent a3f2b1c4 · ", tone: "muted" as const };
     const model: WidgetModel = {
       title: "Todos",
       rows: [
         {
-          left: "table: Add the table",
+          left: [
+            { text: "table", tone: "muted" },
+            { text: ": Add the table", tone: "muted" },
+          ],
           right: [
-            [
-              { text: "✓", tone: "success", icon: "done" },
-              { text: " completed", tone: "success" },
-            ],
-            [{ text: "✓", tone: "success", icon: "done" }],
+            [glyph("✓", "success", "done"), { text: " completed", tone: "success" }],
+            [glyph("✓", "success", "done")],
           ],
         },
         {
-          left: "worker: Move retries",
+          left: [{ text: "worker", bold: true }, ": Move retries"],
           right: [
-            [
-              { text: "▸", tone: "accent", icon: "active" },
-              { text: " in_progress", tone: "accent" },
-            ],
-            [{ text: "▸", tone: "accent", icon: "active" }],
+            [badge, glyph("▸", "accent", "active"), { text: " in_progress", tone: "accent" }],
+            [badge, glyph("▸", "accent", "active")],
+            [glyph("▸", "accent", "active"), { text: " in_progress", tone: "accent" }],
+            [glyph("▸", "accent", "active")],
           ],
         },
       ],
@@ -152,12 +154,31 @@ describe("lines and widgets", () => {
     const [done, active] = Array.from(
       (await slot.findByRole("list", { name: "Todos" })).querySelectorAll(":scope > li"),
     );
+    // No lead: the icon starts the row, under the card header's icon.
     expect(done!.firstElementChild?.getAttribute("aria-label")).toBe("done");
-    expect(done!.textContent).toBe("table: Add the table");
-    expect(done!.children[1]!.className).toContain("line-through");
-    // Weight comes from the spans only: an active row adds none of its own.
+    expect(done!.firstElementChild?.getAttribute("class")).toContain("text-success");
+    expect(done!.textContent).toBe("table: Add the tablecompleted");
+    expect(done!.innerHTML).not.toContain("line-through");
     expect(active!.firstElementChild?.getAttribute("aria-label")).toBe("active");
-    expect(active!.children[1]!.className).not.toContain("font-");
+    expect(slot.getByText("worker").className).toContain("font-semibold");
+    // The glyph moves to the icon; the assignee and status stay at the right.
+    expect(active!.lastElementChild?.textContent).toBe("→ agent a3f2b1c4 · in_progress");
+  });
+
+  it("splits a status line into its state glyph and the rest", () => {
+    const glyph = { text: "▸", tone: "accent" as const, icon: "active" as const };
+    const badge = { text: "→ agent 1 · ", tone: "muted" as const };
+    expect(splitState([badge, glyph, " in_progress"])).toEqual({
+      state: glyph,
+      rest: [badge, "in_progress"],
+    });
+    // A separator with nothing after it goes with the glyph.
+    expect(splitState([badge, glyph])).toEqual({
+      state: glyph,
+      rest: [{ text: "→ agent 1", tone: "muted" }],
+    });
+    expect(splitState("◐ in progress")).toEqual({ rest: ["◐ in progress"] });
+    expect(splitState(undefined)).toEqual({ rest: [] });
   });
 
   it("says the widget's empty text when it has no rows", async () => {

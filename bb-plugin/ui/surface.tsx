@@ -217,25 +217,54 @@ export function widgetTitle(model: WidgetModel): string {
   return text ? `${titleText(model.title)} · ${text}` : titleText(model.title);
 }
 
-/** The state a line stands for when it is nothing but a state glyph (a row's compact form). */
-function glyphOnly(line: Line | undefined): StateIcon | undefined {
-  if (line === undefined) return undefined;
+type IconSpan = Exclude<Span, string> & { icon: StateIcon };
+
+/**
+ * A right-column line split into its state glyph (the span marked with an
+ * icon) and the rest, with the space and separator that joined them dropped:
+ * `→ worker · ▸ in_progress` gives `▸` and `→ worker · in_progress`.
+ */
+export function splitState(line: Line | undefined): { state?: IconSpan; rest: Span[] } {
+  if (line === undefined) return { rest: [] };
   const list = spans(line);
-  const glyphs = list.filter((span) => typeof span === "object" && !!span.icon);
-  const rest = list.filter((span) => !glyphs.includes(span) && plainText(span).trim());
-  return glyphs.length === 1 && rest.length === 0
-    ? (glyphs[0] as { icon: StateIcon }).icon
-    : undefined;
+  const index = list.findIndex((span) => typeof span === "object" && !!span.icon);
+  if (index < 0) return { rest: [...list] };
+  const trim = (span: Span | undefined, side: "start" | "end"): Span[] => {
+    if (span === undefined) return [];
+    const text = typeof span === "string" ? span : span.text;
+    const trimmed = side === "start" ? text.trimStart() : text.replace(/\s*·?\s*$/, "");
+    if (!trimmed) return [];
+    return [typeof span === "string" ? trimmed : { ...span, text: trimmed }];
+  };
+  const before = list.slice(0, index);
+  const after = list.slice(index + 1);
+  // `→ worker · ` keeps its ` · ` only while something follows it.
+  const head = after.length ? before : [...before.slice(0, -1), ...trim(before.at(-1), "end")];
+  return {
+    state: list[index] as IconSpan,
+    rest: [...head, ...trim(after[0], "start"), ...after.slice(1)],
+  };
+}
+
+/** bb's icon for a state, in the colour of the glyph it stands for. */
+function StateMark({ span }: { span: IconSpan | undefined }) {
+  if (!span) return <span className="size-3.5 shrink-0" aria-hidden />;
+  return (
+    <Icon
+      name={STATE_ICONS[span.icon]}
+      aria-label={span.icon}
+      className={`size-3.5 shrink-0 ${toneClass(span.tone) || "text-muted-foreground"}`}
+    />
+  );
 }
 
 /**
- * A widget's rows, as bb's stack cards draw them: like the terminal at full
- * width, the left line and then the fullest right-column fallback, with state
- * glyphs drawn as bb's icons in place. A row whose most compact fallback is
- * only a state glyph (a task's status) instead shows that state as its leading
- * icon and no right column, and a finished one is struck through. Every row
- * keeps a leading column as wide as the card header's icon, so text starts
- * under the header's title; the left side truncates first.
+ * A widget's rows, as bb's stack cards draw them, all in one shape: the row's
+ * state as bb's icon in the glyph's colour, under the card header's icon; the
+ * row's lead (a subagent's clock); the row's text; and at the right the rest
+ * of its fullest status (an activity, a status label, an assignee). The state
+ * comes from the glyph the terminal draws at the right, so a task and an agent
+ * read the same way. The text truncates first.
  */
 export function WidgetRows({ model, className = "" }: { model: WidgetModel; className?: string }) {
   if (!model.rows.length)
@@ -248,35 +277,29 @@ export function WidgetRows({ model, className = "" }: { model: WidgetModel; clas
   return (
     <ul className={`flex flex-col gap-1 text-sm ${className}`} aria-label={titleText(model.title)}>
       {model.rows.map((row, index) => {
-        const icon = glyphOnly(row.right?.at(-1));
-        const right = icon ? undefined : row.right?.[0];
-        // Weight comes from the model's spans; only a finished row gets bb's strike.
-        const text = icon === "done" ? "text-muted-foreground line-through" : "";
+        const { state, rest } = splitState(row.right?.[0]);
         return (
           <li key={index} className="flex min-w-0 items-center gap-1.5">
-            {icon ? (
-              <Icon
-                name={STATE_ICONS[icon]}
-                aria-label={icon}
-                className="size-3.5 shrink-0 text-muted-foreground"
-              />
-            ) : (
-              <span className="size-3.5 shrink-0" aria-hidden />
+            <StateMark span={state} />
+            {row.lead === undefined ? null : (
+              <span className="shrink-0 tabular-nums" style={{ whiteSpace: "pre" }}>
+                <LineText line={row.lead} />
+              </span>
             )}
-            {/* Spaces are kept, as the terminal keeps them (two after the clock). */}
+            {/* Spaces are kept, as the terminal keeps them. */}
             <span
-              className={`min-w-0 flex-1 truncate ${text}`}
+              className="min-w-0 flex-1 truncate"
               style={{ whiteSpace: "pre" }}
               title={plainText(row.left)}
             >
               <LineText line={row.left} />
             </span>
-            {right === undefined ? null : (
+            {rest.length === 0 ? null : (
               <span
-                className="shrink-0 truncate text-xs text-muted-foreground"
+                className="max-w-[50%] shrink-0 truncate text-xs text-muted-foreground"
                 style={{ whiteSpace: "pre" }}
               >
-                <LineText line={right} />
+                <LineText line={rest} />
               </span>
             )}
           </li>

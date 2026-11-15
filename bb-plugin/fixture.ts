@@ -4,6 +4,7 @@ import type {
   Block,
   ExplorerModel,
   JsonValue,
+  Line,
   SessionSnapshot,
   StateIcon,
   SurfaceRequest,
@@ -26,6 +27,8 @@ interface FixtureTask {
   description?: string;
   message?: string;
   dependsOn?: string[];
+  /** The subagent holding the task, as pi-todo labels it. */
+  assignee?: string;
   history: Array<{ status: TodoStatus; from?: TodoStatus; message?: string; minutesAgo: number }>;
 }
 
@@ -71,6 +74,7 @@ const TASKS: FixtureTask[] = [
   },
   {
     key: "worker",
+    assignee: "agent a3f2b1c4",
     subject: "Move retries into the queue worker",
     status: "in_progress",
     description: "Replace the inline retry loop in deliver() with jobs on the retry queue.",
@@ -292,7 +296,7 @@ function fixtureSections(now: number): SessionSnapshot {
           note: "Reading src/admin/replay.ts",
         },
         {
-          id: "a3",
+          id: "a3f2b1c4",
           type: "general-purpose",
           description: "Write retry backoff tests",
           state: "running",
@@ -375,24 +379,44 @@ const AGENT_STATE: Record<SubagentState, { label: string; tone: Tone }> = {
   stopped: { label: "stopped", tone: "dim" },
 };
 
+/** `2 active / 3 pending`, as pi-ui's `stateCounts` reads, leaving out zeros. */
+function stateCounts(active: number, pending: number): Line[] {
+  const parts = [
+    ...(active ? [`${active} active`] : []),
+    ...(pending ? [`${pending} pending`] : []),
+  ];
+  return parts.length ? [{ text: parts.join(" / "), tone: "muted" }] : [];
+}
+
 function fixtureViews(snapshot: SessionSnapshot, now: number): ViewSummary[] {
-  const done = TASKS.filter((task) => task.status === "completed").length;
+  const count = (status: TodoStatus) => TASKS.filter((task) => task.status === status).length;
   const todoWidget: WidgetModel = {
     title: { label: "Todos" },
     active: true,
-    meta: [`${done}/${TASKS.length}`],
+    meta: stateCounts(count("in_progress"), count("pending")),
     // Finished tasks with unreviewed messages stay in the widget, as in pi-todo's.
     rows: TASKS.map((task) => {
       const status = taskStatus(task);
+      const glyph = { text: status.glyph, tone: status.tone, icon: status.icon };
+      const full = [glyph, { text: ` ${status.label}`, tone: status.tone }];
+      const badge = task.assignee
+        ? [{ text: `→ ${task.assignee} · `, tone: "muted" as const }]
+        : [];
       return {
-        left: `${task.key}: ${task.subject}${task.dependsOn ? ` ← ${task.dependsOn.join(", ")}` : ""}`,
-        // As pi-todo marks them: the glyph stands for the task's state.
+        // As pi-todo builds it: the key bold, the glyph standing for the task's state.
+        left: [
+          { text: task.key, bold: true },
+          `: ${task.subject}${task.dependsOn ? ` ← ${task.dependsOn.join(", ")}` : ""}`,
+        ],
         right: [
-          [
-            { text: status.glyph, tone: status.tone, icon: status.icon },
-            { text: ` ${status.label}`, tone: status.tone },
-          ],
-          [{ text: status.glyph, tone: status.tone, icon: status.icon }],
+          ...(task.assignee
+            ? [
+                [...badge, ...full],
+                [...badge, glyph],
+              ]
+            : []),
+          full,
+          [glyph],
         ],
         keepRight: true,
       };
@@ -426,19 +450,15 @@ function fixtureViews(snapshot: SessionSnapshot, now: number): ViewSummary[] {
   };
   const agents = snapshot.subagents?.agents ?? [];
   const running = agents.filter((agent) => agent.state === "running");
+  const queued = agents.filter((agent) => agent.state === "queued");
   const subagentWidget: WidgetModel = {
     title: { label: "Subagents" },
     active: running.length > 0,
-    meta: [],
+    meta: stateCounts(running.length, queued.length),
     rows: running.map((agent) => ({
-      // As pi-subagent builds it: a running clock carries its start.
-      left: [
-        { text: clockText(now - agent.since), tone: "dim", since: agent.since },
-        "  ",
-        { text: agent.type, bold: true },
-        ": ",
-        { text: agent.description, tone: "muted" },
-      ],
+      // As pi-subagent builds it: the clock leads, and while it runs it carries its start.
+      lead: { text: clockText(now - agent.since), tone: "dim", since: agent.since },
+      left: [{ text: agent.type, bold: true }, ": ", { text: agent.description, tone: "muted" }],
       right: [
         [
           { text: "●", tone: "accent", icon: "active" },
@@ -608,6 +628,7 @@ export function fixtureResponder(now = Date.now()) {
           {
             fields: [
               ["Status", { text: status.label, tone: status.tone }],
+              ...(task.assignee ? ([["Assigned to", task.assignee]] as const) : []),
               ...(task.dependsOn ? ([["Depends on", task.dependsOn.join(", ")]] as const) : []),
             ],
           },
