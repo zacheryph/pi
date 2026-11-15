@@ -63,6 +63,29 @@ describe("todo rendering", () => {
         );
   });
 
+  it("marks each row's status glyph with the state it stands for", () => {
+    const s = state([
+      task("ready"),
+      task("active", "in_progress"),
+      task("done", "completed"),
+      task("wait", "pending", ["ready"]),
+    ]);
+    const model = todoWidgetModel(s, { maxVisible: 4, showCompleted: true });
+    const icons = model.rows.map((row) =>
+      (row.right ?? []).map((line) =>
+        (Array.isArray(line) ? line : [line]).flatMap((span) =>
+          typeof span === "object" && span.icon ? [span.icon] : [],
+        ),
+      ),
+    );
+    expect(icons).toEqual([
+      [["active"], ["active"]],
+      [["pending"], ["pending"]],
+      [["blocked"], ["blocked"]],
+      [["done"], ["done"]],
+    ]);
+  });
+
   it("keeps top rule static with labeled progress; status right and key left", () => {
     const s = state([
       task("ready"),
