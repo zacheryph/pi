@@ -28,12 +28,19 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { resolve } from "node:path";
 import { Type } from "typebox";
+import { viewRegistry } from "#surface";
 import { showExplorer, sanitizeText } from "#ui";
 import { readEntries, restoreCard, treeService, type EntriesSource } from "#session-state";
 import { ensureWorkHost } from "#work";
 import { CARD_TYPE, ledgerCard } from "#src/card";
 import { gitSettings, type GitConfig } from "#src/config";
-import { GIT_SNAPSHOT_EVENT, snapshotEvent, type GitSnapshotEvent } from "#src/events";
+import {
+  GIT_PRS_VIEW,
+  GIT_SNAPSHOT_EVENT,
+  GIT_WORKTREES_VIEW,
+  snapshotEvent,
+  type GitSnapshotEvent,
+} from "#src/events";
 import { readLedger, type Ledger } from "#src/fold";
 import { git, realPath, resolveCommit, type BaseRef, type WorktreeStatus } from "#src/git";
 import { isWorktreeRecord, LEDGER_TYPE, type WorktreeRecord } from "#src/ledger";
@@ -221,7 +228,29 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
   const getConfig = () => (config ??= (dependencies.loadConfig ?? gitSettings.load)(cwd));
   const snapshot = (): GitSnapshotEvent =>
     snapshotEvent(records.values(), measured, found, prs.values(), watches.list());
-  const publish = () => pi.events.emit(GIT_SNAPSHOT_EVENT, snapshot());
+  // The /git:worktrees and /git:prs explorers, as views a remote surface draws.
+  // They live from session start to shutdown, so a /reload does not leak them.
+  const views = viewRegistry(pi.events);
+  const defineViews = () => {
+    views.dispose();
+    views.define({
+      id: GIT_WORKTREES_VIEW,
+      kind: "explorer",
+      title: "Git worktrees",
+      model: () => explorerView(snapshot()),
+    });
+    views.define({
+      id: GIT_PRS_VIEW,
+      kind: "explorer",
+      title: "Pull requests",
+      model: () => prExplorerView(snapshot().prs, now()),
+    });
+  };
+  const publish = () => {
+    pi.events.emit(GIT_SNAPSHOT_EVENT, snapshot());
+    views.changed(GIT_WORKTREES_VIEW);
+    views.changed(GIT_PRS_VIEW);
+  };
 
   /** Hand a record to this session's parent, which adopts it and passes it on up. */
   const passUp = (record: LedgerRecord, persist = true) =>
@@ -357,6 +386,7 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
       generation += 1;
       cwd = ctx.cwd;
       config = undefined;
+      defineViews();
       restore(ctx);
       adoptWatches(ctx);
       backgroundRefresh(ctx);
@@ -381,6 +411,7 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
   });
   pi.on("session_shutdown", () => {
     generation += 1;
+    views.dispose();
     // The watches' items stay open in the transcript: the next start adopts them.
     watches.shutdown();
     watchAccess.clear();

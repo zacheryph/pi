@@ -3,7 +3,13 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { fakePi, resetSessionTree } from "#test-helpers";
 import type { GitConfig } from "#src/config";
-import { GIT_SNAPSHOT_EVENT, type GitSnapshotEvent } from "#src/events";
+import {
+  GIT_PRS_VIEW,
+  GIT_SNAPSHOT_EVENT,
+  GIT_WORKTREES_VIEW,
+  type GitSnapshotEvent,
+} from "#src/events";
+import { listViews, onViewChanged, readView, type ExplorerModel } from "#surface";
 import { service } from "#session-tree";
 import piGit, { SERVICE_NAME } from "#src/index";
 import { GhUnavailable, type GhRunner } from "#src/status";
@@ -353,6 +359,28 @@ describe("ledger", () => {
     const list = await h.tool("git_worktree_list", {});
     expect(list.content[0].text).toContain("missing: deleted outside Pi");
     expect(h.ledger().at(-1)?.state).toBe("missing");
+  });
+});
+
+describe("views", () => {
+  it("offers the worktree and pull request explorers while the session runs", async () => {
+    const h = await start();
+    const bus = h.pi.events;
+    expect(listViews(bus)).toEqual([
+      { id: GIT_PRS_VIEW, kind: "explorer", title: "Pull requests" },
+      { id: GIT_WORKTREES_VIEW, kind: "explorer", title: "Git worktrees" },
+    ]);
+    const changed: string[] = [];
+    onViewChanged(bus, (id) => changed.push(id));
+    await h.tool("git_worktree_create", { repo: "src/api", branch: "feat/x" });
+    expect(changed).toEqual(expect.arrayContaining([GIT_WORKTREES_VIEW, GIT_PRS_VIEW]));
+    const worktrees = readView(bus, GIT_WORKTREES_VIEW) as ExplorerModel;
+    expect(worktrees.title).toBe("Git worktrees");
+    expect(worktrees.items.map((item) => item.id)).toEqual([join(box.root, "api", "feat-x")]);
+    expect((readView(bus, GIT_PRS_VIEW) as ExplorerModel).items).toEqual([]);
+
+    await h.fire("session_shutdown");
+    expect(listViews(bus)).toEqual([]);
   });
 });
 

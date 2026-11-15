@@ -33,6 +33,7 @@
     "#session-state": "pi-session-state",
     "#session-tree": "pi-session-tree",
     "#test-helpers": "pi-test-helpers",
+    "#surface": "pi-surface",
     "#ui": "pi-ui",
     "#work": "pi-work"
   },
