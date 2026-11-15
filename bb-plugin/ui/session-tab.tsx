@@ -16,12 +16,13 @@ import {
   compact,
   duration,
   prNumber,
+  NOT_RUNNING,
   statusText,
   taskIcon,
   taskLabel,
   todoCounts,
 } from "./format.ts";
-import { useSession, useSessionRequest, type Loaded } from "./session.ts";
+import { useSession, useSessionRequest, useSessionResult, type Loaded } from "./session.ts";
 
 function Glyph({ name, label }: { name: string; label?: string }) {
   return (
@@ -52,7 +53,7 @@ function Detail({
   return <>{render()}</>;
 }
 
-function Header({ snapshot }: { snapshot: SessionSnapshot }) {
+function Header({ snapshot, saved }: { snapshot: SessionSnapshot; saved: boolean }) {
   const facts = [
     snapshot.agent,
     snapshot.model?.name ?? snapshot.model?.id,
@@ -67,7 +68,7 @@ function Header({ snapshot }: { snapshot: SessionSnapshot }) {
         {snapshot.name ?? snapshot.cwd}
       </h2>
       <p className="truncate text-xs text-muted-foreground">
-        {statusText(snapshot)}
+        {saved ? NOT_RUNNING : statusText(snapshot)}
         {facts.length ? ` · ${facts.join(" · ")}` : ""}
       </p>
     </header>
@@ -362,15 +363,18 @@ export function SessionView({
   snapshot,
   threadId,
   now,
+  saved = false,
 }: {
   snapshot: SessionSnapshot;
   threadId: string;
   now?: number;
+  /** A saved snapshot: no Pi runs for the thread now. */
+  saved?: boolean;
 }) {
   const at = now ?? Date.now();
   return (
     <div className="flex min-w-0 flex-col gap-3 p-3" data-pi-surface="session-tab">
-      <Header snapshot={snapshot} />
+      <Header snapshot={snapshot} saved={saved} />
       <Questions snapshot={snapshot} />
       <Todos snapshot={snapshot} threadId={threadId} now={at} />
       <Subagents snapshot={snapshot} now={at} />
@@ -383,7 +387,7 @@ export function SessionView({
 }
 
 export function SessionTab({ threadId }: ExperimentalThreadTabProps) {
-  const snapshot = useSession(threadId);
+  const { snapshot, source } = useSessionResult(threadId);
   if (!snapshot)
     return (
       <p className="p-4 text-sm text-muted-foreground">
@@ -391,7 +395,7 @@ export function SessionTab({ threadId }: ExperimentalThreadTabProps) {
         starts.
       </p>
     );
-  return <SessionView snapshot={snapshot} threadId={threadId} />;
+  return <SessionView snapshot={snapshot} threadId={threadId} saved={source === "saved"} />;
 }
 
 /** Only threads with a session get the tab. */

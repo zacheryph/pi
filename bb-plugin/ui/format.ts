@@ -59,6 +59,9 @@ export function agentIcon(state: SubagentState): string {
   }
 }
 
+/** Shown for a saved snapshot: no Pi runs for the thread until its next turn. */
+export const NOT_RUNNING = "Not running · resumes with the next turn";
+
 export function statusText(snapshot: SessionSnapshot): string {
   const { status } = snapshot;
   switch (status.kind) {

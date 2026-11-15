@@ -66,8 +66,8 @@ node .agents/skills/bb-screenshot/scripts/bb-harness.mjs fixture
 ```
 
 The plugin refuses a fixture for a thread whose Pi session is connected, so this
-spawns a quiet thread, stops its Pi, waits for the session to expire (15 s) and
-loads the fixture. Fixtures live in the plugin's memory: `reload` or a bb
+spawns a quiet thread, stops its Pi, waits for the session to go from live to
+saved (15 s) and loads the fixture. Fixtures live in the plugin's memory: `reload` or a bb
 restart clears them; run `fixture` again.
 
 ## 3. Screenshot
@@ -145,4 +145,5 @@ node .agents/skills/bb-screenshot/scripts/bb-harness.mjs down --clean    # and d
 When something fails: `<work>/bb.log` shows the launcher (a server that keeps
 restarting crashed; its stack is in `<work>/bb-data/logs/process-server-*.json`),
 and `bb thread log <id>` shows what Pi did. A thread whose Pi died after a bb
-restart shows no slots until its next turn; make a new thread.
+restart shows its saved snapshot (`bb pi-surface list` says `saved`) until its
+next turn starts Pi again.
