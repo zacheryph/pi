@@ -34,6 +34,10 @@ export interface DashboardDependencies {
   detectTerminal?: () => TerminalAdapter | undefined;
 }
 
+function withoutViews<T extends { views?: unknown }>({ views: _views, ...rest }: T) {
+  return rest;
+}
+
 async function hubReachable(url: string): Promise<boolean> {
   try {
     const response = await fetch(new URL("api/health", url), {
@@ -84,7 +88,8 @@ export default function dashboardExtension(
       sessionName: pi.getSessionName(),
       thinking: pi.getThinkingLevel(),
       status: status.current(),
-      ...presentation.snapshot(),
+      // The hub draws sections only; views are for remote surfaces.
+      ...withoutViews(presentation.snapshot()),
       usage,
       terminal: terminal?.info,
       activity: activity.section(),
