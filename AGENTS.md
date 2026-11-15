@@ -9,6 +9,13 @@ available width. Subtract padding before layout/truncation, and render blank bod
 rows when the width cannot fit both padding spaces plus content. Cover narrow
 widths and ANSI/wide Unicode text in rendering tests.
 
+## bb plugin spacing
+
+In `bb-plugin/`, match bb's own chrome: the content a slot draws inside a bb
+card (stack card bodies, context row segments) uses bb's 12px inset, so icons
+and text line up with bb's header. Check a layout change in real bb with the
+`bb-screenshot` skill: `bb-shot.mjs --expand --check` must pass.
+
 ## Extension commands
 
 Prefix every slash command an extension registers with the extension's name
