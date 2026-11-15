@@ -1,7 +1,7 @@
 # @gotgenes/pi-subagents
 
 > Vendored personal copy. Install this repository as one bundle; do not install
-> the npm package alongside it. See [local setup and provenance](./UPSTREAM.md)
+> the npm package alongside it. See [initial import provenance](./CHANGELOG.md#initial-import)
 > and [bundle instructions](../../README.md). Local UI/profile additions are documented below;
 > published npm installation instructions refer to upstream.
 
@@ -13,7 +13,7 @@ Every agent runs in the background: the parent starts it, ends its turn, and is 
 
 > This personal fork is based on [`gotgenes/pi-packages/packages/pi-subagent`](https://github.com/gotgenes/pi-packages/tree/main/packages/pi-subagent),
 > itself an independently maintained hard fork of [`tintinweb/pi-subagent`](https://github.com/tintinweb/pi-subagent) by [@tintinweb](https://github.com/tintinweb).
-> See [local provenance](./UPSTREAM.md) for the imported revision and [Comparison with upstream](./docs/comparison-with-upstream.md) for the gotgenes–tintinweb comparison.
+> See the [initial import entry](./CHANGELOG.md#initial-import) for the source lineage and pinned revision.
 
 <img width="600" alt="pi-subagent screenshot" src="https://github.com/gotgenes/pi-subagent/raw/main/media/screenshot.png" />
 
@@ -737,11 +737,10 @@ A batteries-included alternative → upstream [`tintinweb/pi-subagent`](https://
 
 ## Documentation
 
-| Document                                                       | Contents                                                                                                       |
-| -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| [Configuration](./docs/configuration.md)                       | Default agent types, custom agent files and their frontmatter fields, and the `subagent.json` settings file    |
-| [Architecture](./docs/architecture/architecture.md)            | Design principles, domain decomposition, module dependency flow, Mermaid diagrams, and the improvement roadmap |
-| [Comparison with upstream](./docs/comparison-with-upstream.md) | Feature-by-feature comparison against the current upstream release                                             |
+| Document                                            | Contents                                                                                                       |
+| --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| [Configuration](./docs/configuration.md)            | Default agent types, custom agent files and their frontmatter fields, and the `subagent.json` settings file    |
+| [Architecture](./docs/architecture/architecture.md) | Design principles, domain decomposition, module dependency flow, Mermaid diagrams, and the improvement roadmap |
 
 ## Architecture
 
@@ -752,8 +751,6 @@ This extension is a minimal, composable core: it owns agent spawning, execution,
 This package is an independently maintained hard fork of [`tintinweb/pi-subagent`](https://github.com/tintinweb/pi-subagent) by [@tintinweb](https://github.com/tintinweb).
 It has diverged substantially in scope and architecture: a minimal core with lifecycle events, with tool-restriction policy and worktree isolation delegated to companion packages.
 Upstream remains the batteries-included option, keeping scheduling, cross-extension RPC, model-scope enforcement, and a built-in tool denylist in a single package.
-
-See [Comparison with upstream](./docs/comparison-with-upstream.md) for a full feature-by-feature comparison against the current upstream release and guidance on which to choose.
 
 ## License
 

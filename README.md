@@ -89,8 +89,7 @@ pi-personal/
 │   ├── pi-job/                          # vendored
 │   │   ├── src/extension.ts             # job_* tools + /job command
 │   │   ├── test/
-│   │   ├── CHANGELOG.md                 # local changes
-│   │   └── UPSTREAM.md                  # vendoring provenance
+│   │   └── CHANGELOG.md                 # changes and initial import provenance
 │   ├── pi-stash/
 │   │   ├── src/index.ts                 # stash_* tools + /stash commands
 │   │   └── test/
@@ -101,8 +100,7 @@ pi-personal/
 │   │   ├── test/
 │   │   ├── docs/
 │   │   ├── LICENSE
-│   │   ├── CHANGELOG.md
-│   │   └── UPSTREAM.md
+│   │   └── CHANGELOG.md
 │   ├── pi-system-insights/
 │   │   ├── src/index.ts                 # /system:* commands
 │   │   └── test/
@@ -112,9 +110,7 @@ pi-personal/
 │   └── pi-todo/                         # vendored engine, local UI
 │       ├── src/index.ts                 # todo_* tools + /todo:* commands
 │       ├── test/
-│       ├── docs/comparison.md           # base-selection report
-│       ├── CHANGELOG.md
-│       └── UPSTREAM.md
+│       └── CHANGELOG.md
 ├── packages/
 │   ├── pi-ui/                           # shared terminal UI library (no migrations yet)
 │   ├── pi-surface/                      # renderer-neutral view model + action and view registries
@@ -260,7 +256,7 @@ is set by `worktreeRoot` in `~/.pi/agent/git.json` or `.pi/git.json`;
 ### pi-job
 
 Background shell jobs and watches that wake the agent when they finish, vendored
-from [`woksin/pi-jobs`](extensions/pi-job/UPSTREAM.md) with
+from [`woksin/pi-jobs`](extensions/pi-job/CHANGELOG.md#initial-import) with
 [local additions](extensions/pi-job/CHANGELOG.md).
 `job_start` runs a command in its own process group and returns immediately;
 `job_watch` re-runs a shell check until it succeeds, fails, or its output changes.
@@ -373,7 +369,7 @@ Custom agents are read from `.pi/agents/<name>.md` in the project where Pi runs,
 `~/.pi/agent/agents/<name>.md`; they are not definitions inside this bundle.
 See [upstream README](extensions/pi-subagent/README.md),
 [configuration](extensions/pi-subagent/docs/configuration.md),
-[provenance](extensions/pi-subagent/UPSTREAM.md), and
+[provenance](extensions/pi-subagent/CHANGELOG.md#initial-import), and
 [local changes](extensions/pi-subagent/CHANGELOG.md).
 
 ### pi-system-insights
@@ -398,7 +394,7 @@ Viewers never load skill instructions or change tools/settings. See
 ### pi-todo
 
 Dependency-aware task tracking built on
-[`@99percentpeople/pi-todo`](extensions/pi-todo/UPSTREAM.md). One tool per
+[`@99percentpeople/pi-todo`](extensions/pi-todo/CHANGELOG.md#initial-import). One tool per
 action: `todo_list` reads, additive `todo_upsert` preserves omitted tasks, and
 `todo_replace`, `todo_remove` and `todo_clear` make deletion explicit. Stable keys, cycle checks, optional revision guards, and
 branch-scoped persistence work with direct and nested codemode calls.
@@ -423,8 +419,7 @@ parent's list (shown as `→ agent a3f2b1c4`). The claim is released when the ag
 User additions never start/steer a turn. Changed state syncs to the next model
 request by default; no auto-removal, auto-completion, or implicit subagent dispatch.
 Multiple active tasks remain possible for parallel work. See
-[usage/settings](extensions/pi-todo/README.md) and
-[comparison/decision report](extensions/pi-todo/docs/comparison.md).
+[usage/settings](extensions/pi-todo/README.md).
 
 ### pi-tldr
 
@@ -609,8 +604,8 @@ Use the [`new-extension` skill](.agents/skills/new-extension/SKILL.md).
 To copy a third-party extension into the repository, use the
 [`import-extension` skill](.agents/skills/import-extension/SKILL.md). Its script
 commits a verbatim copy of upstream, verified by tree hash, and prepares the
-integration. Each imported extension records its provenance in `UPSTREAM.md` and
-its local changes in `CHANGELOG.md`.
+integration. Each imported extension records provenance in its changelog’s
+**Initial import** entry, with later changes recorded above it.
 
 ### Changelogs
 
@@ -632,8 +627,9 @@ An open update PR is regenerated from the default branch on each run, so changes
 merged while it waits are picked up. Keep the checkpoint when correcting an entry.
 Logs without a checkpoint are rebuilt from full Git history, following earlier
 workspace names through directory renames. Old hand-written entries are replaced;
-an **Upstream** section retains import notes and source links. Unknown import dates
-stay unspecified. `UPSTREAM.md` is unchanged. To explicitly rebuild checkpointed
+the **Initial import** entry retains source, pinned revision, version, license,
+import details, and source history links. Unknown import dates stay unspecified.
+There are no separate upstream tracking files. To explicitly rebuild checkpointed
 logs, run `node scripts/update-changelogs.mjs --rebuild` with `GITHUB_REPOSITORY`
 and `GH_TOKEN` set, from a checkout of the default branch. Invalid checkpoints
 or failed PR lookups stop generation without writing updates.

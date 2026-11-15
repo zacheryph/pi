@@ -5,7 +5,7 @@
 //    commit unless the imported directory's Git tree hash equals upstream's.
 // 2. Applies the mechanical part of the integration commit and leaves it
 //    uncommitted for review: removes upstream CI and lockfiles, marks the
-//    package private, writes UPSTREAM.md and CHANGELOG.md, and registers the
+//    package private, writes import provenance into CHANGELOG.md, and registers the
 //    extension in the root package.json.
 //
 //   node .agents/skills/import-extension/scripts/import.mjs <pi-name> \
@@ -39,6 +39,8 @@ const root = resolve(skillDir, "../../..");
 const PERMISSIVE = new Set(["MIT", "ISC", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "0BSD"]);
 /** Top-level upstream files the integration removes. */
 const REMOVED = [
+  "UPSTREAM.md",
+  "UPSTREAM-ISSUES.md",
   "tsconfig.json",
   "vitest.config.ts",
   ".github",
@@ -246,12 +248,13 @@ const local = JSON.parse(readFileSync(pkgPath, "utf8"));
 local.private = true;
 delete local.publishConfig;
 delete local.scripts;
-if (Array.isArray(local.files))
-  for (const record of ["UPSTREAM.md", "CHANGELOG.md"])
-    if (!local.files.includes(record)) local.files.push(record);
+if (Array.isArray(local.files)) {
+  local.files = local.files.filter((path) => !REMOVED.includes(path));
+  if (!local.files.includes("CHANGELOG.md")) local.files.push("CHANGELOG.md");
+}
 writeFileSync(pkgPath, `${JSON.stringify(local, null, 2)}\n`);
 changes.push(
-  "`package.json`: private, no development scripts or `publishConfig`, `UPSTREAM.md` and `CHANGELOG.md` in `files`.",
+  "`package.json`: private, no development scripts or `publishConfig`, `CHANGELOG.md` in `files`.",
 );
 
 const today = new Date().toISOString().slice(0, 10);
@@ -261,8 +264,12 @@ const sourceChangelog =
 const loads = entries.map((entry) => `\`${entry}\``).join(", ");
 
 writeFileSync(
-  join(root, dir, "UPSTREAM.md"),
-  `# Vendored ${name}
+  join(root, dir, "CHANGELOG.md"),
+  `# Changelog
+
+Changes recorded automatically from Git history, newest first.
+
+## Initial import
 
 Imported from [\`${label}\`](${web ?? source})${pkg.description ? `: ${pkg.description.replace(/\.$/, "")}.` : "."}
 
@@ -278,29 +285,13 @@ Imported from [\`${label}\`](${web ?? source})${pkg.description ? `: ${pkg.descr
 
 Plain source, not a submodule. The bundle loads ${loads}; do not install the
 published \`${pkg.name ?? name}\` package as well.
-`,
-);
-
-writeFileSync(
-  join(root, dir, "CHANGELOG.md"),
-  `# Changelog
-
-Local changes to this vendored copy, newest first. Where it came from is
-recorded in [UPSTREAM.md](UPSTREAM.md).
-
-## ${today}: Integration
-
-${[...changes, "`UPSTREAM.md`, `CHANGELOG.md`: added; registered in the root `package.json`."].map((line) => `- ${line}`).join("\n")}
-
-## ${today}: Vendored
-
-Imported from upstream; see [UPSTREAM.md](UPSTREAM.md).${
-    hadChangelog
-      ? sourceChangelog
-        ? ` Upstream's changelog was cleared at import; for earlier history see the\n[source changelog](${sourceChangelog}).`
-        : " Upstream's changelog was cleared at import; its history stays in the source repository."
-      : ""
-  }
+${
+  hadChangelog
+    ? sourceChangelog
+      ? `\nEarlier upstream history is in the [pinned source changelog](${sourceChangelog}).\n`
+      : "\nThe upstream changelog was replaced at import; earlier history stays in the source repository.\n"
+    : ""
+}
 `,
 );
 
@@ -322,14 +313,7 @@ if (!values["no-install"]) {
 }
 execFileSync(
   process.execPath,
-  [
-    formatter,
-    "--write",
-    "package.json",
-    `${dir}/package.json`,
-    `${dir}/UPSTREAM.md`,
-    `${dir}/CHANGELOG.md`,
-  ],
+  [formatter, "--write", "package.json", `${dir}/package.json`, `${dir}/CHANGELOG.md`],
   { cwd: root, stdio: "ignore" },
 );
 
@@ -367,15 +351,15 @@ console.log(`
 Committed ${importCommit}: ${dir}/ is upstream ${short} verbatim (tree ${tree}).
 
 Integration changes, not committed:
-${[...changes, `Wrote ${dir}/UPSTREAM.md and ${dir}/CHANGELOG.md.`, `Registered ${rootEntries.join(", ")} in package.json${values["no-install"] ? "" : " and updated package-lock.json"}.`].map((line) => `  - ${line}`).join("\n")}
+${[...changes, `Wrote initial import provenance in ${dir}/CHANGELOG.md.`, `Registered ${rootEntries.join(", ")} in package.json${values["no-install"] ? "" : " and updated package-lock.json"}.`].map((line) => `  - ${line}`).join("\n")}
 
 Still to do before committing the integration:
 ${[
   ...notes,
   "Use the root TypeScript project and Vitest projects; fix type errors and adapt tests to the shared conventions.",
   "Assert its tools and commands in scripts/verify-bundle.mjs.",
-  "Add it to the root README (layout tree, a section linking UPSTREAM.md and CHANGELOG.md, a License line).",
-  "Record anything else you change in the CHANGELOG.md integration entry.",
+  "Add it to the root README (layout tree, a section linking CHANGELOG.md#initial-import and the local changes, a License line).",
+  "Describe integration changes in the PR; the weekly workflow records subsequent commits in CHANGELOG.md.",
   `Run: npm run check && npm run test:workspace -- ${dir} && npm run verify:bundle`,
 ]
   .map((line) => `  - ${line}`)

@@ -16,6 +16,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { generateChangelogs } from "./update-changelogs.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const env = {
@@ -51,7 +52,7 @@ function upstreamRepo(base, prefix, { license = "MIT", licenseAtRoot = false } =
       version: "1.2.3",
       description: "A fixture extension.",
       license,
-      files: ["src"],
+      files: ["src", "UPSTREAM.md", "UPSTREAM-ISSUES.md"],
       publishConfig: { access: "public" },
       scripts: { check: "true", test: "true" },
       pi: { extensions: ["./src/index.ts"] },
@@ -61,6 +62,8 @@ function upstreamRepo(base, prefix, { license = "MIT", licenseAtRoot = false } =
     [`${p}dist/out.js`]: "// tracked although ignored\n",
     [`${p}.github/workflows/ci.yml`]: "on: push\n",
     [`${p}CHANGELOG.md`]: "# Upstream changelog\n",
+    [`${p}UPSTREAM.md`]: "# Old provenance\n",
+    [`${p}UPSTREAM-ISSUES.md`]: "# Issue tracking\n",
     [`${p}package-lock.json`]: "{}\n",
     [`${p}tsconfig.json`]: "{}\n",
     [`${p}vitest.config.ts`]: "export default {};\n",
@@ -133,6 +136,8 @@ void test("imports a repository verbatim, then prepares the integration", (t) =>
     "extensions/pi-fixture/.gitignore",
     "extensions/pi-fixture/CHANGELOG.md",
     "extensions/pi-fixture/LICENSE",
+    "extensions/pi-fixture/UPSTREAM-ISSUES.md",
+    "extensions/pi-fixture/UPSTREAM.md",
     "extensions/pi-fixture/bin/run.sh",
     "extensions/pi-fixture/dist/out.js",
     "extensions/pi-fixture/entry.ts",
@@ -154,13 +159,19 @@ void test("imports a repository verbatim, then prepares the integration", (t) =>
   assert.equal(existsSync(join(dir, "tsconfig.json")), false);
   assert.equal(existsSync(join(dir, "vitest.config.ts")), false);
   assert.equal(pkg.publishConfig, undefined);
-  assert.deepEqual(pkg.files, ["src", "UPSTREAM.md", "CHANGELOG.md"]);
+  assert.deepEqual(pkg.files, ["src", "CHANGELOG.md"]);
+  assert.equal(existsSync(join(dir, "UPSTREAM.md")), false);
+  assert.equal(existsSync(join(dir, "UPSTREAM-ISSUES.md")), false);
   const sha = git(upstream, ["rev-parse", "HEAD"]);
-  const upstreamMd = readFileSync(join(dir, "UPSTREAM.md"), "utf8");
-  assert.ok(upstreamMd.includes(sha));
-  assert.ok(upstreamMd.includes(git(upstream, ["rev-parse", "HEAD^{tree}"])));
   const changelog = readFileSync(join(dir, "CHANGELOG.md"), "utf8");
   assert.match(changelog, /^# Changelog/);
+  assert.match(changelog, /## Initial import/);
+  assert.ok(changelog.includes(sha));
+  assert.ok(changelog.includes(git(upstream, ["rev-parse", "HEAD^{tree}"])));
+  assert.doesNotMatch(changelog, /UPSTREAM\.md|changelog:through/);
+  const generated = generateChangelogs({ cwd: repo, repository: "owner/pi", lookup: () => [] });
+  assert.equal(generated.length, 1);
+  assert.ok(generated[0].content.endsWith(changelog.slice(changelog.indexOf("## Initial import"))));
   assert.doesNotMatch(changelog, /Upstream changelog/);
   const manifest = JSON.parse(readFileSync(join(repo, "package.json"), "utf8"));
   assert.deepEqual(manifest.workspaces, ["extensions/pi-fixture"]);

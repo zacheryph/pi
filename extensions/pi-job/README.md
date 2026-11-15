@@ -122,8 +122,7 @@ non-reload session shutdown (nobody to wake; the item stays open, see [Restart](
 > Escape and abort leave it in the transcript and force no turn, and the next run sees it. A
 > completion that arrives while a run is active reaches the model **in that run**. The host
 > hands each completion to pi once. This is **not exactly-once** on the idle path: pi has no
-> atomic wake API (see
-> [UPSTREAM-ISSUES.md](https://github.com/woksin/pi-jobs/blob/main/UPSTREAM-ISSUES.md)).
+> atomic wake API (see [Known pi-side limitations](#known-pi-side-limitations)).
 > A job that is still open when Pi restarts is not silently forgotten: the next start tells the
 > model it was lost.
 
@@ -204,23 +203,22 @@ on disk and the next start reports them lost.
 
 ### Known pi-side limitations
 
-These are documented in [UPSTREAM-ISSUES.md](https://github.com/woksin/pi-jobs/blob/main/UPSTREAM-ISSUES.md), with skipped reproductions
-in `test/agent-session.test.ts`:
+The first two races have skipped reproductions in `test/agent-session.test.ts`:
 
 - A completion that arrives while a user prompt is still preparing can make that prompt fail
-  with "Agent is already processing" (#1).
+  with "Agent is already processing".
 - A wake that fires while pi emits `agent_settled` is deferred, and can start its run inside a
-  compaction that another extension started from its own `agent_settled` handler (#2).
+  compaction that another extension started from its own `agent_settled` handler.
 - A completion that finishes while `/tree` summarizes a branch is appended to the branch that
   was current when it arrived. If the navigation then moves to another node, that branch is the
   one the user left, so the completion is in the session file but not in the new branch's context.
 - A completion that finishes while a `/tree` summary is cancelled or fails is not answered until
-  the next prompt: pi emits no event that says how the navigation ended (#5).
+  the next prompt: pi emits no event that says how the navigation ended.
 
 A completion that arrives after the last `agent_before_settle` but before `agent_settled` is
 answered by a run of its own, started by the root host when pi is idle.
 
-Upstream issues #3 and #4 no longer affect pi-job: nothing is queued in pi's follow-up queue, and
+Nothing is queued in pi's follow-up queue, and
 the root host waits for the end of a compaction through a command context's `waitForIdle()`, not
 through an event.
 
