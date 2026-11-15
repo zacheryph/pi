@@ -12,7 +12,9 @@ slot below is `experimental_` unless noted; recheck after a bb upgrade.
 ## How the screenshots were made
 
 All images show fixture data from `bb pi-surface fixture --thread <id>`, cropped
-to the plugin's own element, light theme, 2x.
+to the plugin's own element, light theme, 2x. The `bb-screenshot` skill
+(`.agents/skills/bb-screenshot/`) runs a private bb with the plugin and scripted
+Pi sessions and takes these crops; images 1 and 2 were last made with it.
 
 - **Live** images were captured from the bb web UI on loopback with headless
   Chromium, on a real thread page with the plugin installed.
@@ -52,6 +54,15 @@ description, state, duration, tool count and latest note).
 
 ![Subagents card expanded](../images/bb/stack-card-subagents.png)
 
+Spacing: bb draws the card frame, the header (`px-3 py-1.5`: a 12px inset,
+14px icon, 6px gap to the title) and the collapse row at the bottom, and wraps
+`children` with no padding of its own. The body's padding is ours: the cards
+pad it `px-3 pt-3` and give rows the header's icon size and gap, so the body has
+the header's 12px inset on the left, right and top and its icons and text line
+up under the header's. The card takes no `className`, so the header and the
+collapse row cannot change. `bb-shot.mjs --check` in the `bb-screenshot` skill
+measures this in bb.
+
 Limits:
 
 - There is no slot **below** the composer; the stack above it is the closest.
@@ -71,7 +82,9 @@ from `experimental_THREAD_CONTEXT_SEGMENT_GROUPS` (`1_thread`, `3_git`). We
 join `1_thread`.
 
 Ours is one button, `orchestrate · 3/7 tasks · 2 agents · question`, that opens
-the Pi tab.
+the Pi tab. bb puts a 4px inset around the row and leaves each segment's
+padding to its owner; ours uses bb's segment padding (`min-h-6 px-2 py-1`), so
+its icon sits 12px from the card edge like the stack cards' icons.
 
 ![Context segment](../images/bb/context-segment.png)
 
