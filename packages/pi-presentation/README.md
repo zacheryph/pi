@@ -17,11 +17,12 @@ accepted ask answers.
 Extensions define views and actions on the session's bus with
 [pi-surface](../pi-surface/README.md); the service reads them live and keeps no
 copy. `snapshot().views` lists every view, sorted by id, as `ViewSummary`:
-`{ id, kind, title }`, plus for a `widget` its current `model` (absent while it
-has nothing to show) or an `error` when its provider failed. Widgets are small and
-always visible; explorers and details are read on demand with the `view` request.
-Subscribers are notified when a widget view announces a change, as they are for
-every section.
+`{ id, kind, title, model?, error? }`. `model` is the view's current model,
+absent while it has nothing to show; `error` says why it is missing when the
+provider failed or the model is over `MAX_VIEW_BYTES` (256 KB) as JSON. Explorers
+keep heavy item details behind `loadDetail`, so a client draws every view from
+the snapshot and asks for details on demand. Subscribers are notified when any
+view on the bus announces a change, as they are for every section.
 
 An explorer's behaviour is an action reference (`{ action, args? }`): to open an
 item, send `action` with the reference's `action` as `id` and its `args` plus the
@@ -51,12 +52,14 @@ The consumer owns lifecycle: `reset()` on session replacement clears prior state
 `snapshot().views` is empty and every request rejects. Views and actions are read
 live, so they need no reset; a producer removes its own at `session_shutdown`.
 Domain producers publish fresh full snapshots on branch changes.
+`buildSnapshot` carries `views` into the `SessionSnapshot` when there are any.
 Status/activity/usage and full session DTO helpers are exported as subpaths for
 adapters that need them. `contract` contains only data types, including
 `PresentationSnapshot`, `PresentationRequest`, `PresentationResults`,
 `ViewSummary`, `ActionSummary` and pi-surface's model types, and is safe to import
 from client code with `import type`.
 
-pi-dashboard uses this service only for TUI sessions and ignores `views`. A remote
+pi-dashboard uses this service only for TUI sessions and leaves `views` out of
+what it sends its hub. A remote
 adapter must consume it directly and must not start, connect to or report to the
 dashboard hub.

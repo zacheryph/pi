@@ -8,7 +8,6 @@ import {
   onViewChanged,
   readView,
   type JsonValue,
-  type WidgetModel,
 } from "#surface";
 import {
   TODO_HISTORY_ACTION,
@@ -32,6 +31,8 @@ import { SubagentTracker } from "#src/subagents";
 export type { PresentationRequest, PresentationResults, PresentationSnapshot } from "#src/contract";
 
 const MAX_ERROR = 500;
+/** Largest view model, as JSON, that a snapshot carries; a larger one is sent as an error. */
+export const MAX_VIEW_BYTES = 256 * 1024;
 
 function message(error: unknown): string {
   return (error instanceof Error ? error.message : String(error)).slice(0, MAX_ERROR);
@@ -73,9 +74,9 @@ export class PresentationService {
     observed.on(SUBAGENT_SNAPSHOT, (data) => {
       if (this.subagents.apply(data as SubagentSnapshot)) this.changed();
     });
-    // Widgets are part of the snapshot; explorers and details are read on demand.
+    // Every view's model is part of the snapshot.
     onViewChanged(observed, (id) => {
-      if (this.viewInfo().some((view) => view.id === id && view.kind === "widget")) this.changed();
+      if (this.viewInfo().some((view) => view.id === id)) this.changed();
     });
   }
 
@@ -183,12 +184,19 @@ export class PresentationService {
   private views(): ViewSummary[] {
     if (this.disposed) return [];
     return this.viewInfo().map(({ id, kind, title }): ViewSummary => {
-      if (kind !== "widget") return { id, kind, title };
+      const entry = { id, kind, title } as ViewSummary;
       try {
-        const model = readView(this.bus, id) as WidgetModel | undefined;
-        return model === undefined ? { id, kind, title } : { id, kind, title, model };
+        const model = readView(this.bus, id);
+        if (model === undefined) return entry;
+        const bytes = Buffer.byteLength(JSON.stringify(model));
+        if (bytes > MAX_VIEW_BYTES)
+          return {
+            ...entry,
+            error: `Too large to send: ${Math.ceil(bytes / 1024)} KB, over ${MAX_VIEW_BYTES / 1024} KB.`,
+          };
+        return { ...entry, model } as ViewSummary;
       } catch (error) {
-        return { id, kind, title, error: message(error) };
+        return { ...entry, error: message(error) };
       }
     });
   }
