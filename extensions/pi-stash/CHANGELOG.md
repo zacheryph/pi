@@ -1,0 +1,35 @@
+# Changelog
+
+Changes recorded automatically from Git history, newest first.
+
+<!-- changelog:through 6ba5f77b02f5787c9c080d78f6a2b02da99b7ee4 -->
+
+- 2026-11-14: fix\(cards\): write restore cards into the transcript once after compaction ([#173](https://github.com/zacheryph/pi/pull/173))
+- 2026-11-13: feat\(pi-stash\): offer the stash.explorer view and the stash.preview action ([#172](https://github.com/zacheryph/pi/pull/172))
+- 2026-11-13: feat\(pi-stash\): /stash lists entries and /stash:gc reports without a terminal ([#171](https://github.com/zacheryph/pi/pull/171))
+- 2026-11-13: feat\(pi-stash\): load /stash details through the stash.inspect action ([#167](https://github.com/zacheryph/pi/pull/167))
+- 2026-11-12: refactor: centralize workspace configs and development commands ([#153](https://github.com/zacheryph/pi/pull/153))
+- 2026-11-12: refactor: standardize workspace aliases and shared test helpers ([#149](https://github.com/zacheryph/pi/pull/149))
+- 2026-11-12: refactor\(pi-foundations\): consolidate plain-data helpers ([#147](https://github.com/zacheryph/pi/pull/147))
+- 2026-11-12: refactor\(pi-ui\): centralize non-TUI modal fallbacks ([#146](https://github.com/zacheryph/pi/pull/146))
+- 2026-11-12: refactor: declare stash, git, todo, dashboard and tldr settings with defineSettings ([#144](https://github.com/zacheryph/pi/pull/144))
+- 2026-11-12: refactor: let contextCard own whether the card is shown ([#142](https://github.com/zacheryph/pi/pull/142))
+- 2026-11-12: refactor: extract shared session-state plumbing into pi-session-state ([#142](https://github.com/zacheryph/pi/pull/142))
+- 2026-11-08: test: add fauxSession and build SDK tests on it ([#104](https://github.com/zacheryph/pi/pull/104))
+- 2026-11-08: test: add fakePi and build extension index harnesses on it ([#104](https://github.com/zacheryph/pi/pull/104))
+- 2026-11-08: test: add helpers for Symbol-keyed globals and the session tree ([#104](https://github.com/zacheryph/pi/pull/104))
+- 2026-11-08: test: add padding and width assertions for terminal rendering ([#104](https://github.com/zacheryph/pi/pull/104))
+- 2026-11-08: test: add plain and ANSI test themes and replace inline theme stubs ([#104](https://github.com/zacheryph/pi/pull/104))
+- 2026-11-08: test: add shared wait helpers and replace inline timer promises ([#104](https://github.com/zacheryph/pi/pull/104))
+- 2026-11-08: test: add pi-test-helpers with tempDir and use it for test temp directories ([#104](https://github.com/zacheryph/pi/pull/104))
+- 2026-11-02: fix\(pi-stash\): use draft 2020-12 compatible array schemas ([20bd863](https://github.com/zacheryph/pi/commit/20bd863a4782d2c2522bbc2ea1eb29bb42123de4))
+- 2026-11-01: refactor\(pi-subagent\): rename pi-subagents and pi-subagents-worktrees, and scope their identifiers ([#59](https://github.com/zacheryph/pi/pull/59))
+- 2026-11-01: refactor\(pi-stash\): scope identifiers to the stash resource ([#53](https://github.com/zacheryph/pi/pull/53))
+- 2026-11-01: refactor\(pi-stash\): browse entries with shared pi-ui explorer ([#49](https://github.com/zacheryph/pi/pull/49))
+- 2026-11-01: refactor: share settings and model lookup in pi-foundations ([#44](https://github.com/zacheryph/pi/pull/44))
+- 2026-10-31: chore: adopt Oxc and TypeScript 7 across all workspaces ([#42](https://github.com/zacheryph/pi/pull/42))
+- 2026-10-31: feat\(pi-stash\): adopt subagent entries into every ancestor's stash ([#34](https://github.com/zacheryph/pi/pull/34))
+- 2026-10-30: feat\(pi-dashboard\): stash previews, task history, activity, filter and notifications ([#28](https://github.com/zacheryph/pi/pull/28))
+- 2026-10-30: feat\(stash\): show stash browser in modal with entry details ([#27](https://github.com/zacheryph/pi/pull/27))
+- 2026-10-30: feat: publish todo and stash snapshots on pi.events; show counts on dashboard cards ([#23](https://github.com/zacheryph/pi/pull/23))
+- 2026-10-30: feat\(pi-stash\): handle-based working-set store ([#13](https://github.com/zacheryph/pi/pull/13))

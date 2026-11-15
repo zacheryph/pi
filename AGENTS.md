@@ -38,10 +38,19 @@ in later commits. Each vendored extension keeps two records:
 
 - `UPSTREAM.md` holds only provenance: source, pinned commit, tree hash, version,
   license and import date. It is written at import and not edited after.
-- `CHANGELOG.md` holds every local change, newest first, added in the same commit
-  as the change. Its first (oldest) entry only points at `UPSTREAM.md`. If
-  upstream shipped a changelog, its content is cleared at import and that entry
-  links the source changelog at the pinned commit instead.
+- `CHANGELOG.md` is maintained by the weekly changelog workflow; do not edit it
+  in feature or fix PRs. Keep commit subjects descriptive: each becomes an entry
+  with its UTC commit date and introducing PR link (or commit link). Preserve
+  the `changelog:through` checkpoint. Its Upstream section points at `UPSTREAM.md`
+  and preserves import notes and any link to the pinned source changelog.
+
+## Changelogs
+
+The same weekly workflow maintains `CHANGELOG.md` for every registered workspace
+under `extensions/` and `packages/`, creating missing logs from Git history.
+Logs without a checkpoint are rebuilt from full history, following directory
+renames and retaining only import/upstream provenance from the previous log.
+See the root README's Changelogs section for checkpoint and workflow details.
 
 ## Git commits
 

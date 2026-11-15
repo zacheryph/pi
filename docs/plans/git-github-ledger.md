@@ -126,7 +126,7 @@ on its own.
 already accepts a working-directory override (`AssemblerOptions.cwd` in
 `src/session/session-config.ts`, used today only by the workspace provider); the
 tool parameter feeds it when no provider supplies one. A local change to the
-vendored pi-subagent with a `CHANGELOG.md` entry. pi-git sees the call
+vendored pi-subagent, recorded by the weekly changelog workflow. pi-git sees the call
 (`tool_call`) and the child's creation (`subagent:session:created`), and records
 which agent used which worktree. Because no provider owns the directory, nothing
 is disposed when the run ends and **resume keeps working**. When a worker is
@@ -260,7 +260,7 @@ Each is shippable alone.
 1. **`cwd` on `subagent_start`** (vendored pi-subagent): optional, must be an
    existing directory, passed as the session's working-directory override when no
    workspace provider supplies one. Recorded on the agent so resume uses it.
-   `CHANGELOG.md` entry, tests for spawn and resume.
+   Tests for spawn and resume; the weekly workflow records the changelog.
 2. **Scaffold `pi-git`** with the `new-extension` skill: ledger and restore,
    `git_worktree_create/list/remove`, workspaces, reconciliation,
    `/git:worktrees`, `git:snapshot`. SDK test with the real loader for reload and

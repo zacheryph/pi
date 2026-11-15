@@ -540,7 +540,7 @@ in a TUI session using the tui-screenshot skill's driver.
   strings and events that steps 7a and 7b replaced.
 - Update the pi-subagent, pi-job, pi-ask and pi-session-tree READMEs, and add a
   pi-work README.
-- Add CHANGELOG entries for the vendored extensions.
+- Leave changelog entries to the weekly workflow; use descriptive commit subjects.
 - Update `skills/execute-roadmap` and `skills/make-it-easy` text that mentions
   foreground, `wait: true`, `subagent_steer` or `resume`.
 - Close PR #105 with a link to this roadmap.

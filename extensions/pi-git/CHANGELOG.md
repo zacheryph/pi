@@ -1,0 +1,38 @@
+# Changelog
+
+Changes recorded automatically from Git history, newest first.
+
+<!-- changelog:through 6ba5f77b02f5787c9c080d78f6a2b02da99b7ee4 -->
+
+- 2026-11-14: feat\(pi-todo\): write todo changes into the transcript instead of a per-request card ([#174](https://github.com/zacheryph/pi/pull/174))
+- 2026-11-14: fix\(cards\): write restore cards into the transcript once after compaction ([#173](https://github.com/zacheryph/pi/pull/173))
+- 2026-11-13: feat\(pi-git\): worktree and pull request commands answer without a terminal ([#171](https://github.com/zacheryph/pi/pull/171))
+- 2026-11-12: feat\(pi-git\): make the pull request watch cap a setting ([#165](https://github.com/zacheryph/pi/pull/165))
+- 2026-11-12: feat\(pi-git\): watch a pull request as a work item that wakes the session ([#154](https://github.com/zacheryph/pi/pull/154))
+- 2026-11-12: refactor: centralize workspace configs and development commands ([#153](https://github.com/zacheryph/pi/pull/153))
+- 2026-11-12: refactor: standardize workspace aliases and shared test helpers ([#149](https://github.com/zacheryph/pi/pull/149))
+- 2026-11-12: refactor\(pi-foundations\): consolidate plain-data helpers ([#147](https://github.com/zacheryph/pi/pull/147))
+- 2026-11-12: refactor\(pi-ui\): centralize non-TUI modal fallbacks ([#146](https://github.com/zacheryph/pi/pull/146))
+- 2026-11-12: refactor: declare stash, git, todo, dashboard and tldr settings with defineSettings ([#144](https://github.com/zacheryph/pi/pull/144))
+- 2026-11-12: fix: guard session startup and invalidate stale context cards ([#142](https://github.com/zacheryph/pi/pull/142))
+- 2026-11-12: refactor: let contextCard own whether the card is shown ([#142](https://github.com/zacheryph/pi/pull/142))
+- 2026-11-12: refactor: extract shared session-state plumbing into pi-session-state ([#142](https://github.com/zacheryph/pi/pull/142))
+- 2026-11-08: test: add fauxSession and build SDK tests on it ([#104](https://github.com/zacheryph/pi/pull/104))
+- 2026-11-08: test: add fakePi and build extension index harnesses on it ([#104](https://github.com/zacheryph/pi/pull/104))
+- 2026-11-08: test: add helpers for Symbol-keyed globals and the session tree ([#104](https://github.com/zacheryph/pi/pull/104))
+- 2026-11-08: test: add padding and width assertions for terminal rendering ([#104](https://github.com/zacheryph/pi/pull/104))
+- 2026-11-08: test: add plain and ANSI test themes and replace inline theme stubs ([#104](https://github.com/zacheryph/pi/pull/104))
+- 2026-11-08: test: add pi-test-helpers with tempDir and use it for test temp directories ([#104](https://github.com/zacheryph/pi/pull/104))
+- 2026-11-04: fix\(pi-git\): verify repository identity before linking context-card worktrees ([#83](https://github.com/zacheryph/pi/pull/83))
+- 2026-11-04: feat\(pi-git\): restore open PRs and worktrees with a context card ([#83](https://github.com/zacheryph/pi/pull/83))
+- 2026-11-04: fix\(pi-git\): keep fresh PR status complete and session-safe ([#72](https://github.com/zacheryph/pi/pull/72))
+- 2026-11-04: feat\(pi-git\): read fresh PR status with git\_pr\_status and /git:refresh ([#72](https://github.com/zacheryph/pi/pull/72))
+- 2026-11-04: style\(pi-git\): normalize observer file endings ([#69](https://github.com/zacheryph/pi/pull/69))
+- 2026-11-04: fix\(pi-git\): preserve review decisions when reading comments ([#69](https://github.com/zacheryph/pi/pull/69))
+- 2026-11-04: fix\(pi-git\): address review: batched gh commands, dismissed reviews ([#69](https://github.com/zacheryph/pi/pull/69))
+- 2026-11-04: fix\(pi-git\): address review: failing gh pr checks, per-field status times ([#69](https://github.com/zacheryph/pi/pull/69))
+- 2026-11-04: fix\(pi-git\): do not touch a stale ctx when a background refresh fails late ([#69](https://github.com/zacheryph/pi/pull/69))
+- 2026-11-04: feat\(pi-git\): record the pull requests the session opens or looks at ([#69](https://github.com/zacheryph/pi/pull/69))
+- 2026-11-04: fix\(pi-git\): merge a subagent's new agent ids even when the parent's record is newer ([#69](https://github.com/zacheryph/pi/pull/69))
+- 2026-11-03: fix\(pi-git\): address review: hidden untracked files, reused paths, adopted agents ([#67](https://github.com/zacheryph/pi/pull/67))
+- 2026-11-03: feat\(pi-git\): worktrees an orchestrator creates and hands to subagents ([#67](https://github.com/zacheryph/pi/pull/67))

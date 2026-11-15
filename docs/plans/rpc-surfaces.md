@@ -192,8 +192,8 @@ Each is one pull request. "Base" is the branch it stacks on.
 
 ## Verification
 
-Every package: `npm run check`, `npm test`, `npm run verify:bundle`. Vendored
-extensions get a `CHANGELOG.md` entry in the same commit. Commits use
+Every package: `npm run check`, `npm test`, `npm run verify:bundle`. Extension
+and package changelogs are maintained by the weekly workflow. Commits use
 `git -c commit.gpgsign=false commit`.
 
 ## Open questions
