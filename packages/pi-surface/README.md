@@ -30,11 +30,19 @@ the moment it would have called a callback.
 | Type                                                             | What it is                                                              |
 | ---------------------------------------------------------------- | ----------------------------------------------------------------------- |
 | `Tone`, `Span`, `Line`, `Badge`, `Title`                         | Plain, untrusted text with a semantic tone; the renderer picks colours  |
+| `StateIcon`                                                      | A state a span's glyph stands for; a renderer may draw its own icon     |
 | `Block`, `DetailContent`, `DetailModel`                          | Structured detail: headings, fields, text, bullets, numbered lines      |
 | `Hint`                                                           | A footer hint: keys, action, priority                                   |
 | `WidgetRow`, `WidgetModel`                                       | A compact heading with rows, right-column fallbacks and overflow groups |
 | `ExplorerItem`, `ExplorerTab`, `ExplorerMarker`, `ExplorerModel` | A filterable list that opens into detail content                        |
 | `ActionRef`, `JsonValue`, `JsonObject`                           | Behaviour by reference, and the JSON the model is made of               |
+
+A span can say which state its glyph stands for: `icon` (`done`, `active`,
+`blocked`…) lets a renderer with icons (bb) draw its own in the glyph's place.
+The terminal draws the text as it always has, so an icon span with empty text
+shows only where icons are drawn. `since` marks a span's text as an elapsed
+clock that started at that time (epoch milliseconds), so a renderer that does
+not redraw on a timer, such as bb drawing a snapshot, can keep it running.
 
 Every model type is a type alias, so a model is assignable to `JsonValue`.
 `isJsonValue`, `isJsonObject`, `isDetailContent`, `isBlock`, `isLine`, `isSpan`

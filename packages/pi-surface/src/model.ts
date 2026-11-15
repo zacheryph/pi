@@ -7,8 +7,39 @@ import type { JsonObject, JsonValue } from "#src/json";
  * how a tone looks, so every view shares one palette and selection rule.
  */
 export type Tone = "default" | "accent" | "muted" | "dim" | "success" | "warning" | "error";
+/**
+ * A state a span can stand for. Renderers with icons draw their own for it; the
+ * terminal draws the span's text (its glyph).
+ */
+export type StateIcon =
+  | "pending"
+  | "active"
+  | "done"
+  | "blocked"
+  | "queued"
+  | "waiting"
+  | "failed"
+  | "stopped";
 /** Untrusted plain text, optionally toned. Never pre-styled ANSI. */
-export type Span = string | { text: string; tone?: Tone; bold?: boolean };
+export type Span =
+  | string
+  | {
+      text: string;
+      tone?: Tone;
+      bold?: boolean;
+      /**
+       * The span is this state's glyph: a renderer with an icon for the state may
+       * draw the icon instead of `text`, which may be empty when only such a
+       * renderer should show anything.
+       */
+      icon?: StateIcon;
+      /**
+       * The text is an elapsed clock (`mm:ss`) that started at this time, in
+       * epoch milliseconds. A renderer that redraws on its own may keep it
+       * running; one that does not draws the text as it is.
+       */
+      since?: number;
+    };
 /** One logical line made of spans. */
 export type Line = Span | readonly Span[];
 /** Right-column label, e.g. a status. */
@@ -114,6 +145,17 @@ export type ExplorerModel = {
   loadDetail?: ActionRef<JsonObject>;
 };
 
+export const STATE_ICONS: readonly StateIcon[] = [
+  "pending",
+  "active",
+  "done",
+  "blocked",
+  "queued",
+  "waiting",
+  "failed",
+  "stopped",
+];
+
 const TONES = new Set<unknown>([
   "default",
   "accent",
@@ -139,7 +181,9 @@ export function isSpan(value: unknown): value is Span {
     isRecord(value) &&
     isString(value.text) &&
     optional(value.tone, isTone) &&
-    optional(value.bold, (bold) => typeof bold === "boolean")
+    optional(value.bold, (bold) => typeof bold === "boolean") &&
+    optional(value.icon, (icon) => STATE_ICONS.includes(icon as StateIcon)) &&
+    optional(value.since, (since) => typeof since === "number" && Number.isFinite(since))
   );
 }
 export function isLine(value: unknown): value is Line {
