@@ -141,9 +141,12 @@ export function generateChangelogs({
     const block = `<!-- changelog:through ${head} -->\n\n${lines.join("\n")}\n\n`;
     let content;
     if (marker && !rebuild) {
-      content = previous.replace(`${marker[0]}\n\n`, block);
-      if (content === previous)
+      const rest = previous.slice(marker.index + marker[0].length);
+      if (!rest.startsWith("\n\n"))
         throw new Error(`Expected a blank line after checkpoint in ${path}.`);
+      const history = rest.slice(2);
+      const separator = history.startsWith("- ") ? "\n" : "\n\n";
+      content = previous.slice(0, marker.index) + block.trimEnd() + separator + history;
     } else {
       const provenance = initialImport(previous);
       content = `# Changelog\n\nChanges recorded automatically from Git history, newest first.\n\n${block.trimEnd()}\n${provenance}`;

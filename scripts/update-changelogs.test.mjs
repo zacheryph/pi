@@ -176,6 +176,7 @@ void test("retries and later merges do not duplicate entries or skip intervening
   assert.equal(pending[0].count, 1);
   assert.match(pending[0].content, new RegExp(`/commit/${second}`));
   assert.equal(pending[0].content.match(/: first /g).length, 1);
+  assert.match(pending[0].content, /^- [^\n]*: second [^\n]*\n- [^\n]*: first /m);
   apply(cwd, pending);
   commit(cwd, {}, "docs: update weekly changelogs");
   assert.deepEqual(generate(cwd), []);
@@ -183,6 +184,7 @@ void test("retries and later merges do not duplicate entries or skip intervening
   const next = generate(cwd);
   assert.equal(next[0].count, 1);
   assert.ok(next[0].content.indexOf(": third ") < next[0].content.indexOf(": second "));
+  assert.match(next[0].content, /^- [^\n]*: third [^\n]*\n- [^\n]*: second /m);
   assert.doesNotMatch(next[0].content, /docs: update weekly/);
 });
 
