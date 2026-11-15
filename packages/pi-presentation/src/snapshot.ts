@@ -10,6 +10,7 @@ import type {
   TerminalInfo,
   TodoSection,
   UsageSection,
+  ViewSummary,
 } from "#src/contract";
 
 /** Written by pi-subagent when a session starts with `--agent`. */
@@ -42,6 +43,7 @@ export interface SnapshotInput {
   terminal?: TerminalInfo;
   activity?: ActivitySection;
   questions?: Questionnaire[];
+  views?: ViewSummary[];
 }
 
 /** Collapses whitespace and caps length; names and titles are user and model text. */
@@ -101,5 +103,6 @@ export function buildSnapshot(input: SnapshotInput): SessionSnapshot {
     ...(input.terminal ? { terminal: input.terminal } : {}),
     ...(input.activity ? { activity: input.activity } : {}),
     ...(input.questions ? { questions: input.questions } : {}),
+    ...(input.views?.length ? { views: input.views } : {}),
   };
 }

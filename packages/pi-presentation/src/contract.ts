@@ -1,4 +1,4 @@
-import type { JsonValue, ViewKind, ViewModel, WidgetModel } from "#surface";
+import type { JsonValue, ViewKind, ViewModel, ViewModelOf } from "#surface";
 
 // The view model types (pi-surface), as types only, so client code can import this file.
 export type {
@@ -16,10 +16,12 @@ export type {
   JsonValue,
   Line,
   Span,
+  StateIcon,
   Title,
   Tone,
   ViewKind,
   ViewModel,
+  ViewModelOf,
   WidgetModel,
   WidgetRow,
 } from "#surface";
@@ -237,6 +239,8 @@ export interface SessionSnapshot {
   activity?: ActivitySection;
   /** Open ask-user questionnaires, oldest first; absent when none. */
   questions?: Questionnaire[];
+  /** Every view the session offers, sorted by id; absent when none. */
+  views?: ViewSummary[];
 }
 
 /** A task's status and message history, as `todo-history` returns it. */
@@ -261,19 +265,24 @@ export interface StashPreview {
   complete: boolean;
 }
 
-/**
- * A view the session offers (see pi-surface). A widget carries its current
- * model, absent while it has nothing to show, or `error` when its provider
- * failed; explorers and details are read on demand with the `view` request.
- */
-export interface ViewSummary {
+/** One view of one kind, with that kind's model. */
+export interface ViewEntry<Kind extends ViewKind = ViewKind> {
   /** `<extension>.<view>`, e.g. `todo.widget`. */
   id: string;
-  kind: ViewKind;
+  kind: Kind;
   title: string;
-  model?: WidgetModel;
+  /** The current model; absent while the view has nothing to show, or with `error`. */
+  model?: ViewModelOf<Kind>;
+  /** Why the model is missing: its provider failed, or it is too large to send. */
   error?: string;
 }
+
+/**
+ * A view the session offers (see pi-surface), with its current model, so a
+ * client draws every view from the snapshot alone. An explorer's item details
+ * may be behind its `loadDetail` action; send that with the `action` request.
+ */
+export type ViewSummary = ViewEntry<"widget"> | ViewEntry<"explorer"> | ViewEntry<"detail">;
 
 /** An action the session offers, for the `action` request. */
 export interface ActionSummary {

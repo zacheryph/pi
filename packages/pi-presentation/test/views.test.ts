@@ -7,6 +7,7 @@ import {
 } from "#stash/events";
 import {
   actionRegistry,
+  announceView,
   defineAction,
   defineView,
   isJsonObject,
@@ -19,7 +20,7 @@ import { todoSettings } from "#todo/config";
 import { TODO_SNAPSHOT_EVENT, type TodoSnapshotEvent } from "#todo/events";
 import { fakeEventBus, fakePi } from "#test-helpers";
 import { readPreview, readTodoHistory } from "#src/sections";
-import { PresentationService } from "#src/service";
+import { MAX_VIEW_BYTES, PresentationService } from "#src/service";
 
 const widget: WidgetModel = { title: "Tasks", rows: [{ left: "a: Task a" }] };
 const explorer: ExplorerModel = {
@@ -63,15 +64,15 @@ function session() {
 }
 
 describe("presentation views and actions", () => {
-  it("lists views in the snapshot, with the current model of each widget only", () => {
+  it("lists views in the snapshot, each with its current model", () => {
     const { bus, setRows } = session();
     const service = new PresentationService(bus);
     expect(service.snapshot().views).toEqual([
-      { id: "todo.explorer", kind: "explorer", title: "Todos" },
+      { id: "todo.explorer", kind: "explorer", title: "Todos", model: explorer },
       { id: "todo.widget", kind: "widget", title: "Tasks", model: widget },
     ]);
     // A detached copy, like every other section.
-    service.snapshot().views[1]!.model!.rows = [];
+    (service.snapshot().views[1]!.model as WidgetModel).rows = [];
     expect(service.snapshot().views[1]!.model).toEqual(widget);
     setRows([]);
     expect(service.snapshot().views[1]).toEqual({
@@ -80,6 +81,25 @@ describe("presentation views and actions", () => {
       title: "Tasks",
     });
     service.dispose();
+  });
+
+  it("sends a model over the size limit as an error", () => {
+    const bus = fakeEventBus();
+    const huge = "x".repeat(MAX_VIEW_BYTES);
+    defineView(bus, {
+      id: "demo.huge",
+      kind: "explorer",
+      title: "Huge",
+      model: () => ({ title: "Huge", items: [{ id: "a", label: huge }] }),
+    });
+    expect(new PresentationService(bus).snapshot().views).toEqual([
+      {
+        id: "demo.huge",
+        kind: "explorer",
+        title: "Huge",
+        error: "Too large to send: 257 KB, over 256 KB.",
+      },
+    ]);
   });
 
   it("reports a failing or non-JSON widget in its entry without failing the snapshot", () => {
@@ -110,7 +130,7 @@ describe("presentation views and actions", () => {
     ]);
   });
 
-  it("tells subscribers when a widget view changes, not when an explorer does", () => {
+  it("tells subscribers when any of the session's views changes", () => {
     const { bus, views, setRows } = session();
     const service = new PresentationService(bus);
     const listener = vi.fn();
@@ -118,12 +138,16 @@ describe("presentation views and actions", () => {
     setRows([{ left: "b: Task b" }]);
     expect(listener).toHaveBeenCalledTimes(1);
     views.changed("todo.explorer");
-    views.changed("todo.missing");
-    expect(listener).toHaveBeenCalledTimes(1);
-    expect(service.snapshot().views[1]!.model!.rows).toEqual([{ left: "b: Task b" }]);
+    expect(listener).toHaveBeenCalledTimes(2);
+    // An id no view on the bus has is not this session's.
+    announceView(bus, "todo.missing");
+    expect(listener).toHaveBeenCalledTimes(2);
+    expect((service.snapshot().views[1]!.model as WidgetModel).rows).toEqual([
+      { left: "b: Task b" },
+    ]);
     service.dispose();
     setRows([{ left: "c" }]);
-    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenCalledTimes(2);
   });
 
   it("serves view, actions and action requests", async () => {

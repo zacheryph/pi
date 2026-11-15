@@ -91,3 +91,20 @@ describe("buildSnapshot", () => {
     });
   });
 });
+
+describe("buildSnapshot views", () => {
+  const base = {
+    id: "7",
+    pid: 7,
+    startedAt: 5,
+    ctx: source(),
+    status: { kind: "idle" as const, since: 9 },
+  };
+
+  it("carries the session's views, and leaves the field out when there are none", () => {
+    const views = [{ id: "todo.widget", kind: "widget" as const, title: "Tasks" }];
+    expect(buildSnapshot({ ...base, views }).views).toEqual(views);
+    expect(buildSnapshot({ ...base, views: [] })).not.toHaveProperty("views");
+    expect(buildSnapshot(base)).not.toHaveProperty("views");
+  });
+});
