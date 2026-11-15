@@ -4,7 +4,6 @@ Changes recorded automatically from Git history, newest first.
 
 <!-- changelog:through aa756f8a1345f53efab119ea3193ee7fe53f79ec -->
 
-- 2026-11-15: docs: consolidate import provenance in initial changelog entries ([#177](https://github.com/zacheryph/pi/pull/177))
 - 2026-11-15: feat\(pi-todo\): archive old completed tasks instead of a 50-task cap ([#175](https://github.com/zacheryph/pi/pull/175))
 - 2026-11-14: feat\(pi-todo\): write todo changes into the transcript instead of a per-request card ([#174](https://github.com/zacheryph/pi/pull/174))
 - 2026-11-13: feat\(pi-todo\): offer the widget and /todo browser as views and actions ([#172](https://github.com/zacheryph/pi/pull/172))

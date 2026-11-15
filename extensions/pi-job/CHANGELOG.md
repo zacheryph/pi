@@ -4,7 +4,6 @@ Changes recorded automatically from Git history, newest first.
 
 <!-- changelog:through aa756f8a1345f53efab119ea3193ee7fe53f79ec -->
 
-- 2026-11-15: docs: consolidate import provenance in initial changelog entries ([#177](https://github.com/zacheryph/pi/pull/177))
 - 2026-11-13: feat\(pi-job\): /job answers without a terminal ([#171](https://github.com/zacheryph/pi/pull/171))
 - 2026-11-12: feat\(pi-git\): watch a pull request as a work item that wakes the session ([#154](https://github.com/zacheryph/pi/pull/154))
 - 2026-11-12: refactor: centralize workspace configs and development commands ([#153](https://github.com/zacheryph/pi/pull/153))
