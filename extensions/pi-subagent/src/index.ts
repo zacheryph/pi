@@ -49,7 +49,12 @@ import {
   createUpdateRenderer,
 } from "#src/observation/renderer";
 import { SubagentEventsObserver } from "#src/observation/subagent-events-observer";
-import { buildSubagentSnapshot, SUBAGENT_SNAPSHOT } from "#src/observation/snapshot";
+import {
+  buildSubagentSnapshot,
+  SUBAGENT_EXPLORER_VIEW,
+  SUBAGENT_SNAPSHOT,
+  SUBAGENT_WIDGET_VIEW,
+} from "#src/observation/snapshot";
 import { SubagentWork } from "#src/observation/subagent-work";
 import { registerAgentModels } from "#src/agent-models";
 import { registerMainAgentProfile } from "#src/main-agent-profile";
@@ -66,7 +71,9 @@ import { SettingsManager } from "#src/settings";
 import { AgentTool } from "#src/tools/agent-tool";
 import { GetResultTool } from "#src/tools/get-result-tool";
 import { SendTool } from "#src/tools/send-tool";
+import { viewRegistry } from "#surface";
 import { AgentWidget } from "#src/ui/agent-widget";
+import { subagentExplorerModel } from "#src/ui/subagent-explorer";
 import { agentsListText, showAgentsBrowser } from "#src/ui/agents-browser";
 import { SessionNavigatorHandler } from "#src/ui/session-navigator";
 import { SubagentsSettingsHandler } from "#src/ui/subagents-settings";
@@ -220,14 +227,18 @@ export default function (pi: ExtensionAPI) {
     transcripts: transcriptWork((path) => SessionManager.open(path)),
   });
 
+  const branchSnapshot = () =>
+    buildSubagentSnapshot(readBranchRecords(runtime.currentCtx) ?? [], (id) =>
+      manager.getRecord(id),
+    );
+  // The widget and the branch's subagents as views a remote surface draws. They live from
+  // session start to shutdown, so a /reload does not leak them.
+  const views = viewRegistry(pi.events);
   const publishSnapshot = () => {
     if (!runtime.currentCtx) return;
-    pi.events.emit(
-      SUBAGENT_SNAPSHOT,
-      buildSubagentSnapshot(readBranchRecords(runtime.currentCtx) ?? [], (id) =>
-        manager.getRecord(id),
-      ),
-    );
+    pi.events.emit(SUBAGENT_SNAPSHOT, branchSnapshot());
+    views.changed(SUBAGENT_WIDGET_VIEW);
+    views.changed(SUBAGENT_EXPLORER_VIEW);
   };
 
   // A delegated session has a delegator above it, which offers `work:parent` under its id before
@@ -290,6 +301,21 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("session_start", (event, ctx) => lifecycle.handleSessionStart(event, ctx));
   pi.on("session_start", (event, ctx) => widgetEvents.handleSessionStart(event, ctx));
+  pi.on("session_start", () => {
+    views.dispose();
+    views.define({
+      id: SUBAGENT_WIDGET_VIEW,
+      kind: "widget",
+      title: "Subagents",
+      model: () => widget.model(),
+    });
+    views.define({
+      id: SUBAGENT_EXPLORER_VIEW,
+      kind: "explorer",
+      title: "Subagents",
+      model: () => subagentExplorerModel(branchSnapshot(), registry),
+    });
+  });
   pi.on("session_start", (_event, ctx) => watch.setContext(ctx));
   // Restore the branch's agents to the model's context after it may have lost
   // them, until it lists them itself (see registerRosterCard).
@@ -318,6 +344,7 @@ export default function (pi: ExtensionAPI) {
     unsubscribeWatchSettings();
   });
   pi.on("session_shutdown", () => widgetEvents.handleSessionShutdown());
+  pi.on("session_shutdown", () => views.dispose());
 
   // Capture the prompt parts Pi assembled for the parent's turn. This is the
   // only event carrying them — `getSystemPromptOptions()` is attached to a
@@ -332,6 +359,8 @@ export default function (pi: ExtensionAPI) {
   const interrupt = new InterruptHandler(manager, () => settings.abortAllOnInterrupt);
   pi.on("turn_start", (_event, ctx) => interrupt.handleTurnStart(ctx));
   pi.on("turn_start", () => widgetEvents.handleTurnStart());
+  // A turn ages finished agents out of the widget.
+  pi.on("turn_start", () => views.changed(SUBAGENT_WIDGET_VIEW));
 
   // ---- Agent tool ----
 

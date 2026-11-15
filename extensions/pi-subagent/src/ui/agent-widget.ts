@@ -12,7 +12,8 @@ import { displayStatus } from "#src/lifecycle/subagent-state";
 import type { SubagentManager, SubagentManagerObserver } from "#src/lifecycle/subagent-manager";
 import type { CompactionInfo } from "#src/types";
 import { ERROR_STATUSES, type Theme } from "#src/ui/display";
-import { renderWidgetLines, type WidgetAgent } from "#src/ui/widget-renderer";
+import type { WidgetModel } from "#surface";
+import { renderWidgetLines, subagentWidgetModel, type WidgetAgent } from "#src/ui/widget-renderer";
 
 // ---- Types ----
 
@@ -268,6 +269,18 @@ export class AgentWidget implements SubagentManagerObserver {
       terminalWidth: width,
       terminalHeight: tui.terminal.rows,
       theme,
+      shouldShowFinished: (id, status) => this.shouldShowFinished(id, status),
+    });
+  }
+
+  /**
+   * What the widget shows as a JSON model, for a remote surface: the same agents and lingering
+   * finished ones, with whole rows instead of the terminal's width and spinner.
+   */
+  model(): WidgetModel | undefined {
+    return subagentWidgetModel({
+      agents: this.manager.listAgents().map((r) => this.toWidgetAgent(r)),
+      registry: this.registry,
       shouldShowFinished: (id, status) => this.shouldShowFinished(id, status),
     });
   }

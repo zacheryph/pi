@@ -22,6 +22,7 @@
     "#session-tree": "pi-session-tree",
     "#test-helpers": "pi-test-helpers",
     "#todo": "pi-todo",
+    "#surface": "pi-surface",
     "#ui": "pi-ui",
     "#work": "pi-work"
   },

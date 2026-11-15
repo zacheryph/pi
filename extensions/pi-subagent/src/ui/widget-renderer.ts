@@ -10,6 +10,7 @@ import { type TurnBudget, wrappedUpAtTurnLimit } from "#src/lifecycle/turn-limit
 import type { LifetimeUsage } from "#src/lifecycle/usage";
 import type { SubagentType } from "#src/types";
 import { describeActivity, getDisplayName, type ModelIdentity, type Theme } from "#src/ui/display";
+import type { StateIcon, Tone, WidgetModel } from "#surface";
 import {
   ICONS,
   renderWidget,
@@ -62,15 +63,33 @@ export function isWaiting(agent: Pick<WidgetAgent, "status" | "waitingOn">): boo
  * finished durations stay fixed while lingering.
  */
 function elapsedLabel(agent: WidgetAgent, now: number): string {
-  if (
-    agent.status === "queued" ||
-    isWaiting(agent) ||
-    !Number.isFinite(agent.startedAt) ||
-    agent.startedAt <= 0
-  )
-    return "--:--";
+  if (!hasClock(agent)) return "--:--";
   const seconds = Math.max(0, Math.floor(((agent.completedAt ?? now) - agent.startedAt) / 1000));
   return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+/** Whether the agent shows a time at all: not queued, not waiting, and with a start. */
+function hasClock(agent: WidgetAgent): boolean {
+  return (
+    agent.status !== "queued" &&
+    !isWaiting(agent) &&
+    Number.isFinite(agent.startedAt) &&
+    agent.startedAt > 0
+  );
+}
+
+/** Whether the clock counts up from `startedAt` now, rather than showing a fixed duration. */
+function clockRuns(agent: WidgetAgent): boolean {
+  return hasClock(agent) && agent.completedAt == null;
+}
+
+/** The elapsed clock; while it runs it carries its start, so a surface can keep it running. */
+function clockSpan(agent: WidgetAgent, now: number): Span {
+  return {
+    text: elapsedLabel(agent, now),
+    tone: "dim",
+    ...(clockRuns(agent) ? { since: agent.startedAt } : {}),
+  };
 }
 
 /**
@@ -78,38 +97,48 @@ function elapsedLabel(agent: WidgetAgent, now: number): string {
  * window. Plain text is pre-clipped to `max` cells so the status never takes
  * more than its share of the row; the library styles and aligns it.
  */
-function statusLine(agent: WidgetAgent, spinnerFrame: number, max: number): Line {
-  const fit = (text: string) => truncateToWidth(text, Math.max(1, max), "…");
-  if (agent.status === "running") {
-    const spinner = SPINNER[spinnerFrame % SPINNER.length];
-    const activity = singleLine(describeActivity(agent.activeTools, agent.responseText));
-    const clipped = fit(`${spinner} ${activity}`);
+function statusLine(agent: WidgetAgent, spinner: string, max: number): Line {
+  const fit = (text: string) =>
+    Number.isFinite(max) ? truncateToWidth(text, Math.max(1, max), "…") : text;
+  // `glyph rest`, clipped as one; the glyph says which state it stands for, so a surface with
+  // icons can draw its own.
+  const status = (glyph: string, icon: StateIcon, rest: string, tone: Tone, restTone = tone) => {
+    const clipped = fit(`${glyph}${rest}`);
+    if (!clipped.startsWith(glyph)) return { text: clipped, tone, icon };
     return [
-      { text: spinner, tone: "accent" },
-      { text: clipped.slice(spinner.length), tone: "muted" },
+      { text: glyph, tone, icon },
+      { text: clipped.slice(glyph.length), tone: restTone },
     ];
+  };
+  if (agent.status === "running") {
+    const activity = singleLine(describeActivity(agent.activeTools, agent.responseText));
+    return status(spinner, "active", ` ${activity}`, "accent", "muted");
   }
   if (isWaiting(agent)) {
     const labels = (agent.waitingOn ?? []).map(singleLine).filter(Boolean).join(", ");
-    return { text: fit(`waiting: ${labels || "work"}`), tone: "muted" };
+    // No glyph in the terminal; an icon where icons are drawn.
+    return [
+      { text: "", tone: "muted", icon: "waiting" },
+      { text: fit(`waiting: ${labels || "work"}`), tone: "muted" },
+    ];
   }
-  if (agent.status === "queued") return { text: fit(`${ICONS.queued} queued`), tone: "dim" };
+  if (agent.status === "queued") return status(ICONS.queued, "queued", " queued", "dim");
   if (wrappedUpAtTurnLimit(agent))
-    return { text: fit(`${ICONS.success} done (budget warning)`), tone: "warning" };
-  if (agent.status === "completed") return { text: fit(`${ICONS.success} done`), tone: "success" };
-  if (agent.status === "stopped") return { text: fit(`${ICONS.stopped} stopped`), tone: "dim" };
+    return status(ICONS.success, "done", " done (budget warning)", "warning");
+  if (agent.status === "completed") return status(ICONS.success, "done", " done", "success");
+  if (agent.status === "stopped") return status(ICONS.stopped, "stopped", " stopped", "dim");
   if (agent.status === "error") {
     const error = agent.error ? `: ${singleLine(agent.error)}` : "";
-    return { text: fit(`${ICONS.failure} error${error}`), tone: "error" };
+    return status(ICONS.failure, "failed", ` error${error}`, "error");
   }
-  return { text: fit(`${ICONS.failure} aborted`), tone: "warning" };
+  return status(ICONS.failure, "stopped", " aborted", "warning");
 }
 
-/** One physical row, with optional elapsed time when space permits. */
+/** One physical row, with optional elapsed time when space permits. `width` may be `Infinity`. */
 function agentRow(
   agent: WidgetAgent,
   registry: AgentConfigLookup,
-  spinnerFrame: number,
+  spinner: string,
   width: number,
   now: number,
 ): WidgetRow {
@@ -118,13 +147,13 @@ function agentRow(
   const active = isActiveStatus(agent.status) || isWaiting(agent);
   const name = singleLine(getDisplayName(agent.type, registry));
   const left: Span[] = [];
-  if (content >= 40) left.push({ text: elapsedLabel(agent, now), tone: "dim" }, "  ");
+  if (content >= 40) left.push(clockSpan(agent, now), "  ");
   left.push(active ? { text: name, bold: true } : { text: name, tone: "dim" });
   left.push(": ", { text: singleLine(agent.description), tone: active ? "muted" : "dim" });
   return {
     left,
     // Below 12 columns the task keeps the row; the status is dropped.
-    right: content < 12 ? [] : [statusLine(agent, spinnerFrame, Math.floor(content * 0.4))],
+    right: content < 12 ? [] : [statusLine(agent, spinner, Math.floor(content * 0.4))],
     group: agent.status === "running" ? "running" : isWaiting(agent) ? "waiting" : "finished",
   };
 }
@@ -142,31 +171,26 @@ export function widgetLineBudget(terminalRows: number): number {
   );
 }
 
-/**
- * Pure widget rendering. Running > waiting > lingering finished, one row each. A waiting agent
- * stays until its work is done. Queued agents get no rows; they are counted on the title bar.
- */
-export function renderWidgetLines(params: {
+export interface WidgetModelParams {
   agents: readonly WidgetAgent[];
   registry: AgentConfigLookup;
-  spinnerFrame: number;
-  terminalWidth: number;
-  terminalHeight: number;
-  theme: Theme;
   shouldShowFinished: (agentId: string, status: string) => boolean;
-}): string[] {
-  const {
-    agents,
-    registry,
-    spinnerFrame,
-    terminalWidth,
-    terminalHeight,
-    theme,
-    shouldShowFinished,
-  } = params;
-  const width = Math.max(0, Math.floor(terminalWidth));
-  if (width === 0) return [];
+  /** The glyph before a running agent's activity: the terminal's spinner frame. */
+  spinner?: string;
+  /**
+   * The terminal's width. Without it every row keeps its clock and its whole status.
+   */
+  width?: number;
+  now?: number;
+}
 
+/**
+ * The widget as a JSON model: running > waiting > lingering finished, one row each. A waiting
+ * agent stays until its work is done. Queued agents get no rows; they are counted on the title
+ * bar. `undefined` while there is nothing to show.
+ */
+export function subagentWidgetModel(params: WidgetModelParams): WidgetModel | undefined {
+  const { agents, registry, shouldShowFinished } = params;
   const running = agents.filter((agent) => agent.status === "running");
   const waiting = agents.filter(isWaiting);
   const queuedCount = agents.filter((agent) => agent.status === "queued").length;
@@ -178,21 +202,48 @@ export function renderWidgetLines(params: {
       shouldShowFinished(agent.id, agent.status),
   );
   const ordered = [...running, ...waiting, ...finished];
-  if (ordered.length === 0 && queuedCount === 0) return [];
+  if (ordered.length === 0 && queuedCount === 0) return undefined;
 
-  const now = Date.now();
+  const now = params.now ?? Date.now();
+  const width = params.width ?? Infinity;
+  const spinner = params.spinner ?? ICONS.active;
+  return {
+    title: { label: "Subagents", icon: ICONS.agents },
+    active: running.length + queuedCount + waiting.length > 0,
+    // Queued agents take no rows; their count rides the title bar.
+    meta: queuedCount > 0 ? [{ text: `${queuedCount} queued`, tone: "dim" }] : [],
+    rows: ordered.map((agent) => agentRow(agent, registry, spinner, width, now)),
+  };
+}
+
+/** Pure widget rendering: the model with the terminal's row budget and spinner frame. */
+export function renderWidgetLines(params: {
+  agents: readonly WidgetAgent[];
+  registry: AgentConfigLookup;
+  spinnerFrame: number;
+  terminalWidth: number;
+  terminalHeight: number;
+  theme: Theme;
+  shouldShowFinished: (agentId: string, status: string) => boolean;
+}): string[] {
+  const width = Math.max(0, Math.floor(params.terminalWidth));
+  if (width === 0) return [];
+  const model = subagentWidgetModel({
+    agents: params.agents,
+    registry: params.registry,
+    shouldShowFinished: params.shouldShowFinished,
+    spinner: SPINNER[params.spinnerFrame % SPINNER.length],
+    width,
+  });
+  if (!model) return [];
   return renderWidget(
     {
-      title: { label: "Subagents", icon: ICONS.agents },
-      active: running.length + queuedCount + waiting.length > 0,
-      // Queued agents take no rows; their count rides the title bar.
-      meta: queuedCount > 0 ? [{ text: `${queuedCount} queued`, tone: "dim" }] : [],
-      rows: ordered.map((agent) => agentRow(agent, registry, spinnerFrame, width, now)),
-      maxRows: widgetLineBudget(terminalHeight),
+      ...model,
+      maxRows: widgetLineBudget(params.terminalHeight),
       // Collapse to the heading while an inline window (an ask) is open.
       docked: true,
     },
     width,
-    theme,
+    params.theme,
   );
 }

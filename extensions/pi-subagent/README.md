@@ -616,6 +616,18 @@ as the roster used by `subagent_get`, plus `toolUses`, optional live `tokens`, a
 records override their state. It carries no result text or transcript contents. Consumers
 subscribe before `session_start`, like the dashboard, and replace their view on each snapshot.
 
+From session start to shutdown pi-subagent also defines two views on the same bus (see
+[`pi-surface`](../../packages/pi-surface/README.md)), so a remote surface reached through
+`pi-presentation` draws the widget and the roster:
+
+| Id                  | Kind     | What it shows                                                                                                                                            |
+| ------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `subagent.widget`   | widget   | The above-editor widget's agents as a JSON `WidgetModel`, with whole rows and a still glyph for the spinner; a running clock carries its start (`since`) |
+| `subagent.explorer` | explorer | Every agent in `subagent:snapshot`, with its state as a badge and its facts and note inline; an `Active` tab                                             |
+
+Both announce a change with every `subagent:snapshot`, and the widget again at each turn,
+when finished agents age out of it.
+
 Agent lifecycle events are emitted via `pi.events.emit()` so other extensions can react:
 
 | Event                       | When                                                                             | Key fields                                                                                                               |
