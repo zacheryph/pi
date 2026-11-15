@@ -212,6 +212,28 @@ describe("pi-surface app", () => {
     expect(slot.inspection.rpcCalls.map((call) => call.method)).toContain("request");
   });
 
+  it("shows a saved session's state in the Pi tab without asking Pi for details", async () => {
+    const rpc = rpcFor(fixture);
+    const saved = {
+      ...rpc,
+      snapshot: (input: unknown) => ({
+        ...(rpc.snapshot as (i: unknown) => object)(input),
+        source: "saved",
+        connected: false,
+      }),
+    } as typeof rpc;
+    const slot = renderSlot(
+      app.tabs[0]! as never,
+      { threadId: THREAD, environment: null },
+      { rpc: saved },
+    );
+    expect(await slot.findByText(/Not running/)).toBeTruthy();
+    fireEvent.click(await slot.findByText("Move retries into the queue worker"));
+    fireEvent.click(await slot.findByText("review-notes"));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(slot.inspection.rpcCalls.map((call) => call.method)).not.toContain("request");
+  });
+
   it("sends every question's answer as one submission from the questionnaire form", async () => {
     const submit = vi.fn(async () => {});
     const slot = renderSlot(

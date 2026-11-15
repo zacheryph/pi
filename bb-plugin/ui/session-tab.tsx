@@ -79,10 +79,13 @@ function Todos({
   snapshot,
   threadId,
   now,
+  saved,
 }: {
   snapshot: SessionSnapshot;
   threadId: string;
   now: number;
+  /** No Pi to ask for a task's history: rows are not clickable. */
+  saved: boolean;
 }) {
   const todos = snapshot.todos;
   const counts = todoCounts(todos);
@@ -104,11 +107,14 @@ function Todos({
                 name={task.subject}
                 title={task.description ?? task.subject}
                 {...(task.message ? { context: task.message.text } : {})}
-                onSelect={() =>
-                  loaded
-                    ? history.forget(task.key)
-                    : history.load(task.key, { command: "todo-history", key: task.key })
-                }
+                {...(saved
+                  ? {}
+                  : {
+                      onSelect: () =>
+                        loaded
+                          ? history.forget(task.key)
+                          : history.load(task.key, { command: "todo-history", key: task.key }),
+                    })}
               />
               <Detail
                 loaded={loaded}
@@ -170,10 +176,13 @@ function Stash({
   snapshot,
   threadId,
   now,
+  saved,
 }: {
   snapshot: SessionSnapshot;
   threadId: string;
   now: number;
+  /** No Pi to ask for an entry's contents: rows are not clickable. */
+  saved: boolean;
 }) {
   const stash = snapshot.stash;
   const previews = useSessionRequest<StashPreview>(threadId);
@@ -197,11 +206,17 @@ function Stash({
                     {bytes(entry.bytes)} · {ago(entry.createdAt, now)}
                   </span>
                 }
-                onSelect={() =>
-                  loaded
-                    ? previews.forget(entry.name)
-                    : previews.load(entry.name, { command: "stash-preview", name: entry.name })
-                }
+                {...(saved
+                  ? {}
+                  : {
+                      onSelect: () =>
+                        loaded
+                          ? previews.forget(entry.name)
+                          : previews.load(entry.name, {
+                              command: "stash-preview",
+                              name: entry.name,
+                            }),
+                    })}
               />
               <Detail
                 loaded={loaded}
@@ -376,9 +391,9 @@ export function SessionView({
     <div className="flex min-w-0 flex-col gap-3 p-3" data-pi-surface="session-tab">
       <Header snapshot={snapshot} saved={saved} />
       <Questions snapshot={snapshot} />
-      <Todos snapshot={snapshot} threadId={threadId} now={at} />
+      <Todos snapshot={snapshot} threadId={threadId} now={at} saved={saved} />
       <Subagents snapshot={snapshot} now={at} />
-      <Stash snapshot={snapshot} threadId={threadId} now={at} />
+      <Stash snapshot={snapshot} threadId={threadId} now={at} saved={saved} />
       <Git snapshot={snapshot} />
       <Activity snapshot={snapshot} now={at} />
       <Usage snapshot={snapshot} />
