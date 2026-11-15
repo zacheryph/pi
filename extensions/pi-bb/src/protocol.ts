@@ -2,9 +2,10 @@
 // The plugin keeps its own copy of these shapes and validates every message;
 // change both sides together and bump PROTOCOL_VERSION.
 
-import type { QuestionnaireAnswer, SessionSnapshot } from "#presentation/contract";
+import type { JsonValue, QuestionnaireAnswer, SessionSnapshot } from "#presentation/contract";
 
-export const PROTOCOL_VERSION = 1;
+/** 2: snapshots carry every view's model, and the app runs actions instead of named requests. */
+export const PROTOCOL_VERSION = 2;
 
 /** Environment the plugin contributes to every Pi thread through `experimental_contributeEnv`. */
 export const ENV_URL = "PI_BB_SURFACE_URL";
@@ -25,8 +26,8 @@ export const TERMINAL_CLOSE_CODES: ReadonlySet<number> = new Set([
 
 /** Requests the plugin forwards from bb's UI; answered only to the socket that asked. */
 export type SurfaceRequest =
-  | { command: "stash-preview"; name: string }
-  | { command: "todo-history"; key: string }
+  /** Run an action on the session's bus, e.g. a view's `loadDetail` with the item's `{ id }`. */
+  | { command: "action"; id: string; args?: JsonValue }
   /** `question` is the questionnaire's id (its tool call id). */
   | { command: "answer"; question: string; answer: QuestionnaireAnswer };
 
@@ -69,15 +70,16 @@ export function parsePluginMessage(data: unknown): PluginMessage | undefined {
 function parseRequest(value: unknown): SurfaceRequest | undefined {
   const raw = value as {
     command?: unknown;
-    name?: unknown;
-    key?: unknown;
+    id?: unknown;
+    args?: unknown;
     question?: unknown;
     answer?: unknown;
   } | null;
-  if (raw?.command === "stash-preview" && typeof raw.name === "string")
-    return { command: "stash-preview", name: raw.name };
-  if (raw?.command === "todo-history" && typeof raw.key === "string")
-    return { command: "todo-history", key: raw.key };
+  // The arguments arrived as JSON; the action checks them.
+  if (raw?.command === "action" && typeof raw.id === "string")
+    return raw.args === undefined
+      ? { command: "action", id: raw.id }
+      : { command: "action", id: raw.id, args: raw.args as JsonValue };
   // pi-ask checks the answer against its questionnaire.
   if (raw?.command === "answer" && typeof raw.question === "string")
     return { command: "answer", question: raw.question, answer: raw.answer as QuestionnaireAnswer };

@@ -1,6 +1,5 @@
-import { STASH_PREVIEW_ACTION } from "#stash/events";
-import { defineAction, isJsonObject, type JsonValue } from "#surface";
-import { TODO_HISTORY_ACTION, TODO_SNAPSHOT_EVENT, type TodoSnapshotEvent } from "#todo/events";
+import { defineAction, defineView, isJsonObject } from "#surface";
+import { TODO_SNAPSHOT_EVENT, type TodoSnapshotEvent } from "#todo/events";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 import piBb, { type BbDependencies } from "#src/index";
 import { CLOSE_UNAUTHORIZED, ENV_THREAD, ENV_TOKEN, ENV_URL, readSurfaceEnv } from "#src/protocol";
@@ -72,7 +71,7 @@ describe("pi-bb", () => {
     expect(plugin.paths[0]).toBe("/api/v1/plugins/pi-surface/http/session");
     const [hello] = await plugin.messages(socket, "hello");
     expect(hello).toMatchObject({
-      version: 1,
+      version: 2,
       threadId: "thr_test",
       token: "secret-token",
       snapshot: {
@@ -106,57 +105,66 @@ describe("pi-bb", () => {
     });
   });
 
-  it("answers the plugin's requests through the presentation service", async () => {
+  it("runs the plugin's action requests and sends views in the snapshot", async () => {
     const plugin = new FakePlugin();
     const url = await plugin.start();
     const fake = load(bbEnv(url));
-    // Stand-ins for pi-stash's and pi-todo's actions, which the presentation service dispatches.
-    defineAction(fake.api.events, {
-      id: STASH_PREVIEW_ACTION,
-      title: "Preview",
-      handler: (args) => {
-        const name = isJsonObject(args) && typeof args.name === "string" ? args.name : "";
-        if (name !== "notes") throw new Error(`No stash entry named "${name}" on this branch.`);
-        return { handle: "stash:notes@0123", lines: ["first"], total: 1, complete: true };
-      },
+    // A stand-in for an extension's explorer and the action that loads its details.
+    defineView(fake.api.events, {
+      id: "todo.explorer",
+      kind: "explorer",
+      title: "Todos",
+      model: () => ({
+        title: "Todos",
+        items: [{ id: "fix", label: "fix: Fix the retry loop" }],
+        loadDetail: { action: "todo.inspect" },
+      }),
     });
     defineAction(fake.api.events, {
-      id: TODO_HISTORY_ACTION,
-      title: "History",
+      id: "todo.inspect",
+      title: "Inspect",
       handler: (args) => {
-        const key = isJsonObject(args) && typeof args.key === "string" ? args.key : "";
-        const task = tasks.tasks.find((candidate) => candidate.key === key);
-        if (!task) throw new Error(`No task "${key}" on this branch.`);
-        return JSON.parse(
-          JSON.stringify({ key, createdAt: task.createdAt, updates: task.updates }),
-        ) as JsonValue;
+        const id = isJsonObject(args) && typeof args.id === "string" ? args.id : "";
+        if (id !== "fix") throw new Error(`No task "${id}" on this branch.`);
+        return [{ heading: id }];
       },
     });
-    fake.api.events.emit(TODO_SNAPSHOT_EVENT, tasks);
+    defineAction(fake.api.events, { id: "todo.noop", title: "Nothing", handler: () => {} });
     await start(fake);
     const socket = await plugin.socket();
-    await plugin.messages(socket, "hello");
+    const [hello] = await plugin.messages(socket, "hello");
+    expect(hello).toMatchObject({
+      version: 2,
+      snapshot: {
+        views: [
+          {
+            id: "todo.explorer",
+            kind: "explorer",
+            title: "Todos",
+            model: { items: [{ id: "fix" }], loadDetail: { action: "todo.inspect" } },
+          },
+        ],
+      },
+    });
 
-    socket.send({ type: "request", id: 1, request: { command: "stash-preview", name: "notes" } });
-    socket.send({ type: "request", id: 2, request: { command: "stash-preview", name: "gone" } });
-    socket.send({ type: "request", id: 3, request: { command: "todo-history", key: "fix" } });
-    socket.send({ type: "request", id: 4, request: { command: "focus" } });
-    const results = await plugin.messages(socket, "result", 3);
+    const request = (id: number, body: Record<string, unknown>) =>
+      socket.send({ type: "request", id, request: body });
+    request(1, { command: "action", id: "todo.inspect", args: { id: "fix" } });
+    request(2, { command: "action", id: "todo.inspect", args: { id: "gone" } });
+    request(3, { command: "action", id: "todo.noop" });
+    request(4, { command: "action", id: "todo.missing" });
+    request(5, { command: "action" });
+    request(6, { command: "stash-preview", name: "notes" });
+    const results = await plugin.messages(socket, "result", 4);
     const byId = new Map(results.map((result) => [result.id, result]));
-    expect(byId.get(1)).toEqual({
-      type: "result",
-      id: 1,
-      ok: true,
-      data: { handle: "stash:notes@0123", lines: ["first"], total: 1, complete: true },
-    });
-    expect(byId.get(2)).toMatchObject({ ok: false, error: expect.stringContaining("gone") });
-    expect(byId.get(3)).toMatchObject({
-      ok: true,
-      data: { key: "fix", updates: [{ status: "in_progress", message: "on it" }] },
-    });
-    // Unknown requests are dropped, not answered.
+    expect(byId.get(1)).toEqual({ type: "result", id: 1, ok: true, data: [{ heading: "fix" }] });
+    expect(byId.get(2)).toMatchObject({ ok: false, error: 'No task "gone" on this branch.' });
+    expect(byId.get(3)).toEqual({ type: "result", id: 3, ok: true, data: null });
+    expect(byId.get(4)).toMatchObject({ ok: false, error: 'Unknown action "todo.missing".' });
+    // Malformed and retired requests are dropped, not answered.
     await sleep(50);
-    expect(byId.has(4)).toBe(false);
+    expect(byId.has(5)).toBe(false);
+    expect(byId.has(6)).toBe(false);
   });
 
   it("reconnects after the plugin goes away and says hello again", async () => {
