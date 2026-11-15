@@ -52,15 +52,20 @@ environment values in the thread's `provider.env-resolved` events.
 Messages are JSON, one per WebSocket text frame
 ([`src/protocol.ts`](src/protocol.ts)):
 
-| Direction    | Message                                        | When                                      |
-| ------------ | ---------------------------------------------- | ----------------------------------------- |
-| Pi to plugin | `hello { version, threadId, token, snapshot }` | First, on every connect                   |
-| Pi to plugin | `update { snapshot }`                          | On change, coalesced over 250 ms          |
-| Pi to plugin | `bye { reason: "quit" \| "replace" }`          | `session_shutdown`                        |
-| Pi to plugin | `result { id, ok, data? , error? }`            | Answer to one request                     |
-| Plugin to Pi | `request { id, request }`                      | `stash-preview`, `todo-history`, `answer` |
+| Direction    | Message                                        | When                             |
+| ------------ | ---------------------------------------------- | -------------------------------- |
+| Pi to plugin | `hello { version, threadId, token, snapshot }` | First, on every connect          |
+| Pi to plugin | `update { snapshot }`                          | On change, coalesced over 250 ms |
+| Pi to plugin | `bye { reason: "quit" \| "replace" }`          | `session_shutdown`               |
+| Pi to plugin | `result { id, ok, data? , error? }`            | Answer to one request            |
+| Plugin to Pi | `request { id, request }`                      | `action`, `answer`               |
 
-Requests go to `PresentationService.request()`; unknown ones are dropped. The
+The snapshot carries the session's sections and its views, each with its current
+model (see [pi-presentation](../../packages/pi-presentation/README.md)), so the
+plugin draws every view without asking. `action { id, args? }` runs an action on
+the session's bus, such as an explorer's `loadDetail` for one item, and returns
+its result. Requests go to `PresentationService.request()`; unknown ones are
+dropped. The
 socket reconnects with exponential backoff (0.5 s up to 30 s, timers unref'd).
 Close codes 4400 (unsupported version), 4401 (bad token) and 4409 (a newer
 connection for the thread took over) stop retrying. Pi's RPC mode exits the
