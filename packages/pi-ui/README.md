@@ -317,14 +317,14 @@ loads each extension with its own copy of this library, so the count lives on
 ## Widgets
 
 ```ts
+const counts = stateCounts({ active: running.length, pending: queued });
 const view: WidgetView = {
   title: { label: "Subagents", icon: ICONS.agents },
   active: running.length > 0, // accent heading while active, dim while idle
-  meta: [`${queued} queued`], // right of the heading rule, ordered fallbacks
+  meta: counts ? [counts] : [], // right of the heading rule, ordered fallbacks
   rows: agents.map((agent) => ({
+    lead: { text: elapsed, tone: "dim" }, // drawn two spaces before `left`
     left: [
-      { text: elapsed, tone: "dim" },
-      "  ",
       { text: agent.name, bold: true },
       { text: `: ${agent.task}`, tone: "muted" },
     ],
@@ -340,6 +340,10 @@ const view: WidgetView = {
 const lines = renderWidget(view, width, theme);
 // Or return new Widget(view, theme) from an extension-owned setWidget factory.
 ```
+
+`stateCounts({ active, pending })` gives a widget's heading counts as every
+widget reads them, `2 active / 3 pending`, leaving out a zero count and giving
+`undefined` when both are zero.
 
 Status mapping, sorting, linger, queued counts, progress/review/assignee badges and
 editor/footer reservations belong to the extension; it expresses them as spans,
