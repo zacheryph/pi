@@ -11,6 +11,7 @@ import {
   type WidgetRow,
   type WidgetView,
 } from "#ui";
+import type { StateIcon } from "#surface";
 import {
   isReviewable,
   type TodoActivity,
@@ -232,19 +233,27 @@ export function todoTaskDetail(
  * Status on the right in fallback order: assignee badge drops first, then the
  * status label; the glyph always stays (`keepRight`).
  */
+const TASK_ICONS: Record<string, StateIcon> = {
+  completed: "done",
+  in_progress: "active",
+  blocked: "blocked",
+  pending: "pending",
+};
+
 function statusFallbacks(task: TodoTask, state: TodoState, assignee?: string): Line[] {
   const status = todoTaskPresentation(task, state);
   const badge: Span[] = assignee ? [{ text: `→ ${assignee} · `, tone: "muted" }] : [];
-  const glyph: Span = { text: status.glyph, tone: status.color };
-  const full: Span = { text: `${status.glyph} ${status.label}`, tone: status.color };
+  // The glyph says which state it stands for, so a surface with icons can draw its own.
+  const glyph: Span = { text: status.glyph, tone: status.color, icon: TASK_ICONS[status.label] };
+  const full: Span[] = [glyph, { text: ` ${status.label}`, tone: status.color }];
   return [
     ...(assignee
       ? [
-          [...badge, full],
+          [...badge, ...full],
           [...badge, glyph],
         ]
       : []),
-    [full],
+    full,
     [glyph],
   ];
 }
