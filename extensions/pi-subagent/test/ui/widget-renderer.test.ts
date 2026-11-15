@@ -2,7 +2,12 @@ import { visibleWidth } from "@earendil-works/pi-tui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentTypeRegistry } from "#src/config/agent-types";
 import type { Theme } from "#src/ui/display";
-import { renderWidgetLines, type WidgetAgent, widgetLineBudget } from "#src/ui/widget-renderer";
+import {
+  renderWidgetLines,
+  subagentWidgetModel,
+  type WidgetAgent,
+  widgetLineBudget,
+} from "#src/ui/widget-renderer";
 import {
   withSlot,
   expectBounded,
@@ -485,5 +490,86 @@ describe("waiting rows", () => {
     // oxlint-disable-next-line no-control-regex -- Intentionally matches terminal control characters.
     for (const line of lines) expect(line).not.toMatch(/[\u0000-\u001f\u007f-\u009f]/);
     expect(lines[1]).toContain("waiting: a b c, d e");
+  });
+});
+
+describe("subagentWidgetModel", () => {
+  const params = { registry, shouldShowFinished: () => true, now: NOW };
+
+  it("keeps the clock and the whole status without a terminal width", () => {
+    const long = "x".repeat(200);
+    const model = subagentWidgetModel({
+      ...params,
+      agents: [
+        makeAgent({ responseText: long }),
+        makeAgent({ id: "q", status: "queued" }),
+        makeAgent({ id: "done", status: "completed", completedAt: NOW - 1_000 }),
+      ],
+    });
+    expect(model).toMatchObject({
+      title: { label: "Subagents" },
+      active: true,
+      meta: [{ text: "1 queued", tone: "dim" }],
+    });
+    expect(model?.rows).toHaveLength(2);
+    expect(model?.rows[0]).toEqual({
+      // A running clock carries its start, so a surface that does not redraw can keep it going.
+      left: [
+        { text: "01:23", tone: "dim", since: NOW - 83_000 },
+        "  ",
+        { text: "agent", bold: true },
+        ": ",
+        { text: "test task", tone: "muted" },
+      ],
+      // A still glyph instead of the terminal's spinner frame; the line is not clipped.
+      right: [
+        [
+          { text: "●", tone: "accent", icon: "active" },
+          { text: ` ${"x".repeat(60)}…`, tone: "muted" },
+        ],
+      ],
+      group: "running",
+    });
+    // A finished agent's time is fixed: no start to count from.
+    expect((model!.rows[1]!.left as readonly unknown[])[0]).toEqual({ text: "01:22", tone: "dim" });
+    expect(model?.rows[1]).toMatchObject({
+      right: [
+        [
+          { text: "✓", tone: "success", icon: "done" },
+          { text: " done", tone: "success" },
+        ],
+      ],
+    });
+    // The model is JSON: it reaches a remote surface unchanged.
+    expect(JSON.parse(JSON.stringify(model))).toEqual(model);
+  });
+
+  it("marks every status glyph with its state, and a waiting agent with an icon only", () => {
+    const icons = (agent: WidgetAgent) => {
+      const right = subagentWidgetModel({ ...params, agents: [agent] })?.rows[0]?.right?.[0];
+      return (Array.isArray(right) ? right : [right]).flatMap((span) =>
+        typeof span === "object" && span.icon ? [[span.icon, span.text]] : [],
+      );
+    };
+    const done = { completedAt: NOW - 1_000 };
+    expect(icons(makeAgent({ status: "stopped", ...done }))).toEqual([["stopped", "■"]]);
+    expect(icons(makeAgent({ status: "error", error: "boom", ...done }))).toEqual([
+      ["failed", "✗"],
+    ]);
+    expect(icons(makeAgent({ status: "aborted", ...done }))).toEqual([["stopped", "✗"]]);
+    expect(icons(makeAgent({ status: "completed", waitingOn: ["job"], ...done }))).toEqual([
+      ["waiting", ""],
+    ]);
+  });
+
+  it("is nothing while no agent runs, waits, queues or lingers", () => {
+    expect(subagentWidgetModel({ ...params, agents: [] })).toBeUndefined();
+    expect(
+      subagentWidgetModel({
+        ...params,
+        agents: [makeAgent({ status: "completed", completedAt: NOW })],
+        shouldShowFinished: () => false,
+      }),
+    ).toBeUndefined();
   });
 });
