@@ -3,6 +3,7 @@ import { TODO_SNAPSHOT_EVENT, type TodoSnapshotEvent } from "#todo/events";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 import piBb, { type BbDependencies } from "#src/index";
 import { CLOSE_UNAUTHORIZED, ENV_THREAD, ENV_TOKEN, ENV_URL, readSurfaceEnv } from "#src/protocol";
+import { ENV_BB_SKILLS, ENV_KEEP_ENVIRONMENT_TOOL } from "#src/prompt";
 import { FakePlugin } from "#test/fake-plugin";
 import { fakePi, sleep } from "#test-helpers";
 
@@ -274,6 +275,83 @@ describe("readSurfaceEnv", () => {
       threadId: "thr_1",
       token: "t",
       url: "wss://bb.example/api/v1/plugins/pi-surface/http/session",
+    });
+  });
+
+  describe("bb skills", () => {
+    const bb = (name: string) => ({
+      name,
+      filePath: `/Users/me/.bb/runtime/global-skills/h1/skills/${name}/SKILL.md`,
+    });
+    const own = (name: string) => ({ name, filePath: `/work/api/skills/${name}/SKILL.md` });
+    const skills = () => [
+      bb("pi-provider"),
+      bb("inline-vis"),
+      own("todo"),
+      bb("thread-list"),
+      own("pi-provider"),
+    ];
+    async function run(env: NodeJS.ProcessEnv, mode = "rpc") {
+      const fake = load(env);
+      const options = { skills: skills() };
+      await fake.emit("before_agent_start", { systemPromptOptions: options }, fakeCtx(mode));
+      return options.skills.map(
+        (skill) => `${skill.filePath.includes(".bb") ? "bb" : "own"}:${skill.name}`,
+      );
+    }
+
+    it("keeps only inline-vis of the skills bb injects, and all of your own", async () => {
+      expect(await run({ [ENV_THREAD]: "thr_test" })).toEqual([
+        "bb:inline-vis",
+        "own:todo",
+        "own:pi-provider",
+      ]);
+    });
+
+    it("takes the allowlist from the environment, and an empty value allows none", async () => {
+      expect(
+        await run({ [ENV_THREAD]: "thr_test", [ENV_BB_SKILLS]: " thread-list, inline-vis " }),
+      ).toEqual(["bb:inline-vis", "own:todo", "bb:thread-list", "own:pi-provider"]);
+      expect(await run({ [ENV_THREAD]: "thr_test", [ENV_BB_SKILLS]: "" })).toEqual([
+        "own:todo",
+        "own:pi-provider",
+      ]);
+    });
+
+    it("leaves skills alone outside a bb RPC thread", async () => {
+      expect(await run({}, "rpc")).toHaveLength(5);
+      expect(await run({ [ENV_THREAD]: "thr_test" }, "print")).toHaveLength(5);
+    });
+  });
+
+  describe("environment tool", () => {
+    const text =
+      "Keep tests green.\n\nIf the user asks you to move this thread, call `update_environment_directory` with its path.\n\nBe brief.";
+    async function run(env: NodeJS.ProcessEnv, mode = "rpc") {
+      const fake = load(env);
+      const options = {
+        selectedTools: ["read", "update_environment_directory", "bash"],
+        appendSystemPrompt: text,
+      };
+      await fake.emit("before_agent_start", { systemPromptOptions: options }, fakeCtx(mode));
+      return options;
+    }
+
+    it("removes the tool and its instruction in a bb thread, keeping other text", async () => {
+      const options = await run({ [ENV_THREAD]: "thr_test" });
+      expect(options.selectedTools).toEqual(["read", "bash"]);
+      expect(options.appendSystemPrompt).toBe("Keep tests green.\n\nBe brief.");
+    });
+
+    it("keeps both when PI_BB_ENVIRONMENT_TOOL=1, and outside a bb RPC thread", async () => {
+      for (const options of [
+        await run({ [ENV_THREAD]: "thr_test", [ENV_KEEP_ENVIRONMENT_TOOL]: "1" }),
+        await run({}),
+        await run({ [ENV_THREAD]: "thr_test" }, "print"),
+      ]) {
+        expect(options.selectedTools).toHaveLength(3);
+        expect(options.appendSystemPrompt).toBe(text);
+      }
     });
   });
 });
