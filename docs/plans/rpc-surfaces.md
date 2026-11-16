@@ -7,6 +7,8 @@ Packages 1 to 7 below record the initial rollout. The
 [views-only sessions plan](views-only-snapshot.md) defines the next architecture:
 core observation belongs to system-insights, surface collects shared views,
 and both dashboard and bb consume them. It replaces the original package 8.
+The [implementation sequence](views-only-implementation.md) breaks that work
+into eight PRs with dependencies and completion checks.
 
 ## Goal
 
