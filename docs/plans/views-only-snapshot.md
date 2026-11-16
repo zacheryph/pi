@@ -1,173 +1,201 @@
-# Views-only snapshot: packages stop depending on extensions
+# Views-only sessions: system insights, surface, dashboard and bb
 
-Status: planned · follows [RPC surfaces](rpc-surfaces.md), packages 6 to 8
+Status: planned · follows [RPC surfaces](rpc-surfaces.md), packages 6 and 7;
+supersedes that plan's original dashboard-removal package 8
 
 ## Goal
 
-- No workspace under `packages/` imports an extension. Packages are generic
-  supporting libraries; extensions depend on them, never the reverse.
-- Session state leaves an extension one way: as a `pi-surface` view, with
-  `pi-surface` actions for anything on demand.
-- The session snapshot stays one JSON object per session on the wire.
+- Each extension owns its state and publishes it through `pi-surface` views
+  and actions. Packages never import extensions.
+- `pi-system-insights` owns observation of Pi's core session information and
+  publishes it as another structured surface view.
+- `pi-surface` owns the shared models, view collection and action routing.
+  Remove `pi-presentation`; do not introduce a `pi-snapshot` package.
+- Update both `pi-dashboard` and bb to consume the shared views. Dashboard
+  remains supported and retains terminal Focus.
+- Deliver one complete snapshot per session. Each received snapshot replaces
+  the previous one; there are no incremental updates to merge.
 
-Non-goals: porting `pi-dashboard` to the view model (it is frozen and removed
-in [RPC surfaces](rpc-surfaces.md) package 8), splitting the snapshot into
-several wire messages, and the import cycle between `pi-foundations` and
-`pi-ui` (`#ui/text` one way, `#foundations/errors` the other), which is
-separate work.
+Non-goals: changing Pi's ordinary chat/tool-output channel, sharing specialized
+keyboard interfaces such as the subagent watch overlay, and resolving the
+separate import cycle between `pi-foundations` and `pi-ui`.
 
-## Where things stand
+## Current duplication
 
-`pi-presentation` (1,280 lines of source) is the only package that imports
-extensions: `pi-git`, `pi-stash`, `pi-todo` and `pi-subagent` through its import
-map, and `pi-ask` by re-declaring its `ask:opened`, `ask:closed` and
-`ask.answer` strings. It also re-declares pi-subagent's `agent:profile` entry
-key.
+`pi-presentation` has 1,280 source lines, including comments, blank lines and
+types. It knows `pi-git`, `pi-stash`, `pi-todo`, `pi-subagent` and `pi-ask`.
 
-| Part                                                               | Lines | Knows extensions     |
-| ------------------------------------------------------------------ | ----- | -------------------- |
-| Wire types (`contract.ts`)                                         | 324   | Yes: section types   |
-| Section projections (`sections.ts`, `subagents.ts`, `ask-user.ts`) | 447   | Yes                  |
-| `service.ts`: section cache, view collector, request router        | 207   | Partly               |
-| Session trackers (`status`, `activity`, `usage`, `snapshot`)       | 302   | Only `agent:profile` |
+| Part                                  | Lines | Responsibility                                       |
+| ------------------------------------- | ----- | ---------------------------------------------------- |
+| Wire types                            | 324   | Session information and extension-specific sections  |
+| Section projections                   | 447   | Translate extension events into older sections       |
+| Service                               | 207   | Cache sections, collect views and forward requests   |
+| Session trackers and snapshot builder | 302   | Core status, activity, usage and session information |
 
-The same state leaves an extension by parallel paths. For pi-todo:
+For example, todo state currently leaves pi-todo both as an older section and
+as widget/explorer views. Both are delivered to bb; different UI locations
+read different representations. Dashboard reads only sections and strips views.
+The older task-history, stash-preview and answer request names also wrap
+actions already owned by the extensions.
 
-1. The `todo:snapshot` bus event, projected by `pi-presentation` into the
-   snapshot's `todos` section.
-2. The `todo.widget` and `todo.explorer` views, collected into the snapshot's
-   `views`.
-3. Actions (`todo.history`, `todo.inspect`, `todo.review`), run on demand.
-4. The `todo-history` request, an alias for the action in 3.
+The current bb saved-session handling settles the older agent section but
+leaves shared views untouched. This creates a risk of restored cards showing
+running agents after Pi has stopped. It is visible in code and has not yet
+been reproduced in bb.
 
-Paths 2 and 3 are generic: `pi-presentation` calls each view's `model()` when
-it builds a snapshot and knows nothing about what the model holds. Paths 1 and
-4 are the older design and the only reason the package imports extensions.
-Nothing but `pi-presentation` subscribes to the four `*:snapshot` events.
+## Ownership
 
-Who still reads sections:
+| Owner                | Produces or handles                                                                                                       |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `pi-system-insights` | Core session identity, selected model/thinking, context usage, status, recent tool activity and session token/cost totals |
+| Other extensions     | Their own state, main-agent profile information, widgets, explorers, questions and actions                                |
+| `pi-surface`         | Portable view models and validation, per-session registries, collection, error/size bounds and action dispatch            |
+| `pi-ui`              | Terminal rendering and input over shared models                                                                           |
+| `pi-dashboard`       | Dashboard rendering, hub connection, terminal discovery and Focus                                                         |
+| `pi-bb`              | Connection to the bb plugin, complete-snapshot delivery and incoming action requests                                      |
+| bb plugin            | Latest received snapshots, saved snapshots, bb rendering and forwarding actions to live sessions                          |
 
-| Consumer       | Reads                                                                                                                                                                                                       |
-| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bb-plugin`    | Views for stack cards and the Pi tab's explorers. Sections for the context row counts, sessions page summary, row badge, stash picker, stash count, git card, questionnaires and the saved-snapshot rewrite |
-| `pi-dashboard` | Sections only; it strips `views` before sending to its hub                                                                                                                                                  |
+Neither surface nor the adapters read another extension's private session
+entries. In particular, pi-subagent exposes the main-agent identity through
+its own view; the generic snapshot builder no longer reads `agent:profile`.
+Extend the shared vocabulary where a consumer needs structured profile data.
 
-Two things follow from carrying the state twice:
+## Views and delivery snapshots
 
-- `pi-presentation`'s `request()` adds no routing of its own. `view`, `actions`
-  and `action` pass straight to `pi-surface`; `todo-history`, `stash-preview`
-  and `answer` are fixed aliases for actions, with clipping.
-- The bb plugin's `offline()` settles a saved snapshot by rewriting the
-  `subagents` section and dropping `questions`, but passes `views` through
-  untouched. The stack cards draw from views, so a restored thread can show
-  agents as running. Read from the code; not yet reproduced in bb.
+These are different objects:
 
-## Design
+- **System view:** core information owned by system-insights. It does not
+  enumerate or embed other views.
+- **Delivery snapshot:** a small envelope containing connection/session
+  identity, protocol information and the complete set of collected views,
+  including the system view. It is not a registered view and has no domain
+  state of its own.
 
-- **One object on the wire.** Both receivers serve one object per session (the
-  plugin's `snapshot` RPC, the hub's page feed), and the plugin saves one row
-  per thread for restore. Per-extension messages would move the merge out of Pi
-  into each receiver and remove nothing.
-- **Views are the snapshot mechanism.** `defineView({ id, model })` is already
-  a callback the collector runs at snapshot time. No second registry for
-  sections is added.
-- **Counts come from the model.** A consumer that shows a count (context row,
-  sessions page, row badge) reads it from the widget model, not from a typed
-  section. The subagent widget already carries its counts in `meta`.
-- **A questionnaire is a view.** `pi-surface` gains a `form` kind: questions
-  and options as JSON, and an action reference to submit. pi-ask defines
-  `ask.questions` and tracks its own open questionnaires. The terminal keeps
-  its keyboard-driven component over the same state, as the watch overlay does.
-- **Saved views settle by a generic rule.** `offline()` rewrites any view model
-  through the model vocabulary alone: `active`, `queued` and `waiting` icons
-  become `stopped`, `since` clocks are dropped, a widget's `active` is false,
-  and `form` views are removed.
-- **What remains is a small generic package.** Status, activity, usage, the
-  snapshot builder and the view collector, about 400 lines, renamed
-  `pi-snapshot`.
+Surface's collector reads each registered provider when a delivery is built.
+View reads are side-effect-free: reading never announces another change.
+Adapters batch change notifications and use the collector; they do not keep
+their own merged copies of extension state. A missing, hidden or removed view
+is absent from the next complete snapshot and therefore disappears at the
+receiver. One failing view becomes an error entry without blocking other views.
+
+Receivers replace their previous complete snapshot. Dashboard's hub keeps its
+latest received session records for its page; the bb plugin keeps the latest
+record and saves it for thread restoration. These are received snapshots,
+not authoritative extension state. A new live connection replaces the saved
+record; do not merge stale saved fields into a live snapshot. Preserve existing
+connection identity checks so an older process cannot overwrite its replacement.
+
+Actions travel back through the appropriate connection and surface's action
+registry to the owning extension. Results return along that same connection;
+any resulting state change also produces a new complete snapshot. Ordinary
+chat and tool output continue through Pi's existing provider channel.
+Dashboard's host-specific Focus request remains in its adapter.
+
+## New shared structures
+
+New surface structures are in scope; avoid encoding machine-readable values
+in formatted text.
+
+- Add a first-class `session` view kind and portable model for core session
+  information: identity/name/directory, model/thinking/context, status and its
+  timestamp, recent activity, token/cost totals, process start and Pi version.
+  System-insights provides `system.session`. Surface defines the data shape
+  without importing the extension or Pi's runtime. Dashboard and bb can use
+  its structured fields in their headers and session summaries.
+- Add a `form` view kind for questionnaires, including questions, options,
+  multi-select and a submit action reference. pi-ask owns open forms and answer
+  validation; dashboard and bb both render and submit this model. The terminal
+  can keep its specialized questionnaire component over the same owned state.
+- Add explicit numeric summary fields to shared widget models for counts used
+  by badges and session summaries. Keep display text as display text; consumers
+  never parse counts from `meta` or labels.
+- Define process-bound status/clock semantics for saved views. Settling a saved
+  snapshot marks live activity inactive and removes live forms. Do not rewrite
+  persisted task states simply because they share an icon with runtime states.
+  Apply the same semantics in dashboard and bb wherever saved data is shown.
+
+An unavailable system-insights extension does not prevent delivery of other
+views or routing of their actions. The delivery envelope retains the minimum
+identity needed to route the session; consumers tolerate a missing system view.
+System-insights does not depend on bb or dashboard to run.
+
+## Core observation in system-insights
+
+Move the existing core status, activity and usage logic into system-insights,
+with session-scoped lifecycle handling. Remove duplicate core observation from
+dashboard and pi-bb once both read `system.session`.
+
+- Start observation early enough to capture the first session events, and
+  announce a usable initial view. Reads use the current session context.
+- Reset process-bound activity on session replacement, shutdown and reload;
+  dispose registrations so the same session bus has no duplicate providers.
+  Child sessions retain their own observers and registries.
+- Preserve status precedence: waiting for input, compacting, running a tool,
+  working, then idle. Retain current filtering of nested tool calls.
+- Preserve whole-session billed usage across abandoned branches and compaction
+  records. Current context usage and branch-local data keep their own scopes.
+  Cache usage totals inside their owner and invalidate when session history
+  changes; do not rescan all history for every status-only refresh.
+- Announce changes on relevant lifecycle, model, thinking, name, context and
+  history changes. Batch transport publishes without turning reads into writes.
+- Keep prompt/tool/skill inspectors on demand. Do not include prompt contents
+  or tool schemas in every status update.
+
+## Dashboard and bb migration
+
+Dashboard is an active consumer of this design. Update its page and hub to
+render the same session, widget, explorer, detail and form models as bb, and
+send generic action requests. Preserve its terminal-session selection,
+terminal discovery, Focus and connection lifecycle in its own adapter.
+
+Both consumers migrate their header, activity, usage, context counts, session
+summary, badges, stash picker, Git displays and questionnaires to shared views.
+The bb stash picker still inserts the selected handle locally. Filtering,
+switching tabs and opening an included detail remain local UI behavior; loading
+missing details or marking updates reviewed invokes the owning action.
+
+Do not move the old projections into dashboard. Migrate their consumers, then
+delete the projections and aliases when both consumers have stopped using them.
+No permanent compatibility layer is added to protect the older data shape.
 
 ## Work packages
 
-Each is one pull request. "Base" is the branch it stacks on.
+Each is a reviewable implementation PR. This PR remains documentation only.
 
-| #   | Branch                            | Base   | Scope                                                              |
-| --- | --------------------------------- | ------ | ------------------------------------------------------------------ |
-| 0   | `claude/views-only-0-plan`        | `main` | This plan                                                          |
-| 1   | `claude/views-only-1-bb-views`    | `main` | bb plugin reads views for everything but questions                 |
-| 2   | `claude/views-only-2-form-view`   | 1      | `form` view kind; pi-ask's questionnaire view; pi-bb protocol 3    |
-| 3   | `claude/views-only-3-pi-snapshot` | 2      | Projections move to `pi-dashboard`; package becomes `pi-snapshot`  |
-| 4   | later (RPC surfaces 8)            | 3      | Remove `pi-dashboard`, the projections and the `*:snapshot` events |
+| Step | Scope                                                                                                                                         | Depends on |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| 1    | Add portable session/form models, numeric summaries, delivery-envelope types and generic collection in pi-surface                             | This plan  |
+| 2    | Publish system.session from system-insights and forms from pi-ask; complete extension summaries/profile views                                 | 1          |
+| 3    | Migrate dashboard and bb to shared views/actions, update their protocols together with their receivers, and remove duplicate core observation | 2          |
+| 4    | Delete pi-presentation, old section events/types/projections and fixed request aliases; enforce package dependency direction                  | 3          |
 
-### 1. bb plugin reads views
+Step 3 can be split by consumer for review. Transitional old data may remain
+only until both migrations land; step 4 removes it rather than relocating it.
+Do not silently reinterpret an older wire protocol as the new shape: bump and
+check protocol versions for both dashboard and bb, and handle old saved bb
+snapshots explicitly with a migration or invalidation.
 
-- Context row segment, sessions page summary and row badge take task and agent
-  counts from `todo.widget` and `subagent.widget`. Check that the todo widget
-  carries done and total counts and the active task; add them to its model if
-  it does not. If text in `meta` is not enough for the sessions page, add
-  optional numeric counts to `WidgetModel` in `pi-surface`.
-- Stash picker and stash count row read `stash.explorer`; its item ids are
-  already the handles the picker inserts.
-- Git card rows read `git.worktrees` and `git.prs` through the generic row
-  renderer in `ui/surface.tsx`.
-- `offline()` applies the generic settle rule to views. First reproduce the
-  running-agents-after-restart case with the `bb-screenshot` skill and keep it
-  as a test.
-- Done when: `bb-plugin` imports no `TodoSection`, `StashSection`, `GitSection`
-  or `SubagentsSection`; its tests pass; `bb-shot.mjs --expand --check` passes;
-  `docs/bb/ui-slots.md` is updated.
+The collector keeps the existing 256 KB per-view bound and isolates provider
+errors. Preserve receiver message limits and verify the complete envelope fits;
+a per-view bound alone is not a bound on a session with many views.
 
-### 2. Questionnaires as a `form` view
+## Completion and verification
 
-- `pi-surface`: `FormModel` (questions, options, multi-select, submit action
-  reference), its guard, and `form` in `ViewKind`. `pi-ui` does not draw it.
-- pi-ask defines `ask.questions`, announces changes when a questionnaire opens
-  or closes, and bounds its own text. `ask.answer` validates as it does today.
-- `bb-plugin`: `ui/questionnaire.tsx` draws the `form` model and submits
-  through `action`; the server raises its interaction from the view.
-- pi-bb protocol 3: the snapshot carries no sections, and the only request is
-  `action { id, args? }`. pi-bb stops calling `presentation.snapshot()` for
-  sections and `closeQuestion()`.
-- Done when: `bb-plugin` and pi-bb import no section or questionnaire type from
-  `pi-presentation`, and a scenario answers a question from bb end to end.
+- No package import map names an extension. Add the rule to `verify:bundle`
+  and `AGENTS.md`; no exceptions for presentation or session collection.
+- Neither dashboard nor bb reads extension sections or parses machine values
+  from display strings. Both show the same observed session information and
+  dispatch actions through surface.
+- Verify initial publication, missing system-insights, branch/session changes,
+  reload, replacement connections, restored snapshots, view disappearance,
+  provider errors and size limits. Check usage totals retain their scope.
+- Exercise dashboard Focus, task review/history, stash preview and form answers
+  in both consumers; verify supported interaction against live sessions.
+- Reproduce the stale-running saved-card case in bb before fixing it, and
+  retain a regression test. Include new session/form models in renderer tests.
+- Run `npm run check`, `npm test` and `npm run verify:bundle` for implementation
+  changes. For bb changes, also run its own typecheck/tests and
+  `bb-shot.mjs --expand --check`; update `docs/bb/ui-slots.md`.
 
-### 3. `pi-snapshot`
-
-- Move `sections.ts`, `subagents.ts`, `ask-user.ts`, the section types and the
-  three alias requests into `pi-dashboard`, their only remaining consumer. Its
-  import map already names the four extensions. pi-subagent exports the
-  main-agent name lookup so the snapshot builder takes it as input.
-- Rename `packages/pi-presentation` to `packages/pi-snapshot`: session
-  trackers, snapshot builder, view collector with the 256 KB bound, and the
-  session-level contract types. It imports `pi-surface`, `pi-foundations` and
-  `pi-session-state` only.
-- Adapters call `dispatchAction` from `pi-surface` directly; `request()` and
-  `PresentationService` are gone.
-- `npm run verify:bundle` fails when a `packages/*/package.json` import map
-  names a workspace under `extensions/`. Add the rule to `AGENTS.md`.
-- Done when: the check passes with no exceptions listed, and `pi-dashboard`
-  behaves as before with its tests unchanged in intent.
-
-### 4. Remove `pi-dashboard`
-
-This is [RPC surfaces](rpc-surfaces.md) package 8, with more to delete:
-
-- `pi-dashboard`, including the projections moved in 3.
-- The `todo:snapshot`, `stash:snapshot`, `git:snapshot` and `subagent:snapshot`
-  events and their payload types, and `ask:opened` / `ask:closed` if pi-ask's
-  own view no longer needs them.
-
-## Verification
-
-Every package: `npm run check`, `npm test`, `npm run verify:bundle`. Packages
-that touch `bb-plugin/` also pass `bb-shot.mjs --expand --check`. Changelogs
-are maintained by the weekly workflow. Commits use
+Changelogs are maintained by the weekly workflow. Commits use
 `git -c commit.gpgsign=false commit`.
-
-## Open questions
-
-- Is `form` the right home for questionnaires, or should they stay the one
-  typed exception, owned by pi-ask? The plan assumes `form`.
-- Do the sessions page and context row need numeric counts in `WidgetModel`,
-  or is the widget's `meta` text enough?
-- Keep the name `pi-presentation` or rename to `pi-snapshot`? The plan assumes
-  the rename.

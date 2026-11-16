@@ -3,6 +3,11 @@
 Status: in progress · Pi SDK checked: `@earendil-works/pi-coding-agent` 1.5.2 ·
 bb checked: 0.49.0 (`get-bb/bb` at `63df380`)
 
+Packages 1 to 7 below record the initial rollout. The
+[views-only sessions plan](views-only-snapshot.md) defines the next architecture:
+core observation belongs to system-insights, surface collects shared views,
+and both dashboard and bb consume them. It replaces the original package 8.
+
 ## Goal
 
 - An extension keeps one copy of its logic and works in Pi's terminal UI and in
@@ -17,6 +22,10 @@ keyboard-driven views such as the subagent watch overlay. Those keep one
 component per surface over shared state.
 
 ## How a session reaches each surface
+
+The following diagrams show the implemented route before package 8. That
+migration keeps the connections, replaces presentation with surface's collector,
+and adds system-insights as the producer of the core session view.
 
 ```text
 extension ── ctx.ui.*, tools, pi.events ──► pi
@@ -36,16 +45,16 @@ React slots ◄─────────────────────�
 React slots ─► bb.rpc ─► plugin server ─► same socket ─► pi-bb ─► action registry
 ```
 
-## Layers
+## Layers after the views-only migration
 
-| Layer                  | Package                            | Knows about                                                                   |
-| ---------------------- | ---------------------------------- | ----------------------------------------------------------------------------- |
-| Domain                 | each extension                     | Its state; publishes `*:snapshot` on `pi.events`                              |
-| View model and actions | `pi-surface` (new)                 | Plain data: lines, blocks, widgets, explorers, action references. No `pi-tui` |
-| Projection             | `pi-presentation`                  | One session's sections, views and action dispatch                             |
-| Terminal renderer      | `pi-ui`                            | `pi-tui`; draws the view model                                                |
-| Dashboard              | `pi-dashboard`                     | Hub and page; terminal sessions only. Frozen                                  |
-| bb adapter             | `pi-bb` (new) + `bb-plugin/` (new) | bb's plugin SDK; draws the view model in bb's slots                           |
+| Layer                | Package                            | Knows about                                                                                                  |
+| -------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Domain               | each extension                     | Its own state, published through shared views and actions                                                    |
+| Core observation     | `pi-system-insights`               | Session identity, model/context, status, activity and usage as a session view                                |
+| Views and collection | `pi-surface`                       | Portable models, session/form structures, complete view collection and action routing. No Pi runtime imports |
+| Terminal renderer    | `pi-ui`                            | `pi-tui`; draws the view model                                                                               |
+| Dashboard            | `pi-dashboard`                     | Shared-view renderer, hub connection and terminal Focus                                                      |
+| bb adapter           | `pi-bb` (new) + `bb-plugin/` (new) | bb's plugin SDK; draws the view model in bb's slots                                                          |
 
 Rules that hold across layers:
 
@@ -53,12 +62,17 @@ Rules that hold across layers:
   marker, remove a worktree) it carries an action reference, not a function.
 - An action is registered once and called from a slash command, a terminal key
   hint or a remote request.
-- A session reports to one surface, never two: the dashboard in the terminal,
-  `pi-bb` under RPC. `pi-bb` builds its own `PresentationService` and never
-  starts or reports to the dashboard hub.
-- `pi-dashboard` is frozen. It gets no new work, other packages do not have to
-  stay compatible with it, and it is removed (package 8) once bb's session
-  panel has replaced it.
+- Dashboard reports terminal sessions; `pi-bb` reports RPC sessions to the bb
+  plugin without starting or reporting to the dashboard hub. Both use surface's
+  collector and actions, with core data supplied by system-insights.
+- Dashboard is supported and migrates alongside bb. Update its renderer and
+  protocol to shared views; delete older section projections after both
+  consumers migrate. Do not retain a compatibility layer for dashboard.
+- Each delivery contains a complete set of views and replaces the previous
+  received snapshot. Adapters batch notifications and deliver snapshots; they
+  do not merge incremental domain updates. The bb plugin stores the latest
+  received snapshot for rendering and thread restoration; the dashboard hub
+  keeps its latest received session records for its page.
 - Registries live on the session's `pi.events` bus, not `globalThis`: subagent
   children load the same extensions in the same process.
 - Text a user must see in RPC mode goes through
@@ -68,18 +82,18 @@ Rules that hold across layers:
 
 Each is one pull request. "Base" is the branch it stacks on.
 
-| #   | Branch                            | Base   | Scope                                                                |
-| --- | --------------------------------- | ------ | -------------------------------------------------------------------- |
-| 0   | `claude/rpc-0-docs`               | `main` | This plan and the two bb documents                                   |
-| 1   | `claude/rpc-1-surface-model`      | `main` | `pi-surface`: view model and action registry; `pi-ui` draws it       |
-| 2   | `claude/rpc-2-rpc-commands`       | `main` | Every command has a result without a terminal                        |
-| 3   | `claude/rpc-3-main-agent-env`     | `main` | `PI_MAIN_AGENT` selects the root agent                               |
-| 4   | `claude/rpc-4-agent-models`       | 3      | Agents as virtual models in the model picker                         |
-| 5   | `claude/rpc-5-bb-surface`         | `main` | `pi-bb` adapter and the bb plugin with one example per slot          |
-| 6   | `claude/rpc-6-presentation-views` | 1      | `pi-presentation` publishes views and dispatches actions             |
-| 7   | `claude/eloquent-mayer-a107he`    | 5, 6   | bb plugin draws `pi-surface` views generically; actions from the app |
-| 8   | later                             | 5      | Remove `pi-dashboard` once bb's session panel replaces it            |
-| 9   | later                             | 5      | Tool rows: structured `details` and bb timeline renderers            |
+| #   | Branch                            | Base   | Scope                                                                                              |
+| --- | --------------------------------- | ------ | -------------------------------------------------------------------------------------------------- |
+| 0   | `claude/rpc-0-docs`               | `main` | This plan and the two bb documents                                                                 |
+| 1   | `claude/rpc-1-surface-model`      | `main` | `pi-surface`: view model and action registry; `pi-ui` draws it                                     |
+| 2   | `claude/rpc-2-rpc-commands`       | `main` | Every command has a result without a terminal                                                      |
+| 3   | `claude/rpc-3-main-agent-env`     | `main` | `PI_MAIN_AGENT` selects the root agent                                                             |
+| 4   | `claude/rpc-4-agent-models`       | 3      | Agents as virtual models in the model picker                                                       |
+| 5   | `claude/rpc-5-bb-surface`         | `main` | `pi-bb` adapter and the bb plugin with one example per slot                                        |
+| 6   | `claude/rpc-6-presentation-views` | 1      | `pi-presentation` publishes views and dispatches actions                                           |
+| 7   | `claude/eloquent-mayer-a107he`    | 5, 6   | bb plugin draws `pi-surface` views generically; actions from the app                               |
+| 8   | views-only sessions               | 5, 7   | Core data in system-insights; surface collection; migrate dashboard and bb; remove pi-presentation |
+| 9   | later                             | 5      | Tool rows: structured `details` and bb timeline renderers                                          |
 
 ### 1. `pi-surface`: view model and action registry
 
@@ -173,8 +187,8 @@ Each is one pull request. "Base" is the branch it stacks on.
   providers on the bus; `PresentationService.snapshot()` gains `views`.
 - `request()` gains `view` (an explorer or detail model by id) and `action`
   (dispatch through the registry). `todo-history`, `stash-preview` and `answer`
-  become actions; their old request names stay as aliases only while the
-  dashboard exists.
+  become actions; their old request names remain only until dashboard and bb
+  migrate to generic action requests in package 8.
 - pi-todo and pi-stash move first; pi-git and pi-subagent follow in 7.
 - The snapshot carried only widget models here; 7 adds every kind.
 
@@ -189,8 +203,8 @@ Each is one pull request. "Base" is the branch it stacks on.
   out of what it sends its hub.
 - pi-bb protocol 2: the snapshot carries `views`, and the app's requests are
   `action { id, args? }` and `answer`. The bb plugin no longer sends
-  `stash-preview` or `todo-history`; pi-presentation keeps them for the
-  dashboard until 8.
+  `stash-preview` or `todo-history`; pi-presentation keeps them until the
+  dashboard migration in 8.
 - The plugin's `ui/surface.tsx` draws widgets, explorers and details. Widget
   views are the stack cards, from a table of view id and icon; explorer views
   are the Pi tab's sections, in a fixed order with any other after. Items open
@@ -206,14 +220,13 @@ Each is one pull request. "Base" is the branch it stacks on.
 
 ### Later
 
-- **8:** remove `pi-dashboard` (hub, page, reporter and tests, about 4,400
-  lines) and the request aliases kept for it. Its page is the one place that
-  draws every section a second time by hand; it is not worth porting to the
-  view model. Do this once the bb plugin's session panel covers the overview
-  and Focus is no longer needed for terminal sessions.
-- [Views-only snapshot](views-only-snapshot.md) plans what comes before 8:
-  the bb plugin stops reading sections, and `pi-presentation` stops importing
-  extensions.
+- **8:** implement the [views-only sessions plan](views-only-snapshot.md).
+  System-insights publishes core session information as a structured view;
+  surface owns the generic collector and shared session/form models. Update
+  both dashboard and bb to read views and send actions, preserving dashboard
+  Focus. Delete `pi-presentation`, old section events/projections and fixed
+  request aliases after both migrations. No separate snapshot package or
+  dashboard-only section translation remains.
 - **9:** tool results carry structured `details` everywhere, and the plugin
   registers timeline renderers for subagent and todo rows.
 
