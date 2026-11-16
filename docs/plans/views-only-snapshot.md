@@ -3,6 +3,9 @@
 Status: planned · follows [RPC surfaces](rpc-surfaces.md), packages 6 and 7;
 supersedes that plan's original dashboard-removal package 8
 
+The [implementation plan](views-only-implementation.md) specifies the eight-PR
+order, dependencies, cutover checks and remaining saved-cache policy decision.
+
 ## Goal
 
 - Each extension owns its state and publishes it through `pi-surface` views
@@ -106,9 +109,10 @@ in formatted text.
   multi-select and a submit action reference. pi-ask owns open forms and answer
   validation; dashboard and bb both render and submit this model. The terminal
   can keep its specialized questionnaire component over the same owned state.
-- Add explicit numeric summary fields to shared widget models for counts used
-  by badges and session summaries. Keep display text as display text; consumers
-  never parse counts from `meta` or labels.
+- Add a `summary` view kind with explicit numeric counts and optional
+  producer-owned profile identity for badges and session summaries. Summaries
+  remain available when widgets are hidden or display lists are truncated.
+  Consumers never parse counts from `meta` or labels.
 - Define process-bound status/clock semantics for saved views. Settling a saved
   snapshot marks live activity inactive and removes live forms. Do not rewrite
   persisted task states simply because they share an icon with runtime states.
@@ -118,6 +122,9 @@ An unavailable system-insights extension does not prevent delivery of other
 views or routing of their actions. The delivery envelope retains the minimum
 identity needed to route the session; consumers tolerate a missing system view.
 System-insights does not depend on bb or dashboard to run.
+For RPC questionnaires, pi-ask uses surface forms only when a connected
+consumer advertises that it can answer them; otherwise native dialogs remain
+available. Capability loss triggers explicit handover or cancellation.
 
 ## Core observation in system-insights
 
@@ -160,17 +167,13 @@ No permanent compatibility layer is added to protect the older data shape.
 
 ## Work packages
 
-Each is a reviewable implementation PR. This PR remains documentation only.
+The [implementation plan](views-only-implementation.md) splits this work into
+eight reviewable PRs: shared contracts; collection/lifecycle; system-insights;
+extension summaries; forms; dashboard; bb; final deletion and enforcement.
+This PR remains documentation only.
 
-| Step | Scope                                                                                                                                         | Depends on |
-| ---- | --------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| 1    | Add portable session/form models, numeric summaries, delivery-envelope types and generic collection in pi-surface                             | This plan  |
-| 2    | Publish system.session from system-insights and forms from pi-ask; complete extension summaries/profile views                                 | 1          |
-| 3    | Migrate dashboard and bb to shared views/actions, update their protocols together with their receivers, and remove duplicate core observation | 2          |
-| 4    | Delete pi-presentation, old section events/types/projections and fixed request aliases; enforce package dependency direction                  | 3          |
-
-Step 3 can be split by consumer for review. Transitional old data may remain
-only until both migrations land; step 4 removes it rather than relocating it.
+Transitional old data may remain only until both migrations land; the final
+cleanup removes it rather than relocating it.
 Do not silently reinterpret an older wire protocol as the new shape: bump and
 check protocol versions for both dashboard and bb, and handle old saved bb
 snapshots explicitly with a migration or invalidation.
@@ -191,8 +194,9 @@ a per-view bound alone is not a bound on a session with many views.
   provider errors and size limits. Check usage totals retain their scope.
 - Exercise dashboard Focus, task review/history, stash preview and form answers
   in both consumers; verify supported interaction against live sessions.
-- Reproduce the stale-running saved-card case in bb before fixing it, and
-  retain a regression test. Include new session/form models in renderer tests.
+- Retain a regression fixture for the stale-running saved-card case and
+  reproduce it in bb where possible. Include new session/summary/form models
+  in renderer tests; a missing live reproduction does not block a proven fix.
 - Run `npm run check`, `npm test` and `npm run verify:bundle` for implementation
   changes. For bb changes, also run its own typecheck/tests and
   `bb-shot.mjs --expand --check`; update `docs/bb/ui-slots.md`.
