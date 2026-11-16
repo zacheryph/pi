@@ -2,8 +2,9 @@
 
 Changes recorded automatically from Git history, newest first.
 
-<!-- changelog:through 6ba5f77b02f5787c9c080d78f6a2b02da99b7ee4 -->
+<!-- changelog:through 802542b1d6d6e98c0a0d3978bdfa41a8787a0f61 -->
 
+- 2026-11-15: refactor\(pi-dashboard\): leave view models out of the dashboard snapshot ([#182](https://github.com/zacheryph/pi/pull/182))
 - 2026-11-13: feat\(pi-presentation\): publish session views and dispatch actions ([#172](https://github.com/zacheryph/pi/pull/172))
 - 2026-11-13: feat\(pi-dashboard,pi-work\): /dashboard and /work:wake answer without a terminal ([#171](https://github.com/zacheryph/pi/pull/171))
 - 2026-11-12: Extract shared presentation projections and session read service ([#162](https://github.com/zacheryph/pi/pull/162))

@@ -2,8 +2,10 @@
 
 Changes recorded automatically from Git history, newest first.
 
-<!-- changelog:through aa756f8a1345f53efab119ea3193ee7fe53f79ec -->
+<!-- changelog:through 802542b1d6d6e98c0a0d3978bdfa41a8787a0f61 -->
 
+- 2026-11-15: feat\(pi-todo\): bold the task key and count active and pending tasks ([#183](https://github.com/zacheryph/pi/pull/183))
+- 2026-11-15: feat\(pi-todo\): mark the widget's status glyphs with their state ([#182](https://github.com/zacheryph/pi/pull/182))
 - 2026-11-15: feat\(pi-todo\): archive old completed tasks instead of a 50-task cap ([#175](https://github.com/zacheryph/pi/pull/175))
 - 2026-11-14: feat\(pi-todo\): write todo changes into the transcript instead of a per-request card ([#174](https://github.com/zacheryph/pi/pull/174))
 - 2026-11-13: feat\(pi-todo\): offer the widget and /todo browser as views and actions ([#172](https://github.com/zacheryph/pi/pull/172))
