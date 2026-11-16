@@ -139,6 +139,11 @@ export function createPlugin(options: PluginOptions = {}) {
       ];
     });
 
+    // A plugin with no `configure` callback puts every skill in its `skills/` directory
+    // into every thread's prompt. Select none: the skill stays installed for `bb skill`,
+    // but costs the model nothing.
+    bb.agents.configure(() => ({ tools: [], skills: [] }));
+
     bb.cli.register({
       name: "pi-surface",
       summary: "Inspect Pi sessions shown by the Pi surface plugin, or show a fixture session",
