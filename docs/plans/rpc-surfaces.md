@@ -211,6 +211,9 @@ Each is one pull request. "Base" is the branch it stacks on.
   draws every section a second time by hand; it is not worth porting to the
   view model. Do this once the bb plugin's session panel covers the overview
   and Focus is no longer needed for terminal sessions.
+- [Views-only snapshot](views-only-snapshot.md) plans what comes before 8:
+  the bb plugin stops reading sections, and `pi-presentation` stops importing
+  extensions.
 - **9:** tool results carry structured `details` everywhere, and the plugin
   registers timeline renderers for subagent and todo rows.
 
