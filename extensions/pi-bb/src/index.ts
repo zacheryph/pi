@@ -7,7 +7,13 @@ import { buildSnapshot } from "#presentation/snapshot";
 import { StatusTracker } from "#presentation/status";
 import { sessionUsage } from "#presentation/usage";
 import { SurfaceClient, type ConnectionState, type SocketFactory } from "#src/client";
-import { ENV_TOKEN, ENV_URL, readSurfaceEnv, type SurfaceEnv } from "#src/protocol";
+import { ENV_THREAD, ENV_TOKEN, ENV_URL, readSurfaceEnv, type SurfaceEnv } from "#src/protocol";
+import {
+  allowedBbSkills,
+  dropBbSkills,
+  dropEnvironmentTool,
+  ENV_KEEP_ENVIRONMENT_TOOL,
+} from "#src/prompt";
 
 /**
  * One connection per process: subagent children load this extension again in
@@ -140,6 +146,17 @@ export default function piBb(pi: ExtensionAPI, dependencies: BbDependencies = {}
     } catch {
       stop("quit");
     }
+  });
+
+  // bb puts every enabled plugin's skills, and its own update_environment_directory tool,
+  // into each thread's prompt, and no setting or plugin can drop them. Pi lets the prompt
+  // inputs be edited here.
+  pi.on("before_agent_start", (event, ctx) => {
+    const env = (dependencies.env ?? (() => process.env))();
+    if (ctx.mode !== "rpc" || !env[ENV_THREAD]) return;
+    const options = event.systemPromptOptions;
+    dropBbSkills(options.skills, allowedBbSkills(env));
+    if (env[ENV_KEEP_ENVIRONMENT_TOOL] !== "1") dropEnvironmentTool(options);
   });
 
   pi.on("session_shutdown", (event) => stop(event.reason === "quit" ? "quit" : "replace"));

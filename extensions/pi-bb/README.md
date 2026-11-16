@@ -72,7 +72,25 @@ connection for the thread took over) stop retrying. Pi's RPC mode exits the
 process explicitly on shutdown, and the socket is closed in
 `session_shutdown`, so the connection never keeps Pi running.
 
+## bb's skills
+
+bb puts every enabled plugin's skills into each thread's system prompt, and a
+plugin cannot drop another's. In a bb thread (RPC mode with `BB_THREAD_ID`),
+`before_agent_start` removes the skills bb injected (those under
+`~/.bb/runtime/global-skills/`) except `inline-vis`, whose reply format the
+model cannot guess. Set `PI_BB_SKILLS` to a comma-separated list of names to
+replace the allowlist; an empty value allows none. Project, user and package
+skills are never touched, and the removed skills stay installed in bb.
+
+## bb's environment tool
+
+bb gives every thread an `update_environment_directory` tool and appends a
+paragraph telling the model to use it when asked to move the thread to another
+checkout or worktree. No setting turns it off, so `before_agent_start` removes
+the tool from the prompt's tool selection and the paragraph from the appended
+text. Set `PI_BB_ENVIRONMENT_TOOL=1` to keep both. The thread can still be moved
+from bb's UI.
+
 ## Configuration
 
-None. The plugin decides the endpoint; the extension only reads the
-environment.
+The plugin decides the endpoint; the extension only reads the environment.
