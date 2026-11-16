@@ -2,8 +2,9 @@
 
 Changes recorded automatically from Git history, newest first.
 
-<!-- changelog:through 6ba5f77b02f5787c9c080d78f6a2b02da99b7ee4 -->
+<!-- changelog:through 802542b1d6d6e98c0a0d3978bdfa41a8787a0f61 -->
 
+- 2026-11-15: feat\(pi-ui\): draw a widget row's lead, and count active and pending work ([#183](https://github.com/zacheryph/pi/pull/183))
 - 2026-11-13: feat\(pi-surface\): add a JSON view model and per-session action registry ([#167](https://github.com/zacheryph/pi/pull/167))
 - 2026-11-12: refactor: centralize workspace configs and development commands ([#153](https://github.com/zacheryph/pi/pull/153))
 - 2026-11-12: refactor: standardize workspace aliases and shared test helpers ([#149](https://github.com/zacheryph/pi/pull/149))
