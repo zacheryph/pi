@@ -2,20 +2,29 @@ import { join } from "node:path";
 import { userOutput } from "#foundations/user-output";
 import {
   getAgentDir,
-  VERSION,
   type ExtensionAPI,
   type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { PresentationService } from "#presentation";
-import { ActivityTracker } from "#presentation/activity";
+import {
+  advertiseFormConsumer,
+  batchViews,
+  collectDelivery,
+  dispatchAction,
+  type HostInfo,
+  type ViewBatcher,
+} from "#surface";
 import { dashboardSettings, type DashboardConfig } from "#src/config";
 import { nodeRuntime, spawnHub } from "#src/launch";
-import { hubPaths, type CommandRequest, type HubPaths, type UsageSection } from "#src/protocol";
+import {
+  hubPaths,
+  MAX_LINE_BYTES,
+  SNAPSHOT_FRAMING_BYTES,
+  type CommandRequest,
+  type HubPaths,
+  type JsonValue,
+} from "#src/protocol";
 import { Reporter } from "#src/reporter";
-import { buildSnapshot } from "#presentation/snapshot";
-import { StatusTracker } from "#presentation/status";
 import { detectTerminal, type TerminalAdapter } from "#src/terminal";
-import { sessionUsage } from "#presentation/usage";
 
 /** One reporter per process: subagent children and other embedded sessions stay off the dashboard. */
 const SLOT = Symbol.for("dashboard:reporter");
@@ -32,10 +41,8 @@ export interface DashboardDependencies {
   pid?: number;
   /** Finds the terminal Focus brings forward; defaults to the cmux adapter. */
   detectTerminal?: () => TerminalAdapter | undefined;
-}
-
-function withoutViews<T extends { views?: unknown }>({ views: _views, ...rest }: T) {
-  return rest;
+  /** The hub's line limit in UTF-8 bytes; tests lower it. */
+  maxLineBytes?: number;
 }
 
 async function hubReachable(url: string): Promise<boolean> {
@@ -51,98 +58,92 @@ async function hubReachable(url: string): Promise<boolean> {
   }
 }
 
+/**
+ * Reports this interactive session to the dashboard hub. What the page shows
+ * is the session's views, collected by pi-surface into one complete snapshot
+ * per update: core session state from pi-system-insights' `system.session`,
+ * and each extension's own summaries, widgets, explorers and forms. The page's
+ * requests come back as Focus, which this adapter owns, or as an action one
+ * of those views offers.
+ */
 export default function dashboardExtension(
   pi: ExtensionAPI,
   dependencies: DashboardDependencies = {},
 ): void {
   const output = userOutput(pi, "dashboard:output");
   const pid = dependencies.pid ?? process.pid;
-  const startedAt = Math.round(Date.now() - process.uptime() * 1000);
   const slots = globalThis as Record<symbol, unknown>;
   const token = Symbol("dashboard:runtime");
   let reporter: Reporter | undefined;
-  let status = new StatusTracker();
+  let batcher: ViewBatcher | undefined;
   let current: ExtensionContext | undefined;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const presentation = new PresentationService(pi.events);
-  let activity = new ActivityTracker();
-  // Usage scans the session file, so it refreshes only after events that change it.
-  let usage: UsageSection | undefined;
-  let ledgerStale = true;
   let terminal: TerminalAdapter | undefined;
+  let revokeForms: (() => void) | undefined;
+  /** Problems already told to the user this runtime, so a repeated one is told once. */
+  const warned = new Set<string>();
 
   const paths = () => hubPaths(dependencies.dir ?? join(getAgentDir(), "dashboard"));
   const loadConfig = (cwd: string) => (dependencies.loadConfig ?? dashboardSettings.load)(cwd);
 
-  const snapshot = (ctx: ExtensionContext) => {
-    if (ledgerStale) {
-      usage = sessionUsage(ctx.sessionManager.getEntries());
-      ledgerStale = false;
-    }
-    return buildSnapshot({
-      id: String(pid),
-      pid,
-      startedAt,
-      piVersion: VERSION,
-      ctx,
-      sessionName: pi.getSessionName(),
-      thinking: pi.getThinkingLevel(),
-      status: status.current(),
-      // The hub draws sections only; views are for remote surfaces.
-      ...withoutViews(presentation.snapshot()),
-      usage,
-      terminal: terminal?.info,
-      activity: activity.section(),
-    });
-  };
-
-  /** The session file changed: usage may have moved. */
-  const ledger = (ctx: ExtensionContext) => {
-    ledgerStale = true;
-    schedule(ctx);
-  };
-
-  const publish = () => {
-    timer = undefined;
-    if (!reporter || !current) return;
+  const warn = (key: string, message: string) => {
+    if (warned.has(key)) return;
+    warned.add(key);
     try {
-      reporter.update(snapshot(current));
+      current?.ui.notify(message, "warning");
     } catch {
       /* the session is being replaced */
     }
   };
 
-  /** Coalesces bursts of events into one update. */
-  const schedule = (ctx?: ExtensionContext) => {
-    if (ctx) current = ctx;
-    if (!reporter || timer) return;
-    timer = setTimeout(publish, dependencies.publishDelayMs ?? PUBLISH_DELAY_MS);
-    timer.unref?.();
+  /** The session's complete snapshot as JSON, sized to fit one hub line. */
+  const deliver = (): string => {
+    const id = String(pid);
+    const host: HostInfo = { pid, ...(terminal ? { terminal: terminal.info } : {}) };
+    const result = collectDelivery(pi.events, {
+      id,
+      host,
+      budget: {
+        maxBytes: dependencies.maxLineBytes ?? MAX_LINE_BYTES,
+        framingBytes: SNAPSHOT_FRAMING_BYTES,
+      },
+    });
+    if (result.ok) {
+      if (result.evicted.length)
+        warn(
+          "evicted",
+          `Session dashboard: left out ${result.evicted.join(", ")} to fit one update.`,
+        );
+      return result.json;
+    }
+    // The card and Focus still work without views; say why the rest is missing.
+    warn("collect", `Session dashboard: ${result.error}`);
+    return JSON.stringify({ id, host, views: [] });
+  };
+
+  const withdrawForms = () => {
+    const revoke = revokeForms;
+    revokeForms = undefined;
+    revoke?.();
   };
 
   const stop = (reason: "quit" | "replace") => {
-    clearTimeout(timer);
-    timer = undefined;
+    batcher?.dispose();
+    batcher = undefined;
+    withdrawForms();
     reporter?.close(reason);
     reporter = undefined;
     current = undefined;
-    presentation.reset();
-    activity = new ActivityTracker();
-    usage = undefined;
-    ledgerStale = true;
     terminal = undefined;
     if (slots[SLOT] === token) delete slots[SLOT];
   };
 
-  presentation.subscribe(() => schedule());
-
-  const answer = async (request: CommandRequest): Promise<unknown> => {
+  const run = async (request: CommandRequest): Promise<JsonValue | undefined> => {
     if (request.command === "focus") {
       if (!terminal) throw new Error("This session's terminal does not support Focus.");
       await terminal.focus();
       return undefined;
     }
-    return presentation.request(request);
+    return dispatchAction(pi.events, request.action, request.args);
   };
 
   pi.on("session_start", (_event, ctx) => {
@@ -151,11 +152,11 @@ export default function dashboardExtension(
     if (slots[SLOT] && slots[SLOT] !== token) return;
     slots[SLOT] = token;
     current = ctx;
-    status = new StatusTracker();
+    warned.clear();
     terminal = (dependencies.detectTerminal ?? detectTerminal)();
     const config = loadConfig(ctx.cwd);
     const hub = paths();
-    reporter = new Reporter({
+    const session = new Reporter({
       socketPath: hub.socket,
       spawnHub: () =>
         (
@@ -165,64 +166,25 @@ export default function dashboardExtension(
         )(hub, config),
       onUnavailable: () =>
         current?.ui.notify(`Session dashboard did not start; see ${hub.log}`, "warning"),
-      onCommand: answer,
+      onRefused: (reason) => warn("refused", `Session dashboard: ${reason}`),
+      // Forms are answerable from the page only while a hub that draws them has this session.
+      onConnected: () => {
+        withdrawForms();
+        revokeForms = advertiseFormConsumer(pi.events, { name: "dashboard" });
+      },
+      onDisconnected: withdrawForms,
+      onCommand: run,
     });
-    reporter.start(snapshot(ctx));
+    reporter = session;
+    // Collects at once, so the hello carries a complete snapshot, then after each burst of changes.
+    batcher = batchViews(pi.events, {
+      delayMs: dependencies.publishDelayMs ?? PUBLISH_DELAY_MS,
+      flush: () => session.update(deliver()),
+    });
+    session.start();
   });
 
   pi.on("session_shutdown", (event) => stop(event.reason === "quit" ? "quit" : "replace"));
-
-  pi.on("session_info_changed", (_event, ctx) => schedule(ctx));
-  pi.on("session_tree", (_event, ctx) => ledger(ctx));
-  pi.on("model_select", (_event, ctx) => schedule(ctx));
-  pi.on("thinking_level_select", (_event, ctx) => schedule(ctx));
-  pi.on("turn_end", (_event, ctx) => schedule(ctx));
-  pi.on("message_end", (_event, ctx) => ledger(ctx));
-  pi.on("agent_start", (_event, ctx) => {
-    status.agentStart();
-    schedule(ctx);
-  });
-  pi.on("agent_settled", (_event, ctx) => {
-    status.settled();
-    status.compactEnd();
-    activity.settle();
-    schedule(ctx);
-  });
-  pi.on("tool_execution_start", (event, ctx) => {
-    // Calls made by another tool (codemode scripts) stay under their parent.
-    if (event.parentToolCallId) return;
-    status.toolStart(event.toolCallId, event.toolName);
-    activity.start(event.toolCallId, event.toolName, event.args);
-    schedule(ctx);
-  });
-  pi.on("tool_execution_end", (event, ctx) => {
-    // However the asking call ended, its questionnaire is over.
-    presentation.closeQuestion(event.toolCallId);
-    if (event.parentToolCallId) return;
-    status.toolEnd(event.toolCallId);
-    activity.end(event.toolCallId, event.isError);
-    schedule(ctx);
-  });
-  pi.on("session_before_compact", (_event, ctx) => {
-    status.compactStart();
-    schedule(ctx);
-  });
-  pi.on("session_compact", (_event, ctx) => {
-    status.compactEnd();
-    ledger(ctx);
-  });
-  pi.on("session_compact_failed", (_event, ctx) => {
-    status.compactEnd();
-    schedule(ctx);
-  });
-  pi.on("ui_prompt_start", (event, ctx) => {
-    status.promptStart(event.title);
-    schedule(ctx);
-  });
-  pi.on("ui_prompt_end", (_event, ctx) => {
-    status.promptEnd();
-    schedule(ctx);
-  });
 
   pi.registerCommand("dashboard", {
     description: "Open the web dashboard of running Pi sessions",

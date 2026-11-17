@@ -14,17 +14,19 @@ import {
   type Socket,
 } from "node:net";
 import { homedir } from "node:os";
+import { isActionRequest, settleSnapshot, type DeliverySnapshot } from "#surface";
 import {
   encode,
   hubPaths,
   IDLE_GRACE_MS,
-  isSnapshot,
   LineDecoder,
+  offeredActions,
   PROTOCOL_VERSION,
+  readSnapshot,
   type CommandRequest,
+  type HubMessage,
   type HubPaths,
-  type QuestionnaireAnswer,
-  type SessionSnapshot,
+  type JsonValue,
 } from "#src/protocol";
 import { renderPage } from "#src/hub/page";
 
@@ -48,40 +50,30 @@ export interface CommandOutcome {
 
 type Answer = { ok: boolean; error?: string; data?: unknown; timedOut?: boolean };
 
-/** Page routes for session requests: POST /api/sessions/<id>/<route>. */
-const ROUTES: Array<[RegExp, (match: string[], body: unknown) => CommandRequest]> = [
-  [/^focus$/, () => ({ command: "focus" })],
-  [/^stash\/([^/]+)\/preview$/, (match) => ({ command: "stash-preview", name: match[1]! })],
-  [/^todos\/([^/]+)\/history$/, (match) => ({ command: "todo-history", key: match[1]! })],
-  // The answer's shape is checked by the session against the questionnaire it names.
-  [
-    /^questions\/([^/]+)\/answer$/,
-    (match, body) => ({
-      command: "answer",
-      question: match[1]!,
-      answer: body as QuestionnaireAnswer,
-    }),
-  ],
-];
-
-export interface SessionView extends SessionSnapshot {
-  /** The session is restarting its runtime (/new, /resume, /fork, /reload). */
-  restarting?: boolean;
+/**
+ * One session as the page sees it: the latest complete snapshot its reporter
+ * sent. While the session restarts its runtime (/new, /resume, /fork, /reload)
+ * the record is `disconnected` and settled: process-bound state is shown as
+ * stopped, forms are gone and no action runs until the live session returns.
+ */
+export interface SessionRecord extends DeliverySnapshot {
+  disconnected?: true;
 }
 
 export interface SessionsPayload {
   home: string;
-  sessions: SessionView[];
+  sessions: SessionRecord[];
 }
 
 interface Entry {
-  snapshot: SessionSnapshot;
+  snapshot: DeliverySnapshot;
+  /** The live connection; absent while the session restarts. */
   socket?: Socket;
   expiry?: ReturnType<typeof setTimeout>;
 }
 
 const HEARTBEAT_MS = 25_000;
-/** Questionnaire answers are the only bodies; free-text answers and notes stay well under this. */
+/** Action requests are the only bodies; a form answer with every note filled stays well under this. */
 const MAX_BODY_BYTES = 64 * 1024;
 const BROADCAST_DELAY_MS = 50;
 
@@ -183,10 +175,15 @@ export class Hub {
 
   list(): SessionsPayload {
     const sessions = [...this.sessions.values()]
-      .map((entry): SessionView =>
-        entry.socket ? { ...entry.snapshot } : { ...entry.snapshot, restarting: true },
+      .map((entry): SessionRecord =>
+        entry.socket ? { ...entry.snapshot } : { ...entry.snapshot, disconnected: true },
       )
-      .sort((a, b) => a.cwd.localeCompare(b.cwd) || a.startedAt - b.startedAt);
+      .sort(
+        (a, b) =>
+          sortKey(a).cwd.localeCompare(sortKey(b).cwd) ||
+          sortKey(a).startedAt - sortKey(b).startedAt ||
+          a.id.localeCompare(b.id),
+      );
     return { home: homedir(), sessions };
   }
 
@@ -225,45 +222,59 @@ export class Hub {
     let id: string | undefined;
     let farewell: "quit" | "replace" | undefined;
     this.connections.add(socket);
-    socket.setEncoding("utf8");
     socket.on("error", () => {
       /* the close handler cleans up */
     });
-    socket.on("data", (chunk: string) => {
-      for (const message of decoder.push(chunk)) {
+    const send = (message: HubMessage) => {
+      if (!socket.destroyed && !socket.writableEnded) socket.write(encode(message));
+    };
+    /** Says why, then closes: an older or broken reporter is never read as this protocol. */
+    const refuse = (error: string) => {
+      this.log(`refused a reporter: ${error}`);
+      send({ type: "refused", version: PROTOCOL_VERSION, error });
+      socket.end();
+    };
+    socket.on("data", (chunk: Buffer) => {
+      for (const decoded of decoder.push(chunk)) {
+        if (socket.destroyed || socket.writableEnded) return;
+        if (!decoded.ok) {
+          this.log(`dropped a line from ${id ?? "a reporter"}: ${decoded.error}`);
+          continue;
+        }
+        const message = decoded.value;
         if (!message || typeof message !== "object") continue;
-        const raw = message as {
-          type?: unknown;
-          version?: unknown;
-          snapshot?: unknown;
-          reason?: unknown;
-        };
+        const raw = message as { type?: unknown; version?: unknown; reason?: unknown };
         if (raw.type === "hello") {
-          if (typeof raw.version === "number" && raw.version > PROTOCOL_VERSION) {
+          if (id) return refuse("A connection says hello once.");
+          if (typeof raw.version !== "number")
+            return refuse("Malformed hello: it names no protocol version.");
+          if (raw.version > PROTOCOL_VERSION) {
             // A newer reporter brings a newer hub: step aside so it can start one.
             void this.stop(`reporter speaks protocol ${raw.version}`);
             return;
           }
-          if (id || !isSnapshot(raw.snapshot)) {
-            socket.destroy();
-            return;
-          }
-          id = raw.snapshot.id;
-          this.register(id, raw.snapshot, socket);
-        } else if (
-          raw.type === "update" &&
-          id &&
-          isSnapshot(raw.snapshot) &&
-          raw.snapshot.id === id
-        ) {
+          if (raw.version < PROTOCOL_VERSION)
+            return refuse(
+              `This dashboard speaks protocol ${PROTOCOL_VERSION}; the session speaks ${raw.version}. Restart that Pi session to update it.`,
+            );
+          const snapshot = readSnapshot(message);
+          if (!snapshot) return refuse("Malformed hello: its snapshot is not a delivery snapshot.");
+          id = snapshot.id;
+          this.register(id, snapshot, socket);
+          send({ type: "welcome", version: PROTOCOL_VERSION });
+        } else if (!id) {
+          return refuse("The first message must be a hello.");
+        } else if (raw.type === "update") {
+          const snapshot = readSnapshot(message);
           const entry = this.sessions.get(id);
-          if (entry?.socket === socket) {
-            entry.snapshot = raw.snapshot;
+          // Only the session's own live connection replaces its snapshot, and only as itself.
+          if (snapshot?.id === id && entry?.socket === socket) {
+            entry.snapshot = snapshot;
             this.scheduleBroadcast();
           }
         } else if (raw.type === "bye" && (raw.reason === "quit" || raw.reason === "replace")) {
           farewell = raw.reason;
-        } else if (raw.type === "result" && id) {
+        } else if (raw.type === "result") {
           const result = message as { id?: unknown; ok?: unknown; error?: unknown };
           const waiting = typeof result.id === "number" ? this.pending.get(result.id) : undefined;
           if (waiting?.socket === socket) {
@@ -284,6 +295,8 @@ export class Hub {
         entry.socket = undefined;
         if (farewell === "replace") {
           const key = id;
+          // Shown as the session last was, settled: nothing in it runs or answers until it returns.
+          entry.snapshot = settleSnapshot(entry.snapshot, Date.now());
           entry.expiry = setTimeout(() => {
             this.sessions.delete(key);
             this.scheduleBroadcast();
@@ -302,6 +315,15 @@ export class Hub {
     return this.command(sessionId, { command: "focus" });
   }
 
+  /** Runs an action one of the session's current views offers, such as a form's submit. */
+  action(sessionId: string, action: string, args?: JsonValue): Promise<CommandOutcome> {
+    return this.command(sessionId, {
+      command: "action",
+      action,
+      ...(args === undefined ? {} : { args }),
+    });
+  }
+
   /** Relays one request to a session and returns its answer to the caller only. */
   async command(sessionId: string, request: CommandRequest): Promise<CommandOutcome> {
     const entry = this.sessions.get(sessionId);
@@ -312,8 +334,14 @@ export class Hub {
         ok: false,
         error: "That session is restarting; try again in a moment.",
       };
-    if (request.command === "focus" && !entry.snapshot.terminal)
+    if (request.command === "focus" && !entry.snapshot.host?.terminal)
       return { status: 409, ok: false, error: "This session's terminal does not support Focus." };
+    if (request.command === "action" && !offeredActions(entry.snapshot.views).has(request.action))
+      return {
+        status: 409,
+        ok: false,
+        error: "This session no longer offers that; the page may be out of date.",
+      };
     const id = this.nextCommand++;
     const socket = entry.socket;
     const result = await new Promise<Answer>((resolve) => {
@@ -341,7 +369,7 @@ export class Hub {
     };
   }
 
-  private register(id: string, snapshot: SessionSnapshot, socket: Socket): void {
+  private register(id: string, snapshot: DeliverySnapshot, socket: Socket): void {
     const entry = this.sessions.get(id);
     if (entry) {
       clearTimeout(entry.expiry);
@@ -421,23 +449,22 @@ export class Hub {
           }
         }
         let id: string;
-        let command: CommandRequest | undefined;
         try {
           id = decodeURIComponent(session[1]!);
-          for (const [pattern, build] of ROUTES) {
-            const match = pattern.exec(session[2]!);
-            if (match) {
-              command = build(
-                match.map((part) => decodeURIComponent(part)),
-                body,
-              );
-              break;
-            }
-          }
         } catch {
           return text(response, 400, "Bad request path\n");
         }
-        if (!command) return text(response, 404, "Not found\n");
+        let command: CommandRequest;
+        if (session[2] === "focus") command = { command: "focus" };
+        else if (session[2] === "actions") {
+          if (!isActionRequest(body))
+            return text(response, 400, "Expected an action request: { action, args? }\n");
+          command = {
+            command: "action",
+            action: body.action,
+            ...(body.args === undefined ? {} : { args: body.args }),
+          };
+        } else return text(response, 404, "Not found\n");
         void this.command(id, command).then(({ status, ...body }) => json(response, body, status));
       });
       return;
@@ -467,6 +494,13 @@ export class Hub {
       text(response, 404, "Not found\n");
     }
   }
+}
+
+/** Where a record sorts: by directory, then start, from its session view when it has one. */
+function sortKey(record: SessionRecord): { cwd: string; startedAt: number } {
+  const entry = record.views.find((view) => view.kind === "session" && view.model);
+  const model = entry?.kind === "session" ? entry.model : undefined;
+  return { cwd: model?.cwd ?? "", startedAt: model?.startedAt ?? 0 };
 }
 
 function sseFrame(payload: SessionsPayload): string {
