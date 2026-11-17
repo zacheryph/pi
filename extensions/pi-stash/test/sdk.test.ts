@@ -16,7 +16,17 @@ import {
 } from "#src/events";
 import { createEventBus, type EventBus } from "@earendil-works/pi-coding-agent";
 import { provide, service } from "#session-tree";
-import { dispatchAction, listActions, listViews, onViewChanged, readView } from "#surface";
+import {
+  dispatchAction,
+  isViewModel,
+  listActions,
+  listViews,
+  onViewChanged,
+  readView,
+  settleViews,
+  type SummaryModel,
+  type ViewEntry,
+} from "#surface";
 import { stashExplorerView } from "#src/ui/browser";
 import {
   fauxSession,
@@ -400,6 +410,7 @@ describe("pi-stash in a real AgentSession (offline faux provider)", () => {
     onViewChanged(bus, (id) => announced.push(id));
     await h.session.prompt("Work");
     expect(announced).toContain("stash.explorer");
+    expect(announced).toContain("stash.summary");
     expect(listActions(bus)).toEqual([
       { id: "stash.inspect", title: expect.any(String) },
       { id: "stash.preview", title: expect.any(String) },
@@ -431,7 +442,10 @@ describe("pi-stash in a real AgentSession (offline faux provider)", () => {
     await expect(dispatchAction(bus, "stash.preview")).rejects.toThrow("Invalid stash entry name.");
 
     // stash.explorer is the /stash model, plain JSON, loading details through stash.inspect.
-    expect(listViews(bus)).toEqual([{ id: "stash.explorer", kind: "explorer", title: "Stash" }]);
+    expect(listViews(bus)).toEqual([
+      { id: "stash.explorer", kind: "explorer", title: "Stash" },
+      { id: "stash.summary", kind: "summary", title: "Stash" },
+    ]);
     const model = readView(bus, "stash.explorer");
     expect(JSON.parse(JSON.stringify(model))).toEqual(model);
     const entries = currentEntries(replayStashIndex({ sessionManager: h.manager }));
@@ -448,7 +462,61 @@ describe("pi-stash in a real AgentSession (offline faux provider)", () => {
       'Unknown action "stash.inspect".',
     );
     expect(listActions(other.bus)).toHaveLength(2);
-    expect(listViews(other.bus)).toHaveLength(1);
+    expect(listViews(other.bus)).toHaveLength(2);
+  }, 20_000);
+
+  it("counts the branch's entries in stash.summary, zeros included, and follows the branch", async () => {
+    const store = new BlobStore(tempDir("pi-stash-root-"));
+    const h = await fixture({
+      store,
+      responses: [
+        call("stash_put", { name: "a", content: "one\n" }),
+        call("stash_put", { name: "b", content: "two\nlines\n" }),
+        fauxAssistantMessage("done"),
+      ],
+    });
+    const summary = () => {
+      const model = readView(h.bus, "stash.summary");
+      expect(isViewModel("summary", model)).toBe(true);
+      return model as SummaryModel;
+    };
+    const counts = () =>
+      Object.fromEntries(summary().counts.map((count) => [count.key, count.value]));
+    // Nothing stashed yet: zeros, where a session without pi-stash has no view.
+    expect(counts()).toEqual({
+      entries: 0,
+      versions: 0,
+      bytes: 0,
+      "store-bytes": 0,
+      "store-max-bytes": DEFAULTS.maxStoreBytes,
+    });
+
+    await h.session.prompt("Stash two");
+    const first = h.manager.getLeafId()!;
+    h.faux.setResponses([
+      call("stash_put", { name: "a", content: "one, again\n" }),
+      fauxAssistantMessage("done"),
+    ]);
+    await h.session.prompt("Replace a");
+    const entries = currentEntries(replayStashIndex({ sessionManager: h.manager }));
+    expect(counts()).toMatchObject({
+      entries: 2,
+      versions: 3,
+      bytes: entries.reduce((sum, entry) => sum + entry.bytes, 0),
+      "store-bytes": store.usage().bytes,
+    });
+
+    // Stash metadata is persisted: a saved summary settles unchanged.
+    const saved: ViewEntry[] = [
+      { id: "stash.summary", kind: "summary", title: "Stash", model: summary() },
+    ];
+    expect(settleViews(saved, Date.now())).toEqual(saved);
+
+    const announced: string[] = [];
+    onViewChanged(h.bus, (id) => announced.push(id));
+    await h.session.navigateTree(first, { summarize: false });
+    expect(announced).toContain("stash.summary");
+    expect(counts()).toMatchObject({ entries: 2, versions: 2 });
   }, 20_000);
 
   it("rejects bad sources and oversized entries as tool errors", async () => {
