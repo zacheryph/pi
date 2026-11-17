@@ -89,6 +89,17 @@ describe("formatting", () => {
     );
     expect(formatOutcome({ status: "cancelled" })).toContain("dismissed");
   });
+
+  it("says why questions were withdrawn rather than declined", () => {
+    const texts = (["aborted", "unavailable", "ended"] as const).map((reason) =>
+      formatOutcome({ status: "cancelled", reason }),
+    );
+    for (const text of texts) {
+      expect(text).toContain("withdrawn without an answer");
+      expect(text).not.toContain("dismissed");
+    }
+    expect(new Set(texts).size).toBe(3);
+  });
 });
 
 describe("readExternalAnswer", () => {

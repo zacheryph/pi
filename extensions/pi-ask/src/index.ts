@@ -12,27 +12,40 @@ import { bodyRow, openInlineWindow, sanitizeLine, styleLine } from "#ui";
 import { CmuxNotifications } from "#foundations/cmux";
 import { Type } from "typebox";
 import { askWithDialogs } from "#src/dialogs";
-import { actionRegistry } from "#surface";
+import {
+  actionRegistry,
+  FORM_VIEW_ID,
+  hasFormConsumer,
+  isFormAnswer,
+  isJsonObject,
+  onFormCapabilityChanged,
+  viewRegistry,
+  type FormAnswer,
+  type JsonValue,
+} from "#surface";
 import {
   ASK_ANSWER,
   ASK_ANSWER_ACTION,
   ASK_ANSWER_RESULT,
+  ASK_CANCEL_ACTION,
   ASK_CLOSED,
   ASK_OPENED,
+  ASK_SUBMIT_ACTION,
   openedEvent,
   type AskAnswerResult,
   type AskClosedEvent,
 } from "#src/events";
+import { OpenQuestionnaires, type PendingQuestionnaire } from "#src/owner";
 import { Questionnaire } from "#src/questionnaire";
 import {
   AskParameters,
   formatForParent,
   formatOutcome,
-  readExternalAnswer,
   readQuestions,
   type AskAnswer,
   type AskOutcome,
   type AskQuestion,
+  type CancelReason,
 } from "#src/questions";
 import { resolveRoute, type AskRoute } from "#src/route";
 
@@ -42,6 +55,8 @@ export interface AskDetails {
   status: "answered" | "cancelled" | "asked";
   questions: string[];
   answers?: AskAnswer[];
+  /** Why a cancelled questionnaire was withdrawn; absent when the user declined it. */
+  reason?: CancelReason;
 }
 
 /** The `owner` of the question items this extension opens, and the ones it adopts. */
@@ -58,6 +73,13 @@ interface QuestionItemData {
   /** The question as the delegator was told it. */
   text: string;
 }
+
+/** The transcript row of questions withdrawn before anyone answered them. */
+const WITHDRAWN_ROW: Record<CancelReason, string> = {
+  aborted: "Withdrawn: the call was aborted",
+  unavailable: "Withdrawn: nobody was left to answer",
+  ended: "Withdrawn: the session ended",
+};
 
 /** What the cmux notification for an open questionnaire says: never the questions or answers. */
 const QUESTION_NOTICE = {
@@ -136,8 +158,13 @@ export default function piAsk(pi: ExtensionAPI): void {
   // so the host is provided (or found) before our own session_start runs.
   const work = ensureWorkHost(pi);
   const notifications = new CmuxNotifications();
-  /** Questionnaires on screen, by asking tool call id. */
-  const open = new Map<string, { questions: AskQuestion[]; finish(outcome: AskOutcome): void }>();
+  // ask.questions, ask.answer, ask.submit and ask.cancel live on this session's bus from
+  // session_start to session_shutdown, so a /reload, which runs this factory again on the same
+  // bus, does not leak them.
+  const actions = actionRegistry(pi.events);
+  const views = viewRegistry(pi.events);
+  /** Every questionnaire waiting for the user, whoever shows it. */
+  const questionnaires = new OpenQuestionnaires({ changed: () => views.changed(FORM_VIEW_ID) });
 
   const register = () => {
     const text = toolText(route);
@@ -183,7 +210,17 @@ export default function piAsk(pi: ExtensionAPI): void {
                   ],
                 ]
               : details.status === "cancelled"
-                ? [[{ text: "Dismissed without an answer", tone: "warning" as const }]]
+                ? [
+                    [
+                      {
+                        text:
+                          typeof details.reason === "string" && details.reason in WITHDRAWN_ROW
+                            ? WITHDRAWN_ROW[details.reason]
+                            : "Dismissed without an answer",
+                        tone: "warning" as const,
+                      },
+                    ],
+                  ]
                 : (Array.isArray(details.answers) ? details.answers : []).map((answer) => [
                     { text: `${String(answer.question)} `, tone: "muted" as const },
                     {
@@ -289,9 +326,12 @@ export default function piAsk(pi: ExtensionAPI): void {
         "No one can answer questions in this session: it has no interactive terminal and no delegating agent. Continue with your best judgment and say what you assumed.",
       );
     if (signal?.aborted) throw new Error("ask was cancelled before the questions were shown.");
-    const outcome = await (current.mode === "rpc"
-      ? askWithDialogs(ctx.ui, questions, signal ? { signal } : {})
-      : askInline(toolCallId, questions, signal, ctx));
+    const outcome = await (current.mode === "tui"
+      ? askInline(toolCallId, questions, signal, ctx)
+      : hasFormConsumer(pi.events)
+        ? askForm(toolCallId, questions, signal, ctx)
+        : // No consumer can answer a form: Pi's own dialogs, exactly as before forms existed.
+          askWithDialogs(ctx.ui, questions, signal ? { signal } : {}));
     return {
       content: [{ type: "text", text: formatOutcome(outcome) }],
       details: {
@@ -299,6 +339,7 @@ export default function piAsk(pi: ExtensionAPI): void {
         status: outcome.status,
         questions: asked,
         ...(outcome.status === "answered" ? { answers: outcome.answers } : {}),
+        ...(outcome.status === "cancelled" && outcome.reason ? { reason: outcome.reason } : {}),
       },
     };
   };
@@ -338,86 +379,147 @@ export default function piAsk(pi: ExtensionAPI): void {
     }
   };
 
-  const askInline = async (
+  /**
+   * Opens a published questionnaire, announces it on the older events and waits for `show` or
+   * any form consumer to settle it. Every route that publishes goes through here: the record
+   * leaves the form, and `ask:closed` goes out, however it ends.
+   */
+  const publishAndWait = async (
+    toolCallId: string,
+    questions: AskQuestion[],
+    signal: AbortSignal | undefined,
+    show: (record: PendingQuestionnaire) => Promise<void>,
+    options: { notify?: boolean } = {},
+  ): Promise<AskOutcome> => {
+    // Refused before anything is shown or announced when the form cannot carry it.
+    const record = questionnaires.open(toolCallId, questions);
+    let closed: AskClosedEvent["outcome"] = "error";
+    let closeNotification: (() => void) | undefined;
+    const abort = () => record.settle({ status: "cancelled", reason: "aborted" });
+    signal?.addEventListener("abort", abort, { once: true });
+    try {
+      if (options.notify) closeNotification = notifications.open(QUESTION_NOTICE);
+      pi.events.emit(ASK_OPENED, openedEvent(toolCallId, questions));
+      await show(record);
+      const outcome = await record.done;
+      closed = outcome.status;
+      return outcome;
+    } finally {
+      closeNotification?.();
+      signal?.removeEventListener("abort", abort);
+      // After an error nothing may still wait on it.
+      record.settle({ status: "cancelled", reason: "aborted" });
+      try {
+        pi.events.emit(ASK_CLOSED, { toolCallId, outcome: closed } satisfies AskClosedEvent);
+      } catch {
+        // The session was shut down while it waited, and Pi has retired its bus.
+      }
+    }
+  };
+
+  /** The terminal's keyboard questionnaire, over a record any form consumer can answer too. */
+  const askInline = (
     toolCallId: string,
     questions: AskQuestion[],
     signal: AbortSignal | undefined,
     ctx: ExtensionContext,
-  ): Promise<AskOutcome> => {
-    let closed: AskClosedEvent["outcome"] = "error";
-    let closeNotification: (() => void) | undefined;
-    let finish: ((outcome: AskOutcome) => void) | undefined;
-    // An answer from outside can arrive before the window has mounted.
-    let early: AskOutcome | undefined;
-    open.set(toolCallId, {
+  ): Promise<AskOutcome> =>
+    publishAndWait(
+      toolCallId,
       questions,
-      finish: (outcome) => (finish ? finish(outcome) : (early = outcome)),
+      signal,
+      async (record) => {
+        // Answered from outside before the window could open: nothing to show.
+        if (record.outcome) return;
+        const shown = await openInlineWindow<AskOutcome>(
+          ctx,
+          { icon: "?", label: questions.length > 1 ? `${questions.length} questions` : "Question" },
+          (tui, theme, keys, done) => {
+            // Settled elsewhere (a form consumer, an abort, shutdown): the window closes.
+            const close = () => done(record.outcome!);
+            if (record.outcome) queueMicrotask(close);
+            else record.signal.addEventListener("abort", close, { once: true });
+            return new Questionnaire(questions, theme, keys, tui, (outcome) => {
+              record.settle(outcome);
+            });
+          },
+          { minimizedHint: "waiting for your answer · any key returns" },
+        );
+        record.settle(shown ?? { status: "cancelled" });
+      },
+      { notify: true },
+    );
+
+  /**
+   * RPC with a live form consumer: the questionnaire is published and a consumer answers it.
+   * When the last consumer goes before an answer, the form is withdrawn for good and Pi's own
+   * dialogs ask instead; with none available the questions are withdrawn, and the model is told.
+   */
+  const askForm = (
+    toolCallId: string,
+    questions: AskQuestion[],
+    signal: AbortSignal | undefined,
+    ctx: ExtensionContext,
+  ): Promise<AskOutcome> =>
+    publishAndWait(toolCallId, questions, signal, async (record) => {
+      const handOver = () => {
+        if (record.outcome || !record.published) return;
+        // Off the form first: from here only the dialog answers, so no answer counts twice.
+        record.withdraw();
+        if (!dialogsAvailable(ctx)) {
+          record.settle({ status: "cancelled", reason: "unavailable" });
+          return;
+        }
+        void (async () => {
+          try {
+            record.settle(await askWithDialogs(ctx.ui, questions, { signal: record.signal }));
+          } catch {
+            record.settle({ status: "cancelled", reason: "unavailable" });
+          }
+        })();
+      };
+      const stop = onFormCapabilityChanged(pi.events, (available) => {
+        if (!available) handOver();
+      });
+      void record.done.finally(stop);
+      // The consumer may have gone between choosing this route and subscribing.
+      if (!hasFormConsumer(pi.events)) handOver();
     });
-    const abort = () => open.get(toolCallId)?.finish({ status: "cancelled" });
-    signal?.addEventListener("abort", abort, { once: true });
-    try {
-      closeNotification = notifications.open(QUESTION_NOTICE);
-      pi.events.emit(ASK_OPENED, openedEvent(toolCallId, questions));
-      const outcome = await openInlineWindow<AskOutcome>(
-        ctx,
-        { icon: "?", label: questions.length > 1 ? `${questions.length} questions` : "Question" },
-        (tui, theme, keys, done) => {
-          finish = done;
-          if (early) queueMicrotask(() => done(early!));
-          return new Questionnaire(questions, theme, keys, tui, done);
-        },
-        { minimizedHint: "waiting for your answer · any key returns" },
-      );
-      const result = outcome ?? { status: "cancelled" as const };
-      closed = result.status;
-      return result;
-    } finally {
-      closeNotification?.();
-      signal?.removeEventListener("abort", abort);
-      open.delete(toolCallId);
-      pi.events.emit(ASK_CLOSED, { toolCallId, outcome: closed } satisfies AskClosedEvent);
-    }
-  };
 
-  /** Answers an open questionnaire from outside the terminal; the first answer wins. */
-  const answer = (data: unknown): AskAnswerResult => {
-    const requestId =
-      isRecord(data) && typeof data.requestId === "string" ? data.requestId : undefined;
-    if (!isRecord(data) || typeof data.toolCallId !== "string")
-      return {
-        ok: false,
-        code: "invalid_payload",
-        reason: "toolCallId is required.",
-        ...(requestId ? { requestId } : {}),
-      };
-    const echo = { toolCallId: data.toolCallId, ...(requestId ? { requestId } : {}) };
-    const entry = open.get(data.toolCallId);
-    if (!entry)
-      return {
-        ok: false,
-        code: "not_found",
-        reason: "No open questionnaire has that id.",
-        ...echo,
-      };
-    const outcome = readExternalAnswer(entry.questions, data);
-    if ("code" in outcome)
-      return { ok: false, code: outcome.code, reason: outcome.reason, ...echo };
-    entry.finish(outcome);
-    return { ok: true, ...echo };
-  };
-  pi.events.on(ASK_ANSWER, (data) => pi.events.emit(ASK_ANSWER_RESULT, answer(data)));
-
-  // ask.answer lives on this session's bus from session_start to session_shutdown,
-  // so a /reload, which runs this factory again on the same bus, does not leak it.
-  const actions = actionRegistry(pi.events);
+  pi.events.on(ASK_ANSWER, (data) =>
+    pi.events.emit(ASK_ANSWER_RESULT, questionnaires.answer(data)),
+  );
 
   pi.on("session_start", (_event, ctx) => {
     actions.dispose();
+    views.dispose();
+    // Questionnaires of a session this one replaces have nobody left to answer them.
+    questionnaires.cancelAll("ended");
     actions.define({
       id: ASK_ANSWER_ACTION,
       title: "Answer or cancel an open questionnaire",
       // The ask:answer reply, refusals included: a refusal is a verdict, not a failure.
-      handler: (args) => ({ ...answer(args) }),
+      handler: (args) => ({ ...questionnaires.answer(args) }),
+    });
+    actions.define({
+      id: ASK_SUBMIT_ACTION,
+      title: "Answer a questionnaire of the open questions form",
+      parse: readSubmit,
+      handler: ({ id, answer }) =>
+        accepted(questionnaires.answer({ toolCallId: id, ...answer }), "answered"),
+    });
+    actions.define({
+      id: ASK_CANCEL_ACTION,
+      title: "Decline a questionnaire of the open questions form",
+      parse: readCancel,
+      handler: ({ id }) =>
+        accepted(questionnaires.answer({ toolCallId: id, cancel: true }), "cancelled"),
+    });
+    views.define({
+      id: FORM_VIEW_ID,
+      kind: "form",
+      title: "Questions",
+      model: () => questionnaires.form(),
     });
     const next = resolveRoute(ctx);
     if (next.kind !== route.kind) {
@@ -432,12 +534,50 @@ export default function piAsk(pi: ExtensionAPI): void {
   });
 
   pi.on("session_shutdown", () => {
+    // Removed without announcing (see pi-surface's viewRegistry); then nothing is left waiting.
+    views.dispose();
     actions.dispose();
+    questionnaires.cancelAll("ended");
     return notifications.shutdown();
   });
 
   register();
   registerNotify();
+}
+
+/** Whether Pi can still show its own dialogs through this context; a stale one cannot. */
+function dialogsAvailable(ctx: ExtensionContext): boolean {
+  try {
+    return ctx.hasUI;
+  } catch {
+    return false;
+  }
+}
+
+/** `ask.submit`'s arguments: the questionnaire's `{ id }` and a `FormAnswer`, nothing else. */
+function readSubmit(args: JsonValue | undefined): { id: string; answer: FormAnswer } {
+  if (!isJsonObject(args) || typeof args.id !== "string")
+    throw new Error("expected { id, answers }");
+  const { id, answers, globalNote, ...rest } = args;
+  const extra = Object.keys(rest);
+  if (extra.length) throw new Error(`unexpected field "${extra[0]}"`);
+  const answer = { answers, ...(globalNote !== undefined ? { globalNote } : {}) };
+  if (!isFormAnswer(answer)) throw new Error("answers is not a well-formed form answer");
+  return { id, answer };
+}
+
+/** `ask.cancel`'s arguments: the questionnaire's `{ id }`. */
+function readCancel(args: JsonValue | undefined): { id: string } {
+  if (!isJsonObject(args) || typeof args.id !== "string") throw new Error("expected { id }");
+  const extra = Object.keys(args).filter((key) => key !== "id");
+  if (extra.length) throw new Error(`unexpected field "${extra[0]}"`);
+  return { id: args.id };
+}
+
+/** A form action's result once accepted; a refusal becomes the action's error. */
+function accepted(result: AskAnswerResult, status: "answered" | "cancelled"): JsonValue {
+  if (!result.ok) throw new Error(`Not accepted (${result.code}): ${result.reason}`);
+  return { id: result.toolCallId!, status };
 }
 
 function textOf(result: AgentToolResult<unknown>): string {
