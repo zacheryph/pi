@@ -27,15 +27,18 @@ the moment it would have called a callback.
 
 ## Model types
 
-| Type                                                             | What it is                                                              |
-| ---------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| `Tone`, `Span`, `Line`, `Badge`, `Title`                         | Plain, untrusted text with a semantic tone; the renderer picks colours  |
-| `StateIcon`                                                      | A state a span's glyph stands for; a renderer may draw its own icon     |
-| `Block`, `DetailContent`, `DetailModel`                          | Structured detail: headings, fields, text, bullets, numbered lines      |
-| `Hint`                                                           | A footer hint: keys, action, priority                                   |
-| `WidgetRow`, `WidgetModel`                                       | A compact heading with rows, right-column fallbacks and overflow groups |
-| `ExplorerItem`, `ExplorerTab`, `ExplorerMarker`, `ExplorerModel` | A filterable list that opens into detail content                        |
-| `ActionRef`, `JsonValue`, `JsonObject`                           | Behaviour by reference, and the JSON the model is made of               |
+| Type                                                               | What it is                                                                                          |
+| ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| `Tone`, `Span`, `Line`, `Badge`, `Title`                           | Plain, untrusted text with a semantic tone; the renderer picks colours                              |
+| `StateIcon`                                                        | A state a span's glyph stands for; a renderer may draw its own icon                                 |
+| `Block`, `DetailContent`, `DetailModel`                            | Structured detail: headings, fields, text, bullets, numbered lines                                  |
+| `Hint`                                                             | A footer hint: keys, action, priority                                                               |
+| `WidgetRow`, `WidgetModel`                                         | A compact heading with rows, right-column fallbacks and overflow groups                             |
+| `ExplorerItem`, `ExplorerTab`, `ExplorerMarker`, `ExplorerModel`   | A filterable list that opens into detail content                                                    |
+| `SessionModel`, `SessionStatus`, `SessionActivity`, `SessionUsage` | Core session information (see [Session, summary and form models](#session-summary-and-form-models)) |
+| `SummaryModel`, `SummaryCount`, `SummaryItem`, `SummaryProfile`    | An extension's structured counts, active item and profile                                           |
+| `FormModel`, `FormQuestionnaire`, `FormQuestion`, `FormAnswer`     | Open questionnaires and the answer a consumer submits                                               |
+| `ActionRef`, `JsonValue`, `JsonObject`                             | Behaviour by reference, and the JSON the model is made of                                           |
 
 A span can say which state its glyph stands for: `icon` (`done`, `active`,
 `blocked`…) lets a renderer with icons (bb) draw its own in the glyph's place.
@@ -51,7 +54,35 @@ icon (the icon span in its right column), which starts every row.
 Every model type is a type alias, so a model is assignable to `JsonValue`.
 `isJsonValue`, `isJsonObject`, `isDetailContent`, `isBlock`, `isLine`, `isSpan`
 and `isActionRef` check data that arrives from elsewhere, such as an action's
-result.
+result. Each kind's model has its own guard (`isWidgetModel`, `isExplorerModel`,
+`isDetailModel`, `isSessionModel`, `isSummaryModel`, `isFormModel`), and
+`isViewModel(kind, value)` picks the one for a kind. They check nested data
+too, refuse `NaN` and `Infinity`, and return false for a kind they do not know.
+`isActionReference` checks a reference a model carries: an action id of the
+`<extension>.<verb>` shape and JSON arguments.
+
+### Process-bound state
+
+Some state exists only while the Pi process that produced it runs: a running
+tool or agent, a ticking clock, a count of running things. A view shown after
+the process has gone, such as a saved snapshot in bb, settles that state, and
+it does so from explicit `live` marks alone, never by guessing from an icon,
+tone or text:
+
+| Marked                   | Settled                                                                       |
+| ------------------------ | ----------------------------------------------------------------------------- |
+| `Span.live`              | Loses `since` (the clock stops at its text); an `icon` becomes `stopped`      |
+| `Badge.live`             | Replaced by the badge given there, or removed when it is `true`               |
+| `WidgetRow.live`         | Fields given there replace the row's own; its spans settle by their own marks |
+| `SummaryCount.live`      | Reads 0                                                                       |
+| `SummaryItem.live`       | The summary has no active item                                                |
+| `SessionActivity.live`   | The flag is dropped; the call keeps no duration                               |
+| `SessionStatus` (always) | `{ kind: "idle" }`, from the time it settled                                  |
+| `FormModel` (always)     | Removed: nobody can answer it                                                 |
+
+State kept in the session file is never `live`: a task's `in_progress`
+status, review marks, finished-agent history, Git and stash records survive
+unchanged, even where they share the `active` icon with runtime state.
 
 In an `ExplorerModel`, `loadDetail` and `onOpen` are dispatched with the
 reference's `args` (an object) plus `{ id }` of the opened item;
@@ -126,11 +157,17 @@ views.changed("todo.widget");
 pi.on("session_shutdown", () => views.dispose());
 ```
 
-| Kind       | Model           | Meant for                                        |
-| ---------- | --------------- | ------------------------------------------------ |
-| `widget`   | `WidgetModel`   | Small, always visible: a remote surface shows it |
-| `explorer` | `ExplorerModel` | A list opened on demand; details load by action  |
-| `detail`   | `DetailModel`   | One standalone detail, opened on demand          |
+| Kind       | Model           | Meant for                                                  |
+| ---------- | --------------- | ---------------------------------------------------------- |
+| `widget`   | `WidgetModel`   | Small, always visible: a remote surface shows it           |
+| `explorer` | `ExplorerModel` | A list opened on demand; details load by action            |
+| `detail`   | `DetailModel`   | One standalone detail, opened on demand                    |
+| `session`  | `SessionModel`  | Core session information, from `system.session`            |
+| `summary`  | `SummaryModel`  | Counts, active item and profile for badges and headers     |
+| `form`     | `FormModel`     | Open questionnaires a consumer can answer, `ask.questions` |
+
+A consumer draws the kinds it knows and skips every other: `isViewKind` says
+whether this copy knows a kind, and a newer producer may offer one it does not.
 
 | Function                       | Result                                                                    |
 | ------------------------------ | ------------------------------------------------------------------------- |
@@ -169,3 +206,74 @@ A failed or unknown action, or one that returns something other than
 `DetailContent`, shows `Couldn't load: <message>` in place, as a failed loader
 does. `onOpen` and `onClear` actions run in the background and their failures
 are dropped.
+
+## Session, summary and form models
+
+These describe a session for consumers outside the terminal, such as the
+dashboard and bb. Display text and machine-readable values are separate fields:
+a consumer never parses a number out of a label or a widget's `meta`.
+
+**`session`** (`SessionModel`) holds what Pi itself knows about the session:
+`sessionId`, `cwd`, `name`, `model`, `thinking`, `context` usage, `status` with
+its `since`, recent top-level tool `activity` (newest first), `usage` totals for
+the whole session file (abandoned branches and compacted history included),
+the process's `startedAt` and `piVersion`. pi-system-insights provides it as
+`SESSION_VIEW_ID` (`system.session`). It carries no main-agent profile, which
+pi-subagent's summary owns, and no connection identity, which belongs to the
+delivery snapshot. Status precedence is waiting, compacting, tool, working, idle.
+
+**`summary`** (`SummaryModel`) is what an extension reports about its own state:
+`counts` (each with a stable `key`, a display `label`, a finite `value` of zero
+or more, and an optional `live` mark), an `active` item by the producer's own
+id, and an optional `profile` (such as the main agent's). Counts are the
+producer's totals, never the rows some display shows, so they stay right when a
+widget is hidden or a list is capped. An empty summary means a loaded extension
+with nothing yet; an absent view means it is not loaded. `summaryCount(model,
+key)` reads one count.
+
+**`form`** (`FormModel`) holds the session's open questionnaires, oldest first.
+Each `FormQuestionnaire` has its own opaque `id` (pi-ask uses the asking tool
+call's id; it need not have a view id's shape), its questions with options and
+`multiSelect`, a `submit` reference and a `cancel` reference. Every question
+also takes typed text and a note. A consumer dispatches `submit` with the
+reference's arguments plus a `FormAnswer`'s fields (`answers` by question and
+option index, optional `globalNote`), and `cancel` with its arguments alone;
+the owner validates the answer again, all or nothing. pi-ask provides it as
+`FORM_VIEW_ID` (`ask.questions`). `isFormModel` enforces the exported bounds:
+
+| Constant                  | Bound |
+| ------------------------- | ----- |
+| `MAX_FORM_QUESTIONNAIRES` | 8     |
+| `MAX_QUESTIONNAIRE_ID`    | 200   |
+| `MAX_FORM_TITLE`          | 200   |
+| `MAX_FORM_QUESTIONS`      | 8     |
+| `MAX_FORM_OPTIONS`        | 20    |
+| `MAX_FORM_TEXT`           | 4,000 |
+| `MAX_FORM_HEADER`         | 60    |
+| `MAX_FORM_LABEL`          | 200   |
+
+Lengths count UTF-16 units, as `String.length` does. Two questionnaires in one
+form never share an id.
+
+## Delivery snapshots and action requests
+
+A `DeliverySnapshot` is what an adapter sends a receiver for one session: its
+routing `id` (connection identity, such as one stable for the Pi process), an
+optional `host` (`pid`, and the `terminal` dashboard Focus uses), and every
+collected view as a `ViewEntry`: `id`, `kind`, `title`, and either its `model`
+or a bounded `error` (at most `MAX_VIEW_ERROR` characters). A view with nothing
+to show is left out. Each snapshot replaces the previous one; core session
+information is the `session` view, not an envelope field, and a receiver
+tolerates its absence.
+
+`isDeliverySnapshot` is strict: every entry must be a valid entry of a known
+kind, ids unique. `readDeliverySnapshot` is what a receiver uses on data from a
+possibly newer producer: it returns `undefined` only for a malformed envelope,
+leaves out entries of unknown kinds or without an id or title, turns a known
+kind's malformed model into an error entry, and keeps the first entry for an id.
+
+`ActionRequest` (`{ action, args? }`) and `ActionResult` (`{ ok: true, value? }`
+or `{ ok: false, error }`) are the generic shapes for running an action from a
+receiver, checked by `isActionRequest` and `isActionResult`.
+
+These are types and guards only so far: no transport sends them yet.
