@@ -1,6 +1,16 @@
 import { ACTION_ID, type ActionBus } from "#src/actions";
+import { isFormModel, type FormModel } from "#src/form";
 import { isJsonValue } from "#src/json";
-import type { DetailModel, ExplorerModel, WidgetModel } from "#src/model";
+import {
+  isDetailModel,
+  isExplorerModel,
+  isWidgetModel,
+  type DetailModel,
+  type ExplorerModel,
+  type WidgetModel,
+} from "#src/model";
+import { isSessionModel, type SessionModel } from "#src/session";
+import { isSummaryModel, type SummaryModel } from "#src/summary";
 
 /**
  * The bus channel that carries list and read requests for views. Like actions,
@@ -14,15 +24,62 @@ export const VIEWS_VERSION = 1;
 /** `<extension>.<view>`, the same shape as an action id, e.g. `todo.widget`. */
 export const VIEW_ID = ACTION_ID;
 
-export type ViewKind = "widget" | "explorer" | "detail";
-export const VIEW_KINDS: readonly ViewKind[] = ["widget", "explorer", "detail"];
-
-export type ViewModel = WidgetModel | ExplorerModel | DetailModel;
-export type ViewModelOf<Kind extends ViewKind> = {
+/** Each view kind's model. */
+type Models = {
   widget: WidgetModel;
   explorer: ExplorerModel;
   detail: DetailModel;
-}[Kind];
+  /** Core session information; `system.session` by convention. */
+  session: SessionModel;
+  /** An extension's structured counts, active item and profile. */
+  summary: SummaryModel;
+  /** Open questionnaires; `ask.questions` by convention. */
+  form: FormModel;
+};
+
+/**
+ * What a view is. A consumer draws the kinds it knows and skips any other:
+ * a newer producer may offer a kind this copy has never heard of.
+ */
+export type ViewKind = keyof Models;
+export const VIEW_KINDS: readonly ViewKind[] = [
+  "widget",
+  "explorer",
+  "detail",
+  "session",
+  "summary",
+  "form",
+];
+
+export type ViewModelOf<Kind extends ViewKind> = Models[Kind];
+export type ViewModel = ViewModelOf<ViewKind>;
+
+/** A kind this copy of the library knows; any other string is a newer producer's. */
+export function isViewKind(value: unknown): value is ViewKind {
+  return VIEW_KINDS.includes(value as ViewKind);
+}
+
+const MODEL_GUARDS: { readonly [Kind in ViewKind]: (value: unknown) => value is Models[Kind] } = {
+  widget: isWidgetModel,
+  explorer: isExplorerModel,
+  detail: isDetailModel,
+  session: isSessionModel,
+  summary: isSummaryModel,
+  form: isFormModel,
+};
+
+/**
+ * Whether `value` is a well-formed model of `kind`: nested data included,
+ * finite numbers only. False for a kind this copy does not know.
+ */
+export function isViewModel<Kind extends ViewKind>(
+  kind: Kind,
+  value: unknown,
+): value is ViewModelOf<Kind>;
+export function isViewModel(kind: string, value: unknown): value is ViewModel;
+export function isViewModel(kind: string, value: unknown): boolean {
+  return isViewKind(kind) && MODEL_GUARDS[kind](value) && isJsonValue(value);
+}
 
 export interface ViewInfo {
   id: string;
@@ -74,8 +131,7 @@ export function defineView<Kind extends ViewKind>(
     throw new Error(
       `Invalid view id "${String(id)}": use lowercase <extension>.<view>, e.g. "todo.widget".`,
     );
-  if (!VIEW_KINDS.includes(kind))
-    throw new Error(`View "${id}" has unknown kind "${String(kind)}".`);
+  if (!isViewKind(kind)) throw new Error(`View "${id}" has unknown kind "${String(kind)}".`);
   if (typeof title !== "string" || !title.trim()) throw new Error(`View "${id}" needs a title.`);
   if (typeof model !== "function") throw new Error(`View "${id}" needs a model function.`);
   if (listViews(bus).some((view) => view.id === id))

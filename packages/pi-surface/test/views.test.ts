@@ -61,6 +61,27 @@ describe("view registry", () => {
     expect(JSON.parse(JSON.stringify(read))).toEqual(read);
   });
 
+  it("defines session, summary and form views like the other kinds", () => {
+    const bus = fakeEventBus();
+    const summary = { counts: [{ key: "total", label: "tasks", value: 2 }] };
+    defineView(bus, { id: "todo.summary", kind: "summary", title: "Tasks", model: () => summary });
+    defineView(bus, {
+      id: "system.session",
+      kind: "session",
+      title: "Session",
+      model: () => ({ sessionId: "s", cwd: "/", status: { kind: "idle", since: 1 }, startedAt: 1 }),
+    });
+    defineView(bus, {
+      id: "ask.questions",
+      kind: "form",
+      title: "Questions",
+      model: () => undefined,
+    });
+    expect(listViews(bus).map((view) => view.kind)).toEqual(["form", "session", "summary"]);
+    expect(readView(bus, "todo.summary")).toEqual(summary);
+    expect(readView(bus, "ask.questions")).toBeUndefined();
+  });
+
   it("reads nothing from a view with nothing to show, and rejects unknown ids", () => {
     const bus = fakeEventBus();
     defineView(bus, { id: "todo.widget", kind: "widget", title: "Tasks", model: () => undefined });
