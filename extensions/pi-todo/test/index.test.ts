@@ -1496,11 +1496,12 @@ describe("views and actions on the session bus", () => {
       .map(([, data]) => data as TodoSnapshotEvent)
       .at(-1)!;
 
-  it("defines todo.widget, todo.explorer and the todo actions from start to shutdown", async () => {
+  it("defines todo.widget, todo.explorer, todo.summary and the todo actions from start to shutdown", async () => {
     const env = await started({ mode: "tui", hasUI: true });
     const bus = env.pi.events;
     expect(listViews(bus)).toEqual([
       { id: "todo.explorer", kind: "explorer", title: "Todos" },
+      { id: "todo.summary", kind: "summary", title: "Tasks" },
       { id: "todo.widget", kind: "widget", title: "Tasks" },
     ]);
     expect(listActions(bus).map((action) => action.id)).toEqual([
@@ -1517,6 +1518,7 @@ describe("views and actions on the session bus", () => {
     await env.execute(add("b"));
     expect(announced).toContain("todo.widget");
     expect(announced).toContain("todo.explorer");
+    expect(announced).toContain("todo.summary");
 
     const widget = readView(bus, "todo.widget");
     expect(JSON.parse(JSON.stringify(widget))).toEqual(widget);
@@ -1544,7 +1546,7 @@ describe("views and actions on the session bus", () => {
     expect(listViews(bus)).toEqual([]);
     expect(listActions(bus)).toEqual([]);
     await env.emit("session_start");
-    expect(listViews(bus)).toHaveLength(2);
+    expect(listViews(bus)).toHaveLength(3);
   });
 
   it("todo.inspect shows the detail /todo showed, against the review state a list passes", async () => {

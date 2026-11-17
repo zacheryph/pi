@@ -49,9 +49,11 @@ import { todoSettings, type TodoConfig } from "#src/config";
 import {
   TODO_EXPLORER_VIEW,
   TODO_SNAPSHOT_EVENT,
+  TODO_SUMMARY_VIEW,
   TODO_WIDGET_VIEW,
   todoSnapshotEvent,
 } from "#src/events";
+import { todoSummaryModel } from "#src/summary";
 import {
   cloneTodoState,
   createEmptyTodoState,
@@ -261,6 +263,7 @@ export default function todoExtension(
     if (ctx) uiContext = ctx;
     views.changed(TODO_WIDGET_VIEW);
     views.changed(TODO_EXPLORER_VIEW);
+    views.changed(TODO_SUMMARY_VIEW);
     if (!uiContext?.hasUI) return;
     const shown = widgetState();
     if (!widgetShown()) {
@@ -807,6 +810,13 @@ export default function todoExtension(
           branch: branchGeneration,
           archived: archivedCount(),
         }),
+    });
+    // Counts for badges and headers: defined whether or not the widget shows, never capped.
+    views.define({
+      id: TODO_SUMMARY_VIEW,
+      kind: "summary",
+      title: "Tasks",
+      model: () => todoSummaryModel({ state, activity, review, archived: archivedCount() }),
     });
   };
   /**
