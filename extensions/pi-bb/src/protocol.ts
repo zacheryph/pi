@@ -1,11 +1,21 @@
 // The wire between pi-bb (inside Pi) and the pi-surface bb plugin's server.
-// The plugin keeps its own copy of these shapes and validates every message;
-// change both sides together and bump PROTOCOL_VERSION.
+// The plugin keeps its own copy of these shapes (bb-plugin/protocol.ts) and
+// checks every message; change both sides together and bump PROTOCOL_VERSION.
 
-import type { JsonValue, QuestionnaireAnswer, SessionSnapshot } from "#presentation/contract";
+import {
+  isActionRequest,
+  utf8Bytes,
+  type ActionRequest,
+  type ActionResult,
+  type DeliverySnapshot,
+} from "#surface";
 
-/** 2: snapshots carry every view's model, and the app runs actions instead of named requests. */
-export const PROTOCOL_VERSION = 2;
+/**
+ * 3: a snapshot is pi-surface's `DeliverySnapshot` (every collected view, the
+ * session's core state included as the `system.session` view); requests are
+ * action requests; the plugin welcomes an accepted session.
+ */
+export const PROTOCOL_VERSION = 3;
 
 /** Environment the plugin contributes to every Pi thread through `experimental_contributeEnv`. */
 export const ENV_URL = "PI_BB_SURFACE_URL";
@@ -15,6 +25,7 @@ export const ENV_THREAD = "BB_THREAD_ID";
 
 /** Close codes the plugin uses when it refuses a session; the client stops retrying on these. */
 export const CLOSE_UNAUTHORIZED = 4401;
+/** The plugin speaks another protocol version: one side needs updating. */
 export const CLOSE_UNSUPPORTED = 4400;
 /** A newer connection for the same thread took over. */
 export const CLOSE_REPLACED = 4409;
@@ -24,13 +35,6 @@ export const TERMINAL_CLOSE_CODES: ReadonlySet<number> = new Set([
   CLOSE_REPLACED,
 ]);
 
-/** Requests the plugin forwards from bb's UI; answered only to the socket that asked. */
-export type SurfaceRequest =
-  /** Run an action on the session's bus, e.g. a view's `loadDetail` with the item's `{ id }`. */
-  | { command: "action"; id: string; args?: JsonValue }
-  /** `question` is the questionnaire's id (its tool call id). */
-  | { command: "answer"; question: string; answer: QuestionnaireAnswer };
-
 /** Pi to plugin. `hello` is the first message and authenticates the socket. */
 export type SessionMessage =
   | {
@@ -38,21 +42,57 @@ export type SessionMessage =
       version: number;
       threadId: string;
       token: string;
-      snapshot: SessionSnapshot;
+      snapshot: DeliverySnapshot;
     }
-  | { type: "update"; snapshot: SessionSnapshot }
+  | { type: "update"; snapshot: DeliverySnapshot }
   /** `replace`: /new, /resume, /fork or /reload; the same process reconnects shortly. */
   | { type: "bye"; reason: "quit" | "replace" }
-  | { type: "result"; id: number; ok: boolean; error?: string; data?: unknown };
+  /** The answer to one `request`, sent only on the socket that asked. */
+  | ({ type: "result"; id: number } & ActionResult);
 
 /** Plugin to Pi. */
-export type PluginMessage = { type: "request"; id: number; request: SurfaceRequest };
+export type PluginMessage =
+  /** The plugin accepted the hello: from now on it shows this session and may ask it to act. */
+  { type: "welcome"; version: number } | { type: "request"; id: number; request: ActionRequest };
 
-export function encode(message: SessionMessage): string {
+/**
+ * A hello or an update, around a snapshot's JSON as `collectDelivery` measured
+ * it: the snapshot is embedded as is, never encoded a second time.
+ */
+export function encodeSnapshotMessage(
+  message:
+    | { type: "hello"; threadId: string; token: string; snapshot: string }
+    | { type: "update"; snapshot: string },
+): string {
+  const { snapshot, ...head } = message;
+  const fields = head.type === "hello" ? { ...head, version: PROTOCOL_VERSION } : head;
+  return `${JSON.stringify(fields).slice(0, -1)},"snapshot":${snapshot}}`;
+}
+
+/**
+ * The bytes a hello adds around its snapshot, the largest framing a snapshot
+ * travels in: what a collection reserves of the plugin's message limit.
+ */
+export function helloFramingBytes(threadId: string, token: string): number {
+  return utf8Bytes(encodeSnapshotMessage({ type: "hello", threadId, token, snapshot: "" }));
+}
+
+export function encode(
+  message: Extract<SessionMessage, { type: "bye" }> | Extract<SessionMessage, { type: "result" }>,
+): string {
   return JSON.stringify(message);
 }
 
-/** Reads a plugin message; anything malformed is dropped. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Exactly these keys, so a message of another shape is never half-read. */
+function hasKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
+  return Object.keys(value).every((key) => keys.includes(key));
+}
+
+/** Reads a plugin message strictly; anything malformed is dropped. */
 export function parsePluginMessage(data: unknown): PluginMessage | undefined {
   if (typeof data !== "string") return undefined;
   let raw: unknown;
@@ -61,29 +101,21 @@ export function parsePluginMessage(data: unknown): PluginMessage | undefined {
   } catch {
     return undefined;
   }
-  const message = raw as { type?: unknown; id?: unknown; request?: unknown } | null;
-  if (message?.type !== "request" || !Number.isSafeInteger(message.id)) return undefined;
-  const request = parseRequest(message.request);
-  return request ? { type: "request", id: message.id as number, request } : undefined;
-}
-
-function parseRequest(value: unknown): SurfaceRequest | undefined {
-  const raw = value as {
-    command?: unknown;
-    id?: unknown;
-    args?: unknown;
-    question?: unknown;
-    answer?: unknown;
-  } | null;
-  // The arguments arrived as JSON; the action checks them.
-  if (raw?.command === "action" && typeof raw.id === "string")
-    return raw.args === undefined
-      ? { command: "action", id: raw.id }
-      : { command: "action", id: raw.id, args: raw.args as JsonValue };
-  // pi-ask checks the answer against its questionnaire.
-  if (raw?.command === "answer" && typeof raw.question === "string")
-    return { command: "answer", question: raw.question, answer: raw.answer as QuestionnaireAnswer };
-  return undefined;
+  if (!isRecord(raw)) return undefined;
+  if (raw.type === "welcome")
+    return hasKeys(raw, ["type", "version"]) && Number.isSafeInteger(raw.version)
+      ? { type: "welcome", version: raw.version as number }
+      : undefined;
+  if (raw.type !== "request" || !hasKeys(raw, ["type", "id", "request"])) return undefined;
+  if (!Number.isSafeInteger(raw.id)) return undefined;
+  const request = raw.request;
+  // The arguments are JSON; the action checks them.
+  if (!isActionRequest(request) || !hasKeys(request, ["action", "args"])) return undefined;
+  return {
+    type: "request",
+    id: raw.id as number,
+    request: request.args === undefined ? { action: request.action } : request,
+  };
 }
 
 /** The plugin's session endpoint as a WebSocket URL; bb hands the extension an http(s) URL. */

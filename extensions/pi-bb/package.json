@@ -7,11 +7,7 @@
     "#src/*": "./src/*.ts",
     "#test/*": "./test/*.ts",
     "#foundations/*": "pi-foundations/*",
-    "#presentation": "pi-presentation",
-    "#presentation/*": "pi-presentation/*",
-    "#stash/*": "pi-stash/*",
     "#surface": "pi-surface",
-    "#todo/*": "pi-todo/*",
     "#test-helpers": "pi-test-helpers"
   },
   "description": "Shows this bundle's session state (todos, subagents, stash, git, questions) in bb's UI through the pi-surface bb plugin",
