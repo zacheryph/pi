@@ -227,13 +227,13 @@ call's id (`src/events.ts`):
 the RPC form route's), never for Pi's own dialogs. `ask:answer` answers a published
 questionnaire, checked all or nothing: every question answered once, a single-select with
 exactly one choice or text. The first answer wins. These events remain while
-pi-presentation's dashboard path reads them; the form view and its actions replace them.
+pi-presentation reads them for bb; pi-dashboard uses the form view and its actions.
 
 From session start to shutdown pi-ask also defines the `ask.answer` action on
 the same bus (see [`pi-surface`](../../packages/pi-surface/README.md)). It takes
 the `ask:answer` payload and resolves to the `ask:answer-result` reply, refusals
-included, to its caller only. pi-presentation's `answer` request, which
-pi-dashboard uses from the browser, goes through it.
+included, to its caller only. pi-presentation's `answer` request goes through it;
+pi-dashboard answers through the form's `ask.submit` and `ask.cancel`.
 
 ## Configuration
 

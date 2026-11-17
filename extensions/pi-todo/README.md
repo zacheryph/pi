@@ -375,7 +375,8 @@ is a fresh copy: `{ version: 1, revision, tasks }`, where each task adds `blocke
 `createdAt`, its bounded `updates` history, an `unreviewed` message count, and
 `claimedBy` (the subagent's agent id) when the task is handed over.
 Each subagent has its own bus, so listeners see only their own session's tasks.
-pi-dashboard uses it for its task counts.
+pi-presentation projects it for bb; pi-dashboard reads the `todo.summary` and
+`todo.explorer` views instead.
 
 From session start to shutdown pi-todo also defines views and actions on the
 same bus (see [`pi-surface`](../../packages/pi-surface/README.md)), so a remote
