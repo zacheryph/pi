@@ -28,6 +28,7 @@
   "dependencies": {
     "@get-bb/plugin-sdk": "0.6.132",
     "@radix-ui/react-slot": "^1.5.0",
+    "pi-surface": "file:../packages/pi-surface",
     "zod": "^4.6.5"
   },
   "devDependencies": {

@@ -1,40 +1,13 @@
-// Pure helpers shared by the slots: counts and labels.
-import type { SessionSnapshot, SubagentState, TodoSection } from "../contract.ts";
-
-type Task = TodoSection["tasks"][number];
-
-export interface TodoCounts {
-  done: number;
-  total: number;
-  active?: Task;
-}
-
-export function todoCounts(todos: TodoSection | undefined): TodoCounts | undefined {
-  if (!todos || todos.total === 0) return undefined;
-  const active = todos.tasks.find((task) => task.status === "in_progress");
-  return {
-    done: todos.tasks.filter((task) => task.status === "completed").length,
-    total: todos.total,
-    ...(active ? { active } : {}),
-  };
-}
-
-const RUNNING: ReadonlySet<SubagentState> = new Set(["queued", "running"]);
-
-export function isRunning(state: SubagentState): boolean {
-  return RUNNING.has(state);
-}
-
-export function runningAgents(snapshot: SessionSnapshot | null | undefined): number {
-  return snapshot?.subagents?.agents.filter((agent) => isRunning(agent.state)).length ?? 0;
-}
+// Pure helpers shared by the slots: labels and numbers.
+import type { SessionStatus } from "../contract.ts";
 
 /** Shown for a saved snapshot: no Pi runs for the thread until its next turn. */
 export const NOT_RUNNING = "Not running · resumes with the next turn";
 
-export function statusText(snapshot: SessionSnapshot): string {
-  const { status } = snapshot;
-  switch (status.kind) {
+export function statusText(status: SessionStatus | undefined): string {
+  switch (status?.kind) {
+    case undefined:
+      return "Connected";
     case "idle":
       return "Idle";
     case "working":
@@ -71,8 +44,7 @@ export function compact(value: number): string {
   return `${(value / 1_000_000).toFixed(1)}M`;
 }
 
-/** `#212` from `owner/repo#212`. */
-export function prNumber(label: string): string {
-  const hash = label.lastIndexOf("#");
-  return hash >= 0 ? label.slice(hash) : label;
+/** `3 agents`, `1 agent`. */
+export function plural(value: number, singular: string, plural = `${singular}s`): string {
+  return `${value} ${value === 1 ? singular : plural}`;
 }

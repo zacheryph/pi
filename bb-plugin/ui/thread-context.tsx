@@ -6,25 +6,39 @@ import {
   type ExperimentalThreadContextSegmentProps,
 } from "@get-bb/plugin-sdk/app";
 import { Icon } from "@/components/ui/icon";
-import type { GitSection, SessionSnapshot } from "../contract.ts";
-import { prNumber, runningAgents, todoCounts } from "./format.ts";
+import type { DeliverySnapshot, ExplorerItem, ExplorerModel } from "../contract.ts";
+import {
+  openQuestionnaires,
+  profileName,
+  runningAgents,
+  stashEntries,
+  todoProgress,
+  viewModel,
+  VIEW,
+} from "../views.ts";
+import { plural } from "./format.ts";
 import { useOpenSessionTab, useSession } from "./session.ts";
+import { BadgeText, LineText, plainText, URL_ONLY } from "./surface.tsx";
 
-/** `orchestrate · 3/7 tasks · 2 agents`, as one button that opens the Pi tab. */
+/**
+ * `orchestrate · 3/7 tasks · 2 agents · question`, as one button that opens
+ * the Pi tab. Every part is a summary's count, so it reads the same whether
+ * or not the session shows its widgets.
+ */
 export function SegmentSummary({
   snapshot,
   onOpen,
 }: {
-  snapshot: SessionSnapshot;
+  snapshot: DeliverySnapshot;
   onOpen?: () => void;
 }) {
-  const counts = todoCounts(snapshot.todos);
+  const tasks = todoProgress(snapshot);
   const agents = runningAgents(snapshot);
   const parts = [
-    snapshot.agent ?? "Pi",
-    ...(counts ? [`${counts.done}/${counts.total} tasks`] : []),
-    ...(agents ? [`${agents} ${agents === 1 ? "agent" : "agents"}`] : []),
-    ...(snapshot.questions?.length ? ["question"] : []),
+    profileName(snapshot) ?? "Pi",
+    ...(tasks ? [`${tasks.done}/${tasks.total} tasks`] : []),
+    ...(agents ? [plural(agents, "agent")] : []),
+    ...(openQuestionnaires(snapshot).length ? ["question"] : []),
   ];
   // bb's segment padding (its CONTEXT_CARD_SEGMENT_CLASS): inside the row's
   // 4px inset it puts the icon 12px from the card edge, like the stack cards.
@@ -48,72 +62,92 @@ export function PiSegment({ threadId }: ExperimentalThreadContextSegmentProps) {
 }
 
 export function StashCardRow({ threadId }: ExperimentalThreadContextCardProps) {
-  const snapshot = useSession(threadId);
+  const total = stashEntries(useSession(threadId));
   const open = useOpenSessionTab();
-  const total = snapshot?.stash?.total ?? 0;
   if (!total) return null;
   return (
     <ThreadContextCardRow
       icon="Paperclip"
       label="Stash"
       trailing={<span className="tabular-nums">{total}</span>}
-      title={`${total} stash ${total === 1 ? "entry" : "entries"} on this branch`}
+      title={`${plural(total, "stash entry", "stash entries")} on this branch`}
       onClick={() => void open()}
     />
   );
 }
 
-function checksText(checks: NonNullable<GitSection["prs"][number]["checks"]>): string {
-  const parts = [
-    ...(checks.passed ? [`✓${checks.passed}`] : []),
-    ...(checks.failed ? [`✗${checks.failed}`] : []),
-    ...(checks.pending ? [`●${checks.pending}`] : []),
-  ];
-  return parts.join(" ");
+/**
+ * The explorers whose items the context card lists, with bb's icon for their
+ * rows: a session's worktrees in use (the explorer's first tab) and every pull
+ * request it touched.
+ */
+export const GIT_CARD: ReadonlyArray<{ view: string; icon: string; items: "tab" | "all" }> = [
+  { view: VIEW.gitWorktrees, icon: "FolderGit", items: "tab" },
+  { view: VIEW.gitPrs, icon: "GitPullRequest", items: "all" },
+];
+
+/** The items an explorer shows first: those of its initial tab, or all of them without tabs. */
+export function initialItems(model: ExplorerModel): ExplorerItem[] {
+  const tab = model.tabs?.[model.initialTab ?? 0];
+  if (!tab) return [...model.items];
+  const byId = new Map(model.items.map((item) => [item.id, item]));
+  return tab.ids.flatMap((id) => byId.get(id) ?? []);
 }
 
-function prIcon(pr: GitSection["prs"][number]): string {
-  if (pr.state === "merged") return "GitMerge";
-  if (pr.state === "closed") return "GitPullRequestClosed";
-  return pr.draft ? "GitPullRequestDraft" : "GitPullRequest";
+/**
+ * The first field of an item's included detail whose value is a bare http(s)
+ * URL: the link the generic renderer opens in bb for that item.
+ */
+export function itemLink(item: ExplorerItem): string | undefined {
+  if (typeof item.detail !== "object") return undefined;
+  for (const block of item.detail)
+    if ("fields" in block)
+      for (const [, value] of block.fields) {
+        const text = plainText(value);
+        if (URL_ONLY.test(text)) return text;
+      }
+  return undefined;
 }
 
-function worktreeText(worktree: GitSection["worktrees"][number]): string {
-  if (worktree.state === "missing") return "missing";
-  if (worktree.mergedInto) return `merged into ${worktree.mergedInto}`;
-  const parts = [
-    ...(worktree.dirty ? ["dirty"] : []),
-    ...(worktree.unpushed ? [`${worktree.unpushed} unpushed`] : []),
-  ];
-  return parts.join(" · ") || "clean";
-}
-
-export function GitRows({ git, openUrl }: { git: GitSection; openUrl?: (url: string) => void }) {
+/** Explorer items as context card rows: the item's label and badge, its link on click. */
+export function ExplorerCardRows({
+  snapshot,
+  openUrl,
+  onOpen,
+}: {
+  snapshot: DeliverySnapshot;
+  openUrl?: (url: string) => void;
+  onOpen?: () => void;
+}) {
   return (
     <>
-      {git.worktrees.map((worktree) => (
-        <ThreadContextCardRow
-          key={worktree.path}
-          icon="FolderGit"
-          label={worktree.branch}
-          title={`${worktree.repo}: ${worktree.path}`}
-          trailing={<span className="text-xs">{worktreeText(worktree)}</span>}
-        />
-      ))}
-      {git.prs.map((pr) => (
-        <ThreadContextCardRow
-          key={pr.url}
-          icon={prIcon(pr)}
-          label={`${prNumber(pr.label)} ${pr.title ?? ""}`.trim()}
-          title={`${pr.label}${pr.state ? ` (${pr.draft ? "draft" : pr.state})` : ""}`}
-          trailing={
-            pr.checks ? (
-              <span className="font-mono text-xs tabular-nums">{checksText(pr.checks)}</span>
-            ) : undefined
-          }
-          {...(openUrl ? { onClick: () => openUrl(pr.url) } : {})}
-        />
-      ))}
+      {GIT_CARD.flatMap(({ view, icon, items }) => {
+        const model = viewModel(snapshot, view, "explorer");
+        if (!model) return [];
+        return (items === "tab" ? initialItems(model) : model.items).map((item) => {
+          const link = itemLink(item);
+          const click = link && openUrl ? () => openUrl(link) : onOpen;
+          return (
+            <ThreadContextCardRow
+              key={`${view}:${item.id}`}
+              icon={icon}
+              label={<LineText line={item.label} />}
+              title={plainText(item.label)}
+              {...(item.badge
+                ? {
+                    // The label comes first: a long status truncates within its own column.
+                    trailing: (
+                      <span className="block max-w-28 truncate" title={item.badge.text}>
+                        <BadgeText badge={item.badge} />
+                      </span>
+                    ),
+                  }
+                : {})}
+              {...(click ? { onClick: click } : {})}
+            />
+          );
+        });
+      })}
     </>
   );
 }
@@ -121,7 +155,18 @@ export function GitRows({ git, openUrl }: { git: GitSection; openUrl?: (url: str
 export function GitCardSection({ threadId }: ExperimentalThreadContextCardProps) {
   const snapshot = useSession(threadId);
   const navigate = useBbNavigate();
-  const git = snapshot?.git;
-  if (!git || git.worktrees.length + git.prs.length === 0) return null;
-  return <GitRows git={git} openUrl={(url) => void navigate.openUrl(url)} />;
+  const open = useOpenSessionTab();
+  if (!snapshot) return null;
+  const any = GIT_CARD.some(({ view, items }) => {
+    const model = viewModel(snapshot, view, "explorer");
+    return !!model && (items === "tab" ? initialItems(model) : model.items).length > 0;
+  });
+  if (!any) return null;
+  return (
+    <ExplorerCardRows
+      snapshot={snapshot}
+      openUrl={(url) => void navigate.openUrl(url)}
+      onOpen={() => void open()}
+    />
+  );
 }
