@@ -1,5 +1,11 @@
 // The dashboard page: static HTML; all session data arrives over /events and
 // is rendered with DOM APIs (textContent), never interpolated as markup.
+//
+// Each session is the hub's latest complete snapshot of its views. The script
+// has one renderer per view kind: session (cards, header, strip, activity),
+// summary (count chips), widget, explorer, detail and form. It knows no
+// extension: behaviour is the action a view references, sent back through
+// POST /api/sessions/<id>/actions, and Focus is the dashboard's own request.
 
 const STYLE = `
 :root {
@@ -146,6 +152,47 @@ dialog.modal.narrow { width: min(440px, calc(100vw - 32px)); }
 .kv dt { color: var(--muted); }
 .kv dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
 @media (max-width: 760px) { .cols { grid-template-columns: minmax(0, 1fr); } .actions { justify-items: start; } }
+.t-accent { color: var(--accent); }
+.t-muted, .t-dim { color: var(--muted); }
+.t-dim { opacity: 0.75; }
+.t-success { color: var(--ok); }
+.t-warning { color: var(--warn); }
+.t-error { color: var(--bad); }
+.b { font-weight: 600; }
+.badge { flex: none; max-width: 28ch; font: 600 11px var(--mono); padding: 1px 8px; border-radius: 999px; background: var(--wire); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.badge.t-accent { background: var(--accent-soft); }
+.badge.t-success { background: var(--ok-soft); }
+.badge.t-warning { background: var(--warn-soft); }
+.badge.t-error { background: var(--bad-soft); }
+.sums { display: grid; gap: 1px; font-size: 12px; min-width: 0; }
+.sums .sum { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sums .sum > * { margin-right: 8px; }
+.sum { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; min-width: 0; }
+.sumtitle { font: 600 11px var(--mono); letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+.chip-count { font: 500 12px var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sumstrip > div { justify-items: stretch; }
+.sumstrip .sum { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.sum .active { font-size: 12px; }
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.item { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 6px; align-items: start; }
+.mark { color: var(--warn); font-size: 10px; line-height: 21px; }
+.mark.chev { color: var(--muted); font-size: 12px; }
+details > summary .chev::before { content: "▸"; }
+details[open] > summary .chev::before { content: "▾"; }
+.notice-line { font-size: 12px; color: var(--muted); }
+.lead { margin-right: 1ch; }
+.right { flex: none; max-width: 45%; }
+section.panel.idle h3 { opacity: 0.7; }
+section.panel.failed { border-color: var(--bad); }
+.content { display: grid; gap: 6px; min-width: 0; }
+.content h4 { margin: 6px 0 0; font: 600 11px var(--mono); letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+.content h4:first-child { margin-top: 0; }
+.content p { margin: 0; }
+.content pre.preview { padding: 8px 10px; max-height: 360px; overflow: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
+.fields { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 12px; margin: 0; font-size: 13px; }
+.fields dt { color: var(--muted); }
+.fields dd { margin: 0; min-width: 0; }
+.bullets { margin: 0; padding-left: 18px; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 `;
 
@@ -160,8 +207,10 @@ let rendered = "";
 const expanded = new Set();
 const notices = new Map();
 const busy = new Set();
-/** Task histories fetched on request, keyed so a newer task version refetches. */
-const histories = new Map();
+/** Explorer details loaded through their view's loadDetail action, by session, view and item. */
+const details = new Map();
+/** The tab each explorer shows, by session and view. */
+const tabs = new Map();
 const filterInput = document.getElementById("filter");
 const notifyButton = document.getElementById("notify");
 const stored = (key) => { try { return localStorage.getItem(key) || ""; } catch { return ""; } };
@@ -169,8 +218,12 @@ const store = (key, value) => { try { localStorage.setItem(key, value); } catch 
 let filter = stored("dashboard:filter");
 let notifyOn = stored("dashboard:notify") === "on" && "Notification" in window && Notification.permission === "granted";
 
+const SESSION_VIEW = "system.session";
 const ORDER = { waiting: 0, tool: 1, working: 1, compacting: 1, idle: 2 };
-const TODO_GLYPH = { completed: "✓", in_progress: "◐", pending: "○" };
+const ICONS = { pending: "○", active: "◐", done: "✓", blocked: "⊘", queued: "…", waiting: "◇", failed: "✗", stopped: "■" };
+const TONES = ["accent", "muted", "dim", "success", "warning", "error"];
+/** Rows a widget or explorer shows before the rest fold away. */
+const SHOWN = 12;
 const el = (tag, className, text) => {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -187,15 +240,106 @@ const ago = (ms) => {
 };
 const duration = (ms) => ms < 1000 ? "<1s" : ago(Date.now() - ms);
 const tokens = (n) => n >= 1e6 ? +(n / 1e6).toFixed(1) + "M" : n >= 1000 ? Math.round(n / 1000) + "k" : String(Math.round(n));
-const bytes = (n) => n >= 1073741824 ? +(n / 1073741824).toFixed(2) + " GB" : n >= 1048576 ? (n / 1048576).toFixed(1) + " MB" : n >= 1024 ? Math.round(n / 1024) + " KB" : n + " B";
+const amount = (n) => n >= 1e6 ? +(n / 1e6).toFixed(1) + "M" : n >= 1e4 ? Math.round(n / 1000) + "k" : String(+n.toFixed(2));
 const money = (n) => "$" + (n >= 100 ? Math.round(n) : n.toFixed(2));
-const title = (session) => session.name || "untitled …" + session.sessionId.slice(-6);
-const statusLabel = (session) => {
-  if (session.restarting) return "restarting";
-  const status = session.status;
+const toneClass = (tone) => TONES.includes(tone) ? " t-" + tone : "";
+
+// One session record is the hub's latest complete snapshot of it: an id, host
+// metadata (pid, the terminal Focus brings forward) and its views. Nothing
+// here knows an extension; each view kind has one renderer below.
+const viewsOf = (record) => list(record.views);
+const ofKind = (record, kind) => viewsOf(record).filter((entry) => entry.kind === kind);
+const sessionEntry = (record) => {
+  const entries = ofKind(record, "session");
+  return entries.find((entry) => entry.id === SESSION_VIEW) || entries[0];
+};
+/** The core session model, or null when system insights is missing or failed. */
+const core = (record) => { const entry = sessionEntry(record); return entry && entry.model ? entry.model : null; };
+const live = (record) => !record.disconnected;
+const terminalOf = (record) => live(record) && record.host && record.host.terminal ? record.host.terminal : null;
+const pidOf = (record) => record.host && record.host.pid ? record.host.pid : null;
+const title = (record) => {
+  const session = core(record);
+  if (session) return session.name || "untitled …" + session.sessionId.slice(-6);
+  return "session " + (pidOf(record) || record.id);
+};
+const named = (record) => { const session = core(record); return !!(session && session.name); };
+const cwdOf = (record) => { const session = core(record); return session ? session.cwd : ""; };
+const statusOf = (record) => { const session = core(record); return session ? session.status : null; };
+const statusKind = (record) => !live(record) ? "idle" : statusOf(record) ? statusOf(record).kind : "unknown";
+const statusLabel = (record) => {
+  if (!live(record)) return "restarting";
+  const status = statusOf(record);
+  if (!status) return "status unknown";
   return status.kind === "tool" ? "tool: " + status.tool : status.kind;
 };
+const questionnaires = (record) => live(record)
+  ? ofKind(record, "form").flatMap((entry) => entry.model ? list(entry.model.questionnaires) : [])
+  : [];
+/** Profiles summaries carry, such as the main agent's, as display text. */
+const profiles = (record) => ofKind(record, "summary").flatMap((entry) => entry.model && entry.model.profile ? [entry.model.profile.label || entry.model.profile.name] : []);
 const pill = (kind, text) => el("span", "pill " + kind, text);
+
+/** Elapsed time since a clock started, as mm:ss or h:mm:ss. */
+function clock(since) {
+  const s = Math.max(0, Math.floor((Date.now() - since) / 1000));
+  const two = (n) => String(n).padStart(2, "0");
+  const h = Math.floor(s / 3600);
+  return (h ? h + ":" + two(Math.floor(s / 60) % 60) : two(Math.floor(s / 60))) + ":" + two(s % 60);
+}
+
+// Text models: spans, lines, titles, badges and detail blocks. Text is
+// untrusted and always set through textContent; tones become classes.
+function spanText(value) {
+  if (typeof value === "string") return value;
+  if (value.live && typeof value.since === "number") return clock(value.since);
+  return value.text || (value.icon ? ICONS[value.icon] || "" : "");
+}
+function span(value) {
+  if (typeof value === "string") return document.createTextNode(value);
+  return el("span", (toneClass(value.tone) + (value.bold ? " b" : "") + (value.icon ? " glyph" : "")).trim(), spanText(value));
+}
+const spans = (value) => Array.isArray(value) ? value : value === undefined || value === null ? [] : [value];
+function line(value, className) {
+  const node = el("span", className);
+  for (const part of spans(value)) node.append(span(part));
+  return node;
+}
+const lineText = (value) => spans(value).map(spanText).join("");
+// A title's icon is a terminal glyph (a Nerd Font codepoint), so the page shows its words only.
+const titleText = (value) => typeof value === "string" ? value : value.label + (value.detail ? " / " + value.detail : "");
+const badge = (value) => el("span", "badge" + toneClass(value.tone), value.text);
+
+function content(value) {
+  const wrap = el("div", "content");
+  if (typeof value === "string") { if (value) wrap.append(el("p", "wrap", value)); return wrap; }
+  for (const block of list(value)) {
+    if ("heading" in block) wrap.append(el("h4", "", block.heading));
+    else if ("fields" in block) {
+      const dl = el("dl", "fields");
+      for (const [label, field] of list(block.fields)) {
+        const dd = el("dd");
+        dd.append(line(field, "wrap"));
+        dl.append(el("dt", "", label), dd);
+      }
+      wrap.append(dl);
+    } else if ("text" in block) wrap.append(el("p", "wrap" + toneClass(block.tone), block.text));
+    else if ("bullets" in block) {
+      const ul = el("ul", "bullets");
+      for (const text of list(block.bullets)) ul.append(el("li", "wrap", text));
+      wrap.append(ul);
+    } else if ("lines" in block) {
+      const pre = el("pre", "preview");
+      const first = block.numbered === true ? 1 : typeof block.numbered === "number" ? block.numbered : null;
+      list(block.lines).forEach((text, index) => {
+        if (first !== null) pre.append(el("span", "ln", first + index));
+        pre.append(text, "\\n");
+      });
+      wrap.append(pre);
+    }
+  }
+  return wrap;
+}
 
 function meter(context) {
   const wrap = el("div", "ctx");
@@ -217,12 +361,12 @@ function meter(context) {
 }
 
 /** A request to one session, answered to this page only. */
-async function ask(session, path, payload) {
+async function ask(record, path, payload) {
   let response;
   const headers = { "X-Dashboard-Token": token };
   if (payload !== undefined) headers["Content-Type"] = "application/json";
   try {
-    response = await fetch("/api/sessions/" + encodeURIComponent(session.id) + "/" + path, {
+    response = await fetch("/api/sessions/" + encodeURIComponent(record.id) + "/" + path, {
       method: "POST", headers, ...(payload === undefined ? {} : { body: JSON.stringify(payload) }),
     });
   } catch {
@@ -233,107 +377,126 @@ async function ask(session, path, payload) {
   return body.data;
 }
 
-/** Runs a request into one of the content maps, re-rendering as it starts and ends. */
-async function fetchInto(map, key, session, path) {
-  map.set(key, { loading: true });
-  render(true);
-  try { map.set(key, { data: await ask(session, path) }); } catch (error) { map.set(key, { error: error.message }); }
-  render(true);
+/** Runs an action a view references, with the reference's arguments plus the call's own. */
+function act(record, ref, extra) {
+  if (!live(record)) return Promise.reject(new Error("That session is restarting; try again in a moment."));
+  const args = { ...(ref.args || {}), ...(extra || {}) };
+  return ask(record, "actions", { action: ref.action, ...(Object.keys(args).length ? { args } : {}) });
 }
 
-async function focusSession(session) {
-  busy.add(session.id);
-  notices.delete(session.id);
+function flash(id, notice) {
+  notices.set(id, notice);
+  setTimeout(() => { if (notices.get(id) === notice) { notices.delete(id); render(true); } }, notice.ok ? 3000 : 8000);
+}
+
+async function focusSession(record) {
+  const terminal = terminalOf(record);
+  busy.add(record.id);
+  notices.delete(record.id);
   render(true);
   let notice;
   try {
-    await ask(session, "focus");
-    notice = { ok: true, text: "Focused in " + session.terminal.label };
+    await ask(record, "focus");
+    notice = { ok: true, text: "Focused in " + terminal.label };
   } catch (error) {
     notice = { ok: false, text: error.message };
   }
-  busy.delete(session.id);
-  notices.set(session.id, notice);
-  setTimeout(() => { if (notices.get(session.id) === notice) { notices.delete(session.id); render(true); } }, notice.ok ? 3000 : 8000);
+  busy.delete(record.id);
+  flash(record.id, notice);
   render(true);
 }
 
-function focusButton(session, solid) {
-  if (!session.terminal || session.restarting) return null;
-  const button = el("button", "focus" + (solid ? " solid" : ""), busy.has(session.id) ? "Focusing…" : "Focus");
+function focusButton(record, solid) {
+  const terminal = terminalOf(record);
+  if (!terminal) return null;
+  const button = el("button", "focus" + (solid ? " solid" : ""), busy.has(record.id) ? "Focusing…" : "Focus");
   button.type = "button";
-  button.disabled = busy.has(session.id);
-  button.title = "Bring this session's " + session.terminal.label + " pane to the front";
-  button.dataset.key = "focus:" + session.id + (solid ? ":detail" : "");
-  button.addEventListener("click", (event) => { event.stopPropagation(); focusSession(session); });
+  button.disabled = busy.has(record.id);
+  button.title = "Bring this session's " + terminal.label + " pane to the front";
+  button.dataset.key = "focus:" + record.id + (solid ? ":detail" : "");
+  button.addEventListener("click", (event) => { event.stopPropagation(); focusSession(record); });
   return button;
 }
 
-function noticeFor(session) {
-  const notice = notices.get(session.id);
+function noticeFor(record) {
+  const notice = notices.get(record.id);
   if (!notice) return null;
   const node = el("span", "notice" + (notice.ok ? " ok" : ""), notice.text);
   node.setAttribute("role", "status");
   return node;
 }
 
-function card(session) {
-  const questions = session.restarting ? [] : list(session.questions);
-  const waiting = !session.restarting && (session.status.kind === "waiting" || questions.length > 0);
-  const node = el("article", "card" + (waiting ? " attn" : "") + (session.restarting ? " restarting" : ""));
-  node.title = "session " + session.sessionId + " · pid " + session.pid;
-  node.addEventListener("click", () => { location.hash = encodeURIComponent(session.id); });
+// summary: counts as toned chips, the active item and the producer's profile.
+function summaryCounts(model, compact) {
+  return list(model.counts).filter((item) => item.value > 0 && (!compact || (item.tone !== "muted" && item.tone !== "dim")));
+}
+function summaryView(entry, compact) {
+  const node = el("span", "sum");
+  node.append(el("span", "sumtitle", entry.title));
+  if (!entry.model) { node.append(el("span", "bad", compact ? "unavailable" : entry.error)); return node; }
+  const counts = summaryCounts(entry.model, compact);
+  for (const item of counts) node.append(el("span", "chip-count" + toneClass(item.tone), amount(item.value) + " " + item.label));
+  if (!counts.length && !compact) node.append(el("span", "muted", "nothing yet"));
+  if (!compact && entry.model.active) node.append(el("span", "active wrap", "▸ " + entry.model.active.label));
+  if (!compact && entry.model.profile) {
+    const profile = entry.model.profile;
+    node.append(el("span", "muted wrap", "profile " + (profile.label || profile.name) + (profile.description ? " · " + profile.description : "")));
+  }
+  return node;
+}
+
+// session (index card): the core session view, or what is known without it.
+function card(record) {
+  const asks = questionnaires(record);
+  const status = statusOf(record);
+  const waiting = live(record) && ((status && status.kind === "waiting") || asks.length > 0);
+  const node = el("article", "card" + (waiting ? " attn" : "") + (live(record) ? "" : " restarting"));
+  const session = core(record);
+  node.title = [session ? "session " + session.sessionId : null, pidOf(record) ? "pid " + pidOf(record) : null].filter(Boolean).join(" · ");
+  node.addEventListener("click", () => { location.hash = encodeURIComponent(record.id); });
   const head = el("div", "row");
-  const name = el("h3", "name" + (session.name ? "" : " untitled"));
-  const link = el("a", "", title(session));
-  link.href = "#" + encodeURIComponent(session.id);
-  link.dataset.key = "open:" + session.id;
+  const name = el("h3", "name" + (named(record) ? "" : " untitled"));
+  const link = el("a", "", title(record));
+  link.href = "#" + encodeURIComponent(record.id);
+  link.dataset.key = "open:" + record.id;
   name.append(link);
-  head.append(name, pill(session.restarting ? "idle" : session.status.kind, statusLabel(session)));
+  head.append(name, pill(statusKind(record), statusLabel(record)));
   node.append(head);
-  if (questions.length) {
+  if (asks.length) {
     const row = el("div", "row");
-    row.append(el("span", "clip", "Asks: " + questions[0].questions[0].question), answerButton(session, questions[0], false));
+    row.append(el("span", "clip", "Asks: " + asks[0].questions[0].question), answerButton(record, asks[0], false));
     node.append(row);
-  } else if (waiting && session.status.title) node.append(el("span", "clip", session.status.title));
-  if (session.agent) node.append(el("span", "clip", "agent · " + session.agent));
-  node.append(el("span", "mono muted clip", [session.model ? session.model.id : "no model", session.thinking].filter(Boolean).join(" · ")));
-  node.append(meter(session.context));
-  const work = [];
-  const tasks = session.todos ? list(session.todos.tasks) : [];
-  if (tasks.length) {
-    const done = tasks.filter((task) => task.status === "completed").length;
-    const fresh = tasks.reduce((sum, task) => sum + (Number(task.unreviewed) || 0), 0);
-    work.push("todos " + done + "/" + (Number(session.todos.total) || tasks.length) + (fresh ? " · " + fresh + " new" : ""));
+  } else if (waiting && status.title) node.append(el("span", "clip", status.title));
+  for (const profile of profiles(record)) node.append(el("span", "clip", "agent · " + profile));
+  if (session) {
+    node.append(el("span", "mono muted clip", [session.model ? session.model.id : "no model", session.thinking].filter(Boolean).join(" · ")));
+    node.append(meter(session.context));
+  } else {
+    const entry = sessionEntry(record);
+    node.append(el("span", "muted clip", entry && entry.error ? "Session information failed: " + entry.error : "No session information; is pi-system-insights loaded?"));
   }
-  const running = session.subagents ? list(session.subagents.agents).filter((agent) => agent.state === "running").length : 0;
-  if (running) work.push(running + (running === 1 ? " subagent" : " subagents"));
-  const stashed = session.stash ? Number(session.stash.total) || 0 : 0;
-  if (stashed) work.push("stash " + stashed);
-  if (session.git) {
-    // Counted by the reporter over every PR; the list itself is capped.
-    const open = Number(session.git.openCreated) || 0;
-    const failing = Number(session.git.failingCreated) || 0;
-    if (open) work.push("PRs " + open + " open" + (failing ? " · " + failing + " failing" : ""));
-    const trees = Number(session.git.worktreeTotal) || 0;
-    if (trees) work.push(trees === 1 ? "1 worktree" : trees + " worktrees");
+  const sums = el("div", "sums");
+  for (const entry of ofKind(record, "summary")) {
+    if (entry.model && !summaryCounts(entry.model, true).length) continue;
+    sums.append(summaryView(entry, true));
   }
-  if (work.length) node.append(el("span", "clip", work.join(" · ")));
+  if (sums.childElementCount) node.append(sums);
   const foot = el("div", "row");
-  foot.append(el("span", "mono muted clip", "up " + ago(session.startedAt) + " · " + statusLabel(session) + " " + ago(session.status.since)));
-  const button = focusButton(session, false);
+  foot.append(el("span", "mono muted clip", [session ? "up " + ago(session.startedAt) : null, statusLabel(record) + (live(record) && status ? " " + ago(status.since) : "")].filter(Boolean).join(" · ")));
+  const button = focusButton(record, false);
   if (button) foot.append(button);
   node.append(foot);
-  const notice = noticeFor(session);
+  const notice = noticeFor(record);
   if (notice) node.append(notice);
   return node;
 }
 
-/** Every whitespace-separated term must appear in the name, directory, agent, model or status. */
-function matches(session) {
+/** Every whitespace-separated term must appear in the name, directory, profile, model or status. */
+function matches(record) {
   const terms = filter.toLowerCase().split(/\\s+/).filter(Boolean);
   if (!terms.length) return true;
-  const text = [title(session), tilde(session.cwd), session.agent, session.model && session.model.id, statusLabel(session)].filter(Boolean).join(" ").toLowerCase();
+  const session = core(record);
+  const text = [title(record), tilde(cwdOf(record)), ...profiles(record), session && session.model && session.model.id, statusLabel(record)].filter(Boolean).join(" ").toLowerCase();
   return terms.every((term) => text.includes(term));
 }
 
@@ -344,28 +507,30 @@ function renderIndex() {
       : "Not connected. The dashboard stops when the last Pi session exits; run /dashboard in Pi to start it again."));
     return;
   }
-  const sessions = state.sessions.filter(matches);
-  if (!sessions.length) {
+  const records = state.sessions.filter(matches);
+  if (!records.length) {
     main.append(el("p", "empty", "No sessions match “" + filter.trim() + "”."));
     return;
   }
   const groups = new Map();
-  for (const session of sessions) {
-    if (!groups.has(session.cwd)) groups.set(session.cwd, []);
-    groups.get(session.cwd).push(session);
+  for (const record of records) {
+    const cwd = cwdOf(record);
+    if (!groups.has(cwd)) groups.set(cwd, []);
+    groups.get(cwd).push(record);
   }
   for (const [cwd, items] of [...groups].sort((a, b) => a[0].localeCompare(b[0]))) {
-    main.append(el("h2", "group", tilde(cwd)));
+    main.append(el("h2", "group", cwd ? tilde(cwd) : "directory unknown"));
     const grid = el("div", "grid");
-    const rank = (s) => s.restarting ? 3 : ORDER[s.status.kind] ?? 2;
-    items.sort((a, b) => rank(a) - rank(b) || (a.name || "").localeCompare(b.name || "") || a.startedAt - b.startedAt);
-    for (const session of items) grid.append(card(session));
+    const rank = (record) => live(record) ? ORDER[statusKind(record)] ?? 2 : 3;
+    const started = (record) => core(record) ? core(record).startedAt : 0;
+    items.sort((a, b) => rank(a) - rank(b) || (named(a) ? title(a) : "").localeCompare(named(b) ? title(b) : "") || started(a) - started(b));
+    for (const record of items) grid.append(card(record));
     main.append(grid);
   }
 }
 
-function panel(name, summary) {
-  const node = el("section", "panel");
+function panel(name, summary, className) {
+  const node = el("section", "panel" + (className ? " " + className : ""));
   const head = el("h3", "", name);
   if (summary) head.append(el("span", "", summary));
   node.append(head);
@@ -378,16 +543,9 @@ function kv(rows) {
   return dl;
 }
 
-/** A list of rows, one per item. */
-function itemList(items, row) {
-  const ul = el("ul", "items");
-  for (const item of items) ul.append(row(item));
-  return ul;
-}
-
 /**
- * Finished rows behind one expandable line, so a long session's panels show
- * what is still in flight; whether it is open survives live re-renders.
+ * Rows past the first few behind one expandable line, so a long list shows
+ * what comes first; whether it is open survives live re-renders.
  */
 function fold(node, key, label, ...children) {
   const details = el("details", "fold");
@@ -399,77 +557,162 @@ function fold(node, key, label, ...children) {
   node.append(details);
 }
 
-function todoPanel(session) {
-  const tasks = list(session.todos.tasks);
-  const fresh = tasks.reduce((sum, task) => sum + (Number(task.unreviewed) || 0), 0);
-  // A completed task with unread messages stays out until they are reviewed.
-  const finished = tasks.filter((task) => task.status === "completed" && !task.unreviewed);
-  const open = tasks.filter((task) => !finished.includes(task));
-  const done = tasks.filter((task) => task.status === "completed").length;
-  const node = panel("Todos", tasks.length ? done + "/" + session.todos.total + " done" + (fresh ? " · " + fresh + " new" : "") : "");
-  if (!tasks.length) { node.append(el("span", "muted", "No tasks on this branch.")); return node; }
-  const row = (task) => todoItem(session, task);
-  if (open.length) node.append(itemList(open, row));
-  else node.append(el("span", "muted", "No open tasks."));
-  if (finished.length) fold(node, "fold:" + session.id + ":todos", finished.length + " completed", itemList(finished, row));
+/** Appends \`items\` as rows: the first few in a list, the rest folded. */
+function rows(node, key, items, row, noun) {
+  const ul = el("ul", "items");
+  for (const item of items.slice(0, SHOWN)) ul.append(row(item));
+  node.append(ul);
+  const rest = items.slice(SHOWN);
+  if (!rest.length) return;
+  const more = el("ul", "items");
+  for (const item of rest) more.append(row(item));
+  fold(node, key, rest.length + " more " + (noun || "rows"), more);
+}
+
+/** A failed view: its title and why it is missing. */
+function failedPanel(entry) {
+  const node = panel(entry.title, "unavailable", "failed");
+  node.append(el("span", "bad wrap", entry.error));
   return node;
 }
 
-function todoItem(session, task) {
+// widget: a heading with rows, as the terminal draws it above the editor.
+function widgetPanel(record, entry) {
+  const model = entry.model;
+  const meta = list(model.meta);
+  const node = panel(titleText(model.title), meta.length ? lineText(meta[0]) : "", model.active === false ? "idle" : "");
+  const items = list(model.rows);
+  if (!items.length) { node.append(el("span", "muted", model.emptyText || "Nothing to show.")); return node; }
+  rows(node, "fold:" + record.id + ":" + entry.id, items, (item) => {
+    const li = el("li");
+    const row = el("div", "row");
+    const left = el("span", "clip");
+    if (item.lead !== undefined) left.append(line(item.lead, "mono lead"));
+    left.append(line(item.left));
+    row.append(left);
+    const right = list(item.right);
+    if (right.length) row.append(line(right[0], "mono muted clip right"));
+    li.append(row);
+    return li;
+  }, "");
+  return node;
+}
+
+// explorer: a list of items that open into detail, with tabs and marks.
+function explorerPanel(record, entry) {
+  const model = entry.model;
+  const items = list(model.items);
+  const byId = new Map(items.map((item) => [item.id, item]));
+  const viewKey = record.id + ":" + entry.id;
+  const noun = list(model.noun).length === 2 ? model.noun : ["item", "items"];
+  const marker = model.marker;
+  const marked = marker ? items.filter((item) => item.marked) : [];
+  const status = [items.length + " " + (items.length === 1 ? noun[0] : noun[1]), marked.length ? marked.length + " " + marker.label : ""].filter(Boolean).join(" · ");
+  const node = panel(titleText(model.title), status);
+  for (const notice of list(model.notices)) node.append(line(notice, "notice-line wrap"));
+  const tabList = list(model.tabs);
+  let shown = items;
+  let empty = model.emptyText || "No " + noun[1] + ".";
+  if (tabList.length) {
+    let index = tabs.has(viewKey) ? tabs.get(viewKey) : model.initialTab || 0;
+    if (!tabList[index]) index = 0;
+    const tab = tabList[index];
+    shown = list(tab.ids).flatMap((id) => byId.has(id) ? [byId.get(id)] : []);
+    if (tab.emptyText) empty = tab.emptyText;
+    if (tabList.length > 1) {
+      const bar = el("div", "tabs");
+      tabList.forEach((candidate, at) => {
+        const button = el("button", "toggle", candidate.label);
+        button.type = "button";
+        button.setAttribute("aria-pressed", String(at === index));
+        button.dataset.key = "tab:" + viewKey + ":" + at;
+        button.addEventListener("click", () => { tabs.set(viewKey, at); render(true); });
+        bar.append(button);
+      });
+      node.append(bar);
+    }
+  }
+  if (marker && marker.onClear && marked.length && live(record)) {
+    const clear = el("button", "small", marker.clearAction || "clear marks");
+    clear.type = "button";
+    clear.dataset.key = "clear:" + viewKey;
+    clear.addEventListener("click", () => {
+      act(record, marker.onClear, { ids: marked.map((item) => item.id) }).catch((error) => { flash(record.id, { ok: false, text: error.message }); render(true); });
+    });
+    const row = el("div", "row");
+    row.append(el("span", "muted", marked.length + " " + marker.label), clear);
+    node.append(row);
+  }
+  if (!shown.length) { node.append(el("span", "muted", empty)); return node; }
+  rows(node, "fold:" + viewKey, shown, (item) => explorerItem(record, entry, item), noun[1]);
+  return node;
+}
+
+function explorerItem(record, entry, item) {
+  const model = entry.model;
   const li = el("li");
-  const key = session.id + ":" + task.key;
-  const details = el("details");
-  details.open = expanded.has(key);
-  const historyKey = key + ":" + (task.updatedAt || 0);
-  details.addEventListener("toggle", () => {
-    if (details.open) expanded.add(key); else expanded.delete(key);
-    if (details.open && !histories.has(historyKey)) fetchInto(histories, historyKey, session, "todos/" + encodeURIComponent(task.key) + "/history");
+  const key = record.id + ":" + entry.id + ":" + item.id;
+  const loads = !!model.loadDetail && live(record);
+  const opens = loads || item.detail !== undefined;
+  const head = (container) => {
+    const marked = model.marker && item.marked;
+    container.append(el("span", marked ? "mark" : opens ? "mark chev" : "mark", marked ? "●" : ""), line(item.label, "ilabel wrap"), item.badge ? badge(item.badge) : el("span"));
+  };
+  if (!opens) {
+    const row = el("div", "item");
+    head(row);
+    li.append(row);
+    return li;
+  }
+  const box = el("details");
+  box.open = expanded.has(key);
+  box.addEventListener("toggle", () => {
+    // Restoring an open item on a re-render fires toggle too; only a change by the user acts.
+    if (box.open === expanded.has(key)) return;
+    if (!box.open) { expanded.delete(key); return; }
+    expanded.add(key);
+    openItem(record, entry, item, key);
   });
-  const summary = el("summary");
-  summary.dataset.key = "todo:" + key;
-  const glyph = task.blocked ? "⊘" : TODO_GLYPH[task.status] || "○";
-  summary.append(
-    el("span", "glyph" + (task.blocked ? " muted" : ""), glyph),
-    el("span", task.status === "completed" ? "done" : task.blocked ? "muted" : "", task.subject),
-    task.unreviewed ? el("span", "new", task.unreviewed + " new") : el("span"),
-  );
-  details.append(summary);
+  const summary = el("summary", "item");
+  summary.dataset.key = "item:" + key;
+  head(summary);
+  box.append(summary);
   const more = el("div", "more");
-  more.append(el("span", "mono muted", task.key + " · " + task.status.replace("_", " ") + (task.blocked ? " · blocked" : "") + (task.updatedAt ? " · " + ago(task.updatedAt) + " ago" : "")));
-  if (task.description) more.append(el("span", "wrap", task.description));
-  if (list(task.dependsOn).length) more.append(el("span", "muted", "after: " + task.dependsOn.join(", ")));
-  const history = histories.get(historyKey);
-  if (history && history.data) more.append(timeline(history.data));
-  else if (history && history.error) more.append(el("span", "bad", history.error));
-  else if (task.message) more.append(el("span", "wrap", "“" + task.message.text + "”" + (task.message.at ? " · " + ago(task.message.at) + " ago" : "")));
-  if (history && history.loading) more.append(el("span", "muted", "Loading history…"));
-  details.append(more);
-  li.append(details);
+  const loaded = details.get(key);
+  if (loads && loaded && loaded.content !== undefined) more.append(content(loaded.content));
+  else if (loads && loaded && loaded.error) more.append(el("span", "bad wrap", "Couldn't load: " + loaded.error));
+  else if (item.detail !== undefined && (!loads || !loaded || !loaded.loading)) more.append(content(item.detail));
+  if (loaded && loaded.loading) more.append(el("span", "muted", "Loading…"));
+  box.append(more);
+  li.append(box);
   return li;
 }
 
-const STATUS_WORDS = { pending: "pending", in_progress: "in progress", completed: "completed" };
-
-/** A task's status and message history, newest first. */
-function timeline(history) {
-  const updates = list(history.updates).slice().reverse();
-  const ol = el("ol", "timeline");
-  for (const update of updates) {
-    const li = el("li");
-    const change = update.from && update.from !== update.status ? STATUS_WORDS[update.from] + " → " + STATUS_WORDS[update.status] : STATUS_WORDS[update.status];
-    li.append(el("span", "mono muted", ago(update.at) + " ago · " + change + (update.byUser ? " · you" : "")));
-    if (update.message) li.append(el("span", "wrap", update.message));
-    ol.append(li);
-  }
-  if (history.createdAt) {
-    const li = el("li");
-    li.append(el("span", "mono muted", ago(history.createdAt) + " ago · created"));
-    ol.append(li);
-  }
-  if (!ol.childNodes.length) return el("span", "muted", "No history recorded.");
-  return ol;
+/** Opening an item runs what the terminal's explorer runs: onOpen, clearing its mark, and loadDetail. */
+async function openItem(record, entry, item, key) {
+  const model = entry.model;
+  if (!live(record)) return;
+  const quiet = (promise) => promise.catch(() => {});
+  if (model.onOpen) quiet(act(record, model.onOpen, { id: item.id }));
+  if (model.marker && model.marker.onClear && item.marked) quiet(act(record, model.marker.onClear, { ids: [item.id] }));
+  if (!model.loadDetail) return;
+  const previous = details.get(key);
+  details.set(key, { ...(previous || {}), loading: true });
+  render(true);
+  let next;
+  try { next = { content: await act(record, model.loadDetail, { id: item.id }) }; } catch (error) { next = { error: error.message }; }
+  details.set(key, next);
+  render(true);
 }
 
+// detail: a standalone detail view.
+function detailPanel(entry) {
+  const node = panel(titleText(entry.model.title), "");
+  node.append(content(entry.model.content));
+  return node;
+}
+
+// session (detail page): recent tool calls.
 function activityPanel(session) {
   const items = list(session.activity);
   const node = panel("Recent activity", items.length ? items.length + " calls" : "");
@@ -480,7 +723,7 @@ function activityPanel(session) {
     const row = el("div", "row");
     const what = el("span", "clip");
     what.append(el("span", "mono", item.tool), el("span", "mono muted", item.summary ? "  " + item.summary : ""));
-    const outcome = item.running ? "running" : item.error ? "failed" : item.durationMs !== undefined ? duration(item.durationMs) : "";
+    const outcome = item.live ? "running" : item.error ? "failed" : item.durationMs !== undefined ? duration(item.durationMs) : "";
     row.append(what, el("span", "mono num " + (item.error ? "bad" : "muted"), [outcome, ago(item.at) + " ago"].filter(Boolean).join(" · ")));
     li.append(row);
     ul.append(li);
@@ -489,93 +732,52 @@ function activityPanel(session) {
   return node;
 }
 
-function isLiveSubagent(agent) {
-  return agent.state === "running" || agent.state === "queued" || agent.state === "waiting";
-}
-
-function subagentPanel(session) {
-  const agents = list(session.subagents.agents);
-  const live = agents.filter(isLiveSubagent);
-  const finished = agents.filter((agent) => !live.includes(agent));
-  const waiting = live.filter((agent) => agent.state === "waiting").length;
-  const liveSummary = live.length - waiting
-    ? live.length - waiting + " running" + (waiting ? ", " + waiting + " waiting" : "")
-    : waiting + " waiting";
-  const node = panel("Subagents", live.length ? liveSummary : agents.length + " recent");
-  if (live.length) node.append(itemList(live, subagentItem));
-  else node.append(el("span", "muted", "Nothing running."));
-  if (finished.length) {
-    const failed = finished.filter((agent) => agent.state === "failed").length;
-    fold(node, "fold:" + session.id + ":subagents", finished.length + " finished" + (failed ? " · " + failed + " failed" : ""), itemList(finished, subagentItem));
-  }
-  return node;
-}
-
-function subagentItem(agent) {
-  const li = el("li");
-  const row = el("div", "row");
-  row.append(el("span", "clip", agent.type + ": " + (agent.description || agent.id)), pill(agent.state, agent.state));
-  li.append(row);
-  // A waiting agent is idle: no clock runs for it.
-  const facts = [agent.state === "running" || agent.state === "queued" ? ago(agent.since) : agent.state === "waiting" ? null : agent.durationMs !== undefined ? duration(agent.durationMs) : null,
-    agent.toolUses ? agent.toolUses + " tools" : null, agent.tokens ? tokens(agent.tokens) + " tok" : null].filter(Boolean);
-  if (facts.length) li.append(el("span", "mono muted", facts.join(" · ")));
-  if (agent.note) li.append(el("span", "muted wrap", agent.note));
-  return li;
-}
-
-// Answering pi-ask questionnaires. The form lives in its own dialog
-// outside <main>, so live re-renders leave it alone, and each questionnaire's
-// form is kept: a draft survives closing and reopening it.
+// form: open questionnaires, answered in a dialog outside <main>, so live
+// re-renders leave it alone. Each questionnaire's form is kept: a draft
+// survives closing and reopening it.
 const answerModal = document.getElementById("answer");
 const answerForms = new Map();
 let answering;
 
-function flash(sessionId, notice) {
-  notices.set(sessionId, notice);
-  setTimeout(() => { if (notices.get(sessionId) === notice) { notices.delete(sessionId); render(true); } }, notice.ok ? 3000 : 8000);
-}
-
-function answerButton(session, questionnaire, solid) {
+function answerButton(record, questionnaire, solid) {
   const button = el("button", "focus" + (solid ? " solid" : ""), "Answer");
   button.type = "button";
-  button.dataset.key = "answer:" + session.id + ":" + questionnaire.id + (solid ? ":detail" : "");
-  button.addEventListener("click", (event) => { event.stopPropagation(); openAnswer(session, questionnaire, button.dataset.key); });
+  button.dataset.key = "answer:" + record.id + ":" + questionnaire.id + (solid ? ":detail" : "");
+  button.addEventListener("click", (event) => { event.stopPropagation(); openAnswer(record, questionnaire, button.dataset.key); });
   return button;
 }
 
-function questionsPanel(session) {
-  const items = list(session.questions);
-  const node = panel("Waiting on you", items.length === 1 ? "1 questionnaire" : items.length + " questionnaires");
-  node.classList.add("asks");
+function formPanel(record, items) {
+  const node = panel("Waiting on you", items.length === 1 ? "1 questionnaire" : items.length + " questionnaires", "asks");
   const ul = el("ul", "items");
   for (const questionnaire of items) {
     const li = el("li");
     const row = el("div", "row");
     const what = el("div", "qsummary");
-    for (const question of questionnaire.questions) {
-      const line = el("div", "qline");
-      if (question.header) line.append(el("span", "chip", question.header));
-      line.append(el("span", "wrap", question.question));
-      what.append(line);
+    if (questionnaire.title) what.append(el("span", "b wrap", questionnaire.title));
+    for (const question of list(questionnaire.questions)) {
+      const qline = el("div", "qline");
+      if (question.header) qline.append(el("span", "chip", question.header));
+      qline.append(el("span", "wrap", question.question));
+      what.append(qline);
     }
-    row.append(what, answerButton(session, questionnaire, true));
-    li.append(row, el("span", "mono muted", "asked " + ago(questionnaire.since) + " ago · the terminal can answer too; the first answer wins"));
+    row.append(what, answerButton(record, questionnaire, true));
+    li.append(row, el("span", "mono muted", (questionnaire.openedAt ? "asked " + ago(questionnaire.openedAt) + " ago · " : "") + "the terminal can answer too; the first answer wins"));
     ul.append(li);
   }
   node.append(ul);
   return node;
 }
 
-function buildAnswerForm(session, questionnaire, key) {
+function buildAnswerForm(record, questionnaire, key) {
   const form = el("form", "answer-form");
   form.noValidate = true;
   const head = el("div", "modal-head");
   const heading = el("div", "modal-title");
-  const count = questionnaire.questions.length;
-  const name = el("h2", "", (count === 1 ? "Question from " : count + " questions from ") + title(session));
+  const total = questionnaire.questions.length;
+  const name = el("h2", "", questionnaire.title || (total === 1 ? "Question from " : total + " questions from ") + title(record));
   name.id = "answer-title";
-  heading.append(name, el("span", "mono muted wrap", tilde(session.cwd) + " · asked " + ago(questionnaire.since) + " ago"));
+  heading.append(name, el("span", "mono muted wrap", [cwdOf(record) ? tilde(cwdOf(record)) : null, questionnaire.openedAt ? "asked " + ago(questionnaire.openedAt) + " ago" : null].filter(Boolean).join(" · ")));
   const close = el("button", "close", "×");
   close.type = "button";
   close.setAttribute("aria-label", "Close");
@@ -592,7 +794,7 @@ function buildAnswerForm(session, questionnaire, key) {
     block.append(legend);
     if (question.multiSelect) block.append(el("span", "mono muted", "Pick any that apply."));
     const group = "q" + questionIndex;
-    const inputs = question.options.map((option, optionIndex) => {
+    const inputs = list(question.options).map((option, optionIndex) => {
       const label = el("label", "choice");
       const input = el("input");
       input.type = question.multiSelect ? "checkbox" : "radio";
@@ -604,7 +806,7 @@ function buildAnswerForm(session, questionnaire, key) {
       return input;
     });
     let other;
-    if (!question.multiSelect) {
+    if (!question.multiSelect && inputs.length) {
       const label = el("label", "choice");
       other = el("input");
       other.type = "radio";
@@ -647,7 +849,7 @@ function buildAnswerForm(session, questionnaire, key) {
     fields.forEach((field, questionIndex) => {
       const text = field.text.value.trim();
       const picked = field.inputs.filter((input) => input.checked).map((input) => Number(input.value));
-      const label = count === 1 ? "the question" : "question " + (questionIndex + 1);
+      const label = total === 1 ? "the question" : "question " + (questionIndex + 1);
       if (field.question.multiSelect) {
         if (!picked.length && !text) throw new Error("Answer " + label + ": pick at least one option or type an answer.");
         answers.push({ questionIndex, ...(picked.length ? { optionIndexes: picked } : {}), ...(text ? { text } : {}) });
@@ -663,13 +865,14 @@ function buildAnswerForm(session, questionnaire, key) {
     const globalNote = note.value.trim();
     return { answers, ...(globalNote ? { globalNote } : {}) };
   };
-  const submit = async (payload) => {
+  /** Runs the questionnaire's own submit or cancel action, as its form references it. */
+  const submit = async (ref, extra, done) => {
     error.textContent = "";
     send.disabled = decline.disabled = true;
     try {
-      await ask(session, "questions/" + encodeURIComponent(questionnaire.id) + "/answer", payload);
+      await act(record, ref, extra);
       answerForms.delete(key);
-      flash(session.id, { ok: true, text: payload.cancel ? "Declined the question" : "Answer sent" });
+      flash(record.id, { ok: true, text: done });
       answerModal.close();
       render(true);
     } catch (failure) {
@@ -681,9 +884,9 @@ function buildAnswerForm(session, questionnaire, key) {
     event.preventDefault();
     let payload;
     try { payload = collect(); } catch (failure) { error.textContent = failure.message; return; }
-    submit(payload);
+    submit(questionnaire.submit, payload, "Answer sent");
   });
-  decline.addEventListener("click", () => submit({ cancel: true }));
+  decline.addEventListener("click", () => submit(questionnaire.cancel, {}, "Declined the question"));
   form.markClosed = () => {
     form.dataset.closed = "true";
     banner.hidden = false;
@@ -692,14 +895,14 @@ function buildAnswerForm(session, questionnaire, key) {
   return form;
 }
 
-function openAnswer(session, questionnaire, returnKey) {
-  const key = session.id + ":" + questionnaire.id;
+function openAnswer(record, questionnaire, returnKey) {
+  const key = record.id + ":" + questionnaire.id;
   let form = answerForms.get(key);
   if (!form) {
-    form = buildAnswerForm(session, questionnaire, key);
+    form = buildAnswerForm(record, questionnaire, key);
     answerForms.set(key, form);
   }
-  answering = { sessionId: session.id, id: questionnaire.id, key, returnKey };
+  answering = { id: questionnaire.id, key, returnKey };
   answerModal.replaceChildren(form);
   if (!answerModal.open) answerModal.showModal();
   checkAnswerStillOpen();
@@ -709,13 +912,11 @@ function openAnswer(session, questionnaire, returnKey) {
 
 /** Marks the open form closed once its questionnaire leaves the live list, and drops drafts for finished ones. */
 function checkAnswerStillOpen() {
-  const live = new Set();
-  for (const session of state.sessions) {
-    if (session.restarting) continue;
-    for (const questionnaire of list(session.questions)) live.add(session.id + ":" + questionnaire.id);
-  }
-  for (const key of answerForms.keys()) if (!live.has(key) && (!answering || answering.key !== key)) answerForms.delete(key);
-  if (answering && !live.has(answering.key)) {
+  const open = new Set();
+  for (const record of state.sessions)
+    for (const questionnaire of questionnaires(record)) open.add(record.id + ":" + questionnaire.id);
+  for (const key of answerForms.keys()) if (!open.has(key) && (!answering || answering.key !== key)) answerForms.delete(key);
+  if (answering && !open.has(answering.key)) {
     const form = answerForms.get(answering.key);
     if (form && form.markClosed) form.markClosed();
   }
@@ -729,223 +930,29 @@ answerModal.addEventListener("close", () => {
   if (back) back.focus();
 });
 
-const stashFacts = (session, entry) => [entry.lines + " lines", entry.source,
-  entry.createdBy === session.sessionId ? "this session" : "subagent …" + entry.createdBy.slice(-6),
-  ago(entry.createdAt) + " ago", entry.versions > 1 ? "v" + entry.versions : null].filter(Boolean).join(" · ");
-
-// The stash preview is a modal dialog outside <main>, so live re-renders leave
-// it alone. Esc (native) and a click on the backdrop close it.
-const modal = document.getElementById("preview");
-let modalRequest = 0;
-let modalReturn = "";
-
-function previewHeader(session, entry) {
-  const head = el("div", "modal-head");
-  const heading = el("div", "modal-title");
-  const name = el("h2", "", entry.name);
-  name.id = "preview-title";
-  heading.append(name, el("span", "mono muted wrap", entry.handle));
-  if (entry.description) heading.append(el("p", "wrap", entry.description));
-  heading.append(el("span", "mono muted wrap", bytes(entry.bytes) + " · " + stashFacts(session, entry)));
-  const close = el("button", "close", "×");
-  close.type = "button";
-  close.setAttribute("aria-label", "Close preview");
-  close.addEventListener("click", () => modal.close());
-  head.append(heading, close);
-  return head;
-}
-
-/** Fills the body and footer; the header (and the focused close button) stays put. */
-function showPreview(body, foot, view) {
-  if (view.error) { body.replaceChildren(el("p", "bad pad", view.error)); return; }
-  const pre = el("pre", "preview");
-  view.data.lines.forEach((line, index) => { pre.append(el("span", "ln", index + 1), line, "\\n"); });
-  body.replaceChildren(pre);
-  foot.textContent = view.data.complete
-    ? "All " + view.data.lines.length + (view.data.lines.length === 1 ? " line." : " lines.")
-    : "First " + view.data.lines.length + " of " + view.data.total + " lines. Read the rest in Pi with stash_get.";
-  foot.hidden = false;
-}
-
-async function openPreview(session, entry, returnKey) {
-  const request = ++modalRequest;
-  modalReturn = returnKey;
-  const body = el("div", "modal-body");
-  body.append(el("p", "muted pad", "Loading preview…"));
-  const foot = el("div", "modal-foot");
-  foot.hidden = true;
-  modal.replaceChildren(previewHeader(session, entry), body, foot);
-  if (!modal.open) modal.showModal();
-  let view;
-  try { view = { data: await ask(session, "stash/" + encodeURIComponent(entry.name) + "/preview") }; } catch (error) { view = { error: error.message }; }
-  // Ignore an answer for a preview that was closed or replaced meanwhile.
-  if (request === modalRequest && modal.open) showPreview(body, foot, view);
-}
-
-modal.addEventListener("click", (event) => { if (event.target === modal) modal.close(); });
-modal.addEventListener("close", () => {
-  modalRequest += 1;
-  modal.replaceChildren();
-  // The opening button may have been re-rendered; return focus to its successor.
-  const back = [...main.querySelectorAll("[data-key]")].find((node) => node.dataset.key === modalReturn);
-  if (back) back.focus();
-});
-
-function stashPanel(session) {
-  const entries = list(session.stash.entries);
-  const size = session.stash.store;
-  const summary = [entries.length ? session.stash.total + (session.stash.total === 1 ? " entry" : " entries") : "", size ? "store " + bytes(size.bytes) + " / " + bytes(size.maxBytes) : ""].filter(Boolean).join(" · ");
-  const node = panel("Stash", summary);
-  if (size && size.bytes > size.maxBytes) node.append(el("span", "warn", "The stash store is over its " + bytes(size.maxBytes) + " cap. Run /stash:gc or lower retentionDays."));
-  if (!entries.length) { node.append(el("span", "muted", "Nothing stashed on this branch.")); return node; }
-  const ul = el("ul", "items");
-  for (const entry of entries) {
-    const li = el("li");
-    const row = el("div", "row");
-    const open = el("button", "small", "Preview");
-    open.type = "button";
-    open.dataset.key = "preview:" + session.id + ":" + entry.handle;
-    open.addEventListener("click", () => openPreview(session, entry, open.dataset.key));
-    const right = el("span", "row");
-    right.append(el("span", "mono muted num", bytes(entry.bytes)), open);
-    row.append(el("span", "mono clip", entry.name), right);
-    li.append(row);
-    if (entry.description) li.append(el("span", "clip", entry.description));
-    li.append(el("span", "mono muted clip", stashFacts(session, entry)));
-    li.append(el("span", "mono muted clip", entry.handle));
-    ul.append(li);
-  }
-  node.append(ul);
-  return node;
-}
-
-/** A pull request's link; the hub only passes https pull request URLs through. */
-function prLink(pr) {
-  const link = el("a", "mono clip", pr.label);
-  if (typeof pr.url === "string" && pr.url.startsWith("https://")) {
-    link.href = pr.url;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-  }
-  return link;
-}
-
-/** The one thing to know about a PR first: merged, failing, blocked, or waiting. */
-function prPill(pr) {
-  if (pr.state === "merged") return pill("completed", "merged");
-  if (pr.state === "closed") return pill("", "closed");
-  if (pr.checks && pr.checks.failed) return pill("failed", "checks failing");
-  if (pr.mergeable === false) return pill("failed", "conflicts");
-  if (pr.review === "changes_requested") return pill("waiting", "changes requested");
-  if (pr.draft) return pill("queued", "draft");
-  if (pr.review === "approved") return pill("completed", "approved");
-  return pill("running", pr.state || "seen");
-}
-
-function prFacts(pr) {
-  const facts = [];
-  if (pr.review) facts.push(pr.review.replace("_", " "));
-  if (pr.checks) {
-    const counts = [pr.checks.failed ? pr.checks.failed + " failed" : "", pr.checks.pending ? pr.checks.pending + " pending" : "", pr.checks.passed ? pr.checks.passed + " passed" : ""].filter(Boolean);
-    facts.push("checks " + (counts.length ? counts.join(", ") : "none"));
-  }
-  if (pr.watching) facts.push(pr.watching === "merged" ? "watching until merged" : "watching CI");
-  if (pr.observedAt) facts.push("seen " + ago(pr.observedAt) + " ago");
-  return facts.join(" · ");
-}
-
-/** PRs under "Opened here" and "Referenced" labels, each group in the order given. */
-function prGroups(prs) {
-  const nodes = [];
-  for (const [label, origin] of [["Opened here", "created"], ["Referenced", "referenced"]]) {
-    const group = prs.filter((pr) => pr.origin === origin);
-    if (!group.length) continue;
-    nodes.push(el("span", "label", label), itemList(group, prItem));
-  }
-  return nodes;
-}
-
-function prItem(pr) {
-  const li = el("li");
-  const row = el("div", "row");
-  row.append(prLink(pr), prPill(pr));
-  li.append(row);
-  if (pr.title) li.append(el("span", "clip", pr.title));
-  const facts = prFacts(pr);
-  if (facts) li.append(el("span", "mono muted clip", facts));
-  return li;
-}
-
-function prPanel(session) {
-  const prs = list(session.git.prs);
-  const opened = prs.filter((pr) => pr.origin === "created").length;
-  const referenced = prs.length - opened;
-  const node = panel("Pull requests", [opened ? opened + " opened here" : "", referenced ? referenced + " referenced" : ""].filter(Boolean).join(" · "));
-  const ended = prs.filter((pr) => pr.state === "merged" || pr.state === "closed");
-  const open = prs.filter((pr) => !ended.includes(pr));
-  if (open.length) node.append(...prGroups(open));
-  else if (prs.length) node.append(el("span", "muted", "No open pull requests."));
-  if (ended.length) {
-    const merged = ended.filter((pr) => pr.state === "merged").length;
-    const label = [merged ? merged + " merged" : "", ended.length - merged ? ended.length - merged + " closed" : ""].filter(Boolean).join(" · ");
-    fold(node, "fold:" + session.id + ":prs", label, ...prGroups(ended));
-  }
-  const hidden = (Number(session.git.prTotal) || 0) - prs.length;
-  if (hidden > 0) node.append(el("span", "muted", "…and " + hidden + " more; /git:prs lists them all."));
-  node.append(el("span", "muted", "Status is what the session's tools last showed."));
-  return node;
-}
-
-function worktreePanel(session) {
-  const git = session.git;
-  const items = list(git.worktrees);
-  const total = Number(git.worktreeTotal) || 0;
-  const node = panel("Worktrees", [total ? total + (total === 1 ? " worktree" : " worktrees") : "", git.removed ? git.removed + " removed" : ""].filter(Boolean).join(" · "));
-  if (!items.length) node.append(el("span", "muted", "No worktrees in use."));
-  else {
-    const ul = el("ul", "items");
-    for (const tree of items) {
-      const li = el("li");
-      const row = el("div", "row");
-      const badge = tree.state === "missing" ? pill("failed", "missing") : tree.dirty ? pill("waiting", "uncommitted") : pill("running", "active");
-      row.append(el("span", "mono clip", tree.repo + " @ " + tree.branch), badge);
-      li.append(row);
-      li.append(el("span", "mono muted clip", tilde(tree.path)));
-      const facts = [tree.workspace ? "workspace " + tree.workspace : "", tree.agents ? tree.agents + (tree.agents === 1 ? " subagent" : " subagents") : "",
-        tree.unpushed ? tree.unpushed + " unpushed" : "", tree.mergedInto ? "merged into " + tree.mergedInto : ""].filter(Boolean);
-      if (facts.length) li.append(el("span", "mono muted clip", facts.join(" · ")));
-      ul.append(li);
-    }
-    node.append(ul);
-  }
-  if (total > items.length) node.append(el("span", "muted", "…and " + (total - items.length) + " more; /git:worktrees lists them all."));
-  if (git.other) node.append(el("span", "muted", git.other + (git.other === 1 ? " other worktree" : " other worktrees") + " under the root from other sessions."));
-  return node;
-}
-
 // Usage opens from the strip in its own dialog outside <main>; its body is
 // refilled on each update while open, so the numbers stay live.
 const usageModal = document.getElementById("usage");
 let usageFor = "";
 let usageBody;
 
-function usageButton(session) {
-  const button = el("button", "usage", money(session.usage.cost));
+function usageButton(record, usage) {
+  const button = el("button", "usage", money(usage.cost));
   button.type = "button";
   button.title = "Token usage and cost for this session";
   button.setAttribute("aria-haspopup", "dialog");
-  button.dataset.key = "usage:" + session.id;
-  button.addEventListener("click", () => openUsage(session));
+  button.dataset.key = "usage:" + record.id;
+  button.addEventListener("click", () => openUsage(record));
   return button;
 }
 
-function openUsage(session) {
-  usageFor = session.id;
+function openUsage(record) {
+  usageFor = record.id;
   const head = el("div", "modal-head");
   const heading = el("div", "modal-title");
   const name = el("h2", "", "Usage");
   name.id = "usage-title";
-  heading.append(name, el("span", "mono muted wrap", title(session) + " · the whole session file, as /session counts it"));
+  heading.append(name, el("span", "mono muted wrap", title(record) + " · the whole session file, as /session counts it"));
   const close = el("button", "close", "×");
   close.type = "button";
   close.setAttribute("aria-label", "Close usage");
@@ -959,9 +966,10 @@ function openUsage(session) {
 
 function fillUsage() {
   if (!usageBody) return;
-  const session = state.sessions.find((candidate) => candidate.id === usageFor);
+  const record = state.sessions.find((candidate) => candidate.id === usageFor);
+  const session = record && core(record);
   const usage = session && session.usage;
-  if (!usage) { usageBody.replaceChildren(el("p", "muted pad", "This session is no longer running.")); return; }
+  if (!usage) { usageBody.replaceChildren(el("p", "muted pad", record ? "Usage is not known for this session." : "This session is no longer running.")); return; }
   const exact = (n) => Math.round(n).toLocaleString() + " tok";
   const dl = kv([
     ["Input", exact(usage.input)], ["Output", exact(usage.output)],
@@ -981,61 +989,86 @@ usageModal.addEventListener("close", () => {
   if (back) back.focus();
 });
 
-function renderDetail(id) {
-  const back = el("a", "back", "← All sessions");
-  back.href = "#";
-  back.dataset.key = "back";
-  const session = state.sessions.find((candidate) => candidate.id === id);
-  const wrap = el("div", "detail");
-  wrap.append(back);
-  if (!session) {
-    wrap.append(el("p", "empty", connected ? "This session is no longer running." : "Not connected."));
-    main.append(wrap);
-    document.title = "pi dashboard";
-    return;
-  }
-  document.title = title(session) + " · pi dashboard";
+/** The header: who the session is, the core session strip, and every summary. */
+function headPanel(record) {
+  const session = core(record);
   const head = el("div", "panel");
   const top = el("div", "dhead");
   const who = el("div");
-  who.append(el("h2", session.name ? "" : "muted", title(session)));
-  const meta = [tilde(session.cwd), session.agent ? "agent " + session.agent : null, "session …" + session.sessionId.slice(-8), "pid " + session.pid, "up " + ago(session.startedAt)];
+  who.append(el("h2", named(record) ? "" : "muted", title(record)));
+  const meta = [session ? tilde(session.cwd) : null, ...profiles(record).map((profile) => "agent " + profile),
+    session ? "session …" + session.sessionId.slice(-8) : null, pidOf(record) ? "pid " + pidOf(record) : null,
+    session ? "up " + ago(session.startedAt) : null, session && session.piVersion ? "pi " + session.piVersion : null];
   who.append(el("span", "mono muted wrap", meta.filter(Boolean).join(" · ")));
+  if (!live(record)) who.append(el("span", "warn", "Restarting: shown as it last was; nothing here runs until the session is back."));
   const actions = el("div", "actions");
-  const button = focusButton(session, true);
+  const button = focusButton(record, true);
   if (button) actions.append(button);
-  const notice = noticeFor(session);
+  const notice = noticeFor(record);
   if (notice) actions.append(notice);
   top.append(who, actions);
   head.append(top);
   const strip = el("div", "strip");
   const cell = (label, ...children) => { const div = el("div"); div.append(el("span", "label", label), ...children); return div; };
-  strip.append(
-    session.model
-      ? cell("Model", el("span", "mono clip", session.model.id), el("span", "mono muted clip", session.model.provider))
-      : cell("Model", el("span", "muted", "none")),
-    cell("Thinking", el("span", "", session.thinking || "off")),
-    cell("Status", pill(session.restarting ? "idle" : session.status.kind, statusLabel(session)), el("span", "mono muted", "for " + ago(session.status.since))),
-    cell("Context", meter(session.context)),
-    session.usage
-      ? cell("Usage", usageButton(session), el("span", "mono muted", tokens(session.usage.input + session.usage.output + session.usage.cacheRead + session.usage.cacheWrite) + " tok"))
-      : cell("Usage", el("span", "muted", "–")),
-  );
-  if (session.status.kind === "waiting" && session.status.title) strip.append(cell("Waiting on", el("span", "wrap", session.status.title)));
+  if (session) {
+    strip.append(
+      session.model
+        ? cell("Model", el("span", "mono clip", session.model.id), el("span", "mono muted clip", session.model.provider))
+        : cell("Model", el("span", "muted", "none")),
+      cell("Thinking", el("span", "", session.thinking || "off")),
+      cell("Status", pill(statusKind(record), statusLabel(record)), el("span", "mono muted", live(record) ? "for " + ago(session.status.since) : "")),
+      cell("Context", meter(session.context)),
+      session.usage
+        ? cell("Usage", usageButton(record, session.usage), el("span", "mono muted", tokens(session.usage.input + session.usage.output + session.usage.cacheRead + session.usage.cacheWrite) + " tok"))
+        : cell("Usage", el("span", "muted", "–")),
+    );
+    if (live(record) && session.status.kind === "waiting" && session.status.title) strip.append(cell("Waiting on", el("span", "wrap", session.status.title)));
+  } else {
+    const entry = sessionEntry(record);
+    strip.append(cell("Session", el("span", entry && entry.error ? "bad wrap" : "muted wrap",
+      entry && entry.error ? "Session information failed: " + entry.error : "No session information; is pi-system-insights loaded?")));
+  }
   head.append(strip);
-  wrap.append(head);
-  if (!session.restarting && list(session.questions).length) wrap.append(questionsPanel(session));
+  const summaries = ofKind(record, "summary");
+  if (summaries.length) {
+    const sums = el("div", "strip sumstrip");
+    for (const entry of summaries) { const div = el("div"); div.append(summaryView(entry, false)); sums.append(div); }
+    head.append(sums);
+  }
+  return head;
+}
+
+function renderDetail(id) {
+  const back = el("a", "back", "← All sessions");
+  back.href = "#";
+  back.dataset.key = "back";
+  const record = state.sessions.find((candidate) => candidate.id === id);
+  const wrap = el("div", "detail");
+  wrap.append(back);
+  if (!record) {
+    wrap.append(el("p", "empty", connected ? "This session is no longer running." : "Not connected."));
+    main.append(wrap);
+    document.title = "pi dashboard";
+    return;
+  }
+  document.title = title(record) + " · pi dashboard";
+  wrap.append(headPanel(record));
+  const asks = questionnaires(record);
+  if (asks.length) wrap.append(formPanel(record, asks));
+  for (const entry of ofKind(record, "form")) if (!entry.model) wrap.append(failedPanel(entry));
   const cols = el("div", "cols");
   const left = el("div", "col");
   const right = el("div", "col");
-  // Two even columns: what the session is doing, and what it has produced.
-  if (session.todos) left.append(todoPanel(session));
-  if (session.subagents) left.append(subagentPanel(session));
-  if (session.activity) left.append(activityPanel(session));
-  if (session.git && session.git.prTotal) right.append(prPanel(session));
-  if (session.git && (session.git.worktreeTotal || session.git.removed || session.git.other)) right.append(worktreePanel(session));
-  if (session.stash) right.append(stashPanel(session));
-  // Without one side's extensions, split the other side rather than leave half the page empty.
+  // Two even columns: what the session is doing now (widgets, recent tool
+  // calls), and the records it keeps (explorers and details), each by view id.
+  for (const entry of viewsOf(record)) {
+    if (entry.kind === "widget") left.append(entry.model ? widgetPanel(record, entry) : failedPanel(entry));
+    else if (entry.kind === "explorer") right.append(entry.model ? explorerPanel(record, entry) : failedPanel(entry));
+    else if (entry.kind === "detail") right.append(entry.model ? detailPanel(entry) : failedPanel(entry));
+  }
+  const session = core(record);
+  if (session) left.append(activityPanel(session));
+  // Without one side's views, split the other side rather than leave half the page empty.
   if (!right.childElementCount && left.childElementCount > 1) right.append(left.lastElementChild);
   if (!left.childElementCount && right.childElementCount > 1) left.append(right.firstElementChild);
   cols.append(left, right);
@@ -1050,7 +1083,7 @@ function selected() {
 /** Re-renders only when what is on screen changed, keeping keyboard focus across updates. */
 function render(force) {
   const id = selected();
-  const view = id ? state.sessions.find((session) => session.id === id) || null : state.sessions;
+  const view = id ? state.sessions.find((record) => record.id === id) || null : state.sessions;
   const key = JSON.stringify([id, connected, filter, view]);
   if (!force && key === rendered) return;
   rendered = key;
@@ -1070,22 +1103,22 @@ function render(force) {
 /** Notifies when a session starts waiting on a dialog, or finishes its work, while this page is in the background. */
 function announce(before, after) {
   if (!notifyOn || document.hasFocus()) return;
-  const previous = new Map(before.map((session) => [session.id, session]));
-  for (const session of after) {
-    const old = previous.get(session.id);
-    if (!old || old.restarting || session.restarting) continue;
-    const was = old.status.kind;
-    const now = session.status.kind;
+  const previous = new Map(before.map((record) => [record.id, record]));
+  for (const record of after) {
+    const old = previous.get(record.id);
+    if (!old || !live(old) || !live(record)) continue;
+    const was = statusOf(old);
+    const now = statusOf(record);
     let body;
-    if (now === "waiting" && was !== "waiting") body = "Waiting on you" + (session.status.title ? ": " + session.status.title : "");
-    else if (now === "idle" && was !== "idle" && was !== "waiting") body = "Finished; ready for your next prompt";
+    if (was && now && now.kind === "waiting" && was.kind !== "waiting") body = "Waiting on you" + (now.title ? ": " + now.title : "");
+    else if (was && now && now.kind === "idle" && was.kind !== "idle" && was.kind !== "waiting") body = "Finished; ready for your next prompt";
     // A new questionnaire says what it asks; it replaces the generic waiting note (same tag).
-    const seen = new Set(list(old.questions).map((questionnaire) => questionnaire.id));
-    const fresh = list(session.questions).find((questionnaire) => !seen.has(questionnaire.id));
+    const seen = new Set(questionnaires(old).map((questionnaire) => questionnaire.id));
+    const fresh = questionnaires(record).find((questionnaire) => !seen.has(questionnaire.id));
     if (fresh) body = "Asks: " + fresh.questions[0].question;
     if (!body) continue;
-    const note = new Notification(title(session) + " · " + tilde(session.cwd), { body, tag: "dashboard:" + session.id });
-    note.onclick = () => { window.focus(); location.hash = encodeURIComponent(session.id); note.close(); };
+    const note = new Notification(title(record) + (cwdOf(record) ? " · " + tilde(cwdOf(record)) : ""), { body, tag: "dashboard:" + record.id });
+    note.onclick = () => { window.focus(); location.hash = encodeURIComponent(record.id); note.close(); };
   }
 }
 
@@ -1139,7 +1172,6 @@ export function renderPage(token: string): string {
 <body>
 <header><h1><a href="#">pi dashboard</a></h1><input id="filter" type="search" placeholder="Filter sessions" aria-label="Filter sessions" autocomplete="off" spellcheck="false"><span class="count"></span><button id="notify" class="toggle" type="button" aria-pressed="false">Notifications off</button><span class="conn" aria-live="polite">connecting…</span></header>
 <main></main>
-<dialog id="preview" class="modal" aria-labelledby="preview-title"></dialog>
 <dialog id="answer" class="modal" aria-labelledby="answer-title"></dialog>
 <dialog id="usage" class="modal narrow" aria-labelledby="usage-title"></dialog>
 <script>${SCRIPT}</script>
