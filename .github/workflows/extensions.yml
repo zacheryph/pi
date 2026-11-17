@@ -16,7 +16,7 @@ jobs:
   select-extensions:
     name: Select extensions
     runs-on: ubuntu-26.04
-    timeout-minutes: 5
+    timeout-minutes: 1
     outputs:
       matrix: ${{ steps.select.outputs.matrix }}
       has-extensions: ${{ steps.select.outputs.has-extensions }}
@@ -38,7 +38,7 @@ jobs:
     needs: select-extensions
     if: needs.select-extensions.outputs.has-extensions == 'true'
     runs-on: ubuntu-26.04
-    timeout-minutes: 15
+    timeout-minutes: 5
     env:
       EXTENSION: ${{ matrix.extension }}
     strategy:
@@ -60,7 +60,7 @@ jobs:
   repository-checks:
     name: Check repository and scripts
     runs-on: ubuntu-26.04
-    timeout-minutes: 10
+    timeout-minutes: 2
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -76,7 +76,7 @@ jobs:
     needs: select-extensions
     if: needs.select-extensions.outputs.has-extensions == 'true'
     runs-on: ubuntu-26.04
-    timeout-minutes: 10
+    timeout-minutes: 1
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
