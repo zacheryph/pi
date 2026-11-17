@@ -69,16 +69,21 @@ the process has gone, such as a saved snapshot in bb, settles that state, and
 it does so from explicit `live` marks alone, never by guessing from an icon,
 tone or text:
 
-| Marked                   | Settled                                                                       |
-| ------------------------ | ----------------------------------------------------------------------------- |
-| `Span.live`              | Loses `since` (the clock stops at its text); an `icon` becomes `stopped`      |
-| `Badge.live`             | Replaced by the badge given there, or removed when it is `true`               |
-| `WidgetRow.live`         | Fields given there replace the row's own; its spans settle by their own marks |
-| `SummaryCount.live`      | Reads 0                                                                       |
-| `SummaryItem.live`       | The summary has no active item                                                |
-| `SessionActivity.live`   | The flag is dropped; the call keeps no duration                               |
-| `SessionStatus` (always) | `{ kind: "idle" }`, from the time it settled                                  |
-| `FormModel` (always)     | Removed: nobody can answer it                                                 |
+| Marked                   | Settled                                                                                  |
+| ------------------------ | ---------------------------------------------------------------------------------------- |
+| `Span.live`              | Loses `since` (the clock stops at its text); an `icon` becomes `stopped`                 |
+| `Badge.live`             | Replaced by the badge given there, or removed when it is `true`                          |
+| `WidgetRow.live`         | Fields given there replace the row's own; its spans settle by their own marks            |
+| `WidgetModel.live`       | `active` and `meta` given there replace the heading's own; `true` changes neither        |
+| `SummaryCount.live`      | Its `value` reads 0                                                                      |
+| `SummaryItem.live`       | The summary has no active item                                                           |
+| `SessionActivity.live`   | The flag is dropped; the call keeps no duration                                          |
+| `SessionStatus` (always) | A status other than idle becomes `{ kind: "idle" }` from the time it settled; idle stays |
+| `FormModel` (always)     | Removed: nobody can answer it                                                            |
+
+Settling drops each mark it applies, so a settled view has no `live` field
+left and settling again changes nothing. `settleSnapshot` applies these rules;
+see [Saved snapshots](#saved-snapshots).
 
 State kept in the session file is never `live`: a task's `in_progress`
 status, review marks, finished-agent history, Git and stash records survive
@@ -171,7 +176,7 @@ whether this copy knows a kind, and a newer producer may offer one it does not.
 
 | Function                       | Result                                                                    |
 | ------------------------------ | ------------------------------------------------------------------------- |
-| `defineView(bus, definition)`  | Defines and announces one view; returns the function that removes it      |
+| `defineView(bus, definition)`  | Defines and announces one view; returns the remover, which announces too  |
 | `listViews(bus)`               | `{ id, kind, title }[]` sorted by id                                      |
 | `readView(bus, id)`            | The current model, or `undefined` while the view has nothing to show      |
 | `announceView(bus, id)`        | Emits `surface:view-changed` with `{ version: 1, id }`                    |
@@ -186,10 +191,20 @@ The model function runs in the reader, outside the bus emit, so a provider that
 throws does not disturb other listeners.
 
 An announcement carries only the id: consumers read the model again when they
-need it. Defining a view announces it; removing one does not, because removal
-happens at `session_shutdown`. A registry's `changed` does nothing for an id it
-does not currently define, so a late call after `dispose` never reaches a bus
-Pi has retired.
+need it. Defining a view announces it, once it can be read. Removing one with
+the function `defineView` or a registry's `define` returned announces its id
+again, after it has left the bus, so the next collection no longer has it and
+a receiver drops it without waiting for an unrelated change; the removal's
+announcement is dropped when Pi has already retired the bus. A consumer
+therefore treats an announced id it cannot find as a removal, not as noise.
+
+A registry's `dispose` removes everything it defined without announcing. It
+runs at `session_shutdown` and before `session_start` defines again: at
+shutdown an announcement would make an adapter send a snapshot with every view
+gone, which a receiver that saves its last snapshot (bb) would keep, and on
+`session_start` the new definitions announce themselves. A registry's
+`changed` does nothing for an id it does not currently define, so a late call
+after `dispose` never reaches a bus Pi has retired.
 
 ## How pi-ui uses it
 
@@ -276,4 +291,121 @@ kind's malformed model into an error entry, and keeps the first entry for an id.
 or `{ ok: false, error }`) are the generic shapes for running an action from a
 receiver, checked by `isActionRequest` and `isActionResult`.
 
-These are types and guards only so far: no transport sends them yet.
+No transport sends these yet: pi-bb and the dashboard reporter still use
+pi-presentation's snapshot. The functions below are what they will use.
+
+## Collecting views
+
+`collectViews(bus)` reads every view registered on a session's bus at that
+moment, sorted by id, and keeps no copy of any extension's state. Reading is
+pure: it never announces. A view whose model is `undefined` is left out. One
+failing view never affects the others; it becomes an error entry (at most
+`MAX_VIEW_ERROR` characters) when its provider throws, returns something that
+is not JSON, returns a model that fails `isViewModel` for its kind, or returns
+a model over `MAX_VIEW_BYTES` (256 KiB) of UTF-8 JSON. A view of a kind this
+copy does not know is left out, since its model cannot be checked. It works
+with or without `system.session`, and throws only when the bus itself does.
+
+`collectDelivery(bus, { id, host?, budget })` builds one complete
+`DeliverySnapshot` that fits the adapter's message:
+
+```ts
+const result = collectDelivery(pi.events, {
+  id: String(process.pid),
+  budget: { maxBytes: BB_MESSAGE_BYTES, framingBytes: 256 },
+});
+if (result.ok) socket.send(`{"type":"update","snapshot":${result.json}}`);
+else report(result.error); // never skip an update silently
+```
+
+`budget.maxBytes` is the transport's ceiling for one message and
+`framingBytes` what the adapter adds around the snapshot (its envelope, other
+fields, a line terminator); the snapshot gets the difference. Sizes are UTF-8
+bytes of the JSON as sent, never `String.length`. The result's `json` is
+exactly the measured text and `bytes` its size.
+
+When the snapshot is over budget, models are replaced by error entries
+("Left out to fit one message: …"), the largest first, ties by id, until it
+fits; `evicted` names them. The same views always give the same result. A
+model is either sent whole or replaced, a form included: nothing is cut short.
+When even the snapshot with every model replaced does not fit, or the bus
+cannot be read, the result is `{ ok: false, error, bytes }` and nothing is to
+be sent; the adapter reports `error`. Options that leave no room, an invalid
+id and a malformed host throw.
+
+| Constant               | Bytes   | Ceiling                                                                       |
+| ---------------------- | ------- | ----------------------------------------------------------------------------- |
+| `MAX_VIEW_BYTES`       | 256 KiB | One view's model                                                              |
+| `BB_MESSAGE_BYTES`     | 2 MiB   | One message to the bb plugin (`MAX_MESSAGE_BYTES` in `bb-plugin/protocol.ts`) |
+| `DASHBOARD_LINE_BYTES` | 1 MiB   | One reporter line to the dashboard hub (`MAX_LINE_BYTES` in its protocol)     |
+
+On the receiving side, `decodeJson(data, maxBytes)` checks one complete message
+or line (a string, measured as UTF-8, or bytes) against the ceiling before
+parsing it, and `decodeDeliverySnapshot(data, maxBytes)` also reads it with
+`readDeliverySnapshot`. Both return `{ ok: true, value }` or
+`{ ok: false, error }` and never throw. `utf8Bytes(text)` measures a string.
+
+## Batching announcements
+
+An adapter coalesces bursts of announcements with `batchViews`:
+
+```ts
+const batcher = batchViews(pi.events, { delayMs: 50, flush: () => send(collectDelivery(...)) });
+// on disconnect or session_shutdown:
+batcher.dispose();
+```
+
+Create it once the connection is ready. It subscribes, then flushes at once,
+before it returns, so the first delivery is a complete read and nothing
+announced after setup is missed. Each later announcement starts the delay
+unless a flush is pending, so a burst gives one flush within `delayMs` of its
+start. `schedule()` joins the adapter's own triggers to the batch and
+`flushNow()` replaces a pending flush. A disposed batcher never flushes, even
+when a timer fires late. `timers` replaces `setTimeout` and `clearTimeout` in
+tests, and `onError` receives what `flush` throws, which is otherwise dropped
+so a timer cannot crash Pi.
+
+## Form consumers
+
+Whether anyone can answer forms is discovered on the session's bus, like
+actions and views; nothing is process-global and no form state is kept.
+
+```ts
+// Consumer, once its connection is up and its form handler is ready:
+const revoke = advertiseFormConsumer(pi.events, { name: "bb" });
+// on disconnect or disposal:
+revoke();
+
+// Producer:
+if (hasFormConsumer(pi.events)) publishForm();
+onFormCapabilityChanged(pi.events, (available) => (available ? publishForm() : handOver()));
+```
+
+`advertiseFormConsumer` announces the consumer and returns an idempotent
+revoke that announces its withdrawal. `listFormConsumers` and
+`hasFormConsumer` answer for the bus now. `onFormCapabilityChanged` reports
+only real changes: `true` when the first consumer arrives, `false` when the
+last withdraws; a second consumer, or one of two leaving, is not reported.
+Saved snapshots and fixtures never advertise: nobody can answer them.
+
+## Saved snapshots
+
+`settleSnapshot(snapshot, settledAt)` returns a snapshot as it should be shown
+once its Pi process has gone, such as a thread bb restores from its saved
+record; `settleViews(views, settledAt)` does the same for the views alone.
+`settledAt` is when the session stopped being live (epoch milliseconds), such
+as when its last snapshot was saved. The result is a new copy: the input is
+never changed and shares nothing with it, so restoring cannot reach a live
+producer's objects.
+
+- Form views are removed, error entries of the form kind too.
+- Every `live` mark settles as the [process-bound table](#process-bound-state)
+  says, and is dropped. Unmarked state, such as a persisted task's `active`
+  icon, finished-agent history, Git and stash records, is kept as it is.
+- Actions are disabled by removing their references: an explorer's `onOpen`
+  and `loadDetail`, and its marker's `onClear` with its `clearAction` hint.
+  The marker's label and marks stay; an item with included `detail` still
+  opens into it.
+- The snapshot's `host` is removed: its pid and terminal belong to the process
+  that has gone.
+- An entry of a kind this copy does not know is removed.
