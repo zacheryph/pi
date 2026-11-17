@@ -147,7 +147,17 @@ export type WidgetModel = {
   meta?: readonly Line[];
   rows: readonly WidgetRow[];
   emptyText?: string;
+  /**
+   * Process-bound (see the note at the top of this module): the heading shows
+   * live process state, such as `active` while agents run and a `meta` of
+   * "2 active". Settled, each field given here replaces the model's own (for
+   * example `active: false` and a `meta` without running counts); spans left
+   * in place settle by their own `live` marks. `true` changes no field.
+   */
+  live?: true | WidgetSettled;
 };
+/** What a process-bound widget heading shows once its process has gone. */
+export type WidgetSettled = { active?: boolean; meta?: readonly Line[] };
 
 export type ExplorerItem = {
   /** Opaque identity, never rendered or normalized. */
@@ -353,6 +363,8 @@ export function isWidgetRow(value: unknown): value is WidgetRow {
     optional(value.live, (live) => live === true || isSettledRow(live))
   );
 }
+const isSettledWidget = (value: unknown) =>
+  isRecord(value) && optional(value.active, isBoolean) && optional(value.meta, isLines);
 export function isWidgetModel(value: unknown): value is WidgetModel {
   return (
     isRecord(value) &&
@@ -360,7 +372,8 @@ export function isWidgetModel(value: unknown): value is WidgetModel {
     optional(value.active, isBoolean) &&
     optional(value.meta, isLines) &&
     isArrayOf(value.rows, isWidgetRow) &&
-    optional(value.emptyText, isString)
+    optional(value.emptyText, isString) &&
+    optional(value.live, (live) => live === true || isSettledWidget(live))
   );
 }
 

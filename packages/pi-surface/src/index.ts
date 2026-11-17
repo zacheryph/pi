@@ -10,3 +10,4 @@ export * from "#src/bytes";
 export * from "#src/collect";
 export * from "#src/batch";
 export * from "#src/consumers";
+export * from "#src/settle";
