@@ -1,5 +1,5 @@
 import { createEventBus } from "@earendil-works/pi-coding-agent";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { fakeEventBus } from "#test-helpers";
 import {
   announceView,
@@ -205,5 +205,35 @@ describe("view registry", () => {
     child.clear();
     expect(listViews(child)).toEqual([]);
     expect(listViews(parent)).toHaveLength(1);
+    // A cleared bus takes new definitions again.
+    defineView(child, { id: "todo.widget", kind: "widget", title: "W", model: () => widget });
+    expect(readView(child, "todo.widget")).toEqual(widget);
+  });
+
+  it("answers for any number of views with one listener per bus, so Node never warns", async () => {
+    const warned = vi.fn();
+    process.on("warning", warned);
+    onTestFinished(() => void process.off("warning", warned));
+    const bus = createEventBus();
+    const views = viewRegistry(bus);
+    const ids = Array.from({ length: 15 }, (_, i) => `ext${String.fromCharCode(97 + i)}.widget`);
+    for (const id of ids) views.define({ id, kind: "widget", title: id, model: () => widget });
+    expect(listViews(bus).map((view) => view.id)).toEqual(ids);
+    expect(readView(bus, ids[14]!)).toEqual(widget);
+    views.dispose();
+    expect(listViews(bus)).toEqual([]);
+    // Defined again after every view was removed, it answers again.
+    const remove = defineView(bus, {
+      id: "a.widget",
+      kind: "widget",
+      title: "A",
+      model: () => widget,
+    });
+    expect(listViews(bus).map((view) => view.id)).toEqual(["a.widget"]);
+    remove();
+    expect(listViews(bus)).toEqual([]);
+    // Node emits the warning on a later tick.
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(warned).not.toHaveBeenCalled();
   });
 });
