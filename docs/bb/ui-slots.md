@@ -2,8 +2,15 @@
 
 Where a bb plugin can draw, shown with one worked example per slot from the
 `pi-surface` plugin in [`bb-plugin/`](../../bb-plugin/README.md). Each example
-is fed by the `SessionSnapshot` that [`pi-bb`](../../extensions/pi-bb/README.md)
-sends from a Pi thread, and renders nothing for a thread without one.
+is fed by the views that [`pi-bb`](../../extensions/pi-bb/README.md) sends from
+a Pi thread, one complete pi-surface delivery snapshot per update, and renders
+nothing for a thread without one. Widgets and explorers are drawn by one generic
+renderer; everything else reads structured views by their machine-readable
+fields: the core session from `system.session` (pi-system-insights), counts and
+the main agent's profile from the extensions' summary views (`todo.summary`,
+`subagent.summary`, `stash.summary`), and questionnaires from form views
+(`ask.questions`). Every slot tolerates a missing or failed view, including a
+missing `system.session`.
 
 Checked against bb 0.49.0 with plugin SDK 0.6.132 (the installed declarations
 in `node_modules/@get-bb/plugin-sdk/bundled-types/` are the contract). Every
@@ -60,7 +67,9 @@ holding it first (`→ agent a3f2b1c4 · in_progress`). A subagent row is its
 icon, its clock, `type: description` and its activity; the clock carries its
 start time, so bb keeps it running between snapshots.
 A widget with nothing to show draws no card. The plugin keeps only a small
-table of which widget gets a card and which bb icon it has.
+table of which widget gets a card and which bb icon it has. A saved thread's
+cards are settled by the widgets' own `live` marks: running agents read
+stopped, clocks stop and the card is no longer active.
 
 ![Todos and Subagents cards, collapsed](../images/bb/stack-cards.png)
 
@@ -97,7 +106,10 @@ from `experimental_THREAD_CONTEXT_SEGMENT_GROUPS` (`1_thread`, `3_git`). We
 join `1_thread`.
 
 Ours is one button, `orchestrate · 3/7 tasks · 2 agents · question`, that opens
-the Pi tab. bb puts a 4px inset around the row and leaves each segment's
+the Pi tab: the main agent's profile and running or queued subagents from
+`subagent.summary` (the profile shows even with no subagents), completed and
+total tasks from `todo.summary`, and an open questionnaire in a form view. The
+counts are producer totals, so they hold when the widgets are hidden. bb puts a 4px inset around the row and leaves each segment's
 padding to its owner; ours uses bb's segment padding (`min-h-6 px-2 py-1`), so
 its icon sits 12px from the card edge like the stack cards' icons.
 
@@ -118,9 +130,13 @@ drawn with `experimental_ThreadContextCardRow` (icon, label, trailing value,
 component })` adds a titled section below the rows. Groups are the Info tab's
 (`experimental_THREAD_INFO_ROW_GROUPS`, `…SECTION_GROUPS`).
 
-Ours: a **Stash 4** row that opens the Pi tab, and a **Pi worktrees and pull
-requests** section with each worktree (dirty, unpushed, merged) and each pull
-request with its checks (`✓9 ✗1 ●2`); a pull request row opens its URL.
+Ours: a **Stash 4** row (the `entries` count of `stash.summary`) that opens the
+Pi tab, and a **Pi worktrees and pull requests** section that lists the items
+of the `git.worktrees` explorer's first tab (the session's worktrees in use)
+and of the `git.prs` explorer, each with its label and toned badge (dirty,
+unpushed, merged; draft, review, checks). A row whose included detail has a
+bare URL field, as a pull request's does, opens it in bb; any other opens the
+Pi tab.
 
 ![Thread context card row and section (gallery)](../images/bb/context-card.png)
 
@@ -154,8 +170,9 @@ composer command, `app.composer.experimental_registerCommand({ id, title,
 defaultShortcut, run })`, or a `plusMenu` row.
 
 Ours is a stash picker: **Mod+Shift+S** (or **+ → Insert a Pi stash handle**)
-lists the branch's stash entries with a filter; Up/Down move, Enter inserts the
-entry's handle at the caret, Escape closes.
+lists the `stash.explorer` view's items (each item's id is its entry's handle)
+with a filter over their label and search text; Up/Down move, Enter inserts
+the handle at the caret, Escape closes.
 
 ![Stash picker popup](../images/bb/composer-popup.png)
 
@@ -170,9 +187,11 @@ A tab in the thread's side panel. `experimental_tab({ context: { kind:
 "thread" }, availability: "fixed", id, title, icon, component, useVisible })`
 pins one destination; `availability: "action"` would add a launcher for
 closable instances instead. Ours is the fixed **Pi** tab, visible only on
-threads with a session: header (name, status, agent, model, thinking, context
+threads with a session: header (name, status, profile, model, thinking, context
 use), open questions, then every explorer view the session offers, then recent
-tool calls and usage. The explorers are drawn by the generic renderer as Info
+tool calls and usage. The header, activity and usage are `system.session`'s;
+the profile is `subagent.summary`'s; without a system view the header reads
+"Pi session" and the rest still draws. The explorers are drawn by the generic renderer as Info
 sections: `todo.explorer`, `subagent.explorer`, `stash.explorer`,
 `git.worktrees` and `git.prs` in that order, any other after them. Each has its
 tabs beside the heading, its notices, and items with a badge that open into
@@ -180,8 +199,11 @@ their detail: inline when the view carries it (subagents, worktrees, pull
 requests, where a URL opens in bb), otherwise through the view's `loadDetail`
 action on the session (a task's details and history, a stash entry's
 contents). Opening a task with an unreviewed message runs the view's
-`marker.onClear` (`todo.review`), as opening it in the terminal does. It uses
-bb's `experimental_InfoSection`, `InfoList` and `InfoListRow`.
+`marker.onClear` (`todo.review`), as opening it in the terminal does. A failed
+action shows its error where the detail would be. On a saved thread the views
+are settled with pi-surface's `settleSnapshot`, which removes their actions,
+so only details a view includes open. It uses bb's `experimental_InfoSection`,
+`InfoList` and `InfoListRow`.
 
 ![Pi tab with a task, a pull request and a stash entry open](../images/bb/thread-tab.png)
 
@@ -196,7 +218,8 @@ A small item on the metadata line under each thread's title in the sidebar.
 `experimental_threadRowMetadata({ id, order, useData, component })`: `useData`
 runs once for the whole list (we read the sessions list once and index it by
 thread), and the component draws one row. Ours shows a question glyph while
-Pi waits on an answer and a robot with the count of running subagents.
+Pi waits on an answer (an open questionnaire in a form view) and a robot with
+the count of running or queued subagents (`subagent.summary`'s live counts).
 
 ![Row metadata badge (gallery)](../images/bb/row-metadata.png)
 
@@ -211,8 +234,9 @@ image is drawn by the gallery.
 `app.slots.navPanel({ id, title, icon, path, component, experimental_useBadge })`
 adds a destination to the sidebar navigation and owns the route
 `/plugins/pi-surface/sessions`. Ours lists every connected Pi session (name,
-agent, status, task counts, running subagents, waiting question, active task)
-and opens its thread on click. The badge counts sessions that wait on the user.
+profile, status, task counts, running subagents, waiting question, active task,
+all read from its views) and opens its thread on click. The badge counts
+sessions that wait on the user.
 
 ![Pi sessions page](../images/bb/sessions-page.png)
 
@@ -230,30 +254,35 @@ the badge's `text`.
 A form that replaces the thread's composer until it is answered. The server
 calls `bb.ui.requestInput({ threadId, rendererId: "questionnaire", title,
 payload })`; the app registers `pendingInteraction({ id: "questionnaire",
-component })`, whose `submit(value)` resolves the server's promise. Ours shows
-every question of the questionnaire at once, with its options (single or
-multiple choice), a free-text answer per question and a note for all answers;
-**Send answers** goes back to Pi as an `answer` request, **Decline** cancels.
-When Pi closes the questionnaire first, the server aborts the form.
+component })`, whose `submit(value)` resolves the server's promise.
+
+Each questionnaire of a live session's form views (pi-ask's `ask.questions`)
+is one form. pi-ask publishes that form instead of using Pi's own dialogs only
+while a form consumer is advertised, and pi-bb advertises one only while the
+plugin has welcomed its connection. Ours shows every question at once, with
+its options (single or multiple choice), a free-text answer per question and a
+note for all answers; **Send answers** (enabled once every question has an
+answer, as pi-ask requires) runs the questionnaire's `submit` action reference
+with the answer, **Decline** runs its `cancel`, both only through the
+connection that raised the form. The server withdraws the form when the form
+view stops listing the questionnaire (answered in the terminal, or the tool
+ended), when the connection closes, or when another process takes the thread;
+if Pi refuses an answer, the form is raised again.
 
 ![Questionnaire form (gallery)](../images/bb/questionnaire.png)
 
 Limits:
 
-- **Not live yet, by pi-ask's choice.** In RPC mode pi-ask asks through Pi's
-  own dialogs (`ctx.ui.select`, `input`), one question at a time, which bb
-  already shows as its native `provider-pi/extension-ui` interaction. It emits
-  `ask:opened` only for its terminal questionnaire, so under bb no
-  questionnaire reaches the snapshot and this form is never raised. Showing it
-  needs a pi-ask change: in RPC mode with a connected pi-bb, open the
-  questionnaire on the bus (`ask:opened`) and wait for `ask:answer` instead of
-  using dialogs. The plugin side is in place and covered by the server's
-  contract tests.
 - Every form leaves a row in the thread's timeline ("Waiting for your answer",
-  then "Answered"), so fixtures never raise one: that would write into a real
-  thread. The gallery image is the same component with a no-op submit.
-- Payloads and answers are capped at 64 KiB; forms time out after ten minutes
-  unless `timeoutMs` says otherwise.
+  then "Answered"), so fixtures and saved sessions never raise one: that would
+  write into a real thread. The gallery image is the same component with a
+  no-op submit.
+- Payloads and answers are capped at 64 KiB. Forms are raised with bb's
+  longest timeout (seven days), since Pi waits as long as it runs; a timeout
+  declines the questionnaire.
+- When the connection drops, pi-ask hands an open questionnaire back to Pi's
+  own dialogs, which bb shows as its native `provider-pi/extension-ui`
+  interaction.
 
 ## Data flow and refresh
 
@@ -263,3 +292,10 @@ the read is tagged `thread:<id>`, and the server calls
 mounted slots share one request per thread and refresh together over bb's
 realtime socket. We use this instead of `bb.realtime.publish` plus a manual
 refetch, which the SDK documents as the older pattern.
+
+Each update from pi-bb replaces the thread's whole view set; nothing is merged,
+and a view that is gone from an update is gone from every slot. A thread whose
+Pi has stopped shows its last snapshot from the plugin's database, settled
+(nothing running, no forms, no actions). Saved records are versioned: one the
+plugin cannot read (another version's, or a malformed one) is treated as
+missing, and the thread shows Pi again after its next live turn.

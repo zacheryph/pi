@@ -1,6 +1,6 @@
 # Shared session views: implementation plan
 
-Status: ready for staged implementation; one saved-cache policy decision remains
+Status: ready for staged implementation; the saved-cache policy is decided
 
 Design: [Views-only sessions](views-only-snapshot.md). This plan implements
 package 8 of [RPC surfaces](rpc-surfaces.md).
@@ -263,9 +263,10 @@ Primary areas: `extensions/pi-bb/src/`; `bb-plugin/contract.ts`, `protocol.ts`,
   reply-to-requester behavior. A late result/update cannot affect a replacement.
 - Normalize saved views using surface's shared rules; only included details
   open without Pi. New live snapshots fully replace saved data.
-- Version saved snapshot records. Proposed policy: invalidate unsupported old
-  display caches and repopulate on the thread's next live turn. Never delete
-  Pi session files, transcripts, tasks or stash. See the open decision below.
+- Version saved snapshot records. Decided policy: invalidate unsupported old
+  display caches, with no migration, and repopulate on the thread's next live
+  turn. Never delete Pi session files, transcripts, tasks or stash. See the
+  decision below.
 - Preserve local navigation, stash-handle insertion and the existing prompt
   trimming behavior. Update fixture/gallery data and `docs/bb/ui-slots.md`.
 
@@ -318,17 +319,18 @@ through its version handshake. Give an explicit mismatch outcome rather than
 adding a permanent old-wire translation path. Commits disable GPG signing as
 required by `AGENTS.md`.
 
-## Outstanding decision and defaults
+## Saved-cache decision and defaults
 
-One user-visible policy remains open before PR 7:
+The one user-visible policy that was open before PR 7 is decided:
 
-| Decision                                                      | Recommended default                                           | Consequence                                                                                                         |
-| ------------------------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| Preserve older saved bb display snapshots or invalidate them? | Invalidate unsupported caches at the protocol/storage upgrade | Old threads temporarily lose the extra Pi cards until their next live turn; underlying Pi session data is untouched |
+| Decision                                                      | Decided                                                                 | Consequence                                                                                                         |
+| ------------------------------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Preserve older saved bb display snapshots or invalidate them? | Invalidate: version the saved records, and migrate none of the old ones | Old threads temporarily lose the extra Pi cards until their next live turn; underlying Pi session data is untouched |
 
-If retaining old cards matters, replace that default with a one-time archive
-migration in PR 7. It must not become a second runtime representation or a
-merge with live snapshots. This decision does not block PRs 1 through 6.
+A saved record the plugin cannot load (an older version's, or a malformed one)
+is treated as if it did not exist, and the thread repopulates on its next live
+turn. The plugin logs one warning naming how many records it ignored. There is
+no archive migration and no second runtime representation.
 
 Other implementation defaults are explicit in this plan: standalone RPC keeps
 native dialogs; machine summaries survive hidden widgets; form routing uses
