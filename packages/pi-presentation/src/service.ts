@@ -76,10 +76,9 @@ export class PresentationService {
     observed.on(SUBAGENT_SNAPSHOT, (data) => {
       if (this.subagents.apply(data as SubagentSnapshot)) this.changed();
     });
-    // Every view's model is part of the snapshot.
-    onViewChanged(observed, (id) => {
-      if (this.viewInfo().some((view) => view.id === id)) this.changed();
-    });
+    // Every view's model is part of the snapshot. A removed view announces its
+    // id after it has gone, so an id no longer on the bus changes the snapshot too.
+    onViewChanged(observed, () => this.changed());
   }
 
   /** Snapshot reads return copies: UI consumers cannot mutate cached producer state. */
