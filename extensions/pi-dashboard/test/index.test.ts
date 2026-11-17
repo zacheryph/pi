@@ -1,58 +1,33 @@
-import { GIT_SNAPSHOT_EVENT, type GitSnapshotEvent } from "#git/events";
-import { STASH_SNAPSHOT_EVENT, type StashSnapshotEvent } from "#stash/events";
-import { defineAction, isJsonObject, type JsonValue } from "#surface";
-import { TODO_SNAPSHOT_EVENT, type TodoSnapshotEvent, type TodoSnapshotTask } from "#todo/events";
-import { SUBAGENT_SNAPSHOT, type SubagentSnapshot } from "#subagent/observation/snapshot";
+import {
+  announceView,
+  defineAction,
+  defineView,
+  FORM_VIEW_ID,
+  hasFormConsumer,
+  isJsonObject,
+  SESSION_VIEW_ID,
+  type FormQuestionnaire,
+  type SessionModel,
+} from "#surface";
 import { describe, expect, it, vi } from "vitest";
 import { Hub } from "#src/hub/hub";
 import dashboardExtension, { type DashboardDependencies } from "#src/index";
-import { get, onCleanup, post, tempDir, waitFor, sleep, listSessions } from "#test/helpers";
+import {
+  core,
+  listSessions,
+  onCleanup,
+  post,
+  postAction,
+  sessionModel,
+  sleep,
+  tempDir,
+  view,
+  waitFor,
+} from "#test/helpers";
 import { fakePi } from "#test-helpers";
 
-type SnapshotEvents = {
-  [GIT_SNAPSHOT_EVENT]: GitSnapshotEvent;
-  [STASH_SNAPSHOT_EVENT]: StashSnapshotEvent;
-  [TODO_SNAPSHOT_EVENT]: TodoSnapshotEvent;
-  [SUBAGENT_SNAPSHOT]: SubagentSnapshot;
-};
-type OtherChannel = "ask:opened";
-
-/** A fake pi with a renameable session name and a working event bus. */
-function dashboardPi() {
-  let name: string | undefined = "fix-auth";
-  const fake = fakePi({
-    getSessionName: () => name,
-    getThinkingLevel: () => "high",
-    exec: vi.fn(),
-  });
-  return {
-    ...fake,
-    pi: fake.api,
-    rename: (next: string) => {
-      name = next;
-    },
-    publish: <K extends keyof SnapshotEvents | OtherChannel>(
-      channel: K,
-      data: K extends keyof SnapshotEvents ? SnapshotEvents[K] : unknown,
-    ) => fake.api.events.emit(channel, data),
-  };
-}
-
-function fakeCtx(mode = "tui", entries: unknown[] = []) {
-  return {
-    mode,
-    cwd: "/work/api",
-    hasUI: mode !== "print",
-    ui: { notify: vi.fn() },
-    sessionManager: {
-      getSessionId: () => "session-a",
-      getBranch: () => entries,
-      getEntries: () => entries,
-    },
-    model: { provider: "anthropic", id: "claude-opus" },
-    getContextUsage: () => ({ tokens: 5000, contextWindow: 200_000, percent: 2.5 }),
-    isIdle: () => true,
-  };
+function fakeCtx(mode = "tui") {
+  return { mode, cwd: "/work/api", hasUI: mode !== "print", ui: { notify: vi.fn() } };
 }
 
 function setup(overrides: Partial<DashboardDependencies> = {}) {
@@ -71,199 +46,135 @@ function setup(overrides: Partial<DashboardDependencies> = {}) {
     spawnHub,
     publishDelayMs: 10,
     loadConfig: () => ({ port: 7317 }),
+    detectTerminal: () => undefined,
     ...overrides,
   };
   const sessions = () => listSessions(hubs.at(-1));
-  const focus = async (id: string) => {
-    const hub = hubs.at(-1)!;
-    return post(hub.httpPort!, `/api/sessions/${id}/focus`, { "x-dashboard-token": hub.token });
-  };
-  return { deps, spawnHub, sessions, hubs, focus };
+  const hub = () => hubs.at(-1)!;
+  const focus = async (id: string) =>
+    post(hub().httpPort!, `/api/sessions/${id}/focus`, { "x-dashboard-token": hub().token });
+  const first = () =>
+    waitFor(async () => {
+      const list = await sessions();
+      return list.length ? list[0] : undefined;
+    });
+  return { deps, spawnHub, sessions, hubs, hub, focus, first };
 }
 
 function load(deps: DashboardDependencies, pid = 4242) {
-  const fake = dashboardPi();
-  dashboardExtension(fake.pi, { ...deps, pid });
+  const fake = fakePi({ exec: vi.fn() });
+  dashboardExtension(fake.api, { ...deps, pid });
   return fake;
 }
 
-async function quit(fake: ReturnType<typeof dashboardPi>, ctx: unknown) {
+type Fake = ReturnType<typeof load>;
+
+async function quit(fake: Fake, ctx: unknown) {
   await fake.emit("session_shutdown", { reason: "quit" }, ctx);
 }
 
+/** Stand-in for pi-system-insights' `system.session` view, with a model the test changes. */
+function systemView(fake: Fake, initial: Partial<SessionModel> = {}) {
+  let model = sessionModel(initial);
+  const remove = defineView(fake.api.events, {
+    id: SESSION_VIEW_ID,
+    kind: "session",
+    title: "Session",
+    model: () => model,
+  });
+  return {
+    set(next: Partial<SessionModel>) {
+      model = { ...model, ...next };
+      announceView(fake.api.events, SESSION_VIEW_ID);
+    },
+    remove,
+  };
+}
+
 describe("pi-dashboard extension", () => {
-  it("reports an interactive session and follows its status", async () => {
+  it("reports the session's collected views and follows their changes", async () => {
     const env = setup();
     const fake = load(env.deps);
     const ctx = fakeCtx();
     onCleanup(() => quit(fake, ctx));
+    // Extensions that load first define their views before the dashboard starts.
+    const system = systemView(fake, { name: "fix-auth" });
     await fake.emit("session_start", { reason: "startup" }, ctx);
-    const [card] = await waitFor(async () => {
-      const list = await env.sessions();
-      return list.length ? list : undefined;
-    });
-    expect(card).toMatchObject({
+    const card = await env.first();
+    expect(card).toEqual({
       id: "4242",
-      pid: 4242,
-      cwd: "/work/api",
-      name: "fix-auth",
-      thinking: "high",
-      model: { provider: "anthropic", id: "claude-opus" },
-      status: { kind: "idle" },
-      context: { tokens: 5000, window: 200_000, percent: 2.5 },
+      host: { pid: 4242 },
+      views: [
+        {
+          id: SESSION_VIEW_ID,
+          kind: "session",
+          title: "Session",
+          model: sessionModel({ name: "fix-auth" }),
+        },
+      ],
+    });
+    system.set({ name: "renamed", status: { kind: "tool", tool: "bash", since: 9 } });
+    await waitFor(async () => core((await env.sessions())[0])?.name === "renamed");
+    expect(core((await env.sessions())[0])?.status).toEqual({
+      kind: "tool",
+      tool: "bash",
+      since: 9,
     });
 
-    await fake.emit("agent_start", {}, ctx);
-    await fake.emit("tool_execution_start", { toolCallId: "t1", toolName: "bash", args: {} }, ctx);
-    await fake.emit(
-      "tool_execution_start",
-      { toolCallId: "t1/1", toolName: "read", args: {}, parentToolCallId: "t1" },
-      ctx,
-    );
-    await waitFor(
-      async () => ((await env.sessions())[0]?.status as { tool?: string })?.tool === "bash",
-    );
-
-    fake.rename("renamed");
-    await fake.emit("session_info_changed", { name: "renamed" }, ctx);
-    await fake.emit("agent_settled", {}, ctx);
-    await waitFor(async () => {
-      const [current] = await env.sessions();
-      return current?.name === "renamed" && (current.status as { kind: string }).kind === "idle";
+    // A view defined after start arrives, and one removed disappears from the next snapshot.
+    const removeSummary = defineView(fake.api.events, {
+      id: "todo.summary",
+      kind: "summary",
+      title: "Tasks",
+      model: () => ({ counts: [{ key: "total", label: "tasks", value: 3 }] }),
     });
+    await waitFor(async () => view((await env.sessions())[0], "todo.summary") !== undefined);
+    removeSummary();
+    await waitFor(async () => view((await env.sessions())[0], "todo.summary") === undefined);
+    expect(core((await env.sessions())[0])?.name).toBe("renamed");
   });
 
-  it("carries todo and stash state published on the session bus, from before start and after", async () => {
-    const env = setup();
+  it("keeps other views and Focus without a system view, and shows a failed one as an error", async () => {
+    const adapter = { info: { kind: "cmux", label: "cmux" }, focus: vi.fn(async () => {}) };
+    const env = setup({ detectTerminal: () => adapter });
     const fake = load(env.deps);
     const ctx = fakeCtx();
     onCleanup(() => quit(fake, ctx));
-    const task: TodoSnapshotTask = {
-      key: "a",
-      subject: "Add backoff",
-      status: "in_progress",
-      blocked: false,
-      unreviewed: 1,
-      updates: [],
-    };
-    // pi-todo and pi-stash load first and publish during their own session_start.
-    fake.publish(TODO_SNAPSHOT_EVENT, { version: 1, revision: 1, tasks: [task] });
+    defineView(fake.api.events, {
+      id: "stash.summary",
+      kind: "summary",
+      title: "Stash",
+      model: () => ({ counts: [{ key: "entries", label: "entries", value: 2 }] }),
+    });
     await fake.emit("session_start", { reason: "startup" }, ctx);
-    const [card] = await waitFor(async () => {
-      const list = await env.sessions();
-      return list.length ? list : undefined;
-    });
-    expect(card?.todos).toEqual({
-      revision: 1,
-      total: 1,
-      tasks: [
-        { key: "a", subject: "Add backoff", status: "in_progress", blocked: false, unreviewed: 1 },
-      ],
-    });
-    expect(card?.stash).toBeUndefined();
+    const card = await env.first();
+    expect(card.views.map((entry) => entry.id)).toEqual(["stash.summary"]);
+    expect(card.host).toEqual({ pid: 4242, terminal: { kind: "cmux", label: "cmux" } });
+    expect((await env.focus("4242")).status).toBe(200);
+    expect(adapter.focus).toHaveBeenCalledTimes(1);
 
-    fake.publish(STASH_SNAPSHOT_EVENT, {
-      version: 1,
-      entries: [
-        {
-          handle: "stash:notes@0123456789ab",
-          name: "notes",
-          hash: "0".repeat(64),
-          bytes: 10,
-          lines: 2,
-          mime: "text/plain",
-          createdAt: 5,
-          createdBy: "session-a",
-          source: "content",
-          versions: 1,
-        },
-      ],
+    let fail = true;
+    defineView(fake.api.events, {
+      id: SESSION_VIEW_ID,
+      kind: "session",
+      title: "Session",
+      model: () => {
+        if (fail) throw new Error("insights broke");
+        return sessionModel();
+      },
     });
-    fake.publish(TODO_SNAPSHOT_EVENT, {
-      version: 1,
-      revision: 2,
-      tasks: [{ ...task, status: "completed" }],
+    await waitFor(async () => view((await env.sessions())[0], SESSION_VIEW_ID) !== undefined);
+    const [failed] = await env.sessions();
+    expect(view(failed, SESSION_VIEW_ID)).toEqual({
+      id: SESSION_VIEW_ID,
+      kind: "session",
+      title: "Session",
+      error: "insights broke",
     });
-    await waitFor(async () => {
-      const [current] = await env.sessions();
-      const todos = current?.todos as { revision: number } | undefined;
-      const stash = current?.stash as { total: number } | undefined;
-      return todos?.revision === 2 && stash?.total === 1;
-    });
-  });
-
-  it("carries pi-git's worktrees and pull requests published on the session bus", async () => {
-    const env = setup();
-    const fake = load(env.deps);
-    const ctx = fakeCtx();
-    onCleanup(() => quit(fake, ctx));
-    await fake.emit("session_start", { reason: "startup" }, ctx);
-    fake.publish(GIT_SNAPSHOT_EVENT, {
-      version: 1,
-      worktrees: [
-        {
-          path: "/w/api/feat-login",
-          repo: "/src/api",
-          branch: "feat/login",
-          base: { ref: "main", sha: "a" },
-          agents: ["agent-1"],
-          state: "active",
-          createdAt: 1,
-          updatedAt: 1,
-          status: { dirty: true, detached: 0, unpushed: 2, merged: false },
-        },
-      ],
-      found: [],
-      prs: [
-        {
-          key: "github.com/acme/api#12",
-          host: "github.com",
-          owner: "acme",
-          repo: "api",
-          number: 12,
-          url: "https://github.com/acme/api/pull/12",
-          origin: "created",
-          title: "Add login",
-          status: { state: "open", observedAt: 5, source: "bash" },
-          calls: [],
-          createdAt: 1,
-          updatedAt: 1,
-        },
-      ],
-    });
-    const [card] = await waitFor(async () => {
-      const [current] = await env.sessions();
-      return current?.git ? [current] : undefined;
-    });
-    expect(card?.git).toEqual({
-      worktrees: [
-        {
-          path: "/w/api/feat-login",
-          repo: "api",
-          branch: "feat/login",
-          state: "active",
-          agents: 1,
-          dirty: true,
-          unpushed: 2,
-        },
-      ],
-      worktreeTotal: 1,
-      removed: 0,
-      other: 0,
-      prs: [
-        {
-          label: "acme/api#12",
-          url: "https://github.com/acme/api/pull/12",
-          title: "Add login",
-          origin: "created",
-          state: "open",
-          observedAt: 5,
-        },
-      ],
-      prTotal: 1,
-      openCreated: 1,
-      failingCreated: 0,
-    });
+    expect(view(failed, "stash.summary")).toBeDefined();
+    fail = false;
+    announceView(fake.api.events, SESSION_VIEW_ID);
+    await waitFor(async () => core((await env.sessions())[0]) !== undefined);
   });
 
   it("Focus from the page runs the session's terminal adapter and reports failures", async () => {
@@ -272,15 +183,10 @@ describe("pi-dashboard extension", () => {
     const fake = load(env.deps);
     const ctx = fakeCtx();
     onCleanup(() => quit(fake, ctx));
+    systemView(fake);
     await fake.emit("session_start", { reason: "startup" }, ctx);
-    const [card] = await waitFor(async () => {
-      const list = await env.sessions();
-      return list.length ? list : undefined;
-    });
-    expect(card?.terminal).toEqual({ kind: "cmux", label: "cmux" });
+    await env.first();
     expect(await env.focus("4242")).toEqual({ status: 200, body: JSON.stringify({ ok: true }) });
-    expect(adapter.focus).toHaveBeenCalledTimes(1);
-
     adapter.focus.mockRejectedValueOnce(new Error("cmux focus-panel: panel not found"));
     const failed = await env.focus("4242");
     expect(failed.status).toBe(502);
@@ -288,331 +194,171 @@ describe("pi-dashboard extension", () => {
   });
 
   it("omits the terminal outside cmux, so the page offers no Focus", async () => {
-    const env = setup({ detectTerminal: () => undefined });
+    const env = setup();
     const fake = load(env.deps);
     const ctx = fakeCtx();
     onCleanup(() => quit(fake, ctx));
     await fake.emit("session_start", { reason: "startup" }, ctx);
-    const [card] = await waitFor(async () => {
-      const list = await env.sessions();
-      return list.length ? list : undefined;
-    });
-    expect(card?.terminal).toBeUndefined();
+    expect((await env.first()).host).toEqual({ pid: 4242 });
     expect((await env.focus("4242")).status).toBe(409);
   });
 
-  it("reports usage, compactions and subagents", async () => {
-    const env = setup({ detectTerminal: () => undefined });
-    const fake = load(env.deps);
-    const entries: unknown[] = [
-      {
-        type: "message",
-        message: {
-          role: "assistant",
-          usage: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, cost: { total: 0.25 } },
-        },
-      },
-    ];
-    const ctx = fakeCtx("tui", entries);
-    onCleanup(() => quit(fake, ctx));
-    await fake.emit("session_start", { reason: "startup" }, ctx);
-    const [card] = await waitFor(async () => {
-      const list = await env.sessions();
-      return list.length ? list : undefined;
-    });
-    expect(card?.usage).toEqual({ input: 10, output: 5, cacheRead: 0, cacheWrite: 0, cost: 0.25 });
-    expect(card?.subagents).toBeUndefined();
-
-    entries.push({
-      type: "compaction",
-      timestamp: "2026-10-30T02:00:00.000Z",
-      usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, cost: { total: 0.05 } },
-    });
-    await fake.emit("session_compact", {}, ctx);
-    fake.publish(SUBAGENT_SNAPSHOT, {
-      version: 1,
-      agents: [
-        {
-          id: "agent-1",
-          type: "Explore",
-          description: "Find auth files",
-          state: "running",
-          startedAt: 100,
-          completedAt: undefined,
-          waitingOn: [],
-          error: undefined,
-          live: true,
-          toolUses: 0,
-        },
-      ],
-    });
-    await waitFor(async () => {
-      const [current] = await env.sessions();
-      const agents = (current?.subagents as { agents: Array<{ state: string }> } | undefined)
-        ?.agents;
-      return (
-        agents?.[0]?.state === "running" &&
-        (current?.usage as { cost: number } | undefined)?.cost === 0.3
-      );
-    });
-  });
-
-  it("renders a restored waiting snapshot, then its completed replacement", async () => {
-    const env = setup({ detectTerminal: () => undefined });
+  it("runs an explorer's actions from the page and returns their results to it alone", async () => {
+    const env = setup();
     const fake = load(env.deps);
     const ctx = fakeCtx();
     onCleanup(() => quit(fake, ctx));
-    await fake.emit("session_start", { reason: "startup" }, ctx);
-    const agentOf = async (state: string) =>
-      waitFor(async () => {
-        const [current] = await env.sessions();
-        const agent = (
-          current?.subagents as { agents: Array<{ state: string; note?: string }> } | undefined
-        )?.agents[0];
-        return agent?.state === state ? agent : undefined;
-      });
-
-    fake.publish(SUBAGENT_SNAPSHOT, {
-      version: 1,
-      agents: [
-        {
-          id: "w",
-          type: "Agent",
-          description: "Review CI",
-          state: "waiting",
-          startedAt: 100,
-          completedAt: undefined,
-          waitingOn: [],
-          error: undefined,
-          live: true,
-          toolUses: 0,
-          note: "CI checks",
-        },
-      ],
+    const reviewed: unknown[] = [];
+    defineView(fake.api.events, {
+      id: "todo.explorer",
+      kind: "explorer",
+      title: "Todos",
+      model: () => ({
+        title: "Todos",
+        items: [{ id: "fix", label: "fix: Fix auth", marked: true }],
+        marker: { label: "unreviewed", onClear: { action: "todo.review", args: { branch: 1 } } },
+        loadDetail: { action: "todo.inspect" },
+      }),
     });
-    expect(await agentOf("waiting")).toMatchObject({ note: "CI checks" });
-    fake.publish(SUBAGENT_SNAPSHOT, {
-      version: 1,
-      agents: [
-        {
-          id: "w",
-          type: "agent",
-          description: "Review CI",
-          state: "completed",
-          startedAt: 100,
-          completedAt: 200,
-          waitingOn: [],
-          error: undefined,
-          live: false,
-          toolUses: 0,
-        },
-      ],
-    });
-    const done = await agentOf("completed");
-    expect(done.note).toBeUndefined();
-  });
-
-  it("answers stash preview and task history requests, and lists recent tool calls", async () => {
-    const env = setup({ detectTerminal: () => undefined });
-    const fake = load(env.deps);
-    const ctx = fakeCtx();
-    onCleanup(() => quit(fake, ctx));
-    // Stand-in for pi-stash's stash.preview action on the same bus.
-    defineAction(fake.pi.events, {
-      id: "stash.preview",
-      title: "Preview",
+    defineAction(fake.api.events, {
+      id: "todo.inspect",
+      title: "Inspect",
       handler: (args) => {
-        const name = isJsonObject(args) && typeof args.name === "string" ? args.name : "";
-        if (name !== "notes") throw new Error(`No stash entry named "${name}" on this branch.`);
-        return {
-          handle: "stash:notes@0123456789ab",
-          lines: ["first", "second"],
-          total: 40,
-          complete: false,
-        };
+        const id = isJsonObject(args) ? args.id : undefined;
+        if (id !== "fix")
+          throw new Error(`No task "${typeof id === "string" ? id : "?"}" on this branch.`);
+        return [{ heading: "History" }, { text: "secret detail" }];
       },
     });
-    const fix: TodoSnapshotTask = {
-      key: "fix",
-      subject: "Fix",
-      status: "completed",
-      blocked: false,
-      unreviewed: 0,
-      createdAt: 5,
-      updates: [{ revision: 2, at: 9, status: "completed", from: "pending", message: "done" }],
-    };
-    fake.publish(TODO_SNAPSHOT_EVENT, { version: 1, revision: 2, tasks: [fix] });
-    // Stand-in for pi-todo's todo.history action, answering from the same task.
-    defineAction(fake.pi.events, {
-      id: "todo.history",
-      title: "History",
+    defineAction(fake.api.events, {
+      id: "todo.review",
+      title: "Review",
       handler: (args) => {
-        const key = isJsonObject(args) && typeof args.key === "string" ? args.key : "";
-        if (key !== fix.key) throw new Error(`No task "${key}" on this branch.`);
-        return JSON.parse(
-          JSON.stringify({ key, createdAt: fix.createdAt, updates: fix.updates }),
-        ) as JsonValue;
+        reviewed.push(args);
+        return { reviewed: 1 };
+      },
+    });
+    defineAction(fake.api.events, {
+      id: "git.worktree.remove",
+      title: "Remove a worktree",
+      handler: () => {
+        throw new Error("must not run");
       },
     });
     await fake.emit("session_start", { reason: "startup" }, ctx);
-    await waitFor(async () => (await env.sessions()).length === 1);
-    const hub = env.hubs.at(-1)!;
-    const ask = (path: string) =>
-      post(hub.httpPort!, `/api/sessions/4242/${path}`, { "x-dashboard-token": hub.token });
-
-    expect(JSON.parse((await ask("stash/notes/preview")).body)).toEqual({
-      ok: true,
-      data: {
-        handle: "stash:notes@0123456789ab",
-        lines: ["first", "second"],
-        total: 40,
-        complete: false,
-      },
-    });
-    const missing = await ask("stash/gone/preview");
+    await env.first();
+    const hub = env.hub();
+    expect(
+      JSON.parse(
+        (await postAction(hub, "4242", { action: "todo.inspect", args: { id: "fix" } })).body,
+      ),
+    ).toEqual({ ok: true, data: [{ heading: "History" }, { text: "secret detail" }] });
+    const missing = await postAction(hub, "4242", { action: "todo.inspect", args: { id: "x" } });
     expect(missing.status).toBe(502);
-    expect(JSON.parse(missing.body).error).toBe('No stash entry named "gone" on this branch.');
-    expect(JSON.parse((await ask("todos/fix/history")).body)).toEqual({
-      ok: true,
-      data: {
-        key: "fix",
-        createdAt: 5,
-        updates: [{ revision: 2, at: 9, status: "completed", from: "pending", message: "done" }],
-      },
-    });
-    expect(JSON.parse((await ask("todos/nope/history")).body).error).toBe(
-      'No task "nope" on this branch.',
-    );
-    // Content requests never reach the broadcast session list.
-    expect((await get(hub.httpPort!, "/api/sessions")).body).not.toContain("second");
-
-    await fake.emit(
-      "tool_execution_start",
-      { toolCallId: "t1", toolName: "bash", args: { command: "npm test" } },
-      ctx,
-    );
-    await fake.emit(
-      "tool_execution_end",
-      { toolCallId: "t1", toolName: "bash", result: {}, isError: true },
-      ctx,
-    );
-    await waitFor(async () => {
-      const activity = (await env.sessions())[0]?.activity as
-        | Array<{ tool: string; summary?: string; error?: boolean }>
-        | undefined;
-      return activity?.[0]?.summary === "npm test" && activity[0].error === true;
-    });
+    expect(JSON.parse(missing.body).error).toBe('No task "x" on this branch.');
+    expect(
+      (await postAction(hub, "4242", { action: "todo.review", args: { branch: 1, ids: ["fix"] } }))
+        .status,
+    ).toBe(200);
+    expect(reviewed).toEqual([{ branch: 1, ids: ["fix"] }]);
+    // Defined on the bus but offered by no view: the page cannot run it.
+    expect((await postAction(hub, "4242", { action: "git.worktree.remove" })).status).toBe(409);
+    expect(JSON.stringify(await env.sessions())).not.toContain("secret detail");
   });
 
-  it("says when pi-stash is not loaded to answer a preview", async () => {
-    const env = setup({ detectTerminal: () => undefined });
+  it("advertises forms only while connected, and answers one through its submit action", async () => {
+    const env = setup();
     const fake = load(env.deps);
     const ctx = fakeCtx();
+    const bus = fake.api.events;
     onCleanup(() => quit(fake, ctx));
-    await fake.emit("session_start", { reason: "startup" }, ctx);
-    await waitFor(async () => (await env.sessions()).length === 1);
-    const hub = env.hubs.at(-1)!;
-    const response = await post(hub.httpPort!, "/api/sessions/4242/stash/notes/preview", {
-      "x-dashboard-token": hub.token,
-    });
-    expect(JSON.parse(response.body).error).toBe("pi-stash did not answer; is it loaded?");
-  });
-
-  it("shows pi-ask questionnaires and answers them through pi-ask's action", async () => {
-    const env = setup({ detectTerminal: () => undefined });
-    const fake = load(env.deps);
-    const ctx = fakeCtx();
-    onCleanup(() => quit(fake, ctx));
-    const received: unknown[] = [];
-    // Stand-in for pi-ask's ask.answer action.
-    defineAction(fake.pi.events, {
-      id: "ask.answer",
-      title: "Answer",
-      handler: (data) => {
-        const payload = data as {
-          toolCallId: string;
-          answers?: Array<{ optionIndexes?: number[] }>;
-        };
-        received.push(payload);
-        const fits = payload.answers?.[0]?.optionIndexes?.[0] === 0;
-        return fits
-          ? { ok: true, toolCallId: payload.toolCallId }
-          : {
-              ok: false,
-              code: "invalid_answer",
-              reason: "pick Retry",
-              toolCallId: payload.toolCallId,
-            };
-      },
-    });
-    await fake.emit("session_start", { reason: "startup" }, ctx);
-    fake.publish("ask:opened", {
-      toolCallId: "toolu_1",
-      questions: [
+    // Stand-in for pi-ask: one open questionnaire, answered through ask.submit.
+    const open = new Map<string, FormQuestionnaire>([
+      [
+        "toolu_1",
         {
-          question: "Which strategy?",
-          header: "Strategy",
-          multiSelect: false,
-          options: [{ label: "Retry", description: "", hasPreview: false }],
+          id: "toolu_1",
+          questions: [{ question: "Which strategy?", options: [{ label: "Retry" }] }],
+          submit: { action: "ask.submit", args: { id: "toolu_1" } },
+          cancel: { action: "ask.cancel", args: { id: "toolu_1" } },
         },
       ],
-    });
-    const [card] = await waitFor(async () => {
-      const list = await env.sessions();
-      return list[0]?.questions ? list : undefined;
-    });
-    expect(card?.questions).toEqual([
-      {
-        id: "toolu_1",
-        since: expect.any(Number),
-        questions: [
-          {
-            question: "Which strategy?",
-            header: "Strategy",
-            multiSelect: false,
-            options: [{ label: "Retry", description: "" }],
-          },
-        ],
-      },
     ]);
-
-    const hub = env.hubs.at(-1)!;
-    const answer = (body: unknown) =>
-      post(
-        hub.httpPort!,
-        "/api/sessions/4242/questions/toolu_1/answer",
-        { "x-dashboard-token": hub.token },
-        JSON.stringify(body),
-      );
-    const refused = await answer({ answers: [{ questionIndex: 0, text: "something else" }] });
-    expect(refused.status).toBe(502);
-    expect(JSON.parse(refused.body).error).toBe("Not accepted: pick Retry");
-    expect(await answer({ answers: [{ questionIndex: 0, optionIndexes: [0] }] })).toEqual({
-      status: 200,
-      body: JSON.stringify({ ok: true }),
+    const answers: unknown[] = [];
+    defineView(bus, {
+      id: FORM_VIEW_ID,
+      kind: "form",
+      title: "Questions",
+      model: () => (open.size ? { questionnaires: [...open.values()] } : undefined),
     });
-    expect(received).toHaveLength(2);
-    await waitFor(async () => (await env.sessions())[0]?.questions === undefined);
-    expect((await answer({ cancel: true })).status).toBe(502);
+    defineAction(bus, {
+      id: "ask.submit",
+      title: "Answer",
+      handler: (args) => {
+        if (!isJsonObject(args) || typeof args.id !== "string" || !open.has(args.id))
+          throw new Error("Not accepted (closed): already answered");
+        answers.push(args);
+        open.delete(args.id);
+        announceView(bus, FORM_VIEW_ID);
+        return { id: args.id, status: "answered" };
+      },
+    });
+    expect(hasFormConsumer(bus)).toBe(false);
+    await fake.emit("session_start", { reason: "startup" }, ctx);
+    await waitFor(async () => view((await env.sessions())[0], FORM_VIEW_ID) !== undefined);
+    await waitFor(() => hasFormConsumer(bus));
+
+    const answer = { id: "toolu_1", answers: [{ questionIndex: 0, optionIndexes: [0] }] };
+    const sent = await postAction(env.hub(), "4242", { action: "ask.submit", args: answer });
+    expect(JSON.parse(sent.body)).toEqual({
+      ok: true,
+      data: { id: "toolu_1", status: "answered" },
+    });
+    expect(answers).toEqual([answer]);
+    // Answered: the form leaves the next snapshot and its actions are no longer offered.
+    await waitFor(async () => view((await env.sessions())[0], FORM_VIEW_ID) === undefined);
+    expect(
+      (await postAction(env.hub(), "4242", { action: "ask.submit", args: answer })).status,
+    ).toBe(409);
+
+    // The hub goes away: the session can no longer have its forms answered from the page.
+    await env.hub().stop();
+    await waitFor(() => !hasFormConsumer(bus));
+    // A hub comes back on the socket: once it welcomes the session, forms are advertised again.
+    env.spawnHub();
+    await waitFor(() => hasFormConsumer(bus), 5_000);
+    await quit(fake, ctx);
+    expect(hasFormConsumer(bus)).toBe(false);
   });
 
-  it("drops a questionnaire when its tool call ends, however it was answered", async () => {
-    const env = setup({ detectTerminal: () => undefined });
+  it("evicts the largest views to fit one hub line, measured in UTF-8 bytes, and says so once", async () => {
+    const env = setup({ maxLineBytes: 20_000 });
     const fake = load(env.deps);
     const ctx = fakeCtx();
     onCleanup(() => quit(fake, ctx));
+    systemView(fake);
+    // 6,000 UTF-16 units each, 12,000 bytes as UTF-8: together over the limit.
+    for (const id of ["notes.a", "notes.b"])
+      defineView(fake.api.events, {
+        id,
+        kind: "detail",
+        title: id,
+        model: () => ({ title: id, content: "é".repeat(6_000) }),
+      });
     await fake.emit("session_start", { reason: "startup" }, ctx);
-    fake.publish("ask:opened", {
-      toolCallId: "toolu_2",
-      questions: [{ question: "Ok?", header: "", multiSelect: false, options: [] }],
+    const card = await env.first();
+    expect(view(card, "notes.a")).toMatchObject({
+      error: expect.stringMatching(/^Left out to fit/),
     });
-    await waitFor(async () => (await env.sessions())[0]?.questions !== undefined);
-    await fake.emit(
-      "tool_execution_end",
-      { toolCallId: "toolu_2", toolName: "ask_user_question", result: {}, isError: false },
-      ctx,
+    expect(view(card, "notes.b")).toMatchObject({ model: { title: "notes.b" } });
+    expect(core(card)).toBeDefined();
+    announceView(fake.api.events, "notes.a");
+    await sleep(100);
+    expect(ctx.ui.notify).toHaveBeenCalledTimes(1);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      "Session dashboard: left out notes.a to fit one update.",
+      "warning",
     );
-    await waitFor(async () => (await env.sessions())[0]?.questions === undefined);
   });
 
   it("does not report print-mode runs", async () => {
@@ -642,22 +388,27 @@ describe("pi-dashboard extension", () => {
     await waitFor(async () => (await env.sessions())[0]?.id === "2");
   });
 
-  it("keeps the card through a reload and picks it up from the new runtime", async () => {
+  it("keeps a settled card through a reload and picks it up from the new runtime", async () => {
     const env = setup();
     const before = load(env.deps);
     const ctx = fakeCtx();
+    systemView(before, { name: "before", status: { kind: "working", since: 3 } });
     await before.emit("session_start", { reason: "startup" }, ctx);
-    await waitFor(async () => (await env.sessions()).length === 1);
+    await waitFor(async () => core((await env.sessions())[0])?.name === "before");
     await before.emit("session_shutdown", { reason: "reload" }, ctx);
-    await waitFor(async () => (await env.sessions())[0]?.restarting === true);
+    const [restarting] = await waitFor(async () => {
+      const list = await env.sessions();
+      return list[0]?.disconnected ? list : undefined;
+    });
+    expect(core(restarting)).toMatchObject({ name: "before", status: { kind: "idle" } });
 
     const after = load(env.deps);
     onCleanup(() => quit(after, ctx));
-    after.rename("reloaded");
+    systemView(after, { name: "reloaded" });
     await after.emit("session_start", { reason: "reload" }, ctx);
     await waitFor(async () => {
       const [card] = await env.sessions();
-      return card?.name === "reloaded" && card.restarting === undefined;
+      return core(card)?.name === "reloaded" && card?.disconnected === undefined;
     });
     expect(env.spawnHub).toHaveBeenCalledTimes(1);
   });
@@ -667,7 +418,7 @@ describe("pi-dashboard extension", () => {
     const openUrl = vi.fn(async () => {});
     const fake = load({ ...env.deps, openUrl, isHubReachable: async () => true });
     const ctx = fakeCtx();
-    await fake.commands.get("dashboard")!.handler("", ctx);
+    await fake.command("dashboard").handler("", ctx);
     expect(openUrl).toHaveBeenCalledWith("http://127.0.0.1:7317/");
     expect(ctx.ui.notify).toHaveBeenCalledWith("Dashboard: http://127.0.0.1:7317/", "info");
   });
@@ -677,7 +428,7 @@ describe("pi-dashboard extension", () => {
     const openUrl = vi.fn(async () => {});
     const fake = load({ ...env.deps, openUrl, isHubReachable: async () => false });
     const ctx = fakeCtx("print");
-    await fake.commands.get("dashboard")!.handler("", ctx);
+    await fake.command("dashboard").handler("", ctx);
     expect(openUrl).not.toHaveBeenCalled();
     expect(ctx.ui.notify).not.toHaveBeenCalled();
     expect(fake.shown()).toEqual([
@@ -695,7 +446,7 @@ describe("pi-dashboard extension", () => {
     const openUrl = vi.fn(async () => {});
     const fake = load({ ...env.deps, openUrl, isHubReachable: async () => true });
     const ctx = fakeCtx("rpc");
-    await fake.commands.get("dashboard")!.handler("", ctx);
+    await fake.command("dashboard").handler("", ctx);
     expect(openUrl).not.toHaveBeenCalled();
     expect(ctx.ui.notify).not.toHaveBeenCalled();
     expect(fake.shown()).toEqual([
