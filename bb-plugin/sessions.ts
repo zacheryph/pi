@@ -1,8 +1,10 @@
+import { settleSnapshot } from "pi-surface/settle";
 import type {
-  SessionSnapshot,
+  ActionRequest,
+  ActionResult,
+  DeliverySnapshot,
   SessionSummary,
   SnapshotResult,
-  SurfaceRequest,
 } from "./contract.ts";
 import {
   CLOSE_REPLACED,
@@ -12,6 +14,13 @@ import {
   parseSessionMessage,
   PROTOCOL_VERSION,
 } from "./protocol.ts";
+import {
+  openQuestionnaires,
+  profileName,
+  runningAgents,
+  sessionModel,
+  todoProgress,
+} from "./views.ts";
 
 /** What the store needs of a WebSocket; bb's `ExperimentalPluginWebSocket` satisfies it. */
 export interface SessionSocket {
@@ -20,13 +29,20 @@ export interface SessionSocket {
 }
 
 /** Answers requests for a fixture session, which has no Pi process behind it. */
-export type FixtureResponder = (request: SurfaceRequest) => unknown;
+export type FixtureResponder = (request: ActionRequest) => unknown;
 
 /** A live session's last snapshot, kept so a thread shows its state while no Pi runs for it. */
 export interface SavedSnapshot {
   threadId: string;
-  snapshot: SessionSnapshot;
+  snapshot: DeliverySnapshot;
   savedAt: number;
+}
+
+/** What an archive load found: the records it can read, and how many it could not. */
+export interface ArchiveLoad {
+  saved: SavedSnapshot[];
+  /** Records of another version or malformed; treated as if they did not exist. */
+  ignored: number;
 }
 
 /**
@@ -34,7 +50,7 @@ export interface SavedSnapshot {
  * processes bb stopped. Synchronous, like the plugin's SQLite database.
  */
 export interface SnapshotArchive {
-  load(): SavedSnapshot[];
+  load(): ArchiveLoad;
   save(saved: SavedSnapshot): void;
   delete(threadId: string): void;
 }
@@ -47,13 +63,19 @@ interface Pending {
 
 interface Entry {
   threadId: string;
-  /** Saved: a live session's last snapshot, with no Pi process behind it. */
+  /** Saved: a live session's last snapshot, settled, with no Pi process behind it. */
   source: "live" | "fixture" | "saved";
-  snapshot: SessionSnapshot;
+  snapshot: DeliverySnapshot;
   updatedAt: number;
   connection?: SessionConnection;
   fixture?: FixtureResponder;
   drop?: ReturnType<typeof setTimeout>;
+}
+
+/** A thread's live session: its latest snapshot and the connection that sent it. */
+export interface LiveSession {
+  snapshot: DeliverySnapshot;
+  connection: SessionConnection;
 }
 
 export interface SessionStoreOptions {
@@ -63,7 +85,7 @@ export interface SessionStoreOptions {
   onChange(threadId: string): void;
   /** Keeps live snapshots across plugin loads. */
   archive?: SnapshotArchive;
-  /** Reports archive failures; the store keeps working from memory. */
+  /** Reports archive failures and unreadable messages; the store keeps working. */
   onError?(message: string): void;
   /** How long a disconnected session stays live before it is shown as saved; covers /reload and process restarts. */
   graceMs?: number;
@@ -100,17 +122,30 @@ export class SessionConnection {
     this.helloTimer.unref?.();
   }
 
+  get open(): boolean {
+    return !this.closed;
+  }
+
   async message(data: string | Uint8Array): Promise<void> {
     if (this.closed) return;
-    const message = parseSessionMessage(data);
-    if (!message) return;
+    const parsed = parseSessionMessage(data);
+    if (!parsed.ok) {
+      this.store.warn(`session message dropped: ${parsed.error}`);
+      return;
+    }
+    if (!("message" in parsed)) {
+      // An older or newer pi-bb: both sides must be updated together.
+      if (!this.threadId)
+        this.refuse(
+          CLOSE_UNSUPPORTED,
+          `protocol ${PROTOCOL_VERSION} expected, got ${parsed.unsupported}`,
+        );
+      return;
+    }
+    const { message } = parsed;
     if (!this.threadId) {
       if (message.type !== "hello") return;
       clearTimeout(this.helloTimer);
-      if (message.version !== PROTOCOL_VERSION) {
-        this.refuse(CLOSE_UNSUPPORTED, `protocol ${PROTOCOL_VERSION} expected`);
-        return;
-      }
       if (!(await this.store.verify(message.threadId, message.token))) {
         this.refuse(CLOSE_UNAUTHORIZED, "bad token");
         return;
@@ -124,15 +159,26 @@ export class SessionConnection {
       case "update":
         this.store.update(this, message.snapshot);
         return;
-      case "result":
-        this.store.settle(this, message.id, message.ok, message.data, message.error);
+      case "result": {
+        const { type: _type, id, ...result } = message;
+        this.store.settle(this, id, result);
         return;
+      }
       case "bye":
         // The close that follows detaches; a `replace` reconnects within the grace period.
         return;
       case "hello":
         return;
     }
+  }
+
+  /** Tells the session the plugin accepted it: it may now advertise that bb answers its forms. */
+  welcome(): void {
+    this.send(encode({ type: "welcome", version: PROTOCOL_VERSION }));
+  }
+
+  send(data: string): void {
+    this.socket.send(data);
   }
 
   closedBySession(): void {
@@ -156,7 +202,7 @@ export class SessionConnection {
   }
 }
 
-/** The latest snapshot per bb thread, live or fixture, and the sockets behind live ones. */
+/** The latest snapshot per bb thread, live, saved or fixture, and the sockets behind live ones. */
 export class SessionStore {
   private readonly entries = new Map<string, Entry>();
   private readonly pending = new Map<SessionConnection, Map<number, Pending>>();
@@ -164,18 +210,27 @@ export class SessionStore {
   private disposed = false;
 
   constructor(private readonly options: SessionStoreOptions) {
-    for (const saved of this.archived(() => options.archive?.load() ?? [])) {
+    const loaded = this.archived(() => options.archive?.load());
+    for (const saved of loaded?.saved ?? []) {
       this.entries.set(saved.threadId, {
         threadId: saved.threadId,
         source: "saved",
-        snapshot: offline(saved.snapshot, saved.savedAt),
+        snapshot: settleSnapshot(saved.snapshot, saved.savedAt),
         updatedAt: saved.savedAt,
       });
     }
+    if (loaded?.ignored)
+      this.warn(
+        `snapshot archive: ignored ${loaded.ignored} saved snapshot${loaded.ignored === 1 ? "" : "s"} of an older version or unreadable; ${loaded.ignored === 1 ? "its thread shows" : "their threads show"} Pi again after the next turn.`,
+      );
   }
 
   verify(threadId: string, token: string): boolean | Promise<boolean> {
     return this.options.verify(threadId, token);
+  }
+
+  warn(message: string): void {
+    this.options.onError?.(message);
   }
 
   /** A new socket on the session route. */
@@ -195,10 +250,12 @@ export class SessionStore {
     };
   }
 
-  /** Live snapshot with an open socket, for raising interactions. */
-  live(threadId: string): SessionSnapshot | undefined {
+  /** The thread's live session with an open socket, for raising interactions; never a fixture. */
+  live(threadId: string): LiveSession | undefined {
     const entry = this.entries.get(threadId);
-    return entry?.source === "live" && entry.connection ? entry.snapshot : undefined;
+    return entry?.source === "live" && entry.connection
+      ? { snapshot: entry.snapshot, connection: entry.connection }
+      : undefined;
   }
 
   summaries(): SessionSummary[] {
@@ -207,7 +264,7 @@ export class SessionStore {
       .sort((a, b) => b.updatedAt - a.updatedAt);
   }
 
-  setFixture(threadId: string, snapshot: SessionSnapshot, responder: FixtureResponder): void {
+  setFixture(threadId: string, snapshot: DeliverySnapshot, responder: FixtureResponder): void {
     const existing = this.entries.get(threadId);
     if (existing?.source === "live" && existing.connection)
       throw new SessionError("conflict", `Thread ${threadId} has a connected Pi session.`);
@@ -243,8 +300,16 @@ export class SessionStore {
     return true;
   }
 
-  /** Forwards a request to the thread's session and waits for its answer. */
-  async request(threadId: string, request: SurfaceRequest): Promise<unknown> {
+  /**
+   * Runs an action on the thread's session and waits for its result. With
+   * `connection`, only that connection may run it: a request made for one
+   * process (a form it raised) never reaches the process that replaced it.
+   */
+  async request(
+    threadId: string,
+    request: ActionRequest,
+    options: { connection?: SessionConnection } = {},
+  ): Promise<unknown> {
     const entry = this.entries.get(threadId);
     if (!entry) throw new SessionError("not_found", "No Pi session for this thread.");
     if (entry.source === "fixture") return entry.fixture?.(request);
@@ -255,6 +320,8 @@ export class SessionStore {
       );
     const connection = entry.connection;
     if (!connection) throw new SessionError("conflict", "The Pi session is reconnecting.");
+    if (options.connection && options.connection !== connection)
+      throw new SessionError("conflict", "The Pi session that asked has been replaced.");
     const id = this.nextId++;
     return new Promise<unknown>((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -266,7 +333,7 @@ export class SessionStore {
       waiting.set(id, { resolve, reject, timer });
       this.pending.set(connection, waiting);
       try {
-        connection.socket.send(encode({ type: "request", id, request }));
+        connection.send(encode({ type: "request", id, request }));
       } catch {
         clearTimeout(timer);
         waiting.delete(id);
@@ -275,11 +342,12 @@ export class SessionStore {
     });
   }
 
-  attach(connection: SessionConnection, snapshot: SessionSnapshot): void {
+  attach(connection: SessionConnection, snapshot: DeliverySnapshot): void {
     const threadId = connection.threadId!;
     const existing = this.entries.get(threadId);
     if (existing) clearTimeout(existing.drop);
     const previous = existing?.connection;
+    // A live snapshot replaces whatever was shown, a saved one included; nothing is merged.
     this.entries.set(threadId, {
       threadId,
       source: "live",
@@ -289,12 +357,18 @@ export class SessionStore {
     });
     // The newest process for a thread wins (bb restarts Pi on resume).
     if (previous && previous !== connection) previous.refuse(CLOSE_REPLACED, "replaced");
+    try {
+      connection.welcome();
+    } catch {
+      /* its close detaches it */
+    }
     this.save(threadId, snapshot);
     this.options.onChange(threadId);
   }
 
-  update(connection: SessionConnection, snapshot: SessionSnapshot): void {
+  update(connection: SessionConnection, snapshot: DeliverySnapshot): void {
     const entry = this.entries.get(connection.threadId!);
+    // A replaced connection's late update never touches its replacement.
     if (!entry || entry.connection !== connection) return;
     entry.snapshot = snapshot;
     entry.updatedAt = this.now();
@@ -302,19 +376,13 @@ export class SessionStore {
     this.options.onChange(entry.threadId);
   }
 
-  settle(
-    connection: SessionConnection,
-    id: number,
-    ok: boolean,
-    data: unknown,
-    error: string | undefined,
-  ): void {
+  settle(connection: SessionConnection, id: number, result: ActionResult): void {
     const waiting = this.pending.get(connection)?.get(id);
     if (!waiting) return;
     clearTimeout(waiting.timer);
     this.pending.get(connection)?.delete(id);
-    if (ok) waiting.resolve(data);
-    else waiting.reject(new Error(error ?? "The Pi session could not do that."));
+    if (result.ok) waiting.resolve(result.value);
+    else waiting.reject(new Error(result.error));
   }
 
   detach(connection: SessionConnection): void {
@@ -335,7 +403,7 @@ export class SessionStore {
       this.entries.set(threadId, {
         threadId,
         source: "saved",
-        snapshot: offline(entry.snapshot, this.now()),
+        snapshot: settleSnapshot(entry.snapshot, this.now()),
         updatedAt: entry.updatedAt,
       });
       this.options.onChange(threadId);
@@ -357,19 +425,17 @@ export class SessionStore {
     return this.options.now?.() ?? Date.now();
   }
 
-  private save(threadId: string, snapshot: SessionSnapshot): void {
+  private save(threadId: string, snapshot: DeliverySnapshot): void {
     this.archived(() => this.options.archive?.save({ threadId, snapshot, savedAt: this.now() }));
   }
 
   /** Runs an archive call; a failing archive costs persistence, never the live view. */
-  private archived<T>(run: () => T): T | [] {
+  private archived<T>(run: () => T): T | undefined {
     try {
       return run();
     } catch (error) {
-      this.options.onError?.(
-        `snapshot archive: ${error instanceof Error ? error.message : String(error)}`,
-      );
-      return [];
+      this.warn(`snapshot archive: ${error instanceof Error ? error.message : String(error)}`);
+      return undefined;
     }
   }
 }
@@ -378,59 +444,29 @@ function isConnected(entry: Entry): boolean {
   return entry.source === "fixture" || !!entry.connection;
 }
 
-/**
- * A snapshot as it stands once its Pi process is gone. What lives in the
- * session file (tasks, stash, git, usage, finished subagents) stays; what died
- * with the process is settled: nothing is working, no question is open, no
- * tool or subagent is running.
- */
-export function offline(snapshot: SessionSnapshot, since: number): SessionSnapshot {
-  const { questions: _questions, activity, subagents, ...rest } = snapshot;
-  return {
-    ...rest,
-    status: { kind: "idle", since },
-    ...(activity ? { activity: activity.map(({ running: _running, ...call }) => call) } : {}),
-    ...(subagents
-      ? {
-          subagents: {
-            agents: subagents.agents.map((agent) =>
-              agent.state === "queued" || agent.state === "running" || agent.state === "waiting"
-                ? { ...agent, state: "stopped" as const, note: "Stopped with Pi" }
-                : agent,
-            ),
-          },
-        }
-      : {}),
-  };
-}
-
+/** The sessions list's row for a thread, read from its views; a missing view leaves its fields out. */
 function summarize(entry: Entry): SessionSummary {
   const { snapshot } = entry;
-  const tasks = snapshot.todos?.tasks ?? [];
-  const active = tasks.find((task) => task.status === "in_progress");
+  const session = sessionModel(snapshot);
+  const model = session?.model;
+  const profile = profileName(snapshot);
+  const todos = todoProgress(snapshot);
   return {
     threadId: entry.threadId,
     source: entry.source,
     connected: isConnected(entry),
     updatedAt: entry.updatedAt,
-    cwd: snapshot.cwd,
-    ...(snapshot.name ? { name: snapshot.name } : {}),
-    ...(snapshot.agent ? { agent: snapshot.agent } : {}),
-    ...(snapshot.model ? { model: snapshot.model.name ?? snapshot.model.id } : {}),
-    status: snapshot.status.kind,
-    ...(snapshot.todos
+    ...(session
       ? {
-          todos: {
-            done: tasks.filter((task) => task.status === "completed").length,
-            total: snapshot.todos.total,
-            ...(active ? { active: active.subject } : {}),
-          },
+          cwd: session.cwd,
+          status: session.status.kind,
+          ...(session.name ? { name: session.name } : {}),
+          ...(model ? { model: model.name ?? model.id } : {}),
         }
       : {}),
-    runningAgents:
-      snapshot.subagents?.agents.filter(
-        (agent) => agent.state === "running" || agent.state === "queued",
-      ).length ?? 0,
-    questions: snapshot.questions?.length ?? 0,
+    ...(profile ? { profile } : {}),
+    ...(todos ? { todos } : {}),
+    runningAgents: runningAgents(snapshot),
+    questions: openQuestionnaires(snapshot).length,
   };
 }

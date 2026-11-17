@@ -9,7 +9,8 @@ import {
   experimental_CollapsibleStackCard as CollapsibleStackCard,
   type ExperimentalCollapsibleStackCardProps,
 } from "@get-bb/plugin-sdk/app";
-import type { SessionSnapshot, WidgetModel } from "../contract.ts";
+import type { WidgetModel } from "../contract.ts";
+import { viewModel } from "../views.ts";
 import { useComposerThread, useSession } from "./session.ts";
 import { titleText, widgetTitle, WidgetRows } from "./surface.tsx";
 
@@ -24,12 +25,6 @@ export const WIDGET_CARDS: ReadonlyArray<{ banner: string; view: string; icon: C
   { banner: "subagents", view: "subagent.widget", icon: "Bot" },
 ];
 
-/** A widget view's current model, while it has something to show. */
-export function widgetModel(snapshot: SessionSnapshot, id: string): WidgetModel | undefined {
-  const view = snapshot.views?.find((candidate) => candidate.id === id);
-  return view?.kind === "widget" ? view.model : undefined;
-}
-
 export function WidgetCard({ model, icon }: { model: WidgetModel; icon: CardIcon }) {
   return (
     <CollapsibleStackCard
@@ -43,11 +38,10 @@ export function WidgetCard({ model, icon }: { model: WidgetModel; icon: CardIcon
   );
 }
 
-/** The banner component for one widget view on the composer's thread. */
+/** The banner for one widget view on the composer's thread, while the view has something to show. */
 export function widgetBanner(view: string, icon: CardIcon) {
   return function WidgetBanner() {
-    const snapshot = useSession(useComposerThread());
-    const model = snapshot ? widgetModel(snapshot, view) : undefined;
+    const model = viewModel(useSession(useComposerThread()), view, "widget");
     return model ? <WidgetCard model={model} icon={icon} /> : null;
   };
 }

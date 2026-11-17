@@ -1,6 +1,7 @@
 // Slot 6: the thread side-panel tab with the whole session: its header, open
 // questions, every explorer view through the generic renderer, recent activity
-// and usage.
+// and usage. The header, activity and usage are the `system.session` view; the
+// agent's profile is `subagent.summary`'s.
 import {
   experimental_InfoList as InfoList,
   experimental_InfoListRow as InfoListRow,
@@ -9,7 +10,8 @@ import {
   type ExperimentalThreadTabProps,
 } from "@get-bb/plugin-sdk/app";
 import { Icon } from "@/components/ui/icon";
-import type { SessionSnapshot } from "../contract.ts";
+import type { DeliverySnapshot, SessionModel } from "../contract.ts";
+import { openQuestionnaires, profileName, sessionModel } from "../views.ts";
 import { ago, compact, duration, NOT_RUNNING, statusText } from "./format.ts";
 import { useRunAction, useSession, useSessionResult } from "./session.ts";
 import { ExplorerSection, type RunAction } from "./surface.tsx";
@@ -24,22 +26,24 @@ function Glyph({ name, label }: { name: string; label?: string }) {
   );
 }
 
-function Header({ snapshot, saved }: { snapshot: SessionSnapshot; saved: boolean }) {
+/** Name, status, profile, model, thinking and context use; a session without its system view shows what is left. */
+function Header({ snapshot, saved }: { snapshot: DeliverySnapshot; saved: boolean }) {
+  const session = sessionModel(snapshot);
   const facts = [
-    snapshot.agent,
-    snapshot.model?.name ?? snapshot.model?.id,
-    snapshot.thinking ? `thinking ${snapshot.thinking}` : undefined,
-    snapshot.context?.percent != null
-      ? `context ${Math.round(snapshot.context.percent)}%`
+    profileName(snapshot),
+    session?.model?.name ?? session?.model?.id,
+    session?.thinking ? `thinking ${session.thinking}` : undefined,
+    session?.context?.percent != null
+      ? `context ${Math.round(session.context.percent)}%`
       : undefined,
   ].filter(Boolean);
   return (
     <header className="flex flex-col gap-0.5 px-1 pb-2">
       <h2 className="truncate text-sm font-medium text-foreground">
-        {snapshot.name ?? snapshot.cwd}
+        {session?.name ?? session?.cwd ?? "Pi session"}
       </h2>
       <p className="truncate text-xs text-muted-foreground">
-        {saved ? NOT_RUNNING : statusText(snapshot)}
+        {saved ? NOT_RUNNING : statusText(session?.status)}
         {facts.length ? ` · ${facts.join(" · ")}` : ""}
       </p>
     </header>
@@ -61,10 +65,10 @@ function rank(id: string): number {
 }
 
 /** Every explorer the session offers, drawn by the generic renderer; empty ones are left out. */
-function Explorers({ snapshot, run }: { snapshot: SessionSnapshot; run?: RunAction }) {
+function Explorers({ snapshot, run }: { snapshot: DeliverySnapshot; run?: RunAction }) {
   const navigate = useBbNavigate();
   const openUrl = (url: string) => void navigate.openUrl(url);
-  const views = (snapshot.views ?? [])
+  const views = snapshot.views
     .flatMap((view) => (view.kind === "explorer" ? [view] : []))
     .sort((a, b) => rank(a.id) - rank(b.id) || a.id.localeCompare(b.id));
   return (
@@ -92,8 +96,8 @@ function Explorers({ snapshot, run }: { snapshot: SessionSnapshot; run?: RunActi
   );
 }
 
-function Activity({ snapshot, now }: { snapshot: SessionSnapshot; now: number }) {
-  const activity = snapshot.activity ?? [];
+function Activity({ session, now }: { session: SessionModel | undefined; now: number }) {
+  const activity = session?.activity ?? [];
   if (!activity.length) return null;
   return (
     <InfoSection label="Recent activity" count={activity.length}>
@@ -103,12 +107,12 @@ function Activity({ snapshot, now }: { snapshot: SessionSnapshot; now: number })
         getKey={(item) => `${item.at}-${item.tool}`}
         renderItem={(item) => (
           <InfoListRow
-            leading={<Glyph name={item.running ? "Loading" : item.error ? "CircleX" : "Check"} />}
+            leading={<Glyph name={item.live ? "Loading" : item.error ? "CircleX" : "Check"} />}
             name={item.tool}
             {...(item.summary ? { context: item.summary } : {})}
             trailing={
               <span className="text-xs text-muted-foreground">
-                {item.running
+                {item.live
                   ? "running"
                   : item.durationMs != null
                     ? duration(item.durationMs)
@@ -122,8 +126,8 @@ function Activity({ snapshot, now }: { snapshot: SessionSnapshot; now: number })
   );
 }
 
-function Usage({ snapshot }: { snapshot: SessionSnapshot }) {
-  const usage = snapshot.usage;
+function Usage({ session }: { session: SessionModel | undefined }) {
+  const usage = session?.usage;
   if (!usage) return null;
   const rows = [
     ["Input", compact(usage.input)],
@@ -146,18 +150,19 @@ function Usage({ snapshot }: { snapshot: SessionSnapshot }) {
   );
 }
 
-function Questions({ snapshot }: { snapshot: SessionSnapshot }) {
-  const questions = snapshot.questions ?? [];
-  if (!questions.length) return null;
+/** The questions of every open form; they are answered in the composer's pending interaction. */
+function Questions({ snapshot }: { snapshot: DeliverySnapshot }) {
+  const open = openQuestionnaires(snapshot);
+  if (!open.length) return null;
   return (
     <InfoSection
       label="Open questions"
-      count={questions.reduce((sum, item) => sum + item.questions.length, 0)}
+      count={open.reduce((sum, { questionnaire }) => sum + questionnaire.questions.length, 0)}
     >
       <ul className="flex flex-col gap-1 px-1 text-sm">
-        {questions.flatMap((questionnaire) =>
-          questionnaire.questions.map((question) => (
-            <li key={`${questionnaire.id}-${question.header}`} className="flex gap-2">
+        {open.flatMap(({ view, questionnaire }) =>
+          questionnaire.questions.map((question, index) => (
+            <li key={`${view}-${questionnaire.id}-${index}`} className="flex gap-2">
               <Glyph name="MessageQuestion" />
               <span className="text-foreground">{question.question}</span>
             </li>
@@ -174,7 +179,7 @@ export function SessionView({
   saved = false,
   run,
 }: {
-  snapshot: SessionSnapshot;
+  snapshot: DeliverySnapshot;
   now?: number;
   /** A saved snapshot: no Pi runs for the thread now. */
   saved?: boolean;
@@ -182,13 +187,14 @@ export function SessionView({
   run?: RunAction;
 }) {
   const at = now ?? Date.now();
+  const session = sessionModel(snapshot);
   return (
     <div className="flex min-w-0 flex-col gap-3 p-3" data-pi-surface="session-tab">
       <Header snapshot={snapshot} saved={saved} />
       <Questions snapshot={snapshot} />
       <Explorers snapshot={snapshot} {...(run ? { run } : {})} />
-      <Activity snapshot={snapshot} now={at} />
-      <Usage snapshot={snapshot} />
+      <Activity session={session} now={at} />
+      <Usage session={session} />
     </div>
   );
 }

@@ -3,6 +3,7 @@
 // from a fixture session, for docs/bb/ui-slots.md. Not linked from anywhere.
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import type { ReactNode } from "react";
+import { openQuestionnaires, sessionModel } from "../views.ts";
 import { QuestionnaireForm } from "./questionnaire.tsx";
 import { useSession, useSessions } from "./session.ts";
 import { RowBadge, useSessionsByThread } from "./sessions.tsx";
@@ -31,7 +32,8 @@ export function Gallery() {
       </p>
     );
   const props = { threadId: target.threadId, projectId: "", environment: null };
-  const questionnaire = snapshot.questions?.[0];
+  // Drawn with a no-op submit: the gallery never raises a real question.
+  const questionnaire = openQuestionnaires(snapshot)[0]?.questionnaire;
   return (
     <div className="h-full min-h-0 flex-1 overflow-y-auto">
       <div className="mx-auto box-border w-full max-w-3xl space-y-8 p-4 md:p-5">
@@ -48,7 +50,9 @@ export function Gallery() {
         </Exhibit>
         <Exhibit id="gallery-row" title="Thread row metadata">
           <div className="w-72 rounded-md px-3 py-2 hover:bg-state-hover">
-            <div className="truncate text-sm text-foreground">{snapshot.name ?? "Pi thread"}</div>
+            <div className="truncate text-sm text-foreground">
+              {sessionModel(snapshot)?.name ?? "Pi thread"}
+            </div>
             <div className="flex items-center gap-2">
               <RowBadge thread={{ id: target.threadId } as PluginSidebarThread} data={byThread} />
             </div>

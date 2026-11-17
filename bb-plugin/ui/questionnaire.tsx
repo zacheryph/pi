@@ -4,30 +4,16 @@ import type { JsonValue, PluginPendingInteractionProps } from "@get-bb/plugin-sd
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { Questionnaire, QuestionnaireAnswer } from "../contract.ts";
+import { isFormQuestionnaire } from "pi-surface/form";
+import type { FormAnswer, FormQuestionnaire } from "../contract.ts";
 
 interface Draft {
   options: number[];
   text: string;
 }
 
-function isQuestionnaire(value: unknown): value is Questionnaire {
-  const raw = value as Questionnaire | null;
-  return (
-    !!raw &&
-    typeof raw.id === "string" &&
-    Array.isArray(raw.questions) &&
-    raw.questions.every(
-      (question) =>
-        typeof question?.question === "string" &&
-        typeof question.header === "string" &&
-        Array.isArray(question.options),
-    )
-  );
-}
-
-/** Builds the answer pi-ask takes; questions left blank are left out. */
-export function toAnswer(drafts: readonly Draft[], note: string): QuestionnaireAnswer {
+/** Builds the form's answer; questions left blank are left out. The questionnaire's owner checks it. */
+export function toAnswer(drafts: readonly Draft[], note: string): FormAnswer {
   const answers = drafts.flatMap((draft, questionIndex) => {
     const text = draft.text.trim();
     if (!draft.options.length && !text) return [];
@@ -47,8 +33,8 @@ export function QuestionnaireForm({
   onSubmit,
   onCancel,
 }: {
-  questionnaire: Questionnaire;
-  onSubmit: (answer: QuestionnaireAnswer) => void | Promise<void>;
+  questionnaire: FormQuestionnaire;
+  onSubmit: (answer: FormAnswer) => void | Promise<void>;
   onCancel: () => void | Promise<void>;
 }) {
   const [drafts, setDrafts] = useState<Draft[]>(() =>
@@ -57,6 +43,8 @@ export function QuestionnaireForm({
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const answered = drafts.filter((draft) => draft.options.length || draft.text.trim()).length;
+  // The owner takes an answer to every question or none (pi-ask's rule).
+  const complete = answered === questionnaire.questions.length;
 
   const choose = (questionIndex: number, optionIndex: number, multi: boolean) =>
     setDrafts((current) =>
@@ -76,7 +64,7 @@ export function QuestionnaireForm({
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (busy || answered === 0) return;
+    if (busy || !complete) return;
     setBusy(true);
     try {
       await onSubmit(toAnswer(drafts, note));
@@ -94,15 +82,22 @@ export function QuestionnaireForm({
       aria-label="Pi's questions"
     >
       {questionnaire.questions.map((question, questionIndex) => (
-        <fieldset key={`${questionIndex}-${question.header}`} className="flex flex-col gap-2">
+        <fieldset key={questionIndex} className="flex flex-col gap-2">
           <legend className="flex flex-col gap-0.5">
-            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              {question.header}
-              {question.multiSelect ? " · choose any" : ""}
-            </span>
+            {question.header || question.multiSelect ? (
+              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                {[question.header, question.multiSelect ? "choose any" : ""]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </span>
+            ) : null}
             <span className="text-sm text-foreground">{question.question}</span>
           </legend>
-          <div className="flex flex-col gap-1" role="group" aria-label={question.header}>
+          <div
+            className="flex flex-col gap-1"
+            role="group"
+            aria-label={question.header || question.question}
+          >
             {question.options.map((option, optionIndex) => {
               const selected = drafts[questionIndex]?.options.includes(optionIndex) ?? false;
               return (
@@ -115,7 +110,7 @@ export function QuestionnaireForm({
                       ? "flex items-baseline gap-2 rounded-md border border-foreground bg-state-active px-3 py-1.5 text-left"
                       : "flex items-baseline gap-2 rounded-md border border-border px-3 py-1.5 text-left hover:bg-state-hover"
                   }
-                  onClick={() => choose(questionIndex, optionIndex, question.multiSelect)}
+                  onClick={() => choose(questionIndex, optionIndex, !!question.multiSelect)}
                 >
                   <span className="shrink-0 text-sm font-medium text-foreground">
                     {option.label}
@@ -163,7 +158,7 @@ export function QuestionnaireForm({
           >
             Decline
           </Button>
-          <Button type="submit" size="sm" disabled={busy || answered === 0}>
+          <Button type="submit" size="sm" disabled={busy || !complete}>
             Send answers
           </Button>
         </div>
@@ -172,9 +167,10 @@ export function QuestionnaireForm({
   );
 }
 
+/** The form for one questionnaire the server raised: the payload is a form view's questionnaire. */
 export function QuestionnaireInteraction(props: PluginPendingInteractionProps) {
   const { payload } = props.interaction;
-  if (!isQuestionnaire(payload)) return null;
+  if (!isFormQuestionnaire(payload)) return null;
   return (
     <QuestionnaireForm
       questionnaire={payload}

@@ -5,9 +5,10 @@ import { useMemo, useState, type KeyboardEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
-import type { StashSection } from "../contract.ts";
-import { ago } from "./format.ts";
+import type { ExplorerItem } from "../contract.ts";
+import { viewModel, VIEW } from "../views.ts";
 import { useComposerThread, useOpenSessionTab, useSession } from "./session.ts";
+import { LineText, plainText } from "./surface.tsx";
 
 export const STASH_POPUP = "stash";
 
@@ -29,19 +30,19 @@ export function OpenPanelAction() {
   );
 }
 
-type Entry = StashSection["entries"][number];
-
-/** The picker's list and keyboard handling; `onPick` receives the chosen entry. */
+/**
+ * The picker's list and keyboard handling over the `stash.explorer` view's
+ * items, whose ids are the entries' handles; `onPick` receives the chosen one.
+ * Filtering matches the item's label and search text, as the terminal's does.
+ */
 export function StashList({
   entries,
   onPick,
   onClose,
-  now,
 }: {
-  entries: readonly Entry[];
-  onPick: (entry: Entry) => void;
+  entries: readonly ExplorerItem[];
+  onPick: (entry: ExplorerItem) => void;
   onClose: () => void;
-  now?: number;
 }) {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(0);
@@ -49,7 +50,7 @@ export function StashList({
     const needle = query.trim().toLowerCase();
     return needle
       ? entries.filter((entry) =>
-          `${entry.name} ${entry.description ?? ""}`.toLowerCase().includes(needle),
+          `${plainText(entry.label)} ${entry.search ?? ""}`.toLowerCase().includes(needle),
         )
       : entries;
   }, [entries, query]);
@@ -68,7 +69,6 @@ export function StashList({
       onClose();
     }
   };
-  const at = now ?? Date.now();
   return (
     <div className="flex w-full max-w-md flex-col gap-2 p-2" data-pi-surface="stash-picker">
       <Input
@@ -96,7 +96,7 @@ export function StashList({
         >
           {matches.map((entry, index) => (
             <li
-              key={entry.handle}
+              key={entry.id}
               role="option"
               aria-selected={index === current}
               className={
@@ -110,14 +110,11 @@ export function StashList({
                 onPick(entry);
               }}
             >
-              <span className="flex items-baseline justify-between gap-3 text-sm">
-                <span className="truncate font-mono text-foreground">{entry.name}</span>
-                <span className="shrink-0 text-xs text-muted-foreground">
-                  {entry.lines} lines · {ago(entry.createdAt, at)}
-                </span>
+              <span className="truncate text-sm" title={plainText(entry.label)}>
+                <LineText line={entry.label} />
               </span>
-              {entry.description ? (
-                <span className="truncate text-xs text-muted-foreground">{entry.description}</span>
+              {entry.badge ? (
+                <span className="truncate text-xs text-muted-foreground">{entry.badge.text}</span>
               ) : null}
             </li>
           ))}
@@ -129,19 +126,19 @@ export function StashList({
 
 export function StashPicker() {
   const composer = useComposer();
-  const snapshot = useSession(useComposerThread());
-  const entries = snapshot?.stash?.entries ?? [];
+  const explorer = viewModel(useSession(useComposerThread()), VIEW.stashExplorer, "explorer");
   const close = () => {
     composer.experimental_closePopup();
   };
-  if (!snapshot?.stash)
+  if (!explorer)
     return <p className="p-3 text-sm text-muted-foreground">This thread has no Pi stash.</p>;
   return (
     <StashList
-      entries={entries}
+      entries={explorer.items}
       onClose={close}
       onPick={(entry) => {
-        composer.insert(`${entry.handle} `);
+        // pi-stash names each item by its entry's handle, which the model can read back.
+        composer.insert(`${entry.id} `);
         close();
       }}
     />
