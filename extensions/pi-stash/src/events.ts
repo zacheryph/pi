@@ -80,6 +80,8 @@ export const STASH_PREVIEW_ACTION = "stash.preview";
 
 /** View (see pi-surface): the `/stash` explorer's JSON model for this branch. */
 export const STASH_EXPLORER_VIEW = "stash.explorer";
+/** View (see pi-surface): this branch's entry count and sizes, and the shared store's (`stashSummaryModel`). */
+export const STASH_SUMMARY_VIEW = "stash.summary";
 
 /** One entry as `stash_list` and the snapshot event report it. */
 export function stashEntryJson(record: StashRecord, index: StashIndex) {

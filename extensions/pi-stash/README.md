@@ -109,7 +109,7 @@ through the hash-checked store, or `{ ok: false, error }`. Only bare names of
 this branch's entries are accepted, not full handles. pi-dashboard uses both
 for its stash panel and previews.
 
-pi-stash also defines actions and a view on the session's bus (see
+pi-stash also defines actions and views on the session's bus (see
 [`pi-surface`](../../packages/pi-surface/README.md)) from session start to
 shutdown:
 
@@ -118,8 +118,25 @@ shutdown:
 | `stash.inspect`  | action   | `{ id: <handle> }` of an entry on this branch resolves to the detail blocks `/stash` shows when that entry is opened                                             |
 | `stash.preview`  | action   | `{ name, maxLines?, maxBytes? }` resolves to `{ handle, lines, total, complete }`, the `stash:preview` answer without `ok`; it rejects with that request's error |
 | `stash.explorer` | explorer | The `/stash` list as a JSON `ExplorerModel`; its `loadDetail` is `stash.inspect`. Announced on every change to this branch's index                               |
+| `stash.summary`  | summary  | This branch's entry count and sizes and the shared store's use, as a `SummaryModel`. Announced with the explorer                                                 |
 
 pi-presentation serves its `stash-preview` request through `stash.preview`.
+
+The explorer lists every current entry on the branch, newest first, with its
+handle as the item's `id`: the identity a stash picker inserts. `stash.summary`
+carries the totals no item does. Its counts are present for an empty stash too,
+so zeros mean nothing is stashed where a session without pi-stash has no view:
+
+| Key               | Counts                                                                  |
+| ----------------- | ----------------------------------------------------------------------- |
+| `entries`         | Entries on this branch, the latest version of each name                 |
+| `versions`        | Every version stored on this branch                                     |
+| `bytes`           | Bytes of those entries' latest versions                                 |
+| `store-bytes`     | Bytes in the shared content store; absent when it cannot be measured    |
+| `store-max-bytes` | The store's configured cap (`maxStoreBytes`); absent with `store-bytes` |
+
+Stash records live in the session file and their content in the store, so no
+count is process-bound (`live`): a saved summary settles unchanged.
 
 ## Subagents
 
