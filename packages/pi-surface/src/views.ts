@@ -134,6 +134,44 @@ export function defineView<Kind extends ViewKind>(
   return () => remove(true);
 }
 
+/**
+ * The views this copy of the module answers for on each bus, behind one listener per bus: a
+ * session defines more views than Node's default limit of listeners on one event (10), which
+ * would warn on every start.
+ */
+const answering = new WeakMap<ActionBus, { views: Map<string, ViewDefinition>; off: () => void }>();
+
+/** Answer list and read requests for `definition` on `bus` until the returned function runs. */
+function answer(bus: ActionBus, definition: ViewDefinition): () => void {
+  let entry = answering.get(bus);
+  // A bus that has dropped every listener (Pi's `clear`) no longer reaches this one: start again.
+  const known = entry?.views;
+  if (known && !listViews(bus).some((view) => known.has(view.id))) entry = undefined;
+  if (!entry) {
+    const views = new Map<string, ViewDefinition>();
+    const off = bus.on(VIEWS_CHANNEL, (data) => {
+      const req = data as ViewRequest | null | undefined;
+      if (req?.version !== VIEWS_VERSION) return;
+      for (const { id, kind, title, model } of views.values()) {
+        if (req.kind === "list") req.add({ id, kind, title });
+        // The reader builds the model outside the emit, so a throwing provider cannot break the bus.
+        else if (req.kind === "read" && req.id === id) req.respond(model);
+      }
+    });
+    entry = { views, off };
+    answering.set(bus, entry);
+  }
+  const { views } = entry;
+  views.set(definition.id, definition);
+  return () => {
+    if (views.get(definition.id) !== definition) return;
+    views.delete(definition.id);
+    if (views.size > 0 || answering.get(bus) !== entry) return;
+    answering.delete(bus);
+    entry.off();
+  };
+}
+
 /** Defines and announces a view; the returned function removes it, announcing when asked. */
 function register<Kind extends ViewKind>(
   bus: ActionBus,
@@ -149,13 +187,7 @@ function register<Kind extends ViewKind>(
   if (typeof model !== "function") throw new Error(`View "${id}" needs a model function.`);
   if (listViews(bus).some((view) => view.id === id))
     throw new Error(`View "${id}" is already defined on this session.`);
-  const off = bus.on(VIEWS_CHANNEL, (data) => {
-    const req = data as ViewRequest | null | undefined;
-    if (req?.version !== VIEWS_VERSION) return;
-    if (req.kind === "list") req.add({ id, kind, title });
-    // The reader builds the model outside the emit, so a throwing provider cannot break the bus.
-    else if (req.kind === "read" && req.id === id) req.respond(model);
-  });
+  const off = answer(bus, { id, kind, title, model });
   announceView(bus, id);
   let removed = false;
   return (announce) => {

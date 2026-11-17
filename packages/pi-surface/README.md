@@ -143,8 +143,10 @@ definition made in the factory and never removed would answer twice.
 
 A view is a named model an extension offers to every consumer of its session,
 such as a remote renderer reached through pi-presentation. Views live on the
-same bus as actions, as listeners on the `surface:views` channel, and are
-defined and disposed the same way.
+same bus as actions, answered on the `surface:views` channel, and are
+defined and disposed the same way. Each copy of this library answers for all
+the views it defines on a bus with one listener, so a session's many views stay
+under Node's default limit of listeners on one event.
 
 ```ts
 const views = viewRegistry(pi.events);
