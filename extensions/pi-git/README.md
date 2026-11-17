@@ -274,17 +274,41 @@ root the ledger does not name. `prs` are the pull request records, most
 recently touched first. Emitted on session start, `/tree`, every ledger change,
 and each status refresh.
 
-From session start to shutdown pi-git also defines two views on the same bus
+From session start to shutdown pi-git also defines three views on the same bus
 (see [`pi-surface`](../../packages/pi-surface/README.md)), so a remote surface
-reached through `pi-presentation` draws what the terminal's explorers show:
+reached through `pi-presentation` draws what the terminal's explorers show, and
+the totals for a card or a session list:
 
 | Id              | Kind     | What it shows                                                                                    |
 | --------------- | -------- | ------------------------------------------------------------------------------------------------ |
 | `git.worktrees` | explorer | The `/git:worktrees` explorer: this session's worktrees, removed ones and others under the root  |
 | `git.prs`       | explorer | The `/git:prs` explorer: pull requests opened here and ones looked at, with what tools last read |
+| `git.summary`   | summary  | This session's worktree and pull request totals as a `SummaryModel`                              |
 
-Items carry their details inline. Both views announce a change whenever
-`git:snapshot` is emitted.
+Items carry their details inline; every record is an item, by its path or
+pull request key, however many there are. All three views announce a change
+whenever `git:snapshot` is emitted.
+
+`git.summary` counts from the same snapshot, never from a listing's rows (tool
+output and notifications stop at 50). Every count is present, zero included, so
+a session with nothing recorded reads zeros where one without pi-git has no view:
+
+| Key               | Counts                                                              | `live` |
+| ----------------- | ------------------------------------------------------------------- | ------ |
+| `worktrees`       | This session's worktrees in use: active or missing, not removed     |        |
+| `missing`         | Of those, deleted outside Pi                                        |        |
+| `uncommitted`     | Active worktrees whose last measured status has uncommitted changes |        |
+| `removed`         | Worktrees this session removed                                      |        |
+| `other-worktrees` | Worktrees under the root that this session's ledger does not name   |        |
+| `prs`             | Pull requests this session opened or looked at                      |        |
+| `prs-created`     | Of those, opened here                                               |        |
+| `prs-open`        | Opened here and not merged or closed, as tools last showed          |        |
+| `prs-failing`     | Of those, with failing checks                                       |        |
+| `prs-watching`    | Pull requests a `git_pr_watch` in this process is waiting on        | yes    |
+
+Worktree and pull request records live in the session's ledger, so they are
+never process-bound. A watch runs only while this Pi process does: a saved
+summary settles `prs-watching` to 0 and keeps every other count.
 
 ## Configuration
 
