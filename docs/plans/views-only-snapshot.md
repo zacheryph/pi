@@ -4,7 +4,7 @@ Status: planned · follows [RPC surfaces](rpc-surfaces.md), packages 6 and 7;
 supersedes that plan's original dashboard-removal package 8
 
 The [implementation plan](views-only-implementation.md) specifies the eight-PR
-order, dependencies, cutover checks and remaining saved-cache policy decision.
+order, dependencies, cutover checks and the decided saved-cache policy.
 
 ## Goal
 
