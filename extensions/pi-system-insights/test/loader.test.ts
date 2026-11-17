@@ -1,6 +1,7 @@
 import { join, resolve } from "node:path";
 import { expect, it, onTestFinished } from "vitest";
 import { loadResources } from "#test-helpers";
+import { SESSION_EVENTS } from "#test/helpers";
 
 it("loads standalone package through Pi discovery without duplicate commands or model tools", async () => {
   const root = resolve(import.meta.dirname, "..");
@@ -14,5 +15,6 @@ it("loads standalone package through Pi discovery without duplicate commands or 
     "system:skills",
   ]);
   expect(extensions[0].tools.size).toBe(0);
-  expect([...extensions[0].handlers.keys()]).toEqual(["context", "tool_result"]);
+  // The session view's observer, then output's context filter and skill evidence.
+  expect([...extensions[0].handlers.keys()]).toEqual([...SESSION_EVENTS, "context", "tool_result"]);
 });

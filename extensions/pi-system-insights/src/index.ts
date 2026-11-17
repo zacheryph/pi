@@ -2,13 +2,27 @@ import { getCurrentTools } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { userOutput } from "#foundations/user-output";
 import { buildPromptView, buildSkillsView, buildToolsView } from "#src/insights";
+import { observeSession, type SessionObserverOptions } from "#src/session/observer";
 import { normalizeSkillPath, SKILL_READ_ENTRY, skillReadEvidence } from "#src/skills";
 import type { InsightView } from "#src/types";
 import { insightText } from "#src/text";
 import { showInsightView } from "#src/viewer";
 
-/** Commands inspect snapshots only. No request hooks, tool activation, or skill-file reads. */
-export default function systemInsights(pi: ExtensionAPI): void {
+export interface SystemInsightsDependencies {
+  /** Clock, process start and Pi version for the `system.session` view. */
+  session?: SessionObserverOptions;
+}
+
+/**
+ * Publishes the session's core state as the `system.session` view, in every
+ * mode. Its commands inspect snapshots only: no request hooks, tool
+ * activation, or skill-file reads.
+ */
+export default function systemInsights(
+  pi: ExtensionAPI,
+  dependencies: SystemInsightsDependencies = {},
+): void {
+  observeSession(pi, dependencies.session);
   // Outside the terminal there is no modal: the snapshot is shown as a message the model never sees.
   const output = userOutput(pi, "system:output");
   const command = (

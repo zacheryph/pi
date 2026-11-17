@@ -11,6 +11,7 @@ import systemInsights from "#src/index";
 import { SKILL_READ_ENTRY } from "#src/skills";
 import type { InsightView } from "#src/types";
 import { fakeCustomUi, fakePi } from "#test-helpers";
+import { SESSION_EVENTS } from "#test/helpers";
 
 const shown = vi.hoisted(() => [] as InsightView[]);
 vi.mock("#src/viewer", async (importOriginal) => {
@@ -111,11 +112,11 @@ beforeEach(() => {
 });
 
 describe("system insights commands", () => {
-  it("registers exactly three commands and one metadata-only result observer", () => {
+  it("registers exactly three commands, the session observer and one metadata-only result observer", () => {
     const h = harness();
     expect([...h.commands.keys()]).toEqual(["system:prompt", "system:tools", "system:skills"]);
     // The context handler only keeps command output (shown outside the terminal) out of the model's context.
-    expect([...h.events.keys()]).toEqual(["context", "tool_result"]);
+    expect([...h.events.keys()]).toEqual([...SESSION_EVENTS, "context", "tool_result"]);
     expect(h.getAllTools).not.toHaveBeenCalled();
     expect(h.appendEntry).not.toHaveBeenCalled();
   });
