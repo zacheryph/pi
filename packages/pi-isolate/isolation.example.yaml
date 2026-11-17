@@ -1,0 +1,14 @@
+version: 1
+sandbox:
+  network:
+    allowedDomains: [api.anthropic.com]
+    deniedDomains: []
+  filesystem:
+    denyRead: ["~/.ssh", "~/.aws", "~/.pi/agent/auth.json", "~/.pi/agent/isolation.yaml"]
+    allowWrite: [".", "~/.pi/agent/sessions"]
+    denyWrite: ["~/.pi/agent/isolation.yaml"]
+  allowPty: true
+env:
+  pass: [ANTHROPIC_API_KEY, LANG, LC_ALL, TERM, COLORTERM]
+  set:
+    APP_ENV: development
