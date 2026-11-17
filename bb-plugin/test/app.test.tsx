@@ -134,6 +134,21 @@ describe("pi-surface app", () => {
     expect(slot.container.textContent).toBe("");
   });
 
+  it("draws a stack card only from a widget view, whatever other kinds share its id", async () => {
+    // A newer session might offer the card's id as another kind; it is skipped, not drawn as a widget.
+    const other = {
+      ...fixture,
+      views: [
+        ...fixture.views!.filter((view) => view.id !== "todo.widget"),
+        { id: "todo.widget", kind: "summary", title: "Tasks", model: { counts: [] } },
+      ] as unknown as SessionSnapshot["views"],
+    };
+    const banner = app.composerCustomizations[0]!.banners![0]!;
+    const slot = renderSlot(banner, {}, { rpc: rpcFor(other), composer: threadComposer });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(slot.container.textContent).toBe("");
+  });
+
   it("insets card bodies and the context segment like bb's card header (12px)", async () => {
     // jsdom has no layout; the bb-screenshot skill's `bb-shot.mjs --check`
     // measures the real pixels in bb.
@@ -259,6 +274,33 @@ describe("pi-surface app", () => {
         },
       ]),
     );
+  });
+
+  it("skips views of kinds it does not draw in the Pi tab", async () => {
+    const newer = {
+      ...fixture,
+      views: [
+        ...fixture.views!,
+        {
+          id: "system.session",
+          kind: "session",
+          title: "Session",
+          model: { sessionId: "s", cwd: "/w", status: { kind: "idle", since: 1 }, startedAt: 1 },
+        },
+        { id: "ask.questions", kind: "form", title: "Questions", model: { questionnaires: [] } },
+        { id: "future.timeline", kind: "timeline", title: "Timeline", model: { lanes: [] } },
+        { id: "future.broken", kind: "hologram", title: "Hologram", error: "Not drawn" },
+      ] as unknown as SessionSnapshot["views"],
+    };
+    const slot = renderSlot(
+      app.tabs[0]! as never,
+      { threadId: THREAD, environment: null },
+      { rpc: rpcFor(newer) },
+    );
+    for (const section of ["Todos", "Subagents", "Stash", "Git worktrees", "Pull requests"])
+      expect(await slot.findByText(section)).toBeTruthy();
+    for (const title of ["Session", "Questions", "Timeline", "Hologram", "Not drawn"])
+      expect(slot.queryByText(title)).toBeNull();
   });
 
   it("opens inline details, and a pull request's URL in bb", async () => {

@@ -277,6 +277,28 @@ describe("pi-surface server", () => {
     expect(settled.subagents?.agents.map((agent) => agent.state)).toEqual(["stopped", "completed"]);
   });
 
+  it("keeps a snapshot whose views include kinds this plugin does not draw, live and saved", async () => {
+    // Newer sessions offer session, summary and form views, and kinds not yet invented.
+    const views = [
+      {
+        id: "system.session",
+        kind: "session",
+        title: "Session",
+        model: { sessionId: "s", cwd: "/w", status: { kind: "idle", since: 1 }, startedAt: 1 },
+      },
+      { id: "todo.summary", kind: "summary", title: "Tasks", model: { counts: [] } },
+      { id: "future.timeline", kind: "timeline", title: "Timeline", model: { lanes: [1] } },
+      { id: "future.broken", kind: "hologram", title: "Broken", error: "failed" },
+    ] as unknown as SessionSnapshot["views"];
+    const { connect, read } = await setup();
+    await connect(THREAD, { views });
+    const live = await read();
+    expect(live).toMatchObject({ source: "live", connected: true });
+    expect(live.snapshot?.views).toEqual(views);
+    expect(() => offline(live.snapshot!, 99)).not.toThrow();
+    expect(offline(live.snapshot!, 99).views).toEqual(views);
+  });
+
   it("forgets a deleted thread's snapshot, across restarts too", async () => {
     const { harness, connect, read, reload } = await setup();
     const socket = await connect();

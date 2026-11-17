@@ -11,12 +11,15 @@ export type {
   ExplorerMarker,
   ExplorerModel,
   ExplorerTab,
+  FormModel,
   Hint,
   JsonObject,
   JsonValue,
   Line,
+  SessionModel,
   Span,
   StateIcon,
+  SummaryModel,
   Title,
   Tone,
   ViewKind,
@@ -281,8 +284,11 @@ export interface ViewEntry<Kind extends ViewKind = ViewKind> {
  * A view the session offers (see pi-surface), with its current model, so a
  * client draws every view from the snapshot alone. An explorer's item details
  * may be behind its `loadDetail` action; send that with the `action` request.
+ *
+ * One entry per kind pi-surface defines. A client draws the kinds it knows by
+ * checking `kind` and skips every other, including kinds a newer session adds.
  */
-export type ViewSummary = ViewEntry<"widget"> | ViewEntry<"explorer"> | ViewEntry<"detail">;
+export type ViewSummary = { [Kind in ViewKind]: ViewEntry<Kind> }[ViewKind];
 
 /** An action the session offers, for the `action` request. */
 export interface ActionSummary {

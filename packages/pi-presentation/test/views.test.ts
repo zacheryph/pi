@@ -83,6 +83,26 @@ describe("presentation views and actions", () => {
     service.dispose();
   });
 
+  it("carries session, summary and form views like any other, beside the older kinds", () => {
+    const { bus } = session();
+    const summary = { counts: [{ key: "total", label: "tasks", value: 1 }] };
+    defineView(bus, { id: "todo.summary", kind: "summary", title: "Tasks", model: () => summary });
+    defineView(bus, {
+      id: "ask.questions",
+      kind: "form",
+      title: "Questions",
+      model: () => undefined,
+    });
+    const service = new PresentationService(bus);
+    expect(service.snapshot().views).toEqual([
+      { id: "ask.questions", kind: "form", title: "Questions" },
+      { id: "todo.explorer", kind: "explorer", title: "Todos", model: explorer },
+      { id: "todo.summary", kind: "summary", title: "Tasks", model: summary },
+      { id: "todo.widget", kind: "widget", title: "Tasks", model: widget },
+    ]);
+    service.dispose();
+  });
+
   it("sends a model over the size limit as an error", () => {
     const bus = fakeEventBus();
     const huge = "x".repeat(MAX_VIEW_BYTES);
