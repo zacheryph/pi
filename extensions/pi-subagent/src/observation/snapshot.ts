@@ -6,9 +6,13 @@ import { buildRoster, type LiveAgentLike, type RosterEntry } from "#src/roster";
 export const SUBAGENT_SNAPSHOT = "subagent:snapshot";
 export const SUBAGENT_SNAPSHOT_VERSION = 1;
 
-/** pi-surface views, defined while a session runs: the widget, and the branch's subagents. */
+/**
+ * pi-surface views, defined while a session runs: the widget, the branch's subagents, and their
+ * counts with the main agent's profile.
+ */
 export const SUBAGENT_WIDGET_VIEW = "subagent.widget";
 export const SUBAGENT_EXPLORER_VIEW = "subagent.explorer";
+export const SUBAGENT_SUMMARY_VIEW = "subagent.summary";
 
 interface SnapshotSource extends LiveAgentLike {
   readonly toolUses: number;

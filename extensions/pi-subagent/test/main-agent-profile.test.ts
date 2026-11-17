@@ -99,7 +99,9 @@ function harness(mode: ExtensionContext["mode"] = "tui") {
   const pi = fake.pi;
   const diagnostic = vi.fn();
   const resolve = vi.fn((_name?: string, _ctx?: ExtensionContext) => state.profile);
-  registerMainAgentProfile(fake.api, {
+  const changed = vi.fn();
+  const profile = registerMainAgentProfile(fake.api, {
+    changed,
     resolveProfile: resolve,
     diagnostic,
     env: () => state.env,
@@ -140,6 +142,8 @@ function harness(mode: ExtensionContext["mode"] = "tui") {
     other,
     manual,
     handlers: fake.handlers,
+    profile,
+    changed,
   };
 }
 
@@ -1234,6 +1238,87 @@ describe("agent models", () => {
     await h.start();
     expect(h.ctx.ui.notify).toHaveBeenCalledTimes(1);
     expect(h.pi.sendMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe("the running profile, for the subagent.summary view", () => {
+  const agent = (id: string) => makeModel({ provider: "agent", id, api: "pi-virtual" });
+  const saved = (name: string) => ({
+    type: "custom",
+    customType: MAIN_AGENT_ENTRY,
+    data: {
+      version: 1,
+      profile: { name, description: "saved", promptMode: "append", systemPrompt: "SAVED" },
+    },
+  });
+
+  it("reports a profile selected at startup, and announces it", async () => {
+    const h = harness();
+    expect(h.profile.current()).toBeUndefined();
+    await h.start();
+    expect(h.profile.current()?.name).toBe("reader");
+    expect(h.changed).toHaveBeenCalled();
+  });
+
+  it("reports none for a session without a profile, and announces that too", async () => {
+    const h = harness();
+    h.state.flag = undefined;
+    await h.start();
+    expect(h.profile.current()).toBeUndefined();
+    expect(h.changed).toHaveBeenCalledTimes(1);
+  });
+
+  it("follows the branch: restored on start and on /tree, gone where the branch has none", async () => {
+    const h = harness();
+    h.state.flag = undefined;
+    h.state.branch = [saved("planner")];
+    await h.start("resume");
+    expect(h.profile.current()?.name).toBe("planner");
+    h.changed.mockClear();
+    h.state.branch = [];
+    await h.fire("session_tree");
+    expect(h.profile.current()).toBeUndefined();
+    expect(h.changed).toHaveBeenCalledTimes(1);
+    h.state.branch = [saved("reader")];
+    await h.fire("session_tree");
+    expect(h.profile.current()?.name).toBe("reader");
+    expect(h.changed).toHaveBeenCalledTimes(2);
+  });
+
+  it("follows a switch to an agent model, and keeps the running one when a switch fails", async () => {
+    const h = harness("rpc");
+    h.state.flag = undefined;
+    h.resolve.mockImplementation((name?: string) => ({ ...h.state.profile, name: name! }));
+    await h.start();
+    h.changed.mockClear();
+    await h.fire("model_select", { model: agent("planner"), source: "set" });
+    expect(h.profile.current()?.name).toBe("planner");
+    expect(h.changed).toHaveBeenCalledTimes(1);
+    h.resolve.mockImplementation(() => {
+      throw new Error("nope");
+    });
+    await h.fire("model_select", { model: agent("reader"), source: "set" });
+    expect(h.profile.current()?.name).toBe("planner");
+  });
+
+  it("reports none while a failed startup blocks the session, and after shutdown", async () => {
+    const failed = harness();
+    failed.resolve.mockImplementation(() => {
+      throw new Error("boom");
+    });
+    await failed.start();
+    expect(failed.profile.current()).toBeUndefined();
+    // Every later input is refused again, but the reported profile does not change.
+    failed.changed.mockClear();
+    await failed.fire("input");
+    expect(failed.changed).not.toHaveBeenCalled();
+
+    const h = harness();
+    await h.start();
+    h.changed.mockClear();
+    await h.fire("session_shutdown");
+    expect(h.profile.current()).toBeUndefined();
+    expect(h.changed).toHaveBeenCalledTimes(1);
   });
 });
 
