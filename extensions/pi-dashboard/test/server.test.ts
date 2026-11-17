@@ -53,7 +53,7 @@ describe("hub process", () => {
     reporter.send({
       type: "hello",
       version: PROTOCOL_VERSION,
-      snapshot: snapshot({ name: "real" }),
+      snapshot: snapshot({ session: { name: "real" } }),
     });
     await waitFor(async () => (await get(port, "/api/sessions")).body.includes('"name":"real"'));
     reporter.send({ type: "bye", reason: "quit" });

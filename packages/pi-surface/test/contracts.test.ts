@@ -239,6 +239,10 @@ describe("process-bound markers", () => {
     expect(isBadge({ text: "running", live: { tone: "dim" } })).toBe(false);
     expect(isWidgetRow({ left: "x", live: true })).toBe(true);
     expect(isWidgetRow({ left: "x", live: { right: [1] } })).toBe(false);
+    expect(isWidgetModel({ title: "W", rows: [], live: true })).toBe(true);
+    expect(isWidgetModel({ title: "W", rows: [], live: { active: false, meta: [] } })).toBe(true);
+    expect(isWidgetModel({ title: "W", rows: [], live: { active: "no" } })).toBe(false);
+    expect(isWidgetModel({ title: "W", rows: [], live: false })).toBe(false);
     expect(isSummaryModel(set(summary, ["counts", 2, "live"], "yes"))).toBe(false);
     expect(isSessionModel(set(session, ["activity", 0, "live"], 1))).toBe(false);
   });

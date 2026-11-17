@@ -120,12 +120,63 @@ export function listViews(bus: ActionBus): ViewInfo[] {
 /**
  * Define a view on this session's bus and announce it. Throws for a malformed
  * id, an unknown kind, an empty title, or an id already defined on the bus.
- * Returns the function that removes it.
+ *
+ * Returns the function that removes it. Removing announces the id once more,
+ * after the view has left the bus, so a consumer that collects on the
+ * announcement no longer finds it. Removal is idempotent, and its announcement
+ * is dropped when Pi has already retired the bus.
  */
 export function defineView<Kind extends ViewKind>(
   bus: ActionBus,
   definition: ViewDefinition<Kind>,
 ): () => void {
+  const remove = register(bus, definition);
+  return () => remove(true);
+}
+
+/**
+ * The views this copy of the module answers for on each bus, behind one listener per bus: a
+ * session defines more views than Node's default limit of listeners on one event (10), which
+ * would warn on every start.
+ */
+const answering = new WeakMap<ActionBus, { views: Map<string, ViewDefinition>; off: () => void }>();
+
+/** Answer list and read requests for `definition` on `bus` until the returned function runs. */
+function answer(bus: ActionBus, definition: ViewDefinition): () => void {
+  let entry = answering.get(bus);
+  // A bus that has dropped every listener (Pi's `clear`) no longer reaches this one: start again.
+  const known = entry?.views;
+  if (known && !listViews(bus).some((view) => known.has(view.id))) entry = undefined;
+  if (!entry) {
+    const views = new Map<string, ViewDefinition>();
+    const off = bus.on(VIEWS_CHANNEL, (data) => {
+      const req = data as ViewRequest | null | undefined;
+      if (req?.version !== VIEWS_VERSION) return;
+      for (const { id, kind, title, model } of views.values()) {
+        if (req.kind === "list") req.add({ id, kind, title });
+        // The reader builds the model outside the emit, so a throwing provider cannot break the bus.
+        else if (req.kind === "read" && req.id === id) req.respond(model);
+      }
+    });
+    entry = { views, off };
+    answering.set(bus, entry);
+  }
+  const { views } = entry;
+  views.set(definition.id, definition);
+  return () => {
+    if (views.get(definition.id) !== definition) return;
+    views.delete(definition.id);
+    if (views.size > 0 || answering.get(bus) !== entry) return;
+    answering.delete(bus);
+    entry.off();
+  };
+}
+
+/** Defines and announces a view; the returned function removes it, announcing when asked. */
+function register<Kind extends ViewKind>(
+  bus: ActionBus,
+  definition: ViewDefinition<Kind>,
+): (announce: boolean) => void {
   const { id, kind, title, model } = definition;
   if (typeof id !== "string" || !VIEW_ID.test(id))
     throw new Error(
@@ -136,15 +187,20 @@ export function defineView<Kind extends ViewKind>(
   if (typeof model !== "function") throw new Error(`View "${id}" needs a model function.`);
   if (listViews(bus).some((view) => view.id === id))
     throw new Error(`View "${id}" is already defined on this session.`);
-  const off = bus.on(VIEWS_CHANNEL, (data) => {
-    const req = data as ViewRequest | null | undefined;
-    if (req?.version !== VIEWS_VERSION) return;
-    if (req.kind === "list") req.add({ id, kind, title });
-    // The reader builds the model outside the emit, so a throwing provider cannot break the bus.
-    else if (req.kind === "read" && req.id === id) req.respond(model);
-  });
+  const off = answer(bus, { id, kind, title, model });
   announceView(bus, id);
-  return off;
+  let removed = false;
+  return (announce) => {
+    if (removed) return;
+    removed = true;
+    off();
+    if (!announce) return;
+    try {
+      announceView(bus, id);
+    } catch {
+      // A bus Pi has retired throws on emit; nobody is left to hear the removal.
+    }
+  };
 }
 
 /**
@@ -184,7 +240,10 @@ export function onViewChanged(bus: ActionBus, listener: (id: string) => void): (
 }
 
 export interface ViewRegistry {
-  /** Define a view; it is removed by the returned function or by `dispose`. */
+  /**
+   * Define a view; it is removed by the returned function, which announces the
+   * removal as `defineView`'s does, or silently by `dispose`.
+   */
   define<Kind extends ViewKind>(definition: ViewDefinition<Kind>): () => void;
   list(): ViewInfo[];
   read(id: string): ViewModel | undefined;
@@ -194,23 +253,29 @@ export interface ViewRegistry {
    * a bus that Pi has already retired.
    */
   changed(id: string): void;
-  /** Remove every view this registry defined. Call it from `session_shutdown`. */
+  /**
+   * Remove every view this registry defined, without announcing. Call it from
+   * `session_shutdown`, and from `session_start` before defining again. The
+   * session is ending or about to define its views anew, so an announcement
+   * would only make a consumer send a snapshot with the views missing, and a
+   * receiver that saves its last snapshot (bb) would keep that empty one.
+   */
   dispose(): void;
 }
 
 /** A handle on one session's bus that remembers what it defined, so one call removes it all. */
 export function viewRegistry(bus: ActionBus): ViewRegistry {
-  const owned = new Map<string, () => void>();
+  const owned = new Map<string, (announce: boolean) => void>();
   return {
     define(definition) {
-      const remove = defineView(bus, definition);
-      const dispose = () => {
+      const remove = register(bus, definition);
+      const dispose = (announce: boolean) => {
         if (owned.get(definition.id) !== dispose) return;
         owned.delete(definition.id);
-        remove();
+        remove(announce);
       };
       owned.set(definition.id, dispose);
-      return dispose;
+      return () => dispose(true);
     },
     list: () => listViews(bus),
     read: (id) => readView(bus, id),
@@ -219,7 +284,7 @@ export function viewRegistry(bus: ActionBus): ViewRegistry {
     },
     dispose() {
       // Each dispose deletes its own entry; deleting the current entry is safe while iterating a Map.
-      for (const dispose of owned.values()) dispose();
+      for (const dispose of owned.values()) dispose(false);
     },
   };
 }

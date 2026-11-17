@@ -7,10 +7,19 @@ import {
 import type { PluginRpcContract } from "@get-bb/plugin-sdk";
 import { cleanup, fireEvent } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { SessionSnapshot, SurfaceRequest } from "../contract.ts";
+import { settleSnapshot } from "pi-surface/settle";
+import type { DeliverySnapshot, SessionSummary, SurfaceRequest, ViewEntry } from "../contract.ts";
 import { fixtureResponder, fixtureSnapshot } from "../fixture.ts";
+import { duration } from "../ui/format.ts";
 import { toAnswer } from "../ui/questionnaire.tsx";
-import { duration, todoCounts } from "../ui/format.ts";
+import {
+  openQuestionnaires,
+  profileName,
+  runningAgents,
+  sessionModel,
+  stashEntries,
+  todoProgress,
+} from "../views.ts";
 
 afterEach(cleanup);
 
@@ -18,45 +27,83 @@ const THREAD = "thr_demo";
 const NOW = Date.UTC(2026, 10, 13, 12);
 const fixture = fixtureSnapshot(NOW);
 
+type Source = "live" | "fixture" | "saved";
+
 /** Test handlers take the wire input, as the host hands it over. */
-function rpcFor(snapshot: SessionSnapshot | null): PluginRpcTestHandlers<PluginRpcContract> {
+function rpcFor(
+  snapshot: DeliverySnapshot | null,
+  source: Source = "fixture",
+): PluginRpcTestHandlers<PluginRpcContract> {
   const respond = fixtureResponder(NOW);
+  const row: SessionSummary = {
+    threadId: THREAD,
+    source,
+    connected: source !== "saved",
+    updatedAt: NOW,
+    cwd: "/work/webhooks",
+    name: "Webhook retry queue",
+    profile: "orchestrate",
+    status: "tool",
+    todos: { done: 3, total: 7, active: "Move retries into the queue worker" },
+    runningAgents: 2,
+    questions: 1,
+  };
   return {
     snapshot: (input: unknown) => {
       const { threadId } = input as { threadId: string };
       return {
         snapshot: threadId === THREAD ? snapshot : null,
-        source: threadId === THREAD && snapshot ? "fixture" : null,
-        connected: !!snapshot,
+        source: threadId === THREAD && snapshot ? source : null,
+        connected: !!snapshot && source !== "saved",
       };
     },
-    sessions: () => ({
-      sessions: snapshot
-        ? [
-            {
-              threadId: THREAD,
-              source: "fixture" as const,
-              connected: true,
-              updatedAt: NOW,
-              cwd: snapshot.cwd,
-              name: snapshot.name!,
-              agent: snapshot.agent!,
-              status: snapshot.status.kind,
-              todos: { done: 3, total: 7, active: "Move retries into the queue worker" },
-              runningAgents: 2,
-              questions: 1,
-            },
-          ]
-        : [],
-    }),
+    sessions: () => ({ sessions: snapshot ? [row] : [] }),
     request: (input: unknown) => ({
-      data: respond((input as { request: SurfaceRequest }).request),
+      value: (respond((input as { request: SurfaceRequest }).request as never) ?? null) as never,
     }),
+  };
+}
+
+/** The fixture without some views, or with others in their place. */
+function withViews(drop: readonly string[], add: readonly ViewEntry[] = []): DeliverySnapshot {
+  return {
+    ...fixture,
+    views: [...fixture.views.filter((view) => !drop.includes(view.id)), ...add],
   };
 }
 
 const app = await loadPluginApp(() => import("../app.tsx"));
 const threadComposer = { scope: { kind: "thread" as const, threadId: THREAD } };
+const contextProps = {
+  threadId: THREAD,
+  projectId: "proj",
+  environment: null,
+  segments: [],
+  isExpanded: false,
+  onToggle: () => {},
+};
+const cardProps = { threadId: THREAD, projectId: "proj", environment: null };
+
+function segment(snapshot: DeliverySnapshot) {
+  return renderSlot({ component: app.threadContextSegments[0]!.summary }, contextProps, {
+    rpc: rpcFor(snapshot),
+  });
+}
+
+function tab(snapshot: DeliverySnapshot | null, source: Source = "fixture") {
+  return renderSlot(
+    app.tabs[0]! as never,
+    { threadId: THREAD, environment: null },
+    { rpc: rpcFor(snapshot, source) },
+  );
+}
+
+const requests = (slot: {
+  inspection: { rpcCalls: readonly { method: string; input: unknown }[] };
+}) =>
+  slot.inspection.rpcCalls
+    .filter((call) => call.method === "request")
+    .map((call) => (call.input as { request: SurfaceRequest }).request);
 
 describe("pi-surface app", () => {
   it("registers one example per slot", () => {
@@ -123,26 +170,49 @@ describe("pi-surface app", () => {
     expect(rows[0]!.lastElementChild?.textContent).toBe("Reading src/admin/replay.ts");
   });
 
-  it("draws no card for a widget view with nothing to show", async () => {
-    const quiet = {
-      ...fixture,
-      views: fixture.views!.filter((view) => view.id !== "subagent.widget"),
-    };
+  it("draws a saved Subagents card settled: inactive, stopped, no running clock", async () => {
+    const saved = settleSnapshot(fixture, NOW);
     const banner = app.composerCustomizations[0]!.banners![1]!;
-    const slot = renderSlot(banner, {}, { rpc: rpcFor(quiet), composer: threadComposer });
+    const slot = renderSlot(
+      banner,
+      {},
+      {
+        rpc: rpcFor(saved, "saved"),
+        composer: threadComposer,
+      },
+    );
+    const card = await slot.findByTestId("bb-collapsible-stack-card");
+    expect(card.dataset.active).toBe("false");
+    expect(card.querySelector("h3")?.textContent).toBe("Subagents");
+    const list = await slot.findByRole("list", { name: "Subagents" });
+    const rows = Array.from(list.querySelectorAll(":scope > li"));
+    expect(rows.map((row) => row.firstElementChild?.getAttribute("aria-label"))).toEqual([
+      "stopped",
+      "stopped",
+    ]);
+    expect(rows.map((row) => row.lastElementChild?.textContent)).toEqual(["stopped", "stopped"]);
+  });
+
+  it("draws no card for a widget view with nothing to show", async () => {
+    const banner = app.composerCustomizations[0]!.banners![1]!;
+    const slot = renderSlot(
+      banner,
+      {},
+      {
+        rpc: rpcFor(withViews(["subagent.widget"])),
+        composer: threadComposer,
+      },
+    );
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(slot.container.textContent).toBe("");
   });
 
   it("draws a stack card only from a widget view, whatever other kinds share its id", async () => {
     // A newer session might offer the card's id as another kind; it is skipped, not drawn as a widget.
-    const other = {
-      ...fixture,
-      views: [
-        ...fixture.views!.filter((view) => view.id !== "todo.widget"),
-        { id: "todo.widget", kind: "summary", title: "Tasks", model: { counts: [] } },
-      ] as unknown as SessionSnapshot["views"],
-    };
+    const other = withViews(
+      ["todo.widget"],
+      [{ id: "todo.widget", kind: "summary", title: "Tasks", model: { counts: [] } }],
+    );
     const banner = app.composerCustomizations[0]!.banners![0]!;
     const slot = renderSlot(banner, {}, { rpc: rpcFor(other), composer: threadComposer });
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -168,20 +238,49 @@ describe("pi-surface app", () => {
       }
       cleanup();
     }
-    const props = {
-      threadId: THREAD,
-      projectId: "proj",
-      environment: null,
-      segments: [],
-      isExpanded: false,
-      onToggle: () => {},
-    };
-    const segment = renderSlot({ component: app.threadContextSegments[0]!.summary }, props, {
-      rpc: rpcFor(fixture),
-    });
-    const button = await segment.findByRole("button", { name: /3\/7 tasks/ });
+    const button = await segment(fixture).findByRole("button", { name: /3\/7 tasks/ });
     // bb's CONTEXT_CARD_SEGMENT_CLASS, inside the row's p-1.
     expect(classes(button)).toEqual(expect.arrayContaining(["px-2", "py-1", "min-h-6"]));
+  });
+
+  it("reads the context segment from summaries: profile, task progress, running agents, a question", async () => {
+    const button = await segment(fixture).findByRole("button", { name: /orchestrate/ });
+    expect(button.textContent).toBe("orchestrate · 3/7 tasks · 2 agents · question");
+  });
+
+  it("keeps the context segment's counts when the session hides its widgets", async () => {
+    const hidden = withViews([
+      "todo.widget",
+      "subagent.widget",
+      "todo.explorer",
+      "subagent.explorer",
+    ]);
+    const button = await segment(hidden).findByRole("button", { name: /orchestrate/ });
+    expect(button.textContent).toBe("orchestrate · 3/7 tasks · 2 agents · question");
+  });
+
+  it("names the main agent's profile when it has no subagents", async () => {
+    const quiet = withViews(
+      ["subagent.summary", "subagent.widget", "subagent.explorer", "todo.summary", "ask.questions"],
+      [
+        {
+          id: "subagent.summary",
+          kind: "summary",
+          title: "Subagents",
+          model: {
+            counts: [
+              { key: "running", label: "running", value: 0, live: true },
+              { key: "total", label: "subagents", value: 0 },
+            ],
+            profile: { name: "review", label: "Reviewer" },
+          },
+        },
+      ],
+    );
+    const button = await segment(quiet).findByRole("button", { name: /Reviewer/ });
+    expect(button.textContent).toBe("Reviewer");
+    const header = (await tab(quiet).findByRole("heading", { level: 2 })).parentElement!;
+    expect(header.textContent).toContain("Reviewer · Claude Opus");
   });
 
   it("renders nothing without a session, in every thread slot", async () => {
@@ -189,38 +288,69 @@ describe("pi-surface app", () => {
     const banner = renderSlot(
       app.composerCustomizations[0]!.banners![0]!,
       {},
-      {
-        rpc: empty,
-        composer: threadComposer,
-      },
+      { rpc: empty, composer: threadComposer },
     );
-    const props = { threadId: THREAD, projectId: "proj", environment: null };
-    const row = renderSlot(app.threadContextCardRows[0]!, props, { rpc: empty });
-    const section = renderSlot(app.threadContextCardSections[0]!, props, { rpc: empty });
+    const row = renderSlot(app.threadContextCardRows[0]!, cardProps, { rpc: empty });
+    const section = renderSlot(app.threadContextCardSections[0]!, cardProps, { rpc: empty });
+    const seg = renderSlot({ component: app.threadContextSegments[0]!.summary }, contextProps, {
+      rpc: empty,
+    });
     await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(banner.container.textContent).toBe("");
-    expect(row.container.textContent).toBe("");
-    expect(section.container.textContent).toBe("");
+    for (const slot of [banner, row, section, seg]) expect(slot.container.textContent).toBe("");
   });
 
-  it("shows the stash count row and the worktree and pull request rows in the context card", async () => {
-    const props = { threadId: THREAD, projectId: "proj", environment: null };
-    const row = renderSlot(app.threadContextCardRows[0]!, props, { rpc: rpcFor(fixture) });
+  it("shows the stash count from stash.summary and the Git explorers' items in the context card", async () => {
+    const row = renderSlot(app.threadContextCardRows[0]!, cardProps, { rpc: rpcFor(fixture) });
     expect((await row.findByText("Stash")).closest("button")?.textContent).toContain("4");
-    const section = renderSlot(app.threadContextCardSections[0]!, props, { rpc: rpcFor(fixture) });
-    expect(await section.findByText("feat/retry-worker")).toBeTruthy();
-    expect(await section.findByText("#212 Retry webhooks from the queue worker")).toBeTruthy();
-    expect(section.container.textContent).toContain("✓9 ✗1 ●2");
+    const section = renderSlot(app.threadContextCardSections[0]!, cardProps, {
+      rpc: rpcFor(fixture),
+    });
+    expect(await section.findByText("webhooks @ feat/retry-worker")).toBeTruthy();
+    expect(section.container.textContent).toContain("uncommitted changes; 3 unpushed commits");
+    // Every pull request the session touched, with its status as the badge; its row opens its URL.
+    for (const label of ["acme/webhooks#212", "acme/webhooks#209", "acme/platform#88"])
+      expect(await section.findByText(label)).toBeTruthy();
+    expect(section.container.textContent).toContain("draft · checks 1 failed, 2 pending, 9 passed");
+    fireEvent.click(await section.findByText("acme/webhooks#212"));
+    expect(section.inspection.navigateCalls).toContainEqual({
+      method: "openUrl",
+      url: "https://github.com/acme/webhooks/pull/212",
+    });
+  });
+
+  it("hides the stash row and Git section when their views are empty or missing", async () => {
+    const bare = withViews(["stash.summary", "git.worktrees", "git.prs"]);
+    const row = renderSlot(app.threadContextCardRows[0]!, cardProps, { rpc: rpcFor(bare) });
+    const section = renderSlot(app.threadContextCardSections[0]!, cardProps, {
+      rpc: rpcFor(bare),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(row.container.textContent).toBe("");
+    expect(section.container.textContent).toBe("");
   });
 
   it("inserts the picked stash handle into the draft from the popup", async () => {
     const popup = app.composerCustomizations[0]!.experimental_popups![0]!;
     const slot = renderSlot(popup, {}, { rpc: rpcFor(fixture), composer: threadComposer });
     const filter = await slot.findByRole("combobox", { name: "Filter stash entries" });
+    expect(slot.getAllByRole("option")).toHaveLength(4);
     fireEvent.change(filter, { target: { value: "review" } });
     expect(slot.getAllByRole("option")).toHaveLength(1);
     fireEvent.keyDown(filter, { key: "Enter" });
     expect(slot.inspection.composer.text).toBe("stash:review-notes@3f9c2a81d0e4 ");
+  });
+
+  it("says a thread without stash views has no stash", async () => {
+    const popup = app.composerCustomizations[0]!.experimental_popups![0]!;
+    const slot = renderSlot(
+      popup,
+      {},
+      {
+        rpc: rpcFor(withViews(["stash.explorer", "stash.summary"])),
+        composer: threadComposer,
+      },
+    );
+    expect(await slot.findByText("This thread has no Pi stash.")).toBeTruthy();
   });
 
   it("opens the Pi tab from the composer action", async () => {
@@ -241,13 +371,33 @@ describe("pi-surface app", () => {
     });
   });
 
-  it("draws every explorer view in the Pi tab, loading details through actions", async () => {
-    const tab = app.tabs[0]!;
-    const slot = renderSlot(
-      tab as never,
-      { threadId: THREAD, environment: null },
-      { rpc: rpcFor(fixture) },
+  it("draws the Pi tab's header, activity and usage from the system.session view", async () => {
+    const slot = tab(fixture);
+    const heading = await slot.findByRole("heading", { level: 2, name: "Webhook retry queue" });
+    expect(heading.parentElement!.textContent).toContain(
+      "Running bash · orchestrate · Claude Opus · thinking high · context 42%",
     );
+    expect(await slot.findByText("Recent activity")).toBeTruthy();
+    expect(slot.container.textContent).toContain("npm test -- test/deliver.test.ts");
+    expect(slot.container.textContent).toContain("running");
+    expect(await slot.findByText("Usage")).toBeTruthy();
+    expect(slot.container.textContent).toContain("$4.87");
+    expect(await slot.findByText("Open questions")).toBeTruthy();
+    expect(slot.container.textContent).toContain("Which failures should be retried?");
+  });
+
+  it("draws the Pi tab without a system view: the other views and a plain header", async () => {
+    const slot = tab(withViews(["system.session"]));
+    expect(await slot.findByRole("heading", { level: 2, name: "Pi session" })).toBeTruthy();
+    expect(slot.container.textContent).toContain("Connected · orchestrate");
+    for (const section of ["Todos", "Subagents", "Stash", "Git worktrees", "Pull requests"])
+      expect(await slot.findByText(section)).toBeTruthy();
+    expect(slot.queryByText("Usage")).toBeNull();
+    expect(slot.queryByText("Recent activity")).toBeNull();
+  });
+
+  it("draws every explorer view in the Pi tab, loading details through actions", async () => {
+    const slot = tab(fixture);
     for (const section of ["Todos", "Subagents", "Stash", "Git worktrees", "Pull requests"])
       expect(await slot.findByText(section)).toBeTruthy();
     fireEvent.click(await slot.findByText("worker: Move retries into the queue worker"));
@@ -260,55 +410,63 @@ describe("pi-surface app", () => {
     fireEvent.click(await slot.findByText("schema: Add the delivery_attempts table"));
     fireEvent.click(await slot.findByText("stash:review-notes@3f9c2a81d0e4"));
     expect(await slot.findByText(/delivery_attempts needs an index/)).toBeTruthy();
-    const actions = slot.inspection.rpcCalls
-      .filter((call) => call.method === "request")
-      .map((call) => (call.input as { request: { id?: string; args?: unknown } }).request);
-    expect(actions).toEqual(
+    expect(requests(slot)).toEqual(
       expect.arrayContaining([
-        { command: "action", id: "todo.inspect", args: { id: "worker" } },
-        { command: "action", id: "todo.review", args: { branch: 1, ids: ["schema"] } },
-        {
-          command: "action",
-          id: "stash.inspect",
-          args: { id: "stash:review-notes@3f9c2a81d0e4" },
-        },
+        { action: "todo.inspect", args: { id: "worker" } },
+        { action: "todo.review", args: { branch: 1, ids: ["schema"] } },
+        { action: "stash.inspect", args: { id: "stash:review-notes@3f9c2a81d0e4" } },
       ]),
     );
   });
 
-  it("skips views of kinds it does not draw in the Pi tab", async () => {
-    const newer = {
-      ...fixture,
-      views: [
-        ...fixture.views!,
+  it("shows an action's failure where its detail would be", async () => {
+    const failing = withViews(
+      ["todo.explorer"],
+      [
         {
-          id: "system.session",
-          kind: "session",
-          title: "Session",
-          model: { sessionId: "s", cwd: "/w", status: { kind: "idle", since: 1 }, startedAt: 1 },
+          id: "todo.explorer",
+          kind: "explorer",
+          title: "Todos",
+          model: {
+            title: "Todos",
+            items: [{ id: "ghost", label: "ghost: A task that is gone" }],
+            loadDetail: { action: "todo.inspect" },
+          },
         },
-        { id: "ask.questions", kind: "form", title: "Questions", model: { questionnaires: [] } },
-        { id: "future.timeline", kind: "timeline", title: "Timeline", model: { lanes: [] } },
-        { id: "future.broken", kind: "hologram", title: "Hologram", error: "Not drawn" },
-      ] as unknown as SessionSnapshot["views"],
-    };
-    const slot = renderSlot(
-      app.tabs[0]! as never,
-      { threadId: THREAD, environment: null },
-      { rpc: rpcFor(newer) },
+      ],
     );
+    const slot = tab(failing);
+    fireEvent.click(await slot.findByText("ghost: A task that is gone"));
+    expect((await slot.findByRole("alert")).textContent).toContain('No task "ghost"');
+  });
+
+  it("opens only included details of a saved session, asking nothing of Pi", async () => {
+    const slot = tab(settleSnapshot(fixture, NOW), "saved");
+    const heading = await slot.findByRole("heading", { level: 2 });
+    expect(heading.parentElement!.textContent).toContain("Not running");
+    // Live state settled: running agents read stopped, and no question is listed.
+    expect(slot.getAllByText("stopped")).toHaveLength(2);
+    expect(slot.queryByText("Open questions")).toBeNull();
+    fireEvent.click(await slot.findByText("worker: Move retries into the queue worker"));
+    fireEvent.click(await slot.findByText(/Review the attempts schema/));
+    expect(await slot.findByText("Two findings, stashed as review-notes.")).toBeTruthy();
+    expect(requests(slot)).toEqual([]);
+  });
+
+  it("skips views of kinds it does not draw in the Pi tab", async () => {
+    const newer = withViews([], [
+      { id: "future.timeline", kind: "timeline", title: "Timeline", model: { lanes: [] } },
+      { id: "future.broken", kind: "hologram", title: "Hologram", error: "Not drawn" },
+    ] as unknown as ViewEntry[]);
+    const slot = tab(newer);
     for (const section of ["Todos", "Subagents", "Stash", "Git worktrees", "Pull requests"])
       expect(await slot.findByText(section)).toBeTruthy();
-    for (const title of ["Session", "Questions", "Timeline", "Hologram", "Not drawn"])
+    for (const title of ["Timeline", "Hologram", "Not drawn"])
       expect(slot.queryByText(title)).toBeNull();
   });
 
   it("opens inline details, and a pull request's URL in bb", async () => {
-    const slot = renderSlot(
-      app.tabs[0]! as never,
-      { threadId: THREAD, environment: null },
-      { rpc: rpcFor(fixture) },
-    );
+    const slot = tab(fixture);
     fireEvent.click(await slot.findByText("acme/webhooks#212"));
     fireEvent.click(
       await slot.findByRole("button", { name: "https://github.com/acme/webhooks/pull/212" }),
@@ -320,30 +478,37 @@ describe("pi-surface app", () => {
   });
 
   it("shows why a view is missing", async () => {
-    const broken = {
-      ...fixture,
-      views: [
-        { id: "git.prs", kind: "explorer" as const, title: "Pull requests", error: "Too large" },
-      ],
+    const broken: DeliverySnapshot = {
+      id: "fixture",
+      views: [{ id: "git.prs", kind: "explorer", title: "Pull requests", error: "Too large" }],
     };
-    const slot = renderSlot(
-      app.tabs[0]! as never,
-      { threadId: THREAD, environment: null },
-      { rpc: rpcFor(broken) },
+    expect((await tab(broken).findByRole("alert")).textContent).toBe("Too large");
+  });
+
+  it("lists sessions with their profile and counts, and badges rows with a question and running agents", async () => {
+    const page = renderSlot(app.navPanels[0]!, { subPath: "" }, { rpc: rpcFor(fixture, "live") });
+    const list = await page.findByRole("list", { name: "Pi sessions" });
+    expect(list.textContent).toContain("Webhook retry queue");
+    expect(list.textContent).toContain("orchestrate");
+    expect(list.textContent).toContain(
+      "Running a tool · 3/7 tasks · 2 agents running · question waiting",
     );
-    expect((await slot.findByRole("alert")).textContent).toBe("Too large");
+    expect(list.textContent).toContain("Move retries into the queue worker");
   });
 
   it("sends every question's answer as one submission from the questionnaire form", async () => {
     const submit = vi.fn(async () => {});
+    const [{ questionnaire }] = openQuestionnaires(fixture) as [
+      ReturnType<typeof openQuestionnaires>[number],
+    ];
     const slot = renderSlot(
       app.pendingInteractions[0]!,
       {
         interaction: {
           id: "int_1",
           threadId: THREAD,
-          title: "Pi's questions",
-          payload: fixture.questions![0]! as never,
+          title: "Retry policy",
+          payload: questionnaire as never,
           createdAt: NOW,
           expiresAt: null,
         },
@@ -353,12 +518,16 @@ describe("pi-surface app", () => {
       {},
     );
     fireEvent.click(await slot.findByRole("button", { name: /^8/ }));
+    const send = slot.getByRole("button", { name: "Send answers" }) as HTMLButtonElement;
+    // pi-ask takes an answer to every question or none.
+    expect(send.disabled).toBe(true);
     fireEvent.click(slot.getByRole("button", { name: /^Timeouts/ }));
     fireEvent.click(slot.getByRole("button", { name: /^429/ }));
     fireEvent.change(slot.getByRole("textbox", { name: /Which failures/ }), {
       target: { value: "also 408" },
     });
-    fireEvent.click(slot.getByRole("button", { name: "Send answers" }));
+    expect(send.disabled).toBe(false);
+    fireEvent.click(send);
     await vi.waitFor(() => expect(submit).toHaveBeenCalled());
     expect(submit).toHaveBeenCalledWith({
       answers: [
@@ -367,16 +536,51 @@ describe("pi-surface app", () => {
       ],
     });
   });
+
+  it("draws no form for a payload that is not a form questionnaire", async () => {
+    const slot = renderSlot(
+      app.pendingInteractions[0]!,
+      {
+        interaction: {
+          id: "int_2",
+          threadId: THREAD,
+          title: "Old",
+          payload: { id: "q", questions: [{ header: "x", question: "y", options: [] }] } as never,
+          createdAt: NOW,
+          expiresAt: null,
+        },
+        submit: vi.fn(async () => {}),
+        cancel: vi.fn(async () => {}),
+      },
+      {},
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(slot.container.textContent).toBe("");
+  });
 });
 
 describe("helpers", () => {
-  it("counts tasks and formats durations", () => {
-    expect(todoCounts(fixture.todos)).toMatchObject({
+  it("reads counts, profile and questions from views, and formats durations", () => {
+    expect(todoProgress(fixture)).toEqual({
       done: 3,
       total: 7,
-      active: { key: "worker" },
+      active: "Move retries into the queue worker",
     });
-    expect(todoCounts({ revision: 1, total: 0, tasks: [] })).toBeUndefined();
+    expect(runningAgents(fixture)).toBe(2);
+    expect(runningAgents(settleSnapshot(fixture, NOW))).toBe(0);
+    expect(profileName(fixture)).toBe("orchestrate");
+    expect(stashEntries(fixture)).toBe(4);
+    expect(sessionModel(fixture)?.name).toBe("Webhook retry queue");
+    expect(
+      openQuestionnaires(fixture).map(({ view, questionnaire }) => [view, questionnaire.id]),
+    ).toEqual([["ask.questions", "fixture-ask-1"]]);
+    const empty: DeliverySnapshot = { id: "x", views: [] };
+    expect([
+      todoProgress(empty),
+      runningAgents(empty),
+      profileName(empty),
+      stashEntries(empty),
+    ]).toEqual([undefined, 0, undefined, 0]);
     expect([duration(42_000), duration(6 * 60_000), duration(125 * 60_000)]).toEqual([
       "42s",
       "6m",
@@ -390,7 +594,7 @@ describe("gallery", () => {
   it("draws the experiment-only slots from a fixture session on the plugin's page", async () => {
     const slot = renderSlot(app.navPanels[0]!, { subPath: "gallery" }, { rpc: rpcFor(fixture) });
     expect(await slot.findByText("Thread context card: row and section")).toBeTruthy();
-    expect(await slot.findByText("feat/retry-worker")).toBeTruthy();
+    expect(await slot.findByText("webhooks @ feat/retry-worker")).toBeTruthy();
     expect(await slot.findByRole("form", { name: "Pi's questions" })).toBeTruthy();
   });
 });

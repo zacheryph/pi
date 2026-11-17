@@ -1,7 +1,62 @@
 # pi-system-insights
 
-Read-only inspectors for Pi 1.4.0+ sessions. No model calls, tool activation,
-settings changes, external editor, or skill-file loading.
+The core session view for every consumer of a Pi session, and read-only
+inspectors for Pi 1.4.0+ sessions. No model calls, tool activation, settings
+changes, external editor, or skill-file loading.
+
+## The session view
+
+The extension observes Pi's own session state and publishes it as a
+[pi-surface](../../packages/pi-surface/README.md) view: id `system.session`
+(`SESSION_VIEW_ID`), kind `session`, a `SessionModel`. Any consumer on the
+session's bus reads it with `readView` or `collectViews`; nothing else needs to
+be installed. It is defined in every mode (terminal, RPC, print, JSON), whether
+or not the dashboard or bb is loaded.
+
+| Field                    | Source                                                                         |
+| ------------------------ | ------------------------------------------------------------------------------ |
+| `sessionId`, `cwd`       | The current session context                                                    |
+| `name`, `thinking`       | `pi.getSessionName()`, `pi.getThinkingLevel()`                                 |
+| `model`, `context`       | The context's selected model and `getContextUsage()`; left out while unknown   |
+| `status`                 | Lifecycle events and open forms, below                                         |
+| `activity`               | The 12 most recent top-level tool calls, newest first; a running one is `live` |
+| `usage`                  | Billed totals for the whole session file                                       |
+| `startedAt`, `piVersion` | When the Pi process started, and Pi's version when known                       |
+
+**Status** has one value and its `since`, which moves only when the value
+changes. Precedence, highest first: `waiting` (a native Pi dialog, then the
+oldest open surface questionnaire), `compacting`, `tool` (the most recent
+top-level tool still running), `working`, `idle`. Tools another tool calls
+(codemode scripts) stay under their parent: they change neither status nor
+activity. A compaction that fails or is cancelled ends `compacting`. When Pi
+settles, tools still marked running were interrupted: they leave the status
+and lose their `live` mark, with no duration.
+
+**Waiting on forms** reads surface's public form contract: every view of kind
+`form` on the bus, such as pi-ask's `ask.questions`. A form with an open
+questionnaire makes the session wait, named by the questionnaire's title or
+its first question's header, even when no native dialog is open. The observer
+re-reads forms when another view announces a change, never on its own
+`system.session` announcements, and announces only when the status changes,
+so publishing the waiting status cannot loop.
+
+**Usage** adds every assistant and tool-result message, `usage` entry (such as
+cache warming) and compaction or branch summary in the session file, abandoned
+branches and compacted history included, as Pi's `/session` does. Current
+context usage is the separate `context` field. The totals are scanned once and
+cached until the history changes: a status-only refresh scans nothing.
+
+**Lifecycle.** The view is defined at `session_start` and removed, without an
+announcement, at `session_shutdown`. Each `session_start` (startup, reload,
+`/new`, `/resume`, `/fork`) starts status and activity over: they describe this
+process, so nothing is inferred from restored history and no tool from an
+earlier process shows as running. Usage is rebuilt from the session file. Every
+change that may alter the view (model, thinking, name, turn, message, tool,
+prompt, compaction and tree events) announces it; consumers batch the
+announcements, and reading the view never announces or changes anything.
+
+Each subagent child loads its own copy of the extension on its own bus, so it
+has its own observer and view; nothing is kept process-wide.
 
 ## Commands
 

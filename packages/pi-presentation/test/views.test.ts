@@ -159,15 +159,33 @@ describe("presentation views and actions", () => {
     expect(listener).toHaveBeenCalledTimes(1);
     views.changed("todo.explorer");
     expect(listener).toHaveBeenCalledTimes(2);
-    // An id no view on the bus has is not this session's.
-    announceView(bus, "todo.missing");
-    expect(listener).toHaveBeenCalledTimes(2);
     expect((service.snapshot().views[1]!.model as WidgetModel).rows).toEqual([
       { left: "b: Task b" },
     ]);
+    // The bus is this session's alone, so every announcement on it counts, even
+    // one for an id that is no longer there: that is how a removal arrives.
+    announceView(bus, "todo.missing");
+    expect(listener).toHaveBeenCalledTimes(3);
     service.dispose();
     setRows([{ left: "c" }]);
-    expect(listener).toHaveBeenCalledTimes(2);
+    expect(listener).toHaveBeenCalledTimes(3);
+  });
+
+  it("drops a removed view from the next snapshot as soon as its removal is announced", () => {
+    const bus = fakeEventBus();
+    const views = viewRegistry(bus);
+    views.define({ id: "todo.widget", kind: "widget", title: "Tasks", model: () => widget });
+    const remove = views.define({
+      id: "todo.explorer",
+      kind: "explorer",
+      title: "Todos",
+      model: () => explorer,
+    });
+    const service = new PresentationService(bus);
+    const seen: string[][] = [];
+    service.subscribe(() => seen.push(service.snapshot().views.map((view) => view.id)));
+    remove();
+    expect(seen).toEqual([["todo.widget"]]);
   });
 
   it("serves view, actions and action requests", async () => {
@@ -291,6 +309,7 @@ describe("requests that predate actions", () => {
     // Its views reach the snapshot too.
     expect(service.snapshot().views.map((view) => view.id)).toEqual([
       "todo.explorer",
+      "todo.summary",
       "todo.widget",
     ]);
     await fake.emit("session_shutdown", {}, ctx);

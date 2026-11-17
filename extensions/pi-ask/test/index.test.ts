@@ -1,23 +1,9 @@
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { afterEach, beforeEach, describe, expect, it, vi, onTestFinished } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { provide } from "#session-tree";
-import {
-  createWorkHost,
-  QUESTION_KIND,
-  WORK_PARENT_SERVICE,
-  WORK_SERVICE,
-  type WorkRecord,
-} from "#work";
-import piAsk from "#src/index";
+import { QUESTION_KIND, WORK_PARENT_SERVICE, type WorkRecord } from "#work";
 import { dispatchAction, listActions } from "#surface";
-import {
-  waitFor,
-  fakePi,
-  resetSessionTree,
-  fakeCustomUi,
-  ansiTheme,
-  plainTheme,
-} from "#test-helpers";
+import { resetSessionTree, ansiTheme, plainTheme } from "#test-helpers";
+import { delegated, harness, params } from "#test/harness";
 import { visibleWidth } from "@earendil-works/pi-tui";
 
 const { execFile } = vi.hoisted(() => ({ execFile: vi.fn() }));
@@ -31,96 +17,6 @@ beforeEach(() => {
   vi.stubEnv("CMUX_PANEL_ID", undefined);
   vi.stubEnv("CMUX_PI_HOOKS_DISABLED", undefined);
 });
-
-type Tool = {
-  name: string;
-  exposure?: string;
-  description: string;
-  promptSnippet?: string;
-  execute: (...args: unknown[]) => Promise<{
-    content: { type: string; text: string }[];
-    details: Record<string, unknown>;
-    terminate?: boolean;
-  }>;
-};
-
-function harness(options: { mode?: string; hasUI?: boolean; sessionId?: string } = {}) {
-  const fake = fakePi();
-  const { pi, events } = fake;
-  const tools = fake.tools as unknown as Map<string, Tool>;
-  const mounted = fakeCustomUi<{
-    handleInput?(data: string): void;
-    render(width: number): string[];
-  }>({ awaitDone: true });
-  const ui = { notify: vi.fn(), select: vi.fn(), input: vi.fn(), custom: mounted.custom };
-  // An inline window, never an overlay: ui.custom gets no options.
-  onTestFinished(() => {
-    for (const [, custom] of ui.custom.mock.calls) expect(custom).toBeUndefined();
-  });
-  const ctx = {
-    mode: options.mode ?? "tui",
-    hasUI: options.hasUI ?? true,
-    ui,
-    isIdle: () => true,
-    sessionManager: { getSessionId: () => options.sessionId ?? "root", getBranch: () => [] },
-  } as unknown as ExtensionContext;
-  piAsk(fake.api);
-  const start = () => fake.emit("session_start", {}, ctx);
-  const shutdown = () => fake.emit("session_shutdown", {}, ctx);
-  const ask = (params: unknown, signal?: AbortSignal, id = "call-1") =>
-    tools.get("ask")!.execute(id, params, signal, undefined, ctx);
-  const until = (check: () => boolean) => waitFor(check, { interval: 0, timeout: 1000 });
-  return {
-    pi,
-    tools,
-    registrations: pi.registerTool.mock.calls.map(([tool]) => tool),
-    /** What pi-ask published; the action registry's own requests are not publications. */
-    get sent() {
-      return events.emitted.filter(([channel]) => !channel.startsWith("surface:"));
-    },
-    events,
-    ui,
-    ctx,
-    start,
-    shutdown,
-    ask,
-    until,
-    get mounted() {
-      return mounted.latest();
-    },
-  };
-}
-
-/**
- * A delegated session as pi-subagent sets it up before the child's extensions bind: a work host
- * under the session's id (`persisted` are the records an earlier instance left in its
- * transcript) and a parent link to tell. Nothing else provides the host, so pi-ask's
- * `ensureWorkHost` finds this one.
- */
-function delegated(persisted: WorkRecord[] = [], options: { id?: string; parent?: boolean } = {}) {
-  const id = options.id ?? "child";
-  const records = [...persisted];
-  const send = vi.fn();
-  const host = createWorkHost({
-    store: { read: () => records, append: (record) => records.push(record) },
-    delivery: { isIdle: () => true, send, lost: vi.fn() },
-  });
-  host.start();
-  provide(id, WORK_SERVICE, host);
-  const question = vi.fn<(text: string) => void>();
-  if (options.parent !== false) provide(id, WORK_PARENT_SERVICE, { question });
-  return { host, question, send, records };
-}
-
-const params = {
-  questions: [
-    {
-      question: "Which database?",
-      header: "Storage",
-      options: [{ label: "Postgres" }, { label: "SQLite" }],
-    },
-  ],
-};
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -387,7 +283,11 @@ describe("asking the user in the terminal", () => {
   it("answers through the ask.answer action as ask:answer does, from start to shutdown", async () => {
     const h = harness();
     await h.start();
-    expect(listActions(h.events)).toEqual([{ id: "ask.answer", title: expect.any(String) }]);
+    expect(listActions(h.events).map((action) => action.id)).toEqual([
+      "ask.answer",
+      "ask.cancel",
+      "ask.submit",
+    ]);
     const pending = h.ask(params);
     await h.until(() => h.mounted !== undefined);
 

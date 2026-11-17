@@ -9,7 +9,7 @@ import {
 import { useCallback } from "react";
 import {
   rpcContract,
-  type SessionSnapshot,
+  type DeliverySnapshot,
   type SessionSummary,
   type SnapshotResult,
   type SurfaceRequest,
@@ -29,7 +29,7 @@ export function useSessionResult(threadId: string | null | undefined): SnapshotR
   return threadId ? (query.data ?? NONE) : NONE;
 }
 
-export function useSession(threadId: string | null | undefined): SessionSnapshot | null {
+export function useSession(threadId: string | null | undefined): DeliverySnapshot | null {
   return useSessionResult(threadId).snapshot;
 }
 
@@ -72,8 +72,8 @@ export function useRunAction(
   const run = useCallback<RunAction>(
     async (action, args) => {
       // zod's JSON type is mutable; the arguments are JSON either way.
-      const request = { command: "action", id: action, args } as SurfaceRequest;
-      return (await rpc.call("request", { threadId, request })).data;
+      const request = { action, args } as SurfaceRequest;
+      return (await rpc.call("request", { threadId, request })).value;
     },
     [rpc, threadId],
   );

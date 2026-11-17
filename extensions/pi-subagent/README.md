@@ -166,6 +166,9 @@ settings and restores the saved profile body;
 `/new` starts ordinary Pi, even if this process originally used `--agent`.
 A branch-relative snapshot preserves exact profile instructions across source
 file edits. An explicit `--agent` on a new invocation selects a new snapshot.
+The running profile's name, display name and description are published as the
+`profile` of the `subagent.summary` view (see [Events](#events)), for remote
+surfaces and other extensions, which never read the saved snapshot themselves.
 
 Unknown/disabled profiles, unavailable required settings, and untrusted project
 profiles produce a diagnostic rather than silently selecting another profile.
@@ -615,17 +618,50 @@ as the roster used by `subagent_get`, plus `toolUses`, optional live `tokens`, a
 records override their state. It carries no result text or transcript contents. Consumers
 subscribe before `session_start`, like the dashboard, and replace their view on each snapshot.
 
-From session start to shutdown pi-subagent also defines two views on the same bus (see
+From session start to shutdown pi-subagent also defines three views on the same bus (see
 [`pi-surface`](../../packages/pi-surface/README.md)), so a remote surface reached through
-`pi-presentation` draws the widget and the roster:
+`pi-presentation` draws the widget, the roster and their counts:
 
 | Id                  | Kind     | What it shows                                                                                                                                                                             |
 | ------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `subagent.widget`   | widget   | The above-editor widget's agents as a JSON `WidgetModel`, with whole rows and a still glyph for the spinner; the clock is the row's `lead`, and a running one carries its start (`since`) |
 | `subagent.explorer` | explorer | Every agent in `subagent:snapshot`, with its state as a badge and its facts and note inline; an `Active` tab                                                                              |
+| `subagent.summary`  | summary  | The agents in `subagent:snapshot` counted by state, and the main agent's `profile`, even with no subagents                                                                                |
 
-Both announce a change with every `subagent:snapshot`, and the widget again at each turn,
-when finished agents age out of it.
+All three announce a change with every `subagent:snapshot`, the widget again at each turn,
+when finished agents age out of it, and the summary whenever the main-agent profile is
+selected, switched, restored by a start or `/tree`, blocked or cleared.
+
+`subagent.summary` counts the whole branch, never the widget's rows. Every count is present,
+zero included, so a session with no subagents reads zeros where one without pi-subagent has
+no view:
+
+| Key         | Counts                                                     | `live` |
+| ----------- | ---------------------------------------------------------- | ------ |
+| `running`   | Agents running a turn                                      | yes    |
+| `queued`    | Agents waiting for a concurrency slot                      | yes    |
+| `waiting`   | Idle agents waiting on open work (a job, an agent, answer) | yes    |
+| `completed` | Agents whose last run completed                            |        |
+| `failed`    | Agents whose last run ended in an error                    |        |
+| `stopped`   | Agents stopped, aborted at their turn limit or interrupted |        |
+| `total`     | Every agent on the branch, whatever its state              |        |
+
+`total − running − queued − waiting` is the finished agents, live and saved alike. `active` is
+the newest running agent, `{ id, label: "<agent>: <description>" }`.
+
+`profile` is the main agent's profile while it runs one (`--agent`, `PI_MAIN_AGENT`, an
+agent model, or restored from the branch): `{ name, label?, description? }`, where `label`
+is its display name. It is absent while the session runs no profile or a failed selection
+blocks it; after a failed switch to an agent model it is still the profile that runs.
+Consumers read it here, never from the `agent:profile` entry.
+
+Running, queued and waiting agents exist only while this Pi process runs, so they are
+process-bound (pi-surface's `live`) and a saved snapshot settles them: their counts read 0;
+`active` is removed; the widget's heading goes idle with no counts, a running or waiting row
+reads `■ stopped` in the `stopped` group and its clock stops at its text; the explorer's badge
+reads `stopped`. Finished agents are the branch's history and are never `live`; `total` and
+the profile survive settling, so the agents that stopped with the process count as finished,
+as their settled rows read.
 
 Agent lifecycle events are emitted via `pi.events.emit()` so other extensions can react:
 

@@ -53,8 +53,10 @@ import {
   buildSubagentSnapshot,
   SUBAGENT_EXPLORER_VIEW,
   SUBAGENT_SNAPSHOT,
+  SUBAGENT_SUMMARY_VIEW,
   SUBAGENT_WIDGET_VIEW,
 } from "#src/observation/snapshot";
+import { subagentSummaryModel } from "#src/observation/summary";
 import { SubagentWork } from "#src/observation/subagent-work";
 import { registerAgentModels } from "#src/agent-models";
 import { registerMainAgentProfile } from "#src/main-agent-profile";
@@ -73,6 +75,7 @@ import { GetResultTool } from "#src/tools/get-result-tool";
 import { SendTool } from "#src/tools/send-tool";
 import { viewRegistry } from "#surface";
 import { AgentWidget } from "#src/ui/agent-widget";
+import { getDisplayName } from "#src/ui/display";
 import { subagentExplorerModel } from "#src/ui/subagent-explorer";
 import { agentsListText, showAgentsBrowser } from "#src/ui/agents-browser";
 import { SessionNavigatorHandler } from "#src/ui/session-navigator";
@@ -239,6 +242,7 @@ export default function (pi: ExtensionAPI) {
     pi.events.emit(SUBAGENT_SNAPSHOT, branchSnapshot());
     views.changed(SUBAGENT_WIDGET_VIEW);
     views.changed(SUBAGENT_EXPLORER_VIEW);
+    views.changed(SUBAGENT_SUMMARY_VIEW);
   };
 
   // A delegated session has a delegator above it, which offers `work:parent` under its id before
@@ -315,6 +319,16 @@ export default function (pi: ExtensionAPI) {
       title: "Subagents",
       model: () => subagentExplorerModel(branchSnapshot(), registry),
     });
+    // Counts and the main agent's profile, defined even while no subagent exists.
+    views.define({
+      id: SUBAGENT_SUMMARY_VIEW,
+      kind: "summary",
+      title: "Subagents",
+      model: () =>
+        subagentSummaryModel(branchSnapshot(), mainProfile.current(), (type) =>
+          getDisplayName(type, registry),
+        ),
+    });
   });
   pi.on("session_start", (_event, ctx) => watch.setContext(ctx));
   // Restore the branch's agents to the model's context after it may have lost
@@ -386,9 +400,11 @@ export default function (pi: ExtensionAPI) {
     if (isDelegated(ctx)) return;
     agentModels.sync(ctx, agentModels.profileOf(ctx.model));
   });
-  registerMainAgentProfile(pi, {
+  const mainProfile = registerMainAgentProfile(pi, {
     isChild: isDelegated,
     agentModel: (model) => agentModels.profileOf(model),
+    // Selected, switched or restored: the summary carries the profile.
+    changed: () => views.changed(SUBAGENT_SUMMARY_VIEW),
   });
 
   // ---- Passive background-agent watch overlay ----

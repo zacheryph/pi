@@ -28,6 +28,11 @@ export class FakeSocket {
     this.frame(0x1, Buffer.from(JSON.stringify(message)));
   }
 
+  /** Accepts the session's hello, as the plugin does once its token checks out. */
+  welcome(version = 3): void {
+    this.send({ type: "welcome", version });
+  }
+
   /** Closes with a code, as the plugin does when it refuses a session. */
   close(code = 1000): void {
     const payload = Buffer.alloc(2);

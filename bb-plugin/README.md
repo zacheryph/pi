@@ -3,9 +3,9 @@
 A [bb](https://getbb.app) plugin that shows Pi sessions running this bundle in
 bb's UI. bb runs Pi in RPC mode and drops Pi's widgets, status line and
 overlays; the bundle's [`pi-bb`](../extensions/pi-bb/README.md) extension sends
-the session's `SessionSnapshot` here instead, and this plugin draws it in bb's
-slots. See [bb's UI slots](../docs/bb/ui-slots.md) for every slot with a
-screenshot.
+the session's views here instead, as one complete pi-surface delivery snapshot
+per update, and this plugin draws them in bb's slots. See
+[bb's UI slots](../docs/bb/ui-slots.md) for every slot with a screenshot.
 
 Plugin id `pi-surface`, package `bb-plugin-pi-surface`. It is its own package
 with its own toolchain, not one of the bundle's npm workspaces.
@@ -37,17 +37,17 @@ for a thread whose Pi session is connected. Remove the plugin with
 
 ## What it shows
 
-| Slot                                | Registration                                                        | Content                                                |
-| ----------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------------ |
-| Composer banner (stack card)        | `app.composer.customize({ banners, chrome: "bare" })`               | Todos card, Subagents card: the widget views           |
-| Thread context segment              | `app.slots.experimental_threadContextSegment`                       | Agent name, task and subagent counts; opens the Pi tab |
-| Thread context card row and section | `experimental_threadContextCardRow` / `…Section`                    | Stash count; worktrees and pull requests with checks   |
-| Composer action                     | `app.composer.customize({ actions })`                               | Opens the Pi tab                                       |
-| Composer popup                      | `experimental_popups` + `app.composer.experimental_registerCommand` | Stash picker (Mod+Shift+S, or the + menu)              |
-| Thread tab                          | `app.slots.experimental_tab({ context: { kind: "thread" } })`       | Whole session; every explorer view, details on demand  |
-| Thread row metadata                 | `app.slots.experimental_threadRowMetadata`                          | Open-question and running-subagent badge               |
-| Sidebar navigation                  | `app.slots.navPanel` with `experimental_useBadge`                   | **Pi sessions** page of every connected session        |
-| Pending interaction                 | `app.slots.pendingInteraction` + `bb.ui.requestInput`               | pi-ask's open questionnaire as one form                |
+| Slot                                | Registration                                                        | Content                                               |
+| ----------------------------------- | ------------------------------------------------------------------- | ----------------------------------------------------- |
+| Composer banner (stack card)        | `app.composer.customize({ banners, chrome: "bare" })`               | Todos card, Subagents card: the widget views          |
+| Thread context segment              | `app.slots.experimental_threadContextSegment`                       | Profile, task and subagent counts; opens the Pi tab   |
+| Thread context card row and section | `experimental_threadContextCardRow` / `…Section`                    | Stash count; worktrees and pull requests with status  |
+| Composer action                     | `app.composer.customize({ actions })`                               | Opens the Pi tab                                      |
+| Composer popup                      | `experimental_popups` + `app.composer.experimental_registerCommand` | Stash picker (Mod+Shift+S, or the + menu)             |
+| Thread tab                          | `app.slots.experimental_tab({ context: { kind: "thread" } })`       | Whole session; every explorer view, details on demand |
+| Thread row metadata                 | `app.slots.experimental_threadRowMetadata`                          | Open-question and running-subagent badge              |
+| Sidebar navigation                  | `app.slots.navPanel` with `experimental_useBadge`                   | **Pi sessions** page of every connected session       |
+| Pending interaction                 | `app.slots.pendingInteraction` + `bb.ui.requestInput`               | pi-ask's open questionnaire as one form               |
 
 Every slot renders nothing for a thread without a session.
 
@@ -58,9 +58,16 @@ section of the tab, and an explorer's `loadDetail`, `onOpen` and
 `marker.onClear` go back to the session as actions. Which widget gets a card,
 with which icon, is the table in `ui/stack-cards.tsx`; the tab's order is
 `EXPLORER_ORDER` in `ui/session-tab.tsx`, with any other explorer after. A new
-view in an extension shows in the tab with no plugin change. The context row,
-context card, stash picker, row badge and sessions page read the snapshot's
-sections for their counts.
+view in an extension shows in the tab with no plugin change. The context card
+lists the `git.worktrees` and `git.prs` explorers' items with the same
+renderer, and the stash picker is the `stash.explorer` view's items.
+
+Everything else is read from structured views (`views.ts`), never from display
+text: the header, activity and usage from `system.session` (pi-system-insights);
+the context row, row badge and sessions page from the `todo.summary`,
+`subagent.summary` (with the main agent's profile) and `stash.summary` counts;
+open questions from the session's form views (`ask.questions`). Each reader
+tolerates a missing or failed view, a missing `system.session` included.
 `/plugins/pi-surface/sessions/gallery` (not linked) draws the components that
 bb shows only behind experiments, for the docs.
 
@@ -70,19 +77,29 @@ bb shows only behind experiments, for the docs.
   A session's first message is `hello` with its thread id and token; the token
   is an HMAC-SHA256 of the thread id under a random secret kept in
   `bb.storage.kv`, so it is valid for that thread only and survives plugin
-  reloads. Bad tokens close with 4401, other protocol versions with 4400, and
-  an older process for the same thread with 4409 once a newer one says hello.
-  A disconnected session stays live for 15 seconds, which covers `/reload` and
-  bb's process restarts.
+  reloads. Protocol version 3 (`protocol.ts`, matching pi-bb's): an accepted
+  hello is answered with `welcome`, after which pi-bb sends updates and offers
+  to answer forms. Bad tokens close with 4401, other protocol versions with
+  4400 (pi-bb then says to reinstall the plugin and restart the thread), and an
+  older process for the same thread with 4409 once a newer one says hello.
+  Messages are measured in UTF-8 bytes against a 2 MiB limit before parsing
+  and checked strictly; a malformed one is dropped with a warning in bb's log.
+  Each update replaces the thread's whole view set. A disconnected session
+  stays live for 15 seconds, which covers `/reload` and bb's process restarts;
+  a replaced process's late update or result never reaches its replacement.
 - **Saved sessions.** Every live snapshot is also written to the plugin's
-  SQLite database (`archive.ts`). When no Pi comes back for a thread (bb
-  restarted, the plugin reloaded, bb stopped the process) the thread shows its
-  last snapshot as `saved` until the next turn starts Pi again: tasks, stash,
-  git, usage and finished subagents as they were; status idle, no open
-  questions, and subagents that were running marked stopped. Requests to a
-  saved session (an action such as a task's or stash entry's details) are
-  refused, so the tab opens only details a view carries inline. A deleted
-  thread's row is removed; rows untouched for 30 days are pruned at load.
+  SQLite database (`archive.ts`) as a versioned record. When no Pi comes back
+  for a thread (bb restarted, the plugin reloaded, bb stopped the process) the
+  thread shows its last snapshot as `saved`, settled with pi-surface's
+  `settleSnapshot`, until the next turn starts Pi again: tasks, stash, Git,
+  usage and finished subagents as they were; status idle, no forms, live
+  counts zero, and running subagents stopped. Actions are removed from the
+  views and requests to a saved session are refused, so the tab opens only
+  details a view carries inline. A record of another version, or one that
+  cannot be read, is treated as missing (one warning in bb's log); the
+  thread's next live turn writes a new one. A deleted thread's row is
+  removed; rows untouched for 30 days are pruned at load. Pi's own session
+  files are never touched.
 - **Environment.** `bb.providers.experimental_contributeEnv("pi", …)` returns
   `PI_BB_SURFACE_URL` as `{ serverPath: "/api/v1/plugins/pi-surface/http/session" }`,
   which bb's host expands against its `BB_SERVER_URL`, and the thread's token.
@@ -93,14 +110,17 @@ bb shows only behind experiments, for the docs.
   `thread:<id>` and `sessions`; the server calls `bb.rpc.experimental_invalidate`
   on every change, so all mounted slots share one live read per thread and
   refresh together over bb's realtime socket. `request({ threadId, request })`
-  forwards `action { id, args? }` (an action on the session's bus) and
-  `answer` to the session and waits up to 10 seconds; a fixture answers from
-  canned data.
-- **Questions.** When a live session reports an open pi-ask questionnaire, the
-  server calls `bb.ui.requestInput` with renderer `questionnaire`; the form's
-  answer goes back as an `answer` request, and the form is withdrawn when Pi
-  closes the questionnaire. See the limits in the slot doc: pi-ask asks through
-  Pi's dialogs in RPC mode today, so live sessions do not report one yet.
+  forwards an action request `{ action, args? }` (an action on the session's
+  bus) and waits up to 10 seconds for its result; a fixture answers from canned
+  data.
+- **Questions.** While pi-bb is welcomed it advertises bb as a form consumer,
+  so pi-ask publishes its questionnaires as the `ask.questions` form view. The
+  server raises each open questionnaire of a live session with
+  `bb.ui.requestInput` (renderer `questionnaire`) and runs its `submit` action
+  reference with the answer, or its `cancel` when the user declines, only
+  through the connection that raised it. A form is withdrawn when the view
+  stops listing it, when the connection closes or another process takes the
+  thread. Fixtures and saved sessions never raise one.
 - **Dispose.** `bb.onDispose` withdraws open forms and closes every session
   socket; bb itself closes them with 1012 on reload, and pi-bb reconnects.
 
@@ -119,9 +139,10 @@ this plugin and Pi sessions on a scripted model, takes screenshots of the
 slots, and checks that the stack cards and the context row share bb's 12px
 inset (`bb-shot.mjs --check`).
 
-Snapshot types come from
-[`packages/pi-presentation/src/contract.ts`](../packages/pi-presentation/src/contract.ts)
-by `import type`. The root `npm run check` formats this directory but neither
+The view models, delivery snapshot, byte limits, guards and settling rules come
+from [`packages/pi-surface/src/`](../packages/pi-surface/README.md), imported by
+relative path (`contract.ts` re-exports the types); `bb plugin build` bundles
+them. The root `npm run check` formats this directory but neither
 lints nor type-checks it: its types come from this directory's own
 `node_modules`, which the root install does not create. Run `npm run typecheck`
 and `npm test` here.

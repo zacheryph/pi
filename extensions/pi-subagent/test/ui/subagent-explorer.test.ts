@@ -45,7 +45,8 @@ describe("subagentExplorerModel", () => {
     );
     expect(model.title).toBe("Subagents");
     expect(model.items.map((item) => [item.id, item.badge])).toEqual([
-      ["run", { text: "running", tone: "accent" }],
+      // Running lives in this process: a saved list reads "stopped" (see pi-surface's `live`).
+      ["run", { text: "running", tone: "accent", live: { text: "stopped", tone: "dim" } }],
       ["bad", { text: "error", tone: "error" }],
       ["a1", { text: "done", tone: "success" }],
     ]);

@@ -5,8 +5,10 @@ import {
   dispatchAction,
   listActions,
   listViews,
+  MAX_VIEW_BYTES,
   onViewChanged,
   readView,
+  utf8Bytes,
   type JsonValue,
 } from "#surface";
 import {
@@ -32,7 +34,7 @@ export type { PresentationRequest, PresentationResults, PresentationSnapshot } f
 
 const MAX_ERROR = 500;
 /** Largest view model, as JSON, that a snapshot carries; a larger one is sent as an error. */
-export const MAX_VIEW_BYTES = 256 * 1024;
+export { MAX_VIEW_BYTES };
 
 function message(error: unknown): string {
   return (error instanceof Error ? error.message : String(error)).slice(0, MAX_ERROR);
@@ -74,10 +76,9 @@ export class PresentationService {
     observed.on(SUBAGENT_SNAPSHOT, (data) => {
       if (this.subagents.apply(data as SubagentSnapshot)) this.changed();
     });
-    // Every view's model is part of the snapshot.
-    onViewChanged(observed, (id) => {
-      if (this.viewInfo().some((view) => view.id === id)) this.changed();
-    });
+    // Every view's model is part of the snapshot. A removed view announces its
+    // id after it has gone, so an id no longer on the bus changes the snapshot too.
+    onViewChanged(observed, () => this.changed());
   }
 
   /** Snapshot reads return copies: UI consumers cannot mutate cached producer state. */
@@ -188,7 +189,7 @@ export class PresentationService {
       try {
         const model = readView(this.bus, id);
         if (model === undefined) return entry;
-        const bytes = Buffer.byteLength(JSON.stringify(model));
+        const bytes = utf8Bytes(JSON.stringify(model));
         if (bytes > MAX_VIEW_BYTES)
           return {
             ...entry,

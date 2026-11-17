@@ -103,6 +103,7 @@ pi-personal/
 │   │   └── CHANGELOG.md
 │   ├── pi-system-insights/
 │   │   ├── src/index.ts                 # /system:* commands
+│   │   ├── src/session/                 # system.session view (status, activity, usage)
 │   │   └── test/
 │   ├── pi-tldr/
 │   │   ├── src/index.ts                 # /tldr command + session naming
@@ -202,19 +203,17 @@ is connected. It never starts or reports to the dashboard hub. See the
 ### pi-dashboard
 
 Local web dashboard of running interactive Pi sessions at
-`http://127.0.0.1:7317/`; `/dashboard` opens it. Cards are grouped by working
-directory and show session name, `--agent` profile, model and thinking level,
-context usage, live status (idle, working, running a tool, compacting, or
-waiting on a dialog, which sorts first), and task, subagent, stash, open PR and
-worktree counts. A card opens a detail page with the task list and history,
-subagents, pull requests (opened here and referenced) and worktrees from
-pi-git, recent tool calls and stash index with on-demand previews, in two even
-columns with finished items folded away; usage and cost open from the header. **Focus** jumps to the session's cmux panel and
-raises cmux. A filter box and opt-in browser notifications (waiting or
-finished sessions) round out the index. Questions the model asks through
-pi-ask's `ask` can be answered from the page. pi-todo, pi-stash and pi-git publish
-their state as `todo:snapshot` / `stash:snapshot` / `git:snapshot` events on the
-session's `pi.events` bus for this and other extensions.
+`http://127.0.0.1:7317/`; `/dashboard` opens it. The page draws each session's
+pi-surface views, collected into one complete snapshot per update: the core
+`system.session` view from pi-system-insights (name, model, thinking, context,
+status, recent tool calls, usage) and every extension's summaries, widgets,
+explorers, details and forms. Cards are grouped by working directory, show
+status (waiting sorts first) and each extension's summary counts, and open a
+detail page with widgets and activity on one side and explorers on the other.
+Opening an explorer item, clearing its marks and answering a pi-ask question
+run the action the view references; **Focus** jumps to the session's cmux panel
+and raises cmux. A filter box and opt-in browser notifications (waiting or
+finished sessions) round out the index.
 
 The first interactive session starts a detached hub; sessions connect to it
 over a unix socket in `~/.pi/agent/dashboard/`, and it exits 15 seconds after
@@ -378,6 +377,15 @@ See [upstream README](extensions/pi-subagent/README.md),
 [local changes](extensions/pi-subagent/CHANGELOG.md).
 
 ### pi-system-insights
+
+Owns observation of Pi's core session state. Every session, a subagent child
+included, publishes it as the `system.session` view on its own bus, in every
+mode and without dashboard or bb loaded: identity, name, cwd, model, thinking,
+context usage, status (waiting, compacting, tool, working, idle), recent
+top-level tool activity and billed usage totals for the whole session file.
+It reads open questionnaires from surface form views, so a question shows as
+waiting with or without a native dialog. See
+[the session view](extensions/pi-system-insights/README.md#the-session-view).
 
 Read-only session inspectors:
 
@@ -702,5 +710,6 @@ pi-git's GitHub retry classifier (`extensions/pi-git/src/retry.ts`) is copied fr
 ### Shared presentation services
 
 `packages/pi-presentation` provides renderer-independent session projections,
-producer subscriptions and owner-routed read requests. The terminal dashboard
-consumes it without exposing its transport to other UIs. See the package README.
+producer subscriptions and owner-routed read requests for the bb adapter until
+it moves to pi-surface views. The dashboard no longer uses it. See the package
+README.

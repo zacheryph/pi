@@ -1,11 +1,26 @@
-import { defineAction, defineView, isJsonObject } from "#surface";
-import { TODO_SNAPSHOT_EVENT, type TodoSnapshotEvent } from "#todo/events";
+import {
+  defineAction,
+  defineView,
+  hasFormConsumer,
+  isJsonObject,
+  listFormConsumers,
+  SESSION_VIEW_ID,
+  type SessionModel,
+  type SummaryModel,
+} from "#surface";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 import piBb, { type BbDependencies } from "#src/index";
-import { CLOSE_UNAUTHORIZED, ENV_THREAD, ENV_TOKEN, ENV_URL, readSurfaceEnv } from "#src/protocol";
+import {
+  CLOSE_UNAUTHORIZED,
+  CLOSE_UNSUPPORTED,
+  ENV_THREAD,
+  ENV_TOKEN,
+  ENV_URL,
+  readSurfaceEnv,
+} from "#src/protocol";
 import { ENV_BB_SKILLS, ENV_KEEP_ENVIRONMENT_TOOL } from "#src/prompt";
-import { FakePlugin } from "#test/fake-plugin";
-import { fakePi, sleep } from "#test-helpers";
+import { FakePlugin, type FakeSocket } from "#test/fake-plugin";
+import { fakePi, sleep, waitFor } from "#test-helpers";
 
 const SLOT = Symbol.for("bb:surface");
 
@@ -20,8 +35,6 @@ function fakeCtx(mode = "rpc") {
       getBranch: () => [],
       getEntries: () => [],
     },
-    model: { provider: "anthropic", id: "claude-opus" },
-    getContextUsage: () => ({ tokens: 5000, contextWindow: 200_000, percent: 2.5 }),
     isIdle: () => true,
   };
 }
@@ -31,7 +44,7 @@ function bbEnv(url: string, overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEn
 }
 
 function load(env: NodeJS.ProcessEnv, overrides: Partial<BbDependencies> = {}) {
-  const fake = fakePi({ getSessionName: () => "fix-auth", getThinkingLevel: () => "high" });
+  const fake = fakePi();
   piBb(fake.api, { env: () => env, pid: 4242, publishDelayMs: 10, minDelayMs: 20, ...overrides });
   return fake;
 }
@@ -44,83 +57,199 @@ async function start(fake: ReturnType<typeof load>, ctx = fakeCtx()) {
   return ctx;
 }
 
-const tasks: TodoSnapshotEvent = {
-  version: 1,
-  revision: 2,
-  tasks: [
-    {
-      key: "fix",
-      subject: "Fix the retry loop",
-      status: "in_progress",
-      blocked: false,
-      unreviewed: 0,
-      createdAt: 5,
-      updates: [{ revision: 2, at: 9, status: "in_progress", from: "pending", message: "on it" }],
-    },
-  ],
-};
+const session = (status: SessionModel["status"]): SessionModel => ({
+  sessionId: "session-a",
+  cwd: "/work/api",
+  name: "fix-auth",
+  thinking: "high",
+  status,
+  startedAt: 1,
+});
+
+/** pi-system-insights' view, as a stand-in: pi-bb only collects it. */
+function sessionView(fake: ReturnType<typeof load>, model: () => SessionModel) {
+  return defineView(fake.api.events, {
+    id: SESSION_VIEW_ID,
+    kind: "session",
+    title: "Session",
+    model,
+  });
+}
+
+/** Tell consumers a view changed, as its producer would. */
+function announce(fake: ReturnType<typeof load>, id: string) {
+  fake.api.events.emit("surface:view-changed", { version: 1, id });
+}
+
+/** Snapshot messages on a socket: hellos and updates, in order. */
+function snapshots(socket: FakeSocket) {
+  return socket.received.filter((message) =>
+    ["hello", "update"].includes((message as { type?: string }).type ?? ""),
+  ) as Array<Record<string, any>>;
+}
+
+/** The nth socket once it said hello, welcomed as the plugin does after checking the token. */
+async function connected(plugin: FakePlugin, index = 0) {
+  const socket = await plugin.socket(index);
+  const [hello] = await plugin.messages(socket, "hello");
+  socket.welcome();
+  return { socket, hello: hello! };
+}
+
+const consumers = (fake: ReturnType<typeof load>) => listFormConsumers(fake.api.events).length;
 
 describe("pi-bb", () => {
-  it("says hello with the thread, token and full snapshot, then sends debounced updates", async () => {
+  it("says hello with the thread, token and every view, then sends one update per burst once welcomed", async () => {
     const plugin = new FakePlugin();
     const url = await plugin.start();
     const fake = load(bbEnv(url));
-    fake.api.events.emit(TODO_SNAPSHOT_EVENT, tasks);
-    const ctx = await start(fake);
+    let status: SessionModel["status"] = { kind: "idle", since: 1 };
+    sessionView(fake, () => session(status));
+    const counts: SummaryModel = { counts: [{ key: "total", label: "tasks", value: 1 }] };
+    defineView(fake.api.events, {
+      id: "todo.summary",
+      kind: "summary",
+      title: "Tasks",
+      model: () => counts,
+    });
+    await start(fake);
 
     const socket = await plugin.socket();
     expect(plugin.paths[0]).toBe("/api/v1/plugins/pi-surface/http/session");
     const [hello] = await plugin.messages(socket, "hello");
-    expect(hello).toMatchObject({
-      version: 2,
+    expect(hello).toEqual({
+      type: "hello",
+      version: 3,
       threadId: "thr_test",
       token: "secret-token",
       snapshot: {
         id: "4242",
-        cwd: "/work/api",
-        name: "fix-auth",
-        thinking: "high",
-        status: { kind: "idle" },
-        todos: { total: 1, tasks: [{ key: "fix", status: "in_progress" }] },
+        host: { pid: 4242 },
+        views: [
+          { id: SESSION_VIEW_ID, kind: "session", title: "Session", model: session(status) },
+          { id: "todo.summary", kind: "summary", title: "Tasks", model: counts },
+        ],
       },
     });
 
-    await fake.emit("agent_start", {}, ctx);
-    await fake.emit(
-      "tool_execution_start",
-      { toolCallId: "t1", toolName: "bash", args: { command: "npm test" } },
-      ctx,
-    );
-    await plugin.messages(socket, "update");
+    // Not welcomed yet: changes wait for the plugin to accept the session.
+    status = { kind: "working", since: 2 };
+    announce(fake, SESSION_VIEW_ID);
     await sleep(50);
-    const updates = socket.received.filter(
-      (message) => (message as { type?: string }).type === "update",
-    );
-    // Both events land in one coalesced update.
-    expect(updates).toHaveLength(1);
-    expect(updates[0]).toMatchObject({
-      snapshot: {
-        status: { kind: "tool", tool: "bash" },
-        activity: [{ tool: "bash", summary: "npm test", running: true }],
-      },
-    });
+    expect(snapshots(socket)).toHaveLength(1);
+    socket.welcome();
+    const [update] = await plugin.messages(socket, "update");
+    expect(update!.snapshot.views[0].model.status).toEqual({ kind: "working", since: 2 });
+
+    // A burst of announcements is one update with the state after the burst.
+    status = { kind: "tool", tool: "bash", since: 3 };
+    for (let index = 0; index < 5; index++) announce(fake, SESSION_VIEW_ID);
+    await plugin.messages(socket, "update", 2);
+    await sleep(50);
+    expect(snapshots(socket)).toHaveLength(3);
+    expect(snapshots(socket)[2]!.snapshot.views[0].model.status.kind).toBe("tool");
   });
 
-  it("runs the plugin's action requests and sends views in the snapshot", async () => {
+  it("sends a snapshot without a system view, and drops a view that is removed", async () => {
     const plugin = new FakePlugin();
     const url = await plugin.start();
     const fake = load(bbEnv(url));
-    // A stand-in for an extension's explorer and the action that loads its details.
-    defineView(fake.api.events, {
-      id: "todo.explorer",
-      kind: "explorer",
-      title: "Todos",
-      model: () => ({
-        title: "Todos",
-        items: [{ id: "fix", label: "fix: Fix the retry loop" }],
-        loadDetail: { action: "todo.inspect" },
-      }),
+    const remove = defineView(fake.api.events, {
+      id: "todo.summary",
+      kind: "summary",
+      title: "Tasks",
+      model: () => ({ counts: [] }),
     });
+    defineView(fake.api.events, {
+      id: "stash.summary",
+      kind: "summary",
+      title: "Stash",
+      model: () => {
+        throw new Error("index unreadable");
+      },
+    });
+    await start(fake);
+    const { hello, socket } = await connected(plugin);
+    expect(hello.snapshot.views).toEqual([
+      { id: "stash.summary", kind: "summary", title: "Stash", error: "index unreadable" },
+      { id: "todo.summary", kind: "summary", title: "Tasks", model: { counts: [] } },
+    ]);
+    remove();
+    const [update] = await plugin.messages(socket, "update");
+    expect(update!.snapshot.views.map((view: { id: string }) => view.id)).toEqual([
+      "stash.summary",
+    ]);
+  });
+
+  it("does not observe Pi's core events itself", async () => {
+    const plugin = new FakePlugin();
+    const url = await plugin.start();
+    const fake = load(bbEnv(url));
+    const ctx = await start(fake);
+    const { socket } = await connected(plugin);
+    await fake.emit("agent_start", {}, ctx);
+    await fake.emit("tool_execution_start", { toolCallId: "t1", toolName: "bash", args: {} }, ctx);
+    await fake.emit("tool_execution_end", { toolCallId: "t1", toolName: "bash" }, ctx);
+    await sleep(50);
+    expect(snapshots(socket)).toHaveLength(1);
+  });
+
+  it("fits a snapshot into the plugin's message limit in UTF-8 bytes", async () => {
+    const plugin = new FakePlugin();
+    const url = await plugin.start();
+    // 400 UTF-16 units each, but the multibyte view is 1,200 bytes of UTF-8.
+    const fake = load(bbEnv(url), { maxMessageBytes: 1_400 });
+    const view = (id: string, text: string) =>
+      defineView(fake.api.events, {
+        id,
+        kind: "detail",
+        title: id,
+        model: () => ({ title: id, content: text }),
+      });
+    view("wide.notes", "€".repeat(400));
+    view("plain.notes", "a".repeat(400));
+    const ctx = await start(fake);
+    const { hello, socket } = await connected(plugin);
+    expect(new TextEncoder().encode(JSON.stringify(hello)).length).toBeLessThanOrEqual(1_400);
+    expect(hello.snapshot.views).toEqual([
+      expect.objectContaining({ id: "plain.notes", model: expect.any(Object) }),
+      expect.objectContaining({ id: "wide.notes", error: expect.stringContaining("Left out") }),
+    ]);
+    await fake.command("bb").handler("", ctx);
+    expect(fake.pi.sendMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ content: expect.stringContaining("left out wide.notes") }),
+      { triggerTurn: false },
+    );
+    expect(snapshots(socket)).toHaveLength(1);
+  });
+
+  it("sends nothing and says why when even a snapshot of errors cannot fit", async () => {
+    const plugin = new FakePlugin();
+    const url = await plugin.start();
+    const fake = load(bbEnv(url), { maxMessageBytes: 200 });
+    for (const id of ["a.one", "b.two", "c.three", "d.four"])
+      defineView(fake.api.events, {
+        id,
+        kind: "detail",
+        title: id,
+        model: () => ({ title: id, content: "x" }),
+      });
+    const ctx = await start(fake);
+    await plugin.socket();
+    await sleep(80);
+    // No hello carries a cut snapshot.
+    expect(plugin.sockets.flatMap((socket) => snapshots(socket))).toEqual([]);
+    await fake.command("bb").handler("", ctx);
+    expect(fake.pi.sendMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ content: expect.stringContaining("does not fit one message") }),
+      { triggerTurn: false },
+    );
+  });
+
+  it("runs the plugin's action requests and answers only the socket that asked", async () => {
+    const plugin = new FakePlugin();
+    const url = await plugin.start();
+    const fake = load(bbEnv(url));
     defineAction(fake.api.events, {
       id: "todo.inspect",
       title: "Inspect",
@@ -131,57 +260,134 @@ describe("pi-bb", () => {
       },
     });
     defineAction(fake.api.events, { id: "todo.noop", title: "Nothing", handler: () => {} });
-    await start(fake);
-    const socket = await plugin.socket();
-    const [hello] = await plugin.messages(socket, "hello");
-    expect(hello).toMatchObject({
-      version: 2,
-      snapshot: {
-        views: [
-          {
-            id: "todo.explorer",
-            kind: "explorer",
-            title: "Todos",
-            model: { items: [{ id: "fix" }], loadDetail: { action: "todo.inspect" } },
-          },
-        ],
+    defineAction(fake.api.events, {
+      id: "todo.verbose",
+      title: "Fails at length",
+      handler: () => {
+        throw new Error("x".repeat(2_000));
       },
     });
-
-    const request = (id: number, body: Record<string, unknown>) =>
-      socket.send({ type: "request", id, request: body });
-    request(1, { command: "action", id: "todo.inspect", args: { id: "fix" } });
-    request(2, { command: "action", id: "todo.inspect", args: { id: "gone" } });
-    request(3, { command: "action", id: "todo.noop" });
-    request(4, { command: "action", id: "todo.missing" });
-    request(5, { command: "action" });
-    request(6, { command: "stash-preview", name: "notes" });
-    const results = await plugin.messages(socket, "result", 4);
+    let release: (() => void) | undefined;
+    defineAction(fake.api.events, {
+      id: "todo.slow",
+      title: "Slow",
+      handler: () => new Promise<string>((resolve) => (release = () => resolve("late"))),
+    });
+    await start(fake);
+    const { socket } = await connected(plugin);
+    const request = (id: number, body: unknown, target = socket) =>
+      target.send({ type: "request", id, request: body });
+    request(1, { action: "todo.inspect", args: { id: "fix" } });
+    request(2, { action: "todo.inspect", args: { id: "gone" } });
+    request(3, { action: "todo.noop" });
+    request(4, { action: "todo.missing" });
+    request(5, { action: "todo.verbose" });
+    request(6, { action: "Not An Id" });
+    request(7, { command: "action", id: "todo.noop" });
+    request(8, { action: "todo.noop", extra: true });
+    const results = await plugin.messages(socket, "result", 5);
     const byId = new Map(results.map((result) => [result.id, result]));
-    expect(byId.get(1)).toEqual({ type: "result", id: 1, ok: true, data: [{ heading: "fix" }] });
-    expect(byId.get(2)).toMatchObject({ ok: false, error: 'No task "gone" on this branch.' });
-    expect(byId.get(3)).toEqual({ type: "result", id: 3, ok: true, data: null });
+    expect(byId.get(1)).toEqual({ type: "result", id: 1, ok: true, value: [{ heading: "fix" }] });
+    expect(byId.get(2)).toEqual({
+      type: "result",
+      id: 2,
+      ok: false,
+      error: 'No task "gone" on this branch.',
+    });
+    expect(byId.get(3)).toEqual({ type: "result", id: 3, ok: true });
     expect(byId.get(4)).toMatchObject({ ok: false, error: 'Unknown action "todo.missing".' });
+    expect(byId.get(5)!.error).toHaveLength(500);
     // Malformed and retired requests are dropped, not answered.
     await sleep(50);
-    expect(byId.has(5)).toBe(false);
-    expect(byId.has(6)).toBe(false);
+    for (const id of [6, 7, 8]) expect(byId.has(id)).toBe(false);
+
+    // A request still running when its socket goes is never answered on the next one.
+    request(9, { action: "todo.slow" });
+    await waitFor(() => release);
+    socket.drop();
+    const next = await connected(plugin, 1);
+    release!();
+    await sleep(50);
+    const types = next.socket.received.map((message) => (message as { type: string }).type);
+    expect(types).not.toContain("result");
+  });
+
+  it("does not answer requests before the plugin welcomes the session", async () => {
+    const plugin = new FakePlugin();
+    const url = await plugin.start();
+    const fake = load(bbEnv(url));
+    defineAction(fake.api.events, { id: "todo.noop", title: "Nothing", handler: () => {} });
+    await start(fake);
+    const socket = await plugin.socket();
+    await plugin.messages(socket, "hello");
+    socket.send({ type: "request", id: 1, request: { action: "todo.noop" } });
+    await sleep(50);
+    expect(socket.received.map((message) => (message as { type: string }).type)).toEqual(["hello"]);
+  });
+
+  it("advertises itself as a form consumer only while the plugin has welcomed it", async () => {
+    const plugin = new FakePlugin();
+    const url = await plugin.start();
+    const fake = load(bbEnv(url));
+    const bus = fake.api.events;
+    await start(fake);
+    const first = await plugin.socket(0);
+    await plugin.messages(first, "hello");
+    expect(hasFormConsumer(bus)).toBe(false);
+    first.welcome();
+    await waitFor(() => hasFormConsumer(bus) || undefined);
+    expect(listFormConsumers(bus)).toEqual([{ name: "bb" }]);
+
+    // The connection drops: capability goes with it, and returns with the next welcome.
+    first.drop();
+    await waitFor(() => !hasFormConsumer(bus) || undefined);
+    const second = await plugin.socket(1);
+    await plugin.messages(second, "hello");
+    expect(hasFormConsumer(bus)).toBe(false);
+    second.welcome();
+    await waitFor(() => hasFormConsumer(bus) || undefined);
+    // A repeated welcome on the same socket is not a second consumer.
+    second.welcome();
+    await sleep(20);
+    expect(consumers(fake)).toBe(1);
+
+    // Refused (a newer process for the thread took over): no capability and no retry.
+    second.close(4409);
+    await waitFor(() => !hasFormConsumer(bus) || undefined);
+    await sleep(100);
+    expect(plugin.sockets).toHaveLength(2);
+  });
+
+  it("withdraws its form capability on shutdown", async () => {
+    const plugin = new FakePlugin();
+    const url = await plugin.start();
+    const fake = load(bbEnv(url));
+    const ctx = await start(fake);
+    await connected(plugin);
+    await waitFor(() => hasFormConsumer(fake.api.events) || undefined);
+    await fake.emit("session_shutdown", { reason: "new" }, ctx);
+    expect(hasFormConsumer(fake.api.events)).toBe(false);
   });
 
   it("reconnects after the plugin goes away and says hello again", async () => {
     const plugin = new FakePlugin();
     const url = await plugin.start();
     const fake = load(bbEnv(url));
+    let name = "before";
+    sessionView(fake, () => ({ ...session({ kind: "idle", since: 1 }), name }));
     await start(fake);
-    const first = await plugin.socket(0);
-    await plugin.messages(first, "hello");
-    first.drop();
-    const second = await plugin.socket(1);
-    const [hello] = await plugin.messages(second, "hello");
+    const first = await connected(plugin, 0);
+    expect(first.hello.snapshot.views[0].model.name).toBe("before");
+    name = "after";
+    announce(fake, SESSION_VIEW_ID);
+    await plugin.messages(first.socket, "update");
+    first.socket.drop();
+    const [hello] = await plugin.messages(await plugin.socket(1), "hello");
     expect(hello).toMatchObject({ threadId: "thr_test", snapshot: { id: "4242" } });
+    expect(hello!.snapshot.views[0].model.name).toBe("after");
   });
 
-  it("stops retrying when the plugin refuses the token", async () => {
+  it("stops retrying when the plugin refuses the token, and says why", async () => {
     const plugin = new FakePlugin();
     const url = await plugin.start();
     const fake = load(bbEnv(url));
@@ -198,13 +404,40 @@ describe("pi-bb", () => {
     );
   });
 
+  it("refuses a plugin of another protocol version with the reinstall advice", async () => {
+    const refusals: Array<(socket: FakeSocket) => void> = [
+      (socket) => socket.close(CLOSE_UNSUPPORTED),
+      // A plugin that welcomes another version cannot read this session's snapshots either.
+      (socket) => socket.welcome(2),
+    ];
+    for (const refuse of refusals) {
+      const plugin = new FakePlugin();
+      const url = await plugin.start();
+      const fake = load(bbEnv(url));
+      const ctx = await start(fake);
+      const socket = await plugin.socket();
+      await plugin.messages(socket, "hello");
+      refuse(socket);
+      await sleep(150);
+      expect(plugin.sockets).toHaveLength(1);
+      expect(hasFormConsumer(fake.api.events)).toBe(false);
+      await fake.command("bb").handler("", ctx);
+      expect(fake.pi.sendMessage).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          content: expect.stringMatching(/refused this session \(4400.*reinstalling the plugin/),
+        }),
+        { triggerTurn: false },
+      );
+      await fake.emit("session_shutdown", { reason: "quit" }, ctx);
+    }
+  });
+
   it("says goodbye on shutdown and frees the slot for the next session", async () => {
     const plugin = new FakePlugin();
     const url = await plugin.start();
     const fake = load(bbEnv(url));
     const ctx = await start(fake);
-    const socket = await plugin.socket();
-    await plugin.messages(socket, "hello");
+    const { socket } = await connected(plugin);
     await fake.emit("session_shutdown", { reason: "reload" }, ctx);
     const [bye] = await plugin.messages(socket, "bye");
     expect(bye).toEqual({ type: "bye", reason: "replace" });

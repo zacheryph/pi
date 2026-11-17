@@ -18,6 +18,7 @@ import {
   STASH_PREVIEW_ACTION,
   STASH_PREVIEW_REQUEST,
   STASH_SNAPSHOT_EVENT,
+  STASH_SUMMARY_VIEW,
   stashEntryJson,
   stashSnapshotEvent,
   type StashPreviewRequest,
@@ -50,6 +51,7 @@ import {
   type StashRecord,
 } from "#src/state";
 import { BlobStore, defaultStashRoot } from "#src/store";
+import { stashSummaryModel } from "#src/summary";
 import { showStashBrowser, stashExplorerView, stashInspectAction } from "#src/ui/browser";
 import { actionRegistry, isJsonObject, viewRegistry } from "#surface";
 import { bodyRow, sanitizeLine, sanitizeText } from "#ui";
@@ -300,6 +302,7 @@ export default function stashExtension(
   const publish = () => {
     pi.events.emit(STASH_SNAPSHOT_EVENT, stashSnapshotEvent(index, storeSize()));
     views.changed(STASH_EXPLORER_VIEW);
+    views.changed(STASH_SUMMARY_VIEW);
   };
   /** Shown above the `/stash` list when the shared store is over its cap or unreadable. */
   const storeWarning = (): string | undefined => {
@@ -792,6 +795,12 @@ export default function stashExtension(
       kind: "explorer",
       title: "Stash",
       model: () => stashExplorerView(currentEntries(index), storeWarning()),
+    });
+    views.define({
+      id: STASH_SUMMARY_VIEW,
+      kind: "summary",
+      title: "Stash",
+      model: () => stashSummaryModel(index, storeSize()),
     });
   };
 

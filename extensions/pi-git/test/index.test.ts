@@ -6,10 +6,19 @@ import type { GitConfig } from "#src/config";
 import {
   GIT_PRS_VIEW,
   GIT_SNAPSHOT_EVENT,
+  GIT_SUMMARY_VIEW,
   GIT_WORKTREES_VIEW,
   type GitSnapshotEvent,
 } from "#src/events";
-import { listViews, onViewChanged, readView, type ExplorerModel } from "#surface";
+import {
+  isViewModel,
+  listViews,
+  onViewChanged,
+  readView,
+  summaryCount,
+  type ExplorerModel,
+  type SummaryModel,
+} from "#surface";
 import { service } from "#session-tree";
 import piGit, { SERVICE_NAME } from "#src/index";
 import { GhUnavailable, type GhRunner } from "#src/status";
@@ -363,21 +372,38 @@ describe("ledger", () => {
 });
 
 describe("views", () => {
-  it("offers the worktree and pull request explorers while the session runs", async () => {
+  it("offers the worktree and pull request explorers and their totals while the session runs", async () => {
     const h = await start();
     const bus = h.pi.events;
     expect(listViews(bus)).toEqual([
       { id: GIT_PRS_VIEW, kind: "explorer", title: "Pull requests" },
+      { id: GIT_SUMMARY_VIEW, kind: "summary", title: "Git" },
       { id: GIT_WORKTREES_VIEW, kind: "explorer", title: "Git worktrees" },
     ]);
+    const summary = () => {
+      const model = readView(bus, GIT_SUMMARY_VIEW);
+      expect(isViewModel("summary", model)).toBe(true);
+      return model as SummaryModel;
+    };
+    // Nothing recorded yet: zeros, where a session without pi-git has no view.
+    expect(summaryCount(summary(), "worktrees")).toBe(0);
+    expect(summaryCount(summary(), "prs")).toBe(0);
     const changed: string[] = [];
     onViewChanged(bus, (id) => changed.push(id));
     await h.tool("git_worktree_create", { repo: "src/api", branch: "feat/x" });
-    expect(changed).toEqual(expect.arrayContaining([GIT_WORKTREES_VIEW, GIT_PRS_VIEW]));
+    expect(changed).toEqual(
+      expect.arrayContaining([GIT_WORKTREES_VIEW, GIT_PRS_VIEW, GIT_SUMMARY_VIEW]),
+    );
     const worktrees = readView(bus, GIT_WORKTREES_VIEW) as ExplorerModel;
     expect(worktrees.title).toBe("Git worktrees");
     expect(worktrees.items.map((item) => item.id)).toEqual([join(box.root, "api", "feat-x")]);
     expect((readView(bus, GIT_PRS_VIEW) as ExplorerModel).items).toEqual([]);
+    expect(summaryCount(summary(), "worktrees")).toBe(1);
+
+    // A restart restores the totals from the ledger.
+    const restarted = await start("parent", h.entries);
+    const restored = readView(restarted.pi.events, GIT_SUMMARY_VIEW) as SummaryModel;
+    expect(summaryCount(restored, "worktrees")).toBe(1);
 
     await h.fire("session_shutdown");
     expect(listViews(bus)).toEqual([]);

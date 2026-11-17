@@ -2,12 +2,11 @@
 // query hooks need the contract value, so this module stays free of server code.
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
-import type {
-  QuestionnaireAnswer,
-  SessionSnapshot,
-  SessionStatus,
-} from "../packages/pi-presentation/src/contract.ts";
+import type { DeliverySnapshot } from "pi-surface/delivery";
+import type { SessionStatusKind } from "pi-surface/session";
 
+// pi-surface's portable models, as types only: the wire carries them as JSON.
+export type { JsonObject, JsonValue } from "pi-surface/json";
 export type {
   ActionRef,
   Badge,
@@ -16,31 +15,34 @@ export type {
   DetailModel,
   ExplorerItem,
   ExplorerModel,
-  GitSection,
-  JsonObject,
-  JsonValue,
   Line,
-  Questionnaire,
-  QuestionnaireAnswer,
-  SessionSnapshot,
-  SessionStatus,
-  StashSection,
-  SubagentsSection,
-  SubagentState,
-  TodoSection,
-  TodoStatus,
   Span,
   StateIcon,
   Title,
   Tone,
-  ViewSummary,
   WidgetModel,
   WidgetRow,
-} from "../packages/pi-presentation/src/contract.ts";
+} from "pi-surface/model";
+export type {
+  SessionActivity,
+  SessionModel,
+  SessionStatus,
+  SessionStatusKind,
+  SessionUsage,
+} from "pi-surface/session";
+export type { SummaryCount, SummaryModel, SummaryProfile } from "pi-surface/summary";
+export type {
+  FormAnswer,
+  FormModel,
+  FormQuestion,
+  FormQuestionAnswer,
+  FormQuestionnaire,
+} from "pi-surface/form";
+export type { ActionRequest, ActionResult, DeliverySnapshot, ViewEntry } from "pi-surface/delivery";
 
 const threadId = z.string().min(1).max(128);
 
-/** One connected (or fixture) session in the sessions list. */
+/** One connected (or fixture, or saved) session in the sessions list, read from its views. */
 export interface SessionSummary {
   threadId: string;
   /**
@@ -52,19 +54,23 @@ export interface SessionSummary {
   /** False during the grace period after the session's socket closed. */
   connected: boolean;
   updatedAt: number;
-  cwd: string;
+  /** From the `system.session` view; absent when the session has none. */
+  cwd?: string;
   name?: string;
-  agent?: string;
   model?: string;
-  status: SessionStatus["kind"];
+  status?: SessionStatusKind;
+  /** The main agent's profile, from `subagent.summary`. */
+  profile?: string;
+  /** From `todo.summary`, while the plan has tasks. */
   todos?: { done: number; total: number; active?: string };
-  /** Subagents queued or running. */
+  /** Subagents queued or running, from `subagent.summary`. */
   runningAgents: number;
+  /** Open questionnaires in the session's form views. */
   questions: number;
 }
 
 export interface SnapshotResult {
-  snapshot: SessionSnapshot | null;
+  snapshot: DeliverySnapshot | null;
   source: "live" | "fixture" | "saved" | null;
   connected: boolean;
 }
@@ -75,20 +81,8 @@ const actionId = z
   .max(200)
   .regex(/^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)+$/);
 
-/** Requests the app may forward to a session; the same shapes pi-bb accepts. */
-export const requestSchema = z.discriminatedUnion("command", [
-  /** Run an action on the session's bus, e.g. an explorer's `loadDetail` with `{ id }`. */
-  z.object({ command: z.literal("action"), id: actionId, args: z.json().optional() }).strict(),
-  z
-    .object({
-      command: z.literal("answer"),
-      question: z.string().min(1).max(200),
-      answer: z.custom<QuestionnaireAnswer>(
-        (value) => typeof value === "object" && value !== null && !Array.isArray(value),
-      ),
-    })
-    .strict(),
-]);
+/** An action the app asks a session to run: pi-surface's `ActionRequest`, as pi-bb accepts it. */
+export const requestSchema = z.object({ action: actionId, args: z.json().optional() }).strict();
 export type SurfaceRequest = z.infer<typeof requestSchema>;
 
 export const rpcContract = defineRpcContract({
@@ -103,9 +97,10 @@ export const rpcContract = defineRpcContract({
     output: z.object({ sessions: z.array(z.custom<SessionSummary>()) }),
     tags: () => ["sessions"],
   },
+  /** Runs an action on the thread's session; resolves to its result, `null` for none. */
   request: {
     input: z.object({ threadId, request: requestSchema }).strict(),
-    output: z.object({ data: z.json() }),
+    output: z.object({ value: z.json() }),
   },
 });
 

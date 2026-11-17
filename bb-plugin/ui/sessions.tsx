@@ -65,13 +65,17 @@ export function useSessionsBadge(): ExperimentalBadge | null {
   return null;
 }
 
-const STATUS: Record<SessionSummary["status"], string> = {
+const STATUS: Record<NonNullable<SessionSummary["status"]>, string> = {
   idle: "Idle",
   working: "Working",
   tool: "Running a tool",
   compacting: "Compacting",
   waiting: "Waiting for you",
 };
+
+/** A session without its system view still lists; it only lacks a status. */
+const statusLabel = (session: SessionSummary) =>
+  session.status ? STATUS[session.status] : "Connected";
 
 export function SessionList({
   sessions,
@@ -109,7 +113,7 @@ export function SessionList({
               name={
                 session.questions
                   ? "MessageQuestion"
-                  : session.status === "idle"
+                  : session.status === "idle" || session.source === "saved"
                     ? "Circle"
                     : "Loading"
               }
@@ -119,11 +123,11 @@ export function SessionList({
             <span className="flex min-w-0 flex-1 flex-col gap-0.5">
               <span className="flex min-w-0 items-baseline gap-2">
                 <span className="truncate text-sm font-medium text-foreground">
-                  {session.name ?? session.cwd}
+                  {session.name ?? session.cwd ?? "Pi session"}
                 </span>
-                {session.agent ? (
+                {session.profile ? (
                   <span className="shrink-0 rounded bg-muted px-1.5 font-mono text-xs text-muted-foreground">
-                    {session.agent}
+                    {session.profile}
                   </span>
                 ) : null}
                 {session.source === "fixture" ? (
@@ -134,7 +138,7 @@ export function SessionList({
                 {session.source === "saved"
                   ? "Not running"
                   : session.connected
-                    ? STATUS[session.status]
+                    ? statusLabel(session)
                     : "Reconnecting"}
                 {session.todos ? ` · ${session.todos.done}/${session.todos.total} tasks` : ""}
                 {session.runningAgents ? ` · ${session.runningAgents} agents running` : ""}

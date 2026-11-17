@@ -37,11 +37,13 @@ import { gitSettings, type GitConfig } from "#src/config";
 import {
   GIT_PRS_VIEW,
   GIT_SNAPSHOT_EVENT,
+  GIT_SUMMARY_VIEW,
   GIT_WORKTREES_VIEW,
   snapshotEvent,
   type GitSnapshotEvent,
 } from "#src/events";
 import { readLedger, type Ledger } from "#src/fold";
+import { gitSummaryModel } from "#src/summary";
 import { git, realPath, resolveCommit, type BaseRef, type WorktreeStatus } from "#src/git";
 import { isWorktreeRecord, LEDGER_TYPE, type WorktreeRecord } from "#src/ledger";
 import {
@@ -245,11 +247,18 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
       title: "Pull requests",
       model: () => prExplorerView(snapshot().prs, now()),
     });
+    views.define({
+      id: GIT_SUMMARY_VIEW,
+      kind: "summary",
+      title: "Git",
+      model: () => gitSummaryModel(snapshot()),
+    });
   };
   const publish = () => {
     pi.events.emit(GIT_SNAPSHOT_EVENT, snapshot());
     views.changed(GIT_WORKTREES_VIEW);
     views.changed(GIT_PRS_VIEW);
+    views.changed(GIT_SUMMARY_VIEW);
   };
 
   /** Hand a record to this session's parent, which adopts it and passes it on up. */

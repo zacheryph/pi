@@ -5,7 +5,7 @@ import {
   type BbPluginApi,
   type JsonValue,
 } from "@get-bb/plugin-sdk";
-import { rpcContract } from "./contract.ts";
+import { rpcContract, type ActionRequest } from "./contract.ts";
 import { fixtureResponder, fixtureSnapshot } from "./fixture.ts";
 import { ENV_TOKEN, ENV_URL, SESSION_PATH } from "./protocol.ts";
 import { QUESTIONNAIRE_RENDERER, QuestionBridge } from "./questions.ts";
@@ -16,6 +16,8 @@ import { newSecret, threadToken, verifyThreadToken } from "./token.ts";
 export { rpcContract };
 
 const SECRET_KEY = "session-secret";
+/** How long a raised form waits for the user: bb's longest. */
+const FORM_TIMEOUT_MS = 7 * 24 * 60 * 60 * 1000;
 
 const USAGE = [
   "Usage:",
@@ -52,21 +54,25 @@ export function createPlugin(options: PluginOptions = {}) {
       })());
 
     const questions = new QuestionBridge({
+      live: (threadId) => store.live(threadId),
       ask: async (threadId, questionnaire, signal) =>
         bb.ui.requestInput(
           {
             threadId,
             rendererId: QUESTIONNAIRE_RENDERER,
-            title: questionnaire.questions.length > 1 ? "Pi's questions" : "Pi's question",
+            title:
+              questionnaire.title ||
+              (questionnaire.questions.length > 1 ? "Pi's questions" : "Pi's question"),
             payload: questionnaire as unknown as JsonValue,
+            // Pi waits for an answer as long as it runs; this is bb's longest.
+            timeoutMs: FORM_TIMEOUT_MS,
             presentation: {
               label: { pending: "Waiting for your answer", completed: "Answered" },
             },
           },
           { signal },
         ),
-      answer: (threadId, question, answer) =>
-        store.request(threadId, { command: "answer", question, answer }),
+      run: (threadId, connection, request) => store.request(threadId, request, { connection }),
       onError: (message) => bb.log.warn(`questionnaire: ${message}`),
     });
 
@@ -76,8 +82,9 @@ export function createPlugin(options: PluginOptions = {}) {
       verify: async (threadId, token) => verifyThreadToken(await signingSecret(), threadId, token),
       onChange: (threadId) => {
         bb.rpc.experimental_invalidate([`thread:${threadId}`, "sessions"]);
-        // Fixtures never raise forms: they would write into a real thread's timeline.
-        questions.sync(threadId, store.live(threadId));
+        // Only a live session's forms are raised: a fixture's or a saved one's would write
+        // into the thread's timeline with nobody to answer them.
+        questions.sync(threadId);
       },
       ...options,
     });
@@ -114,8 +121,9 @@ export function createPlugin(options: PluginOptions = {}) {
       sessions: () => ({ sessions: store.summaries() }),
       request: async ({ threadId, request }) => {
         try {
-          const data = (await store.request(threadId, request)) ?? null;
-          return { data: data as JsonValue };
+          // zod's JSON type is mutable; the arguments are JSON either way.
+          const value = (await store.request(threadId, request as ActionRequest)) ?? null;
+          return { value: value as JsonValue };
         } catch (error) {
           return refusal(error);
         }
@@ -181,7 +189,7 @@ export function createPlugin(options: PluginOptions = {}) {
               stdout: sessions
                 .map(
                   (session) =>
-                    `${session.threadId}  ${session.source}${session.source === "live" && !session.connected ? " (reconnecting)" : ""}  ${session.status}  ${session.name ?? session.cwd}`,
+                    `${session.threadId}  ${session.source}${session.source === "live" && !session.connected ? " (reconnecting)" : ""}  ${session.status ?? "unknown"}  ${session.name ?? session.cwd ?? "(no session view)"}`,
                 )
                 .join("\n"),
             };

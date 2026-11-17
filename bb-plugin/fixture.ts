@@ -1,21 +1,28 @@
 // A canned, realistic session for `bb pi-surface fixture`, so every slot can be
-// seen without a model run. Names and paths are invented.
+// seen without a model run. It is one pi-surface delivery snapshot: the views
+// the bundle's extensions publish, shaped as they shape them, with the same
+// `live` marks. Names and paths are invented.
 import type {
+  ActionRequest,
   Block,
+  DeliverySnapshot,
   ExplorerModel,
+  FormModel,
   JsonValue,
   Line,
-  SessionSnapshot,
+  SessionModel,
   StateIcon,
-  SurfaceRequest,
-  SubagentState,
-  TodoStatus,
+  SummaryModel,
   Tone,
-  ViewSummary,
+  ViewEntry,
   WidgetModel,
+  WidgetRow,
 } from "./contract.ts";
 
 const MINUTE = 60_000;
+
+type TodoStatus = "pending" | "in_progress" | "completed";
+type AgentState = "queued" | "running" | "waiting" | "completed" | "failed" | "stopped";
 
 const stashHandle = (name: string) => `stash:${name}@3f9c2a81d0e4`;
 
@@ -25,7 +32,6 @@ interface FixtureTask {
   status: TodoStatus;
   blocked?: boolean;
   description?: string;
-  message?: string;
   dependsOn?: string[];
   /** The subagent holding the task, as pi-todo labels it. */
   assignee?: string;
@@ -37,7 +43,6 @@ const TASKS: FixtureTask[] = [
     key: "schema",
     subject: "Add the delivery_attempts table",
     status: "completed",
-    message: "Migration 0042 adds attempts with a (webhook_id, attempt) key.",
     history: [
       { status: "in_progress", from: "pending", minutesAgo: 52 },
       {
@@ -52,7 +57,6 @@ const TASKS: FixtureTask[] = [
     key: "backoff",
     subject: "Exponential backoff with jitter",
     status: "completed",
-    message: "Base 2 s, cap 10 min, full jitter.",
     history: [
       { status: "in_progress", from: "pending", minutesAgo: 40 },
       {
@@ -78,7 +82,6 @@ const TASKS: FixtureTask[] = [
     subject: "Move retries into the queue worker",
     status: "in_progress",
     description: "Replace the inline retry loop in deliver() with jobs on the retry queue.",
-    message: "Worker picks up due attempts; wiring the ack path now.",
     history: [
       { status: "in_progress", from: "pending", minutesAgo: 18 },
       {
@@ -156,204 +159,103 @@ const STASH = [
   },
 ];
 
-/** A full session snapshot with every section and view filled, timed relative to `now`. */
-export function fixtureSnapshot(now = Date.now()): SessionSnapshot {
-  const sections = fixtureSections(now);
-  return { ...sections, views: fixtureViews(sections, now) };
+interface FixtureAgent {
+  id: string;
+  type: string;
+  description: string;
+  state: AgentState;
+  minutesAgo: number;
+  durationMs?: number;
+  toolUses: number;
+  tokens: number;
+  note: string;
 }
 
-function fixtureSections(now: number): SessionSnapshot {
-  const ago = (minutes: number) => now - minutes * MINUTE;
-  return {
-    id: "fixture",
-    pid: 0,
-    sessionId: "fixture-session",
-    cwd: "/work/webhooks",
-    name: "Webhook retry queue",
-    agent: "orchestrate",
-    model: { provider: "anthropic", id: "claude-opus", name: "Claude Opus" },
-    thinking: "high",
-    status: { kind: "tool", tool: "bash", since: ago(1) },
-    context: { tokens: 84_000, window: 200_000, percent: 42 },
-    startedAt: ago(55),
-    piVersion: "1.5.2",
-    todos: {
-      revision: 14,
-      total: TASKS.length,
-      tasks: TASKS.map((task) => ({
-        key: task.key,
-        subject: task.subject,
-        status: task.status,
-        blocked: task.blocked ?? false,
-        unreviewed: task.status === "completed" ? 1 : 0,
-        ...(task.description ? { description: task.description } : {}),
-        ...(task.dependsOn ? { dependsOn: task.dependsOn } : {}),
-        ...(task.message
-          ? { message: { text: task.message, at: ago(task.history.at(-1)?.minutesAgo ?? 0) } }
-          : {}),
-        ...(task.history.length ? { updatedAt: ago(task.history.at(-1)!.minutesAgo) } : {}),
-      })),
-    },
-    stash: {
-      total: STASH.length,
-      entries: STASH.toSorted((a, b) => a.minutesAgo - b.minutesAgo).map((entry) => ({
-        name: entry.name,
-        handle: stashHandle(entry.name),
-        bytes: entry.bytes,
-        lines: entry.lines,
-        mime: "text/plain",
-        description: entry.description,
-        source: entry.source,
-        createdAt: ago(entry.minutesAgo),
-        createdBy: "fixture-session",
-        versions: 1,
-      })),
-      store: { bytes: 25_946, maxBytes: 50 * 1024 * 1024 },
-    },
-    git: {
-      worktrees: [
-        {
-          path: "/work/.worktrees/webhooks/retry-worker",
-          repo: "webhooks",
-          branch: "feat/retry-worker",
-          state: "active",
-          agents: 2,
-          dirty: true,
-          unpushed: 3,
-        },
-        {
-          path: "/work/.worktrees/webhooks/attempts-schema",
-          repo: "webhooks",
-          branch: "feat/attempts-schema",
-          state: "active",
-          agents: 1,
-          mergedInto: "main",
-        },
-      ],
-      worktreeTotal: 2,
-      removed: 1,
-      other: 0,
-      prs: [
-        {
-          label: "acme/webhooks#212",
-          url: "https://github.com/acme/webhooks/pull/212",
-          title: "Retry webhooks from the queue worker",
-          origin: "created",
-          state: "open",
-          draft: true,
-          checks: { passed: 9, failed: 1, pending: 2 },
-          mergeable: true,
-          observedAt: ago(2),
-          watching: "settled",
-        },
-        {
-          label: "acme/webhooks#209",
-          url: "https://github.com/acme/webhooks/pull/209",
-          title: "Add delivery_attempts table",
-          origin: "created",
-          state: "merged",
-          review: "approved",
-          checks: { passed: 12, failed: 0, pending: 0 },
-          observedAt: ago(30),
-        },
-        {
-          label: "acme/platform#88",
-          url: "https://github.com/acme/platform/pull/88",
-          title: "Queue worker: graceful shutdown",
-          origin: "referenced",
-          state: "open",
-          review: "review_required",
-          checks: { passed: 7, failed: 0, pending: 0 },
-          observedAt: ago(44),
-        },
-      ],
-      prTotal: 3,
-      openCreated: 1,
-      failingCreated: 1,
-    },
-    usage: { input: 412_000, output: 38_500, cacheRead: 1_920_000, cacheWrite: 96_000, cost: 4.87 },
-    subagents: {
-      agents: [
-        {
-          id: "a1",
-          type: "reviewer",
-          description: "Review the attempts schema",
-          state: "completed",
-          since: ago(46),
-          durationMs: 6 * MINUTE + 12_000,
-          toolUses: 14,
-          tokens: 48_200,
-          note: "Two findings, stashed as review-notes.",
-        },
-        {
-          id: "a2",
-          type: "explore",
-          description: "Map every webhook delivery path",
-          state: "running",
-          since: ago(9),
-          toolUses: 23,
-          tokens: 61_000,
-          note: "Reading src/admin/replay.ts",
-        },
-        {
-          id: "a3f2b1c4",
-          type: "general-purpose",
-          description: "Write retry backoff tests",
-          state: "running",
-          since: ago(3),
-          toolUses: 6,
-          tokens: 12_400,
-          note: "Running npm test -- deliver",
-        },
-      ],
-    },
-    activity: [
-      { tool: "bash", summary: "npm test -- test/deliver.test.ts", at: ago(1), running: true },
-      { tool: "edit", summary: "src/webhooks/worker.ts", at: ago(2), durationMs: 140 },
-      { tool: "read", summary: "src/webhooks/deliver.ts", at: ago(3), durationMs: 35 },
-      { tool: "bash", summary: "git diff --stat", at: ago(5), durationMs: 410 },
-      { tool: "stash_put", at: ago(6), durationMs: 22 },
-      { tool: "bash", summary: "npm test", at: ago(12), durationMs: 41_000, error: true },
-    ],
-    questions: [
-      {
-        id: "fixture-ask-1",
-        since: ago(1),
-        questions: [
-          {
-            header: "Attempts",
-            question: "How many delivery attempts before a webhook is dead-lettered?",
-            multiSelect: false,
-            options: [
-              { label: "5", description: "Gives up within about 1 minute" },
-              { label: "8", description: "Gives up within about 17 minutes (current plan)" },
-              { label: "12", description: "Keeps trying for about 4 hours" },
-            ],
-          },
-          {
-            header: "Signals",
-            question: "Which failures should be retried?",
-            multiSelect: true,
-            options: [
-              { label: "5xx responses", description: "Server errors from the endpoint" },
-              { label: "Timeouts", description: "No response within 10 seconds" },
-              { label: "429 Too Many Requests", description: "Honor Retry-After when present" },
-            ],
-          },
-        ],
-      },
-    ],
-  };
-}
+const AGENTS: FixtureAgent[] = [
+  {
+    id: "a1",
+    type: "reviewer",
+    description: "Review the attempts schema",
+    state: "completed",
+    minutesAgo: 46,
+    durationMs: 6 * MINUTE + 12_000,
+    toolUses: 14,
+    tokens: 48_200,
+    note: "Two findings, stashed as review-notes.",
+  },
+  {
+    id: "a2",
+    type: "explore",
+    description: "Map every webhook delivery path",
+    state: "running",
+    minutesAgo: 9,
+    toolUses: 23,
+    tokens: 61_000,
+    note: "Reading src/admin/replay.ts",
+  },
+  {
+    id: "a3f2b1c4",
+    type: "general-purpose",
+    description: "Write retry backoff tests",
+    state: "running",
+    minutesAgo: 3,
+    toolUses: 6,
+    tokens: 12_400,
+    note: "Running npm test -- deliver",
+  },
+];
+
+const WORKTREES = [
+  {
+    path: "/work/.worktrees/webhooks/retry-worker",
+    repo: "webhooks",
+    branch: "feat/retry-worker",
+    status: "uncommitted changes; 3 unpushed commits",
+    tone: "warning" as Tone,
+    agents: ["a2", "a3f2b1c4"],
+  },
+  {
+    path: "/work/.worktrees/webhooks/attempts-schema",
+    repo: "webhooks",
+    branch: "feat/attempts-schema",
+    status: "clean; merged into main",
+    tone: "success" as Tone,
+    agents: ["a1"],
+  },
+];
+
+const PRS = [
+  {
+    label: "acme/webhooks#212",
+    url: "https://github.com/acme/webhooks/pull/212",
+    title: "Retry webhooks from the queue worker",
+    origin: "created",
+    status: "draft · checks 1 failed, 2 pending, 9 passed",
+    tone: "error" as Tone,
+  },
+  {
+    label: "acme/webhooks#209",
+    url: "https://github.com/acme/webhooks/pull/209",
+    title: "Add delivery_attempts table",
+    origin: "created",
+    status: "merged · approved · checks 12 passed",
+    tone: "success" as Tone,
+  },
+  {
+    label: "acme/platform#88",
+    url: "https://github.com/acme/platform/pull/88",
+    title: "Queue worker: graceful shutdown",
+    origin: "referenced",
+    status: "open · review required · checks 7 passed",
+    tone: "default" as Tone,
+  },
+];
 
 /** `mm:ss`, as pi-subagent's clock reads. */
 function clockText(ms: number): string {
   const seconds = Math.max(0, Math.floor(ms / 1000));
   return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 }
-
-// ── Views ──────────────────────────────────────────────────────────────────
-// What the bundle's extensions offer for the data above, shaped as they shape it.
 
 const TASK_STATUS: Record<
   TodoStatus,
@@ -370,7 +272,7 @@ function taskStatus(task: FixtureTask) {
     : TASK_STATUS[task.status];
 }
 
-const AGENT_STATE: Record<SubagentState, { label: string; tone: Tone }> = {
+const AGENT_STATE: Record<AgentState, { label: string; tone: Tone }> = {
   queued: { label: "queued", tone: "dim" },
   running: { label: "running", tone: "accent" },
   waiting: { label: "waiting", tone: "muted" },
@@ -378,6 +280,7 @@ const AGENT_STATE: Record<SubagentState, { label: string; tone: Tone }> = {
   failed: { label: "error", tone: "error" },
   stopped: { label: "stopped", tone: "dim" },
 };
+const LIVE_STATES: ReadonlySet<AgentState> = new Set(["queued", "running", "waiting"]);
 
 /** `2 active / 3 pending`, as pi-ui's `stateCounts` reads, leaving out zeros. */
 function stateCounts(active: number, pending: number): Line[] {
@@ -388,12 +291,53 @@ function stateCounts(active: number, pending: number): Line[] {
   return parts.length ? [{ text: parts.join(" / "), tone: "muted" }] : [];
 }
 
-function fixtureViews(snapshot: SessionSnapshot, now: number): ViewSummary[] {
-  const count = (status: TodoStatus) => TASKS.filter((task) => task.status === status).length;
-  const todoWidget: WidgetModel = {
+const ago = (now: number, minutes: number) => now - minutes * MINUTE;
+
+function sessionView(now: number): SessionModel {
+  return {
+    sessionId: "fixture-session",
+    cwd: "/work/webhooks",
+    name: "Webhook retry queue",
+    model: { provider: "anthropic", id: "claude-opus", name: "Claude Opus" },
+    thinking: "high",
+    context: { tokens: 84_000, window: 200_000, percent: 42 },
+    status: { kind: "tool", tool: "bash", since: ago(now, 1) },
+    activity: [
+      { tool: "bash", summary: "npm test -- test/deliver.test.ts", at: ago(now, 1), live: true },
+      { tool: "edit", summary: "src/webhooks/worker.ts", at: ago(now, 2), durationMs: 140 },
+      { tool: "read", summary: "src/webhooks/deliver.ts", at: ago(now, 3), durationMs: 35 },
+      { tool: "bash", summary: "git diff --stat", at: ago(now, 5), durationMs: 410 },
+      { tool: "stash_put", at: ago(now, 6), durationMs: 22 },
+      { tool: "bash", summary: "npm test", at: ago(now, 12), durationMs: 41_000, error: true },
+    ],
+    usage: { input: 412_000, output: 38_500, cacheRead: 1_920_000, cacheWrite: 96_000, cost: 4.87 },
+    startedAt: ago(now, 55),
+    piVersion: "1.5.2",
+  };
+}
+
+function todoViews(): ViewEntry[] {
+  const by = (status: TodoStatus) => TASKS.filter((task) => task.status === status).length;
+  const blocked = TASKS.filter((task) => task.blocked).length;
+  const unreviewed = TASKS.filter((task) => task.status === "completed");
+  const active = TASKS.find((task) => task.status === "in_progress");
+  const summary: SummaryModel = {
+    counts: [
+      { key: "total", label: "tasks", value: TASKS.length },
+      { key: "completed", label: "completed", value: by("completed"), tone: "success" },
+      { key: "in-progress", label: "in progress", value: by("in_progress"), tone: "accent" },
+      { key: "pending", label: "pending", value: by("pending") - blocked },
+      { key: "blocked", label: "blocked", value: blocked, tone: "warning" },
+      { key: "unreviewed", label: "unreviewed", value: unreviewed.length, tone: "accent" },
+      { key: "unreviewed-messages", label: "new messages", value: unreviewed.length },
+      { key: "archived", label: "archived", value: 0, tone: "muted" },
+    ],
+    ...(active ? { active: { id: active.key, label: active.subject } } : {}),
+  };
+  const widget: WidgetModel = {
     title: { label: "Todos" },
     active: true,
-    meta: stateCounts(count("in_progress"), count("pending")),
+    meta: stateCounts(by("in_progress"), by("pending")),
     // Finished tasks with unreviewed messages stay in the widget, as in pi-todo's.
     rows: TASKS.map((task) => {
       const status = taskStatus(task);
@@ -423,8 +367,7 @@ function fixtureViews(snapshot: SessionSnapshot, now: number): ViewSummary[] {
     }),
     emptyText: "No unfinished tasks",
   };
-  const unreviewed = TASKS.filter((task) => task.status === "completed");
-  const todoExplorer: ExplorerModel = {
+  const explorer: ExplorerModel = {
     title: "Todos",
     noun: ["task", "tasks"],
     notices: [{ text: "Read-only task snapshot · last reviewed 50m ago", tone: "muted" }],
@@ -448,30 +391,73 @@ function fixtureViews(snapshot: SessionSnapshot, now: number): ViewSummary[] {
     },
     loadDetail: { action: "todo.inspect" },
   };
-  const agents = snapshot.subagents?.agents ?? [];
-  const running = agents.filter((agent) => agent.state === "running");
-  const queued = agents.filter((agent) => agent.state === "queued");
-  const subagentWidget: WidgetModel = {
+  return [
+    { id: "todo.explorer", kind: "explorer", title: "Todos", model: explorer },
+    { id: "todo.summary", kind: "summary", title: "Tasks", model: summary },
+    { id: "todo.widget", kind: "widget", title: "Tasks", model: widget },
+  ];
+}
+
+const STOPPED: Line = [
+  { text: "■", tone: "dim", icon: "stopped" },
+  { text: " stopped", tone: "dim" },
+];
+
+function subagentViews(now: number): ViewEntry[] {
+  const count = (state: AgentState) => AGENTS.filter((agent) => agent.state === state).length;
+  const running = AGENTS.filter((agent) => agent.state === "running");
+  const summary: SummaryModel = {
+    counts: [
+      { key: "running", label: "running", value: count("running"), tone: "accent", live: true },
+      { key: "queued", label: "queued", value: count("queued"), tone: "dim", live: true },
+      { key: "waiting", label: "waiting", value: count("waiting"), tone: "muted", live: true },
+      { key: "completed", label: "done", value: count("completed"), tone: "success" },
+      { key: "failed", label: "failed", value: count("failed"), tone: "error" },
+      { key: "stopped", label: "stopped", value: count("stopped"), tone: "dim" },
+      { key: "total", label: "subagents", value: AGENTS.length },
+    ],
+    ...(running[0]
+      ? {
+          active: {
+            id: running[0].id,
+            label: `${running[0].type}: ${running[0].description}`,
+            live: true as const,
+          },
+        }
+      : {}),
+    profile: {
+      name: "orchestrate",
+      description: "Plans the work and hands it to subagents",
+    },
+  };
+  const widget: WidgetModel = {
     title: { label: "Subagents" },
     active: running.length > 0,
-    meta: stateCounts(running.length, queued.length),
-    rows: running.map((agent) => ({
+    meta: stateCounts(running.length, count("queued")),
+    ...(running.length ? { live: { active: false, meta: [] } } : {}),
+    rows: running.map((agent): WidgetRow => ({
       // As pi-subagent builds it: the clock leads, and while it runs it carries its start.
-      lead: { text: clockText(now - agent.since), tone: "dim", since: agent.since },
+      lead: {
+        text: clockText(agent.minutesAgo * MINUTE),
+        tone: "dim",
+        since: ago(now, agent.minutesAgo),
+        live: true,
+      },
       left: [{ text: agent.type, bold: true }, ": ", { text: agent.description, tone: "muted" }],
       right: [
         [
-          { text: "●", tone: "accent", icon: "active" },
-          { text: ` ${agent.note ?? "thinking…"}`, tone: "muted" },
+          { text: "●", tone: "accent", icon: "active", live: true },
+          { text: ` ${agent.note}`, tone: "muted" },
         ],
       ],
       group: "running",
+      live: { right: [STOPPED], group: "stopped" },
     })),
   };
-  const subagentExplorer: ExplorerModel = {
+  const explorer: ExplorerModel = {
     title: "Subagents",
     noun: ["subagent", "subagents"],
-    items: agents.map((agent) => {
+    items: AGENTS.map((agent) => {
       const state = AGENT_STATE[agent.state];
       return {
         id: agent.id,
@@ -479,131 +465,217 @@ function fixtureViews(snapshot: SessionSnapshot, now: number): ViewSummary[] {
           { text: agent.type, tone: "accent" },
           { text: ` — ${agent.description}`, tone: "muted" },
         ],
-        badge: { text: state.label, tone: state.tone },
+        badge: {
+          text: state.label,
+          tone: state.tone,
+          ...(LIVE_STATES.has(agent.state)
+            ? { live: { text: "stopped", tone: "dim" as const } }
+            : {}),
+        },
         detail: [
           {
             fields: [
               ["Agent", agent.type],
               ["Id", agent.id],
               ["State", { text: state.label, tone: state.tone }],
-              ["Tool uses", String(agent.toolUses ?? 0)],
-              ...(agent.tokens ? ([["Tokens", String(agent.tokens)]] as const) : []),
+              ["Tool uses", String(agent.toolUses)],
+              ["Tokens", String(agent.tokens)],
             ],
           },
-          ...(agent.note
-            ? [
-                { heading: agent.state === "running" ? "Latest update" : "Note" },
-                { text: agent.note },
-              ]
-            : []),
+          { heading: agent.state === "running" ? "Latest update" : "Note" },
+          { text: agent.note },
         ],
       };
     }),
     tabs: [
-      { label: "All", ids: agents.map((agent) => agent.id) },
+      { label: "All", ids: AGENTS.map((agent) => agent.id) },
       { label: "Active", ids: running.map((agent) => agent.id) },
     ],
   };
-  const stashExplorer: ExplorerModel = {
+  return [
+    { id: "subagent.explorer", kind: "explorer", title: "Subagents", model: explorer },
+    { id: "subagent.summary", kind: "summary", title: "Subagents", model: summary },
+    { id: "subagent.widget", kind: "widget", title: "Subagents", model: widget },
+  ];
+}
+
+function stashViews(now: number): ViewEntry[] {
+  const entries = STASH.toSorted((a, b) => a.minutesAgo - b.minutesAgo);
+  const bytes = entries.reduce((sum, entry) => sum + entry.bytes, 0);
+  const summary: SummaryModel = {
+    counts: [
+      { key: "entries", label: "entries", value: entries.length },
+      { key: "versions", label: "versions", value: entries.length, tone: "muted" },
+      { key: "bytes", label: "bytes on this branch", value: bytes, tone: "muted" },
+      { key: "store-bytes", label: "bytes in the store", value: 25_946 },
+      {
+        key: "store-max-bytes",
+        label: "store cap in bytes",
+        value: 50 * 1024 * 1024,
+        tone: "muted",
+      },
+    ],
+  };
+  // As pi-stash builds it: each item's id is the entry's handle.
+  const explorer: ExplorerModel = {
     title: "Stash",
     noun: ["entry", "entries"],
     notices: [{ text: "25.3 KB stored on this branch", tone: "muted" }],
-    items: (snapshot.stash?.entries ?? []).map((entry) => ({
-      id: entry.handle,
+    emptyText: "No stash entries on this branch.",
+    items: entries.map((entry) => ({
+      id: stashHandle(entry.name),
       label: [
-        { text: entry.handle, tone: "accent" },
-        ...(entry.description ? [{ text: ` — ${entry.description}`, tone: "muted" as const }] : []),
+        { text: stashHandle(entry.name), tone: "accent" },
+        { text: ` — ${entry.description}`, tone: "muted" },
       ],
-      badge: { text: `${entry.lines} lines · ${Math.round((now - entry.createdAt) / MINUTE)}m` },
+      search: entry.name,
+      badge: {
+        text: `${(entry.bytes / 1024).toFixed(1)} KB · ${entry.lines} lines · ${Math.round((now - ago(now, entry.minutesAgo)) / MINUTE)}m`,
+      },
     })),
     loadDetail: { action: "stash.inspect" },
   };
-  const git = snapshot.git;
+  return [
+    { id: "stash.explorer", kind: "explorer", title: "Stash", model: explorer },
+    { id: "stash.summary", kind: "summary", title: "Stash", model: summary },
+  ];
+}
+
+function gitViews(): ViewEntry[] {
+  const summary: SummaryModel = {
+    counts: [
+      { key: "worktrees", label: "worktrees", value: WORKTREES.length },
+      { key: "missing", label: "missing", value: 0, tone: "warning" },
+      { key: "uncommitted", label: "uncommitted", value: 1, tone: "warning" },
+      { key: "removed", label: "removed", value: 1, tone: "dim" },
+      { key: "other-worktrees", label: "other worktrees", value: 0, tone: "dim" },
+      { key: "prs", label: "pull requests", value: PRS.length },
+      { key: "prs-created", label: "opened here", value: 2 },
+      { key: "prs-open", label: "open", value: 1, tone: "accent" },
+      { key: "prs-failing", label: "failing", value: 1, tone: "error" },
+      { key: "prs-watching", label: "watching", value: 0, live: true },
+    ],
+  };
   const worktrees: ExplorerModel = {
     title: "Git worktrees",
     noun: ["worktree", "worktrees"],
-    items: (git?.worktrees ?? []).map((worktree) => {
-      const state = worktree.mergedInto
-        ? `merged into ${worktree.mergedInto}`
-        : [
-            worktree.dirty ? "uncommitted changes" : "",
-            worktree.unpushed ? `${worktree.unpushed} unpushed` : "",
-          ]
-            .filter(Boolean)
-            .join("; ") || "clean";
-      const tone: Tone = worktree.dirty || worktree.unpushed ? "warning" : "success";
-      return {
-        id: worktree.path,
-        label: [
-          { text: `${worktree.repo} @ ${worktree.branch}`, tone: "accent" },
-          { text: ` — ${worktree.path}`, tone: "muted" },
-        ],
-        badge: { text: state, tone },
-        detail: [
-          {
-            fields: [
-              ["Path", worktree.path],
-              ["Branch", worktree.branch],
-              ["State", { text: state, tone }],
-            ],
-          },
-        ],
-      };
-    }),
+    items: WORKTREES.map((worktree) => ({
+      id: worktree.path,
+      label: [
+        { text: `${worktree.repo} @ ${worktree.branch}`, tone: "accent" },
+        { text: ` — ${worktree.path}`, tone: "muted" },
+      ],
+      search: `${worktree.path} ${worktree.agents.join(" ")}`,
+      badge: { text: worktree.status, tone: worktree.tone },
+      detail: [
+        {
+          fields: [
+            ["Path", worktree.path],
+            ["Repository", `/work/${worktree.repo}`],
+            ["Branch", worktree.branch],
+            ["State", { text: worktree.status, tone: worktree.tone }],
+          ],
+        },
+        { heading: "Agents" },
+        { bullets: worktree.agents },
+      ],
+    })),
+    tabs: [
+      {
+        label: "This session",
+        ids: WORKTREES.map((worktree) => worktree.path),
+        emptyText: "No worktrees in this session.",
+      },
+      { label: "Removed", ids: [], emptyText: "Nothing removed in this session." },
+      { label: "Other", ids: [], emptyText: "No other worktrees under the worktree root." },
+    ],
   };
   const prs: ExplorerModel = {
     title: "Pull requests",
     noun: ["pull request", "pull requests"],
-    items: (git?.prs ?? []).map((pr) => {
-      const failing = (pr.checks?.failed ?? 0) > 0;
-      const status = [
-        pr.draft ? "draft" : pr.state,
-        ...(pr.checks
-          ? [`checks ${pr.checks.passed}✓ ${pr.checks.failed}✗ · ${pr.checks.pending} pending`]
-          : []),
-      ]
-        .filter(Boolean)
-        .join(" · ");
-      const tone: Tone = pr.state === "merged" ? "success" : failing ? "error" : "default";
-      return {
-        id: pr.url,
-        label: [
-          { text: pr.label, tone: "accent" },
-          ...(pr.title ? [{ text: ` — ${pr.title}`, tone: "muted" as const }] : []),
-        ],
-        badge: { text: status, tone },
-        detail: [
-          {
-            fields: [
-              ["URL", pr.url],
-              ...(pr.title ? ([["Title", pr.title]] as const) : []),
-              ["Status", { text: status, tone }],
-              ["Origin", pr.origin === "created" ? "opened in this session" : "referenced"],
-            ],
-          },
-        ],
-      };
-    }),
+    items: PRS.map((pr) => ({
+      id: `github.com/${pr.label}`,
+      label: [
+        { text: pr.label, tone: "accent" },
+        { text: ` — ${pr.title}`, tone: "muted" },
+      ],
+      search: pr.url,
+      badge: { text: pr.status, tone: pr.tone },
+      detail: [
+        {
+          fields: [
+            ["URL", pr.url],
+            ["Title", pr.title],
+            ["Status", { text: pr.status, tone: pr.tone }],
+            ["Origin", pr.origin === "created" ? "opened in this session" : "referenced"],
+          ],
+        },
+      ],
+    })),
     tabs: [
       {
         label: "Opened here",
-        ids: (git?.prs ?? []).filter((pr) => pr.origin === "created").map((pr) => pr.url),
+        ids: PRS.filter((pr) => pr.origin === "created").map((pr) => `github.com/${pr.label}`),
       },
       {
         label: "Referenced",
-        ids: (git?.prs ?? []).filter((pr) => pr.origin === "referenced").map((pr) => pr.url),
+        ids: PRS.filter((pr) => pr.origin === "referenced").map((pr) => `github.com/${pr.label}`),
       },
     ],
   };
   return [
     { id: "git.prs", kind: "explorer", title: "Pull requests", model: prs },
+    { id: "git.summary", kind: "summary", title: "Git", model: summary },
     { id: "git.worktrees", kind: "explorer", title: "Git worktrees", model: worktrees },
-    { id: "stash.explorer", kind: "explorer", title: "Stash", model: stashExplorer },
-    { id: "subagent.explorer", kind: "explorer", title: "Subagents", model: subagentExplorer },
-    { id: "subagent.widget", kind: "widget", title: "Subagents", model: subagentWidget },
-    { id: "todo.explorer", kind: "explorer", title: "Todos", model: todoExplorer },
-    { id: "todo.widget", kind: "widget", title: "Tasks", model: todoWidget },
   ];
+}
+
+function formView(now: number): FormModel {
+  return {
+    questionnaires: [
+      {
+        id: "fixture-ask-1",
+        title: "Retry policy",
+        openedAt: ago(now, 1),
+        questions: [
+          {
+            header: "Attempts",
+            question: "How many delivery attempts before a webhook is dead-lettered?",
+            options: [
+              { label: "5", description: "Gives up within about 1 minute" },
+              { label: "8", description: "Gives up within about 17 minutes (current plan)" },
+              { label: "12", description: "Keeps trying for about 4 hours" },
+            ],
+          },
+          {
+            header: "Signals",
+            question: "Which failures should be retried?",
+            multiSelect: true,
+            options: [
+              { label: "5xx responses", description: "Server errors from the endpoint" },
+              { label: "Timeouts", description: "No response within 10 seconds" },
+              { label: "429 Too Many Requests", description: "Honor Retry-After when present" },
+            ],
+          },
+        ],
+        submit: { action: "ask.submit", args: { id: "fixture-ask-1" } },
+        cancel: { action: "ask.cancel", args: { id: "fixture-ask-1" } },
+      },
+    ],
+  };
+}
+
+/** A complete delivery snapshot with every view the slots read, timed relative to `now`. */
+export function fixtureSnapshot(now = Date.now()): DeliverySnapshot {
+  const views: ViewEntry[] = [
+    { id: "ask.questions", kind: "form", title: "Questions", model: formView(now) },
+    ...gitViews(),
+    ...stashViews(now),
+    ...subagentViews(now),
+    { id: "system.session", kind: "session", title: "Session", model: sessionView(now) },
+    ...todoViews(),
+  ];
+  return { id: "fixture", views: views.toSorted((a, b) => (a.id < b.id ? -1 : 1)) };
 }
 
 function idArg(args: JsonValue | undefined): string {
@@ -614,11 +686,9 @@ function idArg(args: JsonValue | undefined): string {
 
 /** Answers what a real session would, from the same canned data. */
 export function fixtureResponder(now = Date.now()) {
-  const at = (minutes: number) => new Date(now - minutes * MINUTE).toISOString();
-  return (request: SurfaceRequest): unknown => {
-    if (request.command === "answer")
-      throw new Error("This is a fixture session; answers go nowhere.");
-    switch (request.id) {
+  const at = (minutes: number) => new Date(ago(now, minutes)).toISOString();
+  return (request: ActionRequest): unknown => {
+    switch (request.action) {
       case "todo.inspect": {
         const key = idArg(request.args);
         const task = TASKS.find((candidate) => candidate.key === key);
@@ -666,8 +736,11 @@ export function fixtureResponder(now = Date.now()) {
       }
       case "todo.review":
         return { reviewed: 1 };
+      case "ask.submit":
+      case "ask.cancel":
+        throw new Error("This is a fixture session; answers go nowhere.");
       default:
-        throw new Error(`Unknown action "${request.id}".`);
+        throw new Error(`Unknown action "${request.action}".`);
     }
   };
 }

@@ -25,7 +25,7 @@ import type {
   WidgetModel,
 } from "../contract.ts";
 // The same check pi-ui makes on an action's result before drawing it.
-import { isDetailContent } from "../../packages/pi-surface/src/model.ts";
+import { isDetailContent } from "pi-surface/model";
 
 const TONES: Record<Tone, string> = {
   default: "text-foreground",
@@ -125,7 +125,8 @@ export function BadgeText({ badge }: { badge: Badge }) {
   );
 }
 
-const URL_ONLY = /^https?:\/\/\S+$/;
+/** A field value that is only an http(s) URL, which opens in bb's browser. */
+export const URL_ONLY = /^https?:\/\/\S+$/;
 
 /** A field value; a bare http(s) URL opens in bb's browser when `openUrl` is given. */
 function Value({ line, openUrl }: { line: Line; openUrl?: (url: string) => void }) {

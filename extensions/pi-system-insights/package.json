@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Read-only Pi session inspectors for the system prompt, tools, and skill loading evidence.",
+  "description": "Pi's core session view (status, activity, usage) and read-only inspectors for the system prompt, tools, and skill loading evidence.",
   "keywords": [
     "pi-package",
     "pi-extension"
@@ -29,6 +29,7 @@
     "#src/*": "./src/*.ts",
     "#test/*": "./test/*.ts",
     "#foundations/*": "pi-foundations/*",
+    "#surface": "pi-surface",
     "#test-helpers": "pi-test-helpers",
     "#ui": "pi-ui"
   }

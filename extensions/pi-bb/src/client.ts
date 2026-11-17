@@ -1,13 +1,14 @@
 import { errorText } from "#foundations/errors";
-import type { SessionSnapshot } from "#presentation/contract";
+import { MAX_VIEW_ERROR, type ActionRequest, type JsonValue } from "#surface";
 import {
+  CLOSE_UNSUPPORTED,
   encode,
+  encodeSnapshotMessage,
   parsePluginMessage,
   PROTOCOL_VERSION,
   TERMINAL_CLOSE_CODES,
   type SessionMessage,
   type SurfaceEnv,
-  type SurfaceRequest,
 } from "#src/protocol";
 
 /** The part of the WHATWG WebSocket the client uses; Node's global `WebSocket` satisfies it. */
@@ -27,7 +28,9 @@ export interface SocketLike {
 export type SocketFactory = (url: string) => SocketLike;
 
 export type ConnectionState =
+  /** No socket, or one that has not been welcomed yet. */
   | { kind: "connecting"; attempts: number }
+  /** The plugin accepted the hello. */
   | { kind: "connected"; since: number }
   /** The plugin refused this session; retrying cannot help until Pi restarts with new settings. */
   | { kind: "refused"; code: number; reason: string }
@@ -35,8 +38,12 @@ export type ConnectionState =
 
 export interface SurfaceClientOptions {
   endpoint: SurfaceEnv;
-  /** Answers a request the plugin forwarded from bb's UI; rejects with a message the UI shows. */
-  onRequest: (request: SurfaceRequest) => Promise<unknown>;
+  /** Runs an action the plugin forwarded from bb's UI; rejects with a message the UI shows. */
+  onRequest: (request: ActionRequest) => Promise<JsonValue | undefined>;
+  /** The plugin accepted this session: bb shows it and can answer its forms. */
+  onAccepted?: () => void;
+  /** The accepted connection is gone: closed, refused, replaced or stopped. */
+  onLost?: () => void;
   socket?: SocketFactory;
   minDelayMs?: number;
   maxDelayMs?: number;
@@ -45,15 +52,32 @@ export interface SurfaceClientOptions {
 
 const OPEN = 1;
 
+/** At most `MAX_VIEW_ERROR` units, never ending in half a surrogate pair, never blank. */
+function boundedError(error: unknown): string {
+  const text = errorText(error).trim() || "The action failed.";
+  if (text.length <= MAX_VIEW_ERROR) return text;
+  const cut = text.slice(0, MAX_VIEW_ERROR);
+  const last = cut.charCodeAt(cut.length - 1);
+  return last >= 0xd800 && last <= 0xdbff ? cut.slice(0, -1) : cut;
+}
+
 /**
  * Keeps one Pi session connected to the plugin. The socket is the session's
  * liveness signal: the plugin drops the session a short grace after it closes.
- * Nothing here throws into Pi; failures turn into reconnects.
+ * Snapshots arrive as JSON (see `collectDelivery`); the client keeps only the
+ * latest, says hello with it on every connect and sends later ones once the
+ * plugin has welcomed the session. Nothing here throws into Pi; failures turn
+ * into reconnects.
  */
 export class SurfaceClient {
   private readonly options: SurfaceClientOptions;
+  /** The newest socket, from its creation until it closes. */
   private socket?: SocketLike;
-  private snapshot?: SessionSnapshot;
+  /** The latest snapshot's JSON, and the one the plugin last received. */
+  private latest?: string;
+  private delivered?: string;
+  private helloSent = false;
+  private accepted = false;
   private retry?: ReturnType<typeof setTimeout>;
   private attempts = 0;
   private stopped = false;
@@ -67,14 +91,15 @@ export class SurfaceClient {
     return this.status;
   }
 
-  start(snapshot: SessionSnapshot): void {
-    this.snapshot = snapshot;
+  start(): void {
     this.connect();
   }
 
-  update(snapshot: SessionSnapshot): void {
-    this.snapshot = snapshot;
-    this.send({ type: "update", snapshot });
+  /** The session's current snapshot, as JSON; replaces any earlier one. */
+  update(snapshot: string): void {
+    this.latest = snapshot;
+    if (this.accepted) this.deliver();
+    else if (this.socket && !this.helloSent) this.hello(this.socket);
   }
 
   /** Idempotent; `replace` tells the plugin the same process reconnects shortly. */
@@ -85,6 +110,7 @@ export class SurfaceClient {
     this.status = { kind: "closed" };
     const socket = this.socket;
     this.socket = undefined;
+    this.lose();
     if (!socket) return;
     try {
       if (socket.readyState === OPEN) socket.send(encode({ type: "bye", reason }));
@@ -94,14 +120,39 @@ export class SurfaceClient {
     }
   }
 
-  private send(message: SessionMessage): void {
-    const socket = this.socket;
-    if (!socket || socket.readyState !== OPEN) return;
+  private lose(): void {
+    if (!this.accepted) return;
+    this.accepted = false;
+    this.options.onLost?.();
+  }
+
+  private send(socket: SocketLike, data: string): boolean {
+    if (socket !== this.socket || socket.readyState !== OPEN) return false;
     try {
-      socket.send(encode(message));
+      socket.send(data);
+      return true;
     } catch {
       /* the close handler reconnects */
+      return false;
     }
+  }
+
+  private hello(socket: SocketLike): void {
+    const snapshot = this.latest;
+    if (snapshot === undefined) return;
+    const { threadId, token } = this.options.endpoint;
+    if (this.send(socket, encodeSnapshotMessage({ type: "hello", threadId, token, snapshot }))) {
+      this.helloSent = true;
+      this.delivered = snapshot;
+    }
+  }
+
+  private deliver(): void {
+    const snapshot = this.latest;
+    const socket = this.socket;
+    if (!socket || snapshot === undefined || snapshot === this.delivered) return;
+    if (this.send(socket, encodeSnapshotMessage({ type: "update", snapshot })))
+      this.delivered = snapshot;
   }
 
   private connect(): void {
@@ -114,29 +165,23 @@ export class SurfaceClient {
       this.scheduleRetry();
       return;
     }
+    this.socket = socket;
+    this.helloSent = false;
+    this.delivered = undefined;
     socket.addEventListener("open", () => {
       if (this.stopped) {
         socket.close(1000, "quit");
         return;
       }
-      this.attempts = 0;
-      this.socket = socket;
-      this.status = { kind: "connected", since: this.options.now?.() ?? Date.now() };
-      if (!this.snapshot) return;
-      const { threadId, token } = this.options.endpoint;
-      this.send({
-        type: "hello",
-        version: PROTOCOL_VERSION,
-        threadId,
-        token,
-        snapshot: this.snapshot,
-      });
+      this.hello(socket);
     });
     socket.addEventListener("message", (event) => this.receive(socket, event.data));
     // Errors are followed by close, which decides what happens next.
     socket.addEventListener("error", () => {});
     socket.addEventListener("close", (event) => {
-      if (this.socket === socket) this.socket = undefined;
+      if (this.socket !== socket) return;
+      this.socket = undefined;
+      this.lose();
       if (this.stopped) return;
       if (TERMINAL_CLOSE_CODES.has(event.code)) {
         this.status = { kind: "refused", code: event.code, reason: event.reason };
@@ -147,32 +192,45 @@ export class SurfaceClient {
   }
 
   private receive(socket: SocketLike, data: unknown): void {
+    if (socket !== this.socket) return;
     const message = parsePluginMessage(data);
     if (!message) return;
+    if (message.type === "welcome") {
+      if (this.accepted) return;
+      if (message.version !== PROTOCOL_VERSION) {
+        // A plugin that welcomes another version cannot read this session's snapshots.
+        const reason = `protocol ${PROTOCOL_VERSION} expected, the plugin speaks ${message.version}`;
+        this.status = { kind: "refused", code: CLOSE_UNSUPPORTED, reason };
+        this.socket = undefined;
+        this.stopped = true;
+        socket.close(1000, "unsupported");
+        return;
+      }
+      this.attempts = 0;
+      this.accepted = true;
+      this.status = { kind: "connected", since: this.options.now?.() ?? Date.now() };
+      // Anything collected after the hello went out.
+      this.deliver();
+      this.options.onAccepted?.();
+      return;
+    }
+    // The plugin asks only once it has accepted the session.
+    if (!this.accepted) return;
     const { id } = message;
-    const reply = (result: { error: string } | { data: unknown }) => {
-      if (socket !== this.socket) return;
-      this.send(
-        "error" in result
-          ? { type: "result", id, ok: false, error: result.error }
-          : {
-              type: "result",
-              id,
-              ok: true,
-              ...(result.data === undefined ? {} : { data: result.data }),
-            },
-      );
+    const reply = (result: Extract<SessionMessage, { type: "result" }>) => {
+      // Only the socket that asked hears the answer; a replacement never does.
+      if (socket === this.socket && this.accepted) this.send(socket, encode(result));
     };
-    let pending: Promise<unknown>;
+    let pending: Promise<JsonValue | undefined>;
     try {
       pending = this.options.onRequest(message.request);
     } catch (error) {
-      reply({ error: errorText(error) });
+      reply({ type: "result", id, ok: false, error: boundedError(error) });
       return;
     }
     pending.then(
-      (result) => reply({ data: result }),
-      (error: unknown) => reply({ error: errorText(error) }),
+      (value) => reply({ type: "result", id, ok: true, ...(value === undefined ? {} : { value }) }),
+      (error: unknown) => reply({ type: "result", id, ok: false, error: boundedError(error) }),
     );
   }
 
