@@ -103,6 +103,7 @@ pi-personal/
 │   │   └── CHANGELOG.md
 │   ├── pi-system-insights/
 │   │   ├── src/index.ts                 # /system:* commands
+│   │   ├── src/session/                 # system.session view (status, activity, usage)
 │   │   └── test/
 │   ├── pi-tldr/
 │   │   ├── src/index.ts                 # /tldr command + session naming
@@ -373,6 +374,15 @@ See [upstream README](extensions/pi-subagent/README.md),
 [local changes](extensions/pi-subagent/CHANGELOG.md).
 
 ### pi-system-insights
+
+Owns observation of Pi's core session state. Every session, a subagent child
+included, publishes it as the `system.session` view on its own bus, in every
+mode and without dashboard or bb loaded: identity, name, cwd, model, thinking,
+context usage, status (waiting, compacting, tool, working, idle), recent
+top-level tool activity and billed usage totals for the whole session file.
+It reads open questionnaires from surface form views, so a question shows as
+waiting with or without a native dialog. See
+[the session view](extensions/pi-system-insights/README.md#the-session-view).
 
 Read-only session inspectors:
 

@@ -18,6 +18,27 @@ export function field(blocks: readonly Block[] | undefined, label: string): stri
   return undefined;
 }
 
+/** The Pi events the `system.session` observer handles, in registration order. */
+export const SESSION_EVENTS = [
+  "session_start",
+  "session_shutdown",
+  "session_info_changed",
+  "model_select",
+  "thinking_level_select",
+  "session_tree",
+  "message_end",
+  "turn_end",
+  "agent_start",
+  "agent_settled",
+  "tool_execution_start",
+  "tool_execution_end",
+  "session_before_compact",
+  "session_compact",
+  "session_compact_failed",
+  "ui_prompt_start",
+  "ui_prompt_end",
+];
+
 /** Text that follows a `heading` block. */
 export function section(blocks: readonly Block[] | undefined, heading: string): string | undefined {
   const list = blocks ?? [];
