@@ -386,6 +386,7 @@ and act on them:
 | --------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `todo.widget`   | widget   | The above-editor widget as a JSON `WidgetModel`; nothing while the terminal would hide it (no tasks, `widget` off, only hidden completed tasks)                                                     |
 | `todo.explorer` | explorer | The `/todo` browser on its All tab as a JSON `ExplorerModel`; `loadDetail` is `todo.inspect` and the unreviewed marker's `onClear` is `todo.review`                                                 |
+| `todo.summary`  | summary  | This branch's task counts and the task in progress as a `SummaryModel`, whether or not the widget shows (see below)                                                                                 |
 | `todo.inspect`  | action   | `{ id, reviewed? }` resolves to the task's detail blocks; `reviewed` (key → `{ revision, at }`) is the review state a list showed, so messages it marked new stay marked after opening reviews them |
 | `todo.review`   | action   | `{ ids?, revisions?, branch? }` marks messages reviewed and resolves to `{ reviewed }`; see `src/events.ts`. A `branch` from a list taken before a session or branch change is refused              |
 | `todo.history`  | action   | `{ key }` resolves to `{ key, createdAt?, updates }`, the task's history as `todo:snapshot` carries it                                                                                              |
@@ -394,6 +395,28 @@ The terminal draws the same models: the widget is `todo.widget`'s model with the
 terminal's row budgets, and `/todo` opens the `todo.explorer` model, loading
 details through `todo.inspect` and saving reviews through `todo.review`. The
 views announce a change after every plan change, review and settings change.
+
+`todo.summary` counts the branch's whole list, from the same state as the
+widget and `/todo` but never filtered or capped by them: it answers while the
+widget is off, hides completed tasks or shows fewer rows than there are tasks.
+Every count is present, zero included, so an empty list reads as zeros where a
+session without pi-todo has no `todo.summary` at all. `active` is the first task
+in progress, in list order (`{ id: <key>, label: <subject> }`).
+
+| Key                   | Counts                                                    |
+| --------------------- | --------------------------------------------------------- |
+| `total`               | Tasks on the list                                         |
+| `completed`           | Completed tasks on the list                               |
+| `in-progress`         | Tasks in progress                                         |
+| `pending`             | Pending tasks free to start                               |
+| `blocked`             | Pending tasks waiting on an unfinished prerequisite       |
+| `unreviewed`          | Tasks with model messages the user has not reviewed       |
+| `unreviewed-messages` | Those unreviewed messages                                 |
+| `archived`            | Completed tasks archived off the list (`list` reads them) |
+
+`completed`, `in-progress`, `pending` and `blocked` add up to `total`. Task
+statuses and review marks live in the session file, so no count and no active
+task is process-bound (`live`): a saved summary settles unchanged.
 
 ## Develop
 

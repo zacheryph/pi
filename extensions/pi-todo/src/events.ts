@@ -64,6 +64,11 @@ export const TODO_HISTORY_ACTION = "todo.history";
 export const TODO_WIDGET_VIEW = "todo.widget";
 /** Explorer view: the `/todo` browser on its All tab. */
 export const TODO_EXPLORER_VIEW = "todo.explorer";
+/**
+ * Summary view: this branch's task counts and the task in progress, defined
+ * while pi-todo is loaded whether or not the widget shows (see `todoSummaryModel`).
+ */
+export const TODO_SUMMARY_VIEW = "todo.summary";
 
 /** A task's creation time and its status and message history, oldest first. */
 export interface TodoHistoryResult {

@@ -309,6 +309,7 @@ describe("requests that predate actions", () => {
     // Its views reach the snapshot too.
     expect(service.snapshot().views.map((view) => view.id)).toEqual([
       "todo.explorer",
+      "todo.summary",
       "todo.widget",
     ]);
     await fake.emit("session_shutdown", {}, ctx);
