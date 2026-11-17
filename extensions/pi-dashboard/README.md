@@ -7,62 +7,57 @@ working directory, with live status.
 http://127.0.0.1:7317/
 ```
 
-Each card shows the session name (or `untitled …<id>`), the `--agent` profile
-when one is active, model and thinking level, context usage, and status:
-`idle`, `working`, `tool: <name>`, `compacting`, or `waiting` when Pi is
-blocked on a dialog. Waiting sessions sort first and get a highlighted edge.
+Everything the page shows is a session's [pi-surface](../../packages/pi-surface/README.md)
+views, collected by the reporter into one complete snapshot per update. Each
+snapshot replaces the previous one, so a view an extension removes disappears
+from the page. The page has one renderer per view kind and knows no extension:
 
-Cards also count todos (`todos <done>/<total>`, unreviewed messages as `N
-new`), running subagents, stash entries, open pull requests opened in the
-session (`PRs N open · M failing`) and worktrees. Click a card for its detail
-page (`#<pid>`):
+- **session**: `system.session` from
+  [pi-system-insights](../pi-system-insights/README.md): name (or
+  `untitled …<id>`), directory, model and thinking level, context usage,
+  status (`idle`, `working`, `tool: <name>`, `compacting`, or `waiting` when
+  Pi is blocked on a dialog), recent tool calls and usage for the whole session
+  file. Waiting sessions sort first and get a highlighted edge.
+- **summary**: each extension's counts as toned chips, its active item and a
+  profile such as the main agent's (`agent · <profile>` on the card). Cards
+  show the non-zero counts; the detail header shows all of them.
+- **widget**: the extension's heading and rows, as the terminal draws them.
+- **explorer**: items with badges, tabs, notices and marks. Opening an item
+  runs the explorer's `onOpen`, clears its mark through the marker's `onClear`
+  (as the terminal does) and loads its detail through `loadDetail`, such as a
+  task's history or a stash entry's first lines. The marker's button (its
+  `clearAction`, e.g. "mark reviewed") clears every mark.
+- **detail**: a standalone detail view.
+- **form**: open questionnaires; see [Answering questions](#answering-questions).
 
-- **Header**: directory, agent, session id, pid, uptime, and **Focus**.
+A view whose provider failed or was too large to send shows as its error,
+without affecting the others. Without pi-system-insights (or with its view
+failing) a card is titled by its process id, says why session information is
+missing, and keeps its other views and Focus.
+
+Click a card for its detail page (`#<pid>`):
+
+- **Header**: directory, profile, session id, pid, uptime and Pi version, and
+  **Focus**.
 - **Strip**: model and provider, thinking level, status and how long it has
   held, context usage, and usage: the session cost as a button, with total
   tokens under it. The button opens input, output, cache read, cache write and
   total tokens and the cost for the whole session file, matching `/session`,
   in an overlay that stays live; Esc, the × button or a click outside closes it.
+  Below it, every summary.
 
-Below the strip, two even columns: what the session is doing (todos, subagents,
-recent activity) on the left, and what it produced (pull requests, worktrees,
-stash) on the right. When one side has nothing to show, its panels are split
-across both. Finished items fold behind one row per panel (`▸ 32 completed`,
-`▸ 16 finished · 1 failed`, `▸ 5 merged · 1 closed`); a fold you open stays
-open across live updates.
+Below the header, two even columns: what the session is doing now (widgets and
+recent activity) on the left, and the records it keeps (explorers and details)
+on the right. When one side has nothing to show, its panels are split across
+both. Long lists fold behind one row (`▸ 32 more tasks`); a fold or item you
+open stays open across live updates.
 
-- **Todos**: open tasks with status, blocked state and unreviewed messages;
-  completed ones fold away, except while they have unreviewed messages.
-  Expand a task for its description, prerequisites and its full status and
-  message history (fetched when you expand it).
-- **Subagents**: running, queued and waiting agents (idle on a job or an agent
-  of their own, with the work named in the note and no clock) seen since the
-  session's runtime loaded, with duration, tool uses, tokens and the latest
-  progress note;
-  completed, failed and stopped ones fold away, with their error.
-- **Recent activity**: the last 12 tool calls with duration, failures, and
-  what they touched: a file tool's path, or a bash command's first line.
-- **Pull requests**: from pi-git, **Opened here** and **Referenced**, each
-  linking to GitHub in a new tab, with a badge for what matters first (merged,
-  checks failing, conflicts, changes requested, draft, approved), the review
-  and check counts, and how long ago a tool last showed its status. Merged and
-  closed ones fold away.
-- **Worktrees**: from pi-git, worktrees not yet removed, with repository,
-  branch, path, workspace, how many subagents ran there, uncommitted changes,
-  unpushed commits, and whether the branch is merged; plus how many were
-  removed and how many other sessions' worktrees are under the root.
-- **Stash**: this branch's entries with size, lines, source, whether this
-  session or a subagent stored them, age, versions and handle, plus the shared
-  store's size against its cap (with a warning when over). **Preview** opens
-  the first 200 lines / 16 KB of an entry in an overlay headed by its name,
-  handle, description and facts; Esc, the × button or a click outside closes it.
-
-The index has a filter box (every word must match the name, directory, agent,
-model or status) and a **Notifications** toggle. With notifications on, the
-browser notifies you when a session starts waiting on a dialog, or finishes its
-work and goes idle, while the dashboard tab is open but not focused. Clicking a
-notification opens that session. The filter and toggle are remembered per
-browser.
+The index has a filter box (every word must match the name, directory,
+profile, model or status) and a **Notifications** toggle. With notifications
+on, the browser notifies you when a session starts waiting on a dialog, or
+finishes its work and goes idle, while the dashboard tab is open but not
+focused. Clicking a notification opens that session. The filter and toggle are
+remembered per browser.
 
 `/dashboard` shows the URL and opens it in your browser. Outside the terminal UI (an app that runs Pi over RPC, say) it only shows the URL, as a displayed message; that session is not listed.
 
@@ -80,36 +75,45 @@ added as adapters in `src/terminal.ts`.
 ## Answering questions
 
 When the session's model asks you something with the bundled
-[pi-ask](../pi-ask/README.md) `ask` tool, the card says `Asks: <question>` with an **Answer** button,
-and the detail page shows a **Waiting on you** panel. Answer opens a form with
-every question: one option or your own text for single-select questions, any
-options plus optional text for multi-select ones, and an optional note for the
-whole answer. **Decline** turns it down, as Esc does in the terminal.
+[pi-ask](../pi-ask/README.md) `ask` tool, pi-ask publishes the questionnaire as
+its `ask.questions` form view. The card says `Asks: <question>` with an
+**Answer** button, and the detail page shows a **Waiting on you** panel. Answer
+opens a form with every question: one option or your own text for
+single-select questions, any options plus optional text for multi-select ones,
+and an optional note for the whole answer. **Send answer** runs the
+questionnaire's `submit` action with the answer; **Decline** runs its `cancel`
+action, as Esc does in the terminal.
 
-The terminal window stays open meanwhile, and the first answer wins. If you
-answer in the terminal first, the form says so and stops accepting input.
-Closing the form keeps your draft until the question is answered. Answers go
-through pi-ask's `ask.answer` action on the session's bus, which validates them
-strictly: an answer that does not fit is refused with pi-ask's reason and the
+The terminal window stays open meanwhile, and the first answer wins: an answer
+from the page closes the terminal's questionnaire. If you answer in the
+terminal first, the form says so and stops accepting input. Closing the form
+keeps your draft until the question is answered. pi-ask validates every answer
+strictly: one that does not fit is refused with pi-ask's reason and the
 question stays open.
+
+While the hub has the session, the reporter advertises the dashboard as a form
+consumer on the session's bus (pi-surface's `advertiseFormConsumer`), and
+withdraws it when the connection closes. In the terminal pi-ask shows its own
+questionnaire as well; the advertisement matters to sessions without one.
 
 With notifications on, a new question notifies you with its text.
 
-## Data sources
+## Views and actions
 
-| Section   | Source                                                                                                                                           |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Todos     | `todo:snapshot` on the session's `pi.events` bus; history through pi-todo's `todo.history` action on the same bus                                |
-| Stash     | `stash:snapshot` on the session's `pi.events` bus; previews through pi-stash's `stash.preview` action on the same bus                            |
-| Git       | `git:snapshot` on the session's `pi.events` bus. Only `https://<host>/<owner>/<repo>/pull/<n>` URLs become links; any other PR is dropped        |
-| Subagents | `subagent:snapshot` on the session's bus: a full current-branch roster, including saved agents after reload; live state overrides saved records. |
-| Usage     | Usage on every entry in the session file, as Pi's `/session` sums it                                                                             |
-| Activity  | Pi's `tool_execution_start` / `_end` for top-level calls (codemode's nested calls are left out)                                                  |
-| Questions | pi-ask's `ask:opened` and `ask:closed` events on the session's bus; answers through its `ask.answer` action                                      |
+| What              | Source                                                                                        |
+| ----------------- | --------------------------------------------------------------------------------------------- |
+| Session           | pi-system-insights' `system.session` view                                                     |
+| Counts, profile   | `*.summary` views (pi-todo, pi-subagent, pi-stash, pi-git, …)                                 |
+| Lists and details | widget, explorer and detail views; details load through the explorer's `loadDetail` action    |
+| Questions         | pi-ask's `ask.questions` form view; answers through its questionnaires' `submit` and `cancel` |
+| Focus             | the reporter's terminal adapter, sent as host metadata beside the views                       |
 
-Payloads are parsed defensively and bounded before they reach the hub. Stash
-content and task history are never part of the live session list; they are
-fetched only when you open them, and returned only to the page that asked.
+The reporter collects with pi-surface's `collectDelivery` within the hub's
+1 MiB line limit, measured in UTF-8 bytes: a view over 256 KB, or the largest
+views when the snapshot would not fit, are sent as errors instead, and the
+session says so once. Content an action returns, such as stash content or task
+history, is never part of the live session list; it is fetched when you open
+an item and returned only to the page that asked.
 
 ## How it works
 
@@ -121,12 +125,20 @@ fetched only when you open them, and returned only to the page that asked.
   detached Node process (output in `~/.pi/agent/dashboard/hub.log`). Binding the
   socket is the lock, so concurrent sessions start exactly one hub.
 - An open connection means a live session: a session that quits or crashes
-  leaves the page at once. `/new`, `/resume`, `/fork` and `/reload` keep the card
-  while the runtime restarts.
+  leaves the page at once. `/new`, `/resume`, `/fork` and `/reload` keep the
+  card while the runtime restarts, settled with pi-surface's `settleSnapshot`:
+  running state reads stopped, forms are gone, item actions are removed, and
+  the hub refuses every request for the session until the new runtime connects.
+- Reporter and hub speak protocol 7. The hub answers a hello with `welcome`. A
+  reporter with a newer protocol makes the hub exit so that reporter can start
+  its own; an older or malformed hello gets an explicit `refused` with the
+  reason (logged in the hub log, and shown once in that Pi session), and its
+  connection is closed.
 - The hub exits 15 seconds after the last session disconnects and starts again
   with the next session.
-- Updates are pushed to the page with server-sent events, coalesced to at most
-  one every 250 ms per session. Streaming tokens are never sent.
+- View changes are batched (pi-surface's `batchViews`) into at most one
+  complete snapshot every 250 ms per session, pushed to the page with
+  server-sent events. Streaming tokens are never sent.
 
 macOS and Linux only (the hub uses a unix socket). The hub runs outside Pi
 under plain Node, which strips TypeScript types. It uses Pi's own Node binary;
@@ -151,27 +163,29 @@ A port change takes effect when the hub next starts (after every session exits).
 
 The hub listens on `127.0.0.1` only and rejects requests whose `Host` header is
 not `127.0.0.1:<port>` or `localhost:<port>`, which blocks DNS-rebinding pages.
-The socket lives in a `0700` directory. The live session list shows
-directories, session names, model names, dialog titles, task text, subagent
-descriptions, stash entry names and descriptions, worktree paths and branches,
-pull request titles and links, and recent tool calls
+The socket lives in a `0700` directory. The live session list carries what the
+session's views show: directories, session names, model names, dialog titles,
+task text, subagent descriptions, stash entry names, worktree paths and
+branches, pull request titles and links, open questions, and recent tool calls
 (including the first line of bash commands, clipped to 80 characters). It
 carries no transcript or stash content.
 
-Requests the page makes of a session (`POST /api/sessions/<id>/focus`,
-`/stash/<name>/preview`, `/todos/<key>/history`,
-`/questions/<toolCallId>/answer`) require a random per-hub token that is embedded in the page and sent as `X-Dashboard-Token`, and an
-`Origin` of the dashboard itself when the browser sends one. Other sites cannot
-read the page to learn the token. The hub accepts an answer only from the
-connection of the session it asked, and returns it to that request alone.
-Stash previews are read by pi-stash itself (hash-checked, this branch's entries
-only, bare names only) and capped at 200 lines / 16 KB. Stashed text can hold
-secrets from tool output; a preview shows what is stored.
+Requests the page makes of a session (`POST /api/sessions/<id>/focus` and
+`POST /api/sessions/<id>/actions` with `{ action, args }`) require a random
+per-hub token that is embedded in the page and sent as `X-Dashboard-Token`, and
+an `Origin` of the dashboard itself when the browser sends one. Other sites
+cannot read the page to learn the token. The hub runs only an action that one
+of the session's current views references (an explorer's `onOpen`,
+`loadDetail` or marker `onClear`, a questionnaire's `submit` or `cancel`), so
+the page can do what the views offer and nothing else, and only while the
+session is live. The body is JSON of at most 64 KB. The hub accepts a result
+only from the connection of the session it asked, and returns it to that
+request alone. Stash previews are read by pi-stash itself and capped; stashed
+text can hold secrets from tool output, and a preview shows what is stored.
 
-Answering a question is the one request that changes what a session does. It
-can only answer a questionnaire that is open and waiting on you, carries a JSON
-body of at most 64 KB, and is checked twice: by the dashboard against the
-questions it names, then strictly by pi-ask.
+Answering a question is the one request that changes what a session does
+beyond review marks. It can only answer a questionnaire that is open and
+waiting on you, and pi-ask checks the answer strictly.
 
 ## Planned
 
@@ -188,7 +202,7 @@ npm run check
 npm run test:workspace -- pi-dashboard
 ```
 
-The reporter imports snapshot names and types from their producers. It keeps
-version guards and bounds output for the wire; the hub protocol remains free of
-Pi imports. Typechecking also checks the hub and protocol separately with
+The reporter knows no extension: it collects the session's views and runs the
+actions they reference, through pi-surface. The hub and protocol import only
+pi-surface, which has no Pi imports. Typechecking also checks the hub and protocol separately with
 `tsconfig.hub.json` so plain Node's erasable-syntax requirement stays enforced.

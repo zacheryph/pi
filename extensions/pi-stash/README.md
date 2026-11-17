@@ -106,8 +106,8 @@ For a user who opens an entry, another extension can emit `stash:preview`
 with `{ name, maxLines?, maxBytes?, respond }`. pi-stash answers synchronously
 through `respond` with the head of that entry (at most 200 lines / 16 KB) read
 through the hash-checked store, or `{ ok: false, error }`. Only bare names of
-this branch's entries are accepted, not full handles. pi-dashboard uses both
-for its stash panel and previews.
+this branch's entries are accepted, not full handles. pi-presentation uses both
+for bb; pi-dashboard reads the stash views and previews through `stash.inspect`.
 
 pi-stash also defines actions and views on the session's bus (see
 [`pi-surface`](../../packages/pi-surface/README.md)) from session start to
