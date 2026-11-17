@@ -36,12 +36,15 @@ cannot call it.
 
 ## Routes
 
-The route is chosen when the session starts.
+The route is chosen when the session starts. In an RPC session, whether a form or Pi's
+own dialogs ask is decided for each question (see
+[Answering from outside the terminal](#answering-from-outside-the-terminal)).
 
 | Session                          | Route  | What happens                                                                                                |
 | -------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------- |
 | A subagent                       | parent | The subagent waits on a question item and its turn ends; the parent is told once and answers with a message |
-| Interactive terminal             | user   | An inline window opens under the transcript and waits for your answer                                       |
+| Interactive terminal             | user   | An inline window opens under the transcript and waits for your answer; a live form consumer can answer too  |
+| RPC host with a form consumer    | user   | The questionnaire is published as a form for the consumer to answer                                         |
 | RPC host (editor integrations)   | user   | One host dialog per question                                                                                |
 | No UI and no parent (print/json) | none   | The tool is hidden                                                                                          |
 
@@ -87,7 +90,8 @@ reopens a waiting subagent without a model run (pi-subagent does it at its own
 `session_start`), which is what gives pi-ask this chance to adopt. A question item found in a
 session that asks the user is not adopted.
 
-The root session's route is unchanged.
+The root session's route is unchanged. A subagent's question is never published as a
+form, even when something on its bus advertises a form consumer.
 
 ## Answering in the terminal
 
@@ -106,6 +110,61 @@ review the session. The next key scrolls
 back to the end and restores the window; that key is not used as an answer. In
 regular mode your terminal owns scrollback, so the window stays inline at the
 bottom.
+
+## Answering from outside the terminal
+
+pi-ask owns every questionnaire waiting for the user. One pending record per asking tool
+call is shared by whatever shows it, and one completion path settles it: the first valid
+answer or cancellation wins, every other display withdraws it, and a later answer is
+refused.
+
+While a questionnaire is published, it is listed in the `ask.questions` form view
+([pi-surface](../../packages/pi-surface/README.md#session-summary-and-form-models)), oldest
+first, under the asking tool call's id. Each entry carries two action references:
+
+| Action       | Arguments                                                                                                  | Result                        |
+| ------------ | ---------------------------------------------------------------------------------------------------------- | ----------------------------- |
+| `ask.submit` | `{ id }` plus a `FormAnswer`: `answers: [{ questionIndex, optionIndexes?, text?, notes? }]`, `globalNote?` | `{ id, status: "answered" }`  |
+| `ask.cancel` | `{ id }`                                                                                                   | `{ id, status: "cancelled" }` |
+
+Both refuse anything else in the arguments. The answer is checked against pi-surface's
+`isFormAnswer` and then against the questionnaire, all or nothing, as `ask:answer` is
+(see [Events](#events)). A refused answer rejects the dispatch with
+`Not accepted (<code>): <reason>`. An `invalid_answer` leaves the questionnaire waiting;
+`closed` means it was already answered or cancelled (a duplicate or stale answer), and
+`not_found` that no questionnaire with that id is open for answers from outside.
+
+Where it is published depends on the session:
+
+- **Terminal.** The inline window opens and the same record is published, so a live
+  consumer (such as the dashboard) can answer it as well. When the consumer answers first,
+  the window closes; when you answer in the terminal, the form withdraws it.
+- **RPC with a form consumer.** A consumer advertises with pi-surface's
+  `advertiseFormConsumer` once it can render and answer forms. pi-ask then publishes the
+  questionnaire instead of opening dialogs. When the last consumer withdraws before an
+  answer, the questionnaire leaves the form for good and Pi's own dialogs ask it instead;
+  from then on only the dialog answers it, even if a consumer returns. Where Pi has no
+  dialog to show (its context is gone), the questions are withdrawn and the model is told
+  so.
+- **RPC without one.** Pi's own dialogs, exactly as before: nothing is published and nothing
+  outside the dialog can answer. This is the route under bb until its plugin advertises.
+
+A form holds at most `MAX_FORM_QUESTIONNAIRES` (8) questionnaires within pi-surface's text
+bounds and its 256 KiB view limit. A question that would not fit is refused before anything
+is shown, with a message telling the model why, so no tool call waits behind a form nobody
+can draw. Pi's own dialogs are not part of the form and are not limited by it.
+
+Questions withdrawn before anyone answered say why, in the tool result (`details.reason`)
+and in the transcript row:
+
+| `reason`      | When                                                                     |
+| ------------- | ------------------------------------------------------------------------ |
+| `aborted`     | The asking call was aborted                                              |
+| `unavailable` | The last form consumer went and Pi had no dialog to ask the questions in |
+| `ended`       | The session was reloaded or shut down while they waited                  |
+
+A cancellation without a reason is the user declining, in the terminal or through
+`ask.cancel`.
 
 ## Notifying you
 
@@ -157,15 +216,18 @@ notification settings control this behavior.
 pi-ask publishes on the session's `pi.events` bus, keyed by the asking tool
 call's id (`src/events.ts`):
 
-| Channel             | Direction | Payload                                                                                                          |
-| ------------------- | --------- | ---------------------------------------------------------------------------------------------------------------- |
-| `ask:opened`        | out       | `{ toolCallId, questions: [{ question, header, multiSelect, options: [{ label, description }] }] }`              |
-| `ask:closed`        | out       | `{ toolCallId, outcome: "answered" \| "cancelled" \| "error" }`                                                  |
-| `ask:answer`        | in        | `{ toolCallId, requestId?, answers?: [{ questionIndex, optionIndexes?, text?, notes? }], globalNote?, cancel? }` |
-| `ask:answer-result` | out       | `{ ok, code?: "not_found" \| "invalid_payload" \| "invalid_answer", reason?, requestId?, toolCallId? }`          |
+| Channel             | Direction | Payload                                                                                                             |
+| ------------------- | --------- | ------------------------------------------------------------------------------------------------------------------- |
+| `ask:opened`        | out       | `{ toolCallId, questions: [{ question, header, multiSelect, options: [{ label, description }] }] }`                 |
+| `ask:closed`        | out       | `{ toolCallId, outcome: "answered" \| "cancelled" \| "error" }`                                                     |
+| `ask:answer`        | in        | `{ toolCallId, requestId?, answers?: [{ questionIndex, optionIndexes?, text?, notes? }], globalNote?, cancel? }`    |
+| `ask:answer-result` | out       | `{ ok, code?: "not_found" \| "closed" \| "invalid_payload" \| "invalid_answer", reason?, requestId?, toolCallId? }` |
 
-`ask:answer` is checked all or nothing: every question answered once, a
-single-select with exactly one choice or text. The first answer wins.
+`ask:opened` and `ask:closed` go out for every published questionnaire (the terminal's and
+the RPC form route's), never for Pi's own dialogs. `ask:answer` answers a published
+questionnaire, checked all or nothing: every question answered once, a single-select with
+exactly one choice or text. The first answer wins. These events remain while
+pi-presentation's dashboard path reads them; the form view and its actions replace them.
 
 From session start to shutdown pi-ask also defines the `ask.answer` action on
 the same bus (see [`pi-surface`](../../packages/pi-surface/README.md)). It takes

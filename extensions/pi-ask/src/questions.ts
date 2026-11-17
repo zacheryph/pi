@@ -80,9 +80,30 @@ export interface AskAnswer {
   notes?: string;
 }
 
+/**
+ * Why questions ended without an answer. Absent means the user declined them; the others say
+ * the questions were withdrawn before anyone answered.
+ */
+export type CancelReason =
+  /** The asking call was aborted. */
+  | "aborted"
+  /** The last consumer showing them went away and Pi had no dialog to ask them in. */
+  | "unavailable"
+  /** The session was reloaded or shut down. */
+  | "ended";
+
 export type AskOutcome =
   | { status: "answered"; answers: AskAnswer[]; note?: string }
-  | { status: "cancelled" };
+  | { status: "cancelled"; reason?: CancelReason };
+
+const WITHDRAWN: Record<CancelReason, string> = {
+  aborted:
+    "The questions were withdrawn without an answer because the call was aborted. Do not assume an answer.",
+  unavailable:
+    "The questions were withdrawn without an answer: the client showing them disconnected and no dialog was available to ask them instead. Continue with your best judgment and say what you assumed.",
+  ended:
+    "The questions were withdrawn without an answer because the session was reloaded or shut down. Ask again if you still need the answer.",
+};
 
 /** Collapses line terminators so a question renders and serializes predictably. */
 const tidy = (text: string | undefined): string =>
@@ -143,6 +164,7 @@ export function formatForParent(questions: readonly AskQuestion[]): string {
 
 /** The tool result text the model reads once the user has answered. */
 export function formatOutcome(outcome: AskOutcome): string {
+  if (outcome.status === "cancelled" && outcome.reason) return WITHDRAWN[outcome.reason];
   if (outcome.status === "cancelled")
     return "The user dismissed the questions without answering. Do not ask the same thing again; continue with your best judgment or explain what you need.";
   const lines = outcome.answers.map((answer) => {
