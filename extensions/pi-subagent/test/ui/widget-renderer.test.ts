@@ -8,6 +8,7 @@ import {
   type WidgetAgent,
   widgetLineBudget,
 } from "#src/ui/widget-renderer";
+import { isViewModel, settleViews, type WidgetModel } from "#surface";
 import {
   withSlot,
   expectBounded,
@@ -515,23 +516,36 @@ describe("subagentWidgetModel", () => {
       title: { label: "Subagents" },
       active: true,
       meta: [{ text: "1 active / 1 pending", tone: "muted" }],
+      // Every count on the heading is a running, waiting or queued agent: saved, none is.
+      live: { active: false, meta: [] },
     });
     expect(model?.rows).toHaveLength(2);
     expect(model?.rows[0]).toEqual({
       // A running clock carries its start, so a surface that does not redraw can keep it going.
-      lead: { text: "01:23", tone: "dim", since: NOW - 83_000 },
+      lead: { text: "01:23", tone: "dim", since: NOW - 83_000, live: true },
       left: [{ text: "agent", bold: true }, ": ", { text: "test task", tone: "muted" }],
       // A still glyph instead of the terminal's spinner frame; the line is not clipped.
       right: [
         [
-          { text: "●", tone: "accent", icon: "active" },
+          { text: "●", tone: "accent", icon: "active", live: true },
           { text: ` ${"x".repeat(60)}…`, tone: "muted" },
         ],
       ],
       group: "running",
+      // Once Pi has gone the row reads "stopped".
+      live: {
+        right: [
+          [
+            { text: "■", tone: "dim", icon: "stopped" },
+            { text: " stopped", tone: "dim" },
+          ],
+        ],
+        group: "stopped",
+      },
     });
-    // A finished agent's time is fixed: no start to count from.
+    // A finished agent's time is fixed: no start to count from. It is history, never live.
     expect(model!.rows[1]!.lead).toEqual({ text: "01:22", tone: "dim" });
+    expect(model!.rows[1]).not.toHaveProperty("live");
     // The name stays bold once the agent finishes, as a done task's key does.
     expect((model!.rows[1]!.left as readonly unknown[])[0]).toEqual({
       text: "agent",
@@ -566,6 +580,46 @@ describe("subagentWidgetModel", () => {
     expect(icons(makeAgent({ status: "completed", waitingOn: ["job"], ...done }))).toEqual([
       ["waiting", ""],
     ]);
+  });
+
+  it("marks running and waiting agents as process-bound, and settles them to stopped", () => {
+    const model = subagentWidgetModel({
+      ...params,
+      agents: [
+        makeAgent({ id: "run" }),
+        makeAgent({ id: "wait", status: "completed", completedAt: NOW, waitingOn: ["CI"] }),
+        makeAgent({ id: "q", status: "queued" }),
+        makeAgent({ id: "done", status: "completed", completedAt: NOW - 1_000 }),
+      ],
+    })!;
+    expect(isViewModel("widget", model)).toBe(true);
+    expect(model.rows.map((row) => row.live !== undefined)).toEqual([true, true, false]);
+    const [entry] = settleViews(
+      [{ id: "subagent.widget", kind: "widget", title: "Subagents", model }],
+      NOW,
+    );
+    const settled = entry!.model as WidgetModel;
+    expect(isViewModel("widget", settled)).toBe(true);
+    const stopped = [
+      { text: "■", tone: "dim", icon: "stopped" },
+      { text: " stopped", tone: "dim" },
+    ];
+    // The heading goes idle: every count on it was a live agent.
+    expect(settled).toMatchObject({ active: false, meta: [] });
+    expect(settled.rows).toEqual(
+      [
+        {
+          ...model.rows[0],
+          lead: { text: "01:23", tone: "dim" },
+          right: [stopped],
+          group: "stopped",
+          live: undefined,
+        },
+        { ...model.rows[1], right: [stopped], group: "stopped", live: undefined },
+        // Finished history settles unchanged.
+        model.rows[2],
+      ].map((row) => JSON.parse(JSON.stringify(row))),
+    );
   });
 
   it("is nothing while no agent runs, waits, queues or lingers", () => {

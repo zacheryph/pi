@@ -54,6 +54,18 @@ export interface MainAgentProfileIO {
   isChild(ctx: ExtensionContext): boolean;
   /** The profile an agent model names, or undefined for any other model. */
   agentModel(model: { provider: string; id: string } | undefined): string | undefined;
+  /** The profile `current()` reports may have changed: selected, restored, blocked or cleared. */
+  changed(): void;
+}
+
+/** What `registerMainAgentProfile` offers the rest of the extension. */
+export interface MainAgentProfileHandle {
+  /**
+   * The profile the main agent runs now, or undefined when it runs none. A profile whose
+   * selection or restoration failed is not running and is not reported; after a failed switch
+   * to an agent model, the profile still running is.
+   */
+  current(): Readonly<AgentConfig> | undefined;
 }
 
 /** What resolving a main profile reads: the session cwd and whether Pi trusts the project. */
@@ -191,13 +203,14 @@ export function renderMainAgentSection(profile: AgentConfig): string {
 export function registerMainAgentProfile(
   pi: ExtensionAPI,
   overrides: Partial<MainAgentProfileIO> = {},
-): void {
+): MainAgentProfileHandle {
   const io: MainAgentProfileIO = {
     resolveProfile: resolveMainAgentProfile,
     diagnostic: (message) => console.error(message),
     env: () => process.env[MAIN_AGENT_ENV],
     isChild: () => false,
     agentModel: (model) => (model?.provider === AGENT_PROVIDER ? model.id : undefined),
+    changed: () => {},
     ...overrides,
   };
   let selected: MainAgentSnapshot | undefined;
@@ -239,7 +252,11 @@ export function registerMainAgentProfile(
     }
   }
 
+  /** The profile `current()` reports: none while a failed selection or restoration blocks it. */
+  const reported = () => (failure && !switchFailure ? undefined : selected?.profile);
+
   function fail(ctx: ExtensionContext, error: unknown): false {
+    const was = reported();
     switchFailure = false;
     failure = `Main agent blocked: ${errorText(error)}`;
     // Pi swallows event errors. Input is handled below; context has a live abort
@@ -249,6 +266,7 @@ export function registerMainAgentProfile(
     ctx.shutdown();
     ctx.ui.setStatus("agent:status", "agent:blocked");
     notice(ctx, failure, true, true);
+    if (reported() !== was) io.changed();
     return false;
   }
 
@@ -343,6 +361,18 @@ export function registerMainAgentProfile(
    * `atStart` is any session start, when an agent model that is already selected applies.
    */
   async function restore(ctx: ExtensionContext, explicit: boolean, atStart = false): Promise<void> {
+    try {
+      await restoreProfile(ctx, explicit, atStart);
+    } finally {
+      io.changed();
+    }
+  }
+
+  async function restoreProfile(
+    ctx: ExtensionContext,
+    explicit: boolean,
+    atStart: boolean,
+  ): Promise<void> {
     selected = undefined;
     failure = undefined;
     switchFailure = false;
@@ -440,6 +470,8 @@ export function registerMainAgentProfile(
       switchFailure = true;
       ctx.ui.setStatus("agent:status", "agent:blocked");
       notice(ctx, failure, true, true);
+    } finally {
+      io.changed();
     }
   }
 
@@ -473,6 +505,7 @@ export function registerMainAgentProfile(
     failure = undefined;
     switchFailure = false;
     runPromptOptions = undefined;
+    io.changed();
   });
   // The displayed notice is for the user; the model has no use for it.
   pi.on("context", (event) => {
@@ -521,4 +554,5 @@ export function registerMainAgentProfile(
       fail(ctx, "Main agent profile SYSTEM section was removed or replaced.");
     }
   });
+  return { current: reported };
 }

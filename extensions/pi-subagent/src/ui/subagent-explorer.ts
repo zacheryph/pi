@@ -23,6 +23,10 @@ const STATE: Record<RosterState, { label: string; tone: Tone }> = {
   stopped: { label: "stopped", tone: "dim" },
 };
 
+/** States only a running process holds (see pi-surface's `live`), and what a saved badge reads. */
+const LIVE: ReadonlySet<RosterState> = new Set(["running", "queued", "waiting"]);
+const SETTLED = { text: STATE.stopped.label, tone: STATE.stopped.tone };
+
 /** What a note means in each state: a waiting agent's open work, a running one's last update. */
 function noteHeading(state: RosterState): string {
   if (state === "waiting") return "Waiting on";
@@ -74,11 +78,11 @@ export function subagentExplorerModel(
         { text: ` — ${agent.description}`, tone: "muted" },
       ],
       search: `${agent.id} ${agent.type} ${agent.note ?? ""}`,
-      badge: { text: label, tone },
+      // A running, queued or waiting agent lives in this process: a saved list reads "stopped".
+      badge: { text: label, tone, ...(LIVE.has(agent.state) ? { live: { ...SETTLED } } : {}) },
       detail: detail(agent, name),
     };
   });
-  const active = new Set<RosterState>(["running", "queued", "waiting"]);
   return {
     title: "Subagents",
     noun: ["subagent", "subagents"],
@@ -87,7 +91,7 @@ export function subagentExplorerModel(
       { label: "All", ids: items.map((item) => item.id) },
       {
         label: "Active",
-        ids: snapshot.agents.filter((agent) => active.has(agent.state)).map((agent) => agent.id),
+        ids: snapshot.agents.filter((agent) => LIVE.has(agent.state)).map((agent) => agent.id),
         emptyText: "No subagent is running, queued or waiting.",
       },
     ],

@@ -84,14 +84,23 @@ function clockRuns(agent: WidgetAgent): boolean {
   return hasClock(agent) && agent.completedAt == null;
 }
 
-/** The elapsed clock; while it runs it carries its start, so a surface can keep it running. */
+/**
+ * The elapsed clock; while it runs it carries its start, so a surface can keep it running. A
+ * running clock is process-bound: once Pi has gone it stops at its text.
+ */
 function clockSpan(agent: WidgetAgent, now: number): Span {
   return {
     text: elapsedLabel(agent, now),
     tone: "dim",
-    ...(clockRuns(agent) ? { since: agent.startedAt } : {}),
+    ...(clockRuns(agent) ? { since: agent.startedAt, live: true as const } : {}),
   };
 }
+
+/** What a running or waiting agent's row reads once its Pi process has gone. */
+const STOPPED: Line = [
+  { text: ICONS.stopped, tone: "dim", icon: "stopped" },
+  { text: " stopped", tone: "dim" },
+];
 
 /**
  * Activity for live agents; explicit outcome for agents still in their linger
@@ -102,24 +111,32 @@ function statusLine(agent: WidgetAgent, spinner: string, max: number): Line {
   const fit = (text: string) =>
     Number.isFinite(max) ? truncateToWidth(text, Math.max(1, max), "…") : text;
   // `glyph rest`, clipped as one; the glyph says which state it stands for, so a surface with
-  // icons can draw its own.
-  const status = (glyph: string, icon: StateIcon, rest: string, tone: Tone, restTone = tone) => {
+  // icons can draw its own. A live glyph shows the running process's state (see pi-surface).
+  const status = (
+    glyph: string,
+    icon: StateIcon,
+    rest: string,
+    tone: Tone,
+    restTone = tone,
+    live = false,
+  ): Line => {
+    const mark = live ? { live: true as const } : {};
     const clipped = fit(`${glyph}${rest}`);
-    if (!clipped.startsWith(glyph)) return { text: clipped, tone, icon };
+    if (!clipped.startsWith(glyph)) return { text: clipped, tone, icon, ...mark };
     return [
-      { text: glyph, tone, icon },
+      { text: glyph, tone, icon, ...mark },
       { text: clipped.slice(glyph.length), tone: restTone },
     ];
   };
   if (agent.status === "running") {
     const activity = singleLine(describeActivity(agent.activeTools, agent.responseText));
-    return status(spinner, "active", ` ${activity}`, "accent", "muted");
+    return status(spinner, "active", ` ${activity}`, "accent", "muted", true);
   }
   if (isWaiting(agent)) {
     const labels = (agent.waitingOn ?? []).map(singleLine).filter(Boolean).join(", ");
     // No glyph in the terminal; an icon where icons are drawn.
     return [
-      { text: "", tone: "muted", icon: "waiting" },
+      { text: "", tone: "muted", icon: "waiting", live: true },
       { text: fit(`waiting: ${labels || "work"}`), tone: "muted" },
     ];
   }
@@ -147,6 +164,9 @@ function agentRow(
   const content = Math.max(0, width - 2);
   const active = isActiveStatus(agent.status) || isWaiting(agent);
   const name = singleLine(getDisplayName(agent.type, registry));
+  // A running or waiting agent lives in this process: a saved row reads "stopped" (see pi-surface).
+  const live = agent.status === "running" || isWaiting(agent);
+  const right = content < 12 ? [] : [STOPPED];
   return {
     // The clock leads the row when there is room; the terminal draws it two spaces before the name.
     ...(content >= 40 ? { lead: clockSpan(agent, now) } : {}),
@@ -159,6 +179,7 @@ function agentRow(
     // Below 12 columns the task keeps the row; the status is dropped.
     right: content < 12 ? [] : [statusLine(agent, spinner, Math.floor(content * 0.4))],
     group: agent.status === "running" ? "running" : isWaiting(agent) ? "waiting" : "finished",
+    ...(live ? { live: { right, group: "stopped" } } : {}),
   };
 }
 
@@ -213,12 +234,15 @@ export function subagentWidgetModel(params: WidgetModelParams): WidgetModel | un
   const now = params.now ?? Date.now();
   const width = params.width ?? Infinity;
   const spinner = params.spinner ?? ICONS.active;
+  const active = running.length + queuedCount + waiting.length > 0;
   return {
     title: { label: "Subagents", icon: ICONS.agents },
-    active: running.length + queuedCount + waiting.length > 0,
+    active,
     // Queued agents take no rows; they are the pending count on the title bar.
     meta: counts ? [counts] : [],
     rows: ordered.map((agent) => agentRow(agent, registry, spinner, width, now)),
+    // The heading's activity and counts are all running, waiting and queued agents: process-bound.
+    ...(active ? { live: { active: false, meta: [] } } : {}),
   };
 }
 

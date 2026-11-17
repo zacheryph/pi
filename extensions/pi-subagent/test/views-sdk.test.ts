@@ -1,17 +1,26 @@
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { expect, it } from "vitest";
 import {
+  isViewModel,
   listViews,
   onViewChanged,
   readView,
   type ActionBus,
   type ExplorerModel,
+  type SummaryModel,
   type WidgetModel,
 } from "#surface";
-import { SUBAGENT_EXPLORER_VIEW, SUBAGENT_WIDGET_VIEW } from "#src/observation/snapshot";
+import {
+  SUBAGENT_EXPLORER_VIEW,
+  SUBAGENT_SUMMARY_VIEW,
+  SUBAGENT_WIDGET_VIEW,
+} from "#src/observation/snapshot";
 import { delegate, gated, startParent, untilAnnounced } from "#test/characterization/harness";
 
-it("offers the widget and the branch's subagents as views, announced as agents change", async () => {
+const counts = (model: SummaryModel) =>
+  Object.fromEntries(model.counts.map((count) => [count.key, count.value]));
+
+it("offers the widget, the branch's subagents and their counts as views, announced as agents change", async () => {
   let bus: ActionBus | undefined;
   const changed: string[] = [];
   const h = await startParent({
@@ -24,10 +33,24 @@ it("offers the widget and the branch's subagents as views, announced as agents c
   });
   expect(listViews(bus!)).toEqual([
     { id: SUBAGENT_EXPLORER_VIEW, kind: "explorer", title: "Subagents" },
+    { id: SUBAGENT_SUMMARY_VIEW, kind: "summary", title: "Subagents" },
     { id: SUBAGENT_WIDGET_VIEW, kind: "widget", title: "Subagents" },
   ]);
   expect(readView(bus!, SUBAGENT_WIDGET_VIEW)).toBeUndefined();
   expect((readView(bus!, SUBAGENT_EXPLORER_VIEW) as ExplorerModel).items).toEqual([]);
+  // No subagent yet: the summary reads zeros, and no main-agent profile runs.
+  const empty = readView(bus!, SUBAGENT_SUMMARY_VIEW) as SummaryModel;
+  expect(isViewModel("summary", empty)).toBe(true);
+  expect(counts(empty)).toEqual({
+    running: 0,
+    queued: 0,
+    waiting: 0,
+    completed: 0,
+    failed: 0,
+    stopped: 0,
+    total: 0,
+  });
+  expect(empty.profile).toBeUndefined();
 
   const child = gated(fauxAssistantMessage("Finished."));
   h.script({
@@ -38,13 +61,20 @@ it("offers the widget and the branch's subagents as views, announced as agents c
   await h.session.prompt("Delegate work");
   await child.started;
   const [id] = h.agentIds();
-  expect(changed).toEqual(expect.arrayContaining([SUBAGENT_WIDGET_VIEW, SUBAGENT_EXPLORER_VIEW]));
+  expect(changed).toEqual(
+    expect.arrayContaining([SUBAGENT_WIDGET_VIEW, SUBAGENT_EXPLORER_VIEW, SUBAGENT_SUMMARY_VIEW]),
+  );
   const running = readView(bus!, SUBAGENT_WIDGET_VIEW) as WidgetModel;
+  expect(isViewModel("widget", running)).toBe(true);
   expect(running.active).toBe(true);
   expect(running.rows).toHaveLength(1);
   expect((readView(bus!, SUBAGENT_EXPLORER_VIEW) as ExplorerModel).items).toMatchObject([
     { id, badge: { text: "running" } },
   ]);
+  expect(counts(readView(bus!, SUBAGENT_SUMMARY_VIEW) as SummaryModel)).toMatchObject({
+    running: 1,
+    total: 1,
+  });
 
   child.release();
   await untilAnnounced(h);
@@ -52,11 +82,23 @@ it("offers the widget and the branch's subagents as views, announced as agents c
   expect((readView(bus!, SUBAGENT_EXPLORER_VIEW) as ExplorerModel).items).toMatchObject([
     { id, badge: { text: "done" } },
   ]);
+  expect(counts(readView(bus!, SUBAGENT_SUMMARY_VIEW) as SummaryModel)).toMatchObject({
+    running: 0,
+    completed: 1,
+    total: 1,
+  });
 
-  // A reload defines them again on the same bus, once.
+  // A reload defines them again on the same bus, once, with the finished history restored.
   await h.session.reload();
   expect(listViews(bus!).map((view) => view.id)).toEqual([
     SUBAGENT_EXPLORER_VIEW,
+    SUBAGENT_SUMMARY_VIEW,
     SUBAGENT_WIDGET_VIEW,
   ]);
+  // The widget has no row left to show; the summary still counts the branch's history.
+  expect(readView(bus!, SUBAGENT_WIDGET_VIEW)).toBeUndefined();
+  expect(counts(readView(bus!, SUBAGENT_SUMMARY_VIEW) as SummaryModel)).toMatchObject({
+    completed: 1,
+    total: 1,
+  });
 }, 30_000);
