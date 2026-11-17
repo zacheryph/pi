@@ -117,6 +117,7 @@ pi-personal/
 │   │   ├── src/index.ts
 │   │   └── test/
 │   ├── pi-foundations/                  # shared settings, model lookup, cmux notifications, command output
+│   ├── pi-isolate/                      # experimental whole-session sandbox launcher
 │   ├── pi-scripted-model/               # fake model + bundle test harness (dev only)
 │   ├── pi-test-helpers/                 # shared test helpers (dev only)
 │   ├── pi-work/                         # work:v1 contract + root work host
@@ -143,6 +144,10 @@ libraries shared by extensions, including [pi-ui](packages/pi-ui/README.md) for
 terminal views and widget layout, and [pi-surface](packages/pi-surface/README.md)
 for the JSON view model pi-ui draws and the per-session action and view registries. They
 are workspaces with no `pi` entry, and extensions import them through aliases.
+The standalone [pi-isolate](packages/pi-isolate/README.md) workspace also ships
+`pi-launch --isolate`, an experimental whole-session sandbox launcher with an
+explicit user policy and installation step. It is not loaded as an extension.
+
 Each workspace's `package.json` maps `#src/*` and `#test/*` to its own modules,
 and shared aliases such as `#ui`, `#surface`, `#work`, `#foundations/settings`
 and `#test-helpers` to workspace packages.

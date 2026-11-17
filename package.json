@@ -22,7 +22,8 @@
     "test",
     "packages/pi-presentation",
     "packages/pi-surface",
-    "extensions/pi-bb"
+    "extensions/pi-bb",
+    "packages/pi-isolate"
   ],
   "scripts": {
     "check": "npm run format:check && npm run lint && npm run typecheck",
@@ -92,7 +93,8 @@
     "pi-ui": "file:packages/pi-ui",
     "pi-work": "file:packages/pi-work",
     "pi-presentation": "file:packages/pi-presentation",
-    "pi-surface": "file:packages/pi-surface"
+    "pi-surface": "file:packages/pi-surface",
+    "pi-isolate": "file:packages/pi-isolate"
   },
   "type": "module"
 }
