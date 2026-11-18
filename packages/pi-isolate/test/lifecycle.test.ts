@@ -25,9 +25,11 @@ it("resolves the peer bin independently of cwd and PATH", () => {
   expect(resolvePi().entry).toMatch(/pi-coding-agent\/dist\/bundle\/cli\.js$/);
 });
 it("delegates a plain invocation without a policy or SRT", () => {
-  const bin = fileURLToPath(new URL("../bin/pi-launch.mjs", import.meta.url));
+  const bin = process.env.PI_ISOLATE_LAUNCHER_BINARY;
+  const file = bin ?? process.execPath;
+  const args = bin ? [] : [fileURLToPath(new URL("../bin/pi-launch.mjs", import.meta.url))];
   expect(
-    execFileSync(process.execPath, [bin, "--version"], {
+    execFileSync(file, [...args, "--version"], {
       encoding: "utf8",
       env: { ...process.env, PATH: "/nonexistent" },
       cwd: "/tmp",

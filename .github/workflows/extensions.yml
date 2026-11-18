@@ -79,6 +79,11 @@ jobs:
           npm ls @earendil-works/pi-coding-agent @anthropic-ai/sandbox-runtime
       - name: Probe real sandbox, Pi modes and lifecycle
         run: npm run probe --workspace=pi-isolate
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - name: Compile and probe native launcher
+        run: npm run probe:launcher
 
   repository-checks:
     name: Check repository and scripts

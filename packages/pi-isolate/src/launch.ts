@@ -3,7 +3,14 @@ import { dirname, join } from "node:path";
 import { Disposers, attachedChild, checkProcessTable } from "./lifecycle.ts";
 import type { Exit } from "./lifecycle.ts";
 import { contains, loadPolicy, PolicyError, preparePolicy } from "./config.ts";
-import { helperPaths, launcherInstallation, quoteArg, resolvePi } from "./resolve.ts";
+import {
+  compiledPaths,
+  helperPaths,
+  launcherInstallation,
+  nodeExecutable,
+  quoteArg,
+  resolvePi,
+} from "./resolve.ts";
 
 /** Run only in a dedicated supervisor with an already filtered host environment. */
 export async function launch(
@@ -15,12 +22,13 @@ export async function launch(
   if (process.platform !== "darwin" && process.platform !== "linux")
     throw new Error("isolation requires macOS or Linux");
   abort.throwIfAborted();
-  const node = realpathSync(process.execPath);
+  const node = nodeExecutable();
   const { entry, installation } = resolvePi();
   const policy = loadPolicy(path);
   const protectedPaths = [
     ...(shim ? [shim] : []),
     launcherInstallation(),
+    ...(compiledPaths() ? [compiledPaths()!.srt] : []),
     installation,
     node,
     dirname(node),
@@ -33,6 +41,13 @@ export async function launch(
   try {
     policy.sandbox.filesystem.allowWrite.push(privateDir);
     const config = preparePolicy(policy, path, process.cwd(), protectedPaths);
+    // Embedded files cannot be exec'd by the Linux kernel. Use the pinned
+    // installation's real seccomp helper rather than an ambient global package.
+    const compiled = compiledPaths();
+    if (compiled && process.platform === "linux")
+      config.seccomp = {
+        applyPath: join(compiled.srt, "vendor", "seccomp", process.arch, "apply-seccomp"),
+      };
     if (
       [...config.filesystem.denyRead, ...config.filesystem.denyWrite].some((p) =>
         contains(p as string, privateDir),
