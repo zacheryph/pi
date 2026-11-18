@@ -1,0 +1,561 @@
+{
+  "schemaVersion": 1,
+  "id": "community-tool-library",
+  "revision": 7,
+  "title": "Community tool library",
+  "status": "in_progress",
+  "updated": "2026-11-16",
+  "disclaimer": "Fictional roadmap and evidence. No real commits, PRs, owners or completed work are represented.",
+  "goal": {
+    "request": "Replace a paper lending process with a small community tool library.",
+    "outcome": "Members can find, reserve and return shared tools without volunteer spreadsheet work.",
+    "consumers": [
+      "Members",
+      "Volunteer coordinators"
+    ],
+    "successCriteria": [
+      "Borrow-and-return works for five pilot households.",
+      "Two members cannot reserve the same tool simultaneously.",
+      "Overdue reminders are safe to retry."
+    ],
+    "nonGoals": [
+      "Payments",
+      "Multiple branches",
+      "A native mobile app"
+    ],
+    "constraints": [
+      "Keep existing loan records.",
+      "Pilot before opening to the community."
+    ],
+    "openToChange": [
+      "Inventory storage",
+      "Checkout flow",
+      "Volunteer process"
+    ],
+    "offLimits": [
+      "Membership authentication"
+    ],
+    "appetite": "leave it better"
+  },
+  "answers": [
+    {
+      "id": "q1",
+      "question": "Can the pilot use the existing member login?",
+      "recommended": "Reuse it.",
+      "answer": "Yes, reuse the existing member login.",
+      "source": "fictional planning workshop",
+      "status": "resolved"
+    }
+  ],
+  "inputs": [
+    {
+      "id": "inventory",
+      "name": "Inventory records",
+      "source": "Volunteer spreadsheet",
+      "owner": "Coordinator",
+      "supply": "Import into the catalog contract",
+      "tradeoff": "One import adapter; checkout does not read spreadsheet columns."
+    },
+    {
+      "id": "membership",
+      "name": "Member identity",
+      "source": "Existing member login",
+      "owner": "Membership service",
+      "supply": "Verified member ID",
+      "tradeoff": "Reuses authentication while keeping lending policy local."
+    }
+  ],
+  "survey": {
+    "priorArt": [
+      "Existing member login",
+      "Volunteer lending rules"
+    ],
+    "conventions": [
+      "Stable tool IDs",
+      "Keep historical loan records"
+    ],
+    "friction": [
+      {
+        "id": "f1",
+        "problem": "Rules are duplicated in checkout notes.",
+        "evidence": "fictional: volunteer procedure section 3",
+        "blocks": [
+          "reserve",
+          "remind"
+        ],
+        "verdict": "fix_first"
+      }
+    ],
+    "noticedNotDoing": [
+      "Repair tracking"
+    ],
+    "notExamined": [
+      "Multi-branch lending is outside this example."
+    ]
+  },
+  "options": [
+    {
+      "id": "baseline",
+      "title": "Direct replacement",
+      "idea": "Build a single checkout screen around the spreadsheet.",
+      "cost": "S initially",
+      "risk": "Spreadsheet shape and lending rules stay coupled to the UI.",
+      "valueTiming": "First demo fastest; more manual coordination remains.",
+      "makesEasy": "A one-off pilot.",
+      "leavesBehind": "Spreadsheet runtime dependency.",
+      "chooseWhen": "The pilot is disposable."
+    },
+    {
+      "id": "contract-first",
+      "title": "Contract first",
+      "idea": "Pin the catalog shape and isolate lending policy, then build parallel consumers.",
+      "cost": "M",
+      "risk": "Some preparation before the first usable screen.",
+      "valueTiming": "Storage, browsing and policy can be reviewed separately.",
+      "makesEasy": "Independent browsing, checkout and reminders.",
+      "leavesBehind": "One catalog contract and one lending policy.",
+      "chooseWhen": "The library will continue after the pilot."
+    }
+  ],
+  "decision": {
+    "optionId": "contract-first",
+    "by": "fictional pilot coordinator",
+    "at": "2026-11-13",
+    "reason": "The catalog and policy will have several consumers."
+  },
+  "questions": [
+    {
+      "id": "q2",
+      "question": "Should damaged tools automatically stop new reservations?",
+      "status": "open",
+      "blocks": [],
+      "note": "Follow-up policy discussion; does not block the agreed pilot."
+    }
+  ],
+  "steps": [
+    {
+      "id": "scope",
+      "order": 1,
+      "title": "Agree on lending rules",
+      "type": "planning",
+      "track": "PLANNING",
+      "dependsOn": [],
+      "eases": [
+        "contract",
+        "policy",
+        "access"
+      ],
+      "does": "One household can borrow up to three tools; volunteers approve the pilot.",
+      "doneWhen": [
+        "One household can borrow up to three tools; volunteers approve the pilot."
+      ],
+      "verification": [
+        "Review rules with pilot coordinator."
+      ],
+      "rollback": "Revert the rules document.",
+      "size": "S",
+      "shipsAlone": true,
+      "scope": [
+        "example/scope"
+      ],
+      "execution": {
+        "stage": "done",
+        "delivery": "local",
+        "evidence": [
+          {
+            "kind": "verification",
+            "ref": "fixture:check-scope",
+            "result": "passed"
+          },
+          {
+            "kind": "commit",
+            "ref": "fixture:commit-scope",
+            "result": "recorded"
+          }
+        ],
+        "note": ""
+      }
+    },
+    {
+      "id": "contract",
+      "order": 2,
+      "title": "Define the catalog contract",
+      "type": "contract",
+      "track": "FOUNDATION",
+      "dependsOn": [
+        "scope"
+      ],
+      "eases": [
+        "store"
+      ],
+      "does": "Inventory records expose stable tool IDs, availability and condition.",
+      "doneWhen": [
+        "Inventory records expose stable tool IDs, availability and condition."
+      ],
+      "verification": [
+        "Validate representative fixtures against the contract."
+      ],
+      "rollback": "Revert the contract before any consumer ships.",
+      "size": "M",
+      "shipsAlone": true,
+      "scope": [
+        "example/contract"
+      ],
+      "execution": {
+        "stage": "done",
+        "delivery": "local",
+        "evidence": [
+          {
+            "kind": "verification",
+            "ref": "fixture:check-contract",
+            "result": "passed"
+          },
+          {
+            "kind": "commit",
+            "ref": "fixture:commit-contract",
+            "result": "recorded"
+          }
+        ],
+        "note": ""
+      }
+    },
+    {
+      "id": "policy",
+      "order": 3,
+      "title": "Extract reservation policy",
+      "type": "tidy",
+      "track": "FOUNDATION",
+      "dependsOn": [
+        "scope"
+      ],
+      "eases": [
+        "reserve",
+        "remind",
+        "help"
+      ],
+      "does": "Existing lending rules run through one pure policy module with unchanged results.",
+      "doneWhen": [
+        "Existing lending rules run through one pure policy module with unchanged results."
+      ],
+      "verification": [
+        "Run characterization cases for limits, overdue loans and cancellations."
+      ],
+      "rollback": "Restore the previous policy call sites.",
+      "size": "S",
+      "shipsAlone": true,
+      "scope": [
+        "example/policy"
+      ],
+      "execution": {
+        "stage": "done",
+        "delivery": "local",
+        "evidence": [
+          {
+            "kind": "verification",
+            "ref": "fixture:check-policy",
+            "result": "passed"
+          },
+          {
+            "kind": "commit",
+            "ref": "fixture:commit-policy",
+            "result": "recorded"
+          }
+        ],
+        "note": ""
+      }
+    },
+    {
+      "id": "access",
+      "order": 4,
+      "title": "Audit keyboard access",
+      "type": "research",
+      "track": "QUALITY",
+      "dependsOn": [
+        "scope"
+      ],
+      "eases": [
+        "pilot"
+      ],
+      "does": "Known keyboard and screen reader gaps have reproduction steps and owners.",
+      "doneWhen": [
+        "Known keyboard and screen reader gaps have reproduction steps and owners."
+      ],
+      "verification": [
+        "Complete the browse, reserve and cancel audit checklist."
+      ],
+      "rollback": "No runtime change to roll back.",
+      "size": "S",
+      "shipsAlone": true,
+      "scope": [
+        "example/access"
+      ],
+      "execution": {
+        "stage": "pending",
+        "delivery": "local",
+        "evidence": [],
+        "note": ""
+      }
+    },
+    {
+      "id": "store",
+      "order": 5,
+      "title": "Implement catalog storage",
+      "type": "migration",
+      "track": "FOUNDATION",
+      "dependsOn": [
+        "contract"
+      ],
+      "eases": [
+        "catalog",
+        "reserve",
+        "remind"
+      ],
+      "does": "The pilot inventory imports without losing tool IDs.",
+      "doneWhen": [
+        "The pilot inventory imports without losing tool IDs."
+      ],
+      "verification": [
+        "Compare imported IDs and counts; test failed import rollback."
+      ],
+      "rollback": "Restore the pre-import backup.",
+      "size": "M",
+      "shipsAlone": true,
+      "scope": [
+        "example/store"
+      ],
+      "execution": {
+        "stage": "done",
+        "delivery": "local",
+        "evidence": [
+          {
+            "kind": "verification",
+            "ref": "fixture:check-store",
+            "result": "passed"
+          },
+          {
+            "kind": "commit",
+            "ref": "fixture:commit-store",
+            "result": "recorded"
+          }
+        ],
+        "note": ""
+      }
+    },
+    {
+      "id": "catalog",
+      "order": 6,
+      "title": "Build the browsing screen",
+      "type": "change",
+      "track": "EXPERIENCE",
+      "dependsOn": [
+        "store"
+      ],
+      "eases": [],
+      "does": "Members can browse tools and see their current availability.",
+      "doneWhen": [
+        "Members can browse tools and see their current availability."
+      ],
+      "verification": [
+        "Exercise empty, unavailable and available inventory states."
+      ],
+      "rollback": "Disable the new browsing route.",
+      "size": "M",
+      "shipsAlone": true,
+      "scope": [
+        "example/catalog"
+      ],
+      "execution": {
+        "stage": "review",
+        "delivery": "local",
+        "evidence": [],
+        "note": "Waiting for independent review."
+      }
+    },
+    {
+      "id": "reserve",
+      "order": 7,
+      "title": "Build checkout flow",
+      "type": "change",
+      "track": "EXPERIENCE",
+      "dependsOn": [
+        "policy",
+        "store"
+      ],
+      "eases": [],
+      "does": "Eligible members can reserve and return tools with policy checks.",
+      "doneWhen": [
+        "Eligible members can reserve and return tools with policy checks."
+      ],
+      "verification": [
+        "Test simultaneous reservation, return and rejected requests."
+      ],
+      "rollback": "Disable checkout; retain existing loan records.",
+      "size": "M",
+      "shipsAlone": true,
+      "scope": [
+        "example/reserve"
+      ],
+      "execution": {
+        "stage": "implementing",
+        "delivery": "local",
+        "evidence": [],
+        "note": "Implementation is active; reservation race handling remains."
+      }
+    },
+    {
+      "id": "remind",
+      "order": 8,
+      "title": "Add return reminders",
+      "type": "change",
+      "track": "OPERATIONS",
+      "dependsOn": [
+        "policy",
+        "store"
+      ],
+      "eases": [],
+      "does": "A daily job queues one reminder per overdue loan without duplicates.",
+      "doneWhen": [
+        "A daily job queues one reminder per overdue loan without duplicates."
+      ],
+      "verification": [
+        "Run a dry job twice and compare queued notifications."
+      ],
+      "rollback": "Disable the reminder job.",
+      "size": "M",
+      "shipsAlone": true,
+      "scope": [
+        "example/remind"
+      ],
+      "execution": {
+        "stage": "pending",
+        "delivery": "local",
+        "evidence": [],
+        "note": ""
+      }
+    },
+    {
+      "id": "pilot",
+      "order": 9,
+      "title": "Run the volunteer pilot",
+      "type": "migration",
+      "track": "RELEASE",
+      "dependsOn": [
+        "catalog",
+        "reserve",
+        "access"
+      ],
+      "eases": [],
+      "does": "Five volunteer households finish a borrow-and-return cycle.",
+      "doneWhen": [
+        "Five volunteer households finish a borrow-and-return cycle."
+      ],
+      "verification": [
+        "Review pilot results and confirm no lost reservations."
+      ],
+      "rollback": "Return volunteers to the paper checkout process.",
+      "size": "M",
+      "shipsAlone": true,
+      "scope": [
+        "example/pilot"
+      ],
+      "execution": {
+        "stage": "pending",
+        "delivery": "local",
+        "evidence": [],
+        "note": ""
+      }
+    },
+    {
+      "id": "help",
+      "order": 10,
+      "title": "Write the lending guide",
+      "type": "change",
+      "track": "OPERATIONS",
+      "dependsOn": [
+        "policy"
+      ],
+      "eases": [],
+      "does": "Members can find lending limits, return instructions and contact details.",
+      "doneWhen": [
+        "Members can find lending limits, return instructions and contact details."
+      ],
+      "verification": [
+        "Coordinator checks the guide against the agreed lending rules."
+      ],
+      "rollback": "Unpublish the guide.",
+      "size": "M",
+      "shipsAlone": true,
+      "scope": [
+        "example/help"
+      ],
+      "execution": {
+        "stage": "pending",
+        "delivery": "local",
+        "evidence": [],
+        "note": ""
+      }
+    },
+    {
+      "id": "launch",
+      "order": 11,
+      "title": "Open community lending",
+      "type": "change",
+      "track": "RELEASE",
+      "dependsOn": [
+        "pilot",
+        "remind",
+        "help"
+      ],
+      "eases": [],
+      "does": "Community checkout is enabled after the pilot and reminders pass.",
+      "doneWhen": [
+        "Community checkout is enabled after the pilot and reminders pass."
+      ],
+      "verification": [
+        "Run a production smoke check against the enabled release."
+      ],
+      "rollback": "Disable community checkout; keep volunteer access.",
+      "size": "M",
+      "shipsAlone": true,
+      "scope": [
+        "example/launch"
+      ],
+      "execution": {
+        "stage": "pending",
+        "delivery": "local",
+        "evidence": [],
+        "note": ""
+      }
+    },
+    {
+      "id": "cleanup",
+      "order": 12,
+      "title": "Remove paper-only fallback",
+      "type": "cleanup",
+      "track": "RELEASE",
+      "dependsOn": [
+        "launch"
+      ],
+      "eases": [],
+      "does": "Old-only instructions are removed and loan records remain accessible.",
+      "doneWhen": [
+        "Old-only instructions are removed and loan records remain accessible."
+      ],
+      "verification": [
+        "Search for retired instructions and verify record lookup."
+      ],
+      "rollback": "Restore fallback instructions.",
+      "size": "S",
+      "shipsAlone": true,
+      "scope": [
+        "example/cleanup"
+      ],
+      "execution": {
+        "stage": "pending",
+        "delivery": "local",
+        "evidence": [],
+        "note": ""
+      }
+    }
+  ]
+}
