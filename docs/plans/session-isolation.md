@@ -23,7 +23,7 @@ sandbox:
     allowedDomains: [api.anthropic.com]
     deniedDomains: []
   filesystem:
-    denyRead: ["~/.ssh", "~/.aws", "~/.pi/agent/auth.json", "~/.pi/agent/isolation.yaml"]
+    denyRead: ["~/.ssh", "~/.aws", "~/.pi/agent/isolation.yaml"]
     allowWrite: [".", "~/.pi/agent/sessions"]
     denyWrite: ["~/.pi/agent/isolation.yaml"]
 env:
