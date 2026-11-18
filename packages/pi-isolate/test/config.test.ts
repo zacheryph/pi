@@ -13,14 +13,22 @@ function fixture(cleanup: (fn: () => void) => void) {
         network: { allowedDomains: [], deniedDomains: [] },
         filesystem: { denyRead: [], allowWrite: ["."], denyWrite: [] },
       },
-      env: { pass: ["KEEP", "MISSING"], set: { VALUE: "$(echo secret) ' literal" } },
+      env: {
+        pass: ["KEEP", "MISSING"],
+        set: { VALUE: "$(echo secret) ' literal" },
+      },
     },
     "project/control": "ok",
     "install/control": "trusted",
   });
   const path = join(root, "host/isolation.yaml");
   chmodSync(path, 0o600);
-  return { root, path, cwd: join(root, "project"), install: join(root, "install") };
+  return {
+    root,
+    path,
+    cwd: join(root, "project"),
+    install: join(root, "install"),
+  };
 }
 
 describe("launch policy", () => {
@@ -100,14 +108,23 @@ describe("launch policy", () => {
     const valid = loadPolicy(path);
     for (const value of [
       { ...valid, extra: true },
-      { ...valid, sandbox: { ...valid.sandbox, enableWeakerNestedSandbox: true } },
       {
         ...valid,
-        sandbox: { ...valid.sandbox, filesystem: { ...valid.sandbox.filesystem, disabled: true } },
+        sandbox: { ...valid.sandbox, enableWeakerNestedSandbox: true },
       },
       {
         ...valid,
-        sandbox: { ...valid.sandbox, network: { ...valid.sandbox.network, httpProxyPort: 8080 } },
+        sandbox: {
+          ...valid.sandbox,
+          filesystem: { ...valid.sandbox.filesystem, disabled: true },
+        },
+      },
+      {
+        ...valid,
+        sandbox: {
+          ...valid.sandbox,
+          network: { ...valid.sandbox.network, httpProxyPort: 8080 },
+        },
       },
       { ...valid, env: { pass: ["*"] } },
       {
@@ -135,10 +152,32 @@ describe("launch policy", () => {
       join(f.root, "host"),
       f.install,
       join(f.install, "node_modules/dependency"),
-      "/",
     ]) {
       policy.sandbox.filesystem.allowWrite = [grant];
-      expect(() => preparePolicy(policy, f.path, f.cwd, [f.install])).toThrow("overlaps");
+      expect(() => preparePolicy(policy, f.path, f.cwd, [f.install], undefined, "linux")).toThrow(
+        "overlaps",
+      );
+    }
+    policy.sandbox.filesystem.allowWrite = ["/"];
+    expect(() => preparePolicy(policy, f.path, f.cwd, [f.install])).toThrow("filesystem-root");
+  });
+  it("allows ancestor grants on macOS, where SRT blocks moving denied paths", ({
+    onTestFinished,
+  }) => {
+    const f = fixture(onTestFinished);
+    const policy = loadPolicy(f.path);
+    for (const grant of [join(f.root, "host"), f.root]) {
+      policy.sandbox.filesystem.allowWrite = [grant];
+      const effective = preparePolicy(policy, f.path, f.cwd, [f.install], undefined, "darwin");
+      expect(effective.filesystem.allowWrite).toEqual([grant]);
+      // The protection is the deny; both the policy and the installation must carry one.
+      expect(effective.filesystem.denyWrite).toEqual(expect.arrayContaining([f.path, f.install]));
+    }
+    for (const grant of [f.install, join(f.install, "node_modules/dependency"), f.path, "/"]) {
+      policy.sandbox.filesystem.allowWrite = [grant];
+      expect(() =>
+        preparePolicy(policy, f.path, f.cwd, [f.install], undefined, "darwin"),
+      ).toThrow();
     }
   });
   it("rejects symlinked grants and follows policy symlinks for protection", ({
@@ -152,9 +191,9 @@ describe("launch policy", () => {
     mkdirSync(join(f.root, "other"));
     symlinkSync(f.path, join(f.root, "other/policy"));
     policy.sandbox.filesystem.allowWrite = [join(f.root, "host")];
-    expect(() => preparePolicy(policy, join(f.root, "other/policy"), f.cwd, [])).toThrow(
-      "overlaps",
-    );
+    expect(() =>
+      preparePolicy(policy, join(f.root, "other/policy"), f.cwd, [], undefined, "linux"),
+    ).toThrow("overlaps");
   });
   it("rejects group-writable policy files and missing policies", ({ onTestFinished }) => {
     const f = fixture(onTestFinished);
