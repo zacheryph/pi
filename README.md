@@ -9,13 +9,73 @@ or TypeScript build required. Requires Pi 1.4.0+ and Node.js 24+.
 
 ### Local checkout (recommended for editing)
 
+From this checkout, install dependencies and register the bundle in Pi:
+
 ```bash
-pi install /absolute/path/to/pi-personal
+npm run setup:pi
+# Also install/build the companion plugin in an already installed bb:
+npm run setup:bb
 ```
 
 Pi loads files from this checkout without copying them. Edit code, then run `/reload`
-in Pi. Local installs do not install dependencies; these extensions currently use
-only Node built-ins and Pi-provided runtime modules.
+in Pi. `setup:bb` includes Pi setup and installs `bb-plugin/` with its own development
+dependencies before running `bb plugin install ... --yes`. Both commands use the
+Pi peer in this checkout, so an existing `pi` shim cannot recurse. These are
+explicit setup commands; ordinary `npm install` does not modify Pi or bb settings.
+You can also register an already prepared checkout with
+`pi install /absolute/path/to/pi-personal`.
+
+### Launch Pi in a terminal
+
+```bash
+npm run pi -- --version
+npm run pi                       # interactive Pi
+npm run setup:policy             # create an example only if no policy exists
+# Review ~/.pi/agent/isolation.yaml before requesting isolation.
+```
+
+To work in a separate project, preserve its directory while invoking the helper:
+
+```bash
+cd /absolute/path/to/project
+npm --prefix /absolute/trusted/pi-personal run pi
+npm --prefix /absolute/trusted/pi-personal run pi:isolate -- -p "Explain this project"
+```
+
+For RPC or clean piped JSON output, install a direct executable (npm itself emits
+script banners unless `--silent` is used):
+
+```bash
+npm run setup:launcher           # ~/.local/bin/pi-launch; add that directory to PATH
+pi-launch --mode rpc
+pi-launch --isolate
+```
+
+The helper preserves argv, streams and the invoking project directory. It leaves
+existing `pi` executables in place and refuses to replace an existing `pi-launch`
+file or unrelated symlink. Use `-- --bin-dir /another/bin` for another destination.
+An isolated launch needs a reviewed policy and a project outside this trusted
+checkout. Read [pi-isolate](packages/pi-isolate/README.md) for policy requirements.
+
+### Build a native launcher with Bun
+
+```bash
+npm run build:launcher           # packages/pi-isolate/dist/pi-launch
+npm run pi:compiled -- --version
+npm run probe:launcher           # build + real OS probe, no provider credentials
+# Build and put the binary on PATH instead of the source launcher:
+npm run setup:launcher -- --compiled
+```
+
+The native executable embeds the launcher, supervisor and sandbox JavaScript.
+Bun is needed only to build it; Pi still uses Node. The binary records absolute
+paths to this trusted checkout, its Pi peer, Node and SRT's Linux helper assets.
+Rebuild after moving the checkout, changing Node or updating dependencies. It is
+a local build for the current OS/architecture, not a portable Pi distribution.
+Source and compiled launchers use the same sandbox policy. Bun's automatic project
+`.env`, `bunfig.toml`, `tsconfig.json` and `package.json` loading is disabled in the
+binary. Compiled sandbox probes run in the macOS CI job; Linux runtime verification
+remains outstanding.
 
 ### GitHub
 

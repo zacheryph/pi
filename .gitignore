@@ -4,6 +4,7 @@ npm-debug.log*
 
 # Generated declarations and test output
 extensions/*/dist/
+packages/pi-isolate/dist/
 coverage/
 
 # OS files

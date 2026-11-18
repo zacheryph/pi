@@ -12,6 +12,18 @@ with its own toolchain, not one of the bundle's npm workspaces.
 
 ## Install
 
+From the repository root, install the Pi bundle and this plugin together:
+
+```sh
+npm run setup:bb
+```
+
+This installs root dependencies, registers the local bundle with Pi, installs
+the plugin's own dependencies and runs the command below. bb must already be
+installed. It does not open bb or create a thread.
+
+To install just the bb companion manually:
+
 ```sh
 cd bb-plugin
 npm install --include=dev

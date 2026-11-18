@@ -2,8 +2,37 @@ import { accessSync, constants, existsSync, readFileSync, realpathSync } from "n
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+// Replaced by the local Bun build. Paths bind the binary to its trusted install.
+declare const PI_ISOLATE_BUILD:
+  | { node: string; entry: string; installation: string; launcher: string; srt: string }
+  | undefined;
+
+export function compiledPaths() {
+  return typeof PI_ISOLATE_BUILD === "undefined" ? undefined : PI_ISOLATE_BUILD;
+}
+
+export const supervisorArgv0 = "pi-isolate:supervisor";
+
+export function supervisorInvocation(shim: string, args: string[]) {
+  if (compiledPaths()) return { file: process.execPath, argv: [supervisorArgv0, shim, ...args] };
+  const node = nodeExecutable();
+  const supervisor = fileURLToPath(new URL("../bin/supervisor.mjs", import.meta.url));
+  return { file: node, argv: [node, supervisor, shim, ...args] };
+}
+
+/** Pi continues using Node even when the host launcher is compiled with Bun. */
+export function nodeExecutable(): string {
+  return realpathSync(compiledPaths()?.node ?? process.execPath);
+}
+
 /** Resolve beside this installed launcher, never via cwd or the pi name on PATH. */
 export function resolvePi(): { entry: string; installation: string } {
+  const compiled = compiledPaths();
+  if (compiled)
+    return {
+      entry: realpathSync(compiled.entry),
+      installation: realpathSync(compiled.installation),
+    };
   let directory = dirname(fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent")));
   for (;;) {
     const manifest = join(directory, "package.json");
@@ -26,6 +55,8 @@ export function resolvePi(): { entry: string; installation: string } {
 
 /** Protect the complete dependency tree, including workspace installations. */
 export function launcherInstallation(): string {
+  const compiled = compiledPaths();
+  if (compiled) return realpathSync(compiled.launcher);
   let directory = dirname(fileURLToPath(import.meta.url));
   while (dirname(directory) !== directory) {
     if (existsSync(join(directory, "node_modules"))) return realpathSync(directory);

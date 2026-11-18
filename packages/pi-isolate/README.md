@@ -14,7 +14,7 @@ The sandbox runtime is an external pinned dependency, not vendored source.
 ## Install and invoke
 
 Requires Node 24+ on macOS or Linux, the pinned Pi peer, and SRT's platform
-prerequisites. macOS uses `/usr/bin/sandbox-exec` and `rg`; Linux also needs
+prerequisites. macOS uses `/usr/bin/sandbox-exec`; Linux needs ripgrep,
 bubblewrap, socat, procps (`/bin/ps`) and usable user namespaces. The packaged seccomp helpers are
 included in SRT. Missing prerequisites fail before Pi runs. Linux is an
 implementation target with runtime verification still outstanding.
@@ -27,6 +27,14 @@ cd /absolute/trusted/pi
 npm install --ignore-scripts
 node packages/pi-isolate/bin/pi-launch.mjs --version
 ```
+
+The repository also provides `npm run setup:pi` to install dependencies and
+register this bundle in Pi, and `npm run setup:launcher` to link `pi-launch`
+into `~/.local/bin` (or `-- --bin-dir PATH`). The helper refuses existing files
+or unrelated symlinks and never replaces `pi`. Run
+`npm run setup:policy` to copy the example with mode 600 only when no policy
+already exists. These commands are explicit; installing dependencies alone
+does not change user configuration.
 
 Prepare the policy explicitly; installation never creates or overwrites one:
 
@@ -61,6 +69,37 @@ resolved from its installed package's `bin.pi` metadata relative to the
 launcher, independent of project cwd and the executable named `pi` on PATH.
 Launching from this trusted checkout with `allowWrite: ["."]` is rejected:
 choose a separate project directory.
+
+### Native launcher
+
+From the trusted repository root, with Bun **1.4.4** installed:
+
+```sh
+npm run build:launcher
+packages/pi-isolate/dist/pi-launch --version
+npm run probe:launcher
+npm run setup:launcher -- --compiled
+```
+
+The build embeds the launcher, supervisor and SRT JavaScript in a native Bun
+executable. Bun is not needed at runtime. Pi still runs under the installed
+Node executable; it is not bundled into the binary. Absolute paths to Node,
+Pi, this checkout and SRT's real Linux seccomp assets are recorded at build
+time. Keep those paths installed and trusted. Rebuild after moving them or
+updating dependencies. This builds for the current OS and architecture only.
+
+The executable re-execs itself with the filtered environment before evaluating
+SRT. Its embedded supervisor is selected through argv[0], leaving Pi arguments
+unchanged. Automatic loading of project `.env`, `bunfig.toml`, `tsconfig.json`
+and `package.json` is disabled, and build-time environment values are not
+inlined. The same policy and installation-write protection apply to both builds.
+The binary's own path is also protected from sandbox writes.
+
+`probe:launcher` builds the production executable and a test driver using the
+same compiled supervisor invocation and sandbox implementation. It checks plain
+Pi delegation with the production executable and runs all 36 OS/mode/lifecycle
+checks through the driver with a disposable policy; it never edits your policy.
+macOS CI runs both source and compiled probes. Linux runtime remains unverified.
 
 ## Policy and environment
 

@@ -36,6 +36,9 @@ it.skipIf(process.env.PI_ISOLATE_PROBE !== "1")(
       "allowed/secret": "control",
       "denied/secret": "denied",
       "project/.keep": "",
+      "project/.env": "PI_ISOLATE_HOST_ONLY=dotenv-must-not-load\n",
+      "project/bunfig.toml": 'preload = ["./startup.ts"]\n',
+      "project/startup.ts": 'process.env.PI_ISOLATE_HOST_ONLY = "bunfig-must-not-load";',
       "agent/settings.json": { packages: [], compaction: { enabled: false } },
     });
     const policy = join(root, "host/policy.yaml");
@@ -46,12 +49,15 @@ it.skipIf(process.env.PI_ISOLATE_PROBE !== "1")(
       realpathSync(process.execPath),
     );
     const driver = fileURLToPath(new URL("./fixtures/driver.mjs", import.meta.url));
+    const command = process.env.PI_ISOLATE_PROBE_BINARY
+      ? [process.env.PI_ISOLATE_PROBE_BINARY]
+      : [process.execPath, driver];
     const extension = fileURLToPath(new URL("./fixtures/extension.ts", import.meta.url));
     async function run(args: string[], input = "", rpc = false) {
       const child = spawn(
-        process.execPath,
+        command[0],
         [
-          driver,
+          ...command.slice(1),
           policy,
           "--no-skills",
           "--no-prompt-templates",
@@ -156,8 +162,7 @@ it.skipIf(process.env.PI_ISOLATE_PROBE !== "1")(
       {
         input: JSON.stringify({
           argv: [
-            process.execPath,
-            driver,
+            ...command,
             policy,
             "--no-skills",
             "--no-prompt-templates",
