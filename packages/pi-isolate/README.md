@@ -67,8 +67,9 @@ Only a **leading** `--isolate` is consumed. Later occurrences, empty arguments,
 newlines and shell metacharacters are passed literally. The real Pi entry is
 resolved from its installed package's `bin.pi` metadata relative to the
 launcher, independent of project cwd and the executable named `pi` on PATH.
-Launching from this trusted checkout with `allowWrite: ["."]` is rejected:
-choose a separate project directory.
+Launching from this trusted checkout with `allowWrite: ["."]` is rejected on
+Linux: choose a separate project directory. On macOS the checkout may be
+granted, because the launcher's write denials protect it (see below).
 
 ### Native launcher
 
@@ -130,13 +131,19 @@ The example permits project and session writes only; it does not promise
 first-run setup, stored-auth locking, settings changes or extension storage.
 For those, grant the specific paths your setup needs or use a separate,
 session-private agent directory through an explicitly passed
-`PI_CODING_AGENT_DIR`. Never grant the whole home or agent directory as a shortcut:
-that can also allow policy replacement, and the launcher rejects it.
+`PI_CODING_AGENT_DIR`. On macOS, granting `~/.pi/agent` works, which also covers
+the `<file>.lock` directories Pi creates beside its state files. The policy stays
+protected by the launcher's `denyWrite` (below). Linux rejects such grants.
 
 Before launch, write grants are canonicalized and checked against both the
 lexical and real policy, shim, launcher/dependency tree, Pi installation, Node
-and trusted executable directories and resolved helper binaries. Grants on their ancestors are rejected even
-if a deny names the file: writable parents permit replacement by rename.
+and trusted executable directories and resolved helper binaries. A grant inside a
+protected path is always rejected, as is the filesystem root. On Linux, grants on
+ancestors are rejected too, since writable parents could permit replacement by
+rename. On macOS, SRT's profile denies `file-write-unlink` and
+`file-write-create` on every denied path and its ancestor directories after the
+allow rules, so an ancestor grant cannot move, delete, overwrite or symlink over
+a protected file. This was checked with `srt` on macOS; Linux is unverified.
 Direct symlinked write roots that cannot be proved safe are rejected. The
 launcher also adds explicit write denials for protected paths. The host user
 and other host processes remain trusted; this is not protection against a
