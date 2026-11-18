@@ -57,6 +57,29 @@ jobs:
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:workspace -- "$EXTENSION"
 
+  isolate-probe:
+    name: Probe pi-isolate (macOS)
+    needs: select-extensions
+    if: contains(fromJSON(needs.select-extensions.outputs.matrix).extension, 'packages/pi-isolate')
+    runs-on: macos-26
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Record probe platform
+        run: |
+          sw_vers
+          uname -m
+          node --version
+          python3 --version
+          npm ls @earendil-works/pi-coding-agent @anthropic-ai/sandbox-runtime
+      - name: Probe real sandbox, Pi modes and lifecycle
+        run: npm run probe --workspace=pi-isolate
+
   repository-checks:
     name: Check repository and scripts
     runs-on: ubuntu-26.04

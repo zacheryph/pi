@@ -169,6 +169,12 @@ a scripted provider. Print argv, print stdin/JSON, RPC prompt/abort/EOF and TUI
 prompt/resize/EOF/terminal restoration are exercised with real Pi. The terminal
 probe allocates a PTY as the _test client_; the launcher itself never does.
 
+GitHub Actions keeps the regular workspace tests on Linux and runs `probe` in
+a separate `macos-26` job whenever this workspace is selected. That job records
+the OS, architecture, Node, Python, Pi and SRT versions. It requires the real
+sandbox checks to pass; it does not silently skip enforcement failures. Linux
+OS probes remain opt-in until their runner prerequisites are verified.
+
 `probe:network` additionally uses curl through SRT to request
 `https://example.com` (allowed) and `https://example.org` (denied). It does not
 use provider credentials or make billed model requests. Real provider streaming
