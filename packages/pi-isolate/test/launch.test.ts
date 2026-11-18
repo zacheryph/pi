@@ -22,13 +22,13 @@ vi.mock("#src/lifecycle", async (importOriginal) => ({
 }));
 import { launch } from "#src/launch";
 
-const originalTmp = process.env.TMPDIR;
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.stubEnv("TMPDIR", process.env.TMPDIR);
   vi.mocked(SandboxManager.checkDependenciesAsync).mockResolvedValue({ errors: [], warnings: [] });
 });
 afterEach(() => {
-  process.env.TMPDIR = originalTmp;
+  vi.unstubAllEnvs();
 });
 
 function policy(cleanup: (fn: () => void) => void) {
