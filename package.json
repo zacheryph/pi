@@ -84,9 +84,9 @@
     "@earendil-works/pi-tui": "1.5.2",
     "@types/node": "^24.19.2",
     "ajv": "^8.20.0",
-    "oxfmt": "0.77.0",
-    "oxlint": "1.92.0",
-    "oxlint-tsgolint": "7.0.2006",
+    "oxfmt": "0.78.0",
+    "oxlint": "1.93.0",
+    "oxlint-tsgolint": "7.0.2007",
     "typebox": "1.3.27",
     "typescript": "^7.0.2",
     "vitest": "^5.1.0"
