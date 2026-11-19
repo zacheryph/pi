@@ -22,7 +22,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sandbox-runtime": "0.0.83",
-    "yaml": "2.9.0",
+    "yaml": "2.9.1",
     "jiti": "2.7.0"
   },
   "imports": {
