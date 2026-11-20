@@ -141,6 +141,32 @@ describe("pi-tldr integration", () => {
     expect(runTldrModel).not.toHaveBeenCalled();
   });
 
+  it("names a new session when an app runs Pi over RPC", async () => {
+    const h = harness(true);
+    (h.ctx as any).mode = "rpc";
+    h.emit("session_start");
+    h.emit("input", { source: "rpc", text: "Fix the login redirect" });
+    h.emit("before_agent_start", { messageType: "user", prompt: "Fix the login redirect" });
+    await tick();
+    expect(runTldrModel).toHaveBeenCalledWith(
+      h.ctx,
+      expect.anything(),
+      "Fix the login redirect",
+      "title",
+      expect.anything(),
+    );
+    expect(h.setName).toHaveBeenCalledWith("routing-migration-plan");
+  });
+
+  it("does not name print-mode sessions", async () => {
+    const h = harness(true);
+    (h.ctx as any).mode = "print";
+    h.emit("session_start");
+    h.emit("before_agent_start", { messageType: "user", prompt: "Child task" });
+    await tick();
+    expect(runTldrModel).not.toHaveBeenCalled();
+  });
+
   it("uses raw input before template expansion to name a new session", async () => {
     const h = harness(true);
     h.emit("session_start");

@@ -86,6 +86,14 @@ export function createPlugin(options: PluginOptions = {}) {
         // into the thread's timeline with nobody to answer them.
         questions.sync(threadId);
       },
+      // Pi names its session (pi-tldr does, after the first prompt); the thread follows.
+      onRename: (threadId, name) => {
+        void Promise.resolve()
+          .then(() => bb.sdk.threads.update({ threadId, title: name }))
+          .catch((error: unknown) => {
+            bb.log.warn(`could not title thread ${threadId}: ${String(error)}`);
+          });
+      },
       ...options,
     });
 
