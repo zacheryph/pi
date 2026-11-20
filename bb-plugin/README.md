@@ -133,6 +133,12 @@ bb shows only behind experiments, for the docs.
   through the connection that raised it. A form is withdrawn when the view
   stops listing it, when the connection closes or another process takes the
   thread. Fixtures and saved sessions never raise one.
+- **Thread title.** When a live session's name changes (pi-tldr names a new
+  session after its first prompt), the server sets the bb thread's title with
+  `bb.sdk.threads.update({ threadId, title })`. Only a change against the
+  store's earlier snapshot counts, so a Pi that reconnects with its saved name
+  does not undo a rename made in bb. Turn bb's own thread-title AI service off
+  (`bb settings ai-services set thread-title off`) so the two do not compete.
 - **Dispose.** `bb.onDispose` withdraws open forms and closes every session
   socket; bb itself closes them with 1012 on reload, and pi-bb reconnects.
 

@@ -83,6 +83,13 @@ export interface SessionStoreOptions {
   verify(threadId: string, token: string): boolean | Promise<boolean>;
   /** A thread's session appeared, changed or went away. */
   onChange(threadId: string): void;
+  /**
+   * Pi named a session that had a different name, or none, in the store's last
+   * snapshot for the thread. Never called for a thread the store has not seen,
+   * so a Pi that merely reconnects with its saved name does not undo a rename
+   * made in bb.
+   */
+  onRename?(threadId: string, name: string): void;
   /** Keeps live snapshots across plugin loads. */
   archive?: SnapshotArchive;
   /** Reports archive failures and unreadable messages; the store keeps working. */
@@ -364,16 +371,30 @@ export class SessionStore {
     }
     this.save(threadId, snapshot);
     this.options.onChange(threadId);
+    if (existing && existing.source !== "fixture")
+      this.renamed(threadId, existing.snapshot, snapshot);
   }
 
   update(connection: SessionConnection, snapshot: DeliverySnapshot): void {
     const entry = this.entries.get(connection.threadId!);
     // A replaced connection's late update never touches its replacement.
     if (!entry || entry.connection !== connection) return;
+    const before = entry.snapshot;
     entry.snapshot = snapshot;
     entry.updatedAt = this.now();
     this.save(entry.threadId, snapshot);
     this.options.onChange(entry.threadId);
+    this.renamed(entry.threadId, before, snapshot);
+  }
+
+  private renamed(threadId: string, before: DeliverySnapshot, after: DeliverySnapshot): void {
+    const name = sessionModel(after)?.name;
+    if (!name || name === sessionModel(before)?.name) return;
+    try {
+      this.options.onRename?.(threadId, name);
+    } catch {
+      /* a failing rename never costs the live view */
+    }
   }
 
   settle(connection: SessionConnection, id: number, result: ActionResult): void {

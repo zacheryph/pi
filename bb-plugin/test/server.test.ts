@@ -61,7 +61,10 @@ type Socket = Awaited<
 >;
 
 async function setup() {
-  const { bb, harness } = createFakePluginHost({ pluginId: "pi-surface" });
+  const { bb, harness } = createFakePluginHost({
+    pluginId: "pi-surface",
+    sdk: { threads: { update: async () => ({}) } },
+  });
   await createPlugin(OPTIONS)(bb);
   hosts.push({ dispose: () => harness.lifecycle.dispose() });
   const tokenFor = async (threadId: string) => {
@@ -254,6 +257,41 @@ describe("pi-surface server", () => {
     expect((await harness.behavior.runCli(["list"])).stdout).toContain(
       `${THREAD}  live  unknown  (no session view)`,
     );
+  });
+
+  it("titles the thread when Pi names its session, and only then", async () => {
+    const { harness, connect, update } = await setup();
+    const titles = () => harness.sdk.callsTo("threads.update");
+    const named = (name?: string) => snapshot([sessionView(name ? { name } : {})]);
+    const socket = await connect(THREAD, named("login-redirect"));
+    await tick();
+    // The plugin has no earlier snapshot to compare a first hello with; bb's title may be a manual one.
+    expect(titles()).toEqual([]);
+    await update(socket, named("login-redirect"));
+    await tick();
+    expect(titles()).toEqual([]);
+    await update(socket, named("fix-login-redirect"));
+    await tick();
+    expect(titles()).toEqual([[{ threadId: THREAD, title: "fix-login-redirect" }]]);
+    await update(socket, named());
+    await tick();
+    expect(titles()).toHaveLength(1);
+  });
+
+  it("titles a thread whose Pi first reports a name after a nameless hello, and survives a failing rename", async () => {
+    const { harness, connect, update } = await setup();
+    harness.sdk.stub("threads.update", async () => {
+      throw new Error("bb is busy");
+    });
+    const socket = await connect();
+    await update(socket, snapshot([sessionView({ name: "new-name" })]));
+    await tick();
+    expect(harness.sdk.callsTo("threads.update")).toEqual([
+      [{ threadId: THREAD, title: "new-name" }],
+    ]);
+    await update(socket, snapshot([sessionView({ name: "newer" })]));
+    await tick();
+    expect(harness.sdk.callsTo("threads.update")).toHaveLength(2);
   });
 
   it("refuses another thread's token, another protocol version and sessions that never say hello", async () => {
