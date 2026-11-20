@@ -49,6 +49,10 @@ export default function piTldr(pi: ExtensionAPI): void {
     config = tldrSettings.load(ctx.cwd);
   };
 
+  /** A person is behind the session: the terminal, or an app such as bb over RPC. Print-mode children are not. */
+  const namesSessions = (ctx: ExtensionContext): boolean =>
+    ctx.hasUI && (ctx.mode === "tui" || ctx.mode === "rpc");
+
   const isCurrent = (ctx: ExtensionContext, token: number, sessionId: string): boolean =>
     generation === token &&
     currentSessionId === sessionId &&
@@ -70,8 +74,7 @@ export default function piTldr(pi: ExtensionAPI): void {
   // Input is captured before skill/template expansion. Fallback below supports other prompt sources.
   pi.on("input", (event, ctx) => {
     if (
-      event.source === "interactive" &&
-      ctx.mode === "tui" &&
+      (event.source === "interactive" || event.source === "rpc") &&
       ctx.hasUI &&
       !initialNamingAttempted &&
       firstRawInput === undefined
@@ -110,7 +113,7 @@ export default function piTldr(pi: ExtensionAPI): void {
   pi.on("before_agent_start", (event, ctx) => {
     if (!("prompt" in event) || initialNamingAttempted) return;
     initialNamingAttempted = true;
-    if (ctx.mode !== "tui" || !ctx.hasUI || !config.setSessionName || pi.getSessionName()) return;
+    if (!namesSessions(ctx) || !config.setSessionName || pi.getSessionName()) return;
     const prompt = (firstRawInput ?? event.prompt).trim();
     firstRawInput = undefined;
     if (!prompt) return;
