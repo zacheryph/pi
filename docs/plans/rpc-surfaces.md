@@ -241,7 +241,8 @@ and package changelogs are maintained by the weekly workflow. Commits use
 
 - Does bb pass a typed `/todo` through to Pi unchanged? Its `/` menu lists
   skills only.
-- Does bb's Pi thread title follow `pi.setSessionName` (pi-tldr)? The provider
-  declares no thread rename.
+- ~~Does bb's Pi thread title follow `pi.setSessionName` (pi-tldr)?~~ Not by
+  itself (the provider declares no thread rename). The `pi-surface` plugin now
+  calls `bb.sdk.threads.update({ title })` when a live session's name changes.
 - bb has no slot below the composer. If pills there matter, that is a request
   to bb.
