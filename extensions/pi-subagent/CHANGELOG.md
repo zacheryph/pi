@@ -2,8 +2,9 @@
 
 Changes recorded automatically from Git history, newest first.
 
-<!-- changelog:through 802542b1d6d6e98c0a0d3978bdfa41a8787a0f61 -->
+<!-- changelog:through 6b445d091eb70cc6b6919be106282282c596bf88 -->
 
+- 2026-11-17: feat\(pi-subagent\): publish agent counts and the main profile as subagent.summary ([#192](https://github.com/zacheryph/pi/pull/192))
 - 2026-11-15: feat\(pi-subagent\): lead each row with its clock and count active and pending agents ([#183](https://github.com/zacheryph/pi/pull/183))
 - 2026-11-15: feat\(pi-subagent\): offer the widget and the branch's subagents as views ([#182](https://github.com/zacheryph/pi/pull/182))
 - 2026-11-14: fix\(cards\): write restore cards into the transcript once after compaction ([#173](https://github.com/zacheryph/pi/pull/173))

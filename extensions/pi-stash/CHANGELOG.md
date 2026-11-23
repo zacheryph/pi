@@ -2,8 +2,10 @@
 
 Changes recorded automatically from Git history, newest first.
 
-<!-- changelog:through aa756f8a1345f53efab119ea3193ee7fe53f79ec -->
+<!-- changelog:through 6b445d091eb70cc6b6919be106282282c596bf88 -->
 
+- 2026-11-17: docs\(pi-dashboard\): describe the views-only dashboard and protocol 7 ([#195](https://github.com/zacheryph/pi/pull/195))
+- 2026-11-17: feat\(pi-stash\): publish entry counts and store size as stash.summary ([#192](https://github.com/zacheryph/pi/pull/192))
 - 2026-11-14: fix\(cards\): write restore cards into the transcript once after compaction ([#173](https://github.com/zacheryph/pi/pull/173))
 - 2026-11-13: feat\(pi-stash\): offer the stash.explorer view and the stash.preview action ([#172](https://github.com/zacheryph/pi/pull/172))
 - 2026-11-13: feat\(pi-stash\): /stash lists entries and /stash:gc reports without a terminal ([#171](https://github.com/zacheryph/pi/pull/171))

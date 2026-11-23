@@ -2,8 +2,9 @@
 
 Changes recorded automatically from Git history, newest first.
 
-<!-- changelog:through 802542b1d6d6e98c0a0d3978bdfa41a8787a0f61 -->
+<!-- changelog:through 6b445d091eb70cc6b6919be106282282c596bf88 -->
 
+- 2026-11-17: feat\(pi-git\): publish worktree and pull request totals as git.summary ([#192](https://github.com/zacheryph/pi/pull/192))
 - 2026-11-15: feat\(pi-git\): offer the worktree and pull request explorers as views ([#182](https://github.com/zacheryph/pi/pull/182))
 - 2026-11-14: feat\(pi-todo\): write todo changes into the transcript instead of a per-request card ([#174](https://github.com/zacheryph/pi/pull/174))
 - 2026-11-14: fix\(cards\): write restore cards into the transcript once after compaction ([#173](https://github.com/zacheryph/pi/pull/173))

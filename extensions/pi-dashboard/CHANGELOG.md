@@ -2,8 +2,11 @@
 
 Changes recorded automatically from Git history, newest first.
 
-<!-- changelog:through 802542b1d6d6e98c0a0d3978bdfa41a8787a0f61 -->
+<!-- changelog:through 6b445d091eb70cc6b6919be106282282c596bf88 -->
 
+- 2026-11-17: docs\(pi-dashboard\): describe the views-only dashboard and protocol 7 ([#195](https://github.com/zacheryph/pi/pull/195))
+- 2026-11-17: feat\(pi-dashboard\): render session views on the page with one renderer per kind ([#195](https://github.com/zacheryph/pi/pull/195))
+- 2026-11-17: feat\(pi-dashboard\): report surface views to the hub over protocol 7 ([#195](https://github.com/zacheryph/pi/pull/195))
 - 2026-11-15: refactor\(pi-dashboard\): leave view models out of the dashboard snapshot ([#182](https://github.com/zacheryph/pi/pull/182))
 - 2026-11-13: feat\(pi-presentation\): publish session views and dispatch actions ([#172](https://github.com/zacheryph/pi/pull/172))
 - 2026-11-13: feat\(pi-dashboard,pi-work\): /dashboard and /work:wake answer without a terminal ([#171](https://github.com/zacheryph/pi/pull/171))
