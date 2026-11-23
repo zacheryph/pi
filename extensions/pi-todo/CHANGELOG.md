@@ -2,8 +2,10 @@
 
 Changes recorded automatically from Git history, newest first.
 
-<!-- changelog:through 802542b1d6d6e98c0a0d3978bdfa41a8787a0f61 -->
+<!-- changelog:through 6b445d091eb70cc6b6919be106282282c596bf88 -->
 
+- 2026-11-17: docs\(pi-dashboard\): describe the views-only dashboard and protocol 7 ([#195](https://github.com/zacheryph/pi/pull/195))
+- 2026-11-17: feat\(pi-todo\): publish task counts as a todo.summary view ([#192](https://github.com/zacheryph/pi/pull/192))
 - 2026-11-15: feat\(pi-todo\): bold the task key and count active and pending tasks ([#183](https://github.com/zacheryph/pi/pull/183))
 - 2026-11-15: feat\(pi-todo\): mark the widget's status glyphs with their state ([#182](https://github.com/zacheryph/pi/pull/182))
 - 2026-11-15: feat\(pi-todo\): archive old completed tasks instead of a 50-task cap ([#175](https://github.com/zacheryph/pi/pull/175))

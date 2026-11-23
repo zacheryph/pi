@@ -2,8 +2,9 @@
 
 Changes recorded automatically from Git history, newest first.
 
-<!-- changelog:through 6ba5f77b02f5787c9c080d78f6a2b02da99b7ee4 -->
+<!-- changelog:through 6b445d091eb70cc6b6919be106282282c596bf88 -->
 
+- 2026-11-17: feat\(pi-system-insights\): publish the core session as the system.session view ([#191](https://github.com/zacheryph/pi/pull/191))
 - 2026-11-13: feat\(pi-system-insights\): /system:\* show their snapshot as text without a terminal ([#171](https://github.com/zacheryph/pi/pull/171))
 - 2026-11-12: refactor: centralize workspace configs and development commands ([#153](https://github.com/zacheryph/pi/pull/153))
 - 2026-11-12: refactor: standardize workspace aliases and shared test helpers ([#149](https://github.com/zacheryph/pi/pull/149))

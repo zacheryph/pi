@@ -2,8 +2,10 @@
 
 Changes recorded automatically from Git history, newest first.
 
-<!-- changelog:through 6ba5f77b02f5787c9c080d78f6a2b02da99b7ee4 -->
+<!-- changelog:through 6b445d091eb70cc6b6919be106282282c596bf88 -->
 
+- 2026-11-17: docs\(pi-dashboard\): describe the views-only dashboard and protocol 7 ([#195](https://github.com/zacheryph/pi/pull/195))
+- 2026-11-17: feat\(pi-ask\): own open questionnaires and publish them as the ask.questions form ([#190](https://github.com/zacheryph/pi/pull/190))
 - 2026-11-13: feat\(pi-ask\): answer questionnaires through the ask.answer action ([#172](https://github.com/zacheryph/pi/pull/172))
 - 2026-11-12: feat\(pi-ask\): add user\_notify, a native alert that work waits on the user ([#165](https://github.com/zacheryph/pi/pull/165))
 - 2026-11-12: refactor: centralize workspace configs and development commands ([#153](https://github.com/zacheryph/pi/pull/153))
