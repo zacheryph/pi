@@ -35,6 +35,8 @@ const pr = (number: number, overrides: Partial<GitSnapshotPr> = {}): GitSnapshot
 
 const counts = (model: SummaryModel) =>
   Object.fromEntries(model.counts.map((count) => [count.key, count.value]));
+const labels = (model: SummaryModel) =>
+  Object.fromEntries(model.counts.map((count) => [count.key, count.label]));
 
 describe("gitSummaryModel", () => {
   it("reads zeros for a session with nothing recorded", () => {
@@ -108,6 +110,50 @@ describe("gitSummaryModel", () => {
     // The explorers carry every record too, by path and by key.
     expect(explorerView(snapshot).items).toHaveLength(snapshot.worktrees.length + 1);
     expect(prExplorerView(snapshot.prs).items).toHaveLength(snapshot.prs.length);
+  });
+
+  it("labels nouns in agreement with their value, and states the same for any value", () => {
+    const states = {
+      missing: "missing",
+      uncommitted: "uncommitted",
+      removed: "removed",
+      "prs-created": "opened here",
+      "prs-open": "open",
+      "prs-failing": "failing",
+      "prs-watching": "watching",
+    };
+    expect(labels(gitSummaryModel({ worktrees: [], found: [], prs: [] }))).toEqual({
+      worktrees: "worktrees",
+      "other-worktrees": "other worktrees",
+      prs: "pull requests",
+      ...states,
+    });
+    const one = gitSummaryModel({
+      worktrees: [worktree()],
+      found: [{ path: "/w/x/y", repo: "/src/web" }],
+      prs: [pr(1)],
+    });
+    expect(labels(one)).toEqual({
+      worktrees: "worktree",
+      "other-worktrees": "other worktree",
+      prs: "pull request",
+      ...states,
+    });
+    const two = gitSummaryModel({
+      worktrees: [worktree(), worktree({ path: "/w/2" })],
+      found: [
+        { path: "/w/x/y", repo: "/src/web" },
+        { path: "/w/x/z", repo: "/src/web" },
+      ],
+      prs: [pr(1), pr(2)],
+    });
+    expect(labels(two)).toEqual({
+      worktrees: "worktrees",
+      "other-worktrees": "other worktrees",
+      prs: "pull requests",
+      ...states,
+    });
+    expect(two.counts.some((count) => count.unit)).toBe(false);
   });
 
   it("marks only the watches as process-bound: settled, records stay and watching reads 0", () => {
