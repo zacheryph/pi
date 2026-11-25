@@ -2,721 +2,209 @@
 
 ![Pi's todo and subagent widgets tracking a rendering audit](docs/images/banner.png)
 
-Personal Pi bundle: one install, multiple independent extensions. No npm publication
-or TypeScript build required. Requires Pi 1.4.0+ and Node.js 24+.
+A bundle of extensions for [Pi](https://pi.dev), the coding agent. One install
+gives your agent a task list you can watch, background subagents, background
+jobs that wake it when they finish, a place to park large output, Git worktrees
+and pull request tracking, questions it can ask you, and a dashboard of every
+running session. You can see all of it in your terminal, a browser or
+[bb](https://getbb.app).
+
+![A session with tasks, three background agents and the watch overlay](docs/images/subagent-watch.png)
 
 ## Install
-
-### Local checkout (recommended for editing)
-
-From this checkout, install dependencies and register the bundle in Pi:
-
-```bash
-npm run setup:pi
-# Also install/build the companion plugin in an already installed bb:
-npm run setup:bb
-```
-
-Pi loads files from this checkout without copying them. Edit code, then run `/reload`
-in Pi. `setup:bb` includes Pi setup and installs `bb-plugin/` with its own development
-dependencies before running `bb plugin install ... --yes`. Both commands use the
-Pi peer installed in this checkout, not whichever `pi` is on PATH. These are
-explicit setup commands; ordinary `npm install` does not modify Pi or bb settings.
-You can also register an already prepared checkout with
-`pi install /absolute/path/to/pi-personal`.
-
-### GitHub
 
 ```bash
 pi install git:github.com/zacheryph/pi
 ```
 
-Pi loads the same root manifest from its managed Git checkout, not your development
-checkout. Push your changes, then update that installation:
+Then start Pi as usual. To try it without installing, run `pi -e .` from a
+checkout. Requires Pi 1.4.0+ and Node.js 24+.
+
+<details>
+<summary>Install from a local checkout, update, or switch</summary>
+
+From a checkout you want to edit:
 
 ```bash
-pi update git:github.com/zacheryph/pi
+npm run setup:pi
 ```
 
-Use `pi list` to inspect installed sources. When switching from Git to local, remove
-that Git source first with `pi remove git:github.com/zacheryph/pi`. Do not load both
-copies, another subagents extension, another `todo` extension, or another
-background-jobs extension alongside this bundle: duplicate tools and commands can
-conflict. When migrating from
-`@juicesharp/rpiv-todo`, remove it with `pi remove npm:@juicesharp/rpiv-todo` before
-loading the bundle's tasks extension. Existing rpiv plans are not auto-imported.
+Pi then loads files straight from the checkout: edit, then `/reload` in Pi.
+`npm run setup:bb` also builds and installs the [bb plugin](bb-plugin/README.md)
+into an already installed bb. Both use the Pi installed in this checkout, not
+whichever `pi` is on PATH; plain `npm install` never touches your Pi or bb
+settings. An already prepared checkout can also be registered with
+`pi install /absolute/path/to/checkout`.
 
-Install commands above configure personal scope. Add `--local` to install for one
-project instead; project resources load after project trust is granted.
+A Git install loads its own managed checkout. Push your changes, then
+`pi update git:github.com/zacheryph/pi`. To switch from Git to local, first run
+`pi remove git:github.com/zacheryph/pi`; `pi list` shows what is installed.
 
-### Try without installing
+Load only one copy of the bundle, and no other subagents, `todo` or
+background-jobs extension beside it: their tools and commands would conflict.
+Coming from `@juicesharp/rpiv-todo`, run `pi remove npm:@juicesharp/rpiv-todo`
+first (its plans are not imported).
 
-From this repository:
+The commands above install for your user. Add `--local` to install for one
+project; project resources load once you trust the project. `pi config` turns
+individual extensions in the bundle on or off.
 
-```bash
-pi -e .
+</details>
+
+## What's inside
+
+### Extensions
+
+Each one is independent, and they get better together: subagents take tasks,
+work in worktrees, hand back stash handles and ask questions, all tracked in one
+place.
+
+|                                                                   | What you get                                                                                                                    | You use it through                                  |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| [**pi-todo**](extensions/pi-todo/README.md)                       | A dependency-aware task list above the editor that the agent keeps and you review, with findings recorded on each task.         | `/todo`, `/todo:review`; tools `todo_*`             |
+| [**pi-subagent**](extensions/pi-subagent/README.md)               | Background agents (explore, plan, implement, review, orchestrate) in a live widget, with a watch overlay that tails their work. | `Ctrl+Alt+S`, `/subagent:*`; tools `subagent_*`     |
+| [**pi-ask**](extensions/pi-ask/README.md)                         | The agent asks you up to four multiple-choice questions in an inline window; a subagent asks its parent instead.                | Arrow keys and Enter; tools `ask`, `user_notify`    |
+| [**pi-job**](extensions/pi-job/README.md)                         | Long commands and "wait until…" checks run in the background and wake the agent once when done. No polling, no tokens spent.    | `/job`; tools `job_*`                               |
+| [**pi-stash**](extensions/pi-stash/README.md)                     | Large output parked outside the context behind a short handle such as `stash:auth-findings@3f9a1c2b7d01`, read back in slices.  | `/stash`; tools `stash_*`                           |
+| [**pi-git**](extensions/pi-git/README.md)                         | Git worktrees for parallel workers, and a ledger of every pull request the session touched. A watched PR wakes the session.     | `/git:worktrees`, `/git:prs`; tools `git_*`         |
+| [**pi-tldr**](extensions/pi-tldr/README.md)                       | A one-screen recap of the session, and short automatic session names.                                                           | `/tldr`                                             |
+| [**pi-system-insights**](extensions/pi-system-insights/README.md) | Read-only views of the system prompt, tools and skills the model actually has, and the core session view every UI reads.        | `/system:prompt`, `/system:tools`, `/system:skills` |
+| [**pi-dashboard**](extensions/pi-dashboard/README.md)             | A local web page of every running session: status, tasks, agents, stash, Git. Answer questions from the browser.                | `/dashboard`, `http://127.0.0.1:7317/`              |
+| [**pi-bb**](extensions/pi-bb/README.md)                           | Everything above inside [bb](https://getbb.app): cards above the composer, a Pi tab, a sessions page. Pairs with the bb plugin. | [`bb-plugin/`](bb-plugin/README.md), `/bb`          |
+
+### Skills
+
+Skills ship with the bundle; force one with `/skill:<name>`. See the
+[skills overview](skills/README.md).
+
+|                                                                           | What it does                                                                                    |
+| ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| [make-it-easy](skills/make-it-easy/SKILL.md)                              | Turns a goal into roadmap options: make the change easy, then make the easy change.             |
+| [execute-roadmap](skills/execute-roadmap/SKILL.md)                        | Carries out a chosen roadmap step by step with subagents, reviews and, if asked, pull requests. |
+| [babysit-pr](skills/babysit-pr/SKILL.md)                                  | Drives one pull request to green CI with every review comment handled, without polling.         |
+| [creating-agents](extensions/pi-subagent/skills/creating-agents/SKILL.md) | Creates, overrides or hides a subagent type.                                                    |
+
+### Libraries
+
+Shared code the extensions are built on. Nothing here is loaded by Pi on its
+own.
+
+|                                                           | What it is for                                                                                          |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| [pi-surface](packages/pi-surface/README.md)               | Views as plain JSON plus actions by name, so the terminal, the dashboard and bb draw the same data.     |
+| [pi-ui](packages/pi-ui/README.md)                         | The terminal side: widgets, explorers, detail views and inline windows with one look.                   |
+| [pi-work](packages/pi-work/README.md)                     | One contract for everything a session waits on; delivers results and wakes the session.                 |
+| [pi-session-tree](packages/pi-session-tree/README.md)     | Lets a subagent's extensions find their parent's, and the reverse, inside one Pi process.               |
+| [pi-session-state](packages/pi-session-state/README.md)   | Restore cards after compaction, services along the session tree, replay of saved entries.               |
+| [pi-foundations](packages/pi-foundations/README.md)       | Settings files declared once, model lookup, cmux notifications, command output outside the TUI.         |
+| [pi-scripted-model](packages/pi-scripted-model/README.md) | A fake model that plays a script, for tests and screenshots with no API key. Development only.          |
+| [pi-test-helpers](packages/pi-test-helpers/README.md)     | Shared test fixtures: temp dirs, themes, a fake `ExtensionAPI`, offline SDK sessions. Development only. |
+
+## How it fits together
+
+Extensions describe what they show as plain JSON **views**
+([pi-surface](packages/pi-surface/README.md)). In the terminal
+[pi-ui](packages/pi-ui/README.md) draws them; the same views are published on
+the session's event bus, where the dashboard and the bb plugin collect and draw
+them, calling actions by name. Anything a session
+waits on (a job, a subagent, a question for the parent, a watched pull request)
+is an item in its **work host** ([pi-work](packages/pi-work/README.md)), which
+wakes the session when the result arrives.
+
+```mermaid
+flowchart LR
+  subgraph producers["Extensions"]
+    todo[pi-todo]
+    subagent[pi-subagent]
+    stash[pi-stash]
+    git[pi-git]
+    ask[pi-ask]
+    job[pi-job]
+    insights[pi-system-insights]
+  end
+
+  work[["pi-work<br/>work host"]]
+  surface[["pi-surface<br/>views + actions"]]
+
+  job -- "jobs, watches" --> work
+  subagent -- "agent runs" --> work
+  ask -- "questions to the parent" --> work
+  git -- "watched PRs" --> work
+  work -- "wakes the session" --> session((Pi session))
+
+  todo & subagent & stash & git & ask & insights -- views --> surface
+
+  surface -. "the same models" .-> tui["pi-ui<br/>terminal"]
+  surface --> dashboard["pi-dashboard<br/>browser"]
+  surface --> bb["pi-bb → bb-plugin<br/>bb"]
 ```
 
-Use `pi config` to enable or disable individual extensions within the bundle.
+Subagents are full Pi sessions in the same process, so the extensions also
+cooperate across the parent–child line through
+[pi-session-tree](packages/pi-session-tree/README.md):
 
-## Layout
-
-```text
-pi-personal/
-├── package.json                         # bundle manifest + private dev workspace
-├── tsconfig.base.json
-├── tsconfig.json                        # shared source and test type checking
-├── tsconfig.hub.json                    # plain-Node hub syntax constraints
-├── vitest.config.ts                     # projects derived from npm workspaces
-├── bb-plugin/                           # bb plugin for pi-bb (own package, not a workspace)
-│   ├── server.ts                        # session socket, RPC, fixtures, env for Pi threads
-│   ├── app.tsx                          # one registration per bb UI slot
-│   └── ui/                              # React components, fed by the session snapshot
-├── docs/bb/ui-slots.md                  # bb's UI slots with screenshots
-├── skills/
-│   ├── babysit-pr/                      # drives a pull request to green
-│   ├── execute-roadmap/                 # carries out a chosen roadmap
-│   └── make-it-easy/                    # roadmap-planning skill
-│       ├── SKILL.md
-│       └── references/                  # one file per phase, template, worked example
-├── extensions/
-│   ├── pi-ask/
-│   │   ├── src/index.ts                 # ask tool, routed to the parent agent or the user
-│   │   ├── test/
-│   ├── pi-bb/
-│   │   ├── src/index.ts                 # session reporter to the bb plugin + /bb command
-│   │   └── test/
-│   ├── pi-dashboard/
-│   │   ├── src/index.ts                 # session reporter + /dashboard command
-│   │   ├── src/hub/server.ts            # web hub (plain Node, not a Pi extension)
-│   │   ├── test/
-│   │   └── docs/plan.md                 # original research and plan (historical)
-│   ├── pi-git/
-│   │   ├── src/index.ts                 # git_* tools + /git:worktrees, /git:prs, /git:refresh
-│   │   └── test/
-│   ├── pi-job/                          # vendored
-│   │   ├── src/extension.ts             # job_* tools + /job command
-│   │   ├── test/
-│   │   └── CHANGELOG.md                 # changes and initial import provenance
-│   ├── pi-stash/
-│   │   ├── src/index.ts                 # stash_* tools + /stash commands
-│   │   └── test/
-│   ├── pi-subagent/                     # vendored fork
-│   │   ├── src/index.ts                 # subagent tools + /subagent:* commands
-│   │   ├── agents/                      # built-in agent types as .md files
-│   │   ├── skills/creating-agents/      # agent authoring skill
-│   │   ├── test/
-│   │   ├── docs/
-│   │   ├── LICENSE
-│   │   └── CHANGELOG.md
-│   ├── pi-system-insights/
-│   │   ├── src/index.ts                 # /system:* commands
-│   │   ├── src/session/                 # system.session view (status, activity, usage)
-│   │   └── test/
-│   ├── pi-tldr/
-│   │   ├── src/index.ts                 # /tldr command + session naming
-│   │   └── test/
-│   └── pi-todo/                         # vendored engine, local UI
-│       ├── src/index.ts                 # todo_* tools + /todo:* commands
-│       ├── test/
-│       └── CHANGELOG.md
-├── packages/
-│   ├── pi-ui/                           # shared terminal UI library (no migrations yet)
-│   ├── pi-surface/                      # renderer-neutral view model + action and view registries
-│   │   ├── src/index.ts
-│   │   └── test/
-│   ├── pi-foundations/                  # shared settings, model lookup, cmux notifications, command output
-│   ├── pi-scripted-model/               # fake model + bundle test harness (dev only)
-│   ├── pi-test-helpers/                 # shared test helpers (dev only)
-│   ├── pi-work/                         # work:v1 contract + root work host
-│   │   ├── src/index.ts                 # WorkHost types, ensureWorkHost, boundary delivery
-│   │   └── test/
-│   ├── pi-session-tree/                 # shared library, not an extension
-│   │   ├── src/index.ts                 # cross-session registry (globalThis)
-│   │   └── test/
-│   └── pi-session-state/                # restore card, tree service, entry replay
-│       ├── src/index.ts
-│       └── test/
-└── test/                                # bundle scenario tests (dev only)
-    ├── scenarios/                       # one file per cross-extension behaviour
-    └── support/
+```mermaid
+flowchart TB
+  parent["Parent session"]
+  child["Subagent session"]
+  parent -- "subagent_start<br/>(handoff: todo keys, cwd: worktree)" --> child
+  child -- "todo updates on handed-off tasks (pi-todo)" --> parent
+  child -- "stash entries adopted upward (pi-stash)" --> parent
+  child -- "ask → question for the parent (pi-ask)" --> parent
+  child -- "worktrees and PRs handed up (pi-git)" --> parent
+  child -- "completion message (pi-subagent + pi-work)" --> parent
 ```
 
-Each extension directory is an npm workspace with its own `package.json`.
-TypeScript configuration, Vitest projects and development commands live at the
-root; registering a workspace includes its source and tests automatically.
+### Who imports what
 
-Root `pi.extensions` lists entry points explicitly. Pi loads each as its own
-extension; helper files and tests are not loaded as extensions. `packages/` holds
-libraries shared by extensions, including [pi-ui](packages/pi-ui/README.md) for
-terminal views and widget layout, and [pi-surface](packages/pi-surface/README.md)
-for the JSON view model pi-ui draws and the per-session action and view registries. They
-are workspaces with no `pi` entry, and extensions import them through aliases. A package
-never depends on or imports an extension; `verify:bundle` checks it.
+Every extension imports [pi-foundations](packages/pi-foundations/README.md).
+Beyond that:
 
-Extensions own their state and publish what a display needs as pi-surface views and
-actions on the session's bus; pi-system-insights publishes the core session information as
-the `system.session` view. pi-dashboard and pi-bb each collect a session's views into one
-complete snapshot per update and send actions back to their owners. Neither reads another
-extension's state, and the dashboard hub and the bb plugin build only on pi-surface.
+| Extension          | pi-surface | pi-ui | pi-work | pi-session-state | pi-session-tree |
+| ------------------ | :--------: | :---: | :-----: | :--------------: | :-------------: |
+| pi-ask             |     ●      |   ●   |    ●    |                  |        ●        |
+| pi-bb              |     ●      |       |         |                  |                 |
+| pi-dashboard       |     ●      |       |         |                  |                 |
+| pi-git             |     ●      |   ●   |    ●    |        ●         |                 |
+| pi-job             |            |       |    ●    |                  |        ●        |
+| pi-stash           |     ●      |   ●   |         |        ●         |        ●        |
+| pi-subagent        |     ●      |   ●   |    ●    |        ●         |        ●        |
+| pi-system-insights |     ●      |   ●   |         |                  |                 |
+| pi-tldr            |            |   ●   |         |                  |                 |
+| pi-todo            |     ●      |   ●   |         |        ●         |        ●        |
 
-Each workspace's `package.json` maps `#src/*` and `#test/*` to its own modules,
-and shared aliases such as `#ui`, `#surface`, `#work`, `#foundations/settings`
-and `#test-helpers` to workspace packages.
-Those packages export TypeScript source; root `file:` dependencies create the
-runtime links for production Git installs. TypeScript, Vitest, Node and Pi's
-loader use these same manifests, without duplicate TypeScript `paths` mappings.
-Relative TypeScript imports, when needed, use `.ts`. All manifests remain
-private; nothing needs publishing.
-
-## Extensions
-
-### pi-ask
-
-One `ask` tool for questions, routed by session. In the main session it asks you:
-up to four questions, each with optional choices and a free-text answer, in a
-window that opens under the transcript and keeps focus. In fullscreen mode the
-window shrinks to three rows (title, waiting question, hint) while you scroll
-back through the session, and
-the next key brings it back. RPC hosts get their own dialogs instead, and the
-dashboard can answer from the browser. In a subagent, `ask` goes to the agent
-that delegated the task: the subagent waits on a question item and its turn ends
-(`waiting: answer`), the parent is told once, and its `subagent_send` answers it
-and wakes the subagent. Where no one can answer (print
-mode), the tool is hidden.
-
-`user_notify` is the one-way counterpart, in the main session only: a native
-cmux notification with the agent's own text, for work that now waits on you
-outside the session (a pull request to review, a blocked step, a failed deploy
-check). It does not wait for an answer. See the
-[package README](extensions/pi-ask/README.md).
-
-### pi-bb
-
-Shows this bundle's session state in [bb](https://getbb.app), which runs Pi
-in RPC mode and drops Pi's widgets, status line and overlays. Install the
-`pi-surface` bb plugin from [`bb-plugin/`](bb-plugin/README.md) and every Pi
-thread in bb gets: a Todos and a Subagents card above the composer, the agent
-and task counts in the context row, stash, worktree and pull request entries in
-the thread context card, a stash picker (Mod+Shift+S) that inserts a handle into
-the draft, a **Pi** side-panel tab with tasks and their history, subagents,
-stash previews, Git, recent tool calls and usage, row badges for running
-subagents and open questions, and a **Pi sessions** page listing every
-connected session.
-
-The extension does nothing outside bb: it connects only in RPC mode, for the
-thread's main session, when the plugin has given the Pi process its endpoint
-(`PI_BB_SURFACE_URL`, `PI_BB_SURFACE_TOKEN`). `/bb` says whether this session
-is connected. It never starts or reports to the dashboard hub. See the
-[extension README](extensions/pi-bb/README.md) and
-[bb's UI slots](docs/bb/ui-slots.md).
-
-### pi-dashboard
-
-Local web dashboard of running interactive Pi sessions at
-`http://127.0.0.1:7317/`; `/dashboard` opens it. The page draws each session's
-pi-surface views, collected into one complete snapshot per update: the core
-`system.session` view from pi-system-insights (name, model, thinking, context,
-status, recent tool calls, usage) and every extension's summaries, widgets,
-explorers, details and forms. Cards are grouped by working directory, show
-status (waiting sorts first) and each extension's summary counts, and open a
-detail page with widgets and activity on one side and explorers on the other.
-Opening an explorer item, clearing its marks and answering a pi-ask question
-run the action the view references; **Focus** jumps to the session's cmux panel
-and raises cmux. A filter box and opt-in browser notifications (waiting or
-finished sessions) round out the index.
-
-The first interactive session starts a detached hub; sessions connect to it
-over a unix socket in `~/.pi/agent/dashboard/`, and it exits 15 seconds after
-the last one quits. Print-mode runs and subagent children are not shown. Port
-and Node binary are set in `~/.pi/agent/dashboard.json`. Loopback only. See
-[extension docs](extensions/pi-dashboard/README.md) and the original
-[plan](extensions/pi-dashboard/docs/plan.md) (historical).
-
-### pi-git
-
-Git worktrees an orchestrator creates and hands to subagents, kept in the
-session ledger. `git_worktree_create` makes a worktree on a named branch in any
-repository (an existing branch is checked out as it is) under
-`~/.pi/agent/worktrees/`, and returns the path to pass as `cwd` to
-`subagent_start`. A `workspace` groups worktrees of several repositories in one
-directory, so one subagent can work across them. A worktree stays until
-`git_worktree_remove` or `/git:worktrees remove` removes it; finishing or
-releasing a subagent never does, so the next one continues in the same place.
-Removal keeps the branch and refuses to lose uncommitted changes unless forced.
-
-Every worktree is recorded as a `git:ledger` session entry with its repository,
-branch, workspace, state and the subagents that ran in it, so `git_worktree_list`
-and `/git:worktrees` still show it after a reload or resume. Worktrees a subagent
-creates are handed up to its parent's ledger; worktrees under the root from
-other sessions are listed separately.
-
-Pull requests are recorded the same way whenever a tool touches one: `gh pr`
-and `gh api …/pulls/<n>` in bash, the GitHub MCP tools, or a PR URL passed to any
-tool. Each is **opened here** or **referenced**, with the last state, review,
-checks and conflicts its output showed and the tool calls that touched it.
-`git_pr_list` and `/git:prs` list them after a reload. `git_pr_status` reads a
-PR's current state, review, checks and head from GitHub (through `gh`, or the
-GitHub MCP tools without it, retrying transient failures) and records it.
-`git_pr_watch` waits on a PR as open work and wakes the session when its checks
-finish, its head moves, a review or comment arrives, or it is merged or closed,
-each report naming the head commit it is for. `/git:refresh` re-reads
-every open PR and re-checks every worktree. After a compaction, a hidden card
-written once into the transcript lists open PRs and worktrees. The worktree and PR
-explorers and their totals are published as views for the dashboard and bb. The root
-is set by `worktreeRoot` in `~/.pi/agent/git.json` or `.pi/git.json`;
-`trackReferenced: false` keeps only PRs opened here. See [extension docs](extensions/pi-git/README.md) and the
-[plan](docs/plans/git-github-ledger.md).
-
-### pi-job
-
-Background shell jobs and watches that wake the agent when they finish, vendored
-from [`woksin/pi-jobs`](extensions/pi-job/CHANGELOG.md#initial-import) with
-[local additions](extensions/pi-job/CHANGELOG.md).
-`job_start` runs a command in its own process group and returns immediately;
-`job_watch` re-runs a shell check until it succeeds, fails, or its output changes.
-With `toolCheck` it instead polls a read-only Pi tool, such as an MCP tool, until a
-condition on its result holds ([tool checks](extensions/pi-job/TOOL-CHECKS.md)).
-The agent ends its turn instead of polling. Each job or watch is an item in the
-session's [work host](packages/pi-work/README.md), and its completion is a message
-that wakes an idle session or is answered in the run in progress. A reload keeps
-the jobs and re-adopts their items, also for a subagent's jobs (the waiting
-subagent is reopened without a model run); after a restart they are reported as lost.
-`job_list`, `job_read`, and `job_kill` inspect and stop work; `/job` lists or
-kills jobs for the user. POSIX only. Logs live under `~/.pi/agent/jobs/` for seven
-days. Do not also install `npm:@woksin/pi-jobs`. See the
-[upstream README](extensions/pi-job/README.md) for delivery guarantees and limits.
-
-### pi-stash
-
-Keeps large text (search results, file snapshots, tool output, worker findings)
-outside the model context and hands back a short handle such as
-`stash:auth-findings@3f9a1c2b7d01`. The model and its subagents then read only the
-slices they need.
-
-- `stash_put` stores literal `content`, a `path` inside the working directory,
-  the full result of an earlier tool call (`toolCallId`), or an existing `handle`.
-  It returns a receipt with a short preview; it never echoes the content.
-- `stash_get` reads a bounded, line-numbered slice: `lines`, `grep`, or `jsonPath`
-  (head by default; 16 KB default, Pi's 50 KB / 2,000-line cap at most).
-- `stash_list` lists this branch's entries.
-
-Content is stored once by SHA-256 under `$PI_STASH_DIR` or `~/.pi/agent/stash/`.
-The name index lives in the session, follows `/tree`, and survives compaction and
-resume; full handles also work from other sessions, which is how a parent and its
-subagents share data. A subagent's entries also appear in its parent's and
-ancestors' stash as they are stored. explore and plan can read handles; explore can
-also stash large findings. `/stash` browses entries and `/stash:gc` expires unused content
-(`retentionDays`, default 30, in `~/.pi/agent/stash.json`).
-
-Stashed text is plaintext on local disk and is not redacted. See
-[extension docs](extensions/pi-stash/README.md).
-
-### pi-subagent
-
-The built-in `orchestrate` profile manages long-running projects with categorized
-todos, specialist delegation, and follow-ups in prior workers' sessions. It
-gives each implementation task its own git worktree from pi-git (one per
-repository when a task spans several) and runs the task's workers there, so
-parallel workers never share a checkout. Use `pi --agent orchestrate` or
-delegate with `subagent_type: "orchestrate"`. A host that cannot pass `--agent`
-sets `PI_MAIN_AGENT=orchestrate` instead; it starts sessions that have no saved
-profile and leaves the host's model and thinking choice alone (in bb:
-`printf orchestrate | bb machine env set PI_MAIN_AGENT --project <project-id>`,
-omit `--project` for every project). Every profile that can run as the main
-agent is also a model, `agent/orchestrate`, `agent/review`, and so on, so a host
-with a model picker (bb) can choose the agent there; `"agentModels": false` in
-`subagent.json` turns that off. See the
-[extension docs](extensions/pi-subagent/README.md#pi_main_agent-choosing-the-agent-from-the-environment).
-
-The built-in `implement` profile owns one bounded change and its local verification,
-without delegating. Use it for substantial implementation assignments that do not
-need project coordination; `orchestrate` keeps its existing project-manager role.
-
-The built-in `review` profile verifies finished work: it runs the project's
-checks, judges each acceptance criterion with evidence, and reports
-`Verdict: PASS`, `FAIL`, or `BLOCKED` without fixing anything. The orchestrator
-completes an implementation task only after a reviewer that did not do the work
-passes it.
-
-Personal copy of [`gotgenes/pi-packages/packages/pi-subagent`](https://github.com/gotgenes/pi-packages/tree/main/packages/pi-subagent).
-Provides `subagent_start`, `subagent_get`, and `subagent_send`, plus
-`/subagent:settings`, `/subagent:sessions`, `/subagent:watch`, and
-`/subagent:agents` (read-only browser for agent definitions).
-`subagent_start` takes a `cwd`, so an orchestrator can run a worker in a
-directory it prepared, such as a git worktree; that directory is never removed
-for it and the worker keeps taking messages there.
-The session records every agent's lifecycle, so `subagent_get` still answers for
-an agent's ID after a reload or resume (status, last outcome, result, transcript
-path), lists the branch's agents when called without one, and a hidden roster
-card written once after a compaction restores them to the model.
-`subagent_send` reaches an agent in any state: it steers a running one, and gives
-an idle one more work, reopening its saved transcript once its live session is
-gone, as long as that transcript and the agent's directory still exist.
-A `/reload` or restart keeps the agents: one waiting on a job or a question is
-reopened without a model run and still waiting, and what could not survive (jobs
-after a restart, a subagent's own subagents, a run in progress) is reported to
-the parent once, in one message, and to the agent in its own transcript.
-
-Background agents use a compact widget above Pi's editor:
-
-```text
-── ● Subagents ────────────────────────────────────────────
-01:23  explore: Find auth files                  ⠋ reading…
-00:45  agent: Add tests                          ⠙ thinking…
---:--  explore: Review changes                     ◦ queued
+```mermaid
+flowchart BT
+  surface[pi-surface]
+  tree[pi-session-tree]
+  foundations[pi-foundations]
+  ui[pi-ui]
+  state[pi-session-state]
+  work[pi-work]
+  ui --> surface
+  ui --> foundations
+  foundations -. "text helpers" .-> ui
+  state --> tree
+  work --> state
+  work --> tree
+  work --> foundations
 ```
 
-Only a top rule is drawn; Pi's own Working border, editor, and footer stay intact.
-Each agent occupies one row, with task identity left and activity/outcome right.
-Model/token/turn stats remain in tool results, not the widget. Finished agents keep
-upstream linger behavior. Short terminals collapse overflow into a `+N more` row.
+pi-surface and pi-session-tree depend on nothing; pi-surface does not even
+import Pi, so the dashboard's hub and the bb plugin can use it outside Pi. The
+arrows only point this way: a package never imports an extension, and the
+dashboard hub and the bb plugin reach the repository only through pi-surface.
+`npm run verify:bundle` checks both.
 
-In Pi fullscreen mode, `Ctrl+Alt+S` or `/subagent:watch` toggles a passive
-right-side watch overlay. It tails assistant text and compact tool summaries in
-stacked agent sections, without taking editor focus or changing agent execution.
-It starts closed. `/subagent:settings` selects quarter, third (default), half, or
-two-thirds width and default visibility. Explicit show/hide wins for the current
-session, including later agent runs. Regular mode keeps the compact widget only:
-Pi 1.1.0 overlays can contaminate terminal scrollback there.
+## Working on this repository
 
-Custom agents are read from `.pi/agents/<name>.md` in the project where Pi runs, or
-`~/.pi/agent/agents/<name>.md`; they are not definitions inside this bundle.
-See [upstream README](extensions/pi-subagent/README.md),
-[configuration](extensions/pi-subagent/docs/configuration.md),
-[provenance](extensions/pi-subagent/CHANGELOG.md#initial-import), and
-[local changes](extensions/pi-subagent/CHANGELOG.md).
-
-### pi-system-insights
-
-Owns observation of Pi's core session state. Every session, a subagent child
-included, publishes it as the `system.session` view on its own bus, in every
-mode and without dashboard or bb loaded: identity, name, cwd, model, thinking,
-context usage, status (waiting, compacting, tool, working, idle), recent
-top-level tool activity and billed usage totals for the whole session file.
-It reads open questionnaires from surface form views, so a question shows as
-waiting with or without a native dialog. See
-[the session view](extensions/pi-system-insights/README.md#the-session-view).
-
-Read-only session inspectors:
-
-- `/system:prompt` — current Pi system prompt; tool/skill catalogs folded into redaction markers.
-- `/system:tools` — accessible tools; Enter shows declaration/schema and prompt metadata.
-- `/system:skills` — discovered skills; Enter shows description and loading evidence.
-
-Viewers use the shared [pi-ui](packages/pi-ui/README.md) explorer and detail view
-(fullscreen TUI only): a centered 80% width/height overlay with a title, rounded
-border, padded content, and help footer. Indexes omit descriptions; details align
-fields and show one full tool schema.
-
-Skill loading tracks the current branch and becomes dirty after compaction.
-Badges are green for fresh loading evidence, grey for unobserved/dirty state;
-a legend above the list explains colors. Esc returns from details to list, then closes.
-Viewers never load skill instructions or change tools/settings. See
-[package README](extensions/pi-system-insights/README.md) for controls and evidence limits.
-
-### pi-todo
-
-Dependency-aware task tracking built on
-[`@99percentpeople/pi-todo`](extensions/pi-todo/CHANGELOG.md#initial-import). One tool per
-action: `todo_list` reads, additive `todo_upsert` preserves omitted tasks, and
-`todo_replace`, `todo_remove` and `todo_clear` make deletion explicit. Stable keys, cycle checks, optional revision guards, and
-branch-scoped persistence work with direct and nested codemode calls.
-
-Updates can carry a `message` (completion summary, findings, handoff). It is
-recorded in task history and flagged until reviewed, so outcomes survive later
-subagent or tool output. The widget counts unreviewed messages, shows excerpts, and
-puts those tasks first.
-
-Above-editor widget and browser use the shared [pi-ui](packages/pi-ui/README.md)
-widget and explorer. `/todo` opens a searchable browser with All,
-Unreviewed and Recent views plus per-task activity timelines. `/todo:review` opens
-unreviewed messages. Commands: `/todo:add`, `/todo:update`, `/todo:remove`,
-`/todo:clear`, `/todo:settings`.
-Settings layer global `todo.json` with project `.pi/todo.json`.
-
-A parent hands tasks to a subagent with `handoff: { todo: { keys } }` on its
-`subagent_start` call. The spawn is blocked if a key is unknown, completed or already
-handed out. The subagent then sees and updates only those tasks, directly in the
-parent's list (shown as `→ agent a3f2b1c4`). The claim is released when the agent ends.
-
-User additions never start/steer a turn. Changed state syncs to the next model
-request by default; no auto-removal, auto-completion, or implicit subagent dispatch.
-Multiple active tasks remain possible for parallel work. See
-[usage/settings](extensions/pi-todo/README.md).
-
-### pi-tldr
-
-`/tldr` displays a concise model-generated recap of the current session: initial
-premise, major findings/turning points, and current status. It uses the shared
-[pi-ui](packages/pi-ui/README.md) detail view as a centered modal (fullscreen TUI only).
-
-After the first user prompt of a new interactive session, it asynchronously
-suggests a short hyphen-separated name (2–4 words). `/tldr` opens immediately
-with an in-modal loading indicator and refreshes only extension-generated names,
-never manual names. Pi manages the terminal title itself. Model selection
-prefers the latest available Haiku or Luna.
-
-Configure globally in `~/.pi/agent/tldr.json`, with a project override in
-`.pi/tldr.json`:
-
-```json
-{ "model": "auto", "setSessionName": true }
-```
-
-Set `setSessionName` to `false` to keep summaries while disabling extension-driven
-session naming. See [extension docs](extensions/pi-tldr/README.md).
-
-## Skills
-
-Root `pi.skills` loads `skills/` and the skills an extension ships in its own
-`skills/` directory, so a bundle install provides these. Force one
-with `/skill:<name>`. Skills for working on this repository itself live in
-`.agents/skills/` and are not part of the bundle.
-
-### babysit-pr
-
-Drives one pull request to green CI with every review comment handled, without
-polling. It waits with pi-git's `git_pr_watch`, ending its turn until the watch
-reports that checks finished on the head, and checks that head is the one it
-pushed. A failed check
-gets its log read and is classified: caused by
-the PR (reproduce locally with the same command, smallest fix, rerun, push),
-infrastructure (rerun the failed jobs once), or pre-existing (reported, not
-fixed). Review comments in scope are fixed and answered; larger asks go back to
-you. It stops after three attempts per check, on a decision only you can make, or
-on a conflict with the base branch. Never skips tests, pushes empty commits,
-rewrites others' history, approves, or merges. Uses `gh` when authenticated,
-otherwise the GitHub MCP tools, for logs, reruns and replies. A delegated worker
-can own this loop: its watch holds it waiting and wakes it when CI settles. It
-reports the final checked SHA and leaves handed-off task acceptance to its parent.
-When the delegator holds the watch (as execute-roadmap does), the worker only
-handles the report it was handed and returns the new head SHA.
-
-### make-it-easy
-
-Turns a project or goal into implementation roadmap options, following Kent
-Beck's "make the change easy (warning: this may be hard), then make the easy
-change". The work is staged, and each stage has a gate:
-
-1. **True goal:** separates the request from the outcome it serves; produces a
-   goal brief with success criteria, non-goals, and what existing things may change.
-2. **Inputs:** lists what the new work must know or receive (placement,
-   identity, config, dependencies, policy) and designs how each is supplied so
-   producer and consumer stay decoupled, for example discovery by tag instead of
-   hardcoded IDs.
-3. **What exists:** researches prior art, conventions, and friction, and decides
-   per item whether to fix first, work around, or leave.
-4. **Options:** two or three different strategies (always including a
-   least-preparation baseline) with a recommendation.
-5. **Roadmap:** ordered, independently shippable steps that keep tidying
-   separate from behavior change and end with a small, easy change.
-
-It plans and writes `docs/roadmaps/<slug>.md`; it does not implement. It asks
-its questions with pi-ask's `ask`, four at a time, and logs each one in the
-roadmap with the recommendation it showed, your answer, and whether it is
-resolved. A question you dismiss stays open; it is not answered for you. It
-overlaps with
-[`@firstpick/pi-extension-grill-me`](https://www.npmjs.com/package/@firstpick/pi-extension-grill-me)
-only in stage 1 and reuses an existing `GRILL-ME.md` instead of re-asking.
-Nothing here depends on it.
-
-### execute-roadmap
-
-Carries out a chosen make-it-easy roadmap. Each step becomes a `todo` with its
-`Depends on` mapped to `dependsOn`; ready steps go to subagents, each in its
-own git worktree from pi-git when several run at once; a `review` that did not
-do the work checks every step against its "Done when" and "Verification" lines
-before it is committed. Two failed repair rounds block a step. A finding the
-roadmap did not anticipate stops the run and lands in the document's open
-questions instead of an improvised plan. The roadmap document stays the plan of
-record: its `Status:` and per-step `Landed:` lines are updated as work lands,
-so a later run resumes from the first unfinished step.
-
-A run delivers one of two ways. **Local** commits each step on the roadmap
-branch and never pushes. **Pull requests** is used when you ask it to deliver or
-ship:
-
-- Each step that ships alone is a pull request branched from the remote default
-  branch; steps that cannot ship alone share the pull request of the step they
-  need. A step may open many pull requests.
-- Pull requests whose steps are independent and touch different files are open
-  at the same time. A dependent step starts only after what it depends on is
-  merged and verified.
-- The main session holds one `git_pr_watch` per pull request until it is
-  merged, hands failed checks and review comments to the worker that wrote the
-  change, and re-arms a watch that timed out or was lost.
-- When a pull request is green it alerts you with `user_notify`. It never
-  approves or merges: you do, or your auto-merge does.
-- After the merge it verifies the deploy with `job_watch` when the repository
-  has a way to (a deploy skill, agent instructions, or a check the step names),
-  and records the merge as unverified when it has none.
-- A failed deploy check holds the line: nothing new starts, you are notified,
-  and nothing is reverted.
-
-### creating-agents
-
-Shipped by pi-subagent (`extensions/pi-subagent/skills/`). Creates, overrides,
-hides or disables an agent type: where the file goes and which one wins, every
-frontmatter field, how to write the `description` and `guidance` that make up
-the agent's line in `subagent_start`, `prompt_mode`, tool selection,
-`visibility: hidden` for agents only a skill calls, locked fields, fragments,
-and how to check the result in `/subagent:agents`.
-
-## Development
-
-Runtime loading needs no build. Install development dependencies only for checks
-and tests:
-
-```bash
-npm install --ignore-scripts
-npm run check  # formatting, linting, and type checking
-npm run fix    # formatting and safe automatic lint fixes
-npm test
-npm run verify:bundle
-```
-
-`verify:bundle` checks root-package discovery and tool and skill registration in temporary
-settings, without model calls or changes to your Pi configuration. It also checks the
-dependency direction (`scripts/package-boundary.mjs`): no package names an extension in
-its dependencies or import maps or imports extension source, and the bb plugin and the
-standalone dashboard hub reach the repository only through pi-surface.
-
-Oxfmt and Oxlint use one root configuration for every workspace and repository
-script. Oxlint's type-aware rules use the native TypeScript implementation;
-TypeScript 7 runs the full type checks. Shared development dependencies live in
-the root package, while runtime peer dependencies stay with each extension.
-Generated declarations, coverage, and the npm lockfile are excluded from formatting.
-Tests may reference mock methods in assertions; unbound-method checking stays
-enabled for runtime source. Terminal-control regexes have local lint explanations.
-The fix command formats again after successful lint fixes so it leaves code ready
-for the formatting check.
-
-These check/test commands cover every development workspace. Run one with
-`npm run test:workspace -- pi-todo` (a name or directory), or watch it with
-`npm run test:watch -- pi-todo`. Direct Vitest filtering also works:
-`npx vitest run --project pi-todo`. Pi modules
-are dev dependencies for testing and peer dependencies for runtime; Pi supplies its
-own modules when loading extensions.
-
-GitHub Actions runs tests in parallel jobs per selected workspace,
-plus `verify:bundle` and the bundle scenario tests in `test/` whenever any
-workspace is selected.
-A repository-wide job checks formatting, lint and types once, including scripts.
-It also checks the dashboard hub's plain-Node syntax constraints and the job e2e
-scripts. Pull requests
-select extensions with changes under their directory; changes to root
-manifests/lockfiles, `.nvmrc`, shared TypeScript or Oxc settings, workflows, or scripts
-select all extensions. Pushes to `main` always check and test all extensions.
-Unrelated PR changes skip the extension matrix.
-The repository job also checks registration
-(`scripts/bundle-manifest.test.mjs`): every directory under `extensions/` and
-`packages/` is a workspace named after it with a supported test runner, and root
-`pi.extensions` and `pi.skills` are exactly what the extension workspaces declare. Matrix selection is tested with
-`node --test scripts/select-test-extensions.test.mjs`. CI reads its Node.js
-version from `.nvmrc`; `nvm use` or `fnm use` picks up the same version locally.
-
-Public API type exports reference TypeScript source directly; no declaration build is needed.
-
-To work on one extension without other configured extensions:
-
-```bash
-pi --no-extensions -e ./extensions/pi-subagent/src/index.ts
-```
-
-### Add another extension
-
-Use the [`new-extension` skill](.agents/skills/new-extension/SKILL.md).
-
-To copy a third-party extension into the repository, use the
-[`import-extension` skill](.agents/skills/import-extension/SKILL.md). Its script
-commits a verbatim copy of upstream, verified by tree hash, and prepares the
-integration. Each imported extension records provenance in its changelog’s
-**Initial import** entry, with later changes recorded above it.
-
-### Changelogs
-
-The [Weekly changelogs workflow](.github/workflows/changelogs.yml) runs every
-Monday at 09:17 UTC and can also be started with **Run workflow**. It opens or
-updates one PR on `automation/weekly-changelogs` for all registered extension
-and package workspaces. No new entries means no PR. Feature and fix PRs should
-leave changelogs alone; use descriptive commit messages instead.
-
-Each new entry is a single bullet: the UTC commit date, the first line of the
-commit message, and a link to the merged PR that introduced it. Direct commits
-get a commit link. Changes to any file inside a workspace count, except its
-`CHANGELOG.md`; root-only changes are not attributed to workspaces. Original
-commits in merged branches are included; merge wrapper commits are omitted.
-
-Each changelog carries a hidden `changelog:through` commit checkpoint. Runs scan
-everything since that commit, even after missed weeks or a manual changelog edit.
-An open update PR is regenerated from the default branch on each run, so changes
-merged while it waits are picked up. Keep the checkpoint when correcting an entry.
-Logs without a checkpoint are rebuilt from full Git history, following earlier
-workspace names through directory renames. Old hand-written entries are replaced;
-the **Initial import** entry retains source, pinned revision, version, license,
-import details, and source history links. Unknown import dates stay unspecified.
-There are no separate upstream tracking files. To explicitly rebuild checkpointed
-logs, run `node scripts/update-changelogs.mjs --rebuild` with `GITHUB_REPOSITORY`
-and `GH_TOKEN` set, from a checkout of the default branch. Invalid checkpoints
-or failed PR lookups stop generation without writing updates.
-
-In **Settings → Actions → General → Workflow permissions**, enable **Allow GitHub
-Actions to create and approve pull requests**. The workflow uses `GITHUB_TOKEN`
-with contents and pull request write permissions; no extra secret is needed.
-GitHub may require **Approve workflows to run** on the generated PR before its
-checks run.
-
-### Test the bundle end to end
-
-[`packages/pi-scripted-model`](packages/pi-scripted-model/README.md) runs the
-whole bundle in-process against a scripted fake model: real tools, extensions
-and subagents, no API key or network. A scenario scripts each model response;
-`startSession` loads the bundle, `prompt` runs a turn, `toolRuns()` returns
-every call with its result, and `requests()` every context the model was sent.
-Sessions can also be compacted and resumed.
-
-The `test/` workspace holds one scenario per behaviour that exists only when the
-extensions run together: a todo handed to a subagent and accepted by the
-parent, a subagent's stash entry adopted by the parent, a worktree's ledger
-naming the subagent that ran in it, a finished job waking the session, a
-subagent's question answered with `subagent_send`, and the cards restored once
-each after compaction and resume. Add a scenario there for new
-cross-extension behaviour; assert on tool runs and model requests, not on
-internals. CI runs it whenever any extension or package changes.
-
-### Shared test helpers
-
-[`packages/pi-test-helpers`](packages/pi-test-helpers/README.md) holds what test
-suites across workspaces share: temp directories and layered settings
-fixtures cleaned up when a test ends, polling, plain, ANSI and markup themes,
-padding and width assertions, a fake `ExtensionAPI` for factory unit tests, a
-`ui.custom` stub that mounts components, and real SDK sessions on an offline
-faux model. Reach for it before writing another local helper; keep helpers
-that only one workspace needs in that workspace's `test/`.
-
-### The work contract
-
-[`packages/pi-work`](packages/pi-work/README.md) defines `work:v1`, the one
-interface for everything a session waits on (jobs, delegated subagents,
-questions). A producer opens an item in the session's work host and completes
-it with a message; the host persists open items, writes messages into the
-transcript, wakes an idle session, answers a message that arrives mid-run in
-that same run, and closes items nobody takes over after a restart as lost
-without starting a turn. pi-job, pi-subagent and pi-ask (a subagent's question to
-its parent) are producers; there is nothing to configure.
-
-### Screenshot the TUI
-
-Use the [`tui-screenshot` skill](.agents/skills/tui-screenshot/SKILL.md). A
-scenario file scripts the same fake model, and a driver runs Pi with the bundle in a
-private tmux server and renders the screen to PNG. No API key is needed. It is
-development-only: nothing under `.agents/` is in the bundle manifest, and
-`verify:bundle` fails if it ever is.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the layout, checks, tests,
+screenshots and how to add an extension.
 
 ## License
 
-Vendored subagents code retains its upstream [MIT license](extensions/pi-subagent/LICENSE).
-Vendored todo engine retains its upstream [MIT license](extensions/pi-todo/LICENSE).
-Vendored jobs code retains its upstream [MIT license](extensions/pi-job/LICENSE).
-pi-git's GitHub retry classifier (`extensions/pi-git/src/retry.ts`) is copied from `@gotgenes/pi-github-tools` and keeps its MIT notice in the file.
+The vendored subagents code, todo engine and jobs code keep their upstream MIT
+licenses: [pi-subagent](extensions/pi-subagent/LICENSE),
+[pi-todo](extensions/pi-todo/LICENSE), [pi-job](extensions/pi-job/LICENSE).
+pi-git's GitHub retry classifier (`extensions/pi-git/src/retry.ts`) is copied
+from `@gotgenes/pi-github-tools` and keeps its MIT notice in the file.
