@@ -75,36 +75,26 @@ when needed for files outside these aliases, use `.ts`.
 
 ## 3. Follow the runtime conventions
 
-**Sessions.** Every subagent is a full in-process Pi session that loads every
-bundle extension again. So:
+Read "Extension runtime rules" in `AGENTS.md` first: state in the factory's
+closure, persistence through `pi.appendEntry` and `readEntries`, one
+`restoreCard` after compaction, no per-request `context` messages, `ctx.hasUI`
+guards. What follows is how the scaffold wires them.
 
-- Keep all state in the factory's closure, never in module scope: a same-cwd
-  child may share the parent's module instance.
-- Rebuild state in `restore` (the template wires it to `session_start` and
-  `session_tree`) from your entries with `readEntries(ctx, { type, guard })`
-  from [`packages/pi-session-state`](../../../packages/pi-session-state/README.md),
-  and persist with `pi.appendEntry`, so `/tree`, resume, reload and compaction
-  work.
-- To give the model state a compaction summarized away, use
-  `restoreCard(pi, { type, build })` from the same package: it writes one hidden
-  card into the transcript after each compaction. For state that changes under
-  the model, write a hidden `pi.sendMessage(..., { triggerTurn: false })` note
-  when it changes, as pi-todo does. Never add a message to the end of every
-  request from a `context` handler: it costs prompt caching and draws replies.
-- Guard UI with `ctx.hasUI`; children have none.
-- A captured `ctx` goes stale after reload. Re-read it from each event.
-- To offer a service to other sessions, use `treeService(pi, name, api)` from
-  `packages/pi-session-state`: it follows the session's children, provides on
-  `session_start`, withdraws on `session_shutdown`, and `tree.parent(fn)` calls
-  the parent's copy. For anything else across sessions, use
-  `#session-tree` (`call`, `ancestors`). Never put a
-  bare object on `globalThis`.
+**Sessions.** The template's `restore` runs on `session_start` and
+`session_tree`; rebuild your state there with
+`readEntries(ctx, { type, guard })` from
+[`packages/pi-session-state`](../../../packages/pi-session-state/README.md). For
+state the model saw in tool results, add `restoreCard(pi, { type, build })`
+after the handlers that rebuild it. To offer a service to other sessions, use
+`treeService(pi, name, api)` from the same package; `tree.parent(fn)` calls the
+parent's copy.
 
-**Talking to other extensions.** Publish state for displays as views and
-actions on the session's bus with `viewRegistry` and `actionRegistry` from
-[`packages/pi-surface`](../../../packages/pi-surface/README.md), as pi-todo and
-pi-stash do; pi-dashboard and bb draw only those. Keep `<name>:<event>` bus
-events for lifecycle signals other extensions react to (`subagent:completed`).
+**Showing state elsewhere.** The dashboard and bb draw only `pi-surface` views
+and actions, as pi-todo and pi-stash publish them: define a widget, explorer or
+summary view and the actions it references (the `surface-view` skill). Keep
+`<name>:<event>` bus events for lifecycle signals other extensions react to
+(`subagent:completed`). Anything the session should wait for is a `pi-work`
+item ([`packages/pi-work`](../../../packages/pi-work/README.md)).
 
 **Configuration.** Declare settings once in `src/config.ts` with `defineSettings`
 from `packages/pi-foundations/src/settings.ts` (`--settings` scaffolds it; see

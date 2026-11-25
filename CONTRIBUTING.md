@@ -128,7 +128,9 @@ use [`import-extension`](.agents/skills/import-extension/SKILL.md): its first
 commit is a verbatim copy of upstream, verified by tree hash, and the
 changelog's **Initial import** entry records where it came from. Either way, add
 a row to the root README's extension table and write the extension's README the
-way the others are written (see [AGENTS.md](AGENTS.md#readmes)).
+way the others are written (see [AGENTS.md](AGENTS.md#readmes)). To show an
+extension's state in the dashboard and bb, use the
+[`surface-view`](.agents/skills/surface-view/SKILL.md) skill.
 
 ## Changelogs
 

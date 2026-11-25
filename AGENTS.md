@@ -1,5 +1,68 @@
 # Repository instructions
 
+A bundle of Pi extensions. Pi loads the TypeScript source straight from this
+checkout: there is no build step and nothing is published.
+
+| Path                 | What lives there                                                                   |
+| -------------------- | ---------------------------------------------------------------------------------- |
+| `extensions/<name>/` | One Pi extension per npm workspace, registered in the root `pi.extensions`         |
+| `packages/<name>/`   | Shared libraries (pi-surface, pi-ui, pi-work, …); Pi never loads them on their own |
+| `skills/`            | Skills shipped in the bundle                                                       |
+| `bb-plugin/`         | The bb plugin for pi-bb: its own package and toolchain, not a workspace            |
+| `test/`              | Bundle scenario tests: behaviour that exists only when extensions run together     |
+| `.agents/skills/`    | Skills for working on this repository (also `.claude/skills/`); not in the bundle  |
+
+`CONTRIBUTING.md` has the layout, import aliases, tests and CI in full; the
+root `README.md` has the diagrams of how the extensions fit together.
+
+## Before you commit
+
+```bash
+npm run check                         # format, lint, types
+npm run test:workspace -- <name>      # each workspace you changed
+npm run verify:bundle                 # when tools, commands or skills change
+```
+
+Node.js 24 (`.nvmrc`). In `bb-plugin/`, run its own `npm run typecheck` and
+`npm test`: the root check does not cover it. New cross-extension behaviour gets
+a scenario in `test/` (see `test/README.md`).
+
+Always disable GPG signing explicitly for every commit; do not change global Git
+signing settings:
+
+```bash
+git -c commit.gpgsign=false commit ...
+```
+
+Keep commit subjects descriptive: each becomes a changelog entry for every
+workspace it touches.
+
+## Extension runtime rules
+
+Every subagent is a full Pi session in the same process that loads every
+extension again. So, in any extension:
+
+- Keep state in the factory's closure, never in module scope: a same-cwd child
+  may share the parent's module instance. Never put a bare object on
+  `globalThis`; cross-session services go through `treeService` from
+  `pi-session-state` or `#session-tree`.
+- Persist with `pi.appendEntry` and rebuild on `session_start` and
+  `session_tree` with `readEntries`, so `/tree`, resume, reload and compaction
+  work. State the model saw in tool results comes back after compaction through
+  one `restoreCard`.
+- Never add a message to every request from a `context` handler: it breaks
+  prompt caching. Write a hidden `pi.sendMessage(…, { triggerTurn: false })`
+  note when state changes instead.
+- Guard UI with `ctx.hasUI`; re-read `ctx` from each event, since a captured one
+  goes stale after reload. Command output goes through `userOutput` from
+  `pi-foundations`, so RPC hosts such as bb see it.
+- Settings are declared once with `defineSettings` (`pi-foundations`); never
+  read a settings file yourself.
+- Tools keep output bounded and set `annotations.readOnlyHint` when they only
+  read. Anything a session waits on is a `pi-work` item, not a poll.
+- What other UIs should show is a `pi-surface` view or action, defined on
+  `session_start` and disposed on `session_shutdown` (the `surface-view` skill).
+
 ## Terminal UI spacing
 
 Always buffer content away from terminal edges and panel borders: reserve at least
@@ -76,28 +139,13 @@ license, import date when known, and any pinned source changelog link. Write it
 once during integration; keep license files. Do not create separate provenance,
 upstream issue, sync-tracking, or upstream comparison files.
 
-The weekly workflow maintains later entries; do not edit them in feature or fix
-PRs. Keep commit subjects descriptive: each becomes an entry with its UTC commit
-date and introducing PR link (or commit link). Preserve `changelog:through` and
-the complete Initial import entry, including during a full rebuild.
-
 ## Changelogs
 
-The same weekly workflow maintains `CHANGELOG.md` for every registered workspace
-under `extensions/` and `packages/`, creating missing logs from Git history.
-Logs without a checkpoint are rebuilt from full history, following directory
-renames and retaining the complete Initial import entry from the previous log.
-See [CONTRIBUTING.md](CONTRIBUTING.md#changelogs) for checkpoint and workflow details.
-
-## Git commits
-
-Always disable GPG signing explicitly for every commit:
-
-```bash
-git -c commit.gpgsign=false commit ...
-```
-
-Do not change global Git signing settings.
+A weekly workflow maintains `CHANGELOG.md` for every registered workspace under
+`extensions/` and `packages/`, creating missing logs from Git history. Do not
+edit changelogs in feature or fix PRs. Preserve `changelog:through` and the
+complete Initial import entry, including during a full rebuild. See
+[CONTRIBUTING.md](CONTRIBUTING.md#changelogs) for checkpoint and workflow details.
 
 ## Skills
 
@@ -105,3 +153,13 @@ Skills in `skills/` ship in the same bundle as every extension in this repositor
 so their tools are always available. Refer to them directly (`todo_upsert`, `subagent_start`,
 `stash_put`, `job_watch`); do not write "if a subagent tool is available". Keep
 conditional wording only for tools from packages outside this repository.
+
+Skills for working on this repository, in `.agents/skills/`:
+
+| Skill              | Use it to                                                                 |
+| ------------------ | ------------------------------------------------------------------------- |
+| `new-extension`    | Scaffold and register a first-party extension, or add a shared package    |
+| `import-extension` | Bring in a third-party extension as a verbatim, verifiable first commit   |
+| `surface-view`     | Publish an extension's state or actions so the dashboard and bb show them |
+| `tui-screenshot`   | Screenshot the TUI on a scripted model; regenerate the README images      |
+| `bb-screenshot`    | Run a private bb with the plugin, screenshot it and check its insets      |
