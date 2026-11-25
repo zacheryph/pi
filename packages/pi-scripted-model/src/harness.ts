@@ -293,6 +293,11 @@ export async function startSession(options: SessionOptions): Promise<ScriptedSes
       const model = session.modelRuntime.getModel(PROVIDER, MODEL);
       if (!model) throw new Error(`pi-scripted-model: the scenario did not register ${PROVIDER}`);
       await session.setModel(model);
+      // `ctx.modelRegistry.getAvailable()` reads a snapshot that only a refresh fills with
+      // the providers extensions just registered. Pi refreshes it at startup; without it
+      // an extension that picks a model on the first prompt (pi-tldr naming a session)
+      // sees no scripted model.
+      await session.modelRuntime.getAvailable();
       // A virtual model (an extension's `agent/<name>`) only routes to a physical one, so it
       // is real only if some other physical model is.
       const real = (await session.modelRuntime.getAllAvailable()).filter(
