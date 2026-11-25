@@ -119,6 +119,17 @@ and renders it.
 Wait for text that appears only once the state you want is on screen, such as
 a footer count or a widget row. Do not wait on a spinner frame or a timer.
 
+Pages Pi serves, such as the dashboard, are captured with `--url`: after the
+actions, the driver opens the page in Chromium while Pi is still running and
+screenshots it instead of the terminal.
+
+| Option              | Default  | Effect                                              |
+| ------------------- | -------- | --------------------------------------------------- |
+| `--url <url>`       |          | Screenshot this page, e.g. `http://127.0.0.1:7317/` |
+| `--url-wait <css>`  |          | Wait for an element first                           |
+| `--url-click <css>` |          | Click, in order, before the capture                 |
+| `--viewport WxH`    | 1280x800 | Browser viewport in CSS pixels                      |
+
 On failure the driver prints the last screen. A timeout on `scripted-model`
 means Pi did not start: the screen shows why (a prompt, an extension error).
 
@@ -137,6 +148,23 @@ Open the PNG with Read before handing it over, and check:
   `--ansi` before blaming the renderer.
 
 Colors are a fixed dark palette, not your terminal theme.
+
+## README images
+
+Every image in `docs/images/` (except `banner.png` and `bb/`) comes from a
+scenario in `scenarios/docs/`, listed with its actions in
+`scripts/docs-images.mjs`:
+
+```bash
+node .agents/skills/tui-screenshot/scripts/docs-images.mjs               # all of them
+node .agents/skills/tui-screenshot/scripts/docs-images.mjs ask tldr      # some
+node .agents/skills/tui-screenshot/scripts/docs-images.mjs --list
+```
+
+It builds a demo repository (`~/acme-api` on `main`) under a throwaway HOME, so
+no path, branch or session of yours appears, and links Debian's `fdfind` as
+`fd` so Pi does not warn about it. Regenerate the images an extension's README
+shows when you change what they show, and look at each before committing.
 
 ## Rendering without Pi
 
