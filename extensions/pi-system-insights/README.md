@@ -11,7 +11,9 @@ The extension observes Pi's own session state and publishes it as a
 (`SESSION_VIEW_ID`), kind `session`, a `SessionModel`. Any consumer on the
 session's bus reads it with `readView` or `collectViews`; nothing else needs to
 be installed. It is defined in every mode (terminal, RPC, print, JSON), whether
-or not the dashboard or bb is loaded.
+or not the dashboard or bb is loaded. pi-dashboard and bb draw each session's
+header, status, activity and usage from it; neither observes Pi's core state
+itself, and both show a session without it when this extension is not loaded.
 
 | Field                    | Source                                                                         |
 | ------------------------ | ------------------------------------------------------------------------------ |

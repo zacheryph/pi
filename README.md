@@ -90,7 +90,7 @@ pi-personal/
 │   │   ├── src/index.ts                 # session reporter + /dashboard command
 │   │   ├── src/hub/server.ts            # web hub (plain Node, not a Pi extension)
 │   │   ├── test/
-│   │   └── docs/plan.md                 # research and phased plan
+│   │   └── docs/plan.md                 # original research and plan (historical)
 │   ├── pi-git/
 │   │   ├── src/index.ts                 # git_* tools + /git:worktrees, /git:prs, /git:refresh
 │   │   └── test/
@@ -151,7 +151,14 @@ extension; helper files and tests are not loaded as extensions. `packages/` hold
 libraries shared by extensions, including [pi-ui](packages/pi-ui/README.md) for
 terminal views and widget layout, and [pi-surface](packages/pi-surface/README.md)
 for the JSON view model pi-ui draws and the per-session action and view registries. They
-are workspaces with no `pi` entry, and extensions import them through aliases.
+are workspaces with no `pi` entry, and extensions import them through aliases. A package
+never depends on or imports an extension; `verify:bundle` checks it.
+
+Extensions own their state and publish what a display needs as pi-surface views and
+actions on the session's bus; pi-system-insights publishes the core session information as
+the `system.session` view. pi-dashboard and pi-bb each collect a session's views into one
+complete snapshot per update and send actions back to their owners. Neither reads another
+extension's state, and the dashboard hub and the bb plugin build only on pi-surface.
 
 Each workspace's `package.json` maps `#src/*` and `#test/*` to its own modules,
 and shared aliases such as `#ui`, `#surface`, `#work`, `#foundations/settings`
@@ -223,8 +230,8 @@ The first interactive session starts a detached hub; sessions connect to it
 over a unix socket in `~/.pi/agent/dashboard/`, and it exits 15 seconds after
 the last one quits. Print-mode runs and subagent children are not shown. Port
 and Node binary are set in `~/.pi/agent/dashboard.json`. Loopback only. See
-[extension docs](extensions/pi-dashboard/README.md) and the
-[plan](extensions/pi-dashboard/docs/plan.md).
+[extension docs](extensions/pi-dashboard/README.md) and the original
+[plan](extensions/pi-dashboard/docs/plan.md) (historical).
 
 ### pi-git
 
@@ -255,8 +262,8 @@ GitHub MCP tools without it, retrying transient failures) and records it.
 finish, its head moves, a review or comment arrives, or it is merged or closed,
 each report naming the head commit it is for. `/git:refresh` re-reads
 every open PR and re-checks every worktree. After a compaction, a hidden card
-written once into the transcript lists open PRs and worktrees. State is published as `git:snapshot` for the
-dashboard. The root
+written once into the transcript lists open PRs and worktrees. The worktree and PR
+explorers and their totals are published as views for the dashboard and bb. The root
 is set by `worktreeRoot` in `~/.pi/agent/git.json` or `.pi/git.json`;
 `trackReferenced: false` keeps only PRs opened here. See [extension docs](extensions/pi-git/README.md) and the
 [plan](docs/plans/git-github-ledger.md).
@@ -570,7 +577,10 @@ npm run verify:bundle
 ```
 
 `verify:bundle` checks root-package discovery and tool and skill registration in temporary
-settings, without model calls or changes to your Pi configuration.
+settings, without model calls or changes to your Pi configuration. It also checks the
+dependency direction (`scripts/package-boundary.mjs`): no package names an extension in
+its dependencies or import maps or imports extension source, and the bb plugin and the
+standalone dashboard hub reach the repository only through pi-surface.
 
 Oxfmt and Oxlint use one root configuration for every workspace and repository
 script. Oxlint's type-aware rules use the native TypeScript implementation;
@@ -710,10 +720,3 @@ Vendored subagents code retains its upstream [MIT license](extensions/pi-subagen
 Vendored todo engine retains its upstream [MIT license](extensions/pi-todo/LICENSE).
 Vendored jobs code retains its upstream [MIT license](extensions/pi-job/LICENSE).
 pi-git's GitHub retry classifier (`extensions/pi-git/src/retry.ts`) is copied from `@gotgenes/pi-github-tools` and keeps its MIT notice in the file.
-
-### Shared presentation services
-
-`packages/pi-presentation` provides renderer-independent session projections,
-producer subscriptions and owner-routed read requests for the bb adapter until
-it moves to pi-surface views. The dashboard no longer uses it. See the package
-README.

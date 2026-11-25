@@ -1,8 +1,16 @@
 # pi-dashboard: research and implementation plan
 
-Status: phases 1–3 implemented (MVP, publish hooks, detail page, Focus, previews and polish); phase 4 started (answering rpiv ask-user questions). Wireframes are in the
-companion artifact linked from the PR/session; ASCII versions of the chosen
-layout are at the end of this file. Usage docs: [README](../README.md).
+Status: historical. Phases 1–3 shipped as planned here (MVP, publish hooks,
+detail page, Focus, previews and polish) and phase 4 began. The dashboard has
+since moved to [pi-surface](../../../packages/pi-surface/README.md) views
+(protocol 7): the reporter collects each session's views into one snapshot, the
+hub draws them, and items, review marks and questions run their owners' actions.
+The snapshot events, publish hooks, preview and history requests and ask events
+this plan describes no longer exist. The current behaviour is in the
+[README](../README.md); the migration is
+[Shared session views](../../../docs/plans/views-only-implementation.md).
+Wireframes are in the companion artifact linked from the PR/session; ASCII
+versions of the chosen layout are at the end of this file.
 
 ## Goal
 

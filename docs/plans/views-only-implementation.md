@@ -1,6 +1,8 @@
 # Shared session views: implementation plan
 
-Status: ready for staged implementation; the saved-cache policy is decided
+Status: implemented. PRs 1–8 are merged; [As implemented](#as-implemented)
+maps the plan onto the code. The sections below are the plan as it was
+followed, kept for its reasoning.
 
 Design: [Views-only sessions](views-only-snapshot.md). This plan implements
 package 8 of [RPC surfaces](rpc-surfaces.md).
@@ -120,8 +122,8 @@ can be tested independently while old consumers continue their existing route.
 
 ## 3. System-insights owns core observation
 
-Primary area: `extensions/pi-system-insights/src/`; source behavior currently
-lives in presentation's status, activity, usage and snapshot modules.
+Primary area: `extensions/pi-system-insights/src/`; source behavior then
+lived in presentation's status, activity, usage and snapshot modules.
 
 - Add a session-scoped observer and publish `system.session` independently of
   UI mode and without requiring either remote adapter to be installed.
@@ -339,3 +341,31 @@ persisted task states; existing transport size ceilings remain. Exact field
 names and module splits can be finalized in PR 1 without reopening ownership.
 There are no outstanding architectural blockers or required SDK changes known
 from the current code review.
+
+## As implemented
+
+All eight PRs are merged. Where the plan above names a module that no longer
+exists, this is where the work ended up:
+
+| Concern                       | Where it lives now                                                                                                                                   |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Session, summary, form models | `packages/pi-surface/src/session.ts`, `summary.ts`, `form.ts`; delivery and action shapes in `delivery.ts`                                           |
+| Collection and lifecycle      | `collectViews`/`collectDelivery` (`collect.ts`), `batchViews` (`batch.ts`), `advertiseFormConsumer` (`consumers.ts`), `settleSnapshot` (`settle.ts`) |
+| Core observation              | `extensions/pi-system-insights/src/session/`, publishing `system.session`                                                                            |
+| Extension summaries           | `todo.summary`, `subagent.summary` (with the main-agent profile), `stash.summary`, `git.summary`                                                     |
+| Questionnaires                | pi-ask's `ask.questions` form, answered through `ask.submit` and `ask.cancel`                                                                        |
+| Dashboard                     | Reporter and hub on protocol 7: `collectDelivery`, generic action requests, Focus as a host request                                                  |
+| bb                            | pi-bb and `bb-plugin/` on protocol 3; versioned saved snapshots, old ones ignored                                                                    |
+| Dependency direction          | `scripts/package-boundary.mjs`, run by `npm run verify:bundle`; the rule is in `AGENTS.md`                                                           |
+
+PR 8 deleted `pi-presentation` with its section projections, wire types and
+core-session trackers. It also removed what only presentation consumed: the
+`todo:snapshot`, `stash:snapshot`, `git:snapshot` and `subagent:snapshot` bus
+events and their payload types; the `todo.history` and `stash.preview` actions,
+the `stash:preview` bus request, and pi-ask's `ask.answer` action and
+`ask:answer` request behind the old task-history, stash-preview and answer
+requests; and pi-ask's `ask:opened`/`ask:closed` events. The builders the views
+and tools still use stayed: pi-git's `gitSnapshot` (`src/snapshot.ts`),
+pi-subagent's `buildSubagentSnapshot`, pi-stash's `stashEntryJson` and pi-todo's
+review and claim state. Lifecycle (`subagent:*`) and work-item events are
+unchanged.
