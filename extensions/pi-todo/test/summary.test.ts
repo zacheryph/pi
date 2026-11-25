@@ -80,6 +80,30 @@ describe("todo.summary", () => {
     expect(summary(env).active).toEqual({ id: "b", label: "Write the collector" });
   });
 
+  it("labels nouns in agreement with their value, and statuses the same for any value", async () => {
+    const env = await started();
+    const labels = () =>
+      Object.fromEntries(summary(env).counts.map((count) => [count.key, count.label]));
+    const statuses = {
+      completed: "completed",
+      "in-progress": "in progress",
+      pending: "pending",
+      blocked: "blocked",
+      unreviewed: "unreviewed",
+      archived: "archived",
+    };
+    await env.execute({ action: "upsert", tasks: [{ key: "a", subject: "A", message: "One" }] });
+    expect(counts(env)).toMatchObject({ total: 1, "unreviewed-messages": 1 });
+    expect(labels()).toEqual({ ...statuses, total: "task", "unreviewed-messages": "new message" });
+    await env.execute({ action: "upsert", tasks: [{ key: "b", subject: "B", message: "Two" }] });
+    expect(counts(env)).toMatchObject({ total: 2, "unreviewed-messages": 2 });
+    expect(labels()).toEqual({
+      ...statuses,
+      total: "tasks",
+      "unreviewed-messages": "new messages",
+    });
+  });
+
   it("stays available while the widget is disabled", async () => {
     const env = await started({ config: { widget: false } });
     await env.execute({ action: "upsert", tasks: [{ key: "a", subject: "A" }] });

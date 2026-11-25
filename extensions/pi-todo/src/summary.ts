@@ -1,3 +1,4 @@
+import { plural } from "#foundations/format";
 import type { SummaryCount, SummaryModel } from "#surface";
 import { unreviewedTodoUpdates, type TodoActivity, type TodoReviewState } from "#src/activity";
 import type { TodoState } from "#src/state";
@@ -17,6 +18,8 @@ export interface TodoSummarySource {
  * by either. Every count is present, zero included, so an empty list reads as
  * zeros where an unloaded pi-todo has no view at all. Task statuses and review
  * marks live in the session file, so nothing here is process-bound (`live`).
+ * Noun labels agree with their value ("1 task", "2 tasks"); statuses read the
+ * same for any value.
  */
 export function todoSummaryModel({
   state,
@@ -35,13 +38,17 @@ export function todoSummaryModel({
     unreviewedMessages += fresh;
   }
   const counts: SummaryCount[] = [
-    { key: "total", label: "tasks", value: state.tasks.length },
+    { key: "total", label: plural(state.tasks.length, "task"), value: state.tasks.length },
     { key: "completed", label: "completed", value: by.completed, tone: "success" },
     { key: "in-progress", label: "in progress", value: by.in_progress, tone: "accent" },
     { key: "pending", label: "pending", value: by.pending },
     { key: "blocked", label: "blocked", value: by.blocked, tone: "warning" },
     { key: "unreviewed", label: "unreviewed", value: unreviewedTasks, tone: "accent" },
-    { key: "unreviewed-messages", label: "new messages", value: unreviewedMessages },
+    {
+      key: "unreviewed-messages",
+      label: plural(unreviewedMessages, "new message"),
+      value: unreviewedMessages,
+    },
     { key: "archived", label: "archived", value: archived, tone: "muted" },
   ];
   // The first task in progress, in list order, as consumers have always picked it.
