@@ -73,6 +73,7 @@ const summary: SummaryModel = {
     { key: "total", label: "tasks", value: 7 },
     { key: "completed", label: "done", value: 3, tone: "success" },
     { key: "running", label: "running", value: 2, tone: "accent", live: true },
+    { key: "bytes", label: "on this branch", value: 887, unit: "bytes" },
   ],
   active: { id: "worker", label: "Move retries into the queue worker" },
   profile: { name: "reviewer", label: "Reviewer", description: "Reviews diffs" },
@@ -318,6 +319,13 @@ describe("summary model", () => {
     expect(isSummaryModel({ counts: [], profile: { name: "reviewer" } })).toBe(true);
   });
 
+  it("takes a count's unit only as the literal bytes", () => {
+    expect(isSummaryModel(summary)).toBe(true);
+    expect(summaryCount(summary, "bytes")).toBe(887);
+    // A count without a unit is a plain number of things.
+    expect(isSummaryModel(set(summary, ["counts", 3, "unit"], undefined))).toBe(true);
+  });
+
   it("refuses duplicate or malformed keys, and values that are not finite counts", () => {
     const bad: [string, unknown][] = [
       ["duplicate key", set(summary, ["counts", 1, "key"], "total")],
@@ -328,6 +336,10 @@ describe("summary model", () => {
       ["string value", set(summary, ["counts", 0, "value"], "7")],
       ["no label", set(summary, ["counts", 0, "label"], undefined)],
       ["tone", set(summary, ["counts", 0, "tone"], "red")],
+      ["unit", set(summary, ["counts", 3, "unit"], "kilobytes")],
+      ["unit case", set(summary, ["counts", 3, "unit"], "Bytes")],
+      ["unit type", set(summary, ["counts", 3, "unit"], 1)],
+      ["unit null", set(summary, ["counts", 3, "unit"], null)],
       ["active id", set(summary, ["active", "id"], "")],
       ["profile name", set(summary, ["profile", "name"], 1)],
       ["counts", { counts: {} }],

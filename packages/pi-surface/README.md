@@ -71,6 +71,7 @@ the moment it would have called a callback.
 | `ExplorerItem`, `ExplorerTab`, `ExplorerMarker`, `ExplorerModel`   | A filterable list that opens into detail content                                                    |
 | `SessionModel`, `SessionStatus`, `SessionActivity`, `SessionUsage` | Core session information (see [Session, summary and form models](#session-summary-and-form-models)) |
 | `SummaryModel`, `SummaryCount`, `SummaryItem`, `SummaryProfile`    | An extension's structured counts, active item and profile                                           |
+| `SummaryUnit`                                                      | What a count measures when it is not a number of things: `"bytes"`                                  |
 | `FormModel`, `FormQuestionnaire`, `FormQuestion`, `FormAnswer`     | Open questionnaires and the answer a consumer submits                                               |
 | `ActionRef`, `JsonValue`, `JsonObject`                             | Behaviour by reference, and the JSON the model is made of                                           |
 
@@ -276,12 +277,33 @@ delivery snapshot. Status precedence is waiting, compacting, tool, working, idle
 
 **`summary`** (`SummaryModel`) is what an extension reports about its own state:
 `counts` (each with a stable `key`, a display `label`, a finite `value` of zero
-or more, and an optional `live` mark), an `active` item by the producer's own
-id, and an optional `profile` (such as the main agent's). Counts are the
-producer's totals, never the rows some display shows, so they stay right when a
-widget is hidden or a list is capped. An empty summary means a loaded extension
-with nothing yet; an absent view means it is not loaded. `summaryCount(model,
-key)` reads one count.
+or more, an optional `unit` and an optional `live` mark), an `active` item by
+the producer's own id, and an optional `profile` (such as the main agent's).
+Counts are the producer's totals, never the rows some display shows, so they
+stay right when a widget is hidden or a list is capped. An empty summary means a
+loaded extension with nothing yet; an absent view means it is not loaded.
+`summaryCount(model, key)` reads one count; consumers select counts by `key`.
+
+A count's `label` is the text that follows its formatted value. The producer
+chooses it for the value when it builds the summary, so a noun agrees in number
+("1 worktree", "2 worktrees", "1 entry"); a state reads the same for any value
+("3 running", "1 open"). A `live` count settles to 0 with the same label, so its
+label must read right at 0 too. `unit: "bytes"` (the only unit) marks a size:
+consumers format its value as one, and its label follows a size ("887 B in the
+store", "1.0 GiB store cap"). `isSummaryModel` refuses any other unit.
+
+`src/format.ts` holds the display text every renderer uses, so a count reads the
+same in the dashboard, bb and anywhere else:
+
+| Function                    | Returns                                                       |
+| --------------------------- | ------------------------------------------------------------- |
+| `formatSummaryCount(count)` | The value, then the label: `1 worktree`, `887 B in the store` |
+| `formatBytes(bytes)`        | A short size in binary units: `887 B`, `12.4 KiB`, `1.0 GiB`  |
+| `formatCount(value)`        | A short number: `7`, `2.5`, `12k`, `1.2M`                     |
+
+Each is self-contained (no module state, and it calls only the others by name),
+so a page that cannot import modules, such as the dashboard's inline script,
+embeds their source with `Function.prototype.toString`.
 
 **`form`** (`FormModel`) holds the session's open questionnaires, oldest first.
 Each `FormQuestionnaire` has its own opaque `id` (pi-ask uses the asking tool
