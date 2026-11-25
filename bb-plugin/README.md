@@ -21,14 +21,15 @@ npm run setup:bb
 ```
 
 This installs root dependencies, registers the local bundle with Pi, installs
-the plugin's own dependencies and runs the command below. bb must already be
+the plugin's own dependencies from its lockfile (`npm ci`, which never rewrites
+it) and runs the command below. bb must already be
 installed. It does not open bb or create a thread.
 
 To install just the bb companion manually:
 
 ```sh
 cd bb-plugin
-npm install --include=dev
+npm ci --include=dev
 bb plugin install "$PWD" --yes
 ```
 
