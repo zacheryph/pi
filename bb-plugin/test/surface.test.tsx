@@ -288,6 +288,8 @@ describe("explorers", () => {
     const slot = draw(ExplorerSection, { model: explorer, run });
     const expand = await slot.findByRole("button", { name: "Expand all Todos" });
     expect(expand.getAttribute("aria-expanded")).toBe("false");
+    expect(expand.getAttribute("title")).toBe("Expand all");
+    expect(expand.querySelector("[data-icon]")?.getAttribute("data-icon")).toBe("ChevronsDown");
     fireEvent.click(expand);
     expect(await slot.findByText("detail of fix")).toBeTruthy();
     expect(await slot.findByText("detail of docs")).toBeTruthy();
@@ -295,6 +297,7 @@ describe("explorers", () => {
     expect(run).toHaveBeenCalledWith("todo.review", { branch: 1, ids: ["fix"] });
     const collapse = slot.getByRole("button", { name: "Collapse all Todos" });
     expect(collapse.getAttribute("aria-expanded")).toBe("true");
+    expect(collapse.querySelector("[data-icon]")?.getAttribute("data-icon")).toBe("ChevronsUp");
     fireEvent.click(collapse);
     expect(slot.queryByText("detail of fix")).toBeNull();
     expect(slot.queryByText("detail of docs")).toBeNull();

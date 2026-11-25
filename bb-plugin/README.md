@@ -69,9 +69,9 @@ The stack cards and the two tabs draw the session's
 [pi-surface](../packages/pi-surface/README.md) views with one renderer
 (`ui/surface.tsx`): each widget view is a stack card, each explorer view a
 section of a tab, and an explorer's `loadDetail`, `onOpen` and
-`marker.onClear` go back to the session as actions. A section's **Expand**
-(Expand all) opens every item of its tab in view, as clicking each would;
-**Collapse** closes them. Tabs a view marks `secondary` (pull requests merged, closed or
+`marker.onClear` go back to the session as actions. A section's double-chevron
+button (Expand all) opens every item of its tab in view, as clicking each
+would; pressed again (Collapse all) it closes them. Tabs a view marks `secondary` (pull requests merged, closed or
 only referenced) sit in a **More** menu after the others. Which widget gets a card, with which icon, is the table in
 `ui/stack-cards.tsx`. The Pi Git tab holds the explorers in `GIT_TAB_ORDER`
 (`git.prs`, `git.worktrees`, `stash.explorer`, in that order); the Pi tab holds
