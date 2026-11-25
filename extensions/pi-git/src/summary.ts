@@ -5,6 +5,7 @@
  * requests opened here are still open and how many of those fail their checks.
  */
 
+import { plural } from "#foundations/format";
 import type { SummaryCount, SummaryModel } from "#surface";
 import type { GitSnapshot } from "#src/snapshot";
 
@@ -13,6 +14,8 @@ import type { GitSnapshot } from "#src/snapshot";
  * reads zeros where one without pi-git has no view. Worktree and pull request records live
  * in the session's ledger, and a status is the last one measured or seen, so they are never
  * process-bound. Only `prs-watching` is: a `git_pr_watch` waits only while this process runs.
+ * Noun labels agree with their value ("1 worktree", "2 worktrees"); the others are states that
+ * read the same for any value.
  */
 export function gitSummaryModel(snapshot: GitSnapshot): SummaryModel {
   const inUse = snapshot.worktrees.filter((worktree) => worktree.state !== "removed");
@@ -21,7 +24,7 @@ export function gitSummaryModel(snapshot: GitSnapshot): SummaryModel {
     (pr) => pr.status?.state !== "merged" && pr.status?.state !== "closed",
   );
   const counts: SummaryCount[] = [
-    { key: "worktrees", label: "worktrees", value: inUse.length },
+    { key: "worktrees", label: plural(inUse.length, "worktree"), value: inUse.length },
     {
       key: "missing",
       label: "missing",
@@ -41,8 +44,13 @@ export function gitSummaryModel(snapshot: GitSnapshot): SummaryModel {
       value: snapshot.worktrees.length - inUse.length,
       tone: "dim",
     },
-    { key: "other-worktrees", label: "other worktrees", value: snapshot.found.length, tone: "dim" },
-    { key: "prs", label: "pull requests", value: snapshot.prs.length },
+    {
+      key: "other-worktrees",
+      label: plural(snapshot.found.length, "other worktree"),
+      value: snapshot.found.length,
+      tone: "dim",
+    },
+    { key: "prs", label: plural(snapshot.prs.length, "pull request"), value: snapshot.prs.length },
     { key: "prs-created", label: "opened here", value: created.length },
     { key: "prs-open", label: "open", value: open.length, tone: "accent" },
     {
