@@ -54,10 +54,23 @@ export const SESSION_TAB = {
   availability: "fixed",
 } as const;
 
+/** The tab beside the Pi tab with the session's pull requests, worktrees and stash. */
+export const GIT_TAB = {
+  id: "git",
+  context: { kind: "thread" },
+  availability: "fixed",
+} as const;
+
 /** Opens the Pi tab in the side panel of the surface the component renders in. */
 export function useOpenSessionTab(): () => boolean {
   const panel = experimental_useAppPanel();
   return useCallback(() => panel.openTab({ tab: SESSION_TAB }), [panel]);
+}
+
+/** Opens the Pi Git tab (pull requests, worktrees, stash) in the side panel. */
+export function useOpenGitTab(): () => boolean {
+  const panel = experimental_useAppPanel();
+  return useCallback(() => panel.openTab({ tab: GIT_TAB }), [panel]);
 }
 
 /**

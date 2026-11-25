@@ -17,7 +17,7 @@ import {
   VIEW,
 } from "../views.ts";
 import { plural } from "./format.ts";
-import { useOpenSessionTab, useSession } from "./session.ts";
+import { useOpenGitTab, useOpenSessionTab, useSession } from "./session.ts";
 import { BadgeText, LineText, plainText, URL_ONLY } from "./surface.tsx";
 
 /**
@@ -63,7 +63,7 @@ export function PiSegment({ threadId }: ExperimentalThreadContextSegmentProps) {
 
 export function StashCardRow({ threadId }: ExperimentalThreadContextCardProps) {
   const total = stashEntries(useSession(threadId));
-  const open = useOpenSessionTab();
+  const open = useOpenGitTab();
   if (!total) return null;
   return (
     <ThreadContextCardRow
@@ -81,7 +81,11 @@ export function StashCardRow({ threadId }: ExperimentalThreadContextCardProps) {
  * rows: a session's worktrees in use (the explorer's first tab) and every pull
  * request it touched.
  */
-export const GIT_CARD: ReadonlyArray<{ view: string; icon: string; items: "tab" | "all" }> = [
+export const GIT_CARD: ReadonlyArray<{
+  view: string;
+  icon: string;
+  items: "tab" | "all";
+}> = [
   { view: VIEW.gitWorktrees, icon: "FolderGit", items: "tab" },
   { view: VIEW.gitPrs, icon: "GitPullRequest", items: "all" },
 ];
@@ -155,7 +159,7 @@ export function ExplorerCardRows({
 export function GitCardSection({ threadId }: ExperimentalThreadContextCardProps) {
   const snapshot = useSession(threadId);
   const navigate = useBbNavigate();
-  const open = useOpenSessionTab();
+  const open = useOpenGitTab();
   if (!snapshot) return null;
   const any = GIT_CARD.some(({ view, items }) => {
     const model = viewModel(snapshot, view, "explorer");

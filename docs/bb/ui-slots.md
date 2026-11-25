@@ -131,12 +131,12 @@ component })` adds a titled section below the rows. Groups are the Info tab's
 (`experimental_THREAD_INFO_ROW_GROUPS`, `…SECTION_GROUPS`).
 
 Ours: a **Stash 4** row (the `entries` count of `stash.summary`) that opens the
-Pi tab, and a **Pi worktrees and pull requests** section that lists the items
+Pi Git tab, and a **Pi worktrees and pull requests** section that lists the items
 of the `git.worktrees` explorer's first tab (the session's worktrees in use)
 and of the `git.prs` explorer, each with its label and toned badge (dirty,
 unpushed, merged; draft, review, checks). A row whose included detail has a
 bare URL field, as a pull request's does, opens it in bb; any other opens the
-Pi tab.
+Pi Git tab.
 
 ![Thread context card row and section (gallery)](../images/bb/context-card.png)
 
@@ -181,21 +181,28 @@ Limits: the component owns its own search and keyboard navigation; users can
 rebind the command, and a default that conflicts with another stays unbound.
 The shortcut is inactive while a terminal, browser tab or modal has focus.
 
-## 6. Thread tab
+## 6. Thread tabs
 
 A tab in the thread's side panel. `experimental_tab({ context: { kind:
 "thread" }, availability: "fixed", id, title, icon, component, useVisible })`
 pins one destination; `availability: "action"` would add a launcher for
-closable instances instead. Ours is the fixed **Pi** tab, visible only on
-threads with a session: header (name, status, profile, model, thinking, context
-use), open questions, then every explorer view the session offers, then recent
-tool calls and usage. The header, activity and usage are `system.session`'s;
-the profile is `subagent.summary`'s; without a system view the header reads
-"Pi session" and the rest still draws. The explorers are drawn by the generic renderer as Info
-sections: `todo.explorer`, `subagent.explorer`, `stash.explorer`,
-`git.worktrees` and `git.prs` in that order, any other after them. Each has its
-tabs beside the heading, its notices, and items with a badge that open into
-their detail: inline when the view carries it (subagents, worktrees, pull
+closable instances instead. Fixed tabs show in registration order. Ours are two
+fixed tabs, visible only on threads with a session:
+
+- **Pi**: header (name, status, profile, model, thinking, context use), open
+  questions, then `todo.explorer`, `subagent.explorer` and any other explorer
+  the session offers, then recent tool calls and usage. The header, activity
+  and usage are `system.session`'s; the profile is `subagent.summary`'s;
+  without a system view the header reads "Pi session" and the rest still
+  draws.
+- **Pi Git**, beside it: `git.prs`, `git.worktrees` and `stash.explorer`, in
+  that order, or a line saying the session has none yet.
+
+The explorers are drawn by the generic renderer as Info sections. Each has its
+tabs beside the heading, an **Expand all** / **Collapse all** control at the
+heading's end (it acts on the items of the tab in view, opening each as a
+click would, and lifts the list's "N more" limit while all are open), its
+notices, and items with a badge that open into their detail: inline when the view carries it (subagents, worktrees, pull
 requests, where a URL opens in bb), otherwise through the view's `loadDetail`
 action on the session (a task's details and history, a stash entry's
 contents). Opening a task with an unreviewed message runs the view's
@@ -205,7 +212,9 @@ are settled with pi-surface's `settleSnapshot`, which removes their actions,
 so only details a view includes open. It uses bb's `experimental_InfoSection`,
 `InfoList` and `InfoListRow`.
 
-![Pi tab with a task, a pull request and a stash entry open](../images/bb/thread-tab.png)
+![Pi tab with a task open](../images/bb/thread-tab.png)
+
+![Pi Git tab with every pull request expanded and a stash entry open](../images/bb/git-tab.png)
 
 Limits: bb keeps a closed panel's tab mounted, so a tab that polls should pause
 with `experimental_useTabVisible()`; ours only reads the shared live query.
