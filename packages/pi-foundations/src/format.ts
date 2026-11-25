@@ -1,3 +1,5 @@
+import { formatBytes as formatSize } from "#surface/format";
+
 /** Collapse whitespace and trim plain data; optional cap includes the ellipsis. */
 export function oneLine(text: string, max?: number): string {
   const flat = text.replace(/\s+/g, " ").trim();
@@ -6,24 +8,17 @@ export function oneLine(text: string, max?: number): string {
   return `${flat.slice(0, max - 1)}…`;
 }
 
-/** Existing display and log policies deliberately retain their different units/rounding. */
+/**
+ * The display policy is the size every renderer shows (`formatBytes` in pi-surface: `887 B`,
+ * `12.4 KiB`, `1.0 GiB`); the log policy keeps its own whole-number units for log banners.
+ */
 export function formatBytes(bytes: number, style: "display" | "log" = "display"): string {
-  if (style === "log") {
-    return bytes >= 1024 * 1024
-      ? `${Math.round(bytes / (1024 * 1024))} MB`
-      : bytes >= 1024
-        ? `${Math.round(bytes / 1024)} KB`
-        : `${bytes} bytes`;
-  }
-  if (bytes < 1024) return `${bytes} B`;
-  const units = ["KB", "MB", "GB"];
-  let value = bytes / 1024;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit++;
-  }
-  return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${units[unit]}`;
+  if (style === "display") return formatSize(bytes);
+  return bytes >= 1024 * 1024
+    ? `${Math.round(bytes / (1024 * 1024))} MB`
+    : bytes >= 1024
+      ? `${Math.round(bytes / 1024)} KB`
+      : `${bytes} bytes`;
 }
 
 /** Compact rounded job durations, or the decimal-seconds display used by agents. */

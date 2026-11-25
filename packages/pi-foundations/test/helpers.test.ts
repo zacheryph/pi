@@ -52,13 +52,13 @@ describe("plain-data helpers", () => {
     [0, "0 B", "0 bytes"],
     [10, "10 B", "10 bytes"],
     [1023, "1023 B", "1023 bytes"],
-    [1024, "1.0 KB", "1 KB"],
-    [2048, "2.0 KB", "2 KB"],
-    [1536, "1.5 KB", "2 KB"],
-    [10240, "10 KB", "10 KB"],
-    [1024 ** 2, "1.0 MB", "1 MB"],
-    [15 * 1024 ** 2, "15 MB", "15 MB"],
-    [3 * 1024 ** 3, "3.0 GB", "3072 MB"],
+    [1024, "1.0 KiB", "1 KB"],
+    [2048, "2.0 KiB", "2 KB"],
+    [1536, "1.5 KiB", "2 KB"],
+    [10240, "10.0 KiB", "10 KB"],
+    [1024 ** 2, "1.0 MiB", "1 MB"],
+    [15 * 1024 ** 2, "15.0 MiB", "15 MB"],
+    [3 * 1024 ** 3, "3.0 GiB", "3072 MB"],
   ] as const)("preserves display and log policies at %s bytes", (bytes, display, log) => {
     expect(formatBytes(bytes)).toBe(display);
     expect(formatBytes(bytes, "log")).toBe(log);

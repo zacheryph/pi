@@ -120,7 +120,7 @@ describe("pi-stash in a real AgentSession (offline faux provider)", () => {
     expect(put.isError).toBe(false);
     const receipt = put.content.map((part) => (part.type === "text" ? part.text : "")).join("");
     expect(receipt).toMatch(
-      /^Stashed stash:numbers@[0-9a-f]{12} \(1\.8 KB · 500 lines, text\/plain\)/,
+      /^Stashed stash:numbers@[0-9a-f]{12} \(1\.8 KiB · 500 lines, text\/plain\)/,
     );
     expect(receipt).not.toContain("\n400\n");
     const [get] = toolResults(h.manager, "stash_get");
