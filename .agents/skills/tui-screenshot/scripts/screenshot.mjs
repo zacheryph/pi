@@ -10,9 +10,13 @@
  *   node screenshot.mjs --scenario <file.ts> --out <file.png> \
  *     [--prompt <text> | --keys <tmux keys> | --wait-for <regex> | --sleep <ms>]... \
  *     [--cols 120] [--rows 40] [--cwd <dir>] [--agent-file <file>]... \
- *     [--symbols-font <file>] [--ansi <file>] [--html <file>] [--keep] [-- <pi args>]
+ *     [--symbols-font <file>] [--ansi <file>] [--html <file>] [--keep] \
+ *     [--url <url> [--url-wait <css>] [--url-click <css>]... [--viewport 1280x800]] \
+ *     [-- <pi args>]
  *
  * Actions run in the order given, after Pi shows the scripted model in its footer.
+ * With --url, the screenshot is of that page (the dashboard, say) instead of the
+ * terminal, taken while Pi is still running.
  */
 import { execFileSync } from "node:child_process";
 import {
@@ -28,7 +32,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { findSymbolsFont, renderPng } from "./render-ansi.mjs";
+import { findSymbolsFont, loadPlaywright, renderPng } from "./render-ansi.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../../..");
 const MODEL = "pi-scripted/scripted-model";
@@ -56,6 +60,10 @@ const { values, positionals, tokens } = parseArgs({
     html: { type: "string" },
     pi: { type: "string", default: join(root, "node_modules/.bin/pi") },
     keep: { type: "boolean", default: false },
+    url: { type: "string" },
+    "url-wait": { type: "string" },
+    "url-click": { type: "string", multiple: true },
+    viewport: { type: "string", default: "1280x800" },
   },
 });
 
@@ -81,7 +89,11 @@ const work = mkdtempSync(join(tmpdir(), "pi-screenshot-"));
 const agentDir = join(work, "agent");
 mkdirSync(agentDir);
 const cwd = realpathSync(resolve(values.cwd));
-writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ packages: [root] }, null, 2));
+// quietStartup keeps the loaded-resource listing out of the transcript.
+writeFileSync(
+  join(agentDir, "settings.json"),
+  JSON.stringify({ packages: [root], quietStartup: true }, null, 2),
+);
 // Answer the project trust prompt up front; this agent directory is deleted afterwards.
 writeFileSync(join(agentDir, "trust.json"), JSON.stringify({ [cwd]: true }, null, 2));
 for (const file of values["agent-file"] ?? []) copyFileSync(file, join(agentDir, basename(file)));
@@ -135,6 +147,41 @@ async function waitFor(pattern) {
   throw new Error(`timed out after ${timeout}ms waiting for /${pattern}/`);
 }
 
+/** Screenshot a page Pi serves (the dashboard) while the session is still running. */
+async function capturePage(url) {
+  const [width, height] = values.viewport.split("x").map(Number);
+  const { chromium } = loadPlaywright();
+  const browser = await chromium.launch();
+  try {
+    const tab = await browser.newPage({
+      viewport: { width, height },
+      deviceScaleFactor: Number(values.scale),
+      colorScheme: "dark",
+    });
+    const deadline = Date.now() + timeout;
+    for (;;) {
+      try {
+        await tab.goto(url);
+        break;
+      } catch (error) {
+        // The page's server may still be starting.
+        if (Date.now() > deadline) throw error;
+        await sleep(500);
+      }
+    }
+    if (values["url-wait"]) await tab.waitForSelector(values["url-wait"], { timeout });
+    for (const selector of values["url-click"] ?? []) {
+      await tab.click(selector, { timeout });
+      await sleep(500);
+    }
+    await tab.mouse.move(0, 0);
+    await sleep(Number(values.settle));
+    await tab.screenshot({ path: values.out });
+  } finally {
+    await browser.close();
+  }
+}
+
 let failed = false;
 try {
   tmux(
@@ -160,13 +207,16 @@ try {
     else await sleep(Number(value));
   }
   await sleep(Number(values.settle));
-  const capture = pane(true);
-  if (values.ansi) writeFileSync(values.ansi, capture);
-  await renderPng(capture, values.out, {
-    scale: Number(values.scale),
-    html: values.html,
-    symbolsFont: values["symbols-font"] ?? findSymbolsFont(),
-  });
+  if (values.url) await capturePage(values.url);
+  else {
+    const capture = pane(true);
+    if (values.ansi) writeFileSync(values.ansi, capture);
+    await renderPng(capture, values.out, {
+      scale: Number(values.scale),
+      html: values.html,
+      symbolsFont: values["symbols-font"] ?? findSymbolsFont(),
+    });
+  }
   console.log(values.out);
 } catch (error) {
   failed = true;
@@ -181,7 +231,7 @@ try {
     try {
       tmux("kill-server");
     } catch {}
-    rmSync(work, { recursive: true, force: true });
+    rmSync(work, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   }
 }
 process.exit(failed ? 1 : 0);

@@ -80,6 +80,8 @@ export interface Scenario {
   summary?: string;
   /** Session name pi-tldr suggests (shown in the TUI footer). */
   title?: string;
+  /** What pi-tldr's `/tldr` recap says; findings are separated by semicolons. */
+  recap?: { premise: string; findings: string; status: string };
 }
 
 /** Pi's compaction asks for each summary under this system prompt. */
@@ -183,9 +185,8 @@ export function defineScenario(scenario: Scenario) {
         const title = scenario.title ?? "scripted";
         // pi-tldr asks for a bare slug when naming, and for JSON when summarizing.
         if (first.includes("<user_request>")) return fauxAssistantMessage(title);
-        return fauxAssistantMessage(
-          JSON.stringify({ title, premise: title, findings: "", status: "In progress" }),
-        );
+        const recap = scenario.recap ?? { premise: title, findings: "", status: "In progress" };
+        return fauxAssistantMessage(JSON.stringify({ title, ...recap }));
       }
       const system = messages.find((message) => message.role === "system");
       if (system && messageText(system).startsWith(SUMMARY_PROMPT)) {
