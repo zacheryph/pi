@@ -57,7 +57,7 @@ if(process.env.BUNDLE_TEST_FAIL && process.argv.includes('--include=dev')) proce
     assert.deepEqual(calls, [
       { tool: "npm", args: ["install", "--ignore-scripts"], cwd: root },
       { tool: "pi", args: ["install", root], cwd: root },
-      { tool: "npm", args: ["install", "--include=dev"], cwd: join(root, "bb-plugin") },
+      { tool: "npm", args: ["ci", "--include=dev"], cwd: join(root, "bb-plugin") },
       { tool: "bb", args: ["plugin", "install", join(root, "bb-plugin"), "--yes"], cwd: root },
     ]);
     writeFileSync(log, "");

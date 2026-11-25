@@ -21,7 +21,9 @@ export function installCommands(target, root = repositoryRoot, node = process.ex
   ];
   if (target === "bb")
     commands.push(
-      { file: "npm", args: ["install", "--include=dev"], cwd: join(root, "bb-plugin") },
+      // `ci` installs exactly what the lockfile says and never writes it; `install` re-tags
+      // entries (dev to devOptional) and leaves bb-plugin/package-lock.json modified.
+      { file: "npm", args: ["ci", "--include=dev"], cwd: join(root, "bb-plugin") },
       { file: "bb", args: ["plugin", "install", join(root, "bb-plugin"), "--yes"], cwd: root },
     );
   return commands;
