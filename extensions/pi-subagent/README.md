@@ -181,7 +181,7 @@ settings and restores the saved profile body;
 A branch-relative snapshot preserves exact profile instructions across source
 file edits. An explicit `--agent` on a new invocation selects a new snapshot.
 The running profile's name, display name and description are published as the
-`profile` of the `subagent.summary` view (see [Events](#events)), for remote
+`profile` of the `subagent.summary` view (see [Views](#views)), for remote
 surfaces and other extensions, which never read the saved snapshot themselves.
 
 Unknown/disabled profiles, unavailable required settings, and untrusted project
