@@ -15,6 +15,7 @@ export type {
   DetailModel,
   ExplorerItem,
   ExplorerModel,
+  ExplorerTab,
   Line,
   Span,
   StateIcon,

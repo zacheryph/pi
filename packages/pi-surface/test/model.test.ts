@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   isActionRef,
   isDetailContent,
+  isExplorerModel,
   isJsonObject,
   isJsonValue,
   isLine,
@@ -55,7 +56,10 @@ describe("view models are JSON", () => {
     ],
     noun: ["task", "tasks"],
     notices: [["Read-only", { text: " · capped", tone: "warning" }]],
-    tabs: [{ label: "All", ids: ["t1"], emptyText: "Nothing." }],
+    tabs: [
+      { label: "All", ids: ["t1"], emptyText: "Nothing." },
+      { label: "Done", ids: [], secondary: true },
+    ],
     initialTab: 0,
     marker: {
       label: "unreviewed",
@@ -89,6 +93,12 @@ describe("view models are JSON", () => {
       expect(isJsonValue(model)).toBe(true);
       expect(JSON.parse(JSON.stringify(model))).toStrictEqual(model);
     }
+  });
+
+  it("accepts a secondary explorer tab and rejects a flag that is not a boolean", () => {
+    expect(isExplorerModel(explorer)).toBe(true);
+    const tabs = [{ label: "Done", ids: [], secondary: "yes" }];
+    expect(isExplorerModel({ ...explorer, tabs })).toBe(false);
   });
 
   it("recognizes JSON values, detail content and action references", () => {

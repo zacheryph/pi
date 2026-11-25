@@ -6,7 +6,7 @@
  */
 
 import { basename } from "node:path";
-import type { Block, ExplorerItem, ExplorerModel, Tone } from "#surface";
+import type { Block, ExplorerItem, ExplorerModel, ExplorerTab, Tone } from "#surface";
 import type { GitSnapshot, GitSnapshotPr, GitSnapshotWorktree } from "#src/snapshot";
 import { describePr, prLabel, type PrReview, type PrState } from "#src/prs";
 import { describeWatch } from "#src/watch";
@@ -246,6 +246,55 @@ function prDetail(pr: GitSnapshotPr, now: number): Block[] {
   ];
 }
 
+const finished = (pr: GitSnapshotPr) =>
+  pr.status?.state === "merged" || pr.status?.state === "closed";
+
+/**
+ * The PR explorer's filters. The first four hold the pull requests opened here
+ * that are still in play (no status seen yet counts as in play): all of them,
+ * drafts, open ones ready for review, and approved ones. Finished and merely
+ * referenced pull requests matter less, so their tabs are secondary.
+ */
+export function prTabs(prs: readonly GitSnapshotPr[]): ExplorerTab[] {
+  const ids = (list: readonly GitSnapshotPr[]) => list.map((pr) => pr.key);
+  const created = prs.filter((pr) => pr.origin === "created");
+  const active = created.filter((pr) => !finished(pr));
+  return [
+    {
+      label: "All",
+      ids: ids(active),
+      emptyText: "No pull requests opened in this session are still open.",
+    },
+    {
+      label: "Draft",
+      ids: ids(active.filter((pr) => pr.status?.draft === true)),
+      emptyText: "No draft pull requests.",
+    },
+    {
+      label: "Open",
+      ids: ids(active.filter((pr) => pr.status?.state === "open" && pr.status.draft !== true)),
+      emptyText: "No pull requests open for review.",
+    },
+    {
+      label: "Approved",
+      ids: ids(active.filter((pr) => pr.status?.review === "approved")),
+      emptyText: "No approved pull requests.",
+    },
+    {
+      label: "Closed",
+      ids: ids(created.filter(finished)),
+      emptyText: "No pull requests opened here are merged or closed.",
+      secondary: true,
+    },
+    {
+      label: "Other",
+      ids: ids(prs.filter((pr) => pr.origin === "referenced")),
+      emptyText: "No other pull requests looked at in this session.",
+      secondary: true,
+    },
+  ];
+}
+
 export function prExplorerView(prs: readonly GitSnapshotPr[], now = Date.now()): ExplorerModel {
   const items: ExplorerItem[] = prs.map((pr) => ({
     id: pr.key,
@@ -261,18 +310,7 @@ export function prExplorerView(prs: readonly GitSnapshotPr[], now = Date.now()):
     title: "Pull requests",
     noun: ["pull request", "pull requests"],
     items,
-    tabs: [
-      {
-        label: "Opened here",
-        ids: prs.filter((pr) => pr.origin === "created").map((pr) => pr.key),
-        emptyText: "No pull requests opened in this session.",
-      },
-      {
-        label: "Referenced",
-        ids: prs.filter((pr) => pr.origin === "referenced").map((pr) => pr.key),
-        emptyText: "No other pull requests looked at in this session.",
-      },
-    ],
+    tabs: prTabs(prs),
   };
 }
 

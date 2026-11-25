@@ -329,33 +329,78 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+const TAB_CLASS = "shrink-0 rounded px-1.5 text-xs";
+const tabTone = (selected: boolean) =>
+  selected ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground";
+
+/**
+ * An explorer's filters beside its heading. Secondary tabs (finished or merely
+ * referenced items, say) go in a "More" menu after the others, so the narrow
+ * panel keeps room for the filters that matter.
+ */
 function Tabs({
   tabs,
   current,
   onSelect,
+  label,
 }: {
   tabs: NonNullable<ExplorerModel["tabs"]>;
   current: number;
   onSelect: (index: number) => void;
+  label: string;
 }) {
+  const indexed = tabs.map((tab, index) => ({ tab, index }));
+  const primary = indexed.filter(({ tab }) => !tab.secondary);
+  const secondary = indexed.filter(({ tab }) => tab.secondary);
+  const inMenu = secondary.some(({ index }) => index === current);
   return (
-    <span className="inline-flex gap-1" role="tablist">
-      {tabs.map((tab, index) => (
-        <button
-          key={tab.label}
-          type="button"
-          role="tab"
-          aria-selected={index === current}
-          className={`rounded px-1.5 text-xs ${
-            index === current
-              ? "bg-muted text-foreground"
-              : "text-muted-foreground hover:text-foreground"
+    <span className="inline-flex min-w-0 items-center gap-1">
+      <span className="inline-flex gap-1" role="tablist">
+        {primary.map(({ tab, index }) => (
+          <button
+            key={`${index}-${tab.label}`}
+            type="button"
+            role="tab"
+            aria-selected={index === current}
+            className={`${TAB_CLASS} ${tabTone(index === current)}`}
+            onClick={() => onSelect(index)}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </span>
+      {secondary.length ? (
+        // The label shows "More" or the chosen filter; a transparent select over
+        // it takes the clicks, so the control is as wide as its label, not as
+        // its longest option.
+        <span
+          className={`relative inline-flex shrink-0 items-center gap-0.5 rounded px-1.5 text-xs ${
+            inMenu ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"
           }`}
-          onClick={() => onSelect(index)}
         >
-          {tab.label}
-        </button>
-      ))}
+          <span aria-hidden className="max-w-24 truncate">
+            {inMenu ? tabs[current]!.label : "More"}
+          </span>
+          <Icon name="ChevronDown" className="size-3" aria-hidden />
+          <select
+            aria-label={`More ${label} filters`}
+            className="absolute inset-0 size-full cursor-pointer appearance-none opacity-0"
+            value={inMenu ? String(current) : ""}
+            onChange={(event) => {
+              if (event.target.value) onSelect(Number(event.target.value));
+            }}
+          >
+            <option value="" disabled hidden>
+              More
+            </option>
+            {secondary.map(({ tab, index }) => (
+              <option key={`${index}-${tab.label}`} value={String(index)}>
+                {tab.label}
+              </option>
+            ))}
+          </select>
+        </span>
+      ) : null}
     </span>
   );
 }
@@ -373,12 +418,13 @@ function ExpandAll({
   return (
     <button
       type="button"
-      className="rounded px-1.5 text-xs text-muted-foreground hover:bg-state-hover hover:text-foreground"
+      className="shrink-0 whitespace-nowrap rounded px-1.5 text-xs text-muted-foreground hover:bg-state-hover hover:text-foreground"
       aria-label={`${allOpen ? "Collapse" : "Expand"} all ${label}`}
+      title={allOpen ? "Collapse all" : "Expand all"}
       aria-expanded={allOpen}
       onClick={onToggle}
     >
-      {allOpen ? "Collapse all" : "Expand all"}
+      {allOpen ? "Collapse" : "Expand"}
     </button>
   );
 }
@@ -485,7 +531,7 @@ export function ExplorerSection({
       label={label}
       count={model.items.length}
       {...(tabs.length > 1
-        ? { accessory: <Tabs tabs={tabs} current={tab} onSelect={setTab} /> }
+        ? { accessory: <Tabs tabs={tabs} current={tab} onSelect={setTab} label={label} /> }
         : {})}
       {...(openableItems.length
         ? {

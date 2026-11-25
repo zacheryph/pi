@@ -169,7 +169,7 @@ describe("/git:prs explorer", () => {
     ...overrides,
   });
 
-  it("splits opened and referenced PRs and colors failing checks", () => {
+  it("filters opened PRs and keeps referenced ones in a secondary tab, coloring failing checks", () => {
     const view = prExplorerView(
       [
         pr(),
@@ -184,8 +184,12 @@ describe("/git:prs explorer", () => {
       NOW,
     );
     expect(view.tabs?.map((tab) => [tab.label, tab.ids])).toEqual([
-      ["Opened here", ["github.com/acme/api#12"]],
-      ["Referenced", ["github.com/acme/web#7"]],
+      ["All", ["github.com/acme/api#12"]],
+      ["Draft", []],
+      ["Open", ["github.com/acme/api#12"]],
+      ["Approved", ["github.com/acme/api#12"]],
+      ["Closed", []],
+      ["Other", ["github.com/acme/web#7"]],
     ]);
     expect(view.items[0]).toMatchObject({
       label: [
@@ -195,6 +199,41 @@ describe("/git:prs explorer", () => {
       badge: { text: "open · approved · checks 1 failed, 3 passed", tone: "error" },
     });
     expect(view.items[1].badge).toEqual({ text: "no status seen yet", tone: "dim" });
+  });
+
+  it("files PRs opened here under All, Draft, Open and Approved, finished ones in a secondary tab", () => {
+    const at = (number: number, status: Partial<GitSnapshotPr["status"]> | undefined) =>
+      pr({
+        key: `github.com/acme/api#${number}`,
+        number,
+        status: status && { observedAt: NOW, source: "bash", ...status },
+      });
+    const view = prExplorerView(
+      [
+        at(1, { state: "open", draft: true }),
+        at(2, { state: "open", review: "review_required" }),
+        at(3, { state: "open", review: "approved" }),
+        at(4, { state: "merged", review: "approved" }),
+        at(5, { state: "closed" }),
+        at(6, undefined),
+      ],
+      NOW,
+    );
+    const tabs = Object.fromEntries(
+      (view.tabs ?? []).map((tab) => [
+        tab.label,
+        [tab.ids.map((id) => Number(id.split("#")[1])), tab.secondary ?? false],
+      ]),
+    );
+    expect(tabs).toEqual({
+      All: [[1, 2, 3, 6], false],
+      Draft: [[1], false],
+      Open: [[2, 3], false],
+      Approved: [[3], false],
+      Closed: [[4, 5], true],
+      Other: [[], true],
+    });
+    expect(view.initialTab).toBeUndefined();
   });
 
   it("shows the tool calls that touched a PR in its details", async () => {

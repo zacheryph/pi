@@ -84,8 +84,9 @@ export function StashCardRow({ threadId }: ExperimentalThreadContextCardProps) {
 
 /**
  * The explorers whose items the context card lists, with bb's icon for their
- * rows: a session's worktrees in use (the explorer's first tab) and every pull
- * request it touched.
+ * rows: a session's worktrees in use and the pull requests opened here that
+ * are still in play (each explorer's first tab). Merged, closed and merely
+ * referenced pull requests are left to the Pi Git tab.
  */
 export const GIT_CARD: ReadonlyArray<{
   view: string;
@@ -93,7 +94,7 @@ export const GIT_CARD: ReadonlyArray<{
   items: "tab" | "all";
 }> = [
   { view: VIEW.gitWorktrees, icon: "FolderGit", items: "tab" },
-  { view: VIEW.gitPrs, icon: "GitPullRequest", items: "all" },
+  { view: VIEW.gitPrs, icon: "GitPullRequest", items: "tab" },
 ];
 
 /** The items an explorer shows first: those of its initial tab, or all of them without tabs. */
