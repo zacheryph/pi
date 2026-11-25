@@ -6,6 +6,16 @@
 // summary (count chips), widget, explorer, detail and form. It knows no
 // extension: behaviour is the action a view references, sent back through
 // POST /api/sessions/<id>/actions, and Focus is the dashboard's own request.
+//
+// Count text comes from pi-surface's formatters, whose source the script
+// embeds, so a summary count reads here exactly as it does in bb.
+
+import { formatBytes, formatCount, formatSummaryCount } from "#surface";
+
+/** pi-surface's count formatters as source for the script; each is self-contained. */
+const FORMATTERS = [formatBytes, formatCount, formatSummaryCount]
+  .map((format) => format.toString())
+  .join("\n");
 
 const STYLE = `
 :root {
@@ -240,7 +250,8 @@ const ago = (ms) => {
 };
 const duration = (ms) => ms < 1000 ? "<1s" : ago(Date.now() - ms);
 const tokens = (n) => n >= 1e6 ? +(n / 1e6).toFixed(1) + "M" : n >= 1000 ? Math.round(n / 1000) + "k" : String(Math.round(n));
-const amount = (n) => n >= 1e6 ? +(n / 1e6).toFixed(1) + "M" : n >= 1e4 ? Math.round(n / 1000) + "k" : String(+n.toFixed(2));
+// pi-surface's count formatters: formatSummaryCount(count) is a summary count's display text.
+${FORMATTERS}
 const money = (n) => "$" + (n >= 100 ? Math.round(n) : n.toFixed(2));
 const toneClass = (tone) => TONES.includes(tone) ? " t-" + tone : "";
 
@@ -435,7 +446,7 @@ function summaryView(entry, compact) {
   node.append(el("span", "sumtitle", entry.title));
   if (!entry.model) { node.append(el("span", "bad", compact ? "unavailable" : entry.error)); return node; }
   const counts = summaryCounts(entry.model, compact);
-  for (const item of counts) node.append(el("span", "chip-count" + toneClass(item.tone), amount(item.value) + " " + item.label));
+  for (const item of counts) node.append(el("span", "chip-count" + toneClass(item.tone), formatSummaryCount(item)));
   if (!counts.length && !compact) node.append(el("span", "muted", "nothing yet"));
   if (!compact && entry.model.active) node.append(el("span", "active wrap", "▸ " + entry.model.active.label));
   if (!compact && entry.model.profile) {
