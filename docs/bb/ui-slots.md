@@ -205,7 +205,7 @@ fixed tabs, visible only on threads with a session:
 The explorers are drawn by the generic renderer as Info sections. Each has its
 tabs beside the heading (a tab the view marks `secondary`, such as the pull
 requests' **Closed** and **Other** (only looked at), goes in a **More** menu after
-the others), an **Expand** / **Collapse** control (expand or collapse all) at the
+the others), a double-chevron **Expand all** / **Collapse all** button at the
 heading's end (it acts on the items of the tab in view, opening each as a
 click would, and lifts the list's "N more" limit while all are open), its
 notices, and items with a badge that open into their detail: inline when the view carries it (subagents, worktrees, pull

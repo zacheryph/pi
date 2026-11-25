@@ -405,7 +405,7 @@ function Tabs({
   );
 }
 
-/** The section heading's control that opens, or closes, every item at once. */
+/** The section heading's icon button that opens, or closes, every item at once. */
 function ExpandAll({
   allOpen,
   label,
@@ -418,13 +418,14 @@ function ExpandAll({
   return (
     <button
       type="button"
-      className="shrink-0 whitespace-nowrap rounded px-1.5 text-xs text-muted-foreground hover:bg-state-hover hover:text-foreground"
+      className="inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-state-hover hover:text-foreground"
       aria-label={`${allOpen ? "Collapse" : "Expand"} all ${label}`}
       title={allOpen ? "Collapse all" : "Expand all"}
       aria-expanded={allOpen}
       onClick={onToggle}
     >
-      {allOpen ? "Collapse" : "Expand"}
+      {/* bb's built-in double chevrons: down opens every item, up closes them. */}
+      <Icon name={allOpen ? "ChevronsUp" : "ChevronsDown"} className="size-3.5" aria-hidden />
     </button>
   );
 }
