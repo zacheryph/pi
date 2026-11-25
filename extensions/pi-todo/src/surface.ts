@@ -5,12 +5,7 @@ import {
   todoReviewMarks,
   type TodoReviewState,
 } from "#src/activity";
-import {
-  TODO_HISTORY_ACTION,
-  TODO_INSPECT_ACTION,
-  TODO_REVIEW_ACTION,
-  type TodoHistoryResult,
-} from "#src/events";
+import { TODO_INSPECT_ACTION, TODO_REVIEW_ACTION } from "#src/events";
 import type { TodoState, TodoTask } from "#src/state";
 import { todoTaskDetail } from "#src/ui/render";
 
@@ -37,10 +32,10 @@ function task(source: TodoSurfaceSource, key: string): TodoTask {
   return found;
 }
 
-function keyArg(args: JsonValue | undefined, name: "id" | "key"): string {
-  if (!isJsonObject(args) || typeof args[name] !== "string")
-    throw new Error(`expected { ${name}: <task key> }`);
-  return args[name];
+function idArg(args: JsonValue | undefined): string {
+  if (!isJsonObject(args) || typeof args.id !== "string")
+    throw new Error("expected { id: <task key> }");
+  return args.id;
 }
 
 function stringsArg(value: JsonValue | undefined, name: string): string[] | undefined {
@@ -58,7 +53,7 @@ export function todoInspectAction(
     id: TODO_INSPECT_ACTION,
     title: "Show a task's details, dependencies and history",
     parse: (args) => {
-      const id = keyArg(args, "id");
+      const id = idArg(args);
       const raw = isJsonObject(args) ? args.reviewed : undefined;
       if (raw === undefined) return { id };
       if (!isJsonObject(raw)) throw new Error("reviewed must map task keys to { revision, at }");
@@ -130,26 +125,6 @@ export function todoReviewAction(source: TodoSurfaceSource): ActionDefinition<Re
         marks = todoReviewMarks(state, source.activity(), source.review(), ids);
       }
       return { reviewed: marks.size ? source.markReviewed(marks) : 0 };
-    },
-  };
-}
-
-/** `todo.history`: one task's creation time and history, as the snapshot event carries it. */
-export function todoHistoryAction(source: TodoSurfaceSource): ActionDefinition<{ key: string }> {
-  return {
-    id: TODO_HISTORY_ACTION,
-    title: "Read a task's status and message history",
-    parse: (args) => ({ key: keyArg(args, "key") }),
-    handler: ({ key }) => {
-      task(source, key);
-      const history = source.activity().get(key);
-      const result: TodoHistoryResult = structuredClone({
-        key,
-        ...(history?.createdAt !== undefined ? { createdAt: history.createdAt } : {}),
-        updates: history?.updates ?? [],
-      });
-      // TodoUpdate is an interface, so TypeScript cannot see that it is JSON; dispatch checks it.
-      return result as unknown as JsonValue;
     },
   };
 }

@@ -3,7 +3,7 @@ import { expect, onTestFinished, vi } from "vitest";
 import { provide } from "#session-tree";
 import { createWorkHost, WORK_PARENT_SERVICE, WORK_SERVICE, type WorkRecord } from "#work";
 import piAsk from "#src/index";
-import { FORM_VIEW_ID, isFormModel, readView, type FormModel } from "#surface";
+import { FORM_VIEW_ID, isFormModel, onViewChanged, readView, type FormModel } from "#surface";
 import { fakeCustomUi, fakePi, waitFor } from "#test-helpers";
 
 export type Tool = {
@@ -63,6 +63,18 @@ export function harness(options: HarnessOptions = {}) {
     if (model !== undefined) expect(isFormModel(model)).toBe(true);
     return model as FormModel | undefined;
   };
+  /**
+   * Runs `fn` once, as soon as the form lists a questionnaire: the moment a consumer outside the
+   * terminal first sees it, before pi-ask shows it anywhere.
+   */
+  const whenPublished = (fn: () => void) => {
+    let done = false;
+    onViewChanged(events, (id) => {
+      if (done || id !== FORM_VIEW_ID || !form()?.questionnaires.length) return;
+      done = true;
+      fn();
+    });
+  };
   return {
     pi,
     tools,
@@ -80,6 +92,7 @@ export function harness(options: HarnessOptions = {}) {
     ask,
     until,
     form,
+    whenPublished,
     /** The ids of the questionnaires the form lists now. */
     formIds: () => form()?.questionnaires.map((questionnaire) => questionnaire.id) ?? [],
     get mounted() {

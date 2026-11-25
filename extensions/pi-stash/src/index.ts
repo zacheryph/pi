@@ -11,20 +11,7 @@ import { Type } from "typebox";
 import { node } from "#session-tree";
 import { restoreCard, treeService } from "#session-state";
 import { stashSettings, type StashConfig } from "#src/config";
-import {
-  PREVIEW_MAX_BYTES,
-  PREVIEW_MAX_LINES,
-  STASH_EXPLORER_VIEW,
-  STASH_PREVIEW_ACTION,
-  STASH_PREVIEW_REQUEST,
-  STASH_SNAPSHOT_EVENT,
-  STASH_SUMMARY_VIEW,
-  stashEntryJson,
-  stashSnapshotEvent,
-  type StashPreviewRequest,
-  type StashPreviewResult,
-  type StashSnapshotEvent,
-} from "#src/events";
+import { STASH_EXPLORER_VIEW, STASH_SUMMARY_VIEW, stashEntryJson } from "#src/events";
 import {
   DEFAULT_GET_BYTES,
   HARD_MAX_BYTES,
@@ -53,7 +40,7 @@ import {
 import { BlobStore, defaultStashRoot } from "#src/store";
 import { stashSummaryModel } from "#src/summary";
 import { showStashBrowser, stashExplorerView, stashInspectAction } from "#src/ui/browser";
-import { actionRegistry, isJsonObject, viewRegistry } from "#surface";
+import { actionRegistry, viewRegistry } from "#surface";
 import { bodyRow, sanitizeLine, sanitizeText } from "#ui";
 import { entrySummary, formatAge, formatBytes, originLabel, previewRows } from "#src/ui/render";
 
@@ -288,7 +275,8 @@ export default function stashExtension(
   const passUp = (record: StashRecord) => tree.parent((parent) => parent.adopt(record));
 
   const getStore = () => (store ??= new BlobStore(defaultStashRoot()));
-  const storeSize = (): StashSnapshotEvent["store"] => {
+  /** The shared store's size and cap; absent when it cannot be measured. */
+  const storeSize = (): { bytes: number; maxBytes: number } | undefined => {
     try {
       return { bytes: getStore().usage().bytes, maxBytes: config.maxStoreBytes };
     } catch {
@@ -300,7 +288,6 @@ export default function stashExtension(
   const actions = actionRegistry(pi.events);
   const views = viewRegistry(pi.events);
   const publish = () => {
-    pi.events.emit(STASH_SNAPSHOT_EVENT, stashSnapshotEvent(index, storeSize()));
     views.changed(STASH_EXPLORER_VIEW);
     views.changed(STASH_SUMMARY_VIEW);
   };
@@ -315,41 +302,6 @@ export default function stashExtension(
     }
     return undefined;
   };
-  const preview = (request: Partial<StashPreviewRequest>): StashPreviewResult => {
-    const name = typeof request.name === "string" ? request.name : "";
-    // Bare names only: the request may read this branch's entries, not arbitrary handles.
-    if (!NAME_PATTERN.test(name)) return { ok: false, error: "Invalid stash entry name." };
-    const record = currentEntries(index).find((entry) => entry.name === name);
-    if (!record) return { ok: false, error: `No stash entry named "${name}" on this branch.` };
-    const limit = (value: unknown, max: number) =>
-      typeof value === "number" && Number.isInteger(value) && value > 0
-        ? Math.min(value, max)
-        : max;
-    try {
-      const head = headLines(
-        getStore().read(record.hash),
-        limit(request.maxLines, PREVIEW_MAX_LINES),
-        limit(request.maxBytes, PREVIEW_MAX_BYTES),
-      );
-      return {
-        ok: true,
-        handle: handleFor(record),
-        lines: head.lines,
-        total: head.total,
-        complete: head.complete,
-      };
-    } catch (error) {
-      return {
-        ok: false,
-        error: sanitizeText(errorText(error)),
-      };
-    }
-  };
-  pi.events.on(STASH_PREVIEW_REQUEST, (data) => {
-    const request = data as Partial<StashPreviewRequest> | null;
-    if (typeof request?.respond === "function") request.respond(preview(request));
-  });
-
   const record = (
     ctx: ExtensionContext,
     name: string,
@@ -779,17 +731,6 @@ export default function stashExtension(
         },
       ),
     );
-    actions.define<Partial<StashPreviewRequest>>({
-      id: STASH_PREVIEW_ACTION,
-      title: "Read the head of a stash entry on this branch by name",
-      parse: (args) => (isJsonObject(args) ? args : {}),
-      handler: (request) => {
-        const result = preview(request);
-        if (!result.ok) throw new Error(result.error);
-        const { ok: _ok, ...head } = result;
-        return head;
-      },
-    });
     views.define({
       id: STASH_EXPLORER_VIEW,
       kind: "explorer",

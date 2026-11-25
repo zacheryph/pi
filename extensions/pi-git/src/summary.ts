@@ -1,12 +1,12 @@
 /**
  * summary.ts — the `git.summary` view: this session's worktree and pull request totals, from
- * the same snapshot as `git:snapshot` and the `git.worktrees` and `git.prs` explorers. The
+ * the same snapshot as the `git.worktrees` and `git.prs` explorers. The
  * explorers list records; this carries the totals no single item does, such as how many pull
  * requests opened here are still open and how many of those fail their checks.
  */
 
 import type { SummaryCount, SummaryModel } from "#surface";
-import type { GitSnapshotEvent } from "#src/events";
+import type { GitSnapshot } from "#src/snapshot";
 
 /**
  * Every count is present, zero included, so a session with no worktrees or pull requests
@@ -14,7 +14,7 @@ import type { GitSnapshotEvent } from "#src/events";
  * in the session's ledger, and a status is the last one measured or seen, so they are never
  * process-bound. Only `prs-watching` is: a `git_pr_watch` waits only while this process runs.
  */
-export function gitSummaryModel(snapshot: GitSnapshotEvent): SummaryModel {
+export function gitSummaryModel(snapshot: GitSnapshot): SummaryModel {
   const inUse = snapshot.worktrees.filter((worktree) => worktree.state !== "removed");
   const created = snapshot.prs.filter((pr) => pr.origin === "created");
   const open = created.filter(

@@ -126,7 +126,6 @@ describe("the ask.questions form", () => {
     expect(h.windowDone).toHaveBeenCalledTimes(1);
     expect(h.windowDone.mock.calls[0]![0]).toMatchObject({ status: "answered" });
     expect(h.form()).toBeUndefined();
-    expect(h.sent.at(-1)).toEqual(["ask:closed", { toolCallId: "call-1", outcome: "answered" }]);
   });
 
   it("declines through the cancel reference, as the user's own dismissal", async () => {
@@ -195,9 +194,6 @@ describe("the ask.questions form", () => {
     await expect(dispatchAction(h.events, "ask.cancel", { id: "call-1" })).rejects.toThrow(
       "(closed)",
     );
-    await expect(
-      dispatchAction(h.events, "ask.answer", { toolCallId: "call-1", cancel: true }),
-    ).resolves.toMatchObject({ ok: false, code: "closed", toolCallId: "call-1" });
     // A keypress in a window that has gone changes nothing either.
     h.mounted!.handleInput?.("2");
     expect(h.windowDone).toHaveBeenCalledTimes(1);
@@ -347,12 +343,9 @@ describe("RPC sessions", () => {
     await h.until(() => h.formIds().length === 1);
     expect(h.ui.select).not.toHaveBeenCalled();
     expect(h.ui.custom).not.toHaveBeenCalled();
-    // The older events still go out for the dashboard's current path.
-    expect(h.sent.map(([channel]) => channel)).toEqual(["ask:opened"]);
     await submit(h, pick("call-1", 0));
     expect((await pending).content[0]!.text).toContain('"Postgres"');
     expect(h.form()).toBeUndefined();
-    expect(h.sent.at(-1)).toEqual(["ask:closed", { toolCallId: "call-1", outcome: "answered" }]);
     revoke();
   });
 
@@ -364,7 +357,6 @@ describe("RPC sessions", () => {
     controller.abort();
     expect((await pending).details).toMatchObject({ status: "cancelled", reason: "aborted" });
     expect(h.form()).toBeUndefined();
-    expect(h.sent.at(-1)).toEqual(["ask:closed", { toolCallId: "call-1", outcome: "cancelled" }]);
   });
 
   it("hand the questionnaire to Pi's dialog when the last consumer goes, refusing late form answers", async () => {
@@ -386,16 +378,16 @@ describe("RPC sessions", () => {
     expect(dialogs[0]!.signal).toBeDefined();
     // No second answer during the handover, whatever way it comes.
     await expect(submit(h, pick("call-1", 1))).rejects.toThrow("(not_found)");
-    await expect(
-      dispatchAction(h.events, "ask.answer", { toolCallId: "call-1", cancel: true }),
-    ).resolves.toMatchObject({ ok: false, code: "not_found" });
+    await expect(dispatchAction(h.events, "ask.cancel", { id: "call-1" })).rejects.toThrow(
+      "(not_found)",
+    );
     // A consumer coming back does not publish it again: the dialog has it now.
     const back = advertiseFormConsumer(h.events, { name: "back" });
     expect(h.form()).toBeUndefined();
     dialogs[0]!.answer("SQLite");
     const result = await pending;
     expect(result.content[0]!.text).toBe('The user answered:\n- Which database? → "SQLite"');
-    expect(h.sent.at(-1)).toEqual(["ask:closed", { toolCallId: "call-1", outcome: "answered" }]);
+    expect(h.form()).toBeUndefined();
     back();
   });
 
@@ -425,7 +417,6 @@ describe("RPC sessions", () => {
       expect(result.content[0]!.text).toContain("no dialog was available");
       expect(h.ui.select).not.toHaveBeenCalled();
       expect(h.form()).toBeUndefined();
-      expect(h.sent.at(-1)).toEqual(["ask:closed", { toolCallId: "call-1", outcome: "cancelled" }]);
     },
   );
 
@@ -442,8 +433,8 @@ describe("RPC sessions", () => {
     const h = harness({ mode: "rpc" });
     await h.start();
     const revoke = advertiseFormConsumer(h.events, { name: "brief" });
-    // It withdraws while pi-ask announces the questionnaire, before the form is watched.
-    h.events.on("ask:opened", () => revoke());
+    // It withdraws as the form first lists the questionnaire, before pi-ask watches consumers.
+    h.whenPublished(() => revoke());
     h.ui.select.mockResolvedValue("Postgres");
     const result = await h.ask(params);
     expect(result.content[0]!.text).toContain('"Postgres"');
@@ -473,11 +464,11 @@ describe("delegated questions", () => {
   });
 });
 
-describe("a form answer arriving with the opened event", () => {
+describe("a form answer arriving as soon as the form lists the questionnaire", () => {
   it("settles before the terminal window opens, which is then never shown", async () => {
     const h = harness();
     await h.start();
-    h.events.on("ask:opened", () => void submit(h, pick("call-1", 1)));
+    h.whenPublished(() => void submit(h, pick("call-1", 1)));
     const result = await h.ask(params);
     expect(result.content[0]!.text).toContain('"SQLite"');
     expect(h.ui.custom).not.toHaveBeenCalled();

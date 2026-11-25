@@ -150,20 +150,13 @@ export class OpenQuestionnaires {
   }
 
   /**
-   * Answers or cancels a published questionnaire from outside the terminal, all or nothing.
-   * Takes the `ask:answer` payload and returns its reply, refusals included.
+   * Answers or cancels a published questionnaire from outside the terminal, all or nothing:
+   * `{ toolCallId, answers?, globalNote?, cancel? }`. Returns the verdict, refusals included.
    */
   answer(data: unknown): AskAnswerResult {
-    const requestId =
-      isRecord(data) && typeof data.requestId === "string" ? data.requestId : undefined;
     if (!isRecord(data) || typeof data.toolCallId !== "string")
-      return {
-        ok: false,
-        code: "invalid_payload",
-        reason: "toolCallId is required.",
-        ...(requestId ? { requestId } : {}),
-      };
-    const echo = { toolCallId: data.toolCallId, ...(requestId ? { requestId } : {}) };
+      return { ok: false, code: "invalid_payload", reason: "toolCallId is required." };
+    const echo = { toolCallId: data.toolCallId };
     const entry = this.entries.get(data.toolCallId);
     if (!entry)
       return this.settled.includes(data.toolCallId)

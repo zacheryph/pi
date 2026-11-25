@@ -95,8 +95,8 @@ const questionnaire = (id: string): FormQuestionnaire => ({
     },
     { question: "Anything else?", options: [] },
   ],
-  submit: { action: "ask.answer", args: { toolCallId: id } },
-  cancel: { action: "ask.answer", args: { toolCallId: id, cancel: true } },
+  submit: { action: "ask.submit", args: { id } },
+  cancel: { action: "ask.cancel", args: { id } },
 });
 
 const form: FormModel = {
@@ -341,8 +341,8 @@ describe("form model", () => {
     expect(isFormModel(form)).toBe(true);
     const [first, second] = form.questionnaires;
     expect(first!.id).not.toBe(second!.id);
-    expect(first!.submit.args).toEqual({ toolCallId: first!.id });
-    expect(second!.cancel.args).toEqual({ toolCallId: second!.id, cancel: true });
+    expect(first!.submit.args).toEqual({ id: first!.id });
+    expect(second!.cancel.args).toEqual({ id: second!.id });
     // An id need not have a view id's shape: it is a payload value.
     expect(VIEW_ID.test(first!.id)).toBe(false);
     expect(isFormModel({ questionnaires: [] })).toBe(true);

@@ -11,7 +11,7 @@
  * Pull requests are recorded from the session's own tool calls (`gh` in bash,
  * GitHub MCP tools, PR URLs passed to any tool), with the status their output
  * showed. Records a subagent makes are handed up to its parent's ledger. State
- * is published as `git:snapshot`, and a context-only card restores it for the
+ * is published as pi-surface views, and a context-only card restores it for the
  * model after a compaction, reload, resume or `/tree`.
  *
  * `git_pr_watch` waits on a pull request: a work item (packages/pi-work) that
@@ -34,14 +34,8 @@ import { readEntries, restoreCard, treeService, type EntriesSource } from "#sess
 import { ensureWorkHost } from "#work";
 import { CARD_TYPE, ledgerCard } from "#src/card";
 import { gitSettings, type GitConfig } from "#src/config";
-import {
-  GIT_PRS_VIEW,
-  GIT_SNAPSHOT_EVENT,
-  GIT_SUMMARY_VIEW,
-  GIT_WORKTREES_VIEW,
-  snapshotEvent,
-  type GitSnapshotEvent,
-} from "#src/events";
+import { GIT_PRS_VIEW, GIT_SUMMARY_VIEW, GIT_WORKTREES_VIEW } from "#src/events";
+import { gitSnapshot, type GitSnapshot } from "#src/snapshot";
 import { readLedger, type Ledger } from "#src/fold";
 import { gitSummaryModel } from "#src/summary";
 import { git, realPath, resolveCommit, type BaseRef, type WorktreeStatus } from "#src/git";
@@ -135,6 +129,8 @@ export interface GitExtensionDependencies {
   retry?: RetryOptions;
   /** Milliseconds between a watch's reads; default: the `watchIntervalSeconds` setting. */
   watchIntervalMs?: number;
+  /** Sees the session's state each time its views announce a change; tests observe through it. */
+  onPublish?: (snapshot: GitSnapshot) => void;
 }
 
 /** What a watch needs to read through the GitHub MCP tools: the context of the call that started it. */
@@ -228,8 +224,8 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
   let generation = 0;
 
   const getConfig = () => (config ??= (dependencies.loadConfig ?? gitSettings.load)(cwd));
-  const snapshot = (): GitSnapshotEvent =>
-    snapshotEvent(records.values(), measured, found, prs.values(), watches.list());
+  const snapshot = (): GitSnapshot =>
+    gitSnapshot(records.values(), measured, found, prs.values(), watches.list());
   // The /git:worktrees and /git:prs explorers, as views a remote surface draws.
   // They live from session start to shutdown, so a /reload does not leak them.
   const views = viewRegistry(pi.events);
@@ -255,7 +251,7 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
     });
   };
   const publish = () => {
-    pi.events.emit(GIT_SNAPSHOT_EVENT, snapshot());
+    dependencies.onPublish?.(snapshot());
     views.changed(GIT_WORKTREES_VIEW);
     views.changed(GIT_PRS_VIEW);
     views.changed(GIT_SUMMARY_VIEW);

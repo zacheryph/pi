@@ -10,7 +10,7 @@ import {
   type FauxRequest,
   resetSessionTree,
 } from "#test-helpers";
-import { GIT_SNAPSHOT_EVENT, type GitSnapshotEvent } from "#src/events";
+import type { GitSnapshot } from "#src/snapshot";
 import piGit from "#src/index";
 import { GhUnavailable } from "#src/status";
 import { foldLedger } from "#src/fold";
@@ -23,7 +23,7 @@ async function fixture(
   manager: SessionManager,
   options: { keepRecentTokens?: number } = {},
 ) {
-  const snapshots: GitSnapshotEvent[] = [];
+  const snapshots: GitSnapshot[] = [];
   let bus: EventBus | undefined;
   const h = await fauxSession({
     cleanup: onTestFinished,
@@ -53,6 +53,7 @@ async function fixture(
           runGh: async () => {
             throw new GhUnavailable("gh is not installed");
           },
+          onPublish: (snapshot) => snapshots.push(snapshot),
         }),
       // Stands in for the GitHub MCP server's PR reader.
       (pi) =>
@@ -124,10 +125,8 @@ async function fixture(
             },
           }),
         ),
-      // Another extension on the same session bus, as pi-dashboard listens.
       (pi) => {
         bus = pi.events;
-        pi.events.on(GIT_SNAPSHOT_EVENT, (data) => snapshots.push(data as GitSnapshotEvent));
       },
     ],
   });

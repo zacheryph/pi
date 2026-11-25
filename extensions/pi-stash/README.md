@@ -92,35 +92,19 @@ resume, reload or `/tree` keeps the receipts in context and writes nothing, unle
 the branch's latest compaction has no card yet. When a subagent's entry is adopted,
 a one-line hidden note naming it is written the same way, after the current turn.
 
-## Events
+## Views and actions
 
-Other extensions can follow the index without parsing journal entries. On
-session start, branch changes, and every `stash_put` (codemode calls included),
-pi-stash emits `stash:snapshot` on the session's `pi.events` bus
-(`src/events.ts`): `{ version: 1, entries, store }`, the latest version per
-name, newest first, in the same shape `stash_list` returns, plus the shared
-store's size and `maxStoreBytes` cap when they can be measured. Metadata only.
-Each subagent has its own bus.
-
-For a user who opens an entry, another extension can emit `stash:preview`
-with `{ name, maxLines?, maxBytes?, respond }`. pi-stash answers synchronously
-through `respond` with the head of that entry (at most 200 lines / 16 KB) read
-through the hash-checked store, or `{ ok: false, error }`. Only bare names of
-this branch's entries are accepted, not full handles. pi-presentation uses both
-for bb; pi-dashboard reads the stash views and previews through `stash.inspect`.
-
-pi-stash also defines actions and views on the session's bus (see
+Other extensions and remote surfaces follow the index without parsing journal
+entries: pi-stash defines actions and views on the session's bus (see
 [`pi-surface`](../../packages/pi-surface/README.md)) from session start to
-shutdown:
+shutdown. Each subagent has its own bus. Content is read only through
+`stash.inspect`, bounded, for a user who opens an entry.
 
-| Id               | Kind     | What it does                                                                                                                                                     |
-| ---------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `stash.inspect`  | action   | `{ id: <handle> }` of an entry on this branch resolves to the detail blocks `/stash` shows when that entry is opened                                             |
-| `stash.preview`  | action   | `{ name, maxLines?, maxBytes? }` resolves to `{ handle, lines, total, complete }`, the `stash:preview` answer without `ok`; it rejects with that request's error |
-| `stash.explorer` | explorer | The `/stash` list as a JSON `ExplorerModel`; its `loadDetail` is `stash.inspect`. Announced on every change to this branch's index                               |
-| `stash.summary`  | summary  | This branch's entry count and sizes and the shared store's use, as a `SummaryModel`. Announced with the explorer                                                 |
-
-pi-presentation serves its `stash-preview` request through `stash.preview`.
+| Id               | Kind     | What it does                                                                                                                       |
+| ---------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `stash.inspect`  | action   | `{ id: <handle> }` of an entry on this branch resolves to the detail blocks `/stash` shows when that entry is opened               |
+| `stash.explorer` | explorer | The `/stash` list as a JSON `ExplorerModel`; its `loadDetail` is `stash.inspect`. Announced on every change to this branch's index |
+| `stash.summary`  | summary  | This branch's entry count and sizes and the shared store's use, as a `SummaryModel`. Announced with the explorer                   |
 
 The explorer lists every current entry on the branch, newest first, with its
 handle as the item's `id`: the identity a stash picker inserts. `stash.summary`
@@ -144,7 +128,7 @@ count is process-bound (`live`): a saved summary settles unchanged.
 entry, it hands the entry to its parent's pi-stash, which journals it on its own
 branch (`via: "adopt"`) and hands it to its own parent, and so on up to the root.
 The entry's `id` makes adoption idempotent, so a repeat ends the chain. It then shows up in their `stash_list`,
-`/stash`, adoption note, index card and `stash:snapshot`, marked with the agent that stored it
+`/stash`, adoption note, index card and `stash.explorer` view, marked with the agent that stored it
 (`↑ agent a3f2b1c4`). Parent links come from pi-subagent's child lifecycle events
 through [`pi-session-tree`](../../packages/pi-session-tree/README.md). Because the
 entry is journaled where it lands, a parent `/tree` back to before the spawn drops it

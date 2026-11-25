@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { provide } from "#session-tree";
 import { QUESTION_KIND, WORK_PARENT_SERVICE, type WorkRecord } from "#work";
-import { dispatchAction, listActions } from "#surface";
+import { dispatchAction } from "#surface";
 import { resetSessionTree, ansiTheme, plainTheme } from "#test-helpers";
 import { delegated, harness, params } from "#test/harness";
 import { visibleWidth } from "@earendil-works/pi-tui";
@@ -229,101 +229,18 @@ describe("a question across a reload or restart", () => {
 });
 
 describe("asking the user in the terminal", () => {
-  it("opens the questionnaire inline, announces it, and returns the answer", async () => {
+  it("opens the questionnaire inline, publishes it, and returns the answer", async () => {
     const h = harness();
     await h.start();
     const pending = h.ask(params);
     await h.until(() => h.mounted !== undefined);
-    expect(h.sent[0]).toEqual([
-      "ask:opened",
-      {
-        toolCallId: "call-1",
-        questions: [
-          {
-            question: "Which database?",
-            header: "Storage",
-            multiSelect: false,
-            options: [
-              { label: "Postgres", description: "" },
-              { label: "SQLite", description: "" },
-            ],
-          },
-        ],
-      },
-    ]);
+    expect(h.formIds()).toEqual(["call-1"]);
     expect(h.mounted!.render(60).join("\n")).toContain("Question");
     h.mounted!.handleInput?.("2");
     const result = await pending;
     expect(result.content[0]!.text).toBe('The user answered:\n- Which database? → "SQLite"');
     expect(result.details).toMatchObject({ route: "user", status: "answered" });
-    expect(h.sent.at(-1)).toEqual(["ask:closed", { toolCallId: "call-1", outcome: "answered" }]);
-  });
-
-  it("takes an answer from outside the terminal, refusing bad ones and unknown ids", async () => {
-    const h = harness();
-    await h.start();
-    const pending = h.ask(params);
-    await h.until(() => h.mounted !== undefined);
-    const replies = () => h.sent.filter(([channel]) => channel === "ask:answer-result");
-
-    h.events.emit("ask:answer", { toolCallId: "nope", requestId: "r0" });
-    h.events.emit("ask:answer", {
-      toolCallId: "call-1",
-      requestId: "r1",
-      answers: [{ questionIndex: 0, optionIndexes: [0, 1] }],
-    });
-    h.events.emit("ask:answer", {
-      toolCallId: "call-1",
-      requestId: "r2",
-      answers: [{ questionIndex: 0, text: "DuckDB" }],
-    });
-    expect(replies().map(([, data]) => data)).toEqual([
-      expect.objectContaining({ ok: false, code: "not_found", requestId: "r0" }),
-      expect.objectContaining({ ok: false, code: "invalid_answer", requestId: "r1" }),
-      { ok: true, toolCallId: "call-1", requestId: "r2" },
-    ]);
-    const result = await pending;
-    expect(result.content[0]!.text).toContain('"DuckDB" (own words)');
-  });
-
-  it("answers through the ask.answer action as ask:answer does, from start to shutdown", async () => {
-    const h = harness();
-    await h.start();
-    expect(listActions(h.events).map((action) => action.id)).toEqual([
-      "ask.answer",
-      "ask.cancel",
-      "ask.submit",
-    ]);
-    const pending = h.ask(params);
-    await h.until(() => h.mounted !== undefined);
-
-    await expect(dispatchAction(h.events, "ask.answer", { toolCallId: "nope" })).resolves.toEqual(
-      expect.objectContaining({ ok: false, code: "not_found", toolCallId: "nope" }),
-    );
-    await expect(dispatchAction(h.events, "ask.answer")).resolves.toEqual(
-      expect.objectContaining({ ok: false, code: "invalid_payload" }),
-    );
-    await expect(
-      dispatchAction(h.events, "ask.answer", {
-        toolCallId: "call-1",
-        answers: [{ questionIndex: 0, optionIndexes: [0, 1] }],
-      }),
-    ).resolves.toEqual(expect.objectContaining({ ok: false, code: "invalid_answer" }));
-    await expect(
-      dispatchAction(h.events, "ask.answer", {
-        toolCallId: "call-1",
-        requestId: "r1",
-        answers: [{ questionIndex: 0, optionIndexes: [1] }],
-      }),
-    ).resolves.toEqual({ ok: true, toolCallId: "call-1", requestId: "r1" });
-    expect((await pending).content[0]!.text).toBe(
-      'The user answered:\n- Which database? → "SQLite"',
-    );
-    // The action replies to its caller only; nothing goes out on ask:answer-result.
-    expect(h.sent.some(([channel]) => channel === "ask:answer-result")).toBe(false);
-
-    await h.shutdown();
-    expect(listActions(h.events)).toEqual([]);
+    expect(h.form()).toBeUndefined();
   });
 
   it("dismisses the questionnaire when the call is aborted", async () => {
@@ -335,7 +252,7 @@ describe("asking the user in the terminal", () => {
     controller.abort();
     const result = await pending;
     expect(result.details).toMatchObject({ status: "cancelled" });
-    expect(h.sent.at(-1)).toEqual(["ask:closed", { toolCallId: "call-1", outcome: "cancelled" }]);
+    expect(h.form()).toBeUndefined();
   });
 
   it("asks through the host's own dialogs in RPC mode", async () => {
@@ -381,12 +298,12 @@ describe("inline cmux notification lifecycle", () => {
       if (exit === "answer") h.mounted!.handleInput?.("1");
       else if (exit === "escape") h.mounted!.handleInput?.("\x1b");
       else if (exit === "abort") controller.abort();
+      else if (exit === "external cancel")
+        await dispatchAction(h.events, "ask.cancel", { id: "call-1" });
       else
-        h.events.emit("ask:answer", {
-          toolCallId: "call-1",
-          ...(exit === "external cancel"
-            ? { cancel: true }
-            : { answers: [{ questionIndex: 0, text: "DuckDB" }] }),
+        await dispatchAction(h.events, "ask.submit", {
+          id: "call-1",
+          answers: [{ questionIndex: 0, text: "DuckDB" }],
         });
       const result = await pending;
       expect(result.details.status).toBe(
@@ -397,34 +314,25 @@ describe("inline cmux notification lifecycle", () => {
     },
   );
 
-  it("cleans up on UI failure without replacing the original error or closed event", async () => {
+  it("cleans up on UI failure without replacing the original error", async () => {
     const h = harness();
+    await h.start();
     h.ui.custom.mockRejectedValueOnce(new Error("UI failed"));
     await expect(h.ask(params)).rejects.toThrow("UI failed");
     expectExactCleanup();
-    expect(h.sent.at(-1)).toEqual(["ask:closed", { toolCallId: "call-1", outcome: "error" }]);
-    await h.shutdown();
-  });
-
-  it("cleans up even if the opened event handler throws", async () => {
-    const h = harness();
-    h.events.on("ask:opened", () => {
-      throw new Error("event failed");
-    });
-    await expect(h.ask(params)).rejects.toThrow("event failed");
-    await h.until(() => execFile.mock.calls.length === 2);
-    expectExactCleanup();
-    expect(h.sent.at(-1)).toEqual(["ask:closed", { toolCallId: "call-1", outcome: "error" }]);
+    expect(h.form()).toBeUndefined();
     await h.shutdown();
   });
 
   it("handles external answers before mounting", async () => {
     const h = harness();
-    h.events.on("ask:opened", () =>
-      h.events.emit("ask:answer", {
-        toolCallId: "call-1",
-        answers: [{ questionIndex: 0, text: "early" }],
-      }),
+    await h.start();
+    h.whenPublished(
+      () =>
+        void dispatchAction(h.events, "ask.submit", {
+          id: "call-1",
+          answers: [{ questionIndex: 0, text: "early" }],
+        }),
     );
     const result = await h.ask(params);
     expect(result.details.status).toBe("answered");
@@ -432,10 +340,11 @@ describe("inline cmux notification lifecycle", () => {
     await h.shutdown();
   });
 
-  it("handles cancellation from the opened event before mounting", async () => {
+  it("handles cancellation as soon as the form lists it, before mounting", async () => {
     const h = harness();
+    await h.start();
     const controller = new AbortController();
-    h.events.on("ask:opened", () => controller.abort());
+    h.whenPublished(() => controller.abort());
     const result = await h.ask(params, controller.signal);
     expect(result.details.status).toBe("cancelled");
     expectExactCleanup();

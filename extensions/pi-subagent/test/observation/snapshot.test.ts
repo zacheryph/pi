@@ -20,7 +20,6 @@ describe("branch subagent snapshot", () => {
     const lookup = (id: string) =>
       id === "waiting" ? live : id === outside.id ? outside : undefined;
     const snapshot = buildSubagentSnapshot([toPersistedRecord(done), savedWaiting], lookup);
-    expect(snapshot.version).toBe(1);
     expect(snapshot.agents.map((a) => a.id)).toEqual(["waiting", "done"]);
     expect(snapshot.agents[0]).toMatchObject({
       state: "waiting",

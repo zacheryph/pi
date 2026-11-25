@@ -607,28 +607,24 @@ It holds at most 20 agent lines, dropping the oldest failed and completed agents
 An idle agent shows how its last run ended, and `(cannot take a message)` when `subagent_send` would refuse it (its transcript or directory is gone). Descriptions are cut to 80 characters and what an agent waits on or why it failed to 160, without splitting a wide character or emoji.
 A branch that started no agents gets no card.
 
-## Events
+## Views
 
-`subagent:snapshot` publishes `{ version: 1, agents }` on the session's bus after startup
-restoration, `/tree`, and lifecycle/progress changes. It is a complete replacement for the
-current branch, including an empty roster. Each agent has the same `id`, `type`,
-`description`, `state`, `waitingOn`, `error`, `startedAt`, `completedAt`, and `live` fields
-as the roster used by `subagent_get`, plus `toolUses`, optional live `tokens`, and a
-`note` for waiting, progress, or failure. Saved branch records provide history; live
-records override their state. It carries no result text or transcript contents. Consumers
-subscribe before `session_start`, like the dashboard, and replace their view on each snapshot.
-
-From session start to shutdown pi-subagent also defines three views on the same bus (see
-[`pi-surface`](../../packages/pi-surface/README.md)), so a remote surface reached through
-`pi-presentation` draws the widget, the roster and their counts:
+From session start to shutdown pi-subagent defines three views on the session's bus (see
+[`pi-surface`](../../packages/pi-surface/README.md)), so pi-dashboard and bb draw the widget,
+the roster and their counts. The explorer and the summary are built from one complete roster
+of the current branch, an empty one included: the same agents, states and ordering as
+`subagent_get`, from saved branch records with live records overriding their state, plus
+tool uses, live tokens and a note for waiting, progress or failure. No view carries result
+text or transcript contents.
 
 | Id                  | Kind     | What it shows                                                                                                                                                                             |
 | ------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `subagent.widget`   | widget   | The above-editor widget's agents as a JSON `WidgetModel`, with whole rows and a still glyph for the spinner; the clock is the row's `lead`, and a running one carries its start (`since`) |
-| `subagent.explorer` | explorer | Every agent in `subagent:snapshot`, with its state as a badge and its facts and note inline; an `Active` tab                                                                              |
-| `subagent.summary`  | summary  | The agents in `subagent:snapshot` counted by state, and the main agent's `profile`, even with no subagents                                                                                |
+| `subagent.explorer` | explorer | Every agent on the branch, with its state as a badge and its facts and note inline; an `Active` tab                                                                                       |
+| `subagent.summary`  | summary  | The branch's agents counted by state, and the main agent's `profile`, even with no subagents                                                                                              |
 
-All three announce a change with every `subagent:snapshot`, the widget again at each turn,
+All three announce a change after startup restoration, `/tree`, and lifecycle and progress
+changes, the widget again at each turn,
 when finished agents age out of it, and the summary whenever the main-agent profile is
 selected, switched, restored by a start or `/tree`, blocked or cleared.
 

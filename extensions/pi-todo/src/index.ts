@@ -46,13 +46,7 @@ import {
 import { createTodoDelegation, type DelegatedView } from "#src/delegation";
 import { registerTodoCommands } from "#src/commands";
 import { todoSettings, type TodoConfig } from "#src/config";
-import {
-  TODO_EXPLORER_VIEW,
-  TODO_SNAPSHOT_EVENT,
-  TODO_SUMMARY_VIEW,
-  TODO_WIDGET_VIEW,
-  todoSnapshotEvent,
-} from "#src/events";
+import { TODO_EXPLORER_VIEW, TODO_SUMMARY_VIEW, TODO_WIDGET_VIEW } from "#src/events";
 import { todoSummaryModel } from "#src/summary";
 import {
   cloneTodoState,
@@ -72,12 +66,7 @@ import {
   type TodoRenderConfig,
 } from "#src/ui/render";
 import { todoExplorerModel } from "#src/ui/browser";
-import {
-  todoHistoryAction,
-  todoInspectAction,
-  todoReviewAction,
-  type TodoSurfaceSource,
-} from "#src/surface";
+import { todoInspectAction, todoReviewAction, type TodoSurfaceSource } from "#src/surface";
 import { actionRegistry, viewRegistry } from "#surface";
 import { bodyRow, clip, renderWidget, sanitizeLine, sanitizeText, styleLine } from "#ui";
 import { replayTodoSession, TODO_JOURNAL_TYPE, TODO_REVIEW_TYPE } from "#src/replay";
@@ -315,11 +304,6 @@ export default function todoExtension(
     }
   };
 
-  const publish = () =>
-    pi.events.emit(
-      TODO_SNAPSHOT_EVENT,
-      todoSnapshotEvent(state, activity, review, claimHolders(claims, state)),
-    );
   const journal = (snapshot: TodoState, history: TodoActivity) => ({
     ...cloneTodoState(snapshot),
     activity: serializeTodoActivity(history),
@@ -394,7 +378,6 @@ export default function todoExtension(
       delegation.changed(next);
     }
     updateWidget(ctx);
-    publish();
     return next;
   };
   /** Completed tasks off the list, for the model's output. */
@@ -404,7 +387,6 @@ export default function todoExtension(
     pi.appendEntry(TODO_CLAIMS_TYPE, entry);
     claims = applyTodoClaims(claims, entry);
     updateWidget();
-    publish();
   };
   const delegation = createTodoDelegation(pi, {
     now,
@@ -426,7 +408,6 @@ export default function todoExtension(
     pi.appendEntry(TODO_REVIEW_TYPE, entry);
     review = applyTodoReview(review, entry);
     updateWidget();
-    publish();
     return fresh.length;
   };
 
@@ -752,7 +733,6 @@ export default function todoExtension(
     config = (dependencies.loadConfig ?? todoSettings.load)(ctx.cwd);
     uiContext = ctx;
     updateWidget(ctx);
-    publish();
   };
   const restoreDelegation = (ctx: ExtensionContext, keepClaims = false) => {
     restore(ctx);
@@ -785,7 +765,6 @@ export default function todoExtension(
     actions.dispose();
     actions.define(todoInspectAction(surfaceSource));
     actions.define(todoReviewAction(surfaceSource));
-    actions.define(todoHistoryAction(surfaceSource));
     views.define({
       id: TODO_WIDGET_VIEW,
       kind: "widget",

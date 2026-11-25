@@ -1,10 +1,7 @@
-/** A full, branch-scoped projection for displays; lifecycle events remain available to reactors. */
+/** A full, branch-scoped roster for displays: the views are built from it; reactors use lifecycle events. */
 import { getLifetimeTotal, type LifetimeUsage } from "#src/lifecycle/usage";
 import type { PersistedSubagentRecord } from "#src/persisted-record";
 import { buildRoster, type LiveAgentLike, type RosterEntry } from "#src/roster";
-
-export const SUBAGENT_SNAPSHOT = "subagent:snapshot";
-export const SUBAGENT_SNAPSHOT_VERSION = 1;
 
 /**
  * pi-surface views, defined while a session runs: the widget, the branch's subagents, and their
@@ -21,7 +18,6 @@ interface SnapshotSource extends LiveAgentLike {
 }
 
 export interface SubagentSnapshot {
-  version: typeof SUBAGENT_SNAPSHOT_VERSION;
   agents: Array<RosterEntry & { toolUses: number; tokens?: number; note?: string }>;
 }
 
@@ -32,7 +28,6 @@ export function buildSubagentSnapshot(
 ): SubagentSnapshot {
   const saved = new Map(records.map((record) => [record.id, record]));
   return {
-    version: SUBAGENT_SNAPSHOT_VERSION,
     agents: buildRoster(records, getLive).map((entry) => {
       const live = getLive(entry.id);
       const note =

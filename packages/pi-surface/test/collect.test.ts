@@ -37,7 +37,7 @@ const form: FormModel = {
     {
       id: "call-1",
       questions: [{ question: "Which?", options: [{ label: "A" }, { label: "B" }] }],
-      submit: { action: "ask.answer", args: { id: "call-1" } },
+      submit: { action: "ask.submit", args: { id: "call-1" } },
       cancel: { action: "ask.cancel", args: { id: "call-1" } },
     },
   ],

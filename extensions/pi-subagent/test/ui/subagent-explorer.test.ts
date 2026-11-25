@@ -28,7 +28,6 @@ describe("subagentExplorerModel", () => {
   it("lists every agent on the branch with its state and facts inline", () => {
     const model = subagentExplorerModel(
       {
-        version: 1,
         agents: [
           agent({
             id: "run",
@@ -89,7 +88,7 @@ describe("subagentExplorerModel", () => {
   });
 
   it("says when the branch has no subagents", () => {
-    const model = subagentExplorerModel({ version: 1, agents: [] }, registry);
+    const model = subagentExplorerModel({ agents: [] }, registry);
     expect(model.items).toEqual([]);
     expect(model.emptyText).toBe("No subagents on this branch.");
   });

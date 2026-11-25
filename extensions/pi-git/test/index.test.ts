@@ -3,13 +3,8 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { fakePi, resetSessionTree } from "#test-helpers";
 import type { GitConfig } from "#src/config";
-import {
-  GIT_PRS_VIEW,
-  GIT_SNAPSHOT_EVENT,
-  GIT_SUMMARY_VIEW,
-  GIT_WORKTREES_VIEW,
-  type GitSnapshotEvent,
-} from "#src/events";
+import { GIT_PRS_VIEW, GIT_SUMMARY_VIEW, GIT_WORKTREES_VIEW } from "#src/events";
+import type { GitSnapshot } from "#src/snapshot";
 import {
   isViewModel,
   listViews,
@@ -41,13 +36,12 @@ function harness(options: {
   runGh?: GhRunner;
 }) {
   const entries: unknown[] = [...(options.entries ?? [])];
-  const snapshots: GitSnapshotEvent[] = [];
+  const snapshots: GitSnapshot[] = [];
   const fake = fakePi({
     appendEntry: vi.fn((customType: string, data: unknown) =>
       entries.push({ type: "custom", customType, data }),
     ),
   });
-  fake.api.events.on(GIT_SNAPSHOT_EVENT, (data) => snapshots.push(data as GitSnapshotEvent));
   piGit(fake.api, {
     loadConfig:
       options.loadConfig ??
@@ -60,6 +54,7 @@ function harness(options: {
     now: () => (frozen ? clock : (clock += 1)),
     ...(options.runGh ? { runGh: options.runGh } : {}),
     retry: { sleep: async () => undefined },
+    onPublish: (snapshot) => snapshots.push(snapshot),
   });
   const ui = {
     notify: vi.fn(),

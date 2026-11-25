@@ -2,8 +2,8 @@ import type { SummaryCount, SummaryModel } from "#surface";
 import { currentEntries, type StashIndex } from "#src/state";
 
 /**
- * The `stash.summary` view: what this branch has stashed, counted from the same index as
- * `stash:snapshot` and the `stash.explorer` view. The explorer's items carry each entry's
+ * The `stash.summary` view: what this branch has stashed, counted from the same index as the
+ * `stash.explorer` view. The explorer's items carry each entry's
  * handle as its id; this carries the totals no item does: sizes and the shared store's use
  * against its cap. Stash records live in the session file and the store on disk, so nothing
  * here is process-bound (`live`).

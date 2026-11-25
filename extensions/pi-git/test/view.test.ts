@@ -3,7 +3,7 @@ import { KeybindingsManager, TUI_KEYBINDINGS } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 import { expectPadded, NARROW_WIDTHS, WIDE_TEXT, ansiTheme, stripAnsi } from "#test-helpers";
 import { Explorer } from "#ui";
-import type { GitSnapshotEvent, GitSnapshotPr, GitSnapshotWorktree } from "#src/events";
+import type { GitSnapshot, GitSnapshotPr, GitSnapshotWorktree } from "#src/snapshot";
 import { explorerView, LIST_LIMIT, listText, prExplorerView, statusText } from "#src/view";
 
 // Colors every token so width math must ignore escape sequences.
@@ -23,8 +23,8 @@ const worktree = (overrides: Partial<GitSnapshotWorktree> = {}): GitSnapshotWork
 
 const snapshot = (
   worktrees: GitSnapshotWorktree[],
-  found: GitSnapshotEvent["found"] = [],
-): GitSnapshotEvent => ({ version: 1, worktrees, found, prs: [] });
+  found: GitSnapshot["found"] = [],
+): GitSnapshot => ({ worktrees, found, prs: [] });
 
 describe("statusText", () => {
   it("names the state, or the git status of an active worktree", () => {

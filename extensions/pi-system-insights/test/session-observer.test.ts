@@ -110,7 +110,7 @@ const questionnaire = (id: string, title?: string, openedAt?: number): FormQuest
   questions: [
     { question: "Which database?", header: "Database", options: [{ label: "Postgres" }] },
   ],
-  submit: { action: "ask.answer", args: { id } },
+  submit: { action: "ask.submit", args: { id } },
   cancel: { action: "ask.cancel", args: { id } },
 });
 
