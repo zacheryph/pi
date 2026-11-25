@@ -134,6 +134,12 @@ it("answers every command with a displayed message in RPC mode, and keeps them f
     expect.arrayContaining(["New task subject", "Clear task list?", "Task settings", "Settings"]),
   );
 
+  // pi-tldr names the session from its first prompt, with no terminal: bb's plugin copies the name
+  // onto the thread's title.
+  expect(pi.entries().filter((entry) => entry.type === "session_info")).toEqual([
+    expect.objectContaining({ name: "scripted" }),
+  ]);
+
   // The messages are in the session and displayed ...
   const shown = pi
     .entries()
