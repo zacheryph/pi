@@ -1,11 +1,33 @@
 # pi-dashboard
 
-A local web page listing every running interactive Pi session, grouped by
-working directory, with live status.
+A local web page of every running Pi session, grouped by working directory and
+updated live. See at a glance which sessions wait on you, what each is doing,
+and answer its questions from the browser.
 
-```text
-http://127.0.0.1:7317/
-```
+![The dashboard index: one session waiting on a question, with its stash, subagent and task counts](../../docs/images/dashboard.png)
+
+## At a glance
+
+- **You type** `/dashboard` in any session to open `http://127.0.0.1:7317/`.
+  The first interactive session starts the dashboard; it stops on its own 15
+  seconds after the last session exits.
+- **The index** shows one card per session: name, status (sessions waiting on
+  you sort first), model, context use, and each extension's counts. A filter
+  box and opt-in browser notifications (a session starts waiting or finishes)
+  sit at the top.
+- **A session's page** shows its live widgets and recent tool calls on the
+  left and everything it keeps (tasks and their history, subagents, stash
+  entries, worktrees, pull requests) on the right. Open any item for details.
+- **Answer** a question the agent asked with pi-ask from the card or the
+  **Waiting on you** panel; the terminal's window closes when you do.
+- **Focus** jumps to the session's pane in cmux.
+
+![A session's detail page: status strip, the waiting question, subagents, todos, pull requests, worktrees and stash](../../docs/images/dashboard-detail.png)
+
+Only interactive terminal sessions are listed; print-mode runs, RPC hosts and
+subagents are not. It listens on loopback only.
+
+## What the page shows
 
 Everything the page shows is a session's [pi-surface](../../packages/pi-surface/README.md)
 views, collected by the reporter into one complete snapshot per update. Each
@@ -192,15 +214,7 @@ waiting on you, and pi-ask checks the answer strictly.
 Answering other waiting dialogs, then abort and compact. The original
 [plan](docs/plan.md) is kept for its research; it predates the move to views.
 
-## Development
-
-From the repository root:
-
-```bash
-npm install --ignore-scripts
-npm run check
-npm run test:workspace -- pi-dashboard
-```
+## Code layout
 
 The reporter knows no extension: it collects the session's views and runs the
 actions they reference, through pi-surface. The hub and protocol import only

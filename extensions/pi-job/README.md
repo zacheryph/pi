@@ -1,10 +1,24 @@
 # pi-job
 
-Background shell jobs and watches for pi that wake the agent when they finish.
+Background shell jobs and watches that wake the agent when they finish. Long
+waits (test suites, builds, CI, "until this file appears") run outside the
+model at zero token cost: the agent starts the job, ends its turn, and gets one
+message when it is done.
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) [![npm](https://img.shields.io/npm/v/@woksin/pi-jobs.svg)](https://www.npmjs.com/package/@woksin/pi-jobs) [![CI](https://img.shields.io/github/actions/workflow/status/woksin/pi-jobs/ci.yml?label=CI)](https://github.com/woksin/pi-jobs/actions/workflows/ci.yml)
+![A test suite run as a background job: the agent ends its turn and is woken by the completion message](../../docs/images/job.png)
 
-Long waits (CI runs, long builds, "poll until X") run outside the model at zero token cost. The agent starts the job, ends its turn, and gets one concise message when it is done.
+## At a glance
+
+- **The agent calls** `job_start` to run a command in the background, or
+  `job_watch` to re-run a check until it succeeds, fails or its output changes.
+  Both return at once; the agent ends its turn instead of polling.
+- **You see** one `[job:completion]` message per job, with its exit status,
+  duration and the tail of its log, and the agent picks up from there. Jobs that
+  finish together start one run, not several.
+- **You type** `/job` to list this session's jobs and `/job kill <id>` to stop one.
+- **The agent can also** read a log with `job_read`, list with `job_list`, stop
+  with `job_kill`, and watch a read-only Pi tool (an MCP tool, say) with
+  `job_watch`'s `toolCheck` ([tool checks](TOOL-CHECKS.md)).
 
 ```mermaid
 sequenceDiagram
@@ -16,42 +30,16 @@ sequenceDiagram
     J->>A: one completion message (status, duration, log tail)
 ```
 
+Jobs survive `/reload`, a subagent's included; after a restart, open jobs are
+reported as lost. Logs live in `~/.pi/agent/jobs/` for seven days. POSIX only.
+This extension started from [`woksin/pi-jobs`](CHANGELOG.md#initial-import); do
+not also install `npm:@woksin/pi-jobs`.
+
 ## Why
 
 - Polling CI from the model burns tokens on every check and fills the context.
 - A foreground wait blocks the session.
 - Several jobs finishing together should start one run, not many.
-
-## Features
-
-- `job_start` runs a command under a supervisor in its own process group, with a log file.
-- `job_watch` re-runs a check until it succeeds, fails or changes (`until`).
-- Every job and watch is an item in the session's work host; its completion is one message with a bounded log tail. Completions that arrive together are answered by one run.
-- `job_list`, `job_read` and `job_kill`, plus `/job` and `/job kill <id>` for you.
-- Logs are capped at 50 MB and old logs are cleaned up after 7 days.
-- Jobs survive `/reload`. After a restart the jobs that were still open are reported as lost.
-
-## Install
-
-Add the npm source to `packages` in your Pi settings:
-
-```json
-{
-  "packages": ["npm:@woksin/pi-jobs"]
-}
-```
-
-Or use `pi install npm:@woksin/pi-jobs`. Git and local checkouts work too:
-
-```sh
-pi install git:github.com/woksin/pi-jobs
-pi install /path/to/pi-jobs
-```
-
-Restart Pi or run `/reload` after changing settings. Requires a POSIX system with Bash;
-Windows is not supported. Tested with Pi 1.3.0. The host dependency uses `"*"` as recommended
-for Pi packages: Pi supplies its own runtime and suppresses automatic peer installation
-for managed packages. Other runtime versions are not guaranteed.
 
 ## Usage
 
@@ -302,13 +290,9 @@ session.
 In print mode (`pi -p`) the run ends when the agent goes idle and the shutdown kills running
 jobs, so a wake-up cannot happen there; use interactive or RPC mode.
 
-## Development
+## Tests
 
-Requires Node.js 22.19 or newer for native TypeScript stripping; no compilation is required.
-
-```sh
-npm test   # node --test, real processes and a real AgentSession, ~10 s
-```
+`npm run test:workspace -- pi-job` runs `node --test` with real processes and a real `AgentSession` in about 10 s.
 
 `src/extension.ts` is the only pi-aware module and uses type-only pi imports; `jobs.ts`,
 `supervisor.ts`, `items.ts`, `logwriter.ts`, `tail.ts`, `watch.ts`,
@@ -323,24 +307,13 @@ user installation directories; set `PI_RUNTIME_DIR` to override the package root
 tests skip with a clear message if Pi is unavailable. `test/run-boundary.test.ts` pins the Pi
 behaviour delivery relies on, with a probe extension instead of pi-job. Two known upstream race
 reproductions remain skipped. Live RPC scenarios are in
-[`e2e/`](https://github.com/woksin/pi-jobs/blob/main/e2e/README.md); they require credentials
-and make paid model calls, unlike `npm test`.
+[`e2e/`](e2e/README.md); they require credentials
+and make paid model calls, unlike the unit tests.
 Requires `perl` only for the escaped-descendant tests.
 
-## Releasing
-
-CI (`.github/workflows/ci.yml`) runs the tests on Node 22 and 24 for every push and pull request. To release, bump `version` in `package.json`, commit, and publish a GitHub release tagged `v<version>`. `.github/workflows/publish.yml` then runs CI again and publishes to npm with provenance. That works through npm trusted publishing when it is set up for this repository, or otherwise through an `NPM_TOKEN` repository secret.
-
-### Registry snapshots
+## Registry snapshots
 
 `manager.list()` returns additive job snapshots including `label`, `until`, `intervalSeconds` and `timeoutSeconds`. `until` and `intervalSeconds` are absent for plain commands; `label` is optional. The interval is the configured delay between checks, not a countdown.
-
-## Related projects
-
-- [pi-setup](https://github.com/woksin/pi-setup): my full pi agent setup (rules, agents, extensions, installer) that ties these together
-- [pi-recover](https://github.com/woksin/pi-recover): `/recover` picks up unfinished subagents, workflows and jobs after a crash or usage limit
-- [pi-context-budget](https://github.com/woksin/pi-context-budget): structured context handoffs and bounded long sessions
-- [pi-orch](https://github.com/woksin/pi-orch) (experimental): repo-owner orchestration with an order bus and batched candidate PRs
 
 ## License
 

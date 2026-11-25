@@ -1,12 +1,38 @@
 # pi-git
 
-Git worktrees an orchestrator creates in any repository and hands to subagents,
-and the pull requests the session opens or looks at, recorded in the session
-ledger.
+Git worktrees for parallel workers, and a record of every pull request the
+session opened or looked at. Both survive reloads, resumes and compaction.
 
-A worktree here belongs to whoever created it, not to a subagent run: it stays
-until it is removed with `git_worktree_remove` or `/git:worktrees remove`.
-Subagents come and go; the next one continues in the same directory.
+![/git:worktrees listing two worktrees an orchestrator made for its workers](../../docs/images/git-worktrees.png)
+
+## At a glance
+
+- **The agent calls** `git_worktree_create { branch }` to get a fresh checkout
+  in any repository and passes its path as `cwd` to `subagent_start`, so
+  parallel workers never share a checkout. A `workspace` puts worktrees of
+  several repositories side by side for one worker.
+- **Worktrees stay** until `git_worktree_remove` or `/git:worktrees remove`
+  removes them, which keeps the branch and refuses to lose uncommitted work. The
+  next subagent continues in the same place.
+- **Pull requests are recorded** whenever any tool touches one (`gh pr …`, the
+  GitHub MCP tools, a PR URL), as **opened here** or **referenced**, with the
+  last state, review, checks and conflicts seen.
+- **The agent calls** `git_pr_status` for a PR's current state from GitHub, and
+  `git_pr_watch` to end its turn and be woken when checks finish, the head
+  moves, a review or comment arrives, or the PR is merged or closed.
+- **You type** `/git:worktrees` and `/git:prs` to browse both, and
+  `/git:refresh` to re-read every open PR and re-check every worktree.
+
+```text
+~/.pi/agent/worktrees/
+├── api/feat-login/      # git_worktree_create { repo: "api", branch: "feat/login" }
+└── auth-rework/         # workspace "auth-rework": one subagent's cwd
+    ├── api/             # git_worktree_create { repo: "api", branch: "auth", workspace: "auth-rework" }
+    └── web/             # git_worktree_create { repo: "web", branch: "auth", workspace: "auth-rework" }
+```
+
+A worktree belongs to whoever created it, not to a subagent run: finishing or
+releasing an agent never removes it.
 
 ## Tools
 
@@ -30,14 +56,6 @@ Subagents come and go; the next one continues in the same directory.
 - `workspace`: groups worktrees of several repositories in one directory. Create
   one per repository with the same `workspace`, then give the subagent the
   workspace directory as `cwd`; it sees each repository side by side.
-
-```text
-<worktree root>/
-├── api/feat-login/      # git_worktree_create { repo: "api", branch: "feat/login" }
-└── auth-rework/         # workspace "auth-rework": the subagent's cwd
-    ├── api/             # git_worktree_create { repo: "api", branch: "auth", workspace: "auth-rework" }
-    └── web/             # git_worktree_create { repo: "web", branch: "auth", workspace: "auth-rework" }
-```
 
 Removal never deletes a branch, so committed work is never lost by it, pushed or
 not; the list and the removal result say when a branch holds commits no remote
@@ -328,3 +346,7 @@ summary settles `prs-watching` to 0 and keeps every other count.
 - `maxWatches`: how many pull requests one session watches at a time. 1 to 100,
   default `10`. Every watch reads its pull request each interval, so raise the
   interval with it when a roadmap step opens many pull requests at once.
+
+## Design
+
+The [ledger plan](../../docs/plans/git-github-ledger.md) records the research and decisions behind it.

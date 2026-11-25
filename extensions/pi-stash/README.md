@@ -1,20 +1,37 @@
 # pi-stash
 
-A handle-based working-set store for Pi. Large text (search results, file
-snapshots, tool output, worker findings) is kept **outside the model context**;
-the model gets back a short handle and reads only the slices it needs.
+Keeps large text out of the model's context. Search results, file snapshots,
+tool output and worker findings are stored on disk, and the model gets a short
+handle it reads back one slice at a time:
 
 ```text
-stash:auth-findings@3f9a1c2b7d01
+stash:queue-failures@ea4c4a5defe7
 ```
 
-Typical uses:
+![The /stash browser showing an entry's details and its first lines](../../docs/images/stash-browser.png)
 
-- **Parent → worker:** brief a subagent with a handle instead of pasting 400 lines.
-- **Worker → parent:** a worker stashes its large result and returns the handle;
-  the parent reads one slice at a time.
-- **After compaction:** stashed material can still be read exactly instead of being
-  summarised away.
+## At a glance
+
+- **The agent calls** `stash_put` to store text, a file, or the full result of
+  an earlier tool call, and gets back a receipt with a short preview. It never
+  echoes the content.
+- **The agent calls** `stash_get` with a handle and `lines`, `grep` or
+  `jsonPath` to read only what it needs, and `stash_list` to see what is stored.
+- **You type** `/stash` to browse entries and open one, and `/stash:gc` to
+  delete content nobody has used for 30 days.
+- **Subagents** share handles with their parent: brief a worker with a handle
+  instead of pasting 400 lines, or have it return its findings as one. A
+  subagent's entries also appear in its parent's stash, marked `↑ agent a3f2b1c4`.
+- **After compaction** the stash is still readable exactly, and one hidden card
+  reminds the model what is in it.
+
+```mermaid
+flowchart LR
+  big["Large output"] -- stash_put --> store[("~/.pi/agent/stash<br/>content by SHA-256")]
+  store -- "handle + preview" --> model["Model context"]
+  model -- "stash_get { lines | grep | jsonPath }" --> store
+  store -- "bounded slice" --> model
+```
 
 ## Tools
 
@@ -182,13 +199,3 @@ history, and run `/stash:gc` or delete the directory to remove content.
 - Automatically spilling oversized tool results into the stash.
 - Semantic search, embeddings, or memory across projects.
 - Dispatching a todo item to a subagent with linked handles (issue #11).
-
-## Development
-
-From the repository root:
-
-```bash
-npm install --ignore-scripts
-npm run check
-npm run test:workspace -- pi-stash
-```

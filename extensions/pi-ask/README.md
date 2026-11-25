@@ -1,8 +1,35 @@
 # pi-ask
 
-One `ask` tool for questions, routed by session: a subagent asks the agent that
-delegated to it, and the main session asks you. A second tool, `user_notify`,
-alerts you without waiting for an answer; see [Notifying you](#notifying-you).
+Lets the agent stop and ask. Up to four questions open in a window under the
+transcript, each with choices and room for your own words; a subagent asks the
+agent that delegated to it instead of you.
+
+![Two questions waiting in the inline window, the first with three choices](../../docs/images/ask.png)
+
+## At a glance
+
+- **You see** a window in place of the editor with the questions as tabs.
+  `↑`/`↓` and `enter` pick a choice (or type a number), **Type something…**
+  takes free text, `←`/`→` switch questions, `esc` declines.
+- **Elsewhere:** the [dashboard](../pi-dashboard/README.md) and
+  [bb](../pi-bb/README.md) can answer the same questions; the first answer wins.
+- **The agent calls** `ask` with 1–4 questions and gets your answers back. In a
+  subagent the question goes to the parent, the subagent waits
+  (`waiting: answer`), and the parent's `subagent_send` answers it.
+- **The agent calls** `user_notify` to send you a native cmux notification when
+  something outside the session needs you (a PR to review, a blocked step). It
+  does not wait.
+- **Inside cmux** an open question also raises a notification, cleared when it
+  is answered.
+
+```mermaid
+flowchart LR
+  ask["ask { questions }"] --> route{Which session?}
+  route -- "main, terminal" --> window["Inline window<br/>(dashboard and bb can answer too)"]
+  route -- "main, RPC host" --> dialogs["Form for bb, or the host's dialogs"]
+  route -- subagent --> parent["Question for the parent<br/>answered by subagent_send"]
+  route -- "print / json" --> hidden["Tool hidden"]
+```
 
 ## The tool
 

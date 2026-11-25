@@ -1,29 +1,29 @@
 # pi-todo
 
-Dependency-aware, session-scoped tasks. Built on the pure atomic state engine from
-[`@99percentpeople/pi-todo`](CHANGELOG.md#initial-import), with explicit operations and UX matching
-this bundle's subagents and system-insights extensions.
+A task list the agent keeps and you can watch: dependencies, statuses and the
+findings recorded on each task, right above the editor.
 
-## Load
+![The Todos widget: five tasks with dependencies and one unreviewed finding](../../docs/images/todo-widget.png)
 
-Included in the root bundle. For standalone development:
+## At a glance
 
-```bash
-pi --no-extensions -e ./extensions/pi-todo/src/index.ts
-```
+- **You see** the Todos widget above the editor. Active work comes first, a
+  blocked task shows what it waits on (`← backoff`), and `● 1 new` counts
+  findings you have not read yet.
+- **You type** `/todo` to browse every task and its history, `/todo:review` to
+  read new findings, and `/todo:add`, `/todo:update`, `/todo:remove` or
+  `/todo:clear` to change the list yourself. None of them starts a turn.
+- **The agent calls** `todo_upsert` to add or update tasks (with `dependsOn` and
+  a `message` for what it found), `todo_list` to read, and `todo_replace`,
+  `todo_remove` or `todo_clear` to delete on purpose.
+- **Subagents** receive tasks with `handoff: { todo: { keys } }` on
+  `subagent_start` and update them directly in your list.
 
-Remove or disable `@juicesharp/rpiv-todo` before loading this extension: both own
-the todo tools and `/todo`. Nothing here changes your personal Pi settings automatically.
-For an installed bundle, remove the old package and reload:
+![The /todo browser with All, Unreviewed and Recent views](../../docs/images/todo-browser.png)
 
-```bash
-pi remove npm:@juicesharp/rpiv-todo
-```
-
-Old rpiv session snapshots are not imported. Finish existing work with rpiv or
-recreate its plan explicitly. Valid snapshots from the selected upstream engine
-remain readable; action schema differs, so update instructions referring to its
-full-list writes or rpiv's numeric IDs/create/update actions.
+The task engine comes from
+[`@99percentpeople/pi-todo`](CHANGELOG.md#initial-import); the tools, UI and
+subagent handoff are this bundle's.
 
 ## Agent tool
 
@@ -56,7 +56,7 @@ Sparse completion and handoff in one call:
 }
 ```
 
-`verify` remains unchanged. Unlike upstream, omission during `todo_upsert` never deletes.
+`verify` remains unchanged: omitting a task from `todo_upsert` never deletes it.
 
 Record an outcome with the status change that produced it:
 
@@ -408,13 +408,22 @@ in progress, in list order (`{ id: <key>, label: <subject> }`).
 statuses and review marks live in the session file, so no count and no active
 task is process-bound (`live`): a saved summary settles unchanged.
 
-## Develop
+## Migrating from rpiv-todo
+
+Remove or disable `@juicesharp/rpiv-todo` before loading this extension: both own
+the todo tools and `/todo`. Nothing here changes your personal Pi settings automatically.
+For an installed bundle, remove the old package and reload:
 
 ```bash
-npm run check
-npm run test:workspace -- pi-todo
-npm run verify:bundle
+pi remove npm:@juicesharp/rpiv-todo
 ```
 
-MIT upstream license retained in [LICENSE](LICENSE). See the [initial import entry](CHANGELOG.md#initial-import)
-for the pinned source and [CHANGELOG.md](CHANGELOG.md) for local adaptations.
+Old rpiv session snapshots are not imported. Finish existing work with rpiv or
+recreate its plan explicitly. Valid snapshots from the selected upstream engine
+remain readable; action schema differs, so update instructions referring to its
+full-list writes or rpiv's numeric IDs/create/update actions.
+
+## License
+
+The upstream MIT license is kept in [LICENSE](LICENSE); the
+[initial import entry](CHANGELOG.md#initial-import) records the pinned source.
