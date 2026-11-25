@@ -5,8 +5,23 @@ sessions in one process find each other. A parent session can reach the
 services its subagents' extensions offer, and a subagent can reach its
 ancestors'.
 
-pi-stash (auto-bubbling entries to ancestors) and pi-todo (delegated tasks) will
-build on it.
+pi-stash (entries adopted by ancestors), pi-todo (tasks handed to a subagent),
+pi-ask (a subagent's question to its parent), pi-job and pi-work build on it.
+
+```mermaid
+flowchart TB
+  root["Main session<br/>provide(id, 'pi-stash', api)"]
+  child["Subagent session"]
+  grandchild["Its subagent"]
+  root --> child --> grandchild
+  grandchild -. "ancestors(id) → call(parentId, 'pi-stash', fn)" .-> child
+  child -. "call(rootId, …)" .-> root
+```
+
+```ts
+provide(sessionId, "pi-example", api); // on session_start; returns the withdraw
+call(parentOf(childId)!, "pi-example", (api) => api.notify("hi")); // { ok, value } or { ok: false, reason }
+```
 
 ## Why `globalThis`
 
@@ -107,10 +122,3 @@ Extensions import `#session-tree`. Each consuming workspace maps that alias to
 dependency creates the link for Git installs too. `test/sdk.test.ts` loads two
 fixture extensions through Pi's real loader to check that the alias resolves,
 and that two module copies share one registry.
-
-## Development
-
-```bash
-npm run check
-npm run test:workspace -- pi-session-tree
-```

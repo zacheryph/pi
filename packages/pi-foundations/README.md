@@ -7,6 +7,27 @@ else beyond Node. Import its modules through aliases such as
 `#foundations/settings` and `#foundations/format`. Workspace manifests map these
 to package exports; root `file:` dependencies create the links for Git installs.
 
+## At a glance
+
+| Module                                    | Reach for it when an extension needs to…                                                                |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `#foundations/settings`                   | read `~/.pi/agent/<name>.json` (and `.pi/<name>.json`) with defaults and validation, in one declaration |
+| `#foundations/models`                     | find a model by exact id, by family (`haiku@latest`) or fuzzily                                         |
+| `#foundations/user-output`                | show a command's result to the user, in the terminal or an RPC host such as bb                          |
+| `#foundations/cmux`                       | raise or dismiss a native cmux notification                                                             |
+| `#foundations/format`, `guards`, `errors` | format sizes and durations, check unknown data, describe errors                                         |
+
+```ts
+export const tldrSettings = defineSettings({
+  name: "tldr", // ~/.pi/agent/tldr.json, then .pi/tldr.json
+  scope: "layered",
+  fields: { model: string({ default: "auto" }), setSessionName: bool({ default: true }) },
+});
+const { model } = tldrSettings.load(ctx.cwd); // typed, defaulted, never throws
+```
+
+## Settings
+
 - `src/settings.ts`: `defineSettings` declares an extension's settings once:
 
   ```ts

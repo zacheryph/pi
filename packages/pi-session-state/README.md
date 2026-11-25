@@ -13,6 +13,12 @@ Every helper keeps its state in the closure of the call that made it, so call
 them from the extension factory. Never keep their results in module scope: a
 same-cwd subagent may share the module with its parent.
 
+| Helper                              | Use it for                                                                                        |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `restoreCard(pi, { type, build })`  | State the model saw in tool results (handles, IDs, paths): one hidden card after each compaction. |
+| `treeService(pi, name, api)`        | Offering a service to the session's children and calling the parent's copy.                       |
+| `readEntries(ctx, { type, guard })` | Rebuilding state from the session's custom entries on start, reload, resume and `/tree`.          |
+
 ## Restore card
 
 ```ts
@@ -99,10 +105,3 @@ const everything = readEntries(ctx, { type: LEDGER_TYPE, scope: "all" });
   and review watermarks).
 
 Folding the data stays with the extension.
-
-## Checks
-
-```bash
-npm run check
-npm run test:workspace -- pi-session-state
-```
