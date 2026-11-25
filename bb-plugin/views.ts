@@ -2,6 +2,7 @@
 // and open forms. Shared by the server (sessions list, questions) and the
 // slots. Every value comes from a model's machine-readable fields, never from
 // display text, and every reader tolerates a missing or failed view.
+import { formatSummaryCount } from "pi-surface/format";
 import type {
   DeliverySnapshot,
   ExplorerModel,
@@ -66,6 +67,15 @@ export function summaryModel(
 /** A count's value, or `undefined` when the summary has no such count. */
 export function count(summary: SummaryModel | undefined, key: string): number | undefined {
   return summary?.counts.find((candidate) => candidate.key === key)?.value;
+}
+
+/**
+ * A count as display text, its value then its producer's label (`1 entry`,
+ * `25.3 KiB on this branch`), or `undefined` when the summary has no such count.
+ */
+export function countText(summary: SummaryModel | undefined, key: string): string | undefined {
+  const found = summary?.counts.find((candidate) => candidate.key === key);
+  return found ? formatSummaryCount(found) : undefined;
 }
 
 /** An open questionnaire with the form view that holds it. */

@@ -8,10 +8,12 @@ import {
 import { Icon } from "@/components/ui/icon";
 import type { DeliverySnapshot, ExplorerItem, ExplorerModel } from "../contract.ts";
 import {
+  countText,
   openQuestionnaires,
   profileName,
   runningAgents,
   stashEntries,
+  summaryModel,
   todoProgress,
   viewModel,
   VIEW,
@@ -62,15 +64,19 @@ export function PiSegment({ threadId }: ExperimentalThreadContextSegmentProps) {
 }
 
 export function StashCardRow({ threadId }: ExperimentalThreadContextCardProps) {
-  const total = stashEntries(useSession(threadId));
+  const snapshot = useSession(threadId);
+  const total = stashEntries(snapshot);
   const open = useOpenGitTab();
   if (!total) return null;
+  // The summary's own text for the tooltip: `4 entries · 25.3 KiB on this branch`.
+  const summary = summaryModel(snapshot, VIEW.stashSummary);
+  const title = ["entries", "bytes"].flatMap((key) => countText(summary, key) ?? []).join(" · ");
   return (
     <ThreadContextCardRow
       icon="Paperclip"
       label="Stash"
       trailing={<span className="tabular-nums">{total}</span>}
-      title={`${plural(total, "stash entry", "stash entries")} on this branch`}
+      title={title}
       onClick={() => void open()}
     />
   );
