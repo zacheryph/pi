@@ -8,12 +8,7 @@ import { BlobStore } from "#src/store";
 import { stashSettings } from "#src/config";
 
 const DEFAULTS = stashSettings.defaults();
-import {
-  STASH_PREVIEW_REQUEST,
-  STASH_SNAPSHOT_EVENT,
-  type StashPreviewResult,
-  type StashSnapshotEvent,
-} from "#src/events";
+import { STASH_EXPLORER_VIEW, STASH_SUMMARY_VIEW } from "#src/events";
 import { createEventBus, type EventBus } from "@earendil-works/pi-coding-agent";
 import { provide, service } from "#session-tree";
 import {
@@ -24,6 +19,7 @@ import {
   onViewChanged,
   readView,
   settleViews,
+  type ExplorerModel,
   type SummaryModel,
   type ViewEntry,
 } from "#surface";
@@ -50,7 +46,8 @@ async function fixture(options: {
   /** The session's raw bus, which outlives the extensions' stale `pi.events` after shutdown. */
   eventBus?: EventBus;
 }) {
-  const snapshots: StashSnapshotEvent[] = [];
+  /** Every view change pi-stash announced on this session's bus, oldest first. */
+  const announced: string[] = [];
   let bus: EventBus | undefined;
   const h = await fauxSession({
     cleanup: onTestFinished,
@@ -64,25 +61,24 @@ async function fixture(options: {
       (pi) =>
         stashExtension(pi, { store: options.store, loadConfig: () => stashSettings.defaults() }),
       createCodemodeExtension(),
-      // Another extension on the same session bus, as pi-dashboard listens.
+      // Another extension on the same session bus, as a surface consumer listens.
       (pi) => {
         bus = pi.events;
-        pi.events.on(STASH_SNAPSHOT_EVENT, (data) => snapshots.push(data as StashSnapshotEvent));
+        onViewChanged(pi.events, (id) => announced.push(id));
       },
     ],
   });
-  /** Asks pi-stash for a preview the way pi-dashboard does. */
-  const preview = (request: Record<string, unknown>) => {
-    let result: StashPreviewResult | undefined;
-    bus!.emit(STASH_PREVIEW_REQUEST, {
-      ...request,
-      respond: (value: StashPreviewResult) => {
-        result = value;
-      },
-    });
-    return result;
-  };
-  return { ...h, manager: h.sessionManager, snapshots, preview, bus: bus! };
+  /** This branch's entries as the `stash.explorer` view lists them. */
+  const listed = () => (readView(bus!, STASH_EXPLORER_VIEW) as ExplorerModel).items;
+  /** The `stash.summary` view's counts, by key. */
+  const counts = () =>
+    Object.fromEntries(
+      (readView(bus!, STASH_SUMMARY_VIEW) as SummaryModel).counts.map((count) => [
+        count.key,
+        count.value,
+      ]),
+    );
+  return { ...h, manager: h.sessionManager, announced, listed, counts, bus: bus! };
 }
 
 const request = (requests: FauxRequest[], n: number) => JSON.stringify(requests.at(n));
@@ -320,7 +316,7 @@ describe("pi-stash in a real AgentSession (offline faux provider)", () => {
     });
   }, 20_000);
 
-  it("publishes the branch index to other extensions on start, on each put (codemode included), and on /tree", async () => {
+  it("announces its views and counts the branch index on start, on each put (codemode included), and on /tree", async () => {
     const store = new BlobStore(tempDir("pi-stash-root-"));
     const h = await fixture({
       store,
@@ -332,66 +328,30 @@ describe("pi-stash in a real AgentSession (offline faux provider)", () => {
         fauxAssistantMessage("done"),
       ],
     });
-    const size = { bytes: expect.any(Number), maxBytes: DEFAULTS.maxStoreBytes };
-    expect(h.snapshots).toEqual([{ version: 1, entries: [], store: size }]);
+    const summaries = () => h.announced.filter((id) => id === STASH_SUMMARY_VIEW).length;
+    const empty = { entries: 0, versions: 0, bytes: 0, "store-max-bytes": DEFAULTS.maxStoreBytes };
+    expect(h.counts()).toMatchObject(empty);
+    const started = summaries();
+    expect(started).toBeGreaterThan(0);
     await h.session.prompt("Work");
-    expect(h.snapshots).toHaveLength(3);
-    expect(h.snapshots.at(-1)).toEqual({
-      version: 1,
-      entries: [
-        {
-          handle: expect.stringMatching(/^stash:notes@[0-9a-f]{12}$/),
-          name: "notes",
-          hash: expect.stringMatching(/^[0-9a-f]{64}$/),
-          bytes: 10,
-          lines: 2,
-          mime: "text/plain",
-          createdAt: expect.any(Number),
-          createdBy: h.manager.getSessionId(),
-          source: "content",
-          versions: 2,
-        },
-      ],
-      store: { bytes: 14, maxBytes: DEFAULTS.maxStoreBytes },
+    expect(summaries()).toBe(started + 2);
+    expect(h.counts()).toEqual({
+      entries: 1,
+      versions: 2,
+      bytes: 10,
+      "store-bytes": 14,
+      "store-max-bytes": DEFAULTS.maxStoreBytes,
     });
-    expect(JSON.stringify(h.snapshots)).not.toContain("lines\\n");
+    expect(h.listed().map((item) => item.id)).toEqual([
+      expect.stringMatching(/^stash:notes@[0-9a-f]{12}$/),
+    ]);
 
     const first = h.manager
       .getBranch()
       .find((entry) => entry.type === "message" && entry.message.role === "user")!;
     await h.session.navigateTree(first.id, { summarize: false });
-    expect(h.snapshots.at(-1)).toEqual({ version: 1, entries: [], store: size });
-  }, 20_000);
-
-  it("answers preview requests for this branch's entries only, bounded", async () => {
-    const store = new BlobStore(tempDir("pi-stash-root-"));
-    const content =
-      Array.from({ length: 300 }, (_, index) => `line ${index + 1}`).join("\n") + "\n";
-    const h = await fixture({
-      store,
-      responses: [call("stash_put", { name: "log", content }), fauxAssistantMessage("done")],
-    });
-    await h.session.prompt("Work");
-    const head = h.preview({ name: "log", maxLines: 3 });
-    expect(head).toEqual({
-      ok: true,
-      handle: expect.stringMatching(/^stash:log@[0-9a-f]{12}$/),
-      lines: ["line 1", "line 2", "line 3"],
-      total: 300,
-      complete: false,
-    });
-    const capped = h.preview({ name: "log", maxLines: 10_000 });
-    expect(capped?.ok && capped.lines).toHaveLength(200);
-    expect(h.preview({ name: "missing" })).toEqual({
-      ok: false,
-      error: 'No stash entry named "missing" on this branch.',
-    });
-    const handle = head?.ok ? head.handle : "";
-    expect(h.preview({ name: handle })).toEqual({ ok: false, error: "Invalid stash entry name." });
-    expect(h.preview({ name: "../../etc/passwd" })).toEqual({
-      ok: false,
-      error: "Invalid stash entry name.",
-    });
+    expect(summaries()).toBe(started + 3);
+    expect(h.counts()).toMatchObject(empty);
   }, 20_000);
 
   it("defines its actions and explorer view on its own session's bus until the session shuts down", async () => {
@@ -411,10 +371,7 @@ describe("pi-stash in a real AgentSession (offline faux provider)", () => {
     await h.session.prompt("Work");
     expect(announced).toContain("stash.explorer");
     expect(announced).toContain("stash.summary");
-    expect(listActions(bus)).toEqual([
-      { id: "stash.inspect", title: expect.any(String) },
-      { id: "stash.preview", title: expect.any(String) },
-    ]);
+    expect(listActions(bus)).toEqual([{ id: "stash.inspect", title: expect.any(String) }]);
     const handle = handleFor(currentEntries(replayStashIndex({ sessionManager: h.manager }))[0]);
     await expect(dispatchAction(bus, "stash.inspect", { id: handle })).resolves.toContainEqual({
       lines: ["one", "two"],
@@ -424,23 +381,6 @@ describe("pi-stash in a real AgentSession (offline faux provider)", () => {
     await expect(dispatchAction(other.bus, "stash.inspect", { id: handle })).rejects.toThrow(
       `No stash entry ${handle} on this branch.`,
     );
-    // stash.preview answers exactly what the stash:preview request does, minus `ok`.
-    const { ok: _ok, ...head } = h.preview({ name: "log" }) as Extract<
-      StashPreviewResult,
-      { ok: true }
-    >;
-    await expect(dispatchAction(bus, "stash.preview", { name: "log" })).resolves.toEqual(head);
-    await expect(
-      dispatchAction(bus, "stash.preview", { name: "log", maxLines: 1 }),
-    ).resolves.toEqual({ ...head, lines: ["one"], complete: false });
-    await expect(dispatchAction(bus, "stash.preview", { name: "gone" })).rejects.toThrow(
-      'No stash entry named "gone" on this branch.',
-    );
-    await expect(dispatchAction(bus, "stash.preview", { name: handle })).rejects.toThrow(
-      "Invalid stash entry name.",
-    );
-    await expect(dispatchAction(bus, "stash.preview")).rejects.toThrow("Invalid stash entry name.");
-
     // stash.explorer is the /stash model, plain JSON, loading details through stash.inspect.
     expect(listViews(bus)).toEqual([
       { id: "stash.explorer", kind: "explorer", title: "Stash" },
@@ -461,7 +401,7 @@ describe("pi-stash in a real AgentSession (offline faux provider)", () => {
     await expect(dispatchAction(bus, "stash.inspect", { id: handle })).rejects.toThrow(
       'Unknown action "stash.inspect".',
     );
-    expect(listActions(other.bus)).toHaveLength(2);
+    expect(listActions(other.bus)).toHaveLength(1);
     expect(listViews(other.bus)).toHaveLength(2);
   }, 20_000);
 
@@ -586,12 +526,10 @@ describe("subagent entries reach ancestors (pi-session-tree)", () => {
     expect(own.via).toBeUndefined();
     for (const holder of [child, root]) {
       expect(records(holder.manager)).toEqual([{ ...own, via: "adopt" }]);
-      expect(holder.snapshots.at(-1)?.entries).toEqual([
+      expect(holder.listed()).toEqual([
         expect.objectContaining({
-          name: "findings",
-          createdBy: grandchild.manager.getSessionId(),
-          agent: "c07e0000-1111-2222",
-          via: "adopt",
+          id: expect.stringMatching(/^stash:findings@/),
+          badge: { text: expect.stringMatching(/^↑ agent c07e0000 · /) },
         }),
       ]);
     }
@@ -676,7 +614,7 @@ describe("subagent entries reach ancestors (pi-session-tree)", () => {
     await parent.session.navigateTree(beforeSpawn, { summarize: false });
 
     expect(names(parent.manager)).toEqual([]);
-    expect(parent.snapshots.at(-1)?.entries).toEqual([]);
+    expect(parent.listed()).toEqual([]);
     expect(names(child.manager)).toEqual(["found"]);
   }, 20_000);
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { isViewModel, settleViews, type SummaryModel, type ViewEntry } from "#surface";
-import type { GitSnapshotEvent, GitSnapshotPr, GitSnapshotWorktree } from "#src/events";
+import type { GitSnapshot, GitSnapshotPr, GitSnapshotWorktree } from "#src/snapshot";
 import { gitSummaryModel } from "#src/summary";
 import { explorerView, LIST_LIMIT, listText, prExplorerView, prListText } from "#src/view";
 
@@ -38,7 +38,7 @@ const counts = (model: SummaryModel) =>
 
 describe("gitSummaryModel", () => {
   it("reads zeros for a session with nothing recorded", () => {
-    const model = gitSummaryModel({ version: 1, worktrees: [], found: [], prs: [] });
+    const model = gitSummaryModel({ worktrees: [], found: [], prs: [] });
     expect(isViewModel("summary", model)).toBe(true);
     expect(counts(model)).toEqual({
       worktrees: 0,
@@ -56,8 +56,7 @@ describe("gitSummaryModel", () => {
 
   it("counts every record, past the rows any listing shows", () => {
     const many = LIST_LIMIT + 5;
-    const snapshot: GitSnapshotEvent = {
-      version: 1,
+    const snapshot: GitSnapshot = {
       worktrees: [
         ...Array.from({ length: many }, (_, i) => worktree({ path: `/w/${i}` })),
         worktree({
@@ -113,7 +112,6 @@ describe("gitSummaryModel", () => {
 
   it("marks only the watches as process-bound: settled, records stay and watching reads 0", () => {
     const model = gitSummaryModel({
-      version: 1,
       worktrees: [worktree()],
       found: [],
       prs: [pr(1, { watch: { until: "settled", since: NOW, deadline: NOW + 60_000 } }), pr(2)],

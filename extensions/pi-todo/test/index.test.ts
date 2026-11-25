@@ -16,9 +16,9 @@ import {
   readView,
   type Block,
   type ExplorerModel,
+  type SummaryModel,
 } from "#surface";
 import { todoWidgetModel } from "#src/ui/render";
-import { TODO_SNAPSHOT_EVENT, type TodoSnapshotEvent } from "#src/events";
 import { harness, started, T0 } from "#test/harness";
 import { plainTheme, ansiTheme, stripAnsi, withSlot } from "#test-helpers";
 
@@ -1377,58 +1377,15 @@ it("expanded results list only the tasks a call changed, never the widget", asyn
   }
 });
 
-describe("snapshot events", () => {
-  const published = (env: Awaited<ReturnType<typeof started>>) =>
-    env.pi.events.emit.mock.calls
-      .filter(([channel]) => channel === TODO_SNAPSHOT_EVENT)
-      .map(([, data]) => data as TodoSnapshotEvent);
-
-  it("publishes the task list on start, on each change, and on review, but not for rejected or no-op requests", async () => {
+describe("view announcements", () => {
+  it("announces its views on each change, review and tree navigation, but not for rejected or no-op requests", async () => {
     const env = await started();
-    expect(published(env)).toEqual([{ version: 1, revision: 0, tasks: [] }]);
+    const announced: string[] = [];
+    onViewChanged(env.pi.events, (id) => announced.push(id));
+    await env.execute({ action: "upsert", tasks: [{ key: "a", subject: "A", message: "New" }] });
+    expect(announced).toEqual(["todo.widget", "todo.explorer", "todo.summary"]);
 
-    await env.execute({
-      action: "upsert",
-      tasks: [
-        { key: "a", subject: "A" },
-        { key: "b", subject: "B", description: "after a", dependsOn: ["a"] },
-      ],
-    });
-    env.clock.now += 1_000;
-    await env.execute({
-      action: "upsert",
-      tasks: [{ key: "a", status: "completed", message: "done" }],
-    });
-    expect(published(env).at(-1)).toEqual({
-      version: 1,
-      revision: 2,
-      tasks: [
-        {
-          key: "a",
-          subject: "A",
-          status: "completed",
-          blocked: false,
-          createdAt: T0,
-          unreviewed: 1,
-          updates: [
-            { revision: 2, at: T0 + 1_000, status: "completed", from: "pending", message: "done" },
-          ],
-        },
-        {
-          key: "b",
-          subject: "B",
-          description: "after a",
-          status: "pending",
-          dependsOn: ["a"],
-          blocked: false,
-          createdAt: T0,
-          unreviewed: 0,
-          updates: [],
-        },
-      ],
-    });
-
-    const count = published(env).length;
+    announced.length = 0;
     await env.execute({ action: "list" });
     await expect(
       env.execute({
@@ -1436,66 +1393,17 @@ describe("snapshot events", () => {
         tasks: [{ key: "c", subject: "C", dependsOn: ["missing"] }],
       }),
     ).rejects.toThrow();
-    expect(published(env)).toHaveLength(count);
+    expect(announced).toEqual([]);
 
     await env.command("todo:review", "all");
-    expect(published(env)).toHaveLength(count + 1);
-    expect(published(env).at(-1)?.tasks[0]?.unreviewed).toBe(0);
-  });
-
-  it("marks tasks waiting on unfinished prerequisites as blocked", async () => {
-    const env = await started();
-    await env.execute({
-      action: "upsert",
-      tasks: [
-        { key: "a", subject: "A" },
-        { key: "b", subject: "B", dependsOn: ["a"] },
-      ],
-    });
-    expect(
-      published(env)
-        .at(-1)
-        ?.tasks.map((task) => [task.key, task.blocked]),
-    ).toEqual([
-      ["a", false],
-      ["b", true],
-    ]);
-  });
-
-  it("emits independent copies that listeners cannot use to change tasks", async () => {
-    const env = await started();
-    await env.execute(add("a"));
-    const event = published(env).at(-1)!;
-    event.tasks[0]!.subject = "changed by a listener";
-    event.tasks[0]!.updates.push({ revision: 99, at: 0, status: "completed" });
-    const listed = JSON.parse(
-      ((await env.execute({ action: "list", key: "a" })).content[0] as { text: string }).text,
-    );
-    expect(listed.tasks[0]).toMatchObject({ subject: "Task a" });
-    expect(listed.tasks[0].updates ?? []).toEqual([]);
-  });
-
-  it("republishes the branch's tasks after tree navigation", async () => {
-    const env = await started();
-    await env.execute(add("a"));
-    const count = published(env).length;
+    expect(announced).toContain("todo.summary");
+    announced.length = 0;
     await env.emit("session_tree");
-    expect(published(env)).toHaveLength(count + 1);
-    expect(
-      published(env)
-        .at(-1)
-        ?.tasks.map((task) => task.key),
-    ).toEqual(["a"]);
+    expect(announced).toContain("todo.summary");
   });
 });
 
 describe("views and actions on the session bus", () => {
-  const lastSnapshot = (env: Awaited<ReturnType<typeof started>>) =>
-    env.pi.events.emit.mock.calls
-      .filter(([channel]) => channel === TODO_SNAPSHOT_EVENT)
-      .map(([, data]) => data as TodoSnapshotEvent)
-      .at(-1)!;
-
   it("defines todo.widget, todo.explorer, todo.summary and the todo actions from start to shutdown", async () => {
     const env = await started({ mode: "tui", hasUI: true });
     const bus = env.pi.events;
@@ -1504,11 +1412,7 @@ describe("views and actions on the session bus", () => {
       { id: "todo.summary", kind: "summary", title: "Tasks" },
       { id: "todo.widget", kind: "widget", title: "Tasks" },
     ]);
-    expect(listActions(bus).map((action) => action.id)).toEqual([
-      "todo.history",
-      "todo.inspect",
-      "todo.review",
-    ]);
+    expect(listActions(bus).map((action) => action.id)).toEqual(["todo.inspect", "todo.review"]);
     // Like the terminal widget, the view has nothing to show without tasks.
     expect(readView(bus, "todo.widget")).toBeUndefined();
 
@@ -1592,31 +1496,16 @@ describe("views and actions on the session bus", () => {
     await expect(dispatchAction(bus, "todo.review", { ids: ["a"] })).resolves.toEqual({
       reviewed: 1,
     });
-    expect(lastSnapshot(env).tasks.map((task) => task.unreviewed)).toEqual([0, 1]);
+    const unreviewed = () =>
+      (readView(bus, "todo.summary") as SummaryModel).counts.find(
+        (count) => count.key === "unreviewed",
+      )?.value;
+    expect(unreviewed()).toBe(1);
     await expect(dispatchAction(bus, "todo.review")).resolves.toEqual({ reviewed: 1 });
     await expect(dispatchAction(bus, "todo.review")).resolves.toEqual({ reviewed: 0 });
     expect(env.reviews()).toHaveLength(2);
     await expect(dispatchAction(bus, "todo.review", { revisions: [] })).rejects.toThrow(
       "revisions must map task keys to revisions",
-    );
-  });
-
-  it("todo.history returns the task's history as the snapshot event carries it", async () => {
-    const env = await started();
-    await env.execute({ action: "upsert", tasks: [{ key: "a", subject: "A" }] });
-    await env.execute({
-      action: "upsert",
-      tasks: [{ key: "a", status: "in_progress", message: "Go" }],
-    });
-    const task = lastSnapshot(env).tasks[0];
-    expect(task.updates).toHaveLength(1);
-    await expect(dispatchAction(env.pi.events, "todo.history", { key: "a" })).resolves.toEqual({
-      key: "a",
-      createdAt: task.createdAt,
-      updates: task.updates,
-    });
-    await expect(dispatchAction(env.pi.events, "todo.history", { key: "zz" })).rejects.toThrow(
-      'No task "zz" on this branch.',
     );
   });
 });

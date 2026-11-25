@@ -1,7 +1,7 @@
 /**
  * The `subagent.summary` view: the branch's subagents counted by state, and the main agent's
- * profile, for badges, headers and session lists. Built from the same branch snapshot as
- * `subagent:snapshot` and the `subagent.explorer` view, never from the widget's rows.
+ * profile, for badges, headers and session lists. Built from the same branch snapshot as the
+ * `subagent.explorer` view, never from the widget's rows.
  */
 import type { SummaryCount, SummaryItem, SummaryModel, SummaryProfile } from "#surface";
 import type { SubagentSnapshot } from "#src/observation/snapshot";

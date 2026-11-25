@@ -231,8 +231,7 @@ subagent_start({
     subagents' writes elsewhere do not make it stale.
 - **Attributed and flagged.** Updates record the subagent's agent id (`agent a3f2b1c4`
   in history), and its messages are flagged for review like any model message. Your
-  widget and browser show `→ agent a3f2b1c4` on handed-over tasks; `todo:snapshot`
-  tasks carry `claimedBy`.
+  widget and browser show `→ agent a3f2b1c4` on handed-over tasks.
 - **Released when the agent ends.** On `subagent:completed`, `failed`, `resumed` or
   `subagent:session:disposed`, the claim is released and tasks it left `in_progress` get a
   flagged message ("agent a3f2b1c4 ended (failed) with this task in progress"). A
@@ -368,20 +367,11 @@ the only automatic effect of an agent ending is releasing its claim. No subagent
 spawning or process-global task store. Matching
 UX and explicit model control keep extensions composable and independently loadable.
 
-Other extensions read tasks without coupling to the journal format: on session
-start, branch changes, every plan change, and every review, pi-todo emits
-`todo:snapshot` on the session's `pi.events` bus (`src/events.ts`). The payload
-is a fresh copy: `{ version: 1, revision, tasks }`, where each task adds `blocked`,
-`createdAt`, its bounded `updates` history, an `unreviewed` message count, and
-`claimedBy` (the subagent's agent id) when the task is handed over.
-Each subagent has its own bus, so listeners see only their own session's tasks.
-pi-presentation projects it for bb; pi-dashboard reads the `todo.summary` and
-`todo.explorer` views instead.
-
-From session start to shutdown pi-todo also defines views and actions on the
-same bus (see [`pi-surface`](../../packages/pi-surface/README.md)), so a remote
-surface reached through `pi-presentation` can draw the widget and the browser
-and act on them:
+Other extensions and remote surfaces read tasks without coupling to the journal
+format: from session start to shutdown pi-todo defines views and actions on the
+session's bus (see [`pi-surface`](../../packages/pi-surface/README.md)), so
+pi-dashboard and bb draw the widget, the browser and the counts and act on them.
+Each subagent has its own bus, so a consumer sees only its own session's tasks.
 
 | Id              | Kind     | What it does                                                                                                                                                                                        |
 | --------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -390,7 +380,6 @@ and act on them:
 | `todo.summary`  | summary  | This branch's task counts and the task in progress as a `SummaryModel`, whether or not the widget shows (see below)                                                                                 |
 | `todo.inspect`  | action   | `{ id, reviewed? }` resolves to the task's detail blocks; `reviewed` (key → `{ revision, at }`) is the review state a list showed, so messages it marked new stay marked after opening reviews them |
 | `todo.review`   | action   | `{ ids?, revisions?, branch? }` marks messages reviewed and resolves to `{ reviewed }`; see `src/events.ts`. A `branch` from a list taken before a session or branch change is refused              |
-| `todo.history`  | action   | `{ key }` resolves to `{ key, createdAt?, updates }`, the task's history as `todo:snapshot` carries it                                                                                              |
 
 The terminal draws the same models: the widget is `todo.widget`'s model with the
 terminal's row budgets, and `/todo` opens the `todo.explorer` model, loading

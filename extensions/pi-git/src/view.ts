@@ -7,7 +7,7 @@
 
 import { basename } from "node:path";
 import type { Block, ExplorerItem, ExplorerModel, Tone } from "#surface";
-import type { GitSnapshotEvent, GitSnapshotPr, GitSnapshotWorktree } from "#src/events";
+import type { GitSnapshot, GitSnapshotPr, GitSnapshotWorktree } from "#src/snapshot";
 import { describePr, prLabel, type PrReview, type PrState } from "#src/prs";
 import { describeWatch } from "#src/watch";
 import type { FoundWorktree } from "#src/worktrees";
@@ -35,7 +35,7 @@ function headline(worktree: GitSnapshotWorktree): string {
 }
 
 /** The text `git_worktree_list` returns and non-interactive `/git:worktrees` shows. */
-export function listText(snapshot: GitSnapshotEvent, includeRemoved: boolean): string {
+export function listText(snapshot: GitSnapshot, includeRemoved: boolean): string {
   const shown = snapshot.worktrees.filter((w) => includeRemoved || w.state !== "removed");
   const lines: string[] = [];
   if (shown.length === 0) lines.push("No worktrees in this session's ledger.");
@@ -99,7 +99,7 @@ function detail(worktree: GitSnapshotWorktree): Block[] {
   ];
 }
 
-export function explorerView(snapshot: GitSnapshotEvent): ExplorerModel {
+export function explorerView(snapshot: GitSnapshot): ExplorerModel {
   const items: ExplorerItem[] = snapshot.worktrees.map((worktree) => ({
     id: worktree.path,
     label: [

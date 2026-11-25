@@ -151,7 +151,7 @@ opens one item in the session's work host (`packages/pi-work`; owner `pi-git`,
 kind `pr`, label `PR 12 CI`), reads the pull request every
 `watchIntervalSeconds` with the reader `git_pr_status` uses, and compares each
 reading with the one before it. Every reading also goes into the ledger and the
-`git:snapshot`.
+views below.
 
 - `until`: `"settled"` (default) ends the watch when checks finish on the head;
   `"merged"` keeps it open through every report until the pull request is merged
@@ -263,21 +263,12 @@ command result arrive as displayed messages instead of notifications, and the
 host's own dialogs pick and confirm a worktree to remove. These messages are for
 you: they stay out of the model's context and never start a turn.
 
-## Events
+## Views
 
-`git:snapshot` on the session's `pi.events` bus:
-`{ version: 1, worktrees, found, prs }`. A pull request `git_pr_watch` waits on
-carries `watch: { until, since, deadline }`. `worktrees` are this session's
-records, newest first, each with its last measured `status` (`dirty`,
-`detached`, `unpushed`, `merged`) or `error`. `found` are worktrees under the
-root the ledger does not name. `prs` are the pull request records, most
-recently touched first. Emitted on session start, `/tree`, every ledger change,
-and each status refresh.
-
-From session start to shutdown pi-git also defines three views on the same bus
-(see [`pi-surface`](../../packages/pi-surface/README.md)), so a remote surface
-reached through `pi-presentation` draws what the terminal's explorers show, and
-the totals for a card or a session list:
+From session start to shutdown pi-git defines three views on the session's
+`pi.events` bus (see [`pi-surface`](../../packages/pi-surface/README.md)), so
+pi-dashboard and bb draw what the terminal's explorers show, and the totals for
+a card or a session list:
 
 | Id              | Kind     | What it shows                                                                                    |
 | --------------- | -------- | ------------------------------------------------------------------------------------------------ |
@@ -286,10 +277,13 @@ the totals for a card or a session list:
 | `git.summary`   | summary  | This session's worktree and pull request totals as a `SummaryModel`                              |
 
 Items carry their details inline; every record is an item, by its path or
-pull request key, however many there are. All three views announce a change
-whenever `git:snapshot` is emitted.
+pull request key, however many there are. A worktree's item shows its last
+measured status (uncommitted changes, detached, unpushed commits, merged) or
+why it could not be measured; a pull request `git_pr_watch` waits on shows the
+watch. All three views announce a change on session start, `/tree`, every
+ledger change and each status refresh.
 
-`git.summary` counts from the same snapshot, never from a listing's rows (tool
+`git.summary` counts from the same state as the explorers, never from a listing's rows (tool
 output and notifications stop at 50). Every count is present, zero included, so
 a session with nothing recorded reads zeros where one without pi-git has no view:
 

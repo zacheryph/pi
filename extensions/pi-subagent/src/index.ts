@@ -52,7 +52,6 @@ import { SubagentEventsObserver } from "#src/observation/subagent-events-observe
 import {
   buildSubagentSnapshot,
   SUBAGENT_EXPLORER_VIEW,
-  SUBAGENT_SNAPSHOT,
   SUBAGENT_SUMMARY_VIEW,
   SUBAGENT_WIDGET_VIEW,
 } from "#src/observation/snapshot";
@@ -239,7 +238,6 @@ export default function (pi: ExtensionAPI) {
   const views = viewRegistry(pi.events);
   const publishSnapshot = () => {
     if (!runtime.currentCtx) return;
-    pi.events.emit(SUBAGENT_SNAPSHOT, branchSnapshot());
     views.changed(SUBAGENT_WIDGET_VIEW);
     views.changed(SUBAGENT_EXPLORER_VIEW);
     views.changed(SUBAGENT_SUMMARY_VIEW);

@@ -95,18 +95,15 @@ describe("OpenQuestionnaires", () => {
     expect(open.size).toBe(0);
   });
 
-  it("checks an outside answer all or nothing and echoes the request id", () => {
+  it("checks an outside answer all or nothing", () => {
     const { open } = owner();
     const record = open.open("a", questions);
     expect(open.answer(null)).toMatchObject({ ok: false, code: "invalid_payload" });
-    expect(
-      open.answer({ toolCallId: "a", requestId: "r", answers: [{ questionIndex: 0 }] }),
-    ).toEqual({
+    expect(open.answer({ toolCallId: "a", answers: [{ questionIndex: 0 }] })).toEqual({
       ok: false,
       code: "invalid_answer",
       reason: "Question 0 has no answer.",
       toolCallId: "a",
-      requestId: "r",
     });
     expect(record.outcome).toBeUndefined();
     expect(

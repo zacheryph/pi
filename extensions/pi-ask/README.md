@@ -128,8 +128,9 @@ first, under the asking tool call's id. Each entry carries two action references
 | `ask.cancel` | `{ id }`                                                                                                   | `{ id, status: "cancelled" }` |
 
 Both refuse anything else in the arguments. The answer is checked against pi-surface's
-`isFormAnswer` and then against the questionnaire, all or nothing, as `ask:answer` is
-(see [Events](#events)). A refused answer rejects the dispatch with
+`isFormAnswer` and then against the questionnaire, all or nothing: every question answered
+once, a single-select with exactly one choice or text. The first answer wins. A refused
+answer rejects the dispatch with
 `Not accepted (<code>): <reason>`. An `invalid_answer` leaves the questionnaire waiting;
 `closed` means it was already answered or cancelled (a duplicate or stale answer), and
 `not_found` that no questionnaire with that id is open for answers from outside.
@@ -137,7 +138,7 @@ Both refuse anything else in the arguments. The answer is checked against pi-sur
 Where it is published depends on the session:
 
 - **Terminal.** The inline window opens and the same record is published, so a live
-  consumer (such as the dashboard) can answer it as well. When the consumer answers first,
+  consumer (pi-dashboard) can answer it as well. When the consumer answers first,
   the window closes; when you answer in the terminal, the form withdraws it.
 - **RPC with a form consumer.** A consumer advertises with pi-surface's
   `advertiseFormConsumer` once it can render and answer forms. pi-ask then publishes the
@@ -147,7 +148,8 @@ Where it is published depends on the session:
   dialog to show (its context is gone), the questions are withdrawn and the model is told
   so.
 - **RPC without one.** Pi's own dialogs, exactly as before: nothing is published and nothing
-  outside the dialog can answer. This is the route under bb until its plugin advertises.
+  outside the dialog can answer. pi-bb advertises while its bb plugin is connected, so this
+  is the route of a plain RPC host.
 
 A form holds at most `MAX_FORM_QUESTIONNAIRES` (8) questionnaires within pi-surface's text
 bounds and its 256 KiB view limit. A question that would not fit is refused before anything
@@ -210,30 +212,6 @@ pi-ask cannot safely identify it to dismiss it and will not clear other notifica
 
 cmux may suppress native banners while its target pane is focused; its own
 notification settings control this behavior.
-
-## Events
-
-pi-ask publishes on the session's `pi.events` bus, keyed by the asking tool
-call's id (`src/events.ts`):
-
-| Channel             | Direction | Payload                                                                                                             |
-| ------------------- | --------- | ------------------------------------------------------------------------------------------------------------------- |
-| `ask:opened`        | out       | `{ toolCallId, questions: [{ question, header, multiSelect, options: [{ label, description }] }] }`                 |
-| `ask:closed`        | out       | `{ toolCallId, outcome: "answered" \| "cancelled" \| "error" }`                                                     |
-| `ask:answer`        | in        | `{ toolCallId, requestId?, answers?: [{ questionIndex, optionIndexes?, text?, notes? }], globalNote?, cancel? }`    |
-| `ask:answer-result` | out       | `{ ok, code?: "not_found" \| "closed" \| "invalid_payload" \| "invalid_answer", reason?, requestId?, toolCallId? }` |
-
-`ask:opened` and `ask:closed` go out for every published questionnaire (the terminal's and
-the RPC form route's), never for Pi's own dialogs. `ask:answer` answers a published
-questionnaire, checked all or nothing: every question answered once, a single-select with
-exactly one choice or text. The first answer wins. These events remain while
-pi-presentation reads them for bb; pi-dashboard uses the form view and its actions.
-
-From session start to shutdown pi-ask also defines the `ask.answer` action on
-the same bus (see [`pi-surface`](../../packages/pi-surface/README.md)). It takes
-the `ask:answer` payload and resolves to the `ask:answer-result` reply, refusals
-included, to its caller only. pi-presentation's `answer` request goes through it;
-pi-dashboard answers through the form's `ask.submit` and `ask.cancel`.
 
 ## Configuration
 

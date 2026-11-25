@@ -34,7 +34,7 @@ export const staleRunningCard = {
             questions: [
               { question: "Retry on 429?", options: [{ label: "Yes" }, { label: "No" }] },
             ],
-            submit: { action: "ask.answer", args: { id: "toolu_01" } },
+            submit: { action: "ask.submit", args: { id: "toolu_01" } },
             cancel: { action: "ask.cancel", args: { id: "toolu_01" } },
           },
         ],

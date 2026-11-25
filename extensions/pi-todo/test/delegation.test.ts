@@ -1,10 +1,11 @@
 import { createEventBus, SessionManager } from "@earendil-works/pi-coding-agent";
+import { readView, type ExplorerModel } from "#surface";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { messageText, resetSessionTree } from "#test-helpers";
 import { harness } from "#test/harness";
 import { TODO_CLAIMS_TYPE } from "#src/claims";
 import { type TodoConfig } from "#src/config";
-import { TODO_SNAPSHOT_EVENT, type TodoSnapshotEvent } from "#src/events";
+import { TODO_EXPLORER_VIEW } from "#src/events";
 import { replayTodoSession } from "#src/replay";
 
 afterEach(resetSessionTree);
@@ -15,10 +16,6 @@ function session(
   manager = SessionManager.inMemory("/todo-delegation"),
 ) {
   const bus = createEventBus();
-  const snapshots: TodoSnapshotEvent[] = [];
-  bus.on(TODO_SNAPSHOT_EVENT, (data) => {
-    snapshots.push(data as TodoSnapshotEvent);
-  });
   const env = harness({ session: manager, config, events: bus });
   env.clock.now = 1_000;
   const tasks = async () =>
@@ -41,7 +38,9 @@ function session(
     sync,
     see: env.see,
     turnEnd: env.turnEnd,
-    snapshots,
+    /** One task as this session's `todo.explorer` view lists it. */
+    listed: (key: string) =>
+      (readView(bus, TODO_EXPLORER_VIEW) as ExplorerModel).items.find((item) => item.id === key),
   };
 }
 type Session = ReturnType<typeof session>;
@@ -248,11 +247,11 @@ describe("handing tasks to a subagent", () => {
     expect(note).not.toContain('"key":"c"');
     // Written once into the child's transcript.
     expect(await child.sync()).toBeUndefined();
-    expect(parent.snapshots.at(-1)?.tasks.map((task) => [task.key, task.claimedBy])).toEqual([
-      ["a", "a3f2b1c4-0000-0000"],
-      ["b", "a3f2b1c4-0000-0000"],
-      ["c", undefined],
-      ["d", undefined],
+    expect(["a", "b", "c", "d"].map((key) => parent.listed(key)?.label)).toEqual([
+      "a: Audit auth → agent a3f2b1c4",
+      "b: Write tests → agent a3f2b1c4",
+      "c: Ship",
+      "d: Done already",
     ]);
   });
 
@@ -282,9 +281,9 @@ describe("handing tasks to a subagent", () => {
       agent: "a3f2b1c4-0000-0000",
     });
     expect(plan.claims.get("a3f2b1c4-0000-0000")?.keys).toEqual(["a", "a-followup"]);
-    expect(parent.snapshots.at(-1)?.tasks.find((task) => task.key === "a")).toMatchObject({
-      unreviewed: 1,
-      claimedBy: "a3f2b1c4-0000-0000",
+    expect(parent.listed("a")).toMatchObject({
+      label: "a: Audit auth → agent a3f2b1c4",
+      marked: true,
     });
     expect((await child.tasks()).map((task) => task.key)).toEqual(["a", "a-followup"]);
     // The parent's next run is told what the child changed; nothing was written to the child's
@@ -393,9 +392,9 @@ describe("handing tasks to a subagent", () => {
       message: "Prerequisite added by a subagent: db-migration",
       agent: "a3f2b1c4-0000-0000",
     });
-    expect(parent.snapshots.at(-1)?.tasks.find((task) => task.key === "c")).toMatchObject({
-      unreviewed: 1,
-      blocked: true,
+    expect(parent.listed("c")).toMatchObject({
+      marked: true,
+      badge: { text: "○ blocked" },
     });
     await expect(
       child.execute({ action: "upsert", tasks: [{ key: "c", dependsOn: [] }] }),
@@ -646,9 +645,7 @@ describe("handing tasks to a subagent", () => {
     parent.manager.branch(claimedBranch);
     await parent.emit("session_tree");
     expect(replayTodoSession({ sessionManager: parent.manager }).claims.size).toBe(0);
-    expect(
-      parent.snapshots.at(-1)?.tasks.find((task) => task.key === "a")?.claimedBy,
-    ).toBeUndefined();
+    expect(parent.listed("a")?.label).not.toContain("→");
     // The release must not make an old agent eligible to reclaim this branch.
     parent.bus.emit("subagent:resuming", { id: oldAgent });
     expect(replayTodoSession({ sessionManager: parent.manager }).claims.size).toBe(0);

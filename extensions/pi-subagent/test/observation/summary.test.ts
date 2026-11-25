@@ -22,7 +22,6 @@ function agent(id: string, state: RosterState): SubagentSnapshot["agents"][numbe
 }
 
 const snapshot = (...states: RosterState[]): SubagentSnapshot => ({
-  version: 1,
   agents: states.map((state, index) => agent(`a${index}`, state)),
 });
 const counts = (model: SummaryModel) =>
