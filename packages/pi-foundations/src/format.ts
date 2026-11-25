@@ -1,4 +1,4 @@
-import { formatBytes as formatSize } from "#surface/format";
+import { formatBytes as formatSize } from "#surface";
 
 /** Collapse whitespace and trim plain data; optional cap includes the ellipsis. */
 export function oneLine(text: string, max?: number): string {

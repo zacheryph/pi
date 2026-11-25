@@ -20,7 +20,7 @@
     "#test/*": "./test/*.ts",
     "#test-helpers": "pi-test-helpers",
     "#ui/*": "pi-ui/*",
-    "#surface/*": "pi-surface/*"
+    "#surface": "pi-surface"
   },
   "exports": {
     "./*": "./src/*.ts"
