@@ -11,6 +11,40 @@ if it does.
 import { actionRegistry, type ExplorerModel } from "#surface";
 ```
 
+## At a glance
+
+An extension **describes** what it wants shown and **names** what it can do; every
+renderer of the session draws the same description and calls actions by name.
+
+```ts
+// In an extension: offer a view and an action on the session's bus.
+const views = viewRegistry(pi.events);
+const actions = actionRegistry(pi.events);
+pi.on("session_start", () => {
+  views.define({ id: "todo.widget", kind: "widget", title: "Tasks", model: () => widgetModel() });
+  actions.define({ id: "todo.inspect", title: "Task details", parse, handler });
+});
+views.changed("todo.widget"); // after every change the model would show
+
+// In a remote renderer: read everything, redraw on change, run what the views reference.
+const snapshot = collectViews(pi.events);
+onViewChanged(pi.events, () => redraw());
+await dispatchAction(pi.events, "todo.inspect", { id: "backoff" });
+```
+
+```mermaid
+flowchart LR
+  ext["Extensions<br/>viewRegistry · actionRegistry"] -- "views (JSON)<br/>widget · explorer · detail · session · summary · form" --> bus(("Session bus<br/>pi.events"))
+  ext -- "the same models, directly" --> tui["pi-ui<br/>terminal"]
+  bus -- "collectDelivery<br/>(one snapshot per update)" --> dash["pi-dashboard hub"]
+  bus -- collectDelivery --> bb["pi-bb → bb plugin"]
+  tui & dash & bb -- "dispatchAction(id, args)" --> bus
+```
+
+Every model is plain JSON with no functions; behaviour is an `ActionRef`
+(`{ action, args? }`) the renderer dispatches. That is what lets the
+dashboard's hub and the bb plugin, which run outside Pi, draw the same views.
+
 ## The rule
 
 A view model is JSON; behaviour is an action reference. A model must survive

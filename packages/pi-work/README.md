@@ -6,12 +6,44 @@ to its parent) is an _item_ in the session's **work host**. Producers open items
 and complete them with a message; the host persists the items, writes the messages
 into the session's transcript and wakes the session when it is idle.
 
-pi-job and pi-subagent are producers. Each job or watch is an item, and a reload
-re-adopts it. Each subagent run a session asks for is an item in that session's
-host, completed by the run's completion message. Each subagent child has a managed
-host of its own, provided by pi-subagent, so a child that ends its turn with work open
-is waiting, not done. The roadmap in `docs/roadmaps/subagent-work-lifecycle.md` ports
-pi-ask onto it.
+Each job or watch is an item, and a reload re-adopts it. Each subagent run a
+session asks for is an item in that session's host, completed by the run's
+completion message. Each subagent child has a managed host of its own, provided
+by pi-subagent, so a child that ends its turn with work open is waiting, not
+done. The design is in
+[`docs/roadmaps/subagent-work-lifecycle.md`](../../docs/roadmaps/subagent-work-lifecycle.md).
+
+## At a glance
+
+Use it whenever an extension starts something the session should wait for and
+be woken by. Open an item, end the turn, complete the item when the result is
+in: the host delivers the message and starts the next turn, exactly once, even
+across a reload.
+
+```ts
+const work = ensureWorkHost(pi); // in the factory
+const item = work.host()!.open({ owner: "pi-job", kind: "job", label: "test suite" });
+// … later, from anywhere:
+item.complete({ customType: "job:completion", content: "Tests passed" });
+```
+
+```mermaid
+sequenceDiagram
+    participant M as Model
+    participant P as Producer (pi-job, pi-subagent, pi-ask, pi-git)
+    participant H as Work host
+    M->>P: tool call (job_start, subagent_start, ask, git_pr_watch)
+    P->>H: open(item) — persisted
+    P-->>M: returns at once
+    Note over M: ends its turn, idle but waiting
+    P->>H: item.complete(message)
+    H->>M: message in the transcript, next turn starts
+```
+
+Producers today: pi-job (jobs and watches), pi-subagent (agent runs, and a
+host of its own for every child), pi-ask (a subagent's question to its parent)
+and pi-git (watched pull requests). The [dashboard](../../extensions/pi-dashboard/README.md)
+and the subagent widget read `list()` to show what a session waits on.
 
 ## The contract (`src/contract.ts`)
 
@@ -231,12 +263,7 @@ cancelled or lost; not for a `notify`), after any wake the change caused, so a r
 the state the session is in. A display redraws on it, and an agent that went idle on its
 items learns that the last one is gone. A throwing listener is ignored.
 
-## Development
-
-```bash
-npm run check
-npm run test:workspace -- pi-work
-```
+## Tests
 
 `test/session.test.ts` runs the root host against a real `AgentSession` on the
 faux model: open and complete while idle and while running, abort, and a simulated

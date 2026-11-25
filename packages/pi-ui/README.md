@@ -1,9 +1,7 @@
 # pi-ui
 
-Private terminal UI library for this Pi source bundle. It is not an extension and
+Private terminal UI library for this bundle. It is not an extension and
 registers no tools, commands, widgets, overlays, or event listeners on import.
-This first PR implements the library portion of [#45](https://github.com/zacheryph/pi/issues/45);
-existing extensions still use their original implementations. Migrations are separate work.
 
 Use the `#ui` alias, mapped to `pi-ui` in each consuming workspace's manifest.
 Its exports load TypeScript source, and the root `file:` dependency creates the
@@ -34,6 +32,36 @@ vendored code.
 **Fullscreen only.** The library targets Pi's fullscreen TUI. It does not probe
 the renderer or fall back to Pi's regular renderer: modals always open as centered
 overlays, wheel input is always handled, and `PassiveOverlay` always mounts.
+
+## At a glance
+
+Every widget, browser, detail view and question window in the bundle is drawn by
+this library, which is why they look and behave alike. An extension hands it a
+plain JSON model (from [pi-surface](../pi-surface/README.md)) with semantic tones
+instead of colours; pi-ui owns spacing, selection, truncation, footers and keys.
+
+| Component                           | Call                       | Seen in                                                                                                                                                       |
+| ----------------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Widget above the editor             | `renderWidget`, `Widget`   | [Todos](../../docs/images/todo-widget.png), [Subagents](../../docs/images/subagent-widget.png)                                                                |
+| Explorer: filterable list → detail  | `showExplorer`             | [`/todo`](../../docs/images/todo-browser.png), [`/git:worktrees`](../../docs/images/git-worktrees.png), [`/system:tools`](../../docs/images/system-tools.png) |
+| Detail view                         | `showDetail`, `DetailView` | [`/tldr`](../../docs/images/tldr.png), [a stash entry](../../docs/images/stash-browser.png)                                                                   |
+| Inline window in the editor's place | `openInlineWindow`         | [pi-ask's questions](../../docs/images/ask.png)                                                                                                               |
+| Passive side overlay                | `PassiveOverlay`           | [the subagent watch overlay](../../docs/images/subagent-watch.png)                                                                                            |
+
+```ts
+await showExplorer(
+  ctx,
+  {
+    title: "Stash",
+    items: entries.map((e) => ({
+      id: e.handle,
+      label: [{ text: e.handle, tone: "accent" }, ` — ${e.description}`],
+    })),
+    loadDetail: { action: "stash.inspect" }, // resolved on the session's bus
+  },
+  { command: "/stash", actions: pi.events },
+);
+```
 
 ## Design rule: extensions describe meaning, the library decides appearance
 
