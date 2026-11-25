@@ -105,7 +105,7 @@ describe("pi-bb", () => {
     const fake = load(bbEnv(url));
     let status: SessionModel["status"] = { kind: "idle", since: 1 };
     sessionView(fake, () => session(status));
-    const counts: SummaryModel = { counts: [{ key: "total", label: "tasks", value: 1 }] };
+    const counts: SummaryModel = { counts: [{ key: "total", label: "task", value: 1 }] };
     defineView(fake.api.events, {
       id: "todo.summary",
       kind: "summary",
