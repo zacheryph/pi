@@ -31,6 +31,15 @@ its own, `/work:wake`, through whichever extension provides the session's root
 work host. It is registered at `session_start`, so the bundle check does not see
 it.
 
+## Package boundaries
+
+Packages never depend on or import extensions: no extension in a package's
+dependencies, `imports` or `exports`, and no relative import into `extensions/`.
+Extensions publish state for displays as `pi-surface` views and actions;
+`bb-plugin/` and the standalone dashboard hub reach the repository only through
+`pi-surface`. `npm run verify:bundle` enforces this
+(`scripts/package-boundary.mjs`).
+
 ## Vendored extensions
 
 Vendored code is ours. Upstream is recorded only so we know where the code came

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { commandNameProblems, extensionName } from "./command-names.mjs";
+import { boundaryProblems } from "./package-boundary.mjs";
 
 // Load the root package exactly as a local personal install, but never read or
 // modify the user's settings, project resources, or credentials. No model calls.
@@ -32,6 +33,9 @@ try {
   assert.deepEqual(errors, [], "Bundle must load without extension errors");
 
   const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+  // AGENTS.md: packages never depend on or import extensions, and bb-plugin and the
+  // standalone dashboard hub reach the repository only through pi-surface.
+  assert.deepEqual(boundaryProblems(root), [], "Packages must not depend on or import extensions");
   // .agents/ holds development-only skills and code, pi-scripted-model is the
   // fake model tests and screenshots use, and test/ holds the bundle scenarios
   // that run on it; none of it may ship in the bundle.
