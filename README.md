@@ -184,6 +184,7 @@ flowchart BT
   ui --> surface
   ui --> foundations
   foundations -. "text helpers" .-> ui
+  foundations -. "formatBytes" .-> surface
   state --> tree
   work --> state
   work --> tree
@@ -191,7 +192,9 @@ flowchart BT
 ```
 
 pi-surface and pi-session-tree depend on nothing; pi-surface does not even
-import Pi, so the dashboard's hub and the bb plugin can use it outside Pi. The
+import Pi, so the dashboard's hub and the bb plugin can use it outside Pi.
+pi-foundations takes its display size (`formatBytes`) from pi-surface, so a
+size reads the same in the terminal, the dashboard and bb. The
 arrows only point this way: a package never imports an extension, and the
 dashboard hub and the bb plugin reach the repository only through pi-surface.
 `npm run verify:bundle` checks both.
