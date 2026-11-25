@@ -101,13 +101,12 @@ const label = (tool) =>
     .map((part) => part[0].toUpperCase() + part.slice(1))
     .join(" ");
 
+// The README's "At a glance": what the user sees and types, then what the agent calls.
 const surface =
   [
-    values.tool.length ? `Tools: ${values.tool.map((t) => `\`${t}\``).join(", ")}.` : "",
-    values.command.length ? `Commands: ${values.command.map((c) => `\`/${c}\``).join(", ")}.` : "",
-  ]
-    .filter(Boolean)
-    .join(" ") || "No tools or commands yet.";
+    ...values.command.map((c) => `- **You type** \`/${c}\` to …`),
+    ...values.tool.map((t) => `- **The agent calls** \`${t}\` to …`),
+  ].join("\n") || "- **You see** …";
 
 const vars = {
   name,
@@ -226,7 +225,7 @@ Created ${dir}/ (${Object.keys(files).join(", ")}).
 Registered it in package.json and scripts/verify-bundle.mjs${values["no-install"] ? "" : ", and updated package-lock.json"}.
 Changed: ${["package.json", "scripts/verify-bundle.mjs", ...(values["no-install"] ? [] : ["package-lock.json"])].join(", ")}.
 
-Next: add it to the root README (layout tree and an Extensions section), implement
-src/index.ts, and extend the tests. Then:
+Next: add a row to the root README's extension table, finish its README (see
+AGENTS.md#readmes), implement src/index.ts, and extend the tests. Then:
   npm run check && npm run test:workspace -- ${dir} && npm run verify:bundle${values["no-install"] ? "\n  (run npm install --ignore-scripts first: the lockfile is not updated)" : ""}
 `);

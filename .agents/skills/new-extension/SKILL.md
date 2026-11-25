@@ -44,8 +44,8 @@ It checks everything before writing anything, then:
 - runs `npm install --ignore-scripts` (unless skipped), then formats the generated
   workspace and edited root files with Oxfmt.
 
-Review `git diff` afterwards. Then add it to the root README (step 2), implement
-the stubs (step 3), and extend the tests (step 4).
+Review `git diff` afterwards. Then document it (step 2), implement the stubs
+(step 3), and extend the tests (step 4).
 
 Keep helper modules beside `src/index.ts`; only the entry point is registered.
 Use `#src/*` and `#test/*` for local source and test modules. The scaffold declares
@@ -57,16 +57,21 @@ in the **root** `dependencies` (`"pi-ui": "file:packages/pi-ui"` for a local
 package), so Git installs create the links too. Relative TypeScript imports,
 when needed for files outside these aliases, use `.ts`.
 
-## 2. Add it to the root README
+## 2. Document it
 
-The script leaves the root `README.md` to you:
-
-- **Layout tree:** add `extensions/<name>/` with its entry point and `test/`,
-  in name order, matching the neighbors' rails and `# comments`.
-- **Extensions section:** add `### <name>` in name order: what it does, its tools
-  and commands, its config files, and a link to `extensions/<name>/README.md`.
-  Write it for a user of the bundle; implementation detail belongs in the
-  extension's own README.
+- **Root README:** add a row to the extension table: a link to
+  `extensions/<name>/README.md`, what the user gets in one sentence, and the
+  commands and tools they use it through. If it imports shared packages, add
+  it to the "Who imports what" table, and to the diagrams if it publishes views
+  or opens work items.
+- **Its README:** the scaffold writes the shape every extension README has (see
+  `AGENTS.md`, "READMEs"): a sentence on what it does, a screenshot, then
+  **At a glance** bullets (what you see, what you type, what the agent calls)
+  before any reference material. Fill in each `…`.
+- **Screenshot:** add a scenario under
+  `.agents/skills/tui-screenshot/scenarios/docs/`, an entry in
+  `.agents/skills/tui-screenshot/scripts/docs-images.mjs`, and run it (see the
+  tui-screenshot skill).
 
 ## 3. Follow the runtime conventions
 

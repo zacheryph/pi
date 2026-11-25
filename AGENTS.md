@@ -16,6 +16,26 @@ card (stack card bodies, context row segments) uses bb's 12px inset, so icons
 and text line up with bb's header. Check a layout change in real bb with the
 `bb-screenshot` skill: `bb-shot.mjs --expand --check` must pass.
 
+## READMEs
+
+READMEs show before they explain. The root `README.md` is the welcome: what the
+bundle gives you, one table row per extension, skill and library, and diagrams
+of how they fit. Development material belongs in `CONTRIBUTING.md`, not there.
+
+An extension's README opens with one or two sentences on what the user gets, a
+screenshot, and an `## At a glance` list of what you see, what you type and what
+the agent calls. Reference material (schemas, events, internals) follows. A
+library's README opens with its interface instead: the calls to make, a short
+code sample, and a diagram when data moves through it.
+
+- Images come from `.agents/skills/tui-screenshot/scripts/docs-images.mjs`.
+  When a change alters what an image shows, regenerate it.
+- When imports between workspaces change, update the root README's "Who
+  imports what" table and diagrams.
+- No per-workspace install or development sections: commands live in
+  `CONTRIBUTING.md`. Vendored READMEs lose upstream install steps, badges and
+  release notes.
+
 ## Extension commands
 
 Prefix every slash command an extension registers with the extension's name

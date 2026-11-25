@@ -358,7 +358,7 @@ ${[
   ...notes,
   "Use the root TypeScript project and Vitest projects; fix type errors and adapt tests to the shared conventions.",
   "Assert its tools and commands in scripts/verify-bundle.mjs.",
-  "Add it to the root README (layout tree, a section linking CHANGELOG.md#initial-import and the local changes, a License line).",
+  "Add a row to the root README's extension table and a line under License; give its README an At a glance section (AGENTS.md#readmes) and drop upstream install, badge and release sections.",
   "Describe integration changes in the PR; the weekly workflow records subsequent commits in CHANGELOG.md.",
   `Run: npm run check && npm run test:workspace -- ${dir} && npm run verify:bundle`,
 ]

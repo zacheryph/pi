@@ -72,9 +72,11 @@ Work through the script's list. It usually includes:
 - An entry point that is build output: point the root `pi.extensions` entry at
   the TypeScript source, since the bundle has no build step.
 - `scripts/verify-bundle.mjs`: assert its tools and commands.
-- Root `README.md`: the layout tree, an `### <name>` section linking
-  `CHANGELOG.md#initial-import` with a warning not to install the published package too,
-  and a line under License.
+- Root `README.md`: a row in the extension table and a line under License.
+- The extension's `README.md`: put an **At a glance** section first (see
+  `AGENTS.md`, "READMEs"), link `CHANGELOG.md#initial-import` once with a
+  warning not to install the published package too, and remove upstream's npm
+  install instructions, badges, release steps and related-project lists.
 - Remove separate upstream provenance, issue, sync-tracking, and comparison
   documents, and fix references to them. Retain license files and useful local
   architecture docs, runtime limitations, and regression tests. Describe
