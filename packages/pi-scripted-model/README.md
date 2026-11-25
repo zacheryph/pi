@@ -5,6 +5,11 @@ whole bundle against it. Tests drive real tools, real extensions and real
 subagents with no API key, no network and no cost, and get the same result on
 every run. The tui-screenshot skill uses the same scenarios for pictures of the TUI.
 
+Every image in [`docs/images/`](../../docs/images/) is a scenario played this
+way; their scripts in
+[`.agents/skills/tui-screenshot/scenarios/docs/`](../../.agents/skills/tui-screenshot/scenarios/docs/)
+are short examples to start from.
+
 Development only: it is not in the bundle manifest, and `verify:bundle` fails if
 it ever is. Import its modules through `#scripted-model/*` aliases.
 
@@ -57,7 +62,9 @@ const scenario = defineScenario({
 - User turns include the follow-ups Pi starts on its own, such as a background
   subagent's completion notice. Context an extension adds mid-turn (pi-todo's
   task list after a tool result, for example) does not start a turn.
-- `scripted-haiku` answers pi-tldr with the scenario's `title`.
+- `scripted-haiku` answers pi-tldr: the session name is the scenario's `title`,
+  and `/tldr` shows its `recap` (`{ premise, findings, status }`, findings
+  separated by semicolons).
 - A scenario registers nothing unless `PI_SCRIPTED_MODEL=1` is set, so a stray
   `-e` cannot put a fake model into a real session.
 

@@ -169,7 +169,9 @@ export function findSymbolsFont() {
 
 export function renderPage(input, { symbolsFont, frame = true } = {}) {
   const face = symbolsFont
-    ? `@font-face{font-family:"TuiSymbols";src:url("${pathToFileURL(resolve(symbolsFont)).href}")}`
+    ? // First in the stack but only for the Private Use Areas Nerd Font icons live
+      // in: monospace fonts such as JetBrains Mono draw boxes for some of them.
+      `@font-face{font-family:"TuiSymbols";src:url("${pathToFileURL(resolve(symbolsFont)).href}");unicode-range:U+E000-F8FF,U+F0000-FFFFD}`
     : "";
   const bar = frame
     ? `<div class="bar">${["#f38ba8", "#f9e2af", "#a6e3a1"].map((c) => `<i style="background:${c}"></i>`).join("")}</div>`
@@ -181,7 +183,7 @@ body{margin:0;background:#11111b;padding:${frame ? 24 : 0}px;display:inline-bloc
 .win{background:${BACKGROUND};${frame ? "border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,.5);" : ""}overflow:hidden}
 .bar{height:30px;background:#181825;display:flex;align-items:center;padding:0 12px;gap:8px}
 .bar i{width:12px;height:12px;border-radius:50%}
-pre{margin:0;padding:14px 16px;font:14px/1.35 "JetBrains Mono","DejaVu Sans Mono",TuiSymbols,monospace;color:${FOREGROUND};white-space:pre}
+pre{margin:0;padding:14px 16px;font:14px/1.35 TuiSymbols,"JetBrains Mono","DejaVu Sans Mono",monospace;color:${FOREGROUND};white-space:pre}
 .w1,.w2{display:inline-block;text-align:center;overflow:visible}
 .w1{width:1ch}.w2{width:2ch}
 </style></head><body><div class="win">${bar}<pre>${ansiToHtml(input)}</pre></div></body></html>`;
@@ -215,7 +217,11 @@ export async function renderPng(input, out, { scale = 2, html, ...pageOptions } 
   try {
     const tab = await browser.newPage({ deviceScaleFactor: scale });
     await tab.goto(pathToFileURL(page).href);
-    await tab.evaluate(() => document.fonts.ready);
+    // Wait for the symbols font itself, not only for fonts already in use.
+    await tab.evaluate(async () => {
+      await Promise.all([...document.fonts].map((face) => face.load().catch(() => undefined)));
+      await document.fonts.ready;
+    });
     await tab.locator("body > .win").screenshot({ path: out });
   } finally {
     await browser.close();
