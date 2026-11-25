@@ -95,9 +95,11 @@ bundle extension again. So:
   `#session-tree` (`call`, `ancestors`). Never put a
   bare object on `globalThis`.
 
-**Talking to other extensions.** Publish state on the session's `pi.events` bus
-as `<name>:<event>` (see `pi-todo:snapshot`, `pi-stash:snapshot`), with a
-version field. pi-dashboard and others subscribe there.
+**Talking to other extensions.** Publish state for displays as views and
+actions on the session's bus with `viewRegistry` and `actionRegistry` from
+[`packages/pi-surface`](../../../packages/pi-surface/README.md), as pi-todo and
+pi-stash do; pi-dashboard and bb draw only those. Keep `<name>:<event>` bus
+events for lifecycle signals other extensions react to (`subagent:completed`).
 
 **Configuration.** Declare settings once in `src/config.ts` with `defineSettings`
 from `packages/pi-foundations/src/settings.ts` (`--settings` scaffolds it; see
@@ -159,8 +161,9 @@ Add it to `workspaces`, expose its source through `exports`, and add the alias
 to consuming workspaces' `imports` maps. Runtime packages also need a root
 `file:` dependency so Pi's Git installer creates their links. Keep test-only
 packages out of root runtime dependencies. CI re-tests every workspace when a
-package changes. See `packages/pi-session-state/`. The scaffold script does not
-cover packages.
+package changes. See `packages/pi-session-state/`. A package never depends on or
+imports an extension; `npm run verify:bundle` checks this. The scaffold script
+does not cover packages.
 
 ## Changing the templates
 
