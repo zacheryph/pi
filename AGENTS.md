@@ -87,7 +87,7 @@ The same weekly workflow maintains `CHANGELOG.md` for every registered workspace
 under `extensions/` and `packages/`, creating missing logs from Git history.
 Logs without a checkpoint are rebuilt from full history, following directory
 renames and retaining the complete Initial import entry from the previous log.
-See the root README's Changelogs section for checkpoint and workflow details.
+See [CONTRIBUTING.md](CONTRIBUTING.md#changelogs) for checkpoint and workflow details.
 
 ## Git commits
 
