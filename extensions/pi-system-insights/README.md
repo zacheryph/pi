@@ -1,64 +1,24 @@
 # pi-system-insights
 
-The core session view for every consumer of a Pi session, and read-only
-inspectors for Pi 1.4.0+ sessions. No model calls, tool activation, settings
-changes, external editor, or skill-file loading.
+See what the model actually has: the system prompt, every tool it can call and
+every skill it can load, with evidence of which skills it has read. Read-only:
+no model calls, no setting changes.
 
-## The session view
+![/system:tools listing every tool the model can call and how](../../docs/images/system-tools.png)
 
-The extension observes Pi's own session state and publishes it as a
-[pi-surface](../../packages/pi-surface/README.md) view: id `system.session`
-(`SESSION_VIEW_ID`), kind `session`, a `SessionModel`. Any consumer on the
-session's bus reads it with `readView` or `collectViews`; nothing else needs to
-be installed. It is defined in every mode (terminal, RPC, print, JSON), whether
-or not the dashboard or bb is loaded. pi-dashboard and bb draw each session's
-header, status, activity and usage from it; neither observes Pi's core state
-itself, and both show a session without it when this extension is not loaded.
+## At a glance
 
-| Field                    | Source                                                                         |
-| ------------------------ | ------------------------------------------------------------------------------ |
-| `sessionId`, `cwd`       | The current session context                                                    |
-| `name`, `thinking`       | `pi.getSessionName()`, `pi.getThinkingLevel()`                                 |
-| `model`, `context`       | The context's selected model and `getContextUsage()`; left out while unknown   |
-| `status`                 | Lifecycle events and open forms, below                                         |
-| `activity`               | The 12 most recent top-level tool calls, newest first; a running one is `live` |
-| `usage`                  | Billed totals for the whole session file                                       |
-| `startedAt`, `piVersion` | When the Pi process started, and Pi's version when known                       |
-
-**Status** has one value and its `since`, which moves only when the value
-changes. Precedence, highest first: `waiting` (a native Pi dialog, then the
-oldest open surface questionnaire), `compacting`, `tool` (the most recent
-top-level tool still running), `working`, `idle`. Tools another tool calls
-(codemode scripts) stay under their parent: they change neither status nor
-activity. A compaction that fails or is cancelled ends `compacting`. When Pi
-settles, tools still marked running were interrupted: they leave the status
-and lose their `live` mark, with no duration.
-
-**Waiting on forms** reads surface's public form contract: every view of kind
-`form` on the bus, such as pi-ask's `ask.questions`. A form with an open
-questionnaire makes the session wait, named by the questionnaire's title or
-its first question's header, even when no native dialog is open. The observer
-re-reads forms when another view announces a change, never on its own
-`system.session` announcements, and announces only when the status changes,
-so publishing the waiting status cannot loop.
-
-**Usage** adds every assistant and tool-result message, `usage` entry (such as
-cache warming) and compaction or branch summary in the session file, abandoned
-branches and compacted history included, as Pi's `/session` does. Current
-context usage is the separate `context` field. The totals are scanned once and
-cached until the history changes: a status-only refresh scans nothing.
-
-**Lifecycle.** The view is defined at `session_start` and removed, without an
-announcement, at `session_shutdown`. Each `session_start` (startup, reload,
-`/new`, `/resume`, `/fork`) starts status and activity over: they describe this
-process, so nothing is inferred from restored history and no tool from an
-earlier process shows as running. Usage is rebuilt from the session file. Every
-change that may alter the view (model, thinking, name, turn, message, tool,
-prompt, compaction and tree events) announces it; consumers batch the
-announcements, and reading the view never announces or changes anything.
-
-Each subagent child loads its own copy of the extension on its own bus, so it
-has its own observer and view; nothing is kept process-wide.
+- **You type** `/system:prompt` to scroll through the current system prompt,
+  with the tool and skill catalogs folded into markers.
+- **You type** `/system:tools` to list the tools the model can call; Enter
+  shows a tool's description, input schema and prompt guidelines.
+- **You type** `/system:skills` to list discovered skills; a green `[loaded]`
+  badge means the model read it on this branch since the last compaction.
+- **Every other UI reads it:** the extension also publishes the session's
+  status, model, context use, recent tool calls and usage as the
+  `system.session` view, which the [dashboard](../pi-dashboard/README.md) and
+  [bb](../pi-bb/README.md) draw. It does so in every mode, for every session,
+  a subagent's included.
 
 ## Commands
 
@@ -136,31 +96,58 @@ For observed nested skill reads, a small custom session entry preserves only the
 normalized path and partial flag across reload/resume. It stores no instruction
 contents and never enters model context. Abandoned branches are not scanned.
 
-## Install
+## The session view
 
-Included in the repository root bundle. Reload Pi after enabling its entry point.
+The extension observes Pi's own session state and publishes it as a
+[pi-surface](../../packages/pi-surface/README.md) view: id `system.session`
+(`SESSION_VIEW_ID`), kind `session`, a `SessionModel`. Any consumer on the
+session's bus reads it with `readView` or `collectViews`; nothing else needs to
+be installed. It is defined in every mode (terminal, RPC, print, JSON), whether
+or not the dashboard or bb is loaded. pi-dashboard and bb draw each session's
+header, status, activity and usage from it; neither observes Pi's core state
+itself, and both show a session without it when this extension is not loaded.
 
-Standalone local package:
+| Field                    | Source                                                                         |
+| ------------------------ | ------------------------------------------------------------------------------ |
+| `sessionId`, `cwd`       | The current session context                                                    |
+| `name`, `thinking`       | `pi.getSessionName()`, `pi.getThinkingLevel()`                                 |
+| `model`, `context`       | The context's selected model and `getContextUsage()`; left out while unknown   |
+| `status`                 | Lifecycle events and open forms, below                                         |
+| `activity`               | The 12 most recent top-level tool calls, newest first; a running one is `live` |
+| `usage`                  | Billed totals for the whole session file                                       |
+| `startedAt`, `piVersion` | When the Pi process started, and Pi's version when known                       |
 
-```bash
-pi install /absolute/path/to/pi-personal/extensions/pi-system-insights
-```
+**Status** has one value and its `since`, which moves only when the value
+changes. Precedence, highest first: `waiting` (a native Pi dialog, then the
+oldest open surface questionnaire), `compacting`, `tool` (the most recent
+top-level tool still running), `working`, `idle`. Tools another tool calls
+(codemode scripts) stay under their parent: they change neither status nor
+activity. A compaction that fails or is cancelled ends `compacting`. When Pi
+settles, tools still marked running were interrupted: they leave the status
+and lose their `live` mark, with no duration.
 
-Do not load standalone package and root bundle copy together.
+**Waiting on forms** reads surface's public form contract: every view of kind
+`form` on the bus, such as pi-ask's `ask.questions`. A form with an open
+questionnaire makes the session wait, named by the questionnaire's title or
+its first question's header, even when no native dialog is open. The observer
+re-reads forms when another view announces a change, never on its own
+`system.session` announcements, and announces only when the status changes,
+so publishing the waiting status cannot loop.
 
-## Development
+**Usage** adds every assistant and tool-result message, `usage` entry (such as
+cache warming) and compaction or branch summary in the session file, abandoned
+branches and compacted history included, as Pi's `/session` does. Current
+context usage is the separate `context` field. The totals are scanned once and
+cached until the history changes: a status-only refresh scans nothing.
 
-From repository root:
+**Lifecycle.** The view is defined at `session_start` and removed, without an
+announcement, at `session_shutdown`. Each `session_start` (startup, reload,
+`/new`, `/resume`, `/fork`) starts status and activity over: they describe this
+process, so nothing is inferred from restored history and no tool from an
+earlier process shows as running. Usage is rebuilt from the session file. Every
+change that may alter the view (model, thinking, name, turn, message, tool,
+prompt, compaction and tree events) announces it; consumers batch the
+announcements, and reading the view never announces or changes anything.
 
-```bash
-npm run check
-npm test
-npm run verify:bundle
-```
-
-Package-only:
-
-```bash
-npm run check
-npm run test:workspace -- pi-system-insights
-```
+Each subagent child loads its own copy of the extension on its own bus, so it
+has its own observer and view; nothing is kept process-wide.

@@ -1,8 +1,32 @@
 # pi-bb
 
-Shows this bundle's session state (todos, subagents, stash, Git, open
-questions, activity and usage) in bb's UI through the `pi-surface` bb plugin in
-[`bb-plugin/`](../../bb-plugin/README.md).
+This bundle inside [bb](https://getbb.app). bb runs Pi without its terminal UI,
+so the widgets, status line and overlays would be lost; with the bb plugin
+installed, every Pi thread shows them in bb's own UI instead.
+
+![Todos, Subagents and session cards above bb's composer](../../docs/images/bb/stack-cards.png)
+
+## At a glance
+
+- **Install** the plugin once: `npm run setup:bb` from the repository root (see
+  [`bb-plugin/`](../../bb-plugin/README.md)). Nothing else to configure.
+- **Above the composer:** a Todos card and a Subagents card, and the agent and
+  task counts in the thread's context row.
+- **The Pi tab** beside the thread: tasks and their history, subagents, stash
+  previews, worktrees and pull requests, recent tool calls and usage.
+- **Questions** the agent asks with pi-ask appear as bb's own pending
+  interaction, answered in place.
+- **Stash picker** (Mod+Shift+S) inserts a stash handle into your draft.
+- **Pi sessions** page in the sidebar lists every connected session; row badges
+  flag running subagents and open questions.
+- **You type** `/bb` to check whether this session is connected.
+
+<img src="../../docs/images/bb/thread-tab.png" alt="The Pi tab: open questions, todos, subagents, stash, worktrees, pull requests, activity and usage" width="360">
+
+Every slot, with a screenshot, is in [bb's UI slots](../../docs/bb/ui-slots.md).
+Outside bb the extension does nothing.
+
+## How it works
 
 bb runs Pi as `pi --mode rpc` and drops `setWidget`, `setStatus` and `notify`;
 `ctx.ui.custom()` returns `undefined` there. This extension is the bundle's own

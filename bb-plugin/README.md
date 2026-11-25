@@ -7,6 +7,8 @@ the session's views here instead, as one complete pi-surface delivery snapshot
 per update, and this plugin draws them in bb's slots. See
 [bb's UI slots](../docs/bb/ui-slots.md) for every slot with a screenshot.
 
+![Todos, Subagents and session cards above bb's composer](../docs/images/bb/stack-cards.png)
+
 Plugin id `pi-surface`, package `bb-plugin-pi-surface`. It is its own package
 with its own toolchain, not one of the bundle's npm workspaces.
 

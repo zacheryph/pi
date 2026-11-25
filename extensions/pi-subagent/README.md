@@ -1,23 +1,66 @@
-# @gotgenes/pi-subagents
+# pi-subagent
 
-> Vendored personal copy. Install this repository as one bundle; do not install
-> the npm package alongside it. See [initial import provenance](./CHANGELOG.md#initial-import)
-> and [bundle instructions](../../README.md). Local UI/profile additions are documented below;
-> published npm installation instructions refer to upstream.
+Background agents for Pi. The main agent hands work to specialists, keeps
+talking to you while they run, and is woken by each one's result.
 
-[![npm version](https://img.shields.io/npm/v/@gotgenes/pi-subagents?style=flat&logo=npm&logoColor=white)](https://www.npmjs.com/package/@gotgenes/pi-subagents) [![CI](https://img.shields.io/github/actions/workflow/status/gotgenes/pi-packages/ci.yml?style=flat&logo=github&label=CI)](https://github.com/gotgenes/pi-packages/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat)](https://opensource.org/licenses/MIT) [![TypeScript](https://img.shields.io/badge/TypeScript-6.x-3178C6?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/) [![pnpm](https://img.shields.io/badge/pnpm-%3E%3D11-F69220?style=flat&logo=pnpm&logoColor=white)](https://pnpm.io/) [![Pi Package](https://img.shields.io/badge/Pi-Package-6366F1?style=flat)](https://pi.mariozechner.at/)
+![Three background agents in the Subagents widget, and the watch overlay tailing their work](../../docs/images/subagent-watch.png)
 
-A [pi](https://pi.dev) extension that gives pi **a focused, in-process sub-agent core** — autonomous agents that run inside the same pi runtime (no spawned subprocesses), plus a typed API and lifecycle events other extensions build on.
-Spawn specialized agents that run in isolated sessions — each with its own tools, system prompt, model, and thinking level.
-Every agent runs in the background: the parent starts it, ends its turn, and is woken by the completion message. Message any agent with one tool: steer it mid-run, or give a finished one more work. Define your own custom agent types.
+## At a glance
 
-> This personal fork is based on [`gotgenes/pi-packages/packages/pi-subagent`](https://github.com/gotgenes/pi-packages/tree/main/packages/pi-subagent),
-> itself an independently maintained hard fork of [`tintinweb/pi-subagent`](https://github.com/tintinweb/pi-subagent) by [@tintinweb](https://github.com/tintinweb).
-> See the [initial import entry](./CHANGELOG.md#initial-import) for the source lineage and pinned revision.
+- **You see** the Subagents widget above the editor: one row per agent with its
+  clock, type, task and live activity (`thinking…`, `reading…`, `waiting: CI`).
+  The footer counts running and waiting agents.
+- **You press** `Ctrl+Alt+S` (or `/subagent:watch`) in fullscreen mode to open
+  the watch overlay on the right, which tails each agent's text and tool calls.
+- **You type** `/subagent:sessions` to read any agent's transcript,
+  `/subagent:agents` to browse agent types, and `/subagent:settings` for the
+  concurrency limit and overlay width.
+- **The agent calls** `subagent_start` to start one (always in the background),
+  `subagent_send` to steer a running agent or give a finished one more work, and
+  `subagent_get` for status and results.
+- **An agent** can ask its parent a question with `ask` (it waits until
+  answered) or report something material mid-run with `parent_notify`.
 
-<img width="600" alt="pi-subagent screenshot" src="https://github.com/gotgenes/pi-subagent/raw/main/media/screenshot.png" />
+Built-in agent types:
 
-<https://github.com/user-attachments/assets/8685261b-9338-4fea-8dfe-1c590d5df543>
+| Type              | Role                                                                                                  |
+| ----------------- | ----------------------------------------------------------------------------------------------------- |
+| `explore`         | Fast, read-only codebase search; can return large findings as a stash handle.                         |
+| `plan`            | Read-only software architect.                                                                         |
+| `general-purpose` | A copy of the parent: its instructions and every tool, with no role of its own.                       |
+| `implement`       | One bounded change and its verification, without delegating further.                                  |
+| `review`          | Runs the checks and reports `Verdict: PASS`, `FAIL` or `BLOCKED` with evidence; never fixes anything. |
+| `orchestrate`     | Project manager: categorized todos, one pi-git worktree per task, workers, and reviews before done.   |
+
+`orchestrate`, `implement` and `review` can also run as the main agent:
+`pi --agent orchestrate` (see [Main-session profile](#main-session-profile---agent)).
+Define your own types in `.pi/agents/<name>.md` or `~/.pi/agent/agents/<name>.md`,
+or ask for the `creating-agents` skill. The orchestrator completes an
+implementation task only after a reviewer that did not do the work passes it.
+
+Agents run in-process: each is a full Pi session with its own tools, system
+prompt, model and thinking level, inside the same Pi runtime. This extension
+started from [`gotgenes/pi-packages`](CHANGELOG.md#initial-import)'
+pi-subagent.
+
+## Quick Start
+
+The parent agent spawns sub-agents using the `subagent_start` tool:
+
+```text
+subagent_start({
+  subagent_type: "explore",
+  prompt: "Find all files that handle authentication",
+  description: "Find auth files",
+})
+```
+
+Agents always run in the background: the call returns an ID immediately and the completion message wakes the parent when the agent finishes, so the parent can end its turn and stay available while the agent works.
+There is no foreground mode and no call that waits for an agent.
+Each run is an item in the parent's work host ([`packages/pi-work`](../../packages/pi-work/README.md)); the host writes the completion message into the transcript, wakes an idle parent, and answers it in the same run when the parent is running. A reload or restart keeps the agents: see [Reload, restart and lost work](#reload-restart-and-lost-work).
+
+The completion message is the only thing that delivers an outcome: it carries the result up to 500 characters, so ask agents to store a large result with `stash_put` and name the handle in their final answer.
+In print and json mode (`pi -p`, `--mode json`) nothing can wake the parent once its turn ends, so the process can return before background agents finish.
 
 ## Features
 
@@ -40,38 +83,9 @@ Every agent runs in the background: the parent starts it, ends its turn, and is 
   Expandable to show full output
 - **Event bus** — lifecycle events (`subagent:created`, `started`, `completed`, `failed`, `queued`, `resuming`, `resumed`, `steered`, `compacted`) emitted via `pi.events`, enabling other extensions to react to sub-agent activity
 
-## Install
-
-```bash
-pi install npm:@gotgenes/pi-subagents
-```
-
-Or load directly for development:
-
-```bash
-pi -e ./src/index.ts
-```
-
-## Quick Start
-
-The parent agent spawns sub-agents using the `subagent_start` tool:
-
-```text
-subagent_start({
-  subagent_type: "explore",
-  prompt: "Find all files that handle authentication",
-  description: "Find auth files",
-})
-```
-
-Agents always run in the background: the call returns an ID immediately and the completion message wakes the parent when the agent finishes, so the parent can end its turn and stay available while the agent works.
-There is no foreground mode and no call that waits for an agent.
-Each run is an item in the parent's work host ([`packages/pi-work`](../../packages/pi-work/README.md)); the host writes the completion message into the transcript, wakes an idle parent, and answers it in the same run when the parent is running. A reload or restart keeps the agents: see [Reload, restart and lost work](#reload-restart-and-lost-work).
-
-The completion message is the only thing that delivers an outcome: it carries the result up to 500 characters, so ask agents to store a large result with `stash_put` and name the handle in their final answer.
-In print and json mode (`pi -p`, `--mode json`) nothing can wake the parent once its turn ends, so the process can return before background agents finish.
-
 ## UI
+
+![The Subagents widget with three running agents](../../docs/images/subagent-widget.png)
 
 The extension renders a persistent widget above the editor showing active agents:
 
@@ -759,7 +773,7 @@ Anything attaching to the core subscribes to a lifecycle event — see [ADR-0002
 **Non-goals.**
 
 - _Capability the fork deliberately left behind._
-  Scheduling, cross-extension RPC, model-scope enforcement, and a built-in tool denylist belong to upstream — see [Relationship to upstream](#relationship-to-upstream).
+  Scheduling, cross-extension RPC, model-scope enforcement, and a built-in tool denylist are out of scope; [`tintinweb/pi-subagent`](https://github.com/tintinweb/pi-subagent) keeps them in one package.
 - _Policy about what a child may do._
   Tool restriction is allow/ask/deny in a permission layer, not a binary hide in a spawner — see [Migrating from `disallowed_tools`](#migrating-from-disallowed_tools).
 - _Settings-level overrides of an agent's tool selection._
@@ -784,16 +798,6 @@ A batteries-included alternative → upstream [`tintinweb/pi-subagent`](https://
 | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | [Configuration](./docs/configuration.md)            | Default agent types, custom agent files and their frontmatter fields, and the `subagent.json` settings file    |
 | [Architecture](./docs/architecture/architecture.md) | Design principles, domain decomposition, module dependency flow, Mermaid diagrams, and the improvement roadmap |
-
-## Architecture
-
-This extension is a minimal, composable core: it owns agent spawning, execution, and result retrieval, and publishes lifecycle events that other extensions build on.
-
-## Relationship to upstream
-
-This package is an independently maintained hard fork of [`tintinweb/pi-subagent`](https://github.com/tintinweb/pi-subagent) by [@tintinweb](https://github.com/tintinweb).
-It has diverged substantially in scope and architecture: a minimal core with lifecycle events, with tool-restriction policy and worktree isolation delegated to companion packages.
-Upstream remains the batteries-included option, keeping scheduling, cross-extension RPC, model-scope enforcement, and a built-in tool denylist in a single package.
 
 ## License
 

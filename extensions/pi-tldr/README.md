@@ -1,6 +1,22 @@
 # pi-tldr
 
-Independent Pi extension: concise on-demand session recaps and short session/terminal-tab names.
+A one-screen recap of where a session stands, and short names for your
+sessions so you can tell them apart.
+
+![The /tldr recap: premise, findings and current status](../../docs/images/tldr.png)
+
+## At a glance
+
+- **You type** `/tldr` and a recap opens at once: the original goal, up to
+  three findings or turning points, and the current status. Esc or Enter closes
+  it.
+- **Sessions name themselves:** after the first prompt of a new session, a
+  short name such as `queue-retries` appears in the footer. A name you set
+  yourself is never replaced.
+- **It costs little:** both calls use the newest Haiku (or Luna) available,
+  never your main model, and nothing is added to the main conversation.
+
+## How it behaves
 
 - `/tldr`: immediately opens a dismissible modal with a “Summarizing session…” indicator. When ready, it shows the initial premise, major findings/turning points (bullets), current status, and a 2–4-word title. The title changes from `TLDR / session` to `TLDR / <title>` when the result arrives. Errors appear in the same modal as `Couldn't summarize: <message>`. The modal is the shared `packages/pi-ui` detail view: a centered overlay in Pi's fullscreen TUI (the regular renderer is not supported). Esc/Enter closes and cancels a pending request; ↑↓, PgUp/PgDn, Home/End and the mouse wheel scroll. Outside the terminal UI (an app that runs Pi over RPC, say) there is no modal: the same premise, findings and status arrive as one displayed message when the summary is ready, kept out of the model's context.
 - After the first user prompt on a _new_ session, generate a short title asynchronously without blocking the main agent. Do not overwrite an existing manual session name or rename an old session upon resume.
