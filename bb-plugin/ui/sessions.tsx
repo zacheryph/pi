@@ -8,7 +8,7 @@ import {
 import { useMemo } from "react";
 import { Icon } from "@/components/ui/icon";
 import type { SessionSummary } from "../contract.ts";
-import { ago } from "./format.ts";
+import { ago, plural } from "./format.ts";
 import { Gallery } from "./gallery.tsx";
 import { useSessions } from "./session.ts";
 
@@ -141,7 +141,9 @@ export function SessionList({
                     ? statusLabel(session)
                     : "Reconnecting"}
                 {session.todos ? ` · ${session.todos.done}/${session.todos.total} tasks` : ""}
-                {session.runningAgents ? ` · ${session.runningAgents} agents running` : ""}
+                {session.runningAgents
+                  ? ` · ${plural(session.runningAgents, "agent")} running`
+                  : ""}
                 {session.questions ? " · question waiting" : ""}
                 {` · ${ago(session.updatedAt, at)}`}
               </span>

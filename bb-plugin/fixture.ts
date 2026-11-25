@@ -2,6 +2,7 @@
 // seen without a model run. It is one pi-surface delivery snapshot: the views
 // the bundle's extensions publish, shaped as they shape them, with the same
 // `live` marks. Names and paths are invented.
+import { formatBytes } from "pi-surface/format";
 import type {
   ActionRequest,
   Block,
@@ -25,6 +26,9 @@ type TodoStatus = "pending" | "in_progress" | "completed";
 type AgentState = "queued" | "running" | "waiting" | "completed" | "failed" | "stopped";
 
 const stashHandle = (name: string) => `stash:${name}@3f9c2a81d0e4`;
+
+/** A count's noun as its producer labels it: singular for one, plural otherwise. */
+const agree = (value: number, one: string, many = `${one}s`) => (value === 1 ? one : many);
 
 interface FixtureTask {
   key: string;
@@ -323,13 +327,17 @@ function todoViews(): ViewEntry[] {
   const active = TASKS.find((task) => task.status === "in_progress");
   const summary: SummaryModel = {
     counts: [
-      { key: "total", label: "tasks", value: TASKS.length },
+      { key: "total", label: agree(TASKS.length, "task"), value: TASKS.length },
       { key: "completed", label: "completed", value: by("completed"), tone: "success" },
       { key: "in-progress", label: "in progress", value: by("in_progress"), tone: "accent" },
       { key: "pending", label: "pending", value: by("pending") - blocked },
       { key: "blocked", label: "blocked", value: blocked, tone: "warning" },
       { key: "unreviewed", label: "unreviewed", value: unreviewed.length, tone: "accent" },
-      { key: "unreviewed-messages", label: "new messages", value: unreviewed.length },
+      {
+        key: "unreviewed-messages",
+        label: agree(unreviewed.length, "new message"),
+        value: unreviewed.length,
+      },
       { key: "archived", label: "archived", value: 0, tone: "muted" },
     ],
     ...(active ? { active: { id: active.key, label: active.subject } } : {}),
@@ -414,7 +422,7 @@ function subagentViews(now: number): ViewEntry[] {
       { key: "completed", label: "done", value: count("completed"), tone: "success" },
       { key: "failed", label: "failed", value: count("failed"), tone: "error" },
       { key: "stopped", label: "stopped", value: count("stopped"), tone: "dim" },
-      { key: "total", label: "subagents", value: AGENTS.length },
+      { key: "total", label: agree(AGENTS.length, "subagent"), value: AGENTS.length },
     ],
     ...(running[0]
       ? {
@@ -504,14 +512,20 @@ function stashViews(now: number): ViewEntry[] {
   const bytes = entries.reduce((sum, entry) => sum + entry.bytes, 0);
   const summary: SummaryModel = {
     counts: [
-      { key: "entries", label: "entries", value: entries.length },
-      { key: "versions", label: "versions", value: entries.length, tone: "muted" },
-      { key: "bytes", label: "bytes on this branch", value: bytes, tone: "muted" },
-      { key: "store-bytes", label: "bytes in the store", value: 25_946 },
+      { key: "entries", label: agree(entries.length, "entry", "entries"), value: entries.length },
+      {
+        key: "versions",
+        label: agree(entries.length, "version"),
+        value: entries.length,
+        tone: "muted",
+      },
+      { key: "bytes", label: "on this branch", value: bytes, unit: "bytes", tone: "muted" },
+      { key: "store-bytes", label: "in the store", value: 25_946, unit: "bytes" },
       {
         key: "store-max-bytes",
-        label: "store cap in bytes",
+        label: "store cap",
         value: 50 * 1024 * 1024,
+        unit: "bytes",
         tone: "muted",
       },
     ],
@@ -520,7 +534,7 @@ function stashViews(now: number): ViewEntry[] {
   const explorer: ExplorerModel = {
     title: "Stash",
     noun: ["entry", "entries"],
-    notices: [{ text: "25.3 KB stored on this branch", tone: "muted" }],
+    notices: [{ text: `${formatBytes(bytes)} stored on this branch`, tone: "muted" }],
     emptyText: "No stash entries on this branch.",
     items: entries.map((entry) => ({
       id: stashHandle(entry.name),
@@ -530,7 +544,7 @@ function stashViews(now: number): ViewEntry[] {
       ],
       search: entry.name,
       badge: {
-        text: `${(entry.bytes / 1024).toFixed(1)} KB · ${entry.lines} lines · ${Math.round((now - ago(now, entry.minutesAgo)) / MINUTE)}m`,
+        text: `${formatBytes(entry.bytes)} · ${entry.lines} lines · ${Math.round((now - ago(now, entry.minutesAgo)) / MINUTE)}m`,
       },
     })),
     loadDetail: { action: "stash.inspect" },
@@ -544,12 +558,12 @@ function stashViews(now: number): ViewEntry[] {
 function gitViews(): ViewEntry[] {
   const summary: SummaryModel = {
     counts: [
-      { key: "worktrees", label: "worktrees", value: WORKTREES.length },
+      { key: "worktrees", label: agree(WORKTREES.length, "worktree"), value: WORKTREES.length },
       { key: "missing", label: "missing", value: 0, tone: "warning" },
       { key: "uncommitted", label: "uncommitted", value: 1, tone: "warning" },
       { key: "removed", label: "removed", value: 1, tone: "dim" },
       { key: "other-worktrees", label: "other worktrees", value: 0, tone: "dim" },
-      { key: "prs", label: "pull requests", value: PRS.length },
+      { key: "prs", label: agree(PRS.length, "pull request"), value: PRS.length },
       { key: "prs-created", label: "opened here", value: 2 },
       { key: "prs-open", label: "open", value: 1, tone: "accent" },
       { key: "prs-failing", label: "failing", value: 1, tone: "error" },

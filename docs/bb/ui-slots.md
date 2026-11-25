@@ -131,7 +131,9 @@ component })` adds a titled section below the rows. Groups are the Info tab's
 (`experimental_THREAD_INFO_ROW_GROUPS`, `…SECTION_GROUPS`).
 
 Ours: a **Stash 4** row (the `entries` count of `stash.summary`) that opens the
-Pi Git tab, and a **Pi worktrees and pull requests** section that lists the items
+Pi Git tab, titled with the summary's own count text as pi-surface's
+`formatSummaryCount` writes it (`4 entries · 25.3 KiB on this branch`), and a
+**Pi worktrees and pull requests** section that lists the items
 of the `git.worktrees` explorer's first tab (the session's worktrees in use)
 and of the `git.prs` explorer, each with its label and toned badge (dirty,
 unpushed, merged; draft, review, checks). A row whose included detail has a

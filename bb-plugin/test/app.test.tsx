@@ -5,14 +5,16 @@ import {
   type PluginRpcTestHandlers,
 } from "@get-bb/plugin-sdk/testing/app";
 import type { PluginRpcContract } from "@get-bb/plugin-sdk";
-import { cleanup, fireEvent } from "@testing-library/react";
+import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { settleSnapshot } from "pi-surface/settle";
 import type { DeliverySnapshot, SessionSummary, SurfaceRequest, ViewEntry } from "../contract.ts";
 import { fixtureResponder, fixtureSnapshot } from "../fixture.ts";
 import { duration } from "../ui/format.ts";
 import { toAnswer } from "../ui/questionnaire.tsx";
+import { SessionList } from "../ui/sessions.tsx";
 import {
+  countText,
   openQuestionnaires,
   profileName,
   runningAgents,
@@ -338,7 +340,10 @@ describe("pi-surface app", () => {
     const row = renderSlot(app.threadContextCardRows[0]!, cardProps, {
       rpc: rpcFor(fixture),
     });
-    expect((await row.findByText("Stash")).closest("button")?.textContent).toContain("4");
+    const stash = (await row.findByText("Stash")).closest("button");
+    expect(stash?.textContent).toContain("4");
+    // The tooltip is the summary's own count text, the size formatted as one.
+    expect(stash?.getAttribute("title")).toBe("4 entries · 25.3 KiB on this branch");
     const section = renderSlot(app.threadContextCardSections[0]!, cardProps, {
       rpc: rpcFor(fixture),
     });
@@ -600,6 +605,68 @@ describe("pi-surface app", () => {
       ],
     };
     expect((await gitTab(broken).findByRole("alert")).textContent).toBe("Too large");
+  });
+
+  it("titles the stash row with the producer's singular label and a formatted size", async () => {
+    const one = withViews(
+      ["stash.summary"],
+      [
+        {
+          id: "stash.summary",
+          kind: "summary",
+          title: "Stash",
+          model: {
+            counts: [
+              { key: "entries", label: "entry", value: 1 },
+              { key: "versions", label: "version", value: 1, tone: "muted" },
+              { key: "bytes", label: "on this branch", value: 887, unit: "bytes", tone: "muted" },
+            ],
+          },
+        },
+      ],
+    );
+    const row = renderSlot(app.threadContextCardRows[0]!, cardProps, { rpc: rpcFor(one) });
+    const stash = (await row.findByText("Stash")).closest("button");
+    expect(stash?.textContent).toContain("1");
+    expect(stash?.getAttribute("title")).toBe("1 entry · 887 B on this branch");
+  });
+
+  it("reads count text as the producer labels it, sizes formatted as sizes", () => {
+    const git = {
+      counts: [
+        { key: "worktrees", label: "worktree", value: 1 },
+        { key: "prs", label: "pull requests", value: 2 },
+      ],
+    };
+    expect(countText(git, "worktrees")).toBe("1 worktree");
+    expect(countText(git, "prs")).toBe("2 pull requests");
+    expect(countText(git, "missing")).toBeUndefined();
+    expect(countText(undefined, "worktrees")).toBeUndefined();
+    const stash = fixture.views.find((view) => view.id === "stash.summary")!.model as never;
+    expect(countText(stash, "entries")).toBe("4 entries");
+    expect(countText(stash, "bytes")).toBe("25.3 KiB on this branch");
+    expect(countText(stash, "store-bytes")).toBe("25.3 KiB in the store");
+    expect(countText(stash, "store-max-bytes")).toBe("50.0 MiB store cap");
+  });
+
+  it("agrees the sessions page's running agents with their number", () => {
+    const session: SessionSummary = {
+      threadId: THREAD,
+      source: "live",
+      connected: true,
+      updatedAt: NOW,
+      status: "working",
+      runningAgents: 1,
+      questions: 0,
+    };
+    const one = render(<SessionList sessions={[session]} onOpen={() => {}} now={NOW} />);
+    expect(one.container.textContent).toContain("Working · 1 agent running");
+    expect(one.container.textContent).not.toContain("agents");
+    cleanup();
+    const two = render(
+      <SessionList sessions={[{ ...session, runningAgents: 2 }]} onOpen={() => {}} now={NOW} />,
+    );
+    expect(two.container.textContent).toContain("Working · 2 agents running");
   });
 
   it("lists sessions with their profile and counts, and badges rows with a question and running agents", async () => {
