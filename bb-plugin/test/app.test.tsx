@@ -349,9 +349,12 @@ describe("pi-surface app", () => {
     });
     expect(await section.findByText("webhooks @ feat/retry-worker")).toBeTruthy();
     expect(section.container.textContent).toContain("uncommitted changes; 3 unpushed commits");
-    // Every pull request the session touched, with its status as the badge; its row opens its URL.
-    for (const label of ["acme/webhooks#212", "acme/webhooks#209", "acme/platform#88"])
+    // The pull requests opened here and still in play, with their status as the badge; a row
+    // opens its URL. Merged and referenced ones are left to the Pi Git tab.
+    for (const label of ["acme/webhooks#212", "acme/webhooks#214"])
       expect(await section.findByText(label)).toBeTruthy();
+    for (const label of ["acme/webhooks#209", "acme/platform#88"])
+      expect(section.queryByText(label)).toBeNull();
     expect(section.container.textContent).toContain("draft · checks 1 failed, 2 pending, 9 passed");
     fireEvent.click(await section.findByText("acme/webhooks#212"));
     expect(section.inspection.navigateCalls).toContainEqual({
@@ -503,20 +506,51 @@ describe("pi-surface app", () => {
     ).toBeTruthy();
   });
 
+  it("filters pull requests by All, Draft, Open and Approved, the rest under More", async () => {
+    const slot = gitTab(fixture);
+    const shown = () =>
+      ["#212", "#214", "#209", "#88"].filter((pr) => slot.container.textContent?.includes(pr));
+    expect(await slot.findByText("acme/webhooks#212")).toBeTruthy();
+    expect(slot.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(
+      expect.arrayContaining(["All", "Draft", "Open", "Approved"]),
+    );
+    expect(shown()).toEqual(["#212", "#214"]);
+    fireEvent.click(slot.getByRole("tab", { name: "Draft" }));
+    expect(shown()).toEqual(["#212"]);
+    fireEvent.click(slot.getByRole("tab", { name: "Open" }));
+    expect(shown()).toEqual(["#214"]);
+    fireEvent.click(slot.getByRole("tab", { name: "Approved" }));
+    expect(shown()).toEqual(["#214"]);
+    const more = slot.getByRole("combobox", { name: "More Pull requests filters" });
+    expect(
+      Array.from(more.querySelectorAll("option:not([disabled])")).map((o) => o.textContent),
+    ).toEqual(["Closed", "Other"]);
+    fireEvent.change(more, { target: { value: "4" } });
+    expect(shown()).toEqual(["#209"]);
+    for (const name of ["All", "Draft", "Open", "Approved"])
+      expect(slot.getByRole("tab", { name }).getAttribute("aria-selected")).toBe("false");
+    fireEvent.change(more, { target: { value: "5" } });
+    expect(shown()).toEqual(["#88"]);
+  });
+
   it("expands and collapses every pull request in view from the section heading", async () => {
     const slot = gitTab(fixture);
     fireEvent.click(await slot.findByRole("button", { name: "Expand all Pull requests" }));
-    for (const pr of ["212", "209"])
+    for (const pr of ["212", "214"])
       expect(
         await slot.findByRole("button", { name: `https://github.com/acme/webhooks/pull/${pr}` }),
       ).toBeTruthy();
-    // Only the explorer tab in view opens: a referenced pull request stays closed.
-    expect(
-      slot.queryByRole("button", { name: "https://github.com/acme/platform/pull/88" }),
-    ).toBeNull();
-    fireEvent.click(slot.getByRole("tab", { name: "Referenced" }));
+    // Only the filter in view opens: merged and referenced pull requests stay closed.
+    for (const url of [
+      "https://github.com/acme/webhooks/pull/209",
+      "https://github.com/acme/platform/pull/88",
+    ])
+      expect(slot.queryByRole("button", { name: url })).toBeNull();
+    fireEvent.change(slot.getByRole("combobox", { name: "More Pull requests filters" }), {
+      target: { value: "5" },
+    });
     expect(slot.getByRole("button", { name: "Expand all Pull requests" })).toBeTruthy();
-    fireEvent.click(slot.getByRole("tab", { name: "Opened here" }));
+    fireEvent.click(slot.getByRole("tab", { name: "All" }));
     fireEvent.click(slot.getByRole("button", { name: "Collapse all Pull requests" }));
     expect(slot.queryByRole("button", { name: /^https:\/\/github\.com/ })).toBeNull();
     // Other sections stay as they were.

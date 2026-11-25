@@ -135,7 +135,9 @@ Pi Git tab, titled with the summary's own count text as pi-surface's
 `formatSummaryCount` writes it (`4 entries · 25.3 KiB on this branch`), and a
 **Pi worktrees and pull requests** section that lists the items
 of the `git.worktrees` explorer's first tab (the session's worktrees in use)
-and of the `git.prs` explorer, each with its label and toned badge (dirty,
+and of the `git.prs` explorer's first tab (pull requests opened here and still
+in play; merged, closed and referenced ones are left to the Pi Git tab), each
+with its label and toned badge (dirty,
 unpushed, merged; draft, review, checks). A row whose included detail has a
 bare URL field, as a pull request's does, opens it in bb; any other opens the
 Pi Git tab.
@@ -201,7 +203,9 @@ fixed tabs, visible only on threads with a session:
   that order, or a line saying the session has none yet.
 
 The explorers are drawn by the generic renderer as Info sections. Each has its
-tabs beside the heading, an **Expand all** / **Collapse all** control at the
+tabs beside the heading (a tab the view marks `secondary`, such as the pull
+requests' **Closed** and **Other** (only looked at), goes in a **More** menu after
+the others), an **Expand** / **Collapse** control (expand or collapse all) at the
 heading's end (it acts on the items of the tab in view, opening each as a
 click would, and lifts the list's "N more" limit while all are open), its
 notices, and items with a badge that open into their detail: inline when the view carries it (subagents, worktrees, pull

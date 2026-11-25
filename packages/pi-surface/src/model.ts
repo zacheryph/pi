@@ -171,7 +171,17 @@ export type ExplorerItem = {
   marked?: boolean;
   detail?: DetailContent;
 };
-export type ExplorerTab = { label: string; ids: readonly string[]; emptyText?: string };
+export type ExplorerTab = {
+  label: string;
+  ids: readonly string[];
+  emptyText?: string;
+  /**
+   * A lesser filter, such as finished or merely referenced items. A renderer
+   * short of room may tuck secondary tabs behind a menu after the others;
+   * one that ignores the flag shows them as ordinary tabs.
+   */
+  secondary?: boolean;
+};
 export type ExplorerMarker = {
   /** What a mark means, counted in the status row: "unreviewed". */
   label: string;
@@ -392,7 +402,8 @@ const isExplorerTab = (value: unknown) =>
   isRecord(value) &&
   isString(value.label) &&
   isStrings(value.ids) &&
-  optional(value.emptyText, isString);
+  optional(value.emptyText, isString) &&
+  optional(value.secondary, isBoolean);
 const isExplorerMarker = (value: unknown) =>
   isRecord(value) &&
   isString(value.label) &&

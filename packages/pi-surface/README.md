@@ -75,6 +75,11 @@ the moment it would have called a callback.
 | `FormModel`, `FormQuestionnaire`, `FormQuestion`, `FormAnswer`     | Open questionnaires and the answer a consumer submits                                               |
 | `ActionRef`, `JsonValue`, `JsonObject`                             | Behaviour by reference, and the JSON the model is made of                                           |
 
+An explorer's tabs are its filters. A tab marked `secondary` matters less
+(finished or merely referenced items): bb tucks secondary tabs into a **More**
+menu after the others, and a renderer that ignores the flag shows them as
+ordinary tabs.
+
 A span can say which state its glyph stands for: `icon` (`done`, `active`,
 `blocked`…) lets a renderer with icons (bb) draw its own in the glyph's place.
 The terminal draws the text as it always has, so an icon span with empty text

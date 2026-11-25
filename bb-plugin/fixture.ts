@@ -8,6 +8,7 @@ import type {
   Block,
   DeliverySnapshot,
   ExplorerModel,
+  ExplorerTab,
   FormModel,
   JsonValue,
   Line,
@@ -228,32 +229,82 @@ const WORKTREES = [
   },
 ];
 
-const PRS = [
+type FixturePr = {
+  label: string;
+  url: string;
+  title: string;
+  origin: "created" | "referenced";
+  state: "open" | "merged" | "closed";
+  draft?: boolean;
+  approved?: boolean;
+  status: string;
+  tone: Tone;
+};
+
+const PRS: readonly FixturePr[] = [
   {
     label: "acme/webhooks#212",
     url: "https://github.com/acme/webhooks/pull/212",
     title: "Retry webhooks from the queue worker",
     origin: "created",
+    state: "open",
+    draft: true,
     status: "draft · checks 1 failed, 2 pending, 9 passed",
-    tone: "error" as Tone,
+    tone: "error",
+  },
+  {
+    label: "acme/webhooks#214",
+    url: "https://github.com/acme/webhooks/pull/214",
+    title: "Exponential backoff with jitter",
+    origin: "created",
+    state: "open",
+    approved: true,
+    status: "open · approved · checks 9 passed",
+    tone: "success",
   },
   {
     label: "acme/webhooks#209",
     url: "https://github.com/acme/webhooks/pull/209",
     title: "Add delivery_attempts table",
     origin: "created",
+    state: "merged",
+    approved: true,
     status: "merged · approved · checks 12 passed",
-    tone: "success" as Tone,
+    tone: "success",
   },
   {
     label: "acme/platform#88",
     url: "https://github.com/acme/platform/pull/88",
     title: "Queue worker: graceful shutdown",
     origin: "referenced",
+    state: "open",
     status: "open · review required · checks 7 passed",
-    tone: "default" as Tone,
+    tone: "default",
   },
 ];
+
+/** pi-git's PR filters (its `prTabs`), over the fixture's pull requests. */
+function prTabs(): ExplorerTab[] {
+  const ids = (list: readonly FixturePr[]) => list.map((pr) => `github.com/${pr.label}`);
+  const created = PRS.filter((pr) => pr.origin === "created");
+  const active = created.filter((pr) => pr.state === "open");
+  return [
+    { label: "All", ids: ids(active) },
+    { label: "Draft", ids: ids(active.filter((pr) => pr.draft)) },
+    { label: "Open", ids: ids(active.filter((pr) => !pr.draft)) },
+    { label: "Approved", ids: ids(active.filter((pr) => pr.approved)) },
+    {
+      label: "Closed",
+      ids: ids(created.filter((pr) => pr.state !== "open")),
+      secondary: true,
+    },
+    {
+      label: "Other",
+      ids: ids(PRS.filter((pr) => pr.origin === "referenced")),
+      secondary: true,
+    },
+  ];
+}
 
 /** `mm:ss`, as pi-subagent's clock reads. */
 function clockText(ms: number): string {
@@ -564,8 +615,8 @@ function gitViews(): ViewEntry[] {
       { key: "removed", label: "removed", value: 1, tone: "dim" },
       { key: "other-worktrees", label: "other worktrees", value: 0, tone: "dim" },
       { key: "prs", label: agree(PRS.length, "pull request"), value: PRS.length },
-      { key: "prs-created", label: "opened here", value: 2 },
-      { key: "prs-open", label: "open", value: 1, tone: "accent" },
+      { key: "prs-created", label: "opened here", value: 3 },
+      { key: "prs-open", label: "open", value: 2, tone: "accent" },
       { key: "prs-failing", label: "failing", value: 1, tone: "error" },
       { key: "prs-watching", label: "watching", value: 0, live: true },
     ],
@@ -626,16 +677,7 @@ function gitViews(): ViewEntry[] {
         },
       ],
     })),
-    tabs: [
-      {
-        label: "Opened here",
-        ids: PRS.filter((pr) => pr.origin === "created").map((pr) => `github.com/${pr.label}`),
-      },
-      {
-        label: "Referenced",
-        ids: PRS.filter((pr) => pr.origin === "referenced").map((pr) => `github.com/${pr.label}`),
-      },
-    ],
+    tabs: prTabs(),
   };
   return [
     { id: "git.prs", kind: "explorer", title: "Pull requests", model: prs },

@@ -270,9 +270,12 @@ Pull requests and worktrees in this session (restored after compaction; stored d
   **Other** tabs; Enter shows a worktree's details. Outside the terminal
   UI it shows the list as a message. `/git:worktrees remove` picks a worktree to
   remove and asks for confirmation, naming any work removal would lose.
-- `/git:prs` opens a browser with **Opened here** and **Referenced** tabs;
-  Enter shows a PR's status, branch, when it was seen, and the tool calls that
-  touched it. Outside the interactive terminal it prints the list.
+- `/git:prs` opens a browser filtering the pull requests opened here that are
+  still in play: **All**, **Draft**, **Open** (ready for review) and
+  **Approved**. Two secondary tabs follow, **Closed** (merged or closed) and
+  **Other** (ones only looked at, not opened here); bb tucks them into a **More** menu.
+  A PR with no status seen yet counts as in play. Enter shows a PR's status,
+  branch, when it was seen, and the tool calls that touched it. Outside the interactive terminal it prints the list.
 - `/git:refresh` reads every open PR fresh through `gh` and re-checks every
   worktree, then reports what it could not read.
 
