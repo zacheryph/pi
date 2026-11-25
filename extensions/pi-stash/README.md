@@ -136,6 +136,9 @@ so zeros mean nothing is stashed where a session without pi-stash has no view:
 | `store-bytes`     | Bytes in the shared content store; absent when it cannot be measured    |
 | `store-max-bytes` | The store's configured cap (`maxStoreBytes`); absent with `store-bytes` |
 
+The three size counts are `unit: "bytes"`, so displays show them as sizes
+(`12.4 KiB on this branch`, `1.0 GiB store cap`); `entries` and `versions`
+label themselves in agreement with their value (`1 entry`, `2 versions`).
 Stash records live in the session file and their content in the store, so no
 count is process-bound (`live`): a saved summary settles unchanged.
 
