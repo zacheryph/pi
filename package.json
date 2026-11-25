@@ -22,19 +22,11 @@
     "test",
     "packages/pi-presentation",
     "packages/pi-surface",
-    "extensions/pi-bb",
-    "packages/pi-isolate"
+    "extensions/pi-bb"
   ],
   "scripts": {
     "setup:pi": "node scripts/bundle.mjs setup:pi",
     "setup:bb": "node scripts/bundle.mjs setup:bb",
-    "setup:launcher": "node scripts/bundle.mjs setup:launcher",
-    "setup:policy": "node scripts/bundle.mjs setup:policy",
-    "build:launcher": "node scripts/build-launcher.mjs",
-    "probe:launcher": "node scripts/build-launcher.mjs --probe",
-    "pi": "node scripts/bundle.mjs pi",
-    "pi:isolate": "node scripts/bundle.mjs pi:isolate",
-    "pi:compiled": "node scripts/bundle.mjs pi:compiled",
     "check": "npm run format:check && npm run lint && npm run typecheck",
     "fix": "npm run format && npm run lint:fix && npm run format",
     "format": "oxfmt --write .",
@@ -102,8 +94,7 @@
     "pi-ui": "file:packages/pi-ui",
     "pi-work": "file:packages/pi-work",
     "pi-presentation": "file:packages/pi-presentation",
-    "pi-surface": "file:packages/pi-surface",
-    "pi-isolate": "file:packages/pi-isolate"
+    "pi-surface": "file:packages/pi-surface"
   },
   "type": "module"
 }
