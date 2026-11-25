@@ -90,12 +90,27 @@ function segment(snapshot: DeliverySnapshot) {
   });
 }
 
-function tab(snapshot: DeliverySnapshot | null, source: Source = "fixture") {
+function tab(snapshot: DeliverySnapshot | null, source: Source = "fixture", index = 0) {
   return renderSlot(
-    app.tabs[0]! as never,
+    app.tabs[index]! as never,
     { threadId: THREAD, environment: null },
     { rpc: rpcFor(snapshot, source) },
   );
+}
+
+/** The Pi Git tab: pull requests, worktrees and stash. */
+const gitTab = (snapshot: DeliverySnapshot | null, source: Source = "fixture") =>
+  tab(snapshot, source, 1);
+
+const PI_SECTIONS = ["Todos", "Subagents"];
+const GIT_SECTIONS = ["Pull requests", "Git worktrees", "Stash"];
+
+/** Section headings in the order the tab draws them. */
+function headings(slot: { container: HTMLElement }, labels: readonly string[]): string[] {
+  const text = slot.container.textContent ?? "";
+  return labels
+    .filter((label) => text.includes(label))
+    .sort((a, b) => text.indexOf(a) - text.indexOf(b));
 }
 
 const requests = (slot: {
@@ -117,8 +132,9 @@ describe("pi-surface app", () => {
     expect(app.threadContextSegments.map((slot) => slot.id)).toEqual(["pi"]);
     expect(app.threadContextCardRows.map((slot) => slot.id)).toEqual(["stash"]);
     expect(app.threadContextCardSections.map((slot) => slot.id)).toEqual(["git"]);
-    expect(app.tabs.map((tab) => [tab.id, tab.availability, tab.context.kind])).toEqual([
-      ["session", "fixed", "thread"],
+    expect(app.tabs.map((tab) => [tab.id, tab.title, tab.availability, tab.context.kind])).toEqual([
+      ["session", "Pi", "fixed", "thread"],
+      ["git", "Pi Git", "fixed", "thread"],
     ]);
     expect(app.threadRowMetadata.map((slot) => slot.id)).toEqual(["pi"]);
     expect(app.navPanels.map((panel) => panel.path)).toEqual(["sessions"]);
@@ -211,7 +227,14 @@ describe("pi-surface app", () => {
     // A newer session might offer the card's id as another kind; it is skipped, not drawn as a widget.
     const other = withViews(
       ["todo.widget"],
-      [{ id: "todo.widget", kind: "summary", title: "Tasks", model: { counts: [] } }],
+      [
+        {
+          id: "todo.widget",
+          kind: "summary",
+          title: "Tasks",
+          model: { counts: [] },
+        },
+      ],
     );
     const banner = app.composerCustomizations[0]!.banners![0]!;
     const slot = renderSlot(banner, {}, { rpc: rpcFor(other), composer: threadComposer });
@@ -238,13 +261,17 @@ describe("pi-surface app", () => {
       }
       cleanup();
     }
-    const button = await segment(fixture).findByRole("button", { name: /3\/7 tasks/ });
+    const button = await segment(fixture).findByRole("button", {
+      name: /3\/7 tasks/,
+    });
     // bb's CONTEXT_CARD_SEGMENT_CLASS, inside the row's p-1.
     expect(classes(button)).toEqual(expect.arrayContaining(["px-2", "py-1", "min-h-6"]));
   });
 
   it("reads the context segment from summaries: profile, task progress, running agents, a question", async () => {
-    const button = await segment(fixture).findByRole("button", { name: /orchestrate/ });
+    const button = await segment(fixture).findByRole("button", {
+      name: /orchestrate/,
+    });
     expect(button.textContent).toBe("orchestrate · 3/7 tasks · 2 agents · question");
   });
 
@@ -255,7 +282,9 @@ describe("pi-surface app", () => {
       "todo.explorer",
       "subagent.explorer",
     ]);
-    const button = await segment(hidden).findByRole("button", { name: /orchestrate/ });
+    const button = await segment(hidden).findByRole("button", {
+      name: /orchestrate/,
+    });
     expect(button.textContent).toBe("orchestrate · 3/7 tasks · 2 agents · question");
   });
 
@@ -277,7 +306,9 @@ describe("pi-surface app", () => {
         },
       ],
     );
-    const button = await segment(quiet).findByRole("button", { name: /Reviewer/ });
+    const button = await segment(quiet).findByRole("button", {
+      name: /Reviewer/,
+    });
     expect(button.textContent).toBe("Reviewer");
     const header = (await tab(quiet).findByRole("heading", { level: 2 })).parentElement!;
     expect(header.textContent).toContain("Reviewer · Claude Opus");
@@ -290,8 +321,12 @@ describe("pi-surface app", () => {
       {},
       { rpc: empty, composer: threadComposer },
     );
-    const row = renderSlot(app.threadContextCardRows[0]!, cardProps, { rpc: empty });
-    const section = renderSlot(app.threadContextCardSections[0]!, cardProps, { rpc: empty });
+    const row = renderSlot(app.threadContextCardRows[0]!, cardProps, {
+      rpc: empty,
+    });
+    const section = renderSlot(app.threadContextCardSections[0]!, cardProps, {
+      rpc: empty,
+    });
     const seg = renderSlot({ component: app.threadContextSegments[0]!.summary }, contextProps, {
       rpc: empty,
     });
@@ -300,7 +335,9 @@ describe("pi-surface app", () => {
   });
 
   it("shows the stash count from stash.summary and the Git explorers' items in the context card", async () => {
-    const row = renderSlot(app.threadContextCardRows[0]!, cardProps, { rpc: rpcFor(fixture) });
+    const row = renderSlot(app.threadContextCardRows[0]!, cardProps, {
+      rpc: rpcFor(fixture),
+    });
     expect((await row.findByText("Stash")).closest("button")?.textContent).toContain("4");
     const section = renderSlot(app.threadContextCardSections[0]!, cardProps, {
       rpc: rpcFor(fixture),
@@ -320,7 +357,9 @@ describe("pi-surface app", () => {
 
   it("hides the stash row and Git section when their views are empty or missing", async () => {
     const bare = withViews(["stash.summary", "git.worktrees", "git.prs"]);
-    const row = renderSlot(app.threadContextCardRows[0]!, cardProps, { rpc: rpcFor(bare) });
+    const row = renderSlot(app.threadContextCardRows[0]!, cardProps, {
+      rpc: rpcFor(bare),
+    });
     const section = renderSlot(app.threadContextCardSections[0]!, cardProps, {
       rpc: rpcFor(bare),
     });
@@ -332,7 +371,9 @@ describe("pi-surface app", () => {
   it("inserts the picked stash handle into the draft from the popup", async () => {
     const popup = app.composerCustomizations[0]!.experimental_popups![0]!;
     const slot = renderSlot(popup, {}, { rpc: rpcFor(fixture), composer: threadComposer });
-    const filter = await slot.findByRole("combobox", { name: "Filter stash entries" });
+    const filter = await slot.findByRole("combobox", {
+      name: "Filter stash entries",
+    });
     expect(slot.getAllByRole("option")).toHaveLength(4);
     fireEvent.change(filter, { target: { value: "review" } });
     expect(slot.getAllByRole("option")).toHaveLength(1);
@@ -367,13 +408,32 @@ describe("pi-surface app", () => {
     );
     fireEvent.click(await slot.findByRole("button", { name: "Open the Pi session tab" }));
     expect(openTab).toHaveBeenCalledWith({
-      tab: { id: "session", context: { kind: "thread" }, availability: "fixed" },
+      tab: {
+        id: "session",
+        context: { kind: "thread" },
+        availability: "fixed",
+      },
+    });
+  });
+
+  it("opens the Pi Git tab from the context card's stash row", async () => {
+    const openTab = vi.fn(() => true);
+    const row = renderSlot(app.threadContextCardRows[0]!, cardProps, {
+      rpc: rpcFor(fixture),
+      experimental_panel: { openTab },
+    });
+    fireEvent.click(await row.findByText("Stash"));
+    expect(openTab).toHaveBeenCalledWith({
+      tab: { id: "git", context: { kind: "thread" }, availability: "fixed" },
     });
   });
 
   it("draws the Pi tab's header, activity and usage from the system.session view", async () => {
     const slot = tab(fixture);
-    const heading = await slot.findByRole("heading", { level: 2, name: "Webhook retry queue" });
+    const heading = await slot.findByRole("heading", {
+      level: 2,
+      name: "Webhook retry queue",
+    });
     expect(heading.parentElement!.textContent).toContain(
       "Running bash · orchestrate · Claude Opus · thinking high · context 42%",
     );
@@ -390,16 +450,15 @@ describe("pi-surface app", () => {
     const slot = tab(withViews(["system.session"]));
     expect(await slot.findByRole("heading", { level: 2, name: "Pi session" })).toBeTruthy();
     expect(slot.container.textContent).toContain("Connected · orchestrate");
-    for (const section of ["Todos", "Subagents", "Stash", "Git worktrees", "Pull requests"])
-      expect(await slot.findByText(section)).toBeTruthy();
+    for (const section of PI_SECTIONS) expect(await slot.findByText(section)).toBeTruthy();
     expect(slot.queryByText("Usage")).toBeNull();
     expect(slot.queryByText("Recent activity")).toBeNull();
   });
 
-  it("draws every explorer view in the Pi tab, loading details through actions", async () => {
+  it("draws every explorer but Git's and the stash's in the Pi tab, loading details through actions", async () => {
     const slot = tab(fixture);
-    for (const section of ["Todos", "Subagents", "Stash", "Git worktrees", "Pull requests"])
-      expect(await slot.findByText(section)).toBeTruthy();
+    for (const section of PI_SECTIONS) expect(await slot.findByText(section)).toBeTruthy();
+    for (const section of GIT_SECTIONS) expect(slot.queryByText(section)).toBeNull();
     fireEvent.click(await slot.findByText("worker: Move retries into the queue worker"));
     expect(
       await slot.findByText(/Worker picks up due attempts; wiring the ack path now\./, {
@@ -408,15 +467,55 @@ describe("pi-surface app", () => {
     ).toBeTruthy();
     // Opening a task with an unreviewed message reviews it, as the terminal does.
     fireEvent.click(await slot.findByText("schema: Add the delivery_attempts table"));
-    fireEvent.click(await slot.findByText("stash:review-notes@3f9c2a81d0e4"));
-    expect(await slot.findByText(/delivery_attempts needs an index/)).toBeTruthy();
     expect(requests(slot)).toEqual(
       expect.arrayContaining([
         { action: "todo.inspect", args: { id: "worker" } },
         { action: "todo.review", args: { branch: 1, ids: ["schema"] } },
-        { action: "stash.inspect", args: { id: "stash:review-notes@3f9c2a81d0e4" } },
       ]),
     );
+  });
+
+  it("draws pull requests, worktrees and stash in the Pi Git tab, in that order", async () => {
+    const slot = gitTab(fixture);
+    for (const section of GIT_SECTIONS) expect(await slot.findByText(section)).toBeTruthy();
+    expect(headings(slot, GIT_SECTIONS)).toEqual(GIT_SECTIONS);
+    for (const section of PI_SECTIONS) expect(slot.queryByText(section)).toBeNull();
+    expect(slot.queryByRole("heading", { level: 2 })).toBeNull();
+    fireEvent.click(await slot.findByText("stash:review-notes@3f9c2a81d0e4"));
+    expect(await slot.findByText(/delivery_attempts needs an index/)).toBeTruthy();
+    expect(requests(slot)).toEqual([
+      {
+        action: "stash.inspect",
+        args: { id: "stash:review-notes@3f9c2a81d0e4" },
+      },
+    ]);
+  });
+
+  it("says when the session has nothing for the Pi Git tab", async () => {
+    const slot = gitTab(withViews(["git.prs", "git.worktrees", "stash.explorer"]));
+    expect(
+      await slot.findByText("This session has no pull requests, worktrees or stash entries yet."),
+    ).toBeTruthy();
+  });
+
+  it("expands and collapses every pull request in view from the section heading", async () => {
+    const slot = gitTab(fixture);
+    fireEvent.click(await slot.findByRole("button", { name: "Expand all Pull requests" }));
+    for (const pr of ["212", "209"])
+      expect(
+        await slot.findByRole("button", { name: `https://github.com/acme/webhooks/pull/${pr}` }),
+      ).toBeTruthy();
+    // Only the explorer tab in view opens: a referenced pull request stays closed.
+    expect(
+      slot.queryByRole("button", { name: "https://github.com/acme/platform/pull/88" }),
+    ).toBeNull();
+    fireEvent.click(slot.getByRole("tab", { name: "Referenced" }));
+    expect(slot.getByRole("button", { name: "Expand all Pull requests" })).toBeTruthy();
+    fireEvent.click(slot.getByRole("tab", { name: "Opened here" }));
+    fireEvent.click(slot.getByRole("button", { name: "Collapse all Pull requests" }));
+    expect(slot.queryByRole("button", { name: /^https:\/\/github\.com/ })).toBeNull();
+    // Other sections stay as they were.
+    expect(slot.getByRole("button", { name: "Expand all Git worktrees" })).toBeTruthy();
   });
 
   it("shows an action's failure where its detail would be", async () => {
@@ -455,21 +554,32 @@ describe("pi-surface app", () => {
 
   it("skips views of kinds it does not draw in the Pi tab", async () => {
     const newer = withViews([], [
-      { id: "future.timeline", kind: "timeline", title: "Timeline", model: { lanes: [] } },
-      { id: "future.broken", kind: "hologram", title: "Hologram", error: "Not drawn" },
+      {
+        id: "future.timeline",
+        kind: "timeline",
+        title: "Timeline",
+        model: { lanes: [] },
+      },
+      {
+        id: "future.broken",
+        kind: "hologram",
+        title: "Hologram",
+        error: "Not drawn",
+      },
     ] as unknown as ViewEntry[]);
     const slot = tab(newer);
-    for (const section of ["Todos", "Subagents", "Stash", "Git worktrees", "Pull requests"])
-      expect(await slot.findByText(section)).toBeTruthy();
+    for (const section of PI_SECTIONS) expect(await slot.findByText(section)).toBeTruthy();
     for (const title of ["Timeline", "Hologram", "Not drawn"])
       expect(slot.queryByText(title)).toBeNull();
   });
 
   it("opens inline details, and a pull request's URL in bb", async () => {
-    const slot = tab(fixture);
+    const slot = gitTab(fixture);
     fireEvent.click(await slot.findByText("acme/webhooks#212"));
     fireEvent.click(
-      await slot.findByRole("button", { name: "https://github.com/acme/webhooks/pull/212" }),
+      await slot.findByRole("button", {
+        name: "https://github.com/acme/webhooks/pull/212",
+      }),
     );
     expect(slot.inspection.navigateCalls).toContainEqual({
       method: "openUrl",
@@ -480,9 +590,16 @@ describe("pi-surface app", () => {
   it("shows why a view is missing", async () => {
     const broken: DeliverySnapshot = {
       id: "fixture",
-      views: [{ id: "git.prs", kind: "explorer", title: "Pull requests", error: "Too large" }],
+      views: [
+        {
+          id: "git.prs",
+          kind: "explorer",
+          title: "Pull requests",
+          error: "Too large",
+        },
+      ],
     };
-    expect((await tab(broken).findByRole("alert")).textContent).toBe("Too large");
+    expect((await gitTab(broken).findByRole("alert")).textContent).toBe("Too large");
   });
 
   it("lists sessions with their profile and counts, and badges rows with a question and running agents", async () => {
@@ -518,7 +635,9 @@ describe("pi-surface app", () => {
       {},
     );
     fireEvent.click(await slot.findByRole("button", { name: /^8/ }));
-    const send = slot.getByRole("button", { name: "Send answers" }) as HTMLButtonElement;
+    const send = slot.getByRole("button", {
+      name: "Send answers",
+    }) as HTMLButtonElement;
     // pi-ask takes an answer to every question or none.
     expect(send.disabled).toBe(true);
     fireEvent.click(slot.getByRole("button", { name: /^Timeouts/ }));
@@ -545,7 +664,10 @@ describe("pi-surface app", () => {
           id: "int_2",
           threadId: THREAD,
           title: "Old",
-          payload: { id: "q", questions: [{ header: "x", question: "y", options: [] }] } as never,
+          payload: {
+            id: "q",
+            questions: [{ header: "x", question: "y", options: [] }],
+          } as never,
           createdAt: NOW,
           expiresAt: null,
         },

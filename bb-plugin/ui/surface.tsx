@@ -225,7 +225,10 @@ type IconSpan = Exclude<Span, string> & { icon: StateIcon };
  * icon) and the rest, with the space and separator that joined them dropped:
  * `→ worker · ▸ in_progress` gives `▸` and `→ worker · in_progress`.
  */
-export function splitState(line: Line | undefined): { state?: IconSpan; rest: Span[] } {
+export function splitState(line: Line | undefined): {
+  state?: IconSpan;
+  rest: Span[];
+} {
   if (line === undefined) return { rest: [] };
   const list = spans(line);
   const index = list.findIndex((span) => typeof span === "object" && !!span.icon);
@@ -357,9 +360,32 @@ function Tabs({
   );
 }
 
+/** The section heading's control that opens, or closes, every item at once. */
+function ExpandAll({
+  allOpen,
+  label,
+  onToggle,
+}: {
+  allOpen: boolean;
+  label: string;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="rounded px-1.5 text-xs text-muted-foreground hover:bg-state-hover hover:text-foreground"
+      aria-label={`${allOpen ? "Collapse" : "Expand"} all ${label}`}
+      aria-expanded={allOpen}
+      onClick={onToggle}
+    >
+      {allOpen ? "Collapse all" : "Expand all"}
+    </button>
+  );
+}
+
 /**
  * An explorer as an Info section: tabs, notices, and items that open into
- * their detail. `loadDetail`, `onOpen` and `marker.onClear` run through `run`;
+ * their detail, one at a time or all at once from the heading. `loadDetail`, `onOpen` and `marker.onClear` run through `run`;
  * without it (no Pi runs for the thread) only inline details open.
  */
 export function ExplorerSection({
@@ -391,11 +417,10 @@ export function ExplorerSection({
   const setDetail = (id: string, value: Loaded) =>
     setLoaded((previous) => ({ ...previous, [id]: value }));
 
-  const toggle = (item: ExplorerItem) => {
-    if (open.has(item.id)) {
-      setOpen((previous) => new Set([...previous].filter((id) => id !== item.id)));
-      return;
-    }
+  const openable = (item: ExplorerItem) => (remote ? !!run : item.detail !== undefined);
+
+  /** Opens an item as the terminal does: onOpen, clearing its mark, then loading its detail. */
+  const openItem = (item: ExplorerItem) => {
     setOpen((previous) => new Set([...previous, item.id]));
     if (!run) return;
     if (model.onOpen) void call(model.onOpen, { id: item.id }, run).catch(() => {});
@@ -412,11 +437,27 @@ export function ExplorerSection({
             item.id,
             isDetailContent(content)
               ? { state: "done", content }
-              : { state: "error", message: `Action "${ref.action}" returned no detail.` },
+              : {
+                  state: "error",
+                  message: `Action "${ref.action}" returned no detail.`,
+                },
           ),
         (error: unknown) => setDetail(item.id, { state: "error", message: errorMessage(error) }),
       );
     }
+  };
+
+  const close = (ids: readonly string[]) =>
+    setOpen((previous) => new Set([...previous].filter((id) => !ids.includes(id))));
+
+  const toggle = (item: ExplorerItem) => (open.has(item.id) ? close([item.id]) : openItem(item));
+
+  // Expand all and collapse all act on the current tab's items that open.
+  const openableItems = items.filter(openable);
+  const allOpen = openableItems.length > 0 && openableItems.every((item) => open.has(item.id));
+  const toggleAll = () => {
+    if (allOpen) close(openableItems.map((item) => item.id));
+    else for (const item of openableItems) if (!open.has(item.id)) openItem(item);
   };
 
   const detail = (item: ExplorerItem): ReactNode => {
@@ -438,12 +479,18 @@ export function ExplorerSection({
   };
 
   const empty = current?.emptyText ?? model.emptyText ?? `No ${model.noun?.[1] ?? "items"}.`;
+  const label = titleText(model.title);
   return (
     <InfoSection
-      label={titleText(model.title)}
+      label={label}
       count={model.items.length}
       {...(tabs.length > 1
         ? { accessory: <Tabs tabs={tabs} current={tab} onSelect={setTab} /> }
+        : {})}
+      {...(openableItems.length
+        ? {
+            trailing: <ExpandAll allOpen={allOpen} label={label} onToggle={toggleAll} />,
+          }
         : {})}
     >
       <div className="flex min-w-0 flex-col gap-1" data-pi-surface="explorer">
@@ -460,11 +507,12 @@ export function ExplorerSection({
         {items.length ? (
           <InfoList
             items={items}
-            limit={limit}
+            // Expanded all, every item shows: none hides behind "N more".
+            limit={allOpen ? Math.max(limit, items.length) : limit}
             getKey={(item) => item.id}
             renderItem={(item) => {
               const isMarked = marked(item);
-              const openable = remote ? !!run : item.detail !== undefined;
+              const canOpen = openable(item);
               return (
                 <div>
                   <InfoListRow
@@ -474,7 +522,7 @@ export function ExplorerSection({
                       ) : (
                         <Icon
                           name={open.has(item.id) ? "ChevronDown" : "ChevronRight"}
-                          className={`size-3 ${openable ? "text-muted-foreground" : "text-transparent"}`}
+                          className={`size-3 ${canOpen ? "text-muted-foreground" : "text-transparent"}`}
                           aria-hidden
                         />
                       )
@@ -483,7 +531,7 @@ export function ExplorerSection({
                     name={<LineText line={item.label} />}
                     title={plainText(item.label)}
                     {...(item.badge ? { trailing: <BadgeText badge={item.badge} /> } : {})}
-                    {...(openable ? { onSelect: () => toggle(item) } : {})}
+                    {...(canOpen ? { onSelect: () => toggle(item) } : {})}
                   />
                   {detail(item)}
                 </div>

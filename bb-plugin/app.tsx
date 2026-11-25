@@ -9,8 +9,8 @@ import {
 import { QUESTIONNAIRE_RENDERER } from "./questions.ts";
 import { OpenPanelAction, STASH_POPUP, StashPicker } from "./ui/composer.tsx";
 import { QuestionnaireInteraction } from "./ui/questionnaire.tsx";
-import { SESSION_TAB } from "./ui/session.ts";
-import { SessionTab, useSessionTabVisible } from "./ui/session-tab.tsx";
+import { GIT_TAB, SESSION_TAB } from "./ui/session.ts";
+import { GitTab, SessionTab, useSessionTabVisible } from "./ui/session-tab.tsx";
 import { RowBadge, SessionsPage, useSessionsBadge, useSessionsByThread } from "./ui/sessions.tsx";
 import { WIDGET_CARDS, widgetBanner } from "./ui/stack-cards.tsx";
 import { GitCardSection, PiSegment, StashCardRow } from "./ui/thread-context.tsx";
@@ -73,13 +73,22 @@ export default definePluginApp((app) => {
     component: GitCardSection,
   });
 
-  // 6. The thread's side panel.
+  // 6. The thread's side panel: the session, and beside it its pull requests,
+  // worktrees and stash. Tabs show in registration order.
   app.slots.experimental_tab({
     ...SESSION_TAB,
     title: "Pi",
     icon: "Layers",
-    tooltip: "Pi session: tasks, subagents, stash, Git, activity",
+    tooltip: "Pi session: tasks, subagents, activity",
     component: SessionTab,
+    useVisible: useSessionTabVisible,
+  });
+  app.slots.experimental_tab({
+    ...GIT_TAB,
+    title: "Pi Git",
+    icon: "GitPullRequest",
+    tooltip: "Pi pull requests, worktrees and stash",
+    component: GitTab,
     useVisible: useSessionTabVisible,
   });
 
@@ -102,5 +111,8 @@ export default definePluginApp((app) => {
   });
 
   // 9. pi-ask's questionnaire as one form in place of the composer.
-  app.slots.pendingInteraction({ id: QUESTIONNAIRE_RENDERER, component: QuestionnaireInteraction });
+  app.slots.pendingInteraction({
+    id: QUESTIONNAIRE_RENDERER,
+    component: QuestionnaireInteraction,
+  });
 });

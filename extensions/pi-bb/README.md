@@ -12,8 +12,10 @@ installed, every Pi thread shows them in bb's own UI instead.
   [`bb-plugin/`](../../bb-plugin/README.md)). Nothing else to configure.
 - **Above the composer:** a Todos card and a Subagents card, and the agent and
   task counts in the thread's context row.
-- **The Pi tab** beside the thread: tasks and their history, subagents, stash
-  previews, worktrees and pull requests, recent tool calls and usage.
+- **The Pi tab** beside the thread: tasks and their history, subagents, recent
+  tool calls and usage. Next to it, **the Pi Git tab**: pull requests,
+  worktrees and stash previews. Each section expands or collapses all its items
+  at once.
 - **Questions** the agent asks with pi-ask appear as bb's own pending
   interaction, answered in place.
 - **Stash picker** (Mod+Shift+S) inserts a stash handle into your draft.
@@ -21,7 +23,7 @@ installed, every Pi thread shows them in bb's own UI instead.
   flag running subagents and open questions.
 - **You type** `/bb` to check whether this session is connected.
 
-<img src="../../docs/images/bb/thread-tab.png" alt="The Pi tab: open questions, todos, subagents, stash, worktrees, pull requests, activity and usage" width="360">
+<img src="../../docs/images/bb/thread-tab.png" alt="The Pi tab: open questions, todos, subagents, activity and usage" width="360">
 
 Every slot, with a screenshot, is in [bb's UI slots](../../docs/bb/ui-slots.md).
 Outside bb the extension does nothing.

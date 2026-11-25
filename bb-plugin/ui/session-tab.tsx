@@ -1,7 +1,8 @@
-// Slot 6: the thread side-panel tab with the whole session: its header, open
-// questions, every explorer view through the generic renderer, recent activity
-// and usage. The header, activity and usage are the `system.session` view; the
-// agent's profile is `subagent.summary`'s.
+// Slot 6: two thread side-panel tabs. The Pi tab has the session: its header,
+// open questions, every explorer view but Git's and the stash's through the
+// generic renderer, recent activity and usage. The header, activity and usage
+// are the `system.session` view; the agent's profile is `subagent.summary`'s.
+// The Pi Git tab beside it has the pull requests, worktrees and stash.
 import {
   experimental_InfoList as InfoList,
   experimental_InfoListRow as InfoListRow,
@@ -11,7 +12,7 @@ import {
 } from "@get-bb/plugin-sdk/app";
 import { Icon } from "@/components/ui/icon";
 import type { DeliverySnapshot, SessionModel } from "../contract.ts";
-import { openQuestionnaires, profileName, sessionModel } from "../views.ts";
+import { openQuestionnaires, profileName, sessionModel, VIEW } from "../views.ts";
 import { ago, compact, duration, NOT_RUNNING, statusText } from "./format.ts";
 import { useRunAction, useSession, useSessionResult } from "./session.ts";
 import { ExplorerSection, type RunAction } from "./surface.tsx";
@@ -50,26 +51,43 @@ function Header({ snapshot, saved }: { snapshot: DeliverySnapshot; saved: boolea
   );
 }
 
-/** Explorer views in this order; any other explorer follows, by id. */
-const EXPLORER_ORDER = [
-  "todo.explorer",
-  "subagent.explorer",
-  "stash.explorer",
-  "git.worktrees",
-  "git.prs",
+/** The Pi Git tab's explorers, in this order. */
+export const GIT_TAB_ORDER: readonly string[] = [
+  VIEW.gitPrs,
+  VIEW.gitWorktrees,
+  VIEW.stashExplorer,
 ];
 
-function rank(id: string): number {
-  const index = EXPLORER_ORDER.indexOf(id);
-  return index < 0 ? EXPLORER_ORDER.length : index;
+/** The Pi tab's explorers in this order; any other explorer but the Pi Git tab's follows, by id. */
+const EXPLORER_ORDER: readonly string[] = ["todo.explorer", "subagent.explorer"];
+
+function ranker(order: readonly string[]) {
+  return (id: string) => {
+    const index = order.indexOf(id);
+    return index < 0 ? order.length : index;
+  };
 }
 
-/** Every explorer the session offers, drawn by the generic renderer; empty ones are left out. */
-function Explorers({ snapshot, run }: { snapshot: DeliverySnapshot; run?: RunAction }) {
+/**
+ * The session's explorers that `include` accepts, drawn by the generic renderer
+ * in `order`, any other by id; empty ones are left out.
+ */
+function Explorers({
+  snapshot,
+  run,
+  include,
+  order,
+}: {
+  snapshot: DeliverySnapshot;
+  run?: RunAction;
+  include: (id: string) => boolean;
+  order: readonly string[];
+}) {
   const navigate = useBbNavigate();
   const openUrl = (url: string) => void navigate.openUrl(url);
+  const rank = ranker(order);
   const views = snapshot.views
-    .flatMap((view) => (view.kind === "explorer" ? [view] : []))
+    .flatMap((view) => (view.kind === "explorer" && include(view.id) ? [view] : []))
     .sort((a, b) => rank(a.id) - rank(b.id) || a.id.localeCompare(b.id));
   return (
     <>
@@ -93,6 +111,17 @@ function Explorers({ snapshot, run }: { snapshot: DeliverySnapshot; run?: RunAct
         );
       })}
     </>
+  );
+}
+
+const inPiTab = (id: string) => !GIT_TAB_ORDER.includes(id);
+const inGitTab = (id: string) => GIT_TAB_ORDER.includes(id);
+
+/** Whether the snapshot has anything for the Pi Git tab: an item or an error in one of its views. */
+export function hasGitTabContent(snapshot: DeliverySnapshot): boolean {
+  return snapshot.views.some(
+    (view) =>
+      view.kind === "explorer" && inGitTab(view.id) && (!!view.error || !!view.model?.items.length),
   );
 }
 
@@ -192,27 +221,60 @@ export function SessionView({
     <div className="flex min-w-0 flex-col gap-3 p-3" data-pi-surface="session-tab">
       <Header snapshot={snapshot} saved={saved} />
       <Questions snapshot={snapshot} />
-      <Explorers snapshot={snapshot} {...(run ? { run } : {})} />
+      <Explorers
+        snapshot={snapshot}
+        include={inPiTab}
+        order={EXPLORER_ORDER}
+        {...(run ? { run } : {})}
+      />
       <Activity session={session} now={at} />
       <Usage session={session} />
     </div>
   );
 }
 
+/** The Pi Git tab's content: pull requests, worktrees and stash, in that order. */
+export function GitView({ snapshot, run }: { snapshot: DeliverySnapshot; run?: RunAction }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-3 p-3" data-pi-surface="git-tab">
+      {hasGitTabContent(snapshot) ? (
+        <Explorers
+          snapshot={snapshot}
+          include={inGitTab}
+          order={GIT_TAB_ORDER}
+          {...(run ? { run } : {})}
+        />
+      ) : (
+        <p className="px-1 text-sm text-muted-foreground">
+          This session has no pull requests, worktrees or stash entries yet.
+        </p>
+      )}
+    </div>
+  );
+}
+
+const NO_SESSION = (
+  <p className="p-4 text-sm text-muted-foreground">
+    No Pi session reports to this thread. It appears once a Pi thread with the pi-bb extension
+    starts.
+  </p>
+);
+
 export function SessionTab({ threadId }: ExperimentalThreadTabProps) {
   const { snapshot, source } = useSessionResult(threadId);
   const run = useRunAction(threadId, source);
-  if (!snapshot)
-    return (
-      <p className="p-4 text-sm text-muted-foreground">
-        No Pi session reports to this thread. It appears once a Pi thread with the pi-bb extension
-        starts.
-      </p>
-    );
+  if (!snapshot) return NO_SESSION;
   return <SessionView snapshot={snapshot} saved={source === "saved"} {...(run ? { run } : {})} />;
 }
 
-/** Only threads with a session get the tab. */
+export function GitTab({ threadId }: ExperimentalThreadTabProps) {
+  const { snapshot, source } = useSessionResult(threadId);
+  const run = useRunAction(threadId, source);
+  if (!snapshot) return NO_SESSION;
+  return <GitView snapshot={snapshot} {...(run ? { run } : {})} />;
+}
+
+/** Only threads with a session get the tabs. */
 export function useSessionTabVisible({ threadId }: ExperimentalThreadTabProps): boolean {
   return !!useSession(threadId);
 }

@@ -280,4 +280,54 @@ describe("explorers", () => {
     expect(remote.queryByText("Loading…")).toBeNull();
     expect(remote.getByText("1 unreviewed")).toBeTruthy();
   });
+
+  it("expands every item of the tab in view, loading each detail, and collapses them again", async () => {
+    const run = vi.fn<RunAction>(async (action, args) =>
+      action === "todo.inspect" ? [{ text: `detail of ${(args as { id: string }).id}` }] : null,
+    );
+    const slot = draw(ExplorerSection, { model: explorer, run });
+    const expand = await slot.findByRole("button", { name: "Expand all Todos" });
+    expect(expand.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(expand);
+    expect(await slot.findByText("detail of fix")).toBeTruthy();
+    expect(await slot.findByText("detail of docs")).toBeTruthy();
+    // Opening all opens each as one click would: the marked one is reviewed.
+    expect(run).toHaveBeenCalledWith("todo.review", { branch: 1, ids: ["fix"] });
+    const collapse = slot.getByRole("button", { name: "Collapse all Todos" });
+    expect(collapse.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(collapse);
+    expect(slot.queryByText("detail of fix")).toBeNull();
+    expect(slot.queryByText("detail of docs")).toBeNull();
+    // One item closed by hand turns the control back to Expand all.
+    fireEvent.click(slot.getByRole("button", { name: "Expand all Todos" }));
+    fireEvent.click(await slot.findByText("docs: Write it up"));
+    expect(slot.getByRole("button", { name: "Expand all Todos" })).toBeTruthy();
+  });
+
+  it("lifts the list's limit once expanded, so no item hides behind N more", async () => {
+    const many: ExplorerModel = {
+      title: "Git worktrees",
+      items: Array.from({ length: 4 }, (_, index) => ({
+        id: `w${index}`,
+        label: `worktree ${index}`,
+        detail: `detail ${index}`,
+      })),
+    };
+    const slot = draw(ExplorerSection, { model: many, limit: 2 });
+    const list = () => slot.container.querySelector("[data-limit]")?.getAttribute("data-limit");
+    expect(await slot.findByText("worktree 1")).toBeTruthy();
+    expect(list()).toBe("2");
+    fireEvent.click(slot.getByRole("button", { name: "Expand all Git worktrees" }));
+    for (let index = 0; index < 4; index++)
+      expect(await slot.findByText(`detail ${index}`)).toBeTruthy();
+    expect(list()).toBe("4");
+    fireEvent.click(slot.getByRole("button", { name: "Collapse all Git worktrees" }));
+    expect(list()).toBe("2");
+  });
+
+  it("offers no Expand all when nothing in the section opens", async () => {
+    const slot = draw(ExplorerSection, { model: explorer });
+    expect(await slot.findByText("fix: Fix the loop")).toBeTruthy();
+    expect(slot.queryByRole("button", { name: /all Todos/ })).toBeNull();
+  });
 });

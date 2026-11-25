@@ -142,7 +142,7 @@ The dashboard names none. The bb plugin names a few, on purpose:
 | File                           | What it names                                                    | Change it when…                                            |
 | ------------------------------ | ---------------------------------------------------------------- | ---------------------------------------------------------- |
 | `bb-plugin/ui/stack-cards.tsx` | `WIDGET_CARDS`: widget views that get a stack card, and the icon | a new widget should be a card above the composer           |
-| `bb-plugin/ui/session-tab.tsx` | `EXPLORER_ORDER`: explorer order in the Pi tab                   | a new explorer should not sort last                        |
+| `bb-plugin/ui/session-tab.tsx` | `EXPLORER_ORDER`: Pi tab order; `GIT_TAB_ORDER`: the Pi Git tab  | a new explorer should not sort last, or belongs in Pi Git  |
 | `bb-plugin/views.ts`           | `VIEW` and the readers of summary count keys                     | the context row, row badge or sessions page should show it |
 
 Changing `bb-plugin/` means running its own `npm run typecheck` and `npm test`,
