@@ -3,6 +3,7 @@
  * profile, for badges, headers and session lists. Built from the same branch snapshot as the
  * `subagent.explorer` view, never from the widget's rows.
  */
+import { plural } from "#foundations/format";
 import type { SummaryCount, SummaryItem, SummaryModel, SummaryProfile } from "#surface";
 import type { SubagentSnapshot } from "#src/observation/snapshot";
 import type { RosterState } from "#src/roster";
@@ -48,7 +49,9 @@ export function summaryProfile(
  * explorer's settled rows read "stopped".
  *
  * `active` is the newest running agent, by its id; it is `live`, so a saved summary has none.
- * `displayName` names an agent type as the widget and explorer do.
+ * `displayName` names an agent type as the widget and explorer do. `total`'s label agrees with
+ * its value ("1 subagent"); the state counts read the same for any value, live ones settled to 0
+ * included.
  */
 export function subagentSummaryModel(
   snapshot: SubagentSnapshot,
@@ -64,7 +67,11 @@ export function subagentSummaryModel(
     { key: "completed", label: "done", value: by.completed, tone: "success" },
     { key: "failed", label: "failed", value: by.failed, tone: "error" },
     { key: "stopped", label: "stopped", value: by.stopped, tone: "dim" },
-    { key: "total", label: "subagents", value: snapshot.agents.length },
+    {
+      key: "total",
+      label: plural(snapshot.agents.length, "subagent"),
+      value: snapshot.agents.length,
+    },
   ];
   // Roster order puts the newest running agent first.
   const running = snapshot.agents.find((agent) => agent.state === "running");

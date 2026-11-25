@@ -116,6 +116,28 @@ describe("subagentSummaryModel", () => {
     });
   });
 
+  it("labels the total in agreement with its value, and states the same for any value", () => {
+    const labels = (model: SummaryModel) =>
+      Object.fromEntries(model.counts.map((count) => [count.key, count.label]));
+    const states = {
+      running: "running",
+      queued: "queued",
+      waiting: "waiting",
+      completed: "done",
+      failed: "failed",
+      stopped: "stopped",
+    };
+    expect(labels(subagentSummaryModel(snapshot()))).toEqual({ ...states, total: "subagents" });
+    expect(labels(subagentSummaryModel(snapshot("running")))).toEqual({
+      ...states,
+      total: "subagent",
+    });
+    expect(labels(subagentSummaryModel(snapshot("running", "completed")))).toEqual({
+      ...states,
+      total: "subagents",
+    });
+  });
+
   it("carries the main agent's profile even with no subagents", () => {
     const model = subagentSummaryModel(snapshot(), {
       name: "reviewer",
