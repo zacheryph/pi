@@ -19,7 +19,8 @@
     "#src/*": "./src/*.ts",
     "#test/*": "./test/*.ts",
     "#test-helpers": "pi-test-helpers",
-    "#ui/*": "pi-ui/*"
+    "#ui/*": "pi-ui/*",
+    "#surface/*": "pi-surface/*"
   },
   "exports": {
     "./*": "./src/*.ts"

@@ -46,7 +46,7 @@ describe("render helpers", () => {
       formatBytes(2048),
       formatBytes(15 * 1024 * 1024),
       formatBytes(3 * 1024 ** 3),
-    ]).toEqual(["10 B", "2.0 KB", "15 MB", "3.0 GB"]);
+    ]).toEqual(["10 B", "2.0 KiB", "15.0 MiB", "3.0 GiB"]);
     expect([
       formatAge(0, 30_000),
       formatAge(0, 120_000),
@@ -131,11 +131,11 @@ describe("stash explorer", () => {
         { text: "stash:auth-findings@3f9a1c2b7d01", tone: "accent" },
         { text: ` — ${WIDE_TEXT} \x1b[2Jdescription`, tone: "muted" },
       ],
-      badge: { text: "↑ agent a3f2b1c4 · 12 KB · 340 lines · 1h" },
+      badge: { text: "↑ agent a3f2b1c4 · 12.1 KiB · 340 lines · 1h" },
     });
     // Only adopted rows name their origin; a session's own entries stay as they were.
     expect(stashExplorerView([record({ agent: "a3f2b1c4" })]).items[0].badge!.text).toBe(
-      "12 KB · 340 lines · 1h",
+      "12.1 KiB · 340 lines · 1h",
     );
   });
 
@@ -152,7 +152,7 @@ describe("stash explorer", () => {
     const list = browser.render(80).map(stripAnsi);
     expect(list[0]).toMatch(/^ ╭─+ Stash ─+╮ $/);
     expect(list.join("\n")).toContain("Store is over the cap");
-    expect(list.join("\n")).toContain("24 KB stored on this branch");
+    expect(list.join("\n")).toContain("24.1 KiB stored on this branch");
     expect(list.join("\n")).toContain("→ stash:auth-findings@3f9a1c2b7d01");
     expect(list.join("\n")).toContain("1/2 entries");
     expect(load).not.toHaveBeenCalled();
@@ -267,7 +267,7 @@ describe("tool renderers", () => {
     const collapsed = put.renderResult!(result, options(false), ansi, {} as never)
       .render(80)
       .map(stripAnsi);
-    expect(collapsed[0]).toMatch(/stash:big@3f9a1c2b7d01 · 977 KB · 5000 lines/);
+    expect(collapsed[0]).toMatch(/stash:big@3f9a1c2b7d01 · 976\.6 KiB · 5000 lines/);
     const component = put.renderResult!(result, options(true), ansi, {} as never);
     for (const width of NARROW_WIDTHS) {
       const rows = component.render(width);

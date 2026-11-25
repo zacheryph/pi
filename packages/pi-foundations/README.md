@@ -115,8 +115,9 @@ These modules have no Pi or pi-ui dependencies. Import them through
   sanitize and bound the text.
 - `src/format.ts`: `oneLine(text, max?)` collapses whitespace and optionally caps
   the result including the ellipsis (zero returns empty text). `plural(n, one,
-  many?)` returns the word only. `formatBytes(bytes, style?)` defaults to stash's
-  adaptive display units; `"log"` retains pi-job's rounded KB/MB and `bytes`.
+  many?)` returns the word only. `formatBytes(bytes, style?)` defaults to the
+  display size every renderer shows (pi-surface's `formatBytes`: `887 B`,
+  `12.4 KiB`, `1.0 GiB`); `"log"` retains pi-job's rounded KB/MB and `bytes`.
   `formatDuration(ms, style?)` defaults to compact rounded job durations;
   `"seconds"` retains the agent display's decimal seconds. Timestamp and running
   suffix policies stay in the agent's `formatAgentDuration` wrapper.
