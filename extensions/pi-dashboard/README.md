@@ -41,8 +41,10 @@ from the page. The page has one renderer per view kind and knows no extension:
   Pi is blocked on a dialog), recent tool calls and usage for the whole session
   file. Waiting sessions sort first and get a highlighted edge.
 - **summary**: each extension's counts as toned chips, its active item and a
-  profile such as the main agent's (`agent · <profile>` on the card). Cards
-  show the non-zero counts; the detail header shows all of them.
+  profile such as the main agent's (`agent · <profile>` on the card). A chip
+  reads as pi-surface's `formatSummaryCount` writes it, the same text bb shows:
+  `1 worktree`, `12.4 KiB in the store`. Cards show the non-zero counts that
+  are not muted or dim; the detail header shows every non-zero count.
 - **widget**: the extension's heading and rows, as the terminal draws them.
 - **explorer**: items with badges, tabs, notices and marks. Opening an item
   runs the explorer's `onOpen`, clears its mark through the marker's `onClear`

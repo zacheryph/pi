@@ -1,6 +1,9 @@
 import { Script } from "node:vm";
 import { describe, expect, it } from "vitest";
+import type { ViewEntry } from "#surface";
 import { renderPage } from "#src/hub/page";
+import { snapshot } from "#test/helpers";
+import { runPage } from "#test/page-dom";
 
 describe("renderPage", () => {
   const page = renderPage("tok_EN-123");
@@ -67,5 +70,77 @@ describe("renderPage", () => {
   it("renders session text through textContent, never innerHTML", () => {
     expect(page).not.toMatch(/innerHTML|insertAdjacentHTML|document\.write/);
     expect(page).toContain("textContent");
+  });
+
+  it("embeds pi-surface's count formatters instead of its own compact numbers", () => {
+    expect(page).toContain("function formatSummaryCount(count");
+    expect(page).toContain("function formatBytes(bytes");
+    expect(page).toContain("formatSummaryCount(item)");
+    expect(page).not.toMatch(/\bamount\(/);
+  });
+});
+
+describe("summary counts on the page", () => {
+  const summaries: ViewEntry[] = [
+    {
+      id: "git.summary",
+      kind: "summary",
+      title: "Git",
+      model: {
+        counts: [
+          { key: "worktrees", label: "worktree", value: 1 },
+          { key: "prs", label: "pull requests", value: 2 },
+          { key: "prs-open", label: "open", value: 1, tone: "accent" },
+          { key: "removed", label: "removed", value: 0, tone: "dim" },
+        ],
+      },
+    },
+    {
+      id: "stash.summary",
+      kind: "summary",
+      title: "Stash",
+      model: {
+        counts: [
+          { key: "entries", label: "entry", value: 1 },
+          { key: "bytes", label: "on this branch", value: 887, unit: "bytes", tone: "muted" },
+          { key: "store-bytes", label: "in the store", value: 12_698, unit: "bytes" },
+          {
+            key: "store-max-bytes",
+            label: "store cap",
+            value: 1024 ** 3,
+            unit: "bytes",
+            tone: "muted",
+          },
+        ],
+      },
+    },
+  ];
+  const record = snapshot({ views: [...snapshot().views, ...summaries] });
+
+  it("shows each count as its value then its producer's label, sizes formatted as sizes", () => {
+    const run = runPage(renderPage("tok"));
+    run.sessions({ home: "/home/me", sessions: [record] });
+    // The index card leaves out zeros and muted or dim counts.
+    expect(run.main.textsOf("chip-count")).toEqual([
+      "1 worktree",
+      "2 pull requests",
+      "1 open",
+      "1 entry",
+      "12.4 KiB in the store",
+    ]);
+
+    run.location.hash = "#" + record.id;
+    run.call("render", true);
+    // The detail page shows every count above zero.
+    expect(run.main.textsOf("chip-count")).toEqual([
+      "1 worktree",
+      "2 pull requests",
+      "1 open",
+      "1 entry",
+      "887 B on this branch",
+      "12.4 KiB in the store",
+      "1.0 GiB store cap",
+    ]);
+    expect(run.main.textContent).not.toMatch(/1073\.7M|bytes/);
   });
 });
