@@ -423,5 +423,5 @@ Fallback callbacks never run in TUI mode, and view factories never run outside i
 Use `showExplorer(ctx, () => buildView(), options)` when preparation must happen
 only after the TUI gate, such as reading agent definitions or prompt files.
 Fallback callbacks should produce text; keep domain mutations and review policies
-in their owning commands. These terminal concerns are independent of dashboard
-section contracts.
+in their owning commands. These terminal concerns are independent of the views
+pi-dashboard and bb draw from the same models.

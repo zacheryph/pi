@@ -189,8 +189,8 @@ waiting on you, and pi-ask checks the answer strictly.
 
 ## Planned
 
-Answering other waiting dialogs, then abort and compact. See the
-[plan](docs/plan.md).
+Answering other waiting dialogs, then abort and compact. The original
+[plan](docs/plan.md) is kept for its research; it predates the move to views.
 
 ## Development
 

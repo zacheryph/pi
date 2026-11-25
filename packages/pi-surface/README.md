@@ -100,7 +100,7 @@ Actions live on the session's event bus (`pi.events`), not on `globalThis`:
 every subagent is a session in the same process with its own bus, and each
 extension loads its own copy of this library. A definition is a listener on the
 `surface:actions` channel; listing and dispatching are requests on that channel,
-answered synchronously like `stash:preview`.
+answered synchronously.
 
 ```ts
 const actions = actionRegistry(pi.events);
@@ -142,7 +142,8 @@ definition made in the factory and never removed would answer twice.
 ## Views
 
 A view is a named model an extension offers to every consumer of its session,
-such as a remote renderer reached through pi-presentation. Views live on the
+such as the dashboard's page or the bb plugin, both reached through an adapter
+extension (pi-dashboard, pi-bb) that collects the session's views. Views live on the
 same bus as actions, answered on the `surface:views` channel, and are
 defined and disposed the same way. Each copy of this library answers for all
 the views it defines on a bus with one listener, so a session's many views stay
@@ -293,8 +294,10 @@ kind's malformed model into an error entry, and keeps the first entry for an id.
 or `{ ok: false, error }`) are the generic shapes for running an action from a
 receiver, checked by `isActionRequest` and `isActionResult`.
 
-No transport sends these yet: pi-bb and the dashboard reporter still use
-pi-presentation's snapshot. The functions below are what they will use.
+Both transports send these: pi-dashboard's reporter to its hub (protocol 7) and
+pi-bb to the bb plugin (protocol 3). Each builds its snapshots with the functions
+below and runs every incoming `ActionRequest` through `dispatchAction` on the
+session's bus; the dashboard's Focus is its own host request, not an action.
 
 ## Collecting views
 

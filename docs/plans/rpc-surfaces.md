@@ -1,7 +1,7 @@
 # RPC surfaces: one extension, terminal and app
 
-Status: in progress · Pi SDK checked: `@earendil-works/pi-coding-agent` 1.5.2 ·
-bb checked: 0.49.0 (`get-bb/bb` at `63df380`)
+Status: packages 1–8 implemented; 9 later · Pi SDK checked:
+`@earendil-works/pi-coding-agent` 1.5.2 · bb checked: 0.49.0 (`get-bb/bb` at `63df380`)
 
 Packages 1 to 7 below record the initial rollout. The
 [views-only sessions plan](views-only-snapshot.md) defines the next architecture:
@@ -25,9 +25,9 @@ component per surface over shared state.
 
 ## How a session reaches each surface
 
-The following diagrams show the implemented route before package 8. That
-migration keeps the connections, replaces presentation with surface's collector,
-and adds system-insights as the producer of the core session view.
+The following diagrams show the implemented route. Package 8 kept the
+connections, replaced presentation with surface's collector, and added
+system-insights as the producer of the core session view.
 
 ```text
 extension ── ctx.ui.*, tools, pi.events ──► pi
@@ -41,9 +41,9 @@ notifications and `ctx.ui.custom()` do not. Anything richer than a dialog
 therefore needs our own channel into a bb plugin:
 
 ```text
-extension ─► PresentationService ─► pi-bb (WebSocket + plugin token) ─► bb plugin server
-                                                                         │ bb.realtime
-React slots ◄────────────────────────────────────────────────────────────┘
+extension views ─► collectDelivery ─► pi-bb (WebSocket + plugin token) ─► bb plugin server
+                                                                          │ bb.realtime
+React slots ◄─────────────────────────────────────────────────────────────┘
 React slots ─► bb.rpc ─► plugin server ─► same socket ─► pi-bb ─► action registry
 ```
 
@@ -67,9 +67,8 @@ Rules that hold across layers:
 - Dashboard reports terminal sessions; `pi-bb` reports RPC sessions to the bb
   plugin without starting or reporting to the dashboard hub. Both use surface's
   collector and actions, with core data supplied by system-insights.
-- Dashboard is supported and migrates alongside bb. Update its renderer and
-  protocol to shared views; delete older section projections after both
-  consumers migrate. Do not retain a compatibility layer for dashboard.
+- Dashboard is supported and reads shared views, like bb. The older section
+  projections are deleted, with no compatibility layer for either consumer.
 - Each delivery contains a complete set of views and replaces the previous
   received snapshot. Adapters batch notifications and deliver snapshots; they
   do not merge incremental domain updates. The bb plugin stores the latest

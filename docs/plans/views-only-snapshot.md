@@ -1,10 +1,12 @@
 # Views-only sessions: system insights, surface, dashboard and bb
 
-Status: planned · follows [RPC surfaces](rpc-surfaces.md), packages 6 and 7;
-supersedes that plan's original dashboard-removal package 8
+Status: implemented · follows [RPC surfaces](rpc-surfaces.md), packages 6 and 7;
+supersedes that plan's original dashboard-removal package 8. `pi-presentation`
+is deleted; the dependency rule is enforced by `npm run verify:bundle`.
 
 The [implementation plan](views-only-implementation.md) specifies the eight-PR
-order, dependencies, cutover checks and the decided saved-cache policy.
+order, dependencies, cutover checks and the decided saved-cache policy, and maps
+the result onto the code.
 
 ## Goal
 
@@ -23,10 +25,10 @@ Non-goals: changing Pi's ordinary chat/tool-output channel, sharing specialized
 keyboard interfaces such as the subagent watch overlay, and resolving the
 separate import cycle between `pi-foundations` and `pi-ui`.
 
-## Current duplication
+## Duplication before the migration
 
-`pi-presentation` has 1,280 source lines, including comments, blank lines and
-types. It knows `pi-git`, `pi-stash`, `pi-todo`, `pi-subagent` and `pi-ask`.
+`pi-presentation` had 1,280 source lines, including comments, blank lines and
+types. It knew `pi-git`, `pi-stash`, `pi-todo`, `pi-subagent` and `pi-ask`.
 
 | Part                                  | Lines | Responsibility                                       |
 | ------------------------------------- | ----- | ---------------------------------------------------- |
@@ -35,16 +37,16 @@ types. It knows `pi-git`, `pi-stash`, `pi-todo`, `pi-subagent` and `pi-ask`.
 | Service                               | 207   | Cache sections, collect views and forward requests   |
 | Session trackers and snapshot builder | 302   | Core status, activity, usage and session information |
 
-For example, todo state currently leaves pi-todo both as an older section and
-as widget/explorer views. Both are delivered to bb; different UI locations
-read different representations. Dashboard reads only sections and strips views.
-The older task-history, stash-preview and answer request names also wrap
+For example, todo state left pi-todo both as an older section and as
+widget/explorer views. Both were delivered to bb; different UI locations read
+different representations. Dashboard read only sections and stripped views.
+The older task-history, stash-preview and answer request names also wrapped
 actions already owned by the extensions.
 
-The current bb saved-session handling settles the older agent section but
-leaves shared views untouched. This creates a risk of restored cards showing
-running agents after Pi has stopped. It is visible in code and has not yet
-been reproduced in bb.
+The bb saved-session handling settled the older agent section but left shared
+views untouched, a risk of restored cards showing running agents after Pi had
+stopped. pi-surface's `settleSnapshot` now settles every saved view, and a
+regression fixture covers the stale-running card.
 
 ## Ownership
 
@@ -170,7 +172,6 @@ No permanent compatibility layer is added to protect the older data shape.
 The [implementation plan](views-only-implementation.md) splits this work into
 eight reviewable PRs: shared contracts; collection/lifecycle; system-insights;
 extension summaries; forms; dashboard; bb; final deletion and enforcement.
-This PR remains documentation only.
 
 Transitional old data may remain only until both migrations land; the final
 cleanup removes it rather than relocating it.
@@ -184,8 +185,8 @@ a per-view bound alone is not a bound on a session with many views.
 
 ## Completion and verification
 
-- No package import map names an extension. Add the rule to `verify:bundle`
-  and `AGENTS.md`; no exceptions for presentation or session collection.
+- No package import map names an extension. The rule is in `AGENTS.md` and
+  `verify:bundle` (`scripts/package-boundary.mjs`), with no exceptions.
 - Neither dashboard nor bb reads extension sections or parses machine values
   from display strings. Both show the same observed session information and
   dispatch actions through surface.
