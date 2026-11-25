@@ -13,9 +13,15 @@ const NOTIFICATION_ID = "59A9DCD2-BB99-4BD2-8FC7-943073019662";
 // No real cmux calls, even when the suite itself runs inside a cmux pane.
 beforeEach(() => {
   execFile.mockReset();
-  vi.stubEnv("CMUX_SURFACE_ID", undefined);
-  vi.stubEnv("CMUX_PANEL_ID", undefined);
-  vi.stubEnv("CMUX_PI_HOOKS_DISABLED", undefined);
+  for (const key of [
+    "CMUX_SURFACE_ID",
+    "CMUX_PANEL_ID",
+    "CMUX_WORKSPACE_ID",
+    "CMUX_TAB_ID",
+    "CMUX_BUNDLED_CLI_PATH",
+    "CMUX_PI_HOOKS_DISABLED",
+  ])
+    vi.stubEnv(key, undefined);
 });
 
 afterEach(() => {
