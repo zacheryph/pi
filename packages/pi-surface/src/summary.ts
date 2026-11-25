@@ -22,17 +22,35 @@ export const SUMMARY_KEY = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 export type SummaryCount = {
   /** Stable, machine-readable name; consumers select counts by it. Unique in its summary. */
   key: string;
-  /** Display text for the count, e.g. "running". Never parsed. */
+  /**
+   * Display text that follows the formatted value, e.g. "running", "worktree"
+   * or "in the store". The producer chooses it for the value, so a noun agrees
+   * in number ("1 worktree", "2 worktrees"); it rebuilds the summary when the
+   * value changes. Consumers show it as it is, after the value
+   * (`formatSummaryCount` in `#src/format`), and never parse it.
+   */
   label: string;
   /** A finite number of zero or more. */
   value: number;
+  /**
+   * What `value` measures, when it is not a plain number of things. `"bytes"`:
+   * a size, which consumers format as one (`formatBytes`: "887 B", "12.4 KiB")
+   * rather than as a count, so the label reads after a size ("in the store").
+   */
+  unit?: SummaryUnit;
   tone?: Tone;
   /**
    * Process-bound (see `#src/model`): the count measures something that exists
-   * only while the process runs, such as running agents. Settled, it reads 0.
+   * only while the process runs, such as running agents. Settled, it reads 0
+   * with the same label, so a live count's label must read right at 0 too.
    */
   live?: true;
 };
+
+/** The units a `SummaryCount` may name. */
+export type SummaryUnit = "bytes";
+
+const isUnit = (value: unknown): value is SummaryUnit => value === "bytes";
 
 /** An item the producer is working on now, by its own identity. */
 export type SummaryItem = {
@@ -78,6 +96,7 @@ const isCount = (value: unknown) =>
   SUMMARY_KEY.test(value.key) &&
   isString(value.label) &&
   isAmount(value.value) &&
+  optional(value.unit, isUnit) &&
   optional(value.tone, isTone) &&
   optional(value.live, isTrue);
 
