@@ -1,6 +1,6 @@
 ---
 name: surface-view
-description: Publish an extension's state as a pi-surface view (widget, explorer, detail, summary or form) and its behaviour as named actions, so the dashboard, bb and any other renderer show it with no change of their own. Covers choosing the kind, ids, live marks for process-bound state, wiring on session_start/session_shutdown, announcing changes, size limits, the bb plugin's per-view tables, tests and checking the result in the dashboard and bb. Use when an extension's state should appear outside the terminal, when adding counts to a dashboard card or bb's context row, when a view is missing or stale in the dashboard or bb, or when adding an action a remote UI should be able to run.
+description: Publish an extension's state as a pi-surface view (widget, explorer, detail, summary, form or attention) and its behaviour as named actions, so the dashboard, bb and any other renderer show it with no change of their own. Covers choosing the kind, ids, live marks for process-bound state, wiring on session_start/session_shutdown, announcing changes, size limits, the bb plugin's per-view tables, tests and checking the result in the dashboard and bb. Use when an extension's state should appear outside the terminal, when adding counts to a dashboard card or bb's context row, when a view is missing or stale in the dashboard or bb, or when adding an action a remote UI should be able to run.
 ---
 
 # Publish a view
@@ -23,14 +23,15 @@ flowchart LR
 
 ## 1. Pick the kind and ids
 
-| Kind       | Model           | Shows up as                                                                            |
-| ---------- | --------------- | -------------------------------------------------------------------------------------- |
-| `widget`   | `WidgetModel`   | Dashboard left column; a bb stack card only if listed in the plugin (step 5)           |
-| `explorer` | `ExplorerModel` | Dashboard right column and bb's Pi tab; details load through `loadDetail`              |
-| `detail`   | `DetailModel`   | Dashboard right column, one standalone detail                                          |
-| `summary`  | `SummaryModel`  | Counts on the dashboard card and header; bb's context row reads specific keys (step 5) |
-| `form`     | `FormModel`     | Open questionnaires a consumer can answer (pi-ask's `ask.questions` is the example)    |
-| `session`  | `SessionModel`  | Owned by pi-system-insights (`system.session`); do not publish another                 |
+| Kind        | Model            | Shows up as                                                                            |
+| ----------- | ---------------- | -------------------------------------------------------------------------------------- |
+| `widget`    | `WidgetModel`    | Dashboard left column; a bb stack card only if listed in the plugin (step 5)           |
+| `explorer`  | `ExplorerModel`  | Dashboard right column and bb's Pi tab; details load through `loadDetail`              |
+| `detail`    | `DetailModel`    | Dashboard right column, one standalone detail                                          |
+| `summary`   | `SummaryModel`   | Counts on the dashboard card and header; bb's context row reads specific keys (step 5) |
+| `form`      | `FormModel`      | Open questionnaires a consumer can answer (pi-ask's `ask.questions` is the example)    |
+| `attention` | `AttentionModel` | What the session owes the user (`<extension>.attention`); no renderer draws it yet     |
+| `session`   | `SessionModel`   | Owned by pi-system-insights (`system.session`); do not publish another                 |
 
 - View ids are `<extension>.<view>` (`stash.explorer`, `todo.summary`), action ids
   `<extension>.<verb>` (`stash.inspect`, `git.worktree.remove`): lowercase, the

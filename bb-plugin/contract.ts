@@ -39,6 +39,7 @@ export type {
   FormQuestionAnswer,
   FormQuestionnaire,
 } from "pi-surface/form";
+export type { AttentionItem, AttentionLink, AttentionModel } from "pi-surface/attention";
 export type { ActionRequest, ActionResult, DeliverySnapshot, ViewEntry } from "pi-surface/delivery";
 
 const threadId = z.string().min(1).max(128);

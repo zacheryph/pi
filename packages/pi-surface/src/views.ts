@@ -1,4 +1,5 @@
 import { ACTION_ID, type ActionBus } from "#src/actions";
+import { isAttentionModel, type AttentionModel } from "#src/attention";
 import { isFormModel, type FormModel } from "#src/form";
 import { isJsonValue } from "#src/json";
 import {
@@ -35,6 +36,8 @@ type Models = {
   summary: SummaryModel;
   /** Open questionnaires; `ask.questions` by convention. */
   form: FormModel;
+  /** What the session owes the user, one view per producer: `<extension>.attention`. */
+  attention: AttentionModel;
 };
 
 /**
@@ -49,6 +52,7 @@ export const VIEW_KINDS: readonly ViewKind[] = [
   "session",
   "summary",
   "form",
+  "attention",
 ];
 
 export type ViewModelOf<Kind extends ViewKind> = Models[Kind];
@@ -66,6 +70,7 @@ const MODEL_GUARDS: { readonly [Kind in ViewKind]: (value: unknown) => value is 
   session: isSessionModel,
   summary: isSummaryModel,
   form: isFormModel,
+  attention: isAttentionModel,
 };
 
 /**

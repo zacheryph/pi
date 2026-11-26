@@ -34,7 +34,7 @@ await dispatchAction(pi.events, "todo.inspect", { id: "backoff" });
 
 ```mermaid
 flowchart LR
-  ext["Extensions<br/>viewRegistry · actionRegistry"] -- "views (JSON)<br/>widget · explorer · detail · session · summary · form" --> bus(("Session bus<br/>pi.events"))
+  ext["Extensions<br/>viewRegistry · actionRegistry"] -- "views (JSON)<br/>widget · explorer · detail · session · summary · form · attention" --> bus(("Session bus<br/>pi.events"))
   ext -- "the same models, directly" --> tui["pi-ui<br/>terminal"]
   bus -- "collectDelivery<br/>(one snapshot per update)" --> dash["pi-dashboard hub"]
   bus -- collectDelivery --> bb["pi-bb → bb plugin"]
@@ -73,6 +73,7 @@ the moment it would have called a callback.
 | `SummaryModel`, `SummaryCount`, `SummaryItem`, `SummaryProfile`    | An extension's structured counts, active item and profile                                           |
 | `SummaryUnit`                                                      | What a count measures when it is not a number of things: `"bytes"`                                  |
 | `FormModel`, `FormQuestionnaire`, `FormQuestion`, `FormAnswer`     | Open questionnaires and the answer a consumer submits                                               |
+| `AttentionModel`, `AttentionItem`, `AttentionLink`                 | What a session owes the user (see [Attention](#attention))                                          |
 | `ActionRef`, `JsonValue`, `JsonObject`                             | Behaviour by reference, and the JSON the model is made of                                           |
 
 An explorer's tabs are its filters. A tab marked `secondary` matters less
@@ -95,7 +96,8 @@ Every model type is a type alias, so a model is assignable to `JsonValue`.
 `isJsonValue`, `isJsonObject`, `isDetailContent`, `isBlock`, `isLine`, `isSpan`
 and `isActionRef` check data that arrives from elsewhere, such as an action's
 result. Each kind's model has its own guard (`isWidgetModel`, `isExplorerModel`,
-`isDetailModel`, `isSessionModel`, `isSummaryModel`, `isFormModel`), and
+`isDetailModel`, `isSessionModel`, `isSummaryModel`, `isFormModel`,
+`isAttentionModel`), and
 `isViewModel(kind, value)` picks the one for a kind. They check nested data
 too, refuse `NaN` and `Infinity`, and return false for a kind they do not know.
 `isActionReference` checks a reference a model carries: an action id of the
@@ -120,6 +122,7 @@ tone or text:
 | `SessionActivity.live`   | The flag is dropped; the call keeps no duration                                          |
 | `SessionStatus` (always) | A status other than idle becomes `{ kind: "idle" }` from the time it settled; idle stays |
 | `FormModel` (always)     | Removed: nobody can answer it                                                            |
+| `AttentionItem.live`     | The item is removed, and the model's `total` no longer counts it                         |
 
 Settling drops each mark it applies, so a settled view has no `live` field
 left and settling again changes nothing. `settleSnapshot` applies these rules;
@@ -205,14 +208,15 @@ views.changed("todo.widget");
 pi.on("session_shutdown", () => views.dispose());
 ```
 
-| Kind       | Model           | Meant for                                                  |
-| ---------- | --------------- | ---------------------------------------------------------- |
-| `widget`   | `WidgetModel`   | Small, always visible: a remote surface shows it           |
-| `explorer` | `ExplorerModel` | A list opened on demand; details load by action            |
-| `detail`   | `DetailModel`   | One standalone detail, opened on demand                    |
-| `session`  | `SessionModel`  | Core session information, from `system.session`            |
-| `summary`  | `SummaryModel`  | Counts, active item and profile for badges and headers     |
-| `form`     | `FormModel`     | Open questionnaires a consumer can answer, `ask.questions` |
+| Kind        | Model            | Meant for                                                  |
+| ----------- | ---------------- | ---------------------------------------------------------- |
+| `widget`    | `WidgetModel`    | Small, always visible: a remote surface shows it           |
+| `explorer`  | `ExplorerModel`  | A list opened on demand; details load by action            |
+| `detail`    | `DetailModel`    | One standalone detail, opened on demand                    |
+| `session`   | `SessionModel`   | Core session information, from `system.session`            |
+| `summary`   | `SummaryModel`   | Counts, active item and profile for badges and headers     |
+| `form`      | `FormModel`      | Open questionnaires a consumer can answer, `ask.questions` |
+| `attention` | `AttentionModel` | What the session owes the user, `<extension>.attention`    |
 
 A consumer draws the kinds it knows and skips every other: `isViewKind` says
 whether this copy knows a kind, and a newer producer may offer one it does not.
@@ -333,6 +337,59 @@ the owner validates the answer again, all or nothing. pi-ask provides it as
 
 Lengths count UTF-16 units, as `String.length` does. Two questionnaires in one
 form never share an id.
+
+## Attention
+
+**`attention`** (`AttentionModel`) is what one producer says the session owes
+the user: work handed off for review, findings to read. Each producer defines
+one view, `<extension>.attention` (`git.attention`); `ATTENTION_VIEW_SUFFIX`
+holds the suffix. The model is `items`, in the producer's order, and `total`,
+the producer's true count (at least `items.length`), so a capped list can say
+"and 12 more".
+
+```ts
+views.define({
+  id: "git.attention",
+  kind: "attention",
+  title: "Git",
+  model: () => ({
+    items: [
+      {
+        id: "pr:github.com/acme/web#42", // stable within the view, opaque
+        rev: "a13c90e", // what was handed off; a dismissal names it
+        category: "review", // a renderer maps it to an icon; unknown → generic
+        title: "Review acme/web#42",
+        reason: "Checkout cleanup · draft at a13c90e",
+        state: "ready", // "stale": still owed, but it changed since
+        since: raisedAt,
+        link: { url: "https://github.com/acme/web/pull/42", label: "acme/web#42" },
+        dismiss: { action: "git.attention-dismiss", args: { id, rev } },
+      },
+    ],
+    total: 1,
+  }),
+});
+```
+
+An item lives in the session file, so it outlasts the process: settling keeps
+it as last known, link included, and drops its `open` and `dismiss` actions.
+An item marked `live` exists only while the process runs and is removed. A
+consumer dispatches `open` and `dismiss` with the reference's arguments as
+given. `isAttentionModel` enforces the exported bounds, and refuses two items
+with one id:
+
+| Constant                 | Bound                                 |
+| ------------------------ | ------------------------------------- |
+| `MAX_ATTENTION_ITEMS`    | 50                                    |
+| `MAX_ATTENTION_ID`       | 200, for `id` and `rev`               |
+| `MAX_ATTENTION_CATEGORY` | 40, lowercase words joined by hyphens |
+| `MAX_ATTENTION_TITLE`    | 200, every span's text together       |
+| `MAX_ATTENTION_REASON`   | 500                                   |
+| `MAX_ATTENTION_URL`      | 2,000                                 |
+| `MAX_ATTENTION_LABEL`    | 100, for the link's label             |
+
+A link is `https:` only. `isAttentionUrl` is the check, and every consumer runs
+it again before drawing a link, since a saved snapshot may come from anywhere.
 
 ## Delivery snapshots and action requests
 
@@ -465,13 +522,15 @@ never changed and shares nothing with it, so restoring cannot reach a live
 producer's objects.
 
 - Form views are removed, error entries of the form kind too.
+- Attention items marked `live` are removed, and `total` no longer counts
+  them; the others keep their links.
 - Every `live` mark settles as the [process-bound table](#process-bound-state)
   says, and is dropped. Unmarked state, such as a persisted task's `active`
   icon, finished-agent history, Git and stash records, is kept as it is.
 - Actions are disabled by removing their references: an explorer's `onOpen`
   and `loadDetail`, and its marker's `onClear` with its `clearAction` hint.
   The marker's label and marks stay; an item with included `detail` still
-  opens into it.
+  opens into it. An attention item loses its `open` and `dismiss`.
 - The snapshot's `host` is removed: its pid and terminal belong to the process
   that has gone.
 - An entry of a kind this copy does not know is removed.
