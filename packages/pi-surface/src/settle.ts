@@ -1,3 +1,4 @@
+import type { AttentionModel } from "#src/attention";
 import type { DeliverySnapshot, ViewEntry } from "#src/delivery";
 import type {
   Badge,
@@ -121,6 +122,17 @@ function settleSummary(model: SummaryModel): SummaryModel {
   };
 }
 
+function settleAttention(model: AttentionModel): AttentionModel {
+  // Nobody can run an item's actions with no session; its link still opens.
+  const items = model.items.flatMap(({ open: _open, dismiss: _dismiss, ...item }) =>
+    item.live ? [] : [{ ...item, title: settleLine(item.title) }],
+  );
+  return {
+    items,
+    total: Math.max(items.length, model.total - (model.items.length - items.length)),
+  };
+}
+
 function settleEntry(entry: ViewEntry, settledAt: number): ViewEntry | undefined {
   // Nobody can answer a form once its process has gone; an unknown kind cannot be settled.
   if (entry.kind === "form" || !isViewKind(entry.kind)) return undefined;
@@ -136,6 +148,8 @@ function settleEntry(entry: ViewEntry, settledAt: number): ViewEntry | undefined
       return { ...entry, model: settleSession(entry.model, settledAt) };
     case "summary":
       return { ...entry, model: settleSummary(entry.model) };
+    case "attention":
+      return { ...entry, model: settleAttention(entry.model) };
   }
 }
 
@@ -150,12 +164,15 @@ function settleEntry(entry: ViewEntry, settledAt: number): ViewEntry | undefined
  *   removed; a widget row or heading takes its settled fields; a summary count
  *   reads 0; a live active item is removed; a running activity call loses its
  *   flag and duration; a session status other than idle becomes
- *   `{ kind: "idle", since: settledAt }`, and an idle status keeps its `since`.
+ *   `{ kind: "idle", since: settledAt }`, and an idle status keeps its `since`;
+ *   a live attention item is removed, and `total` no longer counts it.
  * - Unmarked state, such as a task's `active` icon or finished history, is
  *   kept as it is.
  * - Actions are disabled by removing their references: an explorer's
  *   `onOpen` and `loadDetail`, and its marker's `onClear` with the
- *   `clearAction` hint. An item with included `detail` still opens into it.
+ *   `clearAction` hint, and each attention item's `open` and `dismiss`. An
+ *   item with included `detail` still opens into it; an attention item keeps
+ *   its link.
  * - An entry of a kind this copy does not know is removed.
  *
  * `settledAt` is when the session stopped being live, in epoch milliseconds,

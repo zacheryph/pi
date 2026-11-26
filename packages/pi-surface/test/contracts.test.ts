@@ -30,6 +30,7 @@ import {
   VIEW_ID,
   VIEW_KINDS,
   type DeliverySnapshot,
+  type AttentionModel,
   type DetailModel,
   type ExplorerModel,
   type FormModel,
@@ -143,6 +144,23 @@ const detail: DetailModel = {
   content: [{ heading: "Hi" }],
 };
 
+const attention: AttentionModel = {
+  items: [
+    {
+      id: "pr:github.com/acme/web#42",
+      rev: "a13c90e",
+      category: "review",
+      title: [{ text: "Review ", bold: true }, "acme/web#42"],
+      reason: "Checkout cleanup · draft at a13c90e",
+      state: "ready",
+      since: 1_700_000_000_000,
+      link: { url: "https://github.com/acme/web/pull/42", label: "acme/web#42" },
+      dismiss: { action: "git.attention-dismiss", args: { id: "pr:github.com/acme/web#42" } },
+    },
+  ],
+  total: 1,
+};
+
 const models: { [Kind in ViewKind]: ViewModelOf<Kind> } = {
   widget,
   explorer,
@@ -150,11 +168,20 @@ const models: { [Kind in ViewKind]: ViewModelOf<Kind> } = {
   session,
   summary,
   form,
+  attention,
 };
 
 describe("view kinds", () => {
   it("lists every kind and recognizes only those", () => {
-    expect(VIEW_KINDS).toEqual(["widget", "explorer", "detail", "session", "summary", "form"]);
+    expect(VIEW_KINDS).toEqual([
+      "widget",
+      "explorer",
+      "detail",
+      "session",
+      "summary",
+      "form",
+      "attention",
+    ]);
     for (const kind of VIEW_KINDS) expect(isViewKind(kind)).toBe(true);
     for (const kind of ["timeline", "", "Widget", undefined, 1])
       expect(isViewKind(kind)).toBe(false);
