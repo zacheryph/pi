@@ -67,6 +67,7 @@ place.
 | [**pi-job**](extensions/pi-job/README.md)                         | Long commands and "wait until…" checks run in the background and wake the agent once when done. No polling, no tokens spent.    | `/job`; tools `job_*`                               |
 | [**pi-stash**](extensions/pi-stash/README.md)                     | Large output parked outside the context behind a short handle such as `stash:auth-findings@3f9a1c2b7d01`, read back in slices.  | `/stash`; tools `stash_*`                           |
 | [**pi-git**](extensions/pi-git/README.md)                         | Git worktrees for parallel workers, and a ledger of every pull request the session touched. A watched PR wakes the session.     | `/git:worktrees`, `/git:prs`; tools `git_*`         |
+| [**pi-attention**](extensions/pi-attention/README.md)             | A footer hint while the session owes you something (a PR to review, findings to read), and a list to open or dismiss it.        | `/attention`                                        |
 | [**pi-tldr**](extensions/pi-tldr/README.md)                       | A one-screen recap of the session, and short automatic session names.                                                           | `/tldr`                                             |
 | [**pi-system-insights**](extensions/pi-system-insights/README.md) | Read-only views of the system prompt, tools and skills the model actually has, and the core session view every UI reads.        | `/system:prompt`, `/system:tools`, `/system:skills` |
 | [**pi-dashboard**](extensions/pi-dashboard/README.md)             | A local web page of every running session: status, tasks, agents, stash, Git. Answer questions from the browser.                | `/dashboard`, `http://127.0.0.1:7317/`              |
@@ -135,6 +136,7 @@ flowchart LR
   todo & subagent & stash & git & ask & insights -- views --> surface
 
   surface -. "the same models" .-> tui["pi-ui<br/>terminal"]
+  surface --> attention["pi-attention<br/>status hint, /attention"]
   surface --> dashboard["pi-dashboard<br/>browser"]
   surface --> bb["pi-bb → bb-plugin<br/>bb"]
 ```
@@ -163,6 +165,7 @@ Beyond that:
 | Extension          | pi-surface | pi-ui | pi-work | pi-session-state | pi-session-tree |
 | ------------------ | :--------: | :---: | :-----: | :--------------: | :-------------: |
 | pi-ask             |     ●      |   ●   |    ●    |                  |        ●        |
+| pi-attention       |     ●      |   ●   |         |                  |                 |
 | pi-bb              |     ●      |       |         |                  |                 |
 | pi-dashboard       |     ●      |       |         |                  |                 |
 | pi-git             |     ●      |   ●   |    ●    |        ●         |                 |

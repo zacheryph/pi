@@ -1,6 +1,7 @@
 {
   "type": "module",
   "imports": {
-    "#scripted-model/*": "pi-scripted-model/*"
+    "#scripted-model/*": "pi-scripted-model/*",
+    "#surface": "pi-surface"
   }
 }

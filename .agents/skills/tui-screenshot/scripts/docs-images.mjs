@@ -49,6 +49,11 @@ const SHOTS = {
     ["--prompt", PROMPT, "--wait-for", "ready for the workers"],
     ["--prompt", "/git:worktrees", "--wait-for", "dead-letter"],
   ],
+  attention: [
+    "attention.ts",
+    ["--prompt", PROMPT, "--wait-for", "armed a watch"],
+    ["--prompt", "/attention", "--wait-for", "Esc close"],
+  ],
   "system-tools": ["insights.ts", "--prompt", "/system:tools", "--wait-for", "tools ──"],
   tldr: [
     "tldr.ts",
