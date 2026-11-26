@@ -123,6 +123,7 @@ try {
     "git:prs",
     "git:refresh",
     "bb",
+    "attention",
   ]) {
     assert.ok(commands.includes(name), `Missing command: ${name}`);
   }

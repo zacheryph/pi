@@ -21,7 +21,8 @@
     "extensions/pi-git",
     "test",
     "packages/pi-surface",
-    "extensions/pi-bb"
+    "extensions/pi-bb",
+    "extensions/pi-attention"
   ],
   "scripts": {
     "setup:pi": "node scripts/bundle.mjs setup:pi",
@@ -59,7 +60,8 @@
       "./extensions/pi-git/src/index.ts",
       "./extensions/pi-dashboard/src/index.ts",
       "./extensions/pi-ask/src/index.ts",
-      "./extensions/pi-bb/src/index.ts"
+      "./extensions/pi-bb/src/index.ts",
+      "./extensions/pi-attention/src/index.ts"
     ],
     "skills": [
       "./skills",
