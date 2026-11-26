@@ -18,27 +18,38 @@ export class FakeNode {
   dataset: Record<string, string> = {};
   style: Record<string, string> = {};
   attributes: Record<string, string> = {};
+  /** Form state the answer form reads, as a fresh input or textarea has it. */
+  value = "";
+  checked = false;
   private text = "";
+  private listeners = new Map<string, ((event: unknown) => unknown)[]>();
 
   constructor(readonly tagName: string) {}
 
   get textContent(): string {
-    return this.children.length
-      ? this.children.map((child) => child.textContent).join("")
-      : this.text;
+    if (this.tagName === "#text") return this.text;
+    return this.children.map((child) => child.textContent).join("");
   }
+  /** As in a browser: an element's text becomes one text node, which later children follow. */
   set textContent(value: string) {
+    if (this.tagName === "#text") {
+      this.text = String(value);
+      return;
+    }
     this.children = [];
-    this.text = String(value);
+    if (String(value)) this.append(String(value));
+  }
+  private get elements(): FakeNode[] {
+    return this.children.filter((child) => child.tagName !== "#text");
   }
   get childElementCount(): number {
-    return this.children.length;
+    return this.elements.length;
   }
   get firstElementChild(): FakeNode | undefined {
-    return this.children[0];
+    return this.elements[0];
   }
   get lastElementChild(): FakeNode | undefined {
-    return this.children.at(-1);
+    return this.elements.at(-1);
   }
   append(...nodes: (FakeNode | string)[]): void {
     for (const node of nodes) {
@@ -61,6 +72,14 @@ export class FakeNode {
   }
   querySelectorAll(): FakeNode[] {
     return [];
+  }
+  addEventListener(type: string, listener: (event: unknown) => unknown): void {
+    this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]);
+  }
+  /** Runs this node's own listeners for `type`, as a user action would; nothing bubbles. */
+  dispatch(type: string): void {
+    const event = { target: this, preventDefault() {}, stopPropagation() {} };
+    for (const listener of this.listeners.get(type) ?? []) listener(event);
   }
   /** Every descendant, depth first. */
   descendants(): FakeNode[] {
@@ -91,6 +110,8 @@ function textNode(text: string): FakeNode {
 export interface PageRun {
   /** `<main>`, where the page renders the index or a session's detail. */
   main: FakeNode;
+  /** An element the page finds by id, such as the `answer` dialog. */
+  byId(id: string): FakeNode;
   location: { hash: string };
   /** Delivers a `sessions` event, as the hub's /events stream does, and lets the page render it. */
   sessions(data: unknown): void;
@@ -98,8 +119,22 @@ export interface PageRun {
   call(name: string, ...args: unknown[]): unknown;
 }
 
-/** Runs the page's inline script against the fake DOM, with no sessions yet. */
-export function runPage(page: string): PageRun {
+/** A request the page made, its body parsed. */
+export interface PageRequest {
+  url: string;
+  method: string;
+  headers: Record<string, string>;
+  body?: unknown;
+}
+
+/**
+ * Runs the page's inline script against the fake DOM, with no sessions yet.
+ * Requests go to `respond`; without it they never answer.
+ */
+export function runPage(
+  page: string,
+  respond?: (request: PageRequest) => { status: number; body: unknown },
+): PageRun {
   const script = page.match(/<script>([\s\S]*?)<\/script>/)![1]!;
   const nodes = new Map<string, FakeNode>();
   const named = (key: string) => {
@@ -128,13 +163,27 @@ export function runPage(page: string): PageRun {
     location,
     localStorage: { getItem: () => null, setItem() {} },
     EventSource,
+    URL,
     setInterval: () => 0,
     setTimeout: () => 0,
-    fetch: () => new Promise(() => {}),
+    fetch: (
+      url: string,
+      init: { method: string; headers: Record<string, string>; body?: string },
+    ) => {
+      if (!respond) return new Promise(() => {});
+      const { status, body } = respond({
+        url,
+        method: init.method,
+        headers: init.headers,
+        ...(init.body === undefined ? {} : { body: JSON.parse(init.body) as unknown }),
+      });
+      return Promise.resolve({ status, json: () => Promise.resolve(body) });
+    },
   });
   new Script(script).runInContext(context);
   return {
     main: named("main"),
+    byId: (id) => named(`#${id}`),
     location,
     sessions: (data) => listeners.get("sessions")!({ data: JSON.stringify(data) }),
     call: (name, ...args) => (context[name] as (...args: unknown[]) => unknown)(...args),

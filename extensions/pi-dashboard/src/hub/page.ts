@@ -3,17 +3,19 @@
 //
 // Each session is the hub's latest complete snapshot of its views. The script
 // has one renderer per view kind: session (cards, header, strip, activity),
-// summary (count chips), widget, explorer, detail and form. It knows no
-// extension: behaviour is the action a view references, sent back through
-// POST /api/sessions/<id>/actions, and Focus is the dashboard's own request.
+// summary (count chips), widget, explorer and detail; form and attention views
+// become the "Needs you" panel. It knows no extension: behaviour is the action
+// a view references, sent back through POST /api/sessions/<id>/actions, and
+// Focus is the dashboard's own request.
 //
-// Count text comes from pi-surface's formatters, whose source the script
-// embeds, so a summary count reads here exactly as it does in bb.
+// Count text comes from pi-surface's formatters and the "Needs you" rows from
+// its attentionRows, whose source the script embeds, so they read here exactly
+// as they do in bb.
 
-import { formatBytes, formatCount, formatSummaryCount } from "#surface";
+import { attentionRows, formatBytes, formatCount, formatSummaryCount } from "#surface";
 
-/** pi-surface's count formatters as source for the script; each is self-contained. */
-const FORMATTERS = [formatBytes, formatCount, formatSummaryCount]
+/** pi-surface's count formatters and attention rows as source for the script; each is self-contained. */
+const FORMATTERS = [formatBytes, formatCount, formatSummaryCount, attentionRows]
   .map((format) => format.toString())
   .join("\n");
 
@@ -53,6 +55,16 @@ body:has(dialog.modal[open]) { overflow: hidden; }
 button.close { border: 0; background: transparent; color: var(--muted); font: 22px/1 system-ui, sans-serif; padding: 2px 8px 4px; border-radius: 6px; cursor: pointer; }
 button.close:hover { background: var(--wire); color: var(--ink); }
 section.panel.asks { border-color: var(--warn); box-shadow: inset 3px 0 0 var(--warn); }
+section.panel.owes { box-shadow: inset 3px 0 0 var(--warn); }
+.need { display: grid; grid-template-columns: minmax(0, 14rem) minmax(0, 1fr) auto; gap: 3px 14px; align-items: center; }
+.need.solo { grid-template-columns: minmax(0, 1fr) auto; }
+.need.stale > :not(.open) { opacity: 0.55; }
+.need .who { font: 500 13px var(--mono); color: var(--muted); text-decoration: none; }
+.need .who:hover { color: var(--accent); }
+.need .what { display: grid; gap: 2px; min-width: 0; }
+a.open { font: 600 12px var(--mono); border: 1.5px solid var(--accent); color: var(--accent); border-radius: 6px; padding: 3px 10px; text-decoration: none; white-space: nowrap; }
+a.open:hover { background: var(--accent-soft); }
+@media (max-width: 560px) { .need { grid-template-columns: minmax(0, 1fr) auto; } .need .who { grid-column: 1 / -1; } }
 .qsummary { display: grid; gap: 4px; min-width: 0; flex: 1; }
 .qline { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
 .chip { flex: none; font: 600 10px var(--mono); letter-spacing: 0.05em; text-transform: uppercase; color: var(--warn); background: var(--warn-soft); border-radius: 4px; padding: 1px 6px; }
@@ -92,6 +104,7 @@ h2.group { margin: 16px 0 4px; font: 500 12px var(--mono); letter-spacing: 0.05e
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; display: grid; gap: 6px; align-content: start; min-width: 0; cursor: pointer; }
 .card:hover { border-color: var(--accent); }
 .card.attn { border-color: var(--warn); box-shadow: inset 3px 0 0 var(--warn); }
+.card.owes { box-shadow: inset 3px 0 0 var(--warn); }
 .card.restarting { opacity: 0.55; }
 .row { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-width: 0; }
 .name { margin: 0; font: 600 14px var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -250,7 +263,10 @@ const ago = (ms) => {
 };
 const duration = (ms) => ms < 1000 ? "<1s" : ago(Date.now() - ms);
 const tokens = (n) => n >= 1e6 ? +(n / 1e6).toFixed(1) + "M" : n >= 1000 ? Math.round(n / 1000) + "k" : String(Math.round(n));
-// pi-surface's count formatters: formatSummaryCount(count) is a summary count's display text.
+// pi-surface's count formatters, formatSummaryCount(count) a summary count's
+// display text, and attentionRows(snapshot), one session's "Needs you" rows:
+// Blocking (open questionnaires, a waiting status), then Owed (attention views),
+// with links that are not https: dropped.
 ${FORMATTERS}
 const money = (n) => "$" + (n >= 100 ? Math.round(n) : n.toFixed(2));
 const toneClass = (tone) => TONES.includes(tone) ? " t-" + tone : "";
@@ -287,6 +303,18 @@ const statusLabel = (record) => {
 const questionnaires = (record) => live(record)
   ? ofKind(record, "form").flatMap((entry) => entry.model ? list(entry.model.questionnaires) : [])
   : [];
+/** What needs the user in one session; a restarting session has no Blocking rows, since nothing there can answer. */
+const needsOf = (record) => {
+  const found = attentionRows({ views: viewsOf(record) });
+  if (live(record)) return found;
+  return { ...found, rows: found.rows.filter((row) => row.kind !== "blocking"), blocking: 0 };
+};
+/** The open questionnaire a Blocking question row stands for. */
+const questionnaireOf = (record, row) => {
+  if (row.kind !== "blocking" || row.category !== "question" || !live(record)) return undefined;
+  const entry = ofKind(record, "form").find((candidate) => candidate.id === row.viewId);
+  return entry && entry.model ? list(entry.model.questionnaires).find((questionnaire) => questionnaire.id === row.itemId) : undefined;
+};
 /** Profiles summaries carry, such as the main agent's, as display text. */
 const profiles = (record) => ofKind(record, "summary").flatMap((entry) => entry.model && entry.model.profile ? [entry.model.profile.label || entry.model.profile.name] : []);
 const pill = (kind, text) => el("span", "pill " + kind, text);
@@ -461,7 +489,10 @@ function card(record) {
   const asks = questionnaires(record);
   const status = statusOf(record);
   const waiting = live(record) && ((status && status.kind === "waiting") || asks.length > 0);
-  const node = el("article", "card" + (waiting ? " attn" : "") + (live(record) ? "" : " restarting"));
+  const found = needsOf(record);
+  const owed = found.rows.filter((row) => row.kind === "owed");
+  // Blocking wins: the full highlight; owed alone gets only the amber edge.
+  const node = el("article", "card" + (waiting ? " attn" : found.owed > 0 ? " owes" : "") + (live(record) ? "" : " restarting"));
   const session = core(record);
   node.title = [session ? "session " + session.sessionId : null, pidOf(record) ? "pid " + pidOf(record) : null].filter(Boolean).join(" · ");
   node.addEventListener("click", () => { location.hash = encodeURIComponent(record.id); });
@@ -478,6 +509,10 @@ function card(record) {
     row.append(el("span", "clip", "Asks: " + asks[0].questions[0].question), answerButton(record, asks[0], false));
     node.append(row);
   } else if (waiting && status.title) node.append(el("span", "clip", status.title));
+  if (found.owed > 0) {
+    const others = found.owed - 1;
+    node.append(el("span", "clip", "Owed: " + (owed.length ? lineText(owed[0].title) : found.owed + " items") + (owed.length && others > 0 ? " · " + others + " more" : "")));
+  }
   for (const profile of profiles(record)) node.append(el("span", "clip", "agent · " + profile));
   if (session) {
     node.append(el("span", "mono muted clip", [session.model ? session.model.id : "no model", session.thinking].filter(Boolean).join(" · ")));
@@ -523,6 +558,8 @@ function renderIndex() {
     main.append(el("p", "empty", "No sessions match “" + filter.trim() + "”."));
     return;
   }
+  const found = needs(records);
+  if (found.items.length || found.more || found.failed.length) main.append(needsPanel(found, false));
   const groups = new Map();
   for (const record of records) {
     const cwd = cwdOf(record);
@@ -750,21 +787,76 @@ const answerModal = document.getElementById("answer");
 const answerForms = new Map();
 let answering;
 
-function answerButton(record, questionnaire, solid) {
+/** \`place\` tells apart the Answer buttons for one questionnaire on one page, so focus returns to the right one. */
+function answerButton(record, questionnaire, solid, place) {
   const button = el("button", "focus" + (solid ? " solid" : ""), "Answer");
   button.type = "button";
-  button.dataset.key = "answer:" + record.id + ":" + questionnaire.id + (solid ? ":detail" : "");
+  button.dataset.key = "answer:" + record.id + ":" + questionnaire.id + (place ? ":" + place : "");
   button.addEventListener("click", (event) => { event.stopPropagation(); openAnswer(record, questionnaire, button.dataset.key); });
   return button;
 }
 
-function formPanel(record, items) {
-  const node = panel("Waiting on you", items.length === 1 ? "1 questionnaire" : items.length + " questionnaires", "asks");
-  const ul = el("ul", "items");
-  for (const questionnaire of items) {
-    const li = el("li");
-    const row = el("div", "row");
-    const what = el("div", "qsummary");
+// form and attention: "Needs you", what needs the user across sessions (the
+// index) or in one (\`solo\`, its page). attentionRows gives each session's
+// rows; here they are merged Blocking first, then ready, then stale, oldest
+// first, so the order matches bb's Attention page.
+const NEED_RANK = { blocking: 0, ready: 1, stale: 2 };
+const needRank = (row) => NEED_RANK[row.kind === "blocking" ? "blocking" : row.state];
+function needs(records) {
+  const items = [];
+  const failed = [];
+  let more = 0;
+  for (const record of records) {
+    const found = needsOf(record);
+    more += found.more;
+    for (const row of found.rows) items.push({ record, row });
+    if (found.failed.length) failed.push({ record, ids: found.failed });
+  }
+  items.sort((a, b) => needRank(a.row) - needRank(b.row) || (a.row.since ?? Infinity) - (b.row.since ?? Infinity));
+  return { items, more, failed };
+}
+
+function needsPanel(found, solo) {
+  const { items, more, failed } = found;
+  const total = items.length + more;
+  const blocking = items.some((item) => item.row.kind === "blocking");
+  const node = panel("Needs you", total ? total + (total === 1 ? " item" : " items") : "", blocking ? "asks" : total ? "owes" : "");
+  if (items.length) rows(node, "fold:needs" + (solo ? ":" + items[0].record.id : ""), items, (item) => needRow(item.record, item.row, solo), "items");
+  if (more) node.append(el("span", "muted", "and " + more + " more"));
+  // A failed form or attention view may hide a question or a handoff: say so rather than show nothing.
+  for (const { record, ids } of failed) {
+    const names = ids.map((id) => { const entry = viewsOf(record).find((candidate) => candidate.id === id); return entry ? entry.title : id; });
+    node.append(el("span", "bad wrap", (solo ? "" : title(record) + ": ") + names.join(", ") + " unavailable; what " + (names.length === 1 ? "it holds" : "they hold") + " is unknown."));
+  }
+  return node;
+}
+
+/** Open for an attention item's https: link (attentionRows drops any other), in a new tab that cannot reach this page. */
+function openLink(link, key) {
+  const node = el("a", "open", "Open");
+  node.href = link.url;
+  node.target = "_blank";
+  node.rel = "noopener noreferrer";
+  node.title = link.label + " · " + link.url;
+  node.setAttribute("aria-label", "Open " + link.label);
+  node.dataset.key = key;
+  node.addEventListener("click", (event) => event.stopPropagation());
+  return node;
+}
+
+function needRow(record, row, solo) {
+  const key = record.id + "/" + row.key;
+  const li = el("li", "need" + (solo ? " solo" : "") + (row.state === "stale" ? " stale" : ""));
+  if (!solo) {
+    const who = el("a", "who clip", title(record));
+    who.href = "#" + encodeURIComponent(record.id);
+    who.dataset.key = "needs:" + key;
+    li.append(who);
+  }
+  const what = el("div", "what");
+  const questionnaire = questionnaireOf(record, row);
+  if (questionnaire && solo) {
+    // On its session's page a questionnaire shows every question.
     if (questionnaire.title) what.append(el("span", "b wrap", questionnaire.title));
     for (const question of list(questionnaire.questions)) {
       const qline = el("div", "qline");
@@ -772,12 +864,24 @@ function formPanel(record, items) {
       qline.append(el("span", "wrap", question.question));
       what.append(qline);
     }
-    row.append(what, answerButton(record, questionnaire, true));
-    li.append(row, el("span", "mono muted", (questionnaire.openedAt ? "asked " + ago(questionnaire.openedAt) + " ago · " : "") + "the terminal can answer too; the first answer wins"));
-    ul.append(li);
+  } else {
+    const head = el("span", "wrap");
+    head.append(line(row.title));
+    if (row.reason) head.append(el("span", "muted", " · " + row.reason));
+    what.append(head);
   }
-  node.append(ul);
-  return node;
+  const since = row.since !== undefined ? ago(row.since) + " ago" : null;
+  const meta = row.kind === "blocking"
+    ? [since ? (row.category === "question" ? "asked " : "waiting since ") + since : null, questionnaire && solo ? "the terminal can answer too; the first answer wins" : null]
+    : [row.state === "stale" ? "stale: changed since it was handed off" : null, since, live(record) ? null : "last known"];
+  const metaText = meta.filter(Boolean).join(" · ");
+  if (metaText) what.append(el("span", "mono muted", metaText));
+  li.append(what);
+  // Answer a questionnaire here and open an item's link; anything else is done in the session.
+  if (questionnaire) li.append(answerButton(record, questionnaire, true, solo ? "detail" : "needs"));
+  else if (row.link) li.append(openLink(row.link, "link:" + key));
+  else li.append(el("span"));
+  return li;
 }
 
 function buildAnswerForm(record, questionnaire, key) {
@@ -1064,9 +1168,10 @@ function renderDetail(id) {
   }
   document.title = title(record) + " · pi dashboard";
   wrap.append(headPanel(record));
-  const asks = questionnaires(record);
-  if (asks.length) wrap.append(formPanel(record, asks));
-  for (const entry of ofKind(record, "form")) if (!entry.model) wrap.append(failedPanel(entry));
+  const found = needs([record]);
+  if (found.items.length || found.more) wrap.append(needsPanel({ ...found, failed: [] }, true));
+  // Here a failed form or attention view gets its own panel, with its error.
+  for (const entry of viewsOf(record)) if ((entry.kind === "form" || entry.kind === "attention") && !entry.model) wrap.append(failedPanel(entry));
   const cols = el("div", "cols");
   const left = el("div", "col");
   const right = el("div", "col");

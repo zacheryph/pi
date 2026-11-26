@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { ViewEntry } from "#surface";
 import { renderPage } from "#src/hub/page";
 import { snapshot } from "#test/helpers";
-import { runPage } from "#test/page-dom";
+import { runPage, type FakeNode, type PageRequest } from "#test/page-dom";
 
 describe("renderPage", () => {
   const page = renderPage("tok_EN-123");
@@ -37,7 +37,7 @@ describe("renderPage", () => {
       "function widgetPanel(record, entry)",
       "function explorerPanel(record, entry)",
       "function detailPanel(entry)",
-      "function formPanel(record, items)",
+      "function needsPanel(found, solo)",
     ])
       expect(page).toContain(renderer);
     // Only the conventional system view id; no extension's view, action or section.
@@ -77,6 +77,13 @@ describe("renderPage", () => {
     expect(page).toContain("function formatBytes(bytes");
     expect(page).toContain("formatSummaryCount(item)");
     expect(page).not.toMatch(/\bamount\(/);
+  });
+
+  it("embeds pi-surface's attentionRows for the Needs you panel", () => {
+    expect(page).toContain("function attentionRows(snapshot");
+    expect(page).toContain("attentionRows({ views: viewsOf(record) })");
+    expect(page).toContain('panel("Needs you"');
+    expect(page).not.toContain('panel("Waiting on you"');
   });
 });
 
@@ -142,5 +149,245 @@ describe("summary counts on the page", () => {
       "1.0 GiB store cap",
     ]);
     expect(run.main.textContent).not.toMatch(/1073\.7M|bytes/);
+  });
+});
+
+describe("the Needs you panel", () => {
+  const now = Date.now();
+  const question: ViewEntry = {
+    id: "ask.questions",
+    kind: "form",
+    title: "Questions",
+    model: {
+      questionnaires: [
+        {
+          id: "q1",
+          openedAt: now - 60_000,
+          questions: [
+            {
+              question: "Which retry strategy for failed webhooks?",
+              options: [{ label: "Exponential" }, { label: "Fixed" }],
+            },
+          ],
+          submit: { action: "ask.submit", args: { id: "q1" } },
+          cancel: { action: "ask.cancel", args: { id: "q1" } },
+        },
+      ],
+    },
+  };
+  const findings: ViewEntry = {
+    id: "todo.attention",
+    kind: "attention",
+    title: "Todos",
+    model: {
+      items: [
+        {
+          id: "task-3",
+          category: "findings",
+          title: "2 unreviewed findings",
+          state: "ready",
+          since: now - 30_000,
+        },
+      ],
+      total: 1,
+    },
+  };
+  // The page checks links again: the last two reach it only if something upstream let them through.
+  const reviews: ViewEntry = {
+    id: "git.attention",
+    kind: "attention",
+    title: "Git",
+    model: {
+      items: [
+        {
+          id: "pr:42",
+          category: "review",
+          title: "Review acme/web#42",
+          reason: "draft at a13c90e",
+          state: "ready",
+          since: now - 3_600_000,
+          link: { url: "https://github.com/acme/web/pull/42", label: "acme/web#42" },
+        },
+        {
+          id: "pr:57",
+          category: "review",
+          title: "Review acme/api#57",
+          state: "stale",
+          since: now - 7_200_000,
+          link: { url: "javascript:alert(1)", label: "acme/api#57" },
+        },
+        {
+          id: "pr:58",
+          category: "review",
+          title: "Review acme/api#58",
+          state: "ready",
+          since: now - 600_000,
+          link: { url: "http://example.com/acme/api/pull/58", label: "acme/api#58" },
+        },
+      ],
+      total: 5,
+    },
+  };
+  const waiting = snapshot({
+    id: "101",
+    session: {
+      name: "Webhook retry queue",
+      status: { kind: "waiting", since: now, title: "Answer the question" },
+    },
+  });
+  const blocked = { ...waiting, views: [...waiting.views, question, findings] };
+  const owing = snapshot({
+    id: "202",
+    host: { pid: 202 },
+    session: { sessionId: "session-b", name: "Checkout cleanup" },
+  });
+  const owes = { ...owing, views: [...owing.views, reviews] };
+  const idle = snapshot({ id: "303", host: { pid: 303 }, session: { name: "Docs refresh" } });
+
+  const panelOf = (main: FakeNode) => {
+    const panel = main
+      .descendants()
+      .find(
+        (node) =>
+          node.tagName === "section" && node.children[0]?.textContent.startsWith("Needs you"),
+      );
+    expect(panel).toBeDefined();
+    return panel!;
+  };
+  const needRows = (node: FakeNode) =>
+    node.descendants().filter((child) => child.className.split(" ").includes("need"));
+  const find = (node: FakeNode, key: string) =>
+    node.descendants().find((child) => child.dataset.key === key);
+  type Anchor = FakeNode & { href: string; target: string; rel: string };
+
+  it("lists Blocking then Owed rows from every session, with Answer and https Open links", () => {
+    const run = runPage(renderPage("tok"));
+    run.sessions({ home: "/home/me", sessions: [owes, blocked, idle] });
+    const panel = panelOf(run.main);
+    // 1 question, 1 finding and 5 reviews, of which 3 are listed.
+    expect(panel.children[0]!.textContent).toBe("Needs you7 items");
+    expect(panel.className).toBe("panel asks");
+    const rows = needRows(panel);
+    // Blocking first, then ready oldest first, then stale.
+    expect(rows.map((row) => row.children[0]!.textContent)).toEqual([
+      "Webhook retry queue",
+      "Checkout cleanup",
+      "Checkout cleanup",
+      "Webhook retry queue",
+      "Checkout cleanup",
+    ]);
+    expect(rows.map((row) => row.children[1]!.children[0]!.textContent)).toEqual([
+      "Which retry strategy for failed webhooks?",
+      "Review acme/web#42 · draft at a13c90e",
+      "Review acme/api#58",
+      "2 unreviewed findings",
+      "Review acme/api#57",
+    ]);
+    expect(rows.map((row) => row.children[2]!.textContent)).toEqual(["Answer", "Open", "", "", ""]);
+    expect(rows.map((row) => row.className.includes("stale"))).toEqual([
+      false,
+      false,
+      false,
+      false,
+      true,
+    ]);
+    expect(panel.textsOf("muted").at(-1)).toBe("and 2 more");
+
+    const open = rows[1]!.children[2]! as Anchor;
+    expect(open.tagName).toBe("a");
+    expect(open.href).toBe("https://github.com/acme/web/pull/42");
+    expect(open.target).toBe("_blank");
+    expect(open.rel).toBe("noopener noreferrer");
+    // Links that are not https: are never drawn as links; the others link to a session's page.
+    const hrefs = panel
+      .descendants()
+      .filter((node) => node.tagName === "a")
+      .map((node) => (node as Anchor).href);
+    expect(hrefs.filter((href) => !href.startsWith("#"))).toEqual([
+      "https://github.com/acme/web/pull/42",
+    ]);
+  });
+
+  it("gives an owing card the amber edge, a blocked card its highlight, and an idle one neither", () => {
+    const run = runPage(renderPage("tok"));
+    run.sessions({ home: "/home/me", sessions: [owes, blocked, idle] });
+    const cards = run.main.descendants().filter((node) => node.tagName === "article");
+    const classes = new Map(
+      cards.map((card) => [card.children[0]!.children[0]!.textContent, card.className]),
+    );
+    // Blocked and owing at once: Blocking wins.
+    expect(classes.get("Webhook retry queue")).toBe("card attn");
+    expect(classes.get("Checkout cleanup")).toBe("card owes");
+    expect(classes.get("Docs refresh")).toBe("card");
+    expect(run.main.textContent).toContain("Owed: Review acme/web#42 · 4 more");
+  });
+
+  it("shows nothing when nothing needs you, and says which views failed", () => {
+    const run = runPage(renderPage("tok"));
+    run.sessions({ home: "/home/me", sessions: [idle] });
+    expect(run.main.textContent).not.toContain("Needs you");
+    const failing = {
+      ...idle,
+      views: [
+        ...idle.views,
+        { id: "git.attention", kind: "attention", title: "Git", error: "boom" },
+      ],
+    };
+    run.sessions({ home: "/home/me", sessions: [failing] });
+    expect(panelOf(run.main).textsOf("bad")).toEqual([
+      "Docs refresh: Git unavailable; what it holds is unknown.",
+    ]);
+  });
+
+  it("keeps a restarting session's owed rows as last known, without its questions", () => {
+    const run = runPage(renderPage("tok"));
+    run.sessions({ home: "/home/me", sessions: [{ ...blocked, disconnected: true }] });
+    const rows = needRows(panelOf(run.main));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.children[1]!.textContent).toMatch(
+      /^2 unreviewed findings\d+s ago · last known$/,
+    );
+    expect(rows[0]!.children[2]!.textContent).toBe("");
+  });
+
+  it("answers a questionnaire from the panel through its submit action", async () => {
+    const requests: PageRequest[] = [];
+    const run = runPage(renderPage("tok"), (request) => {
+      requests.push(request);
+      return { status: 200, body: { ok: true, data: { status: "answered" } } };
+    });
+    run.sessions({ home: "/home/me", sessions: [owes, blocked] });
+    find(run.main, "answer:101:q1:needs")!.dispatch("click");
+    const form = run.byId("answer").children[0]!;
+    expect(form.tagName).toBe("form");
+    const inputs = form.descendants().filter((node) => node.tagName === "input");
+    inputs[0]!.checked = true;
+    form.dispatch("submit");
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(requests).toEqual([
+      {
+        url: "/api/sessions/101/actions",
+        method: "POST",
+        headers: { "X-Dashboard-Token": "token", "Content-Type": "application/json" },
+        body: {
+          action: "ask.submit",
+          args: { id: "q1", answers: [{ questionIndex: 0, optionIndexes: [0] }] },
+        },
+      },
+    ]);
+  });
+
+  it("shows one session's rows on its page, with every question and its Answer", () => {
+    const run = runPage(renderPage("tok"));
+    run.sessions({ home: "/home/me", sessions: [blocked, owes] });
+    run.location.hash = "#101";
+    run.call("render", true);
+    const panel = panelOf(run.main);
+    expect(panel.children[0]!.textContent).toBe("Needs you2 items");
+    const rows = needRows(panel);
+    expect(rows.map((row) => row.className)).toEqual(["need solo", "need solo"]);
+    expect(rows[0]!.textContent).toContain("the terminal can answer too; the first answer wins");
+    expect(find(panel, "answer:101:q1:detail")?.textContent).toBe("Answer");
+    expect(rows[1]!.textContent).toMatch(/^2 unreviewed findings/);
   });
 });

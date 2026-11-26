@@ -1,16 +1,19 @@
 # pi-dashboard
 
 A local web page of every running Pi session, grouped by working directory and
-updated live. See at a glance which sessions wait on you, what each is doing,
-and answer its questions from the browser.
+updated live. See at a glance what needs you across every session, what each
+is doing, and answer its questions from the browser.
 
-![The dashboard index: one session waiting on a question, with its stash, subagent and task counts](../../docs/images/dashboard.png)
+![The dashboard index: a Needs you panel with one question, above a session waiting on it with its stash, subagent and task counts](../../docs/images/dashboard.png)
 
 ## At a glance
 
 - **You type** `/dashboard` in any session to open `http://127.0.0.1:7317/`.
   The first interactive session starts the dashboard; it stops on its own 15
   seconds after the last session exits.
+- **Needs you**, at the top of the index, lists what needs you in every
+  session: open questions with **Answer**, then work handed off to you with
+  **Open** for its link. See [Needs you](#needs-you).
 - **The index** shows one card per session: name, status (sessions waiting on
   you sort first), model, context use, and each extension's counts. A filter
   box and opt-in browser notifications (a session starts waiting or finishes)
@@ -19,10 +22,10 @@ and answer its questions from the browser.
   left and everything it keeps (tasks and their history, subagents, stash
   entries, worktrees, pull requests) on the right. Open any item for details.
 - **Answer** a question the agent asked with pi-ask from the card or the
-  **Waiting on you** panel; the terminal's window closes when you do.
+  **Needs you** panel; the terminal's window closes when you do.
 - **Focus** jumps to the session's pane in cmux.
 
-![A session's detail page: status strip, the waiting question, subagents, todos, pull requests, worktrees and stash](../../docs/images/dashboard-detail.png)
+![A session's detail page: status strip, the Needs you panel with its question, subagents, todos, pull requests, worktrees and stash](../../docs/images/dashboard-detail.png)
 
 Only interactive terminal sessions are listed; print-mode runs, RPC hosts and
 subagents are not. It listens on loopback only.
@@ -52,7 +55,9 @@ from the page. The page has one renderer per view kind and knows no extension:
   task's history or a stash entry's first lines. The marker's button (its
   `clearAction`, e.g. "mark reviewed") clears every mark.
 - **detail**: a standalone detail view.
-- **form**: open questionnaires; see [Answering questions](#answering-questions).
+- **form** and **attention**: open questionnaires and what a session owes
+  you, as the **Needs you** panel; see [Needs you](#needs-you) and
+  [Answering questions](#answering-questions).
 
 A view whose provider failed or was too large to send shows as its error,
 without affecting the others. Without pi-system-insights (or with its view
@@ -96,12 +101,44 @@ process's environment. `CMUX_BUNDLED_CLI_PATH` is preferred over `cmux` on
 `PATH`. Sessions outside cmux show no Focus button; other terminals can be
 added as adapters in `src/terminal.ts`.
 
+## Needs you
+
+The **Needs you** panel heads the index whenever any listed session needs you,
+and a session's page has one of its own. Its rows come from pi-surface's
+`attentionRows`, whose source the page embeds as it does the count formatters,
+so they match bb's Attention page in content and order:
+
+| Row          | From                                                               | Action on the page                       |
+| ------------ | ------------------------------------------------------------------ | ---------------------------------------- |
+| **Blocking** | an open questionnaire (a `form` view)                              | **Answer**                               |
+| **Blocking** | a `waiting` status with no questionnaire (another dialog)          | none; the session name opens its page    |
+| **Owed**     | an item in an `attention` view, such as a PR handed off for review | **Open** for an `https:` link, else none |
+
+Rows from every session are merged Blocking first, then ready, then stale
+(dimmed), oldest first; each starts with its session's name, which opens the
+session's page. When producers count more items than their views list, the
+panel ends with "and N more". **Open** is a plain link to the item's `https:`
+URL in a new tab (`rel="noopener noreferrer"`); a link with any other scheme is
+never drawn. The page runs no attention `open` or `dismiss` action, so the hub
+does not offer them either.
+
+A restarting session keeps its owed rows as last known, without questions. A
+form or attention view that failed is named in the index panel ("Git
+unavailable; what it holds is unknown"), since it may hide something that
+needs you; on the session's page it shows as its own failed panel with the
+error.
+
+On the index, a card with a Blocking row keeps its highlight (amber border and
+edge); a card that only owes you something gets the amber edge alone and an
+`Owed:` line with the first item. Blocking wins when a session has both.
+
 ## Answering questions
 
 When the session's model asks you something with the bundled
 [pi-ask](../pi-ask/README.md) `ask` tool, pi-ask publishes the questionnaire as
 its `ask.questions` form view. The card says `Asks: <question>` with an
-**Answer** button, and the detail page shows a **Waiting on you** panel. Answer
+**Answer** button, and the questionnaire is a row in **Needs you**, on the index
+and on the session's page, which lists every question. Answer
 opens a form with every question: one option or your own text for
 single-select questions, any options plus optional text for multi-select ones,
 and an optional note for the whole answer. **Send answer** runs the
@@ -130,6 +167,7 @@ With notifications on, a new question notifies you with its text.
 | Counts, profile   | `*.summary` views (pi-todo, pi-subagent, pi-stash, pi-git, …)                                 |
 | Lists and details | widget, explorer and detail views; details load through the explorer's `loadDetail` action    |
 | Questions         | pi-ask's `ask.questions` form view; answers through its questionnaires' `submit` and `cancel` |
+| Needs you         | pi-surface's `attentionRows` over form, attention and session views                           |
 | Focus             | the reporter's terminal adapter, sent as host metadata beside the views                       |
 
 The reporter collects with pi-surface's `collectDelivery` within the hub's
@@ -190,7 +228,8 @@ not `127.0.0.1:<port>` or `localhost:<port>`, which blocks DNS-rebinding pages.
 The socket lives in a `0700` directory. The live session list carries what the
 session's views show: directories, session names, model names, dialog titles,
 task text, subagent descriptions, stash entry names, worktree paths and
-branches, pull request titles and links, open questions, and recent tool calls
+branches, pull request titles and links, open questions, items handed off to
+you with their links, and recent tool calls
 (including the first line of bash commands, clipped to 80 characters). It
 carries no transcript or stash content.
 
