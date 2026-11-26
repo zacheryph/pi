@@ -391,6 +391,35 @@ with one id:
 A link is `https:` only. `isAttentionUrl` is the check, and every consumer runs
 it again before drawing a link, since a saved snapshot may come from anywhere.
 
+### Attention rows
+
+`attentionRows(snapshot)` turns one session's views into the rows every
+consumer shows, so bb's Attention page, its context card and the dashboard
+agree on what needs the user and in what order:
+
+```ts
+const { rows, blocking, owed, more, failed } = attentionRows(readDeliverySnapshot(data)!);
+// rows: [{ key: "ask.questions/call-1", kind: "blocking", category: "question", … },
+//        { key: "git.attention/pr:github.com/acme/web#42", kind: "owed", … }]
+```
+
+| Row          | From                                                               | `category`     |
+| ------------ | ------------------------------------------------------------------ | -------------- |
+| **Blocking** | Each questionnaire in a `form` view                                | `question`     |
+| **Blocking** | A `waiting` session status, when no questionnaire explains it      | `waiting`      |
+| **Owed**     | Each item in an `attention` view, with its link only when `https:` | the item's own |
+
+Rows are sorted blocking first, then ready owed rows, then stale ones, oldest
+first within each. A row's `key` is `<viewId>/<itemId>`, unique within the
+session; across sessions, prefix the session's id. `blocking` counts the
+blocking rows; `owed` is the producers' total and `more` the owed items they
+count beyond their lists. `failed` names the form and attention views whose
+model failed, since what they hold is unknown. A settled snapshot has no forms
+and no waiting status, so it yields only owed rows, without their actions.
+
+The function is self-contained, like the count formatters: a page that cannot
+import modules embeds its source with `Function.prototype.toString`.
+
 ## Delivery snapshots and action requests
 
 A `DeliverySnapshot` is what an adapter sends a receiver for one session: its
