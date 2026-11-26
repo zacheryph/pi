@@ -3,7 +3,8 @@
 Status: chosen · Updated: 2026-11-26
 
 Supersedes the Git-only "Your turn" plan proposed in #207. The concept page with
-the same mockups is a private artifact owned by the repository owner:
+the same mockups is [`attention.html`](attention.html); open it in a browser.
+It is also a private artifact owned by the repository owner:
 <https://claude.ai/artifact/8XzbcB9Ns8Nb8e3fQPLwmT>.
 
 ## Goal brief

@@ -1,0 +1,1653 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Pi Attention Queue</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+    />
+    <style>
+      /* Layout: one reading column for the design, with mockups set off as framed "screens" that break slightly wider. */
+      :root {
+        --bg: #f6f6f7;
+        --fg: #1c1c21;
+        --muted: #62626d;
+        --faint: #8d8d97;
+        --line: #e1e1e5;
+        --card: #ffffff;
+        --hover: #f0f0f2;
+        --chip: #ececef;
+        --amber: #b45309;
+        --amber-soft: #fef3c7;
+        --amber-ink: #78350f;
+        --red: #b42318;
+        --green: #15803d;
+        --blue: #1d4ed8;
+        --term-bg: #16161b;
+        --term-fg: #d7d7de;
+        --term-dim: #7c7c88;
+        --term-amber: #f0b44c;
+        --term-cyan: #7cc7d9;
+        --font-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+        --font-head: "Space Grotesk", "Inter", system-ui, sans-serif;
+        --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) {
+          --bg: #121215;
+          --fg: #ececf0;
+          --muted: #a2a2ad;
+          --faint: #75757f;
+          --line: #2b2b31;
+          --card: #1b1b20;
+          --hover: #24242a;
+          --chip: #2a2a31;
+          --amber: #f0b44c;
+          --amber-soft: #3b2a10;
+          --amber-ink: #f6cf86;
+          --red: #f87171;
+          --green: #4ade80;
+          --blue: #93b4ff;
+          --term-bg: #0c0c0f;
+          color-scheme: dark;
+        }
+      }
+      :root[data-theme="dark"] {
+        --bg: #121215;
+        --fg: #ececf0;
+        --muted: #a2a2ad;
+        --faint: #75757f;
+        --line: #2b2b31;
+        --card: #1b1b20;
+        --hover: #24242a;
+        --chip: #2a2a31;
+        --amber: #f0b44c;
+        --amber-soft: #3b2a10;
+        --amber-ink: #f6cf86;
+        --red: #f87171;
+        --green: #4ade80;
+        --blue: #93b4ff;
+        --term-bg: #0c0c0f;
+        color-scheme: dark;
+      }
+
+      body {
+        background: var(--bg);
+        color: var(--fg);
+        font-family: var(--font-body);
+        font-size: 15px;
+        line-height: 1.6;
+      }
+      .wrap {
+        max-width: 920px;
+        margin: 0 auto;
+        padding-block: 40px 80px;
+        padding-left: max(16px, env(safe-area-inset-left, 0px));
+        padding-right: max(16px, env(safe-area-inset-right, 0px));
+      }
+      .prose {
+        max-width: 68ch;
+      }
+      h1,
+      h2,
+      h3 {
+        font-family: var(--font-head);
+        text-wrap: balance;
+        line-height: 1.2;
+        margin: 0;
+      }
+      h1 {
+        font-size: 2.1rem;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+      h2 {
+        font-size: 1.45rem;
+        font-weight: 600;
+        margin-top: 56px;
+        margin-bottom: 12px;
+      }
+      h3 {
+        font-size: 1.08rem;
+        font-weight: 600;
+        margin-top: 28px;
+        margin-bottom: 6px;
+      }
+      p {
+        margin: 0 0 12px;
+      }
+      a {
+        color: var(--blue);
+      }
+      code {
+        font-family: var(--font-mono);
+        font-size: 0.86em;
+        background: var(--chip);
+        padding: 1px 5px;
+        border-radius: 4px;
+      }
+      .eyebrow {
+        font-size: 0.75rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+        font-weight: 600;
+      }
+      .lede {
+        font-size: 1.08rem;
+        color: var(--muted);
+        margin-top: 12px;
+      }
+      .meta {
+        font-size: 0.85rem;
+        color: var(--faint);
+        margin-top: 10px;
+      }
+
+      /* The two classes */
+      .classes {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+        margin-top: 20px;
+      }
+      .class {
+        border: 1px solid var(--line);
+        background: var(--card);
+        border-radius: 10px;
+        padding: 16px 18px;
+        min-width: 0;
+      }
+      .class h3 {
+        margin-top: 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .class p {
+        color: var(--muted);
+        font-size: 0.93rem;
+        margin-bottom: 8px;
+      }
+      .class ul {
+        margin: 0;
+        padding-left: 18px;
+        font-size: 0.92rem;
+      }
+      .pip {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        display: inline-block;
+        flex: none;
+      }
+      .pip.block {
+        background: var(--red);
+      }
+      .pip.owed {
+        background: var(--amber);
+      }
+      .where {
+        font-size: 0.82rem;
+        color: var(--faint);
+        margin-top: 10px;
+      }
+
+      /* Screens */
+      .screen {
+        margin: 22px 0 8px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: var(--bg);
+        overflow: hidden;
+      }
+      .screen-bar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 14px;
+        border-bottom: 1px solid var(--line);
+        font-size: 0.78rem;
+        color: var(--faint);
+        background: var(--card);
+      }
+      .screen-bar .dots {
+        display: flex;
+        gap: 5px;
+      }
+      .screen-bar .dots i {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: var(--line);
+        display: block;
+      }
+      .screen-body {
+        padding: 20px;
+        overflow-x: auto;
+      }
+      .caption {
+        font-size: 0.86rem;
+        color: var(--muted);
+        margin: 6px 0 0;
+        max-width: 68ch;
+      }
+
+      /* bb-ish UI */
+      .ui {
+        font-family: var(--font-body);
+        font-size: 13px;
+        line-height: 1.45;
+        color: var(--fg);
+      }
+      .ui svg {
+        flex: none;
+      }
+      .ctx-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 300px;
+        gap: 20px;
+        align-items: start;
+        min-width: 560px;
+      }
+      .transcript {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .bubble {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 10px 12px;
+        color: var(--muted);
+      }
+      .bubble b {
+        color: var(--fg);
+        font-weight: 600;
+      }
+      .tool {
+        font-family: var(--font-mono);
+        font-size: 11.5px;
+        color: var(--faint);
+        padding-left: 12px;
+      }
+      .ctxcard {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 6px 4px;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+      }
+      .crow {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 7px 12px;
+        border-radius: 7px;
+        min-width: 0;
+      }
+      .crow:hover {
+        background: var(--hover);
+      }
+      .crow .lbl {
+        flex: 1;
+        min-width: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .crow .trail {
+        flex: none;
+        max-width: 112px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        color: var(--muted);
+        font-size: 12.5px;
+      }
+      .crow .ic {
+        color: var(--muted);
+      }
+      .sect {
+        padding: 10px 12px 4px;
+        font-size: 12.5px;
+        color: var(--muted);
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .sep {
+        height: 1px;
+        background: var(--line);
+        margin: 6px 12px;
+      }
+      .t-amber {
+        color: var(--amber) !important;
+      }
+      .t-red {
+        color: var(--red) !important;
+      }
+      .t-green {
+        color: var(--green) !important;
+      }
+      .t-faint {
+        color: var(--faint) !important;
+      }
+      .count {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 18px;
+        height: 18px;
+        padding: 0 5px;
+        border-radius: 9px;
+        background: var(--amber-soft);
+        color: var(--amber-ink);
+        font-size: 11px;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+      }
+      .count.red {
+        background: color-mix(in srgb, var(--red) 16%, transparent);
+        color: var(--red);
+      }
+
+      /* Attention page */
+      .app {
+        display: grid;
+        grid-template-columns: 196px minmax(0, 1fr);
+        min-width: 720px;
+        background: var(--bg);
+        border-radius: 8px;
+      }
+      .side {
+        border-right: 1px solid var(--line);
+        padding: 14px 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .side .brand {
+        font-weight: 600;
+        padding: 2px 10px 12px;
+      }
+      .nav {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        padding: 6px 10px;
+        border-radius: 7px;
+        color: var(--muted);
+      }
+      .nav.on {
+        background: var(--chip);
+        color: var(--fg);
+        font-weight: 500;
+      }
+      .nav .sp {
+        flex: 1;
+      }
+      .side .label {
+        font-size: 11px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--faint);
+        padding: 14px 10px 4px;
+      }
+      .thread {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 5px 10px;
+        color: var(--muted);
+        border-radius: 7px;
+        min-width: 0;
+      }
+      .thread span.n {
+        flex: 1;
+        min-width: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        flex: none;
+      }
+      .dot.amber {
+        background: var(--amber);
+      }
+      .dot.red {
+        background: var(--red);
+      }
+      .main {
+        padding: 18px 22px 22px;
+        min-width: 0;
+      }
+      .page-h {
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+      }
+      .page-h h4 {
+        margin: 0;
+        font-family: var(--font-body);
+        font-size: 19px;
+        font-weight: 600;
+      }
+      .page-sub {
+        color: var(--muted);
+        margin: 4px 0 14px;
+      }
+      .filters {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin-bottom: 16px;
+      }
+      .filter {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 3px 10px;
+        color: var(--muted);
+        background: var(--card);
+        font-size: 12px;
+        display: inline-flex;
+        gap: 6px;
+        align-items: center;
+      }
+      .filter.on {
+        border-color: var(--fg);
+        color: var(--fg);
+      }
+      .group-h {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 14px 0 8px;
+        font-weight: 600;
+      }
+      .group-h small {
+        color: var(--muted);
+        font-weight: 400;
+        font-size: 12px;
+      }
+      .list {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--card);
+        overflow: hidden;
+      }
+      .item {
+        display: grid;
+        grid-template-columns: 18px minmax(0, 1fr) auto;
+        gap: 10px;
+        padding: 12px 14px;
+        align-items: start;
+      }
+      .item + .item {
+        border-top: 1px solid var(--line);
+      }
+      .item .ic {
+        margin-top: 1px;
+        color: var(--muted);
+      }
+      .item .what {
+        min-width: 0;
+      }
+      .item .t {
+        font-weight: 600;
+        display: flex;
+        gap: 8px;
+        align-items: baseline;
+        flex-wrap: wrap;
+      }
+      .item .t .sess {
+        font-weight: 400;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .item .r {
+        color: var(--muted);
+      }
+      .item .m {
+        color: var(--faint);
+        font-size: 12px;
+        margin-top: 2px;
+      }
+      .item.stale .t {
+        color: var(--muted);
+      }
+      .acts {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+      .btn {
+        border: 1px solid var(--line);
+        background: var(--card);
+        color: var(--fg);
+        border-radius: 6px;
+        padding: 4px 10px;
+        font-size: 12px;
+        white-space: nowrap;
+        font-family: inherit;
+      }
+      .btn.solid {
+        background: var(--fg);
+        color: var(--bg);
+        border-color: var(--fg);
+      }
+      .btn.ghost {
+        border-color: transparent;
+        color: var(--muted);
+      }
+      .saved-tag {
+        font-size: 11px;
+        color: var(--amber-ink);
+        background: var(--amber-soft);
+        border-radius: 4px;
+        padding: 0 5px;
+      }
+
+      /* Terminal */
+      .term {
+        background: var(--term-bg);
+        color: var(--term-fg);
+        border-radius: 10px;
+        padding: 14px 0 10px;
+        font-family: var(--font-mono);
+        font-size: 12.5px;
+        line-height: 1.5;
+        min-width: 600px;
+      }
+      .term pre {
+        margin: 0;
+        padding: 0 16px;
+        font-family: inherit;
+        white-space: pre;
+      }
+      .term .dim {
+        color: var(--term-dim);
+      }
+      .term .amb {
+        color: var(--term-amber);
+      }
+      .term .cy {
+        color: var(--term-cyan);
+      }
+      .term .rule {
+        border-top: 1px solid #2e2e36;
+        margin: 8px 0;
+      }
+
+      /* Dashboard strip */
+      .dash {
+        min-width: 640px;
+      }
+      .dash-panel {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--card);
+        padding: 12px 14px;
+      }
+      .dash-panel .hd {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 600;
+        margin-bottom: 8px;
+      }
+      .dash-row {
+        display: grid;
+        grid-template-columns: 150px minmax(0, 1fr) auto;
+        gap: 12px;
+        padding: 7px 0;
+        border-top: 1px solid var(--line);
+        align-items: center;
+      }
+      .dash-row .s {
+        color: var(--muted);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+        margin-top: 12px;
+      }
+      .scard {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--card);
+        padding: 10px 12px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .scard b {
+        color: var(--fg);
+        display: block;
+        font-size: 13px;
+      }
+      .scard.hot {
+        box-shadow: inset 3px 0 0 var(--red);
+      }
+      .scard.warm {
+        box-shadow: inset 3px 0 0 var(--amber);
+      }
+
+      /* Technical */
+      pre.code {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 14px 16px;
+        overflow-x: auto;
+        font-family: var(--font-mono);
+        font-size: 12.5px;
+        line-height: 1.55;
+        margin: 12px 0 16px;
+      }
+      pre.code .c {
+        color: var(--faint);
+      }
+      pre.code .k {
+        color: var(--blue);
+      }
+      .tablewrap {
+        overflow-x: auto;
+        margin: 12px 0 16px;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 0.9rem;
+        min-width: 560px;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--line);
+        vertical-align: top;
+      }
+      th {
+        font-weight: 600;
+        color: var(--muted);
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      td:first-child {
+        white-space: nowrap;
+        font-weight: 500;
+      }
+      .decision {
+        border: 1px solid var(--line);
+        background: var(--card);
+        border-radius: 10px;
+        padding: 14px 16px;
+        margin: 12px 0;
+      }
+      .decision h3 {
+        margin-top: 0;
+      }
+      .decision .rec {
+        display: inline-block;
+        font-size: 0.75rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--green);
+        margin-bottom: 4px;
+      }
+      .decision p {
+        margin-bottom: 6px;
+        font-size: 0.93rem;
+      }
+      .decision p:last-child {
+        margin-bottom: 0;
+      }
+      .steps {
+        counter-reset: s;
+        list-style: none;
+        padding: 0;
+        margin: 12px 0;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .steps li {
+        counter-increment: s;
+        display: grid;
+        grid-template-columns: 30px minmax(0, 1fr);
+        gap: 8px;
+      }
+      .steps li::before {
+        content: counter(s);
+        font-family: var(--font-head);
+        font-weight: 600;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        border: 1px solid var(--line);
+        background: var(--card);
+        display: grid;
+        place-items: center;
+        font-size: 0.82rem;
+        margin-top: 1px;
+      }
+      .steps b {
+        display: block;
+      }
+      .steps span {
+        color: var(--muted);
+        font-size: 0.93rem;
+      }
+      pre.mermaid {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 14px;
+        overflow-x: auto;
+      }
+
+      @media (max-width: 720px) {
+        .classes {
+          grid-template-columns: 1fr;
+        }
+        h1 {
+          font-size: 1.7rem;
+        }
+      }
+    </style>
+    <style>
+      body {
+        margin: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <div class="eyebrow">Roadmap · supersedes PR #207</div>
+        <h1>Pi Attention Queue</h1>
+        <p class="lede prose">
+          One place that answers “what needs me?”, for one session and for all of them. PR review
+          handoffs are the first source, and the contract leaves room for more.
+        </p>
+        <p class="meta">Chosen · 26 Nov 2026 · mockups are drawn by hand, not captured</p>
+      </header>
+
+      <h2>Two kinds of attention</h2>
+      <div class="prose">
+        <p>
+          PR #207 treats a review handoff as a Git feature. To make it generic, split “needs you” by
+          whether the agent can keep going.
+        </p>
+      </div>
+      <div class="classes">
+        <div class="class">
+          <h3><span class="pip block"></span>Blocking</h3>
+          <p>The agent has stopped and cannot continue until you act.</p>
+          <ul>
+            <li>An open <code>ask</code> questionnaire</li>
+            <li>Pi waiting on a dialog (status <code>waiting</code>)</li>
+          </ul>
+          <div class="where">
+            Already in every snapshot. Consumers derive these; no producer changes.
+          </div>
+        </div>
+        <div class="class">
+          <h3><span class="pip owed"></span>Owed</h3>
+          <p>The agent handed something off and moved on. It waits on you outside the session.</p>
+          <ul>
+            <li>A draft PR handed to you for review</li>
+            <li>Later: unreviewed todo findings, a failed check you own</li>
+          </ul>
+          <div class="where">
+            New: an extension publishes it as an <code>attention</code> view, and it lasts after Pi
+            stops.
+          </div>
+        </div>
+      </div>
+      <p class="prose" style="margin-top: 14px">
+        The context card shows a thread's <b>Owed</b> items. bb's composer already takes over for a
+        Blocking question, so repeating it in the card adds noise. The Attention page shows
+        <b>both</b> kinds across every session, with Blocking first.
+      </p>
+
+      <h2>How it looks</h2>
+
+      <h3>Per session: bb's context card</h3>
+      <div class="screen">
+        <div class="screen-bar">
+          <span class="dots"><i></i><i></i><i></i></span>bb · thread “Checkout cleanup”
+        </div>
+        <div class="screen-body">
+          <div class="ui ctx-layout">
+            <div class="transcript">
+              <div class="bubble">
+                <b>Pi</b> · Opened <span style="font-family: var(--font-mono)">acme/web#42</span> as
+                a draft. Checks are green at a13c90e, so I've handed it to you for review and I'm
+                watching it. I'll pick up again when you mark it ready or push.
+              </div>
+              <div class="tool">
+                git_pr_request_review acme/web#42 @ a13c90e · “Checkout cleanup”
+              </div>
+              <div class="tool">git_pr_watch acme/web#42</div>
+              <div class="bubble" style="opacity: 0.55">…</div>
+            </div>
+            <div class="ctxcard">
+              <div class="sect">
+                <svg
+                  width="13"
+                  height="13"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                >
+                  <circle cx="8" cy="8" r="6.2" />
+                  <path d="M8 4.6v4M8 11v.2" stroke-linecap="round" /></svg
+                ><span style="color: var(--fg)">Needs you</span><span class="count">2</span>
+              </div>
+              <div class="crow">
+                <svg
+                  class="ic"
+                  width="15"
+                  height="15"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                >
+                  <circle cx="4" cy="3.5" r="1.6" />
+                  <circle cx="4" cy="12.5" r="1.6" />
+                  <circle cx="12" cy="12.5" r="1.6" />
+                  <path
+                    d="M4 5.1v5.8M12 10.9V7a2.5 2.5 0 0 0-2.5-2.5H7.5M8.8 3 7.3 4.5l1.5 1.5"
+                  /></svg
+                ><span class="lbl">Review acme/web#42</span
+                ><span class="trail t-amber">draft · ready</span>
+              </div>
+              <div class="crow">
+                <svg
+                  class="ic"
+                  width="15"
+                  height="15"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                >
+                  <circle cx="4" cy="3.5" r="1.6" />
+                  <circle cx="4" cy="12.5" r="1.6" />
+                  <circle cx="12" cy="12.5" r="1.6" />
+                  <path
+                    d="M4 5.1v5.8M12 10.9V7a2.5 2.5 0 0 0-2.5-2.5H7.5M8.8 3 7.3 4.5l1.5 1.5"
+                  /></svg
+                ><span class="lbl t-faint">acme/web#45</span
+                ><span class="trail t-faint">head moved</span>
+              </div>
+              <div class="sep"></div>
+              <div class="crow">
+                <svg
+                  class="ic"
+                  width="15"
+                  height="15"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                >
+                  <path
+                    d="M10.5 5.5 6 10a1.4 1.4 0 0 0 2 2l5-5a2.8 2.8 0 0 0-4-4L4 8a4.2 4.2 0 0 0 6 6l3.5-3.5"
+                  /></svg
+                ><span class="lbl">Stash</span><span class="trail">4</span>
+              </div>
+              <div class="sep"></div>
+              <div class="sect">Pi worktrees and pull requests</div>
+              <div class="crow">
+                <svg
+                  class="ic"
+                  width="15"
+                  height="15"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                >
+                  <path
+                    d="M2 4.5V12a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3.5H3a1 1 0 0 0-1 1Z"
+                  /></svg
+                ><span class="lbl">web @ feat/checkout</span
+                ><span class="trail t-green">clean</span>
+              </div>
+              <div class="crow">
+                <svg
+                  class="ic"
+                  width="15"
+                  height="15"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                >
+                  <circle cx="4" cy="3.5" r="1.6" />
+                  <circle cx="4" cy="12.5" r="1.6" />
+                  <circle cx="12" cy="12.5" r="1.6" />
+                  <path
+                    d="M4 5.1v5.8M12 10.9V7a2.5 2.5 0 0 0-2.5-2.5H7.5M8.8 3 7.3 4.5l1.5 1.5"
+                  /></svg
+                ><span class="lbl">acme/web#42</span
+                ><span class="trail t-green">draft · checks 9 ✓</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="caption">
+        A <b>Needs you</b> section sits first in the card, above Stash. Clicking a row opens its
+        link (the PR). A stale row is dimmed and its badge says why. With nothing owed, the section
+        is not drawn. When bb shows the context row instead of the card, the segment gets one more
+        part: <code>orchestrate · 3/7 tasks · 1 review</code>.
+      </p>
+
+      <h3>Across sessions: an Attention page in bb's sidebar</h3>
+      <div class="screen">
+        <div class="screen-bar">
+          <span class="dots"><i></i><i></i><i></i></span>bb · /plugins/pi-surface/attention
+        </div>
+        <div class="screen-body">
+          <div class="ui app">
+            <div class="side">
+              <div class="brand">bb</div>
+              <div class="nav">
+                <svg
+                  width="15"
+                  height="15"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                >
+                  <path d="M2.5 4h11M2.5 8h11M2.5 12h7" /></svg
+                >Threads
+              </div>
+              <div class="nav on">
+                <svg
+                  width="15"
+                  height="15"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                >
+                  <circle cx="8" cy="8" r="6.2" />
+                  <path d="M8 4.6v4M8 11v.2" stroke-linecap="round" /></svg
+                >Attention<span class="sp"></span><span class="count red">4</span>
+              </div>
+              <div class="nav">
+                <svg
+                  width="15"
+                  height="15"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                >
+                  <rect x="2.5" y="2.5" width="11" height="11" rx="2" />
+                  <path d="M5 6h6M5 9h6" /></svg
+                >Pi sessions
+              </div>
+              <div class="label">Threads</div>
+              <div class="thread">
+                <span class="dot red"></span><span class="n">Webhook retry queue</span>
+              </div>
+              <div class="thread">
+                <span class="dot amber"></span><span class="n">Checkout cleanup</span>
+              </div>
+              <div class="thread">
+                <span class="dot amber"></span><span class="n">API pagination</span>
+              </div>
+              <div class="thread">
+                <span class="dot" style="background: transparent"></span
+                ><span class="n">Docs refresh</span>
+              </div>
+            </div>
+            <div class="main">
+              <div class="page-h"><h4>Attention</h4></div>
+              <p class="page-sub">What your Pi sessions are waiting on you for.</p>
+              <div class="filters">
+                <span class="filter on"
+                  >All
+                  <span class="count" style="background: var(--chip); color: var(--fg)"
+                    >4</span
+                  ></span
+                >
+                <span class="filter">Blocking 1</span>
+                <span class="filter">Reviews 2</span>
+                <span class="filter">Findings 1</span>
+              </div>
+
+              <div class="group-h">
+                <span class="pip block"></span>Blocking
+                <small>The agent stopped until you answer</small>
+              </div>
+              <div class="list">
+                <div class="item">
+                  <svg
+                    class="ic"
+                    width="16"
+                    height="16"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                  >
+                    <path d="M2.5 3.5h11v7.5H8l-3 2.5V11H2.5z" />
+                    <path
+                      d="M6.6 5.8a1.5 1.5 0 1 1 2 1.4c-.4.2-.6.5-.6.9M8 9.4v.1"
+                      stroke-linecap="round"
+                    />
+                  </svg>
+                  <div class="what">
+                    <div class="t">
+                      Which retry strategy for failed webhooks?
+                      <span class="sess">Webhook retry queue</span>
+                    </div>
+                    <div class="r">2 questions · Backoff, Dead-letter queue</div>
+                    <div class="m">Asked 6m ago · live</div>
+                  </div>
+                  <div class="acts"><button class="btn solid">Answer</button></div>
+                </div>
+              </div>
+
+              <div class="group-h">
+                <span class="pip owed"></span>Waiting on you
+                <small>The agent moved on; this is yours</small>
+              </div>
+              <div class="list">
+                <div class="item">
+                  <svg
+                    class="ic"
+                    width="16"
+                    height="16"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                  >
+                    <circle cx="4" cy="3.5" r="1.6" />
+                    <circle cx="4" cy="12.5" r="1.6" />
+                    <circle cx="12" cy="12.5" r="1.6" />
+                    <path
+                      d="M4 5.1v5.8M12 10.9V7a2.5 2.5 0 0 0-2.5-2.5H7.5M8.8 3 7.3 4.5l1.5 1.5"
+                    />
+                  </svg>
+                  <div class="what">
+                    <div class="t">
+                      Review acme/web#42 <span class="sess">Checkout cleanup</span>
+                    </div>
+                    <div class="r">Checkout cleanup · draft, checks green at a13c90e</div>
+                    <div class="m">Handed off 12m ago · watching</div>
+                  </div>
+                  <div class="acts">
+                    <button class="btn solid">Open PR</button><button class="btn">Thread</button
+                    ><button class="btn ghost">Dismiss</button>
+                  </div>
+                </div>
+                <div class="item">
+                  <svg
+                    class="ic"
+                    width="16"
+                    height="16"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                  >
+                    <circle cx="4" cy="3.5" r="1.6" />
+                    <circle cx="4" cy="12.5" r="1.6" />
+                    <circle cx="12" cy="12.5" r="1.6" />
+                    <path
+                      d="M4 5.1v5.8M12 10.9V7a2.5 2.5 0 0 0-2.5-2.5H7.5M8.8 3 7.3 4.5l1.5 1.5"
+                    />
+                  </svg>
+                  <div class="what">
+                    <div class="t">
+                      Review acme/api#57 <span class="sess">API pagination</span>
+                      <span class="saved-tag">last known</span>
+                    </div>
+                    <div class="r">Cursor pagination · draft at 9f02b1c</div>
+                    <div class="m">Handed off yesterday 4:28 PM · Pi stopped, no updates since</div>
+                  </div>
+                  <div class="acts">
+                    <button class="btn solid">Open PR</button><button class="btn">Thread</button
+                    ><button class="btn ghost">Dismiss</button>
+                  </div>
+                </div>
+                <div class="item">
+                  <svg
+                    class="ic"
+                    width="16"
+                    height="16"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                  >
+                    <rect x="2.5" y="2.5" width="11" height="11" rx="2" />
+                    <path d="m5.2 8.2 1.8 1.8 3.8-4" />
+                  </svg>
+                  <div class="what">
+                    <div class="t">
+                      2 unreviewed findings <span class="sess">Webhook retry queue</span>
+                    </div>
+                    <div class="r">fix-auth-bug · retry-backoff</div>
+                    <div class="m">Newest 25m ago · a later producer (pi-todo)</div>
+                  </div>
+                  <div class="acts">
+                    <button class="btn solid">Review</button><button class="btn">Thread</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="group-h" style="color: var(--muted)">
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                >
+                  <path d="m6 4 4 4-4 4" /></svg
+                >Stale · 1 <small>Head moved since the handoff; collapsed</small>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="caption">
+        A new <code>navPanel</code> beside Pi sessions. Its badge counts every item and turns red
+        when anything is Blocking; the badge moves here from Pi sessions so you see one count, not
+        two. <b>Answer</b> opens the thread, where bb already shows the questionnaire in place of
+        the composer. A row from a stopped thread is tagged <b>last known</b> and its PR link still
+        works. The thread list gets a red or amber dot through the existing row-metadata slot.
+      </p>
+
+      <h3>Per session in the terminal: status hint and <code>/attention</code></h3>
+      <div class="screen">
+        <div class="screen-bar">
+          <span class="dots"><i></i><i></i><i></i></span>pi · ~/src/acme-web
+        </div>
+        <div class="screen-body">
+          <div class="term">
+            <pre><span class="dim">  … Pi: handed acme/web#42 to you for review and armed a watch.</span>
+
+<span class="amb">╭─ Needs you · this session ───────────────────────────────────╮</span>
+<span class="amb">│</span>                                                              <span class="amb">│</span>
+<span class="amb">│</span> <span class="cy">›</span> <span class="amb">◆</span> Review acme/web#42                                 <span class="amb">Ready</span> <span class="amb">│</span>
+<span class="amb">│</span>     <span class="dim">Checkout cleanup · draft at a13c90e · 12m</span>                <span class="amb">│</span>
+<span class="amb">│</span>                                                              <span class="amb">│</span>
+<span class="amb">│</span>   <span class="dim">◇ acme/api#57                                   Head moved</span> <span class="amb">│</span>
+<span class="amb">│</span>     <span class="dim">Pushed since you were asked</span>                              <span class="amb">│</span>
+<span class="amb">│</span>                                                              <span class="amb">│</span>
+<span class="amb">│</span>   <span class="amb">◆</span> 2 unreviewed findings                               <span class="dim">Todo</span> <span class="amb">│</span>
+<span class="amb">│</span>     <span class="dim">fix-auth-bug · retry-backoff</span>                             <span class="amb">│</span>
+<span class="amb">│</span>                                                              <span class="amb">│</span>
+<span class="amb">│</span> <span class="dim">↑↓ select · Enter open · d dismiss · Esc close</span>               <span class="amb">│</span>
+<span class="amb">╰──────────────────────────────────────────────────────────────╯</span></pre>
+            <div class="rule"></div>
+            <pre><span class="dim">  ~/src/acme-web · main · opus</span>                     <span class="amb">◆ 3 need you · /attention</span></pre>
+          </div>
+        </div>
+      </div>
+      <p class="caption">
+        Each Pi process sees only its own session, so the terminal shows one session's queue: a
+        status hint while anything is owed, and an overlay on <code>/attention</code>. Enter opens
+        the link (argv launch, no shell) or prints it when no opener exists. The cross-session view
+        for terminal users is the dashboard.
+      </p>
+
+      <h3>Across sessions without bb: the dashboard</h3>
+      <div class="screen">
+        <div class="screen-bar">
+          <span class="dots"><i></i><i></i><i></i></span>127.0.0.1:7317
+        </div>
+        <div class="screen-body">
+          <div class="ui dash">
+            <div class="dash-panel">
+              <div class="hd">
+                <span class="pip block"></span>Needs you <span class="count red">4</span>
+              </div>
+              <div class="dash-row">
+                <span class="s">Webhook retry queue</span
+                ><span>Which retry strategy for failed webhooks?</span
+                ><button class="btn solid">Answer</button>
+              </div>
+              <div class="dash-row">
+                <span class="s">Checkout cleanup</span
+                ><span>Review acme/web#42 <span class="t-faint">· draft at a13c90e</span></span
+                ><button class="btn">Open PR</button>
+              </div>
+              <div class="dash-row">
+                <span class="s">API pagination</span
+                ><span>Review acme/api#57 <span class="t-faint">· draft at 9f02b1c</span></span
+                ><button class="btn">Open PR</button>
+              </div>
+              <div class="dash-row">
+                <span class="s">Webhook retry queue</span><span>2 unreviewed findings</span
+                ><button class="btn">Open</button>
+              </div>
+            </div>
+            <div class="cards">
+              <div class="scard hot"><b>Webhook retry queue</b>Waiting on you · 3/7 tasks</div>
+              <div class="scard warm"><b>Checkout cleanup</b>Idle · 1 review owed</div>
+              <div class="scard"><b>Docs refresh</b>Working · 2 agents</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="caption">
+        The current “Waiting on you” panel, which lists questionnaires only, becomes “Needs you” and
+        reads the same rows. Session cards gain an amber edge for Owed and keep the existing
+        highlight for Blocking.
+      </p>
+
+      <h2>How it works</h2>
+      <pre class="mermaid">
+flowchart LR
+  subgraph producers["Producers (own the lifecycle)"]
+    git["pi-git<br/>git.attention"]
+    todo["pi-todo (later)<br/>todo.attention"]
+  end
+  subgraph core["Already published"]
+    ask["pi-ask<br/>ask.questions (form)"]
+    sys["pi-system-insights<br/>system.session status"]
+  end
+  views(("pi-surface<br/>attention views"))
+  git --> views
+  todo --> views
+  views --> ext["pi-attention<br/>status hint · /attention"]
+  views --> bbs["bb plugin server<br/>attention() RPC"]
+  views --> hub["dashboard hub"]
+  ask -. "derived: Blocking" .-> bbs
+  sys -. "derived: Blocking" .-> bbs
+  ask -. derived .-> hub
+  bbs --> card["Context card section"]
+  bbs --> page["Attention page + badge"]
+  bbs --> dots["Thread row dots"]
+</pre>
+
+      <h3>1. A new pi-surface view kind: <code>attention</code></h3>
+      <div class="prose">
+        <p>
+          An explorer could carry these rows, but settling strips its actions and the bb card would
+          have to scrape links from detail fields again (PR #207 makes the same point). A small
+          dedicated kind gives every consumer typed rows: state, timestamps and a link that still
+          works with no process. Consumers that don't know the kind skip it, as they do today.
+        </p>
+      </div>
+      <pre class="code"><span class="c">// packages/pi-surface/src/attention.ts</span>
+<span class="k">export interface</span> AttentionItem {
+  id: string;            <span class="c">// stable within the view: "pr:github.com/acme/web#42"</span>
+  rev?: string;          <span class="c">// what was handed off (head SHA); a dismissal names it</span>
+  category: string;      <span class="c">// "review" | "findings" | …; a renderer maps it to an icon, unknown → generic</span>
+  title: Line;           <span class="c">// "Review acme/web#42"</span>
+  reason?: string;       <span class="c">// "Checkout cleanup · draft at a13c90e" (bounded)</span>
+  state: <span class="k">"ready"</span> | <span class="k">"stale"</span>;
+  since: number;         <span class="c">// when it was raised</span>
+  observedAt?: number;   <span class="c">// when the producer last confirmed it</span>
+  link?: { url: string; label: string };  <span class="c">// https only; checked again by every consumer</span>
+  open?: ActionRef;      <span class="c">// optional in-session action (e.g. open /todo:review); live only</span>
+  dismiss?: ActionRef;   <span class="c">// live only</span>
+  live?: true;           <span class="c">// exists only while the process runs: settling removes the item</span>
+}
+<span class="k">export interface</span> AttentionModel { items: AttentionItem[]; total: number }</pre>
+      <div class="tablewrap">
+        <table>
+          <tr>
+            <th>Rule</th>
+            <th>What it means</th>
+          </tr>
+          <tr>
+            <td>Settling</td>
+            <td>
+              Items marked <code>live</code> are removed; <code>open</code> and
+              <code>dismiss</code> are dropped. Everything else, the link included, survives as last
+              known.
+            </td>
+          </tr>
+          <tr>
+            <td>Bounds</td>
+            <td>
+              <code>MAX_ATTENTION_ITEMS</code> (around 50), bounded title and reason, as
+              <code>isFormModel</code> enforces for forms. <code>total</code> stays the producer's
+              true count, so a capped list can say “and 12 more”.
+            </td>
+          </tr>
+          <tr>
+            <td>Ids</td>
+            <td>
+              Views are <code>&lt;extension&gt;.attention</code>. Across sessions an item's key is
+              <code>threadId / viewId / itemId</code>.
+            </td>
+          </tr>
+          <tr>
+            <td>No inference</td>
+            <td>
+              A producer raises an item only on an explicit event, such as a handoff tool call or a
+              recorded finding. Consumers never invent Owed items.
+            </td>
+          </tr>
+        </table>
+      </div>
+
+      <h3>2. Producers own their items</h3>
+      <div class="prose">
+        <p>
+          Each producer follows the runtime rules already in place: state lives in the factory
+          closure, is written with <code>pi.appendEntry</code>, rebuilt with
+          <code>readEntries</code> on <code>session_start</code> and <code>session_tree</code>,
+          published with <code>views.define</code> and <code>views.changed</code>. No producer needs
+          to know about bb, the dashboard or the page.
+        </p>
+        <p>
+          <b>pi-git, first producer.</b> Reuse #207's reducer (steps 1–2) and add
+          <code>git_pr_request_review</code> (main session only). It checks that the PR is open and
+          that its head is the SHA given, records a <code>git:attention</code> entry and arms a
+          watch. The watch is a <code>pi-work</code> item, so the session wakes when the PR changes
+          and the item moves on without anything polling.
+        </p>
+      </div>
+      <pre class="mermaid">
+stateDiagram-v2
+  direction LR
+  [*] --> Ready: git_pr_request_review(pr, head)
+  Ready --> Stale: new head observed
+  Stale --> Ready: request again at new head
+  Ready --> [*]: marked ready / approved / merged / closed
+  Stale --> [*]: merged / closed
+  Ready --> [*]: you dismiss
+  Stale --> [*]: you dismiss
+</pre>
+      <div class="prose">
+        <p>
+          For a draft handed off for review, <b>resolved</b> means a later observation shows
+          <code>draft: false</code>, an approving review, a merge or a close. These are the fields
+          pi-git already reads (<code>draft</code>, <code>review</code>, <code>state</code>,
+          <code>headSha</code>). A checks-only update never resolves an item.
+        </p>
+        <p>
+          <b>pi-todo, second producer (later).</b> A task with unreviewed messages becomes one
+          <code>findings</code> item, with an <code>open</code> action to its review. It has no
+          link, so in bb the row opens the thread. If it fits the contract without changes, the
+          contract is generic enough.
+        </p>
+      </div>
+
+      <h3>3. Consumers aggregate</h3>
+      <div class="tablewrap">
+        <table>
+          <tr>
+            <th>Where</th>
+            <th>What it does</th>
+          </tr>
+          <tr>
+            <td>bb server</td>
+            <td>
+              New RPC <code>attention()</code>, tagged <code>attention</code> and invalidated
+              wherever <code>sessions</code> is. It walks live and saved snapshots, reads every
+              <code>attention</code> view, and adds Blocking rows from
+              <code>ask.questions</code> forms and <code>status: waiting</code>. It sorts Blocking,
+              then Ready by age, then Stale. <code>SessionSummary</code> gains an
+              <code>attention: { blocking, owed }</code> count for the dots and segment.
+            </td>
+          </tr>
+          <tr>
+            <td>bb app</td>
+            <td>
+              <code>navPanel({ id: "attention", … , experimental_useBadge })</code>; a
+              <code>threadContextCardSection</code> with an order ahead of the Git section;
+              row-metadata dots; one more segment part. The Pi sessions badge goes away.
+            </td>
+          </tr>
+          <tr>
+            <td>Dismiss</td>
+            <td>
+              For a live session, run the item's <code>dismiss</code> action. For a saved session,
+              keep the dismissal in the plugin's <code>kv</code> under <code>key@rev</code>, hide
+              the row, and send it as the action once Pi reconnects. The session ends up recording
+              it either way.
+            </td>
+          </tr>
+          <tr>
+            <td>Dashboard hub</td>
+            <td>
+              Same derivation in the hub page; the “Waiting on you” panel turns into “Needs you”.
+            </td>
+          </tr>
+          <tr>
+            <td>Terminal</td>
+            <td>
+              A small <code>pi-attention</code> extension: <code>collectViews</code> on its own bus,
+              a status hint while anything is owed, <code>/attention</code> overlay through
+              <code>pi-ui</code>, plain-text output through <code>userOutput</code> outside the TUI.
+            </td>
+          </tr>
+        </table>
+      </div>
+
+      <h2>Decisions</h2>
+      <p class="prose">All four were decided on 26 Nov 2026 as recommended.</p>
+      <div class="decision">
+        <div class="rec">Decided: derive</div>
+        <h3>Questions are derived, not published by pi-ask</h3>
+        <p>
+          Blocking rows come from <code>form</code> views and session status. No producer changes
+          and no duplicated state. Reconsider only if a Blocking source appears that no existing
+          view covers.
+        </p>
+      </div>
+      <div class="decision">
+        <div class="rec">Decided: per-domain tools first</div>
+        <h3>Only domain tools raise Owed items</h3>
+        <p>
+          Domain tools such as <code>git_pr_request_review</code> can validate their input and
+          resolve their own items. A generic tool waits; see below.
+        </p>
+      </div>
+      <div class="decision">
+        <div class="rec">Decided: separate page</div>
+        <h3>Attention is its own page in bb's sidebar</h3>
+        <p>
+          It has its own badge and URL. The Pi sessions badge moves to it, so the sidebar shows one
+          count.
+        </p>
+      </div>
+      <div class="decision">
+        <div class="rec">Decided: dashboard</div>
+        <h3>The dashboard is the cross-session view for terminal users</h3>
+        <p>
+          <code>/attention</code> stays per-session. There is no cross-session index in the
+          terminal.
+        </p>
+      </div>
+
+      <h2>Later: a generic <code>attention_raise</code> tool</h2>
+      <div class="prose">
+        <p>
+          Not in this plan. Some handoffs will have no domain tool: “check the staging deploy”,
+          “approve the migration in the console”. When a real case like that comes up, a generic
+          tool can raise an Owed item with the same contract. To keep it from becoming a noisy
+          inbox, it would have these limits:
+        </p>
+        <ul>
+          <li>
+            <b>Main session only</b>, like <code>user_notify</code>. A subagent reports to its
+            parent.
+          </li>
+          <li>
+            <b>Required expiry.</b> Nothing can observe a generic item resolving, so it needs a
+            deadline (say 1–72 hours) and shows as stale once that passes.
+          </li>
+          <li>
+            <b>Link optional and checked.</b> https only, with no userinfo, checked again by every
+            consumer.
+          </li>
+          <li>
+            <b>Dedupe by key.</b> Raising the same key again updates the item instead of adding
+            another.
+          </li>
+          <li>
+            <b>A cap.</b> A few open generic items per session at most; past that the tool refuses.
+          </li>
+          <li>
+            <b>Resolved by you or the agent.</b> Dismiss in any UI, or
+            <code>attention_resolve(key)</code> once the agent sees it is done.
+          </li>
+        </ul>
+        <p>
+          It would live in the <code>pi-attention</code> extension and publish
+          <code>attention.items</code> with category <code>agent</code>. The contract needs no
+          change.
+        </p>
+      </div>
+
+      <h2>Implementation plan</h2>
+      <p class="prose">
+        Preparation lands first: contract, then consumers drawn from fixtures, then the producer.
+        The last step turns real handoffs on. Each step ships alone and updates its own READMEs and
+        images.
+      </p>
+      <h3>Make it easy</h3>
+      <ol class="steps">
+        <li>
+          <div>
+            <b>Add the <code>attention</code> view kind to pi-surface</b
+            ><span
+              >Model, <code>isAttentionModel</code>, bounds, settle rule, entry in
+              <code>VIEW_KINDS</code>. Tests for guards, settling and older readers skipping the
+              kind. Size S.</span
+            >
+          </div>
+        </li>
+        <li>
+          <div>
+            <b>One shared derivation: <code>attentionRows(snapshot)</code></b
+            ><span
+              >A pure function in pi-surface that turns a snapshot into Blocking rows (forms,
+              <code>waiting</code>) and Owed rows (attention views), already sorted. Written
+              self-contained so the dashboard page can embed it, as <code>format.ts</code> is. Size
+              S.</span
+            >
+          </div>
+        </li>
+        <li>
+          <div>
+            <b>bb server: <code>attention()</code> RPC and counts</b
+            ><span
+              >Collect rows from live, saved and fixture sessions;
+              <code>SessionSummary.attention</code>; fixture data with an attention view; the
+              saved-session dismissal queue in <code>kv</code>. Size M.</span
+            >
+          </div>
+        </li>
+        <li>
+          <div>
+            <b>bb UI: Attention page, card section, dots</b
+            ><span
+              >New <code>navPanel</code> with badge (moved from Pi sessions), “Needs you” context
+              card section, row dots, segment part. Checked with
+              <code>bb-shot.mjs --expand --check</code>. Size M.</span
+            >
+          </div>
+        </li>
+        <li>
+          <div>
+            <b>Terminal: <code>pi-attention</code> extension</b
+            ><span
+              >Status hint and <code>/attention</code> overlay for the current session, scaffolded
+              with <code>new-extension</code>. Rendering tests at narrow widths and with wide
+              Unicode. Size M.</span
+            >
+          </div>
+        </li>
+        <li>
+          <div>
+            <b>Dashboard: “Needs you” panel</b
+            ><span
+              >The “Waiting on you” panel takes the shared rows; session cards get the amber edge.
+              Size S.</span
+            >
+          </div>
+        </li>
+        <li>
+          <div>
+            <b>pi-git: replay review handoffs with PR facts</b
+            ><span
+              >#207's reducer: a <code>git:attention</code> entry, replayed with the ledger; ready,
+              stale and resolved rules. No public behaviour yet. Size M.</span
+            >
+          </div>
+        </li>
+        <li>
+          <div>
+            <b>pi-git: publish <code>git.attention</code> and its dismiss action</b
+            ><span
+              >Map reducer rows to the contract; <code>git.attention.dismiss</code> writes an entry.
+              Still empty until step 9. Size S.</span
+            >
+          </div>
+        </li>
+      </ol>
+      <h3>The change</h3>
+      <ol class="steps" start="9" style="counter-reset: s 8">
+        <li>
+          <div>
+            <b>Turn on review handoffs</b
+            ><span
+              ><code>git_pr_request_review</code> (main session, checks head, arms watch);
+              <code>execute-roadmap</code> calls it before its one <code>user_notify</code>.
+              Scenario in <code>test/</code>: green → request → duplicate → head move → re-request →
+              ready-for-review → reload. Size S.</span
+            >
+          </div>
+        </li>
+      </ol>
+      <h3>Follow-up</h3>
+      <ol class="steps" start="10" style="counter-reset: s 9">
+        <li>
+          <div>
+            <b>Second producer: unreviewed todo findings</b
+            ><span
+              ><code>todo.attention</code>, with an <code>open</code> action into
+              <code>/todo:review</code>. It should need no contract change. Size S.</span
+            >
+          </div>
+        </li>
+      </ol>
+      <p class="prose">Start with step 1. It's safe to start now: no existing behaviour changes.</p>
+    </div>
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.esm.min.mjs";
+      mermaid.initialize({
+        startOnLoad: true,
+        theme: matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "neutral",
+      });
+    </script>
+  </body>
+</html>
