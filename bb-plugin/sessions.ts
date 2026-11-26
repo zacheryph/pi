@@ -1,7 +1,10 @@
 import { settleSnapshot } from "pi-surface/settle";
+import { allAttention, threadAttention, type AttentionSource } from "./attention.ts";
 import type {
   ActionRequest,
   ActionResult,
+  AttentionResult,
+  AttentionRow,
   DeliverySnapshot,
   SessionSummary,
   SnapshotResult,
@@ -100,6 +103,8 @@ export interface SessionStoreOptions {
   helloTimeoutMs?: number;
   requestTimeoutMs?: number;
   now?: () => number;
+  /** Whether a row is hidden from the attention list, such as one queued for dismissal. */
+  hides?(threadId: string, row: AttentionRow): boolean;
 }
 
 export class SessionError extends Error {
@@ -232,6 +237,9 @@ export class SessionStore {
       );
   }
 
+  private readonly hides = (threadId: string, row: AttentionRow): boolean =>
+    this.options.hides?.(threadId, row) ?? false;
+
   verify(threadId: string, token: string): boolean | Promise<boolean> {
     return this.options.verify(threadId, token);
   }
@@ -267,8 +275,13 @@ export class SessionStore {
 
   summaries(): SessionSummary[] {
     return [...this.entries.values()]
-      .map((entry) => summarize(entry))
+      .map((entry) => summarize(entry, this.hides))
       .sort((a, b) => b.updatedAt - a.updatedAt);
+  }
+
+  /** What needs the user in every session: live, saved and fixture. */
+  attention(): AttentionResult {
+    return allAttention([...this.entries.values()].map(attentionSource), this.hides);
   }
 
   setFixture(threadId: string, snapshot: DeliverySnapshot, responder: FixtureResponder): void {
@@ -465,9 +478,19 @@ function isConnected(entry: Entry): boolean {
   return entry.source === "fixture" || !!entry.connection;
 }
 
+function attentionSource(entry: Entry): AttentionSource {
+  return {
+    threadId: entry.threadId,
+    snapshot: entry.snapshot,
+    source: entry.source,
+    connected: isConnected(entry),
+  };
+}
+
 /** The sessions list's row for a thread, read from its views; a missing view leaves its fields out. */
-function summarize(entry: Entry): SessionSummary {
+function summarize(entry: Entry, hides?: SessionStoreOptions["hides"]): SessionSummary {
   const { snapshot } = entry;
+  const attention = threadAttention(attentionSource(entry), hides);
   const session = sessionModel(snapshot);
   const model = session?.model;
   const profile = profileName(snapshot);
@@ -489,5 +512,6 @@ function summarize(entry: Entry): SessionSummary {
     ...(todos ? { todos } : {}),
     runningAgents: runningAgents(snapshot),
     questions: openQuestionnaires(snapshot).length,
+    attention: { blocking: attention.blocking, owed: attention.owed },
   };
 }

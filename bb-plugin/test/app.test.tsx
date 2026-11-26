@@ -49,6 +49,7 @@ function rpcFor(
     todos: { done: 3, total: 7, active: "Move retries into the queue worker" },
     runningAgents: 2,
     questions: 1,
+    attention: { blocking: 1, owed: 2 },
   };
   return {
     snapshot: (input: unknown) => {
@@ -692,6 +693,7 @@ describe("pi-surface app", () => {
       status: "working",
       runningAgents: 1,
       questions: 0,
+      attention: { blocking: 0, owed: 0 },
     };
     const one = render(<SessionList sessions={[session]} onOpen={() => {}} now={NOW} />);
     expect(one.container.textContent).toContain("Working · 1 agent running");

@@ -5,6 +5,7 @@
 import { formatBytes } from "pi-surface/format";
 import type {
   ActionRequest,
+  AttentionModel,
   Block,
   DeliverySnapshot,
   ExplorerModel,
@@ -686,6 +687,44 @@ function gitViews(): ViewEntry[] {
   ];
 }
 
+/**
+ * What pi-git will publish once the agent hands pull requests to the user for
+ * review: one ready, one whose head moved since the handoff.
+ */
+function attentionView(now: number): ViewEntry {
+  const review = (pr: FixturePr, sha: string) => ({
+    id: `pr:github.com/${pr.label}`,
+    rev: sha,
+    category: "review",
+    title: `Review ${pr.label}`,
+    link: { url: pr.url, label: pr.label },
+    dismiss: {
+      action: "git.attention.dismiss",
+      args: { id: `pr:github.com/${pr.label}`, rev: sha },
+    },
+  });
+  const model: AttentionModel = {
+    items: [
+      {
+        ...review(PRS[0]!, "4be19a2"),
+        reason: `${PRS[0]!.title} · draft at 4be19a2`,
+        state: "ready",
+        since: ago(now, 12),
+        observedAt: ago(now, 1),
+      },
+      {
+        ...review(PRS[1]!, "9f02b1c"),
+        reason: `${PRS[1]!.title} · head moved since 9f02b1c`,
+        state: "stale",
+        since: ago(now, 50),
+        observedAt: ago(now, 1),
+      },
+    ],
+    total: 2,
+  };
+  return { id: "git.attention", kind: "attention", title: "Git", model };
+}
+
 function formView(now: number): FormModel {
   return {
     questionnaires: [
@@ -725,6 +764,7 @@ function formView(now: number): FormModel {
 export function fixtureSnapshot(now = Date.now()): DeliverySnapshot {
   const views: ViewEntry[] = [
     { id: "ask.questions", kind: "form", title: "Questions", model: formView(now) },
+    attentionView(now),
     ...gitViews(),
     ...stashViews(now),
     ...subagentViews(now),
@@ -792,6 +832,9 @@ export function fixtureResponder(now = Date.now()) {
       }
       case "todo.review":
         return { reviewed: 1 };
+      case "git.attention.dismiss":
+        // A fixture keeps its items: there is no ledger to record the dismissal in.
+        return null;
       case "ask.submit":
       case "ask.cancel":
         throw new Error("This is a fixture session; answers go nowhere.");

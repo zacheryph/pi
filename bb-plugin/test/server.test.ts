@@ -178,6 +178,7 @@ describe("pi-surface server", () => {
     expect(harness.inspection.experimental_rpcInvalidations).toContainEqual([
       `thread:${THREAD}`,
       "sessions",
+      "attention",
     ]);
     expect((await sessions()).sessions).toEqual([
       expect.objectContaining({
@@ -242,6 +243,8 @@ describe("pi-surface server", () => {
       todos: { done: 5, total: 12, active: "Fix the retry loop" },
       runningAgents: 0,
       questions: 1,
+      // The questionnaire explains the waiting status: one blocking row, not two.
+      attention: { blocking: 1, owed: 0 },
     });
   });
 
@@ -752,5 +755,200 @@ describe("live forms", () => {
     // bb closes the old generation's sockets with 1012, which pi-bb retries.
     expect(socket.closeCalls.map((call) => call.code)).toContain(1012);
     expect(harness.inspection.pendingInteractions).toHaveLength(0);
+  });
+});
+
+describe("pi-surface server: attention", () => {
+  const PR = "pr:github.com/acme/web#42";
+  const review = (rev = "a13c90e", extra: Record<string, unknown> = {}) => ({
+    id: PR,
+    rev,
+    category: "review",
+    title: "Review acme/web#42",
+    reason: "Checkout cleanup · draft",
+    state: "ready",
+    since: 10,
+    link: { url: "https://github.com/acme/web/pull/42", label: "acme/web#42" },
+    dismiss: { action: "git.attention.dismiss", args: { id: PR, rev } },
+    ...extra,
+  });
+  const gitAttention = (...items: unknown[]): ViewEntry => ({
+    id: "git.attention",
+    kind: "attention",
+    title: "Git",
+    model: { items, total: items.length } as never,
+  });
+  const views = (...items: unknown[]) => [
+    gitAttention(...items),
+    sessionView({ name: "Checkout cleanup" }),
+  ];
+
+  /** Calls on one plugin generation: the first, or one after a reload. */
+  function on(harness: Awaited<ReturnType<typeof setup>>["harness"]) {
+    const call = <T>(method: string, input: unknown) =>
+      harness.behavior.callRpc(method, input as never) as Promise<T>;
+    return {
+      attention: () =>
+        call<{ rows: Array<Record<string, any>>; blocking: number; owed: number; more: number }>(
+          "attention",
+          null,
+        ),
+      dismiss: (input: Record<string, unknown>) =>
+        call<{ queued: boolean }>("dismiss", {
+          threadId: THREAD,
+          viewId: "git.attention",
+          ...input,
+        }),
+      sessions: () => call<{ sessions: Array<Record<string, any>> }>("sessions", null),
+      connect: async (sent: DeliverySnapshot) => {
+        const entries = await harness.behavior.resolveProviderEnv("pi", {
+          threadId: THREAD,
+          projectId: "proj_1",
+          hostId: "host_1",
+        });
+        const token = entries.find((entry) => entry.name === "PI_BB_SURFACE_TOKEN")!.value;
+        const socket = await harness.behavior.experimental_openWebSocket("/session");
+        await socket.receive(
+          JSON.stringify({ type: "hello", version: 3, threadId: THREAD, token, snapshot: sent }),
+        );
+        return socket;
+      },
+    };
+  }
+
+  /** A thread whose Pi reported `items` and then stopped, seen after a reload. */
+  async function saved(...items: unknown[]) {
+    const first = await setup();
+    const socket = await first.connect(THREAD, snapshot(views(...items)));
+    await socket.close();
+    await tick(60);
+    const next = await first.reload();
+    return { first, next, api: on(next.harness) };
+  }
+
+  it("lists a fixture's question and reviews, blocking first, and counts them per session", async () => {
+    const { harness } = await setup();
+    await harness.behavior.runCli(["fixture", "--thread", "thr_demo"]);
+    const { rows, blocking, owed } = await on(harness).attention();
+    expect(rows.map((row) => [row.kind, row.state, row.category, row.threadId])).toEqual([
+      ["blocking", "ready", "question", "thr_demo"],
+      ["owed", "ready", "review", "thr_demo"],
+      ["owed", "stale", "review", "thr_demo"],
+    ]);
+    expect(rows[0]).toMatchObject({ session: "Webhook retry queue", source: "fixture" });
+    expect({ blocking, owed }).toEqual({ blocking: 1, owed: 2 });
+    expect((await on(harness).sessions()).sessions[0]!.attention).toEqual({ blocking: 1, owed: 2 });
+    // The fixture answers a dismissal as a session would, and keeps its item.
+    await expect(
+      on(harness).dismiss({ threadId: "thr_demo", itemId: rows[1]!.itemId, rev: rows[1]!.rev }),
+    ).resolves.toEqual({ queued: false });
+  });
+
+  it("dismisses a live item through the item's own action, checking its revision", async () => {
+    const { harness, connect } = await setup();
+    const socket = await connect(THREAD, snapshot(views(review())));
+    const api = on(harness);
+    expect((await api.attention()).rows).toEqual([
+      expect.objectContaining({
+        key: `git.attention/${PR}`,
+        threadId: THREAD,
+        session: "Checkout cleanup",
+        source: "live",
+        connected: true,
+        dismiss: { action: "git.attention.dismiss", args: { id: PR, rev: "a13c90e" } },
+      }),
+    ]);
+    await expect(api.dismiss({ itemId: PR, rev: "0000000" })).rejects.toMatchObject({
+      code: "conflict",
+    });
+    await expect(api.dismiss({ itemId: "pr:other", rev: "a13c90e" })).rejects.toMatchObject({
+      code: "not_found",
+    });
+    expect(requests(socket)).toEqual([]);
+    const dismissed = api.dismiss({ itemId: PR, rev: "a13c90e" });
+    const asked = await answer(socket, 0, { ok: true });
+    expect(asked.request).toEqual({
+      action: "git.attention.dismiss",
+      args: { id: PR, rev: "a13c90e" },
+    });
+    await expect(dismissed).resolves.toEqual({ queued: false });
+  });
+
+  it("keeps a saved session's items, links included and actions removed, across a reload", async () => {
+    const { api } = await saved(review(), review("b", { id: "run", live: true }));
+    const { rows, owed } = await api.attention();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      itemId: PR,
+      source: "saved",
+      connected: false,
+      link: { url: "https://github.com/acme/web/pull/42", label: "acme/web#42" },
+    });
+    expect(rows[0]).not.toHaveProperty("dismiss");
+    expect(owed).toBe(1);
+  });
+
+  it("queues a saved session's dismissal, hides the row, and runs it once when Pi reconnects", async () => {
+    const { next, api } = await saved(review());
+    await expect(api.dismiss({ itemId: PR, rev: "a13c90e" })).resolves.toEqual({ queued: true });
+    expect((await api.attention()).rows).toEqual([]);
+    expect((await api.sessions()).sessions[0]!.attention).toEqual({ blocking: 0, owed: 0 });
+
+    // The queue outlasts another reload.
+    const later = await next.harness.lifecycle.reload(createPlugin(OPTIONS));
+    hosts.push({ dispose: () => later.harness.lifecycle.dispose() });
+    const again = on(later.harness);
+    await tick();
+    expect((await again.attention()).rows).toEqual([]);
+
+    const socket = await again.connect(snapshot(views(review())));
+    await tick();
+    expect(requests(socket).map((message) => message.request)).toEqual([
+      { action: "git.attention.dismiss", args: { id: PR, rev: "a13c90e" } },
+    ]);
+    // Taken off the queue: further updates run nothing more.
+    await socket.receive(JSON.stringify({ type: "update", snapshot: snapshot(views(review())) }));
+    await tick();
+    expect(requests(socket)).toHaveLength(1);
+  });
+
+  it("drops a queued dismissal whose item is gone or changed, running nothing", async () => {
+    for (const reported of [[], [review("b5d1e07")]]) {
+      const { api, next } = await saved(review());
+      await api.dismiss({ itemId: PR, rev: "a13c90e" });
+      const socket = await api.connect(snapshot(views(...reported)));
+      await tick();
+      expect(requests(socket)).toEqual([]);
+      // Changed since the user saw it: the new revision shows again.
+      expect((await api.attention()).rows).toHaveLength(reported.length);
+      expect(next.harness.inspection.logEntries.filter((e) => e.level === "warn")).toEqual([]);
+    }
+  });
+
+  it("waits for the attention view before running or dropping a queued dismissal", async () => {
+    const { api } = await saved(review());
+    await api.dismiss({ itemId: PR, rev: "a13c90e" });
+    const socket = await api.connect(snapshot([sessionView()]));
+    await tick();
+    expect(requests(socket)).toEqual([]);
+    await socket.receive(JSON.stringify({ type: "update", snapshot: snapshot(views(review())) }));
+    await tick();
+    expect(requests(socket)).toHaveLength(1);
+  });
+
+  it("forgets a deleted thread's queued dismissals", async () => {
+    const { next, api } = await saved(review());
+    await api.dismiss({ itemId: PR, rev: "a13c90e" });
+    await next.harness.behavior.emitThreadEvent("thread.deleted", {
+      thread: { id: THREAD } as never,
+    });
+    await tick();
+    // A Pi reporting for a thread of that id later runs nothing.
+    const later = await next.harness.lifecycle.reload(createPlugin(OPTIONS));
+    hosts.push({ dispose: () => later.harness.lifecycle.dispose() });
+    await tick();
+    const socket = await on(later.harness).connect(snapshot(views(review())));
+    await tick();
+    expect(requests(socket)).toEqual([]);
   });
 });

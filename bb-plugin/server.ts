@@ -5,6 +5,7 @@ import {
   type BbPluginApi,
   type JsonValue,
 } from "@get-bb/plugin-sdk";
+import { DismissalQueue, findItem } from "./attention.ts";
 import { rpcContract, type ActionRequest } from "./contract.ts";
 import { fixtureResponder, fixtureSnapshot } from "./fixture.ts";
 import { ENV_TOKEN, ENV_URL, SESSION_PATH } from "./protocol.ts";
@@ -76,15 +77,43 @@ export function createPlugin(options: PluginOptions = {}) {
       onError: (message) => bb.log.warn(`questionnaire: ${message}`),
     });
 
+    // Dismissed while no Pi ran for the thread: hidden now, run when its Pi reconnects.
+    const dismissals = new DismissalQueue(bb.storage.kv, {
+      onChange: () => bb.rpc.experimental_invalidate(["attention", "sessions"]),
+      onError: (message) => bb.log.warn(message),
+    });
+
+    /** Runs the thread's queued dismissals once its Pi is back; each runs at most once. */
+    const replayDismissals = (threadId: string) => {
+      const live = store.live(threadId);
+      if (!live) return;
+      for (const dismissal of dismissals.forThread(threadId)) {
+        const found = findItem(live.snapshot, dismissal.viewId, dismissal.itemId);
+        // The view may not be there yet, or failed this time: wait for a snapshot that says.
+        if (found.view !== "ok") continue;
+        dismissals.remove(dismissal);
+        const { item } = found;
+        // Gone, changed since the user saw it, or no longer dismissible: nothing to do.
+        if (!item?.dismiss || item.rev !== dismissal.rev) continue;
+        store
+          .request(threadId, item.dismiss, { connection: live.connection })
+          .catch((error: unknown) =>
+            bb.log.warn(`could not dismiss ${dismissal.itemId} on ${threadId}: ${String(error)}`),
+          );
+      }
+    };
+
     const store = new SessionStore({
       archive: snapshotArchive(bb.storage),
       onError: (message) => bb.log.warn(message),
       verify: async (threadId, token) => verifyThreadToken(await signingSecret(), threadId, token),
+      hides: (threadId, row) => dismissals.hides(threadId, row),
       onChange: (threadId) => {
-        bb.rpc.experimental_invalidate([`thread:${threadId}`, "sessions"]);
+        bb.rpc.experimental_invalidate([`thread:${threadId}`, "sessions", "attention"]);
         // Only a live session's forms are raised: a fixture's or a saved one's would write
         // into the thread's timeline with nobody to answer them.
         questions.sync(threadId);
+        replayDismissals(threadId);
       },
       // Pi names its session (pi-tldr does, after the first prompt); the thread follows.
       onRename: (threadId, name) => {
@@ -97,7 +126,14 @@ export function createPlugin(options: PluginOptions = {}) {
       ...options,
     });
 
-    bb.events.on("thread.deleted", ({ thread }) => store.forget(thread.id));
+    bb.events.on("thread.deleted", ({ thread }) => {
+      store.forget(thread.id);
+      dismissals.forget(thread.id);
+    });
+    // Dismissals queued before a reload, for threads whose Pi reconnected while they loaded.
+    void dismissals.loaded.then(() => {
+      for (const { threadId } of store.summaries()) replayDismissals(threadId);
+    });
 
     bb.http.experimental_websocket(
       SESSION_PATH,
@@ -127,6 +163,38 @@ export function createPlugin(options: PluginOptions = {}) {
     bb.rpc.register(rpcContract, {
       snapshot: ({ threadId }) => store.get(threadId),
       sessions: () => ({ sessions: store.summaries() }),
+      attention: () => store.attention(),
+      dismiss: async ({ threadId, viewId, itemId, rev }) => {
+        const { snapshot, source, connected } = store.get(threadId);
+        const found = findItem(snapshot, viewId, itemId);
+        const item = found.view === "ok" ? found.item : undefined;
+        if (!item)
+          throw new PluginRpcRefusal({
+            code: "not_found",
+            message: "That item is no longer listed.",
+          });
+        if (item.rev !== rev)
+          throw new PluginRpcRefusal({
+            code: "conflict",
+            message: "That item changed since it was shown; look at it again.",
+          });
+        // A running Pi (or the fixture) dismisses it now; a saved session's item lost its action.
+        if ((source === "live" && connected) || source === "fixture") {
+          if (!item.dismiss)
+            throw new PluginRpcRefusal({
+              code: "conflict",
+              message: "This item cannot be dismissed here.",
+            });
+          try {
+            await store.request(threadId, item.dismiss);
+          } catch (error) {
+            return refusal(error);
+          }
+          return { queued: false };
+        }
+        await dismissals.add({ threadId, viewId, itemId, ...(rev ? { rev } : {}) });
+        return { queued: true };
+      },
       request: async ({ threadId, request }) => {
         try {
           // zod's JSON type is mutable; the arguments are JSON either way.
