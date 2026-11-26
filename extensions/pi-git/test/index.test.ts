@@ -4,10 +4,21 @@ import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 
 import { fakePi, resetSessionTree } from "#test-helpers";
 import type { GitConfig } from "#src/config";
 import { GIT_PRS_VIEW, GIT_SUMMARY_VIEW, GIT_WORKTREES_VIEW } from "#src/events";
+import {
+  ATTENTION_TYPE,
+  GIT_ATTENTION_DISMISS,
+  GIT_ATTENTION_VIEW,
+  type AttentionEntry,
+} from "#src/attention";
 import type { GitSnapshot } from "#src/snapshot";
 import {
+  collectDelivery,
+  dispatchAction,
   isViewModel,
+  listActions,
   listViews,
+  settleSnapshot,
+  type AttentionModel,
   onViewChanged,
   readView,
   summaryCount,
@@ -371,6 +382,7 @@ describe("views", () => {
     const h = await start();
     const bus = h.pi.events;
     expect(listViews(bus)).toEqual([
+      { id: GIT_ATTENTION_VIEW, kind: "attention", title: "Git reviews" },
       { id: GIT_PRS_VIEW, kind: "explorer", title: "Pull requests" },
       { id: GIT_SUMMARY_VIEW, kind: "summary", title: "Git" },
       { id: GIT_WORKTREES_VIEW, kind: "explorer", title: "Git worktrees" },
@@ -1565,5 +1577,210 @@ describe("git_pr_watch", () => {
         URL,
       ].join("\n"),
     ]);
+  });
+});
+
+describe("review requests", () => {
+  const A = "a13c90e".padEnd(40, "0");
+  const B = "b24d01f".padEnd(40, "1");
+  const KEY = "github.com/acme/web#42";
+  const ID = `pr:${KEY}`;
+  const requestEntry = (at = 500, head = A, extra: Record<string, unknown> = {}) => ({
+    type: "custom",
+    customType: ATTENTION_TYPE,
+    data: {
+      v: 1,
+      kind: "request",
+      key: KEY,
+      host: "github.com",
+      owner: "acme",
+      repo: "web",
+      number: 42,
+      head,
+      at,
+      ...extra,
+    },
+  });
+  const ghView = (overrides: Record<string, unknown> = {}) =>
+    JSON.stringify({
+      number: 42,
+      url: "https://github.com/acme/web/pull/42",
+      title: "Checkout cleanup",
+      state: "OPEN",
+      isDraft: true,
+      reviewDecision: "REVIEW_REQUIRED",
+      mergeable: "MERGEABLE",
+      headRefName: "feat/checkout",
+      headRefOid: A,
+      statusCheckRollup: [],
+      ...overrides,
+    });
+  /** A session whose `gh pr view` answers with whatever `answer` holds at the time. */
+  const withGh = async (entries: unknown[], sessionId = "parent") => {
+    const answer = { json: ghView() };
+    const h = harness({
+      sessionId,
+      cwd: box.dir,
+      root: box.root,
+      runGh: async () => answer.json,
+      entries,
+    });
+    await h.fire("session_start");
+    return { h, answer };
+  };
+  const model = (h: { pi: { events: Parameters<typeof readView>[0] } }) => {
+    const value = readView(h.pi.events, GIT_ATTENTION_VIEW);
+    expect(isViewModel("attention", value)).toBe(true);
+    return value as AttentionModel;
+  };
+  const states = (h: Parameters<typeof model>[0]) =>
+    model(h).items.map((item) => `${item.id}:${item.state}`);
+  const intents = (h: { entries: unknown[] }) =>
+    h.entries
+      .filter((entry) => (entry as { customType?: string }).customType === ATTENTION_TYPE)
+      .map((entry) => (entry as { data: AttentionEntry }).data);
+  const read = (h: Awaited<ReturnType<typeof withGh>>["h"]) =>
+    h.tool("git_pr_status", { pr: "acme/web#42" });
+  /** A fresh session over the same file: what replay makes of it. */
+  const replayed = async (h: { entries: unknown[] }) => (await withGh([...h.entries], "again")).h;
+
+  it("defines an empty view and the dismiss action while the session runs", async () => {
+    const h = await start();
+    expect(model(h)).toEqual({ items: [], total: 0 });
+    expect(listActions(h.pi.events).map((action) => action.id)).toContain(GIT_ATTENTION_DISMISS);
+    await h.fire("session_shutdown");
+    expect(listActions(h.pi.events)).toEqual([]);
+  });
+
+  it("shows a recorded request in a snapshot, and in a settled one without its action", async () => {
+    const { h } = await withGh([requestEntry(500, A, { draft: true, reason: "Retry policy" })]);
+    const delivered = collectDelivery(h.pi.events, {
+      id: "1",
+      budget: { maxBytes: 64_000, framingBytes: 64 },
+    });
+    if (!delivered.ok) throw new Error(delivered.error);
+    const entry = delivered.snapshot.views.find((view) => view.id === GIT_ATTENTION_VIEW);
+    expect(entry?.model).toEqual({
+      items: [
+        {
+          id: ID,
+          rev: A,
+          category: "review",
+          title: "Review acme/web#42",
+          reason: "Retry policy · draft at a13c90e",
+          state: "ready",
+          since: 500,
+          link: { url: "https://github.com/acme/web/pull/42", label: "acme/web#42" },
+          dismiss: { action: GIT_ATTENTION_DISMISS, args: { id: ID, rev: A } },
+        },
+      ],
+      total: 1,
+    });
+    const settled = settleSnapshot(delivered.snapshot, 10_000);
+    const kept = settled.views.find((view) => view.id === GIT_ATTENTION_VIEW)?.model as
+      | AttentionModel
+      | undefined;
+    expect(kept?.items).toEqual([
+      expect.objectContaining({ id: ID, link: expect.objectContaining({ label: "acme/web#42" }) }),
+    ]);
+    expect(kept?.items[0]?.dismiss).toBeUndefined();
+  });
+
+  it("follows the PR's facts live, and replay reaches the same rows at each step", async () => {
+    const { h, answer } = await withGh([requestEntry(500, A, { draft: true })]);
+    const changed: string[] = [];
+    onViewChanged(h.pi.events, (id) => changed.push(id));
+
+    // The same head, still a draft: ready, now with when it was last seen.
+    await read(h);
+    expect(states(h)).toEqual([`${ID}:ready`]);
+    expect(model(h).items[0]!.observedAt).toBeGreaterThan(500);
+    expect(model(await replayed(h))).toEqual(model(h));
+
+    // A push: stale, at the head that was handed off.
+    answer.json = ghView({ headRefOid: B });
+    await read(h);
+    expect(changed).toContain(GIT_ATTENTION_VIEW);
+    expect(model(h).items[0]).toMatchObject({ state: "stale", rev: A });
+    expect(model(await replayed(h))).toEqual(model(h));
+
+    // Marked ready for review: a stale request is not resolved by it.
+    answer.json = ghView({ headRefOid: B, isDraft: false });
+    await read(h);
+    expect(states(h)).toEqual([`${ID}:stale`]);
+
+    // Merged: gone, and gone after replay.
+    answer.json = ghView({ headRefOid: B, isDraft: false, state: "MERGED" });
+    await read(h);
+    expect(model(h)).toEqual({ items: [], total: 0 });
+    expect(model(await replayed(h))).toEqual({ items: [], total: 0 });
+    expect(intents(h)).toHaveLength(1);
+  });
+
+  it("resolves a draft request marked ready for review at the same head", async () => {
+    const { h, answer } = await withGh([requestEntry(500, A, { draft: true })]);
+    answer.json = ghView({ isDraft: false });
+    await read(h);
+    expect(model(h).items).toEqual([]);
+  });
+
+  it("dismisses with one entry, and the row stays gone after reload and /tree", async () => {
+    const { h } = await withGh([requestEntry()]);
+    await expect(
+      dispatchAction(h.pi.events, GIT_ATTENTION_DISMISS, { id: ID, rev: A }),
+    ).resolves.toEqual({ dismissed: true });
+    expect(model(h).items).toEqual([]);
+    expect(intents(h).map((entry) => entry.kind)).toEqual(["request", "dismissal"]);
+    expect(intents(h)[1]).toMatchObject({ key: KEY, head: A });
+    await h.fire("session_tree");
+    expect(model(h).items).toEqual([]);
+    expect(model(await replayed(h)).items).toEqual([]);
+  });
+
+  it("refuses to dismiss another revision, an unknown item or malformed arguments", async () => {
+    const { h } = await withGh([requestEntry()]);
+    const dismiss = (args: Record<string, unknown>) =>
+      dispatchAction(h.pi.events, GIT_ATTENTION_DISMISS, args as never);
+    await expect(dismiss({ id: ID, rev: B })).rejects.toThrow("changed since it was shown");
+    await expect(dismiss({ id: "pr:github.com/acme/web#43", rev: A })).rejects.toThrow(
+      "No review request",
+    );
+    await expect(dismiss({ id: ID })).rejects.toThrow("Invalid arguments");
+    expect(intents(h)).toHaveLength(1);
+    expect(states(h)).toEqual([`${ID}:ready`]);
+  });
+
+  it("restores the rows on /tree from every branch", async () => {
+    const { h } = await withGh([]);
+    expect(model(h).items).toEqual([]);
+    h.entries.push(requestEntry());
+    await h.fire("session_tree");
+    expect(states(h)).toEqual([`${ID}:ready`]);
+  });
+
+  it("takes a subagent's facts but not its intent", async () => {
+    const { h: parent } = await withGh([requestEntry()]);
+    parent.pi.events.emit("subagent:session:created", {
+      sessionId: "child",
+      parentSessionId: "parent",
+      agentId: "agent-7",
+      cwd: box.dir,
+    });
+    const child = await start("child", [
+      requestEntry(600, A, { key: "github.com/acme/web#43", number: 43 }),
+    ]);
+    // The child's own request stays in the child.
+    expect(model(child).items.map((item) => item.id)).toEqual(["pr:github.com/acme/web#43"]);
+    await child.fire("tool_result", {
+      type: "tool_result",
+      toolName: "bash",
+      toolCallId: "k1",
+      input: { command: "gh pr view 42 -R acme/web" },
+      content: [{ type: "text", text: "state:\tMERGED" }],
+      isError: false,
+    });
+    expect(model(parent).items).toEqual([]);
+    expect(intents(parent)).toHaveLength(1);
+    expect(model(await replayed(parent)).items).toEqual([]);
   });
 });

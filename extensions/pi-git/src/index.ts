@@ -28,10 +28,22 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { resolve } from "node:path";
 import { Type } from "typebox";
-import { viewRegistry } from "#surface";
+import { actionRegistry, viewRegistry } from "#surface";
 import { showExplorer, sanitizeText } from "#ui";
 import { readEntries, restoreCard, treeService, type EntriesSource } from "#session-state";
 import { ensureWorkHost } from "#work";
+import {
+  ATTENTION_TYPE,
+  ATTENTION_VERSION,
+  attentionModel,
+  GIT_ATTENTION_DISMISS,
+  GIT_ATTENTION_VIEW,
+  readReviews,
+  reduceReviews,
+  rowForItem,
+  type AttentionEntry,
+  type ReviewRows,
+} from "#src/attention";
 import { CARD_TYPE, ledgerCard } from "#src/card";
 import { gitSettings, type GitConfig } from "#src/config";
 import { GIT_PRS_VIEW, GIT_SUMMARY_VIEW, GIT_WORKTREES_VIEW } from "#src/events";
@@ -216,6 +228,8 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
   const now = dependencies.now ?? Date.now;
   let records = new Map<string, WorktreeRecord>();
   let prs = new Map<string, PrRecord>();
+  /** PRs handed to the user for review (attention.ts), folded with the ledger's PR facts. */
+  let reviews: ReviewRows = new Map();
   let measured = new Map<string, Measured>();
   let found: FoundWorktree[] = [];
   let config: GitConfig | undefined;
@@ -229,8 +243,10 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
   // The /git:worktrees and /git:prs explorers, as views a remote surface draws.
   // They live from session start to shutdown, so a /reload does not leak them.
   const views = viewRegistry(pi.events);
+  const actions = actionRegistry(pi.events);
   const defineViews = () => {
     views.dispose();
+    actions.dispose();
     views.define({
       id: GIT_WORKTREES_VIEW,
       kind: "explorer",
@@ -249,12 +265,55 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
       title: "Git",
       model: () => gitSummaryModel(snapshot()),
     });
+    views.define({
+      id: GIT_ATTENTION_VIEW,
+      kind: "attention",
+      title: "Git reviews",
+      model: () => attentionModel(reviews, prs),
+    });
+    actions.define<{ id: string; rev: string }>({
+      id: GIT_ATTENTION_DISMISS,
+      title: "Dismiss a review request",
+      parse: (args) => {
+        const { id, rev } = (args ?? {}) as Record<string, unknown>;
+        if (typeof id !== "string" || typeof rev !== "string")
+          throw new Error("expected { id, rev } from the attention item");
+        return { id, rev };
+      },
+      handler: ({ id, rev }) => {
+        const row = rowForItem(reviews, id);
+        if (!row) throw new Error(`No review request "${id}" is open.`);
+        // The user saw another head: what they dismissed is not what is owed now.
+        if (row.request.head.toLowerCase() !== rev.toLowerCase())
+          throw new Error(`The review request "${id}" changed since it was shown.`);
+        recordIntent({
+          v: ATTENTION_VERSION,
+          kind: "dismissal",
+          key: row.request.key,
+          head: row.request.head,
+          at: now(),
+        });
+        return { dismissed: true };
+      },
+    });
   };
   const publish = () => {
     dependencies.onPublish?.(snapshot());
     views.changed(GIT_WORKTREES_VIEW);
     views.changed(GIT_PRS_VIEW);
     views.changed(GIT_SUMMARY_VIEW);
+    // Also when only a PR's observation time moved: the items show it.
+    views.changed(GIT_ATTENTION_VIEW);
+  };
+
+  /**
+   * Write a review request or dismissal. These stay in this session: a
+   * subagent's ledger records reach its parent, its intent never does.
+   */
+  const recordIntent = (entry: AttentionEntry) => {
+    pi.appendEntry<AttentionEntry>(ATTENTION_TYPE, entry);
+    reviews = reduceReviews(reviews, entry);
+    publish();
   };
 
   /** Hand a record to this session's parent, which adopts it and passes it on up. */
@@ -263,8 +322,11 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
 
   const append = (record: LedgerRecord) => {
     pi.appendEntry<LedgerRecord>(LEDGER_TYPE, record);
-    if (record.kind === "pr") prs.set(record.key, record);
-    else records.set(record.path, record);
+    if (record.kind === "pr") {
+      prs.set(record.key, record);
+      // Only written records move a review row, so replaying the session reaches the same rows.
+      reviews = reduceReviews(reviews, record);
+    } else records.set(record.path, record);
     publish();
     passUp(record);
   };
@@ -380,6 +442,7 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
     const ledger = readLedger(ctx);
     records = ledger.worktrees;
     prs = ledger.prs;
+    reviews = readReviews(ctx);
     measured = new Map();
     publish();
   };
@@ -417,6 +480,7 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
   pi.on("session_shutdown", () => {
     generation += 1;
     views.dispose();
+    actions.dispose();
     // The watches' items stay open in the transcript: the next start adopts them.
     watches.shutdown();
     watchAccess.clear();
