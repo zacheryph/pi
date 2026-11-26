@@ -286,22 +286,23 @@ you: they stay out of the model's context and never start a turn.
 
 ## Views
 
-From session start to shutdown pi-git defines three views on the session's
+From session start to shutdown pi-git defines four views on the session's
 `pi.events` bus (see [`pi-surface`](../../packages/pi-surface/README.md)), so
-pi-dashboard and bb draw what the terminal's explorers show, and the totals for
-a card or a session list:
+pi-dashboard and bb draw what the terminal's explorers show, the totals for a
+card or a session list, and the pull requests waiting on your review:
 
-| Id              | Kind     | What it shows                                                                                    |
-| --------------- | -------- | ------------------------------------------------------------------------------------------------ |
-| `git.worktrees` | explorer | The `/git:worktrees` explorer: this session's worktrees, removed ones and others under the root  |
-| `git.prs`       | explorer | The `/git:prs` explorer: pull requests opened here and ones looked at, with what tools last read |
-| `git.summary`   | summary  | This session's worktree and pull request totals as a `SummaryModel`                              |
+| Id              | Kind      | What it shows                                                                                    |
+| --------------- | --------- | ------------------------------------------------------------------------------------------------ |
+| `git.worktrees` | explorer  | The `/git:worktrees` explorer: this session's worktrees, removed ones and others under the root  |
+| `git.prs`       | explorer  | The `/git:prs` explorer: pull requests opened here and ones looked at, with what tools last read |
+| `git.summary`   | summary   | This session's worktree and pull request totals as a `SummaryModel`                              |
+| `git.attention` | attention | Pull requests handed to you for review (see [Review requests](#review-requests))                 |
 
 Items carry their details inline; every record is an item, by its path or
 pull request key, however many there are. A worktree's item shows its last
 measured status (uncommitted changes, detached, unpushed commits, merged) or
 why it could not be measured; a pull request `git_pr_watch` waits on shows the
-watch. All three views announce a change on session start, `/tree`, every
+watch. All four views announce a change on session start, `/tree`, every
 ledger change and each status refresh.
 
 `git.summary` counts from the same state as the explorers, never from a listing's rows (tool
@@ -324,6 +325,44 @@ a session with nothing recorded reads zeros where one without pi-git has no view
 Worktree and pull request records live in the session's ledger, so they are
 never process-bound. A watch runs only while this Pi process does: a saved
 summary settles `prs-watching` to 0 and keeps every other count.
+
+## Review requests
+
+A pull request handed to you for review is an owed item in pi-surface's
+`attention` view, `git.attention`: one per PR, which bb's Attention page and
+context card, `/attention` in the terminal and the dashboard's "Needs you"
+panel list. The tool that hands a PR to you is not registered yet (step 9 of
+the [attention roadmap](../../docs/roadmaps/attention.md)), so the view stays
+empty until it is.
+
+Intent is kept apart from facts. A request (this PR, at this full head SHA)
+and a dismissal are `git:attention` custom entries, written by the main
+session only: a subagent's ledger records reach its parent, its intent never
+does. What became of the PR comes from the `git:ledger` records the session
+already keeps. Both are replayed together, in session order, from every branch
+of the session, so a `/tree` does not take back a handoff made to you; the live
+session feeds the same reducer each entry it writes, so the two agree.
+
+A fact moves a request only when it was observed after the request, by the
+time of that status field, so a subagent's older report adopted later changes
+nothing:
+
+| Observed after the request                                  | The item                                           |
+| ----------------------------------------------------------- | -------------------------------------------------- |
+| A different full head SHA                                   | Turns stale and stays so, even if the head returns |
+| Marked ready for review (requested as a draft), or approved | Resolved, unless already stale                     |
+| Merged or closed                                            | Resolved; a reopen does not bring it back          |
+| A dismissal at the head that was requested                  | Resolved                                           |
+| An abbreviated SHA, checks, or a read that failed           | Nothing                                            |
+
+Requesting the same head again while ready changes nothing; a request at a
+new head, or after the item resolved, opens it again. Each item is
+`category: "review"`, `rev` the requested head, linked to the PR's https URL,
+with `reason` such as `Checkout cleanup · draft at a13c90e`. Its `dismiss` runs
+`git.attention.dismiss` with `{ id, rev }`, which refuses a revision other than
+the one the item was raised at and otherwise appends one dismissal entry.
+Settled, an item keeps its link and loses the action, as bb shows a stopped
+thread's rows as last known.
 
 ## Configuration
 
