@@ -3,6 +3,7 @@
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import type { DeliverySnapshot } from "pi-surface/delivery";
+import type { AttentionRow } from "pi-surface/attention-rows";
 import type { SessionStatusKind } from "pi-surface/session";
 
 // pi-surface's portable models, as types only: the wire carries them as JSON.
@@ -40,6 +41,7 @@ export type {
   FormQuestionnaire,
 } from "pi-surface/form";
 export type { AttentionItem, AttentionLink, AttentionModel } from "pi-surface/attention";
+export type { AttentionList, AttentionRow } from "pi-surface/attention-rows";
 export type { ActionRequest, ActionResult, DeliverySnapshot, ViewEntry } from "pi-surface/delivery";
 
 const threadId = z.string().min(1).max(128);
@@ -69,6 +71,28 @@ export interface SessionSummary {
   runningAgents: number;
   /** Open questionnaires in the session's form views. */
   questions: number;
+  /** What needs the user: blocking rows, and owed items as the producers count them. */
+  attention: { blocking: number; owed: number };
+}
+
+/** An attention row of one thread, as the Attention page lists it. */
+export interface ThreadAttentionRow extends AttentionRow {
+  threadId: string;
+  /** The session's name, or its working directory. */
+  session?: string;
+  source: SessionSummary["source"];
+  connected: boolean;
+}
+
+/** Every session's attention rows, in one order. */
+export interface AttentionResult {
+  rows: ThreadAttentionRow[];
+  /** Rows that hold a session up. */
+  blocking: number;
+  /** Owed items the producers count, without the ones queued for dismissal. */
+  owed: number;
+  /** Owed items counted beyond the listed rows. */
+  more: number;
 }
 
 export interface SnapshotResult {
@@ -98,6 +122,27 @@ export const rpcContract = defineRpcContract({
     input: z.null(),
     output: z.object({ sessions: z.array(z.custom<SessionSummary>()) }),
     tags: () => ["sessions"],
+  },
+  attention: {
+    input: z.null(),
+    output: z.custom<AttentionResult>((value) => typeof value === "object" && value !== null),
+    tags: () => ["attention"],
+  },
+  /**
+   * Dismisses an attention item: runs its `dismiss` action on the thread's
+   * session, or, while no Pi runs for the thread, queues it for when one
+   * reconnects (`queued`).
+   */
+  dismiss: {
+    input: z
+      .object({
+        threadId,
+        viewId: actionId,
+        itemId: z.string().min(1).max(200),
+        rev: z.string().min(1).max(200).optional(),
+      })
+      .strict(),
+    output: z.object({ queued: z.boolean() }),
   },
   /** Runs an action on the thread's session; resolves to its result, `null` for none. */
   request: {
