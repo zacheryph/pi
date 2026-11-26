@@ -270,7 +270,7 @@ describe("GetResultTool — TUI rendering", () => {
     result: Awaited<ReturnType<GetResultTool["execute"]>>,
     expanded: boolean,
     width = 100,
-  ): string[] {
+  ): readonly string[] {
     const { renderResult } = new GetResultTool(makeManager(), testRegistry).toToolDefinition();
     if (!renderResult) throw new Error("subagent_get registers no renderResult");
     const component = renderResult(

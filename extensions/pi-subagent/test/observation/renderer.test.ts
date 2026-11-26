@@ -33,7 +33,7 @@ function makeDetails(overrides: Partial<NotificationDetails> = {}): Notification
 }
 
 /** Render to a flat string for assertion; uses the public render() API. */
-function renderText(result: { render(width: number): string[] } | undefined): string {
+function renderText(result: { render(width: number): readonly string[] } | undefined): string {
   expect(result).toBeDefined();
   return result!.render(120).join("\n");
 }

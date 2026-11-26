@@ -560,7 +560,7 @@ describe("SessionNavigatorHandler", () => {
 
   // Invoke the factory that mounted the pane and render it — the act (handle)
   // stays explicit in each test.
-  function renderCapturedPane(ui: ReturnType<typeof makeUI>, width = 80): string[] {
+  function renderCapturedPane(ui: ReturnType<typeof makeUI>, width = 80): readonly string[] {
     const pane = mountedPaneFactory(ui)(mockTui(), ansiTheme(), keysWith(), vi.fn());
     return pane.render(width);
   }
