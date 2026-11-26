@@ -7,6 +7,7 @@ import { openQuestionnaires, sessionModel } from "../views.ts";
 import { QuestionnaireForm } from "./questionnaire.tsx";
 import { useSession, useSessions } from "./session.ts";
 import { RowBadge, useSessionsByThread } from "./sessions.tsx";
+import { AttentionCardSection } from "./attention.tsx";
 import { GitCardSection, StashCardRow } from "./thread-context.tsx";
 
 function Exhibit({ id, title, children }: { id: string; title: string; children: ReactNode }) {
@@ -39,6 +40,10 @@ export function Gallery() {
       <div className="mx-auto box-border w-full max-w-3xl space-y-8 p-4 md:p-5">
         <Exhibit id="gallery-card" title="Thread context card: row and section">
           <div className="w-80 space-y-1 rounded-xl border border-border bg-card p-2">
+            <div className="pb-2">
+              <p className="px-2 pb-1 text-xs font-medium text-muted-foreground">Needs you</p>
+              <AttentionCardSection {...props} />
+            </div>
             <StashCardRow {...props} />
             <div className="border-t border-border pt-2">
               <p className="px-2 pb-1 text-xs font-medium text-muted-foreground">

@@ -7,11 +7,17 @@ import {
   experimental_THREAD_INFO_SECTION_GROUPS as SECTION_GROUPS,
 } from "@get-bb/plugin-sdk/app";
 import { QUESTIONNAIRE_RENDERER } from "./questions.ts";
+import {
+  ATTENTION_PATH,
+  AttentionCardSection,
+  AttentionPage,
+  useAttentionBadge,
+} from "./ui/attention.tsx";
 import { OpenPanelAction, STASH_POPUP, StashPicker } from "./ui/composer.tsx";
 import { QuestionnaireInteraction } from "./ui/questionnaire.tsx";
 import { GIT_TAB, SESSION_TAB } from "./ui/session.ts";
 import { GitTab, SessionTab, useSessionTabVisible } from "./ui/session-tab.tsx";
-import { RowBadge, SessionsPage, useSessionsBadge, useSessionsByThread } from "./ui/sessions.tsx";
+import { RowBadge, SessionsPage, useSessionsByThread } from "./ui/sessions.tsx";
 import { WIDGET_CARDS, widgetBanner } from "./ui/stack-cards.tsx";
 import { GitCardSection, PiSegment, StashCardRow } from "./ui/thread-context.tsx";
 
@@ -65,6 +71,14 @@ export default definePluginApp((app) => {
     order: 50,
     component: StashCardRow,
   });
+  // What the thread owes the user, above its Git section.
+  app.slots.experimental_threadContextCardSection({
+    id: "attention",
+    title: "Needs you",
+    group: SECTION_GROUPS.changes,
+    order: 40,
+    component: AttentionCardSection,
+  });
   app.slots.experimental_threadContextCardSection({
     id: "git",
     title: "Pi worktrees and pull requests",
@@ -100,14 +114,22 @@ export default definePluginApp((app) => {
     component: RowBadge,
   });
 
-  // 8. The sidebar navigation: a page of every connected session.
+  // 8. The sidebar navigation: what needs the user in every session, badged with
+  // its count, and a page of every connected session.
+  app.slots.navPanel({
+    id: "attention",
+    title: "Attention",
+    icon: "AlertCircle",
+    path: ATTENTION_PATH,
+    component: AttentionPage,
+    experimental_useBadge: useAttentionBadge,
+  });
   app.slots.navPanel({
     id: "sessions",
     title: "Pi sessions",
     icon: "LayoutList",
     path: "sessions",
     component: SessionsPage,
-    experimental_useBadge: useSessionsBadge,
   });
 
   // 9. pi-ask's questionnaire as one form in place of the composer.
