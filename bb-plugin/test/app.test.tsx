@@ -5,14 +5,15 @@ import {
   type PluginRpcTestHandlers,
 } from "@get-bb/plugin-sdk/testing/app";
 import type { PluginRpcContract } from "@get-bb/plugin-sdk";
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { settleSnapshot } from "pi-surface/settle";
 import type { DeliverySnapshot, SessionSummary, SurfaceRequest, ViewEntry } from "../contract.ts";
+import { threadAttention } from "../attention.ts";
 import { fixtureResponder, fixtureSnapshot } from "../fixture.ts";
 import { duration } from "../ui/format.ts";
 import { toAnswer } from "../ui/questionnaire.tsx";
-import { SessionList } from "../ui/sessions.tsx";
+import { RowBadge, SessionList } from "../ui/sessions.tsx";
 import {
   countText,
   openQuestionnaires,
@@ -61,6 +62,11 @@ function rpcFor(
       };
     },
     sessions: () => ({ sessions: snapshot ? [row] : [] }),
+    attention: () =>
+      snapshot
+        ? threadAttention({ threadId: THREAD, snapshot, source, connected: source !== "saved" })
+        : { rows: [], blocking: 0, owed: 0, more: 0 },
+    dismiss: () => ({ queued: source === "saved" }),
     request: (input: unknown) => ({
       value: (respond((input as { request: SurfaceRequest }).request as never) ?? null) as never,
     }),
@@ -86,6 +92,10 @@ const contextProps = {
   onToggle: () => {},
 };
 const cardProps = { threadId: THREAD, projectId: "proj", environment: null };
+const panel = (path: string) => app.navPanels.find((candidate) => candidate.path === path)!;
+const cardSection = (id: string) =>
+  app.threadContextCardSections.find((candidate) => candidate.id === id)!;
+const gitSection = cardSection("git");
 
 function segment(snapshot: DeliverySnapshot) {
   return renderSlot({ component: app.threadContextSegments[0]!.summary }, contextProps, {
@@ -134,13 +144,16 @@ describe("pi-surface app", () => {
     expect(customization?.experimental_popups?.map((popup) => popup.id)).toEqual(["stash"]);
     expect(app.threadContextSegments.map((slot) => slot.id)).toEqual(["pi"]);
     expect(app.threadContextCardRows.map((slot) => slot.id)).toEqual(["stash"]);
-    expect(app.threadContextCardSections.map((slot) => slot.id)).toEqual(["git"]);
+    expect(app.threadContextCardSections.map((slot) => [slot.id, slot.order])).toEqual([
+      ["attention", 40],
+      ["git", 50],
+    ]);
     expect(app.tabs.map((tab) => [tab.id, tab.title, tab.availability, tab.context.kind])).toEqual([
       ["session", "Pi", "fixed", "thread"],
       ["git", "Pi Git", "fixed", "thread"],
     ]);
     expect(app.threadRowMetadata.map((slot) => slot.id)).toEqual(["pi"]);
-    expect(app.navPanels.map((panel) => panel.path)).toEqual(["sessions"]);
+    expect(app.navPanels.map((panel) => panel.path)).toEqual(["attention", "sessions"]);
     expect(app.pendingInteractions.map((slot) => slot.id)).toEqual(["questionnaire"]);
   });
 
@@ -271,11 +284,14 @@ describe("pi-surface app", () => {
     expect(classes(button)).toEqual(expect.arrayContaining(["px-2", "py-1", "min-h-6"]));
   });
 
-  it("reads the context segment from summaries: profile, task progress, running agents, a question", async () => {
+  it("reads the context segment from summaries and attention: profile, tasks, agents, a question, reviews", async () => {
     const button = await segment(fixture).findByRole("button", {
       name: /orchestrate/,
     });
-    expect(button.textContent).toBe("orchestrate · 3/7 tasks · 2 agents · question");
+    // The handed-off reviews arrive with the attention list, a query of their own.
+    await vi.waitFor(() =>
+      expect(button.textContent).toBe("orchestrate · 3/7 tasks · 2 agents · question · 2 reviews"),
+    );
   });
 
   it("keeps the context segment's counts when the session hides its widgets", async () => {
@@ -288,12 +304,22 @@ describe("pi-surface app", () => {
     const button = await segment(hidden).findByRole("button", {
       name: /orchestrate/,
     });
-    expect(button.textContent).toBe("orchestrate · 3/7 tasks · 2 agents · question");
+    // The handed-off reviews arrive with the attention list, a query of their own.
+    await vi.waitFor(() =>
+      expect(button.textContent).toBe("orchestrate · 3/7 tasks · 2 agents · question · 2 reviews"),
+    );
   });
 
   it("names the main agent's profile when it has no subagents", async () => {
     const quiet = withViews(
-      ["subagent.summary", "subagent.widget", "subagent.explorer", "todo.summary", "ask.questions"],
+      [
+        "subagent.summary",
+        "subagent.widget",
+        "subagent.explorer",
+        "todo.summary",
+        "ask.questions",
+        "git.attention",
+      ],
       [
         {
           id: "subagent.summary",
@@ -327,7 +353,7 @@ describe("pi-surface app", () => {
     const row = renderSlot(app.threadContextCardRows[0]!, cardProps, {
       rpc: empty,
     });
-    const section = renderSlot(app.threadContextCardSections[0]!, cardProps, {
+    const section = renderSlot(gitSection, cardProps, {
       rpc: empty,
     });
     const seg = renderSlot({ component: app.threadContextSegments[0]!.summary }, contextProps, {
@@ -345,7 +371,7 @@ describe("pi-surface app", () => {
     expect(stash?.textContent).toContain("4");
     // The tooltip is the summary's own count text, the size formatted as one.
     expect(stash?.getAttribute("title")).toBe("4 entries · 25.3 KiB on this branch");
-    const section = renderSlot(app.threadContextCardSections[0]!, cardProps, {
+    const section = renderSlot(gitSection, cardProps, {
       rpc: rpcFor(fixture),
     });
     expect(await section.findByText("webhooks @ feat/retry-worker")).toBeTruthy();
@@ -369,7 +395,7 @@ describe("pi-surface app", () => {
     const row = renderSlot(app.threadContextCardRows[0]!, cardProps, {
       rpc: rpcFor(bare),
     });
-    const section = renderSlot(app.threadContextCardSections[0]!, cardProps, {
+    const section = renderSlot(gitSection, cardProps, {
       rpc: rpcFor(bare),
     });
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -706,7 +732,7 @@ describe("pi-surface app", () => {
   });
 
   it("lists sessions with their profile and counts, and badges rows with a question and running agents", async () => {
-    const page = renderSlot(app.navPanels[0]!, { subPath: "" }, { rpc: rpcFor(fixture, "live") });
+    const page = renderSlot(panel("sessions"), { subPath: "" }, { rpc: rpcFor(fixture, "live") });
     const list = await page.findByRole("list", { name: "Pi sessions" });
     expect(list.textContent).toContain("Webhook retry queue");
     expect(list.textContent).toContain("orchestrate");
@@ -784,6 +810,163 @@ describe("pi-surface app", () => {
   });
 });
 
+/** The Attention entry's badge, as bb reads it, for a session showing `snapshot`. */
+function badgeOf(snapshot: DeliverySnapshot) {
+  const useBadge = panel("attention").experimental_useBadge!;
+  function Probe() {
+    return <output data-testid="badge">{JSON.stringify(useBadge())}</output>;
+  }
+  const slot = renderSlot({ component: Probe }, {}, { rpc: rpcFor(snapshot, "live") });
+  return async () => JSON.parse((await slot.findByTestId("badge")).textContent!) as unknown;
+}
+
+describe("attention", () => {
+  const dismissCalls = (slot: {
+    inspection: { rpcCalls: readonly { method: string; input: unknown }[] };
+  }) => slot.inspection.rpcCalls.filter((call) => call.method === "dismiss").map((c) => c.input);
+
+  it("lists every row on the Attention page: blocking, then waiting on you, stale folded", async () => {
+    const page = renderSlot(panel("attention"), { subPath: "" }, { rpc: rpcFor(fixture, "live") });
+    const blocking = await page.findByRole("region", { name: "Blocking" });
+    expect(blocking.textContent).toContain("Retry policy");
+    expect(blocking.textContent).toContain("Webhook retry queue");
+    expect(blocking.textContent).toContain("2 questions");
+    const waiting = page.getByRole("region", { name: "Waiting on you" });
+    expect(waiting.querySelectorAll("li")).toHaveLength(1);
+    expect(waiting.textContent).toContain("Review acme/webhooks#212");
+    expect(waiting.textContent).toMatch(/Raised .+ ago/);
+    // The stale row waits behind its heading.
+    const stale = page.getByRole("region", { name: "Stale" });
+    expect(stale.querySelector("li")).toBeNull();
+    fireEvent.click(page.getByRole("button", { name: /Stale · 1/ }));
+    expect(stale.textContent).toContain("Review acme/webhooks#214");
+    expect(stale.querySelector("li")?.dataset.state).toBe("stale");
+
+    fireEvent.click(page.getByRole("button", { name: "Answer" }));
+    fireEvent.click(page.getByRole("button", { name: "Open acme/webhooks#212" }));
+    expect(page.inspection.navigateCalls).toEqual([
+      { method: "toThread", threadId: THREAD },
+      { method: "openUrl", url: "https://github.com/acme/webhooks/pull/212" },
+    ]);
+    fireEvent.click(within(waiting).getByRole("button", { name: "Dismiss" }));
+    await vi.waitFor(() =>
+      expect(dismissCalls(page)).toEqual([
+        {
+          threadId: THREAD,
+          viewId: "git.attention",
+          itemId: "pr:github.com/acme/webhooks#212",
+          rev: "4be19a2",
+        },
+      ]),
+    );
+  });
+
+  it("filters the page by blocking rows or a category", async () => {
+    const page = renderSlot(panel("attention"), { subPath: "" }, { rpc: rpcFor(fixture, "live") });
+    const filters = await page.findByRole("group", { name: "Filter" });
+    expect(Array.from(filters.querySelectorAll("button"), (b) => b.textContent)).toEqual([
+      "All 3",
+      "Blocking 1",
+      "Reviews 2",
+    ]);
+    fireEvent.click(within(filters).getByRole("button", { name: /Reviews/ }));
+    expect(page.queryByRole("region", { name: "Blocking" })).toBeNull();
+    fireEvent.click(within(filters).getByRole("button", { name: /Blocking/ }));
+    expect(page.queryByRole("region", { name: "Waiting on you" })).toBeNull();
+    expect(page.getByRole("region", { name: "Blocking" })).toBeTruthy();
+  });
+
+  it("shows a saved session's rows as last known, with links, queueing a dismissal", async () => {
+    const saved = settleSnapshot(fixture, NOW);
+    const page = renderSlot(panel("attention"), { subPath: "" }, { rpc: rpcFor(saved, "saved") });
+    const waiting = await page.findByRole("region", { name: "Waiting on you" });
+    expect(page.queryByRole("region", { name: "Blocking" })).toBeNull();
+    expect(waiting.textContent).toContain("last known");
+    expect(waiting.textContent).toContain("Pi stopped, no updates since");
+    fireEvent.click(within(waiting).getByRole("button", { name: "Open acme/webhooks#212" }));
+    // Opening a link asks the session nothing.
+    expect(page.inspection.rpcCalls.filter((call) => call.method === "request")).toEqual([]);
+    fireEvent.click(within(waiting).getByRole("button", { name: "Dismiss" }));
+    expect(await within(waiting).findByRole("status")).toBeTruthy();
+    expect(waiting.textContent).toContain("Pi records it when it runs again");
+  });
+
+  it("says so when nothing needs the user, and badges nothing", async () => {
+    const quiet = withViews(["git.attention", "ask.questions"]);
+    const page = renderSlot(panel("attention"), { subPath: "" }, { rpc: rpcFor(quiet, "live") });
+    expect((await page.findByRole("status")).textContent).toContain("Nothing needs you");
+    const badge = badgeOf(quiet);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(await badge()).toBeNull();
+  });
+
+  it("badges the Attention entry with every row, critical while one blocks", async () => {
+    const live = badgeOf(fixture);
+    await vi.waitFor(async () =>
+      expect(await live()).toEqual({
+        count: 3,
+        tone: "critical",
+        label: "Pi: 1 blocking, 2 waiting on you",
+      }),
+    );
+    cleanup();
+    // Without the question, the fixture's session is still running a tool: only owed rows.
+    const owed = badgeOf(withViews(["ask.questions"]));
+    await vi.waitFor(async () => expect(await owed()).toMatchObject({ count: 2, tone: "warning" }));
+    expect(panel("sessions").experimental_useBadge).toBeUndefined();
+  });
+
+  it("lists the thread's owed rows in the context card, stale dimmed, each opening its link", async () => {
+    const section = renderSlot(cardSection("attention"), cardProps, { rpc: rpcFor(fixture) });
+    const ready = (await section.findByText("Review acme/webhooks#212")).closest("button")!;
+    expect(section.container.textContent).not.toContain("Retry policy");
+    const states = Array.from(
+      section.container.querySelectorAll('[data-pi-surface="attention-state"]'),
+      (node) => node.textContent,
+    );
+    expect(states).toEqual(["ready", "stale"]);
+    fireEvent.click(ready);
+    expect(section.inspection.navigateCalls).toEqual([
+      { method: "openUrl", url: "https://github.com/acme/webhooks/pull/212" },
+    ]);
+    // No rows, no section.
+    const none = renderSlot(cardSection("attention"), cardProps, {
+      rpc: rpcFor(withViews(["git.attention"])),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(none.container.textContent).toBe("");
+  });
+
+  it("puts an attention dot on a thread row: red while it blocks, amber while it owes", async () => {
+    const row = (attention: SessionSummary["attention"]) =>
+      render(
+        <RowBadge
+          thread={{ id: THREAD } as never}
+          data={
+            new Map([
+              [
+                THREAD,
+                {
+                  threadId: THREAD,
+                  source: "live",
+                  connected: true,
+                  updatedAt: NOW,
+                  runningAgents: 0,
+                  questions: 0,
+                  attention,
+                } satisfies SessionSummary,
+              ],
+            ])
+          }
+        />,
+      ).container.querySelector('[data-pi-surface="attention-dot"]');
+    expect(row({ blocking: 1, owed: 2 })?.className).toContain("bg-destructive");
+    expect(row({ blocking: 0, owed: 2 })?.getAttribute("aria-label")).toBe("2 items need you");
+    expect(row({ blocking: 0, owed: 2 })?.className).toContain("bg-warning");
+    expect(row({ blocking: 0, owed: 0 })).toBeNull();
+  });
+});
+
 describe("helpers", () => {
   it("reads counts, profile and questions from views, and formats durations", () => {
     expect(todoProgress(fixture)).toEqual({
@@ -817,7 +1000,7 @@ describe("helpers", () => {
 
 describe("gallery", () => {
   it("draws the experiment-only slots from a fixture session on the plugin's page", async () => {
-    const slot = renderSlot(app.navPanels[0]!, { subPath: "gallery" }, { rpc: rpcFor(fixture) });
+    const slot = renderSlot(panel("sessions"), { subPath: "gallery" }, { rpc: rpcFor(fixture) });
     expect(await slot.findByText("Thread context card: row and section")).toBeTruthy();
     expect(await slot.findByText("webhooks @ feat/retry-worker")).toBeTruthy();
     expect(await slot.findByRole("form", { name: "Pi's questions" })).toBeTruthy();

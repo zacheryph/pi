@@ -18,20 +18,24 @@ import {
   viewModel,
   VIEW,
 } from "../views.ts";
+import { owedText, useThreadAttention } from "./attention.tsx";
 import { plural } from "./format.ts";
 import { useOpenGitTab, useOpenSessionTab, useSession } from "./session.ts";
 import { BadgeText, LineText, plainText, URL_ONLY } from "./surface.tsx";
 
 /**
- * `orchestrate · 3/7 tasks · 2 agents · question`, as one button that opens
+ * `orchestrate · 3/7 tasks · 2 agents · question · 1 review`, as one button that opens
  * the Pi tab. Every part is a summary's count, so it reads the same whether
  * or not the session shows its widgets.
  */
 export function SegmentSummary({
   snapshot,
+  owed,
   onOpen,
 }: {
   snapshot: DeliverySnapshot;
+  /** What the thread owes the user, such as `1 review`. */
+  owed?: string;
   onOpen?: () => void;
 }) {
   const tasks = todoProgress(snapshot);
@@ -41,6 +45,7 @@ export function SegmentSummary({
     ...(tasks ? [`${tasks.done}/${tasks.total} tasks`] : []),
     ...(agents ? [plural(agents, "agent")] : []),
     ...(openQuestionnaires(snapshot).length ? ["question"] : []),
+    ...(owed ? [owed] : []),
   ];
   // bb's segment padding (its CONTEXT_CARD_SEGMENT_CLASS): inside the row's
   // 4px inset it puts the icon 12px from the card edge, like the stack cards.
@@ -59,8 +64,11 @@ export function SegmentSummary({
 
 export function PiSegment({ threadId }: ExperimentalThreadContextSegmentProps) {
   const snapshot = useSession(threadId);
+  const owed = owedText(useThreadAttention(threadId));
   const open = useOpenSessionTab();
-  return snapshot ? <SegmentSummary snapshot={snapshot} onOpen={() => void open()} /> : null;
+  return snapshot ? (
+    <SegmentSummary snapshot={snapshot} {...(owed ? { owed } : {})} onOpen={() => void open()} />
+  ) : null;
 }
 
 export function StashCardRow({ threadId }: ExperimentalThreadContextCardProps) {

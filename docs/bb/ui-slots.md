@@ -40,7 +40,7 @@ Pi sessions and takes these crops; images 1, 2 and 6 were last made with it.
 | 5   | Composer popup with a shortcut      | `experimental_popups` + `composer.experimental_registerCommand` | Live    |
 | 6   | Thread tab                          | `app.slots.experimental_tab({ context: { kind: "thread" } })`   | Live    |
 | 7   | Thread row metadata                 | `app.slots.experimental_threadRowMetadata`                      | Gallery |
-| 8   | Sidebar navigation page             | `app.slots.navPanel` (stable) + `experimental_useBadge`         | Live    |
+| 8   | Sidebar navigation pages            | `app.slots.navPanel` (stable) + `experimental_useBadge`         | Live    |
 | 9   | Pending interaction                 | `app.slots.pendingInteraction` (stable) + `bb.ui.requestInput`  | Gallery |
 
 ## 1. Composer banner: collapsible stack cards
@@ -105,10 +105,12 @@ title, group, order, summary, action?, details?, useVisible? })`; groups come
 from `experimental_THREAD_CONTEXT_SEGMENT_GROUPS` (`1_thread`, `3_git`). We
 join `1_thread`.
 
-Ours is one button, `orchestrate · 3/7 tasks · 2 agents · question`, that opens
-the Pi tab: the main agent's profile and running or queued subagents from
-`subagent.summary` (the profile shows even with no subagents), completed and
-total tasks from `todo.summary`, and an open questionnaire in a form view. The
+Ours is one button, `orchestrate · 3/7 tasks · 2 agents · question · 2 reviews`,
+that opens the Pi tab: the main agent's profile and running or queued subagents
+from `subagent.summary` (the profile shows even with no subagents), completed
+and total tasks from `todo.summary`, an open questionnaire in a form view, and
+what the thread owes the user from its attention views (`2 reviews`, or
+`3 need you` when the kinds are mixed). The
 counts are producer totals, so they hold when the widgets are hidden. bb puts a 4px inset around the row and leaves each segment's
 padding to its owner; ours uses bb's segment padding (`min-h-6 px-2 py-1`), so
 its icon sits 12px from the card edge like the stack cards' icons.
@@ -130,7 +132,13 @@ drawn with `experimental_ThreadContextCardRow` (icon, label, trailing value,
 component })` adds a titled section below the rows. Groups are the Info tab's
 (`experimental_THREAD_INFO_ROW_GROUPS`, `…SECTION_GROUPS`).
 
-Ours: a **Stash 4** row (the `entries` count of `stash.summary`) that opens the
+Ours: a **Needs you** section, ordered before the Git section, that lists the
+thread's owed attention rows (pi-surface's `attentionRows`; a question already
+replaces the composer, so blocking rows stay on the Attention page). Each row
+is the item's title with `ready` or a dimmed `stale`, its reason in the
+tooltip, and opens its link in bb, or the Attention page when it has none. A
+saved thread's rows keep their links, so they open with no Pi running. With no
+rows the section draws nothing and bb hides it. Then a **Stash 4** row (the `entries` count of `stash.summary`) that opens the
 Pi Git tab, titled with the summary's own count text as pi-surface's
 `formatSummaryCount` writes it (`4 entries · 25.3 KiB on this branch`), and a
 **Pi worktrees and pull requests** section that lists the items
@@ -232,9 +240,11 @@ The panel is narrow by default: content must not force horizontal overflow
 A small item on the metadata line under each thread's title in the sidebar.
 `experimental_threadRowMetadata({ id, order, useData, component })`: `useData`
 runs once for the whole list (we read the sessions list once and index it by
-thread), and the component draws one row. Ours shows a question glyph while
-Pi waits on an answer (an open questionnaire in a form view) and a robot with
-the count of running or queued subagents (`subagent.summary`'s live counts).
+thread), and the component draws one row. Ours shows the Attention page's dot (red while
+the session blocks on the user, amber while it only owes them something), a
+question glyph while Pi waits on an answer (an open questionnaire in a form
+view) and a robot with the count of running or queued subagents
+(`subagent.summary`'s live counts).
 
 ![Row metadata badge (gallery)](../images/bb/row-metadata.png)
 
@@ -244,18 +254,37 @@ Rows → Metadata; both are off by default and were off here. Keep items to an
 icon and a few characters; a click opens the thread. The thread title in the
 image is drawn by the gallery.
 
-## 8. Sidebar: the Pi sessions page
+## 8. Sidebar: the Attention and Pi sessions pages
 
 `app.slots.navPanel({ id, title, icon, path, component, experimental_useBadge })`
-adds a destination to the sidebar navigation and owns the route
-`/plugins/pi-surface/sessions`. Ours lists every connected Pi session (name,
-profile, status, task counts, running subagents, waiting question, active task,
-all read from its views) and opens its thread on click. The badge counts
-sessions that wait on the user.
+adds a destination to the sidebar navigation and owns its route under
+`/plugins/pi-surface/`. We add two.
+
+**Attention** (`/plugins/pi-surface/attention`) lists what needs the user in
+every session the plugin knows, live, saved and fixture, from one `attention`
+RPC that runs pi-surface's `attentionRows` over each thread's snapshot.
+**Blocking** rows (an open questionnaire, or a session waiting on a dialog)
+come first with **Answer**, which opens the thread; **Waiting on you** lists the
+owed items with **Open** for their `https:` link, **Thread** and **Dismiss**;
+**Stale** items, changed since the handoff, are folded below. Chips filter by
+blocking rows or an owed category. A saved session's rows read **last known**.
+Dismiss runs the item's `dismiss` action through the server, which checks the
+revision the user saw; while no Pi runs for the thread, the server keeps the
+dismissal in `bb.storage.kv`, hides the row, and runs it once when the
+thread's Pi reconnects (dropping it if the item is gone or has changed). The
+entry's badge counts every row and owed item: critical while anything blocks,
+warning otherwise.
+
+![Attention page](../images/bb/attention-page.png)
+
+![Attention navigation entry with its badge](../images/bb/attention-nav.png)
+
+**Pi sessions** (`/plugins/pi-surface/sessions`) lists every connected Pi session
+(name, profile, status, task counts, running subagents, waiting question, active
+task, all read from its views) and opens its thread on click. It has no badge:
+waiting sessions are counted on Attention.
 
 ![Pi sessions page](../images/bb/sessions-page.png)
-
-![Navigation entry with its badge](../images/bb/sessions-nav.png)
 
 Limits: `experimental_sidebarNavigation` would draw the whole navigation, but
 it is exclusive (it replaces bb's Rail or Top list), so a plugin that only adds

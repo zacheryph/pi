@@ -1,7 +1,6 @@
 // Slots 7 and 8: thread row badges, and the Pi sessions page in the sidebar navigation.
 import {
   useBbNavigate,
-  type ExperimentalBadge,
   type ExperimentalThreadRowMetadataProps,
   type PluginNavPanelProps,
 } from "@get-bb/plugin-sdk/app";
@@ -23,12 +22,30 @@ export function useSessionsByThread(): SessionsByThread {
 export function RowBadge({ thread, data }: ExperimentalThreadRowMetadataProps<SessionsByThread>) {
   const session = data.get(thread.id);
   if (!session) return null;
-  if (!session.questions && !session.runningAgents) return null;
+  const { blocking, owed } = session.attention;
+  if (!session.questions && !session.runningAgents && !blocking && !owed) return null;
   return (
     <span
       className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"
       data-pi-surface="row-badge"
     >
+      {blocking || owed ? (
+        // The Attention page's dot: red while the session is blocked on the user, amber while
+        // it only owes them something.
+        <span
+          className={`inline-block size-1.5 rounded-full ${blocking ? "bg-destructive" : "bg-warning"}`}
+          role="img"
+          aria-label={
+            blocking ? "Waiting for you" : `${owed} ${owed === 1 ? "item needs" : "items need"} you`
+          }
+          title={
+            blocking
+              ? "Pi is waiting for you"
+              : `${owed} ${owed === 1 ? "item needs" : "items need"} you`
+          }
+          data-pi-surface="attention-dot"
+        />
+      ) : null}
       {session.questions ? (
         <span
           className="inline-flex items-center gap-0.5 text-foreground"
@@ -48,21 +65,6 @@ export function RowBadge({ thread, data }: ExperimentalThreadRowMetadataProps<Se
       ) : null}
     </span>
   );
-}
-
-/** Navigation badge: sessions that wait on the user. */
-export function useSessionsBadge(): ExperimentalBadge | null {
-  const sessions = useSessions();
-  const waiting = sessions.filter(
-    (session) => session.questions > 0 || session.status === "waiting",
-  ).length;
-  if (waiting)
-    return {
-      count: waiting,
-      tone: "warning",
-      label: waiting === 1 ? "1 Pi session waits for you" : `${waiting} Pi sessions wait for you`,
-    };
-  return null;
 }
 
 const STATUS: Record<NonNullable<SessionSummary["status"]>, string> = {
