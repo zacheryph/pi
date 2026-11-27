@@ -13,7 +13,10 @@ coverage/
 *~
 
 # IDE / Harness
-.claude/
-.pi/
+.claude/*
+!.claude/skills
+!.claude/settings.json
+.pi/*
+!.pi/extensions/
 .vscode/
 .idea/

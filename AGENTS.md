@@ -37,6 +37,24 @@ git -c commit.gpgsign=false commit ...
 Keep commit subjects descriptive: each becomes a changelog entry for every
 workspace it touches.
 
+## Formatting and linting
+
+Oxfmt formats and Oxlint lints, with one root config each (`.oxfmtrc.json`,
+`.oxlintrc.json`). Never run Prettier, ESLint, Biome or dprint, and never
+install them: they rewrite files to another style and leave unrelated diffs.
+
+```bash
+npm run fix                           # oxfmt, safe oxlint fixes, oxfmt again
+npx oxfmt --write <paths>             # format only these files
+```
+
+`npm run fix` is safe repository-wide: CI keeps every file formatted, so it only
+changes what you touched. Run `npm install --ignore-scripts` first if
+`node_modules` is missing, so the pinned versions run. A guard
+(`scripts/tool-guard.mjs`) blocks the other tools from shell commands, as a
+Claude Code hook (`.claude/settings.json`) and a project-local Pi extension
+(`.pi/extensions/tool-guard.ts`).
+
 ## Extension runtime rules
 
 Every subagent is a full Pi session in the same process that loads every

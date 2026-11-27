@@ -75,6 +75,12 @@ plain-Node syntax separately. Generated declarations, coverage and the lockfile
 are not formatted. Tests may reference mock methods in assertions; unbound-method
 checking stays on for runtime source.
 
+Agents get the same rule from a guard: `scripts/tool-guard.mjs` blocks shell
+commands that run or install Prettier, ESLint, Biome or dprint and names the
+oxfmt or oxlint command to use. `.claude/settings.json` runs it as a Claude Code
+PreToolUse hook and `.pi/extensions/tool-guard.ts` loads it into Pi once the
+project is trusted; `npm test` covers it in `scripts/tool-guard.test.mjs`.
+
 The root `npm run check` formats `bb-plugin/` but neither lints nor type-checks
 it: run `npm run typecheck` and `npm test` inside `bb-plugin/`.
 
