@@ -70,7 +70,9 @@ first unfinished step.
   watch that timed out or was lost.
 - A green pull request is handed to you with `git_pr_request_review`, so it
   waits on you in bb, the dashboard and `/attention`. It never approves or
-  merges: you do, or your auto-merge does.
+  merges on its own: you do, or your auto-merge does. Tell it the reviewed ones
+  can go and `git_pr_ready` marks them ready and turns on auto-merge at the
+  heads you reviewed.
 - After a merge it verifies the deploy with `job_watch` when the repository has
   a way to (a deploy skill, agent instructions, or a check the step names), and
   records the merge as unverified when it has none. A failed deploy check stops

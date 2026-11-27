@@ -136,6 +136,7 @@ describe("pi-git registration", () => {
       "git_pr_status",
       "git_pr_watch",
       "git_pr_request_review",
+      "git_pr_ready",
     ]);
     expect(h.commands.has("git:refresh")).toBe(true);
     expect(h.commands.has("git:worktrees")).toBe(true);
@@ -1897,5 +1898,466 @@ describe("review requests", () => {
     expect(model(parent).items).toEqual([]);
     expect(intents(parent)).toHaveLength(1);
     expect(model(await replayed(parent)).items).toEqual([]);
+  });
+});
+
+describe("git_pr_ready", () => {
+  const A = "a13c90e".padEnd(40, "0");
+  const B = "b24d01f".padEnd(40, "1");
+  const C = "c35e12a".padEnd(40, "2");
+
+  /** A fake GitHub behind `gh`: pull requests by number in acme/web, changed by the writes. */
+  const fakeGh = (initial: Record<number, Record<string, unknown>>) => {
+    const prs = new Map(
+      Object.entries(initial).map(([n, pr]) => [
+        Number(n),
+        {
+          state: "OPEN",
+          isDraft: true,
+          headRefOid: A,
+          autoMergeRequest: null,
+          reviewDecision: "REVIEW_REQUIRED",
+          ...pr,
+        } as Record<string, unknown>,
+      ]),
+    );
+    /** Called before every `gh pr view`, so a test can push in between. */
+    const hooks = { beforeView: (_n: number, _views: number) => {} };
+    let views = 0;
+    const number = (url: string) => Number(/pull\/(\d+)/.exec(url)?.[1]);
+    const run = vi.fn(async (args: readonly string[]) => {
+      const [noun, verb] = args;
+      if (noun === "repo" && verb === "view")
+        return JSON.stringify({ viewerDefaultMergeMethod: "SQUASH" });
+      const n = number(args[2]);
+      const pr = prs.get(n);
+      if (!pr) throw new Error(`no pull request ${n}`);
+      if (verb === "view") {
+        hooks.beforeView(n, (views += 1));
+        return JSON.stringify({
+          number: n,
+          url: `https://github.com/acme/web/pull/${n}`,
+          title: `PR ${n}`,
+          mergeable: "MERGEABLE",
+          headRefName: `feat/${n}`,
+          statusCheckRollup: [],
+          ...pr,
+        });
+      }
+      if (verb === "ready") {
+        pr.isDraft = false;
+        return "";
+      }
+      if (verb === "merge") {
+        if (args.includes("--disable-auto")) {
+          pr.autoMergeRequest = null;
+          return "";
+        }
+        const expected = args[args.indexOf("--match-head-commit") + 1];
+        if (expected !== pr.headRefOid) throw new Error("Head branch was modified");
+        if (pr.clean) pr.state = "MERGED";
+        else pr.autoMergeRequest = { mergeMethod: "SQUASH" };
+        return "";
+      }
+      throw new Error(`unexpected gh ${args.join(" ")}`);
+    });
+    return { run, prs, hooks };
+  };
+  const writes = (run: ReturnType<typeof fakeGh>["run"]) =>
+    run.mock.calls
+      .map((call) => call[0])
+      .filter((args) => !(args[0] === "pr" && args[1] === "view"));
+  const session = async (runGh: GhRunner, entries: unknown[] = [], sessionId = "parent") => {
+    const h = harness({
+      sessionId,
+      cwd: box.dir,
+      root: box.root,
+      runGh,
+      entries,
+    });
+    await h.fire("session_start");
+    return h;
+  };
+  type Ready = {
+    content: { text: string }[];
+    structuredContent: { prs: Record<string, unknown>[] };
+  };
+  const ready = (h: Awaited<ReturnType<typeof session>>, params: Record<string, unknown>) =>
+    h.tool("git_pr_ready", params) as unknown as Promise<Ready>;
+  const intents = (h: { entries: unknown[] }) =>
+    h.entries
+      .filter((entry) => (entry as { customType?: string }).customType === ATTENTION_TYPE)
+      .map((entry) => (entry as { data: AttentionEntry }).data);
+  const attention = (h: { pi: { events: Parameters<typeof readView>[0] } }) =>
+    (readView(h.pi.events, GIT_ATTENTION_VIEW) as AttentionModel).items;
+
+  it("marks each ready and turns on auto-merge at the reviewed head, in one call", async () => {
+    const gh = fakeGh({ 1: {}, 2: { isDraft: false, headRefOid: B } });
+    const h = await session(gh.run);
+    const result = await ready(h, {
+      prs: [
+        { pr: "acme/web#1", head: A },
+        { pr: "https://github.com/acme/web/pull/2", head: B },
+      ],
+      autoMerge: true,
+    });
+    expect(writes(gh.run)).toEqual([
+      ["pr", "ready", "https://github.com/acme/web/pull/1"],
+      ["repo", "view", "github.com/acme/web", "--json", "viewerDefaultMergeMethod"],
+      [
+        "pr",
+        "merge",
+        "https://github.com/acme/web/pull/1",
+        "--auto",
+        "--squash",
+        "--match-head-commit",
+        A,
+      ],
+      // The default merge method is read once per repository.
+      [
+        "pr",
+        "merge",
+        "https://github.com/acme/web/pull/2",
+        "--auto",
+        "--squash",
+        "--match-head-commit",
+        B,
+      ],
+    ]);
+    expect(result.content[0].text).toBe(
+      [
+        "Marked 2 of 2 pull requests.",
+        "- acme/web#1 at a13c90e00000: marked ready for review; auto-merge on (squash)",
+        "  https://github.com/acme/web/pull/1",
+        "- acme/web#2 at b24d01f11111: already ready for review; auto-merge on (squash)",
+        "  https://github.com/acme/web/pull/2",
+      ].join("\n"),
+    );
+    expect(result.structuredContent.prs[0]).toEqual({
+      key: "github.com/acme/web#1",
+      label: "acme/web#1",
+      url: "https://github.com/acme/web/pull/1",
+      head: A,
+      ready: "marked",
+      autoMerge: "enabled",
+      method: "squash",
+      state: "open",
+    });
+    // What it read before and after is in the ledger, as the tool's own calls.
+    expect(h.snapshots.at(-1)!.prs.find((pr) => pr.number === 1)).toMatchObject({
+      status: { draft: false },
+      calls: [{ tool: "git_pr_ready" }],
+    });
+  });
+
+  it("counts a ready PR with auto-merge on as done, and writes nothing for it", async () => {
+    const gh = fakeGh({
+      1: { isDraft: false, autoMergeRequest: { mergeMethod: "MERGE" } },
+    });
+    const h = await session(gh.run);
+    const result = await ready(h, {
+      prs: [{ pr: "acme/web#1", head: A }],
+      autoMerge: "rebase",
+    });
+    expect(writes(gh.run)).toEqual([]);
+    expect(result.content[0].text).toContain(
+      "- acme/web#1 at a13c90e00000: already ready for review; auto-merge was already on",
+    );
+  });
+
+  it("uses the merge method given, and reports a PR gh merged at once", async () => {
+    const gh = fakeGh({ 1: { isDraft: false, clean: true } });
+    const h = await session(gh.run);
+    const result = await ready(h, {
+      prs: [{ pr: "acme/web#1", head: A }],
+      autoMerge: "merge",
+    });
+    expect(writes(gh.run)).toEqual([
+      [
+        "pr",
+        "merge",
+        "https://github.com/acme/web/pull/1",
+        "--auto",
+        "--merge",
+        "--match-head-commit",
+        A,
+      ],
+    ]);
+    expect(result.structuredContent.prs[0]).toMatchObject({
+      autoMerge: "merged",
+      state: "merged",
+    });
+    expect(result.content[0].text).toContain("already ready for review; merged (merge)");
+  });
+
+  it("refuses a PR whose head is not the reviewed one and goes on with the others", async () => {
+    const gh = fakeGh({ 1: { headRefOid: C }, 2: {} });
+    const h = await session(gh.run);
+    const result = await ready(h, {
+      prs: [
+        { pr: "acme/web#1", head: A },
+        { pr: "acme/web#2", head: A },
+      ],
+    });
+    expect(writes(gh.run)).toEqual([["pr", "ready", "https://github.com/acme/web/pull/2"]]);
+    expect(result.content[0].text).toBe(
+      [
+        "Marked 1 of 2 pull requests.",
+        "- acme/web#1 at a13c90e00000: not marked: its head is c35e12a22222 on GitHub, not a13c90e00000: it changed since that review, so show the user the new head",
+        "  https://github.com/acme/web/pull/1",
+        "- acme/web#2 at a13c90e00000: marked ready for review",
+        "  https://github.com/acme/web/pull/2",
+      ].join("\n"),
+    );
+  });
+
+  it("fails when no PR could be marked: no head, a short SHA, a closed PR, not a PR", async () => {
+    const gh = fakeGh({ 1: {}, 2: { state: "CLOSED" } });
+    const h = await session(gh.run);
+    await expect(
+      ready(h, {
+        prs: [
+          { pr: "acme/web#1" },
+          { pr: "acme/web#3", head: "a13c90e" },
+          { pr: "acme/web#2", head: A },
+          { pr: "not a pr" },
+          // The same pull request again is left out.
+          { pr: "https://github.com/acme/web/pull/1", head: A },
+        ],
+      }),
+    ).rejects.toThrow(
+      [
+        "git_pr_ready: Marked 0 of 4 pull requests.",
+        "- acme/web#1: not marked: no head given and no review request waits on the user for it: pass the full head SHA the user reviewed",
+        "  https://github.com/acme/web/pull/1",
+        '- acme/web#3: not marked: "a13c90e" is not a full commit SHA: pass the 40-character head SHA the user reviewed',
+        "  https://github.com/acme/web/pull/3",
+        "- acme/web#2 at a13c90e00000: not marked: it is closed, not open",
+        "  https://github.com/acme/web/pull/2",
+        "- not a pr: not marked: not a pull request URL, owner/repo#number, or a number in this repository",
+      ].join("\n"),
+    );
+    expect(writes(gh.run)).toEqual([]);
+    await expect(ready(h, { prs: [{ pr: "acme/web#1", head: A }], ready: false })).rejects.toThrow(
+      "git_pr_ready: nothing to do",
+    );
+  });
+
+  it("takes the head of the review request waiting on the user, and resolves it", async () => {
+    const gh = fakeGh({ 1: { isDraft: false } });
+    const h = await session(gh.run);
+    await h.tool("git_pr_request_review", { pr: "acme/web#1", head: A });
+    expect(attention(h)).toHaveLength(1);
+    const result = await ready(h, {
+      prs: [{ pr: "acme/web#1" }],
+      autoMerge: true,
+    });
+    expect(result.content[0].text).toContain(
+      "- acme/web#1 at a13c90e00000: already ready for review; auto-merge on (squash); review request resolved",
+    );
+    expect(intents(h).map((entry) => entry.kind)).toEqual(["request", "dismissal"]);
+    expect(attention(h)).toEqual([]);
+  });
+
+  it("does not write a dismissal when marking a draft ready already resolved the request", async () => {
+    const gh = fakeGh({ 1: {} });
+    const h = await session(gh.run);
+    await h.tool("git_pr_request_review", { pr: "acme/web#1", head: A });
+    const result = await ready(h, { prs: [{ pr: "acme/web#1" }] });
+    expect(result.structuredContent.prs[0]).toMatchObject({
+      ready: "marked",
+      dismissed: true,
+    });
+    expect(intents(h).map((entry) => entry.kind)).toEqual(["request"]);
+    expect(attention(h)).toEqual([]);
+  });
+
+  it("turns auto-merge off again when the head moved while marking", async () => {
+    const gh = fakeGh({ 1: { isDraft: false } });
+    // The second read, after the writes, sees a push.
+    gh.hooks.beforeView = (n, views) => {
+      if (views === 2) gh.prs.get(n)!.headRefOid = B;
+    };
+    const h = await session(gh.run);
+    await expect(
+      ready(h, { prs: [{ pr: "acme/web#1", head: A }], autoMerge: "squash" }),
+    ).rejects.toThrow(
+      "- acme/web#1 at a13c90e00000: already ready for review; then failed: its head moved to b24d01f11111 while it was being marked, so auto-merge was turned off again: show the user the new head",
+    );
+    expect(writes(gh.run).at(-1)).toEqual([
+      "pr",
+      "merge",
+      "https://github.com/acme/web/pull/1",
+      "--disable-auto",
+    ]);
+    expect(gh.prs.get(1)!.autoMergeRequest).toBeNull();
+  });
+
+  it("is refused in a subagent", async () => {
+    const gh = fakeGh({ 1: {} });
+    const parent = await session(gh.run);
+    parent.pi.events.emit("subagent:session:created", {
+      sessionId: "child",
+      parentSessionId: "parent",
+      agentId: "agent-7",
+      cwd: box.dir,
+    });
+    const child = await session(gh.run, [], "child");
+    await expect(ready(child, { prs: [{ pr: "acme/web#1", head: A }] })).rejects.toThrow(
+      "git_pr_ready: only the main session marks pull requests ready",
+    );
+    expect(gh.run).not.toHaveBeenCalled();
+  });
+
+  describe("through the GitHub MCP tools", () => {
+    /** A fake GitHub behind the MCP tools, for acme/web#1. */
+    const mcp = (pr: Record<string, unknown>) => {
+      const state = {
+        state: "open",
+        draft: true,
+        sha: A,
+        auto_merge: null as unknown,
+        clean: false,
+        ...pr,
+      };
+      let gets = 0;
+      const hooks = { afterGets: (_gets: number) => {} };
+      const executeTool = vi.fn(async (name: string, args: Record<string, unknown>) => {
+        const ok = (value: unknown) => ({
+          isError: false,
+          result: {
+            content: [{ type: "text", text: JSON.stringify(value) }],
+          },
+        });
+        const fail = (text: string) => ({
+          isError: true,
+          result: { content: [{ type: "text", text }] },
+        });
+        if (name === "mcp__github__pull_request_read") {
+          if (args.method === "get") {
+            hooks.afterGets((gets += 1));
+            return ok({
+              number: 1,
+              html_url: "https://github.com/acme/web/pull/1",
+              state: state.state === "merged" ? "closed" : state.state,
+              merged: state.state === "merged",
+              draft: state.draft,
+              auto_merge: state.auto_merge,
+              head: { sha: state.sha, ref: "feat/1" },
+            });
+          }
+          if (args.method === "get_check_runs") return ok({ total_count: 0, check_runs: [] });
+          if (args.method === "get_status")
+            return ok({ sha: state.sha, total_count: 0, statuses: [] });
+          return ok([]);
+        }
+        if (name === "mcp__github__update_pull_request") {
+          state.draft = args.draft as boolean;
+          return ok({});
+        }
+        if (name === "mcp__github__enable_pr_auto_merge") {
+          if (state.clean) return fail("Pull request is in clean status");
+          state.auto_merge = { merge_method: args.mergeMethod ?? "default" };
+          return ok({});
+        }
+        if (name === "mcp__github__disable_pr_auto_merge") {
+          state.auto_merge = null;
+          return ok({});
+        }
+        if (name === "mcp__github__merge_pull_request") {
+          if (args.expectedHeadSha !== state.sha) return fail("Head branch was modified");
+          state.state = "merged";
+          return ok({ merged: true });
+        }
+        return fail(`unexpected ${name}`);
+      });
+      const tools = [
+        "mcp__github__pull_request_read",
+        "mcp__github__update_pull_request",
+        "mcp__github__enable_pr_auto_merge",
+        "mcp__github__disable_pr_auto_merge",
+        "mcp__github__merge_pull_request",
+      ].map((name) => ({ name }));
+      return { executeTool, tools, state, hooks };
+    };
+    const noGh: GhRunner = async () => {
+      throw new GhUnavailable("gh is not installed");
+    };
+    const mcpWrites = (executeTool: ReturnType<typeof mcp>["executeTool"]) =>
+      executeTool.mock.calls
+        .filter(([name]) => name !== "mcp__github__pull_request_read")
+        .map(([name, args]) => [name, args]);
+    const withMcp = async (fake: ReturnType<typeof mcp>) => {
+      const h = await session(noGh);
+      Object.assign(h.ctx, {
+        executeTool: fake.executeTool,
+        tools: fake.tools,
+      });
+      return h;
+    };
+
+    it("marks it ready and turns on auto-merge with the repository's default method", async () => {
+      const fake = mcp({});
+      const h = await withMcp(fake);
+      const result = await ready(h, {
+        prs: [{ pr: "acme/web#1", head: A }],
+        autoMerge: true,
+      });
+      expect(mcpWrites(fake.executeTool)).toEqual([
+        [
+          "mcp__github__update_pull_request",
+          { owner: "acme", repo: "web", pullNumber: 1, draft: false },
+        ],
+        ["mcp__github__enable_pr_auto_merge", { owner: "acme", repo: "web", pullNumber: 1 }],
+      ]);
+      expect(result.content[0].text).toContain(
+        "marked ready for review; auto-merge on (repository default)",
+      );
+    });
+
+    it("merges at the reviewed head when nothing is left to wait for and a method is given", async () => {
+      const fake = mcp({ draft: false, clean: true });
+      const h = await withMcp(fake);
+      const result = await ready(h, {
+        prs: [{ pr: "acme/web#1", head: A }],
+        autoMerge: "squash",
+      });
+      expect(mcpWrites(fake.executeTool).at(-1)).toEqual([
+        "mcp__github__merge_pull_request",
+        {
+          owner: "acme",
+          repo: "web",
+          pullNumber: 1,
+          merge_method: "squash",
+          expectedHeadSha: A,
+        },
+      ]);
+      expect(result.structuredContent.prs[0]).toMatchObject({
+        autoMerge: "merged",
+        method: "squash",
+      });
+    });
+
+    it("asks for a method when it could merge now but the default is unknown", async () => {
+      const fake = mcp({ draft: false, clean: true });
+      const h = await withMcp(fake);
+      await expect(
+        ready(h, { prs: [{ pr: "acme/web#1", head: A }], autoMerge: true }),
+      ).rejects.toThrow('pass autoMerge "squash", "merge" or "rebase" to merge it');
+      expect(fake.state.state).toBe("open");
+    });
+
+    it("turns auto-merge off again when the head moved, since the tool cannot pin it", async () => {
+      const fake = mcp({ draft: false });
+      // The first read makes two gets; the read after the writes sees a push.
+      fake.hooks.afterGets = (gets) => {
+        if (gets === 3) fake.state.sha = B;
+      };
+      const h = await withMcp(fake);
+      await expect(
+        ready(h, { prs: [{ pr: "acme/web#1", head: A }], autoMerge: true }),
+      ).rejects.toThrow("so auto-merge was turned off again");
+      expect(fake.state.auto_merge).toBeNull();
+    });
   });
 });

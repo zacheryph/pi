@@ -1,7 +1,8 @@
 # pi-git
 
-Git worktrees for parallel workers, and a record of every pull request the
-session opened or looked at. Both survive reloads, resumes and compaction.
+Git worktrees for parallel workers, a record of every pull request the session
+opened or looked at, and one call that ships the ones you reviewed. All of it
+survives reloads, resumes and compaction.
 
 ![/git:worktrees listing two worktrees an orchestrator made for its workers](../../docs/images/git-worktrees.png)
 
@@ -24,6 +25,10 @@ session opened or looked at. Both survive reloads, resumes and compaction.
   at the head it checked. You see it waiting on you in bb, the dashboard and
   `/attention` until you approve it, mark it ready for review, merge or close
   it, or dismiss it.
+- **The agent calls** `git_pr_ready { prs, autoMerge }` when you say the pull
+  requests you reviewed can go: each is marked ready for review and gets
+  auto-merge, pinned to the head you reviewed. One whose head moved is refused;
+  the rest go on.
 - **You type** `/git:worktrees` and `/git:prs` to browse both, and
   `/git:refresh` to re-read every open PR and re-check every worktree.
 
@@ -40,15 +45,16 @@ releasing an agent never removes it.
 
 ## Tools
 
-| Tool                    | What it does                                                                                                                                                                    |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `git_worktree_create`   | `{ branch, repo?, base?, workspace? }`. Creates a worktree and returns the path to pass as `cwd` to `subagent_start`.                                                           |
-| `git_worktree_list`     | `{ includeRemoved? }`. This session's worktrees with repository, branch, workspace, the subagents that ran there, and git status. Read-only.                                    |
-| `git_worktree_remove`   | `{ path, force? }`. Removes a worktree; the branch is always kept. Refuses when removal would lose work (uncommitted changes, or commits on a detached `HEAD`) unless `force`.  |
-| `git_pr_list`           | `{ includeReferenced? }`. The pull requests this session opened or looked at, with the last status a tool showed for each. Read-only; reads the ledger, not GitHub.             |
-| `git_pr_status`         | `{ pr?, includeReferenced? }`. Reads pull requests' current status from GitHub and records it. Read-only on GitHub; see [Fresh status](#fresh-status).                          |
-| `git_pr_watch`          | `{ pr, until?, timeoutSeconds?, stop? }`. Waits on a pull request and wakes the session when it changes; see [Watching a pull request](#watching-a-pull-request).               |
-| `git_pr_request_review` | `{ pr, head, reason? }`. Hands a pull request to the user for review at that full head SHA. Main session only; never writes to GitHub; see [Review requests](#review-requests). |
+| Tool                    | What it does                                                                                                                                                                                                                            |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `git_worktree_create`   | `{ branch, repo?, base?, workspace? }`. Creates a worktree and returns the path to pass as `cwd` to `subagent_start`.                                                                                                                   |
+| `git_worktree_list`     | `{ includeRemoved? }`. This session's worktrees with repository, branch, workspace, the subagents that ran there, and git status. Read-only.                                                                                            |
+| `git_worktree_remove`   | `{ path, force? }`. Removes a worktree; the branch is always kept. Refuses when removal would lose work (uncommitted changes, or commits on a detached `HEAD`) unless `force`.                                                          |
+| `git_pr_list`           | `{ includeReferenced? }`. The pull requests this session opened or looked at, with the last status a tool showed for each. Read-only; reads the ledger, not GitHub.                                                                     |
+| `git_pr_status`         | `{ pr?, includeReferenced? }`. Reads pull requests' current status from GitHub and records it. Read-only on GitHub; see [Fresh status](#fresh-status).                                                                                  |
+| `git_pr_watch`          | `{ pr, until?, timeoutSeconds?, stop? }`. Waits on a pull request and wakes the session when it changes; see [Watching a pull request](#watching-a-pull-request).                                                                       |
+| `git_pr_request_review` | `{ pr, head, reason? }`. Hands a pull request to the user for review at that full head SHA. Main session only; never writes to GitHub; see [Review requests](#review-requests).                                                         |
+| `git_pr_ready`          | `{ prs: [{ pr, head? }], ready?, autoMerge? }`. Marks 1–20 reviewed pull requests ready for review and turns on auto-merge at their reviewed heads. Main session only; see [Marking pull requests ready](#marking-pull-requests-ready). |
 
 `git_worktree_create`:
 
@@ -236,6 +242,57 @@ until …`) or `The watch has ended.` The message's `details` hold
   its turn stays waiting and is woken by the report.
 - `git_pr_list`, `/git:prs` and the dashboard show which pull requests are
   watched.
+
+## Marking pull requests ready
+
+`git_pr_ready` is the one pi-git tool that writes to GitHub. You review a batch
+of pull requests, tell the agent they can go, and it marks them all in one call:
+
+```text
+git_pr_ready {
+  prs: [{ pr: "acme/api#12" }, { pr: "acme/web#40", head: "9f8e7d6c…" }],
+  autoMerge: true
+}
+
+Marked 1 of 2 pull requests.
+- acme/api#12 at 1a2b3c4d5e6f: marked ready for review; auto-merge on (squash); review request resolved
+  https://github.com/acme/api/pull/12
+- acme/web#40 at 9f8e7d6c5b4a: not marked: its head is 0c1d2e3f4a5b on GitHub, not 9f8e7d6c5b4a: it changed since that review, so show the user the new head
+  https://github.com/acme/web/pull/40
+```
+
+- **Pinned to the reviewed head.** Each pull request's `head` is the full SHA
+  you reviewed. Without it, the head of the [review request](#review-requests)
+  waiting on you for that pull request is used; with neither, it is refused.
+  Each is read first and refused unless it is open at exactly that head.
+- **`ready`** (default true) marks a draft ready for review. One already ready
+  counts as done.
+- **`autoMerge`**: `true` uses the repository's default merge method (GitHub's
+  `viewerDefaultMergeMethod`, the one its merge button offers first), or pass
+  `"squash"`, `"merge"` or `"rebase"`. Default `false`. One that already has
+  auto-merge on counts as done. When nothing is left to wait for, GitHub will
+  not turn auto-merge on, so the pull request is merged at once at that head.
+- **Afterwards** each is read again and recorded in the ledger. If its head
+  moved while it was being marked, auto-merge is turned off again and the
+  result says so. A review request waiting on you at that head is resolved.
+- **One at a time, independently.** A pull request that fails does not stop
+  the others; the result lists what each did. The call fails only when every
+  one failed, and its error still says what each did first. The same pull
+  request named twice is marked once.
+- **Writes** go the way the read went: through `gh` when it is signed in, with
+  `gh pr ready` and `gh pr merge --auto --match-head-commit <head>`, so GitHub
+  itself refuses a different head. Otherwise through the GitHub MCP tools
+  (`update_pull_request`, `enable_pr_auto_merge`, `merge_pull_request` with
+  `expectedHeadSha`). `enable_pr_auto_merge` takes no head and the MCP tools do
+  not say the repository's default method: when a pull request could be merged
+  at once and `autoMerge` is `true`, it asks for a method instead of guessing.
+- **Main session only:** what ships is your decision, so a subagent cannot
+  call it.
+
+Pinning covers the moment of marking. GitHub keeps auto-merge on through a
+later push by someone with write access to the repository, so to follow the
+pull requests to their merge, keep a `git_pr_watch { pr, until: "merged" }`
+on each: it reports `Head moved` if that happens.
 
 ## Restore card
 
