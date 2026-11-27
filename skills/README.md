@@ -6,7 +6,7 @@ when its description matches the task; force one with `/skill:<name>`.
 
 ```mermaid
 flowchart LR
-  goal(["A goal"]) --> mie["make-it-easy<br/>docs/roadmaps/&lt;slug&gt;.md"]
+  goal(["A goal"]) --> mie["make-it-easy<br/>docs/roadmaps/&lt;yyyy-mm-dd&gt;-&lt;slug&gt;.md"]
   mie --> er["execute-roadmap<br/>todos, subagents, reviews"]
   er -- "deliver as pull requests" --> bp["babysit-pr<br/>CI green, comments handled"]
   bp --> merged(["You merge"])
@@ -33,10 +33,11 @@ make the easy change", one gated stage at a time:
 5. **Roadmap:** ordered, independently shippable steps that keep tidying apart
    from behaviour change and end with a small, easy change.
 
-It writes `docs/roadmaps/<slug>.md` and does not implement. Its questions go
-through pi-ask's `ask`, four at a time, and each is logged in the roadmap with
-the recommendation shown, your answer and whether it is resolved; a question
-you dismiss stays open. It reuses an existing `GRILL-ME.md`
+It writes `docs/roadmaps/<yyyy-mm-dd>-<slug>.md`, dated the day it is created,
+and does not implement. Its questions go through pi-ask's `ask`, four at a time,
+and each is logged in the roadmap with the recommendation shown, your answer and
+whether it is resolved; a question you dismiss stays open. It reuses an
+existing `GRILL-ME.md`
 ([`@firstpick/pi-extension-grill-me`](https://www.npmjs.com/package/@firstpick/pi-extension-grill-me))
 for stage 1 instead of asking again, and does not depend on it.
 

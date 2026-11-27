@@ -17,7 +17,7 @@ footer while anything is owed, and `/attention` to open, print or dismiss it.
   the rows instead.
 - **The agent calls** nothing here. Items come from the extensions that raise
   them, each through its own tool; pi-git's review handoff is the first planned
-  (see the [attention roadmap](../../docs/roadmaps/attention.md)).
+  (see the [attention roadmap](../../docs/roadmaps/2026-11-26-attention.md)).
 
 ## What counts
 

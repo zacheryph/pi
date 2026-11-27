@@ -17,10 +17,11 @@ the new work easier. They are not fair game for their own sake.
 ## Output
 
 One roadmap document per goal (template: `references/roadmap-template.md`),
-written to `docs/roadmaps/<slug>.md` unless the project already keeps plans
-elsewhere. It records the goal brief, the input table, the friction map, the
-options considered, the chosen roadmap, and open questions. Write it
-incrementally, one phase at a time, so a stopped session loses nothing.
+written to `docs/roadmaps/<yyyy-mm-dd>-<slug>.md` unless the project already
+keeps plans elsewhere. The date is the day you create it. It records the goal
+brief, the input table, the friction map, the options considered, the chosen
+roadmap, and open questions. Write it incrementally, one phase at a time, so a
+stopped session loses nothing.
 
 `references/example-load-balancer-xrd.md` walks one real-shaped case through every
 phase. Read it if the phases feel abstract.

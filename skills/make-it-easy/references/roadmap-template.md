@@ -1,7 +1,8 @@
 # Roadmap document template
 
-Write to `docs/roadmaps/<slug>.md` unless the project keeps plans elsewhere.
-Fill it phase by phase and keep every section short.
+Write to `docs/roadmaps/<yyyy-mm-dd>-<slug>.md` unless the project keeps plans
+elsewhere. The date is the day you create it. Fill it phase by phase and keep
+every section short.
 
 ```markdown
 # <Goal as a short noun phrase>

@@ -11,7 +11,7 @@ session asks for is an item in that session's host, completed by the run's
 completion message. Each subagent child has a managed host of its own, provided
 by pi-subagent, so a child that ends its turn with work open is waiting, not
 done. The design is in
-[`docs/roadmaps/subagent-work-lifecycle.md`](../../docs/roadmaps/subagent-work-lifecycle.md).
+[`docs/roadmaps/2026-11-17-subagent-work-lifecycle.md`](../../docs/roadmaps/2026-11-17-subagent-work-lifecycle.md).
 
 ## At a glance
 
