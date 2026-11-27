@@ -172,5 +172,5 @@ bundles them. Nothing else in the repository is imported: the root
 `npm run verify:bundle` fails if the plugin's imports, types included, reach
 another workspace. The root `npm run check` formats this directory but neither
 lints nor type-checks it: its types come from this directory's own
-`node_modules`, which the root install does not create. Run `npm run typecheck`
+`node_modules`, which the root install does not create (`npm run deps` installs both). Run `npm run typecheck`
 and `npm test` here.

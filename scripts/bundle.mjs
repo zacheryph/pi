@@ -12,20 +12,38 @@ function piEntry(root) {
   return realpathSync(resolve(directory, bin));
 }
 
+const rootDependencies = (root) => ({
+  file: "npm",
+  args: ["install", "--ignore-scripts"],
+  cwd: root,
+});
+
+// `ci` installs exactly what the lockfile says and never writes it; `install` re-tags
+// entries (dev to devOptional) and leaves bb-plugin/package-lock.json modified.
+const pluginDependencies = (root) => ({
+  file: "npm",
+  args: ["ci", "--include=dev"],
+  cwd: join(root, "bb-plugin"),
+});
+
+/** Every dependency in the repository: the root workspaces and bb-plugin, which is not one. */
+export function dependencyCommands(root = repositoryRoot) {
+  return [rootDependencies(root), pluginDependencies(root)];
+}
+
 export function installCommands(target, root = repositoryRoot, node = process.execPath) {
   if (!["pi", "bb"].includes(target)) throw new Error("Expected install target pi or bb");
   const commands = [
-    { file: "npm", args: ["install", "--ignore-scripts"], cwd: root },
+    rootDependencies(root),
     // Resolve after npm has installed the peer, rather than whichever pi is on PATH.
     { file: node, args: () => [piEntry(root), "install", root], cwd: root },
   ];
   if (target === "bb")
-    commands.push(
-      // `ci` installs exactly what the lockfile says and never writes it; `install` re-tags
-      // entries (dev to devOptional) and leaves bb-plugin/package-lock.json modified.
-      { file: "npm", args: ["ci", "--include=dev"], cwd: join(root, "bb-plugin") },
-      { file: "bb", args: ["plugin", "install", join(root, "bb-plugin"), "--yes"], cwd: root },
-    );
+    commands.push(pluginDependencies(root), {
+      file: "bb",
+      args: ["plugin", "install", join(root, "bb-plugin"), "--yes"],
+      cwd: root,
+    });
   return commands;
 }
 
@@ -41,15 +59,25 @@ export function installBundle(target, root = repositoryRoot) {
   for (const command of installCommands(target, root)) run(command);
 }
 
+export function installDependencies(root = repositoryRoot) {
+  for (const command of dependencyCommands(root)) run(command);
+}
+
 export function main(argv) {
   const [action, ...args] = argv;
+  if (action === "deps") {
+    if (args.length) throw new Error("deps takes no arguments");
+    installDependencies();
+    console.log("Installed the dependencies of the root workspaces and bb-plugin.");
+    return;
+  }
   if (action === "setup:pi" || action === "setup:bb") {
     if (args.length) throw new Error(`${action} takes no arguments`);
     installBundle(action.slice(6));
     console.log("Installed this checkout. Reload Pi or restart its bb thread to pick up changes.");
     return;
   }
-  throw new Error(`Unknown command: ${action}; expected setup:pi or setup:bb`);
+  throw new Error(`Unknown command: ${action}; expected deps, setup:pi or setup:bb`);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

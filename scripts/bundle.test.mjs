@@ -12,7 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
-import { installBundle } from "./bundle.mjs";
+import { dependencyCommands, installBundle } from "./bundle.mjs";
 
 function fixture(t) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "pi setup ' 雪-")));
@@ -70,4 +70,12 @@ if(process.env.BUNDLE_TEST_FAIL && process.argv.includes('--include=dev')) proce
       else process.env[key] = value;
     }
   }
+});
+
+void test("deps installs the root workspaces and bb-plugin from its lockfile, and nothing else", () => {
+  const root = join(tmpdir(), "pi-deps");
+  assert.deepEqual(dependencyCommands(root), [
+    { file: "npm", args: ["install", "--ignore-scripts"], cwd: root },
+    { file: "npm", args: ["ci", "--include=dev"], cwd: join(root, "bb-plugin") },
+  ]);
 });

@@ -25,6 +25,7 @@
     "extensions/pi-attention"
   ],
   "scripts": {
+    "deps": "node scripts/bundle.mjs deps",
     "setup:pi": "node scripts/bundle.mjs setup:pi",
     "setup:bb": "node scripts/bundle.mjs setup:bb",
     "check": "npm run format:check && npm run lint && npm run typecheck",
