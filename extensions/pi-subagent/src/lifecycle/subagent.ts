@@ -78,6 +78,11 @@ export interface SubagentLifecycleObserver {
   onQuestionAsked?(agent: Subagent, question: string): void;
   /** Fires on compaction events during the run. */
   onCompacted?(agent: Subagent, info: CompactionInfo): void;
+  /**
+   * Fires when live activity changes during the run: tool start/end, first assistant text,
+   * or usage update at message end. Optional: remote renderers use it to publish live state.
+   */
+  onActivityChanged?(agent: Subagent): void;
 }
 
 export type { DisplayStatus, RunOutcome, SubagentStatus } from "#src/lifecycle/subagent-state";
@@ -789,6 +794,7 @@ export class Subagent {
     run.listeners.attachObserver(
       subscribeSubagentObserver(session, this.state, {
         onCompact: (info) => this.execution.observer?.onCompacted?.(this, info),
+        onActivityChange: () => this.execution.observer?.onActivityChanged?.(this),
       }),
     );
   }

@@ -21,7 +21,7 @@ export interface SubagentEventsObserverDeps {
   work: AgentWork;
   /** Whether the current branch already contains this agent's initial record. */
   isOnBranch?: (id: string) => boolean;
-  /** Publish a current projection only after its lifecycle record has landed. */
+  /** Publish a current projection on lifecycle changes or live activity updates. */
   changed?: () => void;
 }
 
@@ -224,5 +224,10 @@ export class SubagentEventsObserver implements SubagentManagerObserver {
     this.persist(record);
     // The spawner now waits on this agent's run.
     this.work.runRequested(record);
+  }
+
+  onSubagentActivityChanged(_record: Subagent): void {
+    // Live activity changed during the run: publish current state to remote renderers.
+    this.depsChanged();
   }
 }

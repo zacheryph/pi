@@ -12,17 +12,19 @@ import type { CompactionInfo, SubscribableSession } from "#src/types";
 
 export interface SubagentObserverOptions {
   onCompact?: (info: CompactionInfo) => void;
+  /** Called when visible activity changes (tool start/end, first assistant text, usage). */
+  onActivityChange?: () => void;
 }
 
 /**
  * Subscribe to session events and accumulate stats on the subagent state.
  *
  * Handles:
- * - `tool_execution_start` → `state.addActiveTool(name)`
- * - `tool_execution_end` → `state.removeActiveTool(name)`, `state.incrementToolUses()`
- * - `message_start` → `state.resetResponseText()`
- * - `message_update` (text_delta) → `state.appendResponseText(delta)`
- * - `message_end` (assistant, with usage) → `state.addUsage(…)`
+ * - `tool_execution_start` → `state.addActiveTool(name)`, call `onActivityChange`
+ * - `tool_execution_end` → `state.removeActiveTool(name)`, `state.incrementToolUses()`, call `onActivityChange`
+ * - `message_start` → `state.resetResponseText()`, call `onActivityChange`
+ * - `message_update` (text_delta) → `state.appendResponseText(delta)`, call `onActivityChange` only on first nonempty text
+ * - `message_end` (assistant, with usage) → `state.addUsage(…)`, call `onActivityChange`
  * - `compaction_end` (not aborted) → `state.incrementCompactions()`, call `onCompact`
  *
  * @returns An unsubscribe function.
@@ -32,22 +34,33 @@ export function subscribeSubagentObserver(
   state: SubagentState,
   options?: SubagentObserverOptions,
 ): () => void {
+  let hasAnnouncedFirstTextDelta = false;
+
   return session.subscribe((event) => {
     if (event.type === "tool_execution_start") {
       state.addActiveTool(event.toolName);
+      options?.onActivityChange?.();
     }
 
     if (event.type === "tool_execution_end") {
       state.removeActiveTool(event.toolName);
       state.incrementToolUses();
+      options?.onActivityChange?.();
     }
 
     if (event.type === "message_start") {
       state.resetResponseText();
+      hasAnnouncedFirstTextDelta = false;
+      options?.onActivityChange?.();
     }
 
     if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
       state.appendResponseText(event.assistantMessageEvent.delta);
+      // Announce only on first nonempty text to avoid per-token spam
+      if (!hasAnnouncedFirstTextDelta && state.responseText.length > 0) {
+        hasAnnouncedFirstTextDelta = true;
+        options?.onActivityChange?.();
+      }
     }
 
     if (event.type === "message_end" && event.message.role === "assistant") {
@@ -57,6 +70,7 @@ export function subscribeSubagentObserver(
         output: u.output,
         cacheWrite: u.cacheWrite,
       });
+      options?.onActivityChange?.();
     }
 
     if (event.type === "compaction_end" && !event.aborted && event.result) {
