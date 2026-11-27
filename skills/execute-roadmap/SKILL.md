@@ -309,6 +309,7 @@ watched again.
   otherwise.
 - Never mark a step `completed` without a passing verification and a commit;
   with pull requests, not before the merge and the deploy check.
-- Never approve or merge a pull request, and never revert a merged one.
+- Never approve or merge a pull request on your own, and never revert a merged
+  one. `git_pr_ready` runs only when the user says reviewed ones can go.
 - Never skip, disable, or weaken a test to make a step pass.
 - Ask the user only for decisions the roadmap and the code cannot answer.
