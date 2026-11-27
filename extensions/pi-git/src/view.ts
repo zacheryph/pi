@@ -350,3 +350,47 @@ export function prStatusText(
   });
   return blocks.join("\n");
 }
+
+/** git_pr_ready's result: one block per pull request, after a count of the ones marked. */
+export function prReadyText(
+  entries: ReadonlyArray<{
+    label: string;
+    url: string;
+    head?: string;
+    ready?: "marked" | "already";
+    autoMerge?: "enabled" | "already" | "merged";
+    method?: string;
+    dismissed?: boolean;
+    note?: string;
+    error?: string;
+  }>,
+): string {
+  const marked = entries.filter((entry) => !entry.error).length;
+  const header = `Marked ${marked} of ${entries.length} pull request${entries.length === 1 ? "" : "s"}.`;
+  const blocks = entries.map((entry) => {
+    const done = [
+      entry.ready === "marked" ? "marked ready for review" : undefined,
+      entry.ready === "already" ? "already ready for review" : undefined,
+      entry.autoMerge === "enabled"
+        ? `auto-merge on (${entry.method ?? "repository default"})`
+        : undefined,
+      entry.autoMerge === "already" ? "auto-merge was already on" : undefined,
+      entry.autoMerge === "merged"
+        ? `merged${entry.method ? ` (${entry.method})` : ""}`
+        : undefined,
+      entry.dismissed ? "review request resolved" : undefined,
+    ].filter((part): part is string => part !== undefined);
+    const at = entry.head ? ` at ${entry.head.slice(0, 12)}` : "";
+    const outcome = entry.error
+      ? done.length
+        ? `${done.join("; ")}; then failed: ${entry.error}`
+        : `not marked: ${entry.error}`
+      : done.join("; ");
+    return [
+      `- ${entry.label}${at}: ${outcome}`,
+      ...(entry.note ? [`  ${entry.note}`] : []),
+      ...(entry.url ? [`  ${entry.url}`] : []),
+    ].join("\n");
+  });
+  return [header, ...blocks].join("\n");
+}

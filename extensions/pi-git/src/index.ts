@@ -82,6 +82,14 @@ import {
   type PrRecord,
   type PrRef,
 } from "#src/prs";
+import {
+  findPullRequestWriters,
+  ghWriter,
+  MERGE_METHODS,
+  mcpWriter,
+  type MergeMethod,
+  type PrWriter,
+} from "#src/ready";
 import type { RetryOptions } from "#src/retry";
 import {
   fetchWithGh,
@@ -89,6 +97,7 @@ import {
   findPullRequestReader,
   GhUnavailable,
   parsePrTarget,
+  runGh as realGh,
   type Fetched,
   type GhRunner,
   type ToolRunner,
@@ -113,6 +122,7 @@ import {
   listText,
   prExplorerView,
   prListText,
+  prReadyText,
   prStatusText,
   statusText,
 } from "#src/view";
@@ -172,11 +182,31 @@ function mcpAccess(ctx: unknown, signal?: AbortSignal): McpAccess | undefined {
   };
 }
 
+/** The session's tool names and a `ToolRunner` over them, when the tool context can run them. */
+function toolAccess(
+  ctx: unknown,
+  signal?: AbortSignal,
+): { names: string[]; runTool: ToolRunner } | undefined {
+  const toolCtx = ctx as Partial<ExtensionToolContext>;
+  if (typeof toolCtx.executeTool !== "function") return undefined;
+  return {
+    names: (toolCtx.tools ?? []).map((tool) => tool.name),
+    runTool: async (name, args) => {
+      const outcome = await toolCtx.executeTool!(name, args, signal ? { signal } : {});
+      return {
+        isError: outcome.isError,
+        text: outputText(outcome.result.content),
+      };
+    },
+  };
+}
+
 /** pi-git's tools that read GitHub and record what they read themselves; the observer skips them. */
 const OWN_READS: ReadonlySet<string> = new Set([
   "git_pr_status",
   "git_pr_watch",
   "git_pr_request_review",
+  "git_pr_ready",
 ]);
 
 /** Calls that read the same status again and again: an unchanged read writes no ledger entry. */
@@ -188,6 +218,57 @@ const POLLING_TOOLS: ReadonlySet<string> = new Set([
 
 /** At most this many pull requests are read in one git_pr_status or /git:refresh. */
 const MAX_STATUS_READS = 20;
+/** At most this many pull requests are marked in one git_pr_ready. */
+const MAX_READY = 20;
+
+const ReadyEntry = Type.Object({
+  key: Type.String(),
+  label: Type.String({ description: "owner/repo#number" }),
+  url: Type.String(),
+  head: Type.Optional(Type.String({ description: "The head commit it was marked at." })),
+  ready: Type.Optional(
+    Type.String({
+      description: "marked, or already when it was ready for review before",
+    }),
+  ),
+  autoMerge: Type.Optional(
+    Type.String({
+      description:
+        "enabled, already (it was on before), or merged (nothing was left to wait for, so it was merged)",
+    }),
+  ),
+  method: Type.Optional(
+    Type.String({
+      description: "The merge method used: merge, squash or rebase.",
+    }),
+  ),
+  state: Type.Optional(Type.String({ description: "open, closed or merged, as read afterwards" })),
+  dismissed: Type.Optional(
+    Type.Boolean({
+      description: "The review request waiting on the user for it was resolved.",
+    }),
+  ),
+  note: Type.Optional(
+    Type.String({
+      description: "Something to know about a PR that was marked.",
+    }),
+  ),
+  error: Type.Optional(Type.String({ description: "Why it was not marked, or not completely." })),
+});
+const ReadyOutput = Type.Object({ prs: Type.Array(ReadyEntry) });
+type ReadyEntryValue = {
+  key: string;
+  label: string;
+  url: string;
+  head?: string;
+  ready?: "marked" | "already";
+  autoMerge?: "enabled" | "already" | "merged";
+  method?: MergeMethod;
+  state?: string;
+  dismissed?: boolean;
+  note?: string;
+  error?: string;
+};
 
 const StatusEntry = Type.Object({
   key: Type.String(),
@@ -1406,6 +1487,253 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
           };
         } catch (error) {
           throw new Error(`git_pr_request_review: ${errorText(error)}`);
+        }
+      },
+    }),
+  );
+
+  pi.registerTool(
+    defineTool({
+      name: "git_pr_ready",
+      label: "Git PR Ready",
+      description:
+        "Mark pull requests the user reviewed as ready for review and, with autoMerge, turn on auto-merge, in one call for 1 to " +
+        `${MAX_READY} pull requests. Each is pinned to the head the user reviewed: it is read first and refused when its head on GitHub is another commit, and auto-merge through gh is given that head as well. ` +
+        "head defaults to the head of the review request (git_pr_request_review) waiting on the user for it; with neither, the pull request is refused. " +
+        "A pull request already ready for review, or with auto-merge already on, counts as done. One that fails does not stop the others. " +
+        'autoMerge: true uses the repository\'s default merge method; "squash", "merge" or "rebase" picks one. When nothing is left to wait for, GitHub cannot turn auto-merge on, so the pull request is merged at once at that head. ' +
+        "Each is read again afterwards and recorded; a review request waiting on the user for that head is resolved. Writes through gh when it is signed in, otherwise the GitHub MCP tools. Main session only.",
+      promptSnippet:
+        "Mark reviewed pull requests ready for review and turn on auto-merge, pinned to the reviewed heads.",
+      promptGuidelines: [
+        "When the user says pull requests they reviewed can go, call git_pr_ready once with all of them, instead of gh pr ready, gh pr merge or the GitHub MCP tools one by one.",
+        "Give git_pr_ready the head the user reviewed: the one you showed them or handed off with git_pr_request_review. Never pass a head the user has not seen.",
+        'To follow marked pull requests to the merge, call git_pr_watch with until: "merged" for each.',
+      ],
+      parameters: Type.Object({
+        prs: Type.Array(
+          Type.Object({
+            pr: Type.String({
+              description:
+                "A pull request URL, owner/repo#number, or a number in the current repository.",
+            }),
+            head: Type.Optional(
+              Type.String({
+                description:
+                  "The full 40-character SHA of the head the user reviewed. Default: the head of the review request waiting on the user for it.",
+              }),
+            ),
+          }),
+          { minItems: 1, maxItems: MAX_READY },
+        ),
+        ready: Type.Optional(
+          Type.Boolean({
+            description: "Mark each ready for review when it is a draft. Default true.",
+          }),
+        ),
+        autoMerge: Type.Optional(
+          Type.Union([Type.Boolean(), ...MERGE_METHODS.map((method) => Type.Literal(method))], {
+            description:
+              'Turn on auto-merge: true for the repository\'s default merge method, or "squash", "merge" or "rebase". Default false.',
+          }),
+        ),
+      }),
+      outputSchema: ReadyOutput,
+      annotations: { openWorldHint: true },
+      async execute(id, params, signal, _update, ctx) {
+        try {
+          if (tree.node()?.parent !== undefined)
+            throw new Error(
+              "only the main session marks pull requests ready: what ships is the user's decision. Report them to the delegating agent instead.",
+            );
+          const markReady = params.ready !== false;
+          const autoMerge = params.autoMerge ?? false;
+          if (!markReady && autoMerge === false)
+            throw new Error("nothing to do: pass ready: true, autoMerge, or both");
+          const method = typeof autoMerge === "string" ? autoMerge : undefined;
+          const started = generation;
+          const ensureCurrent = () => {
+            signal?.throwIfAborted();
+            if (started !== generation) throw new Error("the session changed while marking them");
+          };
+          const access = toolAccess(ctx, signal);
+          const reader = access ? findPullRequestReader(access.names) : undefined;
+          const readOptions = {
+            ...(signal ? { signal } : {}),
+            ...(access && reader ? { reader, runTool: access.runTool } : {}),
+          };
+          let gh: PrWriter | undefined;
+          let mcp: PrWriter | undefined;
+          // Write the way the read went: gh when it answered, the MCP tools otherwise.
+          const writerFor = (source: string): PrWriter => {
+            if (source === "gh")
+              return (gh ??= ghWriter(dependencies.runGh ?? realGh, {
+                ...(signal ? { signal } : {}),
+                ...(dependencies.retry ? { retry: dependencies.retry } : {}),
+              }));
+            if (!access)
+              throw new Error("gh cannot answer and this call cannot reach the GitHub MCP tools");
+            return (mcp ??= mcpWriter(findPullRequestWriters(access.names), access.runTool, {
+              ...dependencies.retry,
+              ...(signal ? { signal } : {}),
+            }));
+          };
+          let here: Promise<Omit<PrRef, "number"> | undefined> | undefined;
+          const agentId = tree.node()?.agentId;
+          const toolCall = {
+            tool: "git_pr_ready",
+            toolCallId: id,
+            ...(agentId ? { agentId } : {}),
+          };
+
+          const markOne = async (entry: ReadyEntryValue, ref: PrRef, given: string | undefined) => {
+            const key = entry.key;
+            const pending = reviews.get(key);
+            if (given !== undefined && !FULL_SHA.test(given))
+              throw new Error(
+                `"${given}" is not a full commit SHA: pass the 40-character head SHA the user reviewed`,
+              );
+            const head = (given || pending?.request.head)?.toLowerCase();
+            if (!head)
+              throw new Error(
+                "no head given and no review request waits on the user for it: pass the full head SHA the user reviewed",
+              );
+            entry.head = head;
+            const fetched = await readStatus(ref, readOptions);
+            ensureCurrent();
+            recordFetched(ref, fetched, toolCall, true);
+            const { state, headSha, draft } = fetched.facts;
+            if (state !== "open")
+              throw new Error(`it is ${state ?? "in a state GitHub did not report"}, not open`);
+            if (!headSha) throw new Error("GitHub did not report its head commit");
+            if (headSha.toLowerCase() !== head)
+              throw new Error(
+                `its head is ${headSha.slice(0, 12)} on GitHub, not ${head.slice(0, 12)}: it changed since that review, so show the user the new head`,
+              );
+            const writer = writerFor(fetched.source);
+            if (markReady) {
+              if (draft === false) entry.ready = "already";
+              else {
+                await writer.ready(ref);
+                ensureCurrent();
+                entry.ready = "marked";
+              }
+            }
+            if (autoMerge !== false) {
+              if (fetched.autoMerge === true) entry.autoMerge = "already";
+              else {
+                const done = await writer.autoMerge(ref, head, method);
+                ensureCurrent();
+                entry.autoMerge = done.outcome;
+                if (done.method) entry.method = done.method;
+              }
+            }
+            // Read it again: record what it is now, and catch a push that raced the writes.
+            let after: Fetched | undefined;
+            try {
+              after = await readStatus(ref, readOptions);
+            } catch (error) {
+              ensureCurrent();
+              entry.note = `It could not be read again to confirm: ${errorText(error)}`;
+            }
+            if (after) {
+              ensureCurrent();
+              recordFetched(ref, after, toolCall, true);
+              if (after.facts.state) entry.state = after.facts.state;
+              if (after.facts.state === "merged" && entry.autoMerge === "enabled")
+                entry.autoMerge = "merged";
+              const moved = after.facts.headSha?.toLowerCase();
+              if (after.facts.state === "open" && moved && moved !== head) {
+                const short = moved.slice(0, 12);
+                const prefix = `its head moved to ${short} while it was being marked`;
+                if (entry.autoMerge !== "enabled")
+                  throw new Error(`${prefix}: show the user the new head`);
+                let off = false;
+                try {
+                  if (writer.disableAutoMerge) {
+                    await writer.disableAutoMerge(ref);
+                    off = true;
+                  }
+                } catch {
+                  ensureCurrent();
+                }
+                if (off) {
+                  delete entry.autoMerge;
+                  delete entry.method;
+                  throw new Error(
+                    `${prefix}, so auto-merge was turned off again: show the user the new head`,
+                  );
+                }
+                throw new Error(
+                  `${prefix}, and auto-merge is still on: turn it off unless the user reviews ${short}`,
+                );
+              }
+            }
+            // Marked at the head handed to the user: the request waiting on them is done.
+            const waiting = reviews.get(key);
+            if (pending?.state === "ready" && pending.request.head === head) {
+              if (waiting?.state === "ready" && waiting.request.head === head)
+                recordIntent({
+                  v: ATTENTION_VERSION,
+                  kind: "dismissal",
+                  key,
+                  head,
+                  at: now(),
+                });
+              entry.dismissed = true;
+            }
+          };
+
+          const entries: ReadyEntryValue[] = [];
+          const seen = new Set<string>();
+          ownCalls.add(id);
+          try {
+            for (const item of params.prs) {
+              ensureCurrent();
+              const bare = /^#?\d+$/.test(item.pr.trim());
+              const ref = parsePrTarget(
+                item.pr,
+                bare ? await (here ??= resolveRepo(ctx.cwd)) : undefined,
+              );
+              if (!ref || !isPrIdentity(ref)) {
+                entries.push({
+                  key: "",
+                  label: item.pr,
+                  url: "",
+                  error:
+                    "not a pull request URL, owner/repo#number, or a number in this repository",
+                });
+                continue;
+              }
+              const key = prKey(ref);
+              if (seen.has(key)) continue;
+              seen.add(key);
+              const entry: ReadyEntryValue = {
+                key,
+                label: prLabel(ref),
+                url: prs.get(key)?.url ?? prUrl(ref),
+              };
+              entries.push(entry);
+              try {
+                await markOne(entry, ref, item.head?.trim() || undefined);
+              } catch (error) {
+                ensureCurrent();
+                entry.error = errorText(error);
+              }
+            }
+          } finally {
+            ownCalls.delete(id);
+          }
+          const text = prReadyText(entries);
+          // Every one failed: the call failed, with what each did before it failed.
+          if (entries.every((entry) => entry.error)) throw new Error(text);
+          return {
+            content: [{ type: "text" as const, text }],
+            details: { prs: entries },
+            structuredContent: { prs: entries },
+          };
+        } catch (error) {
+          throw new Error(`git_pr_ready: ${errorText(error)}`);
         }
       },
     }),

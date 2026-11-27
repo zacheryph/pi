@@ -4,7 +4,7 @@
  * `gh pr view <url> --json …` first. When `gh` is missing or not signed in, a
  * GitHub MCP `pull_request_read` tool is used instead (its PR object, check
  * runs and reviews). Transient failures are retried (see `retry.ts`); nothing
- * here ever writes to GitHub.
+ * here ever writes to GitHub (`ready.ts` does, for git_pr_ready only).
  */
 import { isRecord } from "#foundations/guards";
 
@@ -15,7 +15,7 @@ import { withRetry, type RetryOptions } from "#src/retry";
 
 /** The fields `gh pr view --json` is asked for. */
 export const GH_FIELDS =
-  "number,url,title,state,isDraft,reviewDecision,mergeable,headRefName,headRefOid,statusCheckRollup,comments,reviews";
+  "number,url,title,state,isDraft,reviewDecision,mergeable,headRefName,headRefOid,statusCheckRollup,comments,reviews,autoMergeRequest";
 
 export interface Fetched {
   title?: string;
@@ -28,6 +28,8 @@ export interface Fetched {
   comments?: number;
   /** How many reviews were submitted (a reply in a review thread is one too), when read. */
   reviews?: number;
+  /** Whether auto-merge is turned on, when the read showed it. */
+  autoMerge?: boolean;
 }
 
 /** `gh` cannot answer at all (not installed, not signed in): try another way. */
@@ -119,6 +121,7 @@ export async function fetchWithGh(
       : {}),
     ...(Array.isArray(pr.comments) ? { comments: pr.comments.length } : {}),
     ...(Array.isArray(pr.reviews) ? { reviews: pr.reviews.length } : {}),
+    ...("autoMergeRequest" in pr ? { autoMerge: isRecord(pr.autoMergeRequest) } : {}),
   };
 }
 
@@ -153,10 +156,12 @@ export async function fetchWithMcp(
   };
   /** Top-level comments, as the PR object counts them. */
   let comments: number | undefined;
+  let autoMerge: boolean | undefined;
   const getPr = async () => {
     const json = await read("get");
     const parsed = restFacts(json, "");
     comments = isRecord(json) && typeof json.comments === "number" ? json.comments : undefined;
+    autoMerge = isRecord(json) && "auto_merge" in json ? isRecord(json.auto_merge) : undefined;
     if (!parsed.facts?.state) throw new Error(`${tool} returned no pull request`);
     const url = isRecord(json) && typeof json.html_url === "string" ? json.html_url : "";
     const shown = parsePrUrls(url)[0]?.ref;
@@ -224,6 +229,7 @@ export async function fetchWithMcp(
     ...(failedChecks ? { failedChecks } : {}),
     ...(comments !== undefined ? { comments } : {}),
     ...(reviews !== undefined ? { reviews } : {}),
+    ...(autoMerge !== undefined ? { autoMerge } : {}),
   };
 }
 

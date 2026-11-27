@@ -226,9 +226,12 @@ For each pull request, after its steps pass section 3:
    makes the request stale; once that head is green and reviewed again, hand
    it off again at the new head. When the result says no `git_pr_watch` keeps
    the request current, start the watch from step 2 again.
-5. **Wait for the merge.** You never approve, merge, or turn on auto-merge. The
-   user merges, or their auto-merge does; the watch reports `Merged.` either
-   way. Review comments that arrive meanwhile go back to step 3.
+5. **Wait for the merge.** You never approve, merge, or turn on auto-merge on
+   your own. The user merges, or their auto-merge does; the watch reports
+   `Merged.` either way. When the user tells you reviewed pull requests can go,
+   mark them all in one `git_pr_ready { prs, autoMerge }` call: it takes each
+   head from its review request and refuses one that moved. Review comments
+   that arrive meanwhile go back to step 3.
 6. **Keep the watch alive.** A review can take days. When a watch reports that
    it timed out, was lost, or can no longer read the pull request, and the
    step is still open, read it with `git_pr_status` and watch again. Do the
