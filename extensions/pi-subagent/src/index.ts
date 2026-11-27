@@ -63,7 +63,13 @@ import {
   registerMainAgentProfile,
   resolveMainAgentProfile,
 } from "#src/main-agent-profile";
-import { activateProfile, runSwitchCommand } from "#src/handlers/switch-command";
+import {
+  activateProfile,
+  profilesAction,
+  runSwitchCommand,
+  switchAction,
+  type SwitchCommandDeps,
+} from "#src/handlers/switch-command";
 import { SUBAGENT_RECORD_ENTRY } from "#src/persisted-record";
 import { SubagentRuntime } from "#src/runtime";
 import { readBranchRecords } from "#src/roster";
@@ -77,7 +83,7 @@ import { SettingsManager } from "#src/settings";
 import { AgentTool } from "#src/tools/agent-tool";
 import { GetResultTool } from "#src/tools/get-result-tool";
 import { SendTool } from "#src/tools/send-tool";
-import { viewRegistry } from "#surface";
+import { actionRegistry, viewRegistry } from "#surface";
 import { AgentWidget } from "#src/ui/agent-widget";
 import { getDisplayName } from "#src/ui/display";
 import { subagentExplorerModel } from "#src/ui/subagent-explorer";
@@ -470,6 +476,22 @@ export default function (pi: ExtensionAPI) {
 
   // ---- /subagent:switch command ----
 
+  const switchDeps: SwitchCommandDeps = {
+    profiles: (c) => listMainAgentProfiles(c),
+    resolve: (name, c) => resolveMainAgentProfile(name, c),
+    current: () => mainProfile.current(),
+    activate: activateProfile(pi, agentModels, mainProfile),
+    show: (c, text, level) => output.show(c, text, level),
+  };
+  // The same switch for hosts that do not list slash commands (bb's composer runs these).
+  const actions = actionRegistry(pi.events);
+  pi.on("session_start", (_event, ctx) => {
+    actions.dispose();
+    actions.define(profilesAction(() => ctx, switchDeps));
+    actions.define(switchAction(() => ctx, switchDeps));
+  });
+  pi.on("session_shutdown", () => actions.dispose());
+
   pi.registerCommand("subagent:switch", {
     description: "Compact the conversation for another agent profile, then run it",
     getArgumentCompletions: (prefix) => {
@@ -480,13 +502,7 @@ export default function (pi: ExtensionAPI) {
       return items.length ? items : null;
     },
     handler: async (args, ctx) => {
-      await runSwitchCommand(args, ctx, {
-        profiles: (c) => listMainAgentProfiles(c),
-        resolve: (name, c) => resolveMainAgentProfile(name, c),
-        current: () => mainProfile.current(),
-        activate: activateProfile(pi, agentModels, mainProfile),
-        show: (c, text, level) => output.show(c, text, level),
-      });
+      await runSwitchCommand(args, ctx, switchDeps);
     },
   });
 

@@ -146,7 +146,14 @@ describe("pi-surface app", () => {
       ["subagents", "bare"],
     ]);
     expect(customization?.actions?.map((action) => action.id)).toEqual(["open-session"]);
-    expect(customization?.experimental_popups?.map((popup) => popup.id)).toEqual(["stash"]);
+    expect(customization?.experimental_popups?.map((popup) => popup.id)).toEqual([
+      "stash",
+      "profile",
+    ]);
+    expect(customization?.plusMenu?.map((item) => item.id)).toEqual([
+      "insert-stash",
+      "switch-profile",
+    ]);
     expect(app.threadContextSegments.map((slot) => slot.id)).toEqual(["pi"]);
     expect(app.threadContextCardRows.map((slot) => slot.id)).toEqual(["stash"]);
     expect(app.threadContextCardSections.map((slot) => [slot.id, slot.order])).toEqual([
@@ -433,6 +440,58 @@ describe("pi-surface app", () => {
       },
     );
     expect(await slot.findByText("This thread has no Pi stash.")).toBeTruthy();
+  });
+
+  const profilePopup = () => app.composerCustomizations[0]!.experimental_popups![1]!;
+
+  it("lists the agent profiles to switch to, without the one running", async () => {
+    const slot = renderSlot(profilePopup(), {}, { rpc: rpcFor(fixture), composer: threadComposer });
+    const keep = await slot.findByRole("combobox", { name: "What the summary must keep" });
+    expect(slot.getAllByRole("option").map((option) => option.textContent)).toEqual([
+      "assistLong-running assistant for on-call and everyday questions",
+      "digInvestigator for open-ended questions",
+    ]);
+    expect(slot.container.textContent).toContain("(running orchestrate)");
+    expect(requests(slot)).toEqual([{ action: "subagent.profiles", args: null }]);
+    // A fixture has no conversation: its refusal shows under the list.
+    fireEvent.keyDown(keep, { key: "Enter" });
+    expect((await slot.findByRole("alert")).textContent).toBe(
+      "This is a fixture session; it has no conversation to compact.",
+    );
+  });
+
+  it("asks a live session to switch, with what the summary must keep", async () => {
+    const live = rpcFor(fixture, "live");
+    const rpc = {
+      ...live,
+      request: (input: unknown) =>
+        (input as { request: SurfaceRequest }).request.action === "subagent.switch"
+          ? { value: { switching: "dig" } }
+          : live.request(input as never),
+    };
+    const slot = renderSlot(profilePopup(), {}, { rpc, composer: threadComposer });
+    const keep = await slot.findByRole("combobox", { name: "What the summary must keep" });
+    await slot.findAllByRole("option");
+    fireEvent.change(keep, { target: { value: " the rack 12 traceroutes " } });
+    fireEvent.keyDown(keep, { key: "ArrowDown" });
+    fireEvent.keyDown(keep, { key: "Enter" });
+    await vi.waitFor(() =>
+      expect(requests(slot).at(-1)).toEqual({
+        action: "subagent.switch",
+        args: { profile: "dig", keep: "the rack 12 traceroutes" },
+      }),
+    );
+    expect(slot.queryByRole("alert")).toBeNull();
+  });
+
+  it("says Pi is not running for a saved session", async () => {
+    const slot = renderSlot(
+      profilePopup(),
+      {},
+      { rpc: rpcFor(fixture, "saved"), composer: threadComposer },
+    );
+    expect(await slot.findByText(/Pi is not running for this thread/)).toBeTruthy();
+    expect(requests(slot)).toEqual([]);
   });
 
   it("opens the Pi tab from the composer action", async () => {

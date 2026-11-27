@@ -125,5 +125,7 @@ Consequences for an extension:
   (`bb thread spawn --option`) has nothing to offer for Pi. See
   [provider size](pi-provider-size.md) for what adding one would cost.
 - Reports `commands: { list: false }`, so bb's `/` menu does not list Pi's
-  extension commands. Pi still runs one that arrives as a prompt; whether bb
-  passes a typed `/todo` through unchanged is not verified.
+  extension commands. Pi still runs one that arrives as a prompt: on bb 0.49.0
+  a typed `/subagent:switch assist` reached Pi unchanged and switched the
+  profile. Messages a command writes while no turn runs do not show in bb's
+  timeline.

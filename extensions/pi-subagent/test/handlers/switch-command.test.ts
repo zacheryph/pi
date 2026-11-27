@@ -2,7 +2,9 @@ import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
 import {
   handoffInstructions,
+  profilesAction,
   runSwitchCommand,
+  switchAction,
   type SwitchCommandDeps,
 } from "#src/handlers/switch-command";
 import type { AgentConfig } from "#src/types";
@@ -22,6 +24,7 @@ function setup(
     select?: string | undefined;
     compact?: (o: Compact) => void;
     activates?: boolean;
+    idle?: boolean;
   } = {},
 ) {
   const shown: Array<{ text: string; level: string }> = [];
@@ -31,6 +34,7 @@ function setup(
     hasUI: options.hasUI ?? true,
     ui: { select: vi.fn(async () => options.select) },
     waitForIdle: vi.fn(async () => {}),
+    isIdle: () => options.idle ?? true,
     compact,
   } as unknown as ExtensionCommandContext;
   const activate = vi.fn(async (_ctx, name: string) => {
@@ -146,5 +150,65 @@ describe("runSwitchCommand", () => {
     await runSwitchCommand("  ", h.ctx, h.deps);
     expect(h.ctx.ui.select).not.toHaveBeenCalled();
     expect(h.shown[0]?.text).toContain("Usage: /subagent:switch <profile> [what to keep]");
+  });
+});
+
+describe("profilesAction", () => {
+  it("lists each profile with its description and marks the one running", async () => {
+    const h = setup({ current: "dig" });
+    const action = profilesAction(() => h.ctx, h.deps);
+    expect(action.id).toBe("subagent.profiles");
+    expect(await action.handler(action.parse!(undefined))).toEqual({
+      profiles: [
+        { name: "orchestrate", description: "Project manager", running: false },
+        { name: "dig", description: "Investigator", running: true },
+      ],
+    });
+  });
+});
+
+describe("switchAction", () => {
+  const run = async (h: ReturnType<typeof setup>, args: unknown) => {
+    const action = switchAction(() => h.ctx, h.deps);
+    return action.handler(action.parse!(args as never));
+  };
+
+  it("answers at once, then compacts for the profile and switches", async () => {
+    let finish: (() => void) | undefined;
+    const h = setup({ compact: (o) => (finish = () => o?.onComplete?.({} as never)) });
+    expect(await run(h, { profile: "dig", keep: "the rack 12 notes" })).toEqual({
+      switching: "dig",
+    });
+    const instructions = h.compact.mock.calls[0]![0]!.customInstructions!;
+    expect(instructions).toContain("The user also asked to keep: the rack 12 notes");
+    expect(h.activate).not.toHaveBeenCalled();
+    finish!();
+    await vi.waitFor(() => expect(h.shown.at(-1)?.text).toBe("Compacted for dig and switched."));
+  });
+
+  it("refuses an unknown profile, the running one, and a busy session before compacting", async () => {
+    await expect(run(setup(), { profile: "nope" })).rejects.toThrow(
+      'Unknown main agent profile: "nope".',
+    );
+    await expect(run(setup({ current: "dig" }), { profile: "dig" })).rejects.toThrow(
+      "Already running dig.",
+    );
+    const busy = setup({ idle: false });
+    await expect(run(busy, { profile: "dig" })).rejects.toThrow("Pi is working");
+    expect(busy.compact).not.toHaveBeenCalled();
+  });
+
+  it("refuses a second switch while one is under way", async () => {
+    const h = setup({ compact: () => {} });
+    const action = switchAction(() => h.ctx, h.deps);
+    await action.handler({ profile: "dig", keep: "" });
+    expect(() => action.handler({ profile: "dig", keep: "" })).toThrow("Already switching to dig.");
+  });
+
+  it("checks its arguments", () => {
+    const action = switchAction(() => setup().ctx, setup().deps);
+    expect(() => action.parse!({})).toThrow("expected { profile }");
+    expect(() => action.parse!({ profile: "dig", keep: 3 })).toThrow("keep must be text");
+    expect(action.parse!({ profile: " dig " })).toEqual({ profile: "dig", keep: "" });
   });
 });
