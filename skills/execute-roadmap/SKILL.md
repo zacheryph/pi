@@ -235,7 +235,8 @@ For each pull request, after its steps pass section 3:
 6. **Keep the watch alive.** A review can take days. When a watch reports that
    it timed out, was lost, or can no longer read the pull request, and the
    step is still open, read it with `git_pr_status` and watch again. Do the
-   same for every open pull request after a restart.
+   same for every open pull request after a restart: one `git_pr_status` and
+   one `git_pr_watch` call can each name all of them.
 
 A pull request closed without merging is the user's decision, and you do not
 know why: set the step `waiting`, with a `message` that names the closed pull
