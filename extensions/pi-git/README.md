@@ -345,10 +345,10 @@ panel list. The main session's agent hands one over with
   first, as any read is, so it never counts as a later fact.
 - **It records nothing for a retry** of the same head while the request waits,
   and does not read GitHub for it. A request at a new head replaces a stale one.
-- **It does not watch the PR or notify you.** Its result says whether a
-  `git_pr_watch` with `until: "merged"` keeps the request current and, when
-  none does, the call that would. Without one, the request changes only when
-  something reads the PR again. Telling you is `user_notify`'s job.
+- **It does not watch the PR.** Its result says whether a `git_pr_watch` with
+  `until: "merged"` keeps the request current and, when none does, the call
+  that would. Without one, the request changes only when something reads the
+  PR again.
 - **A subagent cannot call it:** handing work to you is the main session's
   decision.
 

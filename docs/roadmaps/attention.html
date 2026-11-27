@@ -1498,8 +1498,8 @@ stateDiagram-v2
         </p>
         <ul>
           <li>
-            <b>Main session only</b>, like <code>user_notify</code>. A subagent reports to its
-            parent.
+            <b>Main session only</b>, like <code>git_pr_request_review</code>. A subagent reports to
+            its parent.
           </li>
           <li>
             <b>Required expiry.</b> Nothing can observe a generic item resolving, so it needs a
@@ -1622,8 +1622,8 @@ stateDiagram-v2
             <b>Turn on review handoffs</b
             ><span
               ><code>git_pr_request_review</code> (main session, checks head, names a missing
-              watch); <code>execute-roadmap</code> calls it before its one <code>user_notify</code>.
-              Scenario in <code>test/</code>: green → request → duplicate → head move → re-request →
+              watch); <code>execute-roadmap</code> calls it at its handoff. Scenario in
+              <code>test/</code>: green → request → duplicate → head move → re-request →
               ready-for-review → reload. Size S.</span
             >
           </div>

@@ -1,6 +1,6 @@
 ---
 name: execute-roadmap
-description: Carry out a chosen make-it-easy roadmap. Turns each step of docs/roadmaps/<slug>.md into a todo with its dependencies, delegates ready steps to subagents, verifies every step against its "Done when" and "Verification" lines with a reviewer that did not do the work, and lands it either as local commits or as pull requests. With pull requests it gets each one green, notifies the user when it is ready for review, waits for the merge, verifies the deploy where the repository has a way to, and only then starts the steps that depend on it. Keeps the roadmap document and the todo ledger in sync until the easy change lands or a step is blocked. Use when asked to execute, run, implement, deliver, ship, or continue a roadmap, or right after make-it-easy hands off.
+description: Carry out a chosen make-it-easy roadmap. Turns each step of docs/roadmaps/<slug>.md into a todo with its dependencies, delegates ready steps to subagents, verifies every step against its "Done when" and "Verification" lines with a reviewer that did not do the work, and lands it either as local commits or as pull requests. With pull requests it gets each one green, hands it to the user for review when it is ready, waits for the merge, verifies the deploy where the repository has a way to, and only then starts the steps that depend on it. Keeps the roadmap document and the todo ledger in sync until the easy change lands or a step is blocked. Use when asked to execute, run, implement, deliver, ship, or continue a roadmap, or right after make-it-easy hands off.
 ---
 
 # Execute a roadmap
@@ -211,13 +211,9 @@ For each pull request, after its steps pass section 3:
    thread waits on the worker, call
    `git_pr_request_review { pr, head, reason }` with the full head SHA the
    green checks ran on and the step as `reason`. If it refuses because the
-   head moved, go back to step 3. Then call `user_notify` with the pull
-   request and what it is ("PR 12 ready for review", the URL and the step),
-   set the stage to `waiting on the user: review <url>`, and end your turn.
-   Once per pull request and head: a request that comes back "already
-   requested" needs no notification. For a step with many pull requests,
-   request each, then send one notification when all of them are green,
-   naming the count and the step, not one each. A push after the handoff
+   head moved, go back to step 3. Then set the stage to
+   `waiting on the user: review <url>` and end your turn. For a step with many
+   pull requests, request each as it goes green. A push after the handoff
    makes the request stale; once that head is green and reviewed again, hand
    it off again at the new head. When the result says no `git_pr_watch` keeps
    the request current, start the watch from step 2 again.
@@ -255,8 +251,8 @@ that depends on it, and ask.
    Its dependents are now ready (section 2).
 6. **Failed: hold the line.** Start no new step and open no new pull request,
    anywhere in the roadmap. Work already running finishes its current run and
-   pull requests already open stay open. Call `user_notify` with what failed,
-   then stop and report the evidence and the step's `Rollback` line. Never
+   pull requests already open stay open. Stop and report what failed, the
+   evidence and the step's `Rollback` line. Never
    revert, and never open a revert pull request: that is the user's call.
 
 ## 6. When the plan is wrong
@@ -284,10 +280,6 @@ the document consistent and report:
 - the agent IDs worth resuming, and the worktree each step's work is in;
 - the pull requests still open, and which of them wait on the user;
 - the exact question or decision you need from the user.
-
-When you stop because only the user can move things on (a question, a blocked
-step, a failed deploy check) and they may not be watching, call `user_notify`
-first. A stop at a limit the user set needs none.
 
 Resuming later is the same skill: step 1 reconciles the existing tasks with the
 document's `Landed:` lines and continues from the first unfinished step. With

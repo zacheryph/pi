@@ -1303,12 +1303,12 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
       name: "git_pr_request_review",
       label: "Git PR Request Review",
       description:
-        "Hand a pull request to the user for review at the head commit you checked. Reads it from GitHub once and records the request only if it is open at exactly that head; never writes to GitHub and does not notify the user. " +
+        "Hand a pull request to the user for review at the head commit you checked. Reads it from GitHub once and records the request only if it is open at exactly that head; never writes to GitHub. " +
         "The user sees it as waiting on them (bb, the dashboard, /attention) until they approve it, mark it ready for review (when it was a draft), merge or close it, or dismiss it. A push after the request marks it stale: request again at the new head once it is ready. " +
         "Asking again for the same head while it waits records nothing. It does not watch the pull request: its result says when no git_pr_watch keeps the request current. Main session only.",
       promptSnippet: "Hand a pull request to the user for review at the head you checked.",
       promptGuidelines: [
-        "Call git_pr_request_review when a pull request is ready for the user to review, with the full head SHA you checked, then tell the user with user_notify. Green checks alone are not a handoff.",
+        "Call git_pr_request_review when a pull request is ready for the user to review, with the full head SHA you checked. Green checks alone are not a handoff.",
         'Keep a git_pr_watch with until: "merged" on a pull request you hand to the user, so the request follows it; git_pr_request_review says when there is none.',
       ],
       parameters: Type.Object({
@@ -1398,7 +1398,7 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
               ? ` (the request at ${outcome.replaced.request.head.slice(0, 12)} was stale)`
               : "";
           const text = outcome.requested
-            ? `Requested review of ${label} at ${at}${again}. It waits on the user until ${until}; a push makes it stale. The user is not notified: tell them with user_notify.`
+            ? `Requested review of ${label} at ${at}${again}. It waits on the user until ${until}; a push makes it stale.`
             : `Review of ${label} at ${at} is already requested; nothing recorded.`;
           return {
             content: [{ type: "text" as const, text: `${text}\n${watchAdvice(ref)}` }],

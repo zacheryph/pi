@@ -112,44 +112,6 @@ describe("optional cmux notifications", () => {
     expect(execFile).toHaveBeenCalledTimes(2);
   });
 
-  it("sends a notification that stays: no receipt, no dismissal, not closed by shutdown", async () => {
-    vi.stubEnv("CMUX_SURFACE_ID", "surface");
-    vi.stubEnv("CMUX_WORKSPACE_ID", "workspace");
-    const notifications = new CmuxNotifications();
-    const sent = notifications.send({ title: "PR 12 needs review", body: "Checks are green." });
-    expect(execFile.mock.calls[0]!.slice(0, 2)).toEqual([
-      "cmux",
-      [
-        "notify",
-        "--title",
-        "PR 12 needs review",
-        "--body",
-        "Checks are green.",
-        "--surface",
-        "surface",
-        "--workspace",
-        "workspace",
-      ],
-    ]);
-    reply(0, "OK");
-    expect(await sent).toBe(true);
-    await notifications.shutdown();
-    expect(execFile).toHaveBeenCalledTimes(1);
-    expect(await notifications.send(MESSAGE)).toBe(false);
-    expect(execFile).toHaveBeenCalledTimes(1);
-  });
-
-  it("reports a notification cmux did not take, or that has nowhere to go", async () => {
-    const notifications = new CmuxNotifications();
-    expect(await notifications.send(MESSAGE)).toBe(false);
-    expect(execFile).not.toHaveBeenCalled();
-    vi.stubEnv("CMUX_SURFACE_ID", "surface");
-    const sent = notifications.send(MESSAGE);
-    reply(0, "", new Error("socket denied"));
-    expect(await sent).toBe(false);
-    await notifications.shutdown();
-  });
-
   it("falls back to PATH, legacy panel/tab and leaves workspace optional", async () => {
     vi.stubEnv("CMUX_PANEL_ID", "panel");
     vi.stubEnv("CMUX_TAB_ID", "tab");

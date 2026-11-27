@@ -1770,7 +1770,7 @@ describe("review requests", () => {
       const result = await requestReview(h, { reason: "Step 3: retry policy" });
       expect(result.content[0].text).toBe(
         [
-          "Requested review of acme/web#42 at a13c90e00000. It waits on the user until they mark it ready for review, approve, merge or close it, or dismiss it; a push makes it stale. The user is not notified: tell them with user_notify.",
+          "Requested review of acme/web#42 at a13c90e00000. It waits on the user until they mark it ready for review, approve, merge or close it, or dismiss it; a push makes it stale.",
           `No git_pr_watch is open on it: call ${WATCH_CALL} so the request follows it while this session runs. Without one, nothing updates the request until the pull request is read again.`,
         ].join("\n"),
       );

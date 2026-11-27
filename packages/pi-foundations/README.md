@@ -108,8 +108,7 @@ These modules have no Pi or pi-ui dependencies. Import them through
 - `src/cmux.ts`: `CmuxNotifications`, native notifications through cmux's public
   CLI, one instance per extension session. `open(message)` shows a notification
   for as long as something is on screen and returns the function that dismisses
-  exactly that one; `send(message)` shows one that stays and resolves whether
-  cmux took it; `shutdown()` dismisses the open ones and drains pending CLI
+  exactly that one; `shutdown()` dismisses the open ones and drains pending CLI
   calls within a bound. Outside cmux, with `CMUX_PI_HOOKS_DISABLED=1`, or when
   the CLI is missing, fails or hangs, every call is a silent no-op. Callers
   sanitize and bound the text.
