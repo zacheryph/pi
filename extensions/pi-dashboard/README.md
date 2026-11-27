@@ -13,7 +13,8 @@ is doing, and answer its questions from the browser.
   seconds after the last session exits.
 - **Needs you**, at the top of the index, lists what needs you in every
   session: open questions with **Answer**, then work handed off to you with
-  **Open** for its link. See [Needs you](#needs-you).
+  **Open** for its link, or **Reply** when it asks for your words. See
+  [Needs you](#needs-you).
 - **The index** shows one card per session: name, status (sessions waiting on
   you sort first), model, context use, and each extension's counts. A filter
   box and opt-in browser notifications (a session starts waiting or finishes)
@@ -113,6 +114,7 @@ so they match bb's Attention page in content and order:
 | **Blocking** | an open questionnaire (a `form` view)                              | **Answer**                               |
 | **Blocking** | a `waiting` status with no questionnaire (another dialog)          | none; the session name opens its page    |
 | **Owed**     | an item in an `attention` view, such as a PR handed off for review | **Open** for an `https:` link, else none |
+| **Owed**     | an attention item with a `reply` action, such as a task waiting    | **Reply**, while the session is live     |
 
 Rows from every session are merged Blocking first, then ready, then stale
 (dimmed), oldest first; each starts with its session's name, which opens the
@@ -121,6 +123,13 @@ panel ends with "and N more". **Open** is a plain link to the item's `https:`
 URL in a new tab (`rel="noopener noreferrer"`); a link with any other scheme is
 never drawn. The page runs no attention `open` or `dismiss` action, so the hub
 does not offer them either.
+
+**Reply** opens the answer dialog with the item's reason and a text box. **Send
+reply** runs the item's `reply` action with its arguments plus `{ text }`, your
+reply trimmed, up to 2,000 characters; the hub offers that action while the
+item lists it. If the session refuses, say because the task moved on in the
+terminal, the dialog shows why and keeps your text; so does closing it. A
+restarting session shows no Reply, since nothing there can take it.
 
 A restarting session keeps its owed rows as last known, without questions. A
 form or attention view that failed is named in the index panel ("Git

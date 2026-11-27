@@ -165,4 +165,31 @@ describe("offeredActions", () => {
       "todo.review",
     ]);
   });
+
+  it("collects an attention item's reply, and not its open or dismiss", () => {
+    const views: ViewEntry[] = [
+      {
+        id: "todo.attention",
+        kind: "attention",
+        title: "Todos",
+        model: {
+          items: [
+            {
+              id: "task:a",
+              category: "task",
+              title: "Pick a host",
+              state: "ready",
+              since: 1,
+              open: { action: "todo.open" },
+              dismiss: { action: "todo.dismiss" },
+              reply: { action: "todo.unblock", args: { key: "a" } },
+            },
+            { id: "task:b", category: "task", title: "Other", state: "ready", since: 2 },
+          ],
+          total: 2,
+        },
+      },
+    ];
+    expect([...offeredActions(views)]).toEqual(["todo.unblock"]);
+  });
 });

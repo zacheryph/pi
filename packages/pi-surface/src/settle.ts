@@ -124,7 +124,7 @@ function settleSummary(model: SummaryModel): SummaryModel {
 
 function settleAttention(model: AttentionModel): AttentionModel {
   // Nobody can run an item's actions with no session; its link still opens.
-  const items = model.items.flatMap(({ open: _open, dismiss: _dismiss, ...item }) =>
+  const items = model.items.flatMap(({ open: _open, dismiss: _dismiss, reply: _reply, ...item }) =>
     item.live ? [] : [{ ...item, title: settleLine(item.title) }],
   );
   return {

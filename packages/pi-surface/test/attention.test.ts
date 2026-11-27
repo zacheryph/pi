@@ -41,6 +41,7 @@ const review = (id: string, extra: Partial<AttentionItem> = {}): AttentionItem =
   link: { url: "https://github.com/acme/web/pull/42", label: "acme/web#42" },
   open: { action: "git.attention-open", args: { id } },
   dismiss: { action: "git.attention-dismiss", args: { id, rev: "a13c90e" } },
+  reply: { action: "git.attention-reply", args: { id, rev: "a13c90e" } },
   ...extra,
 });
 
@@ -101,6 +102,7 @@ describe("attention model", () => {
       ["script link", set(attention, ["items", 0, "link", "url"], "javascript:alert(1)")],
       ["bad open", set(attention, ["items", 0, "open"], { action: "Open" })],
       ["bad dismiss args", set(attention, ["items", 0, "dismiss", "args"], Number.NaN)],
+      ["bad reply", set(attention, ["items", 0, "reply"], { action: "" })],
       ["live false", set(attention, ["items", 0, "live"], false)],
     ];
     for (const [name, value] of bad) expect(isAttentionModel(value), name).toBe(false);
@@ -249,9 +251,10 @@ describe("settling an attention view", () => {
     for (const item of model.items) {
       expect(item.open, item.id).toBeUndefined();
       expect(item.dismiss, item.id).toBeUndefined();
+      expect(item.reply, item.id).toBeUndefined();
       expect(item.link).toEqual(attention.items[0]!.link);
     }
-    const { open: _open, dismiss: _dismiss, ...kept } = attention.items[0]!;
+    const { open: _open, dismiss: _dismiss, reply: _reply, ...kept } = attention.items[0]!;
     expect(model.items[0]).toEqual(kept);
     // A failed view is kept as it was, so the consumer still says it failed.
     expect(settled.views[1]).toEqual(snapshot.views[1]);

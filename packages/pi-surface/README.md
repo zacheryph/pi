@@ -372,10 +372,13 @@ views.define({
 ```
 
 An item lives in the session file, so it outlasts the process: settling keeps
-it as last known, link included, and drops its `open` and `dismiss` actions.
-An item marked `live` exists only while the process runs and is removed. A
-consumer dispatches `open` and `dismiss` with the reference's arguments as
-given. `isAttentionModel` enforces the exported bounds, and refuses two items
+it as last known, link included, and drops its `open`, `dismiss` and `reply`
+actions. An item marked `live` exists only while the process runs and is
+removed. A consumer dispatches `open` and `dismiss` with the reference's
+arguments as given. An item the user answers in words, such as a task waiting
+on them, also carries `reply`: a consumer that can collect text shows a reply
+box and dispatches the action with its arguments plus `{ text }`, the reply
+trimmed to 1–`MAX_ATTENTION_REPLY` characters. One that cannot leaves it out. `isAttentionModel` enforces the exported bounds, and refuses two items
 with one id:
 
 | Constant                 | Bound                                 |
@@ -387,6 +390,7 @@ with one id:
 | `MAX_ATTENTION_REASON`   | 500                                   |
 | `MAX_ATTENTION_URL`      | 2,000                                 |
 | `MAX_ATTENTION_LABEL`    | 100, for the link's label             |
+| `MAX_ATTENTION_REPLY`    | 2,000, for the text sent to `reply`   |
 
 A link is `https:` only. `isAttentionUrl` is the check, and every consumer runs
 it again before drawing a link, since a saved snapshot may come from anywhere.
@@ -559,7 +563,7 @@ producer's objects.
 - Actions are disabled by removing their references: an explorer's `onOpen`
   and `loadDetail`, and its marker's `onClear` with its `clearAction` hint.
   The marker's label and marks stay; an item with included `detail` still
-  opens into it. An attention item loses its `open` and `dismiss`.
+  opens into it. An attention item loses its `open`, `dismiss` and `reply`.
 - The snapshot's `host` is removed: its pid and terminal belong to the process
   that has gone.
 - An entry of a kind this copy does not know is removed.
