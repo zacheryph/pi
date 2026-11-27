@@ -87,6 +87,12 @@ const PREREQUISITE_FIELDS = new Set(["key", "dependsOn"]);
  * prerequisites, each recorded as a flagged message. `baseRevision` is checked
  * per touched key against `lastChange`, so siblings' writes do not make it stale.
  */
+/** Only the main session sets a task waiting on the user; a subagent asks its parent. */
+export const waitingInSubagent = (key: string) =>
+  new TodoValidationError(
+    `task ${key}: only the main session may set a task waiting on the user. Ask your parent instead: report what you need from the user in your result or a message on the task.`,
+  );
+
 export function checkDelegatedRequest(
   state: TodoState,
   claim: TodoClaim,
@@ -156,6 +162,7 @@ export function checkDelegatedRequest(
       for (const patch of request.tasks ?? []) {
         const key = patch.key.trim();
         const existing = byKey.get(key);
+        if (patch.status === "waiting") throw waitingInSubagent(key);
         if (!existing || held.has(key)) {
           if (patch.status === "completed")
             throw new TodoValidationError(
@@ -461,6 +468,10 @@ export function createTodoDelegation(pi: ExtensionAPI, host: DelegationHost) {
   };
 
   return {
+    /** Whether this session is a subagent: it has a parent session. */
+    hasParent(): boolean {
+      return tree.node()?.parent !== undefined;
+    },
     /**
      * Look for this session's own claim in its parent (start, resume, reload, /tree).
      *

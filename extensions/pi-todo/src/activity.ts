@@ -1,5 +1,11 @@
 import { isRecord } from "#foundations/guards";
-import { type TodoDetails, type TodoState, type TodoStatus, TodoValidationError } from "#src/state";
+import {
+  TODO_STATUSES,
+  type TodoDetails,
+  type TodoState,
+  type TodoStatus,
+  TodoValidationError,
+} from "#src/state";
 
 /**
  * Local sidecar beside upstream's pure snapshot engine: per-task status/message
@@ -33,7 +39,7 @@ export interface TodoTaskActivity {
 /** Keyed by task key. Maps avoid inherited keys such as "constructor". */
 export type TodoActivity = ReadonlyMap<string, TodoTaskActivity>;
 
-const STATUSES: ReadonlySet<unknown> = new Set(["pending", "in_progress", "completed"]);
+const STATUSES: ReadonlySet<unknown> = TODO_STATUSES;
 
 function readCount(value: unknown): number | undefined {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
@@ -97,6 +103,11 @@ export function recordTodoActivity(
     const history = prior ? activity.get(task.key) : undefined;
     const message = messages.get(task.key);
     const changed = prior ? prior.status !== task.status : task.status !== "pending";
+    // The message that sets a task waiting is what the user sees: what they must do, and where.
+    if (task.status === "waiting" && changed && !message)
+      throw new TodoValidationError(
+        `task ${task.key}: setting waiting needs a message in the same write saying what the user must do, and where`,
+      );
     const updates = history?.updates.map((update) => ({ ...update })) ?? [];
     if (changed || message) {
       updates.push({

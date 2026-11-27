@@ -1,4 +1,4 @@
-/** pi-todo: tasks with dependencies, a recorded message, then the /todo browser. */
+/** pi-todo: tasks with dependencies, a recorded message, one waiting on the user, then the /todo browser. */
 import { defineScenario, text, tool } from "#scripted-model/scenario";
 
 export default defineScenario({
@@ -18,7 +18,6 @@ export default defineScenario({
             },
             { key: "dlq", subject: "Dead-letter jobs after 5 attempts", dependsOn: ["backoff"] },
             { key: "tests", subject: "Cover retries with fake timers", dependsOn: ["backoff"] },
-            { key: "docs", subject: "Document retry settings", dependsOn: ["dlq"] },
           ],
         }),
       ],
@@ -31,10 +30,16 @@ export default defineScenario({
               status: "completed",
               message: "Failures come from timeouts in src/queue/worker.ts; nothing retries.",
             },
+            {
+              key: "limit",
+              subject: "Pick the dead-letter attempt limit",
+              status: "waiting",
+              message: "Set QUEUE_MAX_ATTEMPTS in .env.staging: 5 or 8?",
+            },
           ],
         }),
       ],
-      "Backoff is next; the survey's findings are on its task.",
+      "Backoff is next; the survey's findings are on its task, and the attempt limit is yours to pick.",
     ],
   ],
 });

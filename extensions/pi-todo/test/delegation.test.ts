@@ -648,6 +648,38 @@ describe("handing tasks to a subagent", () => {
     ).toBeUndefined();
   });
 
+  it("lets only the main session set a task waiting on the user", async () => {
+    const parent = await planned();
+    const child = await spawn(parent, { keys: ["a"] });
+    await expect(
+      child.execute({
+        action: "upsert",
+        tasks: [{ key: "a", status: "waiting", message: "Need a token" }],
+      }),
+    ).rejects.toThrow("only the main session may set a task waiting on the user");
+    // A subagent with a list of its own may not either.
+    const plain = session();
+    parent.bus.emit("subagent:session:created", {
+      sessionId: plain.id,
+      parentSessionId: parent.id,
+      agentId: "plain-agent",
+      toolCallId: "call-plain",
+    });
+    await plain.emit("session_start");
+    await expect(
+      plain.execute({
+        action: "upsert",
+        tasks: [{ key: "own", subject: "Own", status: "waiting", message: "Need a token" }],
+      }),
+    ).rejects.toThrow("Ask your parent instead");
+    // The parent may.
+    await parent.execute({
+      action: "upsert",
+      tasks: [{ key: "b", status: "waiting", message: "Need a token" }],
+    });
+    expect((await parent.tasks()).find((task) => task.key === "b")!.status).toBe("waiting");
+  });
+
   it("works locally when nothing was handed over, and refuses to hand delegated tasks on", async () => {
     const parent = await planned();
     const plain = session();

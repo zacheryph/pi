@@ -8,7 +8,7 @@ export const TODO_TOOL_NAMES: ReadonlySet<string> = new Set([
   "todo_remove",
   "todo_clear",
 ]);
-/** Pending and in-progress tasks the list may hold. */
+/** Unfinished tasks (pending, in progress or waiting) the list may hold. */
 export const MAX_OPEN_TASKS = 50;
 /**
  * Hard bound on any one list. After archiving a list holds at most
@@ -18,9 +18,15 @@ export const MAX_OPEN_TASKS = 50;
 export const MAX_TODO_TASKS = 120;
 export const MAX_TASK_DEPENDENCIES = 20;
 
-export type TodoStatus = "pending" | "in_progress" | "completed";
+/** `waiting`: only the user can move the task on; its latest message says what they must do. */
+export type TodoStatus = "pending" | "in_progress" | "waiting" | "completed";
 
-const TODO_STATUSES: ReadonlySet<TodoStatus> = new Set(["pending", "in_progress", "completed"]);
+export const TODO_STATUSES: ReadonlySet<TodoStatus> = new Set([
+  "pending",
+  "in_progress",
+  "waiting",
+  "completed",
+]);
 
 function isTodoStatus(value: unknown): value is TodoStatus {
   return typeof value === "string" && TODO_STATUSES.has(value as TodoStatus);
@@ -260,7 +266,7 @@ export function writeTodoSnapshot(state: TodoState, input: TodoSnapshotInput): T
   const open = normalized.filter((task) => task.status !== "completed").length;
   if (open > MAX_OPEN_TASKS) {
     throw new TodoValidationError(
-      `at most ${MAX_OPEN_TASKS} tasks may be pending or in_progress (${open} requested); complete or remove some first`,
+      `at most ${MAX_OPEN_TASKS} tasks may be unfinished (pending, in_progress or waiting; ${open} requested); complete or remove some first`,
     );
   }
 

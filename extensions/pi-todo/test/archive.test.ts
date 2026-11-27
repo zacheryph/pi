@@ -320,7 +320,7 @@ describe("the extension", () => {
         action: "upsert",
         tasks: Array.from({ length: 51 - open }, (_, i) => ({ key: `o${i}`, subject: "Open" })),
       }),
-    ).rejects.toThrow(/at most 50 tasks may be pending or in_progress/);
+    ).rejects.toThrow(/at most 50 tasks may be unfinished/);
 
     await env.execute({ action: "clear" });
     expect(env.archives().at(-1)).toEqual({ clear: true });
