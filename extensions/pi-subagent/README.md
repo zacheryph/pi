@@ -584,6 +584,13 @@ A child's `ask` (pi-ask) does not complete the child. It opens a **question item
 
 Nested delegation needs nothing more: the agents a child starts are items in the child's host, so a child orchestrator that ends its turn with a worker running waits, and the worker's completion wakes it.
 
+## Startup and responsiveness
+
+A streaming launch card, a ready child session and the child's first model response
+are different milestones. BB and the dashboard receive live activity changes in
+250 ms batches; the TUI polls them directly. See [startup measurements and tuning](docs/performance.md)
+for the measured breakdown and ways to make quick lookup agents respond sooner.
+
 ## Child session lifecycle
 
 A child session runs in the parent's process but is a full Pi session with its own extension set.

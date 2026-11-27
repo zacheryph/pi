@@ -79,7 +79,7 @@ export interface SubagentLifecycleObserver {
   /** Fires on compaction events during the run. */
   onCompacted?(agent: Subagent, info: CompactionInfo): void;
   /**
-   * Fires when live activity changes during the run: tool start/end, first assistant text,
+   * Fires when live activity changes during the run: tool start/end, assistant text,
    * or usage update at message end. Optional: remote renderers use it to publish live state.
    */
   onActivityChanged?(agent: Subagent): void;

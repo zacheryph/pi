@@ -13,7 +13,7 @@ import type { CompactionInfo, SubscribableSession } from "#src/types";
 export interface SubagentObserverOptions {
   onCompact?: (info: CompactionInfo) => void;
   /**
-   * Called when visible activity changes: tool start/end, first assistant text in a message,
+   * Called when visible activity changes: tool start/end, assistant text,
    * or usage update at message end. Not called on spurious state resets with no visible change.
    */
   onActivityChange?: () => void;
@@ -26,7 +26,7 @@ export interface SubagentObserverOptions {
  * - `tool_execution_start` → `state.addActiveTool(name)`, call `onActivityChange`
  * - `tool_execution_end` → `state.removeActiveTool(name)`, `state.incrementToolUses()`, call `onActivityChange`
  * - `message_start` → `state.resetResponseText()`, call `onActivityChange` only if visible text was nonempty (avoids spurious announcements on user/toolResult)
- * - `message_update` (text_delta) → `state.appendResponseText(delta)`, call `onActivityChange` only on first nonempty text
+ * - `message_update` (nonempty text_delta) → `state.appendResponseText(delta)`, call `onActivityChange`
  * - `message_end` (assistant, with usage) → `state.addUsage(…)`, call `onActivityChange`
  * - `compaction_end` (not aborted) → `state.incrementCompactions()`, call `onCompact`
  *
@@ -37,8 +37,6 @@ export function subscribeSubagentObserver(
   state: SubagentState,
   options?: SubagentObserverOptions,
 ): () => void {
-  let hasAnnouncedFirstTextDelta = false;
-
   return session.subscribe((event) => {
     if (event.type === "tool_execution_start") {
       state.addActiveTool(event.toolName);
@@ -54,7 +52,6 @@ export function subscribeSubagentObserver(
     if (event.type === "message_start") {
       const wasEmpty = state.responseText.length === 0;
       state.resetResponseText();
-      hasAnnouncedFirstTextDelta = false;
       // Only announce if visible text state actually changes (empty → empty is not a change).
       // This avoids spurious notifications on user/toolResult messages.
       if (!wasEmpty) {
@@ -64,11 +61,9 @@ export function subscribeSubagentObserver(
 
     if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
       state.appendResponseText(event.assistantMessageEvent.delta);
-      // Announce only on first nonempty text to avoid per-token spam
-      if (!hasAnnouncedFirstTextDelta && state.responseText.length > 0) {
-        hasAnnouncedFirstTextDelta = true;
-        options?.onActivityChange?.();
-      }
+      // The widget shows response text, not just a writing flag. Announce each change;
+      // bb and the dashboard already coalesce these into bounded 250 ms deliveries.
+      if (event.assistantMessageEvent.delta.length > 0) options?.onActivityChange?.();
     }
 
     if (event.type === "message_end" && event.message.role === "assistant") {
