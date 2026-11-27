@@ -33,6 +33,7 @@ function messageText(message: Sent["message"]): string {
 function fakePi(throwOnSend = false, sessionId = randomUUID(), entries: any[] = []) {
   const tools = new Map<string, any>();
   const commands = new Map<string, any>();
+  const renderers = new Map<string, any>();
   const handlers = new Map<string, ((...a: any[]) => any)[]>();
   const sent: Sent[] = [];
   const notes: { text: string; level: string }[] = [];
@@ -58,6 +59,7 @@ function fakePi(throwOnSend = false, sessionId = randomUUID(), entries: any[] = 
   const pi = {
     registerTool: (tool: any) => tools.set(tool.name, tool),
     registerCommand: (name: string, cmd: any) => commands.set(name, cmd),
+    registerMessageRenderer: (type: string, renderer: any) => renderers.set(type, renderer),
     on: (event: string, fn: any) => handlers.set(event, [...(handlers.get(event) ?? []), fn]),
     // Persisted like Pi does: a custom entry in the session's branch.
     appendEntry: (customType: string, data: unknown) =>
@@ -96,6 +98,7 @@ function fakePi(throwOnSend = false, sessionId = randomUUID(), entries: any[] = 
     pi,
     tools,
     commands,
+    renderers,
     handlers,
     sent,
     shown,
@@ -145,12 +148,13 @@ void test("default export is an extension factory", () => {
 });
 
 void test("registers the five tools and /job, with no-poll guidance", async (t) => {
-  const { tools, commands } = await setup(t);
+  const { tools, commands, renderers } = await setup(t);
   assert.deepEqual(
     [...tools.keys()],
     ["job_start", "job_watch", "job_list", "job_read", "job_kill"],
   );
   assert.ok(commands.has("job"));
+  assert.deepEqual([...renderers.keys()], [CUSTOM_TYPE]);
   for (const name of ["job_start", "job_watch"])
     assert.match(tools.get(name).description, /End your turn.*woken.*Do not poll/s);
   for (const tool of tools.values()) assert.equal(tool.parameters.type, "object");
@@ -184,6 +188,8 @@ void test("job_start → completion message wakes the agent exactly once", async
   );
   assert.equal(message.details.completions[0].job.exitCode, 4);
   assert.match(message.details.completions[0].completionId, /^[0-9a-f-]{36}$/);
+  // The terminal's renderer draws the output from the details.
+  assert.deepEqual(message.details.completions[0].output, { text: "a\nb", truncated: false });
 });
 
 void test("job_watch → matched notification with the last check output", async (t) => {
@@ -366,7 +372,7 @@ void test("pi exiting without session_shutdown kills job groups; >10 instances a
 		for (let i = 0; i < 12; i++) {
 			const tools = new Map();
 			const handlers = new Map();
-			const pi = { registerTool: t => tools.set(t.name, t), registerCommand() {}, on: (e, fn) => handlers.set(e, [...(handlers.get(e) ?? []), fn]), sendMessage() {}, appendEntry() {} };
+			const pi = { registerTool: t => tools.set(t.name, t), registerCommand() {}, registerMessageRenderer() {}, on: (e, fn) => handlers.set(e, [...(handlers.get(e) ?? []), fn]), sendMessage() {}, appendEntry() {} };
 			createJobsExtension({ logRoot: ${JSON.stringify(join(dir, "logs"))} })(pi);
 			await started(handlers, "s" + i);
 			all.push(tools);
@@ -405,7 +411,7 @@ void test("host exit while a finished job's TERM-ignoring descendant awaits esca
 		const tools = new Map();
 		let manager;
 		const handlers = new Map();
-		const pi = { registerTool: t => tools.set(t.name, t), registerCommand() {}, on: (e, fn) => handlers.set(e, [...(handlers.get(e) ?? []), fn]), sendMessage() {}, appendEntry() {} };
+		const pi = { registerTool: t => tools.set(t.name, t), registerCommand() {}, registerMessageRenderer() {}, on: (e, fn) => handlers.set(e, [...(handlers.get(e) ?? []), fn]), sendMessage() {}, appendEntry() {} };
 		createJobsExtension({ logRoot: ${JSON.stringify(join(dir, "logs"))}, onManager: m => (manager = m) })(pi); // default 5 s grace
 		await started(handlers, "s");
 		await tools.get("job_start").execute("x", { command: "trap '' TERM; sleep 30 & echo $! > d.pid", timeoutSeconds: 60 }, undefined, undefined, { cwd: ${JSON.stringify(dir)} });

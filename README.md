@@ -172,7 +172,7 @@ Beyond that:
 | pi-bb              |     ●      |       |         |                  |                 |
 | pi-dashboard       |     ●      |       |         |                  |                 |
 | pi-git             |     ●      |   ●   |    ●    |        ●         |                 |
-| pi-job             |            |       |    ●    |                  |        ●        |
+| pi-job             |            |   ●   |    ●    |                  |        ●        |
 | pi-stash           |     ●      |   ●   |         |        ●         |        ●        |
 | pi-subagent        |     ●      |   ●   |    ●    |        ●         |        ●        |
 | pi-system-insights |     ●      |   ●   |         |                  |                 |

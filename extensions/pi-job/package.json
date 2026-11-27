@@ -28,7 +28,8 @@
   ],
   "type": "module",
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "*"
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*"
   },
   "pi": {
     "extensions": [
@@ -41,6 +42,7 @@
     "#foundations/*": "pi-foundations/*",
     "#session-tree": "pi-session-tree",
     "#test-helpers": "pi-test-helpers",
+    "#ui/*": "pi-ui/*",
     "#work": "pi-work"
   },
   "exports": {

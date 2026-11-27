@@ -33,10 +33,8 @@ function durationOf(job: JobSnapshot, now: number): number {
   return (job.endedAt ?? now) - job.startedAt;
 }
 
-/** The single completion notification that wakes the agent. */
-export function formatNotification(job: JobSnapshot, tail: Tail, now = Date.now()): string {
-  const kind = job.kind === "watch" ? "Watch" : "Job";
-  const head = [`${kind} ${job.id} ${job.status.replace("_", " ")}: ${jobTitle(job)}`];
+/** The facts after a job's headline: exit or checks, duration, the timeout that ended it. */
+export function formatFacts(job: JobSnapshot, now = Date.now()): string[] {
   const facts: string[] = [];
   if (job.kind === "watch") {
     facts.push(`until ${job.until}`, `${job.checks ?? 0} ${plural(job.checks ?? 0, "check")}`);
@@ -55,7 +53,14 @@ export function formatNotification(job: JobSnapshot, tail: Tail, now = Date.now(
   }
   facts.push(`after ${formatDuration(durationOf(job, now))}`);
   if (job.status === "timed_out") facts.push(`timeout ${job.timeoutSeconds}s`);
-  head.push(facts.join(" · "));
+  return facts;
+}
+
+/** The single completion notification that wakes the agent. */
+export function formatNotification(job: JobSnapshot, tail: Tail, now = Date.now()): string {
+  const kind = job.kind === "watch" ? "Watch" : "Job";
+  const head = [`${kind} ${job.id} ${job.status.replace("_", " ")}: ${jobTitle(job)}`];
+  head.push(formatFacts(job, now).join(" · "));
   if (job.label)
     head.push(`${job.kind === "watch" ? "check" : "command"}: ${oneLine(job.command, 200)}`);
   head.push(`log: ${job.logPath}${job.logTruncated ? " (truncated at the size cap)" : ""}`);
