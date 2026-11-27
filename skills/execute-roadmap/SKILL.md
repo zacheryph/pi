@@ -70,9 +70,15 @@ roadmap longer than that is not one roadmap, so stop and say so.
 A step's task carries its stage as its `message`, rewritten at each change, so
 the ledger always says where the step is and who it waits on:
 `implementing (agent <id>)`, `in review`, `checks running: <url>`,
-`waiting on the user: review <url>`, `merged <sha>, verifying deploy`. There is
-no blocked or waiting status: a step that waits on a pull request stays
-`in_progress`.
+`review requested: <url>`, `merged <sha>, verifying deploy`. A step that waits
+on a pull request stays `in_progress`, also while the user reviews it: its
+`git_pr_request_review` item already puts it in front of the user, so it is not
+listed twice. A step that cannot continue without the user (a decision, a
+closed pull request, a failed deploy check) is set `waiting` instead, with a
+`message` saying what the user must do and where; its dependents stay held
+back. When the user answers, move it back to `pending` or `in_progress`
+yourself. Only the main session sets `waiting`: run as a subagent, ask your
+parent instead.
 
 Set the document's `Status:` to `in progress` and update its `Updated:` date.
 
@@ -134,8 +140,9 @@ A worker finishing is not proof. For every implementation step:
    `subagent_send` (its agent ID and the findings as the message), then review again. Allow two
    repair rounds. On `Verdict: BLOCKED`, fix what kept the reviewer from checking
    (a missing service, a check that cannot run) or ask the user. After that,
-   the step is blocked: mark it `pending`, record the failure in its `message`,
-   and stop dispatching anything that depends on it.
+   the step cannot continue without the user: set it `waiting`, with a
+   `message` that records the failure and what you need from the user, and
+   stop dispatching anything that depends on it.
 
 The repository's own fast checks (`npm run check`, the touched workspaces'
 tests) run in every verification, whether or not the step lists them.
@@ -214,8 +221,8 @@ For each pull request, after its steps pass section 3:
    `git_pr_request_review { pr, head, reason }` with the full head SHA the
    green checks ran on and the step as `reason`. If it refuses because the
    head moved, go back to step 3. Then set the stage to
-   `waiting on the user: review <url>` and end your turn. For a step with many
-   pull requests, request each as it goes green. A push after the handoff
+   `review requested: <url>`, keep the task `in_progress`, and end your turn.
+   For a step with many pull requests, request each as it goes green. A push after the handoff
    makes the request stale; once that head is green and reviewed again, hand
    it off again at the new head. When the result says no `git_pr_watch` keeps
    the request current, start the watch from step 2 again.
@@ -228,8 +235,9 @@ For each pull request, after its steps pass section 3:
    same for every open pull request after a restart.
 
 A pull request closed without merging is the user's decision, and you do not
-know why: set the step `pending` with that in its `message`, start nothing
-that depends on it, and ask.
+know why: set the step `waiting`, with a `message` that names the closed pull
+request and asks whether to reopen it, rework the step, or drop it. Start
+nothing that depends on it.
 
 ### After the merge
 
@@ -253,8 +261,9 @@ that depends on it, and ask.
    Its dependents are now ready (section 2).
 6. **Failed: hold the line.** Start no new step and open no new pull request,
    anywhere in the roadmap. Work already running finishes its current run and
-   pull requests already open stay open. Stop and report what failed, the
-   evidence and the step's `Rollback` line. Never
+   pull requests already open stay open. Set the step `waiting`, with a
+   `message` that names the failed check and the step's `Rollback` line, then
+   stop and report what failed and the evidence. Never
    revert, and never open a revert pull request: that is the user's call.
 
 ## 6. When the plan is wrong
@@ -263,9 +272,10 @@ Workers will find things the roadmap did not. Classify each finding:
 
 - **Inside the step** (a missed call site, a test to update): the worker handles
   it within the step.
-- **New friction or a wrong assumption**: do not improvise a new plan. Mark the
-  step `pending`, add the finding to `## Open questions` with evidence, and stop.
-  Offer to return to make-it-easy phase 3 for the affected steps only.
+- **New friction or a wrong assumption**: do not improvise a new plan. Add the
+  finding to `## Open questions` with evidence, set the step `waiting` with a
+  `message` that names the question and offers to return to make-it-easy
+  phase 3 for the affected steps only, and stop.
 - **Unrelated** (noticed, not needed): add it to `Noticed, not doing` and carry on.
 
 ## 7. Finish or stop
@@ -278,7 +288,7 @@ merges whose deploy was not verified and why, anything noted for later.
 When you stop early (blocked, limit reached, a question), leave the ledger and
 the document consistent and report:
 
-- which steps landed, which is blocked and why, which are ready next;
+- which steps landed, which wait on the user and for what, which are ready next;
 - the agent IDs worth resuming, and the worktree each step's work is in;
 - the pull requests still open, and which of them wait on the user;
 - the exact question or decision you need from the user.

@@ -390,9 +390,20 @@ describe("AgentTypeRegistry", () => {
       expect(prompt).not.toContain("a watch it starts would wake no one");
     });
 
-    it("records what waits on the user, and defers to execute-roadmap", () => {
+    it("sets a task waiting on the user, hands a ready PR to the user, and defers to execute-roadmap", () => {
       const prompt = makeRegistry().resolveAgentConfig("orchestrate").systemPrompt;
-      expect(prompt).toContain("record on the task what it waits on");
+      expect(prompt).toContain(
+        "set the task waiting with a message saying what you need from the user and where",
+      );
+      expect(prompt).toContain("Only the main session sets waiting");
+      expect(prompt).toContain("pending, in_progress, waiting, completed");
+      expect(prompt).not.toContain("Represent a waiting or blocked item as pending");
+      expect(prompt).not.toContain("record on the task what it waits on");
+      expect(prompt).toContain(
+        "A task whose pull request waits on the user's review or merge stays in_progress",
+      );
+      expect(prompt).toContain("When you run as the main agent and the PR is ready for review");
+      expect(prompt).toContain("git_pr_request_review at the full head SHA you checked");
       expect(prompt).not.toContain("user_notify");
       expect(prompt).toContain(
         "To carry out a roadmap document, follow the execute-roadmap skill.",
