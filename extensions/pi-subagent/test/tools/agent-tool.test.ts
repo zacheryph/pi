@@ -54,7 +54,7 @@ describe("AgentTool", () => {
     );
   });
 
-  it.for(["general-purpose", "orchestrate", "explore", "plan", "review"])(
+  it.for(["general-purpose", "orchestrate", "explore", "plan", "review", "assist", "dig"])(
     "names %s once",
     (name) => {
       const def = makeTool(createToolDeps()).toToolDefinition();
