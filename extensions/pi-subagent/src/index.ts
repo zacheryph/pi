@@ -58,7 +58,12 @@ import {
 import { subagentSummaryModel } from "#src/observation/summary";
 import { SubagentWork } from "#src/observation/subagent-work";
 import { registerAgentModels } from "#src/agent-models";
-import { registerMainAgentProfile } from "#src/main-agent-profile";
+import {
+  listMainAgentProfiles,
+  registerMainAgentProfile,
+  resolveMainAgentProfile,
+} from "#src/main-agent-profile";
+import { activateProfile, runSwitchCommand } from "#src/handlers/switch-command";
 import { SUBAGENT_RECORD_ENTRY } from "#src/persisted-record";
 import { SubagentRuntime } from "#src/runtime";
 import { readBranchRecords } from "#src/roster";
@@ -460,6 +465,28 @@ export default function (pi: ExtensionAPI) {
         return;
       }
       await showAgentsBrowser(ctx, definitions, { defaultMaxTurns: settings.defaultMaxTurns });
+    },
+  });
+
+  // ---- /subagent:switch command ----
+
+  pi.registerCommand("subagent:switch", {
+    description: "Compact the conversation for another agent profile, then run it",
+    getArgumentCompletions: (prefix) => {
+      if (/\s/.test(prefix)) return null;
+      const items = listMainAgentProfiles({ cwd: process.cwd(), isProjectTrusted: () => true })
+        .filter((p) => p.name.startsWith(prefix))
+        .map((p) => ({ value: p.name, label: p.name, description: p.description }));
+      return items.length ? items : null;
+    },
+    handler: async (args, ctx) => {
+      await runSwitchCommand(args, ctx, {
+        profiles: (c) => listMainAgentProfiles(c),
+        resolve: (name, c) => resolveMainAgentProfile(name, c),
+        current: () => mainProfile.current(),
+        activate: activateProfile(pi, agentModels, mainProfile),
+        show: (c, text, level) => output.show(c, text, level),
+      });
     },
   });
 

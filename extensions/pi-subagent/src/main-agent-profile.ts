@@ -66,6 +66,12 @@ export interface MainAgentProfileHandle {
    * to an agent model, the profile still running is.
    */
   current(): Readonly<AgentConfig> | undefined;
+  /**
+   * Run another profile in this session, keeping its model and thinking level, as picking
+   * its agent model does. Resolves true when that profile now runs; a failure is reported
+   * to the user and blocks input until another model or profile is chosen.
+   */
+  switchTo(ctx: ExtensionContext, name: string): Promise<boolean>;
 }
 
 /** What resolving a main profile reads: the session cwd and whether Pi trusts the project. */
@@ -554,5 +560,11 @@ export function registerMainAgentProfile(
       fail(ctx, "Main agent profile SYSTEM section was removed or replaced.");
     }
   });
-  return { current: reported };
+  return {
+    current: reported,
+    switchTo: async (ctx, name) => {
+      await switchAgent(ctx, name);
+      return reported()?.name === name;
+    },
+  };
 }
