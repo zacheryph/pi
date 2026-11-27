@@ -23,6 +23,11 @@ type Command = Omit<RegisteredCommand, "name" | "sourceInfo">;
 const isOutput = (message: unknown) => shownOutput({ mock: { calls: [[message]] } }).length > 0;
 const isNote = (message: unknown) =>
   (message as { customType?: unknown } | undefined)?.customType === TODO_SYNC_TYPE;
+/** What pi-work's host writes for a waiting task: the answer, or the items no one took back. */
+const isWork = (message: unknown) =>
+  ["todo:reply", "work:lost"].includes(
+    String((message as { customType?: unknown } | undefined)?.customType),
+  );
 export type TodoTool = ToolDefinition<TSchema, TodoDetails>;
 
 /** A note as Pi hands it on: its custom type, text, visibility and details. */
@@ -81,7 +86,7 @@ export function harness(options: HarnessOptions = {}) {
     }),
     sendMessage: vi.fn((message: unknown) => {
       // Idle, Pi appends a note to the branch at once.
-      if (isNote(message)) record(message as SentNote);
+      if (isNote(message) || isWork(message)) record(message as SentNote);
       for (const shown of shownOutput({ mock: { calls: [[message]] } })) {
         notices(shown.text, shown.level);
       }

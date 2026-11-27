@@ -106,7 +106,27 @@ refused. The agent can keep working on other tasks meanwhile. A waiting task is
 unfinished: it counts toward the 50, takes no `in_progress` slot under
 `singleActive`, and holds back the tasks that depend on it, which show as
 `blocked`. When the user answers in chat, the agent moves it back to `pending`
-or `in_progress`; `/todo:update <key> pending` does the same by hand.
+or `in_progress` itself.
+
+The user can also answer where they see what needs them. Each waiting task is an
+item in `todo.attention`, with the message as its reason and a **Reply**
+(`todo.unblock`): bb's Attention page and the dashboard's Needs you panel offer
+it while the session runs, and `/attention` lists it in the terminal. A reply
+is recorded on the task as the user's, sets it `pending`, and wakes the session
+with one message:
+
+```text
+Task staging-host (Pick the staging host) was waiting on you: Pick the staging webhook host in .env.staging: …
+The user replied: hooks.staging
+```
+
+`/todo:update` that moves a waiting task does the same with its message ("The
+user set it in_progress: …"). The wake goes through a `pi-work` item, one per
+waiting task (owner `pi-todo`, kind `waiting`), so it arrives exactly once, after
+a run in progress, a compaction or a reload, and the dashboard lists the task
+among what the session waits on. When the agent moves the task on itself, the
+item closes without a message. A reply names the revision that set the task
+waiting; one to a task that moved on or was set waiting again is refused.
 
 ```json
 {
@@ -385,12 +405,14 @@ session's bus (see [`pi-surface`](../../packages/pi-surface/README.md)), so
 pi-dashboard and bb draw the widget, the browser and the counts and act on them.
 Each subagent has its own bus, so a consumer sees only its own session's tasks.
 
-| Id              | Kind     | What it does                                                                                                                                    |
-| --------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `todo.widget`   | widget   | The above-editor widget as a JSON `WidgetModel`; nothing while the terminal would hide it (no tasks, `widget` off, only hidden completed tasks) |
-| `todo.explorer` | explorer | The `/todo` browser on its All tab as a JSON `ExplorerModel`; `loadDetail` is `todo.inspect`                                                    |
-| `todo.summary`  | summary  | This branch's task counts and the task in progress as a `SummaryModel`, whether or not the widget shows (see below)                             |
-| `todo.inspect`  | action   | `{ id }` resolves to the task's detail blocks                                                                                                   |
+| Id               | Kind      | What it does                                                                                                                                    |
+| ---------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `todo.widget`    | widget    | The above-editor widget as a JSON `WidgetModel`; nothing while the terminal would hide it (no tasks, `widget` off, only hidden completed tasks) |
+| `todo.explorer`  | explorer  | The `/todo` browser on its All tab as a JSON `ExplorerModel`; `loadDetail` is `todo.inspect`                                                    |
+| `todo.summary`   | summary   | This branch's task counts and the task in progress as a `SummaryModel`, whether or not the widget shows (see below)                             |
+| `todo.inspect`   | action    | `{ id }` resolves to the task's detail blocks                                                                                                   |
+| `todo.attention` | attention | One item per task waiting on the user: id `task:<key>`, category `task`, the message as reason, `reply` to `todo.unblock`                       |
+| `todo.unblock`   | action    | `{ key, rev, text }` answers a waiting task: the text as the user's update, the task `pending`, the session woken with the answer               |
 
 The terminal draws the same models: the widget is `todo.widget`'s model with the
 terminal's row budgets, and `/todo` opens the `todo.explorer` model, loading

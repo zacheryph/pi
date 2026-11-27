@@ -30,7 +30,7 @@ item.complete({ customType: "job:completion", content: "Tests passed" });
 ```mermaid
 sequenceDiagram
     participant M as Model
-    participant P as Producer (pi-job, pi-subagent, pi-ask, pi-git)
+    participant P as Producer (pi-job, pi-subagent, pi-ask, pi-git, pi-todo)
     participant H as Work host
     M->>P: tool call (job_start, subagent_start, ask, git_pr_watch)
     P->>H: open(item) — persisted
@@ -41,8 +41,9 @@ sequenceDiagram
 ```
 
 Producers today: pi-job (jobs and watches), pi-subagent (agent runs, and a
-host of its own for every child), pi-ask (a subagent's question to its parent)
-and pi-git (watched pull requests). The [dashboard](../../extensions/pi-dashboard/README.md)
+host of its own for every child), pi-ask (a subagent's question to its parent),
+pi-git (watched pull requests) and pi-todo (tasks waiting on the user, answered
+with a reply). The [dashboard](../../extensions/pi-dashboard/README.md)
 and the subagent widget read `list()` to show what a session waits on.
 
 ## The contract (`src/contract.ts`)
