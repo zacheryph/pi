@@ -263,7 +263,7 @@ describe("subscribeSubagentObserver", () => {
     expect(state.responseText).toBe("");
   });
 
-  it("calls onActivityChange on first nonempty text_delta with responseText captured, not on empty or subsequent", () => {
+  it("announces each nonempty text_delta after updating the visible response text", () => {
     const session = createMockSession();
     const state = makeState();
     const capturedTexts: string[] = [];
@@ -294,16 +294,17 @@ describe("subscribeSubagentObserver", () => {
     onActivityChange.mockClear();
     capturedTexts.length = 0;
 
-    // Subsequent deltas should not trigger
+    // Subsequent deltas change the text the widget shows too.
     session.emit({
       type: "message_update",
       assistantMessageEvent: { type: "text_delta", delta: " world" },
     });
-    expect(onActivityChange).not.toHaveBeenCalled();
+    expect(onActivityChange).toHaveBeenCalledOnce();
+    expect(capturedTexts).toEqual(["Hello world"]);
     expect(state.responseText).toBe("Hello world");
   });
 
-  it("resets first-text tracking on each message_start and announces only when text visible", () => {
+  it("announces text resets and the text of a subsequent message", () => {
     const session = createMockSession();
     const state = makeState();
     const onActivityChange = vi.fn();
@@ -319,7 +320,7 @@ describe("subscribeSubagentObserver", () => {
     });
     expect(onActivityChange).toHaveBeenCalledOnce();
 
-    // Second message: start (announce, text was nonempty), text (no announce, already tracked)
+    // Second message: both clearing the prior text and adding new text are visible.
     onActivityChange.mockClear();
     session.emit({ type: "message_start" });
     expect(onActivityChange).toHaveBeenCalledOnce();

@@ -256,7 +256,7 @@ export interface SubagentManagerObserver {
   /** Fires synchronously after a background agent record is created (before run). */
   onSubagentCreated(record: Subagent): void;
   /**
-   * Fires when live activity changes during a run: tool start/end, first assistant text,
+   * Fires when live activity changes during a run: tool start/end, assistant text,
    * or usage update at message end. Optional: remote renderers use it to publish live state.
    */
   onSubagentActivityChanged?(record: Subagent): void;

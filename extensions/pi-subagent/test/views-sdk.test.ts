@@ -1,4 +1,5 @@
-import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
+import { join } from "node:path";
+import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
 import { expect, it } from "vitest";
 import {
   isViewModel,
@@ -101,4 +102,51 @@ it("offers the widget, the branch's subagents and their counts as views, announc
     completed: 1,
     total: 1,
   });
+}, 30_000);
+
+it("announces live tool activity before a child finishes or the parent prompts again", async () => {
+  const announcedWidgets: string[] = [];
+  let bus: ActionBus | undefined;
+  const h = await startParent({
+    extensions: [
+      (pi) => {
+        bus = pi.events;
+        onViewChanged(pi.events, (id) => {
+          if (id === SUBAGENT_WIDGET_VIEW) {
+            announcedWidgets.push(JSON.stringify(readView(pi.events, id)) ?? "");
+          }
+        });
+      },
+    ],
+  });
+  const finish = gated(fauxAssistantMessage("Read complete."));
+  h.script({
+    parent: [
+      delegate("Read a file"),
+      fauxAssistantMessage("Started."),
+      fauxAssistantMessage("Noted."),
+    ],
+    child: [
+      fauxAssistantMessage([fauxToolCall("read", { path: join(h.dir, "settings.json") })]),
+      finish.step,
+    ],
+  });
+
+  try {
+    await h.session.prompt("Delegate a read");
+    await finish.started;
+    expect(h.announcements()).toHaveLength(0);
+    expect(h.requests.parent).toHaveLength(2);
+    // Read at announcement time, just as remote consumers do. Merely reading a
+    // live model here would conceal the bug: it is fresh even without a notification.
+    expect(announcedWidgets.some((model) => model.includes("reading…"))).toBe(true);
+    expect(JSON.stringify(readView(bus!, SUBAGENT_WIDGET_VIEW))).toContain("thinking…");
+    const [id] = h.agentIds();
+    expect(h.savedRecord(id!)?.toolUses).toBe(0); // activity did not persist lifecycle records
+  } finally {
+    finish.release();
+  }
+  await untilAnnounced(h);
+  await h.session.waitForIdle();
+  expect(h.savedRecord(h.agentIds()[0]!)?.toolUses).toBe(1);
 }, 30_000);
