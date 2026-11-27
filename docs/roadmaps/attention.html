@@ -1368,9 +1368,10 @@ flowchart LR
         <p>
           <b>pi-git, first producer.</b> Reuse #207's reducer (steps 1–2) and add
           <code>git_pr_request_review</code> (main session only). It checks that the PR is open and
-          that its head is the SHA given, records a <code>git:attention</code> entry and arms a
-          watch. The watch is a <code>pi-work</code> item, so the session wakes when the PR changes
-          and the item moves on without anything polling.
+          that its head is the SHA given, records a <code>git:attention</code> entry. It does not
+          start a watch; it says when no <code>git_pr_watch</code> keeps the request current. The
+          watch the agent keeps is a <code>pi-work</code> item, so the item moves on without
+          anything polling.
         </p>
       </div>
       <pre class="mermaid">
@@ -1620,8 +1621,8 @@ stateDiagram-v2
           <div>
             <b>Turn on review handoffs</b
             ><span
-              ><code>git_pr_request_review</code> (main session, checks head, arms watch);
-              <code>execute-roadmap</code> calls it before its one <code>user_notify</code>.
+              ><code>git_pr_request_review</code> (main session, checks head, names a missing
+              watch); <code>execute-roadmap</code> calls it before its one <code>user_notify</code>.
               Scenario in <code>test/</code>: green → request → duplicate → head move → re-request →
               ready-for-review → reload. Size S.</span
             >

@@ -208,11 +208,19 @@ For each pull request, after its steps pass section 3:
    pull request as ready. A worker may rebase and force-push with lease the
    branch it created.
 4. **Hand it to the user.** When checks are green on the head and no review
-   thread waits on the worker, call `user_notify` with the pull request and
-   what it is ("PR 12 ready for review", the URL and the step), set the stage
-   to `waiting on the user: review <url>`, and end your turn. Once per pull
-   request and head. For a step with many pull requests send one notification
-   when all of them are green, naming the count and the step, not one each.
+   thread waits on the worker, call
+   `git_pr_request_review { pr, head, reason }` with the full head SHA the
+   green checks ran on and the step as `reason`. If it refuses because the
+   head moved, go back to step 3. Then call `user_notify` with the pull
+   request and what it is ("PR 12 ready for review", the URL and the step),
+   set the stage to `waiting on the user: review <url>`, and end your turn.
+   Once per pull request and head: a request that comes back "already
+   requested" needs no notification. For a step with many pull requests,
+   request each, then send one notification when all of them are green,
+   naming the count and the step, not one each. A push after the handoff
+   makes the request stale; once that head is green and reviewed again, hand
+   it off again at the new head. When the result says no `git_pr_watch` keeps
+   the request current, start the watch from step 2 again.
 5. **Wait for the merge.** You never approve, merge, or turn on auto-merge. The
    user merges, or their auto-merge does; the watch reports `Merged.` either
    way. Review comments that arrive meanwhile go back to step 3.

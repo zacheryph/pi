@@ -29,7 +29,7 @@ import {
 import { resolve } from "node:path";
 import { Type } from "typebox";
 import { actionRegistry, viewRegistry } from "#surface";
-import { showExplorer, sanitizeText } from "#ui";
+import { showExplorer, sanitizeLine, sanitizeText } from "#ui";
 import { readEntries, restoreCard, treeService, type EntriesSource } from "#session-state";
 import { ensureWorkHost } from "#work";
 import {
@@ -38,10 +38,16 @@ import {
   attentionModel,
   GIT_ATTENTION_DISMISS,
   GIT_ATTENTION_VIEW,
+  FULL_SHA,
+  isAttentionEntry,
+  isPrIdentity,
+  MAX_REQUEST_REASON,
   readReviews,
   reduceReviews,
   rowForItem,
   type AttentionEntry,
+  type ReviewRequest,
+  type ReviewRow,
   type ReviewRows,
 } from "#src/attention";
 import { CARD_TYPE, ledgerCard } from "#src/card";
@@ -165,6 +171,13 @@ function mcpAccess(ctx: unknown, signal?: AbortSignal): McpAccess | undefined {
     },
   };
 }
+
+/** pi-git's tools that read GitHub and record what they read themselves; the observer skips them. */
+const OWN_READS: ReadonlySet<string> = new Set([
+  "git_pr_status",
+  "git_pr_watch",
+  "git_pr_request_review",
+]);
 
 /** Calls that read the same status again and again: an unchanged read writes no ledger entry. */
 const POLLING_TOOLS: ReadonlySet<string> = new Set([
@@ -722,7 +735,7 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
   // Every tool call: did it touch a pull request? Parsing only; never changes the result.
   pi.on("tool_result", async (event, ctx) => {
     // git_pr_status and git_pr_watch record what they read themselves, including through nested MCP calls.
-    if (event.toolName === "git_pr_status" || event.toolName === "git_pr_watch") return;
+    if (OWN_READS.has(event.toolName)) return;
     if (event.parentToolCallId && ownCalls.has(event.parentToolCallId)) return;
     try {
       const observations = await observe(event as ToolResultLike, { cwd: ctx.cwd, resolveRepo });
@@ -1226,6 +1239,173 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
           );
         } catch (error) {
           throw new Error(`git_pr_watch: ${errorText(error)}`);
+        }
+      },
+    }),
+  );
+
+  /**
+   * Hand a PR to the user for review at `head`, from facts just read and
+   * recorded. Records nothing unless they show it open at exactly that head.
+   * Kept apart from the tool so a tool that opens a PR can hand it off too.
+   */
+  const handOff = (
+    ref: PrRef,
+    head: string,
+    fetched: Fetched,
+    reason?: string,
+  ): { requested: boolean; row: ReviewRow; replaced?: ReviewRow } => {
+    const label = prLabel(ref);
+    const { state, headSha, draft } = fetched.facts;
+    if (state !== "open")
+      throw new Error(`${label} is ${state ?? "in a state GitHub did not report"}, not open`);
+    if (!headSha) throw new Error(`GitHub did not report ${label}'s head commit`);
+    if (headSha.toLowerCase() !== head.toLowerCase())
+      throw new Error(
+        `${label}'s head is ${headSha.slice(0, 12)} on GitHub, not ${head.slice(0, 12)}: check what is pushed, then request review at that head`,
+      );
+    const key = prKey(ref);
+    const existing = reviews.get(key);
+    if (existing?.state === "ready" && existing.request.head === head.toLowerCase())
+      return { requested: false, row: existing };
+    const entry: ReviewRequest = {
+      v: ATTENTION_VERSION,
+      kind: "request",
+      key,
+      host: ref.host,
+      owner: ref.owner,
+      repo: ref.repo,
+      number: ref.number,
+      head: head.toLowerCase(),
+      ...(draft === true ? { draft: true } : {}),
+      ...(reason ? { reason } : {}),
+      at: now(),
+    };
+    if (!isAttentionEntry(entry))
+      throw new Error(`${label} cannot be recorded: its identity is too long`);
+    recordIntent(entry);
+    return { requested: true, row: reviews.get(key)!, ...(existing ? { replaced: existing } : {}) };
+  };
+
+  /** Whether a watch keeps a handed-off PR's request current, and the call that would. */
+  const watchAdvice = (ref: PrRef): string => {
+    const watch = watches.get(prKey(ref));
+    if (watch?.until === "merged")
+      return "git_pr_watch is watching it until it is merged or closed, so the request follows it while this session runs.";
+    const call = `git_pr_watch { pr: "${prUrl(ref)}", until: "merged" }`;
+    return watch
+      ? `The watch on it ends when checks finish: call ${call} so the request follows it until it is merged or closed.`
+      : `No git_pr_watch is open on it: call ${call} so the request follows it while this session runs. Without one, nothing updates the request until the pull request is read again.`;
+  };
+
+  pi.registerTool(
+    defineTool({
+      name: "git_pr_request_review",
+      label: "Git PR Request Review",
+      description:
+        "Hand a pull request to the user for review at the head commit you checked. Reads it from GitHub once and records the request only if it is open at exactly that head; never writes to GitHub and does not notify the user. " +
+        "The user sees it as waiting on them (bb, the dashboard, /attention) until they approve it, mark it ready for review (when it was a draft), merge or close it, or dismiss it. A push after the request marks it stale: request again at the new head once it is ready. " +
+        "Asking again for the same head while it waits records nothing. It does not watch the pull request: its result says when no git_pr_watch keeps the request current. Main session only.",
+      promptSnippet: "Hand a pull request to the user for review at the head you checked.",
+      promptGuidelines: [
+        "Call git_pr_request_review when a pull request is ready for the user to review, with the full head SHA you checked, then tell the user with user_notify. Green checks alone are not a handoff.",
+        'Keep a git_pr_watch with until: "merged" on a pull request you hand to the user, so the request follows it; git_pr_request_review says when there is none.',
+      ],
+      parameters: Type.Object({
+        pr: Type.String({
+          description:
+            "A pull request URL, owner/repo#number, or a number in the current repository.",
+        }),
+        head: Type.String({
+          description: "The full 40-character SHA of the head commit you checked and hand off.",
+        }),
+        reason: Type.Optional(
+          Type.String({
+            description: `What the user is reviewing, in a few words, e.g. the roadmap step. At most ${MAX_REQUEST_REASON} characters.`,
+          }),
+        ),
+      }),
+      annotations: { openWorldHint: true },
+      async execute(id, params, signal, _update, ctx) {
+        try {
+          if (tree.node()?.parent !== undefined)
+            throw new Error(
+              "only the main session hands pull requests to the user. Report it to the delegating agent instead.",
+            );
+          const head = params.head.trim();
+          if (!FULL_SHA.test(head))
+            throw new Error(
+              `"${params.head}" is not a full commit SHA: pass the 40-character head SHA you checked`,
+            );
+          const repo = /^#?\d+$/.test(params.pr.trim()) ? await resolveRepo(ctx.cwd) : undefined;
+          const ref = parsePrTarget(params.pr, repo);
+          if (!ref)
+            throw new Error(
+              `"${params.pr}" is not a pull request URL, owner/repo#number, or a number in this repository`,
+            );
+          if (!isPrIdentity(ref))
+            throw new Error(`"${params.pr}" does not name a pull request on GitHub`);
+          const label = prLabel(ref);
+          const reason = sanitizeLine(params.reason ?? "")
+            .trim()
+            .slice(0, MAX_REQUEST_REASON);
+          const details = (requested: boolean, row: ReviewRow) => ({
+            requested,
+            key: row.request.key,
+            head: row.request.head,
+            state: row.state,
+            ...(watches.get(row.request.key)
+              ? { watching: watches.get(row.request.key)!.until }
+              : {}),
+          });
+          // Already waiting on the user at this head: nothing to read or record.
+          const waiting = reviews.get(prKey(ref));
+          if (waiting?.state === "ready" && waiting.request.head === head.toLowerCase())
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: `Review of ${label} at ${head.slice(0, 12)} is already requested; nothing recorded.\n${watchAdvice(ref)}`,
+                },
+              ],
+              details: details(false, waiting),
+            };
+
+          const started = generation;
+          ownCalls.add(id);
+          let fetched: Fetched;
+          try {
+            fetched = await readStatus(ref, { signal, ...mcpAccess(ctx, signal) });
+          } finally {
+            ownCalls.delete(id);
+          }
+          signal?.throwIfAborted();
+          if (started !== generation) throw new Error("the session changed while reading it");
+          const agentId = tree.node()?.agentId;
+          recordFetched(
+            ref,
+            fetched,
+            { tool: "git_pr_request_review", toolCallId: id, ...(agentId ? { agentId } : {}) },
+            true,
+          );
+          const outcome = handOff(ref, head, fetched, reason || undefined);
+          const at = outcome.row.request.head.slice(0, 12);
+          const until = outcome.row.request.draft
+            ? "they mark it ready for review, approve, merge or close it, or dismiss it"
+            : "they approve, merge or close it, or dismiss it";
+          const again =
+            outcome.replaced?.state === "stale"
+              ? ` (the request at ${outcome.replaced.request.head.slice(0, 12)} was stale)`
+              : "";
+          const text = outcome.requested
+            ? `Requested review of ${label} at ${at}${again}. It waits on the user until ${until}; a push makes it stale. The user is not notified: tell them with user_notify.`
+            : `Review of ${label} at ${at} is already requested; nothing recorded.`;
+          return {
+            content: [{ type: "text" as const, text: `${text}\n${watchAdvice(ref)}` }],
+            details: details(outcome.requested, outcome.row),
+          };
+        } catch (error) {
+          throw new Error(`git_pr_request_review: ${errorText(error)}`);
         }
       },
     }),

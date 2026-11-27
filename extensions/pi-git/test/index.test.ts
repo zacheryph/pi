@@ -135,6 +135,7 @@ describe("pi-git registration", () => {
       "git_pr_list",
       "git_pr_status",
       "git_pr_watch",
+      "git_pr_request_review",
     ]);
     expect(h.commands.has("git:refresh")).toBe(true);
     expect(h.commands.has("git:worktrees")).toBe(true);
@@ -1756,6 +1757,120 @@ describe("review requests", () => {
     h.entries.push(requestEntry());
     await h.fire("session_tree");
     expect(states(h)).toEqual([`${ID}:ready`]);
+  });
+
+  describe("git_pr_request_review", () => {
+    const requestReview = (h: Awaited<ReturnType<typeof withGh>>["h"], extra = {}) =>
+      h.tool("git_pr_request_review", { pr: "acme/web#42", head: A, ...extra });
+    const WATCH_CALL =
+      'git_pr_watch { pr: "https://github.com/acme/web/pull/42", until: "merged" }';
+
+    it("records a request at the checked head and says no watch keeps it current", async () => {
+      const { h } = await withGh([]);
+      const result = await requestReview(h, { reason: "Step 3: retry policy" });
+      expect(result.content[0].text).toBe(
+        [
+          "Requested review of acme/web#42 at a13c90e00000. It waits on the user until they mark it ready for review, approve, merge or close it, or dismiss it; a push makes it stale. The user is not notified: tell them with user_notify.",
+          `No git_pr_watch is open on it: call ${WATCH_CALL} so the request follows it while this session runs. Without one, nothing updates the request until the pull request is read again.`,
+        ].join("\n"),
+      );
+      expect(result.details).toEqual({ requested: true, key: KEY, head: A, state: "ready" });
+      expect(intents(h)).toEqual([
+        expect.objectContaining({
+          kind: "request",
+          key: KEY,
+          head: A,
+          draft: true,
+          reason: "Step 3: retry policy",
+        }),
+      ]);
+      // What it read is in the ledger, before the request, so it is not taken as a later fact.
+      const order = h.entries.map((entry) => (entry as { customType?: string }).customType);
+      expect(order.indexOf(LEDGER_TYPE)).toBeLessThan(order.indexOf(ATTENTION_TYPE));
+      expect(states(h)).toEqual([`${ID}:ready`]);
+      expect(model(h).items[0]).toMatchObject({
+        reason: "Step 3: retry policy · draft at a13c90e",
+      });
+    });
+
+    it("records nothing for a retry at the same head, without reading GitHub", async () => {
+      const runGh = vi.fn(async () => ghView());
+      const h = harness({ sessionId: "parent", cwd: box.dir, root: box.root, runGh });
+      await h.fire("session_start");
+      await requestReview(h as never);
+      const reads = runGh.mock.calls.length;
+      const again = await requestReview(h as never);
+      expect(again.content[0].text).toMatch(
+        /^Review of acme\/web#42 at a13c90e00000 is already requested; nothing recorded\.\n/,
+      );
+      expect(again.details).toMatchObject({ requested: false });
+      expect(runGh.mock.calls.length).toBe(reads);
+      expect(intents(h)).toHaveLength(1);
+    });
+
+    it("requests again at the new head after a push made the request stale", async () => {
+      const { h, answer } = await withGh([requestEntry()]);
+      answer.json = ghView({ headRefOid: B, isDraft: false });
+      await read(h);
+      expect(states(h)).toEqual([`${ID}:stale`]);
+      const result = await requestReview(h, { head: B });
+      expect(result.content[0].text).toMatch(
+        /^Requested review of acme\/web#42 at b24d01f11111 \(the request at a13c90e00000 was stale\)\. It waits on the user until they approve, merge or close it, or dismiss it;/,
+      );
+      expect(model(h).items).toEqual([expect.objectContaining({ rev: B, state: "ready" })]);
+    });
+
+    it("refuses a head GitHub does not show, a closed PR or a short SHA, and records no request", async () => {
+      const { h, answer } = await withGh([]);
+      await expect(requestReview(h, { head: B })).rejects.toThrow(
+        "git_pr_request_review: acme/web#42's head is a13c90e00000 on GitHub, not b24d01f11111",
+      );
+      answer.json = ghView({ state: "CLOSED" });
+      await expect(requestReview(h)).rejects.toThrow("acme/web#42 is closed, not open");
+      await expect(requestReview(h, { head: "a13c90e" })).rejects.toThrow(
+        "is not a full commit SHA",
+      );
+      await expect(requestReview(h, { pr: "not a pr" })).rejects.toThrow(
+        "is not a pull request URL",
+      );
+      expect(intents(h)).toEqual([]);
+      expect(model(h).items).toEqual([]);
+    });
+
+    it("says the watch keeps it current when one runs until merged, and when one ends sooner", async () => {
+      const { h } = await withGh([]);
+      await h.tool("git_pr_watch", { pr: "acme/web#42", until: "merged" });
+      const watched = await requestReview(h);
+      expect(watched.content[0].text).toMatch(
+        /\ngit_pr_watch is watching it until it is merged or closed, so the request follows it while this session runs\.$/,
+      );
+      expect(watched.details).toMatchObject({ watching: "merged" });
+      await h.tool("git_pr_watch", { pr: "acme/web#42", stop: true });
+      // Checks still running, so a "settled" watch stays open, and ends when they finish.
+      const { h: other } = await withGh([], "other");
+      await other.tool("git_pr_watch", { pr: "acme/web#42" });
+      const settled = await requestReview(other);
+      expect(settled.content[0].text).toContain(
+        `The watch on it ends when checks finish: call ${WATCH_CALL}`,
+      );
+      await other.tool("git_pr_watch", { pr: "acme/web#42", stop: true });
+    });
+
+    it("is refused in a subagent", async () => {
+      const { h: parent } = await withGh([]);
+      parent.pi.events.emit("subagent:session:created", {
+        sessionId: "child",
+        parentSessionId: "parent",
+        agentId: "agent-7",
+        cwd: box.dir,
+      });
+      const { h: child } = await withGh([], "child");
+      await expect(requestReview(child)).rejects.toThrow(
+        "git_pr_request_review: only the main session hands pull requests to the user",
+      );
+      expect(intents(child)).toEqual([]);
+      expect(intents(parent)).toEqual([]);
+    });
   });
 
   it("takes a subagent's facts but not its intent", async () => {

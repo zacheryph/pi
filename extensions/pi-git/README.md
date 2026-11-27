@@ -20,6 +20,10 @@ session opened or looked at. Both survive reloads, resumes and compaction.
 - **The agent calls** `git_pr_status` for a PR's current state from GitHub, and
   `git_pr_watch` to end its turn and be woken when checks finish, the head
   moves, a review or comment arrives, or the PR is merged or closed.
+- **The agent calls** `git_pr_request_review { pr, head }` to hand a PR to you
+  at the head it checked. You see it waiting on you in bb, the dashboard and
+  `/attention` until you approve it, mark it ready for review, merge or close
+  it, or dismiss it.
 - **You type** `/git:worktrees` and `/git:prs` to browse both, and
   `/git:refresh` to re-read every open PR and re-check every worktree.
 
@@ -36,14 +40,15 @@ releasing an agent never removes it.
 
 ## Tools
 
-| Tool                  | What it does                                                                                                                                                                   |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `git_worktree_create` | `{ branch, repo?, base?, workspace? }`. Creates a worktree and returns the path to pass as `cwd` to `subagent_start`.                                                          |
-| `git_worktree_list`   | `{ includeRemoved? }`. This session's worktrees with repository, branch, workspace, the subagents that ran there, and git status. Read-only.                                   |
-| `git_worktree_remove` | `{ path, force? }`. Removes a worktree; the branch is always kept. Refuses when removal would lose work (uncommitted changes, or commits on a detached `HEAD`) unless `force`. |
-| `git_pr_list`         | `{ includeReferenced? }`. The pull requests this session opened or looked at, with the last status a tool showed for each. Read-only; reads the ledger, not GitHub.            |
-| `git_pr_status`       | `{ pr?, includeReferenced? }`. Reads pull requests' current status from GitHub and records it. Read-only on GitHub; see [Fresh status](#fresh-status).                         |
-| `git_pr_watch`        | `{ pr, until?, timeoutSeconds?, stop? }`. Waits on a pull request and wakes the session when it changes; see [Watching a pull request](#watching-a-pull-request).              |
+| Tool                    | What it does                                                                                                                                                                    |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `git_worktree_create`   | `{ branch, repo?, base?, workspace? }`. Creates a worktree and returns the path to pass as `cwd` to `subagent_start`.                                                           |
+| `git_worktree_list`     | `{ includeRemoved? }`. This session's worktrees with repository, branch, workspace, the subagents that ran there, and git status. Read-only.                                    |
+| `git_worktree_remove`   | `{ path, force? }`. Removes a worktree; the branch is always kept. Refuses when removal would lose work (uncommitted changes, or commits on a detached `HEAD`) unless `force`.  |
+| `git_pr_list`           | `{ includeReferenced? }`. The pull requests this session opened or looked at, with the last status a tool showed for each. Read-only; reads the ledger, not GitHub.             |
+| `git_pr_status`         | `{ pr?, includeReferenced? }`. Reads pull requests' current status from GitHub and records it. Read-only on GitHub; see [Fresh status](#fresh-status).                          |
+| `git_pr_watch`          | `{ pr, until?, timeoutSeconds?, stop? }`. Waits on a pull request and wakes the session when it changes; see [Watching a pull request](#watching-a-pull-request).               |
+| `git_pr_request_review` | `{ pr, head, reason? }`. Hands a pull request to the user for review at that full head SHA. Main session only; never writes to GitHub; see [Review requests](#review-requests). |
 
 `git_worktree_create`:
 
@@ -331,9 +336,21 @@ summary settles `prs-watching` to 0 and keeps every other count.
 A pull request handed to you for review is an owed item in pi-surface's
 `attention` view, `git.attention`: one per PR, which bb's Attention page and
 context card, `/attention` in the terminal and the dashboard's "Needs you"
-panel list. The tool that hands a PR to you is not registered yet (step 9 of
-the [attention roadmap](../../docs/roadmaps/attention.md)), so the view stays
-empty until it is.
+panel list. The main session's agent hands one over with
+`git_pr_request_review { pr, head, reason? }`:
+
+- **It reads the PR once** and records the request only when the PR is open
+  with exactly that full head SHA. A read that fails or disagrees records
+  nothing, and the error says what GitHub shows. What it read is recorded
+  first, as any read is, so it never counts as a later fact.
+- **It records nothing for a retry** of the same head while the request waits,
+  and does not read GitHub for it. A request at a new head replaces a stale one.
+- **It does not watch the PR or notify you.** Its result says whether a
+  `git_pr_watch` with `until: "merged"` keeps the request current and, when
+  none does, the call that would. Without one, the request changes only when
+  something reads the PR again. Telling you is `user_notify`'s job.
+- **A subagent cannot call it:** handing work to you is the main session's
+  decision.
 
 Intent is kept apart from facts. A request (this PR, at this full head SHA)
 and a dismissal are `git:attention` custom entries, written by the main
