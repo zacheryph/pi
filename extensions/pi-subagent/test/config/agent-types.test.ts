@@ -380,7 +380,10 @@ describe("AgentTypeRegistry", () => {
       expect(prompt).toContain("Wait on it with git_pr_watch and end your turn; never poll.");
       expect(prompt).not.toContain("job_watch on git_pr_status");
       expect(prompt).toContain("a task to land a PR stays open until it is merged");
-      expect(prompt).toContain("Never approve or merge.");
+      expect(prompt).toContain("Never approve, merge or turn on auto-merge on your own.");
+      expect(prompt).toContain(
+        "When the user tells you pull requests they reviewed can go, mark them all in one git_pr_ready call",
+      );
     });
 
     it("can give a PR owner the CI and review follow-up loop", () => {
@@ -525,6 +528,13 @@ describe("AgentTypeRegistry", () => {
       expect(prompt).toContain("Read-only means no side effect on any system");
       expect(prompt).toContain("wait for the user's go-ahead");
       expect(prompt).toContain("Never poll through model turns");
+    });
+
+    it("ships pull requests the user reviewed with one git_pr_ready call", () => {
+      const prompt = makeRegistry().resolveAgentConfig("assist").systemPrompt;
+      expect(prompt).toContain(
+        "mark them all in one git_pr_ready call with the heads they reviewed",
+      );
     });
 
     it("keeps incident notes and follow-ups that survive compaction", () => {

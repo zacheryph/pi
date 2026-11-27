@@ -91,7 +91,8 @@ The profile's instructions establish this working loop:
    A task only the user can move on is set `waiting`, with a message saying what the
    user must do and where; other blocked items stay `pending` with a described blocker.
    A PR waiting on review stays `in_progress`: as the main agent, the orchestrator hands
-   it to the user with `git_pr_request_review` at the head it checked.
+   it to the user with `git_pr_request_review` at the head it checked, and marks the
+   ones the user says can go with one `git_pr_ready` call.
 4. Message workers with `subagent_send`, by their original agent IDs, for
    rationale, clarification, or follow-up work: it steers a running worker and
    gives a settled one a new run. Reuse their context instead of
