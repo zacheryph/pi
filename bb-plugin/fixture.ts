@@ -711,6 +711,29 @@ function attentionView(now: number): ViewEntry {
   return { id: "git.attention", kind: "attention", title: "Git", model };
 }
 
+/**
+ * What pi-todo will publish for a task waiting on the user: an item that
+ * takes a reply, which moves the task on and wakes the agent.
+ */
+function todoAttentionView(now: number): ViewEntry {
+  const model: AttentionModel = {
+    items: [
+      {
+        id: "task:staging-host",
+        rev: "3",
+        category: "task",
+        title: "Pick the staging webhook host",
+        reason: "Tell me which host staging webhooks should post to: hooks.staging or a new one.",
+        state: "ready",
+        since: ago(now, 6),
+        reply: { action: "todo.unblock", args: { key: "staging-host", rev: "3" } },
+      },
+    ],
+    total: 1,
+  };
+  return { id: "todo.attention", kind: "attention", title: "Todos", model };
+}
+
 function formView(now: number): FormModel {
   return {
     questionnaires: [
@@ -751,6 +774,7 @@ export function fixtureSnapshot(now = Date.now()): DeliverySnapshot {
   const views: ViewEntry[] = [
     { id: "ask.questions", kind: "form", title: "Questions", model: formView(now) },
     attentionView(now),
+    todoAttentionView(now),
     ...gitViews(),
     ...stashViews(now),
     ...subagentViews(now),
@@ -818,6 +842,9 @@ export function fixtureResponder(now = Date.now()) {
       }
       case "git.attention.dismiss":
         // A fixture keeps its items: there is no ledger to record the dismissal in.
+        return null;
+      case "todo.unblock":
+        // A fixture keeps its items: there is no task to move on or agent to wake.
         return null;
       case "ask.submit":
       case "ask.cancel":

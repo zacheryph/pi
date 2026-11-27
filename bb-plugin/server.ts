@@ -160,24 +160,30 @@ export function createPlugin(options: PluginOptions = {}) {
       throw error;
     };
 
+    /** The item the user acted on, as it is now: refused if it went or changed since it was shown. */
+    const shownItem = (threadId: string, viewId: string, itemId: string, rev?: string) => {
+      const found = findItem(store.get(threadId).snapshot, viewId, itemId);
+      const item = found.view === "ok" ? found.item : undefined;
+      if (!item)
+        throw new PluginRpcRefusal({
+          code: "not_found",
+          message: "That item is no longer listed.",
+        });
+      if (item.rev !== rev)
+        throw new PluginRpcRefusal({
+          code: "conflict",
+          message: "That item changed since it was shown; look at it again.",
+        });
+      return item;
+    };
+
     bb.rpc.register(rpcContract, {
       snapshot: ({ threadId }) => store.get(threadId),
       sessions: () => ({ sessions: store.summaries() }),
       attention: () => store.attention(),
       dismiss: async ({ threadId, viewId, itemId, rev }) => {
-        const { snapshot, source, connected } = store.get(threadId);
-        const found = findItem(snapshot, viewId, itemId);
-        const item = found.view === "ok" ? found.item : undefined;
-        if (!item)
-          throw new PluginRpcRefusal({
-            code: "not_found",
-            message: "That item is no longer listed.",
-          });
-        if (item.rev !== rev)
-          throw new PluginRpcRefusal({
-            code: "conflict",
-            message: "That item changed since it was shown; look at it again.",
-          });
+        const { source, connected } = store.get(threadId);
+        const item = shownItem(threadId, viewId, itemId, rev);
         // A running Pi (or the fixture) dismisses it now; a saved session's item lost its action.
         if ((source === "live" && connected) || source === "fixture") {
           if (!item.dismiss)
@@ -194,6 +200,23 @@ export function createPlugin(options: PluginOptions = {}) {
         }
         await dismissals.add({ threadId, viewId, itemId, ...(rev ? { rev } : {}) });
         return { queued: true };
+      },
+      reply: async ({ threadId, viewId, itemId, rev, text }) => {
+        const item = shownItem(threadId, viewId, itemId, rev);
+        // A saved item has no reply (settled); only a running Pi or the fixture can take one.
+        if (!item.reply)
+          throw new PluginRpcRefusal({
+            code: "conflict",
+            message: "This item cannot take a reply here.",
+          });
+        try {
+          const args = item.reply.args;
+          const base = args && typeof args === "object" && !Array.isArray(args) ? args : {};
+          await store.request(threadId, { action: item.reply.action, args: { ...base, text } });
+        } catch (error) {
+          return refusal(error);
+        }
+        return {};
       },
       request: async ({ threadId, request }) => {
         try {

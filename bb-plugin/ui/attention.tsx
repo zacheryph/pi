@@ -13,6 +13,7 @@ import {
 import { useCallback, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
+import { MAX_ATTENTION_REPLY } from "pi-surface/attention";
 import { rpcContract, type AttentionResult, type ThreadAttentionRow } from "../contract.ts";
 import { ago } from "./format.ts";
 import { LineText, plainText } from "./surface.tsx";
@@ -38,6 +39,7 @@ const CATEGORY_ICON: Record<string, string> = {
   waiting: "Info",
   review: "GitPullRequest",
   findings: "ListTodo",
+  task: "Pause",
 };
 export const categoryIcon = (category: string) => CATEGORY_ICON[category] ?? "AlertCircle";
 
@@ -47,6 +49,7 @@ const CATEGORY_NAME: Record<string, [string, string]> = {
   findings: ["finding", "findings"],
   question: ["question", "questions"],
   waiting: ["dialog", "dialogs"],
+  task: ["task", "tasks"],
 };
 function categoryLabel(category: string, count: number): string {
   const [one, many] = CATEGORY_NAME[category] ?? [category, category];
@@ -131,6 +134,81 @@ export interface AttentionActions {
   onOpenUrl(url: string): void;
   /** Resolves `true` when the dismissal waits for the thread's Pi to come back. */
   onDismiss(row: ThreadAttentionRow): Promise<boolean>;
+  /** Sends the user's reply to the row's `reply` action; rejects with why it was refused. */
+  onReply(row: ThreadAttentionRow, text: string): Promise<void>;
+}
+
+/** Only a running Pi can take a reply; a saved row never has one, since settling drops it. */
+const canReply = (row: ThreadAttentionRow) =>
+  !!row.reply && row.connected && (row.source === "live" || row.source === "fixture");
+
+/** The reply box under a row: the draft and any refusal stay until a send succeeds. */
+function ReplyBox({
+  row,
+  actions,
+  onDone,
+}: {
+  row: ThreadAttentionRow;
+  actions: AttentionActions;
+  onDone(sent: boolean): void;
+}) {
+  const [text, setText] = useState("");
+  const [error, setError] = useState<string | undefined>();
+  const [sending, setSending] = useState(false);
+  const reply = text.trim();
+  const send = async () => {
+    if (!reply) return;
+    setSending(true);
+    setError(undefined);
+    try {
+      await actions.onReply(row, reply);
+      onDone(true);
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : String(failure));
+      setSending(false);
+    }
+  };
+  return (
+    <form
+      className="mt-2 flex flex-col gap-2"
+      data-pi-surface="attention-reply"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void send();
+      }}
+    >
+      <textarea
+        aria-label={`Reply to ${plainText(row.title)}`}
+        placeholder="Your reply"
+        rows={3}
+        maxLength={MAX_ATTENTION_REPLY}
+        autoFocus
+        value={text}
+        disabled={sending}
+        onChange={(event) => setText(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+            event.preventDefault();
+            void send();
+          } else if (event.key === "Escape") onDone(false);
+        }}
+        className="w-full resize-y rounded-md border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
+      />
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {error ? (
+          <span role="alert" className="mr-auto text-xs text-destructive">
+            {error}
+          </span>
+        ) : null}
+        <Button size="sm" variant="ghost" type="button" onClick={() => onDone(false)}>
+          Cancel
+        </Button>
+        <Button size="sm" type="submit" disabled={sending || !reply}>
+          Send reply
+        </Button>
+      </div>
+    </form>
+  );
 }
 
 function meta(row: ThreadAttentionRow, now: number): string {
@@ -154,7 +232,9 @@ function AttentionItem({
 }) {
   const [note, setNote] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
+  const [replying, setReplying] = useState(false);
   const blocking = row.kind === "blocking";
+  const replyable = !blocking && canReply(row);
   // A saved row lost its action with Pi; dismissing it queues for when Pi is back.
   const dismissible = !blocking && (!!row.dismiss || row.source === "saved");
   const dismiss = useCallback(async () => {
@@ -205,11 +285,32 @@ function AttentionItem({
             {note}
           </span>
         ) : null}
+        {replying && replyable ? (
+          <ReplyBox
+            row={row}
+            actions={actions}
+            onDone={(sent) => {
+              setReplying(false);
+              if (sent) setNote("Reply sent.");
+            }}
+          />
+        ) : null}
       </div>
       <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
         {blocking ? (
           <Button size="sm" onClick={() => actions.onThread(row)}>
             Answer
+          </Button>
+        ) : null}
+        {replyable && !replying ? (
+          <Button
+            size="sm"
+            onClick={() => {
+              setNote(undefined);
+              setReplying(true);
+            }}
+          >
+            Reply
           </Button>
         ) : null}
         {row.link ? (
@@ -401,6 +502,15 @@ export function AttentionPage(_props: PluginNavPanelProps) {
           ...(row.rev ? { rev: row.rev } : {}),
         });
         return queued;
+      },
+      onReply: async (row, text) => {
+        await rpc.call("reply", {
+          threadId: row.threadId,
+          viewId: row.viewId,
+          itemId: row.itemId,
+          ...(row.rev ? { rev: row.rev } : {}),
+          text,
+        });
       },
     }),
     [navigate, rpc],

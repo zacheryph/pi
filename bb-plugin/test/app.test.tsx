@@ -67,6 +67,11 @@ function rpcFor(
         ? threadAttention({ threadId: THREAD, snapshot, source, connected: source !== "saved" })
         : { rows: [], blocking: 0, owed: 0, more: 0 },
     dismiss: () => ({ queued: source === "saved" }),
+    reply: (input: unknown) => {
+      if ((input as { text: string }).text === "refuse")
+        throw new Error("That item changed since it was shown; look at it again.");
+      return {};
+    },
     request: (input: unknown) => ({
       value: (respond((input as { request: SurfaceRequest }).request as never) ?? null) as never,
     }),
@@ -290,7 +295,7 @@ describe("pi-surface app", () => {
     });
     // The handed-off reviews arrive with the attention list, a query of their own.
     await vi.waitFor(() =>
-      expect(button.textContent).toBe("orchestrate · 3/7 tasks · 2 agents · question · 2 reviews"),
+      expect(button.textContent).toBe("orchestrate · 3/7 tasks · 2 agents · question · 3 need you"),
     );
   });
 
@@ -306,7 +311,7 @@ describe("pi-surface app", () => {
     });
     // The handed-off reviews arrive with the attention list, a query of their own.
     await vi.waitFor(() =>
-      expect(button.textContent).toBe("orchestrate · 3/7 tasks · 2 agents · question · 2 reviews"),
+      expect(button.textContent).toBe("orchestrate · 3/7 tasks · 2 agents · question · 3 need you"),
     );
   });
 
@@ -319,6 +324,7 @@ describe("pi-surface app", () => {
         "todo.summary",
         "ask.questions",
         "git.attention",
+        "todo.attention",
       ],
       [
         {
@@ -833,8 +839,9 @@ describe("attention", () => {
     expect(blocking.textContent).toContain("Webhook retry queue");
     expect(blocking.textContent).toContain("2 questions");
     const waiting = page.getByRole("region", { name: "Waiting on you" });
-    expect(waiting.querySelectorAll("li")).toHaveLength(1);
+    expect(waiting.querySelectorAll("li")).toHaveLength(2);
     expect(waiting.textContent).toContain("Review acme/webhooks#212");
+    expect(waiting.textContent).toContain("Pick the staging webhook host");
     expect(waiting.textContent).toMatch(/Raised .+ ago/);
     // The stale row waits behind its heading.
     const stale = page.getByRole("region", { name: "Stale" });
@@ -866,9 +873,10 @@ describe("attention", () => {
     const page = renderSlot(panel("attention"), { subPath: "" }, { rpc: rpcFor(fixture, "live") });
     const filters = await page.findByRole("group", { name: "Filter" });
     expect(Array.from(filters.querySelectorAll("button"), (b) => b.textContent)).toEqual([
-      "All 3",
+      "All 4",
       "Blocking 1",
       "Reviews 2",
+      "Task 1",
     ]);
     fireEvent.click(within(filters).getByRole("button", { name: /Reviews/ }));
     expect(page.queryByRole("region", { name: "Blocking" })).toBeNull();
@@ -887,13 +895,79 @@ describe("attention", () => {
     fireEvent.click(within(waiting).getByRole("button", { name: "Open acme/webhooks#212" }));
     // Opening a link asks the session nothing.
     expect(page.inspection.rpcCalls.filter((call) => call.method === "request")).toEqual([]);
-    fireEvent.click(within(waiting).getByRole("button", { name: "Dismiss" }));
-    expect(await within(waiting).findByRole("status")).toBeTruthy();
-    expect(waiting.textContent).toContain("Pi records it when it runs again");
+    const review = within(waiting).getByText("Review acme/webhooks#212").closest("li")!;
+    fireEvent.click(within(review).getByRole("button", { name: "Dismiss" }));
+    expect(await within(review).findByRole("status")).toBeTruthy();
+    expect(review.textContent).toContain("Pi records it when it runs again");
+  });
+
+  describe("a row that takes a reply", () => {
+    const replyCalls = (slot: {
+      inspection: { rpcCalls: readonly { method: string; input: unknown }[] };
+    }) => slot.inspection.rpcCalls.filter((call) => call.method === "reply").map((c) => c.input);
+    const taskRow = async (page: ReturnType<typeof renderSlot>) =>
+      (await page.findByText("Pick the staging webhook host")).closest("li")!;
+
+    it("sends the typed reply through the reply RPC, with the item's revision", async () => {
+      const page = renderSlot(
+        panel("attention"),
+        { subPath: "" },
+        { rpc: rpcFor(fixture, "live") },
+      );
+      const row = await taskRow(page);
+      // Waiting on you with no link and no dismiss: Reply and the thread.
+      expect(Array.from(row.querySelectorAll("button"), (b) => b.textContent)).toEqual([
+        "Reply",
+        "Thread",
+      ]);
+      fireEvent.click(within(row).getByRole("button", { name: "Reply" }));
+      const box = within(row).getByRole("textbox", { name: /Reply to Pick the staging/ });
+      const send = within(row).getByRole("button", { name: "Send reply" });
+      expect((send as HTMLButtonElement).disabled).toBe(true);
+      fireEvent.change(box, { target: { value: "  Use hooks.staging.  " } });
+      fireEvent.click(send);
+      await vi.waitFor(() =>
+        expect(replyCalls(page)).toEqual([
+          {
+            threadId: THREAD,
+            viewId: "todo.attention",
+            itemId: "task:staging-host",
+            rev: "3",
+            text: "Use hooks.staging.",
+          },
+        ]),
+      );
+      expect((await within(row).findByRole("status")).textContent).toBe("Reply sent.");
+      expect(within(row).queryByRole("textbox")).toBeNull();
+    });
+
+    it("keeps the draft and says why when the reply is refused", async () => {
+      const page = renderSlot(
+        panel("attention"),
+        { subPath: "" },
+        { rpc: rpcFor(fixture, "live") },
+      );
+      const row = await taskRow(page);
+      fireEvent.click(within(row).getByRole("button", { name: "Reply" }));
+      const box = within(row).getByRole("textbox") as HTMLTextAreaElement;
+      fireEvent.change(box, { target: { value: "refuse" } });
+      fireEvent.click(within(row).getByRole("button", { name: "Send reply" }));
+      expect((await within(row).findByRole("alert")).textContent).toContain("changed since");
+      expect(box.value).toBe("refuse");
+    });
+
+    it("offers no reply once Pi stopped, only the thread", async () => {
+      const saved = settleSnapshot(fixture, NOW);
+      const page = renderSlot(panel("attention"), { subPath: "" }, { rpc: rpcFor(saved, "saved") });
+      const row = await taskRow(page);
+      expect(within(row).queryByRole("button", { name: "Reply" })).toBeNull();
+      fireEvent.click(within(row).getByRole("button", { name: "Thread" }));
+      expect(page.inspection.navigateCalls).toEqual([{ method: "toThread", threadId: THREAD }]);
+    });
   });
 
   it("says so when nothing needs the user, and badges nothing", async () => {
-    const quiet = withViews(["git.attention", "ask.questions"]);
+    const quiet = withViews(["git.attention", "todo.attention", "ask.questions"]);
     const page = renderSlot(panel("attention"), { subPath: "" }, { rpc: rpcFor(quiet, "live") });
     expect((await page.findByRole("status")).textContent).toContain("Nothing needs you");
     const badge = badgeOf(quiet);
@@ -905,15 +979,15 @@ describe("attention", () => {
     const live = badgeOf(fixture);
     await vi.waitFor(async () =>
       expect(await live()).toEqual({
-        count: 3,
+        count: 4,
         tone: "critical",
-        label: "Pi: 1 blocking, 2 waiting on you",
+        label: "Pi: 1 blocking, 3 waiting on you",
       }),
     );
     cleanup();
     // Without the question, the fixture's session is still running a tool: only owed rows.
     const owed = badgeOf(withViews(["ask.questions"]));
-    await vi.waitFor(async () => expect(await owed()).toMatchObject({ count: 2, tone: "warning" }));
+    await vi.waitFor(async () => expect(await owed()).toMatchObject({ count: 3, tone: "warning" }));
     expect(panel("sessions").experimental_useBadge).toBeUndefined();
   });
 
@@ -925,14 +999,17 @@ describe("attention", () => {
       section.container.querySelectorAll('[data-pi-surface="attention-state"]'),
       (node) => node.textContent,
     );
-    expect(states).toEqual(["ready", "stale"]);
+    expect(states).toEqual(["ready", "ready", "stale"]);
     fireEvent.click(ready);
+    // A row with no link opens the Attention page, where it can be answered.
+    fireEvent.click(section.getByText("Pick the staging webhook host").closest("button")!);
     expect(section.inspection.navigateCalls).toEqual([
       { method: "openUrl", url: "https://github.com/acme/webhooks/pull/212" },
+      { method: "toPluginPanel", path: "attention" },
     ]);
     // No rows, no section.
     const none = renderSlot(cardSection("attention"), cardProps, {
-      rpc: rpcFor(withViews(["git.attention"])),
+      rpc: rpcFor(withViews(["git.attention", "todo.attention"])),
     });
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(none.container.textContent).toBe("");
