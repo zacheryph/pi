@@ -36,8 +36,8 @@ base and pushing with `--force-with-lease`.
 
 Track the work with `todo_upsert`: one task per failing check or review thread, keyed
 `pr<number>-<slug>`, so a reload or compaction loses nothing. After a reload,
-`git_pr_list` names the PRs this session opened and `git_pr_status` reads them
-again. When tasks were handed to you with handoff.todo, update their messages and leave them in_progress; the delegator accepts and completes them after verification. At finish, report the exact head SHA, checks and unresolved review items.
+`git_pr_list` names the PRs this session opened and one `git_pr_status` call
+reads them all again. When tasks were handed to you with handoff.todo, update their messages and leave them in_progress; the delegator accepts and completes them after verification. At finish, report the exact head SHA, checks and unresolved review items.
 
 ## 1. Wait for CI on the head commit
 

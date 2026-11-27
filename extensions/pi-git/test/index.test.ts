@@ -1037,6 +1037,41 @@ describe("git_pr_status and /git:refresh", () => {
     );
   });
 
+  it("reads each pull request a list names, once, and reports one it cannot read", async () => {
+    const runGh = vi.fn(async (args: readonly string[]) => {
+      const number = Number(/pull\/(\d+)/.exec(args[2])?.[1]);
+      if (number === 13) throw new Error("HTTP 404: Not Found");
+      return view({ number, url: args[2] });
+    });
+    const h = await withGh(runGh);
+    const result = (await h.tool("git_pr_status", {
+      pr: ["acme/api#12", "https://github.com/acme/api/pull/13", "acme/api#14", "acme/api#12"],
+    })) as unknown as {
+      content: { text: string }[];
+      structuredContent: { prs: Record<string, unknown>[] };
+    };
+    expect(runGh.mock.calls.map((call) => call[0][2])).toEqual([
+      "https://github.com/acme/api/pull/12",
+      "https://github.com/acme/api/pull/13",
+      "https://github.com/acme/api/pull/14",
+    ]);
+    expect(result.structuredContent.prs).toMatchObject([
+      { label: "acme/api#12", state: "open" },
+      { label: "acme/api#13", error: expect.stringContaining("HTTP 404") },
+      { label: "acme/api#14", state: "open" },
+    ]);
+    expect(result.content[0].text).toContain("- acme/api#13: could not read status:");
+  });
+
+  it("reads nothing when a list names something that is not a pull request", async () => {
+    const runGh = vi.fn(async () => view());
+    const h = await withGh(runGh);
+    await expect(h.tool("git_pr_status", { pr: ["acme/api#12", "feat/login"] })).rejects.toThrow(
+      'git_pr_status: "feat/login" is not a pull request URL',
+    );
+    expect(runGh).not.toHaveBeenCalled();
+  });
+
   it("falls back to the GitHub MCP reader when gh cannot answer, recording each read once", async () => {
     const h = await withGh(async () => {
       throw new GhUnavailable("gh is not installed");
@@ -1275,7 +1310,10 @@ describe("git_pr_watch", () => {
   const failed = {
     statusCheckRollup: [run("COMPLETED", "FAILURE", "lint"), run("COMPLETED", "SUCCESS")],
   };
-  type Result = { content: { text: string }[]; details: { watching: boolean; watch?: unknown } };
+  type Result = {
+    content: { text: string }[];
+    details: { prs: { key: string; watching: boolean; watch?: unknown; error?: string }[] };
+  };
   const watching = async (
     runGh: GhRunner,
     options: { entries?: unknown[]; trackReferenced?: boolean; maxWatches?: number } = {},
@@ -1327,7 +1365,9 @@ describe("git_pr_watch", () => {
         `  ${URL}`,
       ].join("\n"),
     );
-    expect(result.details).toMatchObject({ watching: true, watch: { key: KEY, until: "settled" } });
+    expect(result.details.prs).toMatchObject([
+      { key: KEY, watching: true, watch: { key: KEY, until: "settled" } },
+    ]);
     expect(h.watched()).toMatchObject({ until: "settled" });
     const listed = await h.tool("git_pr_list", {});
     expect(listed.content[0].text).toContain(
@@ -1411,11 +1451,11 @@ describe("git_pr_watch", () => {
     expect(settled.content[0].text).toMatch(
       /^Not watching acme\/api#12: checks already finished on head abc123\. If that is not the commit you pushed/,
     );
-    expect(settled.details.watching).toBe(false);
+    expect(settled.details.prs[0]!.watching).toBe(false);
     expect(h.watched()).toBeUndefined();
     // Reviews and the merge can still be waited for.
     const open = await h.watch({ until: "merged" });
-    expect(open.details.watching).toBe(true);
+    expect(open.details.prs[0]!.watching).toBe(true);
     reply = view({ state: "MERGED" });
     const merged = await h.watch({ until: "merged" });
     expect(merged.content[0].text).toMatch(/^Not watching acme\/api#12: it is merged\.\n/);
@@ -1443,7 +1483,7 @@ describe("git_pr_watch", () => {
       "git_pr_watch: 10 pull requests are already watched",
     );
     // One that is already watched is not a new watch.
-    expect((await h.watch({ pr: "acme/api#3" })).details.watching).toBe(true);
+    expect((await h.watch({ pr: "acme/api#3" })).details.prs[0]!.watching).toBe(true);
   });
 
   it("takes the cap from the maxWatches setting", async () => {
@@ -1468,6 +1508,147 @@ describe("git_pr_watch", () => {
     const h = await watching(async () => view(), { trackReferenced: false });
     await h.watch();
     expect(h.watched()).toBeDefined();
+  });
+
+  describe("several in one call", () => {
+    const urlOf = (number: number) => `https://github.com/acme/api/pull/${number}`;
+    /** gh answers for the PR it is asked about, through `reply` (undefined: not found). */
+    const perPr = (reply: (number: number) => Record<string, unknown> | undefined) =>
+      vi.fn(async (args: readonly string[]) => {
+        const number = Number(/pull\/(\d+)/.exec(args[2])?.[1]);
+        const overrides = reply(number);
+        if (!overrides) throw new Error("HTTP 404: Not Found");
+        return view({ number, url: urlOf(number), ...overrides });
+      });
+
+    it("opens one watch per pull request, and each wakes the session on its own", async () => {
+      const done = new Set<number>();
+      const h = await watching(perPr((number) => (done.has(number) ? failed : {})));
+      const result = await h.watch({ pr: ["acme/api#1", "acme/api#2", "acme/api#1"] });
+      expect(result.details.prs).toMatchObject([
+        { key: "github.com/acme/api#1", watching: true },
+        { key: "github.com/acme/api#2", watching: true },
+      ]);
+      expect(result.content[0].text.split("\n\n")).toHaveLength(2);
+      expect(
+        h.entries.filter(
+          (entry) =>
+            (entry as { customType?: string; data?: { op?: string } }).customType === "work:item" &&
+            (entry as { data: { op: string } }).data.op === "open",
+        ),
+      ).toHaveLength(2);
+      done.add(2);
+      await interval();
+      expect(h.messages()).toEqual([
+        [
+          "Pull request acme/api#2:",
+          "Checks finished on head abc123: 1 failed (lint), 1 passed.",
+          "The watch has ended.",
+          urlOf(2),
+        ].join("\n"),
+      ]);
+      expect(
+        h.snapshots
+          .at(-1)!
+          .prs.filter((pr) => pr.watch)
+          .map((pr) => pr.key),
+      ).toEqual(["github.com/acme/api#1"]);
+    });
+
+    it("watches the others when one cannot be read, and fails when none can", async () => {
+      const h = await watching(perPr((number) => (number === 2 ? undefined : {})));
+      const result = await h.watch({ pr: ["acme/api#1", "acme/api#2", "acme/api#3"] });
+      expect(result.details.prs).toMatchObject([
+        { watching: true },
+        { key: "github.com/acme/api#2", watching: false, error: "HTTP 404: Not Found" },
+        { watching: true },
+      ]);
+      expect(result.content[0].text).toContain("Could not watch acme/api#2: HTTP 404: Not Found");
+      await expect(h.watch({ pr: ["acme/api#2"] })).rejects.toThrow(
+        "git_pr_watch: HTTP 404: Not Found",
+      );
+    });
+
+    it("starts none when they would pass the maxWatches setting", async () => {
+      const runGh = perPr(() => ({}));
+      const h = await watching(runGh, { maxWatches: 3 });
+      await h.watch({ pr: "acme/api#1" });
+      runGh.mockClear();
+      await expect(
+        h.watch({ pr: ["acme/api#1", "acme/api#2", "acme/api#3", "acme/api#4"] }),
+      ).rejects.toThrow(
+        "git_pr_watch: 3 new watches would pass the maxWatches setting (3) with 1 already watched",
+      );
+      expect(runGh).not.toHaveBeenCalled();
+      // One already watched is not a new watch.
+      const result = await h.watch({ pr: ["acme/api#1", "acme/api#2", "acme/api#3"] });
+      expect(result.details.prs.map((pr) => pr.watching)).toEqual([true, true, true]);
+    });
+
+    it("stops each one named", async () => {
+      const h = await watching(perPr(() => ({})));
+      await h.watch({ pr: ["acme/api#1", "acme/api#2"] });
+      const stopped = await h.watch({ pr: ["acme/api#1", "acme/api#2", "acme/api#3"], stop: true });
+      expect(stopped.content[0].text).toBe(
+        [
+          "Stopped watching acme/api#1.",
+          "Stopped watching acme/api#2.",
+          "acme/api#3 was not being watched.",
+        ].join("\n\n"),
+      );
+      expect(h.snapshots.at(-1)!.prs.filter((pr) => pr.watch)).toEqual([]);
+    });
+
+    it("keeps skipping the call's nested MCP reads while any of its watches runs", async () => {
+      const h = await watching(async () => {
+        throw new GhUnavailable("gh is not installed");
+      });
+      const executeTool = vi.fn(
+        async (_name: string, args: { method: string; pullNumber: number }) => {
+          const body: Record<string, unknown> = {
+            get: {
+              number: args.pullNumber,
+              html_url: urlOf(args.pullNumber),
+              state: "open",
+              draft: false,
+              comments: 0,
+              head: { ref: "feat/login", sha: "abc123" },
+            },
+            get_check_runs: {
+              total_count: 1,
+              check_runs: [{ name: "unit", status: "in_progress", conclusion: null }],
+            },
+            get_status: { sha: "abc123", total_count: 0, statuses: [] },
+            get_reviews: [],
+          };
+          return {
+            isError: false,
+            result: { content: [{ type: "text", text: JSON.stringify(body[args.method]) }] },
+          };
+        },
+      );
+      const ctx = { ...h.ctx, executeTool, tools: [{ name: "mcp__github__pull_request_read" }] };
+      await h.pi.registerTool.mock.calls
+        .map(([tool]) => tool)
+        .find((tool) => tool.name === "git_pr_watch")!
+        .execute("call-7", { pr: ["acme/api#1", "acme/api#2"] }, undefined, undefined, ctx);
+      const nested = () =>
+        h.fire("tool_result", {
+          toolName: "mcp__github__pull_request_read",
+          toolCallId: "call-7/9",
+          parentToolCallId: "call-7",
+          input: { method: "get", owner: "acme", repo: "api", pullNumber: 5 },
+          content: [{ type: "text", text: "{}" }],
+          isError: false,
+        });
+      await h.watch({ pr: "acme/api#1", stop: true });
+      const before = h.ledger().length;
+      await nested();
+      expect(h.ledger()).toHaveLength(before);
+      await h.watch({ pr: "acme/api#2", stop: true });
+      await nested();
+      expect(h.ledger()).toHaveLength(before + 1);
+    });
   });
 
   it("adopts its watch after a reload and continues from the saved baseline", async () => {

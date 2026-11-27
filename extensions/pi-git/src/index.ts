@@ -216,10 +216,15 @@ const POLLING_TOOLS: ReadonlySet<string> = new Set([
   "/git:refresh",
 ]);
 
-/** At most this many pull requests are read in one git_pr_status or /git:refresh. */
+/** At most this many pull requests are read in one git_pr_status or /git:refresh, or named in one git_pr_watch. */
 const MAX_STATUS_READS = 20;
 /** At most this many pull requests are marked in one git_pr_ready. */
 const MAX_READY = 20;
+
+/** One pull request a tool's `pr` names. */
+const PrTarget = Type.String({
+  description: "A pull request URL, owner/repo#number, or a number in the current repository.",
+});
 
 const ReadyEntry = Type.Object({
   key: Type.String(),
@@ -306,6 +311,18 @@ type StatusEntryValue = {
   ciDone: boolean;
   source?: string;
   error?: string;
+};
+
+/** What git_pr_watch did for one pull request; `text` is its block of the result. */
+type WatchEntryValue = {
+  key: string;
+  label: string;
+  url: string;
+  watching: boolean;
+  watch?: unknown;
+  entry?: StatusEntryValue;
+  error?: string;
+  text: string;
 };
 
 type Measured = { status: WorktreeStatus } | { error: string };
@@ -606,6 +623,25 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
   };
 
   /**
+   * The pull requests a tool's `pr` names, one or many, without repeats. A bare number is
+   * resolved against `cwd`'s origin. Throws on the first target that names no pull request.
+   */
+  const parseTargets = async (targets: string | readonly string[], dir: string) => {
+    const refs = new Map<string, PrRef>();
+    let here: ReturnType<RepoResolver> | undefined;
+    for (const target of typeof targets === "string" ? [targets] : targets) {
+      const repo = /^#?\d+$/.test(target.trim()) ? await (here ??= resolveRepo(dir)) : undefined;
+      const ref = parsePrTarget(target, repo);
+      if (!ref)
+        throw new Error(
+          `"${target}" is not a pull request URL, owner/repo#number, or a number in this repository`,
+        );
+      refs.set(prKey(ref), ref);
+    }
+    return [...refs.values()];
+  };
+
+  /**
    * Record what one tool call showed about one pull request. A call that only
    * confirms what the ledger already holds (a watch polling the same status)
    * refreshes the record in memory without writing another entry.
@@ -717,11 +753,15 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
    * git_pr_watch call for it, whose id its nested calls carry. Gone after a reload.
    */
   const watchAccess = new Map<string, McpAccess & { callId: string }>();
+  /** Stop skipping a call's nested MCP calls once no running watch reads through it. */
+  const releaseCall = (callId: string) => {
+    for (const access of watchAccess.values()) if (access.callId === callId) return;
+    ownCalls.delete(callId);
+  };
   const bindAccess = (key: string, callId: string, access: McpAccess | undefined) => {
     const previous = watchAccess.get(key);
-    if (previous && previous.callId !== callId) ownCalls.delete(previous.callId);
     if (access) watchAccess.set(key, { ...access, callId });
-    else ownCalls.delete(callId);
+    if (previous && previous.callId !== callId) releaseCall(previous.callId);
   };
 
   /** Read a watched PR and record it. `gh` first; the MCP tools of the call that started the watch otherwise. */
@@ -751,7 +791,7 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
     onEnd: (watch) => {
       const access = watchAccess.get(watch.key);
       watchAccess.delete(watch.key);
-      if (access) ownCalls.delete(access.callId);
+      if (access) releaseCall(access.callId);
     },
     now,
     intervalMs: () => dependencies.watchIntervalMs ?? getConfig().watchIntervalSeconds * 1000,
@@ -1085,19 +1125,23 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
       description:
         "Read pull requests' current status from GitHub (state, draft, review decision, check counts, conflicts, head commit) and record it in the session ledger. " +
         "Uses gh when it is installed and signed in, otherwise a GitHub MCP pull_request_read tool. Retries transient GitHub failures; never writes to GitHub. " +
-        `With pr, reads that PR; without it, every pull request this session opened that is not merged or closed (at most ${MAX_STATUS_READS}). ` +
+        `With pr, reads the pull request or list of pull requests it names (at most ${MAX_STATUS_READS}); without it, every pull request this session opened that is not merged or closed (at most ${MAX_STATUS_READS}). ` +
+        "One that cannot be read does not stop the others. " +
         "The result's ciDone is true once checks were reported and none is pending.",
       promptSnippet: "Read a pull request's current state, review and checks from GitHub.",
       promptGuidelines: [
-        "Use git_pr_status to check a pull request's state, review decision, checks or conflicts, instead of reading them with gh or the GitHub MCP tools.",
+        "Use git_pr_status to check a pull request's state, review decision, checks or conflicts, instead of reading them with gh or the GitHub MCP tools. Name several in one call instead of calling it once per pull request.",
         "To wait for CI, a review or a merge, call git_pr_watch and end your turn; do not poll git_pr_status.",
       ],
       parameters: Type.Object({
         pr: Type.Optional(
-          Type.String({
-            description:
-              "A pull request URL, owner/repo#number, or a number in the current repository. Omit for every open PR this session opened.",
-          }),
+          Type.Union(
+            [PrTarget, Type.Array(PrTarget, { minItems: 1, maxItems: MAX_STATUS_READS })],
+            {
+              description:
+                "A pull request URL, owner/repo#number, or a number in the current repository, or a list of them. Omit for every open PR this session opened.",
+            },
+          ),
         ),
         includeReferenced: Type.Optional(
           Type.Boolean({
@@ -1111,13 +1155,11 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
       async execute(id, params, signal, _update, ctx) {
         let refs: PrRef[];
         if (params.pr !== undefined) {
-          const repo = /^#?\d+$/.test(params.pr.trim()) ? await resolveRepo(ctx.cwd) : undefined;
-          const ref = parsePrTarget(params.pr, repo);
-          if (!ref)
-            throw new Error(
-              `git_pr_status: "${params.pr}" is not a pull request URL, owner/repo#number, or a number in this repository`,
-            );
-          refs = [ref];
+          try {
+            refs = (await parseTargets(params.pr, ctx.cwd)).slice(0, MAX_STATUS_READS);
+          } catch (error) {
+            throw new Error(`git_pr_status: ${errorText(error)}`);
+          }
         } else {
           refs = [...prs.values()]
             .filter(
@@ -1169,155 +1211,200 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
     }),
   );
 
+  /** Start, continue or decline the watch on one pull request for a git_pr_watch call. */
+  const watchOne = async (
+    id: string,
+    ref: PrRef,
+    params: { until?: WatchUntil; timeoutSeconds?: number },
+    ctx: ExtensionContext,
+    signal: AbortSignal | undefined,
+  ): Promise<WatchEntryValue> => {
+    const key = prKey(ref);
+    const label = prLabel(ref);
+    const existing = watches.get(key);
+    const access = mcpAccess(ctx);
+    const started = generation;
+    const fetched = await readStatus(ref, { signal, ...mcpAccess(ctx, signal) });
+    signal?.throwIfAborted();
+    if (started !== generation) throw new Error("the session changed while reading it");
+    const agentId = tree.node()?.agentId;
+    const recorded = recordFetched(
+      ref,
+      fetched,
+      { tool: "git_pr_watch", toolCallId: id, ...(agentId ? { agentId } : {}) },
+      true,
+    );
+    const url = recorded?.url ?? prUrl(ref);
+    const entry: StatusEntryValue = {
+      key,
+      label,
+      url,
+      ...(fetched.title ? { title: fetched.title } : {}),
+      ...pickFacts(fetched.facts),
+      ciDone: checksSettled(fetched.facts),
+      source: fetched.source,
+    };
+    const result = (text: string, watching: boolean): WatchEntryValue => {
+      const watch = watches.get(key);
+      return { key, label, url, watching, ...(watch ? { watch } : {}), entry, text };
+    };
+    const status = prStatusText([entry]);
+    const until: WatchUntil = params.until ?? existing?.until ?? "settled";
+    // Nothing left to wait for: say so now instead of waking the session for it.
+    const over =
+      fetched.facts.state === "merged" || fetched.facts.state === "closed"
+        ? `it is ${fetched.facts.state}`
+        : until === "settled" && entry.ciDone
+          ? `checks already finished on head ${(fetched.facts.headSha ?? "unknown").slice(0, 12)}`
+          : undefined;
+    if (over) {
+      watches.stop(key);
+      const hint =
+        fetched.facts.state === "open" || fetched.facts.state === undefined
+          ? ' If that is not the commit you pushed, GitHub has not caught up: call git_pr_watch again. To wait for reviews or the merge instead, pass until: "merged".'
+          : "";
+      return result(`Not watching ${label}: ${over}.${hint}\n${status}`, false);
+    }
+
+    if (existing && existing.until === until && params.timeoutSeconds === undefined) {
+      bindAccess(key, id, access);
+      watches.rebase(key, fetched);
+      return result(
+        `Already ${describeWatch(existing, now())}; it continues from this status. End your turn: a message wakes you.\n${status}`,
+        true,
+      );
+    }
+    // A changed `until` or timeout replaces the watch.
+    watches.stop(key);
+    const deadline = now() + (params.timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS) * 1000;
+    const opened = watches.open({
+      ref,
+      url,
+      until,
+      deadline,
+      callId: id,
+      sessionId: ctx.sessionManager.getSessionId(),
+      reading: fetched,
+    });
+    bindAccess(key, id, access);
+    return result(
+      `Now ${describeWatch(opened, now())}. End your turn: a message wakes you when checks finish, the head moves, a review or comment arrives, or it is merged or closed.\n${status}`,
+      true,
+    );
+  };
+
   pi.registerTool(
     defineTool({
       name: "git_pr_watch",
       label: "Git PR Watch",
       description:
-        "Wait on a pull request without polling: reads it from GitHub on a timer while you end your turn, and wakes you with a message when something needs you. " +
+        "Wait on pull requests without polling: reads each from GitHub on a timer while you end your turn, and wakes you with a message when one needs you. " +
         "Reports, each with the head commit it is for: checks finished on the head (with the names of failed checks), the head moved (someone pushed), the review decision changed, reviews or comments were added, it now conflicts with its base, and it was merged or closed. " +
-        'until "settled" (default) ends the watch when checks finish on the head; until "merged" keeps it open through every report until the pull request is merged or closed. It also ends at timeoutSeconds. ' +
+        'until "settled" (default) ends a watch when checks finish on the head; until "merged" keeps it open through every report until the pull request is merged or closed. It also ends at timeoutSeconds. ' +
+        `pr names one pull request or a list of up to ${MAX_STATUS_READS}; until, timeoutSeconds and stop apply to each, and each gets its own watch and its own messages. One that cannot be read does not stop the others. ` +
         "The watch is open work: it keeps a subagent waiting, and survives a reload or resume. One watch per pull request: calling it again continues the same watch from the status it returns, so your own push or reply is not reported back to you. " +
-        "A session watches a limited number at a time (the maxWatches setting, default 10). stop: true cancels the watch. " +
+        "A session watches a limited number at a time (the maxWatches setting, default 10); a call that would pass it starts none. stop: true cancels the watch. " +
         "Reads through gh when it is installed and signed in, otherwise through the GitHub MCP pull_request_read tool; after a reload, through gh only. Never writes to GitHub.",
       promptSnippet:
-        "Wait on a pull request and be woken when its checks, reviews or state change.",
+        "Wait on pull requests and be woken when their checks, reviews or state change.",
       promptGuidelines: [
         "Use git_pr_watch to wait for a pull request's CI, a review or its merge, then end your turn: its message wakes you. Do not poll git_pr_status or build a job_watch for it.",
+        "To wait on several pull requests, name them all in one git_pr_watch call instead of one call each.",
         "After you push to a watched pull request or reply on it, call git_pr_watch again before ending your turn, so the watch continues from the new head.",
       ],
       parameters: Type.Object({
-        pr: Type.String({
-          description:
-            "A pull request URL, owner/repo#number, or a number in the current repository.",
-        }),
+        pr: Type.Union(
+          [PrTarget, Type.Array(PrTarget, { minItems: 1, maxItems: MAX_STATUS_READS })],
+          {
+            description:
+              "A pull request URL, owner/repo#number, or a number in the current repository, or a list of them.",
+          },
+        ),
         until: Type.Optional(
           Type.Union([Type.Literal("settled"), Type.Literal("merged")], {
             description:
-              'When the watch ends: "settled" once checks finish on the head (default), "merged" once it is merged or closed.',
+              'When each watch ends: "settled" once checks finish on the head (default), "merged" once it is merged or closed.',
           }),
         ),
         timeoutSeconds: Type.Optional(
           Type.Integer({
             minimum: MIN_TIMEOUT_SECONDS,
             maximum: MAX_TIMEOUT_SECONDS,
-            description: `End the watch after this long. Default ${DEFAULT_TIMEOUT_SECONDS}.`,
+            description: `End each watch after this long. Default ${DEFAULT_TIMEOUT_SECONDS}.`,
           }),
         ),
         stop: Type.Optional(
-          Type.Boolean({ description: "Stop watching this pull request. Default false." }),
+          Type.Boolean({ description: "Stop watching these pull requests. Default false." }),
         ),
       }),
       annotations: { openWorldHint: true },
       async execute(id, params, signal, _update, ctx) {
         try {
-          const repo = /^#?\d+$/.test(params.pr.trim()) ? await resolveRepo(ctx.cwd) : undefined;
-          const ref = parsePrTarget(params.pr, repo);
-          if (!ref)
-            throw new Error(
-              `"${params.pr}" is not a pull request URL, owner/repo#number, or a number in this repository`,
-            );
-          const key = prKey(ref);
-          const label = prLabel(ref);
-          const existing = watches.get(key);
-          const reply = (text: string, watching: boolean, entry?: StatusEntryValue) => ({
-            content: [{ type: "text" as const, text }],
-            details: { watching, ...(watches.get(key) ? { watch: watches.get(key) } : {}), entry },
+          const refs = (await parseTargets(params.pr, ctx.cwd)).slice(0, MAX_STATUS_READS);
+          if (refs.length === 0) throw new Error("name at least one pull request");
+          const reply = (results: WatchEntryValue[]) => ({
+            content: [
+              { type: "text" as const, text: results.map((result) => result.text).join("\n\n") },
+            ],
+            details: { prs: results.map(({ text: _text, ...result }) => result) },
           });
           if (params.stop === true)
             return reply(
-              watches.stop(key) ? `Stopped watching ${label}.` : `${label} was not being watched.`,
-              false,
+              refs.map((ref) => {
+                const label = prLabel(ref);
+                const stopped = watches.stop(prKey(ref));
+                return {
+                  key: prKey(ref),
+                  label,
+                  url: prs.get(prKey(ref))?.url ?? prUrl(ref),
+                  watching: false,
+                  text: stopped ? `Stopped watching ${label}.` : `${label} was not being watched.`,
+                };
+              }),
             );
+          // Checked before anything is read, so a call never opens only some of its watches.
           const { maxWatches } = getConfig();
-          if (!existing && watches.size >= maxWatches)
+          const fresh = refs.filter((ref) => !watches.get(prKey(ref))).length;
+          if (fresh > 0 && watches.size + fresh > maxWatches)
             throw new Error(
-              `${maxWatches} pull requests are already watched (the maxWatches setting); stop one first (git_pr_list names them)`,
+              fresh === 1 || watches.size >= maxWatches
+                ? `${maxWatches} pull requests are already watched (the maxWatches setting); stop one first (git_pr_list names them)`
+                : `${fresh} new watches would pass the maxWatches setting (${maxWatches}) with ${watches.size} already watched; stop some first (git_pr_list names them) or watch fewer`,
             );
 
-          const access = mcpAccess(ctx);
           const started = generation;
-          // Nested MCP reads of this call and of the watch it starts are recorded here, once.
+          // Nested MCP reads of this call and of the watches it starts are recorded here, once.
           ownCalls.add(id);
-          let fetched: Fetched;
+          const results: WatchEntryValue[] = [];
           try {
-            fetched = await readStatus(ref, { signal, ...mcpAccess(ctx, signal) });
-          } catch (error) {
-            ownCalls.delete(id);
-            throw error;
+            for (const ref of refs) {
+              try {
+                results.push(await watchOne(id, ref, params, ctx, signal));
+              } catch (error) {
+                signal?.throwIfAborted();
+                if (started !== generation) throw new Error("the session changed while reading it");
+                const label = prLabel(ref);
+                results.push({
+                  key: prKey(ref),
+                  label,
+                  url: prs.get(prKey(ref))?.url ?? prUrl(ref),
+                  watching: false,
+                  error: errorText(error),
+                  text: `Could not watch ${label}: ${errorText(error)}`,
+                });
+              }
+            }
+          } finally {
+            releaseCall(id);
           }
-          signal?.throwIfAborted();
-          if (started !== generation) throw new Error("the session changed while reading it");
-          const agentId = tree.node()?.agentId;
-          const recorded = recordFetched(
-            ref,
-            fetched,
-            { tool: "git_pr_watch", toolCallId: id, ...(agentId ? { agentId } : {}) },
-            true,
-          );
-          const url = recorded?.url ?? prUrl(ref);
-          const entry: StatusEntryValue = {
-            key,
-            label,
-            url,
-            ...(fetched.title ? { title: fetched.title } : {}),
-            ...pickFacts(fetched.facts),
-            ciDone: checksSettled(fetched.facts),
-            source: fetched.source,
-          };
-          const status = prStatusText([entry]);
-          const until: WatchUntil = params.until ?? existing?.until ?? "settled";
-          // Nothing left to wait for: say so now instead of waking the session for it.
-          const over =
-            fetched.facts.state === "merged" || fetched.facts.state === "closed"
-              ? `it is ${fetched.facts.state}`
-              : until === "settled" && entry.ciDone
-                ? `checks already finished on head ${(fetched.facts.headSha ?? "unknown").slice(0, 12)}`
-                : undefined;
-          if (over) {
-            watches.stop(key);
-            ownCalls.delete(id);
-            const hint =
-              fetched.facts.state === "open" || fetched.facts.state === undefined
-                ? ' If that is not the commit you pushed, GitHub has not caught up: call git_pr_watch again. To wait for reviews or the merge instead, pass until: "merged".'
-                : "";
-            return reply(`Not watching ${label}: ${over}.${hint}\n${status}`, false, entry);
-          }
-
-          if (existing && existing.until === until && params.timeoutSeconds === undefined) {
-            if (access) bindAccess(key, id, access);
-            else ownCalls.delete(id);
-            watches.rebase(key, fetched);
-            return reply(
-              `Already ${describeWatch(existing, now())}; it continues from this status. End your turn: a message wakes you.\n${status}`,
-              true,
-              entry,
+          // A pull request that could not be read is a failed call when it is the only one.
+          if (results.every((result) => result.error))
+            throw new Error(
+              results.length === 1
+                ? results[0]!.error
+                : results.map((result) => `${result.label}: ${result.error}`).join("; "),
             );
-          }
-          // A changed `until` or timeout replaces the watch.
-          watches.stop(key);
-          const deadline = now() + (params.timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS) * 1000;
-          let opened;
-          try {
-            opened = watches.open({
-              ref,
-              url,
-              until,
-              deadline,
-              callId: id,
-              sessionId: ctx.sessionManager.getSessionId(),
-              reading: fetched,
-            });
-          } catch (error) {
-            ownCalls.delete(id);
-            throw error;
-          }
-          bindAccess(key, id, access);
-          return reply(
-            `Now ${describeWatch(opened, now())}. End your turn: a message wakes you when checks finish, the head moves, a review or comment arrives, or it is merged or closed.\n${status}`,
-            true,
-            entry,
-          );
+          return reply(results);
         } catch (error) {
           throw new Error(`git_pr_watch: ${errorText(error)}`);
         }
@@ -1508,7 +1595,7 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
       promptGuidelines: [
         "When the user says pull requests they reviewed can go, call git_pr_ready once with all of them, instead of gh pr ready, gh pr merge or the GitHub MCP tools one by one.",
         "Give git_pr_ready the head the user reviewed: the one you showed them or handed off with git_pr_request_review. Never pass a head the user has not seen.",
-        'To follow marked pull requests to the merge, call git_pr_watch with until: "merged" for each.',
+        'To follow marked pull requests to the merge, call git_pr_watch once with all of them and until: "merged".',
       ],
       parameters: Type.Object({
         prs: Type.Array(

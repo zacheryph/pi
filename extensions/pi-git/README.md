@@ -51,8 +51,8 @@ releasing an agent never removes it.
 | `git_worktree_list`     | `{ includeRemoved? }`. This session's worktrees with repository, branch, workspace, the subagents that ran there, and git status. Read-only.                                                                                            |
 | `git_worktree_remove`   | `{ path, force? }`. Removes a worktree; the branch is always kept. Refuses when removal would lose work (uncommitted changes, or commits on a detached `HEAD`) unless `force`.                                                          |
 | `git_pr_list`           | `{ includeReferenced? }`. The pull requests this session opened or looked at, with the last status a tool showed for each. Read-only; reads the ledger, not GitHub.                                                                     |
-| `git_pr_status`         | `{ pr?, includeReferenced? }`. Reads pull requests' current status from GitHub and records it. Read-only on GitHub; see [Fresh status](#fresh-status).                                                                                  |
-| `git_pr_watch`          | `{ pr, until?, timeoutSeconds?, stop? }`. Waits on a pull request and wakes the session when it changes; see [Watching a pull request](#watching-a-pull-request).                                                                       |
+| `git_pr_status`         | `{ pr?, includeReferenced? }`. Reads pull requests' current status from GitHub and records it; `pr` names one or a list. Read-only on GitHub; see [Fresh status](#fresh-status).                                                        |
+| `git_pr_watch`          | `{ pr, until?, timeoutSeconds?, stop? }`. Waits on one pull request or a list and wakes the session when one changes; see [Watching a pull request](#watching-a-pull-request).                                                          |
 | `git_pr_request_review` | `{ pr, head, reason? }`. Hands a pull request to the user for review at that full head SHA. Main session only; never writes to GitHub; see [Review requests](#review-requests).                                                         |
 | `git_pr_ready`          | `{ prs: [{ pr, head? }], ready?, autoMerge? }`. Marks 1–20 reviewed pull requests ready for review and turns on auto-merge at their reviewed heads. Main session only; see [Marking pull requests ready](#marking-pull-requests-ready). |
 
@@ -145,9 +145,10 @@ ledger entry.
 counts, conflicts and head commit from GitHub and records them:
 
 - `pr`: a PR URL, `owner/repo#12`, or `12` / `#12` in the session's
-  repository (its `origin` remote). Without it, every PR opened here that is
-  not merged or closed, at most 20; `includeReferenced` adds the ones only
-  looked at.
+  repository (its `origin` remote), or a list of up to 20 of them; one that
+  cannot be read does not stop the others. Without it, every PR opened here
+  that is not merged or closed, at most 20; `includeReferenced` adds the ones
+  only looked at.
 - It reads through `gh pr view <url> --json …` when `gh` is installed and
   signed in, and otherwise through a GitHub MCP `pull_request_read` tool (its
   PR object, check runs, legacy commit statuses and reviews). Checks and reviews
@@ -175,8 +176,11 @@ The retry classifier in `src/retry.ts` is copied from
 
 ## Watching a pull request
 
-`git_pr_watch { pr }` waits on a pull request while the agent ends its turn. It
-opens one item in the session's work host (`packages/pi-work`; owner `pi-git`,
+`git_pr_watch { pr }` waits on a pull request while the agent ends its turn.
+`pr` can also be a list of up to 20: each gets its own watch and its own
+reports, and `until`, `timeoutSeconds` and `stop` apply to each. One that
+cannot be read does not stop the others; a call where none can is an error. For
+each pull request it opens one item in the session's work host (`packages/pi-work`; owner `pi-git`,
 kind `pr`, label `PR 12 CI`), reads the pull request every
 `watchIntervalSeconds` with the reader `git_pr_status` uses, and compares each
 reading with the one before it. Every reading also goes into the ledger and the
@@ -188,6 +192,9 @@ views below.
 - `timeoutSeconds`: 60 to 86400, default 7200. The watch ends with a message
   when it passes, so a forgotten watch does not keep a subagent waiting forever.
 - `stop: true` cancels the watch without a message.
+- Its result's `details` are `{ prs: [{ key, label, url, watching, watch,
+  entry, error }] }`, where `entry` is what `git_pr_status` would return for
+  it.
 
 A report is a `git:pr-watch` message that wakes the session, or reaches it in
 the run it is in. Each names the head commit it is for:
@@ -221,7 +228,8 @@ until …`) or `The watch has ended.` The message's `details` hold
   continues it from the status it just read, so the agent's own push or reply is
   not reported back to it. A different `until`, or a `timeoutSeconds`, replaces
   the watch. One session watches at most
-  `maxWatches` pull requests (default 10).
+  `maxWatches` pull requests (default 10); a call that would pass the limit is
+  refused before it reads anything, so it never starts only some of its watches.
 - **Reviews and comments** are counted, not read: a new review, a reply in a
   review thread (GitHub stores it as a review) and a new top-level comment each
   raise a count, the agent's own included. Counts read through `gh` and through
@@ -292,7 +300,7 @@ Marked 1 of 2 pull requests.
 Pinning covers the moment of marking. GitHub keeps auto-merge on through a
 later push by someone with write access to the repository, so to follow the
 pull requests to their merge, keep a `git_pr_watch { pr, until: "merged" }`
-on each: it reports `Head moved` if that happens.
+on each (one call can name them all): it reports `Head moved` if that happens.
 
 ## Restore card
 
