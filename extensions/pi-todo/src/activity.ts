@@ -3,13 +3,13 @@ import { type TodoDetails, type TodoState, type TodoStatus, TodoValidationError 
 
 /**
  * Local sidecar beside upstream's pure snapshot engine: per-task status/message
- * history and user review watermarks. Upstream state.ts stays byte-for-byte.
+ * history. Upstream state.ts stays byte-for-byte.
  */
 export const MAX_TASK_UPDATES = 10;
 export const MAX_TASK_MESSAGE_LENGTH = 2_000;
 
 export interface TodoUpdate {
-  /** Plan revision that recorded this update; doubles as the review watermark. */
+  /** Plan revision that recorded this update. */
   revision: number;
   /** Epoch milliseconds; display only. */
   at: number;
@@ -32,23 +32,6 @@ export interface TodoTaskActivity {
 
 /** Keyed by task key. Maps avoid inherited keys such as "constructor". */
 export type TodoActivity = ReadonlyMap<string, TodoTaskActivity>;
-
-export interface TodoReview {
-  revision: number;
-  at: number;
-}
-
-export interface TodoReviewState {
-  /** Latest review action on this branch. */
-  at?: number;
-  tasks: ReadonlyMap<string, TodoReview>;
-}
-
-/** Review journal payload: highest reviewed update revision per key. */
-export interface TodoReviewEntry {
-  at: number;
-  tasks: Record<string, number>;
-}
 
 const STATUSES: ReadonlySet<unknown> = new Set(["pending", "in_progress", "completed"]);
 
@@ -203,70 +186,6 @@ export function readTodoActivity(raw: unknown, state: TodoState): Map<string, To
     activity.set(key, { ...(createdAt !== undefined ? { createdAt } : {}), updates });
   }
   return activity;
-}
-
-export function createTodoReviewState(): TodoReviewState {
-  return { tasks: new Map() };
-}
-
-/** Watermarks only move forward; malformed entries are ignored. */
-export function applyTodoReview(review: TodoReviewState, raw: unknown): TodoReviewState {
-  if (!isRecord(raw) || !isRecord(raw.tasks)) return review;
-  const at = readTime(raw.at);
-  if (at === undefined) return review;
-  const tasks = new Map(review.tasks);
-  for (const [key, value] of Object.entries(raw.tasks)) {
-    const revision = readCount(value);
-    if (revision === undefined) continue;
-    const current = tasks.get(key);
-    if (!current || revision > current.revision) tasks.set(key, { revision, at });
-  }
-  return { at: Math.max(review.at ?? 0, at), tasks };
-}
-
-/** Model messages are flagged until reviewed; status-only and user updates never are. */
-export function isReviewable(update: TodoUpdate): boolean {
-  return !!update.message && update.by !== "user";
-}
-
-export function unreviewedTodoUpdates(
-  key: string,
-  activity: TodoActivity,
-  review: TodoReviewState,
-): TodoUpdate[] {
-  const seen = review.tasks.get(key)?.revision ?? 0;
-  return (activity.get(key)?.updates ?? []).filter(
-    (update) => isReviewable(update) && update.revision > seen,
-  );
-}
-
-/** Latest unreviewed update per task, newest first; ties keep plan order. */
-export function unreviewedTodoTasks(
-  state: TodoState,
-  activity: TodoActivity,
-  review: TodoReviewState,
-): Map<string, TodoUpdate> {
-  const entries: [string, TodoUpdate][] = [];
-  for (const task of state.tasks) {
-    const latest = unreviewedTodoUpdates(task.key, activity, review).at(-1);
-    if (latest) entries.push([task.key, latest]);
-  }
-  return new Map(entries.sort((a, b) => b[1].revision - a[1].revision));
-}
-
-/** Review marks for unreviewed tasks in this snapshot, optionally limited to keys. */
-export function todoReviewMarks(
-  state: TodoState,
-  activity: TodoActivity,
-  review: TodoReviewState,
-  keys?: Iterable<string>,
-): Map<string, number> {
-  const allowed = keys ? new Set(keys) : undefined;
-  const marks = new Map<string, number>();
-  for (const [key, update] of unreviewedTodoTasks(state, activity, review)) {
-    if (!allowed || allowed.has(key)) marks.set(key, update.revision);
-  }
-  return marks;
 }
 
 export function latestTodoMessage(key: string, activity: TodoActivity): TodoUpdate | undefined {

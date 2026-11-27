@@ -1,5 +1,10 @@
 # Task messages and review tracking
 
+Status: superseded by
+[Tasks that wait on you, and an end to review flags](../../../../docs/roadmaps/2026-11-27-waiting-tasks.md).
+Task messages stay; review tracking was removed in its step 1. What follows is
+the original plan, kept as history.
+
 ## Problem
 
 Long sessions run several tasks at once, often with subagents. When a task finishes,

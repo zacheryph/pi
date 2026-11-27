@@ -16,7 +16,7 @@ import { todoSettings, type TodoConfig } from "#src/config";
 import type { TodoRequest } from "#src/actions";
 import type { TodoDetails } from "#src/state";
 import { TODO_ARCHIVE_TYPE } from "#src/archive";
-import { TODO_JOURNAL_TYPE, TODO_REVIEW_TYPE } from "#src/replay";
+import { TODO_JOURNAL_TYPE } from "#src/replay";
 import { TODO_SYNC_TYPE } from "#src/sync";
 
 type Command = Omit<RegisteredCommand, "name" | "sourceInfo">;
@@ -201,7 +201,6 @@ export function harness(options: HarnessOptions = {}) {
     snapshots: () => entriesOf(TODO_JOURNAL_TYPE),
     /** The data of each archive journal entry, oldest first. */
     archives: () => entriesOf(TODO_ARCHIVE_TYPE).map((entry) => (entry as { data: unknown }).data),
-    reviews: () => entriesOf(TODO_REVIEW_TYPE),
     noContinuation,
   };
 }

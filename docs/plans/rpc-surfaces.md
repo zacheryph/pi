@@ -109,7 +109,7 @@ Each is one pull request. "Base" is the branch it stacks on.
   resolves a reference through the registry; callbacks keep working until
   every caller has moved.
 - Action registry per session bus: define (id, title, argument check, handler),
-  list, dispatch. Ids are `<extension>.<verb>` (`todo.review`,
+  list, dispatch. Ids are `<extension>.<verb>` (`todo.inspect`,
   `git.worktree.remove`).
 - Done when: `pi-ui` tests pass unchanged, a model round-trips through
   `JSON.stringify`, and one explorer (pi-stash) runs on action references.

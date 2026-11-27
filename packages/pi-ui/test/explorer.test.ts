@@ -19,7 +19,7 @@ function setup(view?: Partial<ExplorerView>, style: object = theme) {
     noun: ["task", "tasks"],
     notices: [[{ text: "Snapshot" }, { text: " · old", tone: "warning" }]],
     onOpen,
-    marker: { label: "unreviewed", clearAction: "mark reviewed", onClear },
+    marker: { label: "flagged", clearAction: "unflag", onClear },
     hints: [{ keys: "/todo:add", action: "add" }],
     items: [
       {
@@ -77,7 +77,7 @@ describe("Explorer", () => {
   });
   it("shows a live status row with the marker count, and wraps prioritized hints", () => {
     const { explorer, onClear } = setup();
-    expect(output(explorer)).toContain("│ ── 1/2 tasks · 2 unreviewed ──");
+    expect(output(explorer)).toContain("│ ── 1/2 tasks · 2 flagged ──");
     // Header chrome (filter, tabs, notices) is divided from the list.
     expect(output(explorer)).toMatch(/Snapshot · old +│ \n │ ─+ │ \n │ → /);
     const wide = output(explorer, 200);
@@ -85,7 +85,7 @@ describe("Explorer", () => {
       "Enter open",
       "Esc close",
       "Tab view",
-      "Ctrl+R mark reviewed",
+      "Ctrl+R unflag",
       "/todo:add add",
       "↑↓ PgUp/PgDn Home/End",
     ])
@@ -100,10 +100,10 @@ describe("Explorer", () => {
     explorer.handleInput("\r");
     expect(onClear).toHaveBeenCalledWith(["a"]);
     explorer.handleInput("\x1b");
-    expect(output(explorer)).toContain("1 unreviewed");
+    expect(output(explorer)).toContain("1 flagged");
     explorer.handleInput("\x12");
     expect(onClear).toHaveBeenLastCalledWith(["b"]);
-    expect(output(explorer)).not.toContain("unreviewed");
+    expect(output(explorer)).not.toContain("flagged");
   });
   it("filters searchable metadata/paste, opens details with a badge header, backs out, clears filter and closes", () => {
     const { explorer, onOpen, done } = setup();

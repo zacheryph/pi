@@ -166,7 +166,7 @@ describe("/attention", () => {
     const ctx = context();
     const { view, running } = await openList(h, ctx);
     view.handleInput(DOWN);
-    expect(plainLines(view.render(80))).toContain("→ ◆ 2 unreviewed findings");
+    expect(plainLines(view.render(80))).toContain("→ ◆ 2 findings to discuss");
     view.handleInput(ENTER);
     await running;
     expect(fixture.opened).toEqual([{ id: "fix-auth-bug" }]);
@@ -183,7 +183,7 @@ describe("/attention", () => {
     await flushMicrotasks();
     expect(fixture.dismissed).toEqual([{ id: "pr:github.com/acme/web#42" }]);
     expect(plainLines(view.render(80))).not.toContain("Review acme/web#42");
-    expect(plainLines(view.render(80))).toContain("→ ◆ 2 unreviewed findings");
+    expect(plainLines(view.render(80))).toContain("→ ◆ 2 findings to discuss");
     expect(hint(ctx.ui.setStatus)).toBe("◆ 2 need you · /attention");
     view.handleInput("\x1b");
     await running;
@@ -236,7 +236,7 @@ describe("/attention", () => {
       "◆ Review acme/web#42 · Ready",
       "  Checkout cleanup · draft at a13c90e · 12m",
       "  https://github.com/acme/web/pull/42",
-      "◆ 2 unreviewed findings · Ready",
+      "◆ 2 findings to discuss · Ready",
       "  fix-auth-bug · retry-backoff · 5m",
       "◇ acme/api#57 · Stale",
       "  Pushed since you were asked · 3h",

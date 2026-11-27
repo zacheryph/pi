@@ -4,12 +4,7 @@ import { createCodemodeExtension, SessionManager } from "@earendil-works/pi-codi
 import { describe, expect, it, onTestFinished } from "vitest";
 import todoExtension from "#src/index";
 import { todoSettings } from "#src/config";
-import {
-  replayTaskState,
-  replayTodoSession,
-  TODO_JOURNAL_TYPE,
-  TODO_REVIEW_TYPE,
-} from "#src/replay";
+import { replayTaskState, replayTodoSession, TODO_JOURNAL_TYPE } from "#src/replay";
 import { fauxSession, loadResources, toolCall, tempDir } from "#test-helpers";
 
 async function fixture(
@@ -69,7 +64,6 @@ describe("real Pi SDK integration (offline faux provider)", () => {
     ]);
     expect([...extensions[0].commands.keys()]).toEqual([
       "todo",
-      "todo:review",
       "todo:add",
       "todo:update",
       "todo:remove",
@@ -224,7 +218,7 @@ describe("real Pi SDK integration (offline faux provider)", () => {
     expect(request).not.toContain("child-work");
   });
 
-  it("model messages pass schema validation, persist, and review commands never call the provider or alter model context", async () => {
+  it("model messages pass schema validation, persist, and reload without altering model context", async () => {
     const h = await fixture({
       responses: [
         toolCall("todo_upsert", {
@@ -253,18 +247,13 @@ describe("real Pi SDK integration (offline faux provider)", () => {
         }),
       ],
     );
-    await h.session.prompt("/todo:review all");
-    expect(h.requests).toHaveLength(2);
-    expect(
-      h.manager
-        .getBranch()
-        .filter((entry) => entry.type === "custom" && entry.customType === TODO_REVIEW_TYPE),
-    ).toHaveLength(1);
     const reloaded = await fixture({ manager: h.manager, responses: [fauxAssistantMessage("ok")] });
     const restored = replayTodoSession({ sessionManager: reloaded.manager });
-    expect(restored.review.tasks.get("audit")?.revision).toBe(1);
+    expect(restored.activity.get("audit")?.updates.at(-1)?.message).toBe(
+      "Found 2 issues in token refresh",
+    );
     await reloaded.session.prompt("Next");
-    // The direct result is still the current baseline; review added no snapshot.
+    // The direct result is still the current baseline; reloading added no snapshot.
     expect(JSON.stringify(reloaded.requests[0])).not.toContain("Current todo list");
   }, 20_000);
 

@@ -39,11 +39,11 @@ const explorer: ExplorerModel = {
   ],
   tabs: [
     { label: "All", ids: ["fix", "docs"] },
-    { label: "Unreviewed", ids: ["fix"] },
+    { label: "Flagged", ids: ["fix"] },
     { label: "Empty", ids: [], emptyText: "Nothing here." },
   ],
-  marker: { label: "unreviewed", onClear: { action: "todo.review", args: { branch: 1 } } },
-  loadDetail: { action: "todo.inspect", args: { reviewed: {} } },
+  marker: { label: "flagged", onClear: { action: "demo.unflag", args: { branch: 1 } } },
+  loadDetail: { action: "todo.inspect", args: { full: true } },
 };
 
 function draw<P extends object>(component: (props: P) => React.ReactNode, props: P) {
@@ -226,9 +226,9 @@ describe("explorers", () => {
   it("switches tabs and shows a tab's empty text", async () => {
     const slot = draw(ExplorerSection, { model: explorer });
     expect(await slot.findByText("Read-only task snapshot")).toBeTruthy();
-    expect(slot.getByText("1 unreviewed")).toBeTruthy();
+    expect(slot.getByText("1 flagged")).toBeTruthy();
     expect(slot.getByText("docs: Write it up")).toBeTruthy();
-    fireEvent.click(slot.getByRole("tab", { name: "Unreviewed" }));
+    fireEvent.click(slot.getByRole("tab", { name: "Flagged" }));
     expect(slot.queryByText("docs: Write it up")).toBeNull();
     fireEvent.click(slot.getByRole("tab", { name: "Empty" }));
     expect(slot.getByText("Nothing here.")).toBeTruthy();
@@ -241,15 +241,15 @@ describe("explorers", () => {
     const slot = draw(ExplorerSection, { model: explorer, run });
     fireEvent.click(await slot.findByText("fix: Fix the loop"));
     expect(await slot.findByText("detail of fix")).toBeTruthy();
-    expect(run).toHaveBeenCalledWith("todo.inspect", { reviewed: {}, id: "fix" });
-    expect(run).toHaveBeenCalledWith("todo.review", { branch: 1, ids: ["fix"] });
-    expect(slot.queryByText("1 unreviewed")).toBeNull();
+    expect(run).toHaveBeenCalledWith("todo.inspect", { full: true, id: "fix" });
+    expect(run).toHaveBeenCalledWith("demo.unflag", { branch: 1, ids: ["fix"] });
+    expect(slot.queryByText("1 flagged")).toBeNull();
     // Closing and opening again loads it again; the mark stays cleared.
     fireEvent.click(slot.getByText("fix: Fix the loop"));
     expect(slot.queryByText("detail of fix")).toBeNull();
     fireEvent.click(slot.getByText("fix: Fix the loop"));
     expect(await slot.findByText("detail of fix")).toBeTruthy();
-    expect(run.mock.calls.filter(([action]) => action === "todo.review")).toHaveLength(1);
+    expect(run.mock.calls.filter(([action]) => action === "demo.unflag")).toHaveLength(1);
   });
 
   it("shows an action's error, or a result that is not detail content, in place", async () => {
@@ -278,7 +278,7 @@ describe("explorers", () => {
     fireEvent.click(await remote.findByText("fix: Fix the loop"));
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(remote.queryByText("Loading…")).toBeNull();
-    expect(remote.getByText("1 unreviewed")).toBeTruthy();
+    expect(remote.getByText("1 flagged")).toBeTruthy();
   });
 
   it("expands every item of the tab in view, loading each detail, and collapses them again", async () => {
@@ -293,8 +293,8 @@ describe("explorers", () => {
     fireEvent.click(expand);
     expect(await slot.findByText("detail of fix")).toBeTruthy();
     expect(await slot.findByText("detail of docs")).toBeTruthy();
-    // Opening all opens each as one click would: the marked one is reviewed.
-    expect(run).toHaveBeenCalledWith("todo.review", { branch: 1, ids: ["fix"] });
+    // Opening all opens each as one click would: the marked one is cleared.
+    expect(run).toHaveBeenCalledWith("demo.unflag", { branch: 1, ids: ["fix"] });
     const collapse = slot.getByRole("button", { name: "Collapse all Todos" });
     expect(collapse.getAttribute("aria-expanded")).toBe("true");
     expect(collapse.querySelector("[data-icon]")?.getAttribute("data-icon")).toBe("ChevronsUp");

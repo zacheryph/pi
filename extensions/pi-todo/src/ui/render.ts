@@ -13,28 +13,19 @@ import {
   type WidgetView,
 } from "#ui";
 import type { StateIcon } from "#surface";
-import {
-  isReviewable,
-  type TodoActivity,
-  type TodoReviewState,
-  type TodoUpdate,
-  unreviewedTodoUpdates,
-} from "#src/activity";
+import type { TodoActivity, TodoUpdate } from "#src/activity";
 import { isTaskBlocked, type TodoState, type TodoTask } from "#src/state";
 
 export interface TodoRenderConfig {
   maxVisible: number;
   showCompleted: boolean;
-  /** Latest unreviewed model message by task key, newest first. */
-  unreviewed?: ReadonlyMap<string, string>;
+  /** Latest message by task key, shown after the task's identity. */
+  messages?: ReadonlyMap<string, string>;
   /** Subagent holding each delegated task, as a display label. */
   assignees?: ReadonlyMap<string, string>;
   /** Header title; defaults to Todos. */
   title?: string;
 }
-
-/** Unreviewed rows: `●` in a two-column gutter, plus a one-line excerpt. */
-const UNREVIEWED_MARK = ICONS.marker;
 
 export function todoTaskPresentation(
   task: TodoTask,
@@ -51,25 +42,18 @@ export function todoTaskPresentation(
 }
 
 /**
- * Stable within groups; never sorts/mutates state itself. Optional unreviewed
- * keys (newest first) rank ahead of every status group, in that order.
+ * In progress, pending, blocked, then completed; stable within groups, and
+ * never sorts or mutates state itself.
  */
-export function orderedTodoTasks(
-  state: TodoState,
-  unreviewed?: ReadonlyMap<string, unknown>,
-): TodoTask[] {
-  const flagged = [...(unreviewed?.keys() ?? [])];
-  const rank = (task: TodoTask) => {
-    const index = flagged.indexOf(task.key);
-    if (index >= 0) return index - flagged.length;
-    return task.status === "in_progress"
+export function orderedTodoTasks(state: TodoState): TodoTask[] {
+  const rank = (task: TodoTask) =>
+    task.status === "in_progress"
       ? 0
       : task.status === "completed"
         ? 3
         : isTaskBlocked(task, state.tasks)
           ? 2
           : 1;
-  };
   return [...state.tasks].sort((a, b) => rank(a) - rank(b));
 }
 
@@ -86,12 +70,10 @@ function taskLeft(task: TodoTask): string {
 }
 
 function renderSelection(state: TodoState, config: TodoRenderConfig) {
-  const unreviewed = config.unreviewed ?? new Map<string, string>();
   return {
-    unreviewed,
-    // Hiding completed tasks never hides an unreviewed outcome.
-    tasks: orderedTodoTasks(state, unreviewed).filter(
-      (task) => config.showCompleted || task.status !== "completed" || unreviewed.has(task.key),
+    messages: config.messages ?? new Map<string, string>(),
+    tasks: orderedTodoTasks(state).filter(
+      (task) => config.showCompleted || task.status !== "completed",
     ),
     maxVisible: Number.isFinite(config.maxVisible) ? Math.max(1, Math.floor(config.maxVisible)) : 5,
   };
@@ -106,10 +88,10 @@ export function renderTodoText(
   state: TodoState,
   config: TodoRenderConfig = { maxVisible: state.tasks.length, showCompleted: true },
 ): string[] {
-  const { tasks, maxVisible, unreviewed } = renderSelection(state, config);
+  const { tasks, maxVisible, messages } = renderSelection(state, config);
   const done = state.tasks.filter((task) => task.status === "completed").length;
   const lines = [
-    `${sanitizeLine(config.title ?? "Todos")} ${done}/${state.tasks.length} completed${unreviewed.size ? ` · ${unreviewed.size} new` : ""}`,
+    `${sanitizeLine(config.title ?? "Todos")} ${done}/${state.tasks.length} completed`,
   ];
   if (!tasks.length) {
     lines.push(state.tasks.length ? "No unfinished tasks" : "No tasks");
@@ -118,23 +100,21 @@ export function renderTodoText(
   const shown = tasks.slice(0, maxVisible);
   for (const task of shown) {
     const status = todoTaskPresentation(task, state);
-    const message = unreviewed.get(task.key);
+    const message = messages.get(task.key);
     const excerpt = message === undefined ? "" : todoMessageLine(message);
     const assignee = config.assignees?.get(task.key);
     lines.push(
-      `${message === undefined ? "" : `${UNREVIEWED_MARK} `}${status.glyph} ${taskLeft(task)} [${status.label}]` +
+      `${status.glyph} ${taskLeft(task)} [${status.label}]` +
         (assignee ? ` → ${sanitizeLine(assignee)}` : "") +
         (task.description ? ` — ${sanitizeLine(task.description)}` : "") +
         (message === undefined
           ? ""
-          : ` · new: ${excerpt.length > 160 ? `${excerpt.slice(0, 159)}…` : excerpt}`),
+          : ` · last: ${excerpt.length > 160 ? `${excerpt.slice(0, 159)}…` : excerpt}`),
     );
   }
   if (tasks.length > shown.length) lines.push(`+${tasks.length - shown.length} more`);
   return lines;
 }
-
-const lineSpans = (line: Line): Span[] => (Array.isArray(line) ? [...line] : [line as Span]);
 
 const pad = (value: number) => String(value).padStart(2, "0");
 
@@ -171,11 +151,10 @@ function describeUpdate(update: TodoUpdate): string {
 
 export interface TodoDetailHistory {
   activity: TodoActivity;
-  review: TodoReviewState;
   now: number;
 }
 
-/** Structured detail; optional history adds times, review state and a timeline. */
+/** Structured detail; optional history adds times and a timeline. */
 export function todoTaskDetail(
   task: TodoTask,
   state: TodoState,
@@ -185,23 +164,12 @@ export function todoTaskDetail(
   const byKey = new Map(state.tasks.map((item) => [item.key, item]));
   const entry = history?.activity.get(task.key);
   const updates = entry?.updates ?? [];
-  const reviewed = history?.review.tasks.get(task.key);
-  const unreviewed = new Set(
-    history ? unreviewedTodoUpdates(task.key, history.activity, history.review) : [],
-  );
   const fields: [string, Line][] = [];
   if (assignee) fields.push(["Assigned to", assignee]);
   if (history) {
     if (entry?.createdAt !== undefined)
       fields.push(["Created", formatWhen(entry.createdAt, history.now)]);
     if (updates.length) fields.push(["Updated", formatWhen(updates.at(-1)!.at, history.now)]);
-    if (updates.some(isReviewable))
-      fields.push([
-        "Reviewed",
-        reviewed
-          ? `${formatWhen(reviewed.at, history.now)} through r${reviewed.revision}`
-          : { text: "never", tone: "warning" },
-      ]);
   }
   if (!task.dependsOn?.length) fields.push(["Dependencies", "none"]);
   const blocks: Block[] = fields.length ? [{ fields }] : [];
@@ -212,15 +180,9 @@ export function todoTaskDetail(
     );
   blocks.push({ heading: "Description" }, { text: task.description ?? "(none)" });
   if (history && updates.length) {
-    blocks.push({
-      heading: `Activity (newest first${unreviewed.size ? `; ${UNREVIEWED_MARK} = unreviewed` : ""})`,
-    });
+    blocks.push({ heading: "Activity (newest first)" });
     for (const update of updates.toReversed()) {
-      const fresh = unreviewed.has(update);
-      blocks.push({
-        text: `${fresh ? UNREVIEWED_MARK : " "} ${formatWhen(update.at, history.now)} · ${describeUpdate(update)}`,
-        tone: fresh ? "accent" : "default",
-      });
+      blocks.push({ text: `${formatWhen(update.at, history.now)} · ${describeUpdate(update)}` });
       if (update.message)
         blocks.push({
           lines: sanitizeText(update.message)
@@ -264,33 +226,20 @@ function statusFallbacks(task: TodoTask, state: TodoState, assignee?: string): L
 /**
  * The widget as plain JSON, for any renderer: the `todo.widget` view and,
  * with the terminal's row budgets added, the widget above the editor. Every
- * selected task is a row; `config.maxVisible` only decides whether the visible
- * rows need an unreviewed-marker gutter.
+ * selected task is a row; the terminal applies `config.maxVisible`.
  */
 export function todoWidgetModel(state: TodoState, config: TodoRenderConfig): WidgetModel {
-  const { tasks, maxVisible, unreviewed } = renderSelection(state, config);
+  const { tasks, messages } = renderSelection(state, config);
   const active = state.tasks.filter((task) => task.status === "in_progress").length;
   const counts = stateCounts({
     active,
     pending: state.tasks.filter((task) => task.status === "pending").length,
   });
-  // Narrow terminals drop the unreviewed count before the counts; rows keep markers.
-  const fresh: Span = { text: `${UNREVIEWED_MARK} ${unreviewed.size} new`, tone: "accent" };
-  const meta: Line[] = [
-    ...(unreviewed.size
-      ? [counts ? [fresh, { text: " · ", tone: "dim" as const }, ...lineSpans(counts)] : [fresh]]
-      : []),
-    ...(counts ? [counts] : []),
-  ];
-  // Only reserve a marker gutter when a visible row needs it.
-  const gutter = tasks.slice(0, maxVisible).some((task) => unreviewed.has(task.key));
   const rows: WidgetRow[] = tasks.map((task) => {
-    const message = unreviewed.get(task.key);
+    const message = messages.get(task.key);
     const left: Span[] = [];
-    if (gutter)
-      left.push(message === undefined ? "  " : { text: `${UNREVIEWED_MARK} `, tone: "accent" });
     // The key is always bold, as a subagent's name is.
-    const tone = task.status === "completed" && message === undefined ? "muted" : "default";
+    const tone = task.status === "completed" ? "muted" : "default";
     left.push(
       { text: sanitizeLine(task.key), tone, bold: true },
       { text: taskLeft(task).slice(sanitizeLine(task.key).length), tone },
@@ -305,7 +254,7 @@ export function todoWidgetModel(state: TodoState, config: TodoRenderConfig): Wid
   return {
     title: { label: config.title ?? "Todos", icon: ICONS.tasks },
     active: active > 0,
-    meta,
+    meta: counts ? [counts] : [],
     rows,
     emptyText: state.tasks.length ? "No unfinished tasks" : "No tasks",
   };

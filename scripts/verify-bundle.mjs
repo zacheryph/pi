@@ -110,7 +110,6 @@ try {
     "system:tools",
     "system:skills",
     "todo",
-    "todo:review",
     "todo:add",
     "todo:update",
     "todo:remove",

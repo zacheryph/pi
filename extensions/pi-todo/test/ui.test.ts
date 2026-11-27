@@ -47,7 +47,7 @@ describe("todo rendering", () => {
     const c: TodoRenderConfig = {
       maxVisible: 2,
       showCompleted: true,
-      unreviewed: new Map([["done", "Shipped\nit"]]),
+      messages: new Map([["done", "Shipped\nit"]]),
       assignees: new Map([["active", "agent 1a2b"]]),
     };
     const model = todoWidgetModel(s, c);
@@ -97,8 +97,13 @@ describe("todo rendering", () => {
       { text: "done", tone: "muted", bold: true },
       { text: ": Task done", tone: "muted" },
     ]);
-    const unseen = todoWidgetModel(s, { ...config, unreviewed: new Map([["done", "Note"]]) });
-    expect(unseen.rows[0]!.left).toContainEqual({ text: "done", tone: "default", bold: true });
+    // A message does not make a completed task stand out: only its excerpt is added.
+    const noted = todoWidgetModel(s, { ...config, messages: new Map([["done", "Note"]]) });
+    expect(noted.rows[1]!.left).toEqual([
+      { text: "done", tone: "muted", bold: true },
+      { text: ": Task done", tone: "muted" },
+      { text: " — Note", tone: "dim" },
+    ]);
   });
 
   it("counts active and pending tasks in the heading, leaving out zeros", () => {
@@ -398,60 +403,50 @@ describe("todo rendering", () => {
   });
 });
 
-describe("unreviewed message rendering", () => {
+describe("task message rendering", () => {
   const s = state([
     task("active", "in_progress"),
     task("ready"),
     task("done", "completed"),
     task("old", "completed"),
   ]);
-  const unreviewed = new Map([
+  const messages = new Map([
     ["done", "Found 3 bugs\nin auth"],
     ["ready", "Queued for subagent"],
   ]);
-  const c = { ...config, unreviewed };
+  const c = { ...config, messages };
 
-  it("counts new messages in the header, falling back to the counts then title on narrow widths", () => {
-    const counts = "1 active / 1 pending";
-    expect(render(s, c)[0]).toMatch(/^──   Todos ─+ ● 2 new · 1 active \/ 1 pending ──$/);
-    expect(visibleWidth(render(s, c)[0])).toBe(100);
-    for (let width = 1; width <= 60; width++) {
-      const header = render(s, c, width)[0];
-      expect(visibleWidth(header)).toBeLessThanOrEqual(width);
-      expect(visibleWidth(renderTodoLines(s, c, width, colored)[0])).toBeLessThanOrEqual(width);
-      if (header.includes("new"))
-        expect(header).toMatch(/^──   Todos [─ ]+● 2 new · 1 active \/ 1 pending ──$/);
-    }
-    expect(render(s, c, 47)[0]).toBe(`──   Todos ─ ● 2 new · ${counts} ──`);
-    expect(render(s, c, 46)[0]).toMatch(/^──   Todos ─+ 1 active \/ 1 pending ──$/);
-    expect(render(s, c, 37)[0]).toBe(`──   Todos ─ ${counts} ──`);
-    expect(render(s, c, 36)[0]).toBe(`──   Todos ${"─".repeat(24)}`);
-    // With nothing active or pending, only the new count remains.
+  it("leaves the header to the counts, messages or not", () => {
+    expect(render(s, c)[0]).toMatch(/^──   Todos ─+ 1 active \/ 1 pending ──$/);
+    expect(render(s, c)[0]).toBe(render(s)[0]);
+    for (let width = 1; width <= 60; width++)
+      expect(visibleWidth(render(s, c, width)[0])).toBeLessThanOrEqual(width);
     const finished = state([task("done", "completed")]);
-    expect(render(finished, { ...c, unreviewed: new Map([["done", "x"]]) })[0]).toMatch(
-      /^──   Todos ─+ ● 1 new ──$/,
+    expect(render(finished, { ...c, messages: new Map([["done", "x"]]) })[0]).toMatch(
+      /^──   Todos ─+$/,
     );
-    expect(render(s)[0]).not.toContain("new");
   });
 
-  it("orders unreviewed first by recency, keeps them when completed are hidden, and aligns a gutter", () => {
-    const lines = render(s, { ...c, showCompleted: false });
+  it("orders by status alone, hides completed tasks with messages, and adds no gutter", () => {
+    expect(render(s, { ...c, showCompleted: false }).slice(1)).toEqual([
+      expect.stringMatching(/^ active: Task active +▸ in_progress $/),
+      expect.stringMatching(/^ ready: Task ready — Queued for subagent +○ pending $/),
+    ]);
+    const lines = render(s, c);
     expect(lines.slice(1)).toEqual([
-      expect.stringMatching(/^ ● done: Task done — Found 3 bugs in auth +✓ completed $/),
-      expect.stringMatching(/^ ● ready: Task ready — Queued for subagent +○ pending $/),
-      expect.stringMatching(/^ {3}active: Task active +▸ in_progress $/),
+      expect.stringMatching(/^ active: Task active +▸ in_progress $/),
+      expect.stringMatching(/^ ready: Task ready — Queued for subagent +○ pending $/),
+      expect.stringMatching(/^ done: Task done — Found 3 bugs in auth +✓ completed $/),
+      expect.stringMatching(/^ old: Task old +✓ completed $/),
     ]);
     for (const line of lines) expect(visibleWidth(line)).toBe(100);
-    // Overflow beyond the task budget still prefers unreviewed rows.
     expect(render(s, { ...c, maxVisible: 1 }).slice(1)).toEqual([
-      expect.stringContaining("● done:"),
+      expect.stringContaining(" active:"),
       expect.stringMatching(/^ \+3 more +$/),
     ]);
-    // No gutter unless a shown row is unreviewed.
-    expect(render(s, { ...config, unreviewed: new Map() })[1]).toMatch(/^ active:/);
   });
 
-  it("colors marker accent and excerpt dim while unreviewed completed identity stays readable", () => {
+  it("dims the excerpt and keeps a completed task muted", () => {
     const calls: string[] = [];
     const t = {
       fg: (token: string, text: string) => {
@@ -462,29 +457,29 @@ describe("unreviewed message rendering", () => {
     } as Theme;
     renderTodoLines(
       state([task("done", "completed")]),
-      { ...config, unreviewed: new Map([["done", "Note"]]) },
+      { ...config, messages: new Map([["done", "Note"]]) },
       80,
       t,
     );
-    expect(calls).toEqual(expect.arrayContaining(["accent:● ", "dim: — Note", "accent:● 1 new"]));
-    expect(calls).not.toContain("muted:done: Task done");
+    expect(calls).toEqual(expect.arrayContaining(["muted:done", "dim: — Note"]));
+    expect(calls.some((call) => call.startsWith("accent:"))).toBe(false);
   });
 
-  it("plain widget text marks new messages with bounded one-line excerpts", () => {
+  it("plain widget text adds bounded one-line excerpts of the latest message", () => {
     const text = renderTodoText(s, {
       ...c,
-      unreviewed: new Map([...unreviewed, ["active", `${"x".repeat(200)}\nmore`]]),
+      messages: new Map([...messages, ["active", `${"x".repeat(200)}\nmore`]]),
     });
-    expect(text[0]).toBe("Todos 2/4 completed · 3 new");
-    expect(text[1]).toBe("● ✓ done: Task done [completed] · new: Found 3 bugs in auth");
-    expect(text.find((line) => line.includes("active:"))).toBe(
-      `● ▸ active: Task active [in_progress] · new: ${"x".repeat(159)}…`,
+    expect(text[0]).toBe("Todos 2/4 completed");
+    expect(text.find((line) => line.includes("done:"))).toBe(
+      "✓ done: Task done [completed] · last: Found 3 bugs in auth",
     );
+    expect(text[1]).toBe(`▸ active: Task active [in_progress] · last: ${"x".repeat(159)}…`);
     expect(text.find((line) => line.includes("old:"))).toBe("✓ old: Task old [completed]");
   });
 
   it.each([1, 2, 3, 8, 30, 80])(
-    "insets and bounds unreviewed rows with hostile, wide and ANSI text at width %i",
+    "insets and bounds message rows with hostile, wide and ANSI text at width %i",
     (width) => {
       const hostile = new Map([
         ["wide", `${unsafe}\n日本語 👩‍💻 e\u0301 🦀`.repeat(5)],
@@ -496,12 +491,7 @@ describe("unreviewed message rendering", () => {
         task("k2"),
       ]);
       for (const t of [theme, colored]) {
-        const lines = renderTodoLines(
-          s2,
-          { ...config, showCompleted: false, unreviewed: hostile },
-          width,
-          t,
-        );
+        const lines = renderTodoLines(s2, { ...config, messages: hostile }, width, t);
         expect(lines).toHaveLength(4);
         for (const row of lines.slice(1)) {
           expect(row.startsWith(" ")).toBe(true);
@@ -552,43 +542,26 @@ describe("task detail history", () => {
     ],
   ]);
 
-  it("adds times, review state and a newest-first timeline marking unreviewed messages", () => {
-    const lines = detail(
-      todoTaskDetail(s.tasks[0], s, { activity, review: { tasks: new Map() }, now }),
-    );
+  it("adds times and a newest-first timeline with every message", () => {
+    const lines = detail(todoTaskDetail(s.tasks[0], s, { activity, now }));
     expect(lines).toEqual(
       expect.arrayContaining([
         expect.stringMatching(/^Created +2h ago \(\d\d:\d\d:\d\d\)$/),
         expect.stringMatching(/^Updated +just now \(\d\d:\d\d:\d\d\)$/),
-        expect.stringMatching(/^Reviewed +never$/),
-        "Activity (newest first; ● = unreviewed)",
+        "Activity (newest first)",
       ]),
     );
-    const timeline = lines.slice(lines.indexOf("Activity (newest first; ● = unreviewed)") + 1);
+    const timeline = lines.slice(lines.indexOf("Activity (newest first)") + 1);
     expect(timeline).toEqual([
-      expect.stringMatching(/^ {2}just now \(.+\) · r4 · note \(completed\) · you$/),
+      expect.stringMatching(/^just now \(.+\) · r4 · note \(completed\) · you$/),
       "    Hand check",
-      expect.stringMatching(/^● 10m ago \(.+\) · r3 · in_progress → completed$/),
+      expect.stringMatching(/^10m ago \(.+\) · r3 · in_progress → completed$/),
       "    Built",
       "    safe",
       "    end",
-      expect.stringMatching(/^ {2}1h ago \(.+\) · r2 · pending → in_progress$/),
+      expect.stringMatching(/^1h ago \(.+\) · r2 · pending → in_progress$/),
     ]);
-    const reviewed = detail(
-      todoTaskDetail(s.tasks[0], s, {
-        activity,
-        review: {
-          at: now - 60_000,
-          tasks: new Map([["build", { revision: 3, at: now - 60_000 }]]),
-        },
-        now,
-      }),
-    );
-    expect(reviewed).toContainEqual(
-      expect.stringMatching(/^Reviewed +1m ago \(\d\d:\d\d:\d\d\) through r3$/),
-    );
-    expect(reviewed.join("\n")).not.toContain("●");
-    expect(detail(todoTaskDetail(s.tasks[0], s)).join("\n")).not.toContain("Reviewed");
+    expect(lines.join("\n")).not.toMatch(/Reviewed|●/);
   });
 
   it("names the assignee and agent-attributed updates in details", () => {
@@ -609,12 +582,7 @@ describe("task detail history", () => {
       ],
     ]);
     const lines = detail(
-      todoTaskDetail(
-        s.tasks[0],
-        s,
-        { activity: delegated, review: { tasks: new Map() }, now },
-        `agent ${unsafe}`,
-      ),
+      todoTaskDetail(s.tasks[0], s, { activity: delegated, now }, `agent ${unsafe}`),
     );
     expect(lines).toContainEqual(expect.stringMatching(/^Assigned to +agent safe end$/));
     expect(lines).toContainEqual(

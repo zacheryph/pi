@@ -137,7 +137,7 @@ describe("offeredActions", () => {
           title: "Todos",
           items: [],
           loadDetail: { action: "todo.inspect" },
-          marker: { label: "unreviewed", onClear: { action: "todo.review" } },
+          marker: { label: "flagged", onClear: { action: "todo.unflag" } },
         },
       },
       {
@@ -162,7 +162,7 @@ describe("offeredActions", () => {
       "ask.cancel",
       "ask.submit",
       "todo.inspect",
-      "todo.review",
+      "todo.unflag",
     ]);
   });
 

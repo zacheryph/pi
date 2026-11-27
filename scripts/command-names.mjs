@@ -1,6 +1,6 @@
 // Slash command naming rule from AGENTS.md: an extension's commands are its name
 // less the `pi-` prefix (`/todo`), or that name, a colon and an action
-// (`/todo:review`), all lowercase.
+// (`/todo:add`), all lowercase.
 
 /**
  * Extensions whose command prefix is not their name less `pi-`, with the reason.

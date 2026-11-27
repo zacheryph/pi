@@ -437,6 +437,10 @@ link, resume and see the snapshot replace it.
 
 ### 10. Second producer: unreviewed todo findings
 
+**Status:** dropped in favour of
+[Tasks that wait on you](2026-11-27-waiting-tasks.md), which removes todo review
+tracking (its step 1). Kept below as history.
+
 **Type:** the change
 
 **Does:** pi-todo publishes `todo.attention`: one `findings` item per task with

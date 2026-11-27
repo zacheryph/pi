@@ -176,9 +176,9 @@ export const staleRunningCard = {
           },
         ],
         marker: {
-          label: "unreviewed",
-          clearAction: "mark reviewed",
-          onClear: { action: "todo.review", args: { branch: 1 } },
+          label: "flagged",
+          clearAction: "unflag",
+          onClear: { action: "todo.unflag", args: { branch: 1 } },
         },
         onOpen: { action: "todo.opened" },
         loadDetail: { action: "todo.inspect" },
@@ -193,7 +193,7 @@ export const staleRunningCard = {
           { key: "total", label: "tasks", value: 3 },
           { key: "completed", label: "done", value: 1 },
           { key: "in-progress", label: "in progress", value: 1 },
-          { key: "unreviewed", label: "unreviewed", value: 1 },
+          { key: "flagged", label: "flagged", value: 1 },
         ],
         // A task `in_progress` in the session file: persisted, not process-bound.
         active: { id: "2", label: "Write the collector" },

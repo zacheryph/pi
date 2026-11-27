@@ -62,9 +62,9 @@ describe("view models are JSON", () => {
     ],
     initialTab: 0,
     marker: {
-      label: "unreviewed",
-      clearAction: "mark reviewed",
-      onClear: { action: "todo.review" },
+      label: "flagged",
+      clearAction: "unflag",
+      onClear: { action: "todo.unflag" },
     },
     emptyText: "No tasks.",
     hints: [{ keys: "/todo:add", priority: 2 }],
@@ -125,7 +125,7 @@ describe("view models are JSON", () => {
     ])
       expect(isDetailContent(value), JSON.stringify(value)).toBe(false);
 
-    expect(isActionRef({ action: "todo.review", args: { ids: ["t1"] } })).toBe(true);
+    expect(isActionRef({ action: "todo.unflag", args: { ids: ["t1"] } })).toBe(true);
     expect(isActionRef({ args: {} })).toBe(false);
   });
 });

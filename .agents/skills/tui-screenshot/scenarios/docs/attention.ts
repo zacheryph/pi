@@ -30,7 +30,7 @@ function items(now: number): AttentionItem[] {
     {
       id: "task:backoff",
       category: "findings",
-      title: "2 unreviewed findings",
+      title: "2 findings to discuss",
       reason: "backoff · dead-letter",
       state: "ready",
       since: now - 4 * MINUTE,

@@ -256,7 +256,7 @@ request alone. Stash previews are read by pi-stash itself and capped; stashed
 text can hold secrets from tool output, and a preview shows what is stored.
 
 Answering a question is the one request that changes what a session does
-beyond review marks. It can only answer a questionnaire that is open and
+beyond clearing explorer marks. It can only answer a questionnaire that is open and
 waiting on you, and pi-ask checks the answer strictly.
 
 ## Planned

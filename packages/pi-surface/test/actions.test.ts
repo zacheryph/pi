@@ -106,7 +106,7 @@ describe("action registry", () => {
       expect(define(id), id).toThrow(`Invalid action id "${id}"`);
     expect(define("demo.ok", " ")).toThrow('Action "demo.ok" needs a title.');
     expect(define("git.worktree.remove")).not.toThrow();
-    expect(define("todo.review-all")).not.toThrow();
+    expect(define("todo.unflag-all")).not.toThrow();
     expect(define("git.worktree.remove")).toThrow(
       'Action "git.worktree.remove" is already defined on this session.',
     );

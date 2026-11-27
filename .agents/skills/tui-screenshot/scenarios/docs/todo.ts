@@ -1,4 +1,4 @@
-/** pi-todo: tasks with dependencies, an unreviewed message, then the /todo browser. */
+/** pi-todo: tasks with dependencies, a recorded message, then the /todo browser. */
 import { defineScenario, text, tool } from "#scripted-model/scenario";
 
 export default defineScenario({

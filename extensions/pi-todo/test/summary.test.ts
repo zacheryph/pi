@@ -7,7 +7,6 @@ import {
   type SummaryModel,
   type ViewEntry,
 } from "#surface";
-import { createTodoReviewState } from "#src/activity";
 import { MAX_RECENT_COMPLETED } from "#src/archive";
 import { todoSettings } from "#src/config";
 import { TODO_SUMMARY_VIEW } from "#src/events";
@@ -29,8 +28,6 @@ const zeros = {
   "in-progress": 0,
   pending: 0,
   blocked: 0,
-  unreviewed: 0,
-  "unreviewed-messages": 0,
   archived: 0,
 };
 
@@ -44,8 +41,6 @@ describe("todo.summary", () => {
         { key: "in-progress", label: "in progress", value: 0, tone: "accent" },
         { key: "pending", label: "pending", value: 0 },
         { key: "blocked", label: "blocked", value: 0, tone: "warning" },
-        { key: "unreviewed", label: "unreviewed", value: 0, tone: "accent" },
-        { key: "unreviewed-messages", label: "new messages", value: 0 },
         { key: "archived", label: "archived", value: 0, tone: "muted" },
       ],
     });
@@ -74,8 +69,6 @@ describe("todo.summary", () => {
       "in-progress": 2,
       pending: 1,
       blocked: 1,
-      unreviewed: 2,
-      "unreviewed-messages": 2,
     });
     expect(summary(env).active).toEqual({ id: "b", label: "Write the collector" });
   });
@@ -89,19 +82,14 @@ describe("todo.summary", () => {
       "in-progress": "in progress",
       pending: "pending",
       blocked: "blocked",
-      unreviewed: "unreviewed",
       archived: "archived",
     };
     await env.execute({ action: "upsert", tasks: [{ key: "a", subject: "A", message: "One" }] });
-    expect(counts(env)).toMatchObject({ total: 1, "unreviewed-messages": 1 });
-    expect(labels()).toEqual({ ...statuses, total: "task", "unreviewed-messages": "new message" });
+    expect(counts(env)).toMatchObject({ total: 1 });
+    expect(labels()).toEqual({ ...statuses, total: "task" });
     await env.execute({ action: "upsert", tasks: [{ key: "b", subject: "B", message: "Two" }] });
-    expect(counts(env)).toMatchObject({ total: 2, "unreviewed-messages": 2 });
-    expect(labels()).toEqual({
-      ...statuses,
-      total: "tasks",
-      "unreviewed-messages": "new messages",
-    });
+    expect(counts(env)).toMatchObject({ total: 2 });
+    expect(labels()).toEqual({ ...statuses, total: "tasks" });
   });
 
   it("stays available while the widget is disabled", async () => {
@@ -116,13 +104,13 @@ describe("todo.summary", () => {
     await env.execute({
       action: "upsert",
       tasks: [
-        { key: "a", subject: "A", status: "completed" },
+        { key: "a", subject: "A", status: "completed", message: "Done" },
         { key: "b", subject: "B", status: "completed" },
       ],
     });
-    // Every task is completed and nothing is unreviewed: the widget hides.
+    // Every task is completed, messages or not: the widget hides.
     expect(readView(env.pi.events, "todo.widget")).toBeUndefined();
-    expect(counts(env)).toMatchObject({ total: 2, completed: 2, unreviewed: 0 });
+    expect(counts(env)).toMatchObject({ total: 2, completed: 2 });
   });
 
   it("counts the whole list where the widget caps its rows, and archived tasks", async () => {
@@ -151,10 +139,8 @@ describe("todo.summary", () => {
     });
   });
 
-  it("announces review changes with the unreviewed counts they change", async () => {
+  it("announces a change that only adds a message, and counts nothing for messages", async () => {
     const env = await started();
-    const announced: string[] = [];
-    onViewChanged(env.pi.events, (id) => announced.push(id));
     await env.execute({
       action: "upsert",
       tasks: [
@@ -162,14 +148,11 @@ describe("todo.summary", () => {
         { key: "b", subject: "B", message: "Two" },
       ],
     });
+    const announced: string[] = [];
+    onViewChanged(env.pi.events, (id) => announced.push(id));
     await env.execute({ action: "upsert", tasks: [{ key: "a", message: "Three" }] });
     expect(announced).toContain(TODO_SUMMARY_VIEW);
-    expect(counts(env)).toMatchObject({ unreviewed: 2, "unreviewed-messages": 3 });
-
-    announced.length = 0;
-    await env.command("todo:review", "all");
-    expect(announced).toContain(TODO_SUMMARY_VIEW);
-    expect(counts(env)).toMatchObject({ unreviewed: 0, "unreviewed-messages": 0 });
+    expect(counts(env)).toEqual({ ...zeros, total: 2, pending: 2 });
   });
 
   it("follows the branch on tree navigation and a restart", async () => {
@@ -213,8 +196,6 @@ describe("todo.summary", () => {
   it("builds from the given state alone", () => {
     const model = todoSummaryModel({
       state: createEmptyTodoState(),
-      activity: new Map(),
-      review: createTodoReviewState(),
       archived: 4,
     });
     expect(model.counts.find((count) => count.key === "archived")?.value).toBe(4);

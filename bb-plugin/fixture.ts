@@ -375,7 +375,6 @@ function sessionView(now: number): SessionModel {
 function todoViews(): ViewEntry[] {
   const by = (status: TodoStatus) => TASKS.filter((task) => task.status === status).length;
   const blocked = TASKS.filter((task) => task.blocked).length;
-  const unreviewed = TASKS.filter((task) => task.status === "completed");
   const active = TASKS.find((task) => task.status === "in_progress");
   const summary: SummaryModel = {
     counts: [
@@ -384,12 +383,6 @@ function todoViews(): ViewEntry[] {
       { key: "in-progress", label: "in progress", value: by("in_progress"), tone: "accent" },
       { key: "pending", label: "pending", value: by("pending") - blocked },
       { key: "blocked", label: "blocked", value: blocked, tone: "warning" },
-      { key: "unreviewed", label: "unreviewed", value: unreviewed.length, tone: "accent" },
-      {
-        key: "unreviewed-messages",
-        label: agree(unreviewed.length, "new message"),
-        value: unreviewed.length,
-      },
       { key: "archived", label: "archived", value: 0, tone: "muted" },
     ],
     ...(active ? { active: { id: active.key, label: active.subject } } : {}),
@@ -398,7 +391,6 @@ function todoViews(): ViewEntry[] {
     title: { label: "Todos" },
     active: true,
     meta: stateCounts(by("in_progress"), by("pending")),
-    // Finished tasks with unreviewed messages stay in the widget, as in pi-todo's.
     rows: TASKS.map((task) => {
       const status = taskStatus(task);
       const glyph = { text: status.glyph, tone: status.tone, icon: status.icon };
@@ -430,25 +422,19 @@ function todoViews(): ViewEntry[] {
   const explorer: ExplorerModel = {
     title: "Todos",
     noun: ["task", "tasks"],
-    notices: [{ text: "Read-only task snapshot · last reviewed 50m ago", tone: "muted" }],
+    notices: [{ text: "Read-only task snapshot", tone: "muted" }],
     items: TASKS.map((task) => {
       const status = taskStatus(task);
       return {
         id: task.key,
         label: `${task.key}: ${task.subject}${task.dependsOn ? ` ← ${task.dependsOn.join(", ")}` : ""}`,
         badge: { text: `${status.glyph} ${status.label}`, tone: status.tone },
-        marked: task.status === "completed",
       };
     }),
     tabs: [
       { label: "All", ids: TASKS.map((task) => task.key) },
-      { label: "Unreviewed", ids: unreviewed.map((task) => task.key) },
+      { label: "Recent", ids: TASKS.map((task) => task.key).toReversed() },
     ],
-    marker: {
-      label: "unreviewed",
-      clearAction: "mark reviewed",
-      onClear: { action: "todo.review", args: { branch: 1 } },
-    },
     loadDetail: { action: "todo.inspect" },
   };
   return [
@@ -830,8 +816,6 @@ export function fixtureResponder(now = Date.now()) {
         ];
         return blocks;
       }
-      case "todo.review":
-        return { reviewed: 1 };
       case "git.attention.dismiss":
         // A fixture keeps its items: there is no ledger to record the dismissal in.
         return null;

@@ -4,8 +4,8 @@ import { describe, expect, it, vi } from "vitest";
 import type { DisposableComponent } from "#ui";
 import { type TodoState } from "#src/state";
 import { showTodoBrowser, type TodoBrowserOptions } from "#src/ui/browser";
-import { applyTodoReview, createTodoReviewState, type TodoActivity } from "#src/activity";
-import { todoInspectAction, todoReviewAction } from "#src/surface";
+import type { TodoActivity } from "#src/activity";
+import { todoInspectAction } from "#src/surface";
 import { actionRegistry } from "#surface";
 import { fakeCustomUi, fakeEventBus, fakeTui } from "#test-helpers";
 
@@ -23,36 +23,26 @@ const snapshot: TodoState = {
     description: `hidden detail\n${body}`,
   })),
 };
-type ReviewSpy = (marks: ReadonlyMap<string, number>) => void;
 /**
- * The browser as /todo opens it: todo.inspect and todo.review on a session bus,
- * reading a copy of the state taken when it opened, with review writes going to
- * `onReview`.
+ * The browser as /todo opens it: todo.inspect on a session bus, reading a copy
+ * of the state taken when it opened.
  */
 async function browse(
   ctx: ExtensionContext,
   state: TodoState,
   options: TodoBrowserOptions = {},
-  onReview: ReviewSpy = () => {},
+  now = Date.now(),
 ) {
   const bus = fakeEventBus();
   const copy = structuredClone(state);
   const source = {
     state: () => copy,
     activity: () => options.activity ?? new Map(),
-    review: () => options.review ?? createTodoReviewState(),
     assignees: () => options.assignees ?? new Map<string, string>(),
-    now: () => options.now ?? Date.now(),
-    branch: () => 0,
-    markReviewed: (marks: ReadonlyMap<string, number>) => {
-      onReview(marks);
-      return marks.size;
-    },
+    now: () => now,
   };
-  const actions = actionRegistry(bus);
-  actions.define(todoInspectAction(source));
-  actions.define(todoReviewAction(source));
-  await showTodoBrowser(ctx, state, { ...options, branch: 0, actions: bus });
+  actionRegistry(bus).define(todoInspectAction(source));
+  await showTodoBrowser(ctx, state, { ...options, actions: bus });
 }
 /** Details load through an action; let it resolve. */
 const settle = () => new Promise((resolve) => setImmediate(resolve));
@@ -79,7 +69,7 @@ const withoutPiMarkers = (text: string) =>
 // oxlint-disable-next-line no-control-regex -- Intentionally matches terminal control characters.
 const plain = (text: string) => withoutPiMarkers(text).replace(/\x1b\[[0-9;]*m/g, "");
 const output = (browser: Browser, width = 100) => browser.render(width).map(plain).join("\n");
-const selected = (browser: Browser) => /→ (?:● )?(t\d+):/.exec(output(browser))?.[1];
+const selected = (browser: Browser) => /→ (t\d+):/.exec(output(browser))?.[1];
 
 describe("todo browser placement", () => {
   it("opens the shared centered overlay and closes with Ctrl+C", async () => {
@@ -168,7 +158,7 @@ describe("read-only todo browser", () => {
   });
 });
 
-describe("todo browser history views and review", () => {
+describe("todo browser history views", () => {
   const now = Date.UTC(2026, 9, 22, 12);
   const state: TodoState = {
     schemaVersion: 2,
@@ -214,16 +204,10 @@ describe("todo browser history views and review", () => {
   ]);
   async function openHistory(options: Partial<TodoBrowserOptions> = {}) {
     const env = setup();
-    const onReview = vi.fn<ReviewSpy>();
-    await browse(
-      env.ctx,
-      state,
-      { activity, review: createTodoReviewState(), now, ...options },
-      onReview,
-    );
+    await browse(env.ctx, state, { activity, ...options }, now);
     const browser = env.components[0];
     browser.focused = true;
-    return { ...env, browser, onReview };
+    return { ...env, browser };
   }
   const rows = (browser: Browser) =>
     output(browser)
@@ -231,75 +215,44 @@ describe("todo browser history views and review", () => {
       .map((line) => /^│ (.*?)\s+(?:[✓▸○] \w+)\s*│$/.exec(line.trim())?.[1])
       .filter((row): row is string => !!row);
   const TAB = "\t",
-    SHIFT_TAB = "\x1b[Z",
-    CTRL_R = "\x12";
+    SHIFT_TAB = "\x1b[Z";
 
-  it("reserves a marker column, counts unreviewed in the status row and cycles All/Unreviewed/Recent views", async () => {
+  it("cycles All/Recent views with no marker column, and searches messages", async () => {
     const { browser } = await openHistory();
-    expect(output(browser)).toContain("Read-only task snapshot · last reviewed never");
-    expect(rows(browser)).toEqual(["→ ● c: Task c", "    a: Task a", "  ● b: Task b"]);
-    expect(output(browser)).toContain("1/3 tasks · 2 unreviewed");
-    expect(output(browser)).toContain("Tab view · Ctrl+R mark reviewed");
-    expect(output(browser)).toMatch(/\bAll\b · Unreviewed · Recent/);
-    browser.handleInput(TAB);
-    expect(output(browser)).toContain("1/2 tasks · 3 total · 2 unreviewed");
-    expect(rows(browser)).toEqual(["→ ● c: Task c", "  ● b: Task b"]);
-    browser.handleInput(TAB);
-    expect(output(browser)).toContain("1/3 tasks");
-    expect(rows(browser)).toEqual(["→ ● c: Task c", "  ● b: Task b", "    a: Task a"]);
-    browser.handleInput(TAB);
-    expect(rows(browser)).toEqual(["→ ● c: Task c", "    a: Task a", "  ● b: Task b"]);
-    browser.handleInput(SHIFT_TAB);
-    browser.handleInput(SHIFT_TAB);
-    expect(rows(browser)).toEqual(["→ ● c: Task c", "  ● b: Task b"]);
-    browser.handleInput("three bugs");
-    expect(rows(browser)).toEqual(["→ ● b: Task b"]);
-  });
-
-  it("Enter reviews the opened task once at its shown revision; Ctrl+R reviews the filtered rest", async () => {
-    const { browser, onReview } = await openHistory();
-    browser.handleInput(ENTER);
-    expect(onReview).toHaveBeenCalledWith(new Map([["c", 3]]));
-    await settle();
-    expect(output(browser)).toContain("Activity (newest first; ● = unreviewed)");
-    expect(output(browser)).toMatch(/● just now \(\d\d:\d\d:\d\d\) · r3 · pending → in_progress/);
-    expect(output(browser)).toContain("    Delegated to subagent");
-    expect(output(browser)).toMatch(/Reviewed +never/);
-    browser.handleInput(ESC);
-    expect(rows(browser)).toEqual(["→   c: Task c", "    a: Task a", "  ● b: Task b"]);
-    expect(output(browser)).toContain("· 1 unreviewed");
-    browser.handleInput(ENTER);
-    browser.handleInput(ESC);
-    expect(onReview).toHaveBeenCalledTimes(1);
-    browser.handleInput("task a");
-    browser.handleInput(CTRL_R);
-    expect(onReview).toHaveBeenCalledTimes(1);
-    browser.handleInput(ESC);
-    browser.handleInput(CTRL_R);
-    expect(onReview).toHaveBeenLastCalledWith(new Map([["b", 2]]));
-    expect(output(browser)).not.toContain("unreviewed ·");
-    expect(output(browser)).not.toMatch(/\d unreviewed/);
-    browser.handleInput(CTRL_R);
-    expect(onReview).toHaveBeenCalledTimes(2);
-  });
-
-  it("opens on the requested view with an explanatory empty state and no review hint when nothing is new", async () => {
-    const review = applyTodoReview(createTodoReviewState(), {
-      at: now - 120_000,
-      tasks: { b: 2, c: 3 },
-    });
-    const { browser, onReview } = await openHistory({ view: "unreviewed", review });
-    expect(output(browser)).toContain("No unreviewed messages. Tab for other views.");
-    expect(output(browser)).toContain("last reviewed 2m ago");
+    expect(output(browser)).toContain("Read-only task snapshot");
+    expect(output(browser)).not.toContain("last reviewed");
+    expect(rows(browser)).toEqual(["→ c: Task c", "  a: Task a", "  b: Task b"]);
+    expect(output(browser)).toMatch(/1\/3 tasks *─/);
     expect(output(browser)).not.toContain("Ctrl+R");
-    expect(rows(browser)).toEqual([]);
+    expect(output(browser)).toMatch(/\bAll\b · Recent/);
     browser.handleInput(TAB);
     expect(rows(browser)).toEqual(["→ c: Task c", "  b: Task b", "  a: Task a"]);
-    browser.handleInput(CTRL_R);
-    expect(onReview).not.toHaveBeenCalled();
+    browser.handleInput(TAB);
+    expect(rows(browser)).toEqual(["→ c: Task c", "  a: Task a", "  b: Task b"]);
+    browser.handleInput(SHIFT_TAB);
+    expect(rows(browser)).toEqual(["→ c: Task c", "  b: Task b", "  a: Task a"]);
+    browser.handleInput("three bugs");
+    expect(rows(browser)).toEqual(["→ b: Task b"]);
   });
 
-  it("keeps every frame bounded with markers, views and hostile message text", async () => {
+  it("Enter shows the task's history, messages included, with no review state", async () => {
+    const { browser } = await openHistory();
+    browser.handleInput(ENTER);
+    await settle();
+    expect(output(browser)).toContain("Activity (newest first)");
+    expect(output(browser)).toMatch(/│ just now \(\d\d:\d\d:\d\d\) · r3 · pending → in_progress/);
+    expect(output(browser)).toContain("    Delegated to subagent");
+    expect(output(browser)).not.toMatch(/Reviewed/);
+    browser.handleInput(ESC);
+    expect(rows(browser)).toEqual(["→ c: Task c", "  a: Task a", "  b: Task b"]);
+  });
+
+  it("opens on the requested view", async () => {
+    const { browser } = await openHistory({ view: "recent" });
+    expect(rows(browser)).toEqual(["→ c: Task c", "  b: Task b", "  a: Task a"]);
+  });
+
+  it("keeps every frame bounded with views and hostile message text", async () => {
     const unsafe = "safe\x1b[2J\x1b]52;c;bad\x07\u202e日本語 👩‍💻 e\u0301";
     const hostile: TodoActivity = new Map([
       [

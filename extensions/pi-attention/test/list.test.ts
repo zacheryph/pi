@@ -48,7 +48,7 @@ describe("AttentionView", () => {
        │ → ◆ Review acme/web#42                                       Ready │ 
        │     Checkout cleanup · draft at a13c90e · 12m                      │ 
        │                                                                    │ 
-       │   ◆ 2 unreviewed findings                                    Ready │ 
+       │   ◆ 2 findings to discuss                                    Ready │ 
        │     fix-auth-bug · retry-backoff · 5m                              │ 
        │                                                                    │ 
        │   ◇ acme/api#57                                              Stale │ 
@@ -82,7 +82,7 @@ describe("AttentionView", () => {
     view.handleInput("\x1b[B");
     expect(view.current?.itemId).toBe(findingsItem.id);
     const text = plainLines(view.render(72));
-    expect(text).toContain("→ ◆ 2 unreviewed findings");
+    expect(text).toContain("→ ◆ 2 findings to discuss");
     expect(text).toContain("Enter open · Esc close");
     expect(text).not.toContain("d dismiss");
     view.handleInput("\x1b[B");

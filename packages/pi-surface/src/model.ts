@@ -10,7 +10,7 @@ import type { JsonObject, JsonValue } from "#src/json";
  * runs: a running tool or agent, a clock that ticks, a count of running things.
  * A view shown after that process has gone (a saved snapshot) settles it, using
  * only these markers: a renderer never guesses from an icon, a tone or text.
- * State that lives in the session file (a task's `in_progress` status, review
+ * State that lives in the session file (a task's `in_progress` status, explorer
  * marks, finished-agent history, Git and stash records) is never `live`, even
  * where it shares an icon with runtime state, and survives settling unchanged.
  * Each `live` field says what settling does to it.
@@ -183,9 +183,9 @@ export type ExplorerTab = {
   secondary?: boolean;
 };
 export type ExplorerMarker = {
-  /** What a mark means, counted in the status row: "unreviewed". */
+  /** What a mark means, counted in the status row: "flagged". */
   label: string;
-  /** Hint for clearing marks, e.g. "mark reviewed". Present only with `onClear`. */
+  /** Hint for clearing marks, e.g. "unflag". Present only with `onClear`. */
   clearAction?: string;
   /** Dispatched with the reference's arguments plus `{ ids }` when marks are cleared. */
   onClear?: ActionRef<JsonObject>;
