@@ -97,9 +97,9 @@ The profile's instructions establish this working loop:
 This is a profile-driven workflow using existing session persistence, not a
 separate scheduler or memory store. Todo lists are session-local: an orchestrator
 subagent owns its own ledger, and the parent receives its status through normal
-results and updates. The profile rereads todo after compaction/reload and records
-concise recovery notes. Live worker sessions remain subject to retention and
-runtime lifetime. After a reload or resume, `subagent_get` still answers for a
+results and updates. pi-todo puts the list back in context after compaction or
+reload, and the profile records concise recovery notes. Live worker sessions
+remain subject to retention and runtime lifetime. After a reload or resume, `subagent_get` still answers for a
 worker's ID from its saved record (status, last outcome, result, transcript path) and
 lists every worker the branch started, and `subagent_send` reopens the worker's
 saved transcript as long as it and the worker's directory still exist. If it is

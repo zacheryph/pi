@@ -369,7 +369,8 @@ describe("AgentTypeRegistry", () => {
       expect(prompt).toContain("pass the returned path as subagent_start's cwd");
       expect(prompt).toContain("send the reviewer and any follow-up worker to the same cwd");
       expect(prompt).toContain("remove it with git_worktree_remove");
-      expect(prompt).toContain("call todo_list, git_worktree_list and git_pr_list");
+      expect(prompt).toContain("Call git_worktree_list and git_pr_list");
+      expect(prompt).toContain("call todo_list only if it has not");
       expect(prompt).toContain("subagent_get without agent_id for the workers you started");
     });
 
@@ -518,7 +519,9 @@ describe("AgentTypeRegistry", () => {
     it("keeps incident notes and follow-ups that survive compaction", () => {
       const prompt = makeRegistry().resolveAgentConfig("assist").systemPrompt;
       expect(prompt).toContain("`incident/<short-id>`");
-      expect(prompt).toContain("call todo_list and stash_list");
+      expect(prompt).toContain(
+        "read the note with stash_get before answering about an earlier incident",
+      );
       expect(prompt).toContain("`/model agent/orchestrate`");
     });
   });
