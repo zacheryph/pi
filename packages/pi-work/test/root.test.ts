@@ -427,6 +427,56 @@ describe("one reader of landing per host", () => {
   });
 });
 
+describe("summaries under a host that shows the transcript as text", () => {
+  it("shows the summary in place of the message in RPC mode, and keeps it from the model", async () => {
+    const h = fakePi();
+    const work = ensureWorkHost(h.api);
+    const { ctx } = context();
+    const rpc = { ...ctx, mode: "rpc" };
+    await h.emit("session_start", { reason: "startup" }, rpc);
+    const item = work.host()!.open({ owner: "test", kind: "job", label: "a" });
+    item.complete({ customType: "test:done", content: "<done/>", summary: "**A** finished" });
+    // The message, for the model, is hidden; its summary follows it, displayed, and starts the
+    // run, so bb shows it inside the run.
+    expect(h.pi.sendMessage.mock.calls).toEqual([
+      [{ customType: "test:done", content: "<done/>", display: false }, { triggerTurn: false }],
+      [
+        {
+          customType: "work:summary",
+          content: "**A** finished",
+          display: true,
+          details: { userOutput: true, level: "info" },
+        },
+        { triggerTurn: true },
+      ],
+    ]);
+    const [[message], [summary]] = h.pi.sendMessage.mock.calls as [[object], [object]];
+    const shown = { role: "custom", ...summary };
+    const result = { role: "custom", ...message };
+    expect(await h.emit("context", { messages: [shown, result] }, rpc)).toEqual({
+      messages: [result],
+    });
+  });
+
+  it("shows the message itself when it has no summary, and in the terminal always", async () => {
+    for (const [mode, summary] of [
+      ["rpc", undefined],
+      ["tui", "**A** finished"],
+    ] as const) {
+      const h = fakePi();
+      const work = ensureWorkHost(h.api);
+      const ctx = { ...context().ctx, mode };
+      await h.emit("session_start", { reason: "startup" }, ctx);
+      const item = work.host()!.open({ owner: "test", kind: "job", label: "a" });
+      item.complete({ customType: "test:done", content: "A", ...(summary ? { summary } : {}) });
+      expect(h.pi.sendMessage.mock.calls).toEqual([
+        [{ customType: "test:done", content: "A", display: true }, { triggerTurn: true }],
+      ]);
+      await h.emit("session_shutdown", { reason: "quit" }, ctx);
+    }
+  });
+});
+
 describe("/work:wake outside the terminal", () => {
   it("answers a manual call as a displayed message, and as a notification in the terminal", async () => {
     const h = fakePi();

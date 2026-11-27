@@ -4,6 +4,7 @@ import {
   capOutput,
   isTerminal,
   MAX_OUTPUT_CHARS,
+  outputMessage,
   MAX_OUTPUT_LINES,
   userOutput,
   type OutputContext,
@@ -84,6 +85,17 @@ describe("userOutput", () => {
     });
     // Nothing to drop: the handler leaves the list (and Pi's cached prefix) alone.
     expect(await h.emit("context", { messages: [user, card] })).toBeUndefined();
+  });
+});
+
+describe("outputMessage", () => {
+  it("is the message show sends, for a caller with its own delivery options", () => {
+    expect(outputMessage("demo:output", "\u001b[31mred", "warning")).toEqual({
+      customType: "demo:output",
+      content: "Warning: red",
+      display: true,
+      details: { userOutput: true, level: "warning" },
+    });
   });
 });
 

@@ -76,6 +76,20 @@ function isUserOutput(message: { role?: string; details?: unknown }): boolean {
   );
 }
 
+/**
+ * The displayed message `show` sends outside the terminal: sanitized, bounded, marked so the
+ * `context` handler a `userOutput` registers keeps it from the model. For a caller that sends it
+ * itself, with its own delivery options; it must have called `userOutput` for the same `pi`.
+ */
+export function outputMessage(customType: string, text: string, level: OutputLevel = "info") {
+  return {
+    customType,
+    content: capOutput(PREFIX[level] + sanitizeText(text)),
+    display: true,
+    details: { [USER_OUTPUT_KEY]: true, level },
+  };
+}
+
 export interface UserOutput {
   /**
    * Show `text` to the user. Terminal: `ctx.ui.notify(text, level)`, unchanged.
@@ -107,15 +121,12 @@ export function userOutput(pi: OutputApi, customType: string): UserOutput {
         ctx.ui.notify(text, level);
         return;
       }
-      const content = capOutput(PREFIX[level] + sanitizeText(text));
+      const message = outputMessage(customType, text, level);
       try {
-        pi.sendMessage(
-          { customType, content, display: true, details: { [USER_OUTPUT_KEY]: true, level } },
-          { triggerTurn: false },
-        );
+        pi.sendMessage(message, { triggerTurn: false });
       } catch {
         // A stale context or a closed session: the host's dialogs and notify are all that is left.
-        if (ctx.hasUI) ctx.ui.notify(content, level);
+        if (ctx.hasUI) ctx.ui.notify(message.content, level);
       }
     },
   };

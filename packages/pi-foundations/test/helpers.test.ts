@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { errorText } from "#src/errors";
 import { isRecord } from "#src/guards";
-import { formatBytes, formatDuration, oneLine, plural } from "#src/format";
+import {
+  formatBytes,
+  formatDuration,
+  markdownFence,
+  markdownText,
+  oneLine,
+  plural,
+} from "#src/format";
 
 describe("plain-data helpers", () => {
   it("rejects arrays even when they have record-like properties", () => {
@@ -90,5 +97,21 @@ describe("plain-data helpers", () => {
     expect(plural(2, "task")).toBe("tasks");
     expect(plural(2, "entry", "entries")).toBe("entries");
     expect(plural(1, "entry", "entries")).toBe("entry");
+  });
+});
+
+describe("markdownText", () => {
+  it("escapes what Markdown or HTML would act on and keeps it on one line", () => {
+    expect(markdownText("Fix *all* the <b>bugs</b>\n[now](x) `a_b`")).toBe(
+      "Fix \\*all\\* the \\<b\\>bugs\\</b\\> \\[now\\]\\(x\\) \\`a\\_b\\`",
+    );
+    expect(markdownText("plain words")).toBe("plain words");
+  });
+});
+
+describe("markdownFence", () => {
+  it("fences the text with more backticks than any run inside it", () => {
+    expect(markdownFence("ok\n")).toBe("```\nok\n```");
+    expect(markdownFence("a ```` b", "sh")).toBe("`````sh\na ```` b\n`````");
   });
 });

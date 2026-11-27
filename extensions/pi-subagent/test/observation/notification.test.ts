@@ -4,6 +4,7 @@ import {
   buildNotificationDetails,
   escapeXml,
   completionMessage,
+  completionSummary,
   formatTaskNotification,
   formatQuestionNotification,
   formatUpdateNotification,
@@ -268,6 +269,55 @@ describe("completionMessage", () => {
     const record = createTestSubagent({ runUpdates: ["Course change."] });
     expect(completionMessage(record).content).toContain(
       "Updates this agent sent while it worked:\n\n  Course change.",
+    );
+  });
+});
+
+describe("completionSummary", () => {
+  it("heads a completion with the outcome and stats, then the result", () => {
+    const record = createTestSubagent({
+      description: "Write *AI* joke",
+      result: "Have you tried turning it off and on again?",
+      toolUses: 2,
+      lifetimeUsage: { input: 100, output: 200, cacheWrite: 0 },
+      completedAt: 1_000 + 4_200,
+      startedAt: 1_000,
+    });
+    const summary = completionMessage(record).summary!;
+    expect(summary).toBe(completionSummary(buildNotificationDetails(record, 500)));
+    const [headline, , body] = summary.split("\n");
+    expect(headline).toMatch(
+      /^✓ Subagent \*\*Write \\\*AI\\\* joke\*\* completed · 2 tool uses · /,
+    );
+    expect(headline).toContain("4.2s");
+    expect(body).toBe("Have you tried turning it off and on again?");
+    // Nothing written for the model: no XML, ids or pointers.
+    expect(summary).not.toMatch(/<|subagent_get|transcript/);
+  });
+
+  it("says how a run that did not complete ended", () => {
+    const failed = createTestSubagent({ description: "Lint", status: "error", error: "boom" });
+    expect(completionMessage(failed).summary).toMatch(
+      /^✗ Subagent \*\*Lint\*\* failed( · .*)?\n\nError: boom$/,
+    );
+    const never = createTestSubagent({
+      description: "Lint",
+      status: "stopped",
+      stoppedWhileQueued: true,
+      result: undefined,
+    });
+    expect(completionMessage(never).summary).toMatch(
+      /^✗ Subagent \*\*Lint\*\* was stopped( · .*)?\n\nNever started — stopped while queued\.$/,
+    );
+  });
+
+  it("names the agent in an update's and a question's summary", () => {
+    const record = createTestSubagent({ description: "Survey", status: "running" });
+    expect(updateMessage(record, "Halfway.").summary).toBe(
+      "Subagent **Survey** sent an update\n\nHalfway.",
+    );
+    expect(questionMessage(record, "Which one?").summary).toBe(
+      "Subagent **Survey** asked a question\n\nWhich one?",
     );
   });
 });

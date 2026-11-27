@@ -14,7 +14,14 @@ import { cleanOutput, lastBytes, readTail, tailBuffer, tailText, TailSink } from
 import { outcomeFromStatus } from "#src/supervisor";
 import { LogWriter } from "#src/logwriter";
 import { evaluateWatch, type CheckResult } from "#src/watch";
-import { exitText, formatDuration, formatJobList, formatNotification } from "#src/format";
+import {
+  exitText,
+  formatDuration,
+  formatJobList,
+  formatNotification,
+  formatSummary,
+  SUMMARY_TAIL_LINES,
+} from "#src/format";
 import { resolveManagerOptions, settleSnapshot, type JobSnapshot } from "#src/jobs";
 import { pruneLogs } from "#src/logs";
 import { tempDir } from "#test/helpers";
@@ -166,6 +173,28 @@ void test("formatNotification: watch timeout without output", () => {
     /^Watch j1 timed out: npm test\nuntil success · 3 checks · last check exit 1 · after 30s · timeout 600s\n/,
   );
   assert.match(text, /\(no last check output\)$/);
+});
+
+void test("formatSummary: a headline, then the end of the output in a code block", () => {
+  const ok = formatSummary(
+    snap({ status: "succeeded", exitCode: 0, endedAt: 10_000, label: "10s *success*" }),
+    { text: "line\n```\n", truncated: false },
+  );
+  assert.equal(ok, "✓ Job **10s \\*success\\*** succeeded · exit 0 · 10s\n\n````\nline\n```\n````");
+  const lines = Array.from({ length: 30 }, (_, i) => `l${i}`).join("\n");
+  const failed = formatSummary(snap({ status: "timed_out", endedAt: 5_000 }), {
+    text: lines,
+    truncated: true,
+  });
+  assert.match(failed, /^✗ Job \*\*npm test\*\* timed out · 5s\n\n```\nl18\n/);
+  assert.equal(failed.split("\n").length, 2 + 2 + SUMMARY_TAIL_LINES);
+  assert.equal(
+    formatSummary(snap({ kind: "watch", status: "matched", endedAt: 2_000 }), {
+      text: "",
+      truncated: false,
+    }),
+    "✓ Watch **npm test** matched · 2s",
+  );
 });
 
 void test("formatJobList groups running and recent", () => {

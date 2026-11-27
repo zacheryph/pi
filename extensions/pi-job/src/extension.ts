@@ -12,7 +12,13 @@ import { userOutput } from "#foundations/user-output";
 import { isAbsolute, resolve } from "node:path";
 import { parentOf } from "#session-tree";
 import { ensureWorkHost, type Json, type WorkMessage } from "#work";
-import { formatJobList, formatJobLine, formatNotification, jobTitle } from "#src/format";
+import {
+  formatJobList,
+  formatJobLine,
+  formatNotification,
+  formatSummary,
+  jobTitle,
+} from "#src/format";
 import { CUSTOM_TYPE, JobItems, WORK_OWNER } from "#src/items";
 import { envLimit, JobManager, type JobSnapshot } from "#src/jobs";
 import { defaultLogRoot, pruneLogs } from "#src/logs";
@@ -276,6 +282,7 @@ export function createJobsExtension(options: JobsExtensionOptions = {}) {
         details: {
           completions: [{ completionId: randomUUID(), job: brief(job) as unknown as Json }],
         },
+        summary: formatSummary(job, tail),
       };
     };
 

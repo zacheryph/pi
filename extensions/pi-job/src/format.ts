@@ -1,5 +1,5 @@
 /** Model- and user-facing text (pure). */
-import { formatDuration, oneLine, plural } from "#foundations/format";
+import { formatDuration, markdownFence, markdownText, oneLine, plural } from "#foundations/format";
 export { formatDuration } from "#foundations/format";
 import { constants } from "node:os";
 import type { JobSnapshot } from "#src/jobs";
@@ -65,6 +65,29 @@ export function formatNotification(job: JobSnapshot, tail: Tail, now = Date.now(
   if (tail.text === "") head.push(`(no ${which})`);
   else head.push(`${tail.truncated ? `${which} (tail)` : which}:`, tail.text);
   return head.join("\n");
+}
+
+/** The most output lines the summary shows: the model's notification carries the full tail. */
+export const SUMMARY_TAIL_LINES = 12;
+
+/**
+ * The completion as a person reads it where the transcript is shown as text (bb): a headline with
+ * the outcome, exit and duration, then the end of the output in a code block.
+ */
+export function formatSummary(job: JobSnapshot, tail: Tail, now = Date.now()): string {
+  const good = job.status === "succeeded" || job.status === "matched";
+  const kind = job.kind === "watch" ? "Watch" : "Job";
+  const facts = [
+    `${good ? "✓" : "✗"} ${kind} **${markdownText(jobTitle(job))}** ${job.status.replace("_", " ")}`,
+  ];
+  const exit = job.kind === "watch" ? "" : exitText(job.exitCode, job.signal);
+  if (exit) facts.push(exit);
+  facts.push(formatDuration(durationOf(job, now)));
+  const parts = [facts.join(" · ")];
+  if (job.error) parts.push(`Error: ${job.error}`);
+  const lines = tail.text.replace(/\n$/, "").split("\n");
+  if (tail.text !== "") parts.push(markdownFence(lines.slice(-SUMMARY_TAIL_LINES).join("\n")));
+  return parts.join("\n\n");
 }
 
 export function formatJobLine(job: JobSnapshot, now = Date.now()): string {
