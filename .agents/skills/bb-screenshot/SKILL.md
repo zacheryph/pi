@@ -105,9 +105,11 @@ Prints each card's insets in CSS pixels and exits 1 when they are uneven:
 
 - `header.iconLeft`, `header.textLeft`: bb's own header (12 px, 32 px). This is
   the reference; the plugin cannot change it.
-- `body.left`, `body.right`, `body.top`: the plugin's body content inside the
-  card, from the divider under the header. All three must equal the header's
-  icon inset.
+- `body.left`, `body.right`, `body.top`, `body.bottom`: the plugin's body
+  content inside the card, from the divider under the header to the card's
+  bottom edge. All four must equal the header's icon inset.
+- `body.collapseRow`: whether bb's chevron collapse row shows under the body.
+  The body hides it (the header toggles the card), so it must be false.
 - `body.textLeft`: the first row's text (or pill) column; must equal the
   header's title column.
 - `context.iconLeft`: the Pi segment in the context row; must equal the
@@ -128,10 +130,10 @@ node .agents/skills/bb-screenshot/scripts/bb-harness.mjs reload
 
 What bb draws and what the plugin draws, for spacing work: bb owns the card
 frame, the header (`px-3 py-1.5`, 14 px icon, 6 px gap) and the collapse row at
-the bottom; the plugin owns everything between the divider and the collapse row,
-and its context segment's own padding inside the row's 4 px inset. bb's source
-(`get-bb/bb`, `apps/app/src/components/promptbox/banner/`) is the reference for
-its classes.
+the bottom, which the plugin's card body hides; the plugin owns everything under
+the divider, and its context segment's own padding inside the row's 4 px inset.
+bb's source (`get-bb/bb`, `apps/app/src/components/promptbox/banner/`) is the
+reference for its classes.
 
 ## The bb CLI and cleanup
 

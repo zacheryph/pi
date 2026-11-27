@@ -14,6 +14,7 @@ import { fixtureResponder, fixtureSnapshot } from "../fixture.ts";
 import { duration } from "../ui/format.ts";
 import { toAnswer } from "../ui/questionnaire.tsx";
 import { RowBadge, SessionList } from "../ui/sessions.tsx";
+import { HIDE_COLLAPSE_ROW_CLASS } from "../ui/stack-cards.tsx";
 import {
   countText,
   openQuestionnaires,
@@ -281,7 +282,8 @@ describe("pi-surface app", () => {
       const banner = app.composerCustomizations[0]!.banners![index]!;
       const slot = renderSlot(banner, {}, { rpc: rpcFor(fixture), composer: threadComposer });
       const list = await slot.findByRole("list", { name });
-      expect(classes(list)).toEqual(expect.arrayContaining(["px-3", "pt-3"]));
+      // The 12px inset on every side, and bb's collapse row (a second toggle) hidden.
+      expect(classes(list)).toEqual(expect.arrayContaining(["p-3", HIDE_COLLAPSE_ROW_CLASS]));
       for (const row of Array.from(list.querySelectorAll(":scope > li"))) {
         expect(classes(row).filter((c) => /^-?(p|px|pl|pr|m|mx|ml|mr)-/.test(c))).toEqual([]);
         // A header-icon-wide leading column, so text starts under the card's title.

@@ -96,6 +96,7 @@ function measureInPage({ cards, context }) {
       left: r.left + parseFloat(s.borderLeftWidth) + parseFloat(s.paddingLeft),
       right: r.right - parseFloat(s.borderRightWidth) - parseFloat(s.paddingRight),
       top: r.top + parseFloat(s.borderTopWidth) + parseFloat(s.paddingTop),
+      bottom: r.bottom - parseFloat(s.borderBottomWidth) - parseFloat(s.paddingBottom),
     };
   };
   const innerBox = (el) => {
@@ -105,6 +106,7 @@ function measureInPage({ cards, context }) {
       left: r.left + parseFloat(s.borderLeftWidth),
       right: r.right - parseFloat(s.borderRightWidth),
       top: r.top + parseFloat(s.borderTopWidth),
+      bottom: r.bottom - parseFloat(s.borderBottomWidth),
     };
   };
   const visible = (el) => {
@@ -165,10 +167,13 @@ function measureInPage({ cards, context }) {
           left: round(Math.min(...boxes.map((b) => b.left)) - regionBox.left),
           right: round(regionBox.right - Math.max(...boxes.map((b) => b.right))),
           top: round(boxes[0].top - regionBox.top),
+          bottom: round(regionBox.bottom - Math.max(...boxes.map((b) => b.bottom))),
           iconLeft: firstIcon
             ? round(firstIcon.getBoundingClientRect().left - regionBox.left)
             : null,
           textLeft: firstRowText ? round(firstRowText.left - regionBox.left) : null,
+          // bb's chevron row under the body; the plugin hides it, the header toggles.
+          collapseRow: Boolean(collapse && visible(collapse)),
         };
       }
     }
@@ -207,6 +212,8 @@ export function insetProblems(measured, tolerance = 0.5) {
     expect(`${label} body left inset`, m.body.left, reference.iconLeft);
     expect(`${label} body right inset`, m.body.right, reference.iconLeft);
     expect(`${label} body top inset`, m.body.top, reference.iconLeft);
+    expect(`${label} body bottom inset`, m.body.bottom, reference.iconLeft);
+    if (m.body.collapseRow) problems.push(`${label} shows bb's collapse row, which the body hides`);
     expect(`${label} body text column`, m.body.textLeft, m.header.textLeft);
   }
   return problems;
