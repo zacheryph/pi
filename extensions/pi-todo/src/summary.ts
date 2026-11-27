@@ -19,7 +19,13 @@ export interface TodoSummarySource {
  * same for any value.
  */
 export function todoSummaryModel({ state, archived }: TodoSummarySource): SummaryModel {
-  const by: Record<string, number> = { completed: 0, in_progress: 0, blocked: 0, pending: 0 };
+  const by: Record<string, number> = {
+    completed: 0,
+    in_progress: 0,
+    waiting: 0,
+    blocked: 0,
+    pending: 0,
+  };
   for (const task of state.tasks) {
     const { label } = todoTaskPresentation(task, state);
     by[label] = (by[label] ?? 0) + 1;
@@ -28,6 +34,7 @@ export function todoSummaryModel({ state, archived }: TodoSummarySource): Summar
     { key: "total", label: plural(state.tasks.length, "task"), value: state.tasks.length },
     { key: "completed", label: "completed", value: by.completed, tone: "success" },
     { key: "in-progress", label: "in progress", value: by.in_progress, tone: "accent" },
+    { key: "waiting", label: "waiting on you", value: by.waiting, tone: "warning" },
     { key: "pending", label: "pending", value: by.pending },
     { key: "blocked", label: "blocked", value: by.blocked, tone: "warning" },
     { key: "archived", label: "archived", value: archived, tone: "muted" },

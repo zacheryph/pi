@@ -37,23 +37,26 @@ export function todoTaskPresentation(
 } {
   if (task.status === "completed") return { glyph: "✓", label: "completed", color: "success" };
   if (task.status === "in_progress") return { glyph: "▸", label: "in_progress", color: "accent" };
+  if (task.status === "waiting") return { glyph: "‖", label: "waiting", color: "warning" };
   if (isTaskBlocked(task, state.tasks)) return { glyph: "○", label: "blocked", color: "warning" };
   return { glyph: "○", label: "pending", color: "dim" };
 }
 
 /**
- * In progress, pending, blocked, then completed; stable within groups, and
- * never sorts or mutates state itself.
+ * Waiting on the user, in progress, pending, blocked, then completed; stable
+ * within groups, and never sorts or mutates state itself.
  */
 export function orderedTodoTasks(state: TodoState): TodoTask[] {
   const rank = (task: TodoTask) =>
-    task.status === "in_progress"
+    task.status === "waiting"
       ? 0
-      : task.status === "completed"
-        ? 3
-        : isTaskBlocked(task, state.tasks)
-          ? 2
-          : 1;
+      : task.status === "in_progress"
+        ? 1
+        : task.status === "completed"
+          ? 4
+          : isTaskBlocked(task, state.tasks)
+            ? 3
+            : 2;
   return [...state.tasks].sort((a, b) => rank(a) - rank(b));
 }
 
@@ -201,6 +204,7 @@ export function todoTaskDetail(
 const TASK_ICONS: Record<string, StateIcon> = {
   completed: "done",
   in_progress: "active",
+  waiting: "waiting",
   blocked: "blocked",
   pending: "pending",
 };
@@ -235,6 +239,7 @@ export function todoWidgetModel(state: TodoState, config: TodoRenderConfig): Wid
     active,
     pending: state.tasks.filter((task) => task.status === "pending").length,
   });
+  const waiting = state.tasks.filter((task) => task.status === "waiting").length;
   const rows: WidgetRow[] = tasks.map((task) => {
     const message = messages.get(task.key);
     const left: Span[] = [];
@@ -254,11 +259,25 @@ export function todoWidgetModel(state: TodoState, config: TodoRenderConfig): Wid
   return {
     title: { label: config.title ?? "Todos", icon: ICONS.tasks },
     active: active > 0,
-    meta: counts ? [counts] : [],
+    // Header fallbacks, the first that fits: everything, then what waits on the user alone.
+    meta: waiting
+      ? [
+          [
+            waitingSpan(waiting),
+            // stateCounts draws one muted span.
+            ...(counts ? [{ text: " / ", tone: "muted" as const }, counts as Span] : []),
+          ],
+          [waitingSpan(waiting)],
+        ]
+      : counts
+        ? [counts]
+        : [],
     rows,
     emptyText: state.tasks.length ? "No unfinished tasks" : "No tasks",
   };
 }
+
+const waitingSpan = (count: number): Span => ({ text: `${count} waiting on you`, tone: "warning" });
 
 /** The terminal widget: the JSON model plus row budgets. Selection, order and limits stay todo-owned. */
 export function todoWidgetView(

@@ -17,7 +17,7 @@ import { isRecord } from "#foundations/guards";
 import type { TodoActivity, TodoUpdate } from "#src/activity";
 import { archivedOnly, type TodoArchive } from "#src/archive";
 import { formatTodoState, TODO_OUTPUT_TRUNCATED as TRUNCATED } from "#src/actions";
-import { TODO_TOOL_NAMES, type TodoState, type TodoTask } from "#src/state";
+import { TODO_STATUSES, TODO_TOOL_NAMES, type TodoState, type TodoTask } from "#src/state";
 import { sanitizeLine } from "#ui";
 
 /** The `customType` of the note. */
@@ -40,7 +40,7 @@ export interface TodoSyncNote {
   details: TodoSyncDetails;
 }
 
-const STATUSES: ReadonlySet<string> = new Set(["pending", "in_progress", "completed"]);
+const STATUSES: ReadonlySet<string> = TODO_STATUSES;
 
 /** A loosely checked list: enough to compare against, without the graph checks. */
 export function readSeenList(value: unknown): SeenList | undefined {

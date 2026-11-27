@@ -4,7 +4,7 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import { latestTodoMessage, type TodoActivity } from "#src/activity";
 import type { TodoRequest, TodoTaskPatch } from "#src/actions";
 import type { TodoConfig } from "#src/config";
-import { cloneTodoState, type TodoState } from "#src/state";
+import { cloneTodoState, TODO_STATUSES, type TodoState, type TodoStatus } from "#src/state";
 import { showTodoBrowser } from "#src/ui/browser";
 import { renderTodoText } from "#src/ui/render";
 import { sanitizeText } from "#ui";
@@ -114,7 +114,7 @@ export function registerTodoCommands(pi: ExtensionAPI, controller: TodoControlle
       const match = /^(\S+)\s+([\s\S]+)$/.exec(args);
       if (!match)
         throw new Error(
-          "Usage: /todo:update <key> <pending|in_progress|completed> [message] | <key> <JSON patch>",
+          "Usage: /todo:update <key> <pending|in_progress|waiting|completed> [message] | <key> <JSON patch>",
         );
       const [, key, value] = match;
       if (!controller.state().tasks.some((task) => task.key === key))
@@ -142,10 +142,9 @@ export function registerTodoCommands(pi: ExtensionAPI, controller: TodoControlle
         throw new Error("message must be a string");
       if (
         fields.status !== undefined &&
-        (typeof fields.status !== "string" ||
-          !["pending", "in_progress", "completed"].includes(fields.status))
+        (typeof fields.status !== "string" || !TODO_STATUSES.has(fields.status as TodoStatus))
       ) {
-        throw new Error("status must be pending, in_progress, or completed");
+        throw new Error("status must be pending, in_progress, waiting, or completed");
       }
       if (
         fields.dependsOn !== undefined &&

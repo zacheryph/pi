@@ -3,13 +3,13 @@
 A task list the agent keeps and you can watch: dependencies, statuses and the
 findings recorded on each task, right above the editor.
 
-![The Todos widget: five tasks with dependencies and one recorded finding](../../docs/images/todo-widget.png)
+![The Todos widget: a task waiting on you first, then tasks with dependencies and a recorded finding](../../docs/images/todo-widget.png)
 
 ## At a glance
 
-- **You see** the Todos widget above the editor. Active work comes first, a
-  blocked task shows what it waits on (`← backoff`), and a task's latest
-  finding follows its subject.
+- **You see** the Todos widget above the editor. A task waiting on you comes
+  first, with what you need to do; then active work. A blocked task shows what
+  it waits on (`← backoff`), and a task's latest finding follows its subject.
 - **You type** `/todo` to browse every task and its history, and `/todo:add`,
   `/todo:update`, `/todo:remove` or `/todo:clear` to change the list yourself.
   None of them starts a turn.
@@ -97,6 +97,32 @@ concurrent agents may have changed the plan. `description: ""` clears descriptio
 `dependsOn: []` clears prerequisites. `todo_replace` may reorder tasks; `todo_upsert` preserves
 existing order and appends new tasks.
 
+### Waiting on the user
+
+`waiting` is for a task only the user can move on: a decision, an approval, a
+credential, something only they can reach. Setting it needs a `message` in the
+same write saying what the user must do and where; without one the write is
+refused. The agent can keep working on other tasks meanwhile. A waiting task is
+unfinished: it counts toward the 50, takes no `in_progress` slot under
+`singleActive`, and holds back the tasks that depend on it, which show as
+`blocked`. When the user answers in chat, the agent moves it back to `pending`
+or `in_progress`; `/todo:update <key> pending` does the same by hand.
+
+```json
+{
+  "tasks": [
+    {
+      "key": "staging-host",
+      "status": "waiting",
+      "message": "Pick the staging webhook host in .env.staging: hooks.staging or a new one."
+    }
+  ]
+}
+```
+
+Only the main session sets `waiting`. A subagent, with delegated tasks or a
+list of its own, is refused and reports what it needs to its parent instead.
+
 Dependencies must exist and be acyclic. A task cannot start or finish until every
 prerequisite is completed. Reopening a prerequisite while its dependent is active
 or completed is rejected unless the entire resulting plan is valid. Multiple
@@ -125,7 +151,7 @@ longer worth the tokens.
 - Archived records are journaled apart from the list (`todo:archive`, only the
   records each change archived), so a long archive is not rewritten on every edit.
 
-Safety limits: 50 pending or in-progress tasks (a list holds at most 60 with the
+Safety limits: 50 unfinished (pending, in-progress or waiting) tasks (a list holds at most 60 with the
 recently completed ones), 20 dependencies/task, 160-character subjects,
 2,000-character descriptions and messages, 40-character keys, and the latest 10
 history updates per task. Plan output abbreviates
@@ -253,8 +279,10 @@ Each task occupies one physical row, with identity left (the key bold, as the
 subagent widget bolds an agent's name) and lifecycle status right. The header
 counts active and pending tasks, `1 active / 2 pending`, as the subagent widget
 counts agents; blocked tasks count as pending, completed tasks are not counted,
-and a zero count is left out. Body rows reserve one space on each side. Theme tokens match subagents. Active work appears
-first, then ready tasks, blocked tasks, and completed tasks. Dependency keys stay
+and a zero count is left out. Tasks waiting on you add `1 waiting on you` in
+warning tone before them. Body rows reserve one space on each side. Theme tokens match subagents. Tasks
+waiting on you (`‖ waiting`) appear first, then active work, ready tasks,
+blocked tasks, and completed tasks. Dependency keys stay
 visible; overflow becomes `+N more`. Completed tasks remain in state until
 explicitly cleared; hiding them affects display only.
 
@@ -381,11 +409,12 @@ in progress, in list order (`{ id: <key>, label: <subject> }`).
 | `total`       | Tasks on the list                                         |
 | `completed`   | Completed tasks on the list                               |
 | `in-progress` | Tasks in progress                                         |
+| `waiting`     | Tasks waiting on the user                                 |
 | `pending`     | Pending tasks free to start                               |
 | `blocked`     | Pending tasks waiting on an unfinished prerequisite       |
 | `archived`    | Completed tasks archived off the list (`list` reads them) |
 
-`completed`, `in-progress`, `pending` and `blocked` add up to `total`. Task
+`completed`, `in-progress`, `waiting`, `pending` and `blocked` add up to `total`. Task
 statuses live in the session file, so no count and no active
 task is process-bound (`live`): a saved summary settles unchanged.
 

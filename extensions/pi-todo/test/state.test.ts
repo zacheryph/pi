@@ -293,7 +293,7 @@ describe("writeTodoSnapshot", () => {
     expectRejected(
       state,
       { tasks: [...tasks, task("extra")] },
-      `at most ${MAX_OPEN_TASKS} tasks may be pending or in_progress (51 requested)`,
+      `at most ${MAX_OPEN_TASKS} tasks may be unfinished (pending, in_progress or waiting; 51 requested)`,
     );
     // Completed tasks do not count against it, only against the hard bound.
     const done = (index: number) => task(`done-${index}`, { status: "completed" });

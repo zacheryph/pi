@@ -26,6 +26,7 @@ const zeros = {
   total: 0,
   completed: 0,
   "in-progress": 0,
+  waiting: 0,
   pending: 0,
   blocked: 0,
   archived: 0,
@@ -39,6 +40,7 @@ describe("todo.summary", () => {
         { key: "total", label: "tasks", value: 0 },
         { key: "completed", label: "completed", value: 0, tone: "success" },
         { key: "in-progress", label: "in progress", value: 0, tone: "accent" },
+        { key: "waiting", label: "waiting on you", value: 0, tone: "warning" },
         { key: "pending", label: "pending", value: 0 },
         { key: "blocked", label: "blocked", value: 0, tone: "warning" },
         { key: "archived", label: "archived", value: 0, tone: "muted" },
@@ -60,15 +62,19 @@ describe("todo.summary", () => {
         { key: "c", subject: "Review it", dependsOn: ["b"] },
         { key: "d", subject: "Ship it" },
         { key: "e", subject: "Second in progress", status: "in_progress" },
+        { key: "f", subject: "Pick a host", status: "waiting", message: "Choose staging or prod" },
+        { key: "g", subject: "Deploy", dependsOn: ["f"] },
       ],
     });
+    // A task behind a waiting one is blocked, as behind any unfinished prerequisite.
     expect(counts(env)).toEqual({
       ...zeros,
-      total: 5,
+      total: 7,
       completed: 1,
       "in-progress": 2,
+      waiting: 1,
       pending: 1,
-      blocked: 1,
+      blocked: 2,
     });
     expect(summary(env).active).toEqual({ id: "b", label: "Write the collector" });
   });
@@ -80,6 +86,7 @@ describe("todo.summary", () => {
     const statuses = {
       completed: "completed",
       "in-progress": "in progress",
+      waiting: "waiting on you",
       pending: "pending",
       blocked: "blocked",
       archived: "archived",
