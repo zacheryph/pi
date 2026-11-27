@@ -12,9 +12,10 @@ message when it is done.
 - **The agent calls** `job_start` to run a command in the background, or
   `job_watch` to re-run a check until it succeeds, fails or its output changes.
   Both return at once; the agent ends its turn instead of polling.
-- **You see** one `[job:completion]` message per job, with its exit status,
-  duration and the tail of its log, and the agent picks up from there. Jobs that
-  finish together start one run, not several.
+- **You see** one completion per job: `✓ label succeeded` (or `✗ … failed`),
+  its exit status and duration, and the last line of its output. Expand it
+  (Ctrl+O) for the whole tail, the command and the log path. The agent picks up
+  from there. Jobs that finish together start one run, not several.
 - **You type** `/job` to list this session's jobs and `/job kill <id>` to stop one.
 - **The agent can also** read a log with `job_read`, list with `job_list`, stop
   with `job_kill`, and watch a read-only Pi tool (an MCP tool, say) with

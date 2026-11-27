@@ -3,8 +3,8 @@
  *
  * Thin pi adapter over JobManager and the session's work host: tool schemas, one work item per
  * job (see items.ts; the host delivers the completion messages, see packages/pi-work), the /job
- * command and lifecycle cleanup. Only type imports from pi, so tests can load it under plain
- * `node` with a fake ExtensionAPI.
+ * command, the completion message's renderer (renderer.ts) and lifecycle cleanup. Only type
+ * imports from pi itself, so tests can load it under plain `node` with a fake ExtensionAPI.
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { randomUUID } from "node:crypto";
@@ -20,6 +20,7 @@ import {
   jobTitle,
 } from "#src/format";
 import { CUSTOM_TYPE, JobItems, WORK_OWNER } from "#src/items";
+import { createCompletionRenderer } from "#src/renderer";
 import { envLimit, JobManager, type JobSnapshot } from "#src/jobs";
 import { defaultLogRoot, pruneLogs } from "#src/logs";
 import {
@@ -260,6 +261,7 @@ export function createJobsExtension(options: JobsExtensionOptions = {}) {
     // provided (and the session's run boundaries are wired) before our own session_start runs.
     const work = ensureWorkHost(pi);
     const output = userOutput(pi, "job:output");
+    pi.registerMessageRenderer(CUSTOM_TYPE, createCompletionRenderer());
 
     const live = liveManagers();
     // Latest context seen (pi's contexts read live state; a stale one throws).
@@ -280,7 +282,14 @@ export function createJobsExtension(options: JobsExtensionOptions = {}) {
         customType: CUSTOM_TYPE,
         content: [{ type: "text", text: formatNotification(job, tail) }],
         details: {
-          completions: [{ completionId: randomUUID(), job: brief(job) as unknown as Json }],
+          completions: [
+            {
+              completionId: randomUUID(),
+              job: brief(job) as unknown as Json,
+              // The terminal's renderer shows it; the model reads it in `content`.
+              output: tail,
+            },
+          ],
         },
         summary: formatSummary(job, tail),
       };
