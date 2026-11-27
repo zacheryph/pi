@@ -24,7 +24,6 @@ import {
   defineTool,
   type ExtensionAPI,
   type ExtensionContext,
-  type ExtensionToolContext,
 } from "@earendil-works/pi-coding-agent";
 import { resolve } from "node:path";
 import { Type } from "typebox";
@@ -60,7 +59,6 @@ import { git, realPath, resolveCommit, type BaseRef, type WorktreeStatus } from 
 import { isWorktreeRecord, LEDGER_TYPE, type WorktreeRecord } from "#src/ledger";
 import {
   observe,
-  outputText,
   parseRemote,
   type Observation,
   type RepoResolver,
@@ -82,25 +80,15 @@ import {
   type PrRecord,
   type PrRef,
 } from "#src/prs";
-import {
-  findPullRequestWriters,
-  ghWriter,
-  MERGE_METHODS,
-  mcpWriter,
-  type MergeMethod,
-  type PrWriter,
-} from "#src/ready";
+import { ghWriter, MERGE_METHODS, type MergeMethod, type PrWriter } from "#src/ready";
 import type { RetryOptions } from "#src/retry";
 import {
   fetchWithGh,
-  fetchWithMcp,
-  findPullRequestReader,
   GhUnavailable,
   parsePrTarget,
   runGh as realGh,
   type Fetched,
   type GhRunner,
-  type ToolRunner,
 } from "#src/status";
 import {
   DEFAULT_TIMEOUT_SECONDS,
@@ -159,46 +147,6 @@ export interface GitExtensionDependencies {
   watchIntervalMs?: number;
   /** Sees the session's state each time its views announce a change; tests observe through it. */
   onPublish?: (snapshot: GitSnapshot) => void;
-}
-
-/** What a watch needs to read through the GitHub MCP tools: the context of the call that started it. */
-interface McpAccess {
-  reader: string;
-  runTool: ToolRunner;
-}
-
-/** The session's tools as a `ToolRunner`, when the tool context can run them. */
-function mcpAccess(ctx: unknown, signal?: AbortSignal): McpAccess | undefined {
-  const toolCtx = ctx as Partial<ExtensionToolContext>;
-  if (typeof toolCtx.executeTool !== "function") return undefined;
-  const reader = findPullRequestReader((toolCtx.tools ?? []).map((tool) => tool.name));
-  if (!reader) return undefined;
-  return {
-    reader,
-    runTool: async (name, args) => {
-      const outcome = await toolCtx.executeTool!(name, args, signal ? { signal } : {});
-      return { isError: outcome.isError, text: outputText(outcome.result.content) };
-    },
-  };
-}
-
-/** The session's tool names and a `ToolRunner` over them, when the tool context can run them. */
-function toolAccess(
-  ctx: unknown,
-  signal?: AbortSignal,
-): { names: string[]; runTool: ToolRunner } | undefined {
-  const toolCtx = ctx as Partial<ExtensionToolContext>;
-  if (typeof toolCtx.executeTool !== "function") return undefined;
-  return {
-    names: (toolCtx.tools ?? []).map((tool) => tool.name),
-    runTool: async (name, args) => {
-      const outcome = await toolCtx.executeTool!(name, args, signal ? { signal } : {});
-      return {
-        isError: outcome.isError,
-        text: outputText(outcome.result.content),
-      };
-    },
-  };
 }
 
 /** pi-git's tools that read GitHub and record what they read themselves; the observer skips them. */
@@ -292,7 +240,7 @@ const StatusEntry = Type.Object({
   headSha: Type.Optional(Type.String()),
   headRef: Type.Optional(Type.String()),
   ciDone: Type.Boolean({ description: "Checks were reported and none is still pending." }),
-  source: Type.Optional(Type.String({ description: "gh, or the MCP tool that answered" })),
+  source: Type.Optional(Type.String({ description: "What answered: gh" })),
   error: Type.Optional(Type.String({ description: "Why the status could not be read." })),
 });
 const StatusOutput = Type.Object({ prs: Type.Array(StatusEntry) });
@@ -594,8 +542,6 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
     actions.dispose();
     // The watches' items stay open in the transcript: the next start adopts them.
     watches.shutdown();
-    watchAccess.clear();
-    ownCalls.clear();
   });
 
   // Note which subagents run in a worktree: pi-subagent announces each child's
@@ -693,36 +639,17 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
     return next;
   };
 
-  /**
-   * git_pr_status calls in flight and the calls that started a watch still running; their nested
-   * MCP calls are recorded by the tool itself.
-   */
-  const ownCalls = new Set<string>();
-
-  /**
-   * Read one PR's status: `gh` first, then the GitHub MCP reader when `gh`
-   * cannot answer and the caller can run tools.
-   */
-  const readStatus = async (
-    ref: PrRef,
-    options: { signal?: AbortSignal; reader?: string; runTool?: ToolRunner },
-  ): Promise<Fetched> => {
+  /** Read one PR's status through `gh`. Without `gh` signed in, no read can succeed. */
+  const readStatus = async (ref: PrRef, signal?: AbortSignal): Promise<Fetched> => {
     try {
       return await fetchWithGh(ref, {
-        signal: options.signal,
+        signal,
         ...(dependencies.runGh ? { run: dependencies.runGh } : {}),
         ...(dependencies.retry ? { retry: dependencies.retry } : {}),
       });
     } catch (error) {
-      if (!(error instanceof GhUnavailable)) throw error;
-      if (!options.reader || !options.runTool)
-        throw new FinalReadError(
-          `${error.message}, and no GitHub MCP pull_request_read tool is available to read it instead`,
-        );
-      return fetchWithMcp(ref, options.reader, options.runTool, {
-        ...dependencies.retry,
-        signal: options.signal,
-      });
+      if (error instanceof GhUnavailable) throw new FinalReadError(error.message);
+      throw error;
     }
   };
 
@@ -748,29 +675,13 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
     );
   };
 
-  /**
-   * How each running watch reaches the GitHub MCP tools, by PR key: the context of the newest
-   * git_pr_watch call for it, whose id its nested calls carry. Gone after a reload.
-   */
-  const watchAccess = new Map<string, McpAccess & { callId: string }>();
-  /** Stop skipping a call's nested MCP calls once no running watch reads through it. */
-  const releaseCall = (callId: string) => {
-    for (const access of watchAccess.values()) if (access.callId === callId) return;
-    ownCalls.delete(callId);
-  };
-  const bindAccess = (key: string, callId: string, access: McpAccess | undefined) => {
-    const previous = watchAccess.get(key);
-    if (access) watchAccess.set(key, { ...access, callId });
-    if (previous && previous.callId !== callId) releaseCall(previous.callId);
-  };
-
-  /** Read a watched PR and record it. `gh` first; the MCP tools of the call that started the watch otherwise. */
+  /** Read a watched PR and record it. */
   const readWatched = async (
     watch: { key: string; ref: PrRef; callId: string },
     signal: AbortSignal,
   ): Promise<Reading> => {
     const started = generation;
-    const fetched = await readStatus(watch.ref, { signal, ...watchAccess.get(watch.key) });
+    const fetched = await readStatus(watch.ref, signal);
     signal.throwIfAborted();
     if (started !== generation) throw new Error("The session changed while reading PR status.");
     const agentId = tree.node()?.agentId;
@@ -788,11 +699,6 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
     read: readWatched,
     saveBaseline: (saved) => pi.appendEntry<SavedBaseline>(WATCH_ENTRY, saved),
     onChange: () => publish(),
-    onEnd: (watch) => {
-      const access = watchAccess.get(watch.key);
-      watchAccess.delete(watch.key);
-      if (access) releaseCall(access.callId);
-    },
     now,
     intervalMs: () => dependencies.watchIntervalMs ?? getConfig().watchIntervalSeconds * 1000,
   });
@@ -819,11 +725,11 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
   const readAndRecord = async (
     refs: readonly PrRef[],
     toolCall: Omit<PrCall, "at">,
-    options: { signal?: AbortSignal; reader?: string; runTool?: ToolRunner },
+    signal?: AbortSignal,
   ): Promise<StatusEntryValue[]> => {
     const started = generation;
     const ensureCurrent = () => {
-      options.signal?.throwIfAborted();
+      signal?.throwIfAborted();
       if (started !== generation) throw new Error("The session changed while reading PR status.");
     };
     const entries: StatusEntryValue[] = [];
@@ -833,7 +739,7 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
       const existing = prs.get(key);
       const base = { key, label: prLabel(ref), url: existing?.url ?? prUrl(ref) };
       try {
-        const fetched = await readStatus(ref, options);
+        const fetched = await readStatus(ref, signal);
         ensureCurrent();
         const recorded = recordFetched(ref, fetched, toolCall);
         entries.push({
@@ -855,9 +761,8 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
 
   // Every tool call: did it touch a pull request? Parsing only; never changes the result.
   pi.on("tool_result", async (event, ctx) => {
-    // git_pr_status and git_pr_watch record what they read themselves, including through nested MCP calls.
+    // pi-git's own GitHub tools record what they read themselves.
     if (OWN_READS.has(event.toolName)) return;
-    if (event.parentToolCallId && ownCalls.has(event.parentToolCallId)) return;
     try {
       const observations = await observe(event as ToolResultLike, { cwd: ctx.cwd, resolveRepo });
       if (observations.length === 0) return;
@@ -1124,7 +1029,7 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
       label: "Git PR Status",
       description:
         "Read pull requests' current status from GitHub (state, draft, review decision, check counts, conflicts, head commit) and record it in the session ledger. " +
-        "Uses gh when it is installed and signed in, otherwise a GitHub MCP pull_request_read tool. Retries transient GitHub failures; never writes to GitHub. " +
+        "Reads through gh, which must be installed and signed in. Retries transient GitHub failures; never writes to GitHub. " +
         `With pr, reads the pull request or list of pull requests it names (at most ${MAX_STATUS_READS}); without it, every pull request this session opened that is not merged or closed (at most ${MAX_STATUS_READS}). ` +
         "One that cannot be read does not stop the others. " +
         "The result's ciDone is true once checks were reported and none is pending.",
@@ -1184,19 +1089,12 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
             structuredContent: { prs: [] },
           };
         }
-        const access = mcpAccess(ctx, signal);
         const agentId = tree.node()?.agentId;
-        ownCalls.add(id);
-        let entries: StatusEntryValue[];
-        try {
-          entries = await readAndRecord(
-            refs,
-            { tool: "git_pr_status", toolCallId: id, ...(agentId ? { agentId } : {}) },
-            { signal, ...access },
-          );
-        } finally {
-          ownCalls.delete(id);
-        }
+        const entries = await readAndRecord(
+          refs,
+          { tool: "git_pr_status", toolCallId: id, ...(agentId ? { agentId } : {}) },
+          signal,
+        );
         // One PR that could not be read is a failed call (a watch counts it inconclusive).
         if (entries.every((entry) => entry.error))
           throw new Error(
@@ -1222,9 +1120,8 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
     const key = prKey(ref);
     const label = prLabel(ref);
     const existing = watches.get(key);
-    const access = mcpAccess(ctx);
     const started = generation;
-    const fetched = await readStatus(ref, { signal, ...mcpAccess(ctx, signal) });
+    const fetched = await readStatus(ref, signal);
     signal?.throwIfAborted();
     if (started !== generation) throw new Error("the session changed while reading it");
     const agentId = tree.node()?.agentId;
@@ -1267,7 +1164,6 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
     }
 
     if (existing && existing.until === until && params.timeoutSeconds === undefined) {
-      bindAccess(key, id, access);
       watches.rebase(key, fetched);
       return result(
         `Already ${describeWatch(existing, now())}; it continues from this status. End your turn: a message wakes you.\n${status}`,
@@ -1286,7 +1182,6 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
       sessionId: ctx.sessionManager.getSessionId(),
       reading: fetched,
     });
-    bindAccess(key, id, access);
     return result(
       `Now ${describeWatch(opened, now())}. End your turn: a message wakes you when checks finish, the head moves, a review or comment arrives, or it is merged or closed.\n${status}`,
       true,
@@ -1304,7 +1199,7 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
         `pr names one pull request or a list of up to ${MAX_STATUS_READS}; until, timeoutSeconds and stop apply to each, and each gets its own watch and its own messages. One that cannot be read does not stop the others. ` +
         "The watch is open work: it keeps a subagent waiting, and survives a reload or resume. One watch per pull request: calling it again continues the same watch from the status it returns, so your own push or reply is not reported back to you. " +
         "A session watches a limited number at a time (the maxWatches setting, default 10); a call that would pass it starts none. stop: true cancels the watch. " +
-        "Reads through gh when it is installed and signed in, otherwise through the GitHub MCP pull_request_read tool; after a reload, through gh only. Never writes to GitHub.",
+        "Reads through gh, which must be installed and signed in. Never writes to GitHub.",
       promptSnippet:
         "Wait on pull requests and be woken when their checks, reviews or state change.",
       promptGuidelines: [
@@ -1373,29 +1268,23 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
             );
 
           const started = generation;
-          // Nested MCP reads of this call and of the watches it starts are recorded here, once.
-          ownCalls.add(id);
           const results: WatchEntryValue[] = [];
-          try {
-            for (const ref of refs) {
-              try {
-                results.push(await watchOne(id, ref, params, ctx, signal));
-              } catch (error) {
-                signal?.throwIfAborted();
-                if (started !== generation) throw new Error("the session changed while reading it");
-                const label = prLabel(ref);
-                results.push({
-                  key: prKey(ref),
-                  label,
-                  url: prs.get(prKey(ref))?.url ?? prUrl(ref),
-                  watching: false,
-                  error: errorText(error),
-                  text: `Could not watch ${label}: ${errorText(error)}`,
-                });
-              }
+          for (const ref of refs) {
+            try {
+              results.push(await watchOne(id, ref, params, ctx, signal));
+            } catch (error) {
+              signal?.throwIfAborted();
+              if (started !== generation) throw new Error("the session changed while reading it");
+              const label = prLabel(ref);
+              results.push({
+                key: prKey(ref),
+                label,
+                url: prs.get(prKey(ref))?.url ?? prUrl(ref),
+                watching: false,
+                error: errorText(error),
+                text: `Could not watch ${label}: ${errorText(error)}`,
+              });
             }
-          } finally {
-            releaseCall(id);
           }
           // A pull request that could not be read is a failed call when it is the only one.
           if (results.every((result) => result.error))
@@ -1540,13 +1429,7 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
             };
 
           const started = generation;
-          ownCalls.add(id);
-          let fetched: Fetched;
-          try {
-            fetched = await readStatus(ref, { signal, ...mcpAccess(ctx, signal) });
-          } finally {
-            ownCalls.delete(id);
-          }
+          const fetched = await readStatus(ref, signal);
           signal?.throwIfAborted();
           if (started !== generation) throw new Error("the session changed while reading it");
           const agentId = tree.node()?.agentId;
@@ -1589,11 +1472,11 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
         "head defaults to the head of the review request (git_pr_request_review) waiting on the user for it; with neither, the pull request is refused. " +
         "A pull request already ready for review, or with auto-merge already on, counts as done. One that fails does not stop the others. " +
         'autoMerge: true uses the repository\'s default merge method; "squash", "merge" or "rebase" picks one. When nothing is left to wait for, GitHub cannot turn auto-merge on, so the pull request is merged at once at that head. ' +
-        "Each is read again afterwards and recorded; a review request waiting on the user for that head is resolved. Writes through gh when it is signed in, otherwise the GitHub MCP tools. Main session only.",
+        "Each is read again afterwards and recorded; a review request waiting on the user for that head is resolved. Writes through gh, which must be signed in. Main session only.",
       promptSnippet:
         "Mark reviewed pull requests ready for review and turn on auto-merge, pinned to the reviewed heads.",
       promptGuidelines: [
-        "When the user says pull requests they reviewed can go, call git_pr_ready once with all of them, instead of gh pr ready, gh pr merge or the GitHub MCP tools one by one.",
+        "When the user says pull requests they reviewed can go, call git_pr_ready once with all of them, instead of gh pr ready or gh pr merge one by one.",
         "Give git_pr_ready the head the user reviewed: the one you showed them or handed off with git_pr_request_review. Never pass a head the user has not seen.",
         'To follow marked pull requests to the merge, call git_pr_watch once with all of them and until: "merged".',
       ],
@@ -1643,28 +1526,10 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
             signal?.throwIfAborted();
             if (started !== generation) throw new Error("the session changed while marking them");
           };
-          const access = toolAccess(ctx, signal);
-          const reader = access ? findPullRequestReader(access.names) : undefined;
-          const readOptions = {
+          const writer: PrWriter = ghWriter(dependencies.runGh ?? realGh, {
             ...(signal ? { signal } : {}),
-            ...(access && reader ? { reader, runTool: access.runTool } : {}),
-          };
-          let gh: PrWriter | undefined;
-          let mcp: PrWriter | undefined;
-          // Write the way the read went: gh when it answered, the MCP tools otherwise.
-          const writerFor = (source: string): PrWriter => {
-            if (source === "gh")
-              return (gh ??= ghWriter(dependencies.runGh ?? realGh, {
-                ...(signal ? { signal } : {}),
-                ...(dependencies.retry ? { retry: dependencies.retry } : {}),
-              }));
-            if (!access)
-              throw new Error("gh cannot answer and this call cannot reach the GitHub MCP tools");
-            return (mcp ??= mcpWriter(findPullRequestWriters(access.names), access.runTool, {
-              ...dependencies.retry,
-              ...(signal ? { signal } : {}),
-            }));
-          };
+            ...(dependencies.retry ? { retry: dependencies.retry } : {}),
+          });
           let here: Promise<Omit<PrRef, "number"> | undefined> | undefined;
           const agentId = tree.node()?.agentId;
           const toolCall = {
@@ -1686,7 +1551,7 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
                 "no head given and no review request waits on the user for it: pass the full head SHA the user reviewed",
               );
             entry.head = head;
-            const fetched = await readStatus(ref, readOptions);
+            const fetched = await readStatus(ref, signal);
             ensureCurrent();
             recordFetched(ref, fetched, toolCall, true);
             const { state, headSha, draft } = fetched.facts;
@@ -1697,7 +1562,6 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
               throw new Error(
                 `its head is ${headSha.slice(0, 12)} on GitHub, not ${head.slice(0, 12)}: it changed since that review, so show the user the new head`,
               );
-            const writer = writerFor(fetched.source);
             if (markReady) {
               if (draft === false) entry.ready = "already";
               else {
@@ -1718,7 +1582,7 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
             // Read it again: record what it is now, and catch a push that raced the writes.
             let after: Fetched | undefined;
             try {
-              after = await readStatus(ref, readOptions);
+              after = await readStatus(ref, signal);
             } catch (error) {
               ensureCurrent();
               entry.note = `It could not be read again to confirm: ${errorText(error)}`;
@@ -1737,10 +1601,8 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
                   throw new Error(`${prefix}: show the user the new head`);
                 let off = false;
                 try {
-                  if (writer.disableAutoMerge) {
-                    await writer.disableAutoMerge(ref);
-                    off = true;
-                  }
+                  await writer.disableAutoMerge(ref);
+                  off = true;
                 } catch {
                   ensureCurrent();
                 }
@@ -1773,43 +1635,37 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
 
           const entries: ReadyEntryValue[] = [];
           const seen = new Set<string>();
-          ownCalls.add(id);
-          try {
-            for (const item of params.prs) {
-              ensureCurrent();
-              const bare = /^#?\d+$/.test(item.pr.trim());
-              const ref = parsePrTarget(
-                item.pr,
-                bare ? await (here ??= resolveRepo(ctx.cwd)) : undefined,
-              );
-              if (!ref || !isPrIdentity(ref)) {
-                entries.push({
-                  key: "",
-                  label: item.pr,
-                  url: "",
-                  error:
-                    "not a pull request URL, owner/repo#number, or a number in this repository",
-                });
-                continue;
-              }
-              const key = prKey(ref);
-              if (seen.has(key)) continue;
-              seen.add(key);
-              const entry: ReadyEntryValue = {
-                key,
-                label: prLabel(ref),
-                url: prs.get(key)?.url ?? prUrl(ref),
-              };
-              entries.push(entry);
-              try {
-                await markOne(entry, ref, item.head?.trim() || undefined);
-              } catch (error) {
-                ensureCurrent();
-                entry.error = errorText(error);
-              }
+          for (const item of params.prs) {
+            ensureCurrent();
+            const bare = /^#?\d+$/.test(item.pr.trim());
+            const ref = parsePrTarget(
+              item.pr,
+              bare ? await (here ??= resolveRepo(ctx.cwd)) : undefined,
+            );
+            if (!ref || !isPrIdentity(ref)) {
+              entries.push({
+                key: "",
+                label: item.pr,
+                url: "",
+                error: "not a pull request URL, owner/repo#number, or a number in this repository",
+              });
+              continue;
             }
-          } finally {
-            ownCalls.delete(id);
+            const key = prKey(ref);
+            if (seen.has(key)) continue;
+            seen.add(key);
+            const entry: ReadyEntryValue = {
+              key,
+              label: prLabel(ref),
+              url: prs.get(key)?.url ?? prUrl(ref),
+            };
+            entries.push(entry);
+            try {
+              await markOne(entry, ref, item.head?.trim() || undefined);
+            } catch (error) {
+              ensureCurrent();
+              entry.error = errorText(error);
+            }
           }
           const text = prReadyText(entries);
           // Every one failed: the call failed, with what each did before it failed.
@@ -1841,21 +1697,14 @@ export default function piGit(pi: ExtensionAPI, dependencies: GitExtensionDepend
       } catch (error) {
         worktrees = `worktrees not checked: ${errorText(error)}`;
       }
-      // A command cannot run tools, so this reads through gh only.
-      const entries = await readAndRecord(
-        open,
-        { tool: "/git:refresh", toolCallId: `refresh-${now()}` },
-        {},
-      );
+      const entries = await readAndRecord(open, {
+        tool: "/git:refresh",
+        toolCallId: `refresh-${now()}`,
+      });
       const failed = entries.filter((entry) => entry.error);
       const lines = [
         `Refreshed ${entries.length - failed.length} of ${entries.length} open pull request${entries.length === 1 ? "" : "s"}; ${worktrees}.`,
         ...failed.map((entry) => `${entry.label}: ${entry.error}`),
-        ...(failed.some((entry) => /no GitHub MCP/.test(entry.error ?? ""))
-          ? [
-              "Without gh, ask the agent to run git_pr_status, which can read through the GitHub MCP tools.",
-            ]
-          : []),
       ];
       output.show(ctx, sanitizeText(lines.join("\n")), failed.length ? "warning" : "info");
     },

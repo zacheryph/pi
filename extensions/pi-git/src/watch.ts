@@ -61,7 +61,10 @@ export interface Baseline {
   mergeable?: boolean;
   comments?: number;
   reviews?: number;
-  /** `gh` or `mcp`: the two count comments and reviews differently, so counts are compared within one. */
+  /**
+   * `mcp` on a baseline an older version saved from a GitHub MCP read: it counted comments and
+   * reviews differently from `gh`, so its counts are not compared.
+   */
   via?: "gh" | "mcp";
 }
 
@@ -133,8 +136,7 @@ function settledKey(facts: PrFacts): string | undefined {
 /** The baseline a reading leaves behind. A field the reading does not show keeps its value. */
 export function nextBaseline(previous: Baseline | undefined, reading: Reading): Baseline {
   const { facts } = reading;
-  const via = reading.source === "gh" ? "gh" : "mcp";
-  const sameVia = previous?.via === undefined || previous.via === via;
+  const sameVia = previous?.via !== "mcp";
   const headSha = facts.headSha ?? previous?.headSha;
   // Checks that were not read leave the last report standing; checks still running clear it.
   const settled = facts.checks ? settledKey(facts) : previous?.settled;
@@ -149,7 +151,6 @@ export function nextBaseline(previous: Baseline | undefined, reading: Reading): 
     ...(mergeable !== undefined ? { mergeable } : {}),
     ...(comments !== undefined ? { comments } : {}),
     ...(reviews !== undefined ? { reviews } : {}),
-    via,
   };
 }
 
@@ -180,8 +181,7 @@ export function diff(baseline: Baseline, reading: Reading): WatchEvent[] {
     });
   if (baseline.review && facts.review && baseline.review !== facts.review)
     events.push({ type: "review", from: baseline.review, to: facts.review });
-  const sameVia =
-    baseline.via === undefined || baseline.via === (reading.source === "gh" ? "gh" : "mcp");
+  const sameVia = baseline.via !== "mcp";
   const more = (before: number | undefined, now: number | undefined) =>
     sameVia && before !== undefined && now !== undefined && now > before ? now - before : 0;
   const reviews = more(baseline.reviews, reading.reviews);
