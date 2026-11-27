@@ -30,22 +30,22 @@ This document describes the architecture of the pi-subagent fork: a focused, com
 The README carries a short charter for the boundaries that come up most often.
 This is the full inventory, with the decision record or design principle each rests on.
 
-| Non-goal                                                                      | Rests on                                                                                              |
-| ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| Time-based scheduling (cron / interval / one-shot dispatch)                   | Design principle 4                                                                                    |
-| Ad-hoc cross-extension event RPC (`subagent:rpc:*`)                           | Design principle 3; §"What the core dropped"                                                          |
-| Group-join / consolidated completion notifications                            | §"What the core dropped"                                                                              |
-| Per-agent tool restriction policy (`disallowed_tools`, a built-in denylist)   | [ADR-0002](../decisions/0002-extensions-on-a-minimal-core.md); §"Child tool selection"                |
-| Widening a child's tool allowlist with capability tools on the agent's behalf | §"Child tool selection"; operator position on the additive-key case                                   |
-| A global run-mode default                                                     | Operator position; every agent runs in the background, so there is no mode to default                 |
-| Worktree / environment isolation in the core                                  | [ADR-0002](../decisions/0002-extensions-on-a-minimal-core.md) §"What leaves the core"                 |
-| Persistent agent memory (`memory:`) and skill preloading (`skills:`)          | [ADR-0002](../decisions/0002-extensions-on-a-minimal-core.md); comparison doc                         |
-| Per-agent extension lifecycle control (`isolated`, `extensions:`, `noSkills`) | [ADR-0002](../decisions/0002-extensions-on-a-minimal-core.md) and its amendment                       |
-| New generative provider seams without a concrete consumer                     | [ADR-0002](../decisions/0002-extensions-on-a-minimal-core.md) §"The governing rule: no vacant hooks"  |
-| In-viewer steering or interactive child-session takeover                      | [ADR-0004](../decisions/0004-reconsider-ui-direction.md) Addendum criteria 1 and 2                    |
-| Bespoke transcript rendering in the core                                      | [ADR-0004](../decisions/0004-reconsider-ui-direction.md) Decision B                                   |
-| Agent-definition authoring UI (wizard, config editor, `/agents` menu)         | [ADR-0004](../decisions/0004-reconsider-ui-direction.md) Decision C                                   |
-| A foreground mode, or any call that blocks the parent on an agent             | Roadmap `docs/roadmaps/subagent-work-lifecycle.md` step 6; the completion message is the only carrier |
+| Non-goal                                                                      | Rests on                                                                                                         |
+| ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Time-based scheduling (cron / interval / one-shot dispatch)                   | Design principle 4                                                                                               |
+| Ad-hoc cross-extension event RPC (`subagent:rpc:*`)                           | Design principle 3; §"What the core dropped"                                                                     |
+| Group-join / consolidated completion notifications                            | §"What the core dropped"                                                                                         |
+| Per-agent tool restriction policy (`disallowed_tools`, a built-in denylist)   | [ADR-0002](../decisions/0002-extensions-on-a-minimal-core.md); §"Child tool selection"                           |
+| Widening a child's tool allowlist with capability tools on the agent's behalf | §"Child tool selection"; operator position on the additive-key case                                              |
+| A global run-mode default                                                     | Operator position; every agent runs in the background, so there is no mode to default                            |
+| Worktree / environment isolation in the core                                  | [ADR-0002](../decisions/0002-extensions-on-a-minimal-core.md) §"What leaves the core"                            |
+| Persistent agent memory (`memory:`) and skill preloading (`skills:`)          | [ADR-0002](../decisions/0002-extensions-on-a-minimal-core.md); comparison doc                                    |
+| Per-agent extension lifecycle control (`isolated`, `extensions:`, `noSkills`) | [ADR-0002](../decisions/0002-extensions-on-a-minimal-core.md) and its amendment                                  |
+| New generative provider seams without a concrete consumer                     | [ADR-0002](../decisions/0002-extensions-on-a-minimal-core.md) §"The governing rule: no vacant hooks"             |
+| In-viewer steering or interactive child-session takeover                      | [ADR-0004](../decisions/0004-reconsider-ui-direction.md) Addendum criteria 1 and 2                               |
+| Bespoke transcript rendering in the core                                      | [ADR-0004](../decisions/0004-reconsider-ui-direction.md) Decision B                                              |
+| Agent-definition authoring UI (wizard, config editor, `/agents` menu)         | [ADR-0004](../decisions/0004-reconsider-ui-direction.md) Decision C                                              |
+| A foreground mode, or any call that blocks the parent on an agent             | Roadmap `docs/roadmaps/2026-11-17-subagent-work-lifecycle.md` step 6; the completion message is the only carrier |
 
 Extracting the surviving UI to a separate package is a **not now with criteria**, not a decline: [ADR-0004](../decisions/0004-reconsider-ui-direction.md) Decision D names the revisit conditions.
 

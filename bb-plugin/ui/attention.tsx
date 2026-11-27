@@ -1,4 +1,4 @@
-// Step 4 of docs/roadmaps/attention.md: what needs the user, from the `attention`
+// Step 4 of docs/roadmaps/2026-11-26-attention.md: what needs the user, from the `attention`
 // RPC. The Attention page lists every session's rows; the thread context card
 // lists the thread's owed rows; the navigation badge counts them all.
 import {

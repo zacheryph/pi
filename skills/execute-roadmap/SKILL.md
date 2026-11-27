@@ -1,6 +1,6 @@
 ---
 name: execute-roadmap
-description: Carry out a chosen make-it-easy roadmap. Turns each step of docs/roadmaps/<slug>.md into a todo with its dependencies, delegates ready steps to subagents, verifies every step against its "Done when" and "Verification" lines with a reviewer that did not do the work, and lands it either as local commits or as pull requests. With pull requests it gets each one green, hands it to the user for review when it is ready, waits for the merge, verifies the deploy where the repository has a way to, and only then starts the steps that depend on it. Keeps the roadmap document and the todo ledger in sync until the easy change lands or a step is blocked. Use when asked to execute, run, implement, deliver, ship, or continue a roadmap, or right after make-it-easy hands off.
+description: Carry out a chosen make-it-easy roadmap. Turns each step of docs/roadmaps/<yyyy-mm-dd>-<slug>.md into a todo with its dependencies, delegates ready steps to subagents, verifies every step against its "Done when" and "Verification" lines with a reviewer that did not do the work, and lands it either as local commits or as pull requests. With pull requests it gets each one green, hands it to the user for review when it is ready, waits for the merge, verifies the deploy where the repository has a way to, and only then starts the steps that depend on it. Keeps the roadmap document and the todo ledger in sync until the easy change lands or a step is blocked. Use when asked to execute, run, implement, deliver, ship, or continue a roadmap, or right after make-it-easy hands off.
 ---
 
 # Execute a roadmap
@@ -11,9 +11,11 @@ coordinate: you do not write the code yourself unless a step is trivial.
 
 ## Input
 
-A roadmap written by make-it-easy, usually `docs/roadmaps/<slug>.md`. If the user
-names none, list `docs/roadmaps/` and pick the one whose `Status:` is `chosen` or
-`in progress`; ask only if more than one qualifies.
+A roadmap written by make-it-easy, usually `docs/roadmaps/<yyyy-mm-dd>-<slug>.md`,
+dated the day it was created. A roadmap named by its slug is the file named
+`<yyyy-mm-dd>-<slug>.md`. Where this skill says slug, it means the name without
+the date. If the user names none, list `docs/roadmaps/` and pick the one whose
+`Status:` is `chosen` or `in progress`; ask only if more than one qualifies.
 
 Optional limits from the user: "through step N", "only the Make it easy steps",
 or "stop before the change". Without one, run until the last step lands or you
@@ -54,12 +56,12 @@ Call `todo_list` first. If tasks for this roadmap already exist
 
 One todo per roadmap step, created with a single sparse `todo_upsert`, never `todo_replace`:
 
-| Todo field    | From the step                                                                                                                                                                            |
-| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `key`         | `<prefix>-<n>`, where `<prefix>` is a short form of the slug (`lb-xrd-3`). Must match `^[a-z0-9][a-z0-9._-]{0,39}$`.                                                                     |
-| `subject`     | The step heading (verb phrase), up to 160 characters.                                                                                                                                    |
-| `description` | `Type`, `Does`, `Done when`, `Verification`, `Rollback`, and `Roadmap: docs/roadmaps/<slug>.md step <n>`. Up to 2,000 characters; cut `Does` first, never `Done when` or `Verification`. |
-| `dependsOn`   | The step's `Depends on`, mapped to keys. Steps without one depend on nothing.                                                                                                            |
+| Todo field    | From the step                                                                                                                                                                                         |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `key`         | `<prefix>-<n>`, where `<prefix>` is a short form of the slug (`lb-xrd-3`). Must match `^[a-z0-9][a-z0-9._-]{0,39}$`.                                                                                  |
+| `subject`     | The step heading (verb phrase), up to 160 characters.                                                                                                                                                 |
+| `description` | `Type`, `Does`, `Done when`, `Verification`, `Rollback`, and `Roadmap: docs/roadmaps/<yyyy-mm-dd>-<slug>.md step <n>`. Up to 2,000 characters; cut `Does` first, never `Done when` or `Verification`. |
+| `dependsOn`   | The step's `Depends on`, mapped to keys. Steps without one depend on nothing.                                                                                                                         |
 
 Also add one task, `<prefix>-done`, that depends on every step: "Roadmap
 complete: update document status". The ledger holds at most 50 unfinished tasks; a
