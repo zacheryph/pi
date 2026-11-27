@@ -174,7 +174,7 @@ Beyond that:
 | pi-subagent        |     ●      |   ●   |    ●    |        ●         |        ●        |
 | pi-system-insights |     ●      |   ●   |         |                  |                 |
 | pi-tldr            |            |   ●   |         |                  |                 |
-| pi-todo            |     ●      |   ●   |         |        ●         |        ●        |
+| pi-todo            |     ●      |   ●   |    ●    |        ●         |        ●        |
 
 ```mermaid
 flowchart BT

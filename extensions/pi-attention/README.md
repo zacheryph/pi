@@ -8,16 +8,17 @@ footer while anything is owed, and `/attention` to open, print or dismiss it.
 ## At a glance
 
 - **You see** `◆ 3 need you · /attention` in the footer while the session owes
-  you anything: a pull request handed off for review, findings to read. It
-  clears when the last one resolves.
+  you anything: a pull request handed off for review, a task waiting on you.
+  It clears when the last one resolves.
 - **You type** `/attention` for the list. Enter opens the row's link in your
   browser, or prints the URL where there is no browser to open (over SSH, or
   without a display); a row without a link runs its producer's open action.
   `d` dismisses a row. Outside the terminal (bb, RPC hosts) the command prints
   the rows instead.
 - **The agent calls** nothing here. Items come from the extensions that raise
-  them, each through its own tool; pi-git's review handoff is the first planned
-  (see the [attention roadmap](../../docs/roadmaps/2026-11-26-attention.md)).
+  them, each through its own tool: pi-git's review handoff
+  (`git_pr_request_review`) and pi-todo's `waiting` tasks. Answer a waiting task
+  in chat; bb and the dashboard also offer a Reply box.
 
 ## What counts
 

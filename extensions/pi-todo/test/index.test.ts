@@ -86,6 +86,8 @@ describe("todo registration and journal", () => {
       "todo:remove",
       "todo:clear",
       "todo:settings",
+      // pi-work's root host, for the wake a waiting task's answer may need.
+      "work:wake",
     ]);
     expect(await env.state()).toMatchObject({ revision: 0, tasks: [] });
     expect(env.snapshots()).toEqual([]);
@@ -416,7 +418,6 @@ describe("restoration and model context", () => {
     expect(await env.sync()).toMatch(/human-task: removed$/m);
     expect(env.notes()).toHaveLength(3);
     env.noContinuation();
-    expect([...env.handlers.keys()]).not.toContain("agent_before_settle");
   });
 
   it("names who changed a task, keeps its message, and counts the tasks left alone", async () => {
@@ -1322,7 +1323,7 @@ describe("view announcements", () => {
     const announced: string[] = [];
     onViewChanged(env.pi.events, (id) => announced.push(id));
     await env.execute({ action: "upsert", tasks: [{ key: "a", subject: "A", message: "New" }] });
-    expect(announced).toEqual(["todo.widget", "todo.explorer", "todo.summary"]);
+    expect(announced).toEqual(["todo.widget", "todo.explorer", "todo.summary", "todo.attention"]);
 
     announced.length = 0;
     await env.execute({ action: "list" });
@@ -1340,15 +1341,16 @@ describe("view announcements", () => {
 });
 
 describe("views and actions on the session bus", () => {
-  it("defines todo.widget, todo.explorer, todo.summary and the todo actions from start to shutdown", async () => {
+  it("defines todo.widget, todo.explorer, todo.summary, todo.attention and the todo actions from start to shutdown", async () => {
     const env = await started({ mode: "tui", hasUI: true });
     const bus = env.pi.events;
     expect(listViews(bus)).toEqual([
+      { id: "todo.attention", kind: "attention", title: "Tasks waiting on you" },
       { id: "todo.explorer", kind: "explorer", title: "Todos" },
       { id: "todo.summary", kind: "summary", title: "Tasks" },
       { id: "todo.widget", kind: "widget", title: "Tasks" },
     ]);
-    expect(listActions(bus).map((action) => action.id)).toEqual(["todo.inspect"]);
+    expect(listActions(bus).map((action) => action.id)).toEqual(["todo.inspect", "todo.unblock"]);
     // Like the terminal widget, the view has nothing to show without tasks.
     expect(readView(bus, "todo.widget")).toBeUndefined();
 
@@ -1383,7 +1385,7 @@ describe("views and actions on the session bus", () => {
     expect(listViews(bus)).toEqual([]);
     expect(listActions(bus)).toEqual([]);
     await env.emit("session_start");
-    expect(listViews(bus)).toHaveLength(3);
+    expect(listViews(bus)).toHaveLength(4);
   });
 
   it("todo.inspect shows the detail /todo shows", async () => {
