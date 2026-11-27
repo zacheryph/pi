@@ -66,7 +66,11 @@ export function render(rows) {
     ["packages/", "Packages"],
     ["", "Other"],
   ];
-  const nameWidth = Math.max(...rows.map((r) => r.path.length), 5);
+  // Rows are indented two spaces; group totals read "  <Group> total".
+  const nameWidth = Math.max(
+    ...rows.map((r) => r.path.length + 2),
+    ...groups.map(([, title]) => `  ${title} total`.length),
+  );
   const num = (n) => String(n).padStart(8);
   const ratio = (r) => (r.code ? (r.test / r.code).toFixed(2) : "-").padStart(7);
   const header = `${"".padEnd(nameWidth)}${"Code".padStart(8)}${"Test".padStart(8)}${"Files".padStart(8)}${"Tests".padStart(8)}${"T:C".padStart(7)}`;
