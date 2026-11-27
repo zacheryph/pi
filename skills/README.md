@@ -65,12 +65,13 @@ first unfinished step.
 - The main session holds one `git_pr_watch` per pull request, hands failed
   checks and review comments to the worker that wrote the change, and re-arms a
   watch that timed out or was lost.
-- A green pull request alerts you with `user_notify`. It never approves or
+- A green pull request is handed to you with `git_pr_request_review`, so it
+  waits on you in bb, the dashboard and `/attention`. It never approves or
   merges: you do, or your auto-merge does.
 - After a merge it verifies the deploy with `job_watch` when the repository has
   a way to (a deploy skill, agent instructions, or a check the step names), and
   records the merge as unverified when it has none. A failed deploy check stops
-  new work and notifies you; nothing is reverted.
+  new work and reports to you; nothing is reverted.
 
 ## babysit-pr
 

@@ -91,15 +91,15 @@ current session.
 
 ## Inputs
 
-| Input                           | Owner / source today                                                                                                  | Proposed supply                                                                                                                                                                     |
-| ------------------------------- | --------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Handoff intent                  | Prose: `execute-roadmap` calls [`user_notify`](../../skills/execute-roadmap/SKILL.md#L211) and records a todo message | `git_pr_request_review({ pr, head, reason })` from the main session. The skill decides readiness; pi-git validates and records.                                                     |
-| PR state                        | pi-git's ledger ([`readLedger`](../../extensions/pi-git/src/fold.ts#L31)): `state`, `draft`, `review`, `headSha`      | The reducer joins intent with ledger facts by canonical PR key. A watch (a `pi-work` item) keeps facts arriving without polling.                                                    |
-| Persistence                     | Session entries, replayed across `/tree`                                                                              | A versioned `git:attention` entry for each request and dismissal, replayed with the ledger. Session-wide, like the PR ledger. Children contribute facts, never requests.            |
-| Owed items for display          | None                                                                                                                  | `attention` view kind in pi-surface (contract below), one view per producer: `git.attention`, later `todo.attention`.                                                               |
-| Blocking items for display      | `ask.questions` form view; `system.session` status                                                                    | `attentionRows(snapshot)` in pi-surface derives them. No producer change.                                                                                                           |
-| Cross-session aggregation       | bb [`sessions()`](../../bb-plugin/server.ts#L129) RPC; dashboard hub records                                          | bb: a new `attention()` RPC over live, saved and fixture sessions. Dashboard: the same `attentionRows`, embedded in the page as `format.ts` is.                                     |
-| Dismissal from a stopped thread | None                                                                                                                  | bb keeps it in `bb.storage.kv` under `threadId/viewId/itemId@rev`, hides the row, and runs the item's `dismiss` action when Pi reconnects. An unknown item on reconnect is dropped. |
+| Input                           | Owner / source today                                                                                             | Proposed supply                                                                                                                                                                     |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Handoff intent                  | Prose: `execute-roadmap` records a todo message                                                                  | `git_pr_request_review({ pr, head, reason })` from the main session. The skill decides readiness; pi-git validates and records.                                                     |
+| PR state                        | pi-git's ledger ([`readLedger`](../../extensions/pi-git/src/fold.ts#L31)): `state`, `draft`, `review`, `headSha` | The reducer joins intent with ledger facts by canonical PR key. A watch (a `pi-work` item) keeps facts arriving without polling.                                                    |
+| Persistence                     | Session entries, replayed across `/tree`                                                                         | A versioned `git:attention` entry for each request and dismissal, replayed with the ledger. Session-wide, like the PR ledger. Children contribute facts, never requests.            |
+| Owed items for display          | None                                                                                                             | `attention` view kind in pi-surface (contract below), one view per producer: `git.attention`, later `todo.attention`.                                                               |
+| Blocking items for display      | `ask.questions` form view; `system.session` status                                                               | `attentionRows(snapshot)` in pi-surface derives them. No producer change.                                                                                                           |
+| Cross-session aggregation       | bb [`sessions()`](../../bb-plugin/server.ts#L129) RPC; dashboard hub records                                     | bb: a new `attention()` RPC over live, saved and fixture sessions. Dashboard: the same `attentionRows`, embedded in the page as `format.ts` is.                                     |
+| Dismissal from a stopped thread | None                                                                                                             | bb keeps it in `bb.storage.kv` under `threadId/viewId/itemId@rev`, hides the row, and runs the item's `dismiss` action when Pi reconnects. An unknown item on reconnect is dropped. |
 
 ### The contract
 
@@ -186,7 +186,7 @@ bb's 12px inset, checked with `bb-shot.mjs --expand --check`; views defined on
 | "Waiting" is computed separately in bb and in the dashboard   | `useSessionsBadge`; the hub's form panel                                     | Step 2: one `attentionRows` both use.                          |
 
 **Noticed, not doing:** routing a subagent's question anywhere but its parent;
-native notifications beyond `user_notify`; changing how PR watches re-arm.
+native notifications; changing how PR watches re-arm.
 
 **Not examined:** live bb with the `threadContextCard` experiment on; the card
 section is verified from the gallery until then, as the Git section is.
@@ -413,8 +413,7 @@ without actions; dismiss writes one entry and removes the row.
 that validates and records the request. It does not start a watch: its result
 says whether a `git_pr_watch` with `until: "merged"` keeps the request current
 and, when none does, the call that would. A watch is the agent's own wait, and
-only the watch call has the GitHub MCP access to read through. Change `execute-roadmap`'s PR handoff to call it with the checked head before
-its single `user_notify`. Document the tool and lifetime limits in pi-git's
+only the watch call has the GitHub MCP access to read through. Change `execute-roadmap`'s PR handoff to call it with the checked head. Document the tool and lifetime limits in pi-git's
 README.
 
 **Done when:** A green PR with no request shows nothing; a request shows one
@@ -464,7 +463,7 @@ staging deploy" or "approve the migration in the console". When a real case like
 that comes up, a generic tool can raise an Owed item with the same contract,
 within these limits:
 
-- **Main session only,** like `user_notify`. A subagent reports to its parent.
+- **Main session only,** like `git_pr_request_review`. A subagent reports to its parent.
 - **Required expiry.** Nothing observes a generic item resolving, so it takes a
   deadline (say 1–72 hours) and shows as stale once that passes.
 - **Optional, checked link:** https only, no userinfo, checked again by every

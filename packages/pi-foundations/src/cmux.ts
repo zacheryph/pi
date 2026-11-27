@@ -19,20 +19,6 @@ export class CmuxNotifications {
   private stopped = false;
 
   /**
-   * Show a notification that stays until the user clears it: for something they act on later,
-   * after this session has ended its turn. Resolves true when cmux accepted it.
-   */
-  send(message: CmuxMessage): Promise<boolean> {
-    const target = this.target();
-    if (!target) return Promise.resolve(false);
-    const sent = target
-      .run(["notify", "--title", message.title, "--body", message.body, ...target.where])
-      .then((output) => output !== undefined);
-    this.track(sent);
-    return sent;
-  }
-
-  /**
    * Show a notification for as long as something is open on screen; the returned function
    * dismisses exactly that one. Never waits for the CLI on the open/close path.
    */

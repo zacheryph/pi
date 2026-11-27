@@ -10,7 +10,6 @@ import { Text } from "@earendil-works/pi-tui";
 import { ensureWorkHost, QUESTION_KIND, type Json, type WorkParent } from "#work";
 import { bodyRow, openInlineWindow, sanitizeLine, styleLine } from "#ui";
 import { CmuxNotifications } from "#foundations/cmux";
-import { Type } from "typebox";
 import { askWithDialogs } from "#src/dialogs";
 import {
   actionRegistry,
@@ -75,33 +74,6 @@ const QUESTION_NOTICE = {
   title: "Pi needs your input",
   body: "Answer the questions in your terminal.",
 };
-
-export const NOTIFY_TOOL_NAME = "user_notify";
-export const MAX_NOTIFY_TITLE = 80;
-export const MAX_NOTIFY_BODY = 300;
-
-const NotifyParameters = Type.Object(
-  {
-    title: Type.String({
-      minLength: 1,
-      maxLength: MAX_NOTIFY_TITLE,
-      description: "What needs the user, in a few words, e.g. PR 12 is ready for review",
-    }),
-    body: Type.String({
-      minLength: 1,
-      maxLength: MAX_NOTIFY_BODY,
-      description: "One or two sentences: what to do and where (a URL, a step, a failing check)",
-    }),
-  },
-  { additionalProperties: false },
-);
-
-export interface NotifyDetails {
-  title: string;
-  body: string;
-  /** False when no native notification was shown: the message is in the transcript only. */
-  delivered: boolean;
-}
 
 const ASKED =
   "Your question was sent to the delegating agent. Your turn ends now: its answer arrives as your next message, and you continue with your context intact. Do not call more tools.";
@@ -220,69 +192,6 @@ export default function piAsk(pi: ExtensionAPI): void {
                       tone: "accent" as const,
                     },
                   ]);
-          return {
-            render: (width: number) => rows.map((row) => bodyRow(styleLine(row, theme), width)),
-            invalidate() {},
-          };
-        },
-      }),
-    );
-  };
-
-  const registerNotify = () => {
-    pi.registerTool(
-      defineTool<typeof NotifyParameters, NotifyDetails>({
-        name: NOTIFY_TOOL_NAME,
-        label: "Notify user",
-        // Only the session the user sits at alerts them; a delegated session reports to its parent.
-        exposure: route.kind === "user" ? "model-only" : "hidden",
-        description:
-          "Send the user a native desktop notification that something outside this session now waits on them, and continue. It does not wait for an answer (use ask for that). Returns whether a notification was shown; where none can be, the message stays in the transcript.",
-        promptSnippet: "Alert the user that work waits on them, without waiting for an answer",
-        promptGuidelines: [
-          "Call user_notify when you are about to end your turn waiting on something only the user can do outside this session (review or merge a pull request, unblock a step, look at a failed check). Send one per event, not progress updates, and do not repeat it when woken for something else.",
-        ],
-        annotations: { readOnlyHint: true, openWorldHint: false },
-        parameters: NotifyParameters,
-        async execute(_toolCallId, params, _signal, _update, ctx) {
-          if (resolveRoute(ctx).kind !== "user")
-            throw new Error(
-              "Only the main session can notify the user. Report to the delegating agent instead.",
-            );
-          const title = sanitizeLine(params.title).slice(0, MAX_NOTIFY_TITLE);
-          const body = sanitizeLine(params.body).slice(0, MAX_NOTIFY_BODY);
-          const delivered = await notifications.send({ title, body });
-          return {
-            content: [
-              {
-                type: "text",
-                text: delivered
-                  ? "The user was notified."
-                  : "No native notification could be shown here (not in cmux, or cmux did not take it). The message is in the transcript only; do not retry.",
-              },
-            ],
-            details: { title, body, delivered },
-          };
-        },
-        renderCall(args, theme) {
-          const title = typeof args?.title === "string" ? sanitizeLine(args.title) : "";
-          return new Text(
-            theme.fg("toolTitle", theme.bold("notify ")) + theme.fg("muted", title),
-            0,
-            0,
-          );
-        },
-        renderResult(result, { isPartial }, theme) {
-          if (isPartial) return new Text(theme.fg("muted", "Notifying…"), 0, 0);
-          const details = result.details;
-          if (!details || typeof details.body !== "string")
-            return new Text(theme.fg("error", sanitizeLine(textOf(result))), 0, 0);
-          const rows = [
-            [{ text: details.body, tone: "default" as const }],
-            ...(details.delivered
-              ? []
-              : [[{ text: "No native notification: shown here only", tone: "warning" as const }]]),
-          ];
           return {
             render: (width: number) => rows.map((row) => bodyRow(styleLine(row, theme), width)),
             invalidate() {},
@@ -496,7 +405,6 @@ export default function piAsk(pi: ExtensionAPI): void {
     if (next.kind !== route.kind) {
       route = next;
       register();
-      registerNotify();
     }
     // A delegated session that was reloaded or restarted while a question stood: the question is
     // still open and the delegator was told once, so take it over rather than have the host
@@ -513,7 +421,6 @@ export default function piAsk(pi: ExtensionAPI): void {
   });
 
   register();
-  registerNotify();
 }
 
 /** Whether Pi can still show its own dialogs through this context; a stale one cannot. */

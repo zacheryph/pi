@@ -389,9 +389,10 @@ describe("AgentTypeRegistry", () => {
       expect(prompt).not.toContain("a watch it starts would wake no one");
     });
 
-    it("notifies the user when work waits on them, and defers to execute-roadmap", () => {
+    it("records what waits on the user, and defers to execute-roadmap", () => {
       const prompt = makeRegistry().resolveAgentConfig("orchestrate").systemPrompt;
-      expect(prompt).toContain("call user_notify once for that event");
+      expect(prompt).toContain("record on the task what it waits on");
+      expect(prompt).not.toContain("user_notify");
       expect(prompt).toContain(
         "To carry out a roadmap document, follow the execute-roadmap skill.",
       );
