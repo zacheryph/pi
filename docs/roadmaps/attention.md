@@ -410,8 +410,10 @@ without actions; dismiss writes one entry and removes the row.
 **Type:** the change
 
 **Does:** Register `git_pr_request_review` (main session only; no GitHub write)
-that validates, records the request and arms a `git_pr_watch` if none is open.
-Change `execute-roadmap`'s PR handoff to call it with the checked head before
+that validates and records the request. It does not start a watch: its result
+says whether a `git_pr_watch` with `until: "merged"` keeps the request current
+and, when none does, the call that would. A watch is the agent's own wait, and
+only the watch call has the GitHub MCP access to read through. Change `execute-roadmap`'s PR handoff to call it with the checked head before
 its single `user_notify`. Document the tool and lifetime limits in pi-git's
 README.
 

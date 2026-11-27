@@ -94,6 +94,7 @@ try {
     "git_pr_list",
     "git_pr_status",
     "git_pr_watch",
+    "git_pr_request_review",
   ]) {
     assert.ok(tools.includes(name), `Missing tool: ${name}`);
   }
