@@ -78,19 +78,21 @@ stopped, clocks stop and the card is no longer active.
 ![Subagents card expanded](../images/bb/stack-card-subagents.png)
 
 Spacing: bb draws the card frame, the header (`px-3 py-1.5`: a 12px inset,
-14px icon, 6px gap to the title) and the collapse row at the bottom, and wraps
-`children` with no padding of its own. The body's padding is ours: the cards
-pad it `px-3 pt-3` and give rows the header's icon size and gap, so the body has
-the header's 12px inset on the left, right and top, and each row keeps a
-leading column as wide as the header's icon, so row text lines up under the
-header's title. The card takes no `className`, so the header and the
-collapse row cannot change. `bb-shot.mjs --check` in the `bb-screenshot` skill
-measures this in bb.
+14px icon, 6px gap to the title) and a chevron collapse row at the bottom, and
+wraps `children` with no padding of its own. The body's padding is ours: the
+cards pad it `p-3` and give rows the header's icon size and gap, so the body has
+the header's 12px inset on every side, and each row keeps a leading column as
+wide as the header's icon, so row text lines up under the header's title. The
+card takes no `className`, so the header cannot change. The collapse row only
+repeats the header's toggle, so the body hides it with a sibling selector
+(`HIDE_COLLAPSE_ROW_CLASS` in `ui/stack-cards.tsx`): click the title to
+collapse. `bb-shot.mjs --check` in the `bb-screenshot` skill measures this in
+bb.
 
 Limits:
 
 - There is no slot **below** the composer; the stack above it is the closest.
-- Cards start collapsed and bb owns the toggle; `isActive` switches the header
+- Cards start collapsed and bb owns the toggle (the header); `isActive` switches the header
   to bb's animated working style.
 - Banners do not render on a thread whose composer is hidden (archived, or its
   environment is gone). We scope ours to thread composers (`scopes: ["thread"]`).
