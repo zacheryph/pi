@@ -15,10 +15,9 @@ ends its turn in between. This works in both a main session and a delegated work
 - The PR: a number or URL from the user, or the PR whose head is the current
   branch. Read it with `git_pr_status { pr }`: it returns the head branch
   (`headRef`), the **head commit SHA** (`headSha`), state, review decision and
-  check counts, through `gh` or the GitHub MCP tools, whichever works, and
-  records the PR in the session's ledger. Record `owner`, `repo`, the PR
-  number, the head branch and the head SHA. If it fails because neither `gh`
-  nor a GitHub MCP reader is available, stop and say so.
+  check counts through `gh`, and records the PR in the session's ledger.
+  Record `owner`, `repo`, the PR number, the head branch and the head SHA. If
+  it fails because `gh` is missing or not signed in, stop and say so.
 - How you reach GitHub for everything else (failed logs, reruns, review
   threads, replies). Prefer the `gh` CLI when `gh auth status` succeeds. If the
   GitHub MCP tools (`mcp__github__*`) are connected instead, use those; their
@@ -41,8 +40,8 @@ reads them all again. When tasks were handed to you with handoff.todo, update th
 
 ## 1. Wait for CI on the head commit
 
-Call `git_pr_watch { pr }` and **end your turn**. It reads the PR on a timer,
-through `gh` or the MCP tools alike, and wakes you with a message when checks
+Call `git_pr_watch { pr }` and **end your turn**. It reads the PR on a timer
+through `gh`, and wakes you with a message when checks
 finish on the head. The message names the head SHA the result is for and the
 checks that failed. Do not poll, sleep, or call `git_pr_status` yourself while
 the watch runs.

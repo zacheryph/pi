@@ -9,6 +9,7 @@ import {
   PrWatches,
   WATCH_MESSAGE,
   WATCH_OWNER,
+  type Baseline,
   type Reading,
   type SavedBaseline,
 } from "#src/watch";
@@ -137,17 +138,15 @@ describe("diff", () => {
     ]);
   });
 
-  it("does not compare comment counts read through gh with ones read through MCP", () => {
-    const viaGh = reading({}, { comments: 1, reviews: 1 });
-    const viaMcp = reading(
-      {},
-      { comments: 4, reviews: 3, source: "mcp__github__pull_request_read" },
-    );
-    const baseline = nextBaseline(undefined, viaGh);
-    expect(diff(baseline, viaMcp)).toEqual([]);
-    // From then on the MCP counts are the baseline.
-    const next = nextBaseline(baseline, viaMcp);
-    expect(diff(next, { ...viaMcp, comments: 5 })).toEqual([
+  it("does not compare comment counts with a baseline an older version saved from MCP", () => {
+    const viaGh = reading({}, { comments: 4, reviews: 3 });
+    const saved: Baseline = { comments: 1, reviews: 1, via: "mcp" };
+    expect(diff(saved, viaGh)).toEqual([]);
+    // From then on the gh counts are the baseline.
+    const next = nextBaseline(saved, viaGh);
+    expect(next).toMatchObject({ comments: 4, reviews: 3 });
+    expect(next.via).toBeUndefined();
+    expect(diff(next, { ...viaGh, comments: 5 })).toEqual([
       { type: "activity", reviews: 0, comments: 1 },
     ]);
   });

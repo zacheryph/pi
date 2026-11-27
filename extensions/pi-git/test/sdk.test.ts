@@ -12,7 +12,6 @@ import {
 } from "#test-helpers";
 import type { GitSnapshot } from "#src/snapshot";
 import piGit from "#src/index";
-import { GhUnavailable } from "#src/status";
 import { foldLedger } from "#src/fold";
 import { sandbox, type Sandbox } from "#test/support/repos";
 
@@ -38,7 +37,6 @@ async function fixture(
       "git_pr_list",
       "git_pr_status",
       "mcp__github__create_pull_request",
-      "mcp__github__pull_request_read",
     ],
     extensions: [
       (pi) =>
@@ -49,57 +47,23 @@ async function fixture(
             watchIntervalSeconds: 60,
             maxWatches: 10,
           }),
-          // As on a machine without gh: git_pr_status must read through the MCP tool.
-          runGh: async () => {
-            throw new GhUnavailable("gh is not installed");
-          },
+          // Stands in for gh pr view.
+          runGh: async () =>
+            JSON.stringify({
+              number: 12,
+              url: "https://github.com/acme/api/pull/12",
+              title: "Add login",
+              state: "OPEN",
+              isDraft: false,
+              reviewDecision: "APPROVED",
+              headRefName: "feat/login",
+              headRefOid: "abc123",
+              statusCheckRollup: [
+                { __typename: "CheckRun", status: "COMPLETED", conclusion: "SUCCESS" },
+              ],
+            }),
           onPublish: (snapshot) => snapshots.push(snapshot),
         }),
-      // Stands in for the GitHub MCP server's PR reader.
-      (pi) =>
-        pi.registerTool(
-          defineTool({
-            name: "mcp__github__pull_request_read",
-            label: "Read PR",
-            description: "Read a pull request.",
-            parameters: Type.Object({
-              method: Type.String(),
-              owner: Type.String(),
-              repo: Type.String(),
-              pullNumber: Type.Number(),
-              page: Type.Optional(Type.Number()),
-              perPage: Type.Optional(Type.Number()),
-            }),
-            annotations: { readOnlyHint: true },
-            async execute(_id, params) {
-              const text =
-                params.method === "get"
-                  ? JSON.stringify({
-                      number: params.pullNumber,
-                      html_url: `https://github.com/${params.owner}/${params.repo}/pull/${params.pullNumber}`,
-                      title: "Add login",
-                      state: "open",
-                      draft: false,
-                      head: { ref: "feat/login", sha: "abc123" },
-                    })
-                  : params.method === "get_check_runs"
-                    ? JSON.stringify({
-                        check_runs: [{ status: "completed", conclusion: "success" }],
-                      })
-                    : params.method === "get_status"
-                      ? JSON.stringify({
-                          state: "pending",
-                          sha: "abc123",
-                          total_count: 0,
-                          statuses: [],
-                        })
-                      : JSON.stringify([
-                          { user: { login: "a" }, state: "APPROVED", submitted_at: "1" },
-                        ]);
-              return { content: [{ type: "text", text }], details: {} };
-            },
-          }),
-        ),
       // Stands in for the GitHub MCP server's tool: same name, same result shape.
       (pi) =>
         pi.registerTool(
@@ -304,7 +268,7 @@ describe("pi-git in a real AgentSession (offline faux provider)", () => {
     expect([...foldLedger(manager.getEntries()).prs.keys()]).toEqual(["github.com/acme/api#66"]);
   }, 30_000);
 
-  it("reads a PR through the GitHub MCP tool when gh is missing, recording it once", async () => {
+  it("reads a PR through gh and records it once", async () => {
     const box = sandbox(onTestFinished);
     const manager = SessionManager.inMemory(box.dir);
     const h = await fixture(box, manager);
@@ -315,10 +279,7 @@ describe("pi-git in a real AgentSession (offline faux provider)", () => {
     await h.session.prompt("How is the PR doing?");
     const [text] = toolText(manager, "git_pr_status");
     expect(text).toContain("acme/api#12 — Add login");
-    expect(text).toContain(
-      "open · approved · checks 1 passed · head abc123 (via mcp__github__pull_request_read)",
-    );
-    // Pi fired tool_result for each nested MCP read; only git_pr_status's own record counts.
+    expect(text).toContain("open · approved · checks 1 passed · head abc123 (via gh)");
     const entries = manager
       .getEntries()
       .filter(
@@ -328,7 +289,7 @@ describe("pi-git in a real AgentSession (offline faux provider)", () => {
     expect(entries).toHaveLength(1);
     expect(foldLedger(manager.getEntries()).prs.get("github.com/acme/api#12")).toMatchObject({
       origin: "referenced",
-      status: { state: "open", review: "approved", source: "mcp__github__pull_request_read" },
+      status: { state: "open", review: "approved", source: "gh" },
       calls: [{ tool: "git_pr_status" }],
     });
   }, 30_000);

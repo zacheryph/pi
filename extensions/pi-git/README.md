@@ -149,13 +149,8 @@ counts, conflicts and head commit from GitHub and records them:
   cannot be read does not stop the others. Without it, every PR opened here
   that is not merged or closed, at most 20; `includeReferenced` adds the ones
   only looked at.
-- It reads through `gh pr view <url> --json …` when `gh` is installed and
-  signed in, and otherwise through a GitHub MCP `pull_request_read` tool (its
-  PR object, check runs, legacy commit statuses and reviews). Checks and reviews
-  are paginated (up to 20 pages of 100); incomplete check reads leave CI unknown.
-  It verifies the head did not move between MCP reads and rejects responses from
-  a different GitHub host. Calls it makes through that tool are not recorded a
-  second time by the observer.
+- It reads through `gh pr view <url> --json …`, so `gh` must be installed and
+  signed in; without it, the read fails and says why.
 - Transient failures (HTTP 5xx, GitHub's GraphQL unavailability, connection
   resets and timeouts) are retried three times after 1, 4 and 9 seconds; a 4xx
   never is. It never writes to GitHub.
@@ -232,13 +227,10 @@ until …`) or `The watch has ended.` The message's `details` hold
   refused before it reads anything, so it never starts only some of its watches.
 - **Reviews and comments** are counted, not read: a new review, a reply in a
   review thread (GitHub stores it as a review) and a new top-level comment each
-  raise a count, the agent's own included. Counts read through `gh` and through
-  MCP are never compared with each other.
-- **Reads.** `gh` first; without it, the GitHub MCP `pull_request_read` tool,
-  through the context of the `git_pr_watch` call that started the watch. Calls
-  the watch makes through that tool are not recorded a second time by the
-  observer. A failed read is retried after 2, 4, 8 and then at most 15
-  intervals; the fifth failure in a row ends the watch.
+  raise a count, the agent's own included.
+- **Reads** go through `gh`. A failed read is retried after 2, 4, 8 and then
+  at most 15 intervals; the fifth failure in a row ends the watch, and so does
+  the first one where `gh` is missing or signed out.
 - **Reload and resume.** The item persists the pull request, `until`, the
   deadline and the baseline; each later change of the baseline is a `git:watch`
   session entry. On the next start of the same session pi-git adopts the item
@@ -287,13 +279,9 @@ Marked 1 of 2 pull requests.
   the others; the result lists what each did. The call fails only when every
   one failed, and its error still says what each did first. The same pull
   request named twice is marked once.
-- **Writes** go the way the read went: through `gh` when it is signed in, with
-  `gh pr ready` and `gh pr merge --auto --match-head-commit <head>`, so GitHub
-  itself refuses a different head. Otherwise through the GitHub MCP tools
-  (`update_pull_request`, `enable_pr_auto_merge`, `merge_pull_request` with
-  `expectedHeadSha`). `enable_pr_auto_merge` takes no head and the MCP tools do
-  not say the repository's default method: when a pull request could be merged
-  at once and `autoMerge` is `true`, it asks for a method instead of guessing.
+- **Writes** go through `gh`, with `gh pr ready` and
+  `gh pr merge --auto --match-head-commit <head>`, so GitHub itself refuses a
+  different head.
 - **Main session only:** what ships is your decision, so a subagent cannot
   call it.
 

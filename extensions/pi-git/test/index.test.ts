@@ -1072,67 +1072,12 @@ describe("git_pr_status and /git:refresh", () => {
     expect(runGh).not.toHaveBeenCalled();
   });
 
-  it("falls back to the GitHub MCP reader when gh cannot answer, recording each read once", async () => {
-    const h = await withGh(async () => {
-      throw new GhUnavailable("gh is not installed");
-    });
-    const executeTool = vi.fn(async (name: string, args: Record<string, unknown>) => {
-      // Pi fires tool_result for the nested call, with the caller as parent.
-      const content = [
-        {
-          type: "text",
-          text:
-            args.method === "get"
-              ? JSON.stringify({
-                  number: 12,
-                  html_url: "https://github.com/acme/api/pull/12",
-                  state: "closed",
-                  merged: true,
-                })
-              : args.method === "get_check_runs"
-                ? JSON.stringify({ total_count: 0, check_runs: [] })
-                : args.method === "get_status"
-                  ? JSON.stringify({ total_count: 0, statuses: [] })
-                  : "[]",
-        },
-      ];
-      await h.fire("tool_result", {
-        toolName: name,
-        toolCallId: `call-1/${String(args.method)}`,
-        parentToolCallId: "call-1",
-        input: args,
-        content,
-        isError: false,
-      });
-      return { isError: false, result: { content } };
-    });
-    Object.assign(h.ctx, { executeTool, tools: [{ name: "mcp__github__pull_request_read" }] });
-    const result = (await h.tool("git_pr_status", {
-      pr: "https://github.com/acme/api/pull/12",
-    })) as unknown as { structuredContent: { prs: Record<string, unknown>[] } };
-    expect(result.structuredContent.prs[0]).toMatchObject({
-      state: "merged",
-      review: "none",
-      source: "mcp__github__pull_request_read",
-    });
-    expect(executeTool.mock.calls.map((call) => call[1].method)).toEqual([
-      "get",
-      "get_check_runs",
-      "get_status",
-      "get_reviews",
-      "get",
-    ]);
-    const recorded = prEntries(h);
-    expect(recorded).toHaveLength(1);
-    expect(recorded[0]).toMatchObject({ calls: [{ tool: "git_pr_status" }] });
-  });
-
-  it("fails when gh cannot answer and no MCP reader is reachable", async () => {
+  it("fails when gh cannot answer", async () => {
     const h = await withGh(async () => {
       throw new GhUnavailable("gh is not signed in");
     });
     await expect(h.tool("git_pr_status", { pr: "acme/api#12" })).rejects.toThrow(
-      "acme/api#12: gh is not signed in, and no GitHub MCP pull_request_read tool is available to read it instead",
+      "acme/api#12: gh is not signed in",
     );
   });
 
@@ -1269,8 +1214,7 @@ describe("git_pr_status and /git:refresh", () => {
       level: "warning",
       text: [
         "Refreshed 0 of 1 open pull request; worktrees checked.",
-        "acme/api#12: gh is not installed, and no GitHub MCP pull_request_read tool is available to read it instead",
-        "Without gh, ask the agent to run git_pr_status, which can read through the GitHub MCP tools.",
+        "acme/api#12: gh is not installed",
       ].join("\n"),
     });
     // The terminal keeps its notification.
@@ -1598,57 +1542,6 @@ describe("git_pr_watch", () => {
       );
       expect(h.snapshots.at(-1)!.prs.filter((pr) => pr.watch)).toEqual([]);
     });
-
-    it("keeps skipping the call's nested MCP reads while any of its watches runs", async () => {
-      const h = await watching(async () => {
-        throw new GhUnavailable("gh is not installed");
-      });
-      const executeTool = vi.fn(
-        async (_name: string, args: { method: string; pullNumber: number }) => {
-          const body: Record<string, unknown> = {
-            get: {
-              number: args.pullNumber,
-              html_url: urlOf(args.pullNumber),
-              state: "open",
-              draft: false,
-              comments: 0,
-              head: { ref: "feat/login", sha: "abc123" },
-            },
-            get_check_runs: {
-              total_count: 1,
-              check_runs: [{ name: "unit", status: "in_progress", conclusion: null }],
-            },
-            get_status: { sha: "abc123", total_count: 0, statuses: [] },
-            get_reviews: [],
-          };
-          return {
-            isError: false,
-            result: { content: [{ type: "text", text: JSON.stringify(body[args.method]) }] },
-          };
-        },
-      );
-      const ctx = { ...h.ctx, executeTool, tools: [{ name: "mcp__github__pull_request_read" }] };
-      await h.pi.registerTool.mock.calls
-        .map(([tool]) => tool)
-        .find((tool) => tool.name === "git_pr_watch")!
-        .execute("call-7", { pr: ["acme/api#1", "acme/api#2"] }, undefined, undefined, ctx);
-      const nested = () =>
-        h.fire("tool_result", {
-          toolName: "mcp__github__pull_request_read",
-          toolCallId: "call-7/9",
-          parentToolCallId: "call-7",
-          input: { method: "get", owner: "acme", repo: "api", pullNumber: 5 },
-          content: [{ type: "text", text: "{}" }],
-          isError: false,
-        });
-      await h.watch({ pr: "acme/api#1", stop: true });
-      const before = h.ledger().length;
-      await nested();
-      expect(h.ledger()).toHaveLength(before);
-      await h.watch({ pr: "acme/api#2", stop: true });
-      await nested();
-      expect(h.ledger()).toHaveLength(before + 1);
-    });
   });
 
   it("adopts its watch after a reload and continues from the saved baseline", async () => {
@@ -1686,60 +1579,7 @@ describe("git_pr_watch", () => {
     ]);
   });
 
-  it("reads through the GitHub MCP tool of the call that started it when gh is unavailable", async () => {
-    const h = await watching(async () => {
-      throw new GhUnavailable("gh is not installed");
-    });
-    let conclusion: string | null = null;
-    const executeTool = vi.fn(async (_name: string, args: { method: string }) => {
-      const body: Record<string, unknown> = {
-        get: {
-          number: 12,
-          html_url: URL,
-          title: "Add login",
-          state: "open",
-          draft: false,
-          comments: 0,
-          head: { ref: "feat/login", sha: "abc123" },
-        },
-        get_check_runs: {
-          total_count: 1,
-          check_runs: [
-            { name: "unit", status: conclusion ? "completed" : "in_progress", conclusion },
-          ],
-        },
-        get_status: { sha: "abc123", total_count: 0, statuses: [] },
-        get_reviews: [],
-      };
-      return {
-        isError: false,
-        result: { content: [{ type: "text", text: JSON.stringify(body[args.method]) }] },
-      };
-    });
-    const ctx = { ...h.ctx, executeTool, tools: [{ name: "mcp__github__pull_request_read" }] };
-    const result = (await h.pi.registerTool.mock.calls
-      .map(([tool]) => tool)
-      .find((tool) => tool.name === "git_pr_watch")!
-      .execute("call-7", { pr: "acme/api#12" }, undefined, undefined, ctx)) as Result;
-    expect(result.content[0].text).toContain("(via mcp__github__pull_request_read)");
-    // The watch's nested reads are its own: the observer does not record them a second time.
-    const before = h.ledger().length;
-    await h.fire("tool_result", {
-      toolName: "mcp__github__pull_request_read",
-      toolCallId: "call-7/9",
-      parentToolCallId: "call-7",
-      input: { method: "get", owner: "acme", repo: "api", pullNumber: 12 },
-      content: [{ type: "text", text: "{}" }],
-      isError: false,
-    });
-    expect(h.ledger()).toHaveLength(before);
-
-    conclusion = "failure";
-    await interval();
-    expect(h.messages()[0]).toContain("Checks finished on head abc123: 1 failed (unit).");
-  });
-
-  it("ends an adopted watch that can only be read through MCP, which a reload took away", async () => {
+  it("ends an adopted watch that gh can no longer read", async () => {
     let available = true;
     const runGh: GhRunner = async () => {
       if (!available) throw new GhUnavailable("gh is not signed in");
@@ -1754,7 +1594,7 @@ describe("git_pr_watch", () => {
     expect(second.messages()).toEqual([
       [
         "Pull request acme/api#12:",
-        "Its status can no longer be read: gh is not signed in, and no GitHub MCP pull_request_read tool is available to read it instead",
+        "Its status can no longer be read: gh is not signed in",
         "Call git_pr_watch again once it can be read.",
         "The watch has ended.",
         URL,
@@ -2388,157 +2228,5 @@ describe("git_pr_ready", () => {
       "git_pr_ready: only the main session marks pull requests ready",
     );
     expect(gh.run).not.toHaveBeenCalled();
-  });
-
-  describe("through the GitHub MCP tools", () => {
-    /** A fake GitHub behind the MCP tools, for acme/web#1. */
-    const mcp = (pr: Record<string, unknown>) => {
-      const state = {
-        state: "open",
-        draft: true,
-        sha: A,
-        auto_merge: null as unknown,
-        clean: false,
-        ...pr,
-      };
-      let gets = 0;
-      const hooks = { afterGets: (_gets: number) => {} };
-      const executeTool = vi.fn(async (name: string, args: Record<string, unknown>) => {
-        const ok = (value: unknown) => ({
-          isError: false,
-          result: {
-            content: [{ type: "text", text: JSON.stringify(value) }],
-          },
-        });
-        const fail = (text: string) => ({
-          isError: true,
-          result: { content: [{ type: "text", text }] },
-        });
-        if (name === "mcp__github__pull_request_read") {
-          if (args.method === "get") {
-            hooks.afterGets((gets += 1));
-            return ok({
-              number: 1,
-              html_url: "https://github.com/acme/web/pull/1",
-              state: state.state === "merged" ? "closed" : state.state,
-              merged: state.state === "merged",
-              draft: state.draft,
-              auto_merge: state.auto_merge,
-              head: { sha: state.sha, ref: "feat/1" },
-            });
-          }
-          if (args.method === "get_check_runs") return ok({ total_count: 0, check_runs: [] });
-          if (args.method === "get_status")
-            return ok({ sha: state.sha, total_count: 0, statuses: [] });
-          return ok([]);
-        }
-        if (name === "mcp__github__update_pull_request") {
-          state.draft = args.draft as boolean;
-          return ok({});
-        }
-        if (name === "mcp__github__enable_pr_auto_merge") {
-          if (state.clean) return fail("Pull request is in clean status");
-          state.auto_merge = { merge_method: args.mergeMethod ?? "default" };
-          return ok({});
-        }
-        if (name === "mcp__github__disable_pr_auto_merge") {
-          state.auto_merge = null;
-          return ok({});
-        }
-        if (name === "mcp__github__merge_pull_request") {
-          if (args.expectedHeadSha !== state.sha) return fail("Head branch was modified");
-          state.state = "merged";
-          return ok({ merged: true });
-        }
-        return fail(`unexpected ${name}`);
-      });
-      const tools = [
-        "mcp__github__pull_request_read",
-        "mcp__github__update_pull_request",
-        "mcp__github__enable_pr_auto_merge",
-        "mcp__github__disable_pr_auto_merge",
-        "mcp__github__merge_pull_request",
-      ].map((name) => ({ name }));
-      return { executeTool, tools, state, hooks };
-    };
-    const noGh: GhRunner = async () => {
-      throw new GhUnavailable("gh is not installed");
-    };
-    const mcpWrites = (executeTool: ReturnType<typeof mcp>["executeTool"]) =>
-      executeTool.mock.calls
-        .filter(([name]) => name !== "mcp__github__pull_request_read")
-        .map(([name, args]) => [name, args]);
-    const withMcp = async (fake: ReturnType<typeof mcp>) => {
-      const h = await session(noGh);
-      Object.assign(h.ctx, {
-        executeTool: fake.executeTool,
-        tools: fake.tools,
-      });
-      return h;
-    };
-
-    it("marks it ready and turns on auto-merge with the repository's default method", async () => {
-      const fake = mcp({});
-      const h = await withMcp(fake);
-      const result = await ready(h, {
-        prs: [{ pr: "acme/web#1", head: A }],
-        autoMerge: true,
-      });
-      expect(mcpWrites(fake.executeTool)).toEqual([
-        [
-          "mcp__github__update_pull_request",
-          { owner: "acme", repo: "web", pullNumber: 1, draft: false },
-        ],
-        ["mcp__github__enable_pr_auto_merge", { owner: "acme", repo: "web", pullNumber: 1 }],
-      ]);
-      expect(result.content[0].text).toContain(
-        "marked ready for review; auto-merge on (repository default)",
-      );
-    });
-
-    it("merges at the reviewed head when nothing is left to wait for and a method is given", async () => {
-      const fake = mcp({ draft: false, clean: true });
-      const h = await withMcp(fake);
-      const result = await ready(h, {
-        prs: [{ pr: "acme/web#1", head: A }],
-        autoMerge: "squash",
-      });
-      expect(mcpWrites(fake.executeTool).at(-1)).toEqual([
-        "mcp__github__merge_pull_request",
-        {
-          owner: "acme",
-          repo: "web",
-          pullNumber: 1,
-          merge_method: "squash",
-          expectedHeadSha: A,
-        },
-      ]);
-      expect(result.structuredContent.prs[0]).toMatchObject({
-        autoMerge: "merged",
-        method: "squash",
-      });
-    });
-
-    it("asks for a method when it could merge now but the default is unknown", async () => {
-      const fake = mcp({ draft: false, clean: true });
-      const h = await withMcp(fake);
-      await expect(
-        ready(h, { prs: [{ pr: "acme/web#1", head: A }], autoMerge: true }),
-      ).rejects.toThrow('pass autoMerge "squash", "merge" or "rebase" to merge it');
-      expect(fake.state.state).toBe("open");
-    });
-
-    it("turns auto-merge off again when the head moved, since the tool cannot pin it", async () => {
-      const fake = mcp({ draft: false });
-      // The first read makes two gets; the read after the writes sees a push.
-      fake.hooks.afterGets = (gets) => {
-        if (gets === 3) fake.state.sha = B;
-      };
-      const h = await withMcp(fake);
-      await expect(
-        ready(h, { prs: [{ pr: "acme/web#1", head: A }], autoMerge: true }),
-      ).rejects.toThrow("so auto-merge was turned off again");
-      expect(fake.state.auto_merge).toBeNull();
-    });
   });
 });
