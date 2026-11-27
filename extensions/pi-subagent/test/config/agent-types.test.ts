@@ -485,6 +485,80 @@ describe("AgentTypeRegistry", () => {
     });
   });
 
+  describe("assist profile", () => {
+    it("delegates but keeps file changes for workers", () => {
+      expect(makeRegistry().resolveAgentConfig("assist")).toMatchObject({
+        name: "assist",
+        displayName: "assist",
+        source: "default",
+        promptMode: "replace",
+        delegate: true,
+        reservedTools: ["edit", "write"],
+      });
+    });
+
+    it("answers first, then confidence, then evidence", () => {
+      const prompt = makeRegistry().resolveAgentConfig("assist").systemPrompt;
+      const answer = prompt.indexOf("1. **Answer**");
+      const confidence = prompt.indexOf("2. **Confidence**");
+      const evidence = prompt.indexOf("3. **Evidence**");
+      expect(answer).toBeGreaterThan(-1);
+      expect(confidence).toBeGreaterThan(answer);
+      expect(evidence).toBeGreaterThan(confidence);
+    });
+
+    it("looks things up itself and asks before changing state anywhere", () => {
+      const prompt = makeRegistry().resolveAgentConfig("assist").systemPrompt;
+      expect(prompt).toContain("Read, search, fetch, and run read-only commands yourself");
+      expect(prompt).toContain("Read-only means no side effect on any system");
+      expect(prompt).toContain("wait for the user's go-ahead");
+      expect(prompt).toContain("Never poll through model turns");
+    });
+
+    it("keeps incident notes and follow-ups that survive compaction", () => {
+      const prompt = makeRegistry().resolveAgentConfig("assist").systemPrompt;
+      expect(prompt).toContain("`incident/<short-id>`");
+      expect(prompt).toContain("call todo_list and stash_list");
+      expect(prompt).toContain("`/model agent/orchestrate`");
+    });
+  });
+
+  describe("dig profile", () => {
+    it("delegates sweeps without reserving tools", () => {
+      const config = makeRegistry().resolveAgentConfig("dig");
+      expect(config).toMatchObject({
+        name: "dig",
+        displayName: "dig",
+        source: "default",
+        promptMode: "replace",
+        delegate: true,
+      });
+      expect(config.reservedTools ?? []).toEqual([]);
+    });
+
+    it("ends each answer with a branch point for /tree", () => {
+      const prompt = makeRegistry().resolveAgentConfig("dig").systemPrompt;
+      expect(prompt).toContain("**Known**");
+      expect(prompt).toContain("**Ruled out**");
+      expect(prompt).toContain("**Open**");
+      expect(prompt).toContain("this block is where they land");
+    });
+
+    it("carries findings across branches as full stash handles", () => {
+      const prompt = makeRegistry().resolveAgentConfig("dig").systemPrompt;
+      expect(prompt).toContain("give its full handle (stash:<name>@<hash>)");
+      expect(prompt).toContain("a bare name from the abandoned branch no longer resolves");
+    });
+  });
+
+  describe("orchestrator routing", () => {
+    it("points non-project conversations at assist or dig", () => {
+      const prompt = makeRegistry().resolveAgentConfig("orchestrate").systemPrompt;
+      expect(prompt).toContain("`/model agent/assist`");
+      expect(prompt).toContain("`/model agent/dig`");
+    });
+  });
+
   describe("instance isolation", () => {
     it("two registries have independent state", () => {
       const r1 = makeRegistry(new Map([["auditor", makeAgentConfig({ name: "auditor" })]]));

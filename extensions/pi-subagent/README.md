@@ -23,17 +23,21 @@ talking to you while they run, and is woken by each one's result.
 
 Built-in agent types:
 
-| Type              | Role                                                                                                  |
-| ----------------- | ----------------------------------------------------------------------------------------------------- |
-| `explore`         | Fast, read-only codebase search; can return large findings as a stash handle.                         |
-| `plan`            | Read-only software architect.                                                                         |
-| `general-purpose` | A copy of the parent: its instructions and every tool, with no role of its own.                       |
-| `implement`       | One bounded change and its verification, without delegating further.                                  |
-| `review`          | Runs the checks and reports `Verdict: PASS`, `FAIL` or `BLOCKED` with evidence; never fixes anything. |
-| `orchestrate`     | Project manager: categorized todos, one pi-git worktree per task, workers, and reviews before done.   |
+| Type              | Role                                                                                                   |
+| ----------------- | ------------------------------------------------------------------------------------------------------ |
+| `explore`         | Fast, read-only codebase search; can return large findings as a stash handle.                          |
+| `plan`            | Read-only software architect.                                                                          |
+| `general-purpose` | A copy of the parent: its instructions and every tool, with no role of its own.                        |
+| `implement`       | One bounded change and its verification, without delegating further.                                   |
+| `review`          | Runs the checks and reports `Verdict: PASS`, `FAIL` or `BLOCKED` with evidence; never fixes anything.  |
+| `orchestrate`     | Project manager: categorized todos, one pi-git worktree per task, workers, and reviews before done.    |
+| `assist`          | Long-running assistant for pages, alerts and questions: answer, confidence, evidence; looks up itself. |
+| `dig`             | Step-by-step investigator: digs itself and ends each answer with a branch point for `/tree`.           |
 
 `orchestrate`, `implement` and `review` can also run as the main agent:
 `pi --agent orchestrate` (see [Main-session profile](#main-session-profile---agent)).
+`assist` and `dig` are meant for the main agent only: `pi --agent assist`, or
+`/model agent/dig` to switch an open session ([which profile when](docs/configuration.md#assist-and-dig)).
 Define your own types in `.pi/agents/<name>.md` or `~/.pi/agent/agents/<name>.md`,
 or ask for the `creating-agents` skill. The orchestrator completes an
 implementation task only after a reviewer that did not do the work passes it.
@@ -71,6 +75,7 @@ In print and json mode (`pi -p`, `--mode json`) nothing can wake the parent once
 - **Custom agent types** — define agents in `.pi/agents/<name>.md` with YAML frontmatter: custom system prompts, model selection, thinking levels, tool restrictions
 - **implement profile** — one bounded implementation and its verification, without delegation; available as a worker or with `pi --agent implement`
 - **orchestrate profile** — coordinate long-running projects with categorized todos, delegated work, and follow-ups in prior workers' sessions; available as a subagent or with `pi --agent orchestrate` ([usage and continuity](docs/configuration.md#orchestrate))
+- **assist and dig profiles** — main-agent profiles for the work that is not a project: `assist` for a long-running on-call and question session that answers with its confidence and evidence, `dig` for an investigation you branch and backtrack through with `/tree` ([which profile when](docs/configuration.md#assist-and-dig))
 - **One input tool** — `subagent_send` reaches an agent in any state, like typing into a main session: it steers a running agent mid-run, and gives an idle one (finished, failed or stopped) a new run that picks up where the agent left off, preserving full conversation context, even after a reload or once its session was released: the saved transcript is reopened.
 - **Ask-back** — an agent that needs information only you have calls `ask` (from the bundled pi-ask). Its turn ends and it waits (`waiting: answer`); you hear the question once, in its own message with the exact `subagent_send` call that answers it, and your answer wakes the agent with your message as its prompt
 - **Mid-run updates** — an agent that finds something material calls `parent_notify` and keeps working; the message arrives on its own while you are idle and that agent is still running, and otherwise rides that agent's own result, so you hear it exactly once and never as a stale prompt to message an agent that has finished

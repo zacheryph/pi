@@ -17,6 +17,8 @@ update `--agent` and `subagent_type` references.
 | `general-purpose` | all available                                                                                     | inherit                                                               | `append`    | Inherits the parent's prompt identity — same rules, CLAUDE.md, project conventions                                                   |
 | `implement`       | all available; no delegation                                                                      | inherit                                                               | `replace`   | Implements one bounded change, runs relevant checks, and reports evidence for parent acceptance                                      |
 | `orchestrate`     | all available; explicit todo tools; `delegate`; reserves edit, write, bash, job_start for workers | inherit                                                               | `replace`   | Project manager: categorizes tasks, delegates work, tracks open items, and recalls prior workers                                     |
+| `assist`          | all available; `delegate`; reserves edit, write                                                   | inherit                                                               | `replace`   | Main-agent assistant for pages, alerts and questions: answers first, then confidence, then evidence; does its own lookups            |
+| `dig`             | all available; `delegate`                                                                         | inherit                                                               | `replace`   | Main-agent investigator: digs itself, one step at a time, and ends each answer with a Known / Ruled out / Open branch point          |
 | `explore`         | read, bash, grep, find, ls                                                                        | newest Haiku (`anthropic/claude-haiku@latest`; falls back to inherit) | `replace`   | Fast codebase exploration (read-only); inherits the parent prompt as a base                                                          |
 | `plan`            | read, bash, grep, find, ls                                                                        | inherit                                                               | `replace`   | Software architect for implementation planning (read-only); inherits the parent prompt as a base                                     |
 | `review`          | read, bash, grep, find, ls                                                                        | inherit                                                               | `replace`   | Verifies finished work against its acceptance criteria; runs checks, reports `Verdict: PASS/FAIL/BLOCKED` with evidence, never fixes |
@@ -116,6 +118,38 @@ All other available tools remain selected so the orchestrator can pass
 specialist capabilities to its workers. Avoiding recursive orchestrator chains is
 a profile instruction, not a capability lock. Override
 `.pi/agents/orchestrate.md` to customize the profile.
+
+### assist and dig
+
+`orchestrate` is for project work: it delegates everything and gates work on
+reviews. Two other main-agent profiles cover sessions that are not projects.
+
+| Profile       | Use it for                                                                     | Does lookups itself | Delegates                                 |
+| ------------- | ------------------------------------------------------------------------------ | ------------------- | ----------------------------------------- |
+| `orchestrate` | Driving a project or roadmap to done                                           | One or two reads    | Everything else                           |
+| `assist`      | A session kept open for days: pages, alerts, help-channel and random questions | Yes                 | Wide sweeps, deep dives, and file changes |
+| `dig`         | One open question explored step by step, branching back with `/tree`           | Yes                 | Wide sweeps only                          |
+
+`assist` leads every answer with the answer, then its confidence (high, medium
+or low, and why), then the evidence. It asks before anything that changes state
+on any system, including acknowledging or silencing an alert; `edit` and `write`
+are reserved. It keeps one stash note per incident (`incident/<id>`) and puts
+follow-ups in todo, so a session that is compacted and reloaded over days still
+knows what is open.
+
+`dig` ends every answer with **Known**, **Ruled out** and **Open**, so the point
+`/tree` takes you back to summarizes itself. Going back drops the abandoned
+branch from context and from the stash index, so `dig` gives each finding worth
+keeping as a full stash handle, which still reads in the new branch.
+
+Switch between them in one session with `/model agent/<name>`: the
+conversation stays, and the new profile's instructions replace the old one's.
+Each profile suggests the others when the conversation outgrows it.
+
+```bash
+pi --agent assist
+pi --agent dig "Why do flows from rack 12 take the long path?"
+```
 
 ## What a child inherits from the parent's prompt
 

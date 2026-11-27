@@ -52,7 +52,9 @@ describe("effective agent definitions", () => {
 
     expect(buildAgentsView(r).items.map((item) => item.label)).toEqual([
       "Alpha",
+      "assist",
       "beta",
+      "dig",
       "explore",
       "general-purpose",
       "implement",
@@ -80,6 +82,8 @@ describe("effective agent definitions", () => {
     );
     const view = buildAgentsView(r);
     expect(view.items.map((item) => item.label)).toEqual([
+      "assist",
+      "dig",
       "explore",
       "general-purpose",
       "implement",
