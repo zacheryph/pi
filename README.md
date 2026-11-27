@@ -33,7 +33,10 @@ Pi then loads files straight from the checkout: edit, then `/reload` in Pi.
 `npm run setup:bb` also builds and installs the [bb plugin](bb-plugin/README.md)
 into an already installed bb. Both use the Pi installed in this checkout, not
 whichever `pi` is on PATH; plain `npm install` never touches your Pi or bb
-settings. An already prepared checkout can also be registered with
+settings. After pulling, run `npm run deps` if dependencies changed (it installs
+the root workspaces and `bb-plugin/`, which is not a workspace), then `/reload`
+in Pi; changes under `bb-plugin/` or `packages/pi-surface/` need `npm run setup:bb`
+again, because bb runs a built copy of the plugin. An already prepared checkout can also be registered with
 `pi install /absolute/path/to/checkout`.
 
 A Git install loads its own managed checkout. Push your changes, then

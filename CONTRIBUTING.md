@@ -4,7 +4,7 @@ Pi loads the TypeScript source directly: there is no build step and nothing is
 published. Install development dependencies only for checks and tests.
 
 ```bash
-npm install --ignore-scripts
+npm run deps           # root workspaces and bb-plugin (npm install --ignore-scripts, npm ci)
 npm run check          # formatting, lint, type checks
 npm test               # every workspace
 npm run verify:bundle  # what Pi discovers, and which way packages depend
