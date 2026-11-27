@@ -1,7 +1,9 @@
+import { markdownText } from "#foundations/format";
 import type { DisplayStatus } from "#src/lifecycle/subagent-state";
 import type { TurnBudget } from "#src/lifecycle/turn-limits";
 import { getLifetimeTotal } from "#src/lifecycle/usage";
 import { renderRunUpdates, renderStatusLabel } from "#src/observation/outcome-delivery";
+import { buildStatsParts, resolveStatusPresentation } from "#src/observation/renderer";
 import type { Json, WorkMessage } from "#work";
 import type { Subagent } from "#src/types";
 
@@ -227,6 +229,44 @@ function buildPointerLines(record: Subagent): string {
   );
 }
 
+// ---- What a person reads where the transcript is shown as text (bb) ----
+
+/** How a headline says a run that did not complete ended. */
+const ENDED_AS: Partial<Record<DisplayStatus, string>> = {
+  error: "failed",
+  stopped: "was stopped",
+  aborted: "was aborted",
+};
+
+/** `Subagent **description**`, the description escaped so it reads as typed. */
+const subagentName = (description: string) => `Subagent **${markdownText(description)}**`;
+
+/**
+ * The completion as a person reads it: a headline with the outcome and the run's stats, then the
+ * result preview, as the terminal's renderer shows it.
+ */
+export function completionSummary(details: NotificationDetails): string {
+  const { iconGlyph, statusText } = resolveStatusPresentation(details);
+  const outcome = ENDED_AS[details.status] ?? statusText;
+  const headline = [
+    `${iconGlyph} ${subagentName(details.description)} ${outcome}`,
+    // The turn count (`↻1`) is the terminal's shorthand; a headline in bb reads without it.
+    ...buildStatsParts({ ...details, turnBudget: undefined }),
+  ].join(" · ");
+  const body = details.error ? `Error: ${details.error}` : details.resultPreview;
+  return `${headline}\n\n${body}`;
+}
+
+/** An update as a person reads it: who sent it, then the message. */
+export function updateSummary(details: UpdateDetails): string {
+  return `${subagentName(details.description)} sent an update\n\n${details.message}`;
+}
+
+/** A child's question as a person reads it: who asks, then the question. */
+export function questionSummary(details: QuestionDetails): string {
+  return `${subagentName(details.description)} asked a question\n\n${details.question}`;
+}
+
 /**
  * The message that tells the parent a run ended, whatever the outcome. The
  * completion message is the only carrier of an outcome, so every run's end
@@ -236,10 +276,12 @@ export function completionMessage(record: Subagent): WorkMessage {
   const notification = formatTaskNotification(record, RESULT_PREVIEW_LENGTH);
   // A never-started agent has no transcript and nothing to collect.
   const pointerLines = record.stoppedWhileQueued ? "" : buildPointerLines(record);
+  const details = buildNotificationDetails(record, RESULT_PREVIEW_LENGTH);
   return {
     customType: COMPLETION_TYPE,
     content: notification + pointerLines,
-    details: buildNotificationDetails(record, RESULT_PREVIEW_LENGTH) as unknown as Json,
+    details: details as unknown as Json,
+    summary: completionSummary(details),
   };
 }
 
@@ -253,6 +295,7 @@ export function questionMessage(record: Subagent, question: string): WorkMessage
     customType: QUESTION_TYPE,
     content: formatQuestionNotification(record, question),
     details: details as unknown as Json,
+    summary: questionSummary(details),
   };
 }
 
@@ -263,5 +306,6 @@ export function updateMessage(record: Subagent, message: string): WorkMessage {
     customType: UPDATE_TYPE,
     content: formatUpdateNotification(record, message),
     details: details as unknown as Json,
+    summary: updateSummary(details),
   };
 }

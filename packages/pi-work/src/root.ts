@@ -20,13 +20,14 @@
  * `LandingTracker` (landing.ts) of the instance that provided the host, and by no other: an
  * instance that only finds a host forwards the run boundaries and reads nothing.
  */
-import { userOutput, type OutputContext } from "#foundations/user-output";
+import { outputMessage, userOutput, type OutputContext } from "#foundations/user-output";
 import { readEntries } from "#session-state";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { provide, service } from "#session-tree";
 import {
   WORK_ENTRY,
   WORK_SERVICE,
+  WORK_SUMMARY,
   WORK_WAKE,
   WORK_WAKE_COMMAND,
   type WorkHost,
@@ -50,6 +51,7 @@ export interface WorkAccess {
 /** The slice of a session context the root host reads. Stale contexts throw. */
 interface Context {
   isIdle(): boolean;
+  mode?: string;
   ui?: { notify?(message: string, level?: "info" | "warning" | "error"): void };
   sessionManager: {
     getSessionId(): string;
@@ -102,6 +104,10 @@ export function ensureWorkHost(pi: ExtensionAPI): WorkAccess {
 
   /** The wake command's replies: a notification in the terminal, a displayed message elsewhere. */
   const output = userOutput(pi, "work:output");
+  // Registers the `context` handler that keeps the summaries (`outputMessage`) from the model.
+  userOutput(pi, WORK_SUMMARY);
+  /** Pi runs under a host that shows custom messages as text (bb runs it in RPC mode). */
+  const textHost = () => ctxRef?.mode === "rpc";
   let sessionId: string | undefined;
   let ctxRef: Context | undefined;
   /** The host this instance provided, if the session had none, with the tracker that reads its landings. */
@@ -153,7 +159,8 @@ export function ensureWorkHost(pi: ExtensionAPI): WorkAccess {
     forget();
     try {
       pi.sendMessage(
-        { customType: WORK_WAKE, content: WAKE_TEXT, display: true },
+        // Under a text host the wake is for the model alone: the work messages before it were shown.
+        { customType: WORK_WAKE, content: WAKE_TEXT, display: !textHost() },
         { triggerTurn: true },
       );
     } catch {
@@ -227,13 +234,27 @@ export function ensureWorkHost(pi: ExtensionAPI): WorkAccess {
   const transport: DeliveryHost<WorkMessage> = {
     isIdle: () => (typeof ctxRef?.isIdle === "function" ? ctxRef.isIdle() : true),
     send: (items, mode) => {
-      items.forEach((item, index) => {
-        const { customType, content, details } = item.payload;
+      // Under a text host a message with a summary is written hidden, for the model, and its
+      // summary is displayed after it, kept from the model. The summary comes second so that on a
+      // wake it is the message that starts the run: bb shows a message only inside a run.
+      const summarize = textHost();
+      const messages = items.flatMap(({ payload }) => {
+        const { customType, content, details, summary } = payload;
+        const shown = !(summarize && summary);
+        const message = {
+          customType,
+          content,
+          display: shown,
+          ...(details !== undefined ? { details } : {}),
+        };
+        return shown ? [message] : [message, outputMessage(WORK_SUMMARY, summary!)];
+      });
+      messages.forEach((message, index) => {
         pi.sendMessage(
-          { customType, content, display: true, ...(details !== undefined ? { details } : {}) },
+          message,
           // Only the last message starts the run; the ones before it are already in the
           // transcript (idle) or held for the end of the turn (running).
-          { triggerTurn: mode === "wake" && index === items.length - 1 },
+          { triggerTurn: mode === "wake" && index === messages.length - 1 },
         );
       });
       // Pi appends at once when it is neither streaming nor starting a run for it.

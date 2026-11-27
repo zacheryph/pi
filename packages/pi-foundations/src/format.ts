@@ -35,3 +35,18 @@ export function formatDuration(ms: number, style: "compact" | "seconds" = "compa
 export function plural(n: number, one: string, many = one + "s"): string {
   return n === 1 ? one : many;
 }
+
+/**
+ * Plain text as inline Markdown that reads as typed: every character Markdown or HTML would act
+ * on is backslash-escaped, and line breaks become spaces.
+ */
+export function markdownText(text: string): string {
+  return oneLine(text).replace(/[\\`*_{}[\]()<>#+!|~&-]/g, "\\$&");
+}
+
+/** `text` in a fenced code block whose fence is longer than any backtick run inside it. */
+export function markdownFence(text: string, language = ""): string {
+  const longest = Math.max(0, ...(text.match(/`+/g) ?? []).map((run) => run.length));
+  const fence = "`".repeat(Math.max(3, longest + 1));
+  return `${fence}${language}\n${text.replace(/\n$/, "")}\n${fence}`;
+}

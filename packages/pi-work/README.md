@@ -61,7 +61,12 @@ interface WorkItem extends WorkItemView {
   cancel(): void; // close without a message
 }
 
-type WorkMessage = { customType: string; content: string | TextPart[]; details?: Json };
+type WorkMessage = {
+  customType: string;
+  content: string | TextPart[]; // what the model reads
+  details?: Json;
+  summary?: string; // Markdown a person reads in bb, headline first
+};
 ```
 
 A host is found by session id through
@@ -74,6 +79,13 @@ with `WORK_SERVICE = "work:v1"`.
   item is closed (or its host is gone) every method on its handle does nothing, so
   a result cannot be delivered twice.
 - `list` returns the open items, oldest first, for the widget and the dashboard.
+- `summary` is for hosts that show the transcript as text instead of through Pi's
+  message renderers: bb, which runs Pi in RPC mode. There the root host writes the
+  message hidden and a `work:summary` message with the summary after it, displayed
+  and kept out of the model's context, so bb shows a readable headline instead of
+  the model's notification. On a wake the summary is the message that starts the
+  run: bb drops a message Pi appends outside a run. Without a summary bb shows `content`. The terminal is
+  unchanged either way.
 
 ## Using it from an extension
 

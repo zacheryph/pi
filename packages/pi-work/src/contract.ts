@@ -32,6 +32,13 @@ export const WORK_CALLED_OFF = "work:called-off";
 export const WORK_WAKE = "work:wake";
 
 /**
+ * Custom message type of a work message's `summary` where Pi runs under a host that shows the
+ * transcript as text (bb). Displayed there in place of the message, and kept out of the model's
+ * context.
+ */
+export const WORK_SUMMARY = "work:summary";
+
+/**
  * The slash command the root host registers and dispatches to itself to reach a command context,
  * the only extension context with `waitForIdle()`. Typed by a user it reports that nothing waits.
  */
@@ -70,8 +77,16 @@ export interface TextPart {
 /** Plain data, written into the session's transcript as a custom message. */
 export type WorkMessage = {
   customType: string;
+  /** What the model reads. */
   content: string | TextPart[];
   details?: Json;
+  /**
+   * What a person reads where the transcript is shown as text rather than through Pi's message
+   * renderers (bb, which runs Pi in RPC mode): Markdown, its first line a headline that stands
+   * alone. With it, such a host shows this in place of `content`, which the model still reads.
+   * Without it, the host shows `content`.
+   */
+  summary?: string;
 };
 
 /** What a producer says when it opens an item. */
