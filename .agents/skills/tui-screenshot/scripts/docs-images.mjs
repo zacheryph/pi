@@ -35,7 +35,7 @@ const SHOTS = {
   "todo-browser": [
     "todo.ts",
     ["--prompt", PROMPT, "--wait-for", "Backoff is next"],
-    ["--prompt", "/todo", "--wait-for", "Unreviewed"],
+    ["--prompt", "/todo", "--wait-for", "Read-only task snapshot"],
   ],
   "stash-browser": [
     "stash.ts",

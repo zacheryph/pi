@@ -208,7 +208,7 @@ describe("pi-dashboard extension", () => {
     const fake = load(env.deps);
     const ctx = fakeCtx();
     onCleanup(() => quit(fake, ctx));
-    const reviewed: unknown[] = [];
+    const unflagged: unknown[] = [];
     defineView(fake.api.events, {
       id: "todo.explorer",
       kind: "explorer",
@@ -216,7 +216,7 @@ describe("pi-dashboard extension", () => {
       model: () => ({
         title: "Todos",
         items: [{ id: "fix", label: "fix: Fix auth", marked: true }],
-        marker: { label: "unreviewed", onClear: { action: "todo.review", args: { branch: 1 } } },
+        marker: { label: "flagged", onClear: { action: "todo.unflag", args: { branch: 1 } } },
         loadDetail: { action: "todo.inspect" },
       }),
     });
@@ -231,11 +231,11 @@ describe("pi-dashboard extension", () => {
       },
     });
     defineAction(fake.api.events, {
-      id: "todo.review",
-      title: "Review",
+      id: "todo.unflag",
+      title: "Unflag",
       handler: (args) => {
-        reviewed.push(args);
-        return { reviewed: 1 };
+        unflagged.push(args);
+        return { unflagged: 1 };
       },
     });
     defineAction(fake.api.events, {
@@ -257,10 +257,10 @@ describe("pi-dashboard extension", () => {
     expect(missing.status).toBe(502);
     expect(JSON.parse(missing.body).error).toBe('No task "x" on this branch.');
     expect(
-      (await postAction(hub, "4242", { action: "todo.review", args: { branch: 1, ids: ["fix"] } }))
+      (await postAction(hub, "4242", { action: "todo.unflag", args: { branch: 1, ids: ["fix"] } }))
         .status,
     ).toBe(200);
-    expect(reviewed).toEqual([{ branch: 1, ids: ["fix"] }]);
+    expect(unflagged).toEqual([{ branch: 1, ids: ["fix"] }]);
     // Defined on the bus but offered by no view: the page cannot run it.
     expect((await postAction(hub, "4242", { action: "git.worktree.remove" })).status).toBe(409);
     expect(JSON.stringify(await env.sessions())).not.toContain("secret detail");

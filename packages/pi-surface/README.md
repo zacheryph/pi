@@ -129,7 +129,7 @@ left and settling again changes nothing. `settleSnapshot` applies these rules;
 see [Saved snapshots](#saved-snapshots).
 
 State kept in the session file is never `live`: a task's `in_progress`
-status, review marks, finished-agent history, Git and stash records survive
+status, explorer marks, finished-agent history, Git and stash records survive
 unchanged, even where they share the `active` icon with runtime state.
 
 In an `ExplorerModel`, `loadDetail` and `onOpen` are dispatched with the

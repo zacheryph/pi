@@ -16,7 +16,6 @@ import {
   readView,
   type Block,
   type ExplorerModel,
-  type SummaryModel,
 } from "#surface";
 import { todoWidgetModel } from "#src/ui/render";
 import { harness, started, T0 } from "#test/harness";
@@ -82,7 +81,6 @@ describe("todo registration and journal", () => {
     );
     expect([...env.commands.keys()]).toEqual([
       "todo",
-      "todo:review",
       "todo:add",
       "todo:update",
       "todo:remove",
@@ -677,7 +675,7 @@ describe("user commands", () => {
         "Todos 0/2 completed",
         "▸ a: Task a [in_progress]",
         "○ b: Task b ← a [blocked]",
-        expect.stringContaining("/todo:review"),
+        "Change tasks with /todo:add, /todo:update, /todo:remove or /todo:clear.",
       ]);
       expect(env.pi.sendMessage).toHaveBeenLastCalledWith(
         expect.objectContaining({ display: true }),
@@ -687,7 +685,7 @@ describe("user commands", () => {
     },
   );
 
-  it("caps a long task listing and flags tasks with new messages", async () => {
+  it("caps a long task listing and shows each task's latest message", async () => {
     const env = await started({ mode: "rpc", hasUI: true });
     await env.execute({
       action: "upsert",
@@ -702,7 +700,7 @@ describe("user commands", () => {
     const lines = listed.text.split("\n");
     expect(lines).toContain("+5 more");
     expect(lines.length).toBeLessThan(50);
-    expect(listed.text).toContain("new: Look at this");
+    expect(listed.text).toContain("○ t3: Task 3 [pending] · last: Look at this");
   });
 
   it("keeps the terminal on notifications, not messages", async () => {
@@ -1043,7 +1041,7 @@ describe("user commands", () => {
   });
 });
 
-describe("task messages and review", () => {
+describe("task messages", () => {
   const complete = (key: string, message: string): TodoRequest => ({
     action: "upsert",
     tasks: [{ key, status: "completed", message }],
@@ -1051,7 +1049,7 @@ describe("task messages and review", () => {
   const widgetText = (env: Awaited<ReturnType<typeof started>>) =>
     (env.ui.setWidget.mock.calls.at(-1)?.[1] as string[] | undefined)?.join("\n") ?? "";
 
-  it("journals model messages, flags them until reviewed, and review never touches revision or model context", async () => {
+  it("journals model messages, shows the latest on the task's row, and keeps them across a reload", async () => {
     const env = await started({ mode: "rpc", hasUI: true });
     await env.execute(add("a"));
     env.clock.now += 60_000;
@@ -1082,36 +1080,15 @@ describe("task messages and review", () => {
         },
       },
     });
-    expect(widgetText(env)).toContain("· 1 new");
-    expect(widgetText(env)).toContain("new: Found 3 bugs in auth");
+    expect(widgetText(env).split("\n")).toEqual([
+      "Todos 1/1 completed",
+      "✓ a: Task a [completed] · last: Found 3 bugs in auth",
+    ]);
     env.see(result);
     expect(await env.sync()).toBeUndefined();
 
-    env.clock.now += 1_000;
-    await env.command("todo:review", "all");
-    expect(env.notices).toHaveBeenLastCalledWith("Marked 1 task reviewed.", "info");
-    expect(env.reviews().map((entry) => entry.type === "custom" && entry.data)).toEqual([
-      { at: T0 + 61_000, tasks: { a: 2 } },
-    ]);
-    expect(widgetText(env)).not.toContain("new");
-    // Review never touches what the model sees.
-    expect(await env.sync()).toBeUndefined();
-    expect(
-      (
-        await env.execute({
-          action: "upsert",
-          baseRevision: 2,
-          tasks: [{ key: "a", description: "still current" }],
-        })
-      ).details.revision,
-    ).toBe(3);
-    await env.command("todo:review", "all");
-    expect(env.notices).toHaveBeenLastCalledWith("No unreviewed task messages.", "info");
-    expect(env.reviews()).toHaveLength(1);
-
-    const reloaded = await started({ session: env.session });
-    await reloaded.command("todo:review");
-    expect(reloaded.notices).toHaveBeenLastCalledWith("No unreviewed task messages.", "info");
+    const reloaded = await started({ session: env.session, mode: "rpc", hasUI: true });
+    expect(widgetText(reloaded)).toContain("· last: Found 3 bugs in auth");
     const listed = await reloaded.execute({ action: "list", key: "a" });
     expect(JSON.parse((listed.content[0] as { text: string }).text).tasks[0].updates).toEqual([
       {
@@ -1125,8 +1102,8 @@ describe("task messages and review", () => {
     env.noContinuation();
   });
 
-  it("headless review prints sanitized messages newest first, then marks them; keys are validated", async () => {
-    const env = await started();
+  it("headless /todo shows each task's latest message, sanitized to one line", async () => {
+    const env = await started({ mode: "rpc", hasUI: true });
     const hostile = "bad\x1b[2J\x1b]52;c;clipboard\x07‮end";
     await env.execute({
       action: "upsert",
@@ -1136,25 +1113,16 @@ describe("task messages and review", () => {
       ],
     });
     await env.execute({ action: "upsert", tasks: [{ key: "a", message: "second note" }] });
-    await env.command("todo:review", "a missing");
-    expect(env.notices).toHaveBeenLastCalledWith("Unknown task: missing", "error");
-    expect(env.reviews()).toHaveLength(0);
-    await env.command("todo:review", "b");
-    expect(env.notices).toHaveBeenLastCalledWith("Marked 1 task reviewed.", "info");
-    await env.command("todo:review");
-    const [[text]] = env.notices.mock.calls.slice(-1);
-    expect(text).toBe("a [pending] just now: second note\na [pending] just now: first note");
-    expect(env.reviews()).toHaveLength(2);
-    await env.command("todo:review");
-    expect(env.notices).toHaveBeenLastCalledWith("No unreviewed task messages.", "info");
-
-    await env.execute({ action: "upsert", tasks: [{ key: "b", message: `${hostile}\nagain` }] });
-    await env.command("todo:review");
-    expect(env.notices.mock.calls.at(-1)?.[0]).toBe("b [pending] just now: badend again");
+    await env.command("todo");
+    const [listed] = env.shown();
+    expect(listed.text.split("\n").slice(1, 3)).toEqual([
+      "○ a: A [pending] · last: second note",
+      "○ b: B [pending] · last: badend line two",
+    ]);
     env.noContinuation();
   });
 
-  it("user status notes are recorded as history but never flagged for review", async () => {
+  it("user status notes are recorded as history", async () => {
     const env = await started();
     await env.command("todo:add", "Fix auth");
     await env.command("todo:update", "fix-auth completed Verified\nmanually");
@@ -1177,8 +1145,6 @@ describe("task messages and review", () => {
         { revision: 3, status: "completed", message: "Follow-up filed", by: "user" },
       ],
     });
-    await env.command("todo:review");
-    expect(env.notices).toHaveBeenLastCalledWith("No unreviewed task messages.", "info");
     await env.command("todo:update", 'fix-auth {"message":3}');
     expect(env.notices).toHaveBeenLastCalledWith("message must be a string", "error");
     await env.command("todo:update", `fix-auth pending ${"x".repeat(2001)}`);
@@ -1190,71 +1156,44 @@ describe("task messages and review", () => {
     env.noContinuation();
   });
 
-  it("TUI review opens the unreviewed browser view whose review marks are session-guarded", async () => {
+  it("TUI /todo opens the browser on every task with its history, and writes nothing", async () => {
     const env = await started({ mode: "tui", hasUI: true });
-    /** What the browser opened by call `n` does when it clears the marks on `ids`. */
-    const clearMarks = (n: number, ids: string[]) => {
-      const [, state, options] = vi.mocked(showTodoBrowser).mock.calls[n];
-      const onClear = todoExplorerModel(state, options).marker?.onClear;
-      if (!onClear) throw new Error("no marker");
-      return dispatchAction(options!.actions!, onClear.action, { ...onClear.args, ids });
-    };
     await env.execute({ action: "upsert", tasks: [{ key: "a", subject: "A", message: "Done" }] });
-    await env.command("todo:review");
+    const entries = env.session.getEntries().length;
+    await env.command("todo");
     const [, state, options] = vi.mocked(showTodoBrowser).mock.calls[0];
     expect(state.tasks.map((task) => task.key)).toEqual(["a"]);
-    expect(options).toMatchObject({ view: "unreviewed", now: T0, actions: env.pi.events });
+    expect(options).toMatchObject({ actions: env.pi.events });
     expect(options?.activity?.get("a")?.updates).toHaveLength(1);
-    await expect(clearMarks(0, ["a"])).resolves.toEqual({ reviewed: 1 });
-    expect(env.reviews()).toHaveLength(1);
-    expect(env.ui.setWidget).toHaveBeenCalled();
-    await env.command("todo");
-    expect(vi.mocked(showTodoBrowser).mock.calls[1][2]).toMatchObject({ view: "all" });
-
-    await env.execute({ action: "upsert", tasks: [{ key: "a", message: "Again" }] });
-    await env.command("todo");
-    env.session.newSession();
-    await env.emit("session_start");
-    await expect(clearMarks(2, ["a"])).rejects.toThrow("changed branch or session");
-    expect(env.reviews()).toHaveLength(0);
-    await env.execute(add("b"));
-    await env.execute({ action: "upsert", tasks: [{ key: "b", message: "Note" }] });
-    await env.command("todo:review");
-    env.pi.appendEntry.mockImplementationOnce(() => {
-      throw new Error("disk full");
-    });
-    await expect(clearMarks(3, ["b"])).rejects.toThrow("disk full");
-    expect(env.reviews()).toHaveLength(0);
-    expect(env.notices).toHaveBeenLastCalledWith("Review not saved: disk full", "error");
+    const model = todoExplorerModel(state, options);
+    expect(model.marker).toBeUndefined();
+    expect(model.tabs?.map((tab) => tab.label)).toEqual(["All", "Recent"]);
+    expect(env.session.getEntries()).toHaveLength(entries);
     env.noContinuation();
   });
 
-  it("compaction checkpoints and branch navigation keep history and review state branch-local", async () => {
+  it("compaction checkpoints and branch navigation keep history branch-local", async () => {
     const env = await started();
     await env.execute(add("a"));
     const fork = env.session.getLeafId()!;
     await env.execute(complete("a", "Left outcome"));
-    await env.command("todo:review", "all");
     env.session.appendCompaction("Summary", env.session.getLeafId()!, 1000);
     await env.emit("session_compact");
     expect(env.snapshots().at(-1)).toMatchObject({
       data: { activity: { a: { updates: [{ message: "Left outcome" }] } } },
     });
     const left = env.session.getLeafId()!;
+    const updates = async () =>
+      JSON.parse(
+        ((await env.execute({ action: "list", key: "a" })).content[0] as { text: string }).text,
+      ).tasks[0].updates;
     env.session.branch(fork);
     await env.emit("session_tree");
     await env.execute(complete("a", "Right outcome"));
-    await env.command("todo:review");
-    expect(env.notices.mock.calls.at(-1)?.[0]).toBe("a [completed] just now: Right outcome");
+    expect(await updates()).toEqual([expect.objectContaining({ message: "Right outcome" })]);
     env.session.branch(left);
     await env.emit("session_tree");
-    await env.command("todo:review");
-    expect(env.notices).toHaveBeenLastCalledWith("No unreviewed task messages.", "info");
-    expect(
-      JSON.parse(
-        ((await env.execute({ action: "list", key: "a" })).content[0] as { text: string }).text,
-      ).tasks[0].updates,
-    ).toEqual([expect.objectContaining({ message: "Left outcome" })]);
+    expect(await updates()).toEqual([expect.objectContaining({ message: "Left outcome" })]);
   });
 
   it("call and result renderers count and inset recorded messages, scrubbing controls at every width", async () => {
@@ -1378,7 +1317,7 @@ it("expanded results list only the tasks a call changed, never the widget", asyn
 });
 
 describe("view announcements", () => {
-  it("announces its views on each change, review and tree navigation, but not for rejected or no-op requests", async () => {
+  it("announces its views on each change and tree navigation, but not for rejected or no-op requests", async () => {
     const env = await started();
     const announced: string[] = [];
     onViewChanged(env.pi.events, (id) => announced.push(id));
@@ -1395,9 +1334,6 @@ describe("view announcements", () => {
     ).rejects.toThrow();
     expect(announced).toEqual([]);
 
-    await env.command("todo:review", "all");
-    expect(announced).toContain("todo.summary");
-    announced.length = 0;
     await env.emit("session_tree");
     expect(announced).toContain("todo.summary");
   });
@@ -1412,7 +1348,7 @@ describe("views and actions on the session bus", () => {
       { id: "todo.summary", kind: "summary", title: "Tasks" },
       { id: "todo.widget", kind: "widget", title: "Tasks" },
     ]);
-    expect(listActions(bus).map((action) => action.id)).toEqual(["todo.inspect", "todo.review"]);
+    expect(listActions(bus).map((action) => action.id)).toEqual(["todo.inspect"]);
     // Like the terminal widget, the view has nothing to show without tasks.
     expect(readView(bus, "todo.widget")).toBeUndefined();
 
@@ -1430,21 +1366,18 @@ describe("views and actions on the session bus", () => {
       todoWidgetModel(await env.state(), {
         ...todoSettings.defaults(),
         assignees: new Map(),
-        unreviewed: new Map([["a", "Done"]]),
+        messages: new Map([["a", "Done"]]),
       }),
     );
 
     const explorer = readView(bus, "todo.explorer") as ExplorerModel;
     expect(JSON.parse(JSON.stringify(explorer))).toEqual(explorer);
     expect(explorer.items.map((item) => [item.id, item.marked])).toEqual([
-      ["a", true],
-      ["b", false],
+      ["a", undefined],
+      ["b", undefined],
     ]);
-    expect(explorer.loadDetail).toEqual({ action: "todo.inspect", args: { reviewed: {} } });
-    expect(explorer.marker?.onClear).toEqual({
-      action: "todo.review",
-      args: { revisions: { a: 1 }, branch: expect.any(Number) },
-    });
+    expect(explorer.loadDetail).toEqual({ action: "todo.inspect" });
+    expect(explorer.marker).toBeUndefined();
 
     await env.emit("session_shutdown");
     expect(listViews(bus)).toEqual([]);
@@ -1453,59 +1386,20 @@ describe("views and actions on the session bus", () => {
     expect(listViews(bus)).toHaveLength(3);
   });
 
-  it("todo.inspect shows the detail /todo showed, against the review state a list passes", async () => {
+  it("todo.inspect shows the detail /todo shows", async () => {
     const env = await started({ mode: "tui", hasUI: true });
     const bus = env.pi.events;
     await env.execute({ action: "upsert", tasks: [{ key: "a", subject: "A", message: "Done" }] });
     const explorer = readView(bus, "todo.explorer") as ExplorerModel;
-    const open = () =>
-      dispatchAction(bus, "todo.inspect", { ...explorer.loadDetail!.args, id: "a" });
-    const fresh = await open();
-    expect(fresh).toContainEqual({ heading: "Activity (newest first; ● = unreviewed)" });
-    expect(fresh).toContainEqual({ lines: ["    Done"] });
-
-    // Opening the task reviews it; the detail still shows what the list showed as new.
-    await dispatchAction(bus, explorer.marker!.onClear!.action, {
-      ...explorer.marker!.onClear!.args,
-      ids: ["a"],
-    });
-    expect(env.reviews()).toHaveLength(1);
-    await expect(open()).resolves.toEqual(fresh);
-    // Without the list's review state, the current one applies.
-    const live = (await dispatchAction(bus, "todo.inspect", { id: "a" })) as Block[];
-    expect(live).toContainEqual({ heading: "Activity (newest first)" });
+    const detail = (await dispatchAction(bus, explorer.loadDetail!.action, {
+      ...explorer.loadDetail!.args,
+      id: "a",
+    })) as Block[];
+    expect(detail).toContainEqual({ heading: "Activity (newest first)" });
+    expect(detail).toContainEqual({ lines: ["    Done"] });
     await expect(dispatchAction(bus, "todo.inspect", { id: "zz" })).rejects.toThrow(
       'No task "zz" on this branch.',
     );
     await expect(dispatchAction(bus, "todo.inspect", {})).rejects.toThrow("expected { id");
-  });
-
-  it("todo.review marks the latest messages as /todo:review does", async () => {
-    const env = await started();
-    const bus = env.pi.events;
-    await env.execute({
-      action: "upsert",
-      tasks: [
-        { key: "a", subject: "A", message: "One" },
-        { key: "b", subject: "B", message: "Two" },
-      ],
-    });
-    await expect(dispatchAction(bus, "todo.review", { ids: ["zz"] })).rejects.toThrow(
-      'No task "zz" on this branch.',
-    );
-    await expect(dispatchAction(bus, "todo.review", { ids: ["a"] })).resolves.toEqual({
-      reviewed: 1,
-    });
-    const unreviewed = () =>
-      (readView(bus, "todo.summary") as SummaryModel).counts.find(
-        (count) => count.key === "unreviewed",
-      )?.value;
-    expect(unreviewed()).toBe(1);
-    await expect(dispatchAction(bus, "todo.review")).resolves.toEqual({ reviewed: 1 });
-    await expect(dispatchAction(bus, "todo.review")).resolves.toEqual({ reviewed: 0 });
-    expect(env.reviews()).toHaveLength(2);
-    await expect(dispatchAction(bus, "todo.review", { revisions: [] })).rejects.toThrow(
-      "revisions must map task keys to revisions",
-    );
   });
 });

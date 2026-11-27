@@ -134,7 +134,7 @@ const explorer: ExplorerModel = {
     { id: "a2", label: "plan", badge: { text: "done", tone: "success" }, detail: "finished" },
   ],
   tabs: [{ label: "All", ids: ["a1", "a2"] }],
-  marker: { label: "unreviewed", onClear: { action: "todo.review", args: { branch: 1 } } },
+  marker: { label: "flagged", onClear: { action: "todo.unflag", args: { branch: 1 } } },
   hints: [{ keys: "/subagent:agents", priority: 1 }],
   loadDetail: { action: "subagent.inspect" },
 };
@@ -554,11 +554,11 @@ describe("delivery snapshots", () => {
 
 describe("action requests and results", () => {
   it("accept an action id with JSON arguments", () => {
-    expect(isActionRequest({ action: "todo.review", args: { ids: ["a"] } })).toBe(true);
-    expect(isActionRequest({ action: "todo.review" })).toBe(true);
+    expect(isActionRequest({ action: "todo.unflag", args: { ids: ["a"] } })).toBe(true);
+    expect(isActionRequest({ action: "todo.unflag" })).toBe(true);
     expect(isActionRequest({ action: "review" })).toBe(false);
-    expect(isActionRequest({ action: "todo.review", args: Number.NaN })).toBe(false);
-    expect(isActionRequest({ action: "todo.review", args: { at: new Date() } })).toBe(false);
+    expect(isActionRequest({ action: "todo.unflag", args: Number.NaN })).toBe(false);
+    expect(isActionRequest({ action: "todo.unflag", args: { at: new Date() } })).toBe(false);
   });
 
   it("accept a JSON result or a bounded error, not both", () => {

@@ -255,7 +255,7 @@ describe("handing tasks to a subagent", () => {
     ]);
   });
 
-  it("lands the child's updates and new tasks in the parent's list, attributed and flagged", async () => {
+  it("lands the child's updates and new tasks in the parent's list, attributed", async () => {
     const parent = await planned();
     const child = await spawn(parent, { keys: ["a"] });
 
@@ -281,10 +281,7 @@ describe("handing tasks to a subagent", () => {
       agent: "a3f2b1c4-0000-0000",
     });
     expect(plan.claims.get("a3f2b1c4-0000-0000")?.keys).toEqual(["a", "a-followup"]);
-    expect(parent.listed("a")).toMatchObject({
-      label: "a: Audit auth → agent a3f2b1c4",
-      marked: true,
-    });
+    expect(parent.listed("a")).toMatchObject({ label: "a: Audit auth → agent a3f2b1c4" });
     expect((await child.tasks()).map((task) => task.key)).toEqual(["a", "a-followup"]);
     // The parent's next run is told what the child changed; nothing was written to the child's
     // own list.
@@ -392,10 +389,7 @@ describe("handing tasks to a subagent", () => {
       message: "Prerequisite added by a subagent: db-migration",
       agent: "a3f2b1c4-0000-0000",
     });
-    expect(parent.listed("c")).toMatchObject({
-      marked: true,
-      badge: { text: "○ blocked" },
-    });
+    expect(parent.listed("c")).toMatchObject({ badge: { text: "○ blocked" } });
     await expect(
       child.execute({ action: "upsert", tasks: [{ key: "c", dependsOn: [] }] }),
     ).rejects.toThrow("you may only add prerequisites");

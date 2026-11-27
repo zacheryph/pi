@@ -48,7 +48,6 @@ const COMMANDS: Array<[command: string, type: string, text: RegExp]> = [
   ["/todo", "todo:output", /^Todos 0\/1 completed\n○ a: Write docs \[pending\]/],
   ["/todo:add", "todo:output", /^Added write-tests \(pending\)/],
   ["/todo:update a in_progress", "todo:output", /^Updated a\.$/],
-  ["/todo:review", "todo:output", /^No unreviewed task messages\.$/],
   ["/todo:remove write-tests", "todo:output", /^Removed tasks/],
   ["/todo:settings", "todo:output", /^Task settings saved to \.pi\/todo\.json\.$/],
   ["/todo:clear", "todo:output", /^Cleared task list\.$/],

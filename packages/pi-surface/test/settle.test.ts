@@ -137,7 +137,7 @@ describe("settleSnapshot: the stale-running bb card", () => {
     expect(withKey(settled, "action")).toEqual([]);
     expect(settled.views[0]).toEqual(saved.views[1]);
     const tasks = model<ExplorerModel>(settled, "todo.explorer");
-    expect(tasks.marker).toEqual({ label: "unreviewed" });
+    expect(tasks.marker).toEqual({ label: "flagged" });
     expect(tasks.loadDetail).toBeUndefined();
     expect(tasks.onOpen).toBeUndefined();
     const agents = model<ExplorerModel>(settled, "subagent.explorer");

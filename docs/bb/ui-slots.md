@@ -219,8 +219,8 @@ click would, and lifts the list's "N more" limit while all are open), its
 notices, and items with a badge that open into their detail: inline when the view carries it (subagents, worktrees, pull
 requests, where a URL opens in bb), otherwise through the view's `loadDetail`
 action on the session (a task's details and history, a stash entry's
-contents). Opening a task with an unreviewed message runs the view's
-`marker.onClear` (`todo.review`), as opening it in the terminal does. A failed
+contents). Opening a marked item runs the view's `marker.onClear`, as opening
+it in the terminal does. A failed
 action shows its error where the detail would be. On a saved thread the views
 are settled with pi-surface's `settleSnapshot`, which removes their actions,
 so only details a view includes open. It uses bb's `experimental_InfoSection`,

@@ -383,7 +383,7 @@ describe("pi-surface server", () => {
     expect(asked.request).toEqual({ action: "stash.inspect", args: { id: "stash:notes@0123" } });
     expect(await detail).toEqual({ value: [{ lines: ["a"] }] });
 
-    const nothing = request({ action: "todo.review", args: { ids: ["a"] } });
+    const nothing = request({ action: "git.attention.dismiss", args: { id: "a" } });
     await answer(socket, 1, { ok: true });
     expect(await nothing).toEqual({ value: null });
 

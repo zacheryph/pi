@@ -15,7 +15,7 @@ void test("the prefix is the name less pi-, unless listed as an exception", () =
 });
 
 void test("the bare name and name:action pass", () => {
-  assert.deepEqual(commandNameProblems("pi-todo", ["todo", "todo:review", "todo:add"]), []);
+  assert.deepEqual(commandNameProblems("pi-todo", ["todo", "todo:add", "todo:clear"]), []);
   assert.deepEqual(commandNameProblems("pi-git", ["git:prs"]), []);
 });
 

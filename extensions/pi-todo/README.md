@@ -3,23 +3,23 @@
 A task list the agent keeps and you can watch: dependencies, statuses and the
 findings recorded on each task, right above the editor.
 
-![The Todos widget: five tasks with dependencies and one unreviewed finding](../../docs/images/todo-widget.png)
+![The Todos widget: five tasks with dependencies and one recorded finding](../../docs/images/todo-widget.png)
 
 ## At a glance
 
 - **You see** the Todos widget above the editor. Active work comes first, a
-  blocked task shows what it waits on (`← backoff`), and `● 1 new` counts
-  findings you have not read yet.
-- **You type** `/todo` to browse every task and its history, `/todo:review` to
-  read new findings, and `/todo:add`, `/todo:update`, `/todo:remove` or
-  `/todo:clear` to change the list yourself. None of them starts a turn.
+  blocked task shows what it waits on (`← backoff`), and a task's latest
+  finding follows its subject.
+- **You type** `/todo` to browse every task and its history, and `/todo:add`,
+  `/todo:update`, `/todo:remove` or `/todo:clear` to change the list yourself.
+  None of them starts a turn.
 - **The agent calls** `todo_upsert` to add or update tasks (with `dependsOn` and
   a `message` for what it found), `todo_list` to read, and `todo_replace`,
   `todo_remove` or `todo_clear` to delete on purpose.
 - **Subagents** receive tasks with `handoff: { todo: { keys } }` on
   `subagent_start` and update them directly in your list.
 
-![The /todo browser with All, Unreviewed and Recent views](../../docs/images/todo-browser.png)
+![The /todo browser with All and Recent views](../../docs/images/todo-browser.png)
 
 The task engine comes from
 [`@99percentpeople/pi-todo`](CHANGELOG.md#initial-import); the tools, UI and
@@ -73,8 +73,8 @@ Record an outcome with the status change that produced it:
 }
 ```
 
-`message` goes into the task's history, not its description. The user sees it
-flagged until they review it; see [Messages and review](#messages-and-review).
+`message` goes into the task's history, not its description, and the user sees
+it there; see [Messages](#messages).
 
 | Tool           | Arguments        | Annotations | Behavior                                                                               |
 | -------------- | ---------------- | ----------- | -------------------------------------------------------------------------------------- |
@@ -115,7 +115,7 @@ longer worth the tokens.
   `todo_list` with an archived key returns its record: subject, completion time
   and the first 240 characters of its last message.
 - The archive keeps the 200 most recently archived records; older ones are
-  dropped. A task's history and its unreviewed messages go with it.
+  dropped. A task's history and its messages go with it.
 - A prerequisite on an archived task is already satisfied: archiving drops the
   link, and a write naming an archived key in `dependsOn` leaves it out. A key
   named as a task in the same write is a new task with that key.
@@ -134,21 +134,18 @@ details. Validation failures never mutate state.
 
 ## Commands
 
-| Command                                                                              | Purpose                                                                          |
-| ------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------- |
-| `/todo`                                                                              | Searchable task list, dependency details and history                             |
-| `/todo:review`                                                                       | Browser on unreviewed messages; outside TUI, prints them and marks them reviewed |
-| `/todo:review all`                                                                   | Mark every unreviewed task reviewed                                              |
-| `/todo:review fix-auth-bug`                                                          | Mark one or more space-separated keys reviewed                                   |
-| `/todo:add Fix auth bug`                                                             | Add pending task with unique generated key; omit title for input dialog          |
-| `/todo:update fix-auth-bug in_progress`                                              | Change status explicitly                                                         |
-| `/todo:update fix-auth-bug completed Verified by hand`                               | Change status and record a note                                                  |
-| `/todo:update fix-auth-bug {"dependsOn":["inspect"],"description":"Recheck expiry"}` | Sparse field patch; `message` also accepted                                      |
-| `/todo:remove fix-auth-bug`                                                          | Remove one or more space-separated keys                                          |
-| `/todo:clear completed`                                                              | Archive every completed task                                                     |
-| `/todo:clear`                                                                        | Clear all tasks and the archive, with confirmation by default                    |
-| `/todo:clear all --yes`                                                              | Explicitly bypass confirmation                                                   |
-| `/todo:settings`                                                                     | Built-in select/input settings menu, like subagents                              |
+| Command                                                                              | Purpose                                                                 |
+| ------------------------------------------------------------------------------------ | ----------------------------------------------------------------------- |
+| `/todo`                                                                              | Searchable task list, dependency details and history                    |
+| `/todo:add Fix auth bug`                                                             | Add pending task with unique generated key; omit title for input dialog |
+| `/todo:update fix-auth-bug in_progress`                                              | Change status explicitly                                                |
+| `/todo:update fix-auth-bug completed Verified by hand`                               | Change status and record a note                                         |
+| `/todo:update fix-auth-bug {"dependsOn":["inspect"],"description":"Recheck expiry"}` | Sparse field patch; `message` also accepted                             |
+| `/todo:remove fix-auth-bug`                                                          | Remove one or more space-separated keys                                 |
+| `/todo:clear completed`                                                              | Archive every completed task                                            |
+| `/todo:clear`                                                                        | Clear all tasks and the archive, with confirmation by default           |
+| `/todo:clear all --yes`                                                              | Explicitly bypass confirmation                                          |
+| `/todo:settings`                                                                     | Built-in select/input settings menu, like subagents                     |
 
 Commands never submit a user prompt, schedule a continuation, start subagents,
 or mark unrelated work completed. When the next run starts, the agent gets a
@@ -163,26 +160,18 @@ shows the task list as plain text and every command reports its result as a
 displayed message instead of a notification. These messages are for you: they
 are kept out of the model's context and never start a turn.
 
-## Messages and review
+## Messages
 
 In a long session with several tasks and subagents, an outcome reported in chat is
 easy to lose: the next subagent result or tool burst scrolls it away. Messages attach
-the outcome to its task, and review tracking keeps it flagged until you have seen it.
+the outcome to its task, where it stays.
 
 - **History:** each task keeps its latest 10 updates. An update records a status
   change, a message, or both, with its plan revision, time, and source.
   User-command updates are marked `you`.
-- **Unreviewed:** a task is unreviewed when it has a model message newer than your
-  last review of that task. Status changes without a message never flag a task,
-  and neither do your own notes.
-- **Reviewing:** opening a task's details in the browser marks it reviewed.
-  Ctrl+R marks every unreviewed task in the current filtered list. `/todo:review`
-  also marks tasks reviewed, with or without arguments. A review covers only the
-  messages that were shown. A message that arrives while the browser is open stays
-  unreviewed.
-- **No model impact:** a review is a separate journal entry. It never changes the
-  plan revision, model output, or context sync, so a pending model update with
-  `baseRevision` stays valid. Nothing about review starts or steers a turn.
+- **Where you see them:** the widget and the `/todo` listing show each task's
+  latest message after its subject; the browser's details show the whole
+  history, newest first, and its filter matches message text.
 
 ## Handing tasks to subagents
 
@@ -212,7 +201,7 @@ subagent_start({
 - **Claimed before the child starts.** When pi-subagent reports the child session
   (`subagent:session:created`, with its agent id and the same tool call id), the
   parent journals a claim in `todo:claim` entries. Claims follow the branch like
-  review marks; the plan state engine is unchanged.
+  the task list; the plan state engine is unchanged.
 - **The subagent works in your list.** Its todo tools, context snapshot and widget
   ("Assigned tasks") show only its tasks with `scope: "assigned"`, or your whole list
   with `scope: "ledger"`. Its writes go to your list through
@@ -225,16 +214,15 @@ subagent_start({
   - New tasks it adds join its claim.
   - With `ledger`, it may also add prerequisites (`dependsOn`, keeping the existing
     ones) to tasks it does not hold, for a blocker it found. Each addition leaves a
-    flagged message on that task. Set `childPrerequisites: false` to turn this off.
+    message on that task. Set `childPrerequisites: false` to turn this off.
   - Anything else on other tasks fails, as do `todo_replace` and clearing everything.
   - `baseRevision` is checked against the tasks the write touches, so other
     subagents' writes elsewhere do not make it stale.
-- **Attributed and flagged.** Updates record the subagent's agent id (`agent a3f2b1c4`
-  in history), and its messages are flagged for review like any model message. Your
-  widget and browser show `→ agent a3f2b1c4` on handed-over tasks.
+- **Attributed.** Updates record the subagent's agent id (`agent a3f2b1c4` in
+  history). Your widget and browser show `→ agent a3f2b1c4` on handed-over tasks.
 - **Released when the agent ends.** On `subagent:completed`, `failed`, `resumed` or
   `subagent:session:disposed`, the claim is released and tasks it left `in_progress` get a
-  flagged message ("agent a3f2b1c4 ended (failed) with this task in progress"). A
+  message ("agent a3f2b1c4 ended (failed) with this task in progress"). A
   later run started by `subagent_send` (`subagent:resuming`) reclaims the agent's tasks that nobody else holds.
 - **Kept across a reload or restart.** A claim belongs to the agent, not to the
   session it runs in. pi-subagent keeps agents when your session reloads or
@@ -257,7 +245,7 @@ The widget and browser render through the bundle's shared `packages/pi-ui`
 library (`renderWidget` and `showExplorer`) from JSON models (see
 [Persistence and integration boundaries](#persistence-and-integration-boundaries));
 this extension supplies task selection, ordering, status colors and the
-`todo.inspect` and `todo.review` actions.
+`todo.inspect` action.
 
 Above-editor widget uses a static top rule with the Nerd Font tasks icon
 (`nf-fa-tasks`, U+F0AE); use a patched Nerd Font, preferably its Mono variant.
@@ -277,28 +265,25 @@ explicitly cleared; hiding them affects display only.
 ✓ inspect Inspect implementation                  completed
 ```
 
-Unreviewed messages add `● N new` to the header. Their tasks move to the top, newest
-first, and stay visible when completed tasks are hidden. Those rows get a `●`
-marker and a dim message excerpt; other rows get a blank two-column gutter so
-columns stay aligned. Narrow terminals drop the new count before the other counts, then
-the icon; on narrow rows the assignee badge drops first, then the task identity
-clips before the status label, and the status glyph always stays.
+A task with messages shows a dim one-line excerpt of its latest one after its
+identity; messages never change the order or the header. Narrow terminals drop
+the counts, then the icon; on narrow rows the assignee badge drops first, then
+the task identity clips before the status label, and the status glyph always
+stays.
 
 ```text
-──   Todos ────────────────────────── ● 1 new · 1 active / 1 pending ──
- ● inspect: Inspect implementation — Auth in src/auth/token ✓ completed
-   build: Build change ← inspect                          ▸ in_progress
-   verify: Verify change ← build                              ○ blocked
+──   Todos ──────────────────────────────────── 1 active / 1 pending ──
+ build: Build change ← inspect                            ▸ in_progress
+ verify: Verify change ← build                                ○ blocked
+ inspect: Inspect implementation — Auth in src/auth/token ✓ completed
 ```
 
 Browser uses the shared explorer controls: type to filter, arrows/PgUp/PgDn/Home/End
 and the mouse wheel select, Enter details, Esc backs out/clears filter/closes,
 Ctrl+C closes. Tab and Shift+Tab
-cycle three views: All (status order), Unreviewed (newest first), and Recent (all
-tasks by last activity). The filter also matches message text. Details add
-created, updated, and reviewed times, plus an activity timeline, newest first,
-with unreviewed entries marked `●`. The note shows when you last reviewed; the
-status row counts tasks still unreviewed. The browser is a centered overlay in
+cycle two views: All (status order) and Recent (all tasks by last activity). The
+filter also matches message text. Details add created and updated times, plus an
+activity timeline, newest first. The browser is a centered overlay in
 Pi's fullscreen TUI (the regular renderer is not supported). Task text is
 sanitized before terminal rendering.
 Tool output is compact by default; expand it to list the tasks the call added,
@@ -328,7 +313,7 @@ lower-priority layer; malformed files warn instead of preventing startup.
 ```
 
 - `maxVisible`: 1–12 task rows; short terminals further limit widget height.
-- `showCompleted`: hides completed tasks in the widget, except ones with unreviewed messages.
+- `showCompleted`: hides completed tasks in the widget.
 - `singleActive`: reject mutations resulting in multiple active tasks. No implicit demotion.
 - `contextSync`: `changes` writes a hidden note (`todo:sync`) into the transcript
   when the list differs from what the model last saw: its latest untruncated
@@ -354,10 +339,9 @@ and nested codemode tool calls whose result details Pi does not persist. Direct
 tool results also carry snapshots for the model, but replay reads only the
 journal, so a delayed direct result cannot overwrite a newer command edit.
 Reload, resume, tree navigation, and compaction restore the latest valid
-journaled snapshot on the branch. Review marks are a
-separate `todo:review` journal of per-task revision watermarks, and archived
-tasks a `todo:archive` journal of the records each change archived. Like
-tasks, they follow the branch. Compaction checkpoints state without
+journaled snapshot on the branch. Archived tasks are a separate `todo:archive`
+journal of the records each change archived; like tasks, they follow the
+branch. Entries of types pi-todo no longer writes are ignored. Compaction checkpoints state without
 sending steering messages or running the agent.
 
 Subagent sessions keep their own lists unless tasks were handed to them, and then
@@ -373,18 +357,17 @@ session's bus (see [`pi-surface`](../../packages/pi-surface/README.md)), so
 pi-dashboard and bb draw the widget, the browser and the counts and act on them.
 Each subagent has its own bus, so a consumer sees only its own session's tasks.
 
-| Id              | Kind     | What it does                                                                                                                                                                                        |
-| --------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `todo.widget`   | widget   | The above-editor widget as a JSON `WidgetModel`; nothing while the terminal would hide it (no tasks, `widget` off, only hidden completed tasks)                                                     |
-| `todo.explorer` | explorer | The `/todo` browser on its All tab as a JSON `ExplorerModel`; `loadDetail` is `todo.inspect` and the unreviewed marker's `onClear` is `todo.review`                                                 |
-| `todo.summary`  | summary  | This branch's task counts and the task in progress as a `SummaryModel`, whether or not the widget shows (see below)                                                                                 |
-| `todo.inspect`  | action   | `{ id, reviewed? }` resolves to the task's detail blocks; `reviewed` (key → `{ revision, at }`) is the review state a list showed, so messages it marked new stay marked after opening reviews them |
-| `todo.review`   | action   | `{ ids?, revisions?, branch? }` marks messages reviewed and resolves to `{ reviewed }`; see `src/events.ts`. A `branch` from a list taken before a session or branch change is refused              |
+| Id              | Kind     | What it does                                                                                                                                    |
+| --------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `todo.widget`   | widget   | The above-editor widget as a JSON `WidgetModel`; nothing while the terminal would hide it (no tasks, `widget` off, only hidden completed tasks) |
+| `todo.explorer` | explorer | The `/todo` browser on its All tab as a JSON `ExplorerModel`; `loadDetail` is `todo.inspect`                                                    |
+| `todo.summary`  | summary  | This branch's task counts and the task in progress as a `SummaryModel`, whether or not the widget shows (see below)                             |
+| `todo.inspect`  | action   | `{ id }` resolves to the task's detail blocks                                                                                                   |
 
 The terminal draws the same models: the widget is `todo.widget`'s model with the
 terminal's row budgets, and `/todo` opens the `todo.explorer` model, loading
-details through `todo.inspect` and saving reviews through `todo.review`. The
-views announce a change after every plan change, review and settings change.
+details through `todo.inspect`. The views announce a change after every plan
+change and settings change.
 
 `todo.summary` counts the branch's whole list, from the same state as the
 widget and `/todo` but never filtered or capped by them: it answers while the
@@ -393,19 +376,17 @@ Every count is present, zero included, so an empty list reads as zeros where a
 session without pi-todo has no `todo.summary` at all. `active` is the first task
 in progress, in list order (`{ id: <key>, label: <subject> }`).
 
-| Key                   | Counts                                                    |
-| --------------------- | --------------------------------------------------------- |
-| `total`               | Tasks on the list                                         |
-| `completed`           | Completed tasks on the list                               |
-| `in-progress`         | Tasks in progress                                         |
-| `pending`             | Pending tasks free to start                               |
-| `blocked`             | Pending tasks waiting on an unfinished prerequisite       |
-| `unreviewed`          | Tasks with model messages the user has not reviewed       |
-| `unreviewed-messages` | Those unreviewed messages                                 |
-| `archived`            | Completed tasks archived off the list (`list` reads them) |
+| Key           | Counts                                                    |
+| ------------- | --------------------------------------------------------- |
+| `total`       | Tasks on the list                                         |
+| `completed`   | Completed tasks on the list                               |
+| `in-progress` | Tasks in progress                                         |
+| `pending`     | Pending tasks free to start                               |
+| `blocked`     | Pending tasks waiting on an unfinished prerequisite       |
+| `archived`    | Completed tasks archived off the list (`list` reads them) |
 
 `completed`, `in-progress`, `pending` and `blocked` add up to `total`. Task
-statuses and review marks live in the session file, so no count and no active
+statuses live in the session file, so no count and no active
 task is process-bound (`live`): a saved summary settles unchanged.
 
 ## Migrating from rpiv-todo

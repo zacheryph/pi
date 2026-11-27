@@ -184,7 +184,7 @@ describe("the Needs you panel", () => {
         {
           id: "task-3",
           category: "findings",
-          title: "2 unreviewed findings",
+          title: "2 findings to discuss",
           state: "ready",
           since: now - 30_000,
         },
@@ -280,7 +280,7 @@ describe("the Needs you panel", () => {
       "Which retry strategy for failed webhooks?",
       "Review acme/web#42 · draft at a13c90e",
       "Review acme/api#58",
-      "2 unreviewed findings",
+      "2 findings to discuss",
       "Review acme/api#57",
     ]);
     expect(rows.map((row) => row.children[2]!.textContent)).toEqual(["Answer", "Open", "", "", ""]);
@@ -345,7 +345,7 @@ describe("the Needs you panel", () => {
     const rows = needRows(panelOf(run.main));
     expect(rows).toHaveLength(1);
     expect(rows[0]!.children[1]!.textContent).toMatch(
-      /^2 unreviewed findings\d+s ago · last known$/,
+      /^2 findings to discuss\d+s ago · last known$/,
     );
     expect(rows[0]!.children[2]!.textContent).toBe("");
   });
@@ -388,6 +388,6 @@ describe("the Needs you panel", () => {
     expect(rows.map((row) => row.className)).toEqual(["need solo", "need solo"]);
     expect(rows[0]!.textContent).toContain("the terminal can answer too; the first answer wins");
     expect(find(panel, "answer:101:q1:detail")?.textContent).toBe("Answer");
-    expect(rows[1]!.textContent).toMatch(/^2 unreviewed findings/);
+    expect(rows[1]!.textContent).toMatch(/^2 findings to discuss/);
   });
 });

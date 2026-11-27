@@ -130,7 +130,7 @@ await showExplorer(ctx, {
   title: { label: "Todos", icon: ICONS.tasks },
   noun: ["task", "tasks"],
   notices: [["Read-only snapshot", { text: " · store over size cap", tone: "warning" }]],
-  marker: { label: "unreviewed", clearAction: "mark reviewed", onClear: (ids) => review(ids) },
+  marker: { label: "flagged", clearAction: "unflag", onClear: (ids) => unflag(ids) },
   hints: [{ keys: "/todo:add" }, { keys: "/todo:clear" }],
   items: [
     {
@@ -147,14 +147,14 @@ await showExplorer(ctx, {
   ],
   tabs: [
     { label: "All", ids: ["t1", "t2"] },
-    { label: "Unreviewed", ids: ["t1"], emptyText: "No unreviewed tasks." },
+    { label: "Flagged", ids: ["t1"], emptyText: "No flagged tasks." },
   ],
   emptyText: "No tasks on this branch.",
   loadDetail: (id, signal) => loadBoundedPreview(id, signal),
 });
 ```
 
-The callbacks above are supplied by the consuming extension. They own review
+The callbacks above are supplied by the consuming extension. They own mark
 state, filesystem access, data limits and domain-specific formatting.
 
 `loadDetail`, `onOpen` and `marker.onClear` also accept an action reference
@@ -180,7 +180,7 @@ Loading shows `Loading…`; errors render in place as `Couldn't load: <message>`
 Back/close/disposal aborts that load, and stale results are ignored even if a
 loader does not honor its signal.
 
-The status row is library-owned: `2/5 tasks · 8 total · 3 unreviewed` (the total
+The status row is library-owned: `2/5 tasks · 8 total · 3 flagged` (the total
 appears only while a tab or filter narrows the list; the marker count only while
 nonzero). With `marker`, every row reserves a marker column. Opening a marked
 item, or Ctrl+R on the filtered list, clears marks locally and reports the

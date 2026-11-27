@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  replayTaskState,
-  replayTodoSession,
-  TODO_JOURNAL_TYPE,
-  TODO_REVIEW_TYPE,
-} from "#src/replay";
+import { replayTaskState, replayTodoSession, TODO_JOURNAL_TYPE } from "#src/replay";
 import { createEmptyTodoState, writeTodoSnapshot } from "#src/state";
 
 const one = writeTodoSnapshot(createEmptyTodoState(), {
@@ -59,38 +54,42 @@ describe("authoritative local checkpoint replay", () => {
   });
 });
 
-describe("activity and review replay", () => {
+describe("activity replay", () => {
   const activity = {
     first: { createdAt: 5, updates: [{ revision: 1, at: 5, status: "pending", message: "Note" }] },
   };
-  const review = (data: unknown) => ({ type: "custom", customType: TODO_REVIEW_TYPE, data });
 
-  it("restores history from the authoritative journal and review watermarks from the whole branch", () => {
+  it("restores history from the authoritative journal", () => {
+    const restored = replayTodoSession({
+      sessionManager: { getBranch: () => [local({ ...one, activity })] },
+    });
+    expect(restored.state).toMatchObject({ revision: 1, tasks: one.tasks });
+    expect(restored.activity).toEqual(new Map([["first", activity.first]]));
+  });
+
+  it("loads a session with review entries an older pi-todo wrote, and ignores them", () => {
+    // Review tracking was removed; its entries stay in old session files.
+    const review = (data: unknown) => ({ type: "custom", customType: "todo:review", data });
     const restored = replayTodoSession({
       sessionManager: {
         getBranch: () => [
           review({ at: 1, tasks: { first: 1 } }),
           local({ ...one, activity }),
           review({ at: 9, tasks: { other: 4 } }),
+          review(null),
         ],
       },
     });
-    expect(restored.state).toMatchObject({ revision: 1, tasks: one.tasks });
-    expect(restored.activity).toEqual(new Map([["first", activity.first]]));
-    expect(restored.review.at).toBe(9);
-    expect(restored.review.tasks).toEqual(
-      new Map([
-        ["first", { revision: 1, at: 1 }],
-        ["other", { revision: 4, at: 9 }],
-      ]),
+    expect(restored).toEqual(
+      replayTodoSession({ sessionManager: { getBranch: () => [local({ ...one, activity })] } }),
     );
+    expect(Object.keys(restored).toSorted()).toEqual(["activity", "archive", "claims", "state"]);
   });
 
   it("replays a journal without history with empty history", () => {
     const restored = replayTodoSession({ sessionManager: { getBranch: () => [local(one)] } });
     expect(restored.state).toMatchObject({ revision: 1 });
     expect(restored.activity.size).toBe(0);
-    expect(restored.review.tasks.size).toBe(0);
   });
 
   it("does not let a later invalid snapshot or a stale journal's history leak forward", () => {

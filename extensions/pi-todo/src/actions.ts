@@ -133,7 +133,7 @@ export const TODO_OUTPUT_TRUNCATED = "[Output truncated.";
 
 /**
  * Bounded model output; list(key) returns an individual task's full details and
- * update history. Never depends on review state: viewing must not change it.
+ * update history.
  * `archived` counts the completed tasks moved off the list.
  */
 export function formatTodoState(

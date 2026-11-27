@@ -1633,10 +1633,12 @@ stateDiagram-v2
       <ol class="steps" start="10" style="counter-reset: s 9">
         <li>
           <div>
-            <b>Second producer: unreviewed todo findings</b
+            <b>Second producer: unreviewed todo findings (dropped)</b
             ><span
-              ><code>todo.attention</code>, with an <code>open</code> action into
-              <code>/todo:review</code>. It should need no contract change. Size S.</span
+              >Dropped in favour of
+              <a href="2026-11-27-waiting-tasks.md">Tasks that wait on you</a>, which removes todo
+              review tracking. Was: <code>todo.attention</code>, with an <code>open</code> action
+              into <code>/todo:review</code>. Size S.</span
             >
           </div>
         </li>

@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  applyTodoReview,
-  createTodoReviewState,
   latestTodoMessage,
   MAX_TASK_MESSAGE_LENGTH,
   MAX_TASK_UPDATES,
@@ -9,10 +7,7 @@ import {
   recordTodoActivity,
   serializeTodoActivity,
   type TodoActivity,
-  todoReviewMarks,
   type TodoTaskActivity,
-  unreviewedTodoTasks,
-  unreviewedTodoUpdates,
 } from "#src/activity";
 import { applyTodoRequest, formatTodoState, type TodoRequest } from "#src/actions";
 import { createEmptyTodoState, type TodoState, TodoValidationError } from "#src/state";
@@ -183,101 +178,6 @@ describe("task activity history", () => {
   });
 });
 
-describe("review watermarks", () => {
-  const messaged = step(
-    step(
-      planned,
-      { action: "upsert", tasks: [{ key: "build", status: "completed", message: "Built" }] },
-      200,
-    ),
-    {
-      action: "upsert",
-      tasks: [{ key: "verify", status: "in_progress", message: "Started checks" }],
-    },
-    300,
-  );
-
-  it("flags model messages above the task watermark, newest first; status-only and user updates never", () => {
-    const review = createTodoReviewState();
-    expect(
-      [...unreviewedTodoTasks(messaged.state, messaged.activity, review)].map(([key, update]) => [
-        key,
-        update.revision,
-      ]),
-    ).toEqual([
-      ["verify", 3],
-      ["build", 2],
-    ]);
-    const user = step(
-      messaged,
-      { action: "upsert", tasks: [{ key: "build", message: "Checked by hand" }] },
-      400,
-      "user",
-    );
-    expect(
-      unreviewedTodoUpdates("build", user.activity, review).map((update) => update.message),
-    ).toEqual(["Built"]);
-    const quiet = step(
-      planned,
-      { action: "upsert", tasks: [{ key: "build", status: "completed" }] },
-      200,
-    );
-    expect(unreviewedTodoTasks(quiet.state, quiet.activity, review).size).toBe(0);
-  });
-
-  it("applies watermarks forward only, per key, and keeps the latest review time", () => {
-    let review = applyTodoReview(createTodoReviewState(), { at: 500, tasks: { build: 2 } });
-    expect([...unreviewedTodoTasks(messaged.state, messaged.activity, review).keys()]).toEqual([
-      "verify",
-    ]);
-    review = applyTodoReview(review, { at: 400, tasks: { build: 1, verify: 3 } });
-    expect(review.at).toBe(500);
-    expect(review.tasks.get("build")).toEqual({ revision: 2, at: 500 });
-    expect(review.tasks.get("verify")).toEqual({ revision: 3, at: 400 });
-    expect(unreviewedTodoTasks(messaged.state, messaged.activity, review).size).toBe(0);
-    // A later message at a higher revision is unreviewed again.
-    const again = step(
-      messaged,
-      { action: "upsert", tasks: [{ key: "build", message: "Rebuilt" }] },
-      600,
-    );
-    expect([...unreviewedTodoTasks(again.state, again.activity, review).keys()]).toEqual(["build"]);
-  });
-
-  it("ignores malformed review entries and values", () => {
-    const review = createTodoReviewState();
-    for (const raw of [
-      null,
-      [],
-      { at: 1 },
-      { tasks: { build: 1 } },
-      { at: -1, tasks: {} },
-      { at: Infinity, tasks: {} },
-      { at: 1, tasks: [] },
-    ]) {
-      expect(applyTodoReview(review, raw)).toBe(review);
-    }
-    const partial = applyTodoReview(review, {
-      at: 1,
-      tasks: { build: 2, bad: -1, worse: 1.5, worst: "3" },
-    });
-    expect([...partial.tasks.keys()]).toEqual(["build"]);
-  });
-
-  it("builds review marks for all or selected unreviewed tasks", () => {
-    const review = createTodoReviewState();
-    expect(todoReviewMarks(messaged.state, messaged.activity, review)).toEqual(
-      new Map([
-        ["verify", 3],
-        ["build", 2],
-      ]),
-    );
-    expect(
-      todoReviewMarks(messaged.state, messaged.activity, review, ["build", "missing"]),
-    ).toEqual(new Map([["build", 2]]));
-  });
-});
-
 describe("persisted activity", () => {
   const session = step(
     planned,
@@ -316,7 +216,7 @@ describe("persisted activity", () => {
       expect(readTodoActivity(invalid, session.state).size).toBe(0);
   });
 
-  it("keeps model output independent of review state and bounded per task", () => {
+  it("keeps model output bounded per task", () => {
     const full = formatTodoState(session.state, undefined, session.activity);
     expect(JSON.parse(full).tasks[0]).toMatchObject({ key: "build", lastMessage: "Go" });
     const detail = JSON.parse(formatTodoState(session.state, "build", session.activity)).tasks[0];

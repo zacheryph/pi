@@ -41,7 +41,7 @@ export const staleItem: AttentionItem = {
 export const findingsItem: AttentionItem = {
   id: "task:fix-auth-bug",
   category: "findings",
-  title: "2 unreviewed findings",
+  title: "2 findings to discuss",
   reason: "fix-auth-bug · retry-backoff",
   state: "ready",
   since: NOW - 5 * MINUTE,

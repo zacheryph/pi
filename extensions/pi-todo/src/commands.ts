@@ -1,19 +1,13 @@
 import { errorText } from "#foundations/errors";
 import type { UserOutput } from "#foundations/user-output";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import {
-  type TodoActivity,
-  todoReviewMarks,
-  type TodoReviewState,
-  unreviewedTodoTasks,
-  unreviewedTodoUpdates,
-} from "#src/activity";
+import { latestTodoMessage, type TodoActivity } from "#src/activity";
 import type { TodoRequest, TodoTaskPatch } from "#src/actions";
 import type { TodoConfig } from "#src/config";
 import { cloneTodoState, type TodoState } from "#src/state";
-import { showTodoBrowser, type TodoBrowserView } from "#src/ui/browser";
-import { formatTodoAge, renderTodoText, todoMessageLine } from "#src/ui/render";
-import { sanitizeLine, sanitizeText } from "#ui";
+import { showTodoBrowser } from "#src/ui/browser";
+import { renderTodoText } from "#src/ui/render";
+import { sanitizeText } from "#ui";
 
 export interface TodoController {
   /** Where command results go: a notification in the terminal, a displayed message elsewhere. */
@@ -21,17 +15,13 @@ export interface TodoController {
   state(): TodoState;
   config(): TodoConfig;
   activity(): TodoActivity;
-  review(): TodoReviewState;
   /** Subagent holding each delegated task, as a display label. */
   assignees(): ReadonlyMap<string, string>;
-  now(): number;
   branchToken(): number;
   /** Completed tasks archived off the list. */
   archived(): number;
-  /** Command edits are recorded as user updates, never flagged for review. */
+  /** Command edits are recorded as user updates. */
   mutate(request: TodoRequest, ctx: ExtensionCommandContext): void;
-  /** Journals review watermarks that advance; returns how many tasks advanced. */
-  markReviewed(marks: ReadonlyMap<string, number>, ctx: ExtensionCommandContext): number;
   configure(patch: Partial<TodoConfig>, ctx: ExtensionCommandContext): void;
 }
 
@@ -55,17 +45,12 @@ export function registerTodoCommands(pi: ExtensionAPI, controller: TodoControlle
       },
     });
   };
-  const browse = async (ctx: ExtensionCommandContext, view: TodoBrowserView) => {
+  const browse = async (ctx: ExtensionCommandContext) => {
     await showTodoBrowser(ctx, cloneTodoState(controller.state()), {
       activity: controller.activity(),
-      review: controller.review(),
-      now: controller.now(),
-      view,
       assignees: controller.assignees(),
-      // todo.review refuses a stale snapshot's marks once the session or branch is replaced.
-      branch: controller.branchToken(),
       archived: controller.archived(),
-      // Details and reviews go through todo.inspect and todo.review on this session's bus.
+      // Details go through todo.inspect on this session's bus.
       actions: pi.events,
     });
   };
@@ -73,18 +58,23 @@ export function registerTodoCommands(pi: ExtensionAPI, controller: TodoControlle
   const listing = (): string => {
     const state = controller.state();
     const archived = controller.archived();
-    const flagged = unreviewedTodoTasks(state, controller.activity(), controller.review());
+    const activity = controller.activity();
     return [
       ...renderTodoText(state, {
         maxVisible: MAX_LISTED_TASKS,
         showCompleted: true,
         assignees: controller.assignees(),
-        unreviewed: new Map([...flagged].map(([key, update]) => [key, update.message ?? ""])),
+        messages: new Map(
+          state.tasks.flatMap((task) => {
+            const message = latestTodoMessage(task.key, activity)?.message;
+            return message ? [[task.key, message] as const] : [];
+          }),
+        ),
       }),
       ...(archived > 0
         ? [`${archived} earlier completed task${archived === 1 ? "" : "s"} archived.`]
         : []),
-      "Change tasks with /todo:add, /todo:update, /todo:remove or /todo:clear; /todo:review lists new task messages.",
+      "Change tasks with /todo:add, /todo:update, /todo:remove or /todo:clear.",
     ].join("\n");
   };
   const list = async (_args: string, ctx: ExtensionCommandContext) => {
@@ -92,59 +82,9 @@ export function registerTodoCommands(pi: ExtensionAPI, controller: TodoControlle
       controller.output.show(ctx, listing(), "info");
       return;
     }
-    await browse(ctx, "all");
+    await browse(ctx);
   };
   register("todo", "Browse/search session tasks and dependency details", list);
-  register(
-    "todo:review",
-    "Review task messages: /todo:review [all|<key> ...]; viewing marks reviewed",
-    async (args, ctx) => {
-      const state = controller.state(),
-        activity = controller.activity(),
-        review = controller.review();
-      const keys = args ? args.split(/\s+/) : [];
-      if (keys.length) {
-        const all = keys.length === 1 && keys[0] === "all";
-        for (const key of all ? [] : keys) {
-          if (!state.tasks.some((task) => task.key === key))
-            throw new Error(`Unknown task: ${key}`);
-        }
-        const count = controller.markReviewed(
-          todoReviewMarks(state, activity, review, all ? undefined : keys),
-          ctx,
-        );
-        controller.output.show(
-          ctx,
-          count
-            ? `Marked ${count} task${count === 1 ? "" : "s"} reviewed.`
-            : "No unreviewed task messages.",
-          "info",
-        );
-        return;
-      }
-      if (ctx.hasUI && ctx.mode === "tui") {
-        await browse(ctx, "unreviewed");
-        return;
-      }
-      // Without a browser, this notification is the review.
-      const flagged = unreviewedTodoTasks(state, activity, review);
-      if (!flagged.size) {
-        controller.output.show(ctx, "No unreviewed task messages.", "info");
-        return;
-      }
-      const now = controller.now();
-      const lines = [...flagged.keys()].flatMap((key) =>
-        unreviewedTodoUpdates(key, activity, review)
-          .toReversed()
-          .map(
-            (update) =>
-              `${sanitizeLine(key)} [${update.status}] ${formatTodoAge(update.at, now)}: ${todoMessageLine(update.message ?? "")}`,
-          ),
-      );
-      controller.output.show(ctx, lines.join("\n"), "info");
-      controller.markReviewed(todoReviewMarks(state, activity, review), ctx);
-    },
-  );
   register(
     "todo:add",
     "Append a task: /todo:add <subject> (never starts agent)",

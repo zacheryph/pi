@@ -500,14 +500,15 @@ describe("pi-surface app", () => {
         selector: "li",
       }),
     ).toBeTruthy();
-    // Opening a task with an unreviewed message reviews it, as the terminal does.
+    // Opening a task only loads its detail: nothing in the list is written.
     fireEvent.click(await slot.findByText("schema: Add the delivery_attempts table"));
     expect(requests(slot)).toEqual(
       expect.arrayContaining([
         { action: "todo.inspect", args: { id: "worker" } },
-        { action: "todo.review", args: { branch: 1, ids: ["schema"] } },
+        { action: "todo.inspect", args: { id: "schema" } },
       ]),
     );
+    expect(requests(slot).every(({ action }) => action === "todo.inspect")).toBe(true);
   });
 
   it("draws pull requests, worktrees and stash in the Pi Git tab, in that order", async () => {

@@ -14,9 +14,9 @@ function model(extra: Partial<ExplorerModel> = {}): ExplorerModel {
       { id: "b", label: "Beta", marked: true },
     ],
     marker: {
-      label: "unreviewed",
-      clearAction: "mark reviewed",
-      onClear: { action: "demo.review" },
+      label: "flagged",
+      clearAction: "unflag",
+      onClear: { action: "demo.unflag" },
     },
     onOpen: { action: "demo.open", args: { from: "test" } },
     loadDetail: { action: "demo.detail", args: { depth: 2 } },
@@ -37,10 +37,10 @@ describe("Explorer with action references", () => {
       { heading: `Detail for ${(args as { id: string }).id}` },
     ]);
     const open = vi.fn(),
-      review = vi.fn();
+      unflag = vi.fn();
     defineAction(bus, { id: "demo.detail", title: "Detail", handler: detail });
     defineAction(bus, { id: "demo.open", title: "Open", handler: open });
-    defineAction(bus, { id: "demo.review", title: "Review", handler: review });
+    defineAction(bus, { id: "demo.unflag", title: "Unflag", handler: unflag });
     const { explorer, tui } = setup(model(), bus);
 
     expect(detail).not.toHaveBeenCalled();
@@ -49,15 +49,15 @@ describe("Explorer with action references", () => {
     await flush();
     expect(detail).toHaveBeenCalledWith({ depth: 2, id: "a" });
     expect(open).toHaveBeenCalledWith({ from: "test", id: "a" });
-    expect(review).toHaveBeenCalledWith({ ids: ["a"] });
+    expect(unflag).toHaveBeenCalledWith({ ids: ["a"] });
     expect(plain(explorer.render(80))).toContain("Detail for a");
     expect(tui.requestRender).toHaveBeenCalled();
 
     explorer.handleInput("\x1b");
     explorer.handleInput(CTRL_R);
     await flush();
-    expect(review).toHaveBeenLastCalledWith({ ids: ["b"] });
-    expect(plain(explorer.render(80))).toContain("Ctrl+R mark reviewed");
+    expect(unflag).toHaveBeenLastCalledWith({ ids: ["b"] });
+    expect(plain(explorer.render(80))).toContain("Ctrl+R unflag");
   });
 
   it("shows a failed or malformed action result in place, like a failed loader", async () => {
@@ -107,7 +107,7 @@ describe("Explorer with action references", () => {
     const onClear = vi.fn();
     const view: ExplorerView = {
       ...model({ onOpen: undefined }),
-      marker: { label: "unreviewed", onClear },
+      marker: { label: "flagged", onClear },
     };
     const { explorer } = setup(view, fakeEventBus());
     explorer.handleInput(CTRL_R);
