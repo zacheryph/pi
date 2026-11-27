@@ -105,7 +105,7 @@ title, group, order, summary, action?, details?, useVisible? })`; groups come
 from `experimental_THREAD_CONTEXT_SEGMENT_GROUPS` (`1_thread`, `3_git`). We
 join `1_thread`.
 
-Ours is one button, `orchestrate · 3/7 tasks · 2 agents · question · 2 reviews`,
+Ours is one button, `orchestrate · 3/7 tasks · 2 agents · question · 3 need you`,
 that opens the Pi tab: the main agent's profile and running or queued subagents
 from `subagent.summary` (the profile shows even with no subagents), completed
 and total tasks from `todo.summary`, an open questionnaire in a form view, and
@@ -271,9 +271,15 @@ blocking rows or an owed category. A saved session's rows read **last known**.
 Dismiss runs the item's `dismiss` action through the server, which checks the
 revision the user saw; while no Pi runs for the thread, the server keeps the
 dismissal in `bb.storage.kv`, hides the row, and runs it once when the
-thread's Pi reconnects (dropping it if the item is gone or has changed). The
-entry's badge counts every row and owed item: critical while anything blocks,
-warning otherwise.
+thread's Pi reconnects (dropping it if the item is gone or has changed). An
+item that asks for your words, such as a task waiting on you, also has
+**Reply** while its Pi runs: a text box opens in the row, and **Send reply**
+(or Ctrl/⌘+Enter) calls the `reply` RPC. The server checks the revision again
+and runs the item's `reply` action with `{ text }`; a refusal shows in the row
+and keeps the text. A saved session's item has no reply, since settling drops
+it, so it offers only **Thread**: you answer in the thread. In the thread
+context card, a row with no link opens this page. The entry's badge counts
+every row and owed item: critical while anything blocks, warning otherwise.
 
 ![Attention page](../images/bb/attention-page.png)
 

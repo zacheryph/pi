@@ -2,6 +2,7 @@
 // query hooks need the contract value, so this module stays free of server code.
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
+import { MAX_ATTENTION_REPLY } from "pi-surface/attention";
 import type { DeliverySnapshot } from "pi-surface/delivery";
 import type { AttentionRow } from "pi-surface/attention-rows";
 import type { SessionStatusKind } from "pi-surface/session";
@@ -143,6 +144,23 @@ export const rpcContract = defineRpcContract({
       })
       .strict(),
     output: z.object({ queued: z.boolean() }),
+  },
+  /**
+   * Answers an attention item: runs its `reply` action on the thread's
+   * running session with the user's `text`. Refused while no Pi runs for the
+   * thread: nothing would receive it.
+   */
+  reply: {
+    input: z
+      .object({
+        threadId,
+        viewId: actionId,
+        itemId: z.string().min(1).max(200),
+        rev: z.string().min(1).max(200).optional(),
+        text: z.string().trim().min(1).max(MAX_ATTENTION_REPLY),
+      })
+      .strict(),
+    output: z.object({}).strict(),
   },
   /** Runs an action on the thread's session; resolves to its result, `null` for none. */
   request: {

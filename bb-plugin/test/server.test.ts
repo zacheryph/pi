@@ -799,6 +799,12 @@ describe("pi-surface server: attention", () => {
           viewId: "git.attention",
           ...input,
         }),
+      reply: (input: Record<string, unknown>) =>
+        call<Record<string, never>>("reply", {
+          threadId: THREAD,
+          viewId: "todo.attention",
+          ...input,
+        }),
       sessions: () => call<{ sessions: Array<Record<string, any>> }>("sessions", null),
       connect: async (sent: DeliverySnapshot) => {
         const entries = await harness.behavior.resolveProviderEnv("pi", {
@@ -833,11 +839,22 @@ describe("pi-surface server: attention", () => {
     expect(rows.map((row) => [row.kind, row.state, row.category, row.threadId])).toEqual([
       ["blocking", "ready", "question", "thr_demo"],
       ["owed", "ready", "review", "thr_demo"],
+      ["owed", "ready", "task", "thr_demo"],
       ["owed", "stale", "review", "thr_demo"],
     ]);
     expect(rows[0]).toMatchObject({ session: "Webhook retry queue", source: "fixture" });
-    expect({ blocking, owed }).toEqual({ blocking: 1, owed: 2 });
-    expect((await on(harness).sessions()).sessions[0]!.attention).toEqual({ blocking: 1, owed: 2 });
+    expect({ blocking, owed }).toEqual({ blocking: 1, owed: 3 });
+    expect((await on(harness).sessions()).sessions[0]!.attention).toEqual({ blocking: 1, owed: 3 });
+    // The fixture takes a reply, and keeps its item.
+    await expect(
+      on(harness).reply({
+        threadId: "thr_demo",
+        viewId: "todo.attention",
+        itemId: rows[2]!.itemId,
+        rev: rows[2]!.rev,
+        text: "Use hooks.staging.",
+      }),
+    ).resolves.toEqual({});
     // The fixture answers a dismissal as a session would, and keeps its item.
     await expect(
       on(harness).dismiss({ threadId: "thr_demo", itemId: rows[1]!.itemId, rev: rows[1]!.rev }),
@@ -872,6 +889,62 @@ describe("pi-surface server: attention", () => {
       args: { id: PR, rev: "a13c90e" },
     });
     await expect(dismissed).resolves.toEqual({ queued: false });
+  });
+
+  describe("reply", () => {
+    const task = (rev = "3") => ({
+      id: "task:a",
+      rev,
+      category: "task",
+      title: "Pick a host",
+      reason: "Choose staging or prod",
+      state: "ready",
+      since: 10,
+      reply: { action: "todo.unblock", args: { key: "a", rev } },
+    });
+    const todoAttention = (...items: unknown[]): ViewEntry => ({
+      id: "todo.attention",
+      kind: "attention",
+      title: "Todos",
+      model: { items, total: items.length } as never,
+    });
+
+    it("runs the item's reply action with the text, checking its revision", async () => {
+      const { harness, connect } = await setup();
+      const socket = await connect(THREAD, snapshot([todoAttention(task()), sessionView()]));
+      const api = on(harness);
+      await expect(
+        api.reply({ itemId: "task:a", rev: "2", text: "staging" }),
+      ).rejects.toMatchObject({ code: "conflict" });
+      await expect(
+        api.reply({ itemId: "task:b", rev: "3", text: "staging" }),
+      ).rejects.toMatchObject({ code: "not_found" });
+      // An empty reply never reaches the session.
+      await expect(api.reply({ itemId: "task:a", rev: "3", text: "   " })).rejects.toBeDefined();
+      expect(requests(socket)).toEqual([]);
+      const replied = api.reply({ itemId: "task:a", rev: "3", text: "  staging  " });
+      const asked = await answer(socket, 0, { ok: true });
+      expect(asked.request).toEqual({
+        action: "todo.unblock",
+        args: { key: "a", rev: "3", text: "staging" },
+      });
+      await expect(replied).resolves.toEqual({});
+    });
+
+    it("refuses a reply to a saved session, whose item lost its reply", async () => {
+      const first = await setup();
+      const socket = await first.connect(THREAD, snapshot([todoAttention(task()), sessionView()]));
+      await socket.close();
+      await tick(60);
+      const next = await first.reload();
+      const api = on(next.harness);
+      const { rows } = await api.attention();
+      expect(rows[0]).toMatchObject({ itemId: "task:a", source: "saved" });
+      expect(rows[0]).not.toHaveProperty("reply");
+      await expect(
+        api.reply({ itemId: "task:a", rev: "3", text: "staging" }),
+      ).rejects.toMatchObject({ code: "conflict" });
+    });
   });
 
   it("keeps a saved session's items, links included and actions removed, across a reload", async () => {
