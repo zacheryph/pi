@@ -220,6 +220,7 @@ describe("composition root: commands", () => {
       "subagent:watch",
       "subagent:settings",
       "subagent:agents",
+      "subagent:switch",
       "subagent:sessions",
     ]);
   });

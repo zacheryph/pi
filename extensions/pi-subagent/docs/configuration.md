@@ -145,9 +145,11 @@ knows what is open.
 branch from context and from the stash index, so `dig` gives each finding worth
 keeping as a full stash handle, which still reads in the new branch.
 
-Switch between them in one session with `/model agent/<name>`: the
-conversation stays, and the new profile's instructions replace the old one's.
-Each profile suggests the others when the conversation outgrows it.
+Switch between them in one session with `/subagent:switch <name>`: it compacts
+the conversation with instructions written for the profile taking over, then
+runs it ([details](../README.md#subagentswitch)). `/model agent/<name>` switches
+without compacting. Each profile suggests the others when the conversation
+outgrows it.
 
 ```bash
 pi --agent assist
@@ -288,6 +290,7 @@ A file whose frontmatter is not valid YAML still takes its name, so it still ove
 | ----------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `fragments`       | —              | Ordered fragment names from the winning profile's `agents/fragments/<name>.md`; combined before the profile body. See [Prompt fragments](#prompt-fragments).                                                                                                              |
 | `description`     | filename       | What the agent is. Shown after its name in the `subagent_start` agent list                                                                                                                                                                                                |
+| `handoff`         | —              | What a compaction must keep when [`/subagent:switch`](../README.md#subagentswitch) hands a main session to this agent; added to the summary instructions. Subagents ignore it                                                                                             |
 | `guidance`        | —              | When to pick the agent, as a sentence (`Use for …`). Shown after the description on the same line of the list, so the name is not repeated                                                                                                                                |
 | `display_name`    | —              | Display name for UI (e.g. widget, agent list)                                                                                                                                                                                                                             |
 | `tools`           | all available  | `all` for registered tools; explicit names restrict; `-name` removes; `none` disables tools. See [Tool selection](#tool-selection)                                                                                                                                        |

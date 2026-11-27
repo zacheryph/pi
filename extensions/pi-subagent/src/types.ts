@@ -97,6 +97,11 @@ export interface AgentConfig extends AgentIdentity, AgentPromptConfig {
   /** When to pick this agent, shown after its description in the subagent_start list. */
   guidance?: string;
   /**
+   * What a compaction must keep when `/subagent:switch` hands a main session to this
+   * profile. Added to the summary instructions; unused by subagents.
+   */
+  handoff?: string;
+  /**
    * Tools the agent may not call itself; a call is refused with a reason that
    * points at delegation. They stay registered, so its workers inherit them.
    */

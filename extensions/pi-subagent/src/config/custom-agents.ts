@@ -88,6 +88,7 @@ function loadFromDir(dir: string, agents: Map<string, AgentConfig>, source: Agen
       displayName: str(fm.display_name),
       description: str(fm.description) ?? name,
       guidance: str(fm.guidance),
+      handoff: str(fm.handoff)?.trim() || undefined,
       reservedTools: optionalList(fm.reserved_tools),
       toolNames: listField(fm.tools, ["all"]),
       delegate: fm.delegate === true ? true : undefined,

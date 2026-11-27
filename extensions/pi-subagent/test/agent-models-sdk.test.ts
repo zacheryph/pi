@@ -2,6 +2,7 @@ import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { Type } from "typebox";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { registerAgentModels } from "#src/agent-models";
+import { activateProfile, runSwitchCommand } from "#src/handlers/switch-command";
 import {
   MAIN_AGENT_ENTRY,
   MAIN_AGENT_REQUIRED_TOOLS,
@@ -44,10 +45,21 @@ async function session(profiles: AgentConfig[], options: { mode?: "rpc" | "print
           source: { cwd: "/unused", isProjectTrusted: () => true },
           deps: { profiles: () => profiles },
         });
-        registerMainAgentProfile(pi, {
+        const main = registerMainAgentProfile(pi, {
           resolveProfile: (name) => structuredClone(profiles.find((p) => p.name === name)!),
           agentModel: (model) => models.profileOf(model),
           diagnostic: () => {},
+        });
+        pi.registerCommand("subagent:switch", {
+          description: "switch",
+          handler: (args, ctx) =>
+            runSwitchCommand(args, ctx, {
+              profiles: () => profiles,
+              resolve: (name) => profiles.find((p) => p.name === name)!,
+              current: () => main.current(),
+              activate: activateProfile(pi, models, main),
+              show: () => {},
+            }),
         });
       },
     ],
@@ -131,6 +143,28 @@ describe("agent models / installed SDK", () => {
     const request = JSON.stringify(h.calls[0]![1]);
     expect(request).toContain("BETA BODY");
     expect(request).not.toContain("ALPHA BODY");
+  });
+
+  it("/subagent:switch on an agent model picks the target's agent model", async () => {
+    const h = await session([profile("alpha"), profile("beta")]);
+    await h.session.setModel(h.agentModel("alpha"));
+    await h.session.prompt("hello");
+    h.faux.setResponses([fauxAssistantMessage("SUMMARY"), fauxAssistantMessage("hi")]);
+    await h.session.prompt("/subagent:switch beta");
+    expect(h.session.model?.provider).toBe("agent");
+    expect(h.session.model?.id).toBe("beta");
+    expect(names(h)).toEqual(["alpha", "beta"]);
+  });
+
+  it("/subagent:switch on a physical model keeps that model", async () => {
+    const h = await session([profile("alpha"), profile("beta")]);
+    await h.session.setModel(h.agentModel("alpha"));
+    await h.session.setModel(h.modelRuntime.getModel("agent-models-test", "other")!);
+    await h.session.prompt("/subagent:switch beta");
+    expect(h.session.model?.id).toBe("other");
+    expect(names(h)).toEqual(["alpha", "beta"]);
+    await h.session.prompt("hello");
+    expect(JSON.stringify(h.calls.at(-1)![1])).toContain("BETA BODY");
   });
 
   it("leaves the applied profile in place when a physical model is picked", async () => {

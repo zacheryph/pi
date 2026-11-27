@@ -185,6 +185,7 @@ function agentDetail(
     { text: config.description || "(none)" },
     { heading: "Guidance" },
     { text: config.guidance ?? "(none)" },
+    ...(config.handoff ? [{ heading: "Handoff" }, { text: config.handoff }] : []),
     { heading: "Body" },
     { text: config.systemPrompt || "(empty)" },
   ];

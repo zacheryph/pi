@@ -60,6 +60,7 @@ Every field is optional. Unknown keys are ignored silently, so check spelling.
 | `locked`          | `true`, or a list of `model` `thinking` `max_turns` `inherit_context` | caller may override all   |
 | `visibility`      | `visible`, `hidden`, `disabled`                                       | `visible`                 |
 | `fragments`       | list of names from `agents/fragments/<name>.md` beside the file       | none                      |
+| `handoff`         | what `/subagent:switch` must keep when it hands a main session to it  | a generic handoff         |
 
 An invalid `thinking` or `visibility` value is dropped, not rejected: the
 agent inherits the caller's thinking level, or stays visible. Lists take

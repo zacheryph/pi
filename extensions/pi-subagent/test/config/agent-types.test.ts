@@ -533,7 +533,7 @@ describe("AgentTypeRegistry", () => {
       expect(prompt).toContain(
         "read the note with stash_get before answering about an earlier incident",
       );
-      expect(prompt).toContain("`/model agent/orchestrate`");
+      expect(prompt).toContain("`/subagent:switch orchestrate`");
     });
   });
 
@@ -565,11 +565,26 @@ describe("AgentTypeRegistry", () => {
     });
   });
 
+  describe("switch handoffs", () => {
+    it.each(["orchestrate", "assist", "dig"])("%s says what a switch to it must keep", (name) => {
+      expect(makeRegistry().resolveAgentConfig(name).handoff).toMatch(/\S/);
+    });
+
+    it("dig keeps its evidence verbatim and assist its incident notes", () => {
+      expect(makeRegistry().resolveAgentConfig("dig").handoff).toContain("copied exactly");
+      expect(makeRegistry().resolveAgentConfig("assist").handoff).toContain("stash note handle");
+    });
+
+    it("workers carry no handoff", () => {
+      expect(makeRegistry().resolveAgentConfig("implement").handoff).toBeUndefined();
+    });
+  });
+
   describe("orchestrator routing", () => {
     it("points non-project conversations at assist or dig", () => {
       const prompt = makeRegistry().resolveAgentConfig("orchestrate").systemPrompt;
-      expect(prompt).toContain("`/model agent/assist`");
-      expect(prompt).toContain("`/model agent/dig`");
+      expect(prompt).toContain("`/subagent:switch assist`");
+      expect(prompt).toContain("`/subagent:switch dig`");
     });
   });
 

@@ -37,7 +37,7 @@ Built-in agent types:
 `orchestrate`, `implement` and `review` can also run as the main agent:
 `pi --agent orchestrate` (see [Main-session profile](#main-session-profile---agent)).
 `assist` and `dig` are meant for the main agent only: `pi --agent assist`, or
-`/model agent/dig` to switch an open session ([which profile when](docs/configuration.md#assist-and-dig)).
+`/subagent:switch dig` to switch an open session ([which profile when](docs/configuration.md#assist-and-dig)).
 Define your own types in `.pi/agents/<name>.md` or `~/.pi/agent/agents/<name>.md`,
 or ask for the `creating-agents` skill. The orchestrator completes an
 implementation task only after a reviewer that did not do the work passes it.
@@ -394,6 +394,7 @@ The complete report, including the conversation `verbose` requests, always reach
 | `/subagent:sessions` | View a subagent's session transcript (read-only)                                    |
 | `/subagent:agents`   | Browse agent profiles and inspect effective settings and instructions (read-only)   |
 | `/subagent:watch`    | Toggle the passive, tailing watch overlay (Pi fullscreen mode only)                 |
+| `/subagent:switch`   | Compact the conversation for another main-agent profile, then run it                |
 
 ### `/subagent:settings`
 
@@ -456,6 +457,41 @@ Regular mode retains the existing widget and transcript viewer. The watch comman
 warns there instead of mounting an overlay: Pi 1.1.0 can bake overlay pixels into
 scrollback when parent output grows. A one- or two-row top margin does not prevent
 this during output bursts. See [watch-overlay decision](./docs/decisions/0013-passive-watch-overlay.md).
+
+### `/subagent:switch`
+
+```text
+/subagent:switch dig
+/subagent:switch orchestrate the rollout plan and the three hosts already drained
+```
+
+Hands the main session to another profile. It compacts the conversation first,
+with summary instructions written for the profile taking over, then runs that
+profile as picking its agent model would. With no name it offers a picker.
+
+Switching profiles replaces the profile's system prompt section and its active
+tools, so the prompt cache starts over whether or not you compact. Compacting
+first means the new profile starts from a summary written for it rather than a
+transcript of the old profile at work, which it would otherwise imitate, and
+every later turn carries a summary instead of the full history. `/tree` back to
+before the compaction still shows everything.
+
+The summary instructions have three parts:
+
+1. Always: the conversation now belongs to `<profile>`, so record what was asked,
+   decided and found, not how the previous profile worked. Stash handles, the IDs
+   of running or waiting subagents, worktree paths, pull request URLs and
+   questions waiting on you are copied exactly.
+2. The target profile's `handoff` frontmatter: what it needs. `orchestrate` asks
+   for the goal, criteria and decisions as items ready to become todos; `assist`
+   for open incidents with their note handles; `dig` for the question and its
+   Known, Ruled out and Open evidence, copied exactly.
+3. Anything you type after the profile name.
+
+Pi keeps the most recent turns (`keepRecentTokens`, 20k tokens by default)
+verbatim after any compaction, this one included. A session too small to compact
+switches without a summary. If compaction fails, the current profile keeps
+running and nothing switches.
 
 ### `/subagent:sessions`
 
