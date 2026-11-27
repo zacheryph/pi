@@ -390,4 +390,85 @@ describe("the Needs you panel", () => {
     expect(find(panel, "answer:101:q1:detail")?.textContent).toBe("Answer");
     expect(rows[1]!.textContent).toMatch(/^2 unreviewed findings/);
   });
+
+  describe("an item that takes a reply", () => {
+    const task: ViewEntry = {
+      id: "todo.attention",
+      kind: "attention",
+      title: "Todos",
+      model: {
+        items: [
+          {
+            id: "task:a",
+            rev: "7",
+            category: "task",
+            title: "Pick a webhook host",
+            reason: "Choose staging or prod in the deploy settings",
+            state: "ready",
+            since: now - 60_000,
+            reply: { action: "todo.unblock", args: { key: "a", rev: "7" } },
+          },
+        ],
+        total: 1,
+      },
+    };
+    const asking = { ...owing, views: [...owing.views, task] };
+    const textarea = (form: FakeNode) =>
+      form.descendants().find((node) => node.tagName === "textarea")!;
+    const settle = () => new Promise((resolve) => setImmediate(resolve));
+
+    it("shows Reply only while the session is live", () => {
+      const run = runPage(renderPage("tok"));
+      run.sessions({ home: "/home/me", sessions: [asking] });
+      expect(needRows(panelOf(run.main))[0]!.children[2]!.textContent).toBe("Reply");
+      run.sessions({ home: "/home/me", sessions: [{ ...asking, disconnected: true }] });
+      expect(needRows(panelOf(run.main))[0]!.children[2]!.textContent).toBe("");
+    });
+
+    it("sends the typed text with the action's arguments", async () => {
+      const requests: PageRequest[] = [];
+      const run = runPage(renderPage("tok"), (request) => {
+        requests.push(request);
+        return { status: 200, body: { ok: true, data: null } };
+      });
+      run.sessions({ home: "/home/me", sessions: [asking] });
+      find(run.main, "reply:202/todo.attention/task:a:needs")!.dispatch("click");
+      const form = run.byId("answer").children[0]!;
+      expect(form.textContent).toContain("Choose staging or prod in the deploy settings");
+      // An empty reply is never sent.
+      form.dispatch("submit");
+      await settle();
+      expect(requests).toEqual([]);
+      expect(form.textsOf("bad")).toEqual(["Type a reply."]);
+      textarea(form).value = "  Use staging.  ";
+      form.dispatch("submit");
+      await settle();
+      expect(requests).toEqual([
+        {
+          url: "/api/sessions/202/actions",
+          method: "POST",
+          headers: { "X-Dashboard-Token": "token", "Content-Type": "application/json" },
+          body: { action: "todo.unblock", args: { key: "a", rev: "7", text: "Use staging." } },
+        },
+      ]);
+    });
+
+    it("keeps the draft and says why when the reply is refused", async () => {
+      const run = runPage(renderPage("tok"), () => ({
+        status: 200,
+        body: { ok: false, error: "Task a is no longer waiting." },
+      }));
+      run.sessions({ home: "/home/me", sessions: [asking] });
+      find(run.main, "reply:202/todo.attention/task:a:needs")!.dispatch("click");
+      const form = run.byId("answer").children[0]!;
+      textarea(form).value = "Use staging.";
+      form.dispatch("submit");
+      await settle();
+      expect(form.textsOf("bad")).toEqual(["Task a is no longer waiting."]);
+      // Reopened, it is the same form with the same text.
+      find(run.main, "reply:202/todo.attention/task:a:needs")!.dispatch("click");
+      expect(run.byId("answer").children[0]).toBe(form);
+      expect(textarea(form).value).toBe("Use staging.");
+    });
+  });
 });

@@ -38,6 +38,8 @@ export type AttentionRow = {
   link?: AttentionLink;
   open?: ActionRef;
   dismiss?: ActionRef;
+  /** Answers the item: dispatched with its arguments plus `{ text }`. */
+  reply?: ActionRef;
 };
 
 export type AttentionList = {
@@ -131,6 +133,7 @@ export function attentionRows(snapshot: Pick<DeliverySnapshot, "views">): Attent
         if (link) row.link = { url: link.url, label: link.label };
         if (item.open) row.open = item.open;
         if (item.dismiss) row.dismiss = item.dismiss;
+        if (item.reply) row.reply = item.reply;
         owed.push(row);
       }
     }

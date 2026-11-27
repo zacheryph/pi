@@ -137,6 +137,7 @@ describe("attentionRows", () => {
 
   it("lists owed items from every attention view: ready by age, then stale", () => {
     const dismiss = { action: "git.attention-dismiss", args: { id: "pr:42", rev: "a13c90e" } };
+    const reply = { action: "git.attention-reply", args: { id: "pr:42", rev: "a13c90e" } };
     const list = attentionRows({
       views: [
         attentionView(
@@ -148,6 +149,7 @@ describe("attentionRows", () => {
               link: { url: "https://github.com/acme/web/pull/42", label: "acme/web#42" },
               open: { action: "git.attention-open", args: { id: "pr:42" } },
               dismiss,
+              reply,
             }),
             item("pr:40", T, { state: "stale" }),
           ],
@@ -175,6 +177,7 @@ describe("attentionRows", () => {
       link: { url: "https://github.com/acme/web/pull/42", label: "acme/web#42" },
       open: { action: "git.attention-open", args: { id: "pr:42" } },
       dismiss,
+      reply,
     });
     // The producers' totals: 14 + 1 owed, 3 of them listed.
     expect(list).toMatchObject({ blocking: 0, owed: 15, more: 12, failed: [] });
@@ -214,6 +217,7 @@ describe("attentionRows", () => {
           item("pr:42", T, {
             link: { url: "https://github.com/acme/web/pull/42", label: "acme/web#42" },
             dismiss: { action: "git.attention-dismiss", args: { id: "pr:42" } },
+            reply: { action: "todo.unblock", args: { key: "a" } },
           }),
           item("run", T + 1, { live: true }),
         ]),

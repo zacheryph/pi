@@ -58,12 +58,13 @@ section.panel.asks { border-color: var(--warn); box-shadow: inset 3px 0 0 var(--
 section.panel.owes { box-shadow: inset 3px 0 0 var(--warn); }
 .need { display: grid; grid-template-columns: minmax(0, 14rem) minmax(0, 1fr) auto; gap: 3px 14px; align-items: center; }
 .need.solo { grid-template-columns: minmax(0, 1fr) auto; }
-.need.stale > :not(.open) { opacity: 0.55; }
+.need.stale > :not(.open):not(.acts) { opacity: 0.55; }
 .need .who { font: 500 13px var(--mono); color: var(--muted); text-decoration: none; }
 .need .who:hover { color: var(--accent); }
 .need .what { display: grid; gap: 2px; min-width: 0; }
 a.open { font: 600 12px var(--mono); border: 1.5px solid var(--accent); color: var(--accent); border-radius: 6px; padding: 3px 10px; text-decoration: none; white-space: nowrap; }
 a.open:hover { background: var(--accent-soft); }
+.need .acts { display: flex; gap: 6px; }
 @media (max-width: 560px) { .need { grid-template-columns: minmax(0, 1fr) auto; } .need .who { grid-column: 1 / -1; } }
 .qsummary { display: grid; gap: 4px; min-width: 0; flex: 1; }
 .qline { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
@@ -877,11 +878,103 @@ function needRow(record, row, solo) {
   const metaText = meta.filter(Boolean).join(" · ");
   if (metaText) what.append(el("span", "mono muted", metaText));
   li.append(what);
-  // Answer a questionnaire here and open an item's link; anything else is done in the session.
+  // Answer a questionnaire or reply to an item here, and open an item's link;
+  // anything else is done in the session. Only a live session can take a reply.
+  const reply = row.reply && live(record) ? replyButton(record, row, solo ? "detail" : "needs") : null;
+  const link = row.link ? openLink(row.link, "link:" + key) : null;
   if (questionnaire) li.append(answerButton(record, questionnaire, true, solo ? "detail" : "needs"));
-  else if (row.link) li.append(openLink(row.link, "link:" + key));
-  else li.append(el("span"));
+  else if (reply && link) { const both = el("span", "acts"); both.append(reply, link); li.append(both); }
+  else li.append(reply || link || el("span"));
   return li;
+}
+
+// reply: an attention item the user answers in words, such as a task waiting
+// on them. Its form opens in the answer dialog and is kept like a
+// questionnaire's, so a draft survives closing it and a refused send.
+const replyKey = (record, row) => "reply:" + record.id + "/" + row.key;
+const MAX_REPLY = 2000;
+
+function replyButton(record, row, place) {
+  const button = el("button", "focus solid", "Reply");
+  button.type = "button";
+  button.title = "Answer in your own words; the session gets your reply";
+  button.setAttribute("aria-haspopup", "dialog");
+  button.dataset.key = replyKey(record, row) + ":" + place;
+  button.addEventListener("click", (event) => { event.stopPropagation(); openReply(record, row, button.dataset.key); });
+  return button;
+}
+
+function buildReplyForm(record, row, key) {
+  const form = el("form", "answer-form");
+  form.noValidate = true;
+  const head = el("div", "modal-head");
+  const heading = el("div", "modal-title");
+  const name = el("h2");
+  name.id = "answer-title";
+  name.append(line(row.title));
+  heading.append(name, el("span", "mono muted wrap", [title(record), row.since !== undefined ? "waiting " + ago(row.since) : null].filter(Boolean).join(" · ")));
+  const close = el("button", "close", "×");
+  close.type = "button";
+  close.setAttribute("aria-label", "Close");
+  close.addEventListener("click", () => answerModal.close());
+  head.append(heading, close);
+  const banner = el("div", "closed-banner", "This was answered or closed in the session.");
+  banner.hidden = true;
+  const body = el("div", "qform");
+  if (row.reason) body.append(el("p", "qtext", row.reason));
+  const text = el("textarea", "answer");
+  text.rows = 5;
+  text.maxLength = MAX_REPLY;
+  text.placeholder = "Your reply";
+  text.setAttribute("aria-label", "Your reply");
+  body.append(text);
+  const actions = el("div", "modal-actions");
+  const error = el("span", "bad");
+  error.setAttribute("role", "alert");
+  const send = el("button", "primary", "Send reply");
+  send.type = "submit";
+  actions.append(error, send);
+  form.append(head, banner, body, actions);
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const reply = text.value.trim();
+    if (!reply) { error.textContent = "Type a reply."; return; }
+    if (reply.length > MAX_REPLY) { error.textContent = "A reply is at most " + MAX_REPLY + " characters."; return; }
+    error.textContent = "";
+    send.disabled = true;
+    try {
+      await act(record, row.reply, { text: reply });
+      answerForms.delete(key);
+      flash(record.id, { ok: true, text: "Reply sent" });
+      answerModal.close();
+      render(true);
+    } catch (failure) {
+      // Refused or unreachable: say why and keep the draft.
+      error.textContent = failure.message;
+      send.disabled = form.dataset.closed === "true";
+    }
+  });
+  form.markClosed = () => {
+    form.dataset.closed = "true";
+    banner.hidden = false;
+    send.disabled = true;
+  };
+  return form;
+}
+
+function openReply(record, row, returnKey) {
+  const key = replyKey(record, row);
+  let form = answerForms.get(key);
+  if (!form) {
+    form = buildReplyForm(record, row, key);
+    answerForms.set(key, form);
+  }
+  answering = { id: row.key, key, returnKey };
+  answerModal.replaceChildren(form);
+  if (!answerModal.open) answerModal.showModal();
+  checkAnswerStillOpen();
+  const first = form.querySelector("textarea");
+  if (first) first.focus();
 }
 
 function buildAnswerForm(record, questionnaire, key) {
@@ -1025,11 +1118,13 @@ function openAnswer(record, questionnaire, returnKey) {
   if (first) first.focus();
 }
 
-/** Marks the open form closed once its questionnaire leaves the live list, and drops drafts for finished ones. */
+/** Marks the open form closed once its questionnaire or reply item leaves the live list, and drops drafts for finished ones. */
 function checkAnswerStillOpen() {
   const open = new Set();
-  for (const record of state.sessions)
+  for (const record of state.sessions) {
     for (const questionnaire of questionnaires(record)) open.add(record.id + ":" + questionnaire.id);
+    if (live(record)) for (const row of needsOf(record).rows) if (row.reply) open.add(replyKey(record, row));
+  }
   for (const key of answerForms.keys()) if (!open.has(key) && (!answering || answering.key !== key)) answerForms.delete(key);
   if (answering && !open.has(answering.key)) {
     const form = answerForms.get(answering.key);

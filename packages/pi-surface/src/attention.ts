@@ -32,6 +32,8 @@ export const MAX_ATTENTION_REASON = 500;
 export const MAX_ATTENTION_URL = 2_000;
 /** Longest link label. */
 export const MAX_ATTENTION_LABEL = 100;
+/** Longest reply the user may send to an item's `reply` action, in UTF-16 units. */
+export const MAX_ATTENTION_REPLY = 2_000;
 
 /** A category: lowercase words joined by hyphens, e.g. `review`, `findings`. */
 export const ATTENTION_CATEGORY = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
@@ -66,6 +68,12 @@ export type AttentionItem = {
   open?: ActionRef;
   /** Tells the producer the user has dealt with the item. Dispatched with its arguments as given. */
   dismiss?: ActionRef;
+  /**
+   * Answers the item with the user's words. Dispatched with the reference's
+   * arguments plus `{ text }`: the reply, trimmed, 1 to `MAX_ATTENTION_REPLY`
+   * characters. A consumer that cannot collect text leaves it out.
+   */
+  reply?: ActionRef;
   /** Process-bound (see `#src/model`): settled, the item is removed. */
   live?: true;
 };
@@ -119,6 +127,7 @@ export function isAttentionItem(value: unknown): value is AttentionItem {
     optional(value.link, isLink) &&
     optional(value.open, (ref) => isActionReference(ref)) &&
     optional(value.dismiss, (ref) => isActionReference(ref)) &&
+    optional(value.reply, (ref) => isActionReference(ref)) &&
     optional(value.live, isTrue)
   );
 }

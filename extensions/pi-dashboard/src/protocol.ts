@@ -176,9 +176,9 @@ export function boundError(text: string): string {
 
 /**
  * Every action a set of views offers a consumer: an explorer's `onOpen`,
- * `loadDetail` and marker `onClear`, and each form questionnaire's `submit`
- * and `cancel`. The hub runs only these for the page, so a page can do what
- * the session's views offer and nothing else.
+ * `loadDetail` and marker `onClear`, each form questionnaire's `submit` and
+ * `cancel`, and each attention item's `reply`. The hub runs only these for the
+ * page, so a page can do what the session's views offer and nothing else.
  */
 export function offeredActions(views: readonly ViewEntry[]): Set<string> {
   const offered = new Set<string>();
@@ -192,6 +192,9 @@ export function offeredActions(views: readonly ViewEntry[]): Set<string> {
         offered.add(questionnaire.submit.action);
         offered.add(questionnaire.cancel.action);
       }
+    } else if (entry.kind === "attention") {
+      // The page answers an item with its reply; it runs no attention `open` or `dismiss`.
+      for (const item of entry.model.items) if (item.reply) offered.add(item.reply.action);
     }
   }
   return offered;
