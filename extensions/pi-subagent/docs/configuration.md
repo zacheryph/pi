@@ -85,8 +85,11 @@ The profile's instructions establish this working loop:
    affected criteria when the code changes. Collect results and verify acceptance criteria before completing todos: a
    `review` that did not do the work checks each implementation task. A
    `FAIL` goes back to the implementer with `subagent_send`; after two failed rounds the
-   task stays `pending` with the findings. Record questions and follow-ups immediately. Waiting items stay `pending`
-   with a described blocker; todo has no separate waiting/blocked status.
+   orchestrator decides or escalates with the findings. Record questions and follow-ups immediately.
+   A task only the user can move on is set `waiting`, with a message saying what the
+   user must do and where; other blocked items stay `pending` with a described blocker.
+   A PR waiting on review stays `in_progress`: as the main agent, the orchestrator hands
+   it to the user with `git_pr_request_review` at the head it checked.
 4. Message workers with `subagent_send`, by their original agent IDs, for
    rationale, clarification, or follow-up work: it steers a running worker and
    gives a settled one a new run. Reuse their context instead of

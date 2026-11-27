@@ -52,9 +52,11 @@ first unfinished step.
 - Each step becomes a todo, its `Depends on` mapped to `dependsOn`. Ready steps
   go to subagents, each in its own pi-git worktree when several run at once.
 - A `review` agent checks every step against its "Done when" and
-  "Verification" lines before it lands. Two failed repair rounds block a step.
+  "Verification" lines before it lands. After two failed repair rounds the
+  step's todo is set `waiting`, with what it needs from you in its message.
 - A finding the roadmap did not anticipate stops the run and lands in the
-  document's open questions instead of an improvised plan.
+  document's open questions instead of an improvised plan; its step waits on
+  you to decide.
 
 **Local** delivery commits each step on the roadmap branch and never pushes.
 **Pull requests** (when you ask it to deliver or ship):
@@ -72,7 +74,8 @@ first unfinished step.
 - After a merge it verifies the deploy with `job_watch` when the repository has
   a way to (a deploy skill, agent instructions, or a check the step names), and
   records the merge as unverified when it has none. A failed deploy check stops
-  new work and reports to you; nothing is reverted.
+  new work, sets its step `waiting` and reports to you; nothing is reverted.
+  A pull request closed without merging sets its step `waiting` too.
 
 ## babysit-pr
 
