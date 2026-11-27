@@ -255,6 +255,11 @@ export interface SubagentManagerObserver {
   onSubagentCompacted(record: Subagent, info: CompactionInfo): void;
   /** Fires synchronously after a background agent record is created (before run). */
   onSubagentCreated(record: Subagent): void;
+  /**
+   * Fires when live activity changes during a run: tool start/end, first assistant text,
+   * or usage update at message end. Optional: remote renderers use it to publish live state.
+   */
+  onSubagentActivityChanged?(record: Subagent): void;
 }
 
 export interface SubagentManagerOptions {
@@ -387,6 +392,9 @@ export class SubagentManager {
       onUpdateSent: (agent, message) => observer?.onSubagentUpdate?.(agent, message),
       onQuestionAsked: (agent, question) => observer?.onSubagentQuestion?.(agent, question),
       onCompacted: (agent, info) => observer?.onSubagentCompacted(agent, info),
+      onActivityChanged: guarded("onSubagentActivityChanged", (agent) =>
+        observer?.onSubagentActivityChanged?.(agent),
+      ),
     };
   }
 

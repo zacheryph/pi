@@ -205,4 +205,158 @@ describe("subscribeSubagentObserver", () => {
     session.emit({ type: "tool_execution_end", toolName: "Write" });
     expect(state.toolUses).toBe(1); // unchanged
   });
+
+  it("calls onActivityChange on tool_execution_start", () => {
+    const session = createMockSession();
+    const state = makeState();
+    const onActivityChange = vi.fn();
+    subscribeSubagentObserver(session, state, { onActivityChange });
+
+    session.emit({ type: "tool_execution_start", toolName: "Read" });
+    expect(onActivityChange).toHaveBeenCalledOnce();
+  });
+
+  it("calls onActivityChange on tool_execution_end", () => {
+    const session = createMockSession();
+    const state = makeState();
+    const onActivityChange = vi.fn();
+    subscribeSubagentObserver(session, state, { onActivityChange });
+
+    session.emit({ type: "tool_execution_start", toolName: "Read" });
+    session.emit({ type: "tool_execution_end", toolName: "Read" });
+    expect(onActivityChange).toHaveBeenCalledTimes(2);
+  });
+
+  it("calls onActivityChange on message_start", () => {
+    const session = createMockSession();
+    const state = makeState();
+    const onActivityChange = vi.fn();
+    subscribeSubagentObserver(session, state, { onActivityChange });
+
+    session.emit({ type: "message_start" });
+    expect(onActivityChange).toHaveBeenCalledOnce();
+  });
+
+  it("calls onActivityChange on first nonempty text_delta, not on empty or subsequent deltas", () => {
+    const session = createMockSession();
+    const state = makeState();
+    const onActivityChange = vi.fn();
+    subscribeSubagentObserver(session, state, { onActivityChange });
+
+    // Start a message
+    session.emit({ type: "message_start" });
+    expect(onActivityChange).toHaveBeenCalledTimes(1);
+    onActivityChange.mockClear();
+
+    // Empty delta should not trigger
+    session.emit({
+      type: "message_update",
+      assistantMessageEvent: { type: "text_delta", delta: "" },
+    });
+    expect(onActivityChange).not.toHaveBeenCalled();
+
+    // First nonempty delta should trigger
+    session.emit({
+      type: "message_update",
+      assistantMessageEvent: { type: "text_delta", delta: "Hello" },
+    });
+    expect(onActivityChange).toHaveBeenCalledOnce();
+    onActivityChange.mockClear();
+
+    // Subsequent deltas should not trigger
+    session.emit({
+      type: "message_update",
+      assistantMessageEvent: { type: "text_delta", delta: " world" },
+    });
+    expect(onActivityChange).not.toHaveBeenCalled();
+  });
+
+  it("resets first-text tracking on each message_start", () => {
+    const session = createMockSession();
+    const state = makeState();
+    const onActivityChange = vi.fn();
+    subscribeSubagentObserver(session, state, { onActivityChange });
+
+    // First message: start, text
+    session.emit({ type: "message_start" });
+    onActivityChange.mockClear();
+    session.emit({
+      type: "message_update",
+      assistantMessageEvent: { type: "text_delta", delta: "First" },
+    });
+    expect(onActivityChange).toHaveBeenCalledOnce();
+
+    // Second message: start, text (should trigger again)
+    session.emit({ type: "message_start" });
+    onActivityChange.mockClear();
+    session.emit({
+      type: "message_update",
+      assistantMessageEvent: { type: "text_delta", delta: "Second" },
+    });
+    expect(onActivityChange).toHaveBeenCalledOnce();
+  });
+
+  it("calls onActivityChange on message_end with assistant usage", () => {
+    const session = createMockSession();
+    const state = makeState();
+    const onActivityChange = vi.fn();
+    subscribeSubagentObserver(session, state, { onActivityChange });
+
+    session.emit({
+      type: "message_end",
+      message: { role: "assistant", usage: { input: 100, output: 50, cacheWrite: 10 } },
+    });
+    expect(onActivityChange).toHaveBeenCalledOnce();
+  });
+
+  it("does not call onActivityChange on message_end from non-assistant", () => {
+    const session = createMockSession();
+    const state = makeState();
+    const onActivityChange = vi.fn();
+    subscribeSubagentObserver(session, state, { onActivityChange });
+
+    session.emit({
+      type: "message_end",
+      message: { role: "user", usage: { input: 100, output: 50, cacheWrite: 10 } },
+    });
+    expect(onActivityChange).not.toHaveBeenCalled();
+  });
+
+  it("does not call onActivityChange on compaction_end", () => {
+    const session = createMockSession();
+    const state = makeState();
+    const onActivityChange = vi.fn();
+    subscribeSubagentObserver(session, state, { onActivityChange });
+
+    session.emit({
+      type: "compaction_end",
+      aborted: false,
+      result: { tokensBefore: 5000 },
+      reason: "threshold",
+    });
+    expect(onActivityChange).not.toHaveBeenCalled();
+  });
+
+  it("combines callbacks: both onCompact and onActivityChange can fire", () => {
+    const session = createMockSession();
+    const state = makeState();
+    const onActivityChange = vi.fn();
+    const onCompact = vi.fn();
+    subscribeSubagentObserver(session, state, { onActivityChange, onCompact });
+
+    // Activity change
+    session.emit({ type: "tool_execution_start", toolName: "Test" });
+    expect(onActivityChange).toHaveBeenCalledTimes(1);
+    expect(onCompact).not.toHaveBeenCalled();
+
+    // Compaction (should not trigger activity change)
+    session.emit({
+      type: "compaction_end",
+      aborted: false,
+      result: { tokensBefore: 5000 },
+      reason: "threshold",
+    });
+    expect(onActivityChange).toHaveBeenCalledTimes(1);
+    expect(onCompact).toHaveBeenCalledOnce();
+  });
 });
