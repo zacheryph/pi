@@ -37,6 +37,16 @@ git -c commit.gpgsign=false commit ...
 Keep commit subjects descriptive: each becomes a changelog entry for every
 workspace it touches.
 
+## Pull requests
+
+When you are asked to write or change anything in this repository (code,
+tests, docs, skills, agent profiles, config), finish by opening a pull request
+without asking first: run the checks above, commit, push the branch and open
+the PR. Say in its description what you changed and which checks passed. A
+follow-up change to work whose PR is still open goes on that PR's branch. Ask
+first only when the request is a question with no change to make, or it says
+not to open one.
+
 ## Formatting and linting
 
 Oxfmt formats and Oxlint lints, with one root config each (`.oxfmtrc.json`,
