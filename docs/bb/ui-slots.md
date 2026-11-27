@@ -193,6 +193,23 @@ Limits: the component owns its own search and keyboard navigation; users can
 rebind the command, and a default that conflicts with another stays unbound.
 The shortcut is inactive while a terminal, browser tab or modal has focus.
 
+The second popup is pi-subagent's `/subagent:switch`, which bb's `/` menu does
+not list: **+ → Switch the Pi agent profile** (or the palette's **Pi: compact
+and switch the agent profile**, with no default shortcut) asks the session for
+its profiles with the `subagent.profiles` action and lists every one but the
+profile running. The field is what the summary must keep; Up/Down pick a
+profile and Enter runs `subagent.switch`, which answers once the switch has
+started. The popup closes then, or shows the session's refusal (unknown
+profile, a turn still running) under the list.
+
+![Agent profile popup](../images/bb/composer-profile-popup.png)
+
+Verified live on bb 0.49.0: picking a profile compacted and switched, and the
+context row's profile changed. bb draws the compaction as its own timeline row
+("Context compaction skipped" when the session is too small), but not the
+messages Pi's command writes between turns ("Compacted for dig and switched."),
+so the profile in the context row is the confirmation.
+
 ## 6. Thread tabs
 
 A tab in the thread's side panel. `experimental_tab({ context: { kind:

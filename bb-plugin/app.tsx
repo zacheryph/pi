@@ -14,6 +14,7 @@ import {
   useAttentionBadge,
 } from "./ui/attention.tsx";
 import { OpenPanelAction, STASH_POPUP, StashPicker } from "./ui/composer.tsx";
+import { PROFILE_POPUP, ProfileSwitch } from "./ui/profile-switch.tsx";
 import { QuestionnaireInteraction } from "./ui/questionnaire.tsx";
 import { GIT_TAB, SESSION_TAB } from "./ui/session.ts";
 import { GitTab, SessionTab, useSessionTabVisible } from "./ui/session-tab.tsx";
@@ -24,7 +25,8 @@ import { GitCardSection, PiSegment, StashCardRow } from "./ui/thread-context.tsx
 export default definePluginApp((app) => {
   // 1. Above the editor: bb's collapsible stack cards, one per widget view.
   // 4. In the composer's control row: open the Pi tab.
-  // 5. A composer popup, opened by a composer command or the + menu.
+  // 5. Composer popups, opened by a composer command or the + menu: the stash
+  //    picker, and pi-subagent's /subagent:switch, which bb's / menu does not list.
   app.composer.customize({
     id: "pi",
     scopes: ["thread"],
@@ -43,8 +45,19 @@ export default definePluginApp((app) => {
           composer.experimental_openPopup(STASH_POPUP);
         },
       },
+      {
+        id: "switch-profile",
+        label: "Switch the Pi agent profile",
+        icon: "Repeat",
+        run: ({ composer }) => {
+          composer.experimental_openPopup(PROFILE_POPUP);
+        },
+      },
     ],
-    experimental_popups: [{ id: STASH_POPUP, label: "Pi stash", component: StashPicker }],
+    experimental_popups: [
+      { id: STASH_POPUP, label: "Pi stash", component: StashPicker },
+      { id: PROFILE_POPUP, label: "Pi agent profile", component: ProfileSwitch },
+    ],
   });
   app.composer.experimental_registerCommand({
     id: "stash-picker",
@@ -52,6 +65,13 @@ export default definePluginApp((app) => {
     defaultShortcut: { key: "s", mod: true, shift: true },
     run: ({ composer }) => {
       composer.experimental_openPopup(STASH_POPUP);
+    },
+  });
+  app.composer.experimental_registerCommand({
+    id: "switch-profile",
+    title: "Pi: compact and switch the agent profile",
+    run: ({ composer }) => {
+      composer.experimental_openPopup(PROFILE_POPUP);
     },
   });
 

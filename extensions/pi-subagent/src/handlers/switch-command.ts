@@ -12,6 +12,7 @@ import type {
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { errorText } from "#foundations/errors";
+import type { ActionDefinition, JsonValue } from "#surface";
 import { AGENT_PROVIDER, type MainAgentProfileHandle } from "#src/main-agent-profile";
 import type { AgentConfig } from "#src/types";
 
@@ -123,13 +124,26 @@ export async function runSwitchCommand(
     deps.show(ctx, `${errorText(error)}\n${usage(deps, ctx)}`, "error");
     return;
   }
-  const from = deps.current();
-  if (from?.name === target.name) {
+  if (deps.current()?.name === target.name) {
     deps.show(ctx, `Already running ${target.name}.`, "info");
     return;
   }
 
   await ctx.waitForIdle();
+  await switchProfile(target, focus, ctx, deps);
+}
+
+/**
+ * Compact for `target`, then run it, reporting each step through `deps.show`. When the
+ * compaction fails the current profile keeps running.
+ */
+export async function switchProfile(
+  target: AgentConfig,
+  focus: string,
+  ctx: ExtensionContext,
+  deps: SwitchCommandDeps,
+): Promise<void> {
+  const from = deps.current();
   deps.show(ctx, `Compacting for ${target.name}…`, "info");
   const outcome = await compactFor(ctx, handoffInstructions(target, from, focus));
   if (!outcome.ok) {
@@ -149,6 +163,83 @@ export async function runSwitchCommand(
       : `Nothing to compact; switched to ${target.name}.`,
     "info",
   );
+}
+
+/** Lists the profiles a session can switch to, for hosts without slash commands (bb). */
+export const PROFILES_ACTION = "subagent.profiles";
+/** `/subagent:switch` as an action: `{ profile, keep? }`. */
+export const SWITCH_ACTION = "subagent.switch";
+
+export type ProfileChoice = {
+  name: string;
+  label?: string;
+  description?: string;
+  /** The profile the main agent runs now. */
+  running: boolean;
+};
+
+/** The `subagent.profiles` action: every profile that can run as the main agent here. */
+export function profilesAction(
+  ctx: () => ExtensionContext,
+  deps: Pick<SwitchCommandDeps, "profiles" | "current">,
+): ActionDefinition<undefined> {
+  return {
+    id: PROFILES_ACTION,
+    title: "List the agent profiles this session can switch to",
+    parse: () => undefined,
+    handler: () => {
+      const current = deps.current()?.name;
+      const profiles: ProfileChoice[] = deps.profiles(ctx()).map((profile) => {
+        const label = profile.displayName?.trim();
+        const description = profile.description.trim();
+        return {
+          name: profile.name,
+          ...(label && label !== profile.name ? { label } : {}),
+          ...(description ? { description } : {}),
+          running: profile.name === current,
+        };
+      });
+      return { profiles };
+    },
+  };
+}
+
+function readSwitchArgs(args: JsonValue | undefined): { profile: string; keep: string } {
+  const { profile, keep } = (args ?? {}) as Record<string, unknown>;
+  if (typeof profile !== "string" || !profile.trim()) throw new Error("expected { profile }");
+  if (keep !== undefined && typeof keep !== "string") throw new Error("keep must be text");
+  return { profile: profile.trim(), keep: keep ?? "" };
+}
+
+/**
+ * The `subagent.switch` action. It checks the profile and that the session is idle, starts the
+ * switch and answers at once: compaction runs a model call, longer than a host waits for an
+ * answer. Each step after that reaches the user as `/subagent:switch` reports it.
+ */
+export function switchAction(
+  ctx: () => ExtensionContext,
+  deps: SwitchCommandDeps,
+): ActionDefinition<{ profile: string; keep: string }> {
+  let switching: string | undefined;
+  return {
+    id: SWITCH_ACTION,
+    title: "Compact the conversation for another agent profile, then run it",
+    parse: readSwitchArgs,
+    handler: ({ profile, keep }) => {
+      const session = ctx();
+      const target = deps.resolve(profile, session);
+      if (deps.current()?.name === target.name) throw new Error(`Already running ${target.name}.`);
+      if (switching) throw new Error(`Already switching to ${switching}.`);
+      if (!session.isIdle()) throw new Error("Pi is working; switch once this turn ends.");
+      switching = target.name;
+      void switchProfile(target, keep, session, deps)
+        .catch((error: unknown) => deps.show(session, errorText(error), "error"))
+        .finally(() => {
+          switching = undefined;
+        });
+      return { switching: target.name };
+    },
+  };
 }
 
 /**

@@ -493,6 +493,14 @@ verbatim after any compaction, this one included. A session too small to compact
 switches without a summary. If compaction fails, the current profile keeps
 running and nothing switches.
 
+Hosts that do not list Pi's commands run the same switch through two
+[pi-surface](../../packages/pi-surface/README.md) actions: `subagent.profiles`
+lists `{ profiles: [{ name, label?, description?, running }] }`, and
+`subagent.switch` takes `{ profile, keep? }`, refuses an unknown or running
+profile or a session mid-turn, and answers `{ switching }` as soon as the
+compaction starts, since that takes a model call. bb's composer offers them as a
+popup ([bb plugin](../../bb-plugin/README.md)).
+
 ### `/subagent:sessions`
 
 Pick any subagent — running, or completed with its live session already released — and read its full session transcript in pi's native per-entry viewer.

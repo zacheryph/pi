@@ -849,6 +849,24 @@ export function fixtureResponder(now = Date.now()) {
       case "ask.submit":
       case "ask.cancel":
         throw new Error("This is a fixture session; answers go nowhere.");
+      case "subagent.profiles":
+        return {
+          profiles: [
+            {
+              name: "orchestrate",
+              description: "Project manager for multi-step work",
+              running: true,
+            },
+            {
+              name: "assist",
+              description: "Long-running assistant for on-call and everyday questions",
+              running: false,
+            },
+            { name: "dig", description: "Investigator for open-ended questions", running: false },
+          ],
+        };
+      case "subagent.switch":
+        throw new Error("This is a fixture session; it has no conversation to compact.");
       default:
         throw new Error(`Unknown action "${request.action}".`);
     }
